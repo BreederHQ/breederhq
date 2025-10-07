@@ -1,47 +1,73 @@
 // packages/api/src/http.ts
-export type MakeAuthHeader = () => Record<string, string> | null;
+// Centralized fetch that always forwards cookies and X-Org-Id
 
-export function createHttp(baseURL: string, makeAuthHeader?: MakeAuthHeader) {
-  async function request<T>(
-    method: string,
-    path: string,
-    body?: unknown,
-    init: RequestInit = {}
-  ): Promise<T> {
-    const headers = new Headers(init.headers);
-    const extra = makeAuthHeader?.();
-    if (extra) for (const [k, v] of Object.entries(extra)) headers.set(k, v);
-    if (body !== undefined && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
+export type Json = Record<string, unknown> | Array<unknown> | string | number | boolean | null;
 
-    const res = await fetch(`${baseURL}${path}`, {
-      ...init,
-      method,
-      headers,
-      credentials: "include",
-      body: body === undefined ? undefined : JSON.stringify(body),
-    });
-
-    if (!res.ok) {
-      const text = await res.text().catch(() => "");
-      throw new Error(`${res.status} ${res.statusText}${text ? ` — ${text}` : ""}`);
-    }
-    const ct = res.headers.get("content-type") || "";
-    if (!ct.includes("application/json")) return undefined as T;
-    return (await res.json()) as T;
-  }
-
-  return {
-    get:   <T = unknown>(path: string, init?: RequestInit) =>
-      request<T>("GET", path, undefined, init),
-    post:  <T = unknown>(path: string, body?: unknown, init?: RequestInit) =>
-      request<T>("POST", path, body, init),
-    put:   <T = unknown>(path: string, body?: unknown, init?: RequestInit) =>
-      request<T>("PUT", path, body, init),
-    patch: <T = unknown>(path: string, body?: unknown, init?: RequestInit) =>
-      request<T>("PATCH", path, body, init),
-    delete:<T = unknown>(path: string, init?: RequestInit) =>
-      request<T>("DELETE", path, undefined, init),
-  };
+function getApiBase(): string {
+  // Vite proxy keeps /api/* at same origin in dev; still allow override
+  const w = (window as any) || {};
+  const base = w.__BHQ_API_BASE__ || "";
+  return base; // e.g. "" or "http://localhost:6170"
 }
 
-export type Http = ReturnType<typeof createHttp>;
+function getOrgId(): string | null {
+  const w = (window as any) || {};
+  const fromWin = w.__BHQ_ORG_ID__;
+  if (fromWin != null && String(fromWin).trim() !== "") return String(fromWin);
+  try {
+    const ls = localStorage.getItem("BHQ_ORG_ID");
+    if (ls && ls.trim() !== "") return ls;
+  } catch { }
+  return null;
+}
+
+export async function apiFetch<T = any>(
+  path: string,
+  init: RequestInit = {}
+): Promise<T> {
+  const base = getApiBase();
+  const url = path.startsWith("http") ? path : `${base}${path}`;
+
+  const headers = new Headers(init.headers || {});
+  // Default JSON unless caller overrides
+  if (!headers.has("Content-Type") && init.body && typeof init.body === "string") {
+    headers.set("Content-Type", "application/json");
+  }
+  // Inject org header if we have one
+  const orgId = getOrgId();
+  if (Number(orgId) > 0 && !headers.has("X-Org-Id")) {
+    headers.set("X-Org-Id", String(Number(orgId)));
+  }
+
+  const res = await fetch(url, {
+    ...init,
+    headers,
+    credentials: "include",     // << send bhq_s cookie
+    redirect: init.redirect ?? "follow",
+  });
+
+  // Handle common auth flows
+  if (res.status === 401) {
+    // Session missing/expired — bounce to login
+    try { localStorage.removeItem("BHQ_ORG_ID"); } catch { }
+    (window as any).__BHQ_ORG_ID__ = undefined;
+    if (!location.pathname.startsWith("/login")) {
+      location.assign("/login");
+    }
+    throw new Error("unauthorized");
+  }
+
+  // Best-effort JSON parse
+  const text = await res.text();
+  const data = (() => { try { return text ? JSON.parse(text) : null; } catch { return text as any; } })();
+
+  if (!res.ok) {
+    const msg = (data && (data.message || data.error)) || `HTTP ${res.status}`;
+    const err = new Error(String(msg)) as any;
+    err.status = res.status;
+    err.data = data;
+    throw err;
+  }
+
+  return data as T;
+}

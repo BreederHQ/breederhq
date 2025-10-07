@@ -1,0 +1,102 @@
+/* packages/ui/src/styles/theme.css */
+/* Single source of truth for design tokens (HSL triples).
+   Tailwind utilities like bg-accent map to these via the shared preset. */
+
+/* Light theme (default) */
+:root {
+  /* Canvas + text */
+  --background: 0 0% 100%;
+  --foreground: 224 71% 4%;
+
+  /* Cards & popovers */
+  --card: 0 0% 100%;
+  --card-foreground: 224 71% 4%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 224 71% 4%;
+
+  /* Brand */
+  --primary: 24 95% 53%;
+  --primary-foreground: 0 0% 100%;
+  --accent: 24 95% 53%;
+  --accent-foreground: 0 0% 100%;
+
+  /* Secondary & muted */
+  --secondary: 210 16% 96%;
+  --secondary-foreground: 224 71% 4%;
+  --muted: 210 16% 96%;
+  --muted-foreground: 240 3.8% 46.1%;
+
+  /* Destructive */
+  --destructive: 0 84.2% 60.2%;
+  --destructive-foreground: 0 0% 100%;
+
+  /* Surfaces */
+  --surface: 0 0% 100%;
+  --surface-strong: 210 16% 98%;
+
+  /* Controls, borders, rings */
+  --border: 240 5.9% 90%;
+  --input: 240 5.9% 90%;
+  --ring: 24 95% 53%;
+  --hairline: 240 5% 26%;
+
+  /* Extras */
+  --teal: 183 85% 35%;
+  --teal-foreground: 0 0% 100%;
+  --shadow: 0 0% 0%;
+}
+
+/* Dark themes */
+.dark,
+.theme-dark,
+[data-theme="dark"] {
+  /* Canvas + text */
+  --background: 0 0% 0%;
+  --foreground: 0 0% 98%;
+
+  /* Cards & popovers */
+  --card: 0 0% 7%;
+  --card-foreground: 0 0% 98%;
+  --popover: 0 0% 7%;
+  --popover-foreground: 0 0% 98%;
+
+  /* Brand */
+  --primary: 24 95% 60%;
+  --primary-foreground: 0 0% 0%;
+  --accent: 24 95% 60%;
+  --accent-foreground: 0 0% 0%;
+
+  /* Secondary & muted */
+  --secondary: 240 3.7% 15.9%;
+  --secondary-foreground: 0 0% 98%;
+  --muted: 240 3.7% 15.9%;
+  --muted-foreground: 240 5% 64.9%;
+
+  /* Destructive */
+  --destructive: 0 62.8% 30.6%;
+  --destructive-foreground: 0 0% 98%;
+
+  /* Surfaces */
+  --surface: 0 0% 7%;
+  --surface-strong: 0 0% 12%;
+
+  /* Controls, borders, rings */
+  --border: 240 3.7% 15.9%;
+  --input: 240 3.7% 15.9%;
+  --ring: 24 95% 60%;
+  --hairline: 240 3% 25%;
+
+  /* Extras */
+  --teal: 183 85% 43%;
+  --teal-foreground: 0 0% 0%;
+  --shadow: 0 0% 0%;
+}
+
+/* Base canvas uses tokens (optional but nice) */
+html, body, #root { height: 100%; }
+body {
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}

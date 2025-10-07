@@ -4,13 +4,15 @@
     "jsx": "react-jsx",
     "baseUrl": ".",
     "paths": {
-      "@bhq/api": ["../../packages/api/src/index.ts"],
-      "@bhq/api/*": ["../../packages/api/src/*"],
       "@bhq/ui": ["../../packages/ui/src/index.ts"],
       "@bhq/ui/*": ["../../packages/ui/src/*"],
-      "@bhq/config": ["../../packages/config/src/index.ts"],
-      "@bhq/config/*": ["../../packages/config/src/*"]
-    }
+      "@bhq/ui/layouts": ["../../packages/ui/src/layouts"],
+      "@bhq/ui/styles": ["../../packages/ui/src"],
+      "@bhq/config": ["../../packages/config"],
+      "@bhq/api/*": ["../../packages/api/src/*"],
+      "@bhq/contacts/*": ["../contacts/src/*"]
+},
+    "types": ["vite/client"]
   },
-  "include": ["src", "vite.config.ts", "index.html"]
+  "include": ["src"]
 }

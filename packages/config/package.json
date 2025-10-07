@@ -12,11 +12,15 @@
     },
     "./postcss.config.cjs": "./postcss.config.cjs"
   },
-  "files": ["dist", "postcss.config.cjs"],
+  "files": [
+    "dist",
+    "postcss.config.cjs"
+  ],
   "scripts": {
     "build": "echo \"@bhq/config no build needed\""
   },
   "devDependencies": {
+    "concurrently": "^9.2.1",
     "typescript": "^5.5.4"
   }
 }

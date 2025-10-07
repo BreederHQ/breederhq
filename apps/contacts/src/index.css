@@ -1,1 +1,46 @@
-@import "tailwindcss";
+/* 1) Load BHQ design-system FIRST so PostCSS is happy and tokens exist */
+@import "@bhq/ui/bhq.css";
+
+/* 2) Tailwind v3 directives */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* 3) (optional) app-only overrides go below */
+
+
+/* Ensure the app’s mount has sane height, and body can scroll */
+html, body { min-height: 100%; }
+#contacts-root, #root, #app { min-height: 100vh; display: block; }
+
+/* ===== Overlay layer (for all portals) ===== */
+#overlays-root {
+  position: fixed;      /* anchor to viewport */
+  inset: 0;
+  z-index: 9990;        /* below the drawer/dialog which use 9999, but above app */
+  pointer-events: none; /* let children opt-in */
+}
+
+/* Allow interaction on overlay children */
+#overlays-root { isolation: isolate; }
+
+
+/* Layout: make the contacts card fill height and only the table area scroll */
+.bhq-card {
+  display: flex;
+  flex-direction: column;
+  min-height: min(860px, calc(100vh - 160px));
+}
+
+/* Non-scrolling sections inside the card (toolbar, tag bar, filters, footer) */
+.bhq-section-fixed {
+  flex: 0 0 auto;
+}
+
+/* The scrolling section (table) */
+.bhq-table {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  width: 100%
+}

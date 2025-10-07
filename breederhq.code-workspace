@@ -5,6 +5,9 @@
 		},
 		{
 			"path": "../breederhq-api"
+		},
+		{
+			"path": "../Archive/BreederHQ-Archive/Node.js/bhq-mock"
 		}
 	],
 	"settings": {}

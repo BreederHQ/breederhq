@@ -1,0 +1,21 @@
+{
+  "name": "@bhq/organizations",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "4.3.2",
+    "concurrently": "^9.2.1",
+    "typescript": "5.6.3",
+    "vite": "5.4.8"
+  },
+  "scripts": {
+    "dev": "vite --port 6176 --strictPort",
+    "build": "vite build",
+    "preview": "vite preview --port 5176"
+  }
+}

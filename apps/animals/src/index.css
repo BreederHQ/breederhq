@@ -1,1 +1,71 @@
-@import "tailwindcss";
+/* 1) BHQ tokens first */
+@import "@bhq/ui/bhq.css";
+
+/* 2) Tailwind v3 */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* 3) App overrides */
+
+/* Ensure the app can scroll */
+html,
+body {
+  min-height: 100%;
+}
+
+#app,
+#root,
+#contacts-root {
+  min-height: 100vh;
+  display: block;
+}
+
+/* Overlay hosts stay click-through; panels use pointer-events:auto */
+#bhq-top-layer,
+#overlays-root {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483647;
+  pointer-events: none;
+  isolation: isolate;
+}
+
+/* Force background blur whenever the overlay is open */
+body.bhq-blur #app,
+body.bhq-blur #root,
+body.bhq-blur #contacts-root,
+body.bhq-blur #animals-root,
+body.bhq-blur> :not(#bhq-top-layer):not(#overlays-root) {
+  filter: blur(6px) saturate(0.9) !important;
+  transition: filter 120ms ease;
+}
+
+/* Fallback: blur any top-level element except the overlay hosts */
+body.bhq-blur>*:not(#bhq-top-layer):not(#overlays-root) {
+  filter: blur(6px) saturate(0.9);
+  transition: filter 120ms ease;
+}
+
+/* Also lock background scroll while blurred */
+body.bhq-blur {
+  overflow: hidden !important;
+}
+
+/* ===== Contacts/Animals card layout parity ===== */
+.bhq-card {
+  display: flex;
+  flex-direction: column;
+  min-height: min(860px, calc(100vh - 160px));
+}
+
+.bhq-section-fixed {
+  flex: 0 0 auto;
+}
+
+.bhq-table {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  width: 100%;
+}

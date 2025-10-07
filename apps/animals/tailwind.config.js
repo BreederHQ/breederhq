@@ -1,12 +1,17 @@
-/** @type {import('tailwindcss').Config} */
-const preset = require("../../packages/config/dist/tailwind-preset.js");
-
-module.exports = {
-  presets: [preset],
-  darkMode: ["class", '[data-theme="dark"]'],
-  content: [
-    "./index.html",
-    "./src/**/*.{ts,tsx,js,jsx}",
-    "../../packages/ui/src/**/*.{ts,tsx,js,jsx,css}",
-  ],
-};
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "baseUrl": ".",
+    "paths": {
+      "@bhq/ui/*": ["../../packages/ui/src/*"],
+      "@bhq/ui/layouts": ["../../packages/ui/src/layouts"],
+      "@bhq/ui/styles": ["../../packages/ui/src"],
+      "@bhq/config": ["../../packages/config"],
+      "@bhq/api/*": ["../../packages/api/src/*"],
+      "@bhq/animals/*": ["../animals/src/*"]
+},
+    "types": ["vite/client"]
+  },
+  "include": ["src"]
+}

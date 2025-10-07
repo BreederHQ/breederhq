@@ -1,34 +1,48 @@
-import type { Config } from "tailwindcss";
+// packages/config/tailwind-preset.cjs
+/** BHQ Tailwind preset (CommonJS shim for Tailwind runtime) */
+module.exports = {
+  darkMode: "class",
 
-function withVar(name: string) {
-  return ({ opacityValue }: { opacityValue?: string }) =>
-    opacityValue ? `rgb(var(${name}) / ${opacityValue})` : `rgb(var(${name}))`;
-}
-
-const preset: Config = {
-  darkMode: ["class", '[data-theme="dark"]'],
   theme: {
     extend: {
+      // Token → utility mapping
       colors: {
-        // role tokens mapped to CSS variables defined in global.css
-        bg: withVar("--bg"),
-        surface: withVar("--surface"),
-        "surface-hover": withVar("--surface-hover"),
-        "surface-border": withVar("--surface-border"),
-        foreground: withVar("--fg"),
-        "fg-muted": withVar("--fg-muted"),
-        "fg-subtle": withVar("--fg-subtle"),
-        primary: withVar("--brand"),
-        "primary-foreground": withVar("--brand-fg"),
-        "brand-ring": withVar("--brand-ring"),
+        background: "hsl(var(--background))",
+        foreground: "hsl(var(--foreground))",
+
+        surface: "hsl(var(--surface))",
+        "surface-2": "hsl(var(--surface-2))",
+
+        muted: "hsl(var(--muted))",
+        "muted-foreground": "hsl(var(--muted-foreground))",
+
+        border: "hsl(var(--border))",
+
+        accent: "hsl(var(--accent))",
+        "accent-foreground": "hsl(var(--accent-foreground))",
+
+        teal: "hsl(var(--teal))",
       },
-      borderColor: {
-        DEFAULT: withVar("--surface-border"),
-        border: withVar("--surface-border"),
+
+      // ring-accent / focus:ring-accent
+      ringColor: {
+        accent: "hsl(var(--accent))",
       },
+
+      // preset canary: proves the preset is loaded
+      spacing: { 13: "3.25rem" },
     },
   },
-  plugins: [],
-};
 
-export default preset;
+  // preset canary: utility exists only if preset is loaded
+  plugins: [
+    function ({ addUtilities }) {
+      addUtilities({
+        ".bhq-preset-ok": {
+          outline: "3px dashed #ff9800",
+          outlineOffset: "3px",
+        },
+      });
+    },
+  ],
+};

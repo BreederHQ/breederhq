@@ -2,7 +2,7 @@
   "name": "breederhq",
   "version": "0.1.0",
   "private": true,
-  "packageManager": "npm@9.9.3",
+  "packageManager": "npm@10.9.3",
   "engines": {
     "node": ">=22 <23"
   },
@@ -11,11 +11,12 @@
     "packages/*"
   ],
   "scripts": {
-    "dev:contacts": "npm run dev -w @bhq/contacts",
-    "dev:animals": "npm run dev -w @bhq/animals",
-    "dev:breeding": "npm run dev -w @bhq/breeding",
-    "dev:offspring": "npm run dev -w @bhq/offspring",
-    "dev:all": "concurrently \"npm run dev:contacts\" \"npm run dev:animals\" \"npm run dev:breeding\" \"npm run dev:offspring\"",
+    "dev:platform": "npm -C ./apps/platform run dev",
+    "dev:contacts": "npm -C ./apps/contacts run dev",
+    "dev:animals": "npm -C ./apps/animals run dev",
+    "dev:breeding": "npm -C ./apps/breeding run dev",
+    "dev:offspring": "npm -C ./apps/offspring run dev",
+    "dev:all": "cross-env npm_config_workspaces=false npx concurrently \"npm -C ./apps/platform run dev\" \"npm -C ./apps/contacts run dev\" \"npm -C ./apps/animals run dev\" \"npm -C ./apps/breeding run dev\" \"npm -C ./apps/offspring run dev\"",
     "dev": "npm run dev:all",
     "build": "echo \"root build noop\"",
     "lint": "eslint . --ext .ts,.tsx --max-warnings=0",
@@ -32,13 +33,14 @@
     "@types/react-dom": "^19.1.9",
     "autoprefixer": "^10.4.21",
     "concurrently": "^8.2.2",
+    "cross-env": "^10.0.0",
     "eslint": "^9.13.0",
     "eslint-config-prettier": "^9.1.0",
     "eslint-plugin-react": "^7.34.4",
     "npm-run-all": "^4.1.5",
     "postcss": "^8.5.6",
     "prettier": "^3.3.3",
-    "tailwindcss": "^4.1.13",
+    "tailwindcss": "^3.4.17",
     "typescript": "^5.5.4"
   }
 }

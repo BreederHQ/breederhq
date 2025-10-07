@@ -1,0 +1,83 @@
+/* Shared BHQ tokens. These must exist on :root before Tailwind runs. */
+
+/* Light (default) */
+:root {
+  --background: 0 0% 100%;
+  --foreground: 224 71% 4%;
+
+  --card: 0 0% 100%;
+  --card-foreground: 224 71% 4%;
+
+  --popover: 0 0% 100%;
+  --popover-foreground: 224 71% 4%;
+
+  /* Brand */
+  --primary: 24 95% 53%;
+  --primary-foreground: 0 0% 100%;
+
+  --secondary: 210 16% 96%;
+  --secondary-foreground: 224 71% 4%;
+
+  --muted: 210 16% 96%;
+  --muted-foreground: 240 3.8% 46.1%;
+
+  --accent: 24 95% 53%;
+  --accent-foreground: 0 0% 100%;
+
+  --destructive: 0 84.2% 60.2%;
+  --destructive-foreground: 0 0% 100%;
+
+  /* Surfaces */
+  --surface: 0 0% 100%;
+  --surface-strong: 210 16% 98%;
+
+  /* Controls */
+  --border: 240 5.9% 90%;
+  --input: 240 5.9% 90%;
+  --ring: 24 95% 53%;
+  --hairline: 240 5% 26%;
+}
+
+/* Dark */
+.theme-dark, [data-theme="dark"], .dark {
+  --background: 0 0% 0%;
+  --foreground: 0 0% 98%;
+
+  --card: 0 0% 7%;
+  --card-foreground: 0 0% 98%;
+
+  --popover: 0 0% 7%;
+  --popover-foreground: 0 0% 98%;
+
+  --primary: 24 95% 60%;
+  --primary-foreground: 0 0% 0%;
+
+  --secondary: 240 3.7% 15.9%;
+  --secondary-foreground: 0 0% 98%;
+
+  --muted: 240 3.7% 15.9%;
+  --muted-foreground: 240 5% 64.9%;
+
+  --accent: 24 95% 60%;
+  --accent-foreground: 0 0% 0%;
+
+  --destructive: 0 62.8% 30.6%;
+  --destructive-foreground: 0 0% 98%;
+
+  --surface: 0 0% 7%;
+  --surface-strong: 0 0% 12%;
+
+  --border: 240 3.7% 15.9%;
+  --input: 240 3.7% 15.9%;
+  --ring: 24 95% 60%;
+  --hairline: 240 3% 25%;
+}
+
+/* Base canvas */
+html, body, #root { height: 100%; }
+body {
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}

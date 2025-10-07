@@ -10,24 +10,26 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     },
-    "./styles/global.css": "./src/styles/global.css"
+    "./styles/*": "./src/styles/*"
   },
   "files": [
     "dist",
-    "src/styles/global.css"
+    "src/styles"
+  ],
+  "sideEffects": [
+    "./src/styles/*"
   ],
   "dependencies": {
-    "clsx": "^2.1.1"
+    "clsx": "^2.1.1",
+    "lucide-react": "^0.544.0"
   },
   "peerDependencies": {
     "react": ">=18",
     "react-dom": ">=18"
   },
   "devDependencies": {
+    "concurrently": "^9.2.1",
     "typescript": "^5.5.4",
     "vite": "^5.4.0"
-  },
-  "scripts": {
-    "build": "echo \"@bhq/ui no build needed\""
   }
 }

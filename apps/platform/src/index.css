@@ -1,0 +1,34 @@
+@import "@bhq/ui/bhq.css";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html, body, #root { height: 100%; }
+
+/* ---- PLATFORM AUTH PAGE GUARD ----------------------------------------- */
+/* Scope to login/verify/invite screens only via .auth-page wrapper */
+.auth-page input[type="text"],
+.auth-page input[type="email"],
+.auth-page input[type="password"],
+.auth-page textarea,
+.auth-page select {
+  color: #fff !important;
+  -webkit-text-fill-color: #fff !important; /* Safari/Autofill */
+  caret-color: #fff !important;
+  pointer-events: auto !important;          /* defeat stray overlays */
+  background-color: transparent;            /* keep your theme cards visible */
+}
+
+.auth-page input::placeholder,
+.auth-page textarea::placeholder {
+  color: rgba(255,255,255,.55) !important;
+  opacity: 1 !important;
+}
+
+/* If any full-screen overlay is present, make it inert on auth pages */
+.auth-page ~ .page-overlay,
+.auth-page ~ .bhq-grain,
+.auth-page ~ .modal-backdrop {
+  pointer-events: none !important;
+}
+

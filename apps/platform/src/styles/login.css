@@ -1,0 +1,26 @@
+/* apps/platform/src/styles/login.css */
+:root {
+  --bhq-login-ink: #fff;
+  --bhq-login-placeholder: rgba(255,255,255,.55);
+}
+
+/* Scope to login screen only */
+.bhq-login input[type="text"],
+.bhq-login input[type="email"],
+.bhq-login input[type="password"] {
+  color: var(--bhq-login-ink) !important;
+  -webkit-text-fill-color: var(--bhq-login-ink) !important; /* Safari/Autofill */
+  caret-color: var(--bhq-login-ink) !important;
+}
+
+.bhq-login input::placeholder {
+  color: var(--bhq-login-placeholder) !important;
+  opacity: 1;
+}
+
+/* Keep autofill from turning text invisible */
+.bhq-login input:-webkit-autofill,
+.bhq-login input:-webkit-autofill:focus {
+  -webkit-text-fill-color: var(--bhq-login-ink) !important;
+  transition: background-color 99999s ease-in-out 0s;
+}

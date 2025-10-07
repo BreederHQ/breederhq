@@ -1,67 +1,432 @@
 /* packages/ui/src/styles/global.css */
 
-/* Tailwind v4 entry */
-@import "tailwindcss";
-
-/* Tokens */
-:root {
-  --bg: 246 247 250;
-  --bg-elevated: 255 255 255;
-  --bg-soft: 244 245 248;
-
-  --fg: 18 20 23;
-  --fg-muted: 95 99 104;
-  --fg-subtle: 130 135 142;
-  --fg-invert: 255 255 255;
-
-  --brand: 122 82 255;
-  --brand-fg: 255 255 255;
-  --brand-soft: 235 235 255;
-  --brand-ring: 147 134 255;
-
-  --surface: 255 255 255;
-  --surface-hover: 247 248 251;
-  --surface-border: 221 225 232;
-
-  --danger: 239 68 68;
-  --warning: 245 158 11;
-  --success: 16 185 129;
-  --info: 59 130 246;
+html,
+body,
+#root {
+  height: 100%;
 }
 
-[data-theme="dark"] {
-  --bg: 12 14 18;
-  --bg-elevated: 18 20 26;
-  --bg-soft: 16 18 22;
-
-  --fg: 234 236 240;
-  --fg-muted: 166 172 182;
-  --fg-subtle: 132 138 148;
-  --fg-invert: 12 14 18;
-
-  --brand: 150 130 255;
-  --brand-fg: 16 18 22;
-  --brand-soft: 37 39 51;
-  --brand-ring: 162 152 255;
-
-  --surface: 22 24 30;
-  --surface-hover: 30 32 39;
-  --surface-border: 60 66 78;
+html {
+  color-scheme: dark light;
 }
 
-/* Base */
-html { color-scheme: light dark; }
-body { @apply bg-bg text-fg antialiased; }
+body {
+  margin: 0;
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-family: Inter, Poppins, ui-sans-serif, system-ui, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+  letter-spacing: 0.01em;
+}
 
-/* Typography rhythm */
-.prose-bhq h1 { @apply text-3xl font-semibold; letter-spacing: -0.025em; }
-.prose-bhq h2 { @apply text-2xl font-semibold mt-8 mb-3; }
-.prose-bhq h3 { @apply text-xl font-semibold mt-6 mb-2; }
-.prose-bhq p  { @apply leading-7 text-fg-muted; }
+/* ===== Canvas: subtle charcoal gradient + orange stage light (no teal) */
+.bhq-canvas {
+  position: relative;
+  /* layered background: charcoal gradient + vignette */
+  background:
+    radial-gradient(1200px 600px at 95% -10%, rgba(255, 127, 39, 0.28) 0%, rgba(255, 127, 39, 0.00) 60%),
+    linear-gradient(180deg, #121316 0%, #0f1013 100%);
+}
 
-/* Focus */
-:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 3px rgb(var(--brand-ring) / 0.6);
-  border-radius: 0.5rem;
+.bhq-canvas::after {
+  /* light vignette to add depth */
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(1400px 700px at -20% 110%, rgba(0, 0, 0, 0.35), rgba(0, 0, 0, 0.0) 60%);
+  z-index: 0;
+}
+
+/* Optional film grain for glass */
+.bhq-grain {
+  position: relative;
+}
+
+.bhq-grain::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+  opacity: 0.06;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml;utf8,\
+<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160' viewBox='0 0 160 160'>\
+<filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/></filter>\
+<rect width='160' height='160' filter='url(%23n)' opacity='0.6'/></svg>");
+}
+
+/* ===== Glass panels and subpanels */
+.bhq-panel {
+  position: relative;
+  background: linear-gradient(180deg, hsl(var(--surface) / 0.72), hsl(var(--surface-2) / 0.72));
+  border: 1px solid hsl(var(--border) / 0.75);
+  border-radius: 0.9rem;
+  backdrop-filter: blur(12px) saturate(120%);
+  -webkit-backdrop-filter: blur(12px) saturate(120%);
+  box-shadow:
+    0 1px 1px hsl(var(--shadow) / 0.35),
+    0 12px 28px hsl(var(--shadow) / 0.30),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.bhq-panel--soft {
+  /* slightly lighter center for stat tiles */
+  background:
+    radial-gradient(600px 320px at 20% -40%, rgba(255, 127, 39, 0.10), rgba(255, 127, 39, 0) 70%),
+    linear-gradient(180deg, hsl(var(--surface) / 0.68), hsl(var(--surface-2) / 0.68));
+}
+
+/* Subpanel used inside a panel (like inner table frame in the mock) */
+.bhq-subpanel {
+  background: linear-gradient(180deg, hsl(var(--surface-2) / 0.82), hsl(var(--surface) / 0.82));
+  border: 1px solid hsl(var(--border) / 0.85);
+  border-radius: 0.6rem;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+/* ===== Sidebar look */
+.bhq-sidebar {
+  position: relative;
+  background: linear-gradient(180deg, hsl(var(--surface) / 0.80), hsl(var(--surface-2) / 0.80));
+  border: 1px solid hsl(var(--border) / 0.80);
+  border-radius: 0.9rem;
+  backdrop-filter: blur(12px) saturate(120%);
+  -webkit-backdrop-filter: blur(12px) saturate(120%);
+  box-shadow:
+    0 1px 1px hsl(var(--shadow) / 0.35),
+    0 10px 24px hsl(var(--shadow) / 0.30),
+    inset -1px 0 0 rgba(255, 255, 255, 0.03);
+}
+
+.bhq-nav-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 9999px;
+  background: hsl(var(--muted-foreground));
+}
+
+.bhq-nav-item--active .bhq-nav-dot {
+  background: hsl(var(--accent));
+}
+
+/* ===== Table density and hairlines */
+.bhq-table thead th {
+  padding: 0.6rem 1rem;
+}
+
+.bhq-table tbody td {
+  padding: 0.55rem 1rem;
+}
+
+.bhq-table thead {
+  background: hsl(var(--surface) / 0.90);
+}
+
+.bhq-row {
+  border-top: 1px solid hsl(var(--border));
+}
+
+/* ===== Progress and badges */
+.bhq-progress {
+  height: 8px;
+  border-radius: 9999px;
+  background: hsl(var(--muted) / 0.55);
+}
+
+.bhq-progress>span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, hsl(var(--accent)), hsl(var(--accent) / 0.7));
+}
+
+.bhq-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.125rem 0.5rem;
+  font-size: 0.75rem;
+  border-radius: 9999px;
+}
+
+.bhq-badge--active {
+  background: hsl(var(--accent) / 0.15);
+  color: hsl(var(--accent));
+}
+
+.bhq-badge--inactive {
+  background: hsl(var(--muted));
+  color: hsl(var(--muted-foreground));
+}
+
+/* ===== CTA micro-interactions */
+.bhq-cta {
+  transition: transform 200ms, box-shadow 200ms, background-color 200ms;
+}
+
+.bhq-cta:hover {
+  transform: translateY(-2px);
+}
+
+.bhq-cta--primary:hover {
+  box-shadow: 0 0 0 2px hsl(var(--accent) / 0.45), 0 12px 24px hsl(var(--accent) / 0.28);
+}
+
+.bhq-cta--secondary:hover {
+  box-shadow: 0 0 0 1px hsl(var(--border)), 0 12px 24px rgba(0, 0, 0, 0.22);
+}
+
+/* Magnetic icons (parent .group) */
+.bhq-icon-magnet {
+  transition: transform 200ms;
+}
+
+.group:hover .bhq-icon-magnet {
+  transform: translate(1px, -1px);
+}
+
+/* ---- Sidebar refinements to match the mock ---- */
+.bhq-sidebar {
+  position: relative;
+  background: linear-gradient(180deg,
+      hsl(var(--surface) / 0.86),
+      hsl(var(--surface-2) / 0.86));
+  border: 1px solid hsl(var(--border) / 0.92);
+  border-radius: 1rem;
+  backdrop-filter: blur(14px) saturate(120%);
+  -webkit-backdrop-filter: blur(14px) saturate(120%);
+  box-shadow:
+    0 1px 1px hsl(var(--shadow) / 0.35),
+    0 10px 24px hsl(var(--shadow) / 0.30),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+/* subtle vertical edge like the mock’s sidebar separation */
+.bhq-sidebar::after {
+  content: "";
+  position: absolute;
+  right: -1px;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.10), rgba(255, 255, 255, 0.02));
+  opacity: 0.35;
+  pointer-events: none;
+}
+
+/* nav item states */
+.bhq-nav-item--active {
+  background: linear-gradient(180deg,
+      hsl(var(--surface-2) / 0.95),
+      hsl(var(--surface) / 0.95));
+  box-shadow:
+    inset 0 0 0 1px hsl(var(--border) / 0.85),
+    0 6px 12px rgba(0, 0, 0, 0.28);
+}
+
+.bhq-nav-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 9999px;
+  background: hsl(var(--muted-foreground));
+}
+
+.bhq-nav-item--active .bhq-nav-dot {
+  background: hsl(var(--accent));
+}
+
+/* tighten sidebar typography/spacing a hair */
+.bhq-sidebar .bhq-section-title {
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.bhq-sidebar nav>*+* {
+  margin-top: 0.25rem;
+}
+
+/* ---- Enforced two-column shell (sidebar + content) ---- */
+.bhq-two-col {
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr);
+  gap: 1.5rem;
+  /* ~24px */
+  align-items: start;
+}
+
+@media (max-width: 768px) {
+  .bhq-two-col {
+    grid-template-columns: 1fr;
+    /* stack on mobile */
+  }
+}
+
+/* Sticky full-height sidebar panel */
+.bhq-sidebar-sticky {
+  position: sticky;
+  top: 1.5rem;
+  /* aligns with page padding */
+  height: calc(100vh - 3rem);
+  overflow-y: auto;
+}
+
+/* Sharper canvas glow taper so panels pop a bit more */
+.bhq-canvas {
+  background:
+    radial-gradient(1200px 600px at 95% -10%, rgba(255, 127, 39, 0.34) 0%, rgba(255, 127, 39, 0.00) 58%),
+    linear-gradient(180deg, #121316 0%, #0f1013 100%);
+}
+
+/* Sidebar: stronger active pill + tighter spacing */
+.bhq-sidebar nav>*+* {
+  margin-top: 0.2rem;
+}
+
+.bhq-nav-item--active {
+  background:
+    linear-gradient(180deg, hsl(var(--surface-2) / 0.98), hsl(var(--surface) / 0.96));
+  box-shadow:
+    inset 0 0 0 1px hsl(var(--border) / 0.85),
+    0 8px 16px rgba(0, 0, 0, 0.28);
+  border-radius: 0.75rem;
+}
+
+/* Stat tiles: consistent height + stronger icon puck */
+.bhq-stat {
+  min-height: 98px;
+  padding: 16px 18px;
+}
+
+.bhq-tile-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  background: linear-gradient(180deg, hsl(var(--accent)), hsl(var(--accent) / 0.45));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18), 0 4px 10px rgba(0, 0, 0, 0.35);
+}
+
+/* Table header/rows: a touch more contrast + softer hover */
+.bhq-table thead {
+  background: hsl(var(--surface) / 0.94);
+}
+
+.bhq-row {
+  border-top: 1px solid hsl(var(--border) / 0.9);
+}
+
+.bhq-row:hover {
+  background: hsl(var(--muted) / 0.18);
+}
+
+/* Inputs: subtler placeholder and thicker focus ring */
+.bhq-input {
+  color: inherit;
+
+  &::placeholder {
+    color: hsl(var(--muted-foreground) / 0.9);
+  }
+}
+
+/* === BHQ token helper aliases === */
+.bg-page {
+  background-color: hsl(var(--background));
+}
+
+.text-primary {
+  color: hsl(var(--foreground));
+}
+
+.text-secondary {
+  color: hsl(var(--muted-foreground));
+}
+
+.border-hairline {
+  border: 1px solid hsl(var(--border));
+}
+
+/* Treat bhq-card same as bhq-panel */
+.bhq-card {
+  position: relative;
+}
+
+.bhq-panel,
+.bhq-card {
+  background: linear-gradient(180deg, hsl(var(--surface) / 0.72), hsl(var(--surface-2) / 0.72));
+  border: 1px solid hsl(var(--border) / 0.75);
+  border-radius: 0.9rem;
+  backdrop-filter: blur(12px) saturate(120%);
+  -webkit-backdrop-filter: blur(12px) saturate(120%);
+  box-shadow:
+    0 1px 1px hsl(var(--shadow) / 0.35),
+    0 12px 28px hsl(var(--shadow) / 0.30),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+/* pointer-proximity glow */
+[data-glow] {
+  position: relative;
+}
+
+[data-glow]::after {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  pointer-events: none;
+  background:
+    radial-gradient(160px 120px at var(--px, -999px) var(--py, -999px),
+      hsl(var(--brand-orange) / 0.22), transparent 65%);
+  opacity: 0;
+  transition: opacity 150ms linear;
+}
+
+[data-glow]:hover::after {
+  opacity: 1;
+}
+
+/* Headline utility */
+.h1-strong {
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+  font-size: clamp(1rem, 0.9rem + 0.35vw, 1.25rem);
+}
+
+/* Better raster handling for small logos */
+img {
+  image-rendering: auto;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Logo sizing via CSS variables (no dynamic Tailwind class strings) */
+.bhq-logo {
+  width: var(--logo-size, 28px);
+  height: var(--logo-size, 28px);
+}
+@media (min-width: 640px) { /* sm */
+  .bhq-logo {
+    width: var(--logo-size-sm, var(--logo-size, 28px));
+    height: var(--logo-size-sm, var(--logo-size, 28px));
+  }
+}
+@media (min-width: 768px) { /* md */
+  .bhq-logo {
+    width: var(--logo-size-md, var(--logo-size-sm, var(--logo-size, 28px)));
+    height: var(--logo-size-md, var(--logo-size-sm, var(--logo-size, 28px)));
+  }
+}
+@media (min-width: 1024px) { /* lg */
+  .bhq-logo {
+    width: var(--logo-size-lg, var(--logo-size-md, var(--logo-size, 28px)));
+    height: var(--logo-size-lg, var(--logo-size-md, var(--logo-size, 28px)));
+  }
+}
+@media (min-width: 1280px) { /* xl */
+  .bhq-logo {
+    width: var(--logo-size-xl, var(--logo-size-lg, var(--logo-size, 28px)));
+    height: var(--logo-size-xl, var(--logo-size-lg, var(--logo-size, 28px)));
+  }
 }

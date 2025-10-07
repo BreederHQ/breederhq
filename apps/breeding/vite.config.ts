@@ -10,7 +10,7 @@ export default defineConfig({
     alias: {
       "@bhq/api": resolve(__dirname, "../../packages/api/src"),
       "@bhq/ui": resolve(__dirname, "../../packages/ui/src"),
-      "@bhq/config": resolve(__dirname, "../../packages/config/src")
+      "@bhq/biology": fileURLToPath(new URL("../../packages/biology/src", import.meta.url))
     }
   },
   build: {
