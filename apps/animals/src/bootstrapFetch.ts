@@ -9,8 +9,6 @@ type MeResponse = {
 };
 
 const isProd = (import.meta as any)?.env?.MODE === "production";
-const DEV_TOKEN = (import.meta as any)?.env?.VITE_ADMIN_TOKEN as string | undefined;
-const DEV_DEFAULT_ORG = (import.meta as any)?.env?.VITE_DEV_ORG_ID as string | number | undefined;
 
 // ———————————————————————————————————————————————————————————————————————
 // Helpers
@@ -28,9 +26,6 @@ function pickOrgId(me?: MeResponse): number | undefined {
 
   // 3) single membership → auto-pick
   if (me && me.memberships?.length === 1) return Number(me.memberships[0].organizationId);
-
-  // 4) dev fallback from env
-  if (!isProd && DEV_DEFAULT_ORG != null) return Number(DEV_DEFAULT_ORG);
 
   return undefined;
 }
@@ -55,22 +50,9 @@ async function getMe(): Promise<MeResponse | null> {
   return (await res.json()) as MeResponse;
 }
 
-async function devLogin(orgId: number): Promise<void> {
-  if (isProd) return;
-
-  let url = `/api/v1/auth/dev-login?email=dev@local&orgId=${encodeURIComponent(orgId)}`;
-  const useQueryToken = true;
-  if (DEV_TOKEN && useQueryToken) url += `&token=${encodeURIComponent(DEV_TOKEN)}`;
-
-  const res = await fetch(url, { credentials: "include" });
-  if (!res.ok) {
-    const t = await res.text().catch(() => "");
-    throw new Error(`dev-login failed: ${res.status} ${t}`);
-  }
-}
-
 // ———————————————————————————————————————————————————————————————————————
 // Public bootstrap
+// ———————————————————————————————————————————————————————————————————————
 
 export async function bootstrapAuthAndOrg(): Promise<void> {
   // Step 1: try to read current session
@@ -82,18 +64,6 @@ export async function bootstrapAuthAndOrg(): Promise<void> {
   // If we have a session but no org chosen and user has exactly one, pick it now.
   if (me && orgId == null && me.memberships?.length === 1) {
     orgId = Number(me.memberships[0].organizationId);
-  }
-
-  // If no session in dev, mint one via dev-login (requires ADMIN_TOKEN server-side).
-  if (!me && !isProd) {
-    if (orgId == null) {
-      throw new Error(
-        "No orgId available for dev-login. Set localStorage.BHQ_ORG_ID or VITE_DEV_ORG_ID to a real Organization.id."
-      );
-    }
-    await devLogin(orgId);
-    me = await getMe();
-    if (!me) throw new Error("Session was not established after dev-login.");
   }
 
   // At this point, we must have an orgId. If not (multi-org), your UI should prompt the user.

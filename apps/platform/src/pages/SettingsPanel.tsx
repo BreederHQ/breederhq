@@ -4,32 +4,64 @@ import { api } from "../api";
 import { bootstrapAuthAndOrg } from "../bootstrapFetch";
 
 
-// --- org header helper (mirrors App-Contacts.tsx) ---
 function getAuthHeaders(): Record<string, string> {
     const w = window as any;
-    const orgId =
-        Number(w.__BHQ_ORG_ID__) ||
-        (() => {
-            try {
-                const r = localStorage.getItem("BHQ_ORG_ID");
-                return r ? Number(r) : NaN;
-            } catch {
-                return NaN;
-            }
-        })() ||
-        Number((import.meta as any)?.env?.VITE_DEV_ORG_ID || "");
+
+    // Prefer explicit tenant id if your shell injects it
+    const fromGlobal = Number(w.__BHQ_TENANT_ID__);
+
+    // Then localStorage
+    const fromLS = (() => {
+        try {
+            const s = localStorage.getItem("BHQ_TENANT_ID");
+            return s ? Number(s) : NaN;
+        } catch {
+            return NaN;
+        }
+    })();
+
+    // Fallback: parse from bhq_s cookie payload (base64url JSON)
+    function readTenantFromCookie(): number {
+        try {
+            const raw = document.cookie.split("; ").find(s => s.startsWith("bhq_s="))?.split("=")[1] || "";
+            if (!raw) return NaN;
+            const json = atob(raw.replace(/-/g, "+").replace(/_/g, "/"));
+            const obj = JSON.parse(json);
+            const t = Number(obj?.tenantId || obj?.orgId);
+            return Number.isFinite(t) && t > 0 ? t : NaN;
+        } catch {
+            return NaN;
+        }
+    }
+
+    const tenantId =
+        (Number.isFinite(fromGlobal) && fromGlobal > 0 ? fromGlobal :
+            Number.isFinite(fromLS) && fromLS > 0 ? fromLS :
+                readTenantFromCookie());
+
     const headers: Record<string, string> = {};
-    if (Number.isFinite(orgId) && orgId > 0) headers["X-Org-Id"] = String(orgId);
+    if (Number.isFinite(tenantId) && tenantId > 0) {
+        headers["X-Tenant-Id"] = String(tenantId); // what the API expects
+        headers["X-Org-Id"] = String(tenantId);  // temporary back-compat
+    }
     return headers;
 }
 
 // Reusable JSON fetch with cookies and X-Org-Id header
 async function fetchJson(url: string, init: RequestInit = {}) {
-    const headers = {
-        "Content-Type": "application/json",
+    const method = (init.method || "GET").toUpperCase();
+
+    // Only set Content-Type when we actually send a body
+    const hasBody =
+        init.body != null &&
+        !(method === "GET" || method === "HEAD");
+
+    const headers: Record<string, string> = {
+        Accept: "application/json",
         ...getAuthHeaders(),
-        ...(init.headers || {}),
-    } as Record<string, string>;
+        ...(hasBody ? { "Content-Type": "application/json" } : {}),
+        ...(init.headers as Record<string, string> | undefined),
+    };
 
     const res = await fetch(url, {
         credentials: "include",
@@ -37,8 +69,16 @@ async function fetchJson(url: string, init: RequestInit = {}) {
         headers,
     });
 
-    // Try to parse JSON; if none, return empty object
-    const body = await res.json().catch(() => ({}));
+    const text = await res.text().catch(() => "");
+    const body = text ? JSON.parse(text) : {};
+
+    if (!res.ok) {
+        const msg =
+            (body && (body.message || body.error)) ||
+            `HTTP ${res.status}`;
+        throw new Error(msg);
+    }
+
     return body;
 }
 
@@ -94,11 +134,6 @@ function dialForCode(code: string, countries: CountryDef[]): string {
     return found?.dial || "";
 }
 
-function computeDisplayName(f: { firstName: string; lastName: string; nickname: string }) {
-    const base = (f.nickname || f.firstName || "").trim();
-    return [base, f.lastName].filter(Boolean).join(" ").trim();
-}
-
 
 /** Phone input with country select + dial code */
 export function IntlPhoneField(props: {
@@ -149,25 +184,38 @@ export function IntlPhoneField(props: {
     }
 
     return (
-        <div className={["flex gap-2 items-stretch", className].filter(Boolean).join(" ")}>
+        <div className={["flex gap-2 items-stretch w-full", className].filter(Boolean).join(" ")}>
             <select
-                className={["bhq-input", INPUT_CLS, "w-48"].join(" ")}
+                // narrower, responsive, and truncates the selected label
+                className={[
+                    "bhq-input", INPUT_CLS,
+                    "w-32 md:w-40",            // ↓ smaller than previous w-48
+                    "max-w-[40%]",            // never let the select dominate
+                    "truncate",               // hide long text
+                ].join(" ")}
                 value={code}
                 onChange={(e) => handleCountryChange(e.currentTarget.value)}
+                title={countryNameFromValue(code, countries)} // hover shows full name
             >
                 {countries.map(c => (
-                    <option key={c.code} value={c.code}>
-                        {c.code.toLowerCase()}  {c.name}   {c.dial}
+                    <option
+                        key={c.code}
+                        value={c.code}
+                        title={`${c.name} ${c.dial}`} // full info in dropdown hover
+                    >
+                        {/* Keep label compact */}
+                        {c.code} {c.dial}
                     </option>
                 ))}
             </select>
 
-            <div className="flex-1 flex">
-                <div className={["flex items-center px-3 border border-hairline rounded-l-md bg-surface text-sm"].join(" ")}>
+            {/* Keep the input side flexible and wide */}
+            <div className="flex-1 flex min-w-0">
+                <div className="flex items-center px-3 border border-hairline rounded-l-md bg-surface text-sm shrink-0">
                     {dial}
                 </div>
                 <input
-                    className={["bhq-input", INPUT_CLS, "rounded-l-none"].join(" ")}
+                    className={["bhq-input", INPUT_CLS, "rounded-l-none flex-1 min-w-0"].join(" ")}
                     inputMode="tel"
                     placeholder={dial === "+1" ? "(555) 111-2222" : "phone number"}
                     value={localPart}
@@ -178,6 +226,51 @@ export function IntlPhoneField(props: {
     );
 }
 /** ───────── End phone helpers ───────── */
+
+function onlyDigits(s: string) { return (s || "").replace(/\D/g, ""); }
+
+function formatLocalForDial(localDigits: string, dial: string) {
+    if (dial === "+1") {
+        const d = onlyDigits(localDigits).slice(0, 10);
+        const a = d.slice(0, 3);
+        const b = d.slice(3, 6);
+        const c = d.slice(6, 10);
+        if (d.length <= 3) return a;
+        if (d.length <= 6) return `(${a}) ${b}`;
+        return `(${a}) ${b}-${c}`;
+    }
+    return localDigits; // pass-through for non +1
+}
+
+function displayFromE164(e164: string, countries: CountryDef[]) {
+    const raw = (e164 || "").trim();
+    if (!raw.startsWith("+")) return "";
+    const digits = onlyDigits(raw);
+    if (!digits) return "";
+
+    // find best dial that prefixes the number (prefer longest match)
+    const byLenDesc = [...countries].sort((a, b) => b.dial.length - a.dial.length);
+    for (const c of byLenDesc) {
+        const dialDigits = onlyDigits(c.dial);
+        if (digits.startsWith(dialDigits)) {
+            const local = digits.slice(dialDigits.length);
+            const formattedLocal = formatLocalForDial(local, c.dial);
+            return `${c.dial} ${formattedLocal}`.trim();
+        }
+    }
+    // fallback: return as-is
+    return `+${digits}`;
+}
+
+function e164FromDisplay(display: string) {
+    const s = (display || "").trim();
+    if (!s) return "";
+    // Keep leading + then digits only
+    const hasPlus = s.includes("+");
+    const digits = onlyDigits(s);
+    if (!digits) return "";
+    return (hasPlus ? "+" : "+") + digits;
+}
 
 
 // Shared dark style for inputs/selects (fallback even if .bhq-input is empty)
@@ -453,45 +546,43 @@ function Field(props: React.InputHTMLAttributes<HTMLInputElement>) {
     );
 }
 
+// === REPLACE the entire ProfileTab implementation with this version ===
 type ProfileHandle = { save: () => Promise<void> };
 
-type ContactSubset = {
-    id?: string | number | null;
-    firstName?: string | null;
-    lastName?: string | null;
-    nickname?: string | null;
-    email?: string | null;
-    phone?: string | null;
-    street?: string | null;
-    street2?: string | null;
-    city?: string | null;
-    state?: string | null;
-    postalCode?: string | null;
-    country?: string | null;
-    organizationId?: string | number | null;
-    whatsappPhone?: string | null;
-};
-
 type ProfileForm = {
-    // user table
     userName: string;
     userEmail: string;
-
-    // contact table (subset we show in Profile)
-    contactId?: string | number | null;
-    firstName: string;
-    lastName: string;
-    nickname: string;
-    phone: string;
+    phoneE164: string;
+    whatsappE164: string;
     street: string;
     street2: string;
     city: string;
     state: string;
     postalCode: string;
-    country: string;
-    organizationId?: string | number | null;
-    whatsappPhone: string;
+    country: string; // ISO-2 upper
 };
+
+function mapUserToProfileForm(u: any, countries: CountryDef[]): ProfileForm {
+    const email = String(u?.email ?? "");
+    let userName = String(u?.name ?? "");
+    if (!userName && email) {
+        const local = email.split("@")[0] || "";
+        const parts = local.replace(/[._-]+/g, " ").split(/\s+/);
+        userName = [parts[0] || "", parts.slice(1).join(" ")].filter(Boolean).join(" ");
+    }
+    return {
+        userName,
+        userEmail: email,
+        phoneE164: String(u?.phoneE164 ?? ""),
+        whatsappE164: String(u?.whatsappE164 ?? ""),
+        street: String(u?.street ?? ""),
+        street2: String(u?.street2 ?? ""),
+        city: String(u?.city ?? ""),
+        state: String(u?.state ?? ""),
+        postalCode: String(u?.postalCode ?? ""),
+        country: asCountryCode(String(u?.country ?? "").toUpperCase(), countries),
+    };
+}
 
 const ProfileTab = React.forwardRef<ProfileHandle, {
     dirty: boolean;
@@ -501,523 +592,73 @@ const ProfileTab = React.forwardRef<ProfileHandle, {
     const [loading, setLoading] = React.useState(true);
     const [error, setError] = React.useState<string>("");
     const countries = useCountries();
+    const [emailEdit, setEmailEdit] = React.useState(false);
+    const emailInputRef = React.useRef<HTMLInputElement>(null);
 
-    const [orgId, setOrgId] = React.useState<number | null>(null);
 
     const empty: ProfileForm = {
         userName: "",
         userEmail: "",
-        contactId: null,
-        firstName: "",
-        lastName: "",
-        nickname: "",
-        phone: "",
+        phoneE164: "",
+        whatsappE164: "",
         street: "",
         street2: "",
         city: "",
         state: "",
         postalCode: "",
         country: "",
-        organizationId: null,
-        whatsappPhone: "",
     };
 
     const [initial, setInitial] = React.useState<ProfileForm>(empty);
     const [form, setForm] = React.useState<ProfileForm>(empty);
 
-    // util to compare
-    const isDirty = React.useMemo(() => {
-        return JSON.stringify(form) !== JSON.stringify(initial);
-    }, [form, initial]);
-
+    const isDirty = React.useMemo(() => JSON.stringify(form) !== JSON.stringify(initial), [form, initial]);
     React.useEffect(() => onDirty(isDirty), [isDirty, onDirty]);
 
-    // normalize helpers (align with Contacts app)
-    function asString(v: any): string { return (v ?? "").toString(); }
-    function asOpt<T extends string | number | null | undefined>(v: T): T { return (v === undefined ? null as any : v); }
-    function pickContactFromList(items: any[], email: string) {
-        const lower = (email || "").trim().toLowerCase();
-
-        // normalize an API contact into a common shape
-        function normalize(dto: any) {
-            const getPath = (obj: any, ...path: (string | number)[]) => {
-                let cur = obj;
-                for (const seg of path) {
-                    if (cur == null) return undefined;
-
-                    // allow dotted segments: "address.line1"
-                    const bits = typeof seg === "string" ? seg.split(".") : [seg];
-                    for (const b of bits) {
-                        if (typeof b === "number") {
-                            cur = Array.isArray(cur) ? cur[b] : undefined;
-                        } else if (/^\d+$/.test(b)) {
-                            const idx = Number(b);
-                            cur = Array.isArray(cur) ? cur[idx] : undefined;
-                        } else {
-                            // try exact, snake_case, and camelCase variants
-                            const snake = b.replace(/([A-Z])/g, "_$1").toLowerCase();
-                            cur = cur?.[b] ?? cur?.[snake];
-                        }
-                        if (cur == null) break;
-                    }
-                }
-                return cur;
-            };
-
-            // email could be dto.email, dto.emails[0], dto.contact.email, etc.
-            const primaryEmail =
-                (dto?.email && String(dto.email)) ||
-                (Array.isArray(dto?.emails) && dto.emails[0]) ||
-                (dto?.contact?.email && String(dto.contact.email)) ||
-                "";
-
-            // names could be many shapes:
-            const first =
-                getPath(dto, "firstName") ||
-                getPath(dto, "first_name") ||
-                getPath(dto, "givenName") ||
-                getPath(dto, "given_name") ||
-                getPath(dto, "name", "first") ||
-                getPath(dto, "contact", "firstName") ||
-                getPath(dto, "contact", "first_name") ||
-                "";
-
-            const last =
-                getPath(dto, "lastName") ||
-                getPath(dto, "last_name") ||
-                getPath(dto, "familyName") ||
-                getPath(dto, "family_name") ||
-                getPath(dto, "name", "last") ||
-                getPath(dto, "contact", "lastName") ||
-                getPath(dto, "contact", "last_name") ||
-                "";
-
-            const nickname =
-                getPath(dto, "nickname") ||
-                getPath(dto, "nick") ||
-                getPath(dto, "preferredName") ||
-                getPath(dto, "preferred_name") ||
-                "";
-
-            const full =
-                getPath(dto, "name") && typeof getPath(dto, "name") === "string"
-                    ? String(getPath(dto, "name"))
-                    : "";
-
-            let firstFromFull = "";
-            let lastFromFull = "";
-            if (!first && !last && full) {
-                const parts = full.trim().split(/\s+/);
-                firstFromFull = parts[0] || "";
-                lastFromFull = parts.slice(1).join(" ");
-            }
-
-            return {
-                id: dto?.id ?? dto?.contact?.id ?? null,
-                raw: dto,
-
-                // identity
-                email:
-                    String(
-                        getPath(dto, "email") ??
-                        getPath(dto, "emails", 0) ??
-                        getPath(dto, "contact", "email") ??
-                        ""
-                    ).trim(),
-
-                firstName:
-                    String(
-                        getPath(dto, "firstName") ??
-                        getPath(dto, "first_name") ??
-                        getPath(dto, "givenName") ??
-                        getPath(dto, "given_name") ??
-                        getPath(dto, "name", "first") ??
-                        getPath(dto, "contact", "firstName") ??
-                        getPath(dto, "contact", "first_name") ??
-                        ""
-                    ),
-
-                lastName:
-                    String(
-                        getPath(dto, "lastName") ??
-                        getPath(dto, "last_name") ??
-                        getPath(dto, "familyName") ??
-                        getPath(dto, "family_name") ??
-                        getPath(dto, "name", "last") ??
-                        getPath(dto, "contact", "lastName") ??
-                        getPath(dto, "contact", "last_name") ??
-                        ""
-                    ),
-
-                nickname:
-                    String(
-                        getPath(dto, "nickname") ??
-                        getPath(dto, "nick") ??
-                        getPath(dto, "preferredName") ??
-                        getPath(dto, "preferred_name") ??
-                        ""
-                    ),
-
-                // if only a single string name exists, split it
-                ...(function () {
-                    const full = getPath(dto, "name");
-                    if (!full || typeof full !== "string") return {};
-                    const parts = full.trim().split(/\s+/);
-                    return {
-                        firstName: (this.firstName || parts[0] || "").toString(),
-                        lastName: (this.lastName || parts.slice(1).join(" ") || "").toString(),
-                    };
-                }).call({ firstName: undefined, lastName: undefined }),
-
-                // phones
-                phone:
-                    ((): string => {
-                        const direct =
-                            getPath(dto, "phone") ??
-                            getPath(dto, "contact", "phone");
-                        if (typeof direct === "string" && direct) return direct;
-
-                        const phones =
-                            getPath(dto, "phones") ??
-                            getPath(dto, "contact", "phones");
-                        if (Array.isArray(phones)) {
-                            // prefer preferred/mobile/cell/primary
-                            const preferred = phones.find((p: any) =>
-                                p?.preferred ||
-                                /^(mobile|cell|primary)$/i.test(String(p?.label ?? p?.type ?? ""))
-                            ) ?? phones[0];
-                            const n =
-                                preferred?.number ??
-                                preferred?.value ??
-                                (typeof preferred === "string" ? preferred : "");
-                            if (typeof n === "string") return n;
-                        }
-                        return "";
-                    })(),
-                whatsappPhone:
-                    ((): string => {
-                        const direct =
-                            getPath(dto, "whatsappPhone") ??
-                            getPath(dto, "contact", "whatsappPhone") ??
-                            getPath(dto, "commPrefs", "whatsappPhone") ??
-                            getPath(dto, "messengers", "whatsapp");
-                        if (typeof direct === "string" && direct) return direct;
-
-                        const phones =
-                            getPath(dto, "phones") ??
-                            getPath(dto, "contact", "phones");
-                        if (Array.isArray(phones)) {
-                            const wa = phones.find((p: any) =>
-                                /whats/i.test(String(p?.label ?? p?.type ?? ""))
-                            );
-                            const n = wa?.number ?? wa?.value ?? "";
-                            if (typeof n === "string") return n;
-                        }
-                        return "";
-                    })(),
-
-                // address
-                street:
-                    String(
-                        getPath(dto, "street") ??
-                        getPath(dto, "street1") ??
-                        getPath(dto, "address1") ??
-                        getPath(dto, "address", "street") ??
-                        getPath(dto, "address", "line1") ??
-                        getPath(dto, "addresses", 0, "street") ??
-                        getPath(dto, "addresses", 0, "line1") ??
-                        getPath(dto, "contact", "street") ??
-                        ""
-                    ),
-                street2:
-                    String(
-                        getPath(dto, "street2") ??
-                        getPath(dto, "address2") ??
-                        getPath(dto, "address", "street2") ??
-                        getPath(dto, "address", "line2") ??
-                        getPath(dto, "addresses", 0, "street2") ??
-                        getPath(dto, "addresses", 0, "line2") ??
-                        getPath(dto, "contact", "street2") ??
-                        ""
-                    ),
-                city:
-                    String(
-                        getPath(dto, "city") ??
-                        getPath(dto, "address", "city") ??
-                        getPath(dto, "addresses", 0, "city") ??
-                        getPath(dto, "contact", "city") ??
-                        ""
-                    ),
-                state:
-                    String(
-                        getPath(dto, "state") ??
-                        getPath(dto, "region") ??
-                        getPath(dto, "province") ??
-                        getPath(dto, "address", "state") ??
-                        getPath(dto, "address", "region") ??
-                        getPath(dto, "addresses", 0, "state") ??
-                        getPath(dto, "addresses", 0, "region") ??
-                        getPath(dto, "contact", "state") ??
-                        ""
-                    ),
-                postalCode:
-                    ((): string => {
-                        const v =
-                            getPath(dto, "postalCode") ??
-                            getPath(dto, "zip") ??
-                            getPath(dto, "zipCode") ??
-                            getPath(dto, "postcode") ??
-                            getPath(dto, "address", "postalCode") ??
-                            getPath(dto, "address", "zip") ??
-                            getPath(dto, "address", "zipCode") ??
-                            getPath(dto, "addresses", 0, "postalCode") ??
-                            getPath(dto, "addresses", 0, "zip") ??
-                            getPath(dto, "addresses", 0, "zipCode") ??
-                            getPath(dto, "contact", "postalCode") ??
-                            "";
-                        return typeof v === "string" ? v : "";
-                    })(),
-                country: ((): string => {
-                    const val =
-                        getPath(dto, "country") ??
-                        getPath(dto, "countryCode") ??
-                        getPath(dto, "address", "country") ??
-                        getPath(dto, "address", "countryCode") ??
-                        getPath(dto, "address", "country", "code") ??
-                        getPath(dto, "addresses", 0, "country") ??
-                        getPath(dto, "addresses", 0, "countryCode") ??
-                        getPath(dto, "addresses", 0, "country", "code") ??
-                        getPath(dto, "contact", "country") ??
-                        getPath(dto, "contact", "countryCode") ??
-                        "";
-                    return typeof val === "string" ? val : "";
-                })(),
-
-                organizationId:
-                    getPath(dto, "organizationId") ??
-                    getPath(dto, "orgId") ??
-                    getPath(dto, "contact", "organizationId") ??
-                    null,
-            };
+    async function getSessionUserId(): Promise<{ id: string; email: string }> {
+        const res = await fetch("/api/v1/session", {
+            credentials: "include",
+            headers: getAuthHeaders(),
+        });
+        if (res.status === 401) {
+            window.location.assign("/login");
+            throw new Error("Unauthorized");
         }
-
-        const normalized = items.map(normalize);
-
-        // prefer exact email match
-        const exact = normalized.find(n => n.email.toLowerCase() === lower);
-        return exact || normalized[0] || null;
+        if (!res.ok) throw new Error("Failed to load current session");
+        const j = await res.json().catch(() => ({}));
+        const id = String(j?.user?.id || "");
+        const email = String(j?.user?.email || "");
+        if (!id) throw new Error("Missing user id in session");
+        return { id, email };
     }
 
-    // Load session → then contact by email (scoped by X-Org-Id)
+    // Require the user's password right before changing email (username)
+    async function guardEmailChange(currentEmail: string): Promise<boolean> {
+        const pw = window.prompt("To change your email, enter your current password:");
+        if (!pw) return false;
+        const result = await verifyViaLogin(currentEmail, pw);
+        if (!result.ok) {
+            throw new Error(result.msg || "Could not verify current password.");
+        }
+        return true;
+    }
+
+    // INITIAL LOAD — do NOT call guardEmailChange here
     React.useEffect(() => {
         let ignore = false;
         (async () => {
             try {
-                setLoading(true); setError("");
+                setLoading(true);
+                setError("");
 
-                // 1) session
-                const sRes = await fetch("/api/v1/session", { credentials: "include" });
-                if (!sRes.ok) throw new Error("Failed to load current session");
-                const sData = await sRes.json();
-
-                const userName = asString(sData?.user?.name || "");
-                const userEmail = asString(sData?.user?.email || "");
-                const _orgId = Number(sData?.org?.id) || null;
-                if (!ignore) setOrgId(_orgId);
-
-                // Ensure org header is set (dev + prod safe)
-                await bootstrapAuthAndOrg();
-
-                // 2) contact lookup by email — deterministic + debuggable
-                let contact: any = null;
-                let items: any[] = [];
-                let debugDump: any = {};
-
-                // helper: normalize any common list result into an array
-                const asList = (j: any): any[] =>
-                    (Array.isArray(j?.items) && j.items) ||
-                    (Array.isArray(j?.data?.items) && j.data.items) ||
-                    (Array.isArray(j?.data) && j.data) ||
-                    (Array.isArray(j?.results) && j.results) ||
-                    (Array.isArray(j) && j) ||
-                    [];
-
-                if (userEmail) {
-                    // call 1: /contacts?q=<email>
-                    const res1 = await api.contacts.list({ q: userEmail, limit: 5 });
-                    items = asList(res1);
-                    debugDump.firstCall = { url: `/contacts?q=${userEmail}&limit=5`, raw: res1, parsedLen: items.length };
-
-                    // if empty, call 2: /contacts?email=<email>  (some backends use explicit filter)
-                    if (!items.length) {
-                        const url = `/api/v1/contacts?email=${encodeURIComponent(userEmail)}&limit=5`;
-                        const res2 = await fetchJson(url, { method: "GET" });
-                        items = asList(res2);
-                        debugDump.secondCall = { url, raw: res2, parsedLen: items.length };
-                    }
-                    // choose best match
-                    contact =
-                        items.find((c: any) => String(c?.email || "").toLowerCase() === userEmail.toLowerCase()) ||
-                        items[0] ||
-                        null;
-
-                    // if still nothing, surface debug in the UI so we can see shapes quickly
-                    if (!contact) {
-                        setError(
-                            `No contact rows matched ${userEmail} in org ${_orgId ?? "(unknown)"}. ` +
-                            `Debug: ${JSON.stringify({
-                                firstCallLen: debugDump.firstCall?.parsedLen ?? 0,
-                                secondCallLen: debugDump.secondCall?.parsedLen ?? 0,
-                                keysFirst: debugDump.firstCall?.raw ? Object.keys(debugDump.firstCall.raw) : [],
-                                keysSecond: debugDump.secondCall?.raw ? Object.keys(debugDump.secondCall.raw) : []
-                            })}`
-                        );
-                    }
-                }
-
-                // 3) merge → initial + form
-                const next: ProfileForm = {
-                    userName,
-                    userEmail,
-                    contactId: contact?.id ?? null,
-
-                    // identity
-                    firstName: String(contact?.firstName ?? sData?.user?.firstName ?? ""),
-                    lastName: String(contact?.lastName ?? sData?.user?.lastName ?? ""),
-                    nickname: String(contact?.nickname ?? sData?.user?.nickname ?? ""),
-
-                    // phones
-                    phone: String(contact?.phone ?? ""),
-                    whatsappPhone: String(contact?.whatsappPhone ?? contact?.commPrefs?.whatsappPhone ?? ""),
-
-                    // address (flat)
-                    street: String(contact?.street ?? ""),
-                    street2: String(contact?.street2 ?? ""),
-                    city: String(contact?.city ?? ""),
-                    state: String(contact?.state ?? ""),
-                    postalCode: String(contact?.postalCode ?? ""),
-
-                    // country as ISO-2 if possible
-                    country: String(contact?.country ?? "").toUpperCase(),
-
-                    organizationId: contact?.organizationId ?? _orgId ?? null,
-                };
-                // ─── SIMPLE, AGGRESSIVE FALLBACKS ─────────────────────────────────────────────
-
-                // If country is a full name (e.g., "United States"), convert to 2-letter code.
-                if (next.country && next.country.length > 2) {
-                    const match = countries.find(c => c.name.toLowerCase() === next.country.toLowerCase());
-                    if (match) next.country = match.code;
-                }
-                // Ensure it's a recognized 2-letter code or blank.
-                next.country = asCountryCode(next.country, countries);
-
-                // Fill address from session if contact had none.
-                const uaddr = sData?.user?.address || sData?.user?.addr || sData?.user?.location || null;
-                if (uaddr) {
-                    if (!next.street) next.street = asString(uaddr.street || uaddr.street1 || uaddr.line1 || "");
-                    if (!next.street2) next.street2 = asString(uaddr.street2 || uaddr.line2 || "");
-                    if (!next.city) next.city = asString(uaddr.city || "");
-                    if (!next.state) next.state = asString(uaddr.state || uaddr.region || uaddr.province || "");
-                    if (!next.postalCode) next.postalCode = asString(uaddr.postalCode || uaddr.zip || uaddr.postcode || "");
-                    if (!next.country) next.country = asString(uaddr.country || uaddr.countryCode || "").toUpperCase();
-                    next.country = asCountryCode(next.country, countries);
-                }
-
-                // If both first & last name are still empty, split session display name.
-                if (!next.firstName && !next.lastName) {
-                    const full = asString(sData?.user?.name || userName || "");
-                    if (full) {
-                        const parts = full.trim().split(/\s+/);
-                        next.firstName = parts[0] || "";
-                        next.lastName = parts.slice(1).join(" ");
-                    }
-                }
-
-                // If still empty, derive from the email (john.smith → John / Smith).
-                if (!next.firstName && !next.lastName && next.userEmail) {
-                    const local = String(next.userEmail).split("@")[0] || "";
-                    if (local) {
-                        const parts = local.replace(/[._-]+/g, " ").split(/\s+/);
-                        next.firstName = (parts[0] || "").replace(/^./, c => c.toUpperCase());
-                        next.lastName = parts.slice(1).map(w => w.replace(/^./, c => c.toUpperCase())).join(" ");
-                    }
-                }
-
-
-                // Normalize country to a 2-letter ISO code for the <select>
-                if (next.country && next.country.length > 2) {
-                    const match = countries.find(
-                        c => c.name.toLowerCase() === next.country.toLowerCase()
-                    );
-                    if (match) next.country = match.code; // convert "United States" -> "US"
-                }
-
-                // Ensure it's a recognized code (uppercased) or blank
-                next.country = asCountryCode(next.country, countries);
-
-                // ------- Address fallbacks from session/org if contact had none -------
-                const sessAddr =
-                    sData?.user?.address ||
-                    sData?.user?.addr ||
-                    sData?.user?.location ||
-                    sData?.address ||
-                    null;
-
-                if (!next.street && sessAddr) {
-                    next.street =
-                        asString(sessAddr.street || sessAddr.street1 || sessAddr.line1 || "");
-                }
-                if (!next.street2 && sessAddr) {
-                    next.street2 = asString(sessAddr.street2 || sessAddr.line2 || "");
-                }
-                if (!next.city && sessAddr) {
-                    next.city = asString(sessAddr.city || "");
-                }
-                if (!next.state && sessAddr) {
-                    next.state =
-                        asString(sessAddr.state || sessAddr.region || sessAddr.province || "");
-                }
-                if (!next.postalCode && sessAddr) {
-                    next.postalCode =
-                        asString(sessAddr.postalCode || sessAddr.zip || sessAddr.postcode || "");
-                }
-                // Country from session user or org if still empty
-                if (!next.country) {
-                    next.country = asString(
-                        sData?.user?.country ||
-                        sData?.user?.countryCode ||
-                        sData?.org?.country ||
-                        sData?.org?.countryCode ||
-                        ""
-                    ).toUpperCase();
-                }
-
-                // Final fallbacks for name if both still empty
-                if (!next.firstName && !next.lastName) {
-                    // 1) Split the session's display name (user.name)
-                    const full = String(sData?.user?.name || userName || "").trim();
-                    if (full) {
-                        const parts = full.split(/\s+/);
-                        next.firstName = parts[0] || "";
-                        next.lastName = parts.slice(1).join(" ");
-                    }
-
-                    // 2) If still empty, infer from email local-part (before @)
-                    if (!next.firstName && !next.lastName && next.userEmail) {
-                        const local = String(next.userEmail).split("@")[0] || "";
-                        if (local) {
-                            const parts2 = local.replace(/[._-]+/g, " ").split(/\s+/);
-                            next.firstName = parts2[0] || "";
-                            next.lastName = parts2.slice(1).join(" ");
-                        }
-                    }
-                }
+                const { id } = await getSessionUserId();
+                const u = await fetchJson(`/api/v1/users/${encodeURIComponent(id)}`, { method: "GET" });
+                const next = mapUserToProfileForm(u, countries);
 
                 if (!ignore) {
                     setInitial(next);
                     setForm(next);
-                    onTitle(computeDisplayName(next) || next.userName);
+                    onTitle(next.userName || next.userEmail || "Profile");
                 }
             } catch (e: any) {
                 if (!ignore) setError(e?.message || "Unable to load profile");
@@ -1026,85 +667,80 @@ const ProfileTab = React.forwardRef<ProfileHandle, {
             }
         })();
         return () => { ignore = true; };
-    }, []);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [countries]);
 
-    // save()
     React.useImperativeHandle(ref, () => ({
         async save() {
             setError("");
 
-            const ops: Array<() => Promise<void>> = [];
+            const { id } = await getSessionUserId();
 
-            // 1) user save if changed (name/email)
-            if (form.userName !== initial.userName || form.userEmail !== initial.userEmail) {
-                const body: any = {};
-                if (form.userName !== initial.userName) body.name = form.userName;
-                if (form.userEmail !== initial.userEmail) body.email = form.userEmail;
-                ops.push(async () => {
-                    const res = await fetch("/api/v1/user", {
-                        method: "PATCH",
-                        headers: { "Content-Type": "application/json" },
-                        credentials: "include",
-                        body: JSON.stringify(body),
-                    });
-                    if (!res.ok) {
-                        const j = await res.json().catch(() => ({}));
-                        throw new Error(j?.message || "User save failed");
-                    }
-                });
-            }
-
-            // 2) contact save if we have a contactId and any contact fields changed
-            const contactChanged =
-                form.firstName !== initial.firstName ||
-                form.lastName !== initial.lastName ||
-                form.nickname !== initial.nickname ||
-                form.phone !== initial.phone ||
-                form.street !== initial.street ||
-                form.street2 !== initial.street2 ||
-                form.city !== initial.city ||
-                form.state !== initial.state ||
-                form.postalCode !== initial.postalCode ||
-                form.country !== initial.country ||
-                String(form.organizationId || "") !== String(initial.organizationId || "") ||
-                form.whatsappPhone !== initial.whatsappPhone;
-            if (form.contactId != null && contactChanged) {
-                const payload: ContactSubset = {
-                    firstName: form.firstName || null,
-                    lastName: form.lastName || null,
-                    nickname: form.nickname || null,
-                    email: form.userEmail || null,
-                    phone: form.phone || null,
-                    whatsappPhone: form.whatsappPhone || null,
-                    street: form.street || null,
-                    street2: form.street2 || null,
-                    city: form.city || null,
-                    state: form.state || null,
-                    postalCode: form.postalCode || null,
-                    country: form.country || null,
-                    organizationId:
-                        form.organizationId === "" || form.organizationId === undefined
-                            ? null
-                            : form.organizationId!,
-                };
-
-                ops.push(async () => {
-                    await api.contacts.update(String(form.contactId), payload);
-                });
-            }
-
-            // Execute saves
-            for (const op of ops) await op();
-
-            // If email changed, force fresh login to refresh cookies/session
+            // Email is your username — require re-auth if it changed
             if (form.userEmail !== initial.userEmail) {
-                await fetch("/api/v1/auth/logout", { method: "POST", credentials: "include" }).catch(() => { });
+                const ok = await guardEmailChange(initial.userEmail);
+                if (!ok) return; // user cancelled
+            }
+
+            // Build candidate body with normalized values
+            const bodyAll: any = {
+                name: form.userName,
+                email: form.userEmail.trim().toLowerCase(),
+                // phones go out as E.164
+                phoneE164: e164FromDisplay(displayFromE164(form.phoneE164, countries) || form.phoneE164) || null,
+                whatsappE164: e164FromDisplay(displayFromE164(form.whatsappE164, countries) || form.whatsappE164) || null,
+                // address with ISO-2
+                street: form.street || null,
+                street2: form.street2 || null,
+                city: form.city || null,
+                state: form.state || null,
+                postalCode: form.postalCode || null,
+                country: asCountryCode((form.country || "").toUpperCase(), countries) || null,
+            };
+
+            // Only send values that changed vs initial
+            const mapInit: any = {
+                name: initial.userName,
+                email: initial.userEmail,
+                phoneE164: initial.phoneE164 || null,
+                whatsappE164: initial.whatsappE164 || null,
+                street: initial.street || null,
+                street2: initial.street2 || null,
+                city: initial.city || null,
+                state: initial.state || null,
+                postalCode: initial.postalCode || null,
+                country: initial.country || null,
+            };
+            const changed = Object.fromEntries(
+                Object.entries(bodyAll).filter(([k, v]) => v !== mapInit[k])
+            );
+
+            if (Object.keys(changed).length === 0) return;
+
+            const res = await fetch(`/api/v1/users/${encodeURIComponent(id)}`, {
+                method: "PATCH",
+                credentials: "include",
+                headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+                body: JSON.stringify(changed),
+            });
+
+            if (!res.ok) {
+                const j = await res.json().catch(() => ({}));
+                throw new Error(j?.message || j?.error || "User save failed");
+            }
+
+            // If email changed, logout then redirect to login
+            if (changed.email) {
+                await fetch("/api/v1/auth/logout", { method: "POST", credentials: "include", headers: getAuthHeaders() }).catch(() => { });
                 window.location.assign("/login");
                 return;
             }
 
-            // success → update baseline + clear dirty
-            setInitial(form);
+            // Round trip the server response so we keep server-normalized values
+            const saved = await res.json().catch(() => ({}));
+            const next = mapUserToProfileForm(saved, countries);
+            setInitial(next);
+            setForm(next);
             onDirty(false);
         },
     }));
@@ -1121,89 +757,78 @@ const ProfileTab = React.forwardRef<ProfileHandle, {
                         </div>
                     )}
 
-                    {/* Account */}
                     <div className="rounded-xl border border-hairline bg-surface p-3">
                         <div className="mb-2 text-xs uppercase tracking-wide text-secondary">Account</div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                            <label className="space-y-1">
-                                <div className="text-xs text-secondary">First Name</div>
+                            {/* Full name */}
+                            <label className="space-y-1 md:col-span-2">
+                                <div className="text-xs text-secondary">Full Name</div>
                                 <input
                                     className={`bhq-input ${INPUT_CLS}`}
-                                    autoComplete="given-name"
-                                    value={form.firstName}
-                                    onChange={(e) => {
-                                        const v = e.target.value;
-                                        setForm((f) => {
-                                            const nf = { ...f, firstName: v };
-                                            onTitle(computeDisplayName(nf));
-                                            return nf;
-                                        });
-                                    }}
+                                    autoComplete="name"
+                                    value={form.userName}
+                                    onChange={(e) => setForm((f) => ({ ...f, userName: e.target.value }))}
                                 />
                             </label>
 
-                            <label className="space-y-1">
-                                <div className="text-xs text-secondary">Last Name</div>
-                                <input
-                                    className={`bhq-input ${INPUT_CLS}`}
-                                    autoComplete="family-name"
-                                    value={form.lastName}
-                                    onChange={(e) => {
-                                        const v = e.target.value;
-                                        setForm((f) => {
-                                            const nf = { ...f, lastName: v };
-                                            onTitle(computeDisplayName(nf));
-                                            return nf;
-                                        });
-                                    }}
-                                />
-                            </label>
-
-                            <label className="space-y-1">
-                                <div className="text-xs text-secondary">Nickname</div>
-                                <input
-                                    className={`bhq-input ${INPUT_CLS}`}
-                                    value={form.nickname}
-                                    onChange={(e) => {
-                                        const v = e.target.value;
-                                        setForm((f) => {
-                                            const nf = { ...f, nickname: v };
-                                            onTitle(computeDisplayName(nf));
-                                            return nf;
-                                        });
-                                    }}
-                                />
-                            </label>
-
-                            <label className="space-y-1">
-                                <div className="text-xs text-secondary">Display Name</div>
-                                <div
-                                    className="h-10 flex items-center rounded-md border border-hairline bg-surface-strong px-3 text-sm text-secondary"
-                                    aria-readonly="true"
-                                    title="Derived from Nickname + Last name, or First name + Last name"
-                                >
-                                    {computeDisplayName(form) || "—"}
-                                </div>
-                            </label>
-
+                            {/* Email (username) — read-only until user clicks Change */}
                             <label className="space-y-1 md:col-span-2">
                                 <div className="text-xs text-secondary">Email Address (username)</div>
-                                <input
-                                    className={`bhq-input ${INPUT_CLS}`}
-                                    type="email"
-                                    autoComplete="email"
-                                    value={form.userEmail}
-                                    onChange={(e) => setForm((f) => ({ ...f, userEmail: e.target.value }))}
-                                />
+
+                                {/* input + Change/Cancel button on the same row */}
+                                <div className="flex items-center gap-2">
+                                    <input
+                                        ref={emailInputRef}
+                                        className={`bhq-input ${INPUT_CLS} w-auto flex-1 min-w-0`}
+                                        type="email"
+                                        autoComplete="email"
+                                        value={form.userEmail}
+                                        readOnly={!emailEdit}
+                                        onChange={(e) => setForm((f) => ({ ...f, userEmail: e.target.value }))}
+                                    />
+
+                                    {/* IMPORTANT: no variant prop → default orange button */}
+                                    <Button
+                                        size="sm"
+                                        onClick={() => {
+                                            setEmailEdit((v) => {
+                                                const next = !v;
+                                                if (next) {
+                                                    // show the orange focus ring immediately when entering edit mode
+                                                    requestAnimationFrame(() => {
+                                                        emailInputRef.current?.focus();
+                                                        emailInputRef.current?.select();
+                                                    });
+                                                } else {
+                                                    emailInputRef.current?.blur();
+                                                }
+                                                return next;
+                                            });
+                                        }}
+                                        title={emailEdit ? "Cancel editing email" : "Enable editing"}
+                                    >
+                                        {emailEdit ? "Cancel" : "Change"}
+                                    </Button>
+                                </div>
+
+                                {!emailEdit && (
+                                    <p className="text-[11px] text-tertiary">
+                                        Changing your email will require re-auth and will sign you out after saving.
+                                    </p>
+                                )}
                             </label>
                         </div>
                     </div>
 
+                    {/* Phones */}
                     <label className="space-y-1">
                         <div className="text-xs text-secondary">Phone</div>
                         <IntlPhoneField
-                            value={form.phone}
-                            onChange={(next) => setForm((f) => ({ ...f, phone: next }))}
+                            value={displayFromE164(form.phoneE164, countries)}
+                            onChange={(nextDisplay) => {
+                                const e164 = e164FromDisplay(nextDisplay);
+                                setForm((f) => ({ ...f, phoneE164: e164 }));
+                            }}
                             inferredCountryName={countryNameFromValue(form.country, countries)}
                             countries={countries}
                             className="w-full"
@@ -1213,8 +838,11 @@ const ProfileTab = React.forwardRef<ProfileHandle, {
                     <label className="space-y-1 md:col-span-2">
                         <div className="text-xs text-secondary">WhatsApp</div>
                         <IntlPhoneField
-                            value={form.whatsappPhone}
-                            onChange={(next) => setForm((f) => ({ ...f, whatsappPhone: next }))}
+                            value={displayFromE164(form.whatsappE164, countries)}
+                            onChange={(nextDisplay) => {
+                                const e164 = e164FromDisplay(nextDisplay);
+                                setForm((f) => ({ ...f, whatsappE164: e164 }));
+                            }}
                             inferredCountryName={countryNameFromValue(form.country, countries)}
                             countries={countries}
                             className="w-full"
@@ -1270,13 +898,11 @@ const ProfileTab = React.forwardRef<ProfileHandle, {
                             </select>
                         </div>
                     </div>
-
                 </>
             )}
         </Card>
     );
-}
-);
+});
 
 /** ───────── Password verification via login endpoint ─────────
  * Reuse the same API as the login page: POST /api/v1/auth/login
@@ -1634,302 +1260,302 @@ function BreedingTab({ onDirty }: { dirty: boolean; onDirty: (v: boolean) => voi
 }
 
 function BreedsTab({ onDirty }: { onDirty: (v: boolean) => void }) {
-  // This tab does immediate CRUD calls; it never blocks panel close with “dirty”
-  React.useEffect(() => onDirty(false), [onDirty]);
+    // This tab does immediate CRUD calls; it never blocks panel close with “dirty”
+    React.useEffect(() => onDirty(false), [onDirty]);
 
-  type Species = "DOG" | "CAT" | "HORSE";
-  type Canonical = { id: string; name: string; slug?: string | null; species?: Species | null; source: "canonical" };
-  type Custom = { id: number; name: string; species?: Species | null; canonicalBreedId?: string | null; source: "custom" };
+    type Species = "DOG" | "CAT" | "HORSE";
+    type Canonical = { id: string; name: string; slug?: string | null; species?: Species | null; source: "canonical" };
+    type Custom = { id: number; name: string; species?: Species | null; canonicalBreedId?: string | null; source: "custom" };
 
-  const [species, setSpecies] = React.useState<Species>("DOG");
-  const [q, setQ] = React.useState("");
-  const [searching, setSearching] = React.useState(false);
-  const [canonResults, setCanonResults] = React.useState<Canonical[]>([]);
-  const [customList, setCustomList] = React.useState<Custom[]>([]);
-  const [loadingCustom, setLoadingCustom] = React.useState(false);
-  const [err, setErr] = React.useState<string>("");
+    const [species, setSpecies] = React.useState<Species>("DOG");
+    const [q, setQ] = React.useState("");
+    const [searching, setSearching] = React.useState(false);
+    const [canonResults, setCanonResults] = React.useState<Canonical[]>([]);
+    const [customList, setCustomList] = React.useState<Custom[]>([]);
+    const [loadingCustom, setLoadingCustom] = React.useState(false);
+    const [err, setErr] = React.useState<string>("");
 
-  // helpers
-  async function loadCustom() {
-    try {
-      setLoadingCustom(true);
-      setErr("");
-      const res = await fetchJson(`/api/v1/breeds/custom?species=${encodeURIComponent(species)}`);
-      const items =
-        (Array.isArray(res?.items) && res.items) ||
-        (Array.isArray(res?.data?.items) && res.data.items) ||
-        (Array.isArray(res) && res) ||
-        [];
-      setCustomList(
-        items.map((r: any) => ({
-          id: Number(r.id),
-          name: String(r.name),
-          species: (r.species as Species) ?? null,
-          canonicalBreedId: (r.canonicalBreedId as string) ?? null,
-          source: "custom",
-        }))
-      );
-    } catch (e: any) {
-      setErr(e?.message || "Failed to load custom breeds");
-    } finally {
-      setLoadingCustom(false);
+    // helpers
+    async function loadCustom() {
+        try {
+            setLoadingCustom(true);
+            setErr("");
+            const res = await fetchJson(`/api/v1/breeds/custom?species=${encodeURIComponent(species)}`);
+            const items =
+                (Array.isArray(res?.items) && res.items) ||
+                (Array.isArray(res?.data?.items) && res.data.items) ||
+                (Array.isArray(res) && res) ||
+                [];
+            setCustomList(
+                items.map((r: any) => ({
+                    id: Number(r.id),
+                    name: String(r.name),
+                    species: (r.species as Species) ?? null,
+                    canonicalBreedId: (r.canonicalBreedId as string) ?? null,
+                    source: "custom",
+                }))
+            );
+        } catch (e: any) {
+            setErr(e?.message || "Failed to load custom breeds");
+        } finally {
+            setLoadingCustom(false);
+        }
     }
-  }
 
-  async function doSearch() {
-    try {
-      setSearching(true);
-      setErr("");
-      const url = `/api/v1/breeds/search?species=${encodeURIComponent(species)}&q=${encodeURIComponent(q)}&limit=25`;
-      const res = await fetchJson(url);
-      const items =
-        (Array.isArray(res?.items) && res.items) ||
-        (Array.isArray(res?.data?.items) && res.data.items) ||
-        (Array.isArray(res) && res) ||
-        [];
-      setCanonResults(
-        items
-          .filter((r: any) => r.source === "canonical")
-          .map((r: any) => ({
-            id: String(r.id),
-            name: String(r.name),
-            slug: r.slug ?? null,
-            species: (r.species as Species) ?? null,
-            source: "canonical",
-          }))
-      );
-    } catch (e: any) {
-      setErr(e?.message || "Search failed");
-    } finally {
-      setSearching(false);
+    async function doSearch() {
+        try {
+            setSearching(true);
+            setErr("");
+            const url = `/api/v1/breeds/search?species=${encodeURIComponent(species)}&q=${encodeURIComponent(q)}&limit=25`;
+            const res = await fetchJson(url);
+            const items =
+                (Array.isArray(res?.items) && res.items) ||
+                (Array.isArray(res?.data?.items) && res.data.items) ||
+                (Array.isArray(res) && res) ||
+                [];
+            setCanonResults(
+                items
+                    .filter((r: any) => r.source === "canonical")
+                    .map((r: any) => ({
+                        id: String(r.id),
+                        name: String(r.name),
+                        slug: r.slug ?? null,
+                        species: (r.species as Species) ?? null,
+                        source: "canonical",
+                    }))
+            );
+        } catch (e: any) {
+            setErr(e?.message || "Search failed");
+        } finally {
+            setSearching(false);
+        }
     }
-  }
 
-  // initial loads
-  React.useEffect(() => {
-    loadCustom();
-  }, [species]);
+    // initial loads
+    React.useEffect(() => {
+        loadCustom();
+    }, [species]);
 
-  // CRUD
-  async function addCustom(name: string, canonicalBreedId?: string | null) {
-    const body = { name, species, canonicalBreedId: canonicalBreedId ?? null };
-    const res = await fetchJson("/api/v1/breeds/custom", { method: "POST", body: JSON.stringify(body) });
-    if (res?.error) throw new Error(res?.message || "Create failed");
-    await loadCustom();
-  }
+    // CRUD
+    async function addCustom(name: string, canonicalBreedId?: string | null) {
+        const body = { name, species, canonicalBreedId: canonicalBreedId ?? null };
+        const res = await fetchJson("/api/v1/breeds/custom", { method: "POST", body: JSON.stringify(body) });
+        if (res?.error) throw new Error(res?.message || "Create failed");
+        await loadCustom();
+    }
 
-  async function renameCustom(id: number, name: string) {
-    const res = await fetchJson(`/api/v1/breeds/custom/${id}`, {
-      method: "PATCH",
-      body: JSON.stringify({ name }),
-    });
-    if (res?.error) throw new Error(res?.message || "Rename failed");
-    await loadCustom();
-  }
+    async function renameCustom(id: number, name: string) {
+        const res = await fetchJson(`/api/v1/breeds/custom/${id}`, {
+            method: "PATCH",
+            body: JSON.stringify({ name }),
+        });
+        if (res?.error) throw new Error(res?.message || "Rename failed");
+        await loadCustom();
+    }
 
-  async function linkCanonical(id: number, canonicalBreedId: string | null) {
-    const res = await fetchJson(`/api/v1/breeds/custom/${id}`, {
-      method: "PATCH",
-      body: JSON.stringify({ canonicalBreedId }),
-    });
-    if (res?.error) throw new Error(res?.message || "Link failed");
-    await loadCustom();
-  }
+    async function linkCanonical(id: number, canonicalBreedId: string | null) {
+        const res = await fetchJson(`/api/v1/breeds/custom/${id}`, {
+            method: "PATCH",
+            body: JSON.stringify({ canonicalBreedId }),
+        });
+        if (res?.error) throw new Error(res?.message || "Link failed");
+        await loadCustom();
+    }
 
-  async function removeCustom(id: number) {
-    const res = await fetchJson(`/api/v1/breeds/custom/${id}`, { method: "DELETE" });
-    if (res?.error) throw new Error(res?.message || "Delete failed");
-    await loadCustom();
-  }
+    async function removeCustom(id: number) {
+        const res = await fetchJson(`/api/v1/breeds/custom/${id}`, { method: "DELETE" });
+        if (res?.error) throw new Error(res?.message || "Delete failed");
+        await loadCustom();
+    }
 
-  // local UI state
-  const [newName, setNewName] = React.useState("");
-  const [linkFor, setLinkFor] = React.useState<number | null>(null); // custom id we’re linking
+    // local UI state
+    const [newName, setNewName] = React.useState("");
+    const [linkFor, setLinkFor] = React.useState<number | null>(null); // custom id we’re linking
 
-  return (
-    <div className="space-y-6">
-      <Card className="p-4 space-y-3">
-        <h4 className="font-medium">Breeds (tenant custom + canonical lookup)</h4>
-        <p className="text-sm text-secondary">
-          Canonical breeds are read-only. Add <em>custom</em> breeds for your org (kept private), and optionally link them to a canonical breed for analytics/search.
-        </p>
+    return (
+        <div className="space-y-6">
+            <Card className="p-4 space-y-3">
+                <h4 className="font-medium">Breeds (tenant custom + canonical lookup)</h4>
+                <p className="text-sm text-secondary">
+                    Canonical breeds are read-only. Add <em>custom</em> breeds for your org (kept private), and optionally link them to a canonical breed for analytics/search.
+                </p>
 
-        {err && (
-          <div className="rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
-            {err}
-          </div>
-        )}
+                {err && (
+                    <div className="rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
+                        {err}
+                    </div>
+                )}
 
-        {/* Species + Search */}
-        <div className="flex flex-col md:flex-row gap-3">
-          <select
-            className={`bhq-input ${INPUT_CLS} w-40`}
-            value={species}
-            onChange={(e) => setSpecies(e.currentTarget.value as Species)}
-          >
-            <option value="DOG">Dog</option>
-            <option value="CAT">Cat</option>
-            <option value="HORSE">Horse</option>
-          </select>
-
-          <div className="flex-1 flex gap-2">
-            <input
-              className={`bhq-input ${INPUT_CLS} flex-1`}
-              placeholder="Search canonical breeds (name or alias)…"
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && doSearch()}
-            />
-            <Button size="sm" onClick={doSearch} disabled={searching}>
-              {searching ? "Searching…" : "Search"}
-            </Button>
-          </div>
-        </div>
-
-        {/* Canonical results */}
-        {!!canonResults.length && (
-          <div className="rounded-md border border-hairline divide-y divide-hairline">
-            {canonResults.map((b) => (
-              <div key={b.id} className="flex items-center justify-between px-3 py-2">
-                <div className="text-sm">
-                  <span className="font-medium">{b.name}</span>
-                  {b.slug ? <span className="ml-2 text-tertiary text-xs">({b.slug})</span> : null}
-                </div>
-                <div className="flex items-center gap-2">
-                  {linkFor != null ? (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={async () => {
-                        try {
-                          await linkCanonical(linkFor, b.id);
-                          setLinkFor(null);
-                        } catch (e: any) {
-                          setErr(e?.message || "Link failed");
-                        }
-                      }}
+                {/* Species + Search */}
+                <div className="flex flex-col md:flex-row gap-3">
+                    <select
+                        className={`bhq-input ${INPUT_CLS} w-40`}
+                        value={species}
+                        onChange={(e) => setSpecies(e.currentTarget.value as Species)}
                     >
-                      Link to selected custom
-                    </Button>
-                  ) : (
-                    <Button
-                      size="sm"
-                      onClick={async () => {
-                        try {
-                          await addCustom(b.name, b.id);
-                          setQ("");
-                          setCanonResults([]);
-                        } catch (e: any) {
-                          setErr(e?.message || "Create failed");
-                        }
-                      }}
-                    >
-                      Add as custom
-                    </Button>
-                  )}
+                        <option value="DOG">Dog</option>
+                        <option value="CAT">Cat</option>
+                        <option value="HORSE">Horse</option>
+                    </select>
+
+                    <div className="flex-1 flex gap-2">
+                        <input
+                            className={`bhq-input ${INPUT_CLS} flex-1`}
+                            placeholder="Search canonical breeds (name or alias)…"
+                            value={q}
+                            onChange={(e) => setQ(e.target.value)}
+                            onKeyDown={(e) => e.key === "Enter" && doSearch()}
+                        />
+                        <Button size="sm" onClick={doSearch} disabled={searching}>
+                            {searching ? "Searching…" : "Search"}
+                        </Button>
+                    </div>
                 </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </Card>
 
-      {/* Custom list + quick add */}
-      <Card className="p-4 space-y-3">
-        <div className="flex items-center justify-between">
-          <h4 className="font-medium">Your custom breeds ({species.toLowerCase()})</h4>
-          <Button size="sm" variant="outline" onClick={loadCustom} disabled={loadingCustom}>
-            {loadingCustom ? "Refreshing…" : "Refresh"}
-          </Button>
-        </div>
+                {/* Canonical results */}
+                {!!canonResults.length && (
+                    <div className="rounded-md border border-hairline divide-y divide-hairline">
+                        {canonResults.map((b) => (
+                            <div key={b.id} className="flex items-center justify-between px-3 py-2">
+                                <div className="text-sm">
+                                    <span className="font-medium">{b.name}</span>
+                                    {b.slug ? <span className="ml-2 text-tertiary text-xs">({b.slug})</span> : null}
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    {linkFor != null ? (
+                                        <Button
+                                            size="sm"
+                                            variant="outline"
+                                            onClick={async () => {
+                                                try {
+                                                    await linkCanonical(linkFor, b.id);
+                                                    setLinkFor(null);
+                                                } catch (e: any) {
+                                                    setErr(e?.message || "Link failed");
+                                                }
+                                            }}
+                                        >
+                                            Link to selected custom
+                                        </Button>
+                                    ) : (
+                                        <Button
+                                            size="sm"
+                                            onClick={async () => {
+                                                try {
+                                                    await addCustom(b.name, b.id);
+                                                    setQ("");
+                                                    setCanonResults([]);
+                                                } catch (e: any) {
+                                                    setErr(e?.message || "Create failed");
+                                                }
+                                            }}
+                                        >
+                                            Add as custom
+                                        </Button>
+                                    )}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </Card>
 
-        <div className="flex gap-2">
-          <input
-            className={`bhq-input ${INPUT_CLS} flex-1`}
-            placeholder={`Add custom ${species.toLowerCase()} breed…`}
-            value={newName}
-            onChange={(e) => (setNewName(e.target.value))}
-            onKeyDown={async (e) => {
-              if (e.key === "Enter" && newName.trim()) {
-                try {
-                  await addCustom(newName.trim(), null);
-                  setNewName("");
-                } catch (e: any) {
-                  setErr(e?.message || "Create failed");
-                }
-              }
-            }}
-          />
-          <Button
-            size="sm"
-            onClick={async () => {
-              if (!newName.trim()) return;
-              try {
-                await addCustom(newName.trim(), null);
-                setNewName("");
-              } catch (e: any) {
-                setErr(e?.message || "Create failed");
-              }
-            }}
-          >
-            Add
-          </Button>
-        </div>
-
-        <div className="rounded-md border border-hairline divide-y divide-hairline">
-          {customList.length === 0 ? (
-            <div className="px-3 py-2 text-sm text-secondary">No custom breeds yet.</div>
-          ) : (
-            customList.map((c) => (
-              <div key={c.id} className="flex items-center justify-between px-3 py-2 gap-3">
-                <input
-                  className={`bhq-input ${INPUT_CLS} flex-1`}
-                  defaultValue={c.name}
-                  onBlur={async (e) => {
-                    const next = e.currentTarget.value.trim();
-                    if (next && next !== c.name) {
-                      try { await renameCustom(c.id, next); } catch (e: any) { setErr(e?.message || "Rename failed"); }
-                    }
-                  }}
-                />
-                <div className="flex items-center gap-2">
-                  <Button
-                    size="sm"
-                    variant={linkFor === c.id ? "outline" : "secondary"}
-                    onClick={() => setLinkFor(linkFor === c.id ? null : c.id)}
-                    title="Select this custom breed to link to a canonical result above"
-                  >
-                    {linkFor === c.id ? "Selected" : "Link canonical"}
-                  </Button>
-                  {c.canonicalBreedId && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={async () => {
-                        try { await linkCanonical(c.id, null); } catch (e: any) { setErr(e?.message || "Unlink failed"); }
-                      }}
-                    >
-                      Unlink
+            {/* Custom list + quick add */}
+            <Card className="p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                    <h4 className="font-medium">Your custom breeds ({species.toLowerCase()})</h4>
+                    <Button size="sm" variant="outline" onClick={loadCustom} disabled={loadingCustom}>
+                        {loadingCustom ? "Refreshing…" : "Refresh"}
                     </Button>
-                  )}
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={async () => {
-                      if (!confirm(`Delete "${c.name}"?`)) return;
-                      try { await removeCustom(c.id); } catch (e: any) { setErr(e?.message || "Delete failed"); }
-                    }}
-                  >
-                    Delete
-                  </Button>
                 </div>
-              </div>
-            ))
-          )}
+
+                <div className="flex gap-2">
+                    <input
+                        className={`bhq-input ${INPUT_CLS} flex-1`}
+                        placeholder={`Add custom ${species.toLowerCase()} breed…`}
+                        value={newName}
+                        onChange={(e) => (setNewName(e.target.value))}
+                        onKeyDown={async (e) => {
+                            if (e.key === "Enter" && newName.trim()) {
+                                try {
+                                    await addCustom(newName.trim(), null);
+                                    setNewName("");
+                                } catch (e: any) {
+                                    setErr(e?.message || "Create failed");
+                                }
+                            }
+                        }}
+                    />
+                    <Button
+                        size="sm"
+                        onClick={async () => {
+                            if (!newName.trim()) return;
+                            try {
+                                await addCustom(newName.trim(), null);
+                                setNewName("");
+                            } catch (e: any) {
+                                setErr(e?.message || "Create failed");
+                            }
+                        }}
+                    >
+                        Add
+                    </Button>
+                </div>
+
+                <div className="rounded-md border border-hairline divide-y divide-hairline">
+                    {customList.length === 0 ? (
+                        <div className="px-3 py-2 text-sm text-secondary">No custom breeds yet.</div>
+                    ) : (
+                        customList.map((c) => (
+                            <div key={c.id} className="flex items-center justify-between px-3 py-2 gap-3">
+                                <input
+                                    className={`bhq-input ${INPUT_CLS} flex-1`}
+                                    defaultValue={c.name}
+                                    onBlur={async (e) => {
+                                        const next = e.currentTarget.value.trim();
+                                        if (next && next !== c.name) {
+                                            try { await renameCustom(c.id, next); } catch (e: any) { setErr(e?.message || "Rename failed"); }
+                                        }
+                                    }}
+                                />
+                                <div className="flex items-center gap-2">
+                                    <Button
+                                        size="sm"
+                                        variant={linkFor === c.id ? "outline" : "secondary"}
+                                        onClick={() => setLinkFor(linkFor === c.id ? null : c.id)}
+                                        title="Select this custom breed to link to a canonical result above"
+                                    >
+                                        {linkFor === c.id ? "Selected" : "Link canonical"}
+                                    </Button>
+                                    {c.canonicalBreedId && (
+                                        <Button
+                                            size="sm"
+                                            variant="outline"
+                                            onClick={async () => {
+                                                try { await linkCanonical(c.id, null); } catch (e: any) { setErr(e?.message || "Unlink failed"); }
+                                            }}
+                                        >
+                                            Unlink
+                                        </Button>
+                                    )}
+                                    <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={async () => {
+                                            if (!confirm(`Delete "${c.name}"?`)) return;
+                                            try { await removeCustom(c.id); } catch (e: any) { setErr(e?.message || "Delete failed"); }
+                                        }}
+                                    >
+                                        Delete
+                                    </Button>
+                                </div>
+                            </div>
+                        ))
+                    )}
+                </div>
+            </Card>
         </div>
-      </Card>
-    </div>
-  );
+    );
 }
 
 

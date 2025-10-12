@@ -44,7 +44,7 @@ type ID = string | number;
 type SortDir = "asc" | "desc";
 type Species = "Dog" | "Cat" | "Horse";
 type Sex = "Male" | "Female";
-type Status = "Active" | "Unavailable" | "Retired" | "Deceased" | "Prospect";
+type Status = "Active" | "Breeding" | "Unavailable" | "Retired" | "Deceased" | "Prospect";
 
 type AnimalDTO = {
   id: ID;
@@ -160,9 +160,9 @@ function normalize(dto: AnimalDTO): AnimalRow {
   return {
     ...dto,
     // enums from API (UPPERCASE) → UI (Title Case)
-    species: toTitle(dto.species) as any,
-    sex: toTitle(dto.sex) as any,
-    status: toTitle(dto.status) as any,
+    species: (toTitle(dto.species) || "") as Species,
+    sex: (toTitle(dto.sex) || "") as Sex,
+    status: (toTitle(dto.status) || "") as Status,
 
     // server sends birthDate; UI uses dob
     dob: (dto as any).dob ?? (dto as any).birthDate ?? dto.dob ?? null,
@@ -191,6 +191,11 @@ function ColumnsPopover({
   onSet: (next: Record<string, boolean>) => void;
 }) {
   const [open, setOpen] = React.useState(false);
+  React.useEffect(() => {
+    setOverlayHostInteractive(open);
+    return () => setOverlayHostInteractive(false);
+  }, [open]);
+
   const btnRef = React.useRef<HTMLButtonElement | null>(null);
   const [pos, setPos] = React.useState<{ top: number; left: number } | null>(null);
 
@@ -468,6 +473,13 @@ function SpeciesIcon({ species }: { species?: "Dog" | "Cat" | "Horse" | string |
 
 /* =================== App =================== */
 export default function AppAnimals() {
+  useEffect(() => {
+    window.dispatchEvent(
+      new CustomEvent("bhq:module", {
+        detail: { key: "animals", label: "Animals" },
+      })
+    );
+  }, []);
   const api = useMemo(() => {
     return makeApi(undefined, () => {
       const headers: Record<string, string> = {};
@@ -555,9 +567,10 @@ export default function AppAnimals() {
             <Button
               type="button"
               onClick={() => {
-                setEditingId(null);
-                setForm({ ...EMPTY_FORM });
-                setFormOpen(true);
+                if (!newDate) return;
+                setDates(arr => [...arr, newDate].sort());
+                setNewDate("");
+                setNote("");
               }}
             >
               + Add Cycle Start Date
@@ -645,7 +658,7 @@ export default function AppAnimals() {
     breed: "",
     _canonicalBreedId: undefined as string | undefined,
     _customBreedId: undefined as number | undefined,
-    _breedSnapshot: undefined as any, // ← holds result from Advanced (Mixed) editor
+    _breedSnapshot: undefined as any,
     sex: "Female",
     dob: "",
     status: "Active" as AnimalStatus,
@@ -658,22 +671,28 @@ export default function AppAnimals() {
   };
 
   const [formOpen, setFormOpen] = useState(false);
-  type ID = string | number;
   const [editingId, setEditingId] = useState<ID | null>(null);
   const [form, setForm] = useState<Partial<AnimalRow>>(EMPTY_FORM);
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
 
-  /* Drawer */
+  /* Drawer (declare BEFORE any effect that references it) */
   const [drawer, setDrawer] = useState<AnimalRow | null>(null);
+
+  /** Single overlay-pointer-events effect (replaces the two separate ones) */
+  useEffect(() => {
+    setOverlayHostInteractive(formOpen || !!drawer);
+    return () => setOverlayHostInteractive(false);
+  }, [formOpen, drawer]);
+
   const [drawerTab, setDrawerTab] = useState<
     "overview" | "cycle" | "offspring" | "health" | "documents" | "audit"
   >(() => (localStorage.getItem("bhq_animals_drawertab_v1") as any) || "overview");
   useEffect(() => localStorage.setItem("bhq_animals_drawertab_v1", drawerTab), [drawerTab]);
+
   // Load ownership when a drawer is opened
   useEffect(() => {
     if (!drawer?.id) return;
     let cancelled = false;
-
     (async () => {
       try {
         const ownersRes = await (api as any)?.animals?.getOwners?.(drawer.id);
@@ -683,14 +702,9 @@ export default function AppAnimals() {
             d && String(d.id) === String(drawer.id) ? { ...d, owners: ownersArr } : d
           );
         }
-      } catch {
-        // If it fails, we just leave owners undefined.
-      }
+      } catch { /* noop */ }
     })();
-
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [drawer?.id, api]);
 
 
@@ -764,7 +778,7 @@ export default function AppAnimals() {
               ? res
               : [];
         setRows(items.map(normalize));
-        setTotal(Number(res?.total ?? items.length ?? 0));
+        setTotal(Number(res?.total ?? res?.data?.total ?? items.length ?? 0));
       })
       ?.catch(() => {
         if (!ignore) {
@@ -903,9 +917,6 @@ export default function AppAnimals() {
 
       if (targetId != null && speciesApi) {
         let body: any | null = null;
-        const pendingSnap = (form as any)._breedSnapshot as any | undefined;
-        const canonicalId = (form as any)._canonicalBreedId ?? null;
-        const customId = (form as any)._customBreedId ?? null;
 
         if (pendingSnap) {
           const c = Array.isArray(pendingSnap.canonicalMix) ? pendingSnap.canonicalMix : [];
@@ -1121,7 +1132,7 @@ export default function AppAnimals() {
         const raw = (r as any)[c.key];
         let value = "";
         if (c.type === "date") value = formatDate(String(raw || ""));
-        else if (c.type === "tags") value = (r.tags || []).join("|");
+        else if (c.type === "tags") value = (r.tags || []).join("; ");
         else value = String(raw ?? "");
         vals.push('"' + String(value).replace(/"/g, '""') + '"');
       });

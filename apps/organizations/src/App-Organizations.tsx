@@ -13,11 +13,15 @@ type OrgRow = {
   website?: string | null;
   email?: string | null;
   phone?: string | null;
+  // address
+  street?: string | null;
+  street2?: string | null;
   city?: string | null;
   state?: string | null;
+  zip?: string | null;
   country?: string | null;
   tags: string[];
-  status: "Active" | "Inactive";
+  status: "Active" | "Archived";
   created_at: string;
   updated_at: string;
   notes?: string | null;
@@ -27,9 +31,11 @@ type SortDir = "asc" | "desc";
 type SortRule = { key: keyof OrgRow & string; dir: SortDir };
 
 type ColumnDef =
-  | { key: keyof OrgRow & string; label: string; default: boolean; type?: "text" | "tags" | "status" | "date" }
-  ;
+  | { key: keyof OrgRow & string; label: string; default: boolean; type?: "text" | "tags" | "status" | "date" };
 
+/** ─────────────────────────────────────────────────────────────────────────────
+ * Columns (close to Contacts parity)
+ * ──────────────────────────────────────────────────────────────────────────── */
 const ALL_COLUMNS: ReadonlyArray<ColumnDef> = [
   { key: "name", label: "Organization", default: true, type: "text" },
   { key: "website", label: "Website", default: false, type: "text" },
@@ -45,7 +51,7 @@ const ALL_COLUMNS: ReadonlyArray<ColumnDef> = [
 ] as const;
 
 /** ─────────────────────────────────────────────────────────────────────────────
- * Storage keys (Contacts parity)
+ * Storage keys (Contacts parity; rows never go to localStorage)
  * ──────────────────────────────────────────────────────────────────────────── */
 const COL_STORAGE_KEY = "bhq_org_cols_v2";
 const SORT_STORAGE_KEY = "bhq_org_sorts_v2";
@@ -58,15 +64,6 @@ const SHOW_FILTERS_STORAGE_KEY = "bhq_org_showfilters_v2";
  * Small utils
  * ──────────────────────────────────────────────────────────────────────────── */
 const cn = (...s: Array<string | false | null | undefined>) => s.filter(Boolean).join(" ");
-
-function getInputValue(e: any): string {
-  // supports: native event, React change event, plain string, null/undefined
-  if (e == null) return "";
-  if (typeof e === "string") return e;
-  const t = (e.target ?? e.currentTarget) as HTMLInputElement | HTMLTextAreaElement | null;
-  return t?.value ?? "";
-}
-
 
 function getOverlayRoot(): HTMLElement {
   let el = document.getElementById("bhq-top-layer") as HTMLElement | null;
@@ -90,10 +87,8 @@ function setOverlayHostInteractive(enabled: boolean) {
 
 function getPlatformOrgIds(): number[] {
   const w: any = window as any;
-  const ids = [
-    Number(w?.platform?.currentOrgId),
-    Number(w?.platform?.userOrgId),
-  ].filter(n => Number.isFinite(n) && n > 0);
+  const ids = [Number(w?.platform?.currentOrgId), Number(w?.platform?.userOrgId)]
+    .filter(n => Number.isFinite(n) && n > 0);
   return Array.from(new Set(ids));
 }
 
@@ -112,38 +107,38 @@ const prettyPhone = (v?: string | null) => {
 };
 
 /** ─────────────────────────────────────────────────────────────────────────────
- * API
+ * API adapters
  * ──────────────────────────────────────────────────────────────────────────── */
 const api = (() => { try { return makeApi(); } catch { return null as any; } })();
 
 function normalizeOrgFromApi(x: any): OrgRow {
+  const statusRaw = String(x?.status ?? "").toLowerCase();
+  const status: OrgRow["status"] = statusRaw === "archived" ? "Archived" : "Active";
+  const addr = x?.address ?? {};
   return {
-    id: Number(
-      x?.id ??
-      x?.orgId ??
-      x?.organizationId ??
-      x?.organizationID ??
-      x?.orgID ??
-      0
-    ), name: x?.name ?? x?.displayName ?? x?.company ?? `Org ${x?.id ?? ""}`,
+    id: Number(x?.id ?? x?.orgId ?? x?.organizationId ?? x?.organizationID ?? x?.orgID ?? 0),
+    name: x?.name ?? x?.displayName ?? x?.company ?? `Org ${x?.id ?? ""}`,
     website: x?.website ?? x?.url ?? null,
     email: x?.email ?? null,
     phone: x?.phone ?? null,
-    city: x?.address?.city ?? x?.city ?? null,
-    state: x?.address?.state ?? x?.state ?? null,
-    country: x?.address?.country ?? x?.country ?? null,
+    street: addr?.street ?? x?.street ?? null,
+    street2: addr?.street2 ?? x?.street2 ?? null,
+    city: addr?.city ?? x?.city ?? null,
+    state: addr?.state ?? x?.state ?? null,
+    zip: addr?.zip ?? addr?.postal ?? x?.zip ?? x?.postal ?? null,
+    country: addr?.country ?? x?.country ?? null,
     tags: Array.isArray(x?.tags) ? x.tags : [],
-    status: String(x?.status).toLowerCase() === "inactive" ? "Inactive" : "Active",
+    status,
     created_at: x?.createdAt ?? x?.created_at ?? new Date().toISOString(),
     updated_at: x?.updatedAt ?? x?.updated_at ?? x?.createdAt ?? new Date().toISOString(),
     notes: x?.notes ?? null,
   };
 }
 
-async function apiListOrganizations(params: { q?: string; limit?: number; offset?: number } = {}): Promise<OrgRow[]> {
+async function apiListOrganizations(params: { q?: string; limit?: number; offset?: number; includeArchived?: boolean } = {}): Promise<OrgRow[]> {
   try {
     if (api?.organizations?.list) {
-      const r = await api.organizations.list(params);
+      const r = await api.organizations.list({ ...params, includeArchived: !!params.includeArchived });
       const arr = Array.isArray(r?.items) ? r.items : Array.isArray(r) ? r : [];
       return arr.map(normalizeOrgFromApi);
     }
@@ -156,24 +151,61 @@ async function apiListOrganizations(params: { q?: string; limit?: number; offset
 }
 async function apiCreateOrganization(payload: Partial<OrgRow>): Promise<OrgRow | null> {
   try {
-    if (api?.organizations?.create) return normalizeOrgFromApi(await api.organizations.create(payload));
-    if (api?.createOrganization) return normalizeOrgFromApi(await api.createOrganization(payload));
+    const body: any = {
+      name: payload.name,
+      email: payload.email ?? null,
+      phone: payload.phone ?? null,
+      website: payload.website ?? null,
+      address: {
+        street: payload.street ?? null,
+        street2: payload.street2 ?? null,
+        city: payload.city ?? null,
+        state: payload.state ?? null,
+        zip: payload.zip ?? null,
+        country: payload.country ?? null,
+      },
+      notes: payload.notes ?? null,
+    };
+    if (api?.organizations?.create) return normalizeOrgFromApi(await api.organizations.create(body));
+    if (api?.createOrganization) return normalizeOrgFromApi(await api.createOrganization(body));
   } catch { }
   return null;
 }
 async function apiUpdateOrganization(id: number, patch: Partial<OrgRow>): Promise<OrgRow | null> {
   try {
-    if (api?.organizations?.update) return normalizeOrgFromApi(await api.organizations.update(id, patch));
-    if (api?.updateOrganization) return normalizeOrgFromApi(await api.updateOrganization(id, patch));
+    const body: any = {
+      name: patch.name,
+      email: patch.email ?? null,
+      phone: patch.phone ?? null,
+      website: patch.website ?? null,
+      address: {
+        street: patch.street ?? null,
+        street2: patch.street2 ?? null,
+        city: patch.city ?? null,
+        state: patch.state ?? null,
+        zip: patch.zip ?? null,
+        country: patch.country ?? null,
+      },
+      notes: patch.notes ?? null,
+    };
+    if (api?.organizations?.update) return normalizeOrgFromApi(await api.organizations.update(id, body));
+    if (api?.updateOrganization) return normalizeOrgFromApi(await api.updateOrganization(id, body));
   } catch { }
   return null;
 }
-async function apiDeleteOrganizations(ids: number[]): Promise<boolean> {
+async function apiArchiveOrganization(id: number): Promise<OrgRow | null> {
   try {
-    if (api?.organizations?.bulkDelete) { await api.organizations.bulkDelete(ids); return true; }
-    if (api?.deleteOrganizations) { await api.deleteOrganizations(ids); return true; }
+    if (api?.organizations?.archive) return normalizeOrgFromApi(await api.organizations.archive(id));
+    if (api?.archiveOrganization) return normalizeOrgFromApi(await api.archiveOrganization(id));
   } catch { }
-  return false;
+  return null;
+}
+async function apiRestoreOrganization(id: number): Promise<OrgRow | null> {
+  try {
+    if (api?.organizations?.restore) return normalizeOrgFromApi(await api.organizations.restore(id));
+    if (api?.restoreOrganization) return normalizeOrgFromApi(await api.restoreOrganization(id));
+  } catch { }
+  return null;
 }
 
 /** ─────────────────────────────────────────────────────────────────────────────
@@ -229,47 +261,29 @@ function Row({ label, value }: { label: string; value: React.ReactNode }) {
     </div>
   );
 }
+
+/** Contacts-style Modal with overlay blur and pointer-events control */
 function Modal({
   open, onClose, title, children, footer,
 }: {
   open: boolean; onClose: () => void; title: string; children: React.ReactNode; footer?: React.ReactNode;
 }) {
+  useEffect(() => { setOverlayHostInteractive(open); return () => setOverlayHostInteractive(false); }, [open]);
   if (!open) return null;
   return createPortal(
     <>
-      {/* Dim + blur, click to close */}
-      <div
-        className="fixed inset-0 z-[9998] bg-black/50 backdrop-blur-sm"
-        onClick={onClose}
-      />
-
-      {/* Centered container (like Contacts) */}
-      <div
-        className={[
-          "fixed inset-0 z-[9999] pointer-events-none",
-          "flex items-start justify-center p-4", // ⬅️ top-align instead of center
-        ].join(" ")}
-        aria-modal="true"
-        role="dialog"
-      >
+      <div className="fixed inset-0 z-[9998] bg-black/50 backdrop-blur-sm" onClick={onClose} />
+      <div className="fixed inset-0 z-[9999] pointer-events-none flex items-start justify-center p-4">
         <div
-          className={[
-            "pointer-events-auto w-[min(720px,calc(100vw-2rem))]",
-            "rounded-2xl border-hairline border-hairline-hairline bg-surface text-primary",
-            "shadow-[0_24px_80px_rgba(0,0,0,0.45)] p-4",
-            "mt-12", // ⬅️ pushes panel down a bit from the very top
-          ].join(" ")}
+          className="pointer-events-auto w-[min(720px,calc(100vw-2rem))] rounded-2xl border-hairline border-hairline-hairline bg-surface text-primary shadow-[0_24px_80px_rgba(0,0,0,0.45)] p-4 mt-12"
+          role="dialog" aria-modal="true"
         >
           <div className="flex items-center justify-between mb-2">
             <h2 className="text-lg font-semibold">{title}</h2>
             <Button variant="ghost" size="icon" onClick={onClose} aria-label="Close">×</Button>
           </div>
-
           <div className="max-h-[70vh] overflow-y-auto pr-1">{children}</div>
-
-          <div className="mt-3 flex items-center justify-end gap-2">
-            {footer}
-          </div>
+          <div className="mt-3 flex items-center justify-end gap-2">{footer}</div>
         </div>
       </div>
     </>,
@@ -375,7 +389,7 @@ function ChecklistFilter({
   );
 }
 
-/** FilterRow (Contacts parity) */
+/** FilterRow */
 function FilterRow({
   visibleColumns,
   filters,
@@ -389,7 +403,7 @@ function FilterRow({
 }) {
   const statusOptions = useMemo(() => [
     { value: "Active", label: "Active" },
-    { value: "Inactive", label: "Inactive" },
+    { value: "Archived", label: "Archived" },
   ], []);
   const tagOptions = useMemo(
     () => Array.from(new Set(allTags)).sort().map((t) => ({ value: t, label: t })),
@@ -399,7 +413,7 @@ function FilterRow({
   const valuesFor = (key: string) => {
     const raw = filters[key] || "";
     return raw ? raw.split(",").map((s) => s.trim()).filter(Boolean) : [];
-  };
+    };
 
   return (
     <div className="rounded-md border-hairline border-hairline-hairline bg-surface p-2 space-y-2">
@@ -650,21 +664,14 @@ function ColumnsPopover({
   );
 }
 
-
 /** ─────────────────────────────────────────────────────────────────────────────
  * Component
  * ──────────────────────────────────────────────────────────────────────────── */
 export default function AppOrganizations() {
-  // --- platform org id state (current + user org) ---
-  const [hideOrgIds, setHideOrgIds] = React.useState<number[]>([]);
-
-  // read once on mount
-  React.useEffect(() => {
-    setHideOrgIds(getPlatformOrgIds());
-  }, []);
-
-  // react to shell org change event
-  React.useEffect(() => {
+  // hide platform org ids (current + user org)
+  const [hideOrgIds, setHideOrgIds] = useState<number[]>([]);
+  useEffect(() => { setHideOrgIds(getPlatformOrgIds()); }, []);
+  useEffect(() => {
     const onChange = (e: any) => {
       const next = Number(e?.detail?.orgId);
       const w: any = window as any;
@@ -672,8 +679,8 @@ export default function AppOrganizations() {
       const nextIds = [next, userOrg].filter(n => Number.isFinite(n) && n > 0);
       setHideOrgIds(Array.from(new Set(nextIds)));
     };
-    window.addEventListener('platform:orgChanged', onChange);
-    return () => window.removeEventListener('platform:orgChanged', onChange);
+    window.addEventListener("platform:orgChanged", onChange);
+    return () => window.removeEventListener("platform:orgChanged", onChange);
   }, []);
 
   useEffect(() => {
@@ -681,10 +688,8 @@ export default function AppOrganizations() {
   }, []);
 
   const [rows, setRows] = useState<OrgRow[]>([]);
-
   const [q, setQ] = useState<string>(() => localStorage.getItem(Q_STORAGE_KEY) || "");
   const [showFilters, setShowFilters] = useState<boolean>(() => localStorage.getItem(SHOW_FILTERS_STORAGE_KEY) === "1");
-
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [drawer, setDrawer] = useState<OrgRow | null>(null);
   const [openMenu, setOpenMenu] = useState(false);
@@ -711,13 +716,13 @@ export default function AppOrganizations() {
   useEffect(() => { localStorage.setItem(Q_STORAGE_KEY, q); }, [q]);
   useEffect(() => { localStorage.setItem(SHOW_FILTERS_STORAGE_KEY, showFilters ? "1" : "0"); }, [showFilters]);
 
-  // load
+  // load from API only; exclude archived by default
   useEffect(() => {
     let alive = true;
     (async () => {
-      const list = await apiListOrganizations({});
+      const list = await apiListOrganizations({ includeArchived: false });
       if (!alive) return;
-      setRows(list); // no filtering here
+      setRows(list);
     })();
     return () => { alive = false; };
   }, []);
@@ -751,14 +756,11 @@ export default function AppOrganizations() {
       return true;
     };
 
-    // Parse multi-selects
     const parseCsv = (s?: string) => (s ? s.split(",").map((x) => x.trim()).filter(Boolean) : []);
-
     const wantTags = new Set(parseCsv(f.tags));
     const wantStatus = new Set(parseCsv(f.status));
 
     return data.filter((r) => {
-      // per-field includes
       for (const [k, v] of Object.entries(f)) {
         if (!v) continue;
         if (k === "__text") continue;
@@ -773,13 +775,12 @@ export default function AppOrganizations() {
           if (wantStatus.size > 0 && !wantStatus.has(r.status)) return false;
           continue;
         }
-        if (k.endsWith("Start") || k.endsWith("End")) continue; // handled below
+        if (k.endsWith("Start") || k.endsWith("End")) continue;
 
         const rv = (r as any)[k];
         if (!lc(rv).includes(lc(v))) return false;
       }
 
-      // date ranges
       const createdOk = inRange(r.created_at, f.created_atStart, f.created_atEnd);
       if (!createdOk) return false;
       const updatedOk = inRange(r.updated_at, f.updated_atStart, f.updated_atEnd);
@@ -792,27 +793,29 @@ export default function AppOrganizations() {
   const filtered = useMemo(() => {
     const text = (filtersState.__text ?? q).trim().toLowerCase();
 
-    // start from raw rows
     let data = [...rows];
 
-    // ⬇️ hide any ids provided by the shell (current org + user org)
+    // hide platform org ids
     if (hideOrgIds.length) {
       const hide = new Set(hideOrgIds.map(Number));
       data = data.filter(r => !hide.has(Number(r.id)));
     }
 
-    // free text
+    // exclude archived unless filter explicitly includes it
+    const statusFilter = (filtersState.status || "").split(",").map(s => s.trim()).filter(Boolean);
+    const wantsArchived = statusFilter.includes("Archived");
+    if (!wantsArchived) data = data.filter(r => r.status !== "Archived");
+
     if (text) {
       data = data.filter((r) => {
         const values = [
-          r.name, r.website, r.email, r.phone, r.city, r.state, r.country,
+          r.name, r.website, r.email, r.phone, r.street, r.street2, r.city, r.state, r.zip, r.country,
           (r.tags || []).join(" "), r.status, r.created_at, r.updated_at,
         ].join(" ").toLowerCase();
         return values.includes(text);
       });
     }
 
-    // column filters/sort (keep your existing helpers)
     data = applyColumnFilters(data);
 
     if (sorts.length) {
@@ -828,7 +831,6 @@ export default function AppOrganizations() {
     }
     return data;
   }, [rows, hideOrgIds, q, sorts, filtersState]);
-
 
   // pagination
   const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
@@ -873,22 +875,23 @@ export default function AppOrganizations() {
     URL.revokeObjectURL(a.href);
   }
 
-  async function handleBulkDelete() {
+  async function handleBulkArchive() {
     if (selected.size === 0) return;
-    const ok = confirm(`Delete ${selected.size} organization(s)?`);
+    const ok = confirm(`Archive ${selected.size} organization(s)?`);
     if (!ok) return;
     const ids = Array.from(selected);
-    const apiOk = await apiDeleteOrganizations(ids);
-    if (apiOk) {
-      setRows((prev) => prev.filter((r) => !selected.has(r.id)));
-      if (drawer && selected.has(drawer.id)) setDrawer(null);
-      setSelected(new Set());
-    } else {
-      // optimistic local removal
-      setRows((prev) => prev.filter((r) => !selected.has(r.id)));
-      if (drawer && selected.has(drawer.id)) setDrawer(null);
-      setSelected(new Set());
+    const results = await Promise.all(ids.map(id => apiArchiveOrganization(id)));
+    const okCount = results.filter(Boolean).length;
+    if (okCount > 0) {
+      setRows(prev => prev.map(r => {
+        if (ids.includes(r.id)) return { ...r, status: "Archived", updated_at: new Date().toISOString() };
+        return r;
+      }));
+      if (drawer && ids.includes(drawer.id)) {
+        setDrawer(prev => prev ? { ...prev, status: "Archived", updated_at: new Date().toISOString() } : prev);
+      }
     }
+    setSelected(new Set());
   }
 
   // create/edit
@@ -896,12 +899,31 @@ export default function AppOrganizations() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const emptyForm: Partial<OrgRow> = {
     name: "", website: "", email: "", phone: "",
-    city: "", state: "", country: "", tags: [], status: "Active", notes: "",
+    street: "", street2: "", city: "", state: "", zip: "", country: "US",
+    tags: [], status: "Active", notes: "",
   };
   const [form, setForm] = useState<Partial<OrgRow>>(emptyForm);
   const [errors, setErrors] = useState<Record<string, string>>({});
   function openCreate() { setEditingId(null); setForm(emptyForm); setErrors({}); setFormOpen(true); }
-  function openEdit(row: OrgRow) { setEditingId(row.id); setForm({ ...row }); setErrors({}); setFormOpen(true); }
+  function openEdit(row: OrgRow) {
+    setEditingId(row.id);
+    setForm({
+      ...row,
+      // normalize undefined to empty strings for inputs
+      website: row.website ?? "",
+      email: row.email ?? "",
+      phone: row.phone ?? "",
+      street: row.street ?? "",
+      street2: row.street2 ?? "",
+      city: row.city ?? "",
+      state: row.state ?? "",
+      zip: row.zip ?? "",
+      country: row.country ?? "US",
+      notes: row.notes ?? "",
+    });
+    setErrors({});
+    setFormOpen(true);
+  }
   function validateForm(f: Partial<OrgRow>) {
     const e: Record<string, string> = {};
     if (!f.name || String(f.name).trim().length < 2) e.name = "Organization name is required";
@@ -917,42 +939,25 @@ export default function AppOrganizations() {
     if (Object.keys(e).length) return;
 
     if (editingId == null) {
+      // CREATE via API only; no local fallback
       const created = await apiCreateOrganization(form);
-      if (created) { setRows((prev) => [created, ...prev]); setFormOpen(false); setDrawer(created); return; }
-
-      // local fallback
-      const maxId = rows.reduce((m, r) => Math.max(m, r.id), 0) + 1;
-      const now = new Date().toISOString();
-      const rec: OrgRow = {
-        id: maxId,
-        name: String(form.name),
-        website: form.website || null,
-        email: form.email || null,
-        phone: form.phone || null,
-        city: form.city || null,
-        state: form.state || null,
-        country: form.country || null,
-        tags: form.tags || [],
-        status: (form.status as any) || "Active",
-        notes: form.notes || "",
-        created_at: now,
-        updated_at: now,
-      };
-      setRows((prev) => [rec, ...prev]);
+      if (!created) {
+        alert("Unable to save organization. Please try again.");
+        return;
+      }
+      setRows((prev) => [created, ...prev]);
       setFormOpen(false);
-      setDrawer(rec);
+      setDrawer(created);
     } else {
+      // UPDATE via API only; no local fallback
       const updated = await apiUpdateOrganization(editingId, form);
-      if (updated) { setRows((prev) => prev.map((r) => (r.id === editingId ? updated : r))); setFormOpen(false); setDrawer(updated); return; }
-
-      // local fallback
-      const now = new Date().toISOString();
-      setRows((prev) =>
-        prev.map((r) => (r.id === editingId ? { ...r, ...form, updated_at: now } as OrgRow : r))
-      );
-      const fresh = rows.find((r) => r.id === editingId);
+      if (!updated) {
+        alert("Unable to update organization. Please try again.");
+        return;
+      }
+      setRows((prev) => prev.map((r) => (r.id === editingId ? updated : r)));
       setFormOpen(false);
-      if (fresh) setDrawer({ ...fresh, ...form, updated_at: now } as OrgRow);
+      setDrawer(updated);
     }
   }
 
@@ -995,11 +1000,11 @@ export default function AppOrganizations() {
             {/* divider */}
             <span aria-hidden className="absolute right-9 top-1/2 -translate-y-1/2 h-5 w-px bg-hairline" />
 
-            {/* filter toggle (sliders icon) */}
+            {/* filter toggle */}
             <button
               type="button"
               aria-label="Toggle filters"
-              aria-pressed={showFilters ? 'true' : 'false'}
+              aria-pressed={showFilters ? "true" : "false"}
               onClick={(e) => { setShowFilters(v => !v); (e.currentTarget as HTMLButtonElement).blur(); }}
               className={[
                 "absolute right-2 top-1/2 -translate-y-1/2",
@@ -1030,9 +1035,10 @@ export default function AppOrganizations() {
             position="fixed-top-right"
           >
             <div className="space-y-1">
-              <Button variant="ghost" size="sm" onClick={exportCsv}>
-                Export CSV
-              </Button>
+              <Button variant="ghost" size="sm" onClick={exportCsv}>Export CSV</Button>
+              {selected.size > 0 && (
+                <Button variant="destructive" size="sm" onClick={handleBulkArchive}>Archive selected</Button>
+              )}
             </div>
           </Popover>
         </div>
@@ -1064,11 +1070,7 @@ export default function AppOrganizations() {
                   {visibleColumns.map((c) => {
                     const active = sorts.find((s) => s.key === c.key)?.dir;
                     return (
-                      <Th
-                        key={c.key}
-                        onSort={(withShift) => cycleSort(c.key as string, withShift)}
-                        sort={active}
-                      >
+                      <Th key={c.key} onSort={(withShift) => cycleSort(c.key as string, withShift)} sort={active}>
                         {c.label}
                       </Th>
                     );
@@ -1134,25 +1136,16 @@ export default function AppOrganizations() {
       {/* Details panel (Contacts-style) */}
       {drawer && (
         <>
-          {/* backdrop w/ stronger blur, closes on click */}
-          <div
-            className="fixed inset-0 z-40 bg-black/60 backdrop-blur-md"
-            onClick={() => setDrawer(null)}
-          />
-
-          {/* top-anchored, wide panel like Contacts */}
+          <div className="fixed inset-0 z-40 bg-black/60 backdrop-blur-md" onClick={() => setDrawer(null)} />
           <section
             className={[
-              "fixed z-50 left-1/2 top-14 -translate-x-1/2",   // align near top (≈ header / table)
+              "fixed z-50 left-1/2 top-14 -translate-x-1/2",
               "w-[min(1100px,calc(100vw-3rem))] max-h-[85vh] overflow-y-auto",
               "rounded-2xl border-hairline border-hairline-hairline bg-surface text-primary",
               "shadow-[0_24px_80px_rgba(0,0,0,0.45)]",
             ].join(" ")}
-            role="dialog"
-            aria-modal="true"
-            aria-label={drawer.name}
+            role="dialog" aria-modal="true" aria-label={drawer.name}
           >
-            {/* title bar */}
             <div className="flex items-center gap-3 px-4 py-3 border-hairline-b border-hairline-hairline">
               <div className="h-8 w-8 rounded-md bg-neutral-800 inline-grid place-items-center">🏢</div>
               <div className="min-w-0">
@@ -1167,25 +1160,42 @@ export default function AppOrganizations() {
               </div>
 
               <div className="ml-auto flex items-center gap-2">
+                {drawer.status === "Active" ? (
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    onClick={async () => {
+                      const ok = confirm(`Archive "${drawer.name}"? Existing links will remain, but it will be hidden from selectors.`);
+                      if (!ok) return;
+                      const updated = await apiArchiveOrganization(drawer.id);
+                      if (updated) {
+                        setRows(prev => prev.map(r => r.id === drawer.id ? updated : r));
+                        setDrawer(updated);
+                      }
+                    }}
+                  >
+                    Archive
+                  </Button>
+                ) : (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={async () => {
+                      const updated = await apiRestoreOrganization(drawer.id);
+                      if (updated) {
+                        setRows(prev => prev.map(r => r.id === drawer.id ? updated : r));
+                        setDrawer(updated);
+                      }
+                    }}
+                  >
+                    Restore
+                  </Button>
+                )}
                 <Button size="sm" variant="outline" onClick={() => openEdit(drawer)}>Edit</Button>
-                <Button
-                  size="sm"
-                  variant="destructive"
-                  onClick={async () => {
-                    const ok = confirm(`Delete "${drawer.name}"?`);
-                    if (!ok) return;
-                    await apiDeleteOrganizations([drawer.id]);
-                    setRows(prev => prev.filter(r => r.id !== drawer.id));
-                    setDrawer(null);
-                  }}
-                >
-                  Delete
-                </Button>
                 <Button variant="ghost" size="icon" aria-label="Close" onClick={() => setDrawer(null)}>×</Button>
               </div>
             </div>
 
-            {/* body (Contacts-like two-column card grid) */}
             <div className="p-4 space-y-3">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <Card label="Email / Phone / Website">
@@ -1203,9 +1213,12 @@ export default function AppOrganizations() {
                   />
                 </Card>
 
-                <Card label="City / Region / Country">
+                <Card label="Address">
+                  <Row label="Street" value={drawer.street || "None"} />
+                  <Row label="Street 2" value={drawer.street2 || "None"} />
                   <Row label="City" value={drawer.city || "None"} />
                   <Row label="State/Region" value={drawer.state || "None"} />
+                  <Row label="Zip/Postal" value={drawer.zip || "None"} />
                   <Row label="Country" value={drawer.country || "None"} />
                 </Card>
 
@@ -1213,14 +1226,7 @@ export default function AppOrganizations() {
                   <Row label="Status" value={drawer.status} />
                   <div className="mt-1 flex flex-wrap gap-1">
                     {(drawer.tags || []).length
-                      ? drawer.tags.map(t => (
-                        <span
-                          key={t}
-                          className="inline-flex items-center px-2 py-0.5 rounded-full text-xs border-hairline border-hairline-hairline bg-surface"
-                        >
-                          {t}
-                        </span>
-                      ))
+                      ? drawer.tags.map(t => <span key={t} className="inline-flex items-center px-2 py-0.5 rounded-full text-xs border-hairline border-hairline-hairline bg-surface">{t}</span>)
                       : <span className="text-sm">No tags</span>}
                   </div>
                 </Card>
@@ -1230,7 +1236,6 @@ export default function AppOrganizations() {
                   <Row label="Updated" value={fmtDate(drawer.updated_at)} />
                 </Card>
 
-                {/* Notes with visible border to match Contacts */}
                 <Card label="Notes" className="md:col-span-2">
                   <div className="text-sm whitespace-pre-wrap rounded-md border-hairline border-hairline-hairline bg-surface px-2 py-2 min-h-[80px]">
                     {drawer.notes || "No notes"}
@@ -1261,127 +1266,71 @@ export default function AppOrganizations() {
               Organization name <span className="text-red-600">*</span>
             </label>
             <Input
-              autoFocus
-              value={form.name || ""}
-              onChange={(e) => setForm((p) => ({ ...p, name: getInputValue(e) }))}
-              placeholder="Acme Animal Rescue"
+              value={form.name ?? ""}
+              onChange={(e) => setForm(f => ({ ...f, name: e.target.value }))}
+              placeholder="e.g., Summit Poodles"
             />
             {errors.name && <div className="text-xs text-red-600 mt-1">{errors.name}</div>}
           </div>
 
-          {/* Website / Email (paired like Contacts) */}
-          <div>
-            <label className="block text-xs mb-1">Website</label>
-            <Input
-              value={form.website || ""}
-              onChange={(e) => setForm((p) => ({ ...p, website: getInputValue(e) }))}
-              placeholder="https://example.org"
-              inputMode="url"
-            />
-          </div>
+          {/* Email */}
           <div>
             <label className="block text-xs mb-1">Email</label>
             <Input
-              value={form.email || ""}
-              onChange={(e) => setForm((p) => ({ ...p, email: getInputValue(e) }))}
-              inputMode="email"
-              placeholder="info@example.org"
+              value={form.email ?? ""}
+              onChange={(e) => setForm(f => ({ ...f, email: e.target.value }))}
+              placeholder="org@email.com"
             />
             {errors.email && <div className="text-xs text-red-600 mt-1">{errors.email}</div>}
           </div>
 
           {/* Phone */}
-          <div className="md:col-span-2">
+          <div>
             <label className="block text-xs mb-1">Phone</label>
             <Input
-              value={form.phone || ""}
-              onChange={(e) => setForm((p) => ({ ...p, phone: getInputValue(e) }))}
-              placeholder="(201) 555-5555"
-              inputMode="tel"
+              value={form.phone ?? ""}
+              onChange={(e) => setForm(f => ({ ...f, phone: e.target.value }))}
+              placeholder="(555) 555-5555"
             />
+            {errors.phone && <div className="text-xs text-red-600 mt-1">{errors.phone}</div>}
           </div>
 
-          {/* Address lines */}
-          <div className="md:col-span-2">
-            <label className="block text-xs mb-1">Street</label>
-            <Input
-              value={(form as any).street || ""}
-              onChange={(e) => setForm((p) => ({ ...p, street: getInputValue(e) } as any))}
-              placeholder=""
-            />
-          </div>
-          <div className="md:col-span-2">
-            <label className="block text-xs mb-1">Street 2</label>
-            <Input
-              value={(form as any).street2 || ""}
-              onChange={(e) => setForm((p) => ({ ...p, street2: getInputValue(e) } as any))}
-              placeholder=""
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs mb-1">City</label>
-            <Input
-              value={form.city || ""}
-              onChange={(e) => setForm((p) => ({ ...p, city: getInputValue(e) }))}
-            />
-          </div>
-          <div>
-            <label className="block text-xs mb-1">State / Region</label>
-            <Input
-              value={form.state || ""}
-              onChange={(e) => setForm((p) => ({ ...p, state: getInputValue(e) }))}
-            />
+          {/* Address block */}
+          <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-4 gap-3">
+            <div className="md:col-span-2">
+              <label className="block text-xs mb-1">Street</label>
+              <Input value={form.street ?? ""} onChange={(e) => setForm(f => ({ ...f, street: e.target.value }))} />
+            </div>
+            <div className="md:col-span-2">
+              <label className="block text-xs mb-1">Street 2</label>
+              <Input value={form.street2 ?? ""} onChange={(e) => setForm(f => ({ ...f, street2: e.target.value }))} />
+            </div>
+            <div>
+              <label className="block text-xs mb-1">City</label>
+              <Input value={form.city ?? ""} onChange={(e) => setForm(f => ({ ...f, city: e.target.value }))} />
+            </div>
+            <div>
+              <label className="block text-xs mb-1">State/Region</label>
+              <Input value={(form.state as string) ?? ""} onChange={(e) => setForm(f => ({ ...f, state: e.target.value }))} />
+            </div>
+            <div>
+              <label className="block text-xs mb-1">Zip/Postal</label>
+              <Input value={form.zip ?? ""} onChange={(e) => setForm(f => ({ ...f, zip: e.target.value }))} />
+            </div>
+            <div>
+              <label className="block text-xs mb-1">Country</label>
+              <Input value={(form.country as string) ?? "US"} onChange={(e) => setForm(f => ({ ...f, country: e.target.value }))} />
+            </div>
           </div>
 
-          <div>
-            <label className="block text-xs mb-1">Postal Code</label>
-            <Input
-              value={(form as any).postal || ""}
-              onChange={(e) => setForm((p) => ({ ...p, postal: getInputValue(e) } as any))}
-            />
-          </div>
-          <div>
-            <label className="block text-xs mb-1">Country</label>
-            <Input
-              value={form.country || ""}
-              onChange={(e) => setForm((p) => ({ ...p, country: getInputValue(e) }))}
-            />
-          </div>
-
-          {/* Status / Tags */}
-          <div>
-            <label className="block text-xs mb-1">Status</label>
-            <Select
-              value={form.status || "Active"}
-              onChange={(e) => setForm((p) => ({ ...p, status: getInputValue(e) as any }))}
-            >
-              <option value="Active">Active</option>
-              <option value="Inactive">Inactive</option>
-            </Select>
-          </div>
-          <div>
-            <label className="block text-xs mb-1">Tags</label>
-            <Input
-              value={(form.tags || []).join(", ")}
-              onChange={(e) =>
-                setForm((p) => ({
-                  ...p,
-                  tags: getInputValue(e).split(",").map((x) => x.trim()).filter(Boolean),
-                }))
-              }
-              placeholder="vendor, rescue, sponsor"
-            />
-          </div>
-
-          {/* Notes (full width, with border) */}
+          {/* Notes (full width) */}
           <div className="md:col-span-2">
             <label className="block text-xs mb-1">Notes</label>
             <Textarea
               rows={4}
-              className="border border-hairline-hairline rounded-md"
-              value={form.notes || ""}
-              onChange={(e) => setForm((p) => ({ ...p, notes: getInputValue(e) }))}
+              value={form.notes ?? ""}
+              onChange={(e) => setForm(f => ({ ...f, notes: e.target.value }))}
+              placeholder="Internal notes…"
             />
           </div>
         </div>
@@ -1392,10 +1341,9 @@ export default function AppOrganizations() {
         <div className="fixed bottom-4 right-4 left-4 md:left-auto md:right-6 z-40">
           <div className="rounded-xl border-hairline border-hairline-hairline bg-surface/90 backdrop-blur px-3 py-2 shadow-lg flex items-center gap-2">
             <div className="text-sm">{selected.size} selected</div>
-
             <div className="ml-auto flex items-center gap-2">
               <Button variant="outline" size="sm" onClick={exportCsv}>Export</Button>
-              <Button variant="destructive" size="sm" onClick={handleBulkDelete}>Delete</Button>
+              <Button variant="destructive" size="sm" onClick={handleBulkArchive}>Archive</Button>
             </div>
           </div>
         </div>

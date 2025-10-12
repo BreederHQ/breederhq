@@ -1,235 +1,627 @@
-// apps/contacts/src/api.ts
-// Unified API client for Contacts + Tags with same-origin proxy support and org header.
+/* apps/contacts/src/api.ts
+   v1 client + apiUtils for Contacts app
+*/
 
-export type Json = Record<string, any>;
-export type HeadersMap = Record<string, string>;
+export type ID = string | number;
 
-export type ListParams = {
-  q?: string;
-  page?: number;
-  limit?: number;
-  includeArchived?: boolean;
-};
+type Module = "CONTACT" | "ORGANIZATION" | "ANIMAL";
+type Species = "DOG" | "CAT" | "HORSE";
+type Sex = "FEMALE" | "MALE";
+type AnimalStatus =
+  | "ACTIVE"
+  | "BREEDING"
+  | "UNAVAILABLE"
+  | "RETIRED"
+  | "DECEASED"
+  | "PROSPECT";
 
-export type ContactsApi = {
-  list: (p?: ListParams) => Promise<any>;
-  get: (id: string | number) => Promise<any>;
-  create: (body: Json) => Promise<any>;
-  update: (id: string | number, body: Json) => Promise<any>;
-  archive: (id: string | number, reason?: string) => Promise<any>;
-  restore: (id: string | number) => Promise<any>;
+/* ----------------------------------------------------------------------------
+ * Shared helpers
+ * ------------------------------------------------------------------------- */
 
-  // affiliations
-  getAffiliations: (id: string | number) => Promise<any>;
-  setAffiliations: (id: string | number, organizationIds: Array<number | string>) => Promise<any>;
-};
-
-export type TagsApi = {
-  list: (type?: "contact") => Promise<
-    Array<{ id: number | string; name: string; type: string; color?: string | null }>
-  >;
-};
-
-export type OrgsApi = {
-  list: (p?: { q?: string; page?: number; limit?: number }) => Promise<any>;
-};
-
-export type Api = {
-  contacts: ContactsApi;
-  tags: TagsApi;
-  organizations: OrgsApi;
-};
-
-/** Normalize any input like:
- *  - http://localhost:6001            -> http://localhost:6001/api/v1
- *  - http://localhost:6001/           -> http://localhost:6001/api/v1
- *  - http://localhost:6001/api/v1     -> http://localhost:6001/api/v1
- *  - http://localhost:6001/api/v1/    -> http://localhost:6001/api/v1
- *  - "" (empty)                       -> <current origin>/api/v1
- */
-function normalizeBase(base: string): string {
-  let b = String(base || "").trim();
-  if (!b) {
-    // prefer same-origin when empty (Vite proxy handles /api/* → API)
-    if (typeof location !== "undefined") b = location.origin;
-  }
-  b = b.replace(/\/+$/g, "");
-  b = b.replace(/\/api\/v1$/i, "");
-  return `${b}/api/v1`;
+function joinUrl(...parts: (string | number | undefined | null)[]) {
+  return parts
+    .filter((p) => p !== undefined && p !== null)
+    .map((p, i) => {
+      const s = String(p);
+      return i === 0 ? s.replace(/\/+$/g, "") : s.replace(/^\/+/g, "").replace(/\/+$/g, "");
+    })
+    .join("/");
 }
 
-function qs(params: Record<string, string | number | boolean | undefined>) {
-  const sp = new URLSearchParams();
-  for (const [k, v] of Object.entries(params)) {
-    if (v === undefined || v === null) continue;
-    if (typeof v === "boolean") sp.set(k, v ? "true" : "false");
-    else sp.set(k, String(v));
+// tiny cookie helper (no deps)
+function readCookie(name: string): string {
+  try {
+    const m = document.cookie.match(new RegExp("(?:^|;\\s*)" + name + "=([^;]+)"));
+    return m ? decodeURIComponent(m[1]) : "";
+  } catch {
+    return "";
   }
-  const s = sp.toString();
-  return s ? `?${s}` : "";
 }
 
-async function request<T>(
-  url: string,
-  opts: RequestInit & { expectJson?: boolean } = {}
-): Promise<T> {
-  const { expectJson = true, headers, ...rest } = opts;
+function safeB64Json(s: string): any {
+  try {
+    const pad = (x: string) => x + "===".slice((x.length + 3) % 4);
+    const norm = pad(s.replace(/-/g, "+").replace(/_/g, "/"));
+    return JSON.parse(atob(norm));
+  } catch {
+    return null;
+  }
+}
 
-  const hdr = new Headers(headers as any);
+function tenantIdFromSessionCookie(): number | null {
+  const raw = readCookie("bhq_s");
+  if (!raw) return null;
+  try {
+    const parts = raw.split(".");
+    const payloadB64 = parts.length === 3 ? parts[1] : parts[0];
+    const payload = safeB64Json(payloadB64) || {};
+    const id =
+      Number(payload?.tenant?.id) ??
+      Number(payload?.tenantId) ??
+      Number(payload?.tenantID) ??
+      Number(payload?.tenant_id);
+    return Number.isFinite(id) && id > 0 ? id : null;
+  } catch {
+    return null;
+  }
+}
 
-  // Don’t send bearer auth to /api/v1/* (cookie session handles it)
-  if (/\/api\/v1(\/|$)/i.test(url)) hdr.delete("Authorization");
+function resolveTenantIdFromAnySource(): number | null {
+  try {
+    const w = window as any;
+    if (typeof w.resolveTenantIdFromAnySource === "function") {
+      const v = Number(w.resolveTenantIdFromAnySource());
+      return Number.isFinite(v) && v > 0 ? v : null;
+    }
+  } catch {}
+  try {
+    const w = window as any;
+    const fromGlobal = Number(w.__BHQ_TENANT_ID__);
+    if (Number.isFinite(fromGlobal) && fromGlobal > 0) return fromGlobal;
+  } catch {}
+  try {
+    const fromCookie = tenantIdFromSessionCookie();
+    if (fromCookie) return fromCookie;
+  } catch {}
+  try {
+    const fromLS = Number(localStorage.getItem("BHQ_TENANT_ID") || "");
+    if (Number.isFinite(fromLS) && fromLS > 0) return fromLS;
+  } catch {}
+  try {
+    const fromEnv = Number((import.meta as any)?.env?.VITE_DEV_TENANT_ID || "");
+    if (Number.isFinite(fromEnv) && fromEnv > 0) return fromEnv;
+  } catch {}
+  return null;
+}
 
+/** Add x-tenant-id header if we can resolve it */
+export function getTenantHeaders(): Record<string, string> {
+  const tenantId = resolveTenantIdFromAnySource();
+  const headers: Record<string, string> = {};
+  if (tenantId) headers["x-tenant-id"] = String(tenantId);
+  return headers;
+}
+
+/* ----------------------------------------------------------------------------
+ * fetch helpers
+ *  - bareFetchJson: no tenant header (used for /session bootstrap)
+ *  - fetchJson: tenant-aware (normal authenticated API calls)
+ * ------------------------------------------------------------------------- */
+
+async function bareFetchJson<T = any>(url: string, init: RequestInit = {}): Promise<T> {
   const res = await fetch(url, {
-    ...rest,
-    headers: hdr,
+    ...init,
+    headers: {
+      "content-type": "application/json",
+      accept: "application/json",
+      ...(init.headers as any),
+    },
     credentials: "include",
   });
-
-  const text = await res.text();
-  const parseJson = () => {
-    try { return text ? JSON.parse(text) : undefined; } catch { return undefined; }
-  };
-  const payload = expectJson ? parseJson() : undefined;
-
   if (!res.ok) {
-    const err: any = new Error(
-      (payload as any)?.message ||
-      (payload as any)?.error ||
-      `${res.status} ${res.statusText} (${url})`
-    );
+    let payload: any;
+    try {
+      payload = await res.json();
+    } catch {
+      payload = { error: "http_error", status: res.status, statusText: res.statusText };
+    }
+    const err: any = new Error(payload?.error || `HTTP ${res.status}`);
     err.status = res.status;
-    err.code = (payload as any)?.code;
-    err.data = payload;
+    err.payload = payload;
     throw err;
   }
-  return (expectJson ? (payload as T) : (undefined as unknown as T));
+  if (res.status === 204) return undefined as unknown as T;
+  return (await res.json()) as T;
 }
 
-/**
- * Build the API with a base path and an optional auth header factory (used for non-v1/S2S).
- * Pass empty string to use same-origin (recommended with Vite proxy).
- */
-export function makeApi(base: string, makeAuth?: () => HeadersMap): Api {
-  const root = normalizeBase(base);
-
-  // header composer: ensures X-Org-Id is present
-  const h = (extra?: HeadersMap): HeadersMap => {
-    const out: HeadersMap = { ...(extra ?? {}) };
-
-    // include any caller-provided headers (e.g., S2S)
-    const a = (makeAuth?.() ?? {}) as HeadersMap;
-    for (const [k, v] of Object.entries(a)) out[k] = v;
-
-    // 1) runtime global (from session → App sets this)
+async function fetchJson<T = any>(
+  url: string,
+  init: RequestInit = {},
+  extraHeaders: Record<string, string> = {}
+): Promise<T> {
+  const res = await fetch(url, {
+    ...init,
+    headers: {
+      "content-type": "application/json",
+      accept: "application/json",
+      ...getTenantHeaders(),
+      ...extraHeaders,
+      ...(init.headers as any),
+    },
+    credentials: "include",
+  });
+  if (!res.ok) {
+    let payload: any;
     try {
-      const gid = (window as any).__BHQ_ORG_ID__;
-      if (gid != null && out["X-Org-Id"] == null && Number(gid) > 0) {
-        out["X-Org-Id"] = String(Number(gid));
+      payload = await res.json();
+    } catch {
+      payload = { error: "http_error", status: res.status, statusText: res.statusText };
+    }
+    const err: any = new Error(payload?.error || `HTTP ${res.status}`);
+    err.status = res.status;
+    err.payload = payload;
+    throw err;
+  }
+  if (res.status === 204) return undefined as unknown as T;
+  return (await res.json()) as T;
+}
+
+/** Expose the bare utils (App-Contacts.tsx uses apiUtils.fetchJson for /session) */
+export const apiUtils = {
+  joinUrl,
+  fetchJson: bareFetchJson,
+};
+
+/* ----------------------------------------------------------------------------
+ * Factory
+ * ------------------------------------------------------------------------- */
+
+export function makeApi(baseOrigin: string = "", authHeaderFn?: () => Record<string, string>) {
+  const origin = baseOrigin || "";
+  const v1 = joinUrl(origin, "/api/v1");
+  const withAuth = () => (authHeaderFn ? authHeaderFn() : {});
+
+  /* --------------------------------- CONTACTS -------------------------------- */
+  const contacts = {
+    async get(id: ID) {
+      const url = joinUrl(v1, "contacts", String(id));
+      return fetchJson<any>(url, { method: "GET" }, withAuth());
+    },
+    async list(params: {
+      q?: string;
+      includeArchived?: boolean;
+      page?: number;
+      limit?: number;
+      sort?: string; // "firstName:asc,lastName:desc"
+    } = {}) {
+      const p = new URLSearchParams();
+      if (params.q) p.set("q", params.q);
+      if (params.includeArchived != null) p.set("includeArchived", params.includeArchived ? "true" : "false");
+      if (params.page != null) p.set("page", String(params.page));
+      if (params.limit != null) p.set("limit", String(params.limit));
+      if (params.sort) p.set("sort", params.sort);
+      const url = joinUrl(v1, "contacts") + (p.toString() ? `?${p.toString()}` : "");
+      return fetchJson<{ items: any[]; total: number; page: number; limit: number }>(
+        url,
+        { method: "GET" },
+        withAuth()
+      );
+    },
+    async create(body: any) {
+      const url = joinUrl(v1, "contacts");
+      return fetchJson<any>(url, { method: "POST", body: JSON.stringify(body) }, withAuth());
+    },
+    async update(id: ID, body: any) {
+      const url = joinUrl(v1, "contacts", String(id));
+      return fetchJson<any>(url, { method: "PATCH", body: JSON.stringify(body) }, withAuth());
+    },
+    async remove(id: ID) {
+      const url = joinUrl(v1, "contacts", String(id));
+      return fetchJson<{ ok: true }>(url, { method: "DELETE" }, withAuth());
+    },
+    async archive(id: ID, reason?: string) {
+      const url = joinUrl(v1, "contacts", String(id), "archive");
+      const body = reason ? { reason } : undefined;
+      return fetchJson<{ ok: true }>(url, { method: "POST", body: body ? JSON.stringify(body) : undefined }, withAuth());
+    },
+    async restore(id: ID) {
+      const url = joinUrl(v1, "contacts", String(id), "restore");
+      return fetchJson<{ ok: true }>(url, { method: "POST" }, withAuth());
+    },
+    async audit(id: ID) {
+      const url = joinUrl(v1, "contacts", String(id), "audit");
+      try {
+        const res = await fetchJson<any>(url, { method: "GET" }, withAuth());
+        return Array.isArray(res?.items) ? res.items : Array.isArray(res) ? res : [];
+      } catch (e: any) {
+        if (e?.status === 404) return [];
+        throw e;
       }
-    } catch { }
-
-    // 2) localStorage (backup only; don’t invent a value)
-    try {
-      if (out["X-Org-Id"] == null) {
-        const ls = localStorage.getItem("BHQ_ORG_ID");
-        if (ls && ls !== "NaN" && Number(ls) > 0) {
-          out["X-Org-Id"] = String(Number(ls));
-        }
+    },
+    async getTags(id: ID) {
+      const url = joinUrl(v1, "contacts", String(id), "tags");
+      try {
+        const res = await fetchJson<any>(url, { method: "GET" }, withAuth());
+        return Array.isArray(res?.items) ? res.items : Array.isArray(res) ? res : [];
+      } catch (e: any) {
+        if (e?.status === 404) return [];
+        throw e;
       }
-    } catch { }
-
-    // No env/dev fallback. If still missing for multi-org users,
-    // the API will return org_required and the UI can prompt to choose.
-
-    return out;
+    },
+    async getAffiliations(id: ID) {
+      const url = joinUrl(v1, "contacts", String(id), "affiliations");
+      try {
+        const res = await fetchJson<any>(url, { method: "GET" }, withAuth());
+        return Array.isArray(res?.items) ? res.items : Array.isArray(res) ? res : [];
+      } catch (e: any) {
+        if (e?.status === 404) return [];
+        throw e;
+      }
+    },
+    async setOrganization(contactId: ID, organizationId: number | null) {
+      return contacts.update(contactId, { organizationId });
+    },
   };
 
-  const jsonHeaders = (extra?: HeadersMap): HeadersMap => ({
-    "Content-Type": "application/json",
-    ...h(extra),
-  });
+  /* ----------------------------------- TAGS ---------------------------------- */
+  const tags = {
+    async list(module: Module, opts: { q?: string; page?: number; limit?: number } = {}) {
+      const p = new URLSearchParams();
+      if (module) p.set("module", module);
+      if (opts.q) p.set("q", opts.q);
+      if (opts.page != null) p.set("page", String(opts.page));
+      if (opts.limit != null) p.set("limit", String(opts.limit));
+      const url = joinUrl(v1, "tags") + (p.toString() ? `?${p.toString()}` : "");
+      return fetchJson<{ items: any[]; total: number; page: number; limit: number }>(
+        url,
+        { method: "GET" },
+        withAuth()
+      );
+    },
+    async create(payload: { name: string; module: Module; color?: string | null }) {
+      const url = joinUrl(v1, "tags");
+      return fetchJson<any>(url, { method: "POST", body: JSON.stringify(payload) }, withAuth());
+    },
+    async get(id: ID) {
+      const url = joinUrl(v1, "tags", String(id));
+      return fetchJson<any>(url, { method: "GET" }, withAuth());
+    },
+    async update(id: ID, payload: { name?: string; color?: string | null }) {
+      const url = joinUrl(v1, "tags", String(id));
+      return fetchJson<any>(url, { method: "PATCH", body: JSON.stringify(payload) }, withAuth());
+    },
+    async remove(id: ID) {
+      const url = joinUrl(v1, "tags", String(id));
+      return fetchJson<void>(url, { method: "DELETE" }, withAuth());
+    },
+    async assign(tagId: ID, entityId: ID, kind: Module = "CONTACT") {
+      const url = joinUrl(v1, "tags", String(tagId), "assign");
+      const body =
+        kind === "CONTACT"
+          ? { contactId: Number(entityId) }
+          : kind === "ORGANIZATION"
+          ? { organizationId: Number(entityId) }
+          : { animalId: Number(entityId) };
+      return fetchJson<any>(url, { method: "POST", body: JSON.stringify(body) }, withAuth());
+    },
+    async unassign(tagId: ID, entityId: ID, kind: Module = "CONTACT") {
+      const url = joinUrl(v1, "tags", String(tagId), "unassign");
+      const body =
+        kind === "CONTACT"
+          ? { contactId: Number(entityId) }
+          : kind === "ORGANIZATION"
+          ? { organizationId: Number(entityId) }
+          : { animalId: Number(entityId) };
+      return fetchJson<any>(url, { method: "POST", body: JSON.stringify(body) }, withAuth());
+    },
+    async listForContact(contactId: ID): Promise<Array<{ id: number; name: string }>> {
+      const url = joinUrl(v1, "contacts", String(contactId), "tags");
+      try {
+        const res = await fetchJson<any>(url, { method: "GET" }, withAuth());
+        const arr = Array.isArray(res?.items) ? res.items : Array.isArray(res) ? res : [];
+        return arr.map((t: any) => ({ id: Number(t.id), name: String(t.name) }));
+      } catch (e: any) {
+        if (e?.status === 404) return [];
+        throw e;
+      }
+    },
+  };
+
+  /* ------------------------------- ORGANIZATIONS ----------------------------- */
+  const organizations = {
+    async list(qs: {
+      q?: string;
+      includeArchived?: boolean;
+      page?: number;
+      limit?: number;
+      sort?: string; // "name:asc,createdAt:desc"
+    } = {}) {
+      const p = new URLSearchParams();
+      if (qs.q) p.set("q", qs.q);
+      if (qs.includeArchived != null) p.set("includeArchived", qs.includeArchived ? "true" : "false");
+      if (qs.page != null) p.set("page", String(qs.page));
+      if (qs.limit != null) p.set("limit", String(qs.limit));
+      if (qs.sort) p.set("sort", qs.sort);
+      const url = joinUrl(v1, "organizations") + (p.toString() ? `?${p.toString()}` : "");
+      return fetchJson<{ items: any[]; total: number; page: number; limit: number }>(
+        url,
+        { method: "GET" },
+        withAuth()
+      );
+    },
+    async get(id: ID) {
+      const url = joinUrl(v1, "organizations", String(id));
+      return fetchJson<any>(url, { method: "GET" }, withAuth());
+    },
+    async create(body: {
+      name: string;
+      email?: string | null;
+      phone?: string | null;
+      website?: string | null;
+      street?: string | null;
+      street2?: string | null;
+      city?: string | null;
+      state?: string | null;
+      zip?: string | null;
+      country?: string | null;
+    }) {
+      const url = joinUrl(v1, "organizations");
+      return fetchJson<any>(url, { method: "POST", body: JSON.stringify(body) }, withAuth());
+    },
+    async update(
+      id: ID,
+      body: Partial<{
+        name: string;
+        email: string | null;
+        phone: string | null;
+        website: string | null;
+        street: string | null;
+        street2: string | null;
+        city: string | null;
+        state: string | null;
+        zip: string | null;
+        country: string | null;
+        archived: boolean;
+      }>
+    ) {
+      const url = joinUrl(v1, "organizations", String(id));
+      return fetchJson<any>(url, { method: "PATCH", body: JSON.stringify(body) }, withAuth());
+    },
+    async archive(id: ID) {
+      const url = joinUrl(v1, "organizations", String(id), "archive");
+      return fetchJson<{ ok: true }>(url, { method: "POST" }, withAuth());
+    },
+    async restore(id: ID) {
+      const url = joinUrl(v1, "organizations", String(id), "restore");
+      return fetchJson<{ ok: true }>(url, { method: "POST" }, withAuth());
+    },
+    async remove(id: ID) {
+      const url = joinUrl(v1, "organizations", String(id));
+      return fetchJson<{ ok: true }>(url, { method: "DELETE" }, withAuth());
+    },
+  };
+
+  /* ---------------------------------- ANIMALS -------------------------------- */
+  const animals = {
+    async list(params: {
+      q?: string;
+      species?: Species;
+      sex?: Sex;
+      status?: AnimalStatus;
+      organizationId?: ID;
+      includeArchived?: boolean;
+      page?: number;
+      limit?: number;
+      sort?: string; // e.g. "-createdAt,name"
+    } = {}) {
+      const p = new URLSearchParams();
+      if (params.q) p.set("q", params.q);
+      if (params.species) p.set("species", params.species);
+      if (params.sex) p.set("sex", params.sex);
+      if (params.status) p.set("status", params.status);
+      if (params.organizationId != null) p.set("organizationId", String(params.organizationId));
+      if (params.includeArchived != null) p.set("includeArchived", params.includeArchived ? "true" : "false");
+      if (params.page != null) p.set("page", String(params.page));
+      if (params.limit != null) p.set("limit", String(params.limit));
+      if (params.sort) p.set("sort", params.sort);
+      const url = joinUrl(v1, "animals") + (p.toString() ? `?${p.toString()}` : "");
+      return fetchJson<{ items: any[]; total: number; page: number; limit: number }>(
+        url,
+        { method: "GET" },
+        withAuth()
+      );
+    },
+    async get(id: ID) {
+      const url = joinUrl(v1, "animals", String(id));
+      return fetchJson<any>(url, { method: "GET" }, withAuth());
+    },
+    async create(body: {
+      name: string;
+      species: Species;
+      sex: Sex;
+      status?: AnimalStatus;
+      birthDate?: string | null;
+      microchip?: string | null;
+      notes?: string | null;
+      breed?: string | null;
+      canonicalBreedId?: number | null;
+      customBreedId?: number | null;
+      organizationId?: number | null;
+    }) {
+      const url = joinUrl(v1, "animals");
+      return fetchJson<any>(url, { method: "POST", body: JSON.stringify(body) }, withAuth());
+    },
+    async update(
+      id: ID,
+      body: Partial<{
+        organizationId: number | null;
+        name: string;
+        species: Species;
+        sex: Sex;
+        status: AnimalStatus;
+        birthDate: string | null;
+        microchip: string | null;
+        notes: string | null;
+        breed: string | null;
+        canonicalBreedId: number | null;
+        customBreedId: number | null;
+        archived: boolean;
+      }>
+    ) {
+      const url = joinUrl(v1, "animals", String(id));
+      return fetchJson<any>(url, { method: "PATCH", body: JSON.stringify(body) }, withAuth());
+    },
+    async archive(id: ID) {
+      const url = joinUrl(v1, "animals", String(id), "archive");
+      return fetchJson<{ ok: true }>(url, { method: "POST" }, withAuth());
+    },
+    async restore(id: ID) {
+      const url = joinUrl(v1, "animals", String(id), "restore");
+      return fetchJson<{ ok: true }>(url, { method: "POST" }, withAuth());
+    },
+    async remove(id: ID) {
+      const url = joinUrl(v1, "animals", String(id));
+      return fetchJson<{ ok: true }>(url, { method: "DELETE" }, withAuth());
+    },
+
+    /* ---------- Animal Tags ---------- */
+    tags: {
+      async list(animalId: ID) {
+        const url = joinUrl(v1, "animals", String(animalId), "tags");
+        return fetchJson<{ items: any[]; total: number }>(url, { method: "GET" }, withAuth());
+      },
+      async add(animalId: ID, tagId: ID) {
+        const url = joinUrl(v1, "animals", String(animalId), "tags");
+        return fetchJson<{ ok: true }>(
+          url,
+          { method: "POST", body: JSON.stringify({ tagId: Number(tagId) }) },
+          withAuth()
+        );
+      },
+      async remove(animalId: ID, tagId: ID) {
+        const url = joinUrl(v1, "animals", String(animalId), "tags", String(tagId));
+        return fetchJson<{ ok: true }>(url, { method: "DELETE" }, withAuth());
+      },
+    },
+
+    /* ---------- Animal Owners ---------- */
+    owners: {
+      async list(animalId: ID) {
+        const url = joinUrl(v1, "animals", String(animalId), "owners");
+        return fetchJson<{ items: any[]; total: number }>(url, { method: "GET" }, withAuth());
+      },
+      async create(
+        animalId: ID,
+        body: {
+          partyType: "Organization" | "Contact";
+          organizationId?: number | null;
+          contactId?: number | null;
+          percent: number;
+          isPrimary?: boolean;
+        }
+      ) {
+        const url = joinUrl(v1, "animals", String(animalId), "owners");
+        return fetchJson<any>(url, { method: "POST", body: JSON.stringify(body) }, withAuth());
+      },
+      async update(
+        animalId: ID,
+        ownerId: ID,
+        body: Partial<{
+          percent: number;
+          isPrimary: boolean;
+          partyType: "Organization" | "Contact";
+          organizationId: number | null;
+          contactId: number | null;
+        }>
+      ) {
+        const url = joinUrl(v1, "animals", String(animalId), "owners", String(ownerId));
+        return fetchJson<any>(url, { method: "PATCH", body: JSON.stringify(body) }, withAuth());
+      },
+      async remove(animalId: ID, ownerId: ID) {
+        const url = joinUrl(v1, "animals", String(animalId), "owners", String(ownerId));
+        return fetchJson<{ ok: true }>(url, { method: "DELETE" }, withAuth());
+      },
+    },
+
+    /* ---------- Animal Registries ---------- */
+    registries: {
+      async list(animalId: ID) {
+        const url = joinUrl(v1, "animals", String(animalId), "registries");
+        return fetchJson<{ items: any[]; total: number }>(url, { method: "GET" }, withAuth());
+      },
+      async create(
+        animalId: ID,
+        body: {
+          registryId: number;
+          identifier: string;
+          registrarOfRecord?: string | null;
+          issuedAt?: string | null;
+        }
+      ) {
+        const url = joinUrl(v1, "animals", String(animalId), "registries");
+        return fetchJson<any>(url, { method: "POST", body: JSON.stringify(body) }, withAuth());
+      },
+      async update(
+        animalId: ID,
+        identifierId: ID,
+        body: Partial<{
+          identifier: string;
+          registrarOfRecord: string | null;
+          issuedAt: string | null;
+          registryId: number;
+        }>
+      ) {
+        const url = joinUrl(v1, "animals", String(animalId), "registries", String(identifierId));
+        return fetchJson<any>(url, { method: "PATCH", body: JSON.stringify(body) }, withAuth());
+      },
+      async remove(animalId: ID, identifierId: ID) {
+        const url = joinUrl(v1, "animals", String(animalId), "registries", String(identifierId));
+        return fetchJson<{ ok: true }>(url, { method: "DELETE" }, withAuth());
+      },
+    },
+  };
+
+  /* ------------------------------- LOOKUPS/EXTRAS ---------------------------- */
+  const lookups = {
+    /** used by the Contacts UI */
+    async searchOrganizations(q: string) {
+      const p = new URLSearchParams();
+      if (q) p.set("q", q);
+      p.set("limit", "200");
+      const url = joinUrl(v1, "organizations") + (p.toString() ? `?${p.toString()}` : "");
+      const res = await fetchJson<{ items: any[] }>(url, { method: "GET" }, withAuth());
+      return Array.isArray(res?.items) ? res.items : [];
+    },
+  };
+
+  const contactsExtras = {
+    /** returns [] until backend route exists */
+    async animalsForContact(contactId: ID): Promise<any[]> {
+      const url = joinUrl(v1, "contacts", String(contactId), "animals");
+      try {
+        const res = await fetchJson<any>(url, { method: "GET" }, withAuth());
+        return Array.isArray(res?.items) ? res.items : Array.isArray(res) ? res : [];
+      } catch (e: any) {
+        if (e?.status === 404) return [];
+        throw e;
+      }
+    },
+  };
 
   return {
-    contacts: {
-      list: (p: ListParams = {}) => {
-        const url =
-          `${root}/contacts` +
-          qs({
-            q: p.q,
-            page: p.page,
-            limit: p.limit,
-            includeArchived: !!p.includeArchived,
-          });
-        return request(url, { method: "GET", headers: h() });
-      },
-
-      get: (id: string | number) => {
-        const url = `${root}/contacts/${encodeURIComponent(String(id))}`;
-        return request(url, { method: "GET", headers: h() });
-      },
-
-      create: (body: Json) => {
-        const url = `${root}/contacts`;
-        return request(url, {
-          method: "POST",
-          headers: jsonHeaders(),
-          body: JSON.stringify(body),
-        });
-      },
-
-      update: (id: string | number, body: Json) => {
-        const url = `${root}/contacts/${encodeURIComponent(String(id))}`;
-        return request(url, {
-          method: "PATCH",
-          headers: jsonHeaders(),
-          body: JSON.stringify(body),
-        });
-      },
-
-      archive: (id: string | number, reason?: string) => {
-        const url = `${root}/contacts/${encodeURIComponent(String(id))}`;
-        const hasBody = typeof reason === "string" && reason.length > 0;
-        return request(url, {
-          method: "DELETE",
-          headers: hasBody ? jsonHeaders() : h(),
-          body: hasBody ? JSON.stringify({ reason }) : undefined,
-        });
-      },
-
-      restore: (id: string | number) => {
-        const url = `${root}/contacts/${encodeURIComponent(String(id))}/restore`;
-        return request(url, { method: "POST", headers: h() });
-      },
-
-      // ───────── affiliations ──────────────────────────────────────────────
-      getAffiliations: (id: string | number) => {
-        const url = `${root}/contacts/${encodeURIComponent(String(id))}/affiliations`;
-        return request(url, { method: "GET", headers: h() });
-      },
-
-      setAffiliations: (id: string | number, organizationIds: Array<number | string>) => {
-        const url = `${root}/contacts/${encodeURIComponent(String(id))}/affiliations`;
-        return request(url, {
-          method: "PUT",
-          headers: jsonHeaders(),
-          body: JSON.stringify({ organizationIds: organizationIds.map(Number) }),
-        });
-      },
-    },
-
-    tags: {
-      list: (type: "contact" = "contact") => {
-        const url = `${root}/tags` + qs({ type });
-        return request(url, { method: "GET", headers: h() });
-      },
-    },
-
-    organizations: {
-      list: (p: { q?: string; page?: number; limit?: number } = {}) => {
-        const url = `${root}/organizations` + qs(p);
-        return request(url, { method: "GET", headers: h() });
-      },
-    },
+    contacts,
+    contactsExtras,
+    tags,
+    organizations,
+    animals,
+    lookups,
   };
 }
+
+/* Default singleton for apps that don’t need multiple bases */
+const api = makeApi();
+export default api;
+
+/* Extra named exports if you need them elsewhere */
+export { joinUrl };

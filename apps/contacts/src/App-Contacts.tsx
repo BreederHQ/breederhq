@@ -2,7 +2,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Card, Button, Input, EmptyState } from "@bhq/ui";
-import { makeApi } from "./api";
+import { makeApi, apiUtils } from "./api";
 
 /** ─────────────────────────────────────────────────────────────────────────────
  * Types
@@ -99,8 +99,53 @@ type AuditRow = {
   createdAt: string; // ISO
 };
 
+function getTenantId(): number | null {
+  const t = resolveTenantIdFromAnySource();
+  return t != null && Number.isFinite(t) && t > 0 ? t : null;
+}
+
+
+function resolveTenantIdFromAnySource(): number | null {
+  const w = window as any;
+  const fromGlobal = Number(w.__BHQ_TENANT_ID__);
+  if (Number.isFinite(fromGlobal) && fromGlobal > 0) return fromGlobal;
+
+  // cookie won’t be readable when HttpOnly; keep the code but don’t rely on it
+  const fromCookie = tenantIdFromSessionCookie();
+  if (Number.isFinite(fromCookie) && fromCookie > 0) return fromCookie;
+
+  try {
+    const fromLS = Number(localStorage.getItem("BHQ_TENANT_ID") || "");
+    if (Number.isFinite(fromLS) && fromLS > 0) return fromLS;
+  } catch { }
+
+  const fromEnv = Number((import.meta as any)?.env?.VITE_DEV_TENANT_ID || "");
+  if (Number.isFinite(fromEnv) && fromEnv > 0) return fromEnv;
+
+  return null;
+}
+
+
+
+function shapeContact(row: any) {
+  const {
+    phoneE164, whatsappE164,
+    first_name, last_name, display_name, nickname,
+    ...rest
+  } = row || {};
+  return {
+    ...rest,
+    // DB → UI
+    firstName: rest.firstName ?? first_name ?? null,
+    lastName: rest.lastName ?? last_name ?? null,
+    displayName: rest.displayName ?? display_name ?? null,
+    nickname: rest.nickname ?? nickname ?? null,
+    phone: phoneE164 ?? null,
+    whatsappPhone: whatsappE164 ?? null,
+  };
+}
+
 function getEventValue(e: any): string {
-  if (e && typeof e.persist === "function") e.persist(); // <-- add this
   if (e && typeof e === "object") {
     const v =
       (e.currentTarget && "value" in e.currentTarget ? e.currentTarget.value : undefined) ??
@@ -156,7 +201,7 @@ const ALL_COLUMNS: ColumnDef[] = [
   { key: "organizationName", label: "Organization", default: true, type: "text" },
   { key: "email", label: "Email", default: true, type: "text" },
   { key: "phone", label: "Phone", default: true, type: "text", render: (r: ContactRow) => r.phone ? <span className="whitespace-nowrap">   {formatPhone(String(r.phone), countryCodeFor(r.country))} </span> : <span className="text-secondary">—</span> },
-  { key: "tags", label: "Tags", default: true, type: "text" },
+  { key: "tags", label: "Tags", default: true, type: "tags" },
 
   // Optional
   { key: "status", label: "Status", default: true, type: "text" },
@@ -164,21 +209,25 @@ const ALL_COLUMNS: ColumnDef[] = [
   { key: "lastContacted", label: "Last Contacted", default: false, type: "date" },
   { key: "nextFollowUp", label: "Next Follow-up", default: false, type: "date" },
   { key: "emailStatus", label: "Email Status", default: false, type: "text" },
-  { key: "whatsappPhone", label: "WhatsApp", default: false, /* ...render... */ },
-  { key: "city", label: "City", default: false, type: "text" },
+  { key: "whatsappPhone", label: "WhatsApp", default: false, type: "text", render: (r: ContactRow) => r.whatsappPhone ? <span className="whitespace-nowrap">{formatPhone(String(r.whatsappPhone), countryCodeFor(r.country))}</span> : <span className="text-secondary">—</span> }, { key: "city", label: "City", default: false, type: "text" },
   { key: "state", label: "State", default: false, type: "text" },
   { key: "postalCode", label: "Postal Code", default: false, type: "text" },
   { key: "country", label: "Country", default: false, type: "text" },
 ];
+
+const Z = {
+  topLayer: 2147483646,
+  popover: 2147483645,
+  backdrop: 2147483644,
+} as const;
 
 function getOverlayRoot(): HTMLElement {
   let el = document.getElementById("bhq-top-layer") as HTMLElement | null;
   if (!el) {
     el = document.createElement("div");
     el.id = "bhq-top-layer";
-    // keep it above the app but below the drawer (which is 2147483647)
     el.style.position = "relative";
-    el.style.zIndex = "2147483646";
+    el.style.zIndex = String(Z.topLayer);
     document.body.appendChild(el);
   }
   return el;
@@ -419,13 +468,13 @@ function IntlPhoneField({
   const dropdown = open && pos ? createPortal(
     <>
       <div
-        className="fixed inset-0 z-[9998]"
-        style={{ background: "transparent", pointerEvents: "auto" }}
         onClick={() => setOpen(false)}
+        style={{ position: "fixed", inset: 0, zIndex: Z.backdrop, background: "transparent", pointerEvents: "auto" }}
       />
       <div
-        className="fixed z-[9999] w-[340px] max-w-[calc(100vw-24px)] rounded-xl border border-hairline bg-surface text-primary shadow-[0_8px_30px_hsla(0,0%,0%,0.35)]"
-        style={{ top: pos.top, left: pos.left }}
+        role="menu"
+        className="rounded-xl border border-hairline bg-surface text-primary shadow-[0_8px_30px_hsla(0,0%,0%,0.35)] max-w-[calc(100vw-24px)] w-[320px]"
+        style={{ position: "fixed", top: pos.top, left: pos.left, zIndex: Z.popover }}
       >
         <div className="p-2 border-b border-hairline">
           <input
@@ -592,105 +641,84 @@ function useDebounced<T>(value: T, delay = 300) {
   return v;
 }
 
-function buildContactPayload(base: any, src: any) {
+function buildContactPayload(base: any, src: any, opts?: { countries?: { code: string; name: string }[] }) {
   const s = src || {};
-
-  // UI keeps WhatsApp inside commPrefs for convenience, API wants it top level
   const prefsSrc = s.commPrefs ?? base.commPrefs ?? null;
   const prefs = prefsSrc && typeof prefsSrc === "object" ? prefsSrc : null;
 
-  // Map compliance override UI -> status strings
-  const emailOverride = s?.complianceOverride?.email === true;
-  const smsOverride = s?.complianceOverride?.sms === true;
+  // display_name the API expects
+  const dnParts = [
+    String(s.nickname ?? "").trim(),
+    [String(s.firstName ?? "").trim(), String(s.lastName ?? "").trim()].filter(Boolean).join(" ")
+  ].filter(Boolean);
+  const display_name =
+    (dnParts[0] || dnParts[1] || "").trim() ||
+    String(s.email || s.phone || (prefs as any)?.whatsappPhone || "").trim();
 
-  // 👉 declare helpers BEFORE the object
+  const countries = opts?.countries;
+  const normalizeCountry = (value?: string | null) => {
+    const v = String(value ?? "").trim();
+    if (!v) return null;
+    if (!countries?.length) return v;
+    const byCode = countries.find(c => c.code.toUpperCase() === v.toUpperCase());
+    if (byCode) return byCode.code;
+    const byName = countries.find(c => c.name.toUpperCase() === v.toUpperCase());
+    return byName ? byName.code : v;
+  };
+
   const cleanId = (v: any) => (v === "" || v === undefined ? null : v);
 
   const out: any = {
-    // core identity
+    // ------- DB fields (snake_case) -------
+    first_name: s.firstName ?? base.firstName ?? null,
+    last_name: s.lastName ?? base.lastName ?? null,
+    nickname: s.nickname ?? base.nickname ?? null,
+    display_name,
+
+    email: s.email ?? base.email ?? null,
+    phoneE164: s.phone ?? base.phone ?? null,
+    whatsappE164: (prefs as any)?.whatsappPhone ?? (s as any)?.whatsappPhone ?? null,
+    street: s.street ?? base.street ?? null,
+    street2: s.street2 ?? base.street2 ?? null,
+    city: s.city ?? base.city ?? null,
+    state: s.state ?? base.state ?? null,
+    zip: s.postalCode ?? base.postalCode ?? null,
+    country: normalizeCountry(s.country ?? base.country) ?? null,
+    organizationId: cleanId(s.organizationId ?? base.organizationId),
+    archived: s.archived ?? base.archived ?? false,
+
+    // ---------- keep UI mirrors (harmless to API) ----------
     firstName: s.firstName ?? base.firstName ?? undefined,
     lastName: s.lastName ?? base.lastName ?? undefined,
-    nickname: s.nickname ?? base.nickname ?? undefined,
-
-    // contact details
-    email: s.email ?? base.email ?? undefined,
     phone: s.phone ?? base.phone ?? undefined,
     phoneType: s.phoneType ?? base.phoneType ?? undefined,
-
-    // address
-    street: s.street ?? base.street ?? undefined,
-    street2: s.street2 ?? base.street2 ?? undefined,
-    city: s.city ?? base.city ?? undefined,
-    state: s.state ?? base.state ?? undefined,
-    postalCode: s.postalCode ?? base.postalCode ?? undefined,
-    country: s.country ?? base.country ?? undefined,
-
-    // org + status
-    organizationId: cleanId(s.organizationId ?? base.organizationId),
-    status: s.status ?? base.status ?? undefined,
     leadStatus: s.leadStatus ?? base.leadStatus ?? undefined,
-
-    // comm prefs (only allowed keys)
-    commPrefs: prefs
-      ? {
-        email: typeof prefs.email === "boolean" ? prefs.email : undefined,
-        sms: typeof prefs.sms === "boolean" ? prefs.sms : undefined,
-        phone: typeof prefs.phone === "boolean" ? prefs.phone : undefined,
-        mail: typeof prefs.mail === "boolean" ? prefs.mail : undefined,
-      }
-      : undefined,
-
-    // tags and holds
-    tags: s.tags ?? base.tags ?? undefined,
-    depositHolds: s.depositHolds ?? base.depositHolds ?? undefined,
-
-    // notes + dates
     notes: s.notes ?? base.notes ?? undefined,
     nextFollowUp: s.nextFollowUp ?? base.nextFollowUp ?? undefined,
     lastContacted: s.lastContacted ?? base.lastContacted ?? undefined,
     birthday: s.birthday ?? base.birthday ?? undefined,
   };
 
-  // Lift WhatsApp to top level if user touched it in the UI
   if (prefs) {
-    if (typeof prefs.whatsapp === "boolean") out.whatsapp = prefs.whatsapp;
-    if (typeof prefs.whatsappPhone === "string") out.whatsappPhone = prefs.whatsappPhone;
-  }
-
-  // Apply compliance overrides
-  if (emailOverride && typeof s?.compliance?.email === "boolean") {
-    out.emailStatus = s.compliance.email ? "subscribed" : "unsubscribed";
-  }
-  if (smsOverride && typeof s?.compliance?.sms === "boolean") {
-    out.smsStatus = s.compliance.sms ? "subscribed" : "unsubscribed";
+    out.commPrefs = {
+      email: typeof prefs.email === "boolean" ? prefs.email : undefined,
+      sms: typeof prefs.sms === "boolean" ? prefs.sms : undefined,
+      phone: typeof prefs.phone === "boolean" ? prefs.phone : undefined,
+      mail: typeof prefs.mail === "boolean" ? prefs.mail : undefined,
+      whatsappPhone: typeof (prefs as any).whatsappPhone === "string" ? (prefs as any).whatsappPhone : undefined,
+    };
   }
 
   return out;
 }
 
 // Very small CC map; add more as you need
-const CC_MAP: Record<string, string> = {
-  US: "1", USA: "1", "UNITED STATES": "1",
-  CA: "1", CANADA: "1",
-  MX: "52", MEXICO: "52",
-  GB: "44", UK: "44", "UNITED KINGDOM": "44", ENGLAND: "44",
-  AU: "61", AUSTRALIA: "61",
-  NZ: "64", "NEW ZEALAND": "64",
-  FR: "33", FRANCE: "33",
-  DE: "49", GERMANY: "49",
-  ES: "34", SPAIN: "34",
-  IT: "39", ITALY: "39",
-  IE: "353", IRELAND: "353",
-};
-
-function normCountryKey(c?: string) {
-  return String(c || "").trim().toUpperCase();
-}
-
 function countryCodeFor(country?: string): string {
-  const k = normCountryKey(country);
-  if (!k) return "1"; // default to +1 if unknown
-  return CC_MAP[k] ?? CC_MAP[k.replace(/\./g, "")] ?? "1";
+  const raw = String(country || "").trim();
+  if (!raw) return "1";
+  const iso = raw.toUpperCase();
+  if (DIAL_BY_ISO[iso]) return DIAL_BY_ISO[iso];
+  return "1";
 }
 
 // Format NANP (+1) as +1 (AAA) BBB-CCCC, others as +CC groups (4-3-4-ish)
@@ -861,6 +889,36 @@ function LabeledInputBare(props: {
 
 const RequiredMark = () => <span className="text-red-500 ml-1" aria-hidden="true">*</span>;
 
+// ── module-scope helpers (PUT THESE AT TOP OF FILE) ─────────────────────────
+function readCookie(name: string): string {
+  try {
+    const c = document.cookie.split("; ").find(x => x.startsWith(name + "="));
+    return c ? decodeURIComponent(c.slice(name.length + 1)) : "";
+  } catch { return ""; }
+}
+
+function b64json(s: string): any {
+  const pad = (x: string) => x + "===".slice((x.length + 3) % 4);
+  const norm = pad(s.replace(/-/g, "+").replace(/_/g, "/"));
+  return JSON.parse(atob(norm));
+}
+
+function tenantIdFromSessionCookie(): number {
+  const raw = readCookie("bhq_s");
+  if (!raw) return NaN;
+  try {
+    const parts = raw.split(".");
+    const payloadB64 = parts.length === 3 ? parts[1] : parts[0];
+    const payload = b64json(payloadB64);
+    const id =
+      Number(payload?.tenantId) ??
+      Number(payload?.tenantID) ??
+      Number(payload?.tenant_id) ??
+      Number(payload?.tenant?.id);
+    return Number.isFinite(id) ? id : NaN;
+  } catch { return NaN; }
+}
+
 export default function AppContacts() {
   // announce active module once on mount
   React.useEffect(() => {
@@ -869,7 +927,56 @@ export default function AppContacts() {
     try { localStorage.setItem("BHQ_LAST_MODULE", label); } catch { }
   }, []);
 
-  /** API client with env/local override */
+  const [tenantReady, setTenantReady] = React.useState(false);
+
+
+  // TENANT bootstrap: learn tenant id from session and cache it
+  React.useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const base = getApiBase(); // your helper in this file
+        const url = apiUtils.joinUrl(base, "api", "v1", "session"); // NOT tenant-scoped
+
+        // Use our helper; do NOT pass tenant headers on purpose
+        const data: any = await apiUtils.fetchJson(url, { method: "GET" });
+
+        const t = Number(
+          data?.tenant?.id ??
+          data?.tenantId ??
+          data?.tenantID
+        );
+
+        if (!cancelled && Number.isFinite(t) && t > 0) {
+          (window as any).__BHQ_TENANT_ID__ = t;
+          try { localStorage.setItem("BHQ_TENANT_ID", String(t)); } catch { }
+          setTenantReady(true);
+        }
+      } catch {
+        // swallow: unauth or no session just leaves tenantReady=false
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, []);
+
+  React.useEffect(() => {
+    if (tenantReady) return;
+    let timer: number | undefined;
+    const tick = () => {
+      const t = getTenantId();
+      if (t != null) {
+        setTenantReady(true);
+      } else {
+        timer = window.setTimeout(tick, 100);
+      }
+    };
+    tick();
+    return () => { if (timer) clearTimeout(timer); };
+  }, [tenantReady]);
+
+
   /** API base + auth helpers (usable by both makeApi and manual fetches) */
   function getApiBase() {
     const w = window as any;
@@ -883,51 +990,14 @@ export default function AppContacts() {
     } catch { /* noop */ }
     return base;
   }
-  function getAuthHeaders() {
-    const w = window as any;
-    const orgId =
-      Number(w.__BHQ_ORG_ID__) ||
-      (() => {
-        try {
-          const r = localStorage.getItem("BHQ_ORG_ID");
-          return r ? Number(r) : NaN;
-        } catch {
-          return NaN;
-        }
-      })() ||
-      Number((import.meta as any)?.env?.VITE_DEV_ORG_ID || "");
-    const headers: Record<string, string> = {};
-    if (Number.isFinite(orgId) && orgId > 0) headers["X-Org-Id"] = String(orgId);
-    return headers;
-  }
 
-  /** API client (unchanged behavior) */
+  /** API client (avoid double-adding x-tenant-id + keep GETs header-light) */
   const apiBase = useMemo(() => getApiBase(), []);
   const api = useMemo(() => {
-    // makeApi internally appends /api/v1 — pass the plain base
-    const client = makeApi(apiBase, () => getAuthHeaders());
-    if (import.meta.env?.DEV) (window as any).__api = client;
+    const client = makeApi(apiBase, () => ({}));
+    (window as any).__api = client; // optional debug exposure
     return client;
   }, [apiBase]);
-
-  // ── Auth shim for NavShell (temporary, until real login is wired) ───────────
-  const authState = React.useMemo(() => {
-    const w = window as any;
-    const token =
-      w.__BHQ_TOKEN__ ||
-      localStorage.getItem("ADMIN_TOKEN") ||
-      (import.meta as any)?.env?.VITE_ADMIN_TOKEN;
-
-    return {
-      isAuthenticated: !!token,
-      onLogin: () => { location.href = "/login"; },
-      onLogout: () => {
-        try { localStorage.removeItem("ADMIN_TOKEN"); } catch { }
-        try { (window as any).__BHQ_TOKEN__ = ""; } catch { }
-        location.reload();
-      },
-    };
-  }, []);
 
   /** Basic prefs */
   const [columns, setColumns] = useState<Record<string, boolean>>(() => {
@@ -993,7 +1063,77 @@ export default function AppContacts() {
   /** Create/Edit modal */
   const [formOpen, setFormOpen] = useState<boolean>(false);
   const [editingId, setEditingId] = useState<ID | null>(null);
-  const [form, setForm] = useState<Partial<ContactRow>>({ firstName: "", lastName: "", email: "", phone: "", notes: "" });
+  const [form, setForm] = useState<Partial<ContactRow>>({
+    firstName: "",
+    lastName: "",
+    email: "",
+    phone: "",
+    notes: "",
+    address: {
+      country: "",
+      state: "",
+      city: "",
+      zip: "",
+      street: "",
+      street2: "",
+    },
+  });
+
+  useEffect(() => {
+    setForm((f) => ({
+      ...f,
+      address: {
+        country: f?.address?.country ?? "",
+        state: f?.address?.state ?? "",
+        city: f?.address?.city ?? "",
+        zip: f?.address?.zip ?? "",
+        street: f?.address?.street ?? "",
+        street2: f?.address?.street2 ?? "",
+      },
+    }));
+    // run once
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+
+  // --- State/Region helpers (US vs non-US) ---
+  const countryStr = String(form?.address?.country ?? "").trim().toLowerCase();
+  const isUS =
+    countryStr === "united states" ||
+    countryStr === "united states of america" ||
+    countryStr === "usa" ||
+    countryStr === "us";
+
+  // Use your existing options if you have them. This is just an example subset.
+  const US_STATE_OPTIONS: Array<{ value: string; label: string }> = [
+    { value: "AL", label: "Alabama" },
+    { value: "AK", label: "Alaska" },
+    { value: "AZ", label: "Arizona" },
+    { value: "AR", label: "Arkansas" },
+    { value: "CA", label: "California" },
+    // ... include your full list here
+  ];
+
+  /** Convert either a react-select option or an <input> event into a plain string */
+  function toPlainValue(optOrEvent: any): string {
+    // Native input event path
+    if (optOrEvent && optOrEvent.target) return String(optOrEvent.target.value ?? "");
+    // react-select onChange(option | null)
+    if (optOrEvent == null) return "";
+    if (typeof optOrEvent === "string") return optOrEvent;
+    if (typeof optOrEvent.value === "string") return optOrEvent.value;
+    return "";
+  }
+
+  /** One handler that works for both react-select and native input */
+  function handleStateChange(optOrEvent: any) {
+    const next = toPlainValue(optOrEvent);
+    setForm((f: any) => ({
+      ...f,
+      address: { ...(f?.address ?? {}), state: next },
+    }));
+  }
+
 
   /** Bulk tag manager (for selected rows) */
   const [tagBarOpen, setTagBarOpen] = useState<boolean>(false);
@@ -1009,15 +1149,11 @@ export default function AppContacts() {
   const [affiliations, setAffiliations] = React.useState<number[]>([]);
 
   useEffect(() => {
+    if (!tenantReady) return;
     (async () => {
       try {
-        const res = await (api as any)?.organizations?.list?.({ limit: 200 });
-        const items =
-          Array.isArray(res) ? res
-            : Array.isArray(res?.items) ? res.items
-              : Array.isArray(res?.data?.items) ? res.data.items
-                : [];
-
+        const res = await api.lookups.searchOrganizations("");
+        const items = Array.isArray(res) ? res : [];
         const normalized = items
           .map((o: any) => ({
             id: o?.id,
@@ -1036,7 +1172,7 @@ export default function AppContacts() {
         setOrganizations([]);
       }
     })();
-  }, [api]);
+  }, [tenantReady, api]);
 
   /** Countries */
   const countries = useCountries();
@@ -1063,6 +1199,15 @@ export default function AppContacts() {
     const byName = list.find(c => c.name.toUpperCase() === v.toUpperCase());
     return byName ? byName.name : undefined;
   }
+  function resolveOrgName(
+    id?: ID | null,
+    fallback?: string | null,
+    list?: Array<{ id: ID; name: string }>
+  ): string {
+    if (id == null) return fallback || "";
+    const hit = list?.find(o => String(o.id) === String(id));
+    return hit?.name || fallback || "";
+  }
 
   /** Normalize a country value that might be a name or code to an ISO alpha-2 code */
   function asCountryCode(
@@ -1079,18 +1224,35 @@ export default function AppContacts() {
 
 
   /** Contact tags from API (type=contact) with fallback */
+  // keep your fallback
   const [contactTags, setContactTags] = useState<string[]>(FALLBACK_CONTACT_TAGS);
+  const [tagsError, setTagsError] = useState<string>("");
+
   useEffect(() => {
+    if (!tenantReady) return;
+
+    let cancelled = false;
+
     (async () => {
       try {
-        const res = await api.tags.list("contact");
-        const items = (Array.isArray(res) ? res : (res as any)?.items ?? [])
-          .map((t: any) => t?.name || t?.key || t)
-          .filter(Boolean);
-        if (items.length) setContactTags(items);
-      } catch { /* fine – use fallback */ }
+        setTagsError("");
+        console.debug("Fetching CONTACT tags; tenant:", getTenantId());
+        const res = await api.tags.list("CONTACT");
+
+        // support either { items: [...] } or bare array
+        const items = Array.isArray(res?.items) ? res.items : (Array.isArray(res) ? res : []);
+        const names: string[] = items.map((t: any) => t?.name).filter(Boolean);
+
+        if (!cancelled && names.length) setContactTags(names);
+      } catch (err: any) {
+        if (!cancelled) setTagsError(err?.message || "Failed to load tags");
+        // keep FALLBACK_CONTACT_TAGS in place on error
+        console.error("tags.list failed:", err);
+      }
     })();
-  }, [api]);
+
+    return () => { cancelled = true; };
+  }, [tenantReady, api]); // v1 not used here, so don’t include it
 
   /** Persist prefs */
   useEffect(() => { localStorage.setItem(COL_STORAGE_KEY, JSON.stringify(columns)); }, [columns]);
@@ -1100,31 +1262,48 @@ export default function AppContacts() {
   useEffect(() => { localStorage.setItem(FILTERS_STORAGE_KEY, JSON.stringify(filters)); }, [filters]);
   useEffect(() => { localStorage.setItem(SHOW_FILTERS_STORAGE_KEY, showFilters ? "1" : "0"); }, [showFilters]);
 
+
+  /** Map UI sorts -> API sort query, e.g. "firstName:asc,lastName:desc" */
+  const sortParam = React.useMemo(
+    () => (sorts.length ? sorts.map(s => `${String(s.key)}:${s.dir}`).join(",") : ""),
+    [sorts]
+  );
+
   /** List fetch */
   useEffect(() => {
+    if (!tenantReady) return;
     let ignore = false;
-    setLoading(true); setError("");
-    const sortParam = sorts.map(s => `${s.dir === "desc" ? "-" : ""}${String(s.key)}`).join(",");
-    api.contacts.list({ q: dq || undefined, limit: pageSize, page, includeArchived, sort: sortParam || undefined })
-      .then((res) => {
-        if (!ignore) {
-          const items = (res as any)?.items ?? (res as any)?.data ?? [];
-          setRows(items.map(normalize));
-          setTotal((res as any)?.total ?? items.length ?? 0);
-        }
+    setLoading(true);
+    setError("");
+
+    api.contacts.list({
+      q: dq || undefined,
+      limit: pageSize,
+      page,
+      includeArchived,
+      sort: sortParam || undefined,
+    })
+      .then((res: any) => {
+        if (ignore) return;
+        // contacts.ts returns { data, total, page, limit }
+        const items = Array.isArray(res?.items) ? res.items : (Array.isArray(res?.data) ? res.data : []);
+        const totalVal = Number.isFinite(res?.total) ? Number(res.total) : items.length;
+        setRows(items.map(shapeContact).map(normalize));
+        setTotal(totalVal);
       })
       .catch((e: any) => { if (!ignore) setError(e?.message || "Failed to load contacts"); })
       .finally(() => { if (!ignore) setLoading(false); });
+
     return () => { ignore = true; };
-  }, [api, dq, pageSize, includeArchived, page, sorts]);
+  }, [tenantReady, api, dq, pageSize, includeArchived, page, sorts]);
 
   // [ADD] load org affiliations for this contact when we select/open it
   useEffect(() => {
-    if (selectedId == null) return;
+    if (!tenantReady || selectedId == null) return;
     let ignore = false;
     (async () => {
       try {
-        const rows = await (api as any).contacts.getAffiliations(String(selectedId));
+        const rows = await api.contacts.getAffiliations(String(selectedId));
         if (ignore) return;
         const ids = Array.isArray(rows) ? rows.map((r: any) => Number(r.organizationId)).filter(Number.isFinite) : [];
         setAffiliations(ids);
@@ -1133,56 +1312,55 @@ export default function AppContacts() {
       }
     })();
     return () => { ignore = true; };
-  }, [api, selectedId]);
+  }, [tenantReady, api, selectedId]);
+
+  useEffect(() => {
+    if (!tenantReady || selectedId == null) return;
+    let ignore = false;
+
+    (async () => {
+      try {
+        const res = await (api as any).contacts.getTags(String(selectedId));
+        const items = Array.isArray(res?.items) ? res.items : [];
+        const names = items.map((t: any) => t?.name).filter(Boolean);
+
+        if (!ignore) {
+          // merge the tags array into the open drawer record
+          setDrawer(prev => prev ? { ...prev, tags: Array.from(new Set(names)) } : prev);
+        }
+      } catch {
+        // silently ignore; UI already shows “No tags” if empty
+      }
+    })();
+
+    return () => { ignore = true; };
+  }, [tenantReady, api, selectedId]);
 
   // Load audit stream when the Audit tab is selected
   useEffect(() => {
-    if (drawerTab !== "audit" || !selectedId) return;
+    if (!tenantReady || drawerTab !== "audit" || !selectedId) return;
 
     let ignore = false;
     setAuditLoading(true);
     setAuditError("");
     setAuditRows([]);
 
-    const headers: Record<string, string> = { ...getAuthHeaders(), "Content-Type": "application/json" };
-
-    fetch(`${apiBase}/api/v1/contacts/${encodeURIComponent(String(selectedId))}/audit`, {
-      headers,
-      credentials: "include",
-    })
-      .then(async (r) => {
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        return r.json();
-      })
-      .then((rows: AuditRow[]) => { if (!ignore) setAuditRows(Array.isArray(rows) ? rows : []); })
-      .catch((e: any) => { if (!ignore) setAuditError(e?.message || "Failed to load audit"); })
-      .finally(() => { if (!ignore) setAuditLoading(false); });
-
-    return () => { ignore = true; };
-  }, [drawerTab, selectedId]);
-
-  // Hydrate the drawer with the latest server record whenever opened/refreshed
-  useEffect(() => {
-    if (!isDrawerOpen || !selectedId) return;
-    let ignore = false;
-    setDrawerLoading(true);
-    setDrawerError("");
-
-    (async () => {
-      try {
-        const dto = await api.contacts.get(String(selectedId));
+    api.contacts.audit(String(selectedId))
+      .then((rows: any) => {
         if (ignore) return;
-        setDrawer(normalize(dto));
-      } catch (e: any) {
-        if (!ignore) setDrawerError(e?.message || "Failed to load contact");
-      } finally {
-        if (!ignore) setDrawerLoading(false);
-      }
-    })();
+        setAuditRows(Array.isArray(rows) ? rows : []);
+      })
+      .catch((e: any) => {
+        if (ignore) return;
+        setAuditError(e?.message || "Failed to load audit");
+      })
+      .finally(() => {
+        if (ignore) return;
+        setAuditLoading(false);
+      });
 
     return () => { ignore = true; };
-  }, [api, isDrawerOpen, selectedId, drawerRefreshKey]);
-
+  }, [tenantReady, api, drawerTab, selectedId]);
 
   const dFilters = useDebounced(filters, 250);
   /** Derived rows: client-side filtering */
@@ -1332,8 +1510,8 @@ export default function AppContacts() {
           value = prettyPhone(String(raw || "")) || "";
         } else if (c.type === "date") {
           value = formatDate(String(raw || ""));
-        } else if (c.type === "tags") {
-          value = (r.tags || []).join("|");
+        } else if (c.key === "tags" || c.type === "tags") {
+          value = (Array.isArray(r.tags) ? r.tags : []).join("|");
         } else {
           value = String(raw ?? "");
         }
@@ -1357,7 +1535,7 @@ export default function AppContacts() {
       const res = await api.contacts.list({ q: dq || undefined, limit: pageSize, page, includeArchived });
       const _items = (res as any)?.items ?? (res as any)?.data ?? [];
       const _total = (res as any)?.total ?? _items.length ?? 0;
-      setRows(_items.map(normalize));
+      setRows(_items.map(shapeContact).map(normalize));
       setTotal(_total);
     } catch (e: any) { setError(e?.message || "Bulk update failed"); }
     finally { setLoading(false); }
@@ -1365,28 +1543,48 @@ export default function AppContacts() {
 
   async function bulkApplyTags() {
     if (selected.size === 0) return;
-    const adds = tagAdd.split(",").map(s => s.trim()).filter(Boolean);
-    const removes = new Set(tagRemove.split(",").map(s => s.trim()).filter(Boolean));
     setLoading(true); setError("");
+
     try {
-      await Promise.all(
-        Array.from(selected).map(async (id) => {
-          const dto = await api.contacts.get(String(id));
-          const current = new Set((dto.tags || []) as string[]);
-          adds.forEach(t => current.add(t));
-          removes.forEach(t => current.delete(t));
-          await api.contacts.update(String(id), { tags: Array.from(current) } as any);
-        })
-      );
+      // 1) Get all CONTACT tags once (id+name map)
+      const res = await api.tags.list("CONTACT");
+      const tagItems = (Array.isArray(res?.items) ? res.items : []);
+      const byName = new Map<string, number>();
+      for (const t of tagItems) {
+        if (t?.name && t?.id != null) byName.set(String(t.name).toLowerCase(), Number(t.id));
+      }
+
+      // 2) Parse adds/removes by name → id (ignore unknowns)
+      const adds = tagAdd.split(",").map(s => s.trim()).filter(Boolean);
+      const removes = tagRemove.split(",").map(s => s.trim()).filter(Boolean);
+
+      const addIds = adds
+        .map(n => byName.get(n.toLowerCase()))
+        .filter((id): id is number => Number.isInteger(id));
+      const removeIds = removes
+        .map(n => byName.get(n.toLowerCase()))
+        .filter((id): id is number => Number.isInteger(id));
+
+      // 3) Call assign/unassign per tag id + contact id
+      const ids = Array.from(selected);
+      await Promise.all([
+        ...ids.flatMap((cid) => addIds.map((tid) => api.tags.assign(tid, cid))),
+        ...ids.flatMap((cid) => removeIds.map((tid) => api.tags.unassign(tid, cid))),
+      ]);
+
+      // 4) Reset UI + refresh list
       setSelected(new Set());
       setTagAdd(""); setTagRemove(""); setTagBarOpen(false);
-      const res = await api.contacts.list({ q: dq || undefined, limit: pageSize, page, includeArchived });
-      const _items = (res as any)?.items ?? (res as any)?.data ?? [];
-      const _total = (res as any)?.total ?? _items.length ?? 0;
-      setRows(_items.map(normalize));
-      setTotal(_total);
-    } catch (e: any) { setError(e?.message || "Bulk tag update failed"); }
-    finally { setLoading(false); }
+
+      const list = await api.contacts.list({ q: dq || undefined, limit: pageSize, page, includeArchived });
+      const items = (list as any)?.items ?? (list as any)?.data ?? [];
+      setRows(items.map(shapeContact).map(normalize));
+      setTotal((list as any)?.total ?? items.length ?? 0);
+    } catch (e: any) {
+      setError(e?.message || "Bulk tag update failed");
+    } finally {
+      setLoading(false);
+    }
   }
 
   const openCreate = () => {
@@ -1399,6 +1597,7 @@ export default function AppContacts() {
       notes: "",
       emailStatus: "subscribed",
       smsStatus: "subscribed",
+      commPrefs: { whatsapp: false, whatsappPhone: "" }
     } as any);
     setFormError("");
     setFormTriedSubmit(false);
@@ -1439,11 +1638,11 @@ export default function AppContacts() {
 
     try {
       if (editingId == null) {
-        const created = await api.contacts.create(nilIfEmpty(buildContactPayload({}, form)));
+        const created = await api.contacts.create(nilIfEmpty(buildContactPayload({}, form, { countries })))
         const newId = (created as any)?.id ?? (created as any)?.data?.id;
         if (!newId) throw new Error("Create succeeded but no id was returned");
       } else {
-        await api.contacts.update(String(editingId), nilIfEmpty(buildContactPayload({}, form)));
+        await api.contacts.update(String(editingId), nilIfEmpty(buildContactPayload({}, form, { countries })));
         setSelectedId(editingId);
         setDrawerTab("overview");
         setIsDrawerOpen(true);
@@ -1455,7 +1654,7 @@ export default function AppContacts() {
 
       const res = await api.contacts.list({ q: dq || undefined, limit: pageSize, page, includeArchived });
       const items = (res as any)?.items ?? (res as any)?.data ?? [];
-      setRows(items.map(normalize));
+      setRows(items.map(shapeContact).map(normalize));
       setTotal((res as any)?.total ?? items.length ?? 0);
     } catch (e: any) {
       setFormError(e?.message || "Save failed");
@@ -1476,8 +1675,8 @@ export default function AppContacts() {
 
         <Card className="bhq-card bg-surface/80 bg-gradient-to-b from-[hsl(var(--glass))/65] to-[hsl(var(--glass-strong))/85] backdrop-blur-sm border border-hairline transition-shadow">
           {/* Toolbar */}
-<div className="bhq-section-fixed p-4 sm:p-5 bg-surface bg-gradient-to-b from-[hsl(var(--glass))/35] to-[hsl(var(--glass-strong))/55] rounded-t-xl overflow-hidden">
-<div className="flex items-center gap-3 justify-between min-w-0">
+          <div className="bhq-section-fixed p-4 sm:p-5 bg-surface bg-gradient-to-b from-[hsl(var(--glass))/35] to-[hsl(var(--glass-strong))/55] rounded-t-xl overflow-hidden">
+            <div className="flex items-center gap-3 justify-between min-w-0">
               {/* LEFT: Search + filter toggle */}
               <div className="pr-2 flex-none w-full sm:w-[480px] md:w-[560px] lg:w-[640px] max-w-full">
                 <div className="relative w-full">
@@ -1623,20 +1822,23 @@ export default function AppContacts() {
                       const active = sorts.find(s => s.key === c.key);
                       const ariaSort = active ? (active.dir === "asc" ? "ascending" : "descending") : "none";
                       return (
-                        <th
-                          key={String(c.key)}
-                          className={["px-3 py-3 cursor-pointer select-none transition-colors text-center", active ? "text-primary" : "text-secondary", "hover:bg-[hsl(var(--brand-orange))]/12"].join(" ")}
-                          onClick={(e) => cycleSort(c.key, (e as any).shiftKey)}
-                          role="button"
-                          aria-sort={ariaSort}
-                          tabIndex={0}
-                          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") cycleSort(c.key, e.shiftKey); }}
-                          title={active ? `${c.label} (${active.dir})` : `Sort by ${c.label}`}
-                        >
-                          <div className="inline-flex items-center gap-1">
-                            <span>{c.label}</span>
-                            {active ? <span className="inline-block h-1.5 w-1.5 rounded-full bg-[hsl(var(--brand-orange))]" /> : <span className="inline-block h-1.5 w-1.5 rounded-full bg-transparent" />}
-                          </div>
+                        <th key={String(c.key)} className="px-3 py-3">
+                          <button
+                            type="button"
+                            className={["w-full text-center select-none transition-colors", active ? "text-primary" : "text-secondary", "hover:bg-[hsl(var(--brand-orange))]/12"].join(" ")}
+                            onClick={(e) => cycleSort(c.key, e.shiftKey)}
+                            aria-sort={ariaSort as any}
+                            title={active ? `${c.label} (${active.dir})` : `Sort by ${c.label}`}
+                          >
+                            <span className="inline-flex items-center gap-1">
+                              <span>{c.label}</span>
+                              {active ? (
+                                <span className="inline-block h-1.5 w-1.5 rounded-full bg-[hsl(var(--brand-orange))]" />
+                              ) : (
+                                <span className="inline-block h-1.5 w-1.5 rounded-full bg-transparent" />
+                              )}
+                            </span>
+                          </button>
                         </th>
                       );
                     })}
@@ -1696,52 +1898,52 @@ export default function AppContacts() {
                 </tbody>
               </table>
             </div>
+          </div>
+
+          {/* Footer */}
+          <div className="bhq-section-fixed flex items-start justify-between px-3 py-2 text-sm">
+            <div className="flex flex-col items-start">
+              <div className="text-secondary">
+                Showing {pageRows.length === 0 ? 0 : (clampedPage - 1) * pageSize + 1} to {Math.min(clampedPage * pageSize, total)} of {total}
+              </div>
+
+              {/* Moved here from header */}
+              <label className="mt-1 inline-flex items-center gap-2 text-xs text-secondary">
+                <input
+                  type="checkbox"
+                  checked={includeArchived}
+                  onChange={(e) => { setIncludeArchived(e.currentTarget.checked); setPage(1); }}
+                />
+                <span>Include archived</span>
+              </label>
             </div>
 
-            {/* Footer */}
-            <div className="bhq-section-fixed flex items-start justify-between px-3 py-2 text-sm">
-              <div className="flex flex-col items-start">
-                <div className="text-secondary">
-                  Showing {pageRows.length === 0 ? 0 : (clampedPage - 1) * pageSize + 1} to {Math.min(clampedPage * pageSize, total)} of {total}
+            <div className="flex items-center gap-2">
+              <label className="hidden sm:flex items-center gap-2 text-xs text-secondary">
+                <span>Rows</span>
+                <div className="relative">
+                  <select
+                    className="appearance-none pr-8 bg-surface-strong border border-hairline rounded px-2 py-1 text-sm outline-none focus:shadow-[0_0_0_2px_hsl(var(--brand-orange))]"
+                    value={String(pageSize)}
+                    onChange={(e) => {
+                      const v = Number(getEventValue(e));
+                      setPageSize(v);
+                      setPage(1);
+                    }}
+                  >
+                    {[10, 25, 50, 100].map(n => <option key={n} value={n}>{n}</option>)}
+                  </select>
+                  <svg className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-secondary" viewBox="0 0 20 20" aria-hidden="true">
+                    <path d="M5.5 7.5l4.5 4 4.5-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                  </svg>
                 </div>
 
-                {/* Moved here from header */}
-                <label className="mt-1 inline-flex items-center gap-2 text-xs text-secondary">
-                  <input
-                    type="checkbox"
-                    checked={includeArchived}
-                    onChange={(e) => { setIncludeArchived(e.currentTarget.checked); setPage(1); }}
-                  />
-                  <span>Include archived</span>
-                </label>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <label className="hidden sm:flex items-center gap-2 text-xs text-secondary">
-                  <span>Rows</span>
-                  <div className="relative">
-                    <select
-                      className="appearance-none pr-8 bg-surface-strong border border-hairline rounded px-2 py-1 text-sm outline-none focus:shadow-[0_0_0_2px_hsl(var(--brand-orange))]"
-                      value={String(pageSize)}
-                      onChange={(e) => {
-                        const v = Number(getEventValue(e));
-                        setPageSize(v);
-                        setPage(1);
-                      }}
-                    >
-                      {[10, 25, 50, 100].map(n => <option key={n} value={n}>{n}</option>)}
-                    </select>
-                    <svg className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-secondary" viewBox="0 0 20 20" aria-hidden="true">
-                      <path d="M5.5 7.5l4.5 4 4.5-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                    </svg>
-                  </div>
-
-                </label>
-                <Button variant="outline" size="sm" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={clampedPage === 1}>Prev</Button>
-                <div>Page {clampedPage} of {pageCount}</div>
-                <Button variant="outline" size="sm" onClick={() => setPage(p => Math.min(pageCount, p + 1))} disabled={clampedPage === pageCount}>Next</Button>
-              </div>
+              </label>
+              <Button variant="outline" size="sm" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={clampedPage === 1}>Prev</Button>
+              <div>Page {clampedPage} of {pageCount}</div>
+              <Button variant="outline" size="sm" onClick={() => setPage(p => Math.min(pageCount, p + 1))} disabled={clampedPage === pageCount}>Next</Button>
             </div>
+          </div>
 
         </Card>
       </div>
@@ -1784,22 +1986,24 @@ export default function AppContacts() {
                       onClick={async () => {
                         if (!drawer) return;
                         try {
-                          // save normal contact fields
-                          await api.contacts.update(String(drawer.id), nilIfEmpty(buildContactPayload(d, draft)));
-
-                          // [ADD] persist affiliations selected in the dropdown
-                          await api.contacts.setAffiliations(String(drawer.id), affiliations);
-
+                          // Persist only contact fields (contacts.ts PATCH supports these)
+                          await api.contacts.update(String(drawer.id), nilIfEmpty(buildContactPayload(d, draft, { countries })));
                           setDraft(null);
                           setDrawerEditing(false);
 
-                          // refresh list + drawer
+                          // refresh list + drawer contents
                           const res = await api.contacts.list({ q: dq || undefined, limit: pageSize, page, includeArchived });
-                          const items = (res as any)?.items ?? (res as any)?.data ?? [];
-                          setRows(items.map(normalize));
+                          const items = Array.isArray((res as any)?.data) ? (res as any).data : [];
+                          setRows(items.map(shapeContact).map(normalize));
                           setTotal((res as any)?.total ?? items.length ?? 0);
-                          setDrawerRefreshKey((k) => k + 1);
-                        } catch (e) { console.error(e); }
+
+                          // re-fetch the open record
+                          const fresh = await api.contacts.get(String(drawer.id));
+                          setDrawer(normalize(shapeContact(fresh as any)));
+                        } catch (e) {
+                          console.error(e);
+                          alert("Save failed");
+                        }
                       }}
                     >
                       Save
@@ -1847,7 +2051,7 @@ export default function AppContacts() {
                               setSelectedId(drawer.id);
                               const res = await api.contacts.list({ q: dq || undefined, limit: pageSize, page, includeArchived });
                               const items = (res as any)?.items ?? (res as any)?.data ?? [];
-                              setRows(items.map(normalize));
+                              setRows(items.map(shapeContact).map(normalize));
                               setTotal((res as any)?.total ?? items.length ?? 0);
                               setDrawerRefreshKey((k) => k + 1);
                             } catch (e) {
@@ -1869,7 +2073,7 @@ export default function AppContacts() {
                               setSelectedId(drawer.id);
                               const res = await api.contacts.list({ q: dq || undefined, limit: pageSize, page, includeArchived });
                               const items = (res as any)?.items ?? (res as any)?.data ?? [];
-                              setRows(items.map(normalize));
+                              setRows(items.map(shapeContact).map(normalize));
                               setTotal((res as any)?.total ?? items.length ?? 0);
                               setDrawerRefreshKey((k) => k + 1);
                             } catch (e) {
@@ -1967,12 +2171,12 @@ export default function AppContacts() {
                       {(() => {
                         const countryRaw = draft?.country ?? d?.country ?? "";
                         const code = asCountryCode(countryRaw, countries).toUpperCase();
-                        const isUS = code === "US" || code === "";
+                        const isUS = code === "US";
                         return isUS;
                       })() ? (
                         <select
                           key="state-select"
-                          className="w-full h-10 ... "
+                          className="w-full h-10 rounded-md border border-hairline bg-surface px-3 text-sm text-primary outline-none focus:shadow-[0_0_0_2px_hsl(var(--brand-orange))] "
                           value={draft?.state ?? d?.state ?? ""}
                           onChange={(e) => {
                             const v = getEventValue(e);
@@ -1985,7 +2189,7 @@ export default function AppContacts() {
                       ) : (
                         <input
                           key="state-input"
-                          className="w-full h-10 ... "
+                          className="w-full h-10 rounded-md border border-hairline bg-surface px-3 text-sm text-primary outline-none focus:shadow-[0_0_0_2px_hsl(var(--brand-orange))] "
                           placeholder="State / Region"
                           value={draft?.state ?? d?.state ?? ""}
                           onChange={(e) => {
@@ -1995,25 +2199,33 @@ export default function AppContacts() {
                         />
                       )}
 
-                      <input
-                        className="w-full h-10 rounded-md border border-hairline bg-surface px-3 text-sm"
-                        placeholder="Postal Code"
-                        inputMode="numeric"
-                        pattern="[0-9]*"
-                        onKeyDown={allowOnlyDigitKeys}
-                        onPaste={(e) => {
-                          e.preventDefault();
-                          const pasted = e.clipboardData.getData("text") || "";
-                          const next = digitsOnly(pasted);
-                          setDraft(p => ({ ...(p || {}), postalCode: next }));
-                        }}
-                        value={draft?.postalCode ?? d?.postalCode ?? ""}
-                        onChange={(e) => {
-                          const raw = e.currentTarget.value;           // <- copy synchronously
-                          const next = digitsOnly(raw);
-                          setDraft(p => ({ ...(p || {}), postalCode: next }));
-                        }}
-                      />
+                      {(() => {
+                        const countryRaw = draft?.country ?? d?.country ?? "";
+                        const code = asCountryCode(countryRaw, countries).toUpperCase();
+                        const isUS = code === "US";
+                        return (
+                          <input
+                            className="w-full h-10 rounded-md border border-hairline bg-surface px-3 text-sm"
+                            placeholder="Postal Code"
+                            inputMode={isUS ? "numeric" : "text"}
+                            pattern={isUS ? "[0-9]*" : undefined}
+                            onKeyDown={isUS ? allowOnlyDigitKeys : undefined}
+                            onPaste={(e) => {
+                              if (!isUS) return;
+                              e.preventDefault();
+                              const pasted = e.clipboardData.getData("text") || "";
+                              const next = digitsOnly(pasted);
+                              setDraft(p => ({ ...(p || {}), postalCode: next }));
+                            }}
+                            value={draft?.postalCode ?? d?.postalCode ?? ""}
+                            onChange={(e) => {
+                              const raw = e.currentTarget.value;
+                              const next = isUS ? digitsOnly(raw) : raw;
+                              setDraft(p => ({ ...(p || {}), postalCode: next }));
+                            }}
+                          />
+                        );
+                      })()}
 
                       <select
                         className="w-full h-10 rounded-md border border-hairline bg-surface px-3 text-sm text-primary outline-none focus:shadow-[0_0_0_2px_hsl(var(--brand-orange))]"
@@ -2046,7 +2258,9 @@ export default function AppContacts() {
                       value={affiliations[0] != null ? String(affiliations[0]) : ""}
                       onChange={(e) => {
                         const idStr = getEventValue(e) || "";
-                        setAffiliations(idStr ? [Number(idStr)] : []);
+                        const idNum = idStr ? Number(idStr) : null;
+                        setAffiliations(idNum != null ? [idNum] : []);
+                        setDraft(p => ({ ...(p || {}), organizationId: idNum }));
                       }}
                     >
                       <option value="">— Select Organization —</option>
@@ -2491,6 +2705,27 @@ export default function AppContacts() {
                       </svg>
                     </div>
 
+                    {/* WhatsApp (optional, used as phone if Phone left empty) */}
+                    <div className="sm:col-span-2">
+                      <label className="block text-xs mb-1">WhatsApp (optional)</label>
+                      <IntlPhoneField
+                        value={String((form as any)?.commPrefs?.whatsappPhone ?? "")}
+                        onChange={(next) =>
+                          setForm((f) => ({
+                            ...f,
+                            commPrefs: { ...((f as any)?.commPrefs || {}), whatsappPhone: next }
+                          }))
+                        }
+                        inferredCountryName={countryNameFromValue(form.country, countries)}
+                        countries={countries}
+                        className="w-full"
+                      />
+                      <div className="text-xs text-secondary mt-1">
+                        If Phone is left empty, this will be used as the phone on save.
+                      </div>
+                    </div>
+
+
                     {/* Number (auto-formatted & length-capped) */}
                     <IntlPhoneField
                       value={String(form.phone ?? "")}             // store E.164 in form.phone
@@ -2527,21 +2762,41 @@ export default function AppContacts() {
                 />
 
                 <div>
-                  <label className="block text-xs mb-1">State / Region</label>
-                  <div className="relative">
-                    <select
-                      className="w-full h-10 appearance-none pr-8 rounded-md bg-surface border border-hairline px-3 text-sm text-primary placeholder:text-secondary outline-none focus:shadow-[0_0_0_2px_hsl(var(--brand-orange))]"
-                      value={String(form.state ?? "")}
-                      onChange={(e) => setForm((f) => ({ ...f, state: e.currentTarget.value }))}
-                    >
-                      <option value="">—</option>
-                      {US_STATES.map((s) => (
-                        <option key={s} value={s}>{s}</option>
-                      ))}
-                    </select>
-                    <svg className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-secondary" viewBox="0 0 20 20" aria-hidden="true">
-                      <path d="M5.5 7.5l4.5 4 4.5-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                    </svg>
+                  <div>
+                    <label className="block text-xs mb-1">State / Region</label>
+                    <div className="relative">
+                      {(() => {
+                        const code = asCountryCode(form.country, countries).toUpperCase();
+                        return code === "US" ? (
+                          <select
+                            key="state-select-create"
+                            className="w-full h-10 appearance-none pr-8 rounded-md bg-surface border border-hairline px-3 text-sm text-primary placeholder:text-secondary outline-none focus:shadow-[0_0_0_2px_hsl(var(--brand-orange))]"
+                            value={String(form.state ?? "")}
+                            onChange={(e) => setForm((f) => ({ ...f, state: e.currentTarget.value }))}
+                          >
+                            <option value="">—</option>
+                            {US_STATES.map((s) => (
+                              <option key={s} value={s}>{s}</option>
+                            ))}
+                          </select>
+                        ) : (
+                          <input
+                            key="state-input-create"
+                            className="w-full h-10 rounded-md border border-hairline px-3 text-sm"
+                            placeholder="State / Region"
+                            value={String(form.state ?? "")}
+                            onChange={(e) => setForm(f => ({ ...f, state: e.currentTarget.value }))}
+                          />
+                        );
+                      })()}
+                      <svg
+                        className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-secondary"
+                        viewBox="0 0 20 20"
+                        aria-hidden="true"
+                      >
+                        <path d="M5.5 7.5l4.5 4 4.5-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                      </svg>
+                    </div>
                   </div>
                 </div>
               </div >
@@ -2549,23 +2804,30 @@ export default function AppContacts() {
               {/* Zip + Country (same row) */}
               < div >
                 <label className="block text-xs mb-1">Zip / Postal code</label>
-                <input
-                  className="h-10 w-full rounded-md border border-hairline px-3 text-sm outline-none focus:shadow-[0_0_0_2px_hsl(var(--brand-orange))]"
-                  inputMode="numeric"
-                  pattern="[0-9]*"
-                  placeholder="Postal Code"
-                  onKeyDown={allowOnlyDigitKeys}
-                  onPaste={(e) => {
-                    e.preventDefault();
-                    const v = e.clipboardData.getData("text") || "";
-                    setForm(f => ({ ...f, postalCode: digitsOnly(v) }));
-                  }}
-                  value={String((form.postalCode ?? (form as any).zip ?? "") as string)}
-                  onChange={(e) => {
-                    const v = digitsOnly(e.currentTarget.value);
-                    setForm(f => ({ ...f, postalCode: v }));
-                  }}
-                />
+                {(() => {
+                  const code = asCountryCode(form.country, countries).toUpperCase();
+                  const isUS = code === "US";
+                  return (
+                    <input
+                      className="h-10 w-full rounded-md border border-hairline px-3 text-sm outline-none focus:shadow-[0_0_0_2px_hsl(var(--brand-orange))]"
+                      placeholder="Postal Code"
+                      inputMode={isUS ? "numeric" : "text"}
+                      pattern={isUS ? "[0-9]*" : undefined}
+                      onKeyDown={isUS ? allowOnlyDigitKeys : undefined}
+                      onPaste={(e) => {
+                        if (!isUS) return;
+                        e.preventDefault();
+                        const v = e.clipboardData.getData("text") || "";
+                        setForm(f => ({ ...f, postalCode: digitsOnly(v) }));
+                      }}
+                      value={String(form.postalCode ?? "")}
+                      onChange={(e) => {
+                        const raw = e.currentTarget.value;
+                        setForm(f => ({ ...f, postalCode: isUS ? digitsOnly(raw) : raw }));
+                      }}
+                    />
+                  );
+                })()}
               </div >
               <div>
                 <label className="block text-xs mb-1">Country</label>

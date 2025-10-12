@@ -1,323 +1,263 @@
 // apps/animals/src/api.ts
 
-// Small helper to join URL parts safely
-function joinUrl(...parts: Array<string | undefined | null>) {
-  const cleaned = parts
-    .filter(Boolean)
-    .map((s) => String(s).replace(/(^\/+|\/+$)/g, ""));
-  const first = cleaned.shift() || "";
-  return (
-    (first.match(/^https?:\/\//) ? first.replace(/\/+$/, "") : "/" + first) +
-    (cleaned.length ? "/" + cleaned.join("/") : "")
-  );
+type HeadersMap = Record<string, string>;
+
+function normBase(base?: string): string {
+  let b = String(base || (window as any).__BHQ_API_BASE__ || "").trim();
+  if (!b) b = (typeof window !== "undefined" ? window.location.origin : "http://localhost:6170");
+  b = b.replace(/\/+$/g, "").replace(/\/api\/v1$/i, "");
+  return `${b}/api/v1`;
 }
 
-/** Read org header from localStorage (used by makeApi header factory) */
-function getAuthHeaders(): Record<string, string> {
-  const headers: Record<string, string> = {};
-  try {
-    const org = localStorage.getItem("BHQ_ORG_ID");
-    if (org) headers["X-Org-Id"] = org;
-  } catch {
-    /* ignore */
-  }
-  return headers;
+function readCookie(name: string): string {
+  if (typeof document === "undefined") return "";
+  const m = document.cookie.match(new RegExp("(^|;\\s*)" + name + "=([^;]*)"));
+  return m ? decodeURIComponent(m[2]) : "";
 }
 
-/** JSON fetch with cookies + auth headers + good errors */
-async function fetchJson<T = any>(
-  url: string,
-  init: RequestInit = {},
-  extraHeaders?: Record<string, string>
-): Promise<T> {
-  const res = await fetch(url, {
-    credentials: "include",
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...(init.headers || {}),
-      ...(extraHeaders || {}),
-    },
-  });
-
-  let body: any = null;
+function getTenantHeader(): HeadersMap {
+  const h: HeadersMap = {};
   try {
-    body = await res.json();
-  } catch {
-    /* non-JSON or empty */
-  }
+    const w: any = window as any;
+    const runtime = Number(w?.__BHQ_TENANT_ID__);
+    const fromLS = Number(localStorage.getItem("BHQ_TENANT_ID") || "NaN");
+    const id =
+      Number.isFinite(runtime) && runtime > 0 ? runtime :
+      Number.isFinite(fromLS) && fromLS > 0 ? fromLS :
+      NaN;
+    if (Number.isFinite(id)) h["x-tenant-id"] = String(id); // normalized lowercase
+  } catch {}
+  return h;
+}
 
+async function parse<T>(res: Response): Promise<T> {
+  const text = await res.text();
+  let data: any;
+  try { data = text ? JSON.parse(text) : undefined; } catch { data = text; }
   if (!res.ok) {
-    const msg =
-      body?.message ||
-      body?.error ||
-      (res.status === 404 ? "Not Found" : `HTTP ${res.status}`);
-    throw new Error(msg);
+    const msg = data?.message || data?.error || `HTTP ${res.status}`;
+    const err: any = new Error(msg);
+    err.status = res.status;
+    err.data = data;
+    throw err;
   }
-  return body as T;
+  return data as T;
 }
-
-/** Types (lightweight, only what we need) */
-export type ID = string | number;
-
-export type OwnerRow = {
-  partyType: "Contact" | "Organization";
-  contactId: string | number | null;
-  organizationId: string | number | null;
-  display_name: string;
-  percent: number;
-  is_primary?: boolean;
-};
-
-type AnimalsListQuery = {
-  q?: string;
-  limit?: number;
-  page?: number;
-  includeArchived?: boolean;
-  sort?: string;
-};
-
-type CreateAnimalPayload = Record<string, any>;
-type UpdateAnimalPayload = Record<string, any>;
-
-type BreedSnapshotBody = {
-  species: "DOG" | "CAT" | "HORSE";
-  primaryBreedId: string | null;
-  canonical: Array<{ breedId: string; percentage: number }>;
-  custom: Array<{ id: string; percentage: number }>;
-};
-
-type ContextResponse = {
-  creatingOrganization?: { id: string | number; display_name?: string; name?: string };
-  organization?: { id: string | number; display_name?: string; name?: string };
-};
 
 /**
- * Factory: returns the API surface used by App-Animals.tsx
- *
- * @param baseOrigin Optional origin, defaults to current window origin or http://localhost:6170
- * @param authHeaderFn Optional function that returns extra headers (e.g., X-Org-Id)
+ * makeApi(base?, extraHeadersFn?)
+ * - Sends x-tenant-id automatically (from runtime or localStorage)
+ * - Merges any extra headers you pass (e.g., x-org-id)
+ * - Adds Content-Type + CSRF only for mutating methods
  */
 export function makeApi(
-  baseOrigin?: string,
-  authHeaderFn?: () => Record<string, string>
+  base?: string,
+  extraHeadersFn?: () => Record<string, string>
 ) {
-  const origin =
-    baseOrigin ||
-    (typeof window !== "undefined" ? window.location.origin : "http://localhost:6170");
+  const root = normBase(base);
 
-  // All endpoints are under /api/v1
-  const v1 = joinUrl(origin, "api", "v1");
+  const hdrs = (init?: RequestInit): HeadersInit => {
+    const h = new Headers(init?.headers as any);
 
-  const withAuth = () => ({
-    ...(authHeaderFn ? authHeaderFn() : getAuthHeaders()),
-  });
+    // Tenant header (required by backend)
+    Object.entries(getTenantHeader()).forEach(([k, v]) => h.set(k, v));
 
-  /** -------- Lookups -------- */
+    // Optional extra headers (e.g., x-org-id)
+    try {
+      const extra = extraHeadersFn?.() || {};
+      Object.entries(extra).forEach(([k, v]) => h.set(k, v));
+    } catch {}
+
+    // Only set Content-Type/CSRF on non-GET/HEAD/OPTIONS
+    const m = String(init?.method || "GET").toUpperCase();
+    if (m !== "GET" && m !== "HEAD" && m !== "OPTIONS") {
+      if (!h.has("content-type")) h.set("content-type", "application/json");
+      if (!h.has("x-csrf-token")) {
+        const xsrf = readCookie("XSRF-TOKEN");
+        if (xsrf) h.set("x-csrf-token", xsrf);
+      }
+    }
+    return h;
+  };
+
+  /** ---------- Lookups used by editor UIs ---------- */
   const lookups = {
-    /**
-     * Get the "creating organization" for the current session/tenant.
-     * Now tries localStorage first to avoid a noisy 404 in dev, then falls back to the server.
-     */
     async getCreatingOrganization(): Promise<{ id: string; display_name: string } | null> {
-      // 1) Local dev fallback FIRST (prevents the 404 you saw)
+      // 1) Local/dev fallback
       try {
         const id = localStorage.getItem("BHQ_ORG_ID");
         if (id) {
           const display_name = localStorage.getItem("BHQ_ORG_NAME") || "My Organization";
           return { id: String(id), display_name: String(display_name) };
         }
-      } catch {
-        /* ignore */
-      }
+      } catch {}
 
-      // 2) Server context (if available)
+      // 2) Server session (we expose `org` in /api/v1/session)
       try {
-        const ctx = await fetchJson<ContextResponse>(
-          joinUrl(v1, "session", "context"),
-          { method: "GET" },
-          withAuth()
-        );
-
-        const org = ctx?.creatingOrganization || ctx?.organization;
+        const res = await fetch(`${root}/session`, { credentials: "include", headers: hdrs() });
+        const ctx = await parse<any>(res);
+        const org = ctx?.creatingOrganization || ctx?.organization || ctx?.org;
         if (org?.id != null) {
-          const display = (org.display_name || org.name || "Organization") as string;
-          return { id: String(org.id), display_name: String(display) };
+          return { id: String(org.id), display_name: String(org.display_name || org.name || "Organization") };
         }
-      } catch {
-        // ignore (stay null)
-      }
-
+      } catch {}
       return null;
     },
 
-    async searchContacts(q: string): Promise<Array<{ id: ID; display_name: string }>> {
-      const url = joinUrl(v1, "contacts") + (q ? `?q=${encodeURIComponent(q)}` : "");
-      const res = await fetchJson<any>(url, { method: "GET" }, withAuth());
-      const items: any[] = Array.isArray(res?.items)
-        ? res.items
-        : Array.isArray(res)
-        ? res
-        : [];
-      return items.map((c) => ({
-        id: c.id,
-        display_name: c.display_name || c.name || c.full_name || "Contact",
-      }));
+    async searchContacts(q: string): Promise<Array<{ id: string | number; display_name: string }>> {
+      const url = `${root}/contacts${q ? `?q=${encodeURIComponent(q)}` : ""}`;
+      const res = await fetch(url, { credentials: "include", headers: hdrs() });
+      const data = await parse<any>(res);
+      const items: any[] = Array.isArray(data?.items) ? data.items : Array.isArray(data) ? data : [];
+      return items.map((c) => ({ id: c.id, display_name: c.display_name || c.name || c.full_name || "Contact" }));
     },
 
-    async searchOrganizations(q: string): Promise<Array<{ id: ID; display_name: string }>> {
-      const url = joinUrl(v1, "organizations") + (q ? `?q=${encodeURIComponent(q)}` : "");
-      const res = await fetchJson<any>(url, { method: "GET" }, withAuth());
-      const items: any[] = Array.isArray(res?.items)
-        ? res.items
-        : Array.isArray(res)
-        ? res
-        : [];
-      return items.map((o) => ({
-        id: o.id,
-        display_name: o.display_name || o.name || "Organization",
-      }));
+    async searchOrganizations(q: string): Promise<Array<{ id: string | number; display_name: string }>> {
+      const url = `${root}/organizations${q ? `?q=${encodeURIComponent(q)}` : ""}`;
+      const res = await fetch(url, { credentials: "include", headers: hdrs() });
+      const data = await parse<any>(res);
+      const items: any[] = Array.isArray(data?.items) ? data.items : Array.isArray(data) ? data : [];
+      return items.map((o) => ({ id: o.id, display_name: o.display_name || o.name || "Organization" }));
     },
   };
 
-  /** -------- Animals -------- */
+  /** ---------- Animals (parity with server) ---------- */
   const animals = {
-    async list(query: AnimalsListQuery = {}) {
-      const params = new URLSearchParams();
-      if (query.q) params.set("q", query.q);
-      if (query.limit != null) params.set("limit", String(query.limit));
-      if (query.page != null) params.set("page", String(query.page));
-      // Support both casings to match different server expectations
-      if (query.includeArchived) {
-        params.set("includeArchived", "true");
-        params.set("include_archived", "1");
-      }
-      if (query.sort) params.set("sort", query.sort);
+    async list(query: { q?: string; limit?: number; page?: number; includeArchived?: boolean; sort?: string } = {}) {
+      const sp = new URLSearchParams();
+      if (query.q) sp.set("q", query.q);
+      if (query.limit != null) sp.set("limit", String(query.limit));
+      if (query.page != null) sp.set("page", String(query.page));
+      if (query.includeArchived) sp.set("includeArchived", "true");
+      if (query.sort) sp.set("sort", query.sort);
 
-      const url =
-        joinUrl(v1, "animals") + (Array.from(params.keys()).length ? `?${params.toString()}` : "");
-
-      return fetchJson<any>(url, { method: "GET" }, withAuth());
+      const url = `${root}/animals${sp.toString() ? `?${sp.toString()}` : ""}`;
+      const res = await fetch(url, { credentials: "include", headers: hdrs() });
+      return parse<any>(res);
     },
 
-    async get(id: ID) {
-      const url = joinUrl(v1, "animals", String(id));
-      return fetchJson<any>(url, { method: "GET" }, withAuth());
+    async get(id: string | number) {
+      const res = await fetch(`${root}/animals/${encodeURIComponent(String(id))}`, {
+        credentials: "include",
+        headers: hdrs(),
+      });
+      return parse<any>(res);
     },
 
-    async create(payload: CreateAnimalPayload) {
-      const url = joinUrl(v1, "animals");
-      return fetchJson<any>(
-        url,
-        { method: "POST", body: JSON.stringify(payload) },
-        withAuth()
-      );
+    async create(body: any) {
+      const res = await fetch(`${root}/animals`, {
+        method: "POST",
+        credentials: "include",
+        headers: hdrs({ method: "POST" }),
+        body: JSON.stringify(body),
+      });
+      return parse<any>(res);
     },
 
-    async update(id: ID, payload: UpdateAnimalPayload) {
-      const url = joinUrl(v1, "animals", String(id));
-      return fetchJson<any>(
-        url,
-        { method: "PATCH", body: JSON.stringify(payload) },
-        withAuth()
-      );
+    async update(id: string | number, patch: any) {
+      const res = await fetch(`${root}/animals/${encodeURIComponent(String(id))}`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: hdrs({ method: "PATCH" }),
+        body: JSON.stringify(patch),
+      });
+      return parse<any>(res);
     },
 
-    async getOwners(id: ID) {
-      const url = joinUrl(v1, "animals", String(id), "owners");
-      return fetchJson<any>(url, { method: "GET" }, withAuth());
+    async archive(id: string | number) {
+      const res = await fetch(`${root}/animals/${encodeURIComponent(String(id))}/archive`, {
+        method: "POST",
+        credentials: "include",
+        headers: hdrs({ method: "POST" }),
+      });
+      return parse<any>(res);
     },
 
-    async putOwners(id: ID, owners: OwnerRow[]) {
-      const url = joinUrl(v1, "animals", String(id), "owners");
-      return fetchJson<any>(
-        url,
-        { method: "PUT", body: JSON.stringify(owners) },
-        withAuth()
-      );
+    async restore(id: string | number) {
+      const res = await fetch(`${root}/animals/${encodeURIComponent(String(id))}/restore`, {
+        method: "POST",
+        credentials: "include",
+        headers: hdrs({ method: "POST" }),
+      });
+      return parse<any>(res);
     },
 
-    // Editor-ready breed snapshot for an animal
-    async getBreeds(id: ID) {
-      const url = joinUrl(v1, "animals", String(id), "breeds");
-      return fetchJson<any>(url, { method: "GET" }, withAuth());
-    },
-
-    // Stores a breed "snapshot" for an animal
-    async putBreeds(id: ID, body: BreedSnapshotBody) {
-      const url = joinUrl(v1, "animals", String(id), "breeds");
-      return fetchJson<any>(
-        url,
-        { method: "PUT", body: JSON.stringify(body) },
-        withAuth()
-      );
+    async remove(id: string | number) {
+      const res = await fetch(`${root}/animals/${encodeURIComponent(String(id))}`, {
+        method: "DELETE",
+        credentials: "include",
+        headers: hdrs({ method: "DELETE" }),
+      });
+      return parse<any>(res);
     },
   };
 
-  /** -------- Breeds -------- */
+  /** ---------- Breeds (parity with server) ---------- */
   const breeds = {
-    /**
-     * Search canonical breeds by species (DOG|CAT|HORSE) with optional q + registries.
-     * Returns an array of items; backend may return {items: []} or [] — both handled.
-     */
+    // Canonical search (server returns 501 for now → we just return [])
     async search(opts: { species: "DOG" | "CAT" | "HORSE"; q?: string; limit?: number; registries?: string[] }) {
-      const params = new URLSearchParams();
-      params.set("species", (opts.species || "DOG").toUpperCase());
-      if (opts.q && opts.q.trim().length > 0) params.set("q", opts.q.trim());
-      params.set("limit", String(Math.min(Math.max(opts.limit ?? 200, 1), 200)));
-      if (opts.registries?.length) params.set("registries", opts.registries.join(","));
-
-      const url = joinUrl(v1, "breeds", "search") + `?${params.toString()}`;
-
+      const sp = new URLSearchParams();
+      sp.set("species", (opts.species || "DOG").toUpperCase());
+      if (opts.q?.trim()) sp.set("q", opts.q.trim());
+      if (opts.limit != null) sp.set("limit", String(Math.min(Math.max(opts.limit, 1), 200)));
+      if (opts.registries?.length) sp.set("registries", opts.registries.join(","));
+      const url = `${root}/breeds/search?${sp.toString()}`;
       try {
-        const res = await fetch(url, {
-          credentials: "include",
-          headers: { ...withAuth() }, // avoid setting Content-Type on GET
-          method: "GET",
-        });
-        const data: any = await res.json().catch(() => ({}));
-        const items = Array.isArray(data?.items) ? data.items : (Array.isArray(data) ? data : []);
-        return items as any[];
+        const res = await fetch(url, { credentials: "include", headers: hdrs() });
+        const data = await parse<any>(res);
+        return Array.isArray(data?.items) ? data.items : Array.isArray(data) ? data : [];
       } catch {
         return [];
       }
     },
 
-    /** List org-defined custom breeds for a species */
-    async customList(opts: { species: "DOG" | "CAT" | "HORSE" }) {
-      const params = new URLSearchParams();
-      params.set("species", (opts.species || "DOG").toUpperCase());
-      const url = joinUrl(v1, "breeds", "custom") + `?${params.toString()}`;
+    // Custom breeds: server requires organizationId in query/body
+    async customList(opts: { organizationId: string | number; species?: "DOG" | "CAT" | "HORSE"; q?: string; page?: number; limit?: number }) {
+      const sp = new URLSearchParams();
+      sp.set("organizationId", String(opts.organizationId));
+      if (opts.species) sp.set("species", opts.species);
+      if (opts.q) sp.set("q", opts.q);
+      if (opts.page != null) sp.set("page", String(opts.page));
+      if (opts.limit != null) sp.set("limit", String(opts.limit));
+      const url = `${root}/breeds/custom?${sp.toString()}`;
+      const res = await fetch(url, { credentials: "include", headers: hdrs() });
+      return parse<any>(res);
+    },
 
-      try {
-        const res = await fetch(url, {
-          credentials: "include",
-          headers: { ...withAuth() },
-          method: "GET",
-        });
-        const data: any = await res.json().catch(() => ({}));
-        const items = Array.isArray(data?.items) ? data.items : (Array.isArray(data) ? data : []);
-        return items as any[];
-      } catch {
-        return [];
-      }
+    async customGet(id: string | number, organizationId: string | number) {
+      const url = `${root}/breeds/custom/${encodeURIComponent(String(id))}?organizationId=${encodeURIComponent(String(organizationId))}`;
+      const res = await fetch(url, { credentials: "include", headers: hdrs() });
+      return parse<any>(res);
+    },
+
+    async customCreate(payload: { organizationId: string | number; species: "DOG" | "CAT" | "HORSE"; name: string }) {
+      const res = await fetch(`${root}/breeds/custom`, {
+        method: "POST",
+        credentials: "include",
+        headers: hdrs({ method: "POST" }),
+        body: JSON.stringify(payload),
+      });
+      return parse<any>(res);
+    },
+
+    async customUpdate(id: string | number, payload: { organizationId: string | number; name?: string; species?: "DOG" | "CAT" | "HORSE" }) {
+      const res = await fetch(`${root}/breeds/custom/${encodeURIComponent(String(id))}`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: hdrs({ method: "PATCH" }),
+        body: JSON.stringify(payload),
+      });
+      return parse<any>(res);
+    },
+
+    async customDelete(id: string | number, organizationId: string | number) {
+      const url = `${root}/breeds/custom/${encodeURIComponent(String(id))}?organizationId=${encodeURIComponent(String(organizationId))}`;
+      const res = await fetch(url, { method: "DELETE", credentials: "include", headers: hdrs({ method: "DELETE" }) });
+      return parse<any>(res);
     },
   };
 
-  /** -------- Org Settings (for registry filters, etc.) -------- */
-  const orgSettings = {
-    async get(): Promise<{ registryCodesEnabled?: string[] }> {
-      const url = joinUrl(v1, "org", "settings");
-      return fetchJson<{ registryCodesEnabled?: string[] }>(url, { method: "GET" }, withAuth());
-    },
-    async put(prefs: { registryCodesEnabled: string[] }) {
-      const url = joinUrl(v1, "org", "settings");
-      return fetchJson<any>(url, { method: "PUT", body: JSON.stringify(prefs) }, withAuth());
-    },
-  };
+  // orgSettings removed — not implemented server-side. Re-add when endpoints exist.
 
-  return { animals, lookups, breeds, orgSettings };
+  return { animals, lookups, breeds };
 }
-
-// Export helpers in case you want them elsewhere
-export const apiUtils = { fetchJson, getAuthHeaders, joinUrl };

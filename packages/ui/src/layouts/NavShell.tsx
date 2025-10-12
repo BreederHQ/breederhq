@@ -79,6 +79,7 @@ function emojiFor(label: string) {
   if (k.includes("contact")) return "📇";
   if (k.includes("organizations")) return "🏤";
   if (k.includes("animal")) return "🐾";
+  if (k.includes("admin")) return "🛠️";
   if (k.includes("offspring")) return "🍼";
   if (k.includes("breed")) return "🧬";
   if (k.includes("calendar")) return "📅";
@@ -144,6 +145,7 @@ export const NavShell: React.FC<NavShellProps> = ({
     { key: "animals", label: "Animals", href: "/animals/" },
     { key: "breeding", label: "Breeding", href: "/breeding/" },
     { key: "offspring", label: "Offspring", href: "/offspring/" },
+    { key: "admin", label: "Admin", href: "/admin/" },
   ];
 
   const navItems = items && items.length ? items : defaultItems;

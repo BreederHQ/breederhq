@@ -1,27 +1,206 @@
-export function makeApi(base = (window as any).__BHQ_API_BASE__ || "") {
-  async function j<T>(r: Response): Promise<T> {
-    const t = await r.text(); try { return JSON.parse(t) } catch { return t as any }
+// apps/organizations/src/api.ts
+
+type HeadersMap = Record<string, string>;
+
+type SessionShape = {
+  tenantId?: number;
+  orgId?: number;
+};
+
+type ListResponse<T> = {
+  items: T[];
+  total: number;
+  page: number;
+  limit: number;
+};
+
+function normBase(base?: string): string {
+  let b = String(base || (window as any).__BHQ_API_BASE__ || "").trim();
+  if (!b) b = (typeof window !== "undefined" ? window.location.origin : "http://localhost:6170");
+  b = b.replace(/\/+$/g, "").replace(/\/api\/v1$/i, "");
+  return `${b}/api/v1`;
+}
+
+function readCookie(name: string): string {
+  if (typeof document === "undefined") return "";
+  const m = document.cookie.match(new RegExp("(^|;\\s*)" + name + "=([^;]*)"));
+  return m ? decodeURIComponent(m[2]) : "";
+}
+
+/** ---- Context: prefer runtime → localStorage; else fetch /session --------- */
+let ctxPromise: Promise<SessionShape> | null = null;
+
+function ctxFromClient(): SessionShape {
+  const w: any = window as any;
+  const rTid = Number(w?.__BHQ_TENANT_ID__);
+  const lsTid = Number(localStorage.getItem("BHQ_TENANT_ID") || "NaN");
+  const tenantId =
+    (Number.isFinite(rTid) && rTid > 0 && rTid) ||
+    (Number.isFinite(lsTid) && lsTid > 0 && lsTid) ||
+    undefined;
+
+  const rOrg = Number(w?.__BHQ_ORG_ID__);
+  const lsOrg = Number(localStorage.getItem("BHQ_ORG_ID") || "NaN");
+  const orgId =
+    (Number.isFinite(rOrg) && rOrg > 0 && rOrg) ||
+    (Number.isFinite(lsOrg) && lsOrg > 0 && lsOrg) ||
+    undefined;
+
+  return { tenantId, orgId };
+}
+
+async function fetchSession(root: string): Promise<SessionShape> {
+  try {
+    const res = await fetch(`${root}/session`, { credentials: "include" });
+    const data = await res.json().catch(() => ({}));
+    const tenantId = Number(data?.tenant?.id) || Number(data?.tenantId) || NaN;
+    const orgId = Number(data?.org?.id) || Number(data?.organization?.id) || NaN;
+
+    const out: SessionShape = {
+      tenantId: Number.isFinite(tenantId) && tenantId > 0 ? tenantId : undefined,
+      orgId: Number.isFinite(orgId) && orgId > 0 ? orgId : undefined,
+    };
+
+    if (out.tenantId) {
+      try { localStorage.setItem("BHQ_TENANT_ID", String(out.tenantId)); } catch {}
+    }
+    if (out.orgId) {
+      try { localStorage.setItem("BHQ_ORG_ID", String(out.orgId)); } catch {}
+    }
+    return out;
+  } catch {
+    return {};
   }
+}
+
+async function getCtx(root: string): Promise<SessionShape> {
+  const local = ctxFromClient();
+  if (local.tenantId) return local;
+  if (!ctxPromise) ctxPromise = fetchSession(root);
+  const remote = await ctxPromise;
+  return {
+    tenantId: local.tenantId ?? remote.tenantId,
+    orgId: local.orgId ?? remote.orgId,
+  };
+}
+
+/** ---- Helpers ------------------------------------------------------------- */
+async function parse<T>(res: Response): Promise<T> {
+  const text = await res.text();
+  let data: any;
+  try { data = text ? JSON.parse(text) : undefined; } catch { data = text; }
+  if (!res.ok) {
+    const msg = data?.message || data?.error || `HTTP ${res.status}`;
+    const err: any = new Error(msg);
+    err.status = res.status;
+    err.data = data;
+    throw err;
+  }
+  return data as T;
+}
+
+function headersFor(ctx: SessionShape, init?: RequestInit): Headers {
+  const h = new Headers(init?.headers as any);
+  if (!h.has("accept")) h.set("accept", "application/json");
+  if (ctx.tenantId) h.set("x-tenant-id", String(ctx.tenantId));
+  if (ctx.orgId) h.set("x-org-id", String(ctx.orgId));
+
+  const m = String(init?.method || "GET").toUpperCase();
+  if (m !== "GET" && m !== "HEAD" && m !== "OPTIONS") {
+    if (!h.has("content-type")) h.set("content-type", "application/json");
+    if (!h.has("x-csrf-token")) {
+      const xsrf = readCookie("XSRF-TOKEN");
+      if (xsrf) h.set("x-csrf-token", xsrf);
+    }
+  }
+  return h;
+}
+
+/** ---- Factory ------------------------------------------------------------- */
+export function makeApi(base?: string) {
+  const root = normBase(base);
+
   return {
     organizations: {
-      async list(params: { q?: string; page?: number; limit?: number } = {}) {
-        const qs = new URLSearchParams(params as any).toString();
-        const r = await fetch(`${base}/api/v1/organizations${qs ? `?${qs}` : ""}`, { credentials: "include" });
-        const data = await j<any>(r); if (!r.ok) throw data;
-        const items = Array.isArray(data?.items) ? data.items : (Array.isArray(data?.data) ? data.data : []);
-        return { items };
+      /** GET /organizations?q=&includeArchived=&page=&limit= */
+      async list(params: { q?: string; includeArchived?: boolean; page?: number; limit?: number } = {}) {
+        const ctx = await getCtx(root);
+        const sp = new URLSearchParams();
+        if (params.q) sp.set("q", params.q);
+        if (params.includeArchived) sp.set("includeArchived", "true");
+        if (params.page != null) sp.set("page", String(params.page));
+        if (params.limit != null) sp.set("limit", String(params.limit));
+        const url = `${root}/organizations${sp.toString() ? `?${sp.toString()}` : ""}`;
+        const res = await fetch(url, { credentials: "include", headers: headersFor(ctx) });
+        return parse<ListResponse<any>>(res);
       },
-      async get(id: number) {
-        const r = await fetch(`${base}/api/v1/organizations/${id}`, { credentials: "include" });
-        const data = await j<any>(r); if (!r.ok) throw data; return data;
+
+      /** GET /organizations/:id */
+      async get(id: number | string) {
+        const ctx = await getCtx(root);
+        const res = await fetch(`${root}/organizations/${encodeURIComponent(String(id))}`, {
+          credentials: "include",
+          headers: headersFor(ctx),
+        });
+        return parse<any>(res);
       },
-      async update(id: number, patch: { name: string }) {
-        const r = await fetch(`${base}/api/v1/organizations/${id}`, {
-          method: "PATCH", credentials: "include",
-          headers: { "Content-Type": "application/json" },
+
+      /** POST /organizations */
+      async create(body: any) {
+        const ctx = await getCtx(root);
+        const res = await fetch(`${root}/organizations`, {
+          method: "POST",
+          credentials: "include",
+          headers: headersFor(ctx, { method: "POST" }),
+          body: JSON.stringify(body),
+        });
+        return parse<any>(res);
+      },
+
+      /** PATCH /organizations/:id */
+      async update(id: number | string, patch: any) {
+        const ctx = await getCtx(root);
+        const res = await fetch(`${root}/organizations/${encodeURIComponent(String(id))}`, {
+          method: "PATCH",
+          credentials: "include",
+          headers: headersFor(ctx, { method: "PATCH" }),
           body: JSON.stringify(patch),
         });
-        const data = await j<any>(r); if (!r.ok) throw data; return data;
+        return parse<any>(res);
+      },
+
+      /** POST /organizations/:id/archive */
+      async archive(id: number | string, reason?: string) {
+        const ctx = await getCtx(root);
+        const res = await fetch(`${root}/organizations/${encodeURIComponent(String(id))}/archive`, {
+          method: "POST",
+          credentials: "include",
+          headers: headersFor(ctx, { method: "POST" }),
+          body: JSON.stringify({ reason: reason ?? null }),
+        });
+        return parse<any>(res);
+      },
+
+      /** POST /organizations/:id/restore */
+      async restore(id: number | string) {
+        const ctx = await getCtx(root);
+        const res = await fetch(`${root}/organizations/${encodeURIComponent(String(id))}/restore`, {
+          method: "POST",
+          credentials: "include",
+          headers: headersFor(ctx, { method: "POST" }),
+        });
+        return parse<any>(res);
+      },
+
+      /** DELETE /organizations/:id */
+      async remove(id: number | string) {
+        const ctx = await getCtx(root);
+        const res = await fetch(`${root}/organizations/${encodeURIComponent(String(id))}`, {
+          method: "DELETE",
+          credentials: "include",
+          headers: headersFor(ctx, { method: "DELETE" }),
+        });
+        return parse<any>(res);
       },
     },
   };

@@ -1,4 +1,4 @@
-// App-Platform.tsx — stable hooks, no pickedOrgId, clean org sync
+// App-Platform.tsx 
 import React, { useEffect, useMemo, useState } from "react";
 import InviteSignupPage from "./pages/InviteSignupPage";
 import VerifyPage from "./pages/VerifyPage";
@@ -6,9 +6,8 @@ import NavShell from "@bhq/ui/layouts/NavShell";
 import ContactsModule from "@bhq/contacts/App-Contacts";
 import OrganizationsModule from "@bhq/organizations/App-Organizations";
 import AnimalsModule from "@bhq/animals/App-Animals";
-import BreedingModule from "@bhq/breeding/App-Breeding";
-import OffspringModule from "@bhq/offspring/App-Offspring";
 import SettingsPanel from "./pages/SettingsPanel";
+import AdminModule from "@bhq/admin/App-Admin";
 
 // Lightweight “current module” state (key + label)
 type ActiveModule = { key: "contacts" | "organizations" | "animals" | "breeding" | "offspring"; label: string };
@@ -33,10 +32,14 @@ const StandaloneLogin = React.memo(function StandaloneLogin() {
     try {
       const email = emailRef.current?.value?.trim() || "";
       const password = pwRef.current?.value || "";
+      const xsrf = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]+)/)?.[1];
       const r = await fetch("/api/v1/auth/login", {
         method: "POST",
         credentials: "include",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(xsrf ? { "x-csrf-token": decodeURIComponent(xsrf) } : {}),
+        },
         body: JSON.stringify({ email, password }),
       });
       if (!r.ok) {
@@ -90,29 +93,21 @@ const StandaloneLogin = React.memo(function StandaloneLogin() {
           {working ? "Signing in…" : "Sign in"}
         </button>
 
-        {import.meta.env.DEV && (
-          <div className="pt-4 border-t border-hairline mt-4">
-            <button
-              type="button"
-              onClick={() => {
-                const orgId =
-                  (window as any).__BHQ_ORG_ID__ ||
-                  localStorage.getItem("BHQ_ORG_ID") ||
-                  (import.meta as any)?.env?.VITE_DEV_ORG_ID ||
-                  "1";
-                const redirect = encodeURIComponent(location.origin + "/");
-                window.location.href = `/api/v1/auth/dev-login?redirect=${redirect}&orgId=${orgId}`;
-              }}
-              className="h-10 px-4 rounded-md border border-hairline w-full hover:bg-card/70"
-            >
-              Developer login (dev only)
-            </button>
-          </div>
-        )}
       </form>
     </div>
   );
 });
+
+// compute API root once; works with same-origin dev + env overrides
+const API_ROOT = (
+  (window as any).__BHQ_API_BASE__ ||
+  (import.meta as any)?.env?.VITE_API_BASE ||
+  (import.meta as any)?.env?.VITE_API_URL ||
+  localStorage.getItem("BHQ_API_URL") ||
+  location.origin
+).replace(/\/+$/, '').replace(/\/api\/v1$/i, '');
+(window as any).__BHQ_API_BASE__ = API_ROOT;
+
 
 // Simple path router, supports /contacts, /organizations, /animals, /breeding, /offspring
 function RouteView() {
@@ -131,6 +126,10 @@ function RouteView() {
 
   if (p === "/organizations" || p.startsWith("/organizations")) return <OrganizationsModule />;
   if (p === "/animals" || p.startsWith("/animals")) return <AnimalsModule />;
+  if (p === "/contacts" || p.startsWith("/contacts")) return <ContactsModule />;
+  if (p === "/admin" || p.startsWith("/admin")) return <AdminModule />;
+  if (p === "/organizations" || p.startsWith("/organizations")) return <OrganizationsModule />;
+  
 
   // default
   return <ContactsModule />;
@@ -164,13 +163,6 @@ export default function AppPlatform() {
   const [loading, setLoading] = useState(true);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsDirty, setSettingsDirty] = useState(false);
-
-  // Bootstrap
-  useEffect(() => {
-    (window as any).__BHQ_API_BASE__ = location.origin;
-    (window as any).__BHQ_TOKEN__ = "";
-    try { localStorage.removeItem("ADMIN_TOKEN"); } catch { }
-  }, []);
 
   // ESC closes Settings only when not dirty
   useEffect(() => {
@@ -284,6 +276,7 @@ export default function AppPlatform() {
           { key: "animals", label: "Animals", href: "/animals", icon: "animals" },
           { key: "breeding", label: "Breeding", href: "/breeding", icon: "breeding" },
           { key: "offspring", label: "Offspring", href: "/offspring", icon: "offspring" },
+          { key: "admin", label: "Admin", href: "/admin", icon: "admin" },
         ]}
         orgName={orgName}
         onOrgClick={() => alert("Organization switcher coming soon")}

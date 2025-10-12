@@ -81,21 +81,6 @@ export default function LoginPage() {
           {busy ? "Signing in…" : "Sign in"}
         </button>
 
-        {/* Dev-only helper */}
-        {import.meta.env.MODE !== "production" && (
-          <div className="pt-4 border-t border-neutral-800 mt-4">
-            <a
-              href="/api/v1/auth/dev-login?redirect=/"
-              onClick={(e) => { e.preventDefault(); window.location.href = "/api/v1/auth/dev-login?redirect=/"; }}
-              className="block text-center w-full h-10 rounded-md border border-neutral-700 hover:bg-neutral-900"
-            >
-              Developer login
-            </a>
-            <div className="mt-2 text-[11px] text-neutral-400">
-              Dev only: creates/uses a local Dev User and sets a session.
-            </div>
-          </div>
-        )}
       </form>
     </div>
   );
