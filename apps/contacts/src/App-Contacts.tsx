@@ -1116,24 +1116,35 @@ export default function AppContacts() {
 
   /** Convert either a react-select option or an <input> event into a plain string */
   function toPlainValue(optOrEvent: any): string {
-    // Native input event path
-    if (optOrEvent && optOrEvent.target) return String(optOrEvent.target.value ?? "");
-    // react-select onChange(option | null)
+    // 1) Native event first
+    const tgt = optOrEvent?.currentTarget ?? optOrEvent?.target;
+    if (tgt && typeof tgt === "object" && "value" in tgt) {
+      // @ts-expect-error - dynamic
+      return String(tgt?.value ?? "");
+    }
+
+    // 2) react-select option object like { value, label }
+    if (optOrEvent && typeof optOrEvent === "object") {
+      if (Object.prototype.hasOwnProperty.call(optOrEvent, "value")) {
+        const v = (optOrEvent as any).value;
+        return v == null ? "" : String(v);
+      }
+    }
+
+    // 3) nullish → empty
     if (optOrEvent == null) return "";
-    if (typeof optOrEvent === "string") return optOrEvent;
-    if (typeof optOrEvent.value === "string") return optOrEvent.value;
-    return "";
-  }
 
+    // 4) strings/numbers from onInputChange or other paths
+    return String(optOrEvent);
+  }
   /** One handler that works for both react-select and native input */
-  function handleStateChange(optOrEvent: any) {
-    const next = toPlainValue(optOrEvent);
-    setForm((f: any) => ({
-      ...f,
-      address: { ...(f?.address ?? {}), state: next },
-    }));
-  }
-
+function handleStateChange(optOrEvent: any) {
+  const next = toPlainValue(optOrEvent);
+  setForm((f: any) => ({
+    ...f,
+    address: { ...(f?.address ?? {}), state: next },
+  }));
+}
 
   /** Bulk tag manager (for selected rows) */
   const [tagBarOpen, setTagBarOpen] = useState<boolean>(false);
