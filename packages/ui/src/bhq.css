@@ -30,3 +30,8 @@
   outline: none;
   box-shadow: 0 0 0 2px hsl(var(--brand-orange));
 }
+
+/* Ensure the browser shows the native “—” state */
+input[type="checkbox"] {
+  appearance: auto !important;
+}

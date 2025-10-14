@@ -7,25 +7,77 @@ import { makeApi } from "./api";
 /** ─────────────────────────────────────────────────────────────────────────────
  * Types
  * ──────────────────────────────────────────────────────────────────────────── */
-type OrgRow = {
-  id: number;
-  name: string;
-  website?: string | null;
+type OrgDTO = {
+  id: ID;
+  name?: string | null;
+  displayName?: string | null;
+  status?: "Active" | "Inactive" | string;
   email?: string | null;
   phone?: string | null;
-  // address
+  website?: string | null;
+  notes?: string | null;
+  street?: string | null;
+  street2?: string | null;
+  city?: string | null;
+  state?: string | null;
+  postalCode?: string | null;
+  country?: string | null;
+  tags?: string[] | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+  archived?: boolean | null;
+  archivedAt?: string | null;
+  archivedBy?: string | null;
+  archivedReason?: string | null;
+};
+
+type OrgRow = {
+  id: ID;
+  name: string;
+  status?: string | null;
+
+  email?: string | null;
+  phone?: string | null;
+  website?: string | null;
+
   street?: string | null;
   street2?: string | null;
   city?: string | null;
   state?: string | null;
   zip?: string | null;
   country?: string | null;
-  tags: string[];
-  status: "Active" | "Archived";
-  created_at: string;
-  updated_at: string;
+
+  tags?: string[] | null;
   notes?: string | null;
+
+  // use snake_case since the renderers & filters reference these
+  created_at?: string | null;
+  updated_at?: string | null;
+
+  archived?: boolean | null;
+  archivedAt?: string | null;
+  archivedReason?: string | null;
 };
+
+function normalizeOrg(dto: OrgDTO): OrgRow {
+  return {
+    id: dto.id,
+    name: dto.displayName ?? dto.name ?? "(Untitled)",
+    status: dto.status ?? "Active",
+    email: dto.email ?? null,
+    phone: dto.phone ?? null,
+    website: dto.website ?? null,
+    city: dto.city ?? null,
+    state: dto.state ?? null,
+    country: dto.country ?? null,
+    tags: Array.from(new Set((dto.tags || []).filter(Boolean))),
+    createdAt: dto.createdAt ?? null,
+    updatedAt: dto.updatedAt ?? null,
+    archived: dto.archived ?? null,
+    archivedAt: dto.archivedAt ?? null,
+    archivedReason: dto.archivedReason ?? null,
+  };
+}
 
 type SortDir = "asc" | "desc";
 type SortRule = { key: keyof OrgRow & string; dir: SortDir };
@@ -33,22 +85,20 @@ type SortRule = { key: keyof OrgRow & string; dir: SortDir };
 type ColumnDef =
   | { key: keyof OrgRow & string; label: string; default: boolean; type?: "text" | "tags" | "status" | "date" };
 
-/** ─────────────────────────────────────────────────────────────────────────────
- * Columns (close to Contacts parity)
- * ──────────────────────────────────────────────────────────────────────────── */
+// Columns shown in the table
 const ALL_COLUMNS: ReadonlyArray<ColumnDef> = [
-  { key: "name", label: "Organization", default: true, type: "text" },
-  { key: "website", label: "Website", default: false, type: "text" },
+  { key: "name", label: "Name", default: true, type: "text" },
   { key: "email", label: "Email", default: true, type: "text" },
   { key: "phone", label: "Phone", default: true, type: "text" },
+  { key: "website", label: "Website", default: false, type: "text" },
+  { key: "city", label: "City", default: false, type: "text" },
+  { key: "state", label: "State", default: false, type: "text" },
+  { key: "country", label: "Country", default: false, type: "text" },
   { key: "tags", label: "Tags", default: true, type: "tags" },
   { key: "status", label: "Status", default: true, type: "status" },
-  { key: "city", label: "City", default: false, type: "text" },
-  { key: "state", label: "State/Region", default: false, type: "text" },
-  { key: "country", label: "Country", default: false, type: "text" },
-  { key: "updated_at", label: "Last Modified", default: true, type: "date" },
   { key: "created_at", label: "Created", default: false, type: "date" },
-] as const;
+  { key: "updated_at", label: "Updated", default: true, type: "date" },
+];
 
 /** ─────────────────────────────────────────────────────────────────────────────
  * Storage keys (Contacts parity; rows never go to localStorage)
@@ -61,9 +111,10 @@ const Q_STORAGE_KEY = "bhq_org_q_v2";
 const SHOW_FILTERS_STORAGE_KEY = "bhq_org_showfilters_v2";
 
 /** ─────────────────────────────────────────────────────────────────────────────
- * Small utils
+ * Small utils (consolidated: keep ONLY this block)
  * ──────────────────────────────────────────────────────────────────────────── */
 const cn = (...s: Array<string | false | null | undefined>) => s.filter(Boolean).join(" ");
+const EMPTY = "—";
 
 function getOverlayRoot(): HTMLElement {
   let el = document.getElementById("bhq-top-layer") as HTMLElement | null;
@@ -93,17 +144,35 @@ function getPlatformOrgIds(): number[] {
 }
 
 const fmtDate = (iso?: string | null) => {
-  if (!iso) return "None";
+  if (!iso) return EMPTY;
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return String(iso);
   return new Intl.DateTimeFormat(undefined, { year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
 };
+
 const prettyPhone = (v?: string | null) => {
-  if (!v) return "None";
+  if (!v) return EMPTY;
   const digits = String(v).replace(/[^\d]/g, "");
   if (digits.length === 11 && digits.startsWith("1")) return `+1 ${digits.slice(1, 4)}-${digits.slice(4, 7)}-${digits.slice(7)}`;
   if (digits.length === 10) return `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6)}`;
   return v;
+};
+
+function normalizeUrl(u?: string | null) {
+  const s = String(u || "").trim();
+  if (!s) return "";
+  if (/^https?:\/\//i.test(s)) return s;
+  return `https://${s}`;
+}
+
+/** Consistent cell/field display */
+const show = (val: any): any => {
+  if (val === null || val === undefined) return EMPTY;
+  if (React.isValidElement(val)) return val;
+  if (Array.isArray(val)) return val.length ? val : EMPTY;
+  const s = String(val).trim();
+  if (!s || s.toLowerCase() === "none") return EMPTY;
+  return s;
 };
 
 /** ─────────────────────────────────────────────────────────────────────────────
@@ -111,27 +180,27 @@ const prettyPhone = (v?: string | null) => {
  * ──────────────────────────────────────────────────────────────────────────── */
 const api = (() => { try { return makeApi(); } catch { return null as any; } })();
 
-function normalizeOrgFromApi(x: any): OrgRow {
-  const statusRaw = String(x?.status ?? "").toLowerCase();
-  const status: OrgRow["status"] = statusRaw === "archived" ? "Archived" : "Active";
-  const addr = x?.address ?? {};
+function shapeOrganization(row: any): OrgRow {
+  const status: OrgRow["status"] =
+    String(row?.status ?? "").toLowerCase() === "archived" ? "Archived" : "Active";
+  const addr = row?.address ?? row ?? {};
   return {
-    id: Number(x?.id ?? x?.orgId ?? x?.organizationId ?? x?.organizationID ?? x?.orgID ?? 0),
-    name: x?.name ?? x?.displayName ?? x?.company ?? `Org ${x?.id ?? ""}`,
-    website: x?.website ?? x?.url ?? null,
-    email: x?.email ?? null,
-    phone: x?.phone ?? null,
-    street: addr?.street ?? x?.street ?? null,
-    street2: addr?.street2 ?? x?.street2 ?? null,
-    city: addr?.city ?? x?.city ?? null,
-    state: addr?.state ?? x?.state ?? null,
-    zip: addr?.zip ?? addr?.postal ?? x?.zip ?? x?.postal ?? null,
-    country: addr?.country ?? x?.country ?? null,
-    tags: Array.isArray(x?.tags) ? x.tags : [],
+    id: Number(row?.id ?? row?.orgId ?? row?.organizationId ?? row?.organizationID ?? row?.orgID ?? 0),
+    name: row?.name ?? row?.displayName ?? row?.company ?? `Org ${row?.id ?? ""}`,
+    website: row?.website ?? row?.url ?? null,
+    email: row?.email ?? null,
+    phone: row?.phoneE164 ?? row?.phone ?? null,
+    street: addr?.street ?? null,
+    street2: addr?.street2 ?? null,
+    city: addr?.city ?? null,
+    state: addr?.state ?? null,
+    zip: addr?.zip ?? addr?.postal ?? null,
+    country: addr?.country ?? null,
+    tags: Array.isArray(row?.tags) ? row.tags : [],
     status,
-    created_at: x?.createdAt ?? x?.created_at ?? new Date().toISOString(),
-    updated_at: x?.updatedAt ?? x?.updated_at ?? x?.createdAt ?? new Date().toISOString(),
-    notes: x?.notes ?? null,
+    created_at: row?.createdAt ?? row?.created_at ?? new Date().toISOString(),
+    updated_at: row?.updatedAt ?? row?.updated_at ?? row?.createdAt ?? new Date().toISOString(),
+    notes: row?.notes ?? null,
   };
 }
 
@@ -140,73 +209,78 @@ async function apiListOrganizations(params: { q?: string; limit?: number; offset
     if (api?.organizations?.list) {
       const r = await api.organizations.list({ ...params, includeArchived: !!params.includeArchived });
       const arr = Array.isArray(r?.items) ? r.items : Array.isArray(r) ? r : [];
-      return arr.map(normalizeOrgFromApi);
+      return arr.map(shapeOrganization);
     }
     if (api?.listOrganizations) {
       const arr = await api.listOrganizations(params);
-      return (Array.isArray(arr) ? arr : []).map(normalizeOrgFromApi);
+      return (Array.isArray(arr) ? arr : []).map(shapeOrganization);
     }
   } catch { /* noop */ }
   return [];
 }
+const orNull = (v: any) => (v === "" || v === undefined ? null : v);
+
+function buildOrgPayload(src: Partial<OrgRow>) {
+  return {
+    name: src.name ?? null,
+    email: orNull(src.email),
+    phone: orNull(src.phone),          // keep your API’s field name; change to phoneE164 if your backend expects it
+    website: orNull(src.website),
+    address: {
+      street: orNull(src.street),
+      street2: orNull(src.street2),
+      city: orNull(src.city),
+      state: orNull(src.state),
+      zip: orNull(src.zip),
+      country: orNull(src.country),
+    },
+    notes: orNull(src.notes),
+  };
+}
+
 async function apiCreateOrganization(payload: Partial<OrgRow>): Promise<OrgRow | null> {
   try {
-    const body: any = {
-      name: payload.name,
-      email: payload.email ?? null,
-      phone: payload.phone ?? null,
-      website: payload.website ?? null,
-      address: {
-        street: payload.street ?? null,
-        street2: payload.street2 ?? null,
-        city: payload.city ?? null,
-        state: payload.state ?? null,
-        zip: payload.zip ?? null,
-        country: payload.country ?? null,
-      },
-      notes: payload.notes ?? null,
-    };
-    if (api?.organizations?.create) return normalizeOrgFromApi(await api.organizations.create(body));
-    if (api?.createOrganization) return normalizeOrgFromApi(await api.createOrganization(body));
+    const body = buildOrgPayload(payload);
+    if (api?.organizations?.create) return shapeOrganization(await api.organizations.create(body));
+    if (api?.createOrganization) return shapeOrganization(await api.createOrganization(body));
   } catch { }
   return null;
 }
+
 async function apiUpdateOrganization(id: number, patch: Partial<OrgRow>): Promise<OrgRow | null> {
   try {
-    const body: any = {
-      name: patch.name,
-      email: patch.email ?? null,
-      phone: patch.phone ?? null,
-      website: patch.website ?? null,
-      address: {
-        street: patch.street ?? null,
-        street2: patch.street2 ?? null,
-        city: patch.city ?? null,
-        state: patch.state ?? null,
-        zip: patch.zip ?? null,
-        country: patch.country ?? null,
-      },
-      notes: patch.notes ?? null,
-    };
-    if (api?.organizations?.update) return normalizeOrgFromApi(await api.organizations.update(id, body));
-    if (api?.updateOrganization) return normalizeOrgFromApi(await api.updateOrganization(id, body));
+    const body = buildOrgPayload(patch);
+    if (api?.organizations?.update) return shapeOrganization(await api.organizations.update(id, body));
+    if (api?.updateOrganization) return shapeOrganization(await api.updateOrganization(id, body));
   } catch { }
   return null;
 }
+
 async function apiArchiveOrganization(id: number): Promise<OrgRow | null> {
   try {
-    if (api?.organizations?.archive) return normalizeOrgFromApi(await api.organizations.archive(id));
-    if (api?.archiveOrganization) return normalizeOrgFromApi(await api.archiveOrganization(id));
+    if (api?.organizations?.archive) return shapeOrganization(await api.organizations.archive(id));
+    if (api?.archiveOrganization) return shapeOrganization(await api.archiveOrganization(id));
   } catch { }
   return null;
 }
+
 async function apiRestoreOrganization(id: number): Promise<OrgRow | null> {
   try {
-    if (api?.organizations?.restore) return normalizeOrgFromApi(await api.organizations.restore(id));
-    if (api?.restoreOrganization) return normalizeOrgFromApi(await api.restoreOrganization(id));
+    if (api?.organizations?.restore) return shapeOrganization(await api.organizations.restore(id));
+    if (api?.restoreOrganization) return shapeOrganization(await api.restoreOrganization(id));
   } catch { }
   return null;
 }
+
+async function apiGetOrganization(id: number): Promise<OrgRow | null> {
+  try {
+    if (api?.organizations?.get) return shapeOrganization(await api.organizations.get(String(id)));
+    if (api?.getOrganization) return shapeOrganization(await api.getOrganization(id));
+  } catch { }
+  return null;
+}
+
+
 
 /** ─────────────────────────────────────────────────────────────────────────────
  * Tiny atoms
@@ -261,6 +335,15 @@ function Row({ label, value }: { label: string; value: React.ReactNode }) {
     </div>
   );
 }
+function useDebounced<T>(value: T, delay = 300) {
+  const [v, setV] = React.useState(value);
+  React.useEffect(() => {
+    const id = setTimeout(() => setV(value), delay);
+    return () => clearTimeout(id);
+  }, [value, delay]);
+  return v;
+}
+
 
 /** Contacts-style Modal with overlay blur and pointer-events control */
 function Modal({
@@ -275,7 +358,7 @@ function Modal({
       <div className="fixed inset-0 z-[9998] bg-black/50 backdrop-blur-sm" onClick={onClose} />
       <div className="fixed inset-0 z-[9999] pointer-events-none flex items-start justify-center p-4">
         <div
-          className="pointer-events-auto w-[min(720px,calc(100vw-2rem))] rounded-2xl border-hairline border-hairline-hairline bg-surface text-primary shadow-[0_24px_80px_rgba(0,0,0,0.45)] p-4 mt-12"
+          className="pointer-events-auto w-[min(780px,calc(100vw-2rem))] rounded-2xl border-hairline border-hairline-hairline bg-surface text-primary shadow-[0_24px_80px_rgba(0,0,0,0.45)] p-4 mt-12"
           role="dialog" aria-modal="true"
         >
           <div className="flex items-center justify-between mb-2">
@@ -413,7 +496,7 @@ function FilterRow({
   const valuesFor = (key: string) => {
     const raw = filters[key] || "";
     return raw ? raw.split(",").map((s) => s.trim()).filter(Boolean) : [];
-    };
+  };
 
   return (
     <div className="rounded-md border-hairline border-hairline-hairline bg-surface p-2 space-y-2">
@@ -689,9 +772,59 @@ export default function AppOrganizations() {
 
   const [rows, setRows] = useState<OrgRow[]>([]);
   const [q, setQ] = useState<string>(() => localStorage.getItem(Q_STORAGE_KEY) || "");
+  const dq = useDebounced(q, 300);
   const [showFilters, setShowFilters] = useState<boolean>(() => localStorage.getItem(SHOW_FILTERS_STORAGE_KEY) === "1");
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [drawer, setDrawer] = useState<OrgRow | null>(null);
+
+  const [selectedOrgId, setSelectedOrgId] = useState<ID | null>(null);
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [drawerEditing, setDrawerEditing] = useState(false);
+  const [drawerTab, setDrawerTab] = useState<"overview" | "audit">("overview");
+  const [draft, setDraft] = useState<Partial<OrgRow> | null>(null);
+  const [drawerLoading, setDrawerLoading] = useState(false);
+  const [drawerError, setDrawerError] = useState("");
+  const [drawerRefreshKey, setDrawerRefreshKey] = useState(0);
+
+  // hydrate the drawer with a fresh fetch whenever it opens or we trigger refresh
+  useEffect(() => {
+    if (selectedOrgId == null) return;
+    let ignore = false;
+    (async () => {
+      try {
+        setDrawerLoading(true);
+        setDrawerError("");
+        const fresh = await apiGetOrganization(Number(selectedOrgId));
+        if (!ignore && fresh) setDrawer(fresh);
+      } catch (e: any) {
+        if (!ignore) setDrawerError(e?.message || "Failed to load");
+      } finally {
+        if (!ignore) setDrawerLoading(false);
+      }
+    })();
+    return () => { ignore = true; };
+  }, [selectedOrgId, drawerRefreshKey]);
+
+
+  useEffect(() => {
+    if (drawer) {
+      document.body.style.overflow = "hidden";
+      setOverlayHostInteractive(true);
+    } else {
+      document.body.style.overflow = "";
+      setOverlayHostInteractive(false);
+    }
+    return () => { document.body.style.overflow = ""; setOverlayHostInteractive(false); };
+  }, [drawer]);
+  useEffect(() => {
+    if (!drawer) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setDrawer(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [drawer]);
+
   const [openMenu, setOpenMenu] = useState(false);
 
   const [columns, setColumns] = useState<Record<string, boolean>>(() => {
@@ -727,7 +860,7 @@ export default function AppOrganizations() {
     return () => { alive = false; };
   }, []);
 
-  useEffect(() => { setPage(1); }, [q, filtersState, sorts]);
+  useEffect(() => { setPage(1); }, [dq, filtersState, sorts]);
 
   const visibleColumns = ALL_COLUMNS.filter((c) => columns[c.key]);
 
@@ -791,7 +924,7 @@ export default function AppOrganizations() {
   }
 
   const filtered = useMemo(() => {
-    const text = (filtersState.__text ?? q).trim().toLowerCase();
+    const text = (filtersState.__text ?? dq).trim().toLowerCase();
 
     let data = [...rows];
 
@@ -830,7 +963,7 @@ export default function AppOrganizations() {
       });
     }
     return data;
-  }, [rows, hideOrgIds, q, sorts, filtersState]);
+  }, [rows, hideOrgIds, dq, sorts, filtersState]);
 
   // pagination
   const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
@@ -964,7 +1097,7 @@ export default function AppOrganizations() {
   const hasRows = filtered.length > 0;
 
   return (
-    <div className="w-full min-h-screen bg-page dark:bg-surface-strong p-6 space-y-4">
+    <div className="w-full bg-page dark:bg-surface-strong p-6 space-y-4">
       {/* toolbar */}
       <div className="flex items-center gap-3 flex-wrap">
         <div className="pr-2 flex-none w-full sm:w-[480px] md:w-[560px] lg:w-[640px] max-w-full">
@@ -1041,6 +1174,24 @@ export default function AppOrganizations() {
               )}
             </div>
           </Popover>
+          <label className="inline-flex items-center gap-2 text-xs text-secondary ml-1">
+            <input
+              type="checkbox"
+              checked={(filtersState.status || "").split(",").includes("Archived")}
+              onChange={(e) => {
+                const on = e.currentTarget.checked;
+                setFiltersState(f => {
+                  const parts = (f.status || "").split(",").map(s => s.trim()).filter(Boolean);
+                  const next = new Set(parts);
+                  if (on) next.add("Archived"); else next.delete("Archived");
+                  return { ...f, status: Array.from(next).join(",") };
+                });
+                setPage(1);
+              }}
+            />
+            <span>Include archived</span>
+          </label>
+
         </div>
       </div>
 
@@ -1056,11 +1207,18 @@ export default function AppOrganizations() {
       {/* list */}
       {hasRows ? (
         <>
-          <div className="relative overflow-auto rounded-md border-hairline border-hairline-hairline">
-            <table className="w-full border-hairline-separate border-hairline-spacing-0">
+          <div className="relative overflow-hidden rounded-md border-hairline border-hairline-hairline">
+            <table className="w-full table-fixed border-hairline-separate border-hairline-spacing-0">
+              {/* lock column widths */}
+              <colgroup>
+                <col style={{ width: "44px" }} />{/* checkbox */}
+                {visibleColumns.map((_, i) => <col key={i} />)}{/* data columns flex */}
+                <col style={{ width: "56px" }} />{/* actions */}
+              </colgroup>
+
               <thead className="sticky top-0 bg-surface z-0">
                 <tr>
-                  <th className="px-2 py-2 text-center border-hairline-b border-hairline-hairline w-1">
+                  <th className="px-2 py-2 text-center border-hairline-b border-hairline-hairline w-[44px]">
                     <Checkbox
                       checked={selected.size > 0 && selected.size === filtered.length}
                       onChange={(e) => toggleAll(e.currentTarget.checked)}
@@ -1084,26 +1242,104 @@ export default function AppOrganizations() {
                   </th>
                 </tr>
               </thead>
+
               <tbody>
                 {pageRows.map((r) => (
-                  <tr key={r.id} className="hover:bg-[hsl(var(--brand-orange))]/8" onClick={() => setDrawer(r)}>
-                    <td className="px-2 py-2 border-hairline-b border-hairline-hairline text-center" onClick={(e) => e.stopPropagation()}>
-                      <Checkbox checked={selected.has(r.id)} onChange={() => toggleOne(r.id)} aria-label={`Select ${r.name}`} />
+                  <tr
+                    key={r.id}
+                    className="group hover:bg-[hsl(var(--brand-orange))]/8 cursor-pointer"
+                    onClick={() => {
+                      setDrawer(r);                    // show something immediately
+                      setSelectedOrgId(r.id);          // id to hydrate with fresh fetch
+                      setDrawerTab("overview");
+                      setIsDrawerOpen(true);
+                      setDrawerRefreshKey(k => k + 1); // force a reload each open
+                    }}
+                  >
+                    {/* checkbox col — fixed width */}
+                    <td
+                      className="px-2 py-2 text-center align-middle border-hairline-b border-hairline-hairline w-[44px]"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <Checkbox
+                        checked={selected.has(r.id)}
+                        onChange={() => toggleOne(r.id)}
+                        aria-label={`Select ${r.name}`}
+                      />
                     </td>
-                    {visibleColumns.map((c) => {
+
+                    {/* data cells — truncate nicely */}
+                    {visibleColumns.map((c, i) => {
                       const k = c.key as keyof OrgRow;
                       let v: any = (r as any)[k];
                       if (k === "phone") v = prettyPhone(v);
                       if (k === "created_at" || k === "updated_at") v = fmtDate(v);
-                      if (k === "tags") v = (r.tags || []).length ? <div className="flex flex-wrap gap-1">{r.tags.map((t) => <Badge key={t}>{t}</Badge>)}</div> : "None";
-                      if (k === "website" && v) v = <a className="underline" href={String(v)} onClick={(e) => e.stopPropagation()} target="_blank" rel="noreferrer">{String(v)}</a>;
+                      if (k === "tags") {
+                        v = (r.tags || []).length
+                          ? <div className="flex flex-wrap gap-1">{r.tags.map((t) => <Badge key={t}>{t}</Badge>)}</div>
+                          : EMPTY;
+                      }
+                      if (k === "website" && v) {
+                        const href = normalizeUrl(String(v));
+                        v = (
+                          <a
+                            className="underline block truncate"
+                            href={href}
+                            onClick={(e) => e.stopPropagation()}
+                            target="_blank"
+                            rel="noreferrer"
+                            title={String(v)}
+                          >
+                            {String(v)}
+                          </a>
+                        );
+                      }
                       return (
-                        <td key={String(k)} className="px-3 py-2 text-center text-xs text-primary border-hairline-b border-hairline-hairline">
-                          {v ?? "None"}
+                        <td
+                          key={`${String(k)}-${i}`}
+                          className="px-3 py-2 text-center text-xs text-primary border-hairline-b border-hairline-hairline align-middle max-w-0"
+                        >
+                          <div className="truncate" title={typeof v === "string" ? v : undefined}>
+                            {show(v) ?? EMPTY}
+                          </div>
                         </td>
                       );
                     })}
-                    <td className="px-2 py-2 border-hairline-b border-hairline-hairline text-right" onClick={(e) => e.stopPropagation()} />
+
+                    {/* actions col — fixed width */}
+                    <td
+                      className="px-2 py-2 border-hairline-b border-hairline-hairline text-right w-[56px]"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <div className="opacity-0 group-hover:opacity-100 transition-opacity inline-flex gap-1">
+                        <Button size="xs" variant="outline" onClick={() => openEdit(r)}>Edit</Button>
+                        {r.status === "Active" ? (
+                          <Button
+                            size="xs"
+                            variant="destructive"
+                            onClick={async () => {
+                              const ok = confirm(`Archive "${r.name}"?`);
+                              if (!ok) return;
+                              const updated = await apiArchiveOrganization(r.id);
+                              if (updated) setRows((prev) => prev.map((x) => x.id === r.id ? updated : x));
+                            }}
+                          >
+                            Archive
+                          </Button>
+                        ) : (
+                          <Button
+                            size="xs"
+                            variant="outline"
+                            onClick={async () => {
+                              const updated = await apiRestoreOrganization(r.id);
+                              if (updated) setRows((prev) => prev.map((x) => x.id === r.id ? updated : x));
+                            }}
+                          >
+                            Restore
+                          </Button>
+                        )}
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -1133,118 +1369,293 @@ export default function AppOrganizations() {
         />
       )}
 
-      {/* Details panel (Contacts-style) */}
-      {drawer && (
+      {/* Centered Details Panel Drawer */}
+      {isDrawerOpen && drawer && createPortal(
         <>
-          <div className="fixed inset-0 z-40 bg-black/60 backdrop-blur-md" onClick={() => setDrawer(null)} />
-          <section
-            className={[
-              "fixed z-50 left-1/2 top-14 -translate-x-1/2",
-              "w-[min(1100px,calc(100vw-3rem))] max-h-[85vh] overflow-y-auto",
-              "rounded-2xl border-hairline border-hairline-hairline bg-surface text-primary",
-              "shadow-[0_24px_80px_rgba(0,0,0,0.45)]",
-            ].join(" ")}
-            role="dialog" aria-modal="true" aria-label={drawer.name}
-          >
-            <div className="flex items-center gap-3 px-4 py-3 border-hairline-b border-hairline-hairline">
-              <div className="h-8 w-8 rounded-md bg-neutral-800 inline-grid place-items-center">🏢</div>
-              <div className="min-w-0">
-                <div className="text-lg font-semibold leading-tight truncate">{drawer.name}</div>
-                <div className="text-xs text-secondary truncate">
-                  {drawer.website ? (
-                    <a className="underline" href={drawer.website} target="_blank" rel="noreferrer">
-                      {drawer.website}
-                    </a>
-                  ) : "No website"}
+          {/* backdrop */}
+          <div
+            className="fixed inset-0 z-[9998] bg-black/50 backdrop-blur-sm"
+            onClick={() => { setIsDrawerOpen(false); setDrawer(null); setDrawerEditing(false); setDraft(null); }}
+          />
+
+          {/* panel */}
+          <div className="fixed inset-0 z-[9999] pointer-events-none flex items-start justify-center p-4">
+            <div
+              className="pointer-events-auto w-[min(720px,calc(100vw-2rem))] rounded-2xl border-hairline border-hairline-hairline bg-surface text-primary shadow-[0_24px_80px_rgba(0,0,0,0.45)] mt-10"
+              role="dialog" aria-modal="true"
+            >
+              {/* header */}
+              <div className="px-4 py-3 border-b border-hairline-hairline flex items-center gap-2 min-h-[56px]">
+                <h2 className="text-lg font-semibold truncate">{drawer.name}</h2>
+                {!!(drawer.status === "Archived") && (
+                  <span className="ml-1 text-xs px-2 py-0.5 rounded-full border border-amber-300 bg-amber-200/70 text-amber-900">Archived</span>
+                )}
+                <div className="ml-auto flex items-center gap-2">
+                  {drawerTab === "overview" && !drawerEditing && (
+                    <>
+                      {drawer.status === "Active" ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={async () => {
+                            if (!confirm(`Archive "${drawer.name}"?`)) return;
+                            const updated = await apiArchiveOrganization(Number(drawer.id));
+                            if (updated) { setRows(p => p.map(r => r.id === drawer.id ? updated : r)); setDrawer(updated); }
+                          }}
+                        >
+                          Archive
+                        </Button>
+                      ) : (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={async () => {
+                            const updated = await apiRestoreOrganization(Number(drawer.id));
+                            if (updated) { setRows(p => p.map(r => r.id === drawer.id ? updated : r)); setDrawer(updated); }
+                          }}
+                        >
+                          Restore
+                        </Button>
+                      )}
+                      <Button size="sm" variant="outline" onClick={() => { setDraft({}); setDrawerEditing(true); }}>Edit</Button>
+                    </>
+                  )}
+                  {drawerEditing && (
+                    <>
+                      <Button
+                        size="sm"
+                        onClick={async () => {
+                          const payload = { ...drawer, ...draft };
+                          const updated = await apiUpdateOrganization(Number(drawer.id), payload);
+                          if (updated) {
+                            setRows(prev => prev.map(r => r.id === drawer.id ? updated : r));
+                            setDrawer(updated);
+                            setDrawerEditing(false);
+                            setDraft(null);
+                          } else {
+                            alert("Save failed");
+                          }
+                        }}
+                      >
+                        Save
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={() => { setDraft(null); setDrawerEditing(false); }}>Cancel</Button>
+                    </>
+                  )}
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label="Close"
+                    onClick={() => { setIsDrawerOpen(false); setDrawer(null); setDrawerEditing(false); setDraft(null); }}
+                  >
+                    ×
+                  </Button>
                 </div>
               </div>
 
-              <div className="ml-auto flex items-center gap-2">
-                {drawer.status === "Active" ? (
-                  <Button
-                    size="sm"
-                    variant="destructive"
-                    onClick={async () => {
-                      const ok = confirm(`Archive "${drawer.name}"? Existing links will remain, but it will be hidden from selectors.`);
-                      if (!ok) return;
-                      const updated = await apiArchiveOrganization(drawer.id);
-                      if (updated) {
-                        setRows(prev => prev.map(r => r.id === drawer.id ? updated : r));
-                        setDrawer(updated);
-                      }
-                    }}
+              {/* tabs */}
+              <div className="px-1">
+                {/* Contacts-style pill group with orange active underline */}
+                <div className="inline-flex items-center gap-2 p-1 rounded-full border-hairline border-hairline-hairline bg-surface">
+                  <button
+                    type="button"
+                    onClick={() => setDrawerTab("overview")}
+                    className={[
+                      "px-3 h-8 rounded-full text-sm transition-colors",
+                      // inactive
+                      drawerTab !== "overview" ? "text-secondary hover:bg-[hsl(var(--brand-orange))]/10 border-b-2 border-transparent" : "",
+                      // active (orange underline)
+                      drawerTab === "overview" ? "text-primary border-b-2 border-[hsl(var(--brand-orange))]" : "",
+                    ].join(" ")}
                   >
-                    Archive
-                  </Button>
-                ) : (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={async () => {
-                      const updated = await apiRestoreOrganization(drawer.id);
-                      if (updated) {
-                        setRows(prev => prev.map(r => r.id === drawer.id ? updated : r));
-                        setDrawer(updated);
-                      }
-                    }}
+                    Overview
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setDrawerTab("audit")}
+                    className={[
+                      "px-3 h-8 rounded-full text-sm transition-colors",
+                      drawerTab !== "audit" ? "text-secondary hover:bg-[hsl(var(--brand-orange))]/10 border-b-2 border-transparent" : "",
+                      drawerTab === "audit" ? "text-primary border-b-2 border-[hsl(var(--brand-orange))]" : "",
+                    ].join(" ")}
                   >
-                    Restore
-                  </Button>
+                    Audit
+                  </button>
+                </div>
+              </div>
+
+              {/* body (same vertical size feel as Edit modal) */}
+              <div className="p-4 space-y-3 max-h-[70vh] overflow-y-auto pr-2">
+                {drawerTab === "overview" && (
+                  <>
+                    {/* Summary block (2 columns, Contacts-style) */}
+                    <Card label="">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-2">
+                        {/* left column */}
+                        {!drawerEditing ? (
+                          <>
+                            <Row label="Name" value={show(drawer.name)} />
+                            <Row label="Email" value={drawer.email ? <a className="underline" href={`mailto:${drawer.email}`}>{drawer.email}</a> : "—"} />
+                          </>
+                        ) : (
+                          <>
+                            <div className="flex items-center gap-2">
+                              <div className="text-sm w-28 shrink-0 text-secondary">Name</div>
+                              <Input value={draft?.name ?? drawer.name ?? ""} onChange={(e) => setDraft(p => ({ ...(p || {}), name: e.currentTarget.value }))} />
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <div className="text-sm w-28 shrink-0 text-secondary">Email</div>
+                              <Input value={draft?.email ?? drawer.email ?? ""} onChange={(e) => setDraft(p => ({ ...(p || {}), email: e.currentTarget.value }))} />
+                            </div>
+                          </>
+                        )}
+                        {/* right column */}
+                        {!drawerEditing ? (
+                          <>
+                            <Row label="Website" value={drawer.website ? <a className="underline" href={normalizeUrl(drawer.website)} target="_blank" rel="noreferrer">{drawer.website}</a> : "—"} />
+                            <Row label="Phone" value={drawer.phone ? <a className="underline" href={`tel:${drawer.phone}`}>{prettyPhone(drawer.phone)}</a> : "—"} />
+                          </>
+                        ) : (
+                          <>
+                            <div className="flex items-center gap-2">
+                              <div className="text-sm w-28 shrink-0 text-secondary">Website</div>
+                              <Input value={draft?.website ?? drawer.website ?? ""} onChange={(e) => setDraft(p => ({ ...(p || {}), website: e.currentTarget.value }))} />
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <div className="text-sm w-28 shrink-0 text-secondary">Phone</div>
+                              <Input value={draft?.phone ?? drawer.phone ?? ""} onChange={(e) => setDraft(p => ({ ...(p || {}), phone: e.currentTarget.value }))} />
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    </Card>
+
+                    {/* Address (2 columns) */}
+                    <Card label="">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-2">
+                        {["street", "city", "zip"].map((k) => (
+                          !drawerEditing ? (
+                            <Row key={k} label={k[0].toUpperCase() + k.slice(1).replace(/([A-Z])/g, " $1")} value={show((drawer as any)[k])} />
+                          ) : (
+                            <div key={k} className="flex items-center gap-2">
+                              <div className="text-sm w-28 shrink-0 text-secondary">{k[0].toUpperCase() + k.slice(1).replace(/([A-Z])/g, " $1")}</div>
+                              <Input value={(draft as any)?.[k] ?? (drawer as any)?.[k] ?? ""} onChange={(e) => setDraft(p => ({ ...(p || {}), [k]: e.currentTarget.value }))} />
+                            </div>
+                          )
+                        ))}
+                        {["street2", "state", "country"].map((k) => (
+                          !drawerEditing ? (
+                            <Row key={k} label={k.replace(/([A-Z])/g, " $1")} value={show((drawer as any)[k])} />
+                          ) : (
+                            <div key={k} className="flex items-center gap-2">
+                              <div className="text-sm w-28 shrink-0 text-secondary">{k.replace(/([A-Z])/g, " $1")}</div>
+                              <Input value={(draft as any)?.[k] ?? (drawer as any)?.[k] ?? ""} onChange={(e) => setDraft(p => ({ ...(p || {}), [k]: e.currentTarget.value }))} />
+                            </div>
+                          )
+                        ))}
+                      </div>
+                    </Card>
+
+                    {/* Status & tags */}
+                    <Card label="">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-2">
+                        <Row label="Status" value={show(drawer.status || "Active")} />
+                        <div className="flex items-start gap-2">
+                          <div className="text-sm w-28 shrink-0 text-secondary">Tags</div>
+                          <div className="text-sm">
+                            {(drawer.tags || []).length
+                              ? <div className="flex flex-wrap gap-1">{drawer.tags!.map(t => <span key={t} className="inline-flex items-center px-2 py-0.5 rounded-full text-xs border-hairline border-hairline-hairline bg-surface">{t}</span>)}</div>
+                              : <span className="text-sm">No tags</span>}
+                          </div>
+                        </div>
+                      </div>
+                    </Card>
+
+                    {/* Created/Updated */}
+                    <Card label="">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8">
+                        <Row label="Created" value={fmtDate(drawer.created_at)} />
+                        <Row label="Updated" value={fmtDate(drawer.updated_at)} />
+                      </div>
+                    </Card>
+
+                    {/* Notes */}
+                    <Card label="">
+                      {!drawerEditing ? (
+                        <div className="text-sm whitespace-pre-wrap rounded-md border-hairline border-hairline-hairline bg-surface px-2 py-2 min-h-[80px]">
+                          {show(drawer.notes)}
+                        </div>
+                      ) : (
+                        <Textarea rows={4} value={draft?.notes ?? drawer.notes ?? ""} onChange={(e) => setDraft(p => ({ ...(p || {}), notes: e.currentTarget.value }))} />
+                      )}
+                    </Card>
+                  </>
                 )}
-                <Button size="sm" variant="outline" onClick={() => openEdit(drawer)}>Edit</Button>
-                <Button variant="ghost" size="icon" aria-label="Close" onClick={() => setDrawer(null)}>×</Button>
+
+                {drawerTab === "audit" && (
+                  <Card label="Audit">
+                    <div className="text-sm text-secondary">Coming soon.</div>
+                  </Card>
+                )}
+              </div>
+
+              {/* footer (bottom actions) */}
+              <div className="px-4 pb-3 pt-2 border-t border-hairline-hairline flex items-center justify-end gap-2">
+                {!drawerEditing && (
+                  <>
+                    {drawer.status === "Active" ? (
+                      <Button
+                        variant="outline"
+                        onClick={async () => {
+                          if (!confirm(`Archive "${drawer.name}"?`)) return;
+                          const updated = await apiArchiveOrganization(Number(drawer.id));
+                          if (updated) { setRows(p => p.map(r => r.id === drawer.id ? updated : r)); setDrawer(updated); }
+                        }}
+                      >
+                        Archive
+                      </Button>
+                    ) : (
+                      <Button
+                        variant="outline"
+                        onClick={async () => {
+                          const updated = await apiRestoreOrganization(Number(drawer.id));
+                          if (updated) { setRows(p => p.map(r => r.id === drawer.id ? updated : r)); setDrawer(updated); }
+                        }}
+                      >
+                        Restore
+                      </Button>
+                    )}
+                    <Button variant="outline" onClick={() => { setDraft({}); setDrawerEditing(true); }}>Edit</Button>
+                    <Button onClick={() => { setIsDrawerOpen(false); setDrawer(null); setDrawerEditing(false); setDraft(null); }}>Close</Button>
+                  </>
+                )}
+                {drawerEditing && (
+                  <>
+                    <Button
+                      onClick={async () => {
+                        const payload = { ...drawer, ...draft };
+                        const updated = await apiUpdateOrganization(Number(drawer.id), payload);
+                        if (updated) {
+                          setRows(prev => prev.map(r => r.id === drawer.id ? updated : r));
+                          setDrawer(updated);
+                          setDrawerEditing(false);
+                          setDraft(null);
+                        } else {
+                          alert("Save failed");
+                        }
+                      }}
+                    >
+                      Save
+                    </Button>
+                    <Button variant="outline" onClick={() => { setDraft(null); setDrawerEditing(false); }}>Cancel</Button>
+                  </>
+                )}
               </div>
             </div>
-
-            <div className="p-4 space-y-3">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <Card label="Email / Phone / Website">
-                  <Row label="Email" value={drawer.email || "None"} />
-                  <Row label="Phone" value={drawer.phone ? prettyPhone(drawer.phone) : "None"} />
-                  <Row
-                    label="Website"
-                    value={
-                      drawer.website ? (
-                        <a href={drawer.website} target="_blank" rel="noreferrer" className="underline">
-                          {drawer.website}
-                        </a>
-                      ) : "None"
-                    }
-                  />
-                </Card>
-
-                <Card label="Address">
-                  <Row label="Street" value={drawer.street || "None"} />
-                  <Row label="Street 2" value={drawer.street2 || "None"} />
-                  <Row label="City" value={drawer.city || "None"} />
-                  <Row label="State/Region" value={drawer.state || "None"} />
-                  <Row label="Zip/Postal" value={drawer.zip || "None"} />
-                  <Row label="Country" value={drawer.country || "None"} />
-                </Card>
-
-                <Card label="Status & Tags">
-                  <Row label="Status" value={drawer.status} />
-                  <div className="mt-1 flex flex-wrap gap-1">
-                    {(drawer.tags || []).length
-                      ? drawer.tags.map(t => <span key={t} className="inline-flex items-center px-2 py-0.5 rounded-full text-xs border-hairline border-hairline-hairline bg-surface">{t}</span>)
-                      : <span className="text-sm">No tags</span>}
-                  </div>
-                </Card>
-
-                <Card label="Created / Updated">
-                  <Row label="Created" value={fmtDate(drawer.created_at)} />
-                  <Row label="Updated" value={fmtDate(drawer.updated_at)} />
-                </Card>
-
-                <Card label="Notes" className="md:col-span-2">
-                  <div className="text-sm whitespace-pre-wrap rounded-md border-hairline border-hairline-hairline bg-surface px-2 py-2 min-h-[80px]">
-                    {drawer.notes || "No notes"}
-                  </div>
-                </Card>
-              </div>
-            </div>
-          </section>
-        </>
+          </div>
+        </>,
+        getOverlayRoot()
       )}
 
       {/* Create/Edit modal */}
@@ -1260,7 +1671,7 @@ export default function AppOrganizations() {
         }
       >
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {/* Name (full width on top) */}
+          {/* Name */}
           <div className="md:col-span-2">
             <label className="block text-xs mb-1">
               Organization name <span className="text-red-600">*</span>
@@ -1295,7 +1706,7 @@ export default function AppOrganizations() {
             {errors.phone && <div className="text-xs text-red-600 mt-1">{errors.phone}</div>}
           </div>
 
-          {/* Address block */}
+          {/* Address */}
           <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-4 gap-3">
             <div className="md:col-span-2">
               <label className="block text-xs mb-1">Street</label>
@@ -1323,7 +1734,7 @@ export default function AppOrganizations() {
             </div>
           </div>
 
-          {/* Notes (full width) */}
+          {/* Notes */}
           <div className="md:col-span-2">
             <label className="block text-xs mb-1">Notes</label>
             <Textarea
@@ -1351,3 +1762,4 @@ export default function AppOrganizations() {
     </div>
   );
 }
+

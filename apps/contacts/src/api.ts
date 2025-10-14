@@ -103,6 +103,17 @@ export function getTenantHeaders(): Record<string, string> {
   return headers;
 }
 
+/** Server expects x-csrf-token header that matches XSRF-TOKEN cookie on writes */
+function isWriteMethod(method?: string) {
+  const m = String(method || "GET").toUpperCase();
+  return m !== "GET" && m !== "HEAD" && m !== "OPTIONS";
+}
+function getCsrfHeaders(method?: string): Record<string, string> {
+  if (!isWriteMethod(method)) return {};
+  const token = readCookie("XSRF-TOKEN");
+  return token ? { "x-csrf-token": token } : {};
+}
+
 /* ----------------------------------------------------------------------------
  * fetch helpers
  *  - bareFetchJson: no tenant header (used for /session bootstrap)
@@ -146,6 +157,7 @@ async function fetchJson<T = any>(
       "content-type": "application/json",
       accept: "application/json",
       ...getTenantHeaders(),
+      ...getCsrfHeaders(init.method),
       ...extraHeaders,
       ...(init.headers as any),
     },
@@ -619,7 +631,7 @@ export function makeApi(baseOrigin: string = "", authHeaderFn?: () => Record<str
   };
 }
 
-/* Default singleton for apps that don’t need multiple bases */
+/* Default singleton for apps that do not need multiple bases */
 const api = makeApi();
 export default api;
 

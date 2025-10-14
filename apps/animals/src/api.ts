@@ -25,7 +25,7 @@ function getTenantHeader(): HeadersMap {
       Number.isFinite(runtime) && runtime > 0 ? runtime :
       Number.isFinite(fromLS) && fromLS > 0 ? fromLS :
       NaN;
-    if (Number.isFinite(id)) h["x-tenant-id"] = String(id); // normalized lowercase
+    if (Number.isFinite(id)) h["x-tenant-id"] = String(id);
   } catch {}
   return h;
 }
@@ -46,9 +46,9 @@ async function parse<T>(res: Response): Promise<T> {
 
 /**
  * makeApi(base?, extraHeadersFn?)
- * - Sends x-tenant-id automatically (from runtime or localStorage)
- * - Merges any extra headers you pass (e.g., x-org-id)
- * - Adds Content-Type + CSRF only for mutating methods
+ * - Sends x-tenant-id automatically
+ * - Merges any extra headers you pass
+ * - Adds Content-Type and CSRF only for mutating methods
  */
 export function makeApi(
   base?: string,
@@ -59,16 +59,16 @@ export function makeApi(
   const hdrs = (init?: RequestInit): HeadersInit => {
     const h = new Headers(init?.headers as any);
 
-    // Tenant header (required by backend)
+    // Tenant header
     Object.entries(getTenantHeader()).forEach(([k, v]) => h.set(k, v));
 
-    // Optional extra headers (e.g., x-org-id)
+    // Optional extra headers
     try {
       const extra = extraHeadersFn?.() || {};
       Object.entries(extra).forEach(([k, v]) => h.set(k, v));
     } catch {}
 
-    // Only set Content-Type/CSRF on non-GET/HEAD/OPTIONS
+    // Only set Content-Type and CSRF on non GET, HEAD, OPTIONS
     const m = String(init?.method || "GET").toUpperCase();
     if (m !== "GET" && m !== "HEAD" && m !== "OPTIONS") {
       if (!h.has("content-type")) h.set("content-type", "application/json");
@@ -83,7 +83,7 @@ export function makeApi(
   /** ---------- Lookups used by editor UIs ---------- */
   const lookups = {
     async getCreatingOrganization(): Promise<{ id: string; display_name: string } | null> {
-      // 1) Local/dev fallback
+      // Local or dev fallback
       try {
         const id = localStorage.getItem("BHQ_ORG_ID");
         if (id) {
@@ -92,7 +92,7 @@ export function makeApi(
         }
       } catch {}
 
-      // 2) Server session (we expose `org` in /api/v1/session)
+      // Server session
       try {
         const res = await fetch(`${root}/session`, { credentials: "include", headers: hdrs() });
         const ctx = await parse<any>(res);
@@ -121,7 +121,7 @@ export function makeApi(
     },
   };
 
-  /** ---------- Animals (parity with server) ---------- */
+  /** ---------- Animals ---------- */
   const animals = {
     async list(query: { q?: string; limit?: number; page?: number; includeArchived?: boolean; sort?: string } = {}) {
       const sp = new URLSearchParams();
@@ -192,27 +192,55 @@ export function makeApi(
     },
   };
 
-  /** ---------- Breeds (parity with server) ---------- */
+  /** ---------- Breeds ---------- */
+  type Species = "DOG" | "CAT" | "HORSE";
+  type BreedItem = { id?: number; name: string; species: Species; source?: "canonical" | "custom" };
+
   const breeds = {
-    // Canonical search (server returns 501 for now → we just return [])
-    async search(opts: { species: "DOG" | "CAT" | "HORSE"; q?: string; limit?: number; registries?: string[] }) {
+    /** Get enum list from server */
+    async species(): Promise<Species[]> {
+      const res = await fetch(`${root}/species`, { credentials: "include", headers: hdrs() });
+      const data = await parse<{ items: Species[] }>(res);
+      return Array.isArray(data?.items) ? data.items : [];
+    },
+
+    /**
+     * Canonical plus custom search.
+     * Pass organizationId to allow the server to merge org custom breeds.
+     */
+    async search(opts: {
+      species: Species;
+      q?: string;
+      limit?: number;
+      registries?: string[];
+      organizationId?: string | number;
+    }): Promise<BreedItem[]> {
       const sp = new URLSearchParams();
       sp.set("species", (opts.species || "DOG").toUpperCase());
       if (opts.q?.trim()) sp.set("q", opts.q.trim());
       if (opts.limit != null) sp.set("limit", String(Math.min(Math.max(opts.limit, 1), 200)));
       if (opts.registries?.length) sp.set("registries", opts.registries.join(","));
+      if (opts.organizationId != null) sp.set("organizationId", String(opts.organizationId));
       const url = `${root}/breeds/search?${sp.toString()}`;
+
       try {
         const res = await fetch(url, { credentials: "include", headers: hdrs() });
-        const data = await parse<any>(res);
-        return Array.isArray(data?.items) ? data.items : Array.isArray(data) ? data : [];
+        const data = await parse<{ items?: BreedItem[] } | BreedItem[]>(res);
+        const items: any[] = Array.isArray((data as any)?.items) ? (data as any).items : Array.isArray(data) ? (data as any) : [];
+        return items as BreedItem[];
       } catch {
         return [];
       }
     },
 
-    // Custom breeds: server requires organizationId in query/body
-    async customList(opts: { organizationId: string | number; species?: "DOG" | "CAT" | "HORSE"; q?: string; page?: number; limit?: number }) {
+    // Custom breeds require organizationId
+    async customList(opts: {
+      organizationId: string | number;
+      species?: Species;
+      q?: string;
+      page?: number;
+      limit?: number;
+    }) {
       const sp = new URLSearchParams();
       sp.set("organizationId", String(opts.organizationId));
       if (opts.species) sp.set("species", opts.species);
@@ -230,7 +258,7 @@ export function makeApi(
       return parse<any>(res);
     },
 
-    async customCreate(payload: { organizationId: string | number; species: "DOG" | "CAT" | "HORSE"; name: string }) {
+    async customCreate(payload: { organizationId: string | number; species: Species; name: string }) {
       const res = await fetch(`${root}/breeds/custom`, {
         method: "POST",
         credentials: "include",
@@ -240,7 +268,7 @@ export function makeApi(
       return parse<any>(res);
     },
 
-    async customUpdate(id: string | number, payload: { organizationId: string | number; name?: string; species?: "DOG" | "CAT" | "HORSE" }) {
+    async customUpdate(id: string | number, payload: { organizationId: string | number; name?: string; species?: Species }) {
       const res = await fetch(`${root}/breeds/custom/${encodeURIComponent(String(id))}`, {
         method: "PATCH",
         credentials: "include",
@@ -256,8 +284,6 @@ export function makeApi(
       return parse<any>(res);
     },
   };
-
-  // orgSettings removed — not implemented server-side. Re-add when endpoints exist.
 
   return { animals, lookups, breeds };
 }

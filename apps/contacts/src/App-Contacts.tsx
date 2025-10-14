@@ -2,7 +2,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Card, Button, Input, EmptyState } from "@bhq/ui";
-import { makeApi, apiUtils } from "./api";
+import { makeApi } from "./api";
 
 /** ─────────────────────────────────────────────────────────────────────────────
  * Types
@@ -765,60 +765,6 @@ function inferCountry(d?: any, draft?: any): string | undefined {
   );
 }
 
-type PhoneInputProps = {
-  value: string | undefined;
-  onChange: (next: string) => void;
-  country?: string; // plain country name or ISO code; we resolve to CC
-  placeholder?: string;
-  className?: string;
-  id?: string;
-  name?: string;
-};
-
-function PhoneInput({ value, onChange, country, placeholder, className, id, name }: PhoneInputProps) {
-  const cc = countryCodeFor(country);
-  // Ensure the prefix is always present
-  const display = React.useMemo(() => {
-    const v = String(value || "");
-    if (!v) return `+${cc} `;
-    // If user typed something without +CC, normalize then format
-    const hasPlus = v.trim().startsWith("+");
-    const vDigits = v.replace(/[^\d+]/g, "");
-    const needsPrefix = !hasPlus || !vDigits.startsWith(`+${cc}`);
-    return formatPhone(needsPrefix ? `+${cc} ${v}` : v, cc);
-  }, [value, cc]);
-
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const next = getEventValue(e);
-    // Prevent user from deleting the +CC completely; reformat
-    const formatted = formatPhone(next, cc);
-    onChange(formatted);
-  };
-
-  const handlePaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
-    const text = e.clipboardData.getData("text");
-    const formatted = formatPhone(text, cc);
-    e.preventDefault();
-    onChange(formatted);
-  };
-
-  return (
-    <Input
-      id={id}
-      name={name}
-      placeholder={placeholder || `+${cc} ...`}
-      value={display}
-      onChange={handleChange}
-      onPaste={handlePaste}
-      className={className}
-      inputMode="tel"
-      autoComplete="tel"
-    />
-  );
-}
-/** -------- End phone formatting utilities + input ---------- **/
-
-
 /** ─────────────────────────────────────────────────────────────────────────────
  * App
  * ──────────────────────────────────────────────────────────────────────────── */
@@ -919,6 +865,7 @@ function tenantIdFromSessionCookie(): number {
   } catch { return NaN; }
 }
 
+
 export default function AppContacts() {
   // announce active module once on mount
   React.useEffect(() => {
@@ -936,12 +883,7 @@ export default function AppContacts() {
 
     (async () => {
       try {
-        const base = getApiBase(); // your helper in this file
-        const url = apiUtils.joinUrl(base, "api", "v1", "session"); // NOT tenant-scoped
-
-        // Use our helper; do NOT pass tenant headers on purpose
-        const data: any = await apiUtils.fetchJson(url, { method: "GET" });
-
+        const data: any = await api.session.get();
         const t = Number(
           data?.tenant?.id ??
           data?.tenantId ??
@@ -1031,6 +973,45 @@ export default function AppContacts() {
     return saved ? JSON.parse(saved) : {};
   });
   const [moreOpen, setMoreOpen] = useState(false);
+  // ── More menu positioning ─────────────────────────────────────────────────────
+  const moreAnchorRef = React.useRef<HTMLElement | null>(null);
+  const [morePos, setMorePos] = React.useState<{ top: number; left: number } | null>(null);
+
+  React.useEffect(() => {
+    if (!moreOpen) return;
+
+    const WIDTH = 256;         // menu width (match w-64)
+    const PAD = 12;
+
+    const sync = () => {
+      const el = moreAnchorRef.current;
+      if (!el) return;
+      const r = el.getBoundingClientRect();
+      const left = Math.max(PAD, Math.min(window.innerWidth - WIDTH - PAD, r.right - WIDTH));
+      const top = r.bottom + 8;
+      setMorePos({ top, left });
+    };
+
+    const parents: HTMLElement[] = [];
+    let p = moreAnchorRef.current?.parentElement || null;
+    while (p) {
+      const s = getComputedStyle(p);
+      if (/(auto|scroll|overlay)/.test(`${s.overflow}${s.overflowY}${s.overflowX}`)) parents.push(p);
+      p = p.parentElement;
+    }
+
+    sync();
+    window.addEventListener("resize", sync);
+    window.addEventListener("scroll", sync, { passive: true });
+    parents.forEach(n => n.addEventListener("scroll", sync, { passive: true }));
+
+    return () => {
+      window.removeEventListener("resize", sync);
+      window.removeEventListener("scroll", sync);
+      parents.forEach(n => n.removeEventListener("scroll", sync));
+    };
+  }, [moreOpen]);
+
 
   const [includeArchived, setIncludeArchived] = useState(false);
   const [drawerRefreshKey, setDrawerRefreshKey] = useState(0);
@@ -1047,6 +1028,8 @@ export default function AppContacts() {
   const [rows, setRows] = useState<ContactRow[]>([]);
   const [total, setTotal] = useState<number>(0);
   const [selected, setSelected] = useState<Set<ID>>(new Set());
+
+
 
   /** Drawer + editing state */
   const [selectedId, setSelectedId] = useState<ID | null>(null);
@@ -1069,35 +1052,16 @@ export default function AppContacts() {
     email: "",
     phone: "",
     notes: "",
-    address: {
-      country: "",
-      state: "",
-      city: "",
-      zip: "",
-      street: "",
-      street2: "",
-    },
+    street: "",
+    street2: "",
+    city: "",
+    state: "",
+    postalCode: "",
+    country: "",
   });
 
-  useEffect(() => {
-    setForm((f) => ({
-      ...f,
-      address: {
-        country: f?.address?.country ?? "",
-        state: f?.address?.state ?? "",
-        city: f?.address?.city ?? "",
-        zip: f?.address?.zip ?? "",
-        street: f?.address?.street ?? "",
-        street2: f?.address?.street2 ?? "",
-      },
-    }));
-    // run once
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-
   // --- State/Region helpers (US vs non-US) ---
-  const countryStr = String(form?.address?.country ?? "").trim().toLowerCase();
+  const countryStr = String(form.country ?? "").trim().toLowerCase();
   const isUS =
     countryStr === "united states" ||
     countryStr === "united states of america" ||
@@ -1113,38 +1077,6 @@ export default function AppContacts() {
     { value: "CA", label: "California" },
     // ... include your full list here
   ];
-
-  /** Convert either a react-select option or an <input> event into a plain string */
-  function toPlainValue(optOrEvent: any): string {
-    // 1) Native event first
-    const tgt = optOrEvent?.currentTarget ?? optOrEvent?.target;
-    if (tgt && typeof tgt === "object" && "value" in tgt) {
-      // @ts-expect-error - dynamic
-      return String(tgt?.value ?? "");
-    }
-
-    // 2) react-select option object like { value, label }
-    if (optOrEvent && typeof optOrEvent === "object") {
-      if (Object.prototype.hasOwnProperty.call(optOrEvent, "value")) {
-        const v = (optOrEvent as any).value;
-        return v == null ? "" : String(v);
-      }
-    }
-
-    // 3) nullish → empty
-    if (optOrEvent == null) return "";
-
-    // 4) strings/numbers from onInputChange or other paths
-    return String(optOrEvent);
-  }
-  /** One handler that works for both react-select and native input */
-function handleStateChange(optOrEvent: any) {
-  const next = toPlainValue(optOrEvent);
-  setForm((f: any) => ({
-    ...f,
-    address: { ...(f?.address ?? {}), state: next },
-  }));
-}
 
   /** Bulk tag manager (for selected rows) */
   const [tagBarOpen, setTagBarOpen] = useState<boolean>(false);
@@ -1487,6 +1419,21 @@ function handleStateChange(optOrEvent: any) {
     return sortedRows.slice(start, start + pageSize);
   }, [sortedRows, clampedPage, pageSize]);
 
+  // Select-all checkbox visual state
+const selectAllRef = React.useRef<HTMLInputElement | null>(null);
+
+React.useLayoutEffect(() => {
+  const el = selectAllRef.current;
+  if (!el) return;
+  if (pageRows.length === 0) {
+    el.indeterminate = false;
+    return;
+  }
+  const allIds = pageRows.map(r => r.id);
+  const selectedOnPage = allIds.filter(id => selected.has(id)).length;
+  el.indeterminate = selectedOnPage > 0 && selectedOnPage < allIds.length;
+}, [selected, pageRows]);
+
   /** Handlers */
   const toggleColumn = (k: string) => setColumns(prev => ({ ...prev, [k]: !prev[k] }));
   const cycleSort = (key: keyof ContactRow, withShift: boolean) => {
@@ -1505,37 +1452,45 @@ function handleStateChange(optOrEvent: any) {
     setPage(1);
   };
   const toggleSelectAll = () => setSelected(prev => prev.size === pageRows.length ? new Set() : new Set(pageRows.map(r => r.id)));
-  const toggleSelect = (id: ID) => setSelected(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const toggleSelect = (id: ID) =>
+    setSelected(prev => {
+      const n = new Set(prev);
+      n.has(id) ? n.delete(id) : n.add(id);
+      return n;
+    });
 
-  const exportCSV = (selectedOnly = false) => {
-    const visible = ALL_COLUMNS.filter(c => columns[c.key]);
-    const header = ["id", ...visible.map(c => c.label)];
-    const src = selectedOnly ? sortedRows.filter(r => selected.has(r.id)) : sortedRows;
-    const lines: string[] = [header.join(",")];
-    src.forEach(r => {
-      const vals = [String(r.id)];
-      visible.forEach(c => {
-        const raw = (r as any)[c.key];
-        let value = "";
-        if (c.key === "phone" || c.key === "whatsappPhone") {
-          value = prettyPhone(String(raw || "")) || "";
-        } else if (c.type === "date") {
-          value = formatDate(String(raw || ""));
-        } else if (c.key === "tags" || c.type === "tags") {
-          value = (Array.isArray(r.tags) ? r.tags : []).join("|");
-        } else {
-          value = String(raw ?? "");
-        }
-        vals.push('"' + String(value).replace(/"/g, '""') + '"');
+  function exportCSV(selectedOnly: boolean) {
+    const cols = visibleCols.map((c) => c.label);
+    const keys = visibleCols.map((c) => c.key);
+
+    const quote = (s: any) => `"${String(s ?? "").replace(/"/g, '""')}"`;
+
+    const source = selectedOnly
+      ? filteredRows.filter(r => selected.has(r.id))
+      : filteredRows;
+
+    const lines: string[] = [];
+    lines.push(cols.map(quote).join(",")); // header
+
+    for (const r of source) {
+      const vals = keys.map((k) => {
+        let v: any = (r as any)[k];
+        if (k === "phone") v = prettyPhone(v);
+        if (k === "createdAt" || k === "updatedAt" || k === "lastContacted" || k === "nextFollowUp") v = formatDate(v);
+        if (k === "tags") v = (r.tags || []).join("|");
+        return quote(v);
       });
       lines.push(vals.join(","));
-    });
-    const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" });
+    }
+
+    const csv = lines.join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = selectedOnly ? "contacts-selected.csv" : "contacts.csv";
+    a.download = selectedOnly ? "contacts_selected.csv" : "contacts.csv";
     a.click();
-  };
+    URL.revokeObjectURL(a.href);
+  }
 
   async function bulkStatus(next: "Active" | "Inactive") {
     if (selected.size === 0) return;
@@ -1753,18 +1708,61 @@ function handleStateChange(optOrEvent: any) {
               <div className="shrink-0 flex items-center gap-2">
                 <Button variant="primary" onClick={openCreate}>New Contact</Button>
 
-                {/* More (Export/Import) */}
+                {/* More (Export/Import) — portaled so it never clips */}
                 <div className="relative inline-flex">
-                  <Button variant="outline" size="icon" aria-label="More" onClick={() => setMoreOpen(v => !v)} className="h-9 w-9">⋯</Button>
-                  {moreOpen && (
+                  {/* If @bhq/ui Button forwards refs, this ref works. If not, use the fallback wrapper below. */}
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    aria-label="More"
+                    onClick={() => setMoreOpen(v => !v)}
+                    className="h-9 w-9"
+                    ref={moreAnchorRef as any}
+                  >
+                    ⋯
+                  </Button>
+
+                  {/* Fallback if Button does NOT forward refs:
+      <span ref={moreAnchorRef} className="inline-flex">
+        <Button variant="outline" size="icon" aria-label="More" onClick={() => setMoreOpen(v => !v)} className="h-9 w-9">⋯</Button>
+      </span>
+  */}
+
+                  {moreOpen && morePos && createPortal(
                     <>
-                      <div className="fixed inset-0 z-40" onClick={() => setMoreOpen(false)} />
-                      <div className="absolute right-0 top-[calc(100%+0.5rem)] z-50 w-64 rounded-md border border-hairline bg-surface shadow-lg p-2">
-                        <button className="w-full text-left px-2 py-1.5 rounded hover:bg-[hsl(var(--brand-orange))]/12" onClick={() => exportCSV(false)}>Export CSV (all)</button>
-                        <button className="w-full text-left px-2 py-1.5 rounded hover:bg-[hsl(var(--brand-orange))]/12" onClick={() => exportCSV(true)} disabled={selected.size === 0}>Export CSV (selected)</button>
-                        <button className="w-full text-left px-2 py-1.5 rounded hover:bg-[hsl(var(--brand-orange))]/12" onClick={() => alert("Import CSV — coming soon")}>Import CSV</button>
+                      {/* backdrop */}
+                      <div
+                        onClick={() => setMoreOpen(false)}
+                        style={{ position: "fixed", inset: 0, zIndex: Z.backdrop, background: "transparent", pointerEvents: "auto" }}
+                      />
+                      {/* panel */}
+                      <div
+                        role="menu"
+                        className="rounded-md border border-hairline bg-surface shadow-lg p-2 w-64"
+                        style={{ position: "fixed", top: morePos.top, left: morePos.left, zIndex: Z.popover }}
+                      >
+                        <button
+                          className="w-full text-left px-2 py-1.5 rounded hover:bg-[hsl(var(--brand-orange))]/12"
+                          onClick={() => { setMoreOpen(false); exportCSV(false); }}
+                        >
+                          Export CSV (all)
+                        </button>
+                        <button
+                          className="w-full text-left px-2 py-1.5 rounded hover:bg-[hsl(var(--brand-orange))]/12 disabled:opacity-50"
+                          onClick={() => { setMoreOpen(false); exportCSV(true); }}
+                          disabled={selected.size === 0}
+                        >
+                          Export CSV (selected)
+                        </button>
+                        <button
+                          className="w-full text-left px-2 py-1.5 rounded hover:bg-[hsl(var(--brand-orange))]/12"
+                          onClick={() => { setMoreOpen(false); alert("Import CSV — coming soon"); }}
+                        >
+                          Import CSV
+                        </button>
                       </div>
-                    </>
+                    </>,
+                    getOverlayRoot()
                   )}
                 </div>
 
@@ -1796,9 +1794,7 @@ function handleStateChange(optOrEvent: any) {
           {/* Filters */}
           {showFilters && (
             <div className="bhq-section-fixed mt-2 rounded-xl border border-hairline bg-surface-strong/70 p-3 sm:p-4">
-              <FilterRow columns={columns} filters={filters} rows={rows} onChange={setFilters} organizations={organizations} />
-              {/* Active filter chips */}
-              {Object.entries(filters).some(([k, v]) => !!v) && (
+              <FilterRow columns={columns} filters={filters} rows={rows} onChange={setFilters} organizations={organizations} />              {Object.entries(filters).some(([k, v]) => !!v) && (
                 <div className="mt-3 flex flex-wrap items-center gap-2">
                   {Object.entries(filters).filter(([, v]) => !!v).map(([k, v]) => (
                     <button
@@ -1826,9 +1822,15 @@ function handleStateChange(optOrEvent: any) {
                 <thead className="sticky top-0 z-10 bg-surface-strong border-b border-hairline">
                   <tr className="text-sm">
                     <th className="px-3 py-2 w-10 text-center">
-                      <input type="checkbox" aria-label="Select all" checked={pageRows.length > 0 && selected.size === pageRows.length} onChange={toggleSelectAll} />
+                      <input
+                        key={clampedPage}
+                        ref={selectAllRef}
+                        type="checkbox"
+                        aria-label="Select all"
+                        checked={pageRows.length > 0 && pageRows.every(r => selected.has(r.id))}
+                        onChange={toggleSelectAll}
+                      />
                     </th>
-
                     {visibleCols.map((c) => {
                       const active = sorts.find(s => s.key === c.key);
                       const ariaSort = active ? (active.dir === "asc" ? "ascending" : "descending") : "none";
@@ -1891,7 +1893,12 @@ function handleStateChange(optOrEvent: any) {
                       className="cursor-pointer transition-colors hover:bg-[hsl(var(--brand-orange))]/8"
                     >
                       <td className="px-3 py-2 text-center" onClick={(e) => e.stopPropagation()}>
-                        <input type="checkbox" aria-label={`Select ${`${r.nickname || r.firstName || ""} ${r.lastName || ""}`.trim() || r.email || r.id}`} checked={selected.has(r.id)} onChange={() => toggleSelect(r.id)} />
+                        <input
+                          type="checkbox"
+                          aria-label={`Select ${`${r.nickname || r.firstName || ""} ${r.lastName || ""}`.trim() || r.email || r.id}`}
+                          checked={selected.has(r.id)}
+                          onChange={() => toggleSelect(r.id)}
+                        />
                       </td>
                       {visibleCols.map((c) => (
                         <td key={`${r.id}-${String(c.key)}`} className="px-3 py-2 text-sm text-center">
@@ -1915,7 +1922,12 @@ function handleStateChange(optOrEvent: any) {
           <div className="bhq-section-fixed flex items-start justify-between px-3 py-2 text-sm">
             <div className="flex flex-col items-start">
               <div className="text-secondary">
-                Showing {pageRows.length === 0 ? 0 : (clampedPage - 1) * pageSize + 1} to {Math.min(clampedPage * pageSize, total)} of {total}
+                {(() => {
+                  const filteredTotal = sortedRows.length;
+                  const start = pageRows.length === 0 ? 0 : (clampedPage - 1) * pageSize + 1;
+                  const end = Math.min(clampedPage * pageSize, filteredTotal);
+                  return <>Showing {start} to {end} of {filteredTotal}</>;
+                })()}
               </div>
 
               {/* Moved here from header */}
@@ -2108,7 +2120,7 @@ function handleStateChange(optOrEvent: any) {
           </div>
 
           {drawerTab === "overview" && (
-            <div className="space-y-4">
+            <div data-1p-ignore autoComplete="off" className="space-y-4">
               <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <FieldRow label="First Name">
                   {drawerEditing ? (
@@ -2639,7 +2651,12 @@ function handleStateChange(optOrEvent: any) {
 `}</style>
 
           <div className="bhq-form-readable text-primary">
-            <form onSubmit={submitForm} className="space-y-4">
+            <form
+              onSubmit={submitForm}
+              className="space-y-4"
+              data-1p-ignore
+              autoComplete="off"
+            >
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 auto-rows-min">
                 {/* Identity */}
                 <LabeledInputBare
@@ -3188,19 +3205,6 @@ function ChecklistFilter({
   );
 }
 
-// Shared helper for resolving org display names (visible to FilterRow)
-function resolveOrgName(
-  organizationId?: ID | null,
-  organizationName?: string | null,
-  orgs?: Array<{ id: ID; name: string }>
-) {
-  if (organizationName && String(organizationName).trim()) return organizationName!;
-  if (organizationId == null) return "";
-  const hit = orgs?.find(o => String(o.id) === String(organizationId));
-  return hit?.name ?? "";
-}
-
-
 function FilterRow({
   columns,
   filters,
@@ -3497,18 +3501,21 @@ function ColumnsPopover({
               const k = String(c.key);
               const checked = !!columns[k];
               return (
-                <label
+                <div
                   key={k}
                   data-col={k}
                   tabIndex={0}
                   role="checkbox"
                   aria-checked={checked ? "true" : "false"}
                   className="flex items-center gap-2 w-full min-w-0 px-2 py-1.5 text-[13px] leading-5 rounded hover:bg-[hsl(var(--brand-orange))]/12 cursor-pointer select-none"
-                  onClick={() => onToggle(k)}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    onToggle(k);       // <- single source of truth for toggling
+                  }}
                   onKeyDown={(e) => {
                     if (e.key === " " || e.key === "Enter") {
                       e.preventDefault();
-                      onToggle(k);
+                      onToggle(k);     // <- keyboard toggle
                     }
                   }}
                 >
@@ -3517,10 +3524,10 @@ function ColumnsPopover({
                     className="h-4 w-4 shrink-0 accent-[hsl(var(--brand-orange))]"
                     aria-label={c.label}
                     checked={checked}
-                    onChange={() => onToggle(k)}
+                    readOnly             // <- important: prevent double toggle
                   />
                   <span className="truncate text-primary">{c.label}</span>
-                </label>
+                </div>
               );
             })}
 
