@@ -1,34 +1,13 @@
 // apps/animals/src/App-Animals.tsx
 import React, { useEffect, useMemo, useState } from "react";
-import { Card, Button, Input, EmptyState } from "@bhq/ui";
+import { createPortal } from "react-dom";
+import { components, hooks, overlay, storage } from "@bhq/ui";
+
 import { makeApi } from "./api";
 import { BreedFormControl } from "./components/BreedEditor";
-import { createPortal } from "react-dom";
-import OwnershipEditor, { OwnerRow as OwnershipRow } from "./components/OwnershipEditor";
+import OwnershipEditor from "./components/OwnershipEditor";
 import { OwnershipChips } from "./components/OwnershipChips";
-
-/** Overlay root for portals */
-function getOverlayRoot(): HTMLElement {
-  let el = document.getElementById("bhq-top-layer") as HTMLElement | null;
-  if (!el) {
-    el = document.createElement("div");
-    el.id = "bhq-top-layer";
-    Object.assign(el.style, {
-      position: "fixed",
-      inset: "0",
-      zIndex: "2147483647",
-      // Default to NON-interactive; we toggle to auto only while an overlay is open.
-      pointerEvents: "none",
-    });
-    document.body.appendChild(el);
-  }
-  return el;
-}
-
-function setOverlayHostInteractive(enabled: boolean) {
-  const el = getOverlayRoot();
-  el.style.pointerEvents = enabled ? "auto" : "none";
-}
+import type { OwnerRow as OwnershipRow } from "./components/OwnershipEditor";
 
 /* Local Badge */
 function Badge(props: { children: React.ReactNode }) {
@@ -132,7 +111,7 @@ function formatDate(iso?: string | null) {
 function isInteractive(el: Element | null) {
   if (!el) return false;
   const target = (el as HTMLElement).closest?.(
-    "[data-stop-row-open],a,button,input,select,textarea,[role='button']"
+    "[data-stop-row-open],a,components.Button,components.Input,select,textarea,[role='components.Button']"
   );
   return !!target;
 }
@@ -191,11 +170,6 @@ function ColumnsPopover({
   onSet: (next: Record<string, boolean>) => void;
 }) {
   const [open, setOpen] = React.useState(false);
-  React.useEffect(() => {
-    setOverlayHostInteractive(open);
-    return () => setOverlayHostInteractive(false);
-  }, [open]);
-
   const btnRef = React.useRef<HTMLButtonElement | null>(null);
   const [pos, setPos] = React.useState<{ top: number; left: number } | null>(null);
 
@@ -281,29 +255,29 @@ function ColumnsPopover({
           <div className="flex items-center justify-between px-2 pb-1">
             <div className="text-xs font-medium uppercase text-secondary">Show columns</div>
             <div className="flex items-center gap-3">
-              <button
-                type="button"
+              <components.Button
+                type="components.Button"
                 className="text-xs font-medium hover:underline"
                 style={{ color: "hsl(24 95% 54%)" }}
                 onClick={selectAll}
               >
                 All
-              </button>
-              <button
-                type="button"
+              </components.Button>
+              <components.Button
+                type="components.Button"
                 className="text-xs font-medium hover:underline"
                 style={{ color: "hsl(190 90% 45%)" }}
                 onClick={setDefault}
               >
                 Default
-              </button>
-              <button
-                type="button"
+              </components.Button>
+              <components.Button
+                type="components.Button"
                 className="text-xs font-medium text-secondary hover:underline"
                 onClick={clearAll}
               >
                 Clear
-              </button>
+              </components.Button>
             </div>
           </div>
 
@@ -318,7 +292,7 @@ function ColumnsPopover({
                 className="flex items-center gap-2 w-full min-w-0 px-2 py-1.5 text-[13px] leading-5 rounded hover:bg-[hsl(var(--brand-orange))]/12 cursor-pointer select-none"
                 onClick={(e) => {
                   const tag = (e.target as HTMLElement).tagName.toLowerCase();
-                  if (tag !== "input") {
+                  if (tag !== "components.Input") {
                     e.preventDefault();
                     e.stopPropagation();
                     onToggle(k);
@@ -328,7 +302,7 @@ function ColumnsPopover({
                   if (e.key === " " || e.key === "Enter") { e.preventDefault(); onToggle(k); }
                 }}
               >
-                <input
+                <components.Input
                   id={inputId}
                   type="checkbox"
                   className="h-4 w-4 shrink-0 accent-[hsl(var(--brand-orange))]"
@@ -343,9 +317,9 @@ function ColumnsPopover({
           })}
 
           <div className="flex justify-end pt-2">
-            <Button size="sm" variant="outline" onClick={() => setOpen(false)}>
+            <components.Button size="sm" variant="outline" onClick={() => setOpen(false)}>
               Close
-            </Button>
+            </components.Button>
           </div>
         </div>
       </div>,
@@ -355,7 +329,7 @@ function ColumnsPopover({
 
   return (
     <div className="relative inline-flex">
-      <Button
+      <components.Button
         ref={btnRef as any}
         variant="outline"
         size="icon"
@@ -370,7 +344,7 @@ function ColumnsPopover({
           <rect x="10" y="4" width="5" height="16" rx="1.5" />
           <rect x="17" y="4" width="4" height="16" rx="1.5" />
         </svg>
-      </Button>
+      </components.Button>
       {menu}
     </div>
   );
@@ -495,11 +469,7 @@ export default function AppAnimals() {
     try {
       const org = await (api as any)?.lookups?.getCreatingOrganization?.();
       if (org && org.id != null) return org;
-    } catch {
-      // fall through to local fallback
-    }
-
-    // Local fallback (dev)
+    } catch { /* fall through */ }
     try {
       const id = localStorage.getItem("BHQ_ORG_ID");
       if (id) {
@@ -508,11 +478,29 @@ export default function AppAnimals() {
           display_name: localStorage.getItem("BHQ_ORG_NAME") || "My Organization",
         };
       }
-    } catch {
-      /* ignore */
-    }
+    } catch { /* ignore */ }
     return null;
   }, [api]);
+
+
+  const [creatingOrg, setCreatingOrg] = useState<{ id: string; display_name: string } | null>(null);
+
+  const orgIdLS = React.useMemo(() => {
+    try { return localStorage.getItem("BHQ_ORG_ID") || undefined; } catch { return undefined; }
+  }, []);
+
+  useEffect(() => {
+    (async () => setCreatingOrg(await safeGetCreatingOrg()))();
+  }, [safeGetCreatingOrg]);
+
+  // Resolve the org id we will send along with breed search requests
+  const [orgIdForBreeds, setOrgIdForBreeds] = useState<string | undefined>(undefined);
+
+  useEffect(() => {
+    // Prefer server/session org id; fall back to localStorage (orgIdLS)
+    if (creatingOrg?.id) setOrgIdForBreeds(String(creatingOrg.id));
+    else if (orgIdLS) setOrgIdForBreeds(String(orgIdLS));
+  }, [creatingOrg?.id, orgIdLS]);
 
 
   function Field({ label, value }: { label: string; value: React.ReactNode }) {
@@ -564,8 +552,8 @@ export default function AppAnimals() {
         <div className="rounded-md border border-hairline">
           <div className="flex items-center justify-between p-2 text-sm border-b border-hairline">
             <div className="font-medium">Cycle Start Dates</div>
-            <Button
-              type="button"
+            <components.Button
+              type="components.Button"
               onClick={() => {
                 if (!newDate) return;
                 setDates(arr => [...arr, newDate].sort());
@@ -574,19 +562,19 @@ export default function AppAnimals() {
               }}
             >
               + Add Cycle Start Date
-            </Button>
+            </components.Button>
           </div>
 
           <div className="p-2 flex gap-2">
-            <Input type="date" value={newDate} onChange={(e) => setNewDate(e.target.value)} />
-            <Input placeholder="Note" value={note} onChange={(e) => setNote(e.target.value)} />
+            <components.Input type="date" value={newDate} onChange={(e) => setNewDate(e.target.value)} />
+            <components.Input placeholder="Note" value={note} onChange={(e) => setNote(e.target.value)} />
           </div>
 
           {dates.map((d) => (
             <div key={d} className="flex items-center justify-between px-2 py-1 border-t border-hairline text-sm">
               <div className="flex-1">{new Date(d).toLocaleDateString()}</div>
               <div className="flex items-center gap-2">
-                <Button
+                <components.Button
                   variant="outline"
                   onClick={() => {
                     const next = window.prompt("Edit date (yyyy-mm-dd)", d);
@@ -594,10 +582,10 @@ export default function AppAnimals() {
                   }}
                 >
                   Edit
-                </Button>
-                <Button variant="ghost" onClick={() => setDates((arr) => arr.filter((x) => x !== d))}>
+                </components.Button>
+                <components.Button variant="ghost" onClick={() => setDates((arr) => arr.filter((x) => x !== d))}>
                   Delete
-                </Button>
+                </components.Button>
               </div>
             </div>
           ))}
@@ -677,12 +665,6 @@ export default function AppAnimals() {
 
   /* Drawer (declare BEFORE any effect that references it) */
   const [drawer, setDrawer] = useState<AnimalRow | null>(null);
-
-  /** Single overlay-pointer-events effect (replaces the two separate ones) */
-  useEffect(() => {
-    setOverlayHostInteractive(formOpen || !!drawer);
-    return () => setOverlayHostInteractive(false);
-  }, [formOpen, drawer]);
 
   const [drawerTab, setDrawerTab] = useState<
     "overview" | "cycle" | "offspring" | "health" | "documents" | "audit"
@@ -1148,7 +1130,7 @@ export default function AppAnimals() {
   /* Render */
   return (
     <div className="space-y-3">
-      <Card className="bhq-card bg-surface/80 bg-gradient-to-b from-[hsl(var(--glass))/65] to-[hsl(var(--glass-strong))/85] backdrop-blur-sm border border-hairline transition-shadow">
+      <components.Card className="bhq-components.Card bg-surface/80 bg-gradient-to-b from-[hsl(var(--glass))/65] to-[hsl(var(--glass-strong))/85] backdrop-blur-sm border border-hairline transition-shadow">
         {/* Toolbar */}
         <div className="bhq-section-fixed px-3 py-4 sm:px-4 sm:py-5 bg-surface bg-gradient-to-b from-[hsl(var(--glass))/35] to-[hsl(var(--glass-strong))/55] rounded-t-xl">
           <div className="flex items-center gap-3 justify-between min-w-0">
@@ -1158,7 +1140,7 @@ export default function AppAnimals() {
                 <svg className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-secondary" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                   <path d="M21 21l-4.3-4.3M10.5 18a7.5 7.5 0 1 1 0-15 7.5 7.5 0 0 1 0 15Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
                 </svg>
-                <Input
+                <components.Input
                   value={q}
                   onChange={(e) => { const v = (e.currentTarget?.value ?? ""); setQ(v); setPage(1); }}
                   placeholder="Search any field..."
@@ -1166,8 +1148,8 @@ export default function AppAnimals() {
                   className="pl-9 pr-20 w-full h-10 rounded-full shadow-sm bg-surface border border-hairline focus:shadow-[0_0_0_2px_hsl(var(--brand-orange))] focus:outline-none"
                 />
                 {q && (
-                  <button
-                    type="button"
+                  <components.Button
+                    type="components.Button"
                     aria-label="Clear search"
                     onClick={() => setQ("")}
                     className="absolute right-12 top-1/2 -translate-y-1/2 p-1 rounded hover:bg-[hsl(var(--brand-orange))]/12"
@@ -1175,11 +1157,11 @@ export default function AppAnimals() {
                     <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                       <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
                     </svg>
-                  </button>
+                  </components.Button>
                 )}
                 <span aria-hidden className="absolute right-9 top-1/2 -translate-y-1/2 h-5 w-px bg-hairline" />
-                <button
-                  type="button"
+                <components.Button
+                  type="components.Button"
                   aria-label="Toggle filters"
                   aria-pressed={showFilters ? "true" : "false"}
                   onClick={(e) => { setShowFilters((v) => !v); (e.currentTarget as HTMLButtonElement).blur(); }}
@@ -1197,13 +1179,13 @@ export default function AppAnimals() {
                     <line x1="4" y1="17" x2="12" y2="17" />
                     <circle cx="16" cy="17" r="1.5" fill="currentColor" />
                   </svg>
-                </button>
+                </components.Button>
               </div>
             </div>
 
             {/* RIGHT: New + kebab */}
             <div className="flex justify-end gap-2 shrink-0">
-              <Button
+              <components.Button
                 className="whitespace-nowrap"
                 onClick={() => {
                   setEditingId(null);
@@ -1212,12 +1194,12 @@ export default function AppAnimals() {
                 }}
               >
                 New&nbsp;Animal
-              </Button>
+              </components.Button>
 
               {/* Kebab menu */}
               <div className="relative">
-                <button
-                  type="button"
+                <components.Button
+                  type="components.Button"
                   className="h-10 w-10 rounded-md border border-hairline bg-surface hover:bg-surface-strong text-lg leading-none"
                   aria-haspopup="menu"
                   aria-expanded={menuOpen ? "true" : "false"}
@@ -1225,7 +1207,7 @@ export default function AppAnimals() {
                   onKeyDown={(e) => { if (e.key === "Escape") setMenuOpen(false); }}
                 >
                   …
-                </button>
+                </components.Button>
 
                 {menuOpen && (
                   <div
@@ -1233,24 +1215,24 @@ export default function AppAnimals() {
                     className="absolute right-0 z-[999] mt-2 w-48 rounded-xl border border-hairline bg-surface p-2 shadow-lg"
                     onClick={(e) => e.stopPropagation()}
                   >
-                    <button
+                    <components.Button
                       role="menuitem"
                       className="w-full text-left rounded px-2 py-1.5 text-sm hover:bg-surface-strong"
                       onClick={() => { setMenuOpen(false); exportCSV(false); }}
-                      type="button"
+                      type="components.Button"
                     >
                       Export all (CSV)
-                    </button>
-                    <button
+                    </components.Button>
+                    <components.Button
                       role="menuitem"
                       disabled={selected.size === 0}
                       className={`w-full text-left rounded px-2 py-1.5 text-sm hover:bg-surface-strong ${selected.size === 0 ? "opacity-50 cursor-not-allowed" : ""
                         }`}
                       onClick={() => { if (selected.size) { setMenuOpen(false); exportCSV(true); } }}
-                      type="button"
+                      type="components.Button"
                     >
                       Export selected (CSV)
-                    </button>
+                    </components.Button>
                   </div>
                 )}
               </div>
@@ -1261,30 +1243,30 @@ export default function AppAnimals() {
         {/* Filters */}
         {showFilters && (
           <div className="bhq-section-fixed px-4 pb-2 sm:px-5">
-            <div className="rounded-xl border border-hairline bg-card p-4">
+            <div className="rounded-xl border border-hairline bg-components.Card p-4">
               <div className="grid grid-cols-12 gap-3">
                 <div className="col-span-12 md:col-span-3">
                   <div className="text-xs text-secondary mb-1">Species</div>
-                  <Input placeholder="Dog, Cat, Horse" value={filters.species || ""} onChange={(e: any) => setFilters((f) => ({ ...f, species: e.target.value }))} className="h-9" />
+                  <components.Input placeholder="Dog, Cat, Horse" value={filters.species || ""} onChange={(e: any) => setFilters((f) => ({ ...f, species: e.target.value }))} className="h-9" />
                 </div>
                 <div className="col-span-12 md:col-span-3">
                   <div className="text-xs text-secondary mb-1">Status</div>
-                  <Input placeholder="Active, Retired, Prospect" value={filters.status || ""} onChange={(e: any) => setFilters((f) => ({ ...f, status: e.target.value }))} className="h-9" />
+                  <components.Input placeholder="Active, Retired, Prospect" value={filters.status || ""} onChange={(e: any) => setFilters((f) => ({ ...f, status: e.target.value }))} className="h-9" />
                 </div>
                 <div className="col-span-12 md:col-span-3">
                   <div className="text-xs text-secondary mb-1">Breed</div>
-                  <Input placeholder="Breed" value={filters.breed || ""} onChange={(e: any) => setFilters((f) => ({ ...f, breed: e.target.value }))} className="h-9" />
+                  <components.Input placeholder="Breed" value={filters.breed || ""} onChange={(e: any) => setFilters((f) => ({ ...f, breed: e.target.value }))} className="h-9" />
                 </div>
                 <div className="col-span-12 md:col-span-3">
                   <div className="text-xs text-secondary mb-1">Owner</div>
-                  <Input placeholder="Owner name" value={filters.ownerName || ""} onChange={(e: any) => setFilters((f) => ({ ...f, ownerName: e.target.value }))} className="h-9" />
+                  <components.Input placeholder="Owner name" value={filters.ownerName || ""} onChange={(e: any) => setFilters((f) => ({ ...f, ownerName: e.target.value }))} className="h-9" />
                 </div>
                 <div className="col-span-12 md:col-span-6">
                   <div className="text-xs text-secondary mb-1">Tags</div>
-                  <Input placeholder="tag1, tag2" value={filters.tags || ""} onChange={(e: any) => setFilters((f) => ({ ...f, tags: e.target.value }))} className="h-9" />
+                  <components.Input placeholder="tag1, tag2" value={filters.tags || ""} onChange={(e: any) => setFilters((f) => ({ ...f, tags: e.target.value }))} className="h-9" />
                 </div>
                 <div className="col-span-12 md:col-span-6 flex items-end justify-end gap-2">
-                  <Button variant="ghost" onClick={() => setFilters({})}>Clear</Button>
+                  <components.Button variant="ghost" onClick={() => setFilters({})}>Clear</components.Button>
                 </div>
               </div>
             </div>
@@ -1298,7 +1280,7 @@ export default function AppAnimals() {
               <thead className="px-3 py-2 cursor-pointer select-none text-center whitespace-nowrap font-medium">
                 <tr className="border-t border-b border-hairline">
                   <th className="w-10 px-3 py-2 text-center">
-                    <input type="checkbox" aria-label="Select all" checked={pageRows.length > 0 && pageRows.every((r) => selected.has(r.id))} onChange={toggleSelectAll} />
+                    <components.Input type="checkbox" aria-label="Select all" checked={pageRows.length > 0 && pageRows.every((r) => selected.has(r.id))} onChange={toggleSelectAll} />
                   </th>
                   {ALL_COLUMNS.filter((c) => columns[String(c.key)]).map((c) => {
                     const active = sorts.find((s) => s.key === c.key);
@@ -1337,7 +1319,7 @@ export default function AppAnimals() {
                 {!loading && pageRows.length === 0 && (
                   <tr>
                     <td colSpan={1 + visibleCols.length} className="px-3 py-8 text-center">
-                      <EmptyState title="No results" description="Try adjusting filters or adding a new record." />
+                      <components.EmptyState title="No results" description="Try adjusting filters or adding a new record." />
                     </td>
                   </tr>
                 )}
@@ -1352,7 +1334,7 @@ export default function AppAnimals() {
                     >
                       {/* selection checkbox */}
                       <td className="w-10 px-3 py-2">
-                        <input
+                        <components.Input
                           data-stop-row-open
                           type="checkbox"
                           checked={selected.has(r.id)}
@@ -1392,7 +1374,7 @@ export default function AppAnimals() {
               {(clampedPage - 1) * pageSize + pageRows.length} of {total}
             </div>
             <label className="mt-1 inline-flex items-center gap-2 text-xs text-secondary">
-              <input
+              <components.Input
                 type="checkbox"
                 checked={includeArchived}
                 onChange={(e) => setIncludeArchived(e.currentTarget.checked)}
@@ -1414,23 +1396,23 @@ export default function AppAnimals() {
               ))}
             </select>
 
-            <Button
+            <components.Button
               variant="ghost"
               onClick={() => setPage((p) => Math.max(1, p - 1))}
               disabled={clampedPage <= 1}
             >
               Prev
-            </Button>
+            </components.Button>
 
             <div>Page {clampedPage} of {pageCount}</div>
 
-            <Button
+            <components.Button
               variant="ghost"
               onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
               disabled={clampedPage >= pageCount}
             >
               Next
-            </Button>
+            </components.Button>
           </div>
         </div>
         {/* Create / Edit Animal */}
@@ -1450,13 +1432,13 @@ export default function AppAnimals() {
                     <div className="text-lg font-semibold">
                       {editingId == null ? "Create Animal" : "Edit Animal"}
                     </div>
-                    <Button variant="ghost" onClick={() => setFormOpen(false)}>✕</Button>
+                    <components.Button variant="ghost" onClick={() => setFormOpen(false)}>✕</components.Button>
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                       <label className="block text-xs mb-1 text-secondary">Name *</label>
-                      <Input className="text-primary" value={form.name || ""} onChange={(e) => setForm(s => ({ ...s, name: e.target.value }))} />
+                      <components.Input className="text-primary" value={form.name || ""} onChange={(e) => setForm(s => ({ ...s, name: e.target.value }))} />
                       {formErrors.name && <div className="text-xs text-red-500 mt-1">{formErrors.name}</div>}
                     </div>
                     <div>
@@ -1485,7 +1467,9 @@ export default function AppAnimals() {
                         api={api}
                         speciesUi={(form.species as any) || "Dog"}
                         animalId={editingId ?? null}
+                        organizationId={orgIdForBreeds}   // ← UPDATED
                         valueName={form.breed || ""}
+
                         onPureSelected={(sel) => {
                           setForm((s: any) => ({
                             ...s,
@@ -1532,7 +1516,7 @@ export default function AppAnimals() {
 
                     <div>
                       <label className="block text-xs mb-1 text-secondary">Date of Birth *</label>
-                      <Input className="text-primary" type="date" value={form.dob || ""} onChange={(e) => setForm(s => ({ ...s, dob: e.target.value }))} />
+                      <components.Input className="text-primary" type="date" value={form.dob || ""} onChange={(e) => setForm(s => ({ ...s, dob: e.target.value }))} />
                       {formErrors.dob && <div className="text-xs text-red-500 mt-1">{formErrors.dob}</div>}
                     </div>
                     <div>
@@ -1548,7 +1532,7 @@ export default function AppAnimals() {
 
                     <div>
                       <label className="block text-xs mb-1 text-secondary">Microchip #</label>
-                      <Input className="text-primary" value={form.microchip || ""} onChange={(e) => setForm(s => ({ ...s, microchip: e.target.value }))} />
+                      <components.Input className="text-primary" value={form.microchip || ""} onChange={(e) => setForm(s => ({ ...s, microchip: e.target.value }))} />
                       {formErrors.microchip && <div className="text-xs text-red-500 mt-1">{formErrors.microchip}</div>}
                     </div>
                     <div className="sm:col-span-2">
@@ -1564,7 +1548,7 @@ export default function AppAnimals() {
 
                     <div className="sm:col-span-2">
                       <label className="block text-xs mb-1 text-secondary">Tags</label>
-                      <Input
+                      <components.Input
                         className="text-primary"
                         placeholder="tag1, tag2"
                         value={(form.tags as string[] | undefined)?.join(", ") || ""}
@@ -1590,8 +1574,8 @@ export default function AppAnimals() {
                     <div className="mt-3 text-sm text-red-500">{formErrors.__server}</div>
                   )}
                   <div className="mt-4 flex justify-end gap-2">
-                    <Button variant="ghost" onClick={() => setFormOpen(false)}>Cancel</Button>
-                    <Button onClick={saveAnimal}>Save</Button>
+                    <components.Button variant="ghost" onClick={() => setFormOpen(false)}>Cancel</components.Button>
+                    <components.Button onClick={saveAnimal}>Save</components.Button>
                   </div>
                 </div>
               </div>
@@ -1623,7 +1607,7 @@ export default function AppAnimals() {
                       {drawer.status}
                     </span>
                     <div className="ml-auto flex items-center gap-2">
-                      <Button
+                      <components.Button
                         variant="outline"
                         onClick={() => {
                           setEditingId(drawer.id as ID);
@@ -1638,8 +1622,8 @@ export default function AppAnimals() {
                         }}
                       >
                         Edit
-                      </Button>
-                      <Button variant="ghost" onClick={() => setDrawer(null)}>✕</Button>
+                      </components.Button>
+                      <components.Button variant="ghost" onClick={() => setDrawer(null)}>✕</components.Button>
                     </div>
                   </div>
 
@@ -1671,14 +1655,14 @@ export default function AppAnimals() {
                       ["documents", "Documents"],
                       ["audit", "Audit Log"],
                     ].map(([k, label]) => (
-                      <button
+                      <components.Button
                         key={k}
                         onClick={() => setDrawerTab(k as any)}
                         className={`px-3 py-1.5 rounded-md border text-sm ${drawerTab === k ? "bg-primary/10 border-primary" : "bg-surface border-hairline"
                           }`}
                       >
                         {label}
-                      </button>
+                      </components.Button>
                     ))}
                   </div>
 
@@ -1735,7 +1719,7 @@ export default function AppAnimals() {
             getOverlayRoot()
           )
         }
-      </Card>
+      </components.Card>
     </div>
   );
 }

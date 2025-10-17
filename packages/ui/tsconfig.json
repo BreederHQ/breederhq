@@ -8,8 +8,11 @@
     "rootDir": "src",
     "jsx": "react-jsx",
     "skipLibCheck": true,
-    "noEmit": false,          // override
-    "baseUrl": "."            // local baseUrl
+    "noEmit": false,
+    "baseUrl": ".",
+    "forceConsistentCasingInFileNames": true,
+    "module": "ESNext",
+    "moduleResolution": "Bundler"
   },
   "include": ["src"]
 }

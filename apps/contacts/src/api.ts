@@ -194,6 +194,15 @@ export function makeApi(baseOrigin: string = "", authHeaderFn?: () => Record<str
   const v1 = joinUrl(origin, "/api/v1");
   const withAuth = () => (authHeaderFn ? authHeaderFn() : {});
 
+  const session = {
+    async get() {
+      const url = joinUrl(v1, "session");
+      // use the bare fetch (no tenant header), since we don't know it yet
+      return bareFetchJson<any>(url, { method: "GET" });
+    },
+  };
+
+
   /* --------------------------------- CONTACTS -------------------------------- */
   const contacts = {
     async get(id: ID) {
@@ -622,6 +631,7 @@ export function makeApi(baseOrigin: string = "", authHeaderFn?: () => Record<str
   };
 
   return {
+    session, 
     contacts,
     contactsExtras,
     tags,

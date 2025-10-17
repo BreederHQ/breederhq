@@ -1,7 +1,8 @@
 // App-Contacts.tsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Card, Button, Input, EmptyState } from "@bhq/ui";
+import { getOverlayRoot } from "@bhq/ui/overlay";
+import { components, hooks, utils } from "@bhq/ui";
 import { makeApi } from "./api";
 
 /** ─────────────────────────────────────────────────────────────────────────────
@@ -216,24 +217,10 @@ const ALL_COLUMNS: ColumnDef[] = [
 ];
 
 const Z = {
-  topLayer: 2147483646,
-  popover: 2147483645,
-  backdrop: 2147483644,
+  modal: 5000,
+  popover: 4000,
+  backdrop: 3990,
 } as const;
-
-function getOverlayRoot(): HTMLElement {
-  let el = document.getElementById("bhq-top-layer") as HTMLElement | null;
-  if (!el) {
-    el = document.createElement("div");
-    el.id = "bhq-top-layer";
-    el.style.position = "relative";
-    el.style.zIndex = String(Z.topLayer);
-    document.body.appendChild(el);
-  }
-  return el;
-}
-
-
 
 /** Tags (from API at runtime; fallback keeps UI usable) */
 const FALLBACK_CONTACT_TAGS = ["breeder", "VIP", "supplier", "prospect", "waitlist", "do-not-contact"];
@@ -477,7 +464,7 @@ function IntlPhoneField({
         style={{ position: "fixed", top: pos.top, left: pos.left, zIndex: Z.popover }}
       >
         <div className="p-2 border-b border-hairline">
-          <input
+          <components.Input
             autoFocus
             placeholder="Search country or code…"
             value={query}
@@ -489,16 +476,16 @@ function IntlPhoneField({
           {filtered.map(c => {
             const dial = DIAL_BY_ISO[c.code.toUpperCase()] || "";
             return (
-              <button
+              <components.Button
                 key={c.code}
-                type="button"
+                type="components.Button"
                 onClick={() => pickCountry(c.code)}
                 className="w-full flex items-center gap-2 px-3 py-2 hover:bg-[hsl(var(--brand-orange))]/12 text-left"
               >
                 <span className="shrink-0">{isoToFlag(c.code)}</span>
                 <span className="flex-1 truncate">{c.name}</span>
                 <span className="shrink-0 text-secondary">{dial ? `+${dial}` : ""}</span>
-              </button>
+              </components.Button>
             );
           })}
           {filtered.length === 0 && (
@@ -513,9 +500,9 @@ function IntlPhoneField({
   return (
     <div className={["grid grid-cols-[minmax(140px,200px)_1fr] gap-2", className].filter(Boolean).join(" ")}>
       <div className="relative">
-        <button
+        <components.Button
           ref={btnRef}
-          type="button"
+          type="components.Button"
           onClick={() => setOpen(v => !v)}
           className="w-full h-10 inline-flex items-center gap-2 rounded-md border border-hairline bg-surface px-2.5 text-sm text-primary outline-none focus:shadow-[0_0_0_2px_hsl(var(--brand-orange))]"
         >
@@ -525,11 +512,11 @@ function IntlPhoneField({
           </span>
           <span className="ml-auto shrink-0 text-secondary">+{cc}</span>
           <svg viewBox="0 0 20 20" className="ml-2 h-4 w-4 opacity-70"><path fill="currentColor" d="M5.5 7.5l4.5 4 4.5-4" /></svg>
-        </button>
+        </components.Button>
         {dropdown}
       </div>
 
-      <input
+      <components.Input
         inputMode="tel"
         autoComplete="tel"
         placeholder={cc === NANP ? "(201) 555-5555" : "Phone number"}
@@ -633,11 +620,6 @@ function prettyPhone(v?: string | null) {
   const digits = String(v).replace(/[^\d]/g, "");
   if (digits.length === 11 && digits.startsWith("1")) return `+1 ${digits.slice(1, 4)}-${digits.slice(4, 7)}-${digits.slice(7)}`;
   if (digits.length === 10) return `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6)}`;
-  return v;
-}
-function useDebounced<T>(value: T, delay = 300) {
-  const [v, setV] = useState(value);
-  useEffect(() => { const id = setTimeout(() => setV(value), delay); return () => clearTimeout(id); }, [value, delay]);
   return v;
 }
 
@@ -798,7 +780,7 @@ function FormInput({
   invalid?: boolean;
 }) {
   return (
-    <input
+    <components.Input
       type={type}
       value={value}
       onChange={(e) => onChange(getEventValue(e))}
@@ -962,7 +944,7 @@ export default function AppContacts() {
     return saved ? JSON.parse(saved) : [];
   });
   const [q, setQ] = useState<string>(() => localStorage.getItem(Q_STORAGE_KEY) || "");
-  const dq = useDebounced(q, 300);
+  const dq = hooks.useDebounced(q, 300);
 
   const [pageSize, setPageSize] = useState<number>(() => Number(localStorage.getItem(PAGE_SIZE_STORAGE_KEY) || 25));
   const [page, setPage] = useState<number>(1);
@@ -1023,7 +1005,7 @@ export default function AppContacts() {
 
 
   /** Data */
-  const [loading, setLoading] = useState<boolean>(true);
+  const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string>("");
   const [rows, setRows] = useState<ContactRow[]>([]);
   const [total, setTotal] = useState<number>(0);
@@ -1037,6 +1019,14 @@ export default function AppContacts() {
   const [drawerEditing, setDrawerEditing] = useState(false);
   const [draft, setDraft] = useState<Partial<ContactRow> | null>(null);
   const [drawerTab, setDrawerTab] = useState<"overview" | "animals" | "audit">("overview");
+
+  // Close “More” and “Tag bar” when the drawer opens
+  useEffect(() => {
+    if (isDrawerOpen) {
+      setMoreOpen(false);
+      setTagBarOpen(false);
+    }
+  }, [isDrawerOpen]);
 
   // edit mode is controlled only by drawerEditing now
   const [drawer, setDrawer] = useState<ContactRow | null>(null);
@@ -1228,9 +1218,14 @@ export default function AppContacts() {
     })
       .then((res: any) => {
         if (ignore) return;
-        // contacts.ts returns { data, total, page, limit }
-        const items = Array.isArray(res?.items) ? res.items : (Array.isArray(res?.data) ? res.data : []);
-        const totalVal = Number.isFinite(res?.total) ? Number(res.total) : items.length;
+        const items =
+          Array.isArray(res) ? res :
+            Array.isArray(res?.items) ? res.items :
+              Array.isArray(res?.data) ? res.data :
+                Array.isArray(res?.results) ? res.results :
+                  [];
+        const totalVal =
+          Number.isFinite(res?.total) ? Number(res.total) : items.length;
         setRows(items.map(shapeContact).map(normalize));
         setTotal(totalVal);
       })
@@ -1305,8 +1300,7 @@ export default function AppContacts() {
     return () => { ignore = true; };
   }, [tenantReady, api, drawerTab, selectedId]);
 
-  const dFilters = useDebounced(filters, 250);
-  /** Derived rows: client-side filtering */
+  const dFilters = hooks.useDebounced(filters, 250);
   const filteredRows = React.useMemo(() => {
     const text = (dFilters.__text || "").trim().toLowerCase();
     const f = (k: string) => (dFilters[k] || "").trim().toLowerCase();
@@ -1420,19 +1414,19 @@ export default function AppContacts() {
   }, [sortedRows, clampedPage, pageSize]);
 
   // Select-all checkbox visual state
-const selectAllRef = React.useRef<HTMLInputElement | null>(null);
+  const selectAllRef = React.useRef<HTMLInputElement | null>(null);
 
-React.useLayoutEffect(() => {
-  const el = selectAllRef.current;
-  if (!el) return;
-  if (pageRows.length === 0) {
-    el.indeterminate = false;
-    return;
-  }
-  const allIds = pageRows.map(r => r.id);
-  const selectedOnPage = allIds.filter(id => selected.has(id)).length;
-  el.indeterminate = selectedOnPage > 0 && selectedOnPage < allIds.length;
-}, [selected, pageRows]);
+  React.useLayoutEffect(() => {
+    const el = selectAllRef.current;
+    if (!el) return;
+    if (pageRows.length === 0) {
+      el.indeterminate = false;
+      return;
+    }
+    const allIds = pageRows.map(r => r.id);
+    const selectedOnPage = allIds.filter(id => selected.has(id)).length;
+    el.indeterminate = selectedOnPage > 0 && selectedOnPage < allIds.length;
+  }, [selected, pageRows]);
 
   /** Handlers */
   const toggleColumn = (k: string) => setColumns(prev => ({ ...prev, [k]: !prev[k] }));
@@ -1590,7 +1584,7 @@ React.useLayoutEffect(() => {
     e.preventDefault();
     setFormTriedSubmit(true);
     setLoading(true);
-    setFormError(""); // keep errors in the dialog
+    setFormError("");
 
     const fn = String(form.firstName ?? "").trim();
     const ln = String(form.lastName ?? "").trim();
@@ -1639,7 +1633,7 @@ React.useLayoutEffect(() => {
       <div className="space-y-3">
         {error && <div className="rounded-md border border-hairline bg-surface-strong px-3 py-2 text-sm text-secondary">{error}</div>}
 
-        <Card className="bhq-card bg-surface/80 bg-gradient-to-b from-[hsl(var(--glass))/65] to-[hsl(var(--glass-strong))/85] backdrop-blur-sm border border-hairline transition-shadow">
+        <components.Card className="bhq-components.Card bg-surface/80 bg-gradient-to-b from-[hsl(var(--glass))/65] to-[hsl(var(--glass-strong))/85] backdrop-blur-sm border border-hairline transition-shadow">
           {/* Toolbar */}
           <div className="bhq-section-fixed p-4 sm:p-5 bg-surface bg-gradient-to-b from-[hsl(var(--glass))/35] to-[hsl(var(--glass-strong))/55] rounded-t-xl overflow-hidden">
             <div className="flex items-center gap-3 justify-between min-w-0">
@@ -1651,7 +1645,7 @@ React.useLayoutEffect(() => {
                     <path d="M21 21l-4.3-4.3M10.5 18a7.5 7.5 0 1 1 0-15 7.5 7.5 0 0 1 0 15Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
                   </svg>
 
-                  <Input
+                  <components.Input
                     value={q}
                     onChange={(e) => { const v = (e.currentTarget?.value ?? ""); setQ(v); setPage(1); }}
                     placeholder="Search any field..."
@@ -1661,8 +1655,8 @@ React.useLayoutEffect(() => {
 
                   {/* clear */}
                   {q && (
-                    <button
-                      type="button"
+                    <components.Button
+                      type="components.Button"
                       aria-label="Clear search"
                       onClick={() => setQ("")}
                       className="absolute right-12 top-1/2 -translate-y-1/2 p-1 rounded hover:bg-[hsl(var(--brand-orange))]/12"
@@ -1670,15 +1664,15 @@ React.useLayoutEffect(() => {
                       <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                         <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
                       </svg>
-                    </button>
+                    </components.Button>
                   )}
 
                   {/* divider */}
                   <span aria-hidden className="absolute right-9 top-1/2 -translate-y-1/2 h-5 w-px bg-hairline" />
 
                   {/* filter toggle */}
-                  <button
-                    type="button"
+                  <components.Button
+                    type="components.Button"
                     aria-label="Toggle filters"
                     aria-pressed={showFilters ? 'true' : 'false'}
                     onClick={(e) => { setShowFilters(v => !v); (e.currentTarget as HTMLButtonElement).blur(); }}
@@ -1700,18 +1694,18 @@ React.useLayoutEffect(() => {
                       <line x1="4" y1="17" x2="12" y2="17" />   {/* bottom track */}
                       <circle cx="16" cy="17" r="1.5" fill="currentColor" />  {/* bottom knob */}
                     </svg>
-                  </button>
+                  </components.Button>
                 </div>
               </div>
 
               {/* RIGHT: actions */}
               <div className="shrink-0 flex items-center gap-2">
-                <Button variant="primary" onClick={openCreate}>New Contact</Button>
+                <components.Button variant="primary" onClick={openCreate}>New Contact</components.Button>
 
                 {/* More (Export/Import) — portaled so it never clips */}
                 <div className="relative inline-flex">
-                  {/* If @bhq/ui Button forwards refs, this ref works. If not, use the fallback wrapper below. */}
-                  <Button
+                  {/* If @bhq/ui components.Button forwards refs, this ref works. If not, use the fallback wrapper below. */}
+                  <components.Button
                     variant="outline"
                     size="icon"
                     aria-label="More"
@@ -1720,11 +1714,11 @@ React.useLayoutEffect(() => {
                     ref={moreAnchorRef as any}
                   >
                     ⋯
-                  </Button>
+                  </components.Button>
 
-                  {/* Fallback if Button does NOT forward refs:
+                  {/* Fallback if components.Button does NOT forward refs:
       <span ref={moreAnchorRef} className="inline-flex">
-        <Button variant="outline" size="icon" aria-label="More" onClick={() => setMoreOpen(v => !v)} className="h-9 w-9">⋯</Button>
+        <components.Button variant="outline" size="icon" aria-label="More" onClick={() => setMoreOpen(v => !v)} className="h-9 w-9">⋯</components.Button>
       </span>
   */}
 
@@ -1741,25 +1735,25 @@ React.useLayoutEffect(() => {
                         className="rounded-md border border-hairline bg-surface shadow-lg p-2 w-64"
                         style={{ position: "fixed", top: morePos.top, left: morePos.left, zIndex: Z.popover }}
                       >
-                        <button
+                        <components.Button
                           className="w-full text-left px-2 py-1.5 rounded hover:bg-[hsl(var(--brand-orange))]/12"
                           onClick={() => { setMoreOpen(false); exportCSV(false); }}
                         >
                           Export CSV (all)
-                        </button>
-                        <button
+                        </components.Button>
+                        <components.Button
                           className="w-full text-left px-2 py-1.5 rounded hover:bg-[hsl(var(--brand-orange))]/12 disabled:opacity-50"
                           onClick={() => { setMoreOpen(false); exportCSV(true); }}
                           disabled={selected.size === 0}
                         >
                           Export CSV (selected)
-                        </button>
-                        <button
+                        </components.Button>
+                        <components.Button
                           className="w-full text-left px-2 py-1.5 rounded hover:bg-[hsl(var(--brand-orange))]/12"
                           onClick={() => { setMoreOpen(false); alert("Import CSV — coming soon"); }}
                         >
                           Import CSV
-                        </button>
+                        </components.Button>
                       </div>
                     </>,
                     getOverlayRoot()
@@ -1768,10 +1762,10 @@ React.useLayoutEffect(() => {
 
                 {selected.size > 0 && (
                   <>
-                    <Button variant="outline" onClick={() => bulkStatus("Active")}>Activate</Button>
-                    <Button variant="outline" onClick={() => bulkStatus("Inactive")}>Deactivate</Button>
-                    <Button variant="outline" onClick={() => setTagBarOpen(v => !v)}>Tags</Button>
-                    <Button variant="outline" onClick={() => { if (selected.size >= 2) setMergeOpen(true); }}>Merge</Button>
+                    <components.Button variant="outline" onClick={() => bulkStatus("Active")}>Activate</components.Button>
+                    <components.Button variant="outline" onClick={() => bulkStatus("Inactive")}>Deactivate</components.Button>
+                    <components.Button variant="outline" onClick={() => setTagBarOpen(v => !v)}>Tags</components.Button>
+                    <components.Button variant="outline" onClick={() => { if (selected.size >= 2) setMergeOpen(true); }}>Merge</components.Button>
                   </>
                 )}
               </div>
@@ -1782,11 +1776,11 @@ React.useLayoutEffect(() => {
           {selected.size > 0 && tagBarOpen && (
             <div className="bhq-section-fixed border-t border-hairline px-3 py-2 flex items-center gap-2 bg-surface-strong/60">
               <span className="text-xs text-secondary">Manage tags for {selected.size} selected</span>
-              <Input placeholder="Add tags (comma separated)" value={tagAdd} onChange={(e) => setTagAdd((e.currentTarget?.value ?? ""))} className="w-64" />
-              <Input placeholder="Remove tags (comma separated)" value={tagRemove} onChange={(e) => setTagRemove((e.currentTarget?.value ?? ""))} className="w-64" />
+              <components.Input placeholder="Add tags (comma separated)" value={tagAdd} onChange={(e) => setTagAdd((e.currentTarget?.value ?? ""))} className="w-64" />
+              <components.Input placeholder="Remove tags (comma separated)" value={tagRemove} onChange={(e) => setTagRemove((e.currentTarget?.value ?? ""))} className="w-64" />
               <div className="ml-auto flex gap-2">
-                <Button variant="outline" onClick={() => { setTagAdd(""); setTagRemove(""); setTagBarOpen(false); }}>Cancel</Button>
-                <Button onClick={bulkApplyTags}>Apply</Button>
+                <components.Button variant="outline" onClick={() => { setTagAdd(""); setTagRemove(""); setTagBarOpen(false); }}>Cancel</components.Button>
+                <components.Button onClick={bulkApplyTags}>Apply</components.Button>
               </div>
             </div>
           )}
@@ -1797,18 +1791,18 @@ React.useLayoutEffect(() => {
               <FilterRow columns={columns} filters={filters} rows={rows} onChange={setFilters} organizations={organizations} />              {Object.entries(filters).some(([k, v]) => !!v) && (
                 <div className="mt-3 flex flex-wrap items-center gap-2">
                   {Object.entries(filters).filter(([, v]) => !!v).map(([k, v]) => (
-                    <button
+                    <components.Button
                       key={k}
-                      type="button"
+                      type="components.Button"
                       onClick={() => setFilters({ ...filters, [k]: "" })}
                       className="inline-flex items-center gap-1 rounded-full border border-hairline bg-surface px-2 py-0.5 text-xs"
                       title={`${k}: ${v}`}
                     >
                       <span className="max-w-[16ch] truncate">{k}: {v}</span>
                       <span aria-hidden>×</span>
-                    </button>
+                    </components.Button>
                   ))}
-                  <Button variant="outline" size="sm" onClick={() => setFilters({})}>Clear all</Button>
+                  <components.Button variant="outline" size="sm" onClick={() => setFilters({})}>Clear all</components.Button>
                 </div>
               )}
 
@@ -1819,10 +1813,22 @@ React.useLayoutEffect(() => {
           <div className="bhq-table overflow-hidden">
             <div className="overflow-x-auto overscroll-contain">
               <table className="min-w-max w-full text-sm">
+                <colgroup>
+                  {/* checkbox */}
+                  <col style={{ width: 40 }} />
+                  {/* data columns */}
+                  {visibleCols.map((c) => (
+                    <col key={String(c.key)} />
+                  ))}
+                  {/* columns/settings */}
+                  <col style={{ width: 64 }} />
+                </colgroup>
+
                 <thead className="sticky top-0 z-10 bg-surface-strong border-b border-hairline">
                   <tr className="text-sm">
+                    {/* checkbox header (centered) */}
                     <th className="px-3 py-2 w-10 text-center">
-                      <input
+                      <components.Input
                         key={clampedPage}
                         ref={selectAllRef}
                         type="checkbox"
@@ -1831,82 +1837,102 @@ React.useLayoutEffect(() => {
                         onChange={toggleSelectAll}
                       />
                     </th>
+
+                    {/* data headers (left) */}
                     {visibleCols.map((c) => {
                       const active = sorts.find(s => s.key === c.key);
                       const ariaSort = active ? (active.dir === "asc" ? "ascending" : "descending") : "none";
+                      const nextTitle = active ? `${c.label} (${active.dir})` : `Sort by ${c.label}`;
+
                       return (
-                        <th key={String(c.key)} className="px-3 py-3">
+                        <th key={String(c.key)} className="px-3 py-3 text-left">
                           <button
                             type="button"
-                            className={["w-full text-center select-none transition-colors", active ? "text-primary" : "text-secondary", "hover:bg-[hsl(var(--brand-orange))]/12"].join(" ")}
-                            onClick={(e) => cycleSort(c.key, e.shiftKey)}
                             aria-sort={ariaSort as any}
-                            title={active ? `${c.label} (${active.dir})` : `Sort by ${c.label}`}
+                            title={nextTitle}
+                            onClick={(e) => cycleSort(c.key, e.shiftKey)}
+                            className={[
+                              "inline-flex items-center justify-start gap-1",
+                              "w-full select-none rounded-md px-2 py-1",
+                              active ? "text-primary" : "text-secondary",
+                              "hover:bg-white/5 focus:bg-white/5 focus:outline-none",
+                            ].join(" ")}
                           >
-                            <span className="inline-flex items-center gap-1">
-                              <span>{c.label}</span>
-                              {active ? (
-                                <span className="inline-block h-1.5 w-1.5 rounded-full bg-[hsl(var(--brand-orange))]" />
-                              ) : (
-                                <span className="inline-block h-1.5 w-1.5 rounded-full bg-transparent" />
-                              )}
-                            </span>
+                            <span className="truncate">{c.label}</span>
+                            <span
+                              className={[
+                                "inline-block h-1.5 w-1.5 rounded-full",
+                                active ? "bg-[hsl(var(--brand-orange))]" : "bg-transparent"
+                              ].join(" ")}
+                              aria-hidden
+                            />
                           </button>
                         </th>
                       );
                     })}
 
-                    <th className="px-3 py-2 w-16 text-center">
-                      <ColumnsPopover columns={columns} onToggle={toggleColumn} onSet={setColumns} />
+                    {/* columns/settings header (right) */}
+                    <th className="px-3 py-2 w-16 text-right">
+                      <components.ColumnsPopover columns={columns} onToggle={toggleColumn} onSet={setColumns} />
                     </th>
                   </tr>
                 </thead>
+
                 <tbody className="divide-y divide-hairline">
-                  {loading && Array.from({ length: 6 }).map((_, i) => (
+                  {loading && rows.length === 0 && Array.from({ length: 6 }).map((_, i) => (
                     <tr key={i} className="animate-pulse">
-                      <td className="px-3 py-2 text-center"><div className="h-4 w-4 rounded bg-surface-strong inline-block" /></td>
+                      <td className="px-3 py-2 text-center">
+                        <div className="h-4 w-4 rounded bg-surface-strong inline-block" />
+                      </td>
                       {visibleCols.map((c, j) => (
-                        <td key={`${i}-${j}`} className="px-3 py-2 text-center">
+                        <td key={`${i}-${j}`} className="px-3 py-2 text-left">
                           <div className="h-4 w-[70%] rounded bg-surface-strong mx-auto" />
                         </td>
                       ))}
                       <td className="px-3 py-2" />
                     </tr>
                   ))}
+
                   {!loading && pageRows.length === 0 && (
                     <tr>
                       <td className="px-3 py-8" colSpan={visibleCols.length + 2}>
-                        <EmptyState title="No contacts match your filters" description="Try adjusting filters or adding a new record." action={<Button onClick={openCreate}>Create contact</Button>} />
+                        <components.EmptyState
+                          title="No contacts match your filters"
+                          description="Try adjusting filters or adding a new record."
+                          action={<components.Button onClick={openCreate}>Create contact</components.Button>}
+                        />
                       </td>
                     </tr>
                   )}
+
                   {!loading && pageRows.map((r) => (
                     <tr
                       key={r.id}
                       onClick={() => {
-                        setDrawer(normalize(r as any));      // open fast
+                        setMoreOpen(false);
+                        setTagBarOpen(false);
+
+                        setDrawer(normalize(r as any));
                         setIsDrawerOpen(true);
                         setDrawerTab("overview");
-                        setSelectedId(r.id);                 // hydrate by id
-                        setDrawerRefreshKey(k => k + 1);     // force refetch
-                      }}
-                      className="cursor-pointer transition-colors hover:bg-[hsl(var(--brand-orange))]/8"
+                        setSelectedId(r.id);
+                        setDrawerRefreshKey(k => k + 1);
+                      }} className="cursor-pointer transition-colors hover:bg-[hsl(var(--brand-orange))]/8"
                     >
                       <td className="px-3 py-2 text-center" onClick={(e) => e.stopPropagation()}>
-                        <input
+                        <components.Input
                           type="checkbox"
                           aria-label={`Select ${`${r.nickname || r.firstName || ""} ${r.lastName || ""}`.trim() || r.email || r.id}`}
                           checked={selected.has(r.id)}
                           onChange={() => toggleSelect(r.id)}
                         />
                       </td>
+
                       {visibleCols.map((c) => (
-                        <td key={`${r.id}-${String(c.key)}`} className="px-3 py-2 text-sm text-center">
+                        <td key={`${r.id}-${String(c.key)}`} className="px-3 py-2 text-sm text-left">
                           {c.key === "organizationName"
                             ? (resolveOrgName(r.organizationId, r.organizationName, organizations) || <span className="text-secondary">—</span>)
-                            : c.render
-                              ? c.render(r)
-                              : ((r as any)[c.key] ?? "")
+                            : c.render ? c.render(r) : ((r as any)[c.key] ?? "")
                           }
                         </td>
                       ))}
@@ -1932,7 +1958,7 @@ React.useLayoutEffect(() => {
 
               {/* Moved here from header */}
               <label className="mt-1 inline-flex items-center gap-2 text-xs text-secondary">
-                <input
+                <components.Input
                   type="checkbox"
                   checked={includeArchived}
                   onChange={(e) => { setIncludeArchived(e.currentTarget.checked); setPage(1); }}
@@ -1962,18 +1988,18 @@ React.useLayoutEffect(() => {
                 </div>
 
               </label>
-              <Button variant="outline" size="sm" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={clampedPage === 1}>Prev</Button>
+              <components.Button variant="outline" size="sm" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={clampedPage === 1}>Prev</components.Button>
               <div>Page {clampedPage} of {pageCount}</div>
-              <Button variant="outline" size="sm" onClick={() => setPage(p => Math.min(pageCount, p + 1))} disabled={clampedPage === pageCount}>Next</Button>
+              <components.Button variant="outline" size="sm" onClick={() => setPage(p => Math.min(pageCount, p + 1))} disabled={clampedPage === pageCount}>Next</components.Button>
             </div>
           </div>
 
-        </Card>
+        </components.Card>
       </div>
 
       {/* Drawer */}
       {isDrawerOpen && drawer && (
-        <RightDrawer
+        <Dialog
           onClose={() => {
             setIsDrawerOpen(false);
             setDrawerEditing(false);
@@ -1985,12 +2011,13 @@ React.useLayoutEffect(() => {
             "Contact"
           }
         >
+          {/* Drawer header: tabs + actions */}
           <div className="border-b border-hairline mb-3 px-4 bg-surface">
             <div className="flex items-center gap-3 py-2">
               <div className="flex gap-2">
-                <TabButton active={drawerTab === "overview"} onClick={() => setDrawerTab("overview")}>Overview</TabButton>
-                <TabButton active={drawerTab === "animals"} onClick={() => setDrawerTab("animals")}>Animals</TabButton>
-                <TabButton active={drawerTab === "audit"} onClick={() => setDrawerTab("audit")}>Audit</TabButton>
+                <components.TabButton active={drawerTab === "overview"} onClick={() => setDrawerTab("overview")}>Overview</components.TabButton>
+                <components.TabButton active={drawerTab === "animals"} onClick={() => setDrawerTab("animals")}>Animals</components.TabButton>
+                <components.TabButton active={drawerTab === "audit"} onClick={() => setDrawerTab("audit")}>Audit</components.TabButton>
               </div>
 
               {d?.archived && (
@@ -2005,7 +2032,7 @@ React.useLayoutEffect(() => {
               <div className="ml-auto flex items-center gap-2">
                 {drawerTab === "overview" && drawerEditing && (
                   <>
-                    <Button
+                    <components.Button
                       onClick={async () => {
                         if (!drawer) return;
                         try {
@@ -2030,8 +2057,8 @@ React.useLayoutEffect(() => {
                       }}
                     >
                       Save
-                    </Button>
-                    <Button
+                    </components.Button>
+                    <components.Button
                       variant="outline"
                       onClick={() => {
                         setDraft(null);
@@ -2039,13 +2066,13 @@ React.useLayoutEffect(() => {
                       }}
                     >
                       Cancel
-                    </Button>
+                    </components.Button>
                   </>
                 )}
 
                 {drawerTab === "overview" && !drawerEditing && (
                   <>
-                    <Button
+                    <components.Button
                       variant="outline"
                       onClick={() => {
                         if (d?.archived) {
@@ -2059,11 +2086,11 @@ React.useLayoutEffect(() => {
                       title={d?.archived ? "Restore to edit" : "Edit"}
                     >
                       Edit
-                    </Button>
+                    </components.Button>
 
                     {!drawerEditing && (
                       !d?.archived ? (
-                        <Button
+                        <components.Button
                           variant="outline"
                           title="Archive (soft-delete)"
                           onClick={async () => {
@@ -2084,9 +2111,9 @@ React.useLayoutEffect(() => {
                           }}
                         >
                           Archive
-                        </Button>
+                        </components.Button>
                       ) : (
-                        <Button
+                        <components.Button
                           variant="outline"
                           title="Restore archived contact"
                           onClick={async () => {
@@ -2106,7 +2133,7 @@ React.useLayoutEffect(() => {
                           }}
                         >
                           Restore
-                        </Button>
+                        </components.Button>
                       )
                     )}
                   </>
@@ -2119,12 +2146,14 @@ React.useLayoutEffect(() => {
             </div>
           </div>
 
+          {/* === Tab bodies inside the Dialog === */}
+
           {drawerTab === "overview" && (
             <div data-1p-ignore autoComplete="off" className="space-y-4">
               <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <FieldRow label="First Name">
                   {drawerEditing ? (
-                    <input
+                    <components.Input
                       className="h-10 w-full rounded-md border border-hairline bg-surface px-3 text-sm outline-none focus:shadow-[0_0_0_2px_hsl(var(--brand-orange))]"
                       value={d?.firstName || ""}
                       onChange={(e) => { const v = getEventValue(e); setDraft(p => ({ ...(p || {}), firstName: v })); }}
@@ -2136,7 +2165,7 @@ React.useLayoutEffect(() => {
 
                 <FieldRow label="Last Name">
                   {drawerEditing ? (
-                    <input
+                    <components.Input
                       className="h-10 w-full rounded-md border border-hairline bg-surface px-3 text-sm outline-none focus:shadow-[0_0_0_2px_hsl(var(--brand-orange))]"
                       value={d?.lastName || ""}
                       onChange={(e) => { const v = getEventValue(e); setDraft(p => ({ ...(p || {}), lastName: v })); }}
@@ -2148,7 +2177,7 @@ React.useLayoutEffect(() => {
 
                 <FieldRow label="Nickname">
                   {drawerEditing ? (
-                    <input
+                    <components.Input
                       className="h-10 w-full rounded-md border border-hairline bg-surface px-3 text-sm outline-none focus:shadow-[0_0_0_2px_hsl(var(--brand-orange))]"
                       value={(d as any)?.nickname || ""}
                       onChange={(e) => { const v = getEventValue(e); setDraft(p => ({ ...(p || {}), nickname: v })); }}
@@ -2163,7 +2192,7 @@ React.useLayoutEffect(() => {
 
                   {drawerEditing ? (
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 w-full min-w-0">
-                      <input
+                      <components.Input
                         className="w-full h-10 rounded-md border border-hairline bg-surface px-3 text-sm text-primary outline-none focus:shadow-[0_0_0_2px_hsl(var(--brand-orange))]"
                         placeholder="Street"
                         value={draft?.street ?? d?.street ?? ""}
@@ -2172,7 +2201,7 @@ React.useLayoutEffect(() => {
                           setDraft(p => ({ ...(p || {}), street: v }));
                         }}
                       />
-                      <input
+                      <components.Input
                         className="w-full h-10 rounded-md border border-hairline bg-surface px-3 text-sm text-primary outline-none focus:shadow-[0_0_0_2px_hsl(var(--brand-orange))]"
                         placeholder="Street 2"
                         value={draft?.street2 ?? d?.street2 ?? ""}
@@ -2181,7 +2210,7 @@ React.useLayoutEffect(() => {
                           setDraft(p => ({ ...(p || {}), street2: v }));
                         }}
                       />
-                      <input
+                      <components.Input
                         className="w-full h-10 rounded-md border border-hairline bg-surface px-3 text-sm text-primary outline-none focus:shadow-[0_0_0_2px_hsl(var(--brand-orange))]"
                         placeholder="City"
                         value={draft?.city ?? d?.city ?? ""}
@@ -2210,8 +2239,8 @@ React.useLayoutEffect(() => {
                           {US_STATES.map(s => <option key={s} value={s}>{s}</option>)}
                         </select>
                       ) : (
-                        <input
-                          key="state-input"
+                        <components.Input
+                          key="state-components.Input"
                           className="w-full h-10 rounded-md border border-hairline bg-surface px-3 text-sm text-primary outline-none focus:shadow-[0_0_0_2px_hsl(var(--brand-orange))] "
                           placeholder="State / Region"
                           value={draft?.state ?? d?.state ?? ""}
@@ -2227,7 +2256,7 @@ React.useLayoutEffect(() => {
                         const code = asCountryCode(countryRaw, countries).toUpperCase();
                         const isUS = code === "US";
                         return (
-                          <input
+                          <components.Input
                             className="w-full h-10 rounded-md border border-hairline bg-surface px-3 text-sm"
                             placeholder="Postal Code"
                             inputMode={isUS ? "numeric" : "text"}
@@ -2315,7 +2344,6 @@ React.useLayoutEffect(() => {
                         onClick={() =>
                           setDraft(p => ({
                             ...(p || {}),
-                            // merge against current draft OR current record so nothing gets wiped
                             commPrefs: { ...((p?.commPrefs) || (d as any)?.commPrefs || {}), [key]: !on }
                           }))
                         }
@@ -2337,7 +2365,7 @@ React.useLayoutEffect(() => {
                 <div className="space-y-3">
                   <FieldRow label="Email">
                     {drawerEditing ? (
-                      <input
+                      <components.Input
                         className="w-full h-10 rounded-md border border-hairline bg-surface px-2.5 text-sm outline-none focus:shadow-[0_0_0_2px_hsl(var(--brand-orange))]"
                         value={d?.email || ""}
                         onChange={(e) => { const v = getEventValue(e); setDraft(p => ({ ...(p || {}), email: v })); }}
@@ -2427,10 +2455,10 @@ React.useLayoutEffect(() => {
 
               <SectionCard title="Sales & Marketing">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <MiniStat label="Lead Status" value={drawer.leadStatus || "—"} />
-                  <MiniStat label="Last Contacted" value={formatDate(drawer.lastContacted)} />
-                  <MiniStat label="Next Follow-up" value={formatDate(drawer.nextFollowUp)} />
-                  <MiniStat label="Status" value={drawer.status || "—"} />
+                  <MiniStat label="Lead Status" value={d?.leadStatus ?? "—"} />
+                  <MiniStat label="Last Contacted" value={formatDate(d?.lastContacted)} />
+                  <MiniStat label="Next Follow-up" value={formatDate(d?.nextFollowUp)} />
+                  <MiniStat label="Status" value={d?.status ?? "—"} />
                 </div>
               </SectionCard>
 
@@ -2471,7 +2499,7 @@ React.useLayoutEffect(() => {
                           : <span className="rounded-full px-2 py-0.5 border border-hairline bg-surface-strong text-xs">{on ? "subscribed" : "unsubscribed"}</span>}
                         {drawerEditing && (
                           <label className="flex items-center gap-1 text-xs">
-                            <input
+                            <components.Input
                               type="checkbox"
                               checked={override}
                               onChange={(e) => {
@@ -2612,23 +2640,24 @@ React.useLayoutEffect(() => {
               </SectionCard>
             </div>
           )}
-        </RightDrawer >
-      )
-      }
+        </Dialog>
+      )}
+
 
       {/* Create/Edit modal */}
-      {formOpen && (
-        <Dialog
-          onClose={() => setFormOpen(false)}
-          title={editingId == null ? "Create Contact" : "Edit Contact"}
-        >
-          {/* Scoped readability (doesn't rely on Tailwind variants) */}
-          <style>{`
+      {
+        formOpen && (
+          <Dialog
+            onClose={() => setFormOpen(false)}
+            title={editingId == null ? "Create Contact" : "Edit Contact"}
+          >
+            {/* Scoped readability (doesn't rely on Tailwind variants) */}
+            <style>{`
   .bhq-form-readable { color: hsl(var(--foreground)); font-size: 0.875rem; }
   .bhq-form-readable label { color: hsl(var(--secondary)); }
 
   /* Force text + bg for all controls in the modal */
-  .bhq-form-readable :where(input, select, textarea) {
+  .bhq-form-readable :where(components.Input, select, textarea) {
     color: hsl(var(--foreground)) !important;
     background-color: hsl(var(--surface)) !important;
     caret-color: hsl(var(--foreground)) !important;
@@ -2639,9 +2668,9 @@ React.useLayoutEffect(() => {
   }
 
   /* WebKit autofill (Chrome/Edge/Safari) */
-  .bhq-form-readable input:-webkit-autofill,
-  .bhq-form-readable input:-webkit-autofill:hover,
-  .bhq-form-readable input:-webkit-autofill:focus,
+  .bhq-form-readable components.Input:-webkit-autofill,
+  .bhq-form-readable components.Input:-webkit-autofill:hover,
+  .bhq-form-readable components.Input:-webkit-autofill:focus,
   .bhq-form-readable textarea:-webkit-autofill,
   .bhq-form-readable select:-webkit-autofill {
     -webkit-text-fill-color: hsl(var(--foreground)) !important;
@@ -2650,52 +2679,224 @@ React.useLayoutEffect(() => {
   }
 `}</style>
 
-          <div className="bhq-form-readable text-primary">
-            <form
-              onSubmit={submitForm}
-              className="space-y-4"
-              data-1p-ignore
-              autoComplete="off"
-            >
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 auto-rows-min">
-                {/* Identity */}
-                <LabeledInputBare
-                  label={<span>First name<RequiredMark /></span>}
-                  value={String(form.firstName ?? "")}
-                  onChange={(v) => setForm((f) => ({ ...f, firstName: v }))}
-                  required
-                  invalid={formTriedSubmit && !String(form.firstName ?? "").trim()}
-                />
-                <LabeledInputBare
-                  label={<span>Last name<RequiredMark /></span>}
-                  value={String(form.lastName ?? "")}
-                  onChange={(v) => setForm((f) => ({ ...f, lastName: v }))}
-                  required
-                  invalid={formTriedSubmit && !String(form.lastName ?? "").trim()}
-                />
-                <LabeledInputBare
-                  label="Preferred / Nickname"
-                  value={String(form.nickname ?? "")}
-                  onChange={(v) => setForm((f) => ({ ...f, nickname: v }))}
-                />
+            <div className="bhq-form-readable text-primary">
+              <form
+                onSubmit={submitForm}
+                className="space-y-4"
+                data-1p-ignore
+                autoComplete="off"
+              >
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 auto-rows-min">
+                  {/* Identity */}
+                  <LabeledInputBare
+                    label={<span>First name<RequiredMark /></span>}
+                    value={String(form.firstName ?? "")}
+                    onChange={(v) => setForm((f) => ({ ...f, firstName: v }))}
+                    required
+                    invalid={formTriedSubmit && !String(form.firstName ?? "").trim()}
+                  />
+                  <LabeledInputBare
+                    label={<span>Last name<RequiredMark /></span>}
+                    value={String(form.lastName ?? "")}
+                    onChange={(v) => setForm((f) => ({ ...f, lastName: v }))}
+                    required
+                    invalid={formTriedSubmit && !String(form.lastName ?? "").trim()}
+                  />
+                  <LabeledInputBare
+                    label="Preferred / Nickname"
+                    value={String(form.nickname ?? "")}
+                    onChange={(v) => setForm((f) => ({ ...f, nickname: v }))}
+                  />
 
-                {/* Organization */}
-                <div className="sm:col-span-2">
-                  <label className="block text-xs mb-1">Organization</label>
+                  {/* Organization */}
+                  <div className="sm:col-span-2">
+                    <label className="block text-xs mb-1">Organization</label>
+                    <div className="relative">
+                      <select
+                        className="w-full h-10 appearance-none pr-8 rounded-md bg-surface border border-hairline px-3 text-sm text-primary placeholder:text-secondary outline-none focus:shadow-[0_0_0_2px_hsl(var(--brand-orange))]"
+                        value={form.organizationId != null ? String(form.organizationId) : ""}
+                        onChange={(e) => {
+                          const v = (e.currentTarget?.value ?? "");
+                          setForm((f) => ({ ...f, organizationId: v ? Number(v) : null }));
+                        }}
+                      >
+                        <option value="">— Select Organization —</option>
+                        {organizations.map((o) => (
+                          <option key={o.id} value={String(o.id)}>
+                            {o.name ?? `Org #${o.id}`}
+                          </option>
+                        ))}
+                      </select>
+                      <svg className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-secondary" viewBox="0 0 20 20" aria-hidden="true">
+                        <path d="M5.5 7.5l4.5 4 4.5-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                      </svg>
+                    </div>
+                  </div>
+
+                  {/* Email */}
+                  <LabeledInputBare
+                    label="Email"
+                    type="email"
+                    value={String(form.email ?? "")}
+                    onChange={(v) => setForm((f) => ({ ...f, email: v }))}
+                  />
+
+                  {/* Phone row */}
+                  <div className="sm:col-span-2">
+                    <label className="block text-xs mb-1">Phone</label>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-[minmax(120px,180px)_1fr] gap-2">
+                      {/* Type */}
+                      <div className="relative">
+                        <select
+                          className="h-10 w-full appearance-none pr-8 rounded-md bg-surface border border-hairline px-3 text-sm text-primary outline-none focus:shadow-[0_0_0_2px_hsl(var(--brand-orange))]"
+                          value={String(form.phoneType ?? "cell")}
+                          onChange={(e) => setForm((f) => ({ ...f, phoneType: getEventValue(e) }))}
+                          aria-label="Phone type"
+                        >
+                          <option value="cell">Cell</option>
+                          <option value="landline">Landline</option>
+                        </select>
+                        <svg className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-secondary" viewBox="0 0 20 20" aria-hidden="true">
+                          <path d="M5.5 7.5l4.5 4 4.5-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                        </svg>
+                      </div>
+
+                      {/* WhatsApp (optional, used as phone if Phone left empty) */}
+                      <div className="sm:col-span-2">
+                        <label className="block text-xs mb-1">WhatsApp (optional)</label>
+                        <IntlPhoneField
+                          value={String((form as any)?.commPrefs?.whatsappPhone ?? "")}
+                          onChange={(next) =>
+                            setForm((f) => ({
+                              ...f,
+                              commPrefs: { ...((f as any)?.commPrefs || {}), whatsappPhone: next }
+                            }))
+                          }
+                          inferredCountryName={countryNameFromValue(form.country, countries)}
+                          countries={countries}
+                          className="w-full"
+                        />
+                        <div className="text-xs text-secondary mt-1">
+                          If Phone is left empty, this will be used as the phone on save.
+                        </div>
+                      </div>
+
+
+                      {/* Number (auto-formatted & length-capped) */}
+                      <IntlPhoneField
+                        value={String(form.phone ?? "")}
+                        onChange={(next) => setForm((f) => ({ ...f, phone: next }))}
+                        inferredCountryName={countryNameFromValue(form.country, countries)}
+                        countries={countries}
+                        className="w-full"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Address */}
+                  <div className="sm:col-span-2">
+                    <label className="block text-xs mb-1">Street</label>
+                    <components.Input
+                      className="w-full h-10 rounded-md border border-hairline bg-surface px-3 text-sm text-primary placeholder:text-secondary outline-none focus:shadow-[0_0_0_2px_hsl(var(--brand-orange))]"
+                      value={String(form.street ?? "")}
+                      onChange={(e) => setForm((f) => ({ ...f, street: getEventValue(e) }))}
+                    />
+                  </div>
+                  <div className="sm:col-span-2">
+                    <label className="block text-xs mb-1">Street 2</label>
+                    <components.Input
+                      className="w-full h-10 rounded-md border border-hairline bg-surface px-3 text-sm text-primary placeholder:text-secondary outline-none focus:shadow-[0_0_0_2px_hsl(var(--brand-orange))]"
+                      value={String(form.street2 ?? "")}
+                      onChange={(e) => setForm((f) => ({ ...f, street2: getEventValue(e) }))}
+                    />
+                  </div>
+
+                  <LabeledInputBare
+                    label="City"
+                    value={String(form.city ?? "")}
+                    onChange={(v) => setForm((f) => ({ ...f, city: v }))}
+                  />
+
+                  <div>
+                    <div>
+                      <label className="block text-xs mb-1">State / Region</label>
+                      <div className="relative">
+                        {(() => {
+                          const code = asCountryCode(form.country, countries).toUpperCase();
+                          return code === "US" ? (
+                            <select
+                              key="state-select-create"
+                              className="w-full h-10 appearance-none pr-8 rounded-md bg-surface border border-hairline px-3 text-sm text-primary placeholder:text-secondary outline-none focus:shadow-[0_0_0_2px_hsl(var(--brand-orange))]"
+                              value={String(form.state ?? "")}
+                              onChange={(e) => setForm((f) => ({ ...f, state: e.currentTarget.value }))}
+                            >
+                              <option value="">—</option>
+                              {US_STATES.map((s) => (
+                                <option key={s} value={s}>{s}</option>
+                              ))}
+                            </select>
+                          ) : (
+                            <components.Input
+                              key="state-components.Input-create"
+                              className="w-full h-10 rounded-md border border-hairline px-3 text-sm"
+                              placeholder="State / Region"
+                              value={String(form.state ?? "")}
+                              onChange={(e) => setForm(f => ({ ...f, state: e.currentTarget.value }))}
+                            />
+                          );
+                        })()}
+                        <svg
+                          className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-secondary"
+                          viewBox="0 0 20 20"
+                          aria-hidden="true"
+                        >
+                          <path d="M5.5 7.5l4.5 4 4.5-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                        </svg>
+                      </div>
+                    </div>
+                  </div>
+                </div >
+
+                {/* Zip + Country (same row) */}
+                < div >
+                  <label className="block text-xs mb-1">Zip / Postal code</label>
+                  {(() => {
+                    const code = asCountryCode(form.country, countries).toUpperCase();
+                    const isUS = code === "US";
+                    return (
+                      <components.Input
+                        className="h-10 w-full rounded-md border border-hairline px-3 text-sm outline-none focus:shadow-[0_0_0_2px_hsl(var(--brand-orange))]"
+                        placeholder="Postal Code"
+                        inputMode={isUS ? "numeric" : "text"}
+                        pattern={isUS ? "[0-9]*" : undefined}
+                        onKeyDown={isUS ? allowOnlyDigitKeys : undefined}
+                        onPaste={(e) => {
+                          if (!isUS) return;
+                          e.preventDefault();
+                          const v = e.clipboardData.getData("text") || "";
+                          setForm(f => ({ ...f, postalCode: digitsOnly(v) }));
+                        }}
+                        value={String(form.postalCode ?? "")}
+                        onChange={(e) => {
+                          const raw = e.currentTarget.value;
+                          setForm(f => ({ ...f, postalCode: isUS ? digitsOnly(raw) : raw }));
+                        }}
+                      />
+                    );
+                  })()}
+                </div >
+                <div>
+                  <label className="block text-xs mb-1">Country</label>
                   <div className="relative">
                     <select
                       className="w-full h-10 appearance-none pr-8 rounded-md bg-surface border border-hairline px-3 text-sm text-primary placeholder:text-secondary outline-none focus:shadow-[0_0_0_2px_hsl(var(--brand-orange))]"
-                      value={form.organizationId != null ? String(form.organizationId) : ""}
-                      onChange={(e) => {
-                        const v = (e.currentTarget?.value ?? "");
-                        setForm((f) => ({ ...f, organizationId: v ? Number(v) : null }));
-                      }}
+                      value={String(form.country ?? (countries.length ? countries[0].code : "US"))}
+                      onChange={(e) => setForm((f) => ({ ...f, country: getEventValue(e) }))}
                     >
-                      <option value="">— Select Organization —</option>
-                      {organizations.map((o) => (
-                        <option key={o.id} value={String(o.id)}>
-                          {o.name ?? `Org #${o.id}`}
-                        </option>
+                      {!countries.length ? <option value="US">United States</option> : null}
+                      {countries.map((c) => (
+                        <option key={c.code} value={c.code}>{c.name}</option>
                       ))}
                     </select>
                     <svg className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-secondary" viewBox="0 0 20 20" aria-hidden="true">
@@ -2704,188 +2905,16 @@ React.useLayoutEffect(() => {
                   </div>
                 </div>
 
-                {/* Email */}
-                <LabeledInputBare
-                  label="Email"
-                  type="email"
-                  value={String(form.email ?? "")}
-                  onChange={(v) => setForm((f) => ({ ...f, email: v }))}
-                />
-
-                {/* Phone row */}
-                <div className="sm:col-span-2">
-                  <label className="block text-xs mb-1">Phone</label>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-[minmax(120px,180px)_1fr] gap-2">
-                    {/* Type */}
-                    <div className="relative">
-                      <select
-                        className="h-10 w-full appearance-none pr-8 rounded-md bg-surface border border-hairline px-3 text-sm text-primary outline-none focus:shadow-[0_0_0_2px_hsl(var(--brand-orange))]"
-                        value={String(form.phoneType ?? "cell")}
-                        onChange={(e) => setForm((f) => ({ ...f, phoneType: getEventValue(e) }))}
-                        aria-label="Phone type"
-                      >
-                        <option value="cell">Cell</option>
-                        <option value="landline">Landline</option>
-                      </select>
-                      <svg className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-secondary" viewBox="0 0 20 20" aria-hidden="true">
-                        <path d="M5.5 7.5l4.5 4 4.5-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                      </svg>
-                    </div>
-
-                    {/* WhatsApp (optional, used as phone if Phone left empty) */}
-                    <div className="sm:col-span-2">
-                      <label className="block text-xs mb-1">WhatsApp (optional)</label>
-                      <IntlPhoneField
-                        value={String((form as any)?.commPrefs?.whatsappPhone ?? "")}
-                        onChange={(next) =>
-                          setForm((f) => ({
-                            ...f,
-                            commPrefs: { ...((f as any)?.commPrefs || {}), whatsappPhone: next }
-                          }))
-                        }
-                        inferredCountryName={countryNameFromValue(form.country, countries)}
-                        countries={countries}
-                        className="w-full"
-                      />
-                      <div className="text-xs text-secondary mt-1">
-                        If Phone is left empty, this will be used as the phone on save.
-                      </div>
-                    </div>
-
-
-                    {/* Number (auto-formatted & length-capped) */}
-                    <IntlPhoneField
-                      value={String(form.phone ?? "")}             // store E.164 in form.phone
-                      onChange={(next) => setForm((f) => ({ ...f, phone: next }))}
-                      inferredCountryName={countryNameFromValue(form.country, countries)}
-                      countries={countries}
-                      className="w-full"
-                    />
-                  </div>
+                <div className="flex items-center justify-end gap-2">
+                  <components.Button type="components.Button" variant="outline" onClick={() => setFormOpen(false)}>
+                    Cancel
+                  </components.Button>
+                  <components.Button type="submit">Save</components.Button>
                 </div>
-
-                {/* Address */}
-                <div className="sm:col-span-2">
-                  <label className="block text-xs mb-1">Street</label>
-                  <input
-                    className="w-full h-10 rounded-md border border-hairline bg-surface px-3 text-sm text-primary placeholder:text-secondary outline-none focus:shadow-[0_0_0_2px_hsl(var(--brand-orange))]"
-                    value={String(form.street ?? "")}
-                    onChange={(e) => setForm((f) => ({ ...f, street: getEventValue(e) }))}
-                  />
-                </div>
-                <div className="sm:col-span-2">
-                  <label className="block text-xs mb-1">Street 2</label>
-                  <input
-                    className="w-full h-10 rounded-md border border-hairline bg-surface px-3 text-sm text-primary placeholder:text-secondary outline-none focus:shadow-[0_0_0_2px_hsl(var(--brand-orange))]"
-                    value={String(form.street2 ?? "")}
-                    onChange={(e) => setForm((f) => ({ ...f, street2: getEventValue(e) }))}
-                  />
-                </div>
-
-                <LabeledInputBare
-                  label="City"
-                  value={String(form.city ?? "")}
-                  onChange={(v) => setForm((f) => ({ ...f, city: v }))}
-                />
-
-                <div>
-                  <div>
-                    <label className="block text-xs mb-1">State / Region</label>
-                    <div className="relative">
-                      {(() => {
-                        const code = asCountryCode(form.country, countries).toUpperCase();
-                        return code === "US" ? (
-                          <select
-                            key="state-select-create"
-                            className="w-full h-10 appearance-none pr-8 rounded-md bg-surface border border-hairline px-3 text-sm text-primary placeholder:text-secondary outline-none focus:shadow-[0_0_0_2px_hsl(var(--brand-orange))]"
-                            value={String(form.state ?? "")}
-                            onChange={(e) => setForm((f) => ({ ...f, state: e.currentTarget.value }))}
-                          >
-                            <option value="">—</option>
-                            {US_STATES.map((s) => (
-                              <option key={s} value={s}>{s}</option>
-                            ))}
-                          </select>
-                        ) : (
-                          <input
-                            key="state-input-create"
-                            className="w-full h-10 rounded-md border border-hairline px-3 text-sm"
-                            placeholder="State / Region"
-                            value={String(form.state ?? "")}
-                            onChange={(e) => setForm(f => ({ ...f, state: e.currentTarget.value }))}
-                          />
-                        );
-                      })()}
-                      <svg
-                        className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-secondary"
-                        viewBox="0 0 20 20"
-                        aria-hidden="true"
-                      >
-                        <path d="M5.5 7.5l4.5 4 4.5-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                      </svg>
-                    </div>
-                  </div>
-                </div>
-              </div >
-
-              {/* Zip + Country (same row) */}
-              < div >
-                <label className="block text-xs mb-1">Zip / Postal code</label>
-                {(() => {
-                  const code = asCountryCode(form.country, countries).toUpperCase();
-                  const isUS = code === "US";
-                  return (
-                    <input
-                      className="h-10 w-full rounded-md border border-hairline px-3 text-sm outline-none focus:shadow-[0_0_0_2px_hsl(var(--brand-orange))]"
-                      placeholder="Postal Code"
-                      inputMode={isUS ? "numeric" : "text"}
-                      pattern={isUS ? "[0-9]*" : undefined}
-                      onKeyDown={isUS ? allowOnlyDigitKeys : undefined}
-                      onPaste={(e) => {
-                        if (!isUS) return;
-                        e.preventDefault();
-                        const v = e.clipboardData.getData("text") || "";
-                        setForm(f => ({ ...f, postalCode: digitsOnly(v) }));
-                      }}
-                      value={String(form.postalCode ?? "")}
-                      onChange={(e) => {
-                        const raw = e.currentTarget.value;
-                        setForm(f => ({ ...f, postalCode: isUS ? digitsOnly(raw) : raw }));
-                      }}
-                    />
-                  );
-                })()}
-              </div >
-              <div>
-                <label className="block text-xs mb-1">Country</label>
-                <div className="relative">
-                  <select
-                    className="w-full h-10 appearance-none pr-8 rounded-md bg-surface border border-hairline px-3 text-sm text-primary placeholder:text-secondary outline-none focus:shadow-[0_0_0_2px_hsl(var(--brand-orange))]"
-                    value={String(form.country ?? (countries.length ? countries[0].code : "US"))}
-                    onChange={(e) => setForm((f) => ({ ...f, country: getEventValue(e) }))}
-                  >
-                    {!countries.length ? <option value="US">United States</option> : null}
-                    {countries.map((c) => (
-                      <option key={c.code} value={c.code}>{c.name}</option>
-                    ))}
-                  </select>
-                  <svg className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-secondary" viewBox="0 0 20 20" aria-hidden="true">
-                    <path d="M5.5 7.5l4.5 4 4.5-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                  </svg>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-end gap-2">
-                <Button type="button" variant="outline" onClick={() => setFormOpen(false)}>
-                  Cancel
-                </Button>
-                <Button type="submit">Save</Button>
-              </div>
-            </form >
-          </div >
-        </Dialog >
-      )
+              </form >
+            </div >
+          </Dialog >
+        )
       }
     </>
   );
@@ -2898,9 +2927,9 @@ function DateRange({ label, from, to, onFrom, onTo }: { label: string; from: str
     <div className="space-y-1.5">
       <div className="text-xs text-secondary">{label}</div>
       <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
-        <Input type="text" placeholder="mm/dd/yyyy" value={from || ""} onChange={(e) => onFrom((e.currentTarget?.value ?? ""))} className="h-10 w-full rounded-full bg-surface border border-hairline px-3" />
+        <components.Input type="text" placeholder="mm/dd/yyyy" value={from || ""} onChange={(e) => onFrom((e.currentTarget?.value ?? ""))} className="h-10 w-full rounded-full bg-surface border border-hairline px-3" />
         <span className="text-secondary text-xs whitespace-nowrap">to</span>
-        <Input type="text" placeholder="mm/dd/yyyy" value={to || ""} onChange={(e) => onTo((e.currentTarget?.value ?? ""))} className="h-10 w-full rounded-full bg-surface border border-hairline px-3" />
+        <components.Input type="text" placeholder="mm/dd/yyyy" value={to || ""} onChange={(e) => onTo((e.currentTarget?.value ?? ""))} className="h-10 w-full rounded-full bg-surface border border-hairline px-3" />
       </div>
     </div>
   );
@@ -2936,8 +2965,8 @@ function MiniStat({ label, value }: { label: string; value: React.ReactNode }) {
 }
 function PillToggle({ on, label, onClick }: { on: boolean; label: string; onClick: () => void }) {
   return (
-    <button
-      type="button"
+    <components.Button
+      type="components.Button"
       onClick={onClick}
       className={[
         "pill inline-flex items-center rounded-full px-3 h-7 text-[13px] leading-none select-none transition-colors",
@@ -2947,7 +2976,7 @@ function PillToggle({ on, label, onClick }: { on: boolean; label: string; onClic
       ].join(" ")}
     >
       {label}
-    </button>
+    </components.Button>
   );
 }
 
@@ -3007,14 +3036,14 @@ function TagsPopover({
         style={{ position: "fixed", top: pos.top, left: pos.left, zIndex: 2147483645 }}
       >
         <div className="p-2 border-b border-hairline flex items-center gap-2">
-          <input
+          <components.Input
             autoFocus
             placeholder="Search tags…"
             value={q}
             onChange={(e) => setQ(getEventValue(e))}
             className="w-full rounded-md border border-hairline bg-surface px-2 py-1.5 text-sm outline-none focus:shadow-[0_0_0_2px_hsl(var(--brand-orange))]"
           />
-          <Button variant="outline" size="sm" onClick={() => setQ("")}>Clear</Button>
+          <components.Button variant="outline" size="sm" onClick={() => setQ("")}>Clear</components.Button>
         </div>
 
         <div className="max-h-[300px] overflow-auto py-1">
@@ -3043,7 +3072,7 @@ function TagsPopover({
         </div>
 
         <div className="p-2 border-t border-hairline text-right">
-          <Button variant="outline" size="sm" onClick={() => setOpen(false)}>Close</Button>
+          <components.Button variant="outline" size="sm" onClick={() => setOpen(false)}>Close</components.Button>
         </div>
       </div>
     </>,
@@ -3052,16 +3081,16 @@ function TagsPopover({
 
   return (
     <>
-      <button
+      <components.Button
         ref={btnRef}
-        type="button"
+        type="components.Button"
         onClick={() => setOpen(v => !v)}
         className="inline-flex items-center gap-2 rounded-md border border-hairline bg-surface-strong px-2 py-1 text-xs text-secondary hover:text-primary"
         aria-haspopup="menu"
         aria-expanded={open}
       >
         Manage
-      </button>
+      </components.Button>
       {body}
     </>
   );
@@ -3143,15 +3172,15 @@ function ChecklistFilter({
       <div className="fixed z-[9999] w-[320px] max-w-[calc(100vw-24px)] rounded-xl border border-hairline bg-surface text-primary shadow-[0_8px_30px_hsla(0,0%,0%,0.35)]"
         style={{ top: pos.top, left: pos.left }}>
         <div className="p-2 border-b border-hairline flex items-center gap-2">
-          <input
+          <components.Input
             autoFocus
             placeholder={`Search ${label.toLowerCase()}…`}
             value={q}
             onChange={(e) => setQ(getEventValue(e))}
             className="w-full rounded-md border border-hairline bg-surface px-2 py-1.5 text-sm outline-none focus:shadow-[0_0_0_2px_hsl(var(--brand-orange))]"
           />
-          <Button variant="outline" size="sm" onClick={() => onChange([])}>None</Button>
-          <Button variant="outline" size="sm" onClick={() => onChange(options)}>All</Button>
+          <components.Button variant="outline" size="sm" onClick={() => onChange([])}>None</components.Button>
+          <components.Button variant="outline" size="sm" onClick={() => onChange(options)}>All</components.Button>
         </div>
         <div className="max-h-[300px] overflow-auto py-1">
           {opts.map(o => {
@@ -3176,7 +3205,7 @@ function ChecklistFilter({
           {opts.length === 0 && <div className="px-3 py-2 text-secondary">No matches</div>}
         </div>
         <div className="p-2 border-t border-hairline text-right">
-          <Button variant="outline" size="sm" onClick={() => setOpen(false)}>Close</Button>
+          <components.Button variant="outline" size="sm" onClick={() => setOpen(false)}>Close</components.Button>
         </div>
       </div>
     </>,
@@ -3185,16 +3214,16 @@ function ChecklistFilter({
 
   return (
     <div className="flex items-center gap-2">
-      <button
+      <components.Button
         ref={btnRef}
-        type="button"
+        type="components.Button"
         onClick={() => setOpen(v => !v)}
         className="inline-flex items-center gap-2 rounded-md border border-hairline bg-surface px-2 py-1 text-xs text-secondary hover:text-primary"
         aria-haspopup="menu"
         aria-expanded={open}
       >
         Choose…
-      </button>
+      </components.Button>
       {selected.length > 0 ? (
         <div className="text-xs text-primary truncate">{selected.join(", ")}</div>
       ) : (
@@ -3244,7 +3273,7 @@ function FilterRow({
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
         <div className="col-span-1 sm:col-span-2 lg:col-span-3">
           <label className="block text-xs font-medium text-secondary mb-1">Search all fields</label>
-          <Input
+          <components.Input
             placeholder="Type to filter…"
             value={filters.__text || ""}
             onChange={e => set("__text", getEventValue(e))}
@@ -3301,11 +3330,11 @@ function FilterRow({
                 </div>
               );
             }
-            // default text input (contains)
+            // default text components.Input (contains)
             return (
               <div key={k}>
                 <label className="block text-xs font-medium text-secondary mb-1">{c.label}</label>
-                <Input
+                <components.Input
                   placeholder={k === "phone" ? "Digits match (e.g. 555)" : `Filter ${c.label}`}
                   value={v}
                   onChange={e => set(k, getEventValue(e))}
@@ -3326,7 +3355,7 @@ function FilterRow({
               <div key={k} className="grid grid-cols-2 gap-2">
                 <div>
                   <label className="block text-xs font-medium text-secondary mb-1">{c.label} start</label>
-                  <Input
+                  <components.Input
                     type="date"
                     value={filters[`${k}Start`] || ""}
                     onChange={e => set(`${k}Start`, getEventValue(e))}
@@ -3335,7 +3364,7 @@ function FilterRow({
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-secondary mb-1">{c.label} end</label>
-                  <Input
+                  <components.Input
                     type="date"
                     value={filters[`${k}End`] || ""}
                     onChange={e => set(`${k}End`, getEventValue(e))}
@@ -3350,402 +3379,48 @@ function FilterRow({
 
       {/* Quick actions */}
       <div className="flex gap-2 pt-1">
-        <Button variant="outline" size="sm" onClick={() => onChange({})}>Clear</Button>
+        <components.Button variant="outline" size="sm" onClick={() => onChange({})}>Clear</components.Button>
       </div>
     </div>
   );
 }
-
-
-/** Column chooser (portal) with All / Default / Clear and orange checkmarks */
-function ColumnsPopover({
-  columns,
-  onToggle,
-  onSet,
-}: {
-  columns: Record<string, boolean>;
-  onToggle: (k: string) => void;
-  onSet: (next: Record<string, boolean>) => void;
-}) {
-  const [open, setOpen] = React.useState(false);
-  const btnRef = React.useRef<HTMLButtonElement | null>(null);
-  const [pos, setPos] = React.useState<{ top: number; left: number } | null>(null);
-
-  React.useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
-    if (open) document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [open]);
-
-  React.useEffect(() => {
-    if (!open) return;
-
-    const W = 320;
-    const PAD = 12;
-
-    const sync = () => {
-      const el = btnRef.current;
-      if (!el) return;
-      const r = el.getBoundingClientRect();
-      const right = Math.min(window.innerWidth - PAD, r.right);
-      const left = Math.max(PAD, right - W);
-      const estH = 360;
-      const below = r.bottom + 8;
-      const above = Math.max(PAD, r.top - estH - 8);
-      const top = below + estH + PAD > window.innerHeight ? above : Math.min(window.innerHeight - PAD, below);
-      setPos({ top, left });
-    };
-
-    const getScrollParents = (el: HTMLElement | null) => {
-      const out: HTMLElement[] = [];
-      let p = el?.parentElement;
-      while (p) {
-        const s = getComputedStyle(p);
-        if (/(auto|scroll|overlay)/.test(`${s.overflow}${s.overflowY}${s.overflowX}`)) out.push(p);
-        p = p.parentElement!;
-      }
-      return out;
-    };
-
-    const parents = getScrollParents(btnRef.current);
-    sync();
-    window.addEventListener("resize", sync);
-    window.addEventListener("scroll", sync, { passive: true });
-    parents.forEach((n) => n.addEventListener("scroll", sync, { passive: true }));
-
-    return () => {
-      window.removeEventListener("resize", sync);
-      window.removeEventListener("scroll", sync);
-      parents.forEach((n) => n.removeEventListener("scroll", sync));
-    };
-  }, [open]);
-
-  const selectAll = () => {
-    const next = { ...columns };
-    ALL_COLUMNS.forEach((c) => (next[String(c.key)] = true));
-    onSet(next);
-  };
-  const clearAll = () => {
-    const next = { ...columns };
-    ALL_COLUMNS.forEach((c) => (next[String(c.key)] = false));
-    onSet(next);
-  };
-  const setDefault = () => {
-    const ON = new Set(["firstName", "lastName", "nickname", "organizationName", "email", "phone", "tags", "status"]);
-    const next = { ...columns };
-    ALL_COLUMNS.forEach((c) => (next[String(c.key)] = ON.has(String(c.key))));
-    onSet(next);
-  };
-
-  const menu =
-    open && pos
-      ? createPortal(
-        <>
-          {/* Backdrop (inline position:fixed; no "fixed" class) */}
-          <div
-            onClick={() => setOpen(false)}
-            style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, zIndex: 2147483644, background: "transparent", pointerEvents: "auto" }}
-          />
-          {/* Panel (inline position:fixed; force right/bottom to auto) */}
-          <div
-            role="menu"
-            data-popover="columns"
-            className="rounded-md border border-hairline bg-surface p-2 pr-3 shadow-[0_8px_30px_hsla(0,0%,0%,0.35)]"
-            style={{
-              position: "fixed",
-              zIndex: 2147483645,
-              top: pos.top,
-              left: pos.left,
-              right: "auto",
-              bottom: "auto",
-              width: 320,
-              maxWidth: "calc(100vw - 24px)",
-              maxHeight: 360,
-              overflow: "auto",
-            }}
-          >
-            <div className="flex items-center justify-between px-2 pb-1">
-              <div className="text-xs font-medium uppercase text-secondary">Show columns</div>
-              <div className="flex items-center gap-3">
-                <a
-                  role="button"
-                  tabIndex={0}
-                  onClick={selectAll}
-                  className="text-xs font-medium hover:underline"
-                  style={{ color: "hsl(24 95% 54%)" }}
-                >
-                  All
-                </a>
-
-                <a
-                  role="button"
-                  tabIndex={0}
-                  onClick={setDefault}
-                  className="text-xs font-medium hover:underline"
-                  style={{ color: "hsl(190 90% 45%)" }}
-                >
-                  Default
-                </a>
-
-                <a
-                  role="button"
-                  tabIndex={0}
-                  onClick={clearAll}
-                  className="text-xs font-medium text-secondary hover:underline"
-                >
-                  Clear
-                </a>
-              </div>            </div>
-
-            {ALL_COLUMNS.map((c) => {
-              const k = String(c.key);
-              const checked = !!columns[k];
-              return (
-                <div
-                  key={k}
-                  data-col={k}
-                  tabIndex={0}
-                  role="checkbox"
-                  aria-checked={checked ? "true" : "false"}
-                  className="flex items-center gap-2 w-full min-w-0 px-2 py-1.5 text-[13px] leading-5 rounded hover:bg-[hsl(var(--brand-orange))]/12 cursor-pointer select-none"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    onToggle(k);       // <- single source of truth for toggling
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === " " || e.key === "Enter") {
-                      e.preventDefault();
-                      onToggle(k);     // <- keyboard toggle
-                    }
-                  }}
-                >
-                  <input
-                    type="checkbox"
-                    className="h-4 w-4 shrink-0 accent-[hsl(var(--brand-orange))]"
-                    aria-label={c.label}
-                    checked={checked}
-                    readOnly             // <- important: prevent double toggle
-                  />
-                  <span className="truncate text-primary">{c.label}</span>
-                </div>
-              );
-            })}
-
-            <div className="flex justify-end pt-2">
-              <Button size="sm" variant="outline" onClick={() => setOpen(false)}>Close</Button>
-            </div>
-          </div>
-        </>,
-        getOverlayRoot()
-      )
-      : null;
-
-  return (
-    <div className="relative inline-flex">
-      <Button
-        ref={btnRef as any}
-        variant="outline"
-        size="icon"
-        onClick={() => setOpen((o) => !o)}
-        aria-expanded={open}
-        aria-haspopup="menu"
-        className="h-9 w-9"
-        title="Choose columns"
-      >
-        <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
-          <rect x="3" y="4" width="5" height="16" rx="1.5" />
-          <rect x="10" y="4" width="5" height="16" rx="1.5" />
-          <rect x="17" y="4" width="4" height="16" rx="1.5" />
-        </svg>
-      </Button>
-      {menu}
-    </div>
-  );
-}
-
-function RightDrawer({ onClose, title, children }: { onClose: () => void; title: string; children: React.ReactNode }) {
-  React.useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    document.addEventListener("keydown", onKey);
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => { document.removeEventListener("keydown", onKey); document.body.style.overflow = prev; };
-  }, [onClose]);
-
-  return createPortal(
-    <div className="fixed inset-0 z-[2147483647] isolate">
-      {/* compact control normalization (unchanged) */}
-      <style>{`
-        .force-10 input,
-        .force-10 select,
-        .force-10 textarea,
-        .force-10 button:not(.pill) {
-          height: 40px !important;
-          min-height: 40px !important;
-          line-height: 40px !important;
-        }
-        .force-10 textarea { height: auto !important; min-height: 120px !important; line-height: 1.4 !important; }
-        .force-10 .h-8, .force-10 .h-9, .force-10 .h-11, .force-10 .h-[38px] { height: 40px !important; }
-        .force-10 input, .force-10 select { padding-top: 8px !important; padding-bottom: 8px !important; }
-        .force-10 .section-tight > * + * { margin-top: 12px; }
-      `}</style>
-
-
-      {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
-
-      {/* Container: mobile = right sheet, desktop = centered modal */}
-      <div
-        className="
-    absolute inset-0
-    flex
-    justify-end            /* mobile: slide-in from right */
-    sm:justify-center      /* desktop: center horizontally */
-    items-stretch
-    sm:items-start         /* desktop: anchor to top */
-    p-2 sm:px-6 sm:pt-10 sm:pb-6
-  "
-      >
-        <div
-          className="
-            force-10
-            bg-surface border border-hairline text-primary shadow-2xl rounded-none sm:rounded-xl
-            w-[min(100vw,680px)]  /* mobile-ish width */
-            sm:w-[min(96vw,960px)]  /* desktop: wider */
-            h-full                /* mobile: full height sheet */
-            sm:h-auto sm:max-h-[92vh] /* desktop: capped height */
-            flex flex-col
-          "
-        >
-          <div className="sticky top-0 z-10 flex items-center justify-between px-4 py-3 border-b border-hairline bg-surface rounded-t-xl">
-            <h2 className="h1-strong text-primary">{title}</h2>
-            <button onClick={onClose} className="rounded px-2 py-1 hover:bg-[hsl(var(--brand-orange))]/12" aria-label="Close">✕</button>
-          </div>
-
-          <div className="flex-1 overflow-auto section-tight px-4 sm:px-6 py-4">
-            {children}
-          </div>
-        </div>
-      </div>
-    </div>,
-    getOverlayRoot()
-  );
-}
-
 
 function Dialog({
   onClose,
   title,
   children,
-}: { onClose: () => void; title: string; children: React.ReactNode }) {
+}: {
+  onClose: () => void;
+  title: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  // Close on ESC
   React.useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
     document.addEventListener("keydown", onKey);
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => { document.removeEventListener("keydown", onKey); document.body.style.overflow = prev; };
+    return () => document.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  const node = (
-    <div style={{ position: "fixed", inset: 0, zIndex: 2147483646 }}>
-      <style>{`
-  /* Scope only to the create/edit contact modal */
-  .bhq-form-readable { color-scheme: dark; }
+  return createPortal(
+    <div className="fixed inset-0 z-[2147483647] isolate">
+      {/* backdrop */}
+      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
 
-  /* Hard colors so we don't depend on theme vars in the portal */
-  :root { --bhq-fg: #e6e8ee; --bhq-fg-dim: #b9beca; --bhq-fg-subtle: #9aa3b2; --bhq-bg: #111319; }
+      {/* panel */}
+      <div className="relative mx-auto my-8 w-[min(960px,calc(100vw-24px))] rounded-xl border border-hairline bg-surface shadow-2xl">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-hairline">
+          <div className="text-base font-medium">{title}</div>
+          <components.Button variant="outline" size="icon" aria-label="Close" onClick={onClose}>
+            ×
+          </components.Button>
+        </div>
 
-  /* Inputs, selects, textareas (native) */
-  .bhq-form-readable :where(input, select, textarea) {
-    color: var(--bhq-fg) !important;
-    background-color: var(--bhq-bg) !important;
-    border-color: rgba(255,255,255,.18) !important;
-    caret-color: var(--bhq-fg) !important;
-    -webkit-text-fill-color: var(--bhq-fg) !important; /* Chrome/Safari */
-  }
-  .bhq-form-readable ::placeholder {
-    color: var(--bhq-fg-subtle) !important;
-    opacity: 1 !important;
-  }
-  .bhq-form-readable :where(input, select, textarea):disabled {
-    color: var(--bhq-fg-dim) !important;
-    background-color: #0d0f14 !important;
-  }
-
-  /* Native dropdown options (many browsers ignore parent color) */
-  .bhq-form-readable select option {
-    color: var(--bhq-fg) !important;
-    background-color: var(--bhq-bg) !important;
-  }
-
-  /* WebKit autofill repaint */
-  .bhq-form-readable input:-webkit-autofill,
-  .bhq-form-readable textarea:-webkit-autofill,
-  .bhq-form-readable select:-webkit-autofill {
-    -webkit-text-fill-color: var(--bhq-fg) !important;
-    -webkit-box-shadow: 0 0 0 1000px var(--bhq-bg) inset !important;
-    transition: background-color 99999s ease-in-out 0s;
-  }
-
-  /* If @bhq/ui paints its own wrapper, catch those too */
-  .bhq-form-readable .bhq-input,
-  .bhq-form-readable .bhq-input input,
-  .bhq-form-readable .bhq-select,
-  .bhq-form-readable .bhq-textarea {
-    color: var(--bhq-fg) !important;
-    background-color: var(--bhq-bg) !important;
-    border-color: rgba(255,255,255,.18) !important;
-    -webkit-text-fill-color: var(--bhq-fg) !important;
-  }
-`}</style>
-
-      <div
-        onClick={onClose}
-        style={{
-          position: "fixed",
-          inset: 0,
-          background: "rgba(0,0,0,0.40)",
-          backdropFilter: "blur(4px)",
-          cursor: "pointer",
-        }}
-      />
-
-      <div
-        style={{
-          position: "fixed",
-          inset: 0,
-          display: "flex",
-          justifyContent: "center",
-          alignItems: "flex-start",
-          padding: "16px",
-          paddingTop: "10vh",
-          pointerEvents: "none",
-        }}
-      >
-        <div
-          className="border border-hairline bg-surface shadow-2xl rounded-xl force-10"
-          style={{ width: "min(92vw, 640px)", pointerEvents: "auto" }}
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="dialog-title"
-        >
-          <div className="flex items-center justify-between border-b border-hairline px-4 py-3 bg-surface">
-            <h2 id="dialog-title" className="text-primary font-semibold">{title}</h2>
-            <button onClick={onClose} className="rounded px-2 py-1 hover:bg-[hsl(var(--brand-orange))]/12" aria-label="Close">✕</button>
-          </div>
-          <div className="p-4 section-tight">{children}</div>
+        {/* body */}
+        <div className="p-4">
+          {children}
         </div>
       </div>
-    </div>
-  );
-
-  return createPortal(node, getOverlayRoot());
-}
-
-function TabButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
-  return (
-    <button onClick={onClick} className={["relative px-3 py-2 text-sm rounded-t-md transition", active ? "bg-surface text-primary border-x border-t border-hairline" : "text-secondary hover:bg-[hsl(var(--brand-orange))]/12"].join(" ")}>
-      {children}{active && <span className="absolute left-0 right-0 -bottom-px h-px bg-[hsl(var(--brand-orange))]" />}
-    </button>
+    </div>,
+    getOverlayRoot()
   );
 }

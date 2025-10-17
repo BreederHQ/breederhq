@@ -1,5 +1,5 @@
 import React from "react";
-import { Button, Card } from "@bhq/ui";
+import { components } from "@bhq/ui";
 import { api } from "../api";
 import { bootstrapAuthAndOrg } from "../bootstrapFetch";
 
@@ -135,7 +135,7 @@ function dialForCode(code: string, countries: CountryDef[]): string {
 }
 
 
-/** Phone input with country select + dial code */
+/** Phone components.Input with country select + dial code */
 export function IntlPhoneField(props: {
     value: string;
     onChange: (next: string) => void;
@@ -169,10 +169,9 @@ export function IntlPhoneField(props: {
         onChange([dialForCode(nextCode, countries), localPart].filter(Boolean).join(" ").trim());
     }
 
-    function formatLocal(input: string): string {
-        // super lightweight “(xxx) xxx-xxxx” ONLY for +1 countries; pass-through otherwise
+    function formatLocal(raw: string): string {
         if (dial === "+1") {
-            const digits = input.replace(/\D/g, "").slice(0, 10);
+            const digits = raw.replace(/\D/g, "").slice(0, 10);
             const a = digits.slice(0, 3);
             const b = digits.slice(3, 6);
             const c = digits.slice(6, 10);
@@ -180,7 +179,7 @@ export function IntlPhoneField(props: {
             if (digits.length <= 6) return `(${a}) ${b}`;
             return `(${a}) ${b}-${c}`;
         }
-        return input;
+        return raw;
     }
 
     return (
@@ -188,7 +187,7 @@ export function IntlPhoneField(props: {
             <select
                 // narrower, responsive, and truncates the selected label
                 className={[
-                    "bhq-input", INPUT_CLS,
+                    "bhq-components.Input", INPUT_CLS,
                     "w-32 md:w-40",            // ↓ smaller than previous w-48
                     "max-w-[40%]",            // never let the select dominate
                     "truncate",               // hide long text
@@ -209,13 +208,13 @@ export function IntlPhoneField(props: {
                 ))}
             </select>
 
-            {/* Keep the input side flexible and wide */}
+            {/* Keep the components.Input side flexible and wide */}
             <div className="flex-1 flex min-w-0">
                 <div className="flex items-center px-3 border border-hairline rounded-l-md bg-surface text-sm shrink-0">
                     {dial}
                 </div>
-                <input
-                    className={["bhq-input", INPUT_CLS, "rounded-l-none flex-1 min-w-0"].join(" ")}
+                <components.Input
+                    className={["bhq-components.Input", INPUT_CLS, "rounded-l-none flex-1 min-w-0"].join(" ")}
                     inputMode="tel"
                     placeholder={dial === "+1" ? "(555) 111-2222" : "phone number"}
                     value={localPart}
@@ -273,7 +272,7 @@ function e164FromDisplay(display: string) {
 }
 
 
-// Shared dark style for inputs/selects (fallback even if .bhq-input is empty)
+// Shared dark style for inputs/selects (fallback even if .bhq-components.Input is empty)
 const INPUT_CLS =
     "w-full h-10 rounded-md border border-hairline bg-surface px-3 text-sm " +
     "text-primary placeholder:text-tertiary outline-none " +
@@ -397,7 +396,7 @@ export default function SettingsPanel({ open, dirty, onDirtyChange, onClose }: P
                 <div className="pointer-events-auto w-[min(1200px,100%)] h-[min(90vh,100%)]">
                     <div className="flex h-full bg-surface border border-hairline shadow-2xl rounded-xl overflow-hidden">
                         {/* left nav */}
-                        <aside className="w-64 shrink-0 border-r border-hairline bg-card/60 p-3">
+                        <aside className="w-64 shrink-0 border-r border-hairline bg-components.Card/60 p-3">
                             <h2 className="text-sm font-semibold text-secondary mb-2">Settings</h2>
                             <nav className="space-y-4">
                                 {NAV.map((section) => (
@@ -405,7 +404,7 @@ export default function SettingsPanel({ open, dirty, onDirtyChange, onClose }: P
                                         <div className="px-3 pb-1 text-[11px] uppercase tracking-wide text-tertiary">{section.title}</div>
                                         <div className="space-y-1">
                                             {section.items.map((t) => (
-                                                <button
+                                                <components.Button
                                                     key={t.key}
                                                     onClick={() => trySwitch(t.key)}
                                                     className={[
@@ -417,7 +416,7 @@ export default function SettingsPanel({ open, dirty, onDirtyChange, onClose }: P
                                                     ].join(" ")}
                                                 >
                                                     {t.label}
-                                                </button>
+                                                </components.Button>
                                             ))}
                                         </div>
                                     </div>
@@ -442,7 +441,7 @@ export default function SettingsPanel({ open, dirty, onDirtyChange, onClose }: P
                                 <div className="flex items-end gap-3">
                                     <div className="flex flex-col items-end gap-1">
                                         <div className="flex items-center gap-2">
-                                            <Button
+                                            <components.Button
                                                 size="sm"
                                                 variant="outline"
                                                 onClick={handleClose}
@@ -450,8 +449,8 @@ export default function SettingsPanel({ open, dirty, onDirtyChange, onClose }: P
                                                 title={dirty ? "Save or discard changes before closing" : "Close settings"}
                                             >
                                                 Close
-                                            </Button>
-                                            <Button
+                                            </components.Button>
+                                            <components.Button
                                                 size="sm"
                                                 onClick={async () => {
                                                     if (active === "profile") {
@@ -465,7 +464,7 @@ export default function SettingsPanel({ open, dirty, onDirtyChange, onClose }: P
                                                 title="Save changes"
                                             >
                                                 Save
-                                            </Button>
+                                            </components.Button>
                                         </div>
 
                                         {/* Banner is now under the buttons and hidden for Security */}
@@ -539,9 +538,9 @@ async function saveActive(tab: Tab, markDirty: (tab: Tab, v: boolean) => void) {
 
 function Field(props: React.InputHTMLAttributes<HTMLInputElement>) {
     return (
-        <input
+        <components.Input
             {...props}
-            className={["bhq-input", INPUT_CLS, props.className].filter(Boolean).join(" ")}
+            className={["bhq-components.Input", INPUT_CLS, props.className].filter(Boolean).join(" ")}
         />
     );
 }
@@ -746,7 +745,7 @@ const ProfileTab = React.forwardRef<ProfileHandle, {
     }));
 
     return (
-        <Card className="p-4 space-y-4">
+        <components.Card className="p-4 space-y-4">
             {loading ? (
                 <div className="text-sm text-secondary">Loading profile…</div>
             ) : (
@@ -763,8 +762,8 @@ const ProfileTab = React.forwardRef<ProfileHandle, {
                             {/* Full name */}
                             <label className="space-y-1 md:col-span-2">
                                 <div className="text-xs text-secondary">Full Name</div>
-                                <input
-                                    className={`bhq-input ${INPUT_CLS}`}
+                                <components.Input
+                                    className={`bhq-components.Input ${INPUT_CLS}`}
                                     autoComplete="name"
                                     value={form.userName}
                                     onChange={(e) => setForm((f) => ({ ...f, userName: e.target.value }))}
@@ -775,11 +774,11 @@ const ProfileTab = React.forwardRef<ProfileHandle, {
                             <label className="space-y-1 md:col-span-2">
                                 <div className="text-xs text-secondary">Email Address (username)</div>
 
-                                {/* input + Change/Cancel button on the same row */}
+                                {/* components.Input + Change/Cancel components.Button on the same row */}
                                 <div className="flex items-center gap-2">
-                                    <input
+                                    <components.Input
                                         ref={emailInputRef}
-                                        className={`bhq-input ${INPUT_CLS} w-auto flex-1 min-w-0`}
+                                        className={`bhq-components.Input ${INPUT_CLS} w-auto flex-1 min-w-0`}
                                         type="email"
                                         autoComplete="email"
                                         value={form.userEmail}
@@ -787,8 +786,8 @@ const ProfileTab = React.forwardRef<ProfileHandle, {
                                         onChange={(e) => setForm((f) => ({ ...f, userEmail: e.target.value }))}
                                     />
 
-                                    {/* IMPORTANT: no variant prop → default orange button */}
-                                    <Button
+                                    {/* IMPORTANT: no variant prop → default orange components.Button */}
+                                    <components.Button
                                         size="sm"
                                         onClick={() => {
                                             setEmailEdit((v) => {
@@ -808,7 +807,7 @@ const ProfileTab = React.forwardRef<ProfileHandle, {
                                         title={emailEdit ? "Cancel editing email" : "Enable editing"}
                                     >
                                         {emailEdit ? "Cancel" : "Change"}
-                                    </Button>
+                                    </components.Button>
                                 </div>
 
                                 {!emailEdit && (
@@ -853,38 +852,38 @@ const ProfileTab = React.forwardRef<ProfileHandle, {
                     <div className="rounded-xl border border-hairline bg-surface p-3">
                         <div className="mb-2 text-xs uppercase tracking-wide text-secondary">Address</div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                            <input
-                                className={`bhq-input ${INPUT_CLS} md:col-span-2`}
+                            <components.Input
+                                className={`bhq-components.Input ${INPUT_CLS} md:col-span-2`}
                                 placeholder="Street"
                                 value={form.street}
                                 onChange={(e) => setForm(f => ({ ...f, street: e.target.value }))}
                             />
-                            <input
-                                className={`bhq-input ${INPUT_CLS} md:col-span-2`}
+                            <components.Input
+                                className={`bhq-components.Input ${INPUT_CLS} md:col-span-2`}
                                 placeholder="Street 2"
                                 value={form.street2}
                                 onChange={(e) => setForm(f => ({ ...f, street2: e.target.value }))}
                             />
-                            <input
-                                className={`bhq-input ${INPUT_CLS}`}
+                            <components.Input
+                                className={`bhq-components.Input ${INPUT_CLS}`}
                                 placeholder="City"
                                 value={form.city}
                                 onChange={(e) => setForm(f => ({ ...f, city: e.target.value }))}
                             />
-                            <input
-                                className={`bhq-input ${INPUT_CLS}`}
+                            <components.Input
+                                className={`bhq-components.Input ${INPUT_CLS}`}
                                 placeholder="State / Region"
                                 value={form.state}
                                 onChange={(e) => setForm(f => ({ ...f, state: e.target.value }))}
                             />
-                            <input
-                                className={`bhq-input ${INPUT_CLS}`}
+                            <components.Input
+                                className={`bhq-components.Input ${INPUT_CLS}`}
                                 placeholder="Postal Code"
                                 value={form.postalCode}
                                 onChange={(e) => setForm(f => ({ ...f, postalCode: e.target.value }))}
                             />
                             <select
-                                className={["bhq-input", INPUT_CLS].join(" ")}
+                                className={["bhq-components.Input", INPUT_CLS].join(" ")}
                                 value={asCountryCode(form.country, countries)}
                                 onChange={(e) => {
                                     const code = e.currentTarget.value || "";
@@ -900,7 +899,7 @@ const ProfileTab = React.forwardRef<ProfileHandle, {
                     </div>
                 </>
             )}
-        </Card>
+        </components.Card>
     );
 });
 
@@ -1061,7 +1060,7 @@ function SecurityTab({ onDirty }: { dirty: boolean; onDirty: (v: boolean) => voi
 
     return (
         <div className="space-y-6">
-            <Card className="p-4 space-y-4">
+            <components.Card className="p-4 space-y-4">
                 <h4 className="font-medium">Password</h4>
 
                 {error && (
@@ -1080,8 +1079,8 @@ function SecurityTab({ onDirty }: { dirty: boolean; onDirty: (v: boolean) => voi
                     <label className="space-y-1 max-w-sm">
                         <div className="text-xs text-secondary">Current password</div>
                         <div className="relative w-80">
-                            <input
-                                className={`bhq-input ${INPUT_CLS} pr-10`}
+                            <components.Input
+                                className={`bhq-components.Input ${INPUT_CLS} pr-10`}
                                 type={showCurrentPw ? 'text' : 'password'}
                                 autoComplete="current-password"
                                 value={currentPw}
@@ -1095,14 +1094,14 @@ function SecurityTab({ onDirty }: { dirty: boolean; onDirty: (v: boolean) => voi
                                     }
                                 }}
                             />
-                            <button
+                            <components.Button
                                 type="button"
                                 onClick={() => setShowCurrentPw(v => !v)}
                                 className="absolute inset-y-0 right-2 my-auto p-1 text-tertiary hover:text-primary"
                                 aria-label={showCurrentPw ? 'Hide password' : 'Show password'}
                             >
                                 {showCurrentPw ? EyeOff : Eye}
-                            </button>
+                            </components.Button>
                         </div>
                         <p className="text-xs text-tertiary">
                             We’ll verify your current password before allowing a change.
@@ -1113,7 +1112,7 @@ function SecurityTab({ onDirty }: { dirty: boolean; onDirty: (v: boolean) => voi
                 {/* Primary action: verify then reveal change form */}
                 {!verified && (
                     <div className="flex items-center gap-2">
-                        <Button
+                        <components.Button
                             size="sm"
                             onClick={async () => {
                                 if (!currentPw) { setError('Please enter your current password.'); return; }
@@ -1124,7 +1123,7 @@ function SecurityTab({ onDirty }: { dirty: boolean; onDirty: (v: boolean) => voi
                             title="Verify current password"
                         >
                             {step === 'verifying' ? 'Verifying…' : 'Change password'}
-                        </Button>
+                        </components.Button>
                     </div>
                 )}
 
@@ -1134,9 +1133,9 @@ function SecurityTab({ onDirty }: { dirty: boolean; onDirty: (v: boolean) => voi
                         <label className="space-y-1 max-w-sm">
                             <div className="text-xs text-secondary">New password</div>
                             <div className="relative w-80">
-                                <input
+                                <components.Input
                                     id="new-password-input"
-                                    className={`bhq-input ${INPUT_CLS} pr-10`}
+                                    className={`bhq-components.Input ${INPUT_CLS} pr-10`}
                                     type={showNewPw ? 'text' : 'password'}
                                     autoComplete="new-password"
                                     value={newPw}
@@ -1153,22 +1152,22 @@ function SecurityTab({ onDirty }: { dirty: boolean; onDirty: (v: boolean) => voi
                                         }
                                     }}
                                 />
-                                <button
+                                <components.Button
                                     type="button"
                                     onClick={() => setShowNewPw(v => !v)}
                                     className="absolute inset-y-0 right-2 my-auto p-1 text-tertiary hover:text-primary"
                                     aria-label={showNewPw ? 'Hide password' : 'Show password'}
                                 >
                                     {showNewPw ? EyeOff : Eye}
-                                </button>
+                                </components.Button>
                             </div>
                         </label>
 
                         <label className="space-y-1 max-w-sm">
                             <div className="text-xs text-secondary">Confirm new password</div>
                             <div className="relative w-80">
-                                <input
-                                    className={`bhq-input ${INPUT_CLS} pr-10`}
+                                <components.Input
+                                    className={`bhq-components.Input ${INPUT_CLS} pr-10`}
                                     type={showConfirmPw ? 'text' : 'password'}
                                     autoComplete="new-password"
                                     value={confirmPw}
@@ -1186,14 +1185,14 @@ function SecurityTab({ onDirty }: { dirty: boolean; onDirty: (v: boolean) => voi
                                         }
                                     }}
                                 />
-                                <button
+                                <components.Button
                                     type="button"
                                     onClick={() => setShowConfirmPw(v => !v)}
                                     className="absolute inset-y-0 right-2 my-auto p-1 text-tertiary hover:text-primary"
                                     aria-label={showConfirmPw ? 'Hide password' : 'Show password'}
                                 >
                                     {showConfirmPw ? EyeOff : Eye}
-                                </button>
+                                </components.Button>
                             </div>
                         </label>
 
@@ -1202,7 +1201,7 @@ function SecurityTab({ onDirty }: { dirty: boolean; onDirty: (v: boolean) => voi
                         </p>
 
                         <div>
-                            <Button
+                            <components.Button
                                 size="sm"
                                 onClick={async () => {
                                     if (!verified) {
@@ -1215,47 +1214,47 @@ function SecurityTab({ onDirty }: { dirty: boolean; onDirty: (v: boolean) => voi
                                 disabled={submitting}
                             >
                                 {submitting ? 'Submitting…' : 'Submit'}
-                            </Button>
+                            </components.Button>
                         </div>
                     </div>
                 )}
-            </Card>
+            </components.Card>
 
-            <Card className="p-4 space-y-3">
+            <components.Card className="p-4 space-y-3">
                 <h4 className="font-medium">Two-factor authentication</h4>
                 <p className="text-sm text-secondary">Enable, verify, disable TOTP and manage recovery codes.</p>
                 <div className="flex gap-2">
-                    <Button size="sm" onClick={() => onDirty(true)}>Enable TOTP</Button>
-                    <Button size="sm" variant="outline">View recovery codes</Button>
+                    <components.Button size="sm" onClick={() => onDirty(true)}>Enable TOTP</components.Button>
+                    <components.Button size="sm" variant="outline">View recovery codes</components.Button>
                 </div>
-            </Card>
+            </components.Card>
         </div>
     );
 }
 
 function SubscriptionTab({ onDirty }: { dirty: boolean; onDirty: (v: boolean) => void }) {
     return (
-        <Card className="p-4 space-y-3">
+        <components.Card className="p-4 space-y-3">
             <h4 className="font-medium">Subscription</h4>
             <p className="text-sm text-secondary">Toggle modules. Billing provider to be added.</p>
-            <label className="flex items-center gap-2"><input type="checkbox" onChange={() => onDirty(true)} /> Contacts</label>
-            <label className="flex items-center gap-2"><input type="checkbox" onChange={() => onDirty(true)} /> Animals</label>
-            <label className="flex items-center gap-2"><input type="checkbox" onChange={() => onDirty(true)} /> Breeding</label>
-            <label className="flex items-center gap-2"><input type="checkbox" onChange={() => onDirty(true)} /> Offspring</label>
-        </Card>
+            <label className="flex items-center gap-2"><components.Input type="checkbox" onChange={() => onDirty(true)} /> Contacts</label>
+            <label className="flex items-center gap-2"><components.Input type="checkbox" onChange={() => onDirty(true)} /> Animals</label>
+            <label className="flex items-center gap-2"><components.Input type="checkbox" onChange={() => onDirty(true)} /> Breeding</label>
+            <label className="flex items-center gap-2"><components.Input type="checkbox" onChange={() => onDirty(true)} /> Offspring</label>
+        </components.Card>
     );
 }
 
 function BreedingTab({ onDirty }: { dirty: boolean; onDirty: (v: boolean) => void }) {
     return (
-        <Card className="p-4 space-y-3">
+        <components.Card className="p-4 space-y-3">
             <h4 className="font-medium">Breeding defaults</h4>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <Field placeholder="Cycle length (days)" onChange={() => onDirty(true)} />
                 <Field placeholder="Ovulation day from heat start" onChange={() => onDirty(true)} />
                 <Field placeholder="Start buffer (days)" className="md:col-span-2" onChange={() => onDirty(true)} />
             </div>
-        </Card>
+        </components.Card>
     );
 }
 
@@ -1374,7 +1373,7 @@ function BreedsTab({ onDirty }: { onDirty: (v: boolean) => void }) {
 
     return (
         <div className="space-y-6">
-            <Card className="p-4 space-y-3">
+            <components.Card className="p-4 space-y-3">
                 <h4 className="font-medium">Breeds (tenant custom + canonical lookup)</h4>
                 <p className="text-sm text-secondary">
                     Canonical breeds are read-only. Add <em>custom</em> breeds for your org (kept private), and optionally link them to a canonical breed for analytics/search.
@@ -1389,7 +1388,7 @@ function BreedsTab({ onDirty }: { onDirty: (v: boolean) => void }) {
                 {/* Species + Search */}
                 <div className="flex flex-col md:flex-row gap-3">
                     <select
-                        className={`bhq-input ${INPUT_CLS} w-40`}
+                        className={`bhq-components.Input ${INPUT_CLS} w-40`}
                         value={species}
                         onChange={(e) => setSpecies(e.currentTarget.value as Species)}
                     >
@@ -1399,16 +1398,16 @@ function BreedsTab({ onDirty }: { onDirty: (v: boolean) => void }) {
                     </select>
 
                     <div className="flex-1 flex gap-2">
-                        <input
-                            className={`bhq-input ${INPUT_CLS} flex-1`}
+                        <components.Input
+                            className={`bhq-components.Input ${INPUT_CLS} flex-1`}
                             placeholder="Search canonical breeds (name or alias)…"
                             value={q}
                             onChange={(e) => setQ(e.target.value)}
                             onKeyDown={(e) => e.key === "Enter" && doSearch()}
                         />
-                        <Button size="sm" onClick={doSearch} disabled={searching}>
+                        <components.Button size="sm" onClick={doSearch} disabled={searching}>
                             {searching ? "Searching…" : "Search"}
-                        </Button>
+                        </components.Button>
                     </div>
                 </div>
 
@@ -1423,7 +1422,7 @@ function BreedsTab({ onDirty }: { onDirty: (v: boolean) => void }) {
                                 </div>
                                 <div className="flex items-center gap-2">
                                     {linkFor != null ? (
-                                        <Button
+                                        <components.Button
                                             size="sm"
                                             variant="outline"
                                             onClick={async () => {
@@ -1436,9 +1435,9 @@ function BreedsTab({ onDirty }: { onDirty: (v: boolean) => void }) {
                                             }}
                                         >
                                             Link to selected custom
-                                        </Button>
+                                        </components.Button>
                                     ) : (
-                                        <Button
+                                        <components.Button
                                             size="sm"
                                             onClick={async () => {
                                                 try {
@@ -1451,27 +1450,27 @@ function BreedsTab({ onDirty }: { onDirty: (v: boolean) => void }) {
                                             }}
                                         >
                                             Add as custom
-                                        </Button>
+                                        </components.Button>
                                     )}
                                 </div>
                             </div>
                         ))}
                     </div>
                 )}
-            </Card>
+            </components.Card>
 
             {/* Custom list + quick add */}
-            <Card className="p-4 space-y-3">
+            <components.Card className="p-4 space-y-3">
                 <div className="flex items-center justify-between">
                     <h4 className="font-medium">Your custom breeds ({species.toLowerCase()})</h4>
-                    <Button size="sm" variant="outline" onClick={loadCustom} disabled={loadingCustom}>
+                    <components.Button size="sm" variant="outline" onClick={loadCustom} disabled={loadingCustom}>
                         {loadingCustom ? "Refreshing…" : "Refresh"}
-                    </Button>
+                    </components.Button>
                 </div>
 
                 <div className="flex gap-2">
-                    <input
-                        className={`bhq-input ${INPUT_CLS} flex-1`}
+                    <components.Input
+                        className={`bhq-components.Input ${INPUT_CLS} flex-1`}
                         placeholder={`Add custom ${species.toLowerCase()} breed…`}
                         value={newName}
                         onChange={(e) => (setNewName(e.target.value))}
@@ -1486,7 +1485,7 @@ function BreedsTab({ onDirty }: { onDirty: (v: boolean) => void }) {
                             }
                         }}
                     />
-                    <Button
+                    <components.Button
                         size="sm"
                         onClick={async () => {
                             if (!newName.trim()) return;
@@ -1499,7 +1498,7 @@ function BreedsTab({ onDirty }: { onDirty: (v: boolean) => void }) {
                         }}
                     >
                         Add
-                    </Button>
+                    </components.Button>
                 </div>
 
                 <div className="rounded-md border border-hairline divide-y divide-hairline">
@@ -1508,8 +1507,8 @@ function BreedsTab({ onDirty }: { onDirty: (v: boolean) => void }) {
                     ) : (
                         customList.map((c) => (
                             <div key={c.id} className="flex items-center justify-between px-3 py-2 gap-3">
-                                <input
-                                    className={`bhq-input ${INPUT_CLS} flex-1`}
+                                <components.Input
+                                    className={`bhq-components.Input ${INPUT_CLS} flex-1`}
                                     defaultValue={c.name}
                                     onBlur={async (e) => {
                                         const next = e.currentTarget.value.trim();
@@ -1519,16 +1518,16 @@ function BreedsTab({ onDirty }: { onDirty: (v: boolean) => void }) {
                                     }}
                                 />
                                 <div className="flex items-center gap-2">
-                                    <Button
+                                    <components.Button
                                         size="sm"
                                         variant={linkFor === c.id ? "outline" : "secondary"}
                                         onClick={() => setLinkFor(linkFor === c.id ? null : c.id)}
                                         title="Select this custom breed to link to a canonical result above"
                                     >
                                         {linkFor === c.id ? "Selected" : "Link canonical"}
-                                    </Button>
+                                    </components.Button>
                                     {c.canonicalBreedId && (
-                                        <Button
+                                        <components.Button
                                             size="sm"
                                             variant="outline"
                                             onClick={async () => {
@@ -1536,9 +1535,9 @@ function BreedsTab({ onDirty }: { onDirty: (v: boolean) => void }) {
                                             }}
                                         >
                                             Unlink
-                                        </Button>
+                                        </components.Button>
                                     )}
-                                    <Button
+                                    <components.Button
                                         size="sm"
                                         variant="outline"
                                         onClick={async () => {
@@ -1547,13 +1546,13 @@ function BreedsTab({ onDirty }: { onDirty: (v: boolean) => void }) {
                                         }}
                                     >
                                         Delete
-                                    </Button>
+                                    </components.Button>
                                 </div>
                             </div>
                         ))
                     )}
                 </div>
-            </Card>
+            </components.Card>
         </div>
     );
 }
@@ -1562,95 +1561,95 @@ function BreedsTab({ onDirty }: { onDirty: (v: boolean) => void }) {
 function UsersTab({ onDirty }: { dirty: boolean; onDirty: (v: boolean) => void }) {
     return (
         <div className="space-y-6">
-            <Card className="p-4 space-y-3">
+            <components.Card className="p-4 space-y-3">
                 <h4 className="font-medium">Members</h4>
                 <div className="rounded-md border border-hairline divide-y divide-hairline">
                     <div className="flex items-center justify-between px-3 py-2">
                         <div className="text-sm">you@example.com</div>
                         <div className="flex items-center gap-2">
-                            <select className={`bhq-input ${INPUT_CLS}`} onChange={() => onDirty(true)}>
+                            <select className={`bhq-components.Input ${INPUT_CLS}`} onChange={() => onDirty(true)}>
                                 <option>Admin</option>
                                 <option>Manager</option>
                                 <option>Reader</option>
                             </select>
-                            <Button size="sm" variant="outline" onClick={() => onDirty(true)}>Remove</Button>
+                            <components.Button size="sm" variant="outline" onClick={() => onDirty(true)}>Remove</components.Button>
                         </div>
                     </div>
                 </div>
-            </Card>
-            <Card className="p-4 space-y-3">
+            </components.Card>
+            <components.Card className="p-4 space-y-3">
                 <h4 className="font-medium">Invite user</h4>
                 <div className="flex gap-2">
                     <Field placeholder="Email address" onChange={() => onDirty(true)} />
-                    <select className="bhq-input w-40" onChange={() => onDirty(true)}>
+                    <select className="bhq-components.Input w-40" onChange={() => onDirty(true)}>
                         <option>Manager</option>
                         <option>Reader</option>
                         <option>Admin</option>
                     </select>
-                    <Button size="sm" onClick={() => onDirty(true)}>Send invite</Button>
+                    <components.Button size="sm" onClick={() => onDirty(true)}>Send invite</components.Button>
                 </div>
                 <p className="text-xs text-secondary">
                     Managers can manage users but not subscriptions, payment methods, or the primary subscriber.
                 </p>
-            </Card>
+            </components.Card>
         </div>
     );
 }
 
 function PaymentsTab({ onDirty }: { dirty: boolean; onDirty: (v: boolean) => void }) {
     return (
-        <Card className="p-4 space-y-3">
+        <components.Card className="p-4 space-y-3">
             <h4 className="font-medium">Payment methods</h4>
             <div className="rounded-md border border-hairline divide-y divide-hairline">
                 <div className="flex items-center justify-between px-3 py-2">
                     <div className="text-sm">•••• •••• •••• 4242 — Visa</div>
                     <div className="flex items-center gap-2">
-                        <Button size="sm" variant="outline" onClick={() => onDirty(true)}>Set default</Button>
-                        <Button size="sm" variant="outline" onClick={() => onDirty(true)}>Remove</Button>
+                        <components.Button size="sm" variant="outline" onClick={() => onDirty(true)}>Set default</components.Button>
+                        <components.Button size="sm" variant="outline" onClick={() => onDirty(true)}>Remove</components.Button>
                     </div>
                 </div>
             </div>
             <div className="flex justify-end">
-                <Button size="sm" onClick={() => onDirty(true)}>Add payment method</Button>
+                <components.Button size="sm" onClick={() => onDirty(true)}>Add payment method</components.Button>
             </div>
-        </Card>
+        </components.Card>
     );
 }
 
 function TransactionsTab({ onDirty }: { dirty: boolean; onDirty: (v: boolean) => void }) {
     return (
-        <Card className="p-4 space-y-3">
+        <components.Card className="p-4 space-y-3">
             <h4 className="font-medium">Transactions</h4>
             <p className="text-sm text-secondary">View recent charges, refunds, and invoices (placeholder).</p>
             <div className="rounded-md border border-hairline p-3 text-sm text-secondary">
                 No transactions to display yet.
             </div>
-        </Card>
+        </components.Card>
     );
 }
 
 function GroupsTab({ onDirty }: { dirty: boolean; onDirty: (v: boolean) => void }) {
     return (
-        <Card className="p-4 space-y-3">
+        <components.Card className="p-4 space-y-3">
             <h4 className="font-medium">Groups</h4>
             <p className="text-sm text-secondary">Create and manage user groups (placeholder).</p>
             <div className="flex gap-2">
-                <input className={`bhq-input ${INPUT_CLS} flex-1`} placeholder="New group name" onChange={() => onDirty(true)} />
-                <Button size="sm" onClick={() => onDirty(true)}>Add group</Button>
+                <components.Input className={`bhq-components.Input ${INPUT_CLS} flex-1`} placeholder="New group name" onChange={() => onDirty(true)} />
+                <components.Button size="sm" onClick={() => onDirty(true)}>Add group</components.Button>
             </div>
-        </Card>
+        </components.Card>
     );
 }
 
 function TagsTab({ onDirty }: { dirty: boolean; onDirty: (v: boolean) => void }) {
     return (
-        <Card className="p-4 space-y-3">
+        <components.Card className="p-4 space-y-3">
             <h4 className="font-medium">Tag Manager</h4>
             <p className="text-sm text-secondary">Add, rename, and delete tags used across the platform (placeholder).</p>
             <div className="flex gap-2">
-                <input className={`bhq-input ${INPUT_CLS} flex-1`} placeholder="New tag" onChange={() => onDirty(true)} />
-                <Button size="sm" onClick={() => onDirty(true)}>Add tag</Button>
+                <components.Input className={`bhq-components.Input ${INPUT_CLS} flex-1`} placeholder="New tag" onChange={() => onDirty(true)} />
+                <components.Button size="sm" onClick={() => onDirty(true)}>Add tag</components.Button>
             </div>
-        </Card>
+        </components.Card>
     );
 }

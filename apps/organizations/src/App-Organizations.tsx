@@ -1,12 +1,14 @@
 // apps/organizations/src/App-Organizations.tsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { components } from "@bhq/ui";
+import { getOverlayRoot, useOverlayHost } from "@bhq/ui/overlay";
 import { createPortal } from "react-dom";
-import { Card, Button, Input, EmptyState } from "@bhq/ui";
 import { makeApi } from "./api";
 
 /** ─────────────────────────────────────────────────────────────────────────────
  * Types
  * ──────────────────────────────────────────────────────────────────────────── */
+type ID = number | string;
 type OrgDTO = {
   id: ID;
   name?: string | null;
@@ -71,8 +73,8 @@ function normalizeOrg(dto: OrgDTO): OrgRow {
     state: dto.state ?? null,
     country: dto.country ?? null,
     tags: Array.from(new Set((dto.tags || []).filter(Boolean))),
-    createdAt: dto.createdAt ?? null,
-    updatedAt: dto.updatedAt ?? null,
+    created_at: dto.createdAt ?? null,
+    updated_at: dto.updatedAt ?? null,
     archived: dto.archived ?? null,
     archivedAt: dto.archivedAt ?? null,
     archivedReason: dto.archivedReason ?? null,
@@ -115,26 +117,6 @@ const SHOW_FILTERS_STORAGE_KEY = "bhq_org_showfilters_v2";
  * ──────────────────────────────────────────────────────────────────────────── */
 const cn = (...s: Array<string | false | null | undefined>) => s.filter(Boolean).join(" ");
 const EMPTY = "—";
-
-function getOverlayRoot(): HTMLElement {
-  let el = document.getElementById("bhq-top-layer") as HTMLElement | null;
-  if (!el) {
-    el = document.createElement("div");
-    el.id = "bhq-top-layer";
-    Object.assign(el.style, {
-      position: "fixed",
-      inset: "0",
-      zIndex: "2147483647",
-      pointerEvents: "none",
-    } as CSSStyleDeclaration);
-    document.body.appendChild(el);
-  }
-  return el;
-}
-function setOverlayHostInteractive(enabled: boolean) {
-  const el = getOverlayRoot();
-  el.style.pointerEvents = enabled ? "auto" : "none";
-}
 
 function getPlatformOrgIds(): number[] {
   const w: any = window as any;
@@ -286,7 +268,7 @@ async function apiGetOrganization(id: number): Promise<OrgRow | null> {
  * Tiny atoms
  * ──────────────────────────────────────────────────────────────────────────── */
 const Checkbox: React.FC<React.InputHTMLAttributes<HTMLInputElement>> = ({ className = "", ...props }) => (
-  <input type="checkbox" className={cn("h-3 w-3 align-middle", className)} {...props} />
+  <components.Input type="checkbox" className={cn("h-3 w-3 align-middle", className)} {...props} />
 );
 const Select: React.FC<React.SelectHTMLAttributes<HTMLSelectElement>> = ({ className = "", children, ...props }) => (
   <select
@@ -308,9 +290,6 @@ const Textarea: React.FC<React.TextareaHTMLAttributes<HTMLTextAreaElement>> = ({
     {...props}
   />
 );
-function Badge({ children }: { children: React.ReactNode }) {
-  return <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs border-hairline border-hairline-hairline bg-surface">{children}</span>;
-}
 function Th({ children, sort, onSort }: { children: React.ReactNode; sort?: "asc" | "desc"; onSort?: (withShift: boolean) => void; }) {
   const Up = () => <svg viewBox="0 0 24 24" className="h-3 w-3" aria-hidden><path d="M7 14l5-5 5 5" fill="none" stroke="currentColor" strokeWidth="2" /></svg>;
   const Down = () => <svg viewBox="0 0 24 24" className="h-3 w-3" aria-hidden><path d="M7 10l5 5 5-5" fill="none" stroke="currentColor" strokeWidth="2" /></svg>;
@@ -351,7 +330,7 @@ function Modal({
 }: {
   open: boolean; onClose: () => void; title: string; children: React.ReactNode; footer?: React.ReactNode;
 }) {
-  useEffect(() => { setOverlayHostInteractive(open); return () => setOverlayHostInteractive(false); }, [open]);
+  useOverlayHost(open);
   if (!open) return null;
   return createPortal(
     <>
@@ -363,7 +342,7 @@ function Modal({
         >
           <div className="flex items-center justify-between mb-2">
             <h2 className="text-lg font-semibold">{title}</h2>
-            <Button variant="ghost" size="icon" onClick={onClose} aria-label="Close">×</Button>
+            <components.Button variant="ghost" size="icon" onClick={onClose} aria-label="Close">×</components.Button>
           </div>
           <div className="max-h-[70vh] overflow-y-auto pr-1">{children}</div>
           <div className="mt-3 flex items-center justify-end gap-2">{footer}</div>
@@ -377,7 +356,7 @@ function Modal({
 function Popover({
   open, onOpenChange, anchor, children, position = "auto",
 }: { open: boolean; onOpenChange: (v: boolean) => void; anchor: React.ReactNode; children: React.ReactNode; position?: "auto" | "fixed-top-right"; }) {
-  useEffect(() => { setOverlayHostInteractive(open); return () => setOverlayHostInteractive(false); }, [open]);
+  useOverlayHost(open);
   return (
     <div className={cn(position === "auto" ? "relative inline-flex align-middle" : "inline-flex align-middle")}>
       <div onClick={() => onOpenChange(!open)} className="inline-flex align-middle">{anchor}</div>
@@ -392,9 +371,9 @@ function Popover({
                 : "absolute top-[calc(100%+0.5rem)] right-0 w-72 max-w-[calc(100vw-2rem)]"
             )}
           >
-            <button type="button" aria-label="Close" onClick={() => onOpenChange(false)} className="absolute right-1 top-1 p-1 rounded hover:bg-[hsl(var(--brand-orange))]/12">
+            <components.Button type="components.Button" aria-label="Close" onClick={() => onOpenChange(false)} className="absolute right-1 top-1 p-1 rounded hover:bg-[hsl(var(--brand-orange))]/12">
               ×
-            </button>
+            </components.Button>
             {children}
           </div>
         </>,
@@ -430,14 +409,14 @@ function ChecklistFilter({
       open={open}
       onOpenChange={setOpen}
       anchor={
-        <Button ref={anchorRef as any} variant="outline" size="sm" type="button">
+        <components.Button ref={anchorRef as any} variant="outline" size="sm" type="components.Button">
           {label}: {summary}
-        </Button>
+        </components.Button>
       }
     >
       <div className="w-64">
         <div className="mb-2">
-          <Input
+          <components.Input
             value={needle}
             onChange={(e) => setNeedle(e.currentTarget.value)}
             placeholder={`Search ${label.toLowerCase()}...`}
@@ -464,8 +443,8 @@ function ChecklistFilter({
           {filtered.length === 0 && <div className="text-sm text-secondary px-1 py-1">No matches</div>}
         </div>
         <div className="mt-2 flex items-center justify-end gap-2">
-          <Button variant="ghost" size="sm" onClick={() => onChange([])}>Clear</Button>
-          <Button size="sm" onClick={() => setOpen(false)}>Done</Button>
+          <components.Button variant="ghost" size="sm" onClick={() => onChange([])}>Clear</components.Button>
+          <components.Button size="sm" onClick={() => setOpen(false)}>Done</components.Button>
         </div>
       </div>
     </Popover>
@@ -502,7 +481,7 @@ function FilterRow({
     <div className="rounded-md border-hairline border-hairline-hairline bg-surface p-2 space-y-2">
       <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
         <div className="md:col-span-3">
-          <Input
+          <components.Input
             placeholder="Search all fields..."
             value={filters.__text || ""}
             onChange={(e) => setFilters((f) => ({ ...f, __text: e.currentTarget.value }))}
@@ -516,13 +495,13 @@ function FilterRow({
             return (
               <div key={c.key} className="flex items-center gap-2">
                 <div className="w-28 text-xs text-secondary">{c.label}</div>
-                <Input
+                <components.Input
                   type="date"
                   value={filters[startKey] || ""}
                   onChange={(e) => setFilters((f) => ({ ...f, [startKey]: e.currentTarget.value }))}
                 />
                 <span className="text-secondary text-xs">to</span>
-                <Input
+                <components.Input
                   type="date"
                   value={filters[endKey] || ""}
                   onChange={(e) => setFilters((f) => ({ ...f, [endKey]: e.currentTarget.value }))}
@@ -557,7 +536,7 @@ function FilterRow({
           return (
             <div key={c.key} className="flex items-center gap-2">
               <div className="w-28 text-xs text-secondary">{c.label}</div>
-              <Input
+              <components.Input
                 placeholder={`Filter ${c.label.toLowerCase()}`}
                 value={filters[c.key] || ""}
                 onChange={(e) => setFilters((f) => ({ ...f, [c.key]: e.currentTarget.value }))}
@@ -568,7 +547,7 @@ function FilterRow({
       </div>
 
       <div className="flex items-center justify-end gap-2">
-        <Button variant="ghost" size="sm" onClick={() => setFilters({})}>Clear</Button>
+        <components.Button variant="ghost" size="sm" onClick={() => setFilters({})}>Clear</components.Button>
       </div>
     </div>
   );
@@ -594,10 +573,7 @@ function ColumnsPopover({
     return () => document.removeEventListener("keydown", onKey);
   }, [open]);
 
-  React.useEffect(() => {
-    setOverlayHostInteractive(open);
-    return () => setOverlayHostInteractive(false);
-  }, [open]);
+  useOverlayHost(open);
 
   React.useEffect(() => {
     if (!open) return;
@@ -677,9 +653,9 @@ function ColumnsPopover({
             <div className="flex items-center justify-between px-2 pb-1">
               <div className="text-xs font-medium uppercase text-secondary">Show columns</div>
               <div className="flex items-center gap-3">
-                <a role="button" tabIndex={0} onClick={selectAll} className="text-xs font-medium hover:underline" style={{ color: "hsl(24 95% 54%)" }}>All</a>
-                <a role="button" tabIndex={0} onClick={setDefault} className="text-xs font-medium hover:underline" style={{ color: "hsl(190 90% 45%)" }}>Default</a>
-                <a role="button" tabIndex={0} onClick={clearAll} className="text-xs font-medium text-secondary hover:underline">Clear</a>
+                <a role="components.Button" tabIndex={0} onClick={selectAll} className="text-xs font-medium hover:underline" style={{ color: "hsl(24 95% 54%)" }}>All</a>
+                <a role="components.Button" tabIndex={0} onClick={setDefault} className="text-xs font-medium hover:underline" style={{ color: "hsl(190 90% 45%)" }}>Default</a>
+                <a role="components.Button" tabIndex={0} onClick={clearAll} className="text-xs font-medium text-secondary hover:underline">Clear</a>
               </div>
             </div>
 
@@ -702,7 +678,7 @@ function ColumnsPopover({
                     }
                   }}
                 >
-                  <input
+                  <components.Input
                     type="checkbox"
                     className="h-4 w-4 shrink-0 accent-[hsl(var(--brand-orange))]"
                     aria-label={c.label}
@@ -715,7 +691,7 @@ function ColumnsPopover({
             })}
 
             <div className="flex justify-end pt-2">
-              <Button size="sm" variant="outline" onClick={() => setOpen(false)}>Close</Button>
+              <components.Button size="sm" variant="outline" onClick={() => setOpen(false)}>Close</components.Button>
             </div>
           </div>
         </>,
@@ -725,7 +701,7 @@ function ColumnsPopover({
 
   return (
     <div className="relative inline-flex">
-      <Button
+      <components.Button
         ref={btnRef as any}
         variant="outline"
         size="icon"
@@ -741,7 +717,7 @@ function ColumnsPopover({
           <rect x="10" y="4" width="5" height="16" rx="1.5" />
           <rect x="17" y="4" width="4" height="16" rx="1.5" />
         </svg>
-      </Button>
+      </components.Button>
       {menu}
     </div>
   );
@@ -751,9 +727,54 @@ function ColumnsPopover({
  * Component
  * ──────────────────────────────────────────────────────────────────────────── */
 export default function AppOrganizations() {
-  // hide platform org ids (current + user org)
+  // ── State (single block) ────────────────────────────────────────────────────
   const [hideOrgIds, setHideOrgIds] = useState<number[]>([]);
+  const [rows, setRows] = useState<OrgRow[]>([]);
+  const [q, setQ] = useState<string>(() => localStorage.getItem(Q_STORAGE_KEY) || "");
+  const dq = useDebounced(q, 300);
+
+  const [showFilters, setShowFilters] = useState<boolean>(() => localStorage.getItem(SHOW_FILTERS_STORAGE_KEY) === "1");
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+
+  const [drawer, setDrawer] = useState<OrgRow | null>(null);
+  const [selectedOrgId, setSelectedOrgId] = useState<ID | null>(null);
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+
+  const [drawerEditing, setDrawerEditing] = useState(false);
+  const [drawerTab, setDrawerTab] = useState<"overview" | "audit">("overview");
+  const [draft, setDraft] = useState<Partial<OrgRow> | null>(null);
+  const [drawerLoading, setDrawerLoading] = useState(false);
+  const [drawerError, setDrawerError] = useState("");
+  const [drawerRefreshKey, setDrawerRefreshKey] = useState(0);
+
+  const [openMenu, setOpenMenu] = useState(false);
+
+  const [columns, setColumns] = useState<Record<string, boolean>>(() => {
+    const saved = localStorage.getItem(COL_STORAGE_KEY);
+    return saved
+      ? JSON.parse(saved)
+      : ALL_COLUMNS.reduce(
+        (acc, c) => ({ ...acc, [c.key]: !!c.default }),
+        {} as Record<string, boolean>
+      );
+  });
+  const [sorts, setSorts] = useState<SortRule[]>(() => {
+    const saved = localStorage.getItem(SORT_STORAGE_KEY);
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [pageSize, setPageSize] = useState<number>(() => Number(localStorage.getItem(PAGE_SIZE_STORAGE_KEY) || 25));
+  const [page, setPage] = useState<number>(1);
+  const [filtersState, setFiltersState] = useState<Record<string, string>>(() => {
+    const saved = localStorage.getItem(FILTERS_STORAGE_KEY);
+    return saved ? JSON.parse(saved) : {};
+  });
+
+  // Overlay host
+  useOverlayHost(isDrawerOpen && !!drawer);
+
+  // ── Effects ─────────────────────────────────────────────────────────────────
   useEffect(() => { setHideOrgIds(getPlatformOrgIds()); }, []);
+
   useEffect(() => {
     const onChange = (e: any) => {
       const next = Number(e?.detail?.orgId);
@@ -770,23 +791,29 @@ export default function AppOrganizations() {
     window.dispatchEvent(new CustomEvent("bhq:module", { detail: { key: "organizations", label: "Organizations" } }));
   }, []);
 
-  const [rows, setRows] = useState<OrgRow[]>([]);
-  const [q, setQ] = useState<string>(() => localStorage.getItem(Q_STORAGE_KEY) || "");
-  const dq = useDebounced(q, 300);
-  const [showFilters, setShowFilters] = useState<boolean>(() => localStorage.getItem(SHOW_FILTERS_STORAGE_KEY) === "1");
-  const [selected, setSelected] = useState<Set<number>>(new Set());
-  const [drawer, setDrawer] = useState<OrgRow | null>(null);
+  // Persist UI prefs
+  useEffect(() => { localStorage.setItem(PAGE_SIZE_STORAGE_KEY, String(pageSize)); }, [pageSize]);
+  useEffect(() => { localStorage.setItem(FILTERS_STORAGE_KEY, JSON.stringify(filtersState)); }, [filtersState]);
+  useEffect(() => { localStorage.setItem(SORT_STORAGE_KEY, JSON.stringify(sorts)); }, [sorts]);
+  useEffect(() => { localStorage.setItem(COL_STORAGE_KEY, JSON.stringify(columns)); }, [columns]);
+  useEffect(() => { localStorage.setItem(Q_STORAGE_KEY, q); }, [q]);
+  useEffect(() => { localStorage.setItem(SHOW_FILTERS_STORAGE_KEY, showFilters ? "1" : "0"); }, [showFilters]);
 
-  const [selectedOrgId, setSelectedOrgId] = useState<ID | null>(null);
-  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
-  const [drawerEditing, setDrawerEditing] = useState(false);
-  const [drawerTab, setDrawerTab] = useState<"overview" | "audit">("overview");
-  const [draft, setDraft] = useState<Partial<OrgRow> | null>(null);
-  const [drawerLoading, setDrawerLoading] = useState(false);
-  const [drawerError, setDrawerError] = useState("");
-  const [drawerRefreshKey, setDrawerRefreshKey] = useState(0);
+  // Initial load (exclude archived by default)
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const list = await apiListOrganizations({ includeArchived: false });
+      if (!alive) return;
+      setRows(list);
+    })();
+    return () => { alive = false; };
+  }, []);
 
-  // hydrate the drawer with a fresh fetch whenever it opens or we trigger refresh
+  // Reset to page 1 when filters/search/sort change
+  useEffect(() => { setPage(1); }, [dq, filtersState, sorts]);
+
+  // Drawer hydration
   useEffect(() => {
     if (selectedOrgId == null) return;
     let ignore = false;
@@ -805,66 +832,23 @@ export default function AppOrganizations() {
     return () => { ignore = true; };
   }, [selectedOrgId, drawerRefreshKey]);
 
+  // Body scroll lock + esc-to-close when drawer open
+  useEffect(() => {
+    if (drawer) document.body.style.overflow = "hidden";
+    else document.body.style.overflow = "";
+    return () => { document.body.style.overflow = ""; };
+  }, [drawer]);
 
   useEffect(() => {
-    if (drawer) {
-      document.body.style.overflow = "hidden";
-      setOverlayHostInteractive(true);
-    } else {
-      document.body.style.overflow = "";
-      setOverlayHostInteractive(false);
-    }
-    return () => { document.body.style.overflow = ""; setOverlayHostInteractive(false); };
-  }, [drawer]);
-  useEffect(() => {
     if (!drawer) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setDrawer(null);
-    };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setDrawer(null); };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [drawer]);
 
-  const [openMenu, setOpenMenu] = useState(false);
-
-  const [columns, setColumns] = useState<Record<string, boolean>>(() => {
-    const saved = localStorage.getItem(COL_STORAGE_KEY);
-    return saved ? JSON.parse(saved) : ALL_COLUMNS.reduce((acc, c) => ({ ...acc, [c.key]: !!c.default }), {} as Record<string, boolean>);
-  });
-  const [sorts, setSorts] = useState<SortRule[]>(() => {
-    const saved = localStorage.getItem(SORT_STORAGE_KEY);
-    return saved ? JSON.parse(saved) : [];
-  });
-  const [pageSize, setPageSize] = useState<number>(() => Number(localStorage.getItem(PAGE_SIZE_STORAGE_KEY) || 25));
-  const [page, setPage] = useState<number>(1);
-  const [filtersState, setFiltersState] = useState<Record<string, string>>(() => {
-    const saved = localStorage.getItem(FILTERS_STORAGE_KEY);
-    return saved ? JSON.parse(saved) : {};
-  });
-
-  useEffect(() => { localStorage.setItem(PAGE_SIZE_STORAGE_KEY, String(pageSize)); }, [pageSize]);
-  useEffect(() => { localStorage.setItem(FILTERS_STORAGE_KEY, JSON.stringify(filtersState)); }, [filtersState]);
-  useEffect(() => { localStorage.setItem(SORT_STORAGE_KEY, JSON.stringify(sorts)); }, [sorts]);
-  useEffect(() => { localStorage.setItem(COL_STORAGE_KEY, JSON.stringify(columns)); }, [columns]);
-  useEffect(() => { localStorage.setItem(Q_STORAGE_KEY, q); }, [q]);
-  useEffect(() => { localStorage.setItem(SHOW_FILTERS_STORAGE_KEY, showFilters ? "1" : "0"); }, [showFilters]);
-
-  // load from API only; exclude archived by default
-  useEffect(() => {
-    let alive = true;
-    (async () => {
-      const list = await apiListOrganizations({ includeArchived: false });
-      if (!alive) return;
-      setRows(list);
-    })();
-    return () => { alive = false; };
-  }, []);
-
-  useEffect(() => { setPage(1); }, [dq, filtersState, sorts]);
-
+  // ── Derived ─────────────────────────────────────────────────────────────────
   const visibleColumns = ALL_COLUMNS.filter((c) => columns[c.key]);
 
-  /** Derived helpers */
   const allTags = useMemo(() => {
     const s = new Set<string>();
     rows.forEach((r) => (r.tags || []).forEach((t) => s.add(t)));
@@ -972,6 +956,7 @@ export default function AppOrganizations() {
   const end = start + pageSize;
   const pageRows = filtered.slice(start, end);
 
+  // ── Handlers ────────────────────────────────────────────────────────────────
   function toggleAll(v: boolean) { setSelected(v ? new Set(filtered.map((r) => r.id)) : new Set()); }
   function toggleOne(id: number) { const next = new Set(selected); next.has(id) ? next.delete(id) : next.add(id); setSelected(next); }
   function cycleSort(key: string, withShift: boolean) {
@@ -1042,7 +1027,6 @@ export default function AppOrganizations() {
     setEditingId(row.id);
     setForm({
       ...row,
-      // normalize undefined to empty strings for inputs
       website: row.website ?? "",
       email: row.email ?? "",
       phone: row.phone ?? "",
@@ -1072,7 +1056,6 @@ export default function AppOrganizations() {
     if (Object.keys(e).length) return;
 
     if (editingId == null) {
-      // CREATE via API only; no local fallback
       const created = await apiCreateOrganization(form);
       if (!created) {
         alert("Unable to save organization. Please try again.");
@@ -1082,7 +1065,6 @@ export default function AppOrganizations() {
       setFormOpen(false);
       setDrawer(created);
     } else {
-      // UPDATE via API only; no local fallback
       const updated = await apiUpdateOrganization(editingId, form);
       if (!updated) {
         alert("Unable to update organization. Please try again.");
@@ -1096,6 +1078,7 @@ export default function AppOrganizations() {
 
   const hasRows = filtered.length > 0;
 
+  // ── Render ──────────────────────────────────────────────────────────────────
   return (
     <div className="w-full bg-page dark:bg-surface-strong p-6 space-y-4">
       {/* toolbar */}
@@ -1107,7 +1090,7 @@ export default function AppOrganizations() {
               <path d="M21 21l-4.3-4.3M10.5 18a7.5 7.5 0 1 1 0-15 7.5 7.5 0 0 1 0 15Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
             </svg>
 
-            <Input
+            <components.Input
               id="orgs-search"
               value={q}
               onChange={(e) => setQ(e.currentTarget.value)}
@@ -1118,8 +1101,8 @@ export default function AppOrganizations() {
 
             {/* clear */}
             {q && (
-              <button
-                type="button"
+              <components.Button
+                type="components.Button"
                 aria-label="Clear search"
                 onClick={() => setQ("")}
                 className="absolute right-12 top-1/2 -translate-y-1/2 p-1 rounded hover:bg-[hsl(var(--brand-orange))]/12"
@@ -1127,15 +1110,15 @@ export default function AppOrganizations() {
                 <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                   <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
                 </svg>
-              </button>
+              </components.Button>
             )}
 
             {/* divider */}
             <span aria-hidden className="absolute right-9 top-1/2 -translate-y-1/2 h-5 w-px bg-hairline" />
 
             {/* filter toggle */}
-            <button
-              type="button"
+            <components.Button
+              type="components.Button"
               aria-label="Toggle filters"
               aria-pressed={showFilters ? "true" : "false"}
               onClick={(e) => { setShowFilters(v => !v); (e.currentTarget as HTMLButtonElement).blur(); }}
@@ -1153,29 +1136,29 @@ export default function AppOrganizations() {
                 <line x1="4" y1="17" x2="12" y2="17" />
                 <circle cx="16" cy="17" r="1.5" fill="currentColor" />
               </svg>
-            </button>
+            </components.Button>
           </div>
         </div>
 
         <div className="ml-auto flex items-center gap-2">
-          <Button onClick={openCreate} id="new-org-btn" name="new-org-btn">
+          <components.Button onClick={openCreate} id="new-org-btn" name="new-org-btn">
             New Organization
-          </Button>
+          </components.Button>
 
           <Popover
             open={openMenu} onOpenChange={setOpenMenu}
-            anchor={<Button variant="outline" size="sm" aria-label="More">⋯</Button>}
+            anchor={<components.Button variant="outline" size="sm" aria-label="More">⋯</components.Button>}
             position="fixed-top-right"
           >
             <div className="space-y-1">
-              <Button variant="ghost" size="sm" onClick={exportCsv}>Export CSV</Button>
+              <components.Button variant="ghost" size="sm" onClick={exportCsv}>Export CSV</components.Button>
               {selected.size > 0 && (
-                <Button variant="destructive" size="sm" onClick={handleBulkArchive}>Archive selected</Button>
+                <components.Button variant="destructive" size="sm" onClick={handleBulkArchive}>Archive selected</components.Button>
               )}
             </div>
           </Popover>
           <label className="inline-flex items-center gap-2 text-xs text-secondary ml-1">
-            <input
+            <components.Input
               type="checkbox"
               checked={(filtersState.status || "").split(",").includes("Archived")}
               onChange={(e) => {
@@ -1191,7 +1174,6 @@ export default function AppOrganizations() {
             />
             <span>Include archived</span>
           </label>
-
         </div>
       </div>
 
@@ -1209,11 +1191,10 @@ export default function AppOrganizations() {
         <>
           <div className="relative overflow-hidden rounded-md border-hairline border-hairline-hairline">
             <table className="w-full table-fixed border-hairline-separate border-hairline-spacing-0">
-              {/* lock column widths */}
               <colgroup>
-                <col style={{ width: "44px" }} />{/* checkbox */}
-                {visibleColumns.map((_, i) => <col key={i} />)}{/* data columns flex */}
-                <col style={{ width: "56px" }} />{/* actions */}
+                <col style={{ width: "44px" }} />
+                {visibleColumns.map((_, i) => <col key={i} />)}
+                <col style={{ width: "56px" }} />
               </colgroup>
 
               <thead className="sticky top-0 bg-surface z-0">
@@ -1249,14 +1230,13 @@ export default function AppOrganizations() {
                     key={r.id}
                     className="group hover:bg-[hsl(var(--brand-orange))]/8 cursor-pointer"
                     onClick={() => {
-                      setDrawer(r);                    // show something immediately
-                      setSelectedOrgId(r.id);          // id to hydrate with fresh fetch
+                      setDrawer(r);
+                      setSelectedOrgId(r.id);
                       setDrawerTab("overview");
                       setIsDrawerOpen(true);
-                      setDrawerRefreshKey(k => k + 1); // force a reload each open
+                      setDrawerRefreshKey(k => k + 1);
                     }}
                   >
-                    {/* checkbox col — fixed width */}
                     <td
                       className="px-2 py-2 text-center align-middle border-hairline-b border-hairline-hairline w-[44px]"
                       onClick={(e) => e.stopPropagation()}
@@ -1268,7 +1248,6 @@ export default function AppOrganizations() {
                       />
                     </td>
 
-                    {/* data cells — truncate nicely */}
                     {visibleColumns.map((c, i) => {
                       const k = c.key as keyof OrgRow;
                       let v: any = (r as any)[k];
@@ -1276,7 +1255,12 @@ export default function AppOrganizations() {
                       if (k === "created_at" || k === "updated_at") v = fmtDate(v);
                       if (k === "tags") {
                         v = (r.tags || []).length
-                          ? <div className="flex flex-wrap gap-1">{r.tags.map((t) => <Badge key={t}>{t}</Badge>)}</div>
+                          ? <div className="flex flex-wrap gap-1">{r.tags.map((t) => (
+                            <span key={t} className="inline-flex items-center px-2 py-0.5 rounded-full text-xs border-hairline border-hairline-hairline bg-surface">
+                              {t}
+                            </span>
+                          ))}
+                          </div>
                           : EMPTY;
                       }
                       if (k === "website" && v) {
@@ -1306,15 +1290,14 @@ export default function AppOrganizations() {
                       );
                     })}
 
-                    {/* actions col — fixed width */}
                     <td
                       className="px-2 py-2 border-hairline-b border-hairline-hairline text-right w-[56px]"
                       onClick={(e) => e.stopPropagation()}
                     >
                       <div className="opacity-0 group-hover:opacity-100 transition-opacity inline-flex gap-1">
-                        <Button size="xs" variant="outline" onClick={() => openEdit(r)}>Edit</Button>
+                        <components.Button size="xs" variant="outline" onClick={() => openEdit(r)}>Edit</components.Button>
                         {r.status === "Active" ? (
-                          <Button
+                          <components.Button
                             size="xs"
                             variant="destructive"
                             onClick={async () => {
@@ -1325,9 +1308,9 @@ export default function AppOrganizations() {
                             }}
                           >
                             Archive
-                          </Button>
+                          </components.Button>
                         ) : (
-                          <Button
+                          <components.Button
                             size="xs"
                             variant="outline"
                             onClick={async () => {
@@ -1336,7 +1319,7 @@ export default function AppOrganizations() {
                             }}
                           >
                             Restore
-                          </Button>
+                          </components.Button>
                         )}
                       </div>
                     </td>
@@ -1355,16 +1338,16 @@ export default function AppOrganizations() {
               <Select value={String(pageSize)} onChange={(e) => setPageSize(Number(e.currentTarget.value))} aria-label="Rows per page" className="w-[7.5rem]">
                 {[10, 25, 50, 100].map((n) => <option key={n} value={n}>{n} / page</option>)}
               </Select>
-              <Button variant="outline" size="sm" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={clampedPage <= 1}>Prev</Button>
+              <components.Button variant="outline" size="sm" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={clampedPage <= 1}>Prev</components.Button>
               <div className="min-w-[3ch] text-center">{clampedPage}</div>
-              <Button variant="outline" size="sm" onClick={() => setPage((p) => Math.min(pageCount, p + 1))} disabled={clampedPage >= pageCount}>Next</Button>
+              <components.Button variant="outline" size="sm" onClick={() => setPage((p) => Math.min(pageCount, p + 1))} disabled={clampedPage >= pageCount}>Next</components.Button>
             </div>
           </div>
         </>
       ) : (
-        <EmptyState
+        <components.EmptyState
           title="No organizations found"
-          action={<Button onClick={openCreate}>New Organization</Button>}
+          action={<components.Button onClick={openCreate}>New Organization</components.Button>}
           description="Try adjusting filters or adding a new record."
         />
       )}
@@ -1372,19 +1355,15 @@ export default function AppOrganizations() {
       {/* Centered Details Panel Drawer */}
       {isDrawerOpen && drawer && createPortal(
         <>
-          {/* backdrop */}
           <div
             className="fixed inset-0 z-[9998] bg-black/50 backdrop-blur-sm"
             onClick={() => { setIsDrawerOpen(false); setDrawer(null); setDrawerEditing(false); setDraft(null); }}
           />
-
-          {/* panel */}
           <div className="fixed inset-0 z-[9999] pointer-events-none flex items-start justify-center p-4">
             <div
               className="pointer-events-auto w-[min(720px,calc(100vw-2rem))] rounded-2xl border-hairline border-hairline-hairline bg-surface text-primary shadow-[0_24px_80px_rgba(0,0,0,0.45)] mt-10"
               role="dialog" aria-modal="true"
             >
-              {/* header */}
               <div className="px-4 py-3 border-b border-hairline-hairline flex items-center gap-2 min-h-[56px]">
                 <h2 className="text-lg font-semibold truncate">{drawer.name}</h2>
                 {!!(drawer.status === "Archived") && (
@@ -1394,7 +1373,7 @@ export default function AppOrganizations() {
                   {drawerTab === "overview" && !drawerEditing && (
                     <>
                       {drawer.status === "Active" ? (
-                        <Button
+                        <components.Button
                           size="sm"
                           variant="outline"
                           onClick={async () => {
@@ -1404,9 +1383,9 @@ export default function AppOrganizations() {
                           }}
                         >
                           Archive
-                        </Button>
+                        </components.Button>
                       ) : (
-                        <Button
+                        <components.Button
                           size="sm"
                           variant="outline"
                           onClick={async () => {
@@ -1415,14 +1394,14 @@ export default function AppOrganizations() {
                           }}
                         >
                           Restore
-                        </Button>
+                        </components.Button>
                       )}
-                      <Button size="sm" variant="outline" onClick={() => { setDraft({}); setDrawerEditing(true); }}>Edit</Button>
+                      <components.Button size="sm" variant="outline" onClick={() => { setDraft({}); setDrawerEditing(true); }}>Edit</components.Button>
                     </>
                   )}
                   {drawerEditing && (
                     <>
-                      <Button
+                      <components.Button
                         size="sm"
                         onClick={async () => {
                           const payload = { ...drawer, ...draft };
@@ -1438,41 +1417,37 @@ export default function AppOrganizations() {
                         }}
                       >
                         Save
-                      </Button>
-                      <Button size="sm" variant="outline" onClick={() => { setDraft(null); setDrawerEditing(false); }}>Cancel</Button>
+                      </components.Button>
+                      <components.Button size="sm" variant="outline" onClick={() => { setDraft(null); setDrawerEditing(false); }}>Cancel</components.Button>
                     </>
                   )}
-                  <Button
+                  <components.Button
                     variant="ghost"
                     size="icon"
                     aria-label="Close"
                     onClick={() => { setIsDrawerOpen(false); setDrawer(null); setDrawerEditing(false); setDraft(null); }}
                   >
                     ×
-                  </Button>
+                  </components.Button>
                 </div>
               </div>
 
-              {/* tabs */}
               <div className="px-1">
-                {/* Contacts-style pill group with orange active underline */}
                 <div className="inline-flex items-center gap-2 p-1 rounded-full border-hairline border-hairline-hairline bg-surface">
-                  <button
-                    type="button"
+                  <components.Button
+                    type="components.Button"
                     onClick={() => setDrawerTab("overview")}
                     className={[
                       "px-3 h-8 rounded-full text-sm transition-colors",
-                      // inactive
                       drawerTab !== "overview" ? "text-secondary hover:bg-[hsl(var(--brand-orange))]/10 border-b-2 border-transparent" : "",
-                      // active (orange underline)
                       drawerTab === "overview" ? "text-primary border-b-2 border-[hsl(var(--brand-orange))]" : "",
                     ].join(" ")}
                   >
                     Overview
-                  </button>
+                  </components.Button>
 
-                  <button
-                    type="button"
+                  <components.Button
+                    type="components.Button"
                     onClick={() => setDrawerTab("audit")}
                     className={[
                       "px-3 h-8 rounded-full text-sm transition-colors",
@@ -1481,18 +1456,15 @@ export default function AppOrganizations() {
                     ].join(" ")}
                   >
                     Audit
-                  </button>
+                  </components.Button>
                 </div>
               </div>
 
-              {/* body (same vertical size feel as Edit modal) */}
               <div className="p-4 space-y-3 max-h-[70vh] overflow-y-auto pr-2">
                 {drawerTab === "overview" && (
                   <>
-                    {/* Summary block (2 columns, Contacts-style) */}
-                    <Card label="">
+                    <components.Card label="">
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-2">
-                        {/* left column */}
                         {!drawerEditing ? (
                           <>
                             <Row label="Name" value={show(drawer.name)} />
@@ -1502,15 +1474,14 @@ export default function AppOrganizations() {
                           <>
                             <div className="flex items-center gap-2">
                               <div className="text-sm w-28 shrink-0 text-secondary">Name</div>
-                              <Input value={draft?.name ?? drawer.name ?? ""} onChange={(e) => setDraft(p => ({ ...(p || {}), name: e.currentTarget.value }))} />
+                              <components.Input value={draft?.name ?? drawer.name ?? ""} onChange={(e) => setDraft(p => ({ ...(p || {}), name: e.currentTarget.value }))} />
                             </div>
                             <div className="flex items-center gap-2">
                               <div className="text-sm w-28 shrink-0 text-secondary">Email</div>
-                              <Input value={draft?.email ?? drawer.email ?? ""} onChange={(e) => setDraft(p => ({ ...(p || {}), email: e.currentTarget.value }))} />
+                              <components.Input value={draft?.email ?? drawer.email ?? ""} onChange={(e) => setDraft(p => ({ ...(p || {}), email: e.currentTarget.value }))} />
                             </div>
                           </>
                         )}
-                        {/* right column */}
                         {!drawerEditing ? (
                           <>
                             <Row label="Website" value={drawer.website ? <a className="underline" href={normalizeUrl(drawer.website)} target="_blank" rel="noreferrer">{drawer.website}</a> : "—"} />
@@ -1520,19 +1491,18 @@ export default function AppOrganizations() {
                           <>
                             <div className="flex items-center gap-2">
                               <div className="text-sm w-28 shrink-0 text-secondary">Website</div>
-                              <Input value={draft?.website ?? drawer.website ?? ""} onChange={(e) => setDraft(p => ({ ...(p || {}), website: e.currentTarget.value }))} />
+                              <components.Input value={draft?.website ?? drawer.website ?? ""} onChange={(e) => setDraft(p => ({ ...(p || {}), website: e.currentTarget.value }))} />
                             </div>
                             <div className="flex items-center gap-2">
                               <div className="text-sm w-28 shrink-0 text-secondary">Phone</div>
-                              <Input value={draft?.phone ?? drawer.phone ?? ""} onChange={(e) => setDraft(p => ({ ...(p || {}), phone: e.currentTarget.value }))} />
+                              <components.Input value={draft?.phone ?? drawer.phone ?? ""} onChange={(e) => setDraft(p => ({ ...(p || {}), phone: e.currentTarget.value }))} />
                             </div>
                           </>
                         )}
                       </div>
-                    </Card>
+                    </components.Card>
 
-                    {/* Address (2 columns) */}
-                    <Card label="">
+                    <components.Card label="">
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-2">
                         {["street", "city", "zip"].map((k) => (
                           !drawerEditing ? (
@@ -1540,7 +1510,7 @@ export default function AppOrganizations() {
                           ) : (
                             <div key={k} className="flex items-center gap-2">
                               <div className="text-sm w-28 shrink-0 text-secondary">{k[0].toUpperCase() + k.slice(1).replace(/([A-Z])/g, " $1")}</div>
-                              <Input value={(draft as any)?.[k] ?? (drawer as any)?.[k] ?? ""} onChange={(e) => setDraft(p => ({ ...(p || {}), [k]: e.currentTarget.value }))} />
+                              <components.Input value={(draft as any)?.[k] ?? (drawer as any)?.[k] ?? ""} onChange={(e) => setDraft(p => ({ ...(p || {}), [k]: e.currentTarget.value }))} />
                             </div>
                           )
                         ))}
@@ -1550,15 +1520,14 @@ export default function AppOrganizations() {
                           ) : (
                             <div key={k} className="flex items-center gap-2">
                               <div className="text-sm w-28 shrink-0 text-secondary">{k.replace(/([A-Z])/g, " $1")}</div>
-                              <Input value={(draft as any)?.[k] ?? (drawer as any)?.[k] ?? ""} onChange={(e) => setDraft(p => ({ ...(p || {}), [k]: e.currentTarget.value }))} />
+                              <components.Input value={(draft as any)?.[k] ?? (drawer as any)?.[k] ?? ""} onChange={(e) => setDraft(p => ({ ...(p || {}), [k]: e.currentTarget.value }))} />
                             </div>
                           )
                         ))}
                       </div>
-                    </Card>
+                    </components.Card>
 
-                    {/* Status & tags */}
-                    <Card label="">
+                    <components.Card label="">
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-2">
                         <Row label="Status" value={show(drawer.status || "Active")} />
                         <div className="flex items-start gap-2">
@@ -1570,18 +1539,16 @@ export default function AppOrganizations() {
                           </div>
                         </div>
                       </div>
-                    </Card>
+                    </components.Card>
 
-                    {/* Created/Updated */}
-                    <Card label="">
+                    <components.Card label="">
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8">
                         <Row label="Created" value={fmtDate(drawer.created_at)} />
                         <Row label="Updated" value={fmtDate(drawer.updated_at)} />
                       </div>
-                    </Card>
+                    </components.Card>
 
-                    {/* Notes */}
-                    <Card label="">
+                    <components.Card label="">
                       {!drawerEditing ? (
                         <div className="text-sm whitespace-pre-wrap rounded-md border-hairline border-hairline-hairline bg-surface px-2 py-2 min-h-[80px]">
                           {show(drawer.notes)}
@@ -1589,23 +1556,22 @@ export default function AppOrganizations() {
                       ) : (
                         <Textarea rows={4} value={draft?.notes ?? drawer.notes ?? ""} onChange={(e) => setDraft(p => ({ ...(p || {}), notes: e.currentTarget.value }))} />
                       )}
-                    </Card>
+                    </components.Card>
                   </>
                 )}
 
                 {drawerTab === "audit" && (
-                  <Card label="Audit">
+                  <components.Card label="Audit">
                     <div className="text-sm text-secondary">Coming soon.</div>
-                  </Card>
+                  </components.Card>
                 )}
               </div>
 
-              {/* footer (bottom actions) */}
               <div className="px-4 pb-3 pt-2 border-t border-hairline-hairline flex items-center justify-end gap-2">
                 {!drawerEditing && (
                   <>
                     {drawer.status === "Active" ? (
-                      <Button
+                      <components.Button
                         variant="outline"
                         onClick={async () => {
                           if (!confirm(`Archive "${drawer.name}"?`)) return;
@@ -1614,9 +1580,9 @@ export default function AppOrganizations() {
                         }}
                       >
                         Archive
-                      </Button>
+                      </components.Button>
                     ) : (
-                      <Button
+                      <components.Button
                         variant="outline"
                         onClick={async () => {
                           const updated = await apiRestoreOrganization(Number(drawer.id));
@@ -1624,15 +1590,15 @@ export default function AppOrganizations() {
                         }}
                       >
                         Restore
-                      </Button>
+                      </components.Button>
                     )}
-                    <Button variant="outline" onClick={() => { setDraft({}); setDrawerEditing(true); }}>Edit</Button>
-                    <Button onClick={() => { setIsDrawerOpen(false); setDrawer(null); setDrawerEditing(false); setDraft(null); }}>Close</Button>
+                    <components.Button variant="outline" onClick={() => { setDraft({}); setDrawerEditing(true); }}>Edit</components.Button>
+                    <components.Button onClick={() => { setIsDrawerOpen(false); setDrawer(null); setDrawerEditing(false); setDraft(null); }}>Close</components.Button>
                   </>
                 )}
                 {drawerEditing && (
                   <>
-                    <Button
+                    <components.Button
                       onClick={async () => {
                         const payload = { ...drawer, ...draft };
                         const updated = await apiUpdateOrganization(Number(drawer.id), payload);
@@ -1647,8 +1613,8 @@ export default function AppOrganizations() {
                       }}
                     >
                       Save
-                    </Button>
-                    <Button variant="outline" onClick={() => { setDraft(null); setDrawerEditing(false); }}>Cancel</Button>
+                    </components.Button>
+                    <components.Button variant="outline" onClick={() => { setDraft(null); setDrawerEditing(false); }}>Cancel</components.Button>
                   </>
                 )}
               </div>
@@ -1665,18 +1631,17 @@ export default function AppOrganizations() {
         title={editingId == null ? "Create Organization" : "Edit Organization"}
         footer={
           <>
-            <Button variant="outline" onClick={() => setFormOpen(false)}>Cancel</Button>
-            <Button onClick={handleSave}>Save</Button>
+            <components.Button variant="outline" onClick={() => setFormOpen(false)}>Cancel</components.Button>
+            <components.Button onClick={handleSave}>Save</components.Button>
           </>
         }
       >
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {/* Name */}
           <div className="md:col-span-2">
             <label className="block text-xs mb-1">
               Organization name <span className="text-red-600">*</span>
             </label>
-            <Input
+            <components.Input
               value={form.name ?? ""}
               onChange={(e) => setForm(f => ({ ...f, name: e.target.value }))}
               placeholder="e.g., Summit Poodles"
@@ -1684,10 +1649,9 @@ export default function AppOrganizations() {
             {errors.name && <div className="text-xs text-red-600 mt-1">{errors.name}</div>}
           </div>
 
-          {/* Email */}
           <div>
             <label className="block text-xs mb-1">Email</label>
-            <Input
+            <components.Input
               value={form.email ?? ""}
               onChange={(e) => setForm(f => ({ ...f, email: e.target.value }))}
               placeholder="org@email.com"
@@ -1695,10 +1659,9 @@ export default function AppOrganizations() {
             {errors.email && <div className="text-xs text-red-600 mt-1">{errors.email}</div>}
           </div>
 
-          {/* Phone */}
           <div>
             <label className="block text-xs mb-1">Phone</label>
-            <Input
+            <components.Input
               value={form.phone ?? ""}
               onChange={(e) => setForm(f => ({ ...f, phone: e.target.value }))}
               placeholder="(555) 555-5555"
@@ -1706,35 +1669,33 @@ export default function AppOrganizations() {
             {errors.phone && <div className="text-xs text-red-600 mt-1">{errors.phone}</div>}
           </div>
 
-          {/* Address */}
           <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-4 gap-3">
             <div className="md:col-span-2">
               <label className="block text-xs mb-1">Street</label>
-              <Input value={form.street ?? ""} onChange={(e) => setForm(f => ({ ...f, street: e.target.value }))} />
+              <components.Input value={form.street ?? ""} onChange={(e) => setForm(f => ({ ...f, street: e.target.value }))} />
             </div>
             <div className="md:col-span-2">
               <label className="block text-xs mb-1">Street 2</label>
-              <Input value={form.street2 ?? ""} onChange={(e) => setForm(f => ({ ...f, street2: e.target.value }))} />
+              <components.Input value={form.street2 ?? ""} onChange={(e) => setForm(f => ({ ...f, street2: e.target.value }))} />
             </div>
             <div>
               <label className="block text-xs mb-1">City</label>
-              <Input value={form.city ?? ""} onChange={(e) => setForm(f => ({ ...f, city: e.target.value }))} />
+              <components.Input value={form.city ?? ""} onChange={(e) => setForm(f => ({ ...f, city: e.target.value }))} />
             </div>
             <div>
               <label className="block text-xs mb-1">State/Region</label>
-              <Input value={(form.state as string) ?? ""} onChange={(e) => setForm(f => ({ ...f, state: e.target.value }))} />
+              <components.Input value={(form.state as string) ?? ""} onChange={(e) => setForm(f => ({ ...f, state: e.target.value }))} />
             </div>
             <div>
               <label className="block text-xs mb-1">Zip/Postal</label>
-              <Input value={form.zip ?? ""} onChange={(e) => setForm(f => ({ ...f, zip: e.target.value }))} />
+              <components.Input value={form.zip ?? ""} onChange={(e) => setForm(f => ({ ...f, zip: e.target.value }))} />
             </div>
             <div>
               <label className="block text-xs mb-1">Country</label>
-              <Input value={(form.country as string) ?? "US"} onChange={(e) => setForm(f => ({ ...f, country: e.target.value }))} />
+              <components.Input value={(form.country as string) ?? "US"} onChange={(e) => setForm(f => ({ ...f, country: e.target.value }))} />
             </div>
           </div>
 
-          {/* Notes */}
           <div className="md:col-span-2">
             <label className="block text-xs mb-1">Notes</label>
             <Textarea
@@ -1747,14 +1708,13 @@ export default function AppOrganizations() {
         </div>
       </Modal>
 
-      {/* bulk toolbar */}
       {selected.size > 0 && (
         <div className="fixed bottom-4 right-4 left-4 md:left-auto md:right-6 z-40">
           <div className="rounded-xl border-hairline border-hairline-hairline bg-surface/90 backdrop-blur px-3 py-2 shadow-lg flex items-center gap-2">
             <div className="text-sm">{selected.size} selected</div>
             <div className="ml-auto flex items-center gap-2">
-              <Button variant="outline" size="sm" onClick={exportCsv}>Export</Button>
-              <Button variant="destructive" size="sm" onClick={handleBulkArchive}>Archive</Button>
+              <components.Button variant="outline" size="sm" onClick={exportCsv}>Export</components.Button>
+              <components.Button variant="destructive" size="sm" onClick={handleBulkArchive}>Archive</components.Button>
             </div>
           </div>
         </div>
@@ -1762,4 +1722,5 @@ export default function AppOrganizations() {
     </div>
   );
 }
+
 

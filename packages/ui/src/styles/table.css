@@ -1,0 +1,5 @@
+/* packages/ui/styles/table.css */
+:root {
+  --bhq-fg: hsl(var(--foreground));
+  --bhq-fg-muted: hsl(var(--secondary));
+}

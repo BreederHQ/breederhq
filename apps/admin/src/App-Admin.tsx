@@ -1,7 +1,7 @@
 // App-Admin.tsx
 import React, { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
-import { Card, Button, Input, EmptyState } from "@bhq/ui";
+import { components } from "@bhq/ui";
 
 /** ─────────────────────────────────────────────────────────────────────────────
  * Types (aligned to API spec)
@@ -629,7 +629,7 @@ export default function AppAdmin() {
           </div>
         )}
 
-        <Card className="bhq-card bg-surface/80 bg-gradient-to-b from-[hsl(var(--glass))/65] to-[hsl(var(--glass-strong))/85] backdrop-blur-sm border border-hairline transition-shadow">
+        <components.Card className="bhq-components.Card bg-surface/80 bg-gradient-to-b from-[hsl(var(--glass))/65] to-[hsl(var(--glass-strong))/85] backdrop-blur-sm border border-hairline transition-shadow">
           {/* Toolbar */}
           <div className="bhq-section-fixed p-4 sm:p-5 bg-surface bg-gradient-to-b from-[hsl(var(--glass))/35] to-[hsl(var(--glass-strong))/55] rounded-t-xl overflow-hidden">
             <div className="flex items-center gap-3 justify-between min-w-0">
@@ -645,7 +645,7 @@ export default function AppAdmin() {
                     <path d="M21 21l-4.3-4.3M10.5 18a7.5 7.5 0 1 1 0-15 7.5 7.5 0 0 1 0 15Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
                   </svg>
 
-                  <Input
+                  <components.Input
                     value={q}
                     onChange={(e) => {
                       const v = e.currentTarget?.value ?? "";
@@ -658,8 +658,8 @@ export default function AppAdmin() {
                   />
 
                   {q && (
-                    <button
-                      type="button"
+                    <components.Button
+                      type="components.Button"
                       aria-label="Clear search"
                       onClick={() => setQ("")}
                       className="absolute right-12 top-1/2 -translate-y-1/2 p-1 rounded hover:bg-[hsl(var(--brand-orange))]/12"
@@ -667,13 +667,13 @@ export default function AppAdmin() {
                       <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                         <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
                       </svg>
-                    </button>
+                    </components.Button>
                   )}
 
                   <span aria-hidden className="absolute right-9 top-1/2 -translate-y-1/2 h-5 w-px bg-hairline" />
 
-                  <button
-                    type="button"
+                  <components.Button
+                    type="components.Button"
                     aria-label="Toggle filters"
                     aria-pressed={showFilters ? "true" : "false"}
                     onClick={(e) => {
@@ -694,16 +694,16 @@ export default function AppAdmin() {
                       <line x1="4" y1="17" x2="12" y2="17" />
                       <circle cx="16" cy="17" r="1.5" fill="currentColor" />
                     </svg>
-                  </button>
+                  </components.Button>
                 </div>
               </div>
 
               {/* Right actions */}
               <div className="flex-none">
                 {me?.isSuperAdmin && (
-                  <Button onClick={() => setCreateOpen(true)}>
+                  <components.Button onClick={() => setCreateOpen(true)}>
                     New tenant
-                  </Button>
+                  </components.Button>
                 )}
               </div>
             </div>
@@ -718,9 +718,9 @@ export default function AppAdmin() {
                   {Object.entries(filters)
                     .filter(([, v]) => !!v)
                     .map(([k, v]) => (
-                      <button
+                      <components.Button
                         key={k}
-                        type="button"
+                        type="components.Button"
                         onClick={() => setFilters({ ...filters, [k]: "" })}
                         className="inline-flex items-center gap-1 rounded-full border border-hairline bg-surface px-2 py-0.5 text-xs"
                         title={`${k}: ${v}`}
@@ -729,11 +729,11 @@ export default function AppAdmin() {
                           {k}: {v}
                         </span>
                         <span aria-hidden>×</span>
-                      </button>
+                      </components.Button>
                     ))}
-                  <Button variant="outline" size="sm" onClick={() => setFilters({})}>
+                  <components.Button variant="outline" size="sm" onClick={() => setFilters({})}>
                     Clear all
-                  </Button>
+                  </components.Button>
                 </div>
               )}
             </div>
@@ -746,7 +746,7 @@ export default function AppAdmin() {
                 <thead className="sticky top-0 z-10 bg-surface-strong border-b border-hairline">
                   <tr className="text-sm">
                     <th className="px-3 py-2 w-10 text-center">
-                      <input
+                      <components.Input
                         type="checkbox"
                         aria-label="Select all"
                         checked={pageRows.length > 0 && selected.size === pageRows.length}
@@ -766,7 +766,7 @@ export default function AppAdmin() {
                             "hover:bg-[hsl(var(--brand-orange))]/12",
                           ].join(" ")}
                           onClick={(e) => cycleSort(c.key, (e as any).shiftKey)}
-                          role="button"
+                          role="components.Button"
                           aria-sort={ariaSort}
                           tabIndex={0}
                           onKeyDown={(e) => {
@@ -810,7 +810,7 @@ export default function AppAdmin() {
                   {!loading && pageRows.length === 0 && (
                     <tr>
                       <td className="px-3 py-8" colSpan={visibleCols.length + 2}>
-                        <EmptyState title="No tenants match your filters" description="Try adjusting filters." />
+                        <components.EmptyState title="No tenants match your filters" description="Try adjusting filters." />
                       </td>
                     </tr>
                   )}
@@ -828,7 +828,7 @@ export default function AppAdmin() {
                         className="cursor-pointer transition-colors hover:bg-[hsl(var(--brand-orange))]/8"
                       >
                         <td className="px-3 py-2 text-center" onClick={(e) => e.stopPropagation()}>
-                          <input
+                          <components.Input
                             type="checkbox"
                             aria-label={`Select ${r.name || r.id}`}
                             checked={selected.has(r.id)}
@@ -881,16 +881,16 @@ export default function AppAdmin() {
                   </svg>
                 </div>
               </label>
-              <Button variant="outline" size="sm" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={clampedPage === 1}>
+              <components.Button variant="outline" size="sm" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={clampedPage === 1}>
                 Prev
-              </Button>
+              </components.Button>
               <div>Page {clampedPage} of {pageCount}</div>
-              <Button variant="outline" size="sm" onClick={() => setPage((p) => Math.min(pageCount, p + 1))} disabled={clampedPage === pageCount}>
+              <components.Button variant="outline" size="sm" onClick={() => setPage((p) => Math.min(pageCount, p + 1))} disabled={clampedPage === pageCount}>
                 Next
-              </Button>
+              </components.Button>
             </div>
           </div>
-        </Card>
+        </components.Card>
       </div>
 
       {/* Drawer */}
@@ -919,7 +919,7 @@ export default function AppAdmin() {
                   <>
                     {drawerEditing ? (
                       <>
-                        <Button
+                        <components.Button
                           onClick={async () => {
                             if (!selectedId) return;
                             try {
@@ -939,15 +939,15 @@ export default function AppAdmin() {
                           }}
                         >
                           Save
-                        </Button>
-                        <Button variant="outline" onClick={() => { setDraft(null); setDrawerEditing(false); }}>
+                        </components.Button>
+                        <components.Button variant="outline" onClick={() => { setDraft(null); setDrawerEditing(false); }}>
                           Cancel
-                        </Button>
+                        </components.Button>
                       </>
                     ) : (
-                      <Button onClick={() => setDrawerEditing(true)}>
+                      <components.Button onClick={() => setDrawerEditing(true)}>
                         Edit
-                      </Button>
+                      </components.Button>
                     )}
                   </>
                 )}
@@ -964,7 +964,7 @@ export default function AppAdmin() {
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <FieldRow label="Name">
                       {drawerEditing ? (
-                        <input
+                        <components.Input
                           className="h-10 w-full rounded-md border border-hairline bg-surface px-3 text-sm outline-none focus:shadow-[0_0_0_2px_hsl(var(--brand-orange))] text-primary placeholder:text-secondary"
                           value={String(d?.name ?? "")}
                           onChange={(e) => setDraft((p) => ({ ...(p || {}), name: getEventValue(e) }))}
@@ -1030,7 +1030,7 @@ export default function AppAdmin() {
                 title="Billing"
                 right={
                   <div className="flex gap-2">
-                    <Button
+                    <components.Button
                       onClick={async () => {
                         if (!selectedId) return;
                         try {
@@ -1051,8 +1051,8 @@ export default function AppAdmin() {
                       }}
                     >
                       Save
-                    </Button>
-                    <Button variant="outline" onClick={() => setBillingDraft({})}>Reset</Button>
+                    </components.Button>
+                    <components.Button variant="outline" onClick={() => setBillingDraft({})}>Reset</components.Button>
                   </div>
                 }
               >
@@ -1144,16 +1144,16 @@ function TenantUsers({ tenantId }: { tenantId: ID }) {
   return (
     <div className="space-y-4 text-primary">
       {/* Add / Invite */}
-      <Card className="p-3 border border-hairline bg-surface">
+      <components.Card className="p-3 border border-hairline bg-surface">
         <div className="text-xs uppercase tracking-wide text-secondary mb-2">Add / Invite</div>
         <div className="flex flex-nowrap items-center gap-2">
-          <Input
+          <components.Input
             placeholder="email@tenant.test"
             value={addEmail}
             onChange={(e) => setAddEmail(e.currentTarget.value)}
             className="h-10 min-w-0 flex-[2_1_0%] text-primary placeholder:text-secondary"
           />
-          <Input
+          <components.Input
             placeholder="Name (optional)"
             value={addName}
             onChange={(e) => setAddName(e.currentTarget.value)}
@@ -1164,7 +1164,7 @@ function TenantUsers({ tenantId }: { tenantId: ID }) {
             }}
             className="h-10 min-w-0 flex-[1.2_1_0%] text-primary placeholder:text-secondary"
           />
-          <Button
+          <components.Button
             className="h-10 px-5 flex-none"
             onClick={async () => {
               try {
@@ -1178,12 +1178,12 @@ function TenantUsers({ tenantId }: { tenantId: ID }) {
             }}
           >
             Add
-          </Button>
+          </components.Button>
         </div>
-      </Card>
+      </components.Card>
 
       {/* Users */}
-      <Card className="p-3 border border-hairline bg-surface">
+      <components.Card className="p-3 border border-hairline bg-surface">
         <div className="text-xs uppercase tracking-wide text-secondary mb-2">Users</div>
         <div className="overflow-hidden rounded border border-hairline">
           <table className="w-full text-sm">
@@ -1238,7 +1238,7 @@ function TenantUsers({ tenantId }: { tenantId: ID }) {
             </tbody>
           </table>
         </div>
-      </Card>
+      </components.Card>
 
       {/* Per-user details modal */}
       {activeUser && (
@@ -1354,11 +1354,11 @@ function UserDetailsModal({
           title="Access"
           right={
             <div className="flex items-center gap-2">
-              {!verified && <Button variant="outline" onClick={doVerify} disabled={working}>Verify</Button>}
-              <Button variant="outline" onClick={doReset} disabled={working}>Reset PW</Button>
-              <button /* ...remove button... */>
+              {!verified && <components.Button variant="outline" onClick={doVerify} disabled={working}>Verify</components.Button>}
+              <components.Button variant="outline" onClick={doReset} disabled={working}>Reset PW</components.Button>
+              <components.Button /* ...remove components.Button... */>
                 <TrashIcon className="h-4 w-4" />
-              </button>
+              </components.Button>
             </div>
           }
         >
@@ -1366,7 +1366,7 @@ function UserDetailsModal({
           <div className="grid grid-cols-1 sm:grid-cols-[auto_1fr_auto] items-center gap-3 mb-3">
             <div className="text-sm text-secondary">Set password</div>
             <div className="flex items-center gap-2">
-              <Input
+              <components.Input
                 type="password"
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.currentTarget.value)}
@@ -1375,7 +1375,7 @@ function UserDetailsModal({
               />
               {!!pwErr && <span className="text-xs text-red-400">{pwErr}</span>}
             </div>
-            <Button onClick={doSetPassword} disabled={working || !newPassword}>Save</Button>
+            <components.Button onClick={doSetPassword} disabled={working || !newPassword}>Save</components.Button>
           </div>
 
           {/* (existing Role grid stays as-is, below) */}
@@ -1390,7 +1390,7 @@ function UserDetailsModal({
                 <option key={r} value={r}>{r}</option>
               ))}
             </select>
-            <Button onClick={doSetRole} disabled={working || role === user.role}>Save</Button>
+            <components.Button onClick={doSetRole} disabled={working || role === user.role}>Save</components.Button>
           </div>
         </SectionCard>
       </div>
@@ -1497,12 +1497,12 @@ function ProvisionTenantModal({
         <SectionCard
           title="Owner user"
           right={
-            <button
+            <components.Button
               className="text-xs text-secondary hover:underline"
               onClick={() => setOwnerAdvancedOpen((v) => !v)}
             >
               {ownerAdvancedOpen ? "Hide advanced" : "Advanced"}
-            </button>
+            </components.Button>
           }
         >
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -1512,13 +1512,13 @@ function ProvisionTenantModal({
             </div>
             <Labeled label="Owner name (optional)" value={ownerName} onChange={setOwnerName} />
             <label className="flex items-center gap-2 text-sm sm:col-span-2">
-              <input type="checkbox" checked={verify} onChange={(e) => setVerify(e.currentTarget.checked)} />
+              <components.Input type="checkbox" checked={verify} onChange={(e) => setVerify(e.currentTarget.checked)} />
               Verify email now
             </label>
 
             {ownerAdvancedOpen && (
               <label className="flex items-center gap-2 text-sm sm:col-span-2">
-                <input
+                <components.Input
                   type="checkbox"
                   checked={makeDefault}
                   onChange={(e) => setMakeDefault(e.currentTarget.checked)}
@@ -1534,17 +1534,17 @@ function ProvisionTenantModal({
           title="Billing (optional)"
           right={
             <div className="flex items-center gap-3">
-              <button
+              <components.Button
                 className="text-xs text-secondary hover:underline"
                 onClick={() => setAdvancedBillingOpen((v) => !v)}
                 disabled={!billingOpen}
                 title={billingOpen ? "More billing fields" : "Open billing to access advanced"}
               >
                 {advancedBillingOpen ? "Hide advanced" : "Advanced"}
-              </button>
-              <Button variant="outline" size="sm" onClick={() => setBillingOpen((v) => !v)}>
+              </components.Button>
+              <components.Button variant="outline" size="sm" onClick={() => setBillingOpen((v) => !v)}>
                 {billingOpen ? "Remove billing" : "Add billing"}
-              </Button>
+              </components.Button>
             </div>
           }
         >
@@ -1575,10 +1575,10 @@ function ProvisionTenantModal({
         </SectionCard>
 
         <div className="flex justify-end gap-2">
-          <Button variant="outline" onClick={onClose} disabled={working}>Cancel</Button>
-          <Button onClick={submit} disabled={working || missingName || missingOwnerEmail}>
+          <components.Button variant="outline" onClick={onClose} disabled={working}>Cancel</components.Button>
+          <components.Button onClick={submit} disabled={working || missingName || missingOwnerEmail}>
             {working ? "Creating…" : "Create tenant"}
-          </Button>
+          </components.Button>
         </div>
       </div>
     </AnchoredCenterModal>
@@ -1610,7 +1610,7 @@ function Labeled({
   return (
     <div>
       <label className="block text-xs font-medium text-secondary mb-1">{label}</label>
-      <Input
+      <components.Input
         value={value}
         onChange={(e) => onChange(e.currentTarget.value)}
         placeholder={placeholder}
@@ -1668,7 +1668,7 @@ function FilterRow({
     <div className="space-y-3">
       <div>
         <label className="block text-xs font-medium text-secondary mb-1">Search all fields</label>
-        <Input placeholder="Name, email…" value={filters.__text || ""} onChange={(e) => set("__text", getEventValue(e))} className="w-full" />
+        <components.Input placeholder="Name, email…" value={filters.__text || ""} onChange={(e) => set("__text", getEventValue(e))} className="w-full" />
       </div>
 
       {textCols.length > 0 && (
@@ -1679,7 +1679,7 @@ function FilterRow({
             return (
               <div key={k}>
                 <label className="block text-xs font-medium text-secondary mb-1">{label}</label>
-                <Input placeholder={`Filter ${label}`} value={v} onChange={(e) => set(k, getEventValue(e))} className="w-full" />
+                <components.Input placeholder={`Filter ${label}`} value={v} onChange={(e) => set(k, getEventValue(e))} className="w-full" />
               </div>
             );
           })}
@@ -1694,11 +1694,11 @@ function FilterRow({
               <div key={k} className="grid grid-cols-2 gap-2">
                 <div>
                   <label className="block text-xs font-medium text-secondary mb-1">{c.label} start</label>
-                  <Input type="date" value={(filters as any)[`${k}Start`] || ""} onChange={(e) => set(`${k}Start`, getEventValue(e))} className="w-full" />
+                  <components.Input type="date" value={(filters as any)[`${k}Start`] || ""} onChange={(e) => set(`${k}Start`, getEventValue(e))} className="w-full" />
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-secondary mb-1">{c.label} end</label>
-                  <Input type="date" value={(filters as any)[`${k}End`] || ""} onChange={(e) => set(`${k}End`, getEventValue(e))} className="w-full" />
+                  <components.Input type="date" value={(filters as any)[`${k}End`] || ""} onChange={(e) => set(`${k}End`, getEventValue(e))} className="w-full" />
                 </div>
               </div>
             );
@@ -1707,9 +1707,9 @@ function FilterRow({
       )}
 
       <div className="flex gap-2 pt-1">
-        <Button variant="outline" size="sm" onClick={() => onChange({})}>
+        <components.Button variant="outline" size="sm" onClick={() => onChange({})}>
           Clear
-        </Button>
+        </components.Button>
       </div>
     </div>
   );
@@ -1831,13 +1831,13 @@ function ColumnsPopover({
             <div className="flex items-center justify-between px-2 pb-1">
               <div className="text-xs font-medium uppercase text-secondary">Show columns</div>
               <div className="flex items-center gap-3">
-                <a role="button" tabIndex={0} onClick={selectAll} className="text-xs font-medium hover:underline" style={{ color: "hsl(24 95% 54%)" }}>
+                <a role="components.Button" tabIndex={0} onClick={selectAll} className="text-xs font-medium hover:underline" style={{ color: "hsl(24 95% 54%)" }}>
                   All
                 </a>
-                <a role="button" tabIndex={0} onClick={setDefault} className="text-xs font-medium hover:underline" style={{ color: "hsl(190 90% 45%)" }}>
+                <a role="components.Button" tabIndex={0} onClick={setDefault} className="text-xs font-medium hover:underline" style={{ color: "hsl(190 90% 45%)" }}>
                   Default
                 </a>
-                <a role="button" tabIndex={0} onClick={clearAll} className="text-xs font-medium text-secondary hover:underline">
+                <a role="components.Button" tabIndex={0} onClick={clearAll} className="text-xs font-medium text-secondary hover:underline">
                   Clear
                 </a>
               </div>
@@ -1862,7 +1862,7 @@ function ColumnsPopover({
                     }
                   }}
                 >
-                  <input
+                  <components.Input
                     type="checkbox"
                     className="h-4 w-4 shrink-0 accent-[hsl(var(--brand-orange))]"
                     aria-label={c.label}
@@ -1875,9 +1875,9 @@ function ColumnsPopover({
             })}
 
             <div className="flex justify-end pt-2">
-              <Button size="sm" variant="outline" onClick={() => setOpen(false)}>
+              <components.Button size="sm" variant="outline" onClick={() => setOpen(false)}>
                 Close
-              </Button>
+              </components.Button>
             </div>
           </div>
         </>,
@@ -1887,7 +1887,7 @@ function ColumnsPopover({
 
   return (
     <div className="relative inline-flex">
-      <Button
+      <components.Button
         ref={btnRef as any}
         variant="outline"
         size="icon"
@@ -1902,7 +1902,7 @@ function ColumnsPopover({
           <rect x="10" y="4" width="5" height="16" rx="1.5" />
           <rect x="17" y="4" width="4" height="16" rx="1.5" />
         </svg>
-      </Button>
+      </components.Button>
       {menu}
     </div>
   );
@@ -1924,7 +1924,7 @@ function getOverlayRoot(): HTMLElement {
 
 function TabButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
-    <button
+    <components.Button
       onClick={onClick}
       className={[
         "relative px-3 py-2 text-sm rounded-t-md transition",
@@ -1933,7 +1933,7 @@ function TabButton({ active, onClick, children }: { active: boolean; onClick: ()
     >
       {children}
       {active && <span className="absolute left-0 right-0 -bottom-px h-px bg-[hsl(var(--brand-orange))]" />}
-    </button>
+    </components.Button>
   );
 }
 
@@ -2024,8 +2024,8 @@ function AnchoredCenterModal({
         >
           <header className="flex items-center gap-2 px-4 py-3 border-b border-hairline rounded-t-xl">
             <div className="font-medium truncate text-primary">{title}</div>
-            <button
-              type="button"
+            <components.Button
+              type="components.Button"
               onClick={onClose}
               className="ml-auto inline-grid place-items-center h-8 w-8 rounded text-secondary hover:text-primary hover:bg-white/10 focus:outline-none focus:shadow-[0_0_0_2px_hsl(var(--brand-orange))]"
               aria-label="Close"
@@ -2033,7 +2033,7 @@ function AnchoredCenterModal({
               <svg viewBox="0 0 24 24" className="h-4 w-4">
                 <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
               </svg>
-            </button>
+            </components.Button>
           </header>
 
           <div className="flex-1 overflow-auto text-primary">{children}</div>

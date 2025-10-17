@@ -15,19 +15,84 @@ function readCookie(name: string): string {
   return m ? decodeURIComponent(m[2]) : "";
 }
 
-function getTenantHeader(): HeadersMap {
-  const h: HeadersMap = {};
+// --- tenant resolution helpers (keep this block together) ---
+const firstFinitePositive = (...cands: Array<any>): number | null => {
+  for (const c of cands) {
+    const n = Number(c);
+    if (Number.isFinite(n) && n > 0) return n;
+  }
+  return null;
+};
+
+function safeB64Json(s: string): any {
+  try {
+    const pad = (x: string) => x + "===".slice((x.length + 3) % 4);
+    const norm = pad(s.replace(/-/g, "+").replace(/_/g, "/"));
+    return JSON.parse(atob(norm));
+  } catch { return null; }
+}
+
+function tenantIdFromSessionCookie(): number | null {
+  // support bhq_s or bhq_session (JWT-ish cookie)
+  const raw = readCookie("bhq_s") || readCookie("bhq_session");
+  if (!raw) return null;
+  try {
+    const parts = raw.split(".");
+    const payloadB64 = parts.length === 3 ? parts[1] : parts[0];
+    const p = safeB64Json(payloadB64) || {};
+    return firstFinitePositive(p?.tenant?.id, p?.tenantId, p?.tenantID, p?.tenant_id);
+  } catch { return null; }
+}
+
+let __TENANT_ID_CACHE: number | null | undefined;
+
+function resolveTenantIdFromAnySource(): number | null {
+  if (__TENANT_ID_CACHE !== undefined) return __TENANT_ID_CACHE;
+
+  // 1) explicit resolver if host page provides one
   try {
     const w: any = window as any;
-    const runtime = Number(w?.__BHQ_TENANT_ID__);
-    const fromLS = Number(localStorage.getItem("BHQ_TENANT_ID") || "NaN");
-    const id =
-      Number.isFinite(runtime) && runtime > 0 ? runtime :
-      Number.isFinite(fromLS) && fromLS > 0 ? fromLS :
-      NaN;
-    if (Number.isFinite(id)) h["x-tenant-id"] = String(id);
-  } catch {}
-  return h;
+    if (typeof w.resolveTenantIdFromAnySource === "function") {
+      const n = firstFinitePositive(w.resolveTenantIdFromAnySource());
+      if (n) return (__TENANT_ID_CACHE = n);
+    }
+  } catch { }
+
+  // 2) globals (runtime context)
+  try {
+    const w: any = window as any;
+    const fromGlobal = firstFinitePositive(
+      w.__BHQ_TENANT_ID__,
+      w.__BHQ_CTX__?.tenantId,
+      w.__BHQ_CTX__?.tenant?.id
+    );
+    if (fromGlobal) return (__TENANT_ID_CACHE = fromGlobal);
+  } catch { }
+
+  // 3) cookie (session/JWT)
+  try {
+    const fromCookie = tenantIdFromSessionCookie();
+    if (fromCookie) return (__TENANT_ID_CACHE = fromCookie);
+  } catch { }
+
+  // 4) localStorage
+  try {
+    const fromLS = firstFinitePositive(localStorage.getItem("BHQ_TENANT_ID"));
+    if (fromLS) return (__TENANT_ID_CACHE = fromLS);
+  } catch { }
+
+  // 5) dev env
+  try {
+    const fromEnv = firstFinitePositive((import.meta as any)?.env?.VITE_DEV_TENANT_ID);
+    if (fromEnv) return (__TENANT_ID_CACHE = fromEnv);
+  } catch { }
+
+  return (__TENANT_ID_CACHE = null);
+}
+
+function getTenantHeader(): Record<string, string> {
+  const id = resolveTenantIdFromAnySource();
+  return id ? { "x-tenant-id": String(id) } : {};
 }
 
 async function parse<T>(res: Response): Promise<T> {
@@ -59,6 +124,9 @@ export function makeApi(
   const hdrs = (init?: RequestInit): HeadersInit => {
     const h = new Headers(init?.headers as any);
 
+    // Default Accept header
+    if (!h.has("accept")) h.set("accept", "application/json");
+
     // Tenant header
     Object.entries(getTenantHeader()).forEach(([k, v]) => h.set(k, v));
 
@@ -66,8 +134,7 @@ export function makeApi(
     try {
       const extra = extraHeadersFn?.() || {};
       Object.entries(extra).forEach(([k, v]) => h.set(k, v));
-    } catch {}
-
+    } catch { }
     // Only set Content-Type and CSRF on non GET, HEAD, OPTIONS
     const m = String(init?.method || "GET").toUpperCase();
     if (m !== "GET" && m !== "HEAD" && m !== "OPTIONS") {
@@ -90,7 +157,7 @@ export function makeApi(
           const display_name = localStorage.getItem("BHQ_ORG_NAME") || "My Organization";
           return { id: String(id), display_name: String(display_name) };
         }
-      } catch {}
+      } catch { }
 
       // Server session
       try {
@@ -100,7 +167,7 @@ export function makeApi(
         if (org?.id != null) {
           return { id: String(org.id), display_name: String(org.display_name || org.name || "Organization") };
         }
-      } catch {}
+      } catch { }
       return null;
     },
 
@@ -120,6 +187,8 @@ export function makeApi(
       return items.map((o) => ({ id: o.id, display_name: o.display_name || o.name || "Organization" }));
     },
   };
+
+
 
   /** ---------- Animals ---------- */
   const animals = {
@@ -190,11 +259,100 @@ export function makeApi(
       });
       return parse<any>(res);
     },
+
+    /** ---------- Animals subresources (owners, breeds) ---------- */
+    async getOwners(id: string | number) {
+      const res = await fetch(`${root}/animals/${encodeURIComponent(String(id))}/owners`, {
+        credentials: "include",
+        headers: hdrs(),
+      });
+      return parse<any>(res);
+    },
+
+    async putOwners(id: string | number, owners: any[]) {
+      const res = await fetch(`${root}/animals/${encodeURIComponent(String(id))}/owners`, {
+        method: "PUT",
+        credentials: "include",
+        headers: hdrs({ method: "PUT" }),
+        body: JSON.stringify(Array.isArray(owners) ? owners : []),
+      });
+      return parse<any>(res);
+    },
+
+    async getBreeds(id: string | number) {
+      const res = await fetch(`${root}/animals/${encodeURIComponent(String(id))}/breeds`, {
+        credentials: "include",
+        headers: hdrs(),
+      });
+      return parse<any>(res);
+    },
+
+    async putBreeds(
+      id: string | number,
+      body: {
+        species: "DOG" | "CAT" | "HORSE";
+        primaryBreedId: string | number | null;
+        canonical: { breedId: string | number; percentage: number }[];
+        custom: { id: string | number; percentage: number }[];
+      }
+    ) {
+      const res = await fetch(`${root}/animals/${encodeURIComponent(String(id))}/breeds`, {
+        method: "PUT",
+        credentials: "include",
+        headers: hdrs({ method: "PUT" }),
+        body: JSON.stringify(body),
+      });
+      return parse<any>(res);
+    },
   };
+
 
   /** ---------- Breeds ---------- */
   type Species = "DOG" | "CAT" | "HORSE";
   type BreedItem = { id?: number; name: string; species: Species; source?: "canonical" | "custom" };
+
+  // cache the discovered endpoint so we only probe once per reload
+  let __BREED_SEARCH_ENDPOINT:
+    | { path: string; method: "GET" | "POST" }
+    | null
+    | undefined;
+
+  async function resolveBreedSearchEndpoint(root: string, headers: HeadersInit) {
+    if (__BREED_SEARCH_ENDPOINT !== undefined) return __BREED_SEARCH_ENDPOINT;
+
+    const candidates: Array<{ path: string; method: "GET" | "POST" }> = [
+      { path: "/breeds/search", method: "GET" },
+      { path: "/breeds", method: "GET" },
+      { path: "/lookups/breeds/search", method: "GET" },
+      { path: "/breeds/_search", method: "POST" },
+    ];
+
+    for (const c of candidates) {
+      try {
+        const u = new URL(root + c.path);
+        if (c.method === "GET") {
+          u.searchParams.set("species", "DOG");
+          u.searchParams.set("q", "Be");
+          u.searchParams.set("limit", "1");
+          const res = await fetch(u.toString(), { credentials: "include", headers });
+          if (res.ok) { __BREED_SEARCH_ENDPOINT = c; console.info("[breeds] using", c.method, c.path); return c; }
+        } else {
+          const res = await fetch(u.toString(), {
+            method: "POST",
+            credentials: "include",
+            headers: new Headers(headers as any),
+            body: JSON.stringify({ species: "DOG", q: "Be", limit: 1 }),
+          });
+          if (res.ok) { __BREED_SEARCH_ENDPOINT = c; console.info("[breeds] using", c.method, c.path); return c; }
+        }
+      } catch { /* continue */ }
+    }
+
+    __BREED_SEARCH_ENDPOINT = null;
+    console.warn("[breeds] no search endpoint found");
+    return null;
+  }
+
 
   const breeds = {
     /** Get enum list from server */
@@ -215,20 +373,62 @@ export function makeApi(
       registries?: string[];
       organizationId?: string | number;
     }): Promise<BreedItem[]> {
-      const sp = new URLSearchParams();
-      sp.set("species", (opts.species || "DOG").toUpperCase());
-      if (opts.q?.trim()) sp.set("q", opts.q.trim());
-      if (opts.limit != null) sp.set("limit", String(Math.min(Math.max(opts.limit, 1), 200)));
-      if (opts.registries?.length) sp.set("registries", opts.registries.join(","));
-      if (opts.organizationId != null) sp.set("organizationId", String(opts.organizationId));
-      const url = `${root}/breeds/search?${sp.toString()}`;
+      const h = hdrs(); // fresh headers (tenant/org/etc.)
+      const species = (opts.species || "DOG").toUpperCase() as Species;
+      const limit = Number.isFinite(Number(opts.limit)) ? Math.max(1, Math.min(Number(opts.limit), 200)) : 200;
+      const q = (opts.q || "").trim();
+
+      let orgId: string | null = null;
+      if (opts.organizationId != null) orgId = String(opts.organizationId);
+      else { try { const ls = localStorage.getItem("BHQ_ORG_ID"); if (ls) orgId = String(ls); } catch { } }
+
+      const ep = await resolveBreedSearchEndpoint(root, h);
+      if (!ep) return [];
 
       try {
-        const res = await fetch(url, { credentials: "include", headers: hdrs() });
-        const data = await parse<{ items?: BreedItem[] } | BreedItem[]>(res);
-        const items: any[] = Array.isArray((data as any)?.items) ? (data as any).items : Array.isArray(data) ? (data as any) : [];
-        return items as BreedItem[];
-      } catch {
+        if (ep.method === "GET") {
+          const url = new URL(root + ep.path);
+          url.searchParams.set("species", species);
+          if (q) url.searchParams.set("q", q);
+          url.searchParams.set("limit", String(limit));
+          if (opts.registries?.length) url.searchParams.set("registries", opts.registries.join(","));
+          if (orgId) {
+            url.searchParams.set("organizationId", orgId);
+            url.searchParams.set("organization_id", orgId); // be tolerant
+          }
+          const res = await fetch(url.toString(), { credentials: "include", headers: h });
+          const data = await parse<any>(res);
+          const items: any[] =
+            Array.isArray(data) ? data :
+              Array.isArray(data?.items) ? data.items :
+                Array.isArray(data?.data?.items) ? data.data.items :
+                  Array.isArray(data?.rows) ? data.rows : [];
+          return items as BreedItem[];
+        } else {
+          const res = await fetch(root + ep.path, {
+            method: "POST",
+            credentials: "include",
+            headers: hdrs({ method: "POST" }),
+            body: JSON.stringify({
+              species,
+              q,
+              limit,
+              registries: opts.registries,
+              organizationId: orgId,
+              organization_id: orgId,
+            }),
+          });
+          const data = await parse<any>(res);
+          const items: any[] =
+            Array.isArray(data) ? data :
+              Array.isArray(data?.items) ? data.items :
+                Array.isArray(data?.data?.items) ? data.data.items :
+                  Array.isArray(data?.rows) ? data.rows : [];
+          return items as BreedItem[];
+        }
+      } catch (e) {
+        console.warn("[breeds.search] failed via", ep.method, ep.path, e);
+        __BREED_SEARCH_ENDPOINT = undefined; // allow re-probe next time
         return [];
       }
     },

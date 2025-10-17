@@ -1,514 +1,539 @@
 // apps/animals/src/components/BreedEditor.tsx
 import * as React from "react";
 import { createPortal } from "react-dom";
-
-/* ───────────── overlay host ───────────── */
-function getOverlayRoot(): HTMLElement {
-    let el = document.getElementById("bhq-top-layer") as HTMLElement | null;
-    if (!el) {
-        el = document.createElement("div");
-        el.id = "bhq-top-layer";
-        Object.assign(el.style, {
-            position: "fixed",
-            inset: "0",
-            zIndex: "2147483647",
-            pointerEvents: "none",
-        });
-        document.body.appendChild(el);
-    }
-    return el;
-}
-function setOverlayHostInteractive(enabled: boolean) {
-    const el = getOverlayRoot();
-    el.style.pointerEvents = enabled ? "auto" : "none";
-}
+import { getOverlayRoot, useOverlayHost } from "@bhq/ui/overlay";
 
 /* ───────────── types ───────────── */
 type SpeciesUI = "Dog" | "Cat" | "Horse";
 type SpeciesAPI = "DOG" | "CAT" | "HORSE";
 
 type BreedSnapshot = {
-    animalId: number | string;
-    species: SpeciesUI;
-    primaryBreedId: string | number | null;
-    primaryBreedName: string | null;
-    canonicalMix: { breedId: string | number; name: string; percentage: number }[];
-    customMix: { id: string; name: string; percentage: number }[];
+  animalId: number | string;
+  species: SpeciesUI;
+  primaryBreedId: string | number | null;
+  primaryBreedName: string | null;
+  canonicalMix: { breedId: string | number; name: string; percentage: number }[];
+  customMix: { id: string; name: string; percentage: number }[];
 };
 
 type BreedOption = { id: string; name: string; kind: "canonical" | "custom" };
 type MixRow = { opt: BreedOption | null; percentage: number };
 
 type Api = {
-    breeds: {
-        search: (p: { species: SpeciesAPI; q?: string; limit?: number }) => Promise<any[]>;
-    };
-    animals: {
-        getBreeds: (animalId: string | number) => Promise<BreedSnapshot>;
-        putBreeds: (
-            animalId: string | number,
-            body: {
-                species: SpeciesAPI;
-                primaryBreedId: string | number | null;
-                canonical: { breedId: string | number; percentage: number }[];
-                custom: { id: string; percentage: number }[];
-            }
-        ) => Promise<BreedSnapshot>;
-    };
+  breeds: {
+    search: (p: {
+      species: SpeciesAPI;
+      q?: string;
+      limit?: number;
+      organizationId?: string | number; // 👈 allow org id
+    }) => Promise<any[]>;
+  };
+  animals: {
+    getBreeds: (animalId: string | number) => Promise<BreedSnapshot>;
+    putBreeds: (
+      animalId: string | number,
+      body: {
+        species: SpeciesAPI;
+        primaryBreedId: string | number | null;
+        canonical: { breedId: string | number; percentage: number }[];
+        custom: { id: string; percentage: number }[];
+      }
+    ) => Promise<BreedSnapshot>;
+  };
 };
 
 function toAPI(s: SpeciesUI): SpeciesAPI {
-    return s.toUpperCase() as SpeciesAPI;
+  return s.toUpperCase() as SpeciesAPI;
+}
+
+type BreedRow = { id?: number | string; name?: string; species?: SpeciesAPI; source?: "canonical" | "custom";[k: string]: any };
+
+const mapToBreedOption = (b: BreedRow): BreedOption | null => {
+  const name =
+    b?.name ??
+    b?.displayName ??
+    b?.label ??
+    b?.breed ??
+    b?.title ??
+    "";
+  const source = String(b?.source || "").toLowerCase();
+  const kind: "canonical" | "custom" = source === "custom" ? "custom" : "canonical";
+  // canonical rows won’t have an id; synthesize a stable one from the name
+  let id: any =
+    b?.id ?? b?.breedId ?? b?.code ?? b?.uuid ?? b?._id ?? b?.value ??
+    (kind === "canonical" && name ? `canon:${name}` : null);
+  if (!name || !id) return null;
+  return { id: String(id), name: String(name), kind };
+};
+
+/** Shared loader used by both the PURE picker and the MIXED editor */
+async function loadBreedOptionsShared(
+  api: Api,
+  species: SpeciesAPI,
+  q: string,
+  organizationId?: string | number
+): Promise<BreedOption[]> {
+  const typed = (q || "").trim();
+  const rows = await api.breeds.search({
+    species,
+    q: typed.length >= 2 ? typed : undefined,
+    limit: 200,
+    organizationId, // only sent when provided (customs require this)
+  });
+  const list = (Array.isArray(rows) ? rows : []).map(mapToBreedOption).filter(Boolean) as BreedOption[];
+
+  // sort: prefix matches first, then alpha
+  if (typed.length >= 2) {
+    const ql = typed.toLowerCase();
+    list.sort((a, b) => {
+      const an = a.name.toLowerCase();
+      const bn = b.name.toLowerCase();
+      const ar = an.startsWith(ql) ? 0 : an.includes(ql) ? 1 : 2;
+      const br = bn.startsWith(ql) ? 0 : bn.includes(ql) ? 1 : 2;
+      if (ar !== br) return ar - br;
+      return an.localeCompare(bn);
+    });
+  } else {
+    list.sort((a, b) => a.name.localeCompare(b.name));
+  }
+  return list;
 }
 
 /* ───────────── Combobox ───────────── */
 function Combobox(props: {
-    value: BreedOption | null;
-    onChange: (opt: BreedOption | null) => void;
-    load: (q: string) => Promise<BreedOption[]>;
-    placeholder?: string;
-    disabled?: boolean;
+  value: BreedOption | null;
+  onChange: (opt: BreedOption | null) => void;
+  load: (q: string) => Promise<BreedOption[]>;
+  placeholder?: string;
+  disabled?: boolean;
 }) {
-    const { value, onChange, placeholder = "Start typing (2+ letters) or click ▾", disabled } = props;
-    const wrapRef = React.useRef<HTMLDivElement>(null);
-    const inputRef = React.useRef<HTMLInputElement>(null);
+  const { value, onChange, placeholder = "Start typing (2+ letters) or click ▾", disabled } = props;
+  const wrapRef = React.useRef<HTMLDivElement>(null);
+  const inputRef = React.useRef<HTMLInputElement>(null);
 
-    const [open, setOpen] = React.useState(false);
-    const [query, setQuery] = React.useState("");
-    const [options, setOptions] = React.useState<BreedOption[]>([]);
-    const [loading, setLoading] = React.useState(false);
-    const [hi, setHi] = React.useState(-1);
-    const [menuPos, setMenuPos] = React.useState<{ left: number; top: number; width: number } | null>(null);
-    const [errorText, setErrorText] = React.useState<string | null>(null);
-    const shown = query !== "" ? query : (value?.name ?? "");
+  const [open, setOpen] = React.useState(false);
+  const [query, setQuery] = React.useState("");
+  const [options, setOptions] = React.useState<BreedOption[]>([]);
+  const [loading, setLoading] = React.useState(false);
+  const [hi, setHi] = React.useState(-1);
+  const [menuPos, setMenuPos] = React.useState<{ left: number; top: number; width: number } | null>(null);
+  const [errorText, setErrorText] = React.useState<string | null>(null);
+  const shown = query !== "" ? query : (value?.name ?? "");
 
-    React.useEffect(() => {
-        if (!open) return;
-        let alive = true;
-        setLoading(true);
+  React.useEffect(() => {
+    if (!open) return;
+    let alive = true;
+    setLoading(true);
+    setErrorText(null);
+    props
+      .load(query)
+      .then((rows) => {
+        if (!alive) return;
+        const safe = Array.isArray(rows) ? rows : [];
+        setOptions(safe);
         setErrorText(null);
-        props
-            .load(query)
-            .then((rows) => {
-                if (!alive) return;
-                const safe = Array.isArray(rows) ? rows : [];
-                setOptions(safe);
-                setErrorText(null);
-            })
-            .catch(() => {
-                if (!alive) return;
-                setOptions([]);
-                setErrorText("Server error. Try typing to search.");
-            })
-            .finally(() => {
-                if (!alive) return;
-                setLoading(false);
-                setHi(-1);
-            });
-        return () => {
-            alive = false;
-        };
-    }, [open, query, props]);
+      })
+      .catch(() => {
+        if (!alive) return;
+        setOptions([]);
+        setErrorText("Server error. Try typing to search.");
+      })
+      .finally(() => {
+        if (!alive) return;
+        setLoading(false);
+        setHi(-1);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [open, query, props]);
 
-    React.useEffect(() => {
-        function onDoc(e: MouseEvent) {
-            if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
-        }
-        document.addEventListener("mousedown", onDoc);
-        return () => document.removeEventListener("mousedown", onDoc);
-    }, []);
-
-    const recalc = React.useCallback(() => {
-        if (!wrapRef.current) return;
-        const r = wrapRef.current.getBoundingClientRect();
-        setMenuPos({ left: r.left, top: r.bottom + 8, width: r.width });
-    }, []);
-    React.useEffect(() => {
-        if (!open) return;
-        recalc();
-        const onWin = () => recalc();
-        window.addEventListener("resize", onWin);
-        window.addEventListener("scroll", onWin, true);
-        return () => {
-            window.removeEventListener("resize", onWin);
-            window.removeEventListener("scroll", onWin, true);
-        };
-    }, [open, recalc]);
-
-    React.useEffect(() => {
-        if (open) inputRef.current?.focus();
-    }, [open]);
-
-    function choose(idx: number) {
-        const opt = options[idx];
-        if (!opt) return;
-        onChange(opt);
-        setOpen(false);
-        setQuery("");
+  React.useEffect(() => {
+    function onDoc(e: MouseEvent) {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
     }
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, []);
 
-    const menu =
-        open && menuPos
-            ? createPortal(
-                <div
-                    role="listbox"
-                    className="rounded-md border border-hairline bg-surface shadow-2xl overflow-hidden"
-                    style={{
-                        position: "fixed",
-                        left: Math.max(8, Math.min(menuPos.left!, window.innerWidth - menuPos.width! - 8)),
-                        top: Math.min(menuPos.top!, window.innerHeight - 56),
-                        width: menuPos.width!,
-                        zIndex: 2147483647,
-                        pointerEvents: "auto",
-                    }}
-                >
-                    <div className="py-1" style={{ maxHeight: 400, overflow: "auto" }}>
-                        {loading && <div className="px-4 py-3 text-base text-secondary">Loading…</div>}
-                        {!loading && errorText && <div className="px-4 py-3 text-base text-red-500">{errorText}</div>}
-                        {!loading && !errorText && options.length === 0 && (
-                            <div className="px-4 py-3 text-base text-secondary">Start typing at least 2 letters.</div>
-                        )}
-                        {!loading &&
-                            !errorText &&
-                            options.map((opt, idx) => (
-                                <button
-                                    key={`${opt.kind}:${opt.id}`}
-                                    className={
-                                        "w-full text-left text-base px-4 py-3 flex items-center justify-between hover:bg-surface-strong " +
-                                        (hi === idx ? "bg-surface-strong" : "")
-                                    }
-                                    onMouseEnter={() => setHi(idx)}
-                                    onMouseDown={(e) => {
-                                        e.preventDefault();
-                                        choose(idx);
-                                    }}
-                                >
-                                    <span className="text-primary">{opt.name}</span>
-                                    {opt.kind === "custom" && (
-                                        <span className="ml-2 text-[10px] px-1 py-0.5 rounded bg-surface-strong border border-hairline">
-                                            Custom
-                                        </span>
-                                    )}
-                                </button>
-                            ))}
-                    </div>
-                </div>,
-                getOverlayRoot()
-            )
-            : null;
+  const recalc = React.useCallback(() => {
+    if (!wrapRef.current) return;
+    const r = wrapRef.current.getBoundingClientRect();
+    setMenuPos({ left: r.left, top: r.bottom + 8, width: r.width });
+  }, []);
+  React.useEffect(() => {
+    if (!open) return;
+    recalc();
+    const onWin = () => recalc();
+    window.addEventListener("resize", onWin);
+    window.addEventListener("scroll", onWin, true);
+    return () => {
+      window.removeEventListener("resize", onWin);
+      window.removeEventListener("scroll", onWin, true);
+    };
+  }, [open, recalc]);
 
-    return (
-        <div className="relative" ref={wrapRef}>
-            <div className="flex items-center gap-3">
-                <input
-                    ref={inputRef}
-                    disabled={disabled}
-                    className="h-12 w-full rounded-md bg-surface border border-hairline px-4 text-base text-primary outline-none focus:shadow-[0_0_0_2px_hsl(var(--hairline))]"
-                    placeholder={placeholder}
-                    value={shown}
-                    onChange={(e) => {
-                        const next = e.target.value;
-                        setQuery(next);
-                        if (!open && next.trim().length >= 2) {
-                            setOpen(true);
-                            setTimeout(() => inputRef.current?.focus(), 0);
-                        }
-                    }}
-                    onKeyDown={(e) => {
-                        if (!open) {
-                            if (e.key === "ArrowDown" || e.key === "Enter") {
-                                e.preventDefault();
-                                setOpen(true);
-                                setTimeout(() => inputRef.current?.focus(), 0);
-                            }
-                            return;
-                        }
-                        if (e.key === "ArrowDown") {
-                            e.preventDefault();
-                            setHi((h) => Math.min(h + 1, options.length - 1));
-                        } else if (e.key === "ArrowUp") {
-                            e.preventDefault();
-                            setHi((h) => Math.max(h - 1, 0));
-                        } else if (e.key === "Enter") {
-                            e.preventDefault();
-                            if (hi >= 0) choose(hi);
-                        } else if (e.key === "Escape") {
-                            setOpen(false);
-                        }
-                    }}
-                />
+  React.useEffect(() => {
+    if (open) inputRef.current?.focus();
+  }, [open]);
+
+  function choose(idx: number) {
+    const opt = options[idx];
+    if (!opt) return;
+    onChange(opt);
+    setOpen(false);
+    setQuery("");
+  }
+
+  const menu =
+    open && menuPos
+      ? createPortal(
+        <div
+          role="listbox"
+          className="rounded-md border border-hairline bg-surface shadow-2xl overflow-hidden"
+          style={{
+            position: "fixed",
+            left: Math.max(8, Math.min(menuPos.left!, window.innerWidth - menuPos.width! - 8)),
+            top: Math.min(menuPos.top!, window.innerHeight - 56),
+            width: menuPos.width!,
+            zIndex: 2147483647,
+            pointerEvents: "auto",
+          }}
+        >
+          <div className="py-1" style={{ maxHeight: 400, overflow: "auto" }}>
+            {loading && <div className="px-4 py-3 text-base text-secondary">Loading…</div>}
+            {!loading && errorText && <div className="px-4 py-3 text-base text-red-500">{errorText}</div>}
+            {!loading && !errorText && options.length === 0 && (
+              <div className="px-4 py-3 text-base text-secondary">
+                Start typing at least 2 letters to search breeds.
+              </div>
+            )}
+            {!loading &&
+              !errorText &&
+              options.map((opt, idx) => (
                 <button
-                    type="button"
-                    className="shrink-0 h-12 w-12 grid place-items-center rounded-md border border-hairline hover:bg-surface-strong text-primary"
-                    onClick={() => {
-                        setOpen((o) => {
-                            const next = !o;
-                            if (next) setTimeout(() => inputRef.current?.focus(), 0);
-                            return next;
-                        });
-                    }}
-                    disabled={disabled}
-                    aria-label="Toggle"
+                  key={`${opt.kind}:${opt.id}`}
+                  className={
+                    "w-full text-left text-base px-4 py-3 flex items-center justify-between hover:bg-surface-strong " +
+                    (hi === idx ? "bg-surface-strong" : "")
+                  }
+                  onMouseEnter={() => setHi(idx)}
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    choose(idx);
+                  }}
                 >
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" className="pointer-events-none">
-                        <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
+                  <span className="text-primary">{opt.name}</span>
+                  {opt.kind === "custom" && (
+                    <span className="ml-2 text-[10px] px-1 py-0.5 rounded bg-surface-strong border border-hairline">
+                      Custom
+                    </span>
+                  )}
                 </button>
-            </div>
-            {menu}
-        </div>
-    );
+              ))}
+          </div>
+        </div>,
+        getOverlayRoot()
+      )
+      : null;
+
+  return (
+    <div className="relative" ref={wrapRef}>
+      <div className="flex items-center gap-3">
+        <input
+          ref={inputRef}
+          disabled={disabled}
+          className="h-12 w-full rounded-md bg-surface border border-hairline px-4 text-base text-primary outline-none focus:shadow-[0_0_0_2px_hsl(var(--hairline))]"
+          placeholder={placeholder}
+          value={shown}
+          onChange={(e) => {
+            const next = e.target.value;
+            setQuery(next);
+            if (!open && next.trim().length >= 2) {
+              setOpen(true);
+              setTimeout(() => inputRef.current?.focus(), 0);
+            }
+          }}
+          onKeyDown={(e) => {
+            if (!open) {
+              if (e.key === "ArrowDown" || e.key === "Enter") {
+                e.preventDefault();
+                setOpen(true);
+                setTimeout(() => inputRef.current?.focus(), 0);
+              }
+              return;
+            }
+            if (e.key === "ArrowDown") {
+              e.preventDefault();
+              setHi((h) => Math.min(h + 1, options.length - 1));
+            } else if (e.key === "ArrowUp") {
+              e.preventDefault();
+              setHi((h) => Math.max(h - 1, 0));
+            } else if (e.key === "Enter") {
+              e.preventDefault();
+              if (hi >= 0) choose(hi);
+            } else if (e.key === "Escape") {
+              setOpen(false);
+            }
+          }}
+        />
+        <button
+          type="button"
+          className="shrink-0 h-12 w-12 grid place-items-center rounded-md border border-hairline hover:bg-surface-strong text-primary"
+          onClick={() => {
+            setOpen((o) => {
+              const next = !o;
+              if (next) setTimeout(() => inputRef.current?.focus(), 0);
+              return next;
+            });
+          }}
+          disabled={disabled}
+          aria-label="Toggle"
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" className="pointer-events-none">
+            <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </button>
+      </div>
+      {menu}
+    </div>
+  );
 }
 
 /* ───────────── Summary field + overlay editor ───────────── */
 export function BreedField(props: {
-    api: Api;
-    animalId: string | number;
-    speciesUi: SpeciesUI;
-    /** Called after a successful save so the parent can refresh UI */
-    onChanged?: (primaryName: string | null, snapshot: BreedSnapshot) => void;
+  api: Api;
+  animalId: string | number;
+  speciesUi: SpeciesUI;
+  organizationId?: string | number;
+  /** Called after a successful save so the parent can refresh UI */
+  onChanged?: (primaryName: string | null, snapshot: BreedSnapshot) => void;
 }) {
-    const { api, animalId, speciesUi } = props;
+  const { api, animalId, speciesUi } = props;
 
-    const [snapshot, setSnapshot] = React.useState<BreedSnapshot | null>(null);
-    const [open, setOpen] = React.useState(false);
-    const [loading, setLoading] = React.useState(false);
-    const [error, setError] = React.useState<string | null>(null);
+  const [snapshot, setSnapshot] = React.useState<BreedSnapshot | null>(null);
+  const [open, setOpen] = React.useState(false);
+  const [loading, setLoading] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
 
-    // 🔹 PREFETCH the canonical snapshot as soon as the field mounts or animalId changes.
-    React.useEffect(() => {
-        let alive = true;
-        setLoading(true);
+  // 🔹 PREFETCH the canonical snapshot as soon as the field mounts or animalId changes.
+  React.useEffect(() => {
+    let alive = true;
+    setLoading(true);
+    setError(null);
+    api.animals
+      .getBreeds(animalId)
+      .then((s) => {
+        if (!alive) return;
+        setSnapshot(s);
+      })
+      .catch((_e) => {
+        if (!alive) return;
+        // keep summary as "Unset" if this fails; editor still has Retry
         setError(null);
-        api.animals
-            .getBreeds(animalId)
-            .then((s) => {
-                if (!alive) return;
-                setSnapshot(s);
-            })
-            .catch((_e) => {
-                if (!alive) return;
-                // keep summary as "Unset" if this fails; editor still has Retry
-                setError(null);
-            })
-            .finally(() => {
-                if (!alive) return;
-                setLoading(false);
-            });
-        return () => {
-            alive = false;
-        };
-    }, [api.animals, animalId]);
+      })
+      .finally(() => {
+        if (!alive) return;
+        setLoading(false);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [api.animals, animalId]);
 
-    const summary = React.useMemo(() => {
-        const s = snapshot;
-        if (!s) return "Unset";
-        const parts = [
-            ...(s.canonicalMix || []).map((x) => `${x.name} ${x.percentage}%`),
-            ...(s.customMix || []).map((x) => `${x.name} ${x.percentage}%`),
-        ];
-        if (parts.length === 0 && s.primaryBreedName) return s.primaryBreedName;
-        if (parts.length === 0) return "Unset";
-        return parts.join(" · ");
-    }, [snapshot]);
+  const summary = React.useMemo(() => {
+    const s = snapshot;
+    if (!s) return "Unset";
+    const parts = [
+      ...(s.canonicalMix || []).map((x) => `${x.name} ${x.percentage}%`),
+      ...(s.customMix || []).map((x) => `${x.name} ${x.percentage}%`),
+    ];
+    if (parts.length === 0 && s.primaryBreedName) return s.primaryBreedName;
+    if (parts.length === 0) return "Unset";
+    return parts.join(" · ");
+  }, [snapshot]);
 
-    async function openEditor() {
-        // Open immediately; if we already have a snapshot, use it. Otherwise fetch once.
-        setOpen(true);
-        if (snapshot) {
-            setLoading(false);
-            setError(null);
-            return;
-        }
-        setLoading(true);
-        setError(null);
-        try {
-            const s = await api.animals.getBreeds(animalId);
-            setSnapshot(s);
-        } catch (e: any) {
-            setError(e?.message || "Failed to load breed data");
-        } finally {
-            setLoading(false);
-        }
+  async function openEditor() {
+    // Open immediately; if we already have a snapshot, use it. Otherwise fetch once.
+    setOpen(true);
+    if (snapshot) {
+      setLoading(false);
+      setError(null);
+      return;
     }
+    setLoading(true);
+    setError(null);
+    try {
+      const s = await api.animals.getBreeds(animalId);
+      setSnapshot(s);
+    } catch (e: any) {
+      setError(e?.message || "Failed to load breed data");
+    } finally {
+      setLoading(false);
+    }
+  }
 
-    return (
-        <div className="space-y-1">
-            <div className="text-xs text-secondary">Breed</div>
-            <div className="flex items-center gap-2">
-                <div className="text-sm text-primary">
-                    {summary}
-                </div>
-                <button
-                    type="button"
-                    onClick={openEditor}
-                    className="text-xs px-2 py-1 rounded border border-hairline hover:bg-surface-strong"
-                >
-                    Edit
-                </button>
-            </div>
-
-            {open && (
-                <BreedEditorOverlay
-                    api={api}
-                    // pass a real number or null (no "new")
-                    animalId={Number.isFinite(Number(animalId)) && Number(animalId) > 0 ? Number(animalId) : null}
-                    speciesUi={speciesUi}
-                    loading={loading}
-                    error={error}
-                    initial={snapshot}
-                    onClose={() => setOpen(false)}
-                    onSaved={(res) => {
-                        setSnapshot(res);
-                        setOpen(false);
-                        // Notify parent so it can update table/drawer immediately
-                        props.onChanged?.(res.primaryBreedName ?? null, res);
-                    }}
-                    onRetry={openEditor}
-                />
-            )}
+  return (
+    <div className="space-y-1">
+      <div className="text-xs text-secondary">Breed</div>
+      <div className="flex items-center gap-2">
+        <div className="text-sm text-primary">
+          {summary}
         </div>
-    );
+        <button
+          type="button"
+          onClick={openEditor}
+          className="text-xs px-2 py-1 rounded border border-hairline hover:bg-surface-strong"
+        >
+          Edit
+        </button>
+      </div>
+
+      {open && (
+        <BreedEditorOverlay
+          api={api}
+          // pass a real number or null (no "new")
+          animalId={Number.isFinite(Number(animalId)) && Number(animalId) > 0 ? Number(animalId) : null}
+          speciesUi={speciesUi}
+          organizationId={props.organizationId}
+          loading={loading}
+          error={error}
+          initial={snapshot}
+          onClose={() => setOpen(false)}
+          onSaved={(res) => {
+            setSnapshot(res);
+            setOpen(false);
+            // Notify parent so it can update table/drawer immediately
+            props.onChanged?.(res.primaryBreedName ?? null, res);
+          }}
+          onRetry={openEditor}
+        />
+      )}
+    </div>
+  );
 }
 
 /* ───────────── Form control: Pure picker + Advanced (Mixed) ───────────── */
 export function BreedFormControl(props: {
-    api: Api;
-    speciesUi: SpeciesUI;
-    /** When editing, pass the animal id so we can open Advanced with the server snapshot; omit during Create */
-    animalId?: string | number | null;
-    /** Current display name in the form (optional) */
-    valueName?: string | null;
-    /** Called when a pure breed is selected in the combobox */
-    onPureSelected: (sel: { canonicalBreedId?: string; customBreedId?: string; name: string }) => void;
-    /** Called after the Advanced editor saves; returns the server snapshot */
-    onMixedSaved: (snapshot: BreedSnapshot) => void;
+  api: any;
+  speciesUi: "Dog" | "Cat" | "Horse";
+  organizationId?: string | number; // 👈 NEW
+  animalId: string | number | null;
+  valueName: string;
+  onPureSelected: (sel: { name: string; canonicalBreedId?: number | null; customBreedId?: number | null }) => void;
+  onMixedSaved: (snapshot: any) => void;
 }) {
-    const { api, speciesUi, animalId } = props;
-    const SPECIES = toAPI(speciesUi);
+  const { api, speciesUi, animalId } = props;
+  const SPECIES = toAPI(speciesUi);
 
-    const [open, setOpen] = React.useState(false);
-    const [loading, setLoading] = React.useState(false);
-    const [error, setError] = React.useState<string | null>(null);
-    const [snapshot, setSnapshot] = React.useState<BreedSnapshot | null>(null);
+  const [open, setOpen] = React.useState(false);
+  const [loading, setLoading] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  const [snapshot, setSnapshot] = React.useState<BreedSnapshot | null>(null);
 
-    // loader used by the combobox (pure)
-    const loadOptions = React.useCallback(
-        async (q: string) => {
-            const typed = (q ?? "").trim();
-            const result = await api.breeds.search({
-                species: SPECIES,
-                q: typed.length >= 2 ? typed : undefined,
-                limit: 200,
-            });
-            return (result || [])
-                .map((b: any) => {
-                    const id = b?.id ?? b?.breedId ?? b?.code ?? b?.uuid ?? b?._id ?? b?.value ?? null;
-                    const name = b?.name ?? b?.displayName ?? b?.label ?? b?.breed ?? b?.title ?? "";
-                    return id && name ? { id: String(id), name: String(name), kind: "canonical" as const } : null;
-                })
-                .filter(Boolean) as BreedOption[];
-        },
-        [SPECIES, api.breeds]
-    );
+  // loader used by the combobox (pure)
+  const loadOptions = React.useCallback(
+    (q: string) => loadBreedOptionsShared(api as Api, SPECIES, q, props.organizationId),
+    [api, SPECIES, props.organizationId]
+  );
 
-    // Pure selection handler -> inform parent; clear any mixed snapshot
-    const handlePurePick = React.useCallback(
-        (opt: BreedOption | null) => {
-            if (!opt) return;
-            if (opt.kind === "canonical") {
-                props.onPureSelected({ canonicalBreedId: String(opt.id), name: opt.name });
-            } else {
-                props.onPureSelected({ customBreedId: String(opt.id), name: opt.name });
-            }
-            // If a user picks pure after they had done mixed, discard mixed
-            setSnapshot(null);
-        },
-        [props]
-    );
+  // Pure selection handler -> inform parent; clear any mixed snapshot
+  const handlePurePick = React.useCallback(
+    (opt: BreedOption | null) => {
+      if (!opt) return;
+      if (opt.kind === "canonical") {
+        props.onPureSelected({ canonicalBreedId: String(opt.id), name: opt.name });
+      } else {
+        props.onPureSelected({ customBreedId: String(opt.id), name: opt.name });
+      }
+      // If a user picks pure after they had done mixed, discard mixed
+      setSnapshot(null);
+    },
+    [props]
+  );
 
-    // Open Advanced (Mixed) editor
-    // Open Advanced (Mixed) editor
-    async function openAdvanced() {
-        setOpen(true);
-        setLoading(true);
-        setError(null);
+  // Open Advanced (Mixed) editor
+  // Open Advanced (Mixed) editor
+  async function openAdvanced() {
+    setOpen(true);
+    setLoading(true);
+    setError(null);
 
-        try {
-            const idNum = Number(animalId);
-            const hasValidId = Number.isFinite(idNum) && idNum > 0;
+    try {
+      const idNum = Number(animalId);
+      const hasValidId = Number.isFinite(idNum) && idNum > 0;
 
-            if (hasValidId) {
-                // Editing: fetch snapshot from server
-                const s = await api.animals.getBreeds(idNum);
-                setSnapshot(s);
-            } else {
-                // Creating...
-                const name = props.valueName ? String(props.valueName) : "";
-                const s: BreedSnapshot = {
-                    animalId: "new",
-                    species: speciesUi,
-                    primaryBreedId: null,
-                    primaryBreedName: name || null,
-                    canonicalMix: name ? [{ breedId: "unknown", name, percentage: 100 }] : [],
-                    customMix: [],
-                };
-                setSnapshot(s);
-            }
-        } catch (e: any) {
-            setError(e?.message || "Failed to load breed data");
-        } finally {
-            setLoading(false);
-        }
+      if (hasValidId) {
+        // Editing: fetch snapshot from server
+        const s = await api.animals.getBreeds(idNum);
+        setSnapshot(s);
+      } else {
+        // Creating...
+        const name = props.valueName ? String(props.valueName) : "";
+        const s: BreedSnapshot = {
+          animalId: "new",
+          species: speciesUi,
+          primaryBreedId: null,
+          primaryBreedName: name || null,
+          canonicalMix: name ? [{ breedId: "unknown", name, percentage: 100 }] : [],
+          customMix: [],
+        };
+        setSnapshot(s);
+      }
+    } catch (e: any) {
+      setError(e?.message || "Failed to load breed data");
+    } finally {
+      setLoading(false);
     }
+  }
 
-    return (
-        <div className="space-y-1">
-            <div className="text-xs text-secondary">Breed</div>
-            <div className="flex items-center gap-2">
-                <div className="min-w-0 grow">
-                    <Combobox
-                        value={props.valueName ? { id: "current", name: props.valueName, kind: "canonical" } : null}
-                        onChange={handlePurePick}
-                        load={loadOptions}
-                        placeholder="Type to search or add"
-                    />
-                </div>
-
-                <button
-                    type="button"
-                    className="shrink-0 text-xs px-2 py-1 rounded border border-hairline hover:bg-surface-strong"
-                    onClick={openAdvanced}
-                    title="Open advanced mixed-breed editor"
-                >
-                    Manage
-                </button>
-            </div>
-
-            {open && (
-                <BreedEditorOverlay
-                    api={api}
-                    animalId={animalId ?? "new"}
-                    speciesUi={speciesUi}
-                    loading={loading}
-                    error={error}
-                    initial={snapshot}
-                    onClose={() => setOpen(false)}
-                    onSaved={(res) => {
-                        setSnapshot(res);
-                        setOpen(false);
-                        // Tell the parent; parent will store snapshot and use it on save
-                        props.onMixedSaved(res);
-                    }}
-                    onRetry={openAdvanced}
-                />
-            )}
-
-            <div className="text-[11px] text-secondary">
-                Search official and custom breeds. For mixes, tap Advanced.
-            </div>
+  return (
+    <div className="space-y-1">
+      <div className="text-xs text-secondary">Breed</div>
+      <div className="flex items-center gap-2">
+        <div className="min-w-0 grow">
+          <Combobox
+            value={props.valueName ? { id: "current", name: props.valueName, kind: "canonical" } : null}
+            onChange={handlePurePick}
+            load={loadOptions}
+            placeholder="Type to search or add"
+          />
         </div>
-    );
+
+        <button
+          type="button"
+          className="shrink-0 text-xs px-2 py-1 rounded border border-hairline hover:bg-surface-strong"
+          onClick={openAdvanced}
+          title="Open advanced mixed-breed editor"
+        >
+          Manage
+        </button>
+      </div>
+
+      {open && (
+        <BreedEditorOverlay
+          api={api}
+          animalId={animalId ?? "new"}
+          speciesUi={speciesUi}
+          organizationId={props.organizationId}  // 👈 pass it down
+          loading={loading}
+          error={error}
+          initial={snapshot}
+          onClose={() => setOpen(false)}
+          onSaved={(res) => {
+            setSnapshot(res);
+            setOpen(false);
+            props.onMixedSaved(res);
+          }}
+          onRetry={openAdvanced}
+        />
+      )}
+
+      <div className="text-[11px] text-secondary">
+        Search official and custom breeds. For mixes, tap Advanced.
+      </div>
+    </div>
+  );
 }
 
 
@@ -517,6 +542,7 @@ function BreedEditorOverlay(props: {
   api: Api;
   animalId: number | "new" | null;
   speciesUi: SpeciesUI;
+  organizationId?: string | number; // 👈 NEW
   loading: boolean;
   error: string | null;
   initial: BreedSnapshot | null;
@@ -602,37 +628,8 @@ function BreedEditorOverlay(props: {
 
   // combobox loader
   const loadOptions = React.useCallback(
-    async (q: string): Promise<BreedOption[]> => {
-      const typed = (q ?? "").trim();
-      const result = await api.breeds.search({
-        species: SPECIES,
-        q: typed.length >= 2 ? typed : undefined,
-        limit: 200,
-      });
-      const list: BreedOption[] = (result || [])
-        .map((b: any) => {
-          const id = b?.id ?? b?.breedId ?? b?.code ?? b?.uuid ?? b?._id ?? b?.value ?? null;
-          const name = b?.name ?? b?.displayName ?? b?.label ?? b?.breed ?? b?.title ?? "";
-          return id && name ? { id: String(id), name: String(name), kind: "canonical" as const } : null;
-        })
-        .filter(Boolean) as BreedOption[];
-
-      if (typed.length >= 2) {
-        const ql = typed.toLowerCase();
-        list.sort((a, b) => {
-          const an = a.name.toLowerCase();
-          const bn = b.name.toLowerCase();
-          const ar = an.startsWith(ql) ? 0 : an.includes(ql) ? 1 : 2;
-          const br = bn.startsWith(ql) ? 0 : bn.includes(ql) ? 1 : 2;
-          if (ar !== br) return ar - br;
-          return an.localeCompare(bn);
-        });
-      } else {
-        list.sort((a, b) => a.name.localeCompare(b.name));
-      }
-      return list;
-    },
-    [SPECIES, api.breeds]
+    (q: string) => loadBreedOptionsShared(api as Api, SPECIES, q, props.organizationId),
+    [api, SPECIES, props.organizationId]
   );
 
   // helpers
@@ -675,21 +672,21 @@ function BreedEditorOverlay(props: {
         const snap: BreedSnapshot =
           pureOpt.kind === "canonical"
             ? {
-                animalId: "new",
-                species: speciesUi,
-                primaryBreedId: pureOpt.id,
-                primaryBreedName: pureOpt.name,
-                canonicalMix: [{ breedId: pureOpt.id, name: pureOpt.name, percentage: 100 }],
-                customMix: [],
-              }
+              animalId: "new",
+              species: speciesUi,
+              primaryBreedId: pureOpt.id,
+              primaryBreedName: pureOpt.name,
+              canonicalMix: [{ breedId: pureOpt.id, name: pureOpt.name, percentage: 100 }],
+              customMix: [],
+            }
             : {
-                animalId: "new",
-                species: speciesUi,
-                primaryBreedId: null,
-                primaryBreedName: pureOpt.name,
-                canonicalMix: [],
-                customMix: [{ id: pureOpt.id, name: pureOpt.name, percentage: 100 }],
-              };
+              animalId: "new",
+              species: speciesUi,
+              primaryBreedId: null,
+              primaryBreedName: pureOpt.name,
+              canonicalMix: [],
+              customMix: [{ id: pureOpt.id, name: pureOpt.name, percentage: 100 }],
+            };
         props.onSaved(snap);
         return;
       }
@@ -916,13 +913,12 @@ function BreedEditorOverlay(props: {
     </div>
   );
 
+
+  useOverlayHost(true);
+
   React.useEffect(() => {
-    setOverlayHostInteractive(true);
     document.body.classList.add("bhq-blur");
-    return () => {
-      setOverlayHostInteractive(false);
-      document.body.classList.remove("bhq-blur");
-    };
+    return () => document.body.classList.remove("bhq-blur");
   }, []);
 
   return createPortal(overlay, getOverlayRoot());

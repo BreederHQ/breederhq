@@ -13,34 +13,60 @@
 html, body { min-height: 100%; }
 #contacts-root, #root, #app { min-height: 100vh; display: block; }
 
-/* ===== Overlay layer (for all portals) ===== */
-#overlays-root {
-  position: fixed;      /* anchor to viewport */
+/* ===== Overlay root (used by portals) ===== */
+#bhq-overlay-root {
+  position: fixed;          /* anchor to viewport */
   inset: 0;
-  z-index: 9990;        /* below the drawer/dialog which use 9999, but above app */
-  pointer-events: none; /* let children opt-in */
+  z-index: 2147483647;      /* keep above sticky UI */
+  pointer-events: none;     /* children opt-in */
+  isolation: isolate;       /* new stacking context */
+}
+#bhq-overlay-root > * { pointer-events: auto; }
+
+/* ===== Dialog/Drawer — robust selectors w/ fallbacks ===== */
+/* Backdrop */
+#bhq-overlay-root [data-bhq-dialog-backdrop],
+#bhq-overlay-root .bhq-dialog__backdrop,
+#bhq-overlay-root .radix-dialog-overlay,
+#bhq-overlay-root > *:not(style):first-child {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 1 !important;         /* below panel */
+  pointer-events: auto !important;
 }
 
-/* Allow interaction on overlay children */
-#overlays-root { isolation: isolate; }
+/* Panel / content */
+#bhq-overlay-root [data-bhq-dialog-panel],
+#bhq-overlay-root .bhq-dialog__panel,
+#bhq-overlay-root [role="dialog"],
+#bhq-overlay-root .radix-dialog-content,
+#bhq-overlay-root > *:not(style):last-child {
+  position: fixed !important;
+  top: 0 !important;
+  right: 0 !important;
+  height: 100vh !important;
+  max-height: 100vh !important;
+  width: min(720px, 100vw) !important;   /* tweak to taste */
+  z-index: 2 !important;
+  pointer-events: auto !important;
+  overflow: auto !important;             /* scroll the drawer, not the page */
+  -webkit-overflow-scrolling: touch !important;
+}
 
-
-/* Layout: make the contacts card fill height and only the table area scroll */
+/* ===== App layout: contacts card fills height; only table scrolls ===== */
 .bhq-card {
   display: flex;
   flex-direction: column;
   min-height: min(860px, calc(100vh - 160px));
 }
 
-/* Non-scrolling sections inside the card (toolbar, tag bar, filters, footer) */
-.bhq-section-fixed {
+.bhq-section-fixed {        /* toolbar, tag bar, filters, footer */
   flex: 0 0 auto;
 }
 
-/* The scrolling section (table) */
-.bhq-table {
+.bhq-table {                /* scrolling area (table) */
   flex: 1 1 auto;
   min-height: 0;
   overflow: auto;
-  width: 100%
+  width: 100%;
 }

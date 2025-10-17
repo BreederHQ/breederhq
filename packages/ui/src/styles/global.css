@@ -20,6 +20,13 @@ body {
   letter-spacing: 0.01em;
 }
 
+#bhq-overlay-root {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483000; /* or your design-system top layer */
+  pointer-events: none; /* your dialog code can flip this when open */
+}
+
 /* ===== Canvas: subtle charcoal gradient + orange stage light (no teal) */
 .bhq-canvas {
   position: relative;
