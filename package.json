@@ -18,7 +18,7 @@
     "dev:offspring": "npm -C ./apps/offspring run dev",
     "dev:all": "cross-env npm_config_workspaces=false npx concurrently \"npm -C ./apps/platform run dev\" \"npm -C ./apps/contacts run dev\" \"npm -C ./apps/animals run dev\" \"npm -C ./apps/breeding run dev\" \"npm -C ./apps/offspring run dev\"",
     "dev": "npm run dev:all",
-    "build": "echo \"root build noop\"",
+    "build": "tsup src/index.ts --dts --format esm,cjs --sourcemap --clean",
     "lint": "eslint . --ext .ts,.tsx --max-warnings=0",
     "format": "prettier --write \"**/*.{ts,tsx,js,json,css,md}\"",
     "postinstall": "echo \"root postinstall: no builds here\""

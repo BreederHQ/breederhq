@@ -4,10 +4,14 @@
 /* 2) Tailwind v3 directives */
 @tailwind base;
 @tailwind components;
+
+
+/* 3) Library component styles (tables + footer) */
+@import "@bhq/ui/styles/table.css";
+@import "@bhq/ui/styles/table-footer.css";
+
+/* 4) Tailwind utilities */
 @tailwind utilities;
-
-/* 3) (optional) app-only overrides go below */
-
 
 /* Ensure the app’s mount has sane height, and body can scroll */
 html, body { min-height: 100%; }
@@ -30,11 +34,4 @@ html, body { min-height: 100%; }
 
 .bhq-section-fixed {
   flex: 0 0 auto;
-}
-
-.bhq-table {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow: auto;
-  width: 100%;
 }

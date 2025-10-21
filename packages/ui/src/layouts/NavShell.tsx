@@ -1,5 +1,6 @@
 import * as React from "react";
 import logoUrl from "../../assets/logo.png";
+import { OverlayRoot } from "@bhq/ui/overlay";
 
 export type NavItem = {
   key: string;
@@ -118,6 +119,7 @@ export const NavShell: React.FC<NavShellProps> = ({
     return () => window.removeEventListener("bhq:module", onModule as any);
   }, []);
 
+
   // Prefer announced title, then prop, then fallback
   const displayTitle = announcedTitle || title || "BreederHQ";
 
@@ -184,7 +186,7 @@ export const NavShell: React.FC<NavShellProps> = ({
     );
     return byPath?.key;
   }, [displayTitle, navItems]);
-
+  
   return (
     <div className="min-h-screen bg-background text-foreground">
       {/* Top bar */}
@@ -359,6 +361,8 @@ export const NavShell: React.FC<NavShellProps> = ({
           </main>
         </div>
       </div>
+      {/* Shared overlay host (menus, popovers, dialogs) */}
+      <OverlayRoot />
     </div>
   );
 };

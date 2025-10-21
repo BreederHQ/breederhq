@@ -1,0 +1,1 @@
+There is a single shared overlay root (#bhq-overlay-root) created by NavShell at document.body load time. Global surfaces (topbar menus, toasts, global dialogs) may mount there. Module-local overlays should prefer local rendering in their own document unless they need to escape clipping or overlapping issues.

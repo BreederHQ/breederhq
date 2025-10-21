@@ -1,11 +1,11 @@
-import "./bootstrapFetch";
+//* apps/breeding/src/main.tsx
+
 import React from "react";
-import ReactDOM from "react-dom/client";
-import AppBreeding from "./App-Breeding";
+import { createRoot } from "react-dom/client";
+
+// 1) Load design system + Tailwind + app overrides
+import "./theme.css";
 import "./index.css";
 
-ReactDOM.createRoot(document.getElementById("root")!).render(
-  <React.StrictMode>
-    <AppBreeding />
-  </React.StrictMode>
-);
+// 2) App
+import AppBreeding from "./App-Breeding";

@@ -1,34 +1,13 @@
 // apps/animals/src/App-Animals.tsx
 import React, { useEffect, useMemo, useState } from "react";
-import { Card, Button, Input, EmptyState } from "@bhq/ui";
+import { Card, Button, Input, EmptyState, hooks, ColumnsPopover, TableFooter } from "@bhq/ui";
 import { makeApi } from "./api";
 import { BreedFormControl } from "./components/BreedEditor";
 import { createPortal } from "react-dom";
 import OwnershipEditor, { OwnerRow as OwnershipRow } from "./components/OwnershipEditor";
 import { OwnershipChips } from "./components/OwnershipChips";
+import { getOverlayRoot } from "@bhq/ui/overlay";
 
-/** Overlay root for portals */
-function getOverlayRoot(): HTMLElement {
-  let el = document.getElementById("bhq-top-layer") as HTMLElement | null;
-  if (!el) {
-    el = document.createElement("div");
-    el.id = "bhq-top-layer";
-    Object.assign(el.style, {
-      position: "fixed",
-      inset: "0",
-      zIndex: "2147483647",
-      // Default to NON-interactive; we toggle to auto only while an overlay is open.
-      pointerEvents: "none",
-    });
-    document.body.appendChild(el);
-  }
-  return el;
-}
-
-function setOverlayHostInteractive(enabled: boolean) {
-  const el = getOverlayRoot();
-  el.style.pointerEvents = enabled ? "auto" : "none";
-}
 
 /* Local Badge */
 function Badge(props: { children: React.ReactNode }) {
@@ -68,7 +47,7 @@ type AnimalDTO = {
 type AnimalRow = AnimalDTO;
 type SortRule = { key: keyof AnimalRow; dir: SortDir };
 
-
+const { useDebounced } = hooks;
 
 /* Pref keys */
 const COL_STORAGE_KEY = "bhq_animals_cols_v1";
@@ -82,42 +61,50 @@ const SHOW_FILTERS_STORAGE_KEY = "bhq_animals_show_filters_v1";
 type ColumnDef = {
   key: keyof AnimalRow;
   label: string;
-  default?: boolean;
   type?: "text" | "date" | "status" | "tags";
   center?: boolean;
   render?: (r: AnimalRow) => React.ReactNode;
 };
 
-const ALL_COLUMNS: ColumnDef[] = [
-  { key: "name", label: "Name", default: true, type: "text" },
-  { key: "species", label: "Species", default: true, type: "text" },
-  { key: "breed", label: "Breed", default: true, type: "text" },
-  { key: "sex", label: "Sex", default: true, type: "text" },
-  { key: "dob", label: "Date of Birth", default: true, type: "date" },
-  { key: "age", label: "Age", default: true, type: "text" },
-  { key: "status", label: "Status", default: true, type: "status", render: (r) => <Badge>{r.status}</Badge> },
-  { key: "ownerName", label: "Owner", default: true, type: "text" },
+const DEFAULT_COLUMNS: ColumnDef[] = [
+  { key: "name", label: "Name", type: "text" },
+  { key: "species", label: "Species", type: "text" },
+  { key: "breed", label: "Breed", type: "text" },
+  { key: "sex", label: "Sex", type: "text" },
+  { key: "dob", label: "Date of Birth", type: "date" },
+  { key: "age", label: "Age", type: "text" },
+  { key: "status", label: "Status", type: "status", render: (r) => <Badge>{r.status}</Badge> },
+  { key: "ownerName", label: "Owner", type: "text" },
   {
-    key: "tags", label: "Tags", default: true, type: "tags",
+    key: "tags", label: "Tags", type: "tags",
     render: (r) => (
       <span className="flex gap-1 flex-wrap">
         {(r.tags || []).map((t) => (
-          <span
-            key={t}
-            className="inline-flex items-center rounded-full border border-hairline bg-surface-strong px-2 py-0.5 text-xs"
-          >
+          <span key={t} className="inline-flex items-center rounded-full border border-hairline bg-surface-strong px-2 py-0.5 text-xs">
             {t}
           </span>
         ))}
       </span>
     ),
   },
-  { key: "lastCycle", label: "Last Cycle", default: true, type: "date" },
-  { key: "updatedAt", label: "Last Updated", default: true, type: "date" },
-  { key: "createdAt", label: "Created", default: false, type: "date" },
-  { key: "microchip", label: "Microchip #", default: false, type: "text" },
+  { key: "lastCycle", label: "Last Cycle", type: "date" },
+  { key: "updatedAt", label: "Last Updated", type: "date" },
 ];
 
+const MORE_COLUMNS: ColumnDef[] = [
+  { key: "createdAt", label: "Created", type: "date" },
+  { key: "microchip", label: "Microchip #", type: "text" },
+];
+
+// Keep a single ALL_COLUMNS list for the table definition
+const ALL_COLUMNS: ColumnDef[] = [...DEFAULT_COLUMNS, ...MORE_COLUMNS];
+
+const defaultKeys = new Set(DEFAULT_COLUMNS.map(c => String(c.key)));
+const COLUMNS_META = ALL_COLUMNS.map(c => ({
+  key: String(c.key),
+  label: c.label,
+  default: defaultKeys.has(String(c.key)), // drives the two sections in the shared popover
+}));
 
 
 /* Utils */
@@ -137,15 +124,6 @@ function isInteractive(el: Element | null) {
   return !!target;
 }
 
-function useDebounced<T>(value: T, delay = 300) {
-  const [v, setV] = useState(value);
-  useEffect(() => {
-    const id = setTimeout(() => setV(value), delay);
-    return () => clearTimeout(id);
-  }, [value, delay]);
-  return v;
-}
-
 function toEnum(v?: string | null) {
   const s = String(v || "").trim().toUpperCase();
   return s || undefined;
@@ -160,9 +138,9 @@ function normalize(dto: AnimalDTO): AnimalRow {
   return {
     ...dto,
     // enums from API (UPPERCASE) → UI (Title Case)
-    species: (toTitle(dto.species) || "") as Species,
-    sex: (toTitle(dto.sex) || "") as Sex,
-    status: (toTitle(dto.status) || "") as Status,
+    species: (toTitle(dto.species) || "Dog") as Species, // or keep as string if you prefer
+    sex: (toTitle(dto.sex) || "Female") as Sex,
+    status: (toTitle(dto.status) || "Active") as Status,
 
     // server sends birthDate; UI uses dob
     dob: (dto as any).dob ?? (dto as any).birthDate ?? dto.dob ?? null,
@@ -178,202 +156,6 @@ function normalize(dto: AnimalDTO): AnimalRow {
     createdAt: dto.createdAt ?? null,
     archived: dto.archived ?? null,
   };
-}
-
-/** ========= ColumnsPopover (single definition) ========= */
-function ColumnsPopover({
-  columns,
-  onToggle,
-  onSet,
-}: {
-  columns: Record<string, boolean>;
-  onToggle: (k: string) => void;
-  onSet: (next: Record<string, boolean>) => void;
-}) {
-  const [open, setOpen] = React.useState(false);
-  React.useEffect(() => {
-    setOverlayHostInteractive(open);
-    return () => setOverlayHostInteractive(false);
-  }, [open]);
-
-  const btnRef = React.useRef<HTMLButtonElement | null>(null);
-  const [pos, setPos] = React.useState<{ top: number; left: number } | null>(null);
-
-  // ESC to close
-  React.useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
-    if (open) document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [open]);
-
-  // Positioning
-  React.useEffect(() => {
-    if (!open) return;
-    const PAD = 12;
-    const sync = () => {
-      const btn = btnRef.current;
-      if (!btn) return;
-      const r = btn.getBoundingClientRect();
-      const width = Math.min(320, window.innerWidth - PAD * 2);
-      const estH = 360;
-      let top = r.bottom + 8;
-      if (top + estH + PAD > window.innerHeight) top = Math.max(PAD, r.top - estH - 8);
-      let left = r.right - width;
-      left = Math.max(PAD, Math.min(left, window.innerWidth - PAD - width));
-      setPos({ top, left });
-    };
-    sync();
-    window.addEventListener("resize", sync, { passive: true });
-    window.addEventListener("scroll", sync, { passive: true });
-    return () => {
-      window.removeEventListener("resize", sync);
-      window.removeEventListener("scroll", sync);
-    };
-  }, [open]);
-
-  // Bulk actions
-  const selectAll = () => {
-    const next: Record<string, boolean> = {};
-    ALL_COLUMNS.forEach((c) => { next[String(c.key)] = true; });
-    onSet(next);
-  };
-  const clearAll = () => {
-    const next: Record<string, boolean> = {};
-    ALL_COLUMNS.forEach((c) => { next[String(c.key)] = false; });
-    onSet(next);
-  };
-  const setDefault = () => {
-    const next: Record<string, boolean> = {};
-    ALL_COLUMNS.forEach((c) => { next[String(c.key)] = !!c.default; });
-    onSet(next);
-  };
-
-  const menu = open && pos
-    ? createPortal(
-      // Backdrop host
-      <div
-        style={{ position: "fixed", inset: 0, zIndex: 2147483646, pointerEvents: "auto" }}
-        // Close ONLY when the backdrop itself is clicked
-        onMouseDown={(e) => {
-          if (e.target === e.currentTarget) setOpen(false);
-        }}
-      >
-        {/* Panel */}
-        <div
-          role="menu"
-          tabIndex={-1}
-          className="rounded-md border border-hairline bg-surface p-2 pr-3 shadow-[0_8px_30px_hsla(0,0%,0%,0.35)]"
-          style={{
-            position: "fixed",
-            top: pos.top!,
-            left: pos.left!,
-            width: 320,
-            maxWidth: "calc(100vw - 24px)",
-            maxHeight: 360,
-            overflow: "auto",
-            pointerEvents: "auto",
-            zIndex: 2147483647,
-          }}
-          // Prevent backdrop from seeing inside clicks (bubble only)
-          onMouseDown={(e) => e.stopPropagation()}
-          onClick={(e) => e.stopPropagation()}
-        >
-          <div className="flex items-center justify-between px-2 pb-1">
-            <div className="text-xs font-medium uppercase text-secondary">Show columns</div>
-            <div className="flex items-center gap-3">
-              <button
-                type="button"
-                className="text-xs font-medium hover:underline"
-                style={{ color: "hsl(24 95% 54%)" }}
-                onClick={selectAll}
-              >
-                All
-              </button>
-              <button
-                type="button"
-                className="text-xs font-medium hover:underline"
-                style={{ color: "hsl(190 90% 45%)" }}
-                onClick={setDefault}
-              >
-                Default
-              </button>
-              <button
-                type="button"
-                className="text-xs font-medium text-secondary hover:underline"
-                onClick={clearAll}
-              >
-                Clear
-              </button>
-            </div>
-          </div>
-
-          {ALL_COLUMNS.map((c) => {
-            const k = String(c.key);
-            const checked = !!columns[k];
-            const inputId = `col-${k}`;
-            return (
-              <label
-                key={k}
-                htmlFor={inputId}
-                className="flex items-center gap-2 w-full min-w-0 px-2 py-1.5 text-[13px] leading-5 rounded hover:bg-[hsl(var(--brand-orange))]/12 cursor-pointer select-none"
-                onClick={(e) => {
-                  const tag = (e.target as HTMLElement).tagName.toLowerCase();
-                  if (tag !== "input") {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    onToggle(k);
-                  }
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === " " || e.key === "Enter") { e.preventDefault(); onToggle(k); }
-                }}
-              >
-                <input
-                  id={inputId}
-                  type="checkbox"
-                  className="h-4 w-4 shrink-0 accent-[hsl(var(--brand-orange))]"
-                  aria-label={c.label}
-                  checked={checked}
-                  // Ensure checkbox clicks never bubble up to the backdrop and always toggle
-                  onChange={(e) => { e.stopPropagation(); onToggle(k); }}
-                />
-                <span className="truncate text-primary">{c.label}</span>
-              </label>
-            );
-          })}
-
-          <div className="flex justify-end pt-2">
-            <Button size="sm" variant="outline" onClick={() => setOpen(false)}>
-              Close
-            </Button>
-          </div>
-        </div>
-      </div>,
-      getOverlayRoot()
-    )
-    : null;
-
-  return (
-    <div className="relative inline-flex">
-      <Button
-        ref={btnRef as any}
-        variant="outline"
-        size="icon"
-        onClick={(e) => { e.stopPropagation(); setOpen((o) => !o); }}
-        aria-expanded={open}
-        aria-haspopup="menu"
-        title="Columns"
-        className="h-9 w-9"
-      >
-        <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
-          <rect x="3" y="4" width="5" height="16" rx="1.5" />
-          <rect x="10" y="4" width="5" height="16" rx="1.5" />
-          <rect x="17" y="4" width="4" height="16" rx="1.5" />
-        </svg>
-      </Button>
-      {menu}
-    </div>
-  );
 }
 
 /** Auth headers (X-Org-Id via localStorage) */
@@ -610,9 +392,13 @@ export default function AppAnimals() {
   /* Prefs */
   const [columns, setColumns] = useState<Record<string, boolean>>(() => {
     const saved = localStorage.getItem(COL_STORAGE_KEY);
-    return saved
-      ? JSON.parse(saved)
-      : ALL_COLUMNS.reduce((acc, c) => ({ ...acc, [String(c.key)]: !!c.default }), {} as Record<string, boolean>);
+    if (saved) return JSON.parse(saved);
+    // defaults = on for default section, off for “more”
+    const next: Record<string, boolean> = {};
+    for (const c of ALL_COLUMNS) {
+      next[String(c.key)] = defaultKeys.has(String(c.key));
+    }
+    return next;
   });
   useEffect(() => {
     const valid = new Set(ALL_COLUMNS.map((c) => String(c.key)));
@@ -677,12 +463,6 @@ export default function AppAnimals() {
 
   /* Drawer (declare BEFORE any effect that references it) */
   const [drawer, setDrawer] = useState<AnimalRow | null>(null);
-
-  /** Single overlay-pointer-events effect (replaces the two separate ones) */
-  useEffect(() => {
-    setOverlayHostInteractive(formOpen || !!drawer);
-    return () => setOverlayHostInteractive(false);
-  }, [formOpen, drawer]);
 
   const [drawerTab, setDrawerTab] = useState<
     "overview" | "cycle" | "offspring" | "health" | "documents" | "audit"
@@ -1083,13 +863,13 @@ export default function AppAnimals() {
 
   const pageCount = Math.max(1, Math.ceil(sortedRows.length / pageSize));
   const clampedPage = Math.min(pageCount, Math.max(1, page));
+  const totalFiltered = sortedRows.length;
   const pageRows = useMemo(() => {
     const start = (clampedPage - 1) * pageSize;
     return sortedRows.slice(start, start + pageSize);
   }, [sortedRows, clampedPage, pageSize]);
 
   /* Handlers */
-  const toggleColumn = (k: string) => setColumns((prev) => ({ ...prev, [k]: !prev[k] }));
   const cycleSort = (key: keyof AnimalRow, withShift: boolean) => {
     setSorts((prev) => {
       const idx = prev.findIndex((s) => s.key === key);
@@ -1121,7 +901,7 @@ export default function AppAnimals() {
     });
 
   /* Export */
-  const visibleCols = useMemo(() => ALL_COLUMNS.filter((c) => columns[String(c.key)]), [columns]);
+  const visibleCols = useMemo(() => ALL_COLUMNS.filter(c => columns[String(c.key)]), [columns]);
   const exportCSV = (selectedOnly = false) => {
     const header = ["id", ...visibleCols.map((c) => c.label)];
     const src = selectedOnly ? sortedRows.filter((r) => selected.has(r.id)) : sortedRows;
@@ -1295,87 +1075,120 @@ export default function AppAnimals() {
         <div className="bhq-table overflow-hidden">
           <div className="overflow-x-auto overscroll-contain">
             <table className="min-w-max w-full text-sm">
-              <thead className="px-3 py-2 cursor-pointer select-none text-center whitespace-nowrap font-medium">
-                <tr className="border-t border-b border-hairline">
-                  <th className="w-10 px-3 py-2 text-center">
-                    <input type="checkbox" aria-label="Select all" checked={pageRows.length > 0 && pageRows.every((r) => selected.has(r.id))} onChange={toggleSelectAll} />
+              <thead className="select-none">
+                <tr>
+                  {/* selection header */}
+                  <th className="select">
+                    <input
+                      type="checkbox"
+                      aria-label="Select all"
+                      checked={pageRows.length > 0 && pageRows.every((r) => selected.has(r.id))}
+                      onChange={toggleSelectAll}
+                    />
                   </th>
+
+                  {/* data headers */}
                   {ALL_COLUMNS.filter((c) => columns[String(c.key)]).map((c) => {
                     const active = sorts.find((s) => s.key === c.key);
+                    const aria = active ? (active.dir === "asc" ? "ascending" : "descending") : "none";
                     return (
-                      <th
-                        key={String(c.key)}
-                        onClick={(e) => cycleSort(c.key, (e as any).shiftKey)}
-                        className={"px-3 py-2 cursor-pointer select-none text-center whitespace-nowrap"}
-                      >
-                        <span className="inline-flex items-center gap-1">
+                      <th key={String(c.key)} aria-sort={aria}>
+                        <button
+                          type="button"
+                          onClick={(e) => cycleSort(c.key, (e as any).shiftKey)}
+                          className="inline-flex items-center gap-1 w-full justify-center"
+                        >
                           {c.label}
                           {active ? (
                             <svg viewBox="0 0 16 16" className="h-3.5 w-3.5 opacity-70">
-                              <path fill="currentColor" d={active.dir === "asc" ? "M3 10l5-5 5 5H3z" : "M3 6l5 5 5-5H3z"} />
+                              <path
+                                fill="currentColor"
+                                d={active.dir === "asc" ? "M3 10l5-5 5 5H3z" : "M3 6l5 5 5-5H3z"}
+                              />
                             </svg>
                           ) : null}
-                        </span>
+                        </button>
                       </th>
                     );
                   })}
-                  <th className="px-2 py-2 text-right w-8">
-                    <ColumnsPopover
-                      columns={columns}
-                      onToggle={(k) => setColumns((prev) => ({ ...prev, [k]: !prev[k] }))}
-                      onSet={(next) => setColumns(next)}
-                    />
+
+                  {/* sticky right utility header with ColumnsPopover */}
+                  <th className="sticky right-0 util">
+                    <div className="px-2 py-2 w-[var(--util-col-width)] min-w-[var(--util-col-width)]">
+                      <ColumnsPopover
+                        columns={columns}
+                        onToggle={(key) => setColumns((prev) => ({ ...prev, [key]: !prev[key] }))}
+                        onSet={(next) => setColumns(next)}
+                        allColumns={COLUMNS_META}                 // <-- use your defined metadata
+                        defaultKeys={Array.from(defaultKeys)}     // <-- use your default key set
+                      />
+                    </div>
                   </th>
                 </tr>
               </thead>
+
               <tbody>
+                {/* loading */}
                 {loading && (
                   <tr>
-                    <td colSpan={1 + visibleCols.length} className="px-3 py-8 text-center text-secondary">Loading…</td>
-                  </tr>
-                )}
-                {!loading && pageRows.length === 0 && (
-                  <tr>
-                    <td colSpan={1 + visibleCols.length} className="px-3 py-8 text-center">
-                      <EmptyState title="No results" description="Try adjusting filters or adding a new record." />
+                    <td colSpan={visibleCols.length + 2} className="text-center text-secondary">
+                      <div className="py-8">Loading…</div>
                     </td>
                   </tr>
                 )}
+
+                {/* empty */}
+                {!loading && pageRows.length === 0 && (
+                  <tr>
+                    <td colSpan={visibleCols.length + 2} className="text-center">
+                      <div className="py-8">
+                        <EmptyState title="No results" description="Try adjusting filters or adding a new record." />
+                      </div>
+                    </td>
+                  </tr>
+                )}
+
+                {/* rows */}
                 {!loading &&
                   pageRows.map((r) => (
                     <tr
                       key={String(r.id)}
-                      className="border-b border-hairline hover:bg-surface-strong/50 cursor-pointer"
+                      className="cursor-pointer"
                       tabIndex={0}
                       onClick={(e) => { if (!isInteractive(e.target as Element)) setDrawer(r); }}
                       onKeyDown={(e) => { if (e.key === "Enter" && !isInteractive(e.target as Element)) setDrawer(r); }}
                     >
-                      {/* selection checkbox */}
-                      <td className="w-10 px-3 py-2">
+                      {/* selection cell */}
+                      <td className="select">
                         <input
                           data-stop-row-open
                           type="checkbox"
                           checked={selected.has(r.id)}
                           onChange={() => toggleSelect(r.id)}
-                          aria-label={`Select ${r.name}`}
+                          aria-label={`Select ${r.name ?? r.id}`}
                         />
                       </td>
 
+                      {/* data cells */}
                       {ALL_COLUMNS.filter((c) => columns[String(c.key)]).map((c) => {
+                        const value = (r as any)[c.key];
                         const content = c.render
                           ? c.render(r)
                           : c.type === "date"
-                            ? (formatDate((r as any)[c.key]) || <span className="text-secondary">—</span>)
+                            ? (formatDate(value) || <span className="text-secondary" aria-hidden>{"\u2014"}</span>)
                             : c.type === "tags"
-                              ? ((r.tags || []).length ? (r.tags || []).join(", ") : <span className="text-secondary">—</span>)
-                              : ((r as any)[c.key] ?? <span className="text-secondary">—</span>);
+                              ? ((r.tags || []).length ? (r.tags || []).join(", ") : <span className="text-secondary" aria-hidden>{"\u2014"}</span>)
+                              : (value ?? <span className="text-secondary" aria-hidden>{"\u2014"}</span>);
 
                         return (
-                          <td key={String(c.key)} className="px-3 py-2 text-center align-middle">
-                            {content}
+                          <td key={String(c.key)}>
+                            <div className="inline-flex w-full justify-center">{content}</div>
                           </td>
                         );
                       })}
+
+                      {/* sticky right utility body cell */}
+                      <td className="sticky right-0 util" />
                     </tr>
                   ))}
               </tbody>
@@ -1383,58 +1196,21 @@ export default function AppAnimals() {
           </div>
         </div>
 
-        {/* Footer — match Contacts */}
-        <div className="bhq-section-fixed flex items-start justify-between px-3 py-2 text-sm">
-          {/* Left: showing + include archived */}
-          <div>
-            <div>
-              Showing {pageRows.length ? (clampedPage - 1) * pageSize + 1 : 0} to{" "}
-              {(clampedPage - 1) * pageSize + pageRows.length} of {total}
-            </div>
-            <label className="mt-1 inline-flex items-center gap-2 text-xs text-secondary">
-              <input
-                type="checkbox"
-                checked={includeArchived}
-                onChange={(e) => setIncludeArchived(e.currentTarget.checked)}
-              />
-              <span>Include archived</span>
-            </label>
-          </div>
+        <TableFooter
+          page={clampedPage}
+          pageCount={pageCount}
+          pageSize={pageSize}
+          total={totalFiltered}
+          includeArchived={includeArchived}
+          onToggleArchived={(v) => { setIncludeArchived(v); setPage(1); }}
+          onChangePageSize={(n) => { setPageSize(n); setPage(1); }}
+          onPrev={() => setPage((p) => Math.max(1, p - 1))}
+          onNext={() => setPage((p) => Math.min(pageCount, p + 1))}
+        />
 
-          {/* Right: pager controls */}
-          <div className="flex items-center gap-2">
-            <span className="text-secondary">Rows</span>
-            <select
-              className="h-9 rounded-md border border-hairline bg-surface px-2 text-sm"
-              value={pageSize}
-              onChange={(e) => setPageSize(Number(e.currentTarget.value))}
-            >
-              {[10, 25, 50, 100].map((n) => (
-                <option key={n} value={n}>{n}</option>
-              ))}
-            </select>
-
-            <Button
-              variant="ghost"
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              disabled={clampedPage <= 1}
-            >
-              Prev
-            </Button>
-
-            <div>Page {clampedPage} of {pageCount}</div>
-
-            <Button
-              variant="ghost"
-              onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
-              disabled={clampedPage >= pageCount}
-            >
-              Next
-            </Button>
-          </div>
-        </div>
         {/* Create / Edit Animal */}
-        {formOpen &&
+        {
+          formOpen &&
           createPortal(
             <div className="fixed inset-0 z-[1000]">
               {/* Single backdrop */}
@@ -1600,7 +1376,8 @@ export default function AppAnimals() {
           )
         }
         {/* Drawer (Contacts-style centered panel) */}
-        {drawer &&
+        {
+          drawer &&
           createPortal(
             <div className="fixed inset-0 z-[1000]">
               {/* single backdrop */}
@@ -1735,7 +1512,7 @@ export default function AppAnimals() {
             getOverlayRoot()
           )
         }
-      </Card>
-    </div>
+      </Card >
+    </div >
   );
 }

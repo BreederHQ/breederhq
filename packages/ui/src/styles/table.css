@@ -1,0 +1,186 @@
+/* ===== BHQ tables: centered + guaranteed visible right utility col ===== */
+
+.bhq-table {
+  position: relative;
+  --util-col-width: 40px;
+  --util-nudge: -8px;
+}
+
+/* IMPORTANT: do NOT pad the scroll container on the right.
+   Padding here makes the sticky cell float away from the border and "move". */
+
+/* base table */
+.bhq-table table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  table-layout: auto;
+  font-size: .875rem;
+}
+
+/* sticky header */
+.bhq-table thead {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: hsl(var(--surface) / .94);
+  backdrop-filter: blur(6px);
+  border-bottom: 1px solid hsl(var(--border) / .9);
+}
+
+/* center everything by default */
+.bhq-table thead th,
+.bhq-table tbody td {
+  text-align: center !important;
+}
+
+/* header typography (allow th > button) */
+.bhq-table thead>tr>th,
+.bhq-table thead>tr>th>* {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border: 0;
+  padding: .6rem 1rem;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: hsl(var(--muted-foreground));
+  background: transparent;
+}
+
+.bhq-table thead th>button {
+  all: unset;
+  display: block;
+  width: 100%;
+  text-align: center !important;
+  cursor: pointer;
+}
+
+.bhq-table thead th>button:focus-visible {
+  outline: 2px solid hsl(var(--brand-orange));
+  outline-offset: 2px;
+}
+
+.bhq-table thead th[aria-sort="ascending"]>button,
+.bhq-table thead th[aria-sort="descending"]>button {
+  color: hsl(var(--foreground));
+}
+
+/* body rows */
+.bhq-table tbody>tr>td {
+  padding: .55rem 1rem;
+  border: 0;
+  vertical-align: middle;
+}
+
+.bhq-table tbody>tr+tr>td {
+  border-top: 1px solid hsl(var(--border) / .9);
+}
+
+.bhq-table tbody>tr:hover {
+  background: hsl(var(--muted) / .18);
+}
+
+/* ---------- sticky right utility column (header + body) ---------- */
+.bhq-table thead th.bhq-util,
+.bhq-table tbody td.bhq-util {
+  position: sticky;
+  right: 0;
+  z-index: 6;
+  /* sits above scrolled content */
+  background: hsl(var(--surface) / .98);
+  width: var(--util-col-width);
+  min-width: var(--util-col-width);
+  padding: 0;
+  /* the inner wrapper handles spacing */
+  border-left: 0 !important;
+}
+
+/* Soft spacer so nearby headers NEVER appear right under the button edge */
+.bhq-table thead th.bhq-util::before,
+.bhq-table tbody td.bhq-util::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -18px;
+  /* <- the small gap you asked for */
+  width: 18px;
+  pointer-events: none;
+  background: linear-gradient(to left,
+      hsl(var(--surface) / .98) 60%,
+      hsl(var(--surface) / .90) 85%,
+      transparent);
+}
+
+/* The content inside the sticky cell is nudged a hair left so it hugs the border */
+.bhq-table .bhq-util-inner {
+  transform: translateX(calc(-1 * var(--util-nudge)));
+}
+
+/* keep other headers from running under the sticky col */
+.bhq-table thead th:not(.bhq-util),
+.bhq-table thead th:not(.bhq-util)>* {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* helpers */
+.bhq-table .text-left {
+  text-align: left !important;
+}
+
+.bhq-table .text-right {
+  text-align: right !important;
+}
+
+/* optional: slim selection column */
+.bhq-table td.select,
+.bhq-table th.select {
+  width: 2.25rem;
+}
+
+/* center flex children inside table cells/headers */
+.bhq-table thead th>.flex,
+.bhq-table thead th>.inline-flex,
+.bhq-table tbody td>.flex,
+.bhq-table tbody td>.inline-flex {
+  justify-content: center !important;
+}
+
+/* search glow is already handled by the Input's focus:shadow; this ensures it's never clipped */
+.bhq-table__toolbar {
+  position: relative;
+  z-index: 30;
+  padding-bottom: .75rem;
+}
+
+/* orange ring on the Columns popover trigger when focused or open */
+.bhq-table .bhq-columns-trigger[aria-expanded="true"],
+.bhq-table .bhq-columns-trigger:focus-visible,
+.bhq-table .bhq-columns-trigger-wrapper [aria-expanded="true"],
+.bhq-table .bhq-columns-trigger-wrapper :focus-visible {
+  box-shadow: 0 0 0 2px hsl(var(--brand-orange));
+  border-radius: 10px;
+  /* match your button radius */
+}
+
+/* (Optional) tiny nudge to keep header text from kissing the sticky button */
+.bhq-table th:last-child {
+  padding-left: 6px;
+}
+
+/* orange ring on the Columns popover trigger when it is open/focused */
+.bhq-table .bhq-columns-trigger [aria-expanded="true"],
+.bhq-table .bhq-columns-trigger :focus-visible {
+  box-shadow: 0 0 0 2px hsl(var(--brand-orange));
+  border-radius: 10px;
+  /* match your button rounding */
+}
+
+/* small gap so header text doesn’t kiss the sticky button */
+.bhq-table th.bhq-util {
+  padding-left: 6px;
+}

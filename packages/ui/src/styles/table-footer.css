@@ -1,0 +1,89 @@
+/* --- Table footer layout (pager hard-right, archived UNDER range) --- */
+.bhq-table-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .75rem;
+  padding: .5rem .75rem;
+  border-top: 1px solid var(--border-hairline, rgba(120,120,120,.25));
+  font-size: 0.875rem;
+  color: var(--text-secondary, #9ca3af);
+}
+
+/* LEFT = vertical stack: top row (range + leftSlot), then archived toggle */
+.bhq-table-footer__left {
+  display: flex;
+  flex-direction: column;     /* <-- key change */
+  align-items: flex-start;    /* label aligns to left edge */
+  gap: .375rem;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.bhq-table-footer__left-top {
+  display: inline-flex;
+  align-items: center;
+  gap: .75rem;
+  flex-wrap: wrap;
+}
+
+.bhq-table-footer__include-archived {
+  display: inline-flex;
+  align-items: center;
+  gap: .4rem;
+  user-select: none;
+}
+
+.bhq-table-footer__range { white-space: nowrap; }
+
+/* RIGHT = rows-per-page + pager sits hard-right */
+.bhq-table-footer__right {
+  display: inline-flex;
+  align-items: center;
+  gap: .75rem;
+  margin-left: auto;
+  flex: 0 0 auto;
+}
+
+.bhq-table-footer__pagesize {
+  display: inline-flex;
+  align-items: center;
+  gap: .4rem;
+  white-space: nowrap;
+}
+
+.bhq-table-footer__pagesize select {
+  height: 28px;
+  padding: 0 .4rem;
+  border: 1px solid var(--border-hairline, rgba(120,120,120,.25));
+  background: var(--bg-surface, transparent);
+  color: inherit;
+  border-radius: .375rem;
+}
+
+.bhq-table-footer__pager {
+  display: inline-flex;
+  align-items: center;
+  gap: .5rem;
+  white-space: nowrap;
+}
+
+.bhq-table-footer__pager > button {
+  height: 28px;
+  padding: 0 .6rem;
+  border: 1px solid var(--border-hairline, rgba(120,120,120,.25));
+  background: var(--bg-surface, transparent);
+  color: inherit;
+  border-radius: .375rem;
+  cursor: pointer;
+}
+
+.bhq-table-footer__pager > button[disabled] {
+  opacity: .5;
+  cursor: not-allowed;
+}
+
+.bhq-table-footer__pageinfo {
+  white-space: nowrap;
+  color: var(--text-primary, #e5e7eb);
+}

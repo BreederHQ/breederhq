@@ -3,15 +3,23 @@ import React, { useEffect, useMemo, useState } from "react";
 import InviteSignupPage from "./pages/InviteSignupPage";
 import VerifyPage from "./pages/VerifyPage";
 import NavShell from "@bhq/ui/layouts/NavShell";
+
+// Modules
 import ContactsModule from "@bhq/contacts/App-Contacts";
 import OrganizationsModule from "@bhq/organizations/App-Organizations";
 import AnimalsModule from "@bhq/animals/App-Animals";
-import SettingsPanel from "./pages/SettingsPanel";
+import BreedingModule from "@bhq/breeding/App-Breeding";
 import AdminModule from "@bhq/admin/App-Admin";
+
+// Support Pages
+import SettingsPanel from "./pages/SettingsPanel";
 
 // Lightweight “current module” state (key + label)
 type ActiveModule = { key: "contacts" | "organizations" | "animals" | "breeding" | "offspring"; label: string };
 const DEFAULT_MODULE: ActiveModule = { key: "contacts", label: "Contacts" };
+
+const overlayMode = (localStorage.getItem('BHQ_OVERLAY_MODE') || 'local') as 'local'|'global';
+(window as any).__BHQ_OVERLAY_MODE = overlayMode;
 
 type AuthState = {
   user?: { id: string; email?: string | null } | null;
@@ -127,6 +135,7 @@ function RouteView() {
   if (p === "/organizations" || p.startsWith("/organizations")) return <OrganizationsModule />;
   if (p === "/animals" || p.startsWith("/animals")) return <AnimalsModule />;
   if (p === "/contacts" || p.startsWith("/contacts")) return <ContactsModule />;
+  if (p === "/breeding" || p.startsWith("/breeding")) return <BreedingModule />;
   if (p === "/admin" || p.startsWith("/admin")) return <AdminModule />;
   if (p === "/organizations" || p.startsWith("/organizations")) return <OrganizationsModule />;
   

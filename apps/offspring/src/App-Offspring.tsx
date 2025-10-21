@@ -3,6 +3,8 @@ import { AppShell, SidebarNav, PageHeader, Card } from "@bhq/ui";
 import { api } from "./api";
 import type { UiOffspringGroup, UiOffspring } from "@bhq/api";
 import { offspringRoutes, type Route } from "./routes";
+import "@bhq/ui/styles/table.css";
+
 
 function useHashPath(defaultPath: string) {
   const [path, setPath] = React.useState(() => location.hash.slice(1) || defaultPath);

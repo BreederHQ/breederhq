@@ -2,14 +2,11 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "composite": true,
-    "declaration": true,
-    "declarationMap": true,
-    "outDir": "dist",
-    "rootDir": "src",
     "jsx": "react-jsx",
     "skipLibCheck": true,
-    "noEmit": false,          // override
-    "baseUrl": "."            // local baseUrl
+    "rootDir": "src",
+    "outDir": "dist",
+    "types": ["vite/client"]
   },
-  "include": ["src"]
+  "include": ["src/**/*"]
 }

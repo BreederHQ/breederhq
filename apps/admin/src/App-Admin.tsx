@@ -2,6 +2,9 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { Card, Button, Input, EmptyState } from "@bhq/ui";
+import { getOverlayRoot } from "@bhq/ui/overlay";
+import "@bhq/ui/styles/table.css";
+
 
 /** ─────────────────────────────────────────────────────────────────────────────
  * Types (aligned to API spec)
@@ -1910,17 +1913,6 @@ function ColumnsPopover({
 
 /** DetailsDrawer + helpers */
 
-function getOverlayRoot(): HTMLElement {
-  let el = document.getElementById("bhq-top-layer") as HTMLElement | null;
-  if (!el) {
-    el = document.createElement("div");
-    el.id = "bhq-top-layer";
-    el.style.position = "relative";
-    el.style.zIndex = "2147483646";
-    document.body.appendChild(el);
-  }
-  return el;
-}
 
 function TabButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
   return (

@@ -11,11 +11,11 @@
     "moduleDetection": "force",
     "allowJs": false,
     "noEmit": true,
-    "baseUrl": ".",                         // <-- add this
+    "baseUrl": ".",                         
     "paths": {
-      "@bhq/ui": ["packages/ui/src"],
-      "@bhq/mock": ["packages/mock/src"],
-      "@bhq/config/*": ["packages/config/*"]
+  "@bhq/ui": ["packages/ui/src"],
+  "@bhq/ui/*": ["packages/ui/src/*"],
+  "@bhq/config/*": ["packages/config/*"]
     }
   },
   "exclude": ["node_modules", "dist"]

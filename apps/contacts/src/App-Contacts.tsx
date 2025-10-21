@@ -1,12 +1,11 @@
-// App-Contacts.tsx
+﻿// App-Contacts.tsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Card, Button, Input, EmptyState } from "@bhq/ui";
+import { Card, Button, Input, EmptyState, ColumnsPopover, TableFooter } from "@bhq/ui";
+import { getOverlayRoot } from "@bhq/ui/overlay";
+import "@bhq/ui/styles/table.css"
 import { makeApi } from "./api";
 
-/** ─────────────────────────────────────────────────────────────────────────────
- * Types
- * ──────────────────────────────────────────────────────────────────────────── */
 type ID = string | number;
 type SortDir = "asc" | "desc";
 type SortRule = { key: keyof ContactRow; dir: SortDir };
@@ -110,7 +109,7 @@ function resolveTenantIdFromAnySource(): number | null {
   const fromGlobal = Number(w.__BHQ_TENANT_ID__);
   if (Number.isFinite(fromGlobal) && fromGlobal > 0) return fromGlobal;
 
-  // cookie won’t be readable when HttpOnly; keep the code but don’t rely on it
+  // cookie wonâ€™t be readable when HttpOnly; keep the code but donâ€™t rely on it
   const fromCookie = tenantIdFromSessionCookie();
   if (Number.isFinite(fromCookie) && fromCookie > 0) return fromCookie;
 
@@ -135,7 +134,7 @@ function shapeContact(row: any) {
   } = row || {};
   return {
     ...rest,
-    // DB → UI
+    // DB→ UI
     firstName: rest.firstName ?? first_name ?? null,
     lastName: rest.lastName ?? last_name ?? null,
     displayName: rest.displayName ?? display_name ?? null,
@@ -173,10 +172,9 @@ function allowOnlyDigitKeys(e: React.KeyboardEvent<HTMLInputElement>) {
 }
 
 
-/** ─────────────────────────────────────────────────────────────────────────────
+/****************************************************************************************************************************************************************************************************************************************”€
  * Column config
- * ──────────────────────────────────────────────────────────────────────────── */
-const COL_STORAGE_KEY = "bhq_contacts_cols_v1";
+ *************************************************************************************************************************************************************************************************************************************€ */
 const SORT_STORAGE_KEY = "bhq_contacts_sorts_v1";
 const Q_STORAGE_KEY = "bhq_contacts_q_v1";
 const PAGE_SIZE_STORAGE_KEY = "bhq_contacts_page_size_v1";
@@ -215,25 +213,21 @@ const ALL_COLUMNS: ColumnDef[] = [
   { key: "country", label: "Country", default: false, type: "text" },
 ];
 
+// Build meta for the shared popover
+const CONTACTS_COLUMN_META = ALL_COLUMNS.map(c => ({
+  key: c.key,
+  label: c.label,
+  default: !!c.default,
+}));
+const CONTACTS_DEFAULT_KEYS = ALL_COLUMNS
+  .filter(c => c.default)
+  .map(c => c.key);
+
 const Z = {
   topLayer: 2147483646,
   popover: 2147483645,
   backdrop: 2147483644,
 } as const;
-
-function getOverlayRoot(): HTMLElement {
-  let el = document.getElementById("bhq-top-layer") as HTMLElement | null;
-  if (!el) {
-    el = document.createElement("div");
-    el.id = "bhq-top-layer";
-    el.style.position = "relative";
-    el.style.zIndex = String(Z.topLayer);
-    document.body.appendChild(el);
-  }
-  return el;
-}
-
-
 
 /** Tags (from API at runtime; fallback keeps UI usable) */
 const FALLBACK_CONTACT_TAGS = ["breeder", "VIP", "supplier", "prospect", "waitlist", "do-not-contact"];
@@ -321,7 +315,7 @@ const parseE164 = (v?: string) => {
     return { cc: digits.slice(0, 1), rest: digits.slice(1) };
   }
 
-  // If someone typed “US …” etc., map alpha-2 prefix to dial
+  // If someone typed**€œUS**€¦” etc., map alpha-2 prefix to dial
   const m = s.match(/^([A-Za-z]{2})\s*(.*)$/);
   if (m) {
     const dial = DIAL_BY_ISO[m[1].toUpperCase()] || "";
@@ -542,9 +536,9 @@ function IntlPhoneField({
   );
 }
 
-/** ─────────────────────────────────────────────────────────────────────────────
+/****************************************************************************************************************************************************************************************************************************************”€
  * Helpers
- * ──────────────────────────────────────────────────────────────────────────── */
+ *************************************************************************************************************************************************************************************************************************************€ */
 function computeCDisplayName(dto: ContactDTO): string {
   const left = (dto.nickname ?? dto.firstName ?? "").trim();
   const right = (dto.lastName ?? "").trim();
@@ -557,7 +551,7 @@ function normalize(dto: ContactDTO): ContactRow {
     ? { ...dto.commPrefs }
     : {};
 
-  // 👇 bring top-level WhatsApp fields into commPrefs (keeps UI consistent)
+  // ðŸ‘‡ bring top-level WhatsApp fields into commPrefs (keeps UI consistent)
   if (typeof (dto as any).whatsapp === "boolean") (prefs as any).whatsapp = (dto as any).whatsapp;
   if (typeof (dto as any).whatsappPhone === "string") (prefs as any).whatsappPhone = (dto as any).whatsappPhone;
 
@@ -599,7 +593,7 @@ function normalize(dto: ContactDTO): ContactRow {
     country: dto.country ?? null,
     postalCode: dto.postalCode ?? null,
 
-    // 👇 use merged prefs
+    // ðŸ‘‡ use merged prefs
     commPrefs: Object.keys(prefs).length ? (prefs as any) : null,
 
     nextFollowUp: dto.nextFollowUp ?? null,
@@ -765,9 +759,10 @@ function inferCountry(d?: any, draft?: any): string | undefined {
   );
 }
 
-/** ─────────────────────────────────────────────────────────────────────────────
+/****************************************************************************************************************************************************************************************************************************************”€
  * App
- * ──────────────────────────────────────────────────────────────────────────── */
+ *************************************************************************************************************************************************************************************************************************************€ */
+
 /** Replace empty strings with null, recurse into objects */
 function nilIfEmpty<T extends Record<string, any>>(obj: T): T {
   if (obj == null) return obj;
@@ -835,7 +830,7 @@ function LabeledInputBare(props: {
 
 const RequiredMark = () => <span className="text-red-500 ml-1" aria-hidden="true">*</span>;
 
-// ── module-scope helpers (PUT THESE AT TOP OF FILE) ─────────────────────────
+//******€ module-scope helpers (PUT THESE AT TOP OF FILE)**************************************************************************”€
 function readCookie(name: string): string {
   try {
     const c = document.cookie.split("; ").find(x => x.startsWith(name + "="));
@@ -867,12 +862,51 @@ function tenantIdFromSessionCookie(): number {
 
 
 export default function AppContacts() {
-  // announce active module once on mount
-  React.useEffect(() => {
+  useEffect(() => {
     const label = "Contacts";
     window.dispatchEvent(new CustomEvent("bhq:module", { detail: { label } }));
     try { localStorage.setItem("BHQ_LAST_MODULE", label); } catch { }
   }, []);
+
+  const apiBase = useMemo(() => getApiBase(), []);
+  const api = useMemo(() => {
+    const client = makeApi(apiBase, () => ({}));
+    (window as any).__api = client;
+    return client;
+  }, [apiBase]);
+
+  // ===== Columns state & helpers (INSIDE AppContacts) =====
+  const COL_STORAGE_KEY = 'bhq_contacts_cols_v1';
+
+  const [columns, setColumns] = React.useState<Record<string, boolean>>(() => {
+    try {
+      const saved = localStorage.getItem(COL_STORAGE_KEY);
+      if (saved) return JSON.parse(saved);
+    } catch { }
+    return ALL_COLUMNS.reduce((acc, c) => {
+      acc[c.key] = !!c.default;
+      return acc;
+    }, {} as Record<string, boolean>);
+  });
+
+  const applyColumns = React.useCallback((nextRaw: Record<string, boolean>) => {
+    const next: Record<string, boolean> = {};
+    for (const c of ALL_COLUMNS) next[c.key] = !!nextRaw[c.key];
+
+    if (!Object.values(next).some(Boolean)) {
+      const fallback = ALL_COLUMNS.find(c => c.default)?.key ?? ALL_COLUMNS[0].key;
+      next[fallback] = true;
+    }
+
+    setColumns(next);
+    try { localStorage.setItem(COL_STORAGE_KEY, JSON.stringify(next)); } catch { }
+  }, []);
+
+  const toggleColumn = (k: string) => {
+    applyColumns({ ...columns, [k]: !columns[k] });
+  };
+  // ===== end columns block =====
+
 
   const [tenantReady, setTenantReady] = React.useState(false);
 
@@ -925,35 +959,19 @@ export default function AppContacts() {
     const globalBase = w.__BHQ_API_BASE__ as string | undefined;
     const envBase = (import.meta as any)?.env?.VITE_API_URL as string | undefined;
     const storedBase = (() => { try { return localStorage.getItem("BHQ_API_URL") || undefined; } catch { return undefined; } })();
-    // default to same host if nothing else provided
     let base = (globalBase || envBase || storedBase || location.origin);
-    try {
-      base = String(base).replace(/\/+$/, "").replace(/\/api\/v1$/, "");
-    } catch { /* noop */ }
+    try { base = String(base).replace(/\/+$/, "").replace(/\/api\/v1$/, ""); } catch { }
     return base;
   }
 
-  /** API client (avoid double-adding x-tenant-id + keep GETs header-light) */
-  const apiBase = useMemo(() => getApiBase(), []);
-  const api = useMemo(() => {
-    const client = makeApi(apiBase, () => ({}));
-    (window as any).__api = client; // optional debug exposure
-    return client;
-  }, [apiBase]);
-
-  /** Basic prefs */
-  const [columns, setColumns] = useState<Record<string, boolean>>(() => {
-    const saved = localStorage.getItem(COL_STORAGE_KEY);
-    return saved ? JSON.parse(saved) : ALL_COLUMNS.reduce((acc, c) => ({ ...acc, [c.key]: !!c.default }), {} as Record<string, boolean>);
-  });
   // Drop any keys that aren't in ALL_COLUMNS (e.g., old 'commPrefs')
   useEffect(() => {
     const valid = new Set(ALL_COLUMNS.map(c => String(c.key)));
     const hasStale = Object.keys(columns).some(k => !valid.has(k));
     if (hasStale) {
       const next: Record<string, boolean> = {};
-      ALL_COLUMNS.forEach(c => { next[String(c.key)] = !!columns[String(c.key)]; });
-      setColumns(next);
+      ALL_COLUMNS.forEach(c => { next[c.key] = hasStale ? !!c.default : !!columns[c.key]; });
+      applyColumns(next);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -973,7 +991,7 @@ export default function AppContacts() {
     return saved ? JSON.parse(saved) : {};
   });
   const [moreOpen, setMoreOpen] = useState(false);
-  // ── More menu positioning ─────────────────────────────────────────────────────
+  //******* More menu positioning**************************************************************************************************************************************************************”€
   const moreAnchorRef = React.useRef<HTMLElement | null>(null);
   const [morePos, setMorePos] = React.useState<{ top: number; left: number } | null>(null);
 
@@ -1021,15 +1039,12 @@ export default function AppContacts() {
   const [formError, setFormError] = useState<string>("");
   const [formTriedSubmit, setFormTriedSubmit] = useState(false);
 
-
   /** Data */
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string>("");
   const [rows, setRows] = useState<ContactRow[]>([]);
   const [total, setTotal] = useState<number>(0);
   const [selected, setSelected] = useState<Set<ID>>(new Set());
-
-
 
   /** Drawer + editing state */
   const [selectedId, setSelectedId] = useState<ID | null>(null);
@@ -1195,7 +1210,7 @@ export default function AppContacts() {
     })();
 
     return () => { cancelled = true; };
-  }, [tenantReady, api]); // v1 not used here, so don’t include it
+  }, [tenantReady, api]); // v1 not used here, so donâ€™t include it
 
   /** Persist prefs */
   useEffect(() => { localStorage.setItem(COL_STORAGE_KEY, JSON.stringify(columns)); }, [columns]);
@@ -1272,7 +1287,7 @@ export default function AppContacts() {
           setDrawer(prev => prev ? { ...prev, tags: Array.from(new Set(names)) } : prev);
         }
       } catch {
-        // silently ignore; UI already shows “No tags” if empty
+        // silently ignore; UI already shows**€œNo tags” if empty
       }
     })();
 
@@ -1414,28 +1429,28 @@ export default function AppContacts() {
 
   const pageCount = Math.max(1, Math.ceil(sortedRows.length / pageSize));
   const clampedPage = Math.min(pageCount, Math.max(1, page));
+  const totalFiltered = sortedRows.length;
   const pageRows = React.useMemo(() => {
     const start = (clampedPage - 1) * pageSize;
     return sortedRows.slice(start, start + pageSize);
   }, [sortedRows, clampedPage, pageSize]);
 
   // Select-all checkbox visual state
-const selectAllRef = React.useRef<HTMLInputElement | null>(null);
+  const selectAllRef = React.useRef<HTMLInputElement | null>(null);
 
-React.useLayoutEffect(() => {
-  const el = selectAllRef.current;
-  if (!el) return;
-  if (pageRows.length === 0) {
-    el.indeterminate = false;
-    return;
-  }
-  const allIds = pageRows.map(r => r.id);
-  const selectedOnPage = allIds.filter(id => selected.has(id)).length;
-  el.indeterminate = selectedOnPage > 0 && selectedOnPage < allIds.length;
-}, [selected, pageRows]);
+  React.useLayoutEffect(() => {
+    const el = selectAllRef.current;
+    if (!el) return;
+    if (pageRows.length === 0) {
+      el.indeterminate = false;
+      return;
+    }
+    const allIds = pageRows.map(r => r.id);
+    const selectedOnPage = allIds.filter(id => selected.has(id)).length;
+    el.indeterminate = selectedOnPage > 0 && selectedOnPage < allIds.length;
+  }, [selected, pageRows]);
 
   /** Handlers */
-  const toggleColumn = (k: string) => setColumns(prev => ({ ...prev, [k]: !prev[k] }));
   const cycleSort = (key: keyof ContactRow, withShift: boolean) => {
     setSorts(prev => {
       const idx = prev.findIndex(s => s.key === key);
@@ -1520,7 +1535,7 @@ React.useLayoutEffect(() => {
         if (t?.name && t?.id != null) byName.set(String(t.name).toLowerCase(), Number(t.id));
       }
 
-      // 2) Parse adds/removes by name → id (ignore unknowns)
+      // 2) Parse adds/removes by name→ id (ignore unknowns)
       const adds = tagAdd.split(",").map(s => s.trim()).filter(Boolean);
       const removes = tagRemove.split(",").map(s => s.trim()).filter(Boolean);
 
@@ -1633,13 +1648,13 @@ React.useLayoutEffect(() => {
   /** Visible cols + row snapshot for opening drawer fast */
   const visibleCols = React.useMemo(() => ALL_COLUMNS.filter(c => columns[String(c.key)]), [columns]); const d = React.useMemo(() => (drawer ? { ...drawer, ...(draft || {}) } : null), [drawer, draft]);
 
-  /** ───────────────────────────────── UI ───────────────────────────────── */
+  /****************************************************************************************************”€ UI**************************************************************************************************”€ */
   return (
     <>
       <div className="space-y-3">
         {error && <div className="rounded-md border border-hairline bg-surface-strong px-3 py-2 text-sm text-secondary">{error}</div>}
 
-        <Card className="bhq-card bg-surface/80 bg-gradient-to-b from-[hsl(var(--glass))/65] to-[hsl(var(--glass-strong))/85] backdrop-blur-sm border border-hairline transition-shadow">
+        <Card className="bhq-card border border-hairline bg-surface">
           {/* Toolbar */}
           <div className="bhq-section-fixed p-4 sm:p-5 bg-surface bg-gradient-to-b from-[hsl(var(--glass))/35] to-[hsl(var(--glass-strong))/55] rounded-t-xl overflow-hidden">
             <div className="flex items-center gap-3 justify-between min-w-0">
@@ -1691,7 +1706,7 @@ React.useLayoutEffect(() => {
                         : "text-secondary hover:bg-white/10 focus:bg-white/10"
                     ].join(" ")}
                   >
-                    {/* “sliders” icon that matches the screenshot style */}
+                    {/***€œsliders” icon that matches the screenshot style */}
                     <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                       <line x1="4" y1="7" x2="14" y2="7" />   {/* top track */}
                       <circle cx="18" cy="7" r="1.5" fill="currentColor" />  {/* top knob */}
@@ -1708,7 +1723,7 @@ React.useLayoutEffect(() => {
               <div className="shrink-0 flex items-center gap-2">
                 <Button variant="primary" onClick={openCreate}>New Contact</Button>
 
-                {/* More (Export/Import) — portaled so it never clips */}
+                {/* More (Export/Import)***” portaled so it never clips */}
                 <div className="relative inline-flex">
                   {/* If @bhq/ui Button forwards refs, this ref works. If not, use the fallback wrapper below. */}
                   <Button
@@ -1719,15 +1734,8 @@ React.useLayoutEffect(() => {
                     className="h-9 w-9"
                     ref={moreAnchorRef as any}
                   >
-                    ⋯
+                    ...
                   </Button>
-
-                  {/* Fallback if Button does NOT forward refs:
-      <span ref={moreAnchorRef} className="inline-flex">
-        <Button variant="outline" size="icon" aria-label="More" onClick={() => setMoreOpen(v => !v)} className="h-9 w-9">⋯</Button>
-      </span>
-  */}
-
                   {moreOpen && morePos && createPortal(
                     <>
                       {/* backdrop */}
@@ -1756,7 +1764,7 @@ React.useLayoutEffect(() => {
                         </button>
                         <button
                           className="w-full text-left px-2 py-1.5 rounded hover:bg-[hsl(var(--brand-orange))]/12"
-                          onClick={() => { setMoreOpen(false); alert("Import CSV — coming soon"); }}
+                          onClick={() => { setMoreOpen(false); alert("Import CSV**€” coming soon"); }}
                         >
                           Import CSV
                         </button>
@@ -1794,7 +1802,8 @@ React.useLayoutEffect(() => {
           {/* Filters */}
           {showFilters && (
             <div className="bhq-section-fixed mt-2 rounded-xl border border-hairline bg-surface-strong/70 p-3 sm:p-4">
-              <FilterRow columns={columns} filters={filters} rows={rows} onChange={setFilters} organizations={organizations} />              {Object.entries(filters).some(([k, v]) => !!v) && (
+              <FilterRow columns={columns} filters={filters} rows={rows} onChange={setFilters} organizations={organizations} />
+              {Object.entries(filters).some(([k, v]) => !!v) && (
                 <div className="mt-3 flex flex-wrap items-center gap-2">
                   {Object.entries(filters).filter(([, v]) => !!v).map(([k, v]) => (
                     <button
@@ -1805,7 +1814,7 @@ React.useLayoutEffect(() => {
                       title={`${k}: ${v}`}
                     >
                       <span className="max-w-[16ch] truncate">{k}: {v}</span>
-                      <span aria-hidden>×</span>
+                      <span aria-hidden>Ã—</span>
                     </button>
                   ))}
                   <Button variant="outline" size="sm" onClick={() => setFilters({})}>Clear all</Button>
@@ -1817,9 +1826,15 @@ React.useLayoutEffect(() => {
 
           {/* Table */}
           <div className="bhq-table overflow-hidden">
-            <div className="overflow-x-auto overscroll-contain">
+            <div className="relative overflow-x-auto overscroll-contain">
               <table className="min-w-max w-full text-sm">
-                <thead className="sticky top-0 z-10 bg-surface-strong border-b border-hairline">
+                <colgroup>
+                  <col />
+                  {visibleCols.map((_, i) => <col key={`c-${i}`} />)}
+                  <col style={{ width: 'var(--util-col-width)' }} />
+                </colgroup>
+
+                <thead>
                   <tr className="text-sm">
                     <th className="px-3 py-2 w-10 text-center">
                       <input
@@ -1833,35 +1848,45 @@ React.useLayoutEffect(() => {
                     </th>
                     {visibleCols.map((c) => {
                       const active = sorts.find(s => s.key === c.key);
-                      const ariaSort = active ? (active.dir === "asc" ? "ascending" : "descending") : "none";
-                      return (
-                        <th key={String(c.key)} className="px-3 py-3">
+                      const ariaSort = active ? (active.dir === "asc" ? "ascending" : "descending") : undefined; return (
+                        <th
+                          key={String(c.key)}
+                          className="px-3 py-3 text-center"
+                          {...(ariaSort ? { 'aria-sort': ariaSort as any } : {})}
+                        >
                           <button
                             type="button"
-                            className={["w-full text-center select-none transition-colors", active ? "text-primary" : "text-secondary", "hover:bg-[hsl(var(--brand-orange))]/12"].join(" ")}
-                            onClick={(e) => cycleSort(c.key, e.shiftKey)}
-                            aria-sort={ariaSort as any}
+                            className={[
+                              "w-full select-none flex items-center justify-center",
+                              active ? "text-primary" : "text-secondary"
+                            ].join(" ")}
+                            aria-label={`Sort by ${c.label}${active ? ` (${active.dir})` : ""}`}
                             title={active ? `${c.label} (${active.dir})` : `Sort by ${c.label}`}
+                            onClick={(e) => cycleSort(c.key as keyof ContactRow, e.shiftKey)}
                           >
                             <span className="inline-flex items-center gap-1">
                               <span>{c.label}</span>
-                              {active ? (
-                                <span className="inline-block h-1.5 w-1.5 rounded-full bg-[hsl(var(--brand-orange))]" />
-                              ) : (
-                                <span className="inline-block h-1.5 w-1.5 rounded-full bg-transparent" />
-                              )}
+                              <span className={`inline-block h-1.5 w-1.5 rounded-full ${active ? "" : "bg-transparent"}`} />
                             </span>
                           </button>
                         </th>
                       );
                     })}
 
-                    <th className="px-3 py-2 w-16 text-center">
-                      <ColumnsPopover columns={columns} onToggle={toggleColumn} onSet={setColumns} />
+                    <th className="sticky right-0 bg-surface text-right">
+                      <div className="px-2 py-2 w-[var(--util-col-width)] min-w-[var(--util-col-width)]">
+                        <ColumnsPopover
+                          columns={columns}
+                          onToggle={toggleColumn}
+                          onSet={applyColumns}
+                          allColumns={CONTACTS_COLUMN_META}
+                          defaultKeys={CONTACTS_DEFAULT_KEYS}
+                        />
+                      </div>
                     </th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-hairline">
+                <tbody>
                   {loading && Array.from({ length: 6 }).map((_, i) => (
                     <tr key={i} className="animate-pulse">
                       <td className="px-3 py-2 text-center"><div className="h-4 w-4 rounded bg-surface-strong inline-block" /></td>
@@ -1884,33 +1909,37 @@ React.useLayoutEffect(() => {
                     <tr
                       key={r.id}
                       onClick={() => {
-                        setDrawer(normalize(r as any));      // open fast
+                        setDrawer(normalize(r as any));
                         setIsDrawerOpen(true);
                         setDrawerTab("overview");
-                        setSelectedId(r.id);                 // hydrate by id
-                        setDrawerRefreshKey(k => k + 1);     // force refetch
+                        setSelectedId(r.id);
+                        setDrawerRefreshKey(k => k + 1);
                       }}
-                      className="cursor-pointer transition-colors hover:bg-[hsl(var(--brand-orange))]/8"
+                      className="cursor-pointer"
                     >
-                      <td className="px-3 py-2 text-center" onClick={(e) => e.stopPropagation()}>
-                        <input
-                          type="checkbox"
-                          aria-label={`Select ${`${r.nickname || r.firstName || ""} ${r.lastName || ""}`.trim() || r.email || r.id}`}
-                          checked={selected.has(r.id)}
-                          onChange={() => toggleSelect(r.id)}
-                        />
-                      </td>
-                      {visibleCols.map((c) => (
-                        <td key={`${r.id}-${String(c.key)}`} className="px-3 py-2 text-sm text-center">
-                          {c.key === "organizationName"
-                            ? (resolveOrgName(r.organizationId, r.organizationName, organizations) || <span className="text-secondary">—</span>)
-                            : c.render
-                              ? c.render(r)
-                              : ((r as any)[c.key] ?? "")
-                          }
-                        </td>
-                      ))}
-                      <td className="px-3 py-2 text-right" onClick={(e) => e.stopPropagation()} />
+                      {[
+                        // selection cell
+                        <td key="sel" className="px-3 py-2 text-center" onClick={(e) => e.stopPropagation()}>
+                          <input
+                            type="checkbox"
+                            aria-label={`Select ${`${r.nickname || r.firstName || ""} ${r.lastName || ""}`.trim() || r.email || r.id}`}
+                            checked={selected.has(r.id)}
+                            onChange={() => toggleSelect(r.id)}
+                          />
+                        </td>,
+
+                        // data cells
+                        ...visibleCols.map((c) => (
+                          <td key={`c-${String(c.key)}`} className="px-3 py-2 text-sm text-center">
+                            {c.key === "organizationName"
+                              ? (resolveOrgName(r.organizationId, r.organizationName, organizations) || <span className="text-secondary">—</span>)
+                              : c.render
+                                ? c.render(r)
+                                : ((r as any)[c.key] ?? "")
+                            }
+                          </td>
+                        )),
+                      ]}
                     </tr>
                   ))}
                 </tbody>
@@ -1918,55 +1947,17 @@ React.useLayoutEffect(() => {
             </div>
           </div>
 
-          {/* Footer */}
-          <div className="bhq-section-fixed flex items-start justify-between px-3 py-2 text-sm">
-            <div className="flex flex-col items-start">
-              <div className="text-secondary">
-                {(() => {
-                  const filteredTotal = sortedRows.length;
-                  const start = pageRows.length === 0 ? 0 : (clampedPage - 1) * pageSize + 1;
-                  const end = Math.min(clampedPage * pageSize, filteredTotal);
-                  return <>Showing {start} to {end} of {filteredTotal}</>;
-                })()}
-              </div>
-
-              {/* Moved here from header */}
-              <label className="mt-1 inline-flex items-center gap-2 text-xs text-secondary">
-                <input
-                  type="checkbox"
-                  checked={includeArchived}
-                  onChange={(e) => { setIncludeArchived(e.currentTarget.checked); setPage(1); }}
-                />
-                <span>Include archived</span>
-              </label>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <label className="hidden sm:flex items-center gap-2 text-xs text-secondary">
-                <span>Rows</span>
-                <div className="relative">
-                  <select
-                    className="appearance-none pr-8 bg-surface-strong border border-hairline rounded px-2 py-1 text-sm outline-none focus:shadow-[0_0_0_2px_hsl(var(--brand-orange))]"
-                    value={String(pageSize)}
-                    onChange={(e) => {
-                      const v = Number(getEventValue(e));
-                      setPageSize(v);
-                      setPage(1);
-                    }}
-                  >
-                    {[10, 25, 50, 100].map(n => <option key={n} value={n}>{n}</option>)}
-                  </select>
-                  <svg className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-secondary" viewBox="0 0 20 20" aria-hidden="true">
-                    <path d="M5.5 7.5l4.5 4 4.5-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                  </svg>
-                </div>
-
-              </label>
-              <Button variant="outline" size="sm" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={clampedPage === 1}>Prev</Button>
-              <div>Page {clampedPage} of {pageCount}</div>
-              <Button variant="outline" size="sm" onClick={() => setPage(p => Math.min(pageCount, p + 1))} disabled={clampedPage === pageCount}>Next</Button>
-            </div>
-          </div>
+          <TableFooter
+            page={clampedPage}
+            pageCount={pageCount}
+            pageSize={pageSize}
+            total={sortedRows.length}
+            includeArchived={includeArchived}
+            onToggleArchived={(v) => { setIncludeArchived(v); setPage(1); }}
+            onChangePageSize={(n) => { setPageSize(n); setPage(1); }}
+            onPrev={() => setPage((p) => Math.max(1, p - 1))}
+            onNext={() => setPage((p) => Math.min(pageCount, p + 1))}
+          />
 
         </Card>
       </div>
@@ -1998,7 +1989,7 @@ React.useLayoutEffect(() => {
                   className="inline-flex items-center rounded-full bg-amber-200/70 border border-amber-300 px-2 py-0.5 text-[11px] font-medium text-amber-900"
                   title={d?.archivedReason ? `Archived: ${d.archivedReason}` : "Archived"}
                 >
-                  Archived{d?.archivedAt ? ` • ${formatDate(d.archivedAt)}` : ""}
+                  Archived{d?.archivedAt ? `**€¢ ${formatDate(d.archivedAt)}` : ""}
                 </span>
               )}
 
@@ -2286,7 +2277,7 @@ React.useLayoutEffect(() => {
                         setDraft(p => ({ ...(p || {}), organizationId: idNum }));
                       }}
                     >
-                      <option value="">— Select Organization —</option>
+                      <option value="">— Select Organization**€”</option>
                       {organizations.map((o) => (
                         <option key={o.id} value={String(o.id)}>{o.name}</option>
                       ))}
@@ -2435,7 +2426,7 @@ React.useLayoutEffect(() => {
               </SectionCard>
 
               <SectionCard title="Compliance">
-                <div className="mb-2 text-xs text-secondary">System sets these from unsubscribes. Toggle “Override” to set manually; action is logged on Save.</div>
+                <div className="mb-2 text-xs text-secondary">System sets these from unsubscribes. Toggle**€œOverride” to set manually; action is logged on Save.</div>
                 <div className="flex items-center gap-6 flex-wrap">
                   {(["email", "sms"] as const).map((key) => {
                     const on = !!(d as any)?.compliance?.[key];
@@ -2591,9 +2582,8 @@ React.useLayoutEffect(() => {
                           const when = formatOrUnknown(r.createdAt);
                           const who = r.userEmail || r.userId || "system";
                           const change = r.field
-                            ? `${JSON.stringify(r.before ?? null)} → ${JSON.stringify(r.after ?? null)}`
-                            : `${JSON.stringify(r.before ?? null)} → ${JSON.stringify(r.after ?? null)}`;
-
+                            ? `${JSON.stringify(r.before ?? null)} -> ${JSON.stringify(r.after ?? null)}`
+                            : `${JSON.stringify(r.before ?? null)} -> ${JSON.stringify(r.after ?? null)}`;
                           return (
                             <tr key={r.id}>
                               <td className="px-3 py-2 whitespace-nowrap">{when}</td>
@@ -2691,7 +2681,7 @@ React.useLayoutEffect(() => {
                         setForm((f) => ({ ...f, organizationId: v ? Number(v) : null }));
                       }}
                     >
-                      <option value="">— Select Organization —</option>
+                      <option value="">— Select Organization**€”</option>
                       {organizations.map((o) => (
                         <option key={o.id} value={String(o.id)}>
                           {o.name ?? `Org #${o.id}`}
@@ -2891,7 +2881,7 @@ React.useLayoutEffect(() => {
   );
 }
 
-/** ───────────────────────── Subcomponents ───────────────────────── */
+/****************************************************************************”€ Subcomponents**************************************************************************”€ */
 
 function DateRange({ label, from, to, onFrom, onTo }: { label: string; from: string | undefined; to: string | undefined; onFrom: (v: string) => void; onTo: (v: string) => void; }) {
   return (
@@ -3356,213 +3346,6 @@ function FilterRow({
   );
 }
 
-
-/** Column chooser (portal) with All / Default / Clear and orange checkmarks */
-function ColumnsPopover({
-  columns,
-  onToggle,
-  onSet,
-}: {
-  columns: Record<string, boolean>;
-  onToggle: (k: string) => void;
-  onSet: (next: Record<string, boolean>) => void;
-}) {
-  const [open, setOpen] = React.useState(false);
-  const btnRef = React.useRef<HTMLButtonElement | null>(null);
-  const [pos, setPos] = React.useState<{ top: number; left: number } | null>(null);
-
-  React.useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
-    if (open) document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [open]);
-
-  React.useEffect(() => {
-    if (!open) return;
-
-    const W = 320;
-    const PAD = 12;
-
-    const sync = () => {
-      const el = btnRef.current;
-      if (!el) return;
-      const r = el.getBoundingClientRect();
-      const right = Math.min(window.innerWidth - PAD, r.right);
-      const left = Math.max(PAD, right - W);
-      const estH = 360;
-      const below = r.bottom + 8;
-      const above = Math.max(PAD, r.top - estH - 8);
-      const top = below + estH + PAD > window.innerHeight ? above : Math.min(window.innerHeight - PAD, below);
-      setPos({ top, left });
-    };
-
-    const getScrollParents = (el: HTMLElement | null) => {
-      const out: HTMLElement[] = [];
-      let p = el?.parentElement;
-      while (p) {
-        const s = getComputedStyle(p);
-        if (/(auto|scroll|overlay)/.test(`${s.overflow}${s.overflowY}${s.overflowX}`)) out.push(p);
-        p = p.parentElement!;
-      }
-      return out;
-    };
-
-    const parents = getScrollParents(btnRef.current);
-    sync();
-    window.addEventListener("resize", sync);
-    window.addEventListener("scroll", sync, { passive: true });
-    parents.forEach((n) => n.addEventListener("scroll", sync, { passive: true }));
-
-    return () => {
-      window.removeEventListener("resize", sync);
-      window.removeEventListener("scroll", sync);
-      parents.forEach((n) => n.removeEventListener("scroll", sync));
-    };
-  }, [open]);
-
-  const selectAll = () => {
-    const next = { ...columns };
-    ALL_COLUMNS.forEach((c) => (next[String(c.key)] = true));
-    onSet(next);
-  };
-  const clearAll = () => {
-    const next = { ...columns };
-    ALL_COLUMNS.forEach((c) => (next[String(c.key)] = false));
-    onSet(next);
-  };
-  const setDefault = () => {
-    const ON = new Set(["firstName", "lastName", "nickname", "organizationName", "email", "phone", "tags", "status"]);
-    const next = { ...columns };
-    ALL_COLUMNS.forEach((c) => (next[String(c.key)] = ON.has(String(c.key))));
-    onSet(next);
-  };
-
-  const menu =
-    open && pos
-      ? createPortal(
-        <>
-          {/* Backdrop (inline position:fixed; no "fixed" class) */}
-          <div
-            onClick={() => setOpen(false)}
-            style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, zIndex: 2147483644, background: "transparent", pointerEvents: "auto" }}
-          />
-          {/* Panel (inline position:fixed; force right/bottom to auto) */}
-          <div
-            role="menu"
-            data-popover="columns"
-            className="rounded-md border border-hairline bg-surface p-2 pr-3 shadow-[0_8px_30px_hsla(0,0%,0%,0.35)]"
-            style={{
-              position: "fixed",
-              zIndex: 2147483645,
-              top: pos.top,
-              left: pos.left,
-              right: "auto",
-              bottom: "auto",
-              width: 320,
-              maxWidth: "calc(100vw - 24px)",
-              maxHeight: 360,
-              overflow: "auto",
-            }}
-          >
-            <div className="flex items-center justify-between px-2 pb-1">
-              <div className="text-xs font-medium uppercase text-secondary">Show columns</div>
-              <div className="flex items-center gap-3">
-                <a
-                  role="button"
-                  tabIndex={0}
-                  onClick={selectAll}
-                  className="text-xs font-medium hover:underline"
-                  style={{ color: "hsl(24 95% 54%)" }}
-                >
-                  All
-                </a>
-
-                <a
-                  role="button"
-                  tabIndex={0}
-                  onClick={setDefault}
-                  className="text-xs font-medium hover:underline"
-                  style={{ color: "hsl(190 90% 45%)" }}
-                >
-                  Default
-                </a>
-
-                <a
-                  role="button"
-                  tabIndex={0}
-                  onClick={clearAll}
-                  className="text-xs font-medium text-secondary hover:underline"
-                >
-                  Clear
-                </a>
-              </div>            </div>
-
-            {ALL_COLUMNS.map((c) => {
-              const k = String(c.key);
-              const checked = !!columns[k];
-              return (
-                <div
-                  key={k}
-                  data-col={k}
-                  tabIndex={0}
-                  role="checkbox"
-                  aria-checked={checked ? "true" : "false"}
-                  className="flex items-center gap-2 w-full min-w-0 px-2 py-1.5 text-[13px] leading-5 rounded hover:bg-[hsl(var(--brand-orange))]/12 cursor-pointer select-none"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    onToggle(k);       // <- single source of truth for toggling
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === " " || e.key === "Enter") {
-                      e.preventDefault();
-                      onToggle(k);     // <- keyboard toggle
-                    }
-                  }}
-                >
-                  <input
-                    type="checkbox"
-                    className="h-4 w-4 shrink-0 accent-[hsl(var(--brand-orange))]"
-                    aria-label={c.label}
-                    checked={checked}
-                    readOnly             // <- important: prevent double toggle
-                  />
-                  <span className="truncate text-primary">{c.label}</span>
-                </div>
-              );
-            })}
-
-            <div className="flex justify-end pt-2">
-              <Button size="sm" variant="outline" onClick={() => setOpen(false)}>Close</Button>
-            </div>
-          </div>
-        </>,
-        getOverlayRoot()
-      )
-      : null;
-
-  return (
-    <div className="relative inline-flex">
-      <Button
-        ref={btnRef as any}
-        variant="outline"
-        size="icon"
-        onClick={() => setOpen((o) => !o)}
-        aria-expanded={open}
-        aria-haspopup="menu"
-        className="h-9 w-9"
-        title="Choose columns"
-      >
-        <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
-          <rect x="3" y="4" width="5" height="16" rx="1.5" />
-          <rect x="10" y="4" width="5" height="16" rx="1.5" />
-          <rect x="17" y="4" width="4" height="16" rx="1.5" />
-        </svg>
-      </Button>
-      {menu}
-    </div>
-  );
-}
-
 function RightDrawer({ onClose, title, children }: { onClose: () => void; title: string; children: React.ReactNode }) {
   React.useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
@@ -3619,7 +3402,7 @@ function RightDrawer({ onClose, title, children }: { onClose: () => void; title:
         >
           <div className="sticky top-0 z-10 flex items-center justify-between px-4 py-3 border-b border-hairline bg-surface rounded-t-xl">
             <h2 className="h1-strong text-primary">{title}</h2>
-            <button onClick={onClose} className="rounded px-2 py-1 hover:bg-[hsl(var(--brand-orange))]/12" aria-label="Close">✕</button>
+            <button onClick={onClose} className="rounded px-2 py-1 hover:bg-[hsl(var(--brand-orange))]/12" aria-label="Close">âœ•</button>
           </div>
 
           <div className="flex-1 overflow-auto section-tight px-4 sm:px-6 py-4">
@@ -3731,7 +3514,7 @@ function Dialog({
         >
           <div className="flex items-center justify-between border-b border-hairline px-4 py-3 bg-surface">
             <h2 id="dialog-title" className="text-primary font-semibold">{title}</h2>
-            <button onClick={onClose} className="rounded px-2 py-1 hover:bg-[hsl(var(--brand-orange))]/12" aria-label="Close">✕</button>
+            <button onClick={onClose} className="rounded px-2 py-1 hover:bg-[hsl(var(--brand-orange))]/12" aria-label="Close">âœ•</button>
           </div>
           <div className="p-4 section-tight">{children}</div>
         </div>

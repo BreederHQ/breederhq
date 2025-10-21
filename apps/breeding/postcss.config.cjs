@@ -1,7 +1,2 @@
-// apps/<app>/postcss.config.cjs
-module.exports = {
-  plugins: {
-    "@tailwindcss/postcss": {},
-    autoprefixer: {},
-  },
-};
+// apps/breeding/postcss.config.cjs
+module.exports = { plugins: { tailwindcss: {}, autoprefixer: {} } }

@@ -1,27 +1,7 @@
 // apps/animals/src/components/BreedEditor.tsx
 import * as React from "react";
 import { createPortal } from "react-dom";
-
-/* ───────────── overlay host ───────────── */
-function getOverlayRoot(): HTMLElement {
-    let el = document.getElementById("bhq-top-layer") as HTMLElement | null;
-    if (!el) {
-        el = document.createElement("div");
-        el.id = "bhq-top-layer";
-        Object.assign(el.style, {
-            position: "fixed",
-            inset: "0",
-            zIndex: "2147483647",
-            pointerEvents: "none",
-        });
-        document.body.appendChild(el);
-    }
-    return el;
-}
-function setOverlayHostInteractive(enabled: boolean) {
-    const el = getOverlayRoot();
-    el.style.pointerEvents = enabled ? "auto" : "none";
-}
+import { getOverlayRoot } from "@bhq/ui/overlay";
 
 /* ───────────── types ───────────── */
 type SpeciesUI = "Dog" | "Cat" | "Horse";
@@ -915,15 +895,6 @@ function BreedEditorOverlay(props: {
       </div>
     </div>
   );
-
-  React.useEffect(() => {
-    setOverlayHostInteractive(true);
-    document.body.classList.add("bhq-blur");
-    return () => {
-      setOverlayHostInteractive(false);
-      document.body.classList.remove("bhq-blur");
-    };
-  }, []);
 
   return createPortal(overlay, getOverlayRoot());
 }

@@ -1,3 +1,8 @@
+/* apps/animals/src/bhq.css
+   Minimal + safe: identical visuals to your original,
+   only adds DS token bridges. No new borders, no overrides.
+*/
+
 /* THEME SCOPE (dark by default, change to :root for light) */
 :root.theme-dark, html.theme-dark {
   --page: 0 0% 7%;
@@ -6,9 +11,16 @@
   --primary: 0 0% 96%;
   --secondary: 0 0% 70%;
   --hairline: 0 0% 22%;
-  --brand-orange: 24 94% 50%}
+  --brand-orange: 24 94% 50%;
 
- 
+  /* === DS bridges (read-only mappings; no visual change) === */
+  --background: var(--page);
+  --foreground: var(--primary);
+  --muted-foreground: var(--secondary);
+  --border: var(--hairline);
+  --accent: var(--brand-orange);
+}
+
 /* CORE TOKEN UTILITIES – these MUST exist without Tailwind */
 .bg-page           { background-color: hsl(var(--page)); }
 .bg-surface        { background-color: hsl(var(--surface)); }
@@ -34,4 +46,11 @@
 /* Ensure the browser shows the native “—” state */
 input[type="checkbox"] {
   appearance: auto !important;
+}
+
+#bhq-overlay-root {
+  position: fixed;   /* root in the viewport */
+  inset: 0;          /* cover the whole screen */
+  z-index: 2147483647;
+  pointer-events: none;   /* default non-interactive */
 }
