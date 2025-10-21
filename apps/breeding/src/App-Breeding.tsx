@@ -1,5 +1,5 @@
 import * as React from "react";
-import { PageHeader, Card, Table, TableHeader, TableRow, TableCell, ColumnsPopover, hooks, utils, Input, SearchBar } from "@bhq/ui";
+import { PageHeader, Card, Table, TableHeader, TableRow, TableCell, ColumnsPopover, hooks, utils, Input, SearchBar, FiltersPanel, FilterRow } from "@bhq/ui";
 import { getOverlayRoot } from "@bhq/ui/overlay";
 import "@bhq/ui/styles/table.css";
 import { makeBreedingApi } from "./api";
@@ -115,6 +115,20 @@ export default function AppBreeding() {
 
   const [q, setQ] = React.useState("");
   const [filtersOpen, setFiltersOpen] = React.useState(false);
+
+  // dynamic filters keyed by column key
+  const [filters, setFilters] = React.useState<Record<string, string | undefined>>(() => {
+    try { return JSON.parse(localStorage.getItem("bhq_breeding_filters_v1") || "{}"); } catch { return {}; }
+  });
+  React.useEffect(() => {
+    try { localStorage.setItem("bhq_breeding_filters_v1", JSON.stringify(filters || {})); } catch { }
+  }, [filters]);
+
+  // (optional) keep q across reloads as well
+  React.useEffect(() => {
+    try { localStorage.setItem("bhq_breeding_q_v1", q); } catch { }
+  }, [q]);
+
   const [status, setStatus] = React.useState<string | undefined>(undefined);
   const [species, setSpecies] = React.useState<string | undefined>(undefined);
 
@@ -126,8 +140,7 @@ export default function AppBreeding() {
 
   const clearFilters = () => {
     setQ("");
-    setStatus(undefined);
-    setSpecies(undefined);
+    setFilters({});
   };
 
   const [tenantId, setTenantId] = React.useState<number | null>(() => readTenantIdFast() ?? null);
@@ -183,6 +196,52 @@ export default function AppBreeding() {
 
   const { map, toggle, setAll, visible } = hooks.useColumns(COLUMNS, STORAGE_KEY);
   const visibleSafe = Array.isArray(visible) && visible.length ? visible : COLUMNS;
+  // editor kinds for filters by column
+  type FilterKind = "text" | "select" | "date";
+  const FILTER_TYPES: Partial<Record<keyof PlanRow & string, { kind: FilterKind; options?: Array<{ label: string; value: string }> }>> = {
+    status: {
+      kind: "select",
+      options: [
+        { label: "Planning", value: "Planning" },
+        { label: "Pregnant", value: "Pregnant" },
+        { label: "Whelped", value: "Whelped" },
+        { label: "Weaned", value: "Weaned" },
+        { label: "Go Home", value: "Go Home" },
+        { label: "Closed", value: "Closed" },
+        { label: "Archived", value: "Archived" },
+      ],
+    },
+    species: {
+      kind: "select",
+      options: [
+        { label: "Dog", value: "Dog" },
+        { label: "Cat", value: "Cat" },
+        { label: "Horse", value: "Horse" },
+      ],
+    },
+    expectedDue: { kind: "date" },
+    expectedGoHome: { kind: "date" },
+    breedDateActual: { kind: "date" },
+    birthDateActual: { kind: "date" },
+    weanedDateActual: { kind: "date" },
+    goHomeDateActual: { kind: "date" },
+    lastGoHomeDateActual: { kind: "date" },
+    lockedCycleStart: { kind: "date" },
+    lockedOvulationDate: { kind: "date" },
+    lockedDueDate: { kind: "date" },
+    lockedGoHomeDate: { kind: "date" },
+  };
+
+  // Build a schema from the currently visible columns
+  const filterSchemaForFilterRow = React.useMemo(() => {
+    return visibleSafe.map(col => {
+      const cfg = FILTER_TYPES[col.key] || { kind: "text" as const };
+      if (cfg.kind === "date") return ({ key: col.key, label: col.label, editor: "date" as const });
+      if (cfg.kind === "select") return ({ key: col.key, label: col.label, editor: "select" as const });
+      return ({ key: col.key, label: col.label, editor: "text" as const });
+    });
+  }, [visibleSafe]);
+
 
   const sorts: Array<{ key: string; dir: "asc" | "desc" }> = [];
   const onToggleSort = (_key: string) => { };
@@ -200,6 +259,42 @@ export default function AppBreeding() {
     "lockedDueDate",
     "lockedGoHomeDate",
   ] as const);
+
+  const displayRows = React.useMemo(() => {
+    const active = Object.entries(filters || {}).filter(([, v]) => (v ?? "") !== "");
+    if (!active.length && !qDebounced) return rows;
+
+    const lc = (v: any) => String(v ?? "").toLowerCase();
+
+    let data = [...rows];
+
+    // Your server already uses q, but keep client-side safety
+    if (qDebounced) {
+      const ql = qDebounced.toLowerCase();
+      data = data.filter(r => {
+        const hay = [
+          r.name, r.nickname, r.breedText, r.status, r.damName, r.sireName, r.species, r.orgName, r.code,
+          r.expectedDue, r.expectedGoHome, r.birthDateActual, r.weanedDateActual, r.breedDateActual, r.goHomeDateActual, r.lastGoHomeDateActual,
+          r.lockedCycleStart, r.lockedOvulationDate, r.lockedDueDate, r.lockedGoHomeDate,
+        ].filter(Boolean).join(" ").toLowerCase();
+        return hay.includes(ql);
+      });
+    }
+
+    if (active.length) {
+      data = data.filter(r => {
+        return active.every(([key, val]) => {
+          const raw = (r as any)[key];
+          const isDate = DATE_KEYS.has(key as any);
+          const hay = isDate && raw ? String(raw).slice(0, 10) : String(raw ?? "");
+          return lc(hay).includes(lc(val));
+        });
+      });
+    }
+
+    return data;
+  }, [rows, filters, qDebounced]);
+
 
   return (
     <div className="p-4 space-y-4">
@@ -253,33 +348,12 @@ export default function AppBreeding() {
           </div>
           {/* Filters */}
           {filtersOpen && (
-            <div className="px-2 pb-2">
-              <div className="rounded-lg border border-hairline p-3">
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                  <div>
-                    <div className="text-xs mb-1 opacity-70">Species</div>
-                    <Input
-                      value={species ?? ""}
-                      onChange={(e) => setSpecies(e.target.value || undefined)}
-                      placeholder="Dog, Cat, Horse"
-                    />
-                  </div>
-                  <div>
-                    <div className="text-xs mb-1 opacity-70">Status</div>
-                    <Input
-                      value={status ?? ""}
-                      onChange={(e) => setStatus(e.target.value || undefined)}
-                      placeholder="Planning, Pregnant, Weaned…"
-                    />
-                  </div>
-                  <div className="lg:col-span-3 flex justify-end">
-                    <button type="button" onClick={clearFilters} className="text-sm text-secondary hover:underline">
-                      Clear
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
+            <FilterRow
+              filters={filters as Record<string, string>}
+              onChange={(next) => setFilters(next)}
+              schema={filterSchemaForFilterRow}
+            // you can pass custom editors via registry if desired; the defaults already look fine
+            />
           )}
 
           {/* Table */}
@@ -306,7 +380,7 @@ export default function AppBreeding() {
                 </TableRow>
               )}
 
-              {!loading && !error && rows.length === 0 && (
+              {!loading && !error && displayRows.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={visibleSafe.length}>
                     <div className="py-8 text-center text-sm text-secondary">No breeding plans to display yet.</div>
@@ -314,8 +388,8 @@ export default function AppBreeding() {
                 </TableRow>
               )}
 
-              {!loading && !error && rows.length > 0 &&
-                rows.map(r => (
+              {!loading && !error && displayRows.length > 0 &&
+                displayRows.map(r => (
                   <TableRow key={r.id}>
                     {visibleSafe.map(c => {
                       let v = (r as any)[c.key] as any;
