@@ -10,17 +10,13 @@ import {
   ColumnsPopover,
   hooks,
   SearchBar,
-  FilterChips,
-  FiltersRow,
+  FilterRow,
   DetailsHost,
   DetailsScaffold,
   DetailsSpecRenderer,
   SectionCard,
   Button,
   Input,
-  // NEW: helpers for ranges
-  buildRangeAwareSchema,
-  inDateRange,
 } from "@bhq/ui";
 import { getOverlayRoot } from "@bhq/ui/overlay";
 import "@bhq/ui/styles/table.css";
@@ -170,12 +166,31 @@ export default function AppOrganizations() {
   const { map, toggle, setAll, visible } = hooks.useColumns(COLUMNS, STORAGE_KEY);
   const visibleSafe = Array.isArray(visible) && visible.length ? visible : COLUMNS;
 
-  // Build the filter schema: create dateRange inputs for snake_case date fields
-  const filterSchemaForFiltersRow = React.useMemo(() => {
-    return buildRangeAwareSchema(
-      visibleSafe.map(c => ({ key: c.key, label: c.label })),
-      ["created_at", "updated_at"]
-    );
+  // Filters
+  type FilterKind = "text" | "select" | "date";
+  const FILTER_TYPES: Partial<Record<keyof OrgRow & string, { kind: FilterKind; options?: Array<{ label: string; value: string }> }>> = {
+    status: {
+      kind: "select",
+      options: [
+        { label: "Active", value: "Active" },
+        { label: "Archived", value: "Archived" },
+      ],
+    },
+    created_at: { kind: "date" },
+    updated_at: { kind: "date" },
+    country: { kind: "text" },
+    state: { kind: "text" },
+    city: { kind: "text" },
+    tags: { kind: "text" },
+  };
+
+  const filterSchemaForFilterRow = React.useMemo(() => {
+    return visibleSafe.map(col => {
+      const cfg = FILTER_TYPES[col.key] || { kind: "text" as const };
+      if (cfg.kind === "date") return ({ key: col.key, label: col.label, editor: "date" as const });
+      if (cfg.kind === "select") return ({ key: col.key, label: col.label, editor: "select" as const });
+      return ({ key: col.key, label: col.label, editor: "text" as const });
+    });
   }, [visibleSafe]);
 
   const DATE_KEYS = new Set(["created_at", "updated_at"] as const);
@@ -188,7 +203,6 @@ export default function AppOrganizations() {
     const lc = (v: any) => String(v ?? "").toLowerCase();
     let data = [...rows];
 
-    // Global search
     if (qDebounced) {
       const ql = qDebounced.toLowerCase();
       data = data.filter(r => {
@@ -204,40 +218,18 @@ export default function AppOrganizations() {
     }
 
     if (active.length) {
-      const createdFrom = filters["created_at_from"];
-      const createdTo = filters["created_at_to"];
-      const updatedFrom = filters["updated_at_from"];
-      const updatedTo = filters["updated_at_to"];
-
-      data = data.filter(r => {
-        // 1) text/select filters (ignore range keys here)
-        const textOk = active.every(([key, val]) => {
-          if (key === "created_at_from" || key === "created_at_to" ||
-              key === "updated_at_from" || key === "updated_at_to") {
-            return true;
-          }
+      data = data.filter(r =>
+        active.every(([key, val]) => {
+          const raw = (r as any)[key];
           if (key === "tags") {
             const str = String(val).toLowerCase().trim();
             return (r.tags || []).some(t => String(t).toLowerCase().includes(str));
           }
-          const raw = (r as any)[key];
-          const isDate = key === "created_at" || key === "updated_at";
+          const isDate = DATE_KEYS.has(key as any);
           const hay = isDate && raw ? String(raw).slice(0, 10) : String(raw ?? "");
           return lc(hay).includes(lc(val));
-        });
-        if (!textOk) return false;
-
-        // 2) inclusive date ranges
-        const createdOk = (createdFrom || createdTo)
-          ? inDateRange(r.created_at, createdFrom, createdTo)
-          : true;
-
-        const updatedOk = (updatedFrom || updatedTo)
-          ? inDateRange(r.updated_at, updatedFrom, updatedTo)
-          : true;
-
-        return createdOk && updatedOk;
-      });
+        })
+      );
     }
 
     return data;
@@ -258,6 +250,7 @@ export default function AppOrganizations() {
   React.useEffect(() => {
     setPage(1);
   }, [qDebounced, filters, sorts]);
+
 
   const sortedRows = React.useMemo(() => {
     if (!sorts.length) return displayRows;
@@ -389,6 +382,15 @@ export default function AppOrganizations() {
       <PageHeader
         title="Organizations"
         subtitle="Manage organizations, vendors, and partners"
+        rightSlot={
+          <button
+            type="button"
+            className="px-3 h-8 rounded-md bg-white/5 hover:bg-white/10 text-sm"
+            onClick={clearFilters}
+          >
+            Clear filters
+          </button>
+        }
       />
 
       <Card>
@@ -435,26 +437,12 @@ export default function AppOrganizations() {
 
             {/* Filters */}
             {filtersOpen && (
-              <FiltersRow
+              <FilterRow
                 filters={filters}
                 onChange={(next) => setFilters(next)}
-                schema={filterSchemaForFiltersRow}
+                schema={filterSchemaForFilterRow}
               />
             )}
-
-            {/* Chips */}
-            <FilterChips
-              filters={filters}
-              onChange={setFilters}
-              prettyLabel={(k) => {
-                if (k === "created_at_from") return "Created ≥";
-                if (k === "created_at_to") return "Created ≤";
-                if (k === "updated_at_from") return "Updated ≥";
-                if (k === "updated_at_to") return "Updated ≤";
-                if (k === "email") return "Email";
-                return k;
-              }}
-            />
 
             {/* Table */}
             <table className="min-w-max w-full text-sm">
@@ -509,6 +497,7 @@ export default function AppOrganizations() {
               pageSizeOptions={[10, 25, 50, 100]}
               onPageChange={(p) => setPage(p)}
               onPageSizeChange={(n) => { setPageSize(n); setPage(1); }}
+
               start={start}
               end={end}
               filteredTotal={sortedRows.length}

@@ -1,3 +1,4 @@
+// packages/ui/src/components/Table/TableContext.tsx
 import * as React from "react";
 import { useTableController } from "../../hooks/useTableController";
 import type { ID as RowID } from "../../hooks/useTableController";

@@ -3,30 +3,33 @@ import React from "react";
 import clsx from "clsx";
 
 type Native = React.InputHTMLAttributes<HTMLInputElement>;
-type Props = Native & { tone?: "default" | "subtle" };
+
+type Props = Native & {
+  tone?: "default" | "subtle";
+  size?: "sm" | "md";
+};
 
 export const Input = React.forwardRef<HTMLInputElement, Props>(function Input(
-  { className, tone = "default", ...props },
+  { className, tone = "default", size = "md", ...props },
   ref
 ) {
-  const base = "h-10 w-full rounded-xl bg-surface px-3 text-sm placeholder:text-fg-muted outline-none";
+  const h = size === "sm" ? "h-9 text-sm rounded-md" : "h-10 text-sm rounded-md";
 
-  const chrome =
-    tone === "subtle"
-      // no Tailwind border/ring utilities here (they were blocking overrides)
-      ? "border-0 ring-0 shadow-none" // keep the element clean…
-      : "border border-surface-border focus:ring-2 focus:ring-brand/40";
+  // Base BHQ look (uses your tokens from global.css)
+  const base =
+    "w-full bg-card border border-hairline px-3 placeholder:text-secondary outline-none";
 
-  // For subtle, draw a 1px hairline via box-shadow so it looks like a light border
-  const style = tone === "subtle"
-    ? ({ boxShadow: "inset 0 0 0 1px hsla(0,0%,100%,0.14)" } as React.CSSProperties)
-    : undefined;
+  // Orange focus ring just like the rest of BHQ
+  const focus = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--brand-orange))]";
+
+  // Optional “subtle” tone (no hard border, hairline via shadow)
+  const subtle =
+    "border-0 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.14)]";
 
   return (
     <input
       ref={ref}
-      className={clsx(base, chrome, className)}
-      style={style}
+      className={clsx(h, tone === "subtle" ? subtle : undefined, base, focus, className)}
       {...props}
     />
   );

@@ -1,3 +1,5 @@
+/* packages/ui/src/styles/table.css */
+
 /* ===== BHQ tables: centered + guaranteed visible right utility col ===== */
 
 .bhq-table {
@@ -28,10 +30,10 @@
   border-bottom: 1px solid hsl(var(--border) / .9);
 }
 
-/* center everything by default */
+/* left align by default; opt-in to center/right per column */
 .bhq-table thead th,
 .bhq-table tbody td {
-  text-align: center !important;
+  text-align: left;
 }
 
 /* header typography (allow th > button) */
@@ -54,7 +56,7 @@
   all: unset;
   display: block;
   width: 100%;
-  text-align: center !important;
+  text-align: inherit; /* follow the th alignment */
   cursor: pointer;
 }
 
@@ -140,14 +142,6 @@
 .bhq-table td.select,
 .bhq-table th.select {
   width: 2.25rem;
-}
-
-/* center flex children inside table cells/headers */
-.bhq-table thead th>.flex,
-.bhq-table thead th>.inline-flex,
-.bhq-table tbody td>.flex,
-.bhq-table tbody td>.inline-flex {
-  justify-content: center !important;
 }
 
 /* search glow is already handled by the Input's focus:shadow; this ensures it's never clipped */

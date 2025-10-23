@@ -1,3 +1,4 @@
+// packages/ui/src/components/Table/TableFooter.tsx
 import * as React from "react";
 import "../../styles/table-footer.css";
 

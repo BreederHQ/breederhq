@@ -3,6 +3,8 @@ import React, { useEffect, useMemo, useState } from "react";
 import InviteSignupPage from "./pages/InviteSignupPage";
 import VerifyPage from "./pages/VerifyPage";
 import NavShell from "@bhq/ui/layouts/NavShell";
+import "@bhq/ui/styles/global.css";
+import "@bhq/ui/styles/table.css"; 
 
 // Modules
 import ContactsModule from "@bhq/contacts/App-Contacts";
@@ -149,6 +151,7 @@ function RouteView() {
 export default function AppPlatform() {
   // …existing state…
 
+  
   const [activeModule, setActiveModule] = useState<ActiveModule>(DEFAULT_MODULE);
 
   // Listen for module announcements from each module root
@@ -274,8 +277,8 @@ export default function AppPlatform() {
   }
 
   return (
-    <div className="theme-dark bhq-grain min-h-screen bg-page text-primary">
-      <NavShell
+<div className="theme-dark bhq-grain min-h-screen bg-page text-primary">
+        <NavShell
         appTitle={activeModule.label}
         activeKey={activeModule.key}
         logoSize={40}
@@ -305,6 +308,7 @@ export default function AppPlatform() {
         onDirtyChange={setSettingsDirty}
         onClose={() => setSettingsOpen(false)}
       />
+      <div id="bhq-overlay-root" />
     </div>
   );
 }

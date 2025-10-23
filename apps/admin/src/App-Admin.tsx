@@ -1,2037 +1,1177 @@
-// App-Admin.tsx
-import React, { useEffect, useMemo, useState } from "react";
-import { createPortal } from "react-dom";
-import { Card, Button, Input, EmptyState } from "@bhq/ui";
+// apps/admin/src/App-Admin.tsx
+import * as React from "react";
+import {
+  PageHeader, Card, Table, TableHeader, TableRow, TableCell, TableFooter,
+  ColumnsPopover, hooks, utils, SearchBar, FiltersRow, DetailsHost,
+  DetailsScaffold, DetailsSpecRenderer, SectionCard, Button, Input,
+} from "@bhq/ui";
 import { getOverlayRoot } from "@bhq/ui/overlay";
 import "@bhq/ui/styles/table.css";
-
-
-/** ─────────────────────────────────────────────────────────────────────────────
- * Types (aligned to API spec)
- * ──────────────────────────────────────────────────────────────────────────── */
-
-type ID = number;
-type SortDir = "asc" | "desc";
-type SortRule = { key: keyof TenantRow; dir: SortDir };
-
-type BillingDTO =
-  | {
-    provider: string | null;
-    customerId: string | null;
-    subscriptionId: string | null;
-    plan: string | null;
-    status: string | null;
-    currentPeriodEnd: string | null;
-    createdAt?: string | null;
-    updatedAt?: string | null;
-  }
-  | null;
-
-type TenantDTO = {
-  id: ID;
-  name: string;
-  primaryEmail: string | null;
-  usersCount: number;
-  organizationsCount: number;
-  contactsCount: number;
-  animalsCount: number;
-  billing: BillingDTO;
-  createdAt: string;
-  updatedAt: string;
-};
+import { adminApi, TenantDTO } from "./api";
 
 type TenantRow = TenantDTO;
 
-type TenantPatchBody = Partial<{
-  name: string;
-  primaryEmail: string | null;
-}>;
-
-type TenantUserDTO = {
-  userId: string;
-  email: string;
-  name?: string | null;
+type AdminTenantUser = {
+  userId: string; email: string;
+  firstName?: string | null; lastName?: string | null; name?: string | null;
   role: "OWNER" | "ADMIN" | "MEMBER" | "BILLING" | "VIEWER";
-  verified: boolean;
-  createdAt?: string | null;
-  isSuperAdmin?: boolean;
+  verified: boolean; createdAt?: string | null; isSuperAdmin?: boolean;
 };
 
-type AddUserBody = {
-  email: string;
-  name?: string;
-  role: TenantUserDTO["role"];
-};
-
-type BillingPatchBody = Partial<{
-  provider: string | null;
-  customerId: string | null;
-  subscriptionId: string | null;
-  plan: string | null;
-  status: string | null;
-  currentPeriodEnd: string | null; // ISO or null
-}>;
-
-/** ─────────────────────────────────────────────────────────────────────────────
- * Storage keys
- * ──────────────────────────────────────────────────────────────────────────── */
-
-const COL_STORAGE_KEY = "bhq_admin_tenants_cols_v2";
-const SORT_STORAGE_KEY = "bhq_admin_tenants_sorts_v2";
-const Q_STORAGE_KEY = "bhq_admin_tenants_q_v2";
-const PAGE_SIZE_STORAGE_KEY = "bhq_admin_tenants_page_size_v2";
-const FILTERS_STORAGE_KEY = "bhq_admin_tenants_filters_v2";
-const SHOW_FILTERS_STORAGE_KEY = "bhq_admin_tenants_show_filters_v2";
-
-/** ─────────────────────────────────────────────────────────────────────────────
- * Columns
- * ──────────────────────────────────────────────────────────────────────────── */
-
-type ColumnDef = {
-  key: keyof TenantRow & string;
-  label: string;
-  default?: boolean;
-  type?: "text" | "date" | "number";
-  center?: boolean;
-  render?: (r: TenantRow) => React.ReactNode;
-};
-
-const ALL_COLUMNS: ColumnDef[] = [
-  { key: "name", label: "Tenant", default: true, type: "text" },
-  {
-    key: "primaryEmail",
-    label: "Email",
-    default: true,
-    type: "text",
-    render: (r) => r.primaryEmail || "—",
-  },
-  {
-    key: "usersCount",
-    label: "Users",
-    default: true,
-    type: "number",
-    center: true,
-    render: (r) => <span className="tabular-nums">{r.usersCount ?? 0}</span>,
-  },
-  {
-    key: "organizationsCount",
-    label: "Orgs",
-    default: false,
-    type: "number",
-    center: true,
-    render: (r) => <span className="tabular-nums">{r.organizationsCount ?? 0}</span>,
-  },
-  {
-    key: "contactsCount",
-    label: "Contacts",
-    default: false,
-    type: "number",
-    center: true,
-    render: (r) => <span className="tabular-nums">{r.contactsCount ?? 0}</span>,
-  },
-  {
-    key: "animalsCount",
-    label: "Animals",
-    default: true,
-    type: "number",
-    center: true,
-    render: (r) => <span className="tabular-nums">{r.animalsCount ?? 0}</span>,
-  },
-  {
-    key: "createdAt",
-    label: "Created",
-    default: true,
-    type: "date",
-    center: true,
-    render: (r) => formatDate(r.createdAt) || "—",
-  },
-  {
-    key: "updatedAt",
-    label: "Updated",
-    default: false,
-    type: "date",
-    center: true,
-    render: (r) => formatDate(r.updatedAt) || "—",
-  },
-];
-
-/** ─────────────────────────────────────────────────────────────────────────────
- * Small utils
- * ──────────────────────────────────────────────────────────────────────────── */
-
-function getCookie(name: string): string | null {
-  const m = document.cookie.match(new RegExp(`(?:^|; )${name.replace(/[-[\]/{}()*+?.\\^$|]/g, "\\$&")}=([^;]*)`));
-  return m ? decodeURIComponent(m[1]) : null;
-}
-
-function getEventValue(e: any): string {
-  if (e && typeof e.persist === "function") e.persist();
-  if (e && typeof e === "object") {
-    const v =
-      (e.currentTarget && "value" in e.currentTarget ? e.currentTarget.value : undefined) ??
-      (e.target && "value" in e.target ? e.target.value : undefined);
-    return v != null ? String(v) : "";
-  }
-  return e != null ? String(e) : "";
-}
-
-function formatDate(iso?: string | null) {
-  if (!iso) return "";
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime())
-    ? ""
-    : new Intl.DateTimeFormat(undefined, { year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
-}
-function formatOrUnknown(iso?: string | null) {
-  return formatDate(iso) || "Unknown";
-}
-function useDebounced<T>(value: T, delay = 300) {
-  const [v, setV] = useState(value);
-  useEffect(() => {
-    const id = setTimeout(() => setV(value), delay);
-    return () => clearTimeout(id);
-  }, [value, delay]);
-  return v;
-}
-
-/** ─────────────────────────────────────────────────────────────────────────────
- * API client — strictly /api/v1 (same-origin unless VITE_API_URL given)
- * ──────────────────────────────────────────────────────────────────────────── */
-
-function apiBase() {
-  const w = window as any;
-  const base = w.__BHQ_API_BASE__ || (import.meta as any)?.env?.VITE_API_URL || location.origin;
-  const trimmed = String(base).replace(/\/+$/, "");
-  // Ensure it ends with /api/v1
-  return trimmed.endsWith("/api/v1") ? trimmed : `${trimmed}/api/v1`;
-}
-
-async function http<T>(path: string, init?: RequestInit & { json?: any }): Promise<T> {
-  const headers: Record<string, string> = { Accept: "application/json" };
-  const body = init?.json != null ? JSON.stringify(init.json) : init?.body;
-  if (init?.json != null) headers["Content-Type"] = "application/json";
-
-  // Add CSRF header for unsafe methods (server sets XSRF-TOKEN cookie)
-  const method = (init?.method || "GET").toUpperCase();
-  if (method !== "GET" && method !== "HEAD" && method !== "OPTIONS") {
-    const token = getCookie("XSRF-TOKEN");
-    if (token) {
-      // Send only the header the server expects/whitelists
-      headers["X-CSRF-Token"] = token;
-    }
-    // Do NOT send extra custom headers (keeps preflight happy)
-  }
-
-  const url = `${apiBase()}${path}`;
-  const res = await fetch(url, { credentials: "include", ...init, headers, body });
-
-  const ct = res.headers.get("content-type") || "";
-  const parse = async () => (ct.includes("json") ? res.json() : res.text());
-
-  if (!res.ok) {
-    const data = (await parse()) as any;
-    const msg = data?.error || data?.message || `HTTP ${res.status}`;
-    throw new Error(msg);
-  }
-  return (await parse()) as T;
-}
+type BillingDTO = {
+  provider: string | null; customerId: string | null; subscriptionId: string | null;
+  plan: string | null; status: string | null; currentPeriodEnd: string | null;
+  createdAt?: string | null; updatedAt?: string | null;
+} | null;
 
 type SessionUser = { id: string; email: string; name?: string | null; isSuperAdmin?: boolean | null };
 
-async function getSessionUser(): Promise<{ user: SessionUser | null }> {
-  // primary: /session (works in your logs)
+
+
+const COLUMNS: Array<{ key: keyof TenantRow & string; label: string; default?: boolean }> = [
+  { key: "name", label: "Tenant", default: true },
+  { key: "primaryEmail", label: "Email", default: true },
+  { key: "usersCount", label: "Users", default: true },
+  { key: "organizationsCount", label: "Orgs", default: true },
+  { key: "contactsCount", label: "Contacts", default: true },
+  { key: "animalsCount", label: "Animals", default: true },
+  { key: "createdAt", label: "Created", default: false },
+  { key: "updatedAt", label: "Updated", default: false },
+];
+
+const STORAGE_KEY = "bhq_admin_cols_v1";
+const { readTenantIdFast, resolveTenantId } = utils;
+
+/* utils */
+const Required = () => <span className="ml-1 text-xs text-[hsl(var(--brand-orange))] align-middle">* Required</span>;
+function fmtDate(iso?: string | null) { if (!iso) return ""; const d = new Date(iso); return Number.isNaN(d.getTime()) ? "" : new Intl.DateTimeFormat(undefined, { year: "numeric", month: "2-digit", day: "2-digit" }).format(d); }
+function tenantToRow(t: TenantDTO): TenantRow { return { ...t, primaryEmail: t.primaryEmail ?? null, billing: t.billing ?? null }; }
+async function getSessionUser(): Promise<SessionUser | null> {
   try {
-    const res = await http<any>(`/session`);
-    // accept { user } or a raw user object, just in case
-    const user = (res?.user ?? (res?.id ? res : null)) as SessionUser | null;
-    return { user: user ?? null };
+    const res = await adminApi.me();
+    return res?.user ?? null;
   } catch {
-    // fallback (older builds might expose /me or /user)
-    try {
-      const res = await http<any>(`/me`);
-      const user = (res?.user ?? (res?.id ? res : null)) as SessionUser | null;
-      return { user: user ?? null };
-    } catch {
-      return { user: null };
-    }
+    return null;
   }
-}
+} const usersExclOwner = (r: TenantRow) => Math.max(0, (r.usersCount ?? 0) - 1);
 
-const API = {
-  listTenants: (p: { q?: string; page?: number; limit?: number; sort?: string }) =>
-    http<{ items: TenantDTO[]; total: number }>(
-      `/tenants?` +
-      new URLSearchParams({
-        ...(p.q ? { q: p.q } : {}),
-        ...(p.page ? { page: String(p.page) } : {}),
-        ...(p.limit ? { limit: String(p.limit) } : {}),
-        ...(p.sort ? { sort: p.sort } : {}),
-      }).toString()
-    ),
-  getTenant: (id: ID) => http<TenantDTO>(`/tenants/${id}`),
-  patchTenant: (id: ID, body: TenantPatchBody) => http<TenantDTO>(`/tenants/${id}`, { method: "PATCH", json: body }),
 
-  // Billing
-  getBilling: (id: ID) => http<BillingDTO>(`/tenants/${id}/billing`),
-  patchBilling: (id: ID, body: BillingPatchBody) =>
-    http<BillingDTO>(`/tenants/${id}/billing`, { method: "PATCH", json: body }),
+/* ───────────────────────── New: TenantDetailsView component ───────────────────────── */
+function TenantDetailsView({
+  row, mode, setMode, setDraft, activeTab, setActiveTab, requestSave,
+  tenantSections, // function
+}: any) {
+  // local dirty tracking for sub-tabs
+  const [usersDirty, setUsersDirty] = React.useState(false);
+  const [billingDirty, setBillingDirty] = React.useState(false);
+  const { confirm } = hooks.useDirtyConfirm(usersDirty || billingDirty);
 
-  // Memberships
-  listUsers: (tenantId: ID, p?: { q?: string; role?: string; page?: number; limit?: number }) =>
-    http<{ items: TenantUserDTO[]; total: number }>(
-      `/tenants/${tenantId}/users?` +
-      new URLSearchParams({
-        ...(p?.q ? { q: p.q } : {}),
-        ...(p?.role ? { role: p.role } : {}),
-        ...(p?.page ? { page: String(p.page) } : {}),
-        ...(p?.limit ? { limit: String(p.limit) } : {}),
-      }).toString()
-    ),
-  addUser: (tenantId: ID, body: AddUserBody) =>
-    http<TenantUserDTO>(`/tenants/${tenantId}/users`, { method: "POST", json: body }),
-  setRole: (tenantId: ID, userId: string, role: TenantUserDTO["role"]) =>
-    http<{ ok: true }>(`/tenants/${tenantId}/users/${userId}/role`, { method: "PUT", json: { role } }),
-  verifyEmail: (tenantId: ID, userId: string) =>
-    http<{ ok: true }>(`/tenants/${tenantId}/users/${userId}/verify-email`, { method: "POST" }),
-  resetPassword: (tenantId: ID, userId: string) =>
-    http<{ ok: true }>(`/tenants/${tenantId}/users/${userId}/reset-password`, { method: "POST" }),
-  removeUser: (tenantId: ID, userId: string) =>
-    http<{ ok: true }>(`/tenants/${tenantId}/users/${userId}`, { method: "DELETE" }),
-  setPassword: (tenantId: ID, userId: string, password: string) =>
-    http<{ ok: true }>(`/tenants/${tenantId}/users/${userId}/password`, {
-      method: "PUT",
-      json: { password },
-    }),
-
-  // Admin-only: create tenant + owner + (optional) billing in one step
-  adminProvisionTenant: (body: {
-    tenant: { name: string; primaryEmail?: string | null };
-    owner: { email: string; name?: string | null; verify?: boolean; makeDefault?: boolean };
-    billing?:
-    | {
-      provider?: string | null;
-      customerId?: string | null;
-      subscriptionId?: string | null;
-      plan?: string | null;
-      status?: string | null;
-      currentPeriodEnd?: string | null;
+  // register child "save" callbacks (e.g., UsersTab role batch)
+  const childSaversRef = React.useRef(new Set<() => Promise<void>>());
+  const registerChildSave = React.useCallback((cb: () => Promise<void>) => {
+    childSaversRef.current.add(cb);
+    return () => childSaversRef.current.delete(cb);
+  }, []);
+  const runChildSaves = React.useCallback(async () => {
+    for (const task of Array.from(childSaversRef.current)) { // sequential by design
+      // eslint-disable-next-line no-await-in-loop
+      await task();
     }
-    | undefined;
-  }) =>
-    http<{
-      tenant: { id: ID; name: string; primaryEmail: string | null; createdAt: string; updatedAt: string };
-      owner: { id: string; email: string; name: string | null; verified: boolean; isSuperAdmin: boolean; createdAt: string };
-      billing: BillingPatchBody | null;
-    }>(`/tenants/admin-provision`, { method: "POST", json: body }),
-};
-
-/** ─────────────────────────────────────────────────────────────────────────────
- * App
- * ──────────────────────────────────────────────────────────────────────────── */
-
-export default function AppAdmin() {
-  // announce active module once on mount
-  React.useEffect(() => {
-    const label = "Admin";
-    window.dispatchEvent(new CustomEvent("bhq:module", { detail: { label } }));
-    try {
-      localStorage.setItem("BHQ_LAST_MODULE", label);
-    } catch { }
   }, []);
 
-  /** Prefs */
-  const [columns, setColumns] = useState<Record<string, boolean>>(() => {
-    const saved = localStorage.getItem(COL_STORAGE_KEY);
-    return saved
-      ? JSON.parse(saved)
-      : ALL_COLUMNS.reduce((acc, c) => ({ ...acc, [c.key]: !!c.default }), {} as Record<string, boolean>);
-  });
-  useEffect(() => {
-    const valid = new Set(ALL_COLUMNS.map((c) => String(c.key)));
-    const hasStale = Object.keys(columns).some((k) => !valid.has(k));
-    if (hasStale) {
-      const next: Record<string, boolean> = {};
-      ALL_COLUMNS.forEach((c) => {
-        next[String(c.key)] = !!columns[String(c.key)];
-      });
-      setColumns(next);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const guardedSetActiveTab = (next: string) => { if (next !== activeTab && confirm()) setActiveTab(next); };
+  const guardedCancel = () => { if (confirm()) setMode("view"); };
+  const onTopSave = async () => { await runChildSaves(); await requestSave(); setUsersDirty(false); setBillingDirty(false); };
 
-  const [sorts, setSorts] = useState<SortRule[]>(() => {
-    const saved = localStorage.getItem(SORT_STORAGE_KEY);
-    return saved ? JSON.parse(saved) : [];
-  });
-  const [q, setQ] = useState<string>(() => localStorage.getItem(Q_STORAGE_KEY) || "");
-  const dq = useDebounced(q, 250);
-
-  const [pageSize, setPageSize] = useState<number>(() => Number(localStorage.getItem(PAGE_SIZE_STORAGE_KEY) || 25));
-  const [page, setPage] = useState<number>(1);
-
-  const [showFilters, setShowFilters] = useState<boolean>(() => localStorage.getItem(SHOW_FILTERS_STORAGE_KEY) === "1");
-  const [filters, setFilters] = useState<Record<string, string>>(() => {
-    const saved = localStorage.getItem(FILTERS_STORAGE_KEY);
-    return saved ? JSON.parse(saved) : {};
-  });
-
-  /** Data + drawer state */
-  const [loading, setLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string>("");
-  const [total, setTotal] = useState<number>(0);
-  const [rows, setRows] = useState<TenantRow[]>([]);
-
-  const [selected, setSelected] = useState<Set<ID>>(new Set());
-  const [selectedId, setSelectedId] = useState<ID | null>(null);
-  const [isDrawerOpen, setIsDrawerOpen] = useState<boolean>(false);
-  const [drawerEditing, setDrawerEditing] = useState(false);
-  const [drawerTab, setDrawerTab] = useState<"overview" | "users" | "billing" | "audit">("overview");
-
-  const [tenant, setTenant] = useState<TenantRow | null>(null);
-  const [draft, setDraft] = useState<Partial<TenantRow> | null>(null);
-  const [billing, setBilling] = useState<BillingDTO>(null);
-  const [billingDraft, setBillingDraft] = useState<BillingPatchBody>({});
-  const [drawerLoading, setDrawerLoading] = useState<boolean>(false);
-  const [drawerError, setDrawerError] = useState<string>("");
-
-  const [ownerName, setOwnerName] = useState<string>("");
-  const [ownerEmail, setOwnerEmail] = useState<string>("");
-
-  const [drawerRefreshKey, setDrawerRefreshKey] = useState(0);
-
-  const [me, setMe] = useState<SessionUser | null>(null);
-
-  const [createOpen, setCreateOpen] = useState(false);
-
-  // Load current session user (for Super Admin gating)
-  useEffect(() => {
-    let ignore = false;
-    getSessionUser()
-      .then((res) => {
-        if (!ignore) setMe(res.user || null);
-      })
-      .catch(() => {
-        if (!ignore) setMe(null);
-      });
-    return () => {
-      ignore = true;
-    };
-  }, []);
-
-  /** Persist prefs */
-  useEffect(() => {
-    localStorage.setItem(COL_STORAGE_KEY, JSON.stringify(columns));
-  }, [columns]);
-  useEffect(() => {
-    localStorage.setItem(SORT_STORAGE_KEY, JSON.stringify(sorts));
-  }, [sorts]);
-  useEffect(() => {
-    localStorage.setItem(Q_STORAGE_KEY, q);
-  }, [q]);
-  useEffect(() => {
-    localStorage.setItem(PAGE_SIZE_STORAGE_KEY, String(pageSize));
-  }, [pageSize]);
-  useEffect(() => {
-    localStorage.setItem(FILTERS_STORAGE_KEY, JSON.stringify(filters));
-  }, [filters]);
-  useEffect(() => {
-    localStorage.setItem(SHOW_FILTERS_STORAGE_KEY, showFilters ? "1" : "0");
-  }, [showFilters]);
-
-  /** Fetch list */
-  useEffect(() => {
-    let ignore = false;
-    setLoading(true);
-    setError("");
-    const sortParam = sorts
-      .map((s) => `${s.dir === "desc" ? "-" : ""}${String(s.key)}`)
-      // only allow what API accepts; ignore unknowns
-      .filter((k) => ["name", "createdAt", "updatedAt"].includes(k.replace(/^-/, "")))
-      .join(",");
-    API.listTenants({
-      q: dq || undefined,
-      limit: pageSize,
-      page,
-      sort: sortParam || undefined,
-    })
-      .then((res) => {
-        if (ignore) return;
-        const items = res.items || [];
-        setRows(items);
-        setTotal(res.total ?? items.length ?? 0);
-      })
-      .catch((e: any) => {
-        if (!ignore) setError(e?.message || "Failed to load tenants");
-      })
-      .finally(() => {
-        if (!ignore) setLoading(false);
-      });
-    return () => {
-      ignore = true;
-    };
-  }, [dq, pageSize, page, sorts]);
-
-  // Load selected tenant + billing + owner for drawer
-  useEffect(() => {
-    if (!isDrawerOpen || selectedId == null) return;
-    let ignore = false;
-    setDrawerLoading(true);
-    setDrawerError("");
-    setTenant(null);
-    setBilling(null);
-    setOwnerName("");
-    setOwnerEmail("");
-
-    Promise.all([
-      API.getTenant(selectedId),
-      API.getBilling(selectedId),
-      // try OWNER first, then ADMIN as a fallback
-      API.listUsers(selectedId, { role: "OWNER", page: 1, limit: 5 }).catch(() => ({ items: [], total: 0 })),
-      API.listUsers(selectedId, { role: "ADMIN", page: 1, limit: 5 }).catch(() => ({ items: [], total: 0 })),
-    ])
-      .then(([dto, bill, ownersRes, adminsRes]) => {
-        if (ignore) return;
-        setTenant(dto);
-        setBilling(bill);
-        setBillingDraft({});
-
-        const owners = ownersRes?.items ?? [];
-        const admins = adminsRes?.items ?? [];
-        const picked = owners[0] ?? admins[0] ?? null;
-
-        setOwnerName(picked?.name || picked?.email || "");
-        setOwnerEmail(picked?.email || "");
-      })
-      .catch((e: any) => {
-        if (!ignore) setDrawerError(e?.message || "Failed to load tenant");
-      })
-      .finally(() => {
-        if (!ignore) setDrawerLoading(false);
-      });
-
-    return () => {
-      ignore = true;
-    };
-  }, [isDrawerOpen, selectedId, drawerRefreshKey]);
-
-  /** Derived rows: (client-side) filter + sort + page */
-  const dFilters = useDebounced(filters, 250);
-
-  const filteredRows = useMemo(() => {
-    const text = (dFilters.__text || "").trim().toLowerCase();
-    const inRange = (iso?: string | null, start?: string, end?: string) => {
-      if (!start && !end) return true;
-      if (!iso) return false;
-      const t = new Date(iso).getTime();
-      if (Number.isNaN(t)) return false;
-      if (start) {
-        const s = new Date(start).getTime();
-        if (!Number.isNaN(s) && t < s) return false;
-      }
-      if (end) {
-        const e = new Date(end).getTime();
-        if (!Number.isNaN(e) && t > e) return false;
-      }
-      return true;
-    };
-
-    return rows.filter((r) => {
-      if (text) {
-        const hay = [r.name, r.primaryEmail || "", r.billing?.plan || "", r.billing?.status || ""].map((v) =>
-          String(v || "").toLowerCase()
-        );
-        if (!hay.some((h) => h.includes(text))) return false;
-      }
-      const emailQ = (dFilters.primaryEmail || "").toLowerCase();
-      if (emailQ && !String(r.primaryEmail || "").toLowerCase().includes(emailQ)) return false;
-      if (!inRange(r.createdAt, dFilters.createdAtStart, dFilters.createdAtEnd)) return false;
-      if (!inRange(r.updatedAt, dFilters.updatedAtStart, dFilters.updatedAtEnd)) return false;
-
-      return true;
-    });
-  }, [rows, dFilters]);
-
-  const sortedRows = useMemo(() => {
-    if (sorts.length === 0) return filteredRows;
-    const copy = [...filteredRows];
-    const comps = sorts
-      .map((s) => {
-        const field = String(s.key);
-        const dir = s.dir === "asc" ? 1 : -1;
-        // only fields API allows; others are ignored here to mirror server
-        if (!["name", "createdAt", "updatedAt"].includes(field)) return null;
-        return (a: TenantRow, b: TenantRow) => {
-          const av = (a as any)[field] ?? "";
-          const bv = (b as any)[field] ?? "";
-          if (av === bv) return 0;
-          return av > bv ? dir : -dir;
-        };
-      })
-      .filter(Boolean) as ((a: TenantRow, b: TenantRow) => number)[];
-    if (!comps.length) return copy;
-    copy.sort((a, b) => {
-      for (const cmp of comps) {
-        const r = cmp(a, b);
-        if (r !== 0) return r;
-      }
-      return 0;
-    });
-    return copy;
-  }, [filteredRows, sorts]);
-
-  const pageCount = Math.max(1, Math.ceil(sortedRows.length / pageSize));
-  const clampedPage = Math.min(pageCount, Math.max(1, page));
-  const pageRows = useMemo(() => {
-    const start = (clampedPage - 1) * pageSize;
-    return sortedRows.slice(start, start + pageSize);
-  }, [sortedRows, clampedPage, pageSize]);
-
-  /** Handlers */
-  const toggleColumn = (k: string) => setColumns((prev) => ({ ...prev, [k]: !prev[k] }));
-  const cycleSort = (key: keyof TenantRow, withShift: boolean) => {
-    setSorts((prev) => {
-      const idx = prev.findIndex((s) => s.key === key);
-      if (!withShift) {
-        if (idx === -1) return [{ key, dir: "asc" }];
-        if (prev[idx].dir === "asc") return [{ key, dir: "desc" }];
-        return [];
-      }
-      if (idx === -1) return [...prev, { key, dir: "asc" }];
-      const cur = prev[idx];
-      if (cur.dir === "asc") {
-        const copy = prev.slice();
-        copy[idx] = { key, dir: "desc" };
-        return copy;
-      }
-      const copy = prev.slice();
-      copy.splice(idx, 1);
-      return copy;
-    });
-    setPage(1);
-  };
-  const toggleSelectAll = () =>
-    setSelected((prev) => (prev.size === pageRows.length ? new Set() : new Set(pageRows.map((r) => r.id))));
-  const toggleSelect = (id: ID) =>
-    setSelected((prev) => {
-      const n = new Set(prev);
-      n.has(id) ? n.delete(id) : n.add(id);
-      return n;
-    });
-
-  /** Visible cols + drawer data */
-  const visibleCols = useMemo(() => ALL_COLUMNS.filter((c) => columns[String(c.key)]), [columns]);
-  const d = useMemo(() => (tenant ? { ...tenant, ...(draft || {}) } : null), [tenant, draft]);
-
-  /** ───────────────────────────────── UI ───────────────────────────────── */
   return (
-    <>
-      <div className="space-y-3">
-        {error && (
-          <div className="rounded-md border border-hairline bg-surface-strong px-3 py-2 text-sm text-secondary">
-            {error}
-          </div>
-        )}
-
-        <Card className="bhq-card bg-surface/80 bg-gradient-to-b from-[hsl(var(--glass))/65] to-[hsl(var(--glass-strong))/85] backdrop-blur-sm border border-hairline transition-shadow">
-          {/* Toolbar */}
-          <div className="bhq-section-fixed p-4 sm:p-5 bg-surface bg-gradient-to-b from-[hsl(var(--glass))/35] to-[hsl(var(--glass-strong))/55] rounded-t-xl overflow-hidden">
-            <div className="flex items-center gap-3 justify-between min-w-0">
-              {/* Search (fills available space) */}
-              <div className="pr-2 flex-1 min-w-0">
-                <div className="relative w-full">
-                  <svg
-                    className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-secondary"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    aria-hidden="true"
-                  >
-                    <path d="M21 21l-4.3-4.3M10.5 18a7.5 7.5 0 1 1 0-15 7.5 7.5 0 0 1 0 15Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                  </svg>
-
-                  <Input
-                    value={q}
-                    onChange={(e) => {
-                      const v = e.currentTarget?.value ?? "";
-                      setQ(v);
-                      setPage(1);
-                    }}
-                    placeholder="Search name, email, plan/status…"
-                    aria-label="Search tenants"
-                    className="pl-9 pr-20 w-full h-10 rounded-full shadow-sm bg-surface border border-hairline focus:shadow-[0_0_0_2px_hsl(var(--brand-orange))] focus:outline-none"
-                  />
-
-                  {q && (
-                    <button
-                      type="button"
-                      aria-label="Clear search"
-                      onClick={() => setQ("")}
-                      className="absolute right-12 top-1/2 -translate-y-1/2 p-1 rounded hover:bg-[hsl(var(--brand-orange))]/12"
-                    >
-                      <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                        <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                      </svg>
-                    </button>
-                  )}
-
-                  <span aria-hidden className="absolute right-9 top-1/2 -translate-y-1/2 h-5 w-px bg-hairline" />
-
-                  <button
-                    type="button"
-                    aria-label="Toggle filters"
-                    aria-pressed={showFilters ? "true" : "false"}
-                    onClick={(e) => {
-                      setShowFilters((v) => !v);
-                      (e.currentTarget as HTMLButtonElement).blur();
-                    }}
-                    className={[
-                      "absolute right-2 top-1/2 -translate-y-1/2",
-                      "inline-grid place-items-center h-7 w-7 rounded-full",
-                      showFilters ? "bg-[hsl(var(--brand-orange))] text-black" : "text-secondary hover:bg-white/10 focus:bg-white/10",
-                    ].join(" ")}
-                  >
-                    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                      <line x1="4" y1="7" x2="14" y2="7" />
-                      <circle cx="18" cy="7" r="1.5" fill="currentColor" />
-                      <line x1="4" y1="12" x2="11" y2="12" />
-                      <circle cx="15" cy="12" r="1.5" fill="currentColor" />
-                      <line x1="4" y1="17" x2="12" y2="17" />
-                      <circle cx="16" cy="17" r="1.5" fill="currentColor" />
-                    </svg>
-                  </button>
-                </div>
-              </div>
-
-              {/* Right actions */}
-              <div className="flex-none">
-                {me?.isSuperAdmin && (
-                  <Button onClick={() => setCreateOpen(true)}>
-                    New tenant
-                  </Button>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* Filters */}
-          {showFilters && (
-            <div className="bhq-section-fixed mt-2 rounded-xl border border-hairline bg-surface-strong/70 p-3 sm:p-4">
-              <FilterRow columns={columns} filters={filters} onChange={setFilters} />
-              {Object.entries(filters).some(([, v]) => !!v) && (
-                <div className="mt-3 flex flex-wrap items-center gap-2">
-                  {Object.entries(filters)
-                    .filter(([, v]) => !!v)
-                    .map(([k, v]) => (
-                      <button
-                        key={k}
-                        type="button"
-                        onClick={() => setFilters({ ...filters, [k]: "" })}
-                        className="inline-flex items-center gap-1 rounded-full border border-hairline bg-surface px-2 py-0.5 text-xs"
-                        title={`${k}: ${v}`}
-                      >
-                        <span className="max-w-[16ch] truncate">
-                          {k}: {v}
-                        </span>
-                        <span aria-hidden>×</span>
-                      </button>
-                    ))}
-                  <Button variant="outline" size="sm" onClick={() => setFilters({})}>
-                    Clear all
-                  </Button>
-                </div>
-              )}
-            </div>
+    <DetailsScaffold
+      title={row.name}
+      subtitle={row.primaryEmail || ""}
+      mode={mode}
+      onEdit={() => setMode("edit")}
+      onCancel={guardedCancel}
+      onSave={onTopSave}
+      tabs={[
+        { key: "overview", label: "Overview" },
+        { key: "users", label: "Users" },
+        { key: "billing", label: "Billing" },
+        { key: "audit", label: "Audit" },
+      ]}
+      activeTab={activeTab}
+      onTabChange={guardedSetActiveTab}
+      rightActions={
+        <div className="flex items-center gap-2">
+          {mode === "edit" && (
+            <span className="inline-flex items-center rounded px-2 py-0.5 text-xs border border-hairline bg-[hsl(var(--brand-orange))]/15 text-[hsl(var(--brand-orange))]">
+              Editing
+            </span>
           )}
-
-          {/* Table */}
-          <div className="bhq-table overflow-hidden" data-admin-align-top>
-            <div className="overflow-x-auto overscroll-contain">
-              <table className="min-w-max w-full text-sm">
-                <thead className="sticky top-0 z-10 bg-surface-strong border-b border-hairline">
-                  <tr className="text-sm">
-                    <th className="px-3 py-2 w-10 text-center">
-                      <input
-                        type="checkbox"
-                        aria-label="Select all"
-                        checked={pageRows.length > 0 && selected.size === pageRows.length}
-                        onChange={toggleSelectAll}
-                      />
-                    </th>
-
-                    {visibleCols.map((c) => {
-                      const active = sorts.find((s) => s.key === c.key);
-                      const ariaSort = active ? (active.dir === "asc" ? "ascending" : "descending") : "none";
-                      return (
-                        <th
-                          key={String(c.key)}
-                          className={[
-                            "px-3 py-3 cursor-pointer select-none transition-colors text-center",
-                            active ? "text-primary" : "text-secondary",
-                            "hover:bg-[hsl(var(--brand-orange))]/12",
-                          ].join(" ")}
-                          onClick={(e) => cycleSort(c.key, (e as any).shiftKey)}
-                          role="button"
-                          aria-sort={ariaSort}
-                          tabIndex={0}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter" || e.key === " ") cycleSort(c.key, e.shiftKey);
-                          }}
-                          title={active ? `${c.label} (${active.dir})` : `Sort by ${c.label}`}
-                        >
-                          <div className="inline-flex items-center gap-1">
-                            <span>{c.label}</span>
-                            {active ? (
-                              <span className="inline-block h-1.5 w-1.5 rounded-full bg-[hsl(var(--brand-orange))]" />
-                            ) : (
-                              <span className="inline-block h-1.5 w-1.5 rounded-full bg-transparent" />
-                            )}
-                          </div>
-                        </th>
-                      );
-                    })}
-
-                    <th className="px-3 py-2 w-16 text-center">
-                      <ColumnsPopover columns={columns} onToggle={toggleColumn} onSet={setColumns} />
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-hairline">
-                  {loading &&
-                    Array.from({ length: 6 }).map((_, i) => (
-                      <tr key={i} className="animate-pulse">
-                        <td className="px-3 py-2 text-center">
-                          <div className="h-4 w-4 rounded bg-surface-strong inline-block" />
-                        </td>
-                        {visibleCols.map((c, j) => (
-                          <td key={`${i}-${j}`} className="px-3 py-2 text-center">
-                            <div className="h-4 w-[70%] rounded bg-surface-strong mx-auto" />
-                          </td>
-                        ))}
-                        <td className="px-3 py-2" />
-                      </tr>
-                    ))}
-
-                  {!loading && pageRows.length === 0 && (
-                    <tr>
-                      <td className="px-3 py-8" colSpan={visibleCols.length + 2}>
-                        <EmptyState title="No tenants match your filters" description="Try adjusting filters." />
-                      </td>
-                    </tr>
-                  )}
-
-                  {!loading &&
-                    pageRows.map((r) => (
-                      <tr
-                        key={r.id}
-                        onClick={() => {
-                          setSelectedId(r.id);
-                          setIsDrawerOpen(true);
-                          setDrawerTab("overview");
-                          setDrawerRefreshKey((k) => k + 1);
-                        }}
-                        className="cursor-pointer transition-colors hover:bg-[hsl(var(--brand-orange))]/8"
-                      >
-                        <td className="px-3 py-2 text-center" onClick={(e) => e.stopPropagation()}>
-                          <input
-                            type="checkbox"
-                            aria-label={`Select ${r.name || r.id}`}
-                            checked={selected.has(r.id)}
-                            onChange={() => toggleSelect(r.id)}
-                          />
-                        </td>
-                        {visibleCols.map((c) => (
-                          <td key={`${r.id}-${String(c.key)}`} className="px-3 py-2 text-sm text-center">
-                            {c.render ? c.render(r) : (r as any)[c.key] ?? ""}
-                          </td>
-                        ))}
-                        <td className="px-3 py-2 text-right" onClick={(e) => e.stopPropagation()} />
-                      </tr>
-                    ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          {/* Footer */}
-          <div className="bhq-section-fixed flex items-start justify-between px-3 py-2 text-sm">
-            <div className="flex flex-col items-start">
-              <div className="text-secondary">
-                Showing {pageRows.length === 0 ? 0 : (clampedPage - 1) * pageSize + 1} to{" "}
-                {Math.min(clampedPage * pageSize, total)} of {total}
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <label className="hidden sm:flex items-center gap-2 text-xs text-secondary">
-                <span>Rows</span>
-                <div className="relative">
-                  <select
-                    className="appearance-none pr-8 bg-surface-strong border border-hairline rounded px-2 py-1 text-sm outline-none focus:shadow-[0_0_0_2px_hsl(var(--brand-orange))]"
-                    value={String(pageSize)}
-                    onChange={(e) => {
-                      const v = Number(getEventValue(e));
-                      setPageSize(v);
-                      setPage(1);
-                    }}
-                  >
-                    {[10, 25, 50, 100].map((n) => (
-                      <option key={n} value={n}>
-                        {n}
-                      </option>
-                    ))}
-                  </select>
-                  <svg className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-secondary" viewBox="0 0 20 20" aria-hidden="true">
-                    <path d="M5.5 7.5l4.5 4 4.5-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                  </svg>
-                </div>
-              </label>
-              <Button variant="outline" size="sm" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={clampedPage === 1}>
-                Prev
-              </Button>
-              <div>Page {clampedPage} of {pageCount}</div>
-              <Button variant="outline" size="sm" onClick={() => setPage((p) => Math.min(pageCount, p + 1))} disabled={clampedPage === pageCount}>
-                Next
-              </Button>
-            </div>
-          </div>
-        </Card>
-      </div>
-
-      {/* Drawer */}
-      {isDrawerOpen && selectedId != null && (
-        <AnchoredCenterModal
-          onClose={() => {
-            setIsDrawerOpen(false);
-            setDrawerEditing(false);
-            setDraft(null);
-            setBillingDraft({});
-          }}
-          title={tenant?.name || String(selectedId ?? "") || "Tenant"}
-        >
-          {/* Drawer header (tabs + actions) */}
-          <div className="border-b border-hairline mb-3 px-4 bg-surface">
-            <div className="flex items-center gap-3 py-2">
-              <div className="flex gap-2">
-                <TabButton active={drawerTab === "overview"} onClick={() => setDrawerTab("overview")}>Overview</TabButton>
-                <TabButton active={drawerTab === "users"} onClick={() => setDrawerTab("users")}>Users</TabButton>
-                <TabButton active={drawerTab === "billing"} onClick={() => setDrawerTab("billing")}>Billing</TabButton>
-                <TabButton active={drawerTab === "audit"} onClick={() => setDrawerTab("audit")}>Audit</TabButton>
-              </div>
-
-              <div className="ml-auto flex items-center gap-2">
-                {drawerTab === "overview" && (
-                  <>
-                    {drawerEditing ? (
-                      <>
-                        <Button
-                          onClick={async () => {
-                            if (!selectedId) return;
-                            try {
-                              await API.patchTenant(selectedId, {
-                                name: (draft?.name ?? tenant?.name) as string,
-                                primaryEmail:
-                                  draft?.primaryEmail === undefined
-                                    ? (tenant?.primaryEmail ?? null)
-                                    : (draft?.primaryEmail as string | null),
-                              });
-                              setDraft(null);
-                              setDrawerEditing(false);
-                              setDrawerRefreshKey((k) => k + 1);
-                            } catch (e: any) {
-                              alert(e?.message || "Save failed");
-                            }
-                          }}
-                        >
-                          Save
-                        </Button>
-                        <Button variant="outline" onClick={() => { setDraft(null); setDrawerEditing(false); }}>
-                          Cancel
-                        </Button>
-                      </>
-                    ) : (
-                      <Button onClick={() => setDrawerEditing(true)}>
-                        Edit
-                      </Button>
-                    )}
-                  </>
-                )}
-                <div className="text-xs text-secondary">{drawerLoading ? "Loading…" : drawerError || ""}</div>
-              </div>
-            </div>
-          </div>
-
-          {/* Drawer body (tabs) */}
-          {drawerTab === "overview" && (
-            <div className="p-4">
-              <div className="mx-auto w-full max-w-none space-y-4">
-                <SectionCard title="Tenant">
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <FieldRow label="Name">
-                      {drawerEditing ? (
-                        <input
-                          className="h-10 w-full rounded-md border border-hairline bg-surface px-3 text-sm outline-none focus:shadow-[0_0_0_2px_hsl(var(--brand-orange))] text-primary placeholder:text-secondary"
-                          value={String(d?.name ?? "")}
-                          onChange={(e) => setDraft((p) => ({ ...(p || {}), name: getEventValue(e) }))}
-                        />
-                      ) : (
-                        <span className="truncate text-primary">{tenant?.name || "—"}</span>
-                      )}
-                    </FieldRow>
-
-                    <FieldRow label="Owner" className="sm:col-span-2">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <span
-                          className="text-primary whitespace-normal break-words"
-                          title={ownerName}
-                        >
-                          {ownerName || "—"}
-                        </span>
-                        {ownerEmail && (
-                          <span
-                            className="text-secondary text-xs whitespace-normal break-all"
-                            title={ownerEmail}
-                          >
-                            ({ownerEmail})
-                          </span>
-                        )}
-                      </div>
-                    </FieldRow>
-                  </div>
-                </SectionCard>
-
-                <SectionCard title="Roll-ups">
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                    <MiniStat label="Users" value={<span className="tabular-nums">{tenant?.usersCount ?? 0}</span>} />
-                    <MiniStat label="Organizations" value={<span className="tabular-nums">{tenant?.organizationsCount ?? 0}</span>} />
-                    <MiniStat label="Contacts" value={<span className="tabular-nums">{tenant?.contactsCount ?? 0}</span>} />
-                    <MiniStat label="Animals" value={<span className="tabular-nums">{tenant?.animalsCount ?? 0}</span>} />
-                  </div>
-                </SectionCard>
-
-                <SectionCard title="Dates">
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <MiniStat label="Created" value={formatDate(tenant?.createdAt)} />
-                    <MiniStat label="Updated" value={formatDate(tenant?.updatedAt)} />
-                    <MiniStat
-                      label="Billing period end"
-                      value={tenant?.billing?.currentPeriodEnd ? formatDate(tenant.billing.currentPeriodEnd) : "—"}
-                    />
-                  </div>
-                </SectionCard>
-              </div>
-            </div>
-          )}
-
-          {drawerTab === "users" && selectedId != null && (
-            <div className="p-4">
-              <TenantUsers tenantId={selectedId} />
-            </div>
-          )}
-
-          {drawerTab === "billing" && (
-            <div className="p-4 space-y-4">
-              <SectionCard
-                title="Billing"
-                right={
-                  <div className="flex gap-2">
-                    <Button
-                      onClick={async () => {
-                        if (!selectedId) return;
-                        try {
-                          const body: BillingPatchBody = {
-                            provider: billingDraft.provider !== undefined ? billingDraft.provider : (billing?.provider ?? null),
-                            customerId: billingDraft.customerId !== undefined ? billingDraft.customerId : (billing?.customerId ?? null),
-                            subscriptionId: billingDraft.subscriptionId !== undefined ? billingDraft.subscriptionId : (billing?.subscriptionId ?? null),
-                            plan: billingDraft.plan !== undefined ? billingDraft.plan : (billing?.plan ?? null),
-                            status: billingDraft.status !== undefined ? billingDraft.status : (billing?.status ?? null),
-                            currentPeriodEnd: billingDraft.currentPeriodEnd !== undefined ? billingDraft.currentPeriodEnd : (billing?.currentPeriodEnd ?? null),
-                          };
-                          const saved = await API.patchBilling(selectedId, body);
-                          setBilling(saved);
-                          setBillingDraft({});
-                        } catch (e: any) {
-                          alert(e?.message || "Save failed");
-                        }
-                      }}
-                    >
-                      Save
-                    </Button>
-                    <Button variant="outline" onClick={() => setBillingDraft({})}>Reset</Button>
-                  </div>
-                }
-              >
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <Labeled value={billingDraft.provider ?? billing?.provider ?? ""} label="Provider" onChange={(v) => setBillingDraft((p) => ({ ...p, provider: v || null }))} />
-                  <Labeled value={billingDraft.plan ?? billing?.plan ?? ""} label="Plan" onChange={(v) => setBillingDraft((p) => ({ ...p, plan: v || null }))} />
-                  <Labeled value={billingDraft.status ?? billing?.status ?? ""} label="Status" onChange={(v) => setBillingDraft((p) => ({ ...p, status: v || null }))} />
-                  <Labeled value={billingDraft.customerId ?? billing?.customerId ?? ""} label="Customer ID" onChange={(v) => setBillingDraft((p) => ({ ...p, customerId: v || null }))} />
-                  <Labeled value={billingDraft.subscriptionId ?? billing?.subscriptionId ?? ""} label="Subscription ID" onChange={(v) => setBillingDraft((p) => ({ ...p, subscriptionId: v || null }))} />
-                  <Labeled
-                    value={billingDraft.currentPeriodEnd ?? billing?.currentPeriodEnd ?? ""}
-                    label="Current Period End (ISO or empty)"
-                    onChange={(v) => setBillingDraft((p) => ({ ...p, currentPeriodEnd: v || null }))}
-                    placeholder="2025-01-31T23:59:59.000Z"
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-3 mt-3">
-                  <MiniStat label="Created" value={formatOrUnknown(billing?.createdAt)} />
-                  <MiniStat label="Updated" value={formatOrUnknown(billing?.updatedAt)} />
-                </div>
-              </SectionCard>
-            </div>
-          )}
-
-          {drawerTab === "audit" && (
-            <div className="p-4 space-y-4">
-              <SectionCard title="Dates">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <MiniStat label="Created" value={formatOrUnknown(tenant?.createdAt)} />
-                  <MiniStat label="Last Modified" value={formatOrUnknown(tenant?.updatedAt)} />
-                </div>
-              </SectionCard>
-              <SectionCard title="Change Log">
-                <div className="text-secondary text-sm">No audit entries (placeholder).</div>
-              </SectionCard>
-            </div>
-          )}
-        </AnchoredCenterModal>
-      )}
-      {createOpen && (
-        <ProvisionTenantModal
-          onClose={() => setCreateOpen(false)}
-          onCreated={(tenantId) => {
-            setCreateOpen(false);
-            setPage(1);
-            setSelectedId(tenantId);
-            setIsDrawerOpen(true);
-            setDrawerTab("overview");
-            setDrawerRefreshKey((k) => k + 1);
-          }}
+          <Button size="sm" variant="outline">Archive</Button>
+        </div>
+      }
+    >
+      {activeTab === "overview" && (
+        <DetailsSpecRenderer<TenantRow>
+          row={row}
+          mode={mode}
+          setDraft={(p) => setDraft((d: any) => ({ ...d, ...p }))}
+          sections={tenantSections(mode)}
         />
       )}
-      {/* === END #5 === */}
-    </>
+
+      {activeTab === "users" && (
+        <UsersTab tenantId={row.id} mode={mode} onDirty={setUsersDirty} registerSave={registerChildSave} />
+      )}
+
+      {activeTab === "billing" && (
+        <BillingTab tenantId={row.id} mode={mode} onDirty={setBillingDirty} />
+      )}
+
+      {activeTab === "audit" && (
+        <div className="space-y-2">
+          <SectionCard title="Dates">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="rounded border border-hairline bg-surface px-3 py-2">
+                <div className="text-xs text-secondary mb-1 uppercase tracking-wide">Created</div>
+                <div className="text-sm text-primary">{fmtDate(row.createdAt) || "—"}</div>
+              </div>
+              <div className="rounded border border-hairline bg-surface px-3 py-2">
+                <div className="text-xs text-secondary mb-1 uppercase tracking-wide">Last Modified</div>
+                <div className="text-sm text-primary">{fmtDate(row.updatedAt) || "—"}</div>
+              </div>
+            </div>
+          </SectionCard>
+          <SectionCard title="Change Log">
+            <div className="text-sm text-secondary">No audit entries (placeholder).</div>
+          </SectionCard>
+        </div>
+      )}
+    </DetailsScaffold>
   );
 }
 
-/** ───────────────────────── Users tab ───────────────────────── */
+/* ───────────────────────── Main component ───────────────────────── */
+export default function AppAdmin() {
+  React.useEffect(() => {
+    window.dispatchEvent(new CustomEvent("bhq:module", { detail: { key: "admin", label: "Admin" } }));
+  }, []);
+  React.useEffect(() => { if (!getOverlayRoot()) console.warn("ColumnsPopover needs an overlay root."); }, []);
 
-function TenantUsers({ tenantId }: { tenantId: ID }) {
+  const [tenantId, setTenantId] = React.useState<number | null>(() => readTenantIdFast() ?? null);
+  const [tenantErr, setTenantErr] = React.useState<string | null>(null);
+  React.useEffect(() => {
+    if (tenantId != null) return;
+    let cancelled = false;
+    (async () => {
+      try { const t = await resolveTenantId(); if (!cancelled) setTenantId(t); }
+      catch (e: any) { if (!cancelled) setTenantErr(String(e?.message || e) || "Failed to resolve tenant"); }
+    })();
+    return () => { cancelled = true; };
+  }, [tenantId]);
+
+  React.useEffect(() => {
+    if (tenantId == null) return; // wait until we know the id
+
+    // 1) Persist tenant id synchronously so request() can attach X-Tenant-Id
+    try {
+      localStorage.setItem("BHQ_TENANT_ID", String(tenantId));
+      (window as any).__BHQ_TENANT_ID__ = tenantId;
+    } catch { }
+
+    // 2) Now load the session user
+    let cancelled = false;
+    (async () => {
+      try {
+        // First try the normal call (should work now that the header is present)
+        const res = await adminApi.me();
+        if (!cancelled) setMe(res?.user ?? null);
+      } catch {
+        // Fallback: if you've implemented #1 (adminApi.me can accept a tenantId),
+        // retry forcing the header explicitly. Safe no-op if #1 wasn’t applied.
+        try {
+          const res2 = await (adminApi as any).me?.(tenantId);
+          if (!cancelled) setMe(res2?.user ?? null);
+        } catch {
+          if (!cancelled) setMe(null);
+        }
+      } finally {
+        if (!cancelled) setMeLoading(false);
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [tenantId]);
+
+  // --- session user state (single source of truth)
+  const [me, setMe] = React.useState<SessionUser | null>(null);
+  const [meLoading, setMeLoading] = React.useState(true);
+  const [canAdminTenants, setCanAdminTenants] = React.useState(false);
+
+
+  // Load session user (scoped; needs tenant header)
+  React.useEffect(() => {
+    if (tenantId == null) return; // wait until tenantId is known/persisted
+    let cancelled = false;
+    (async () => {
+      try {
+        const u = await getSessionUser();
+        if (!cancelled) setMe(u);
+      } finally {
+        if (!cancelled) setMeLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [tenantId]);
+
+  const isSuper = !!me?.isSuperAdmin;
+  const canShowNewTenant = ((!meLoading && isSuper) || canAdminTenants);
+
+  // search/filters
+  const [q, setQ] = React.useState(() => { try { return localStorage.getItem("bhq_admin_q_v1") || ""; } catch { return ""; } });
+  const [filtersOpen, setFiltersOpen] = React.useState(false);
+  const [filters, setFilters] = React.useState<Record<string, string>>(() => { try { return JSON.parse(localStorage.getItem("bhq_admin_filters_v1") || "{}"); } catch { return {}; } });
+  React.useEffect(() => { try { localStorage.setItem("bhq_admin_q_v1", q); } catch { } }, [q]);
+  React.useEffect(() => { try { localStorage.setItem("bhq_admin_filters_v1", JSON.stringify(filters || {})); } catch { } }, [filters]);
+  const [qDebounced, setQDebounced] = React.useState(q);
+  React.useEffect(() => { const t = setTimeout(() => setQDebounced(q.trim()), 300); return () => clearTimeout(t); }, [q]);
+  const clearFilters = () => { setQ(""); setFilters({}); };
+
+  // data + pagination
+  const [rows, setRows] = React.useState<TenantRow[]>([]);
+  const [loading, setLoading] = React.useState<boolean>(tenantId != null ? true : false);
+  const [error, setError] = React.useState<string | null>(null);
+  const [pageSize, setPageSize] = React.useState<number>(25);
+  const [page, setPage] = React.useState<number>(1);
+
+  // ── NEW TENANT MODAL STATE + HELPERS
+  const [createOpen, setCreateOpen] = React.useState(false);
+  const [createWorking, setCreateWorking] = React.useState(false);
+  const [createErr, setCreateErr] = React.useState<string | null>(null);
+
+  // form fields
+  const [newName, setNewName] = React.useState("");
+  const [newEmail, setNewEmail] = React.useState("");
+
+  // simple email check
+  const isEmail = (s: string) => /\S+@\S+\.\S+/.test(s);
+  const canCreate = newName.trim().length > 0 && isEmail(newEmail.trim());
+
+  // create action
+  const doCreateTenant = async () => {
+    if (!canCreate) {
+      setCreateErr("Please enter a tenant name and valid email.");
+      return;
+    }
+    try {
+      setCreateWorking(true);
+      setCreateErr(null);
+
+      const res = await adminApi.adminProvisionTenant({
+        tenant: { name: newName.trim(), primaryEmail: newEmail.trim() },
+        owner: { email: newEmail.trim(), name: null, verify: true, makeDefault: false },
+      });
+
+      // Immediately reflect in the table
+      setRows(prev => {
+        const row = tenantToRow(res.tenant as any);
+        return me?.isSuperAdmin ? [row, ...prev] : [row];
+      });
+
+      setNewName(""); setNewEmail("");
+      setCreateOpen(false);
+    } catch (e: any) {
+      setCreateErr(e?.message || "Failed to create tenant");
+    } finally {
+      setCreateWorking(false);
+    }
+  };
+
+
+  // data load — single tenant by default; all tenants for super admins
+
+  // ── sorting (state + server sort param)  ← PLACE THIS ABOVE THE DATA LOAD EFFECT
+  const [sorts, setSorts] = React.useState<Array<{ key: string; dir: "asc" | "desc" }>>([]);
+
+  const sortParam = React.useMemo(
+    () => (sorts.length ? sorts.map(s => `${s.key}:${s.dir}`).join(",") : undefined),
+    [sorts]
+  );
+
+  const onToggleSort = React.useCallback(
+    (key: string, opts?: { shiftKey?: boolean }) => {
+      setSorts(prev => {
+        const append = !!opts?.shiftKey;          // Shift = add to multi-sort
+        const base = append ? [...prev] : [];     // otherwise reset to single-column
+        const idx = base.findIndex(s => s.key === key);
+        if (idx === -1) base.push({ key, dir: "asc" });
+        else if (base[idx].dir === "asc") base[idx] = { key, dir: "desc" };
+        else base.splice(idx, 1);                 // third click removes this key
+        return base;
+      });
+    },
+    []
+  );
+
+  // keep paging in sync when sort changes
+  React.useEffect(() => { setPage(1); }, [qDebounced, filters, sorts]);
+
+  React.useEffect(() => {
+    if (meLoading) return;
+    if (!isSuper && tenantId == null) return;
+
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        if (isSuper) {
+          const res = await adminApi.listTenantsAll({
+            q: qDebounced || undefined,
+            page: 1,
+            limit: 50,
+            sort: sortParam, // ← send multi-sort to server
+          });
+          if (!cancelled) {
+            setRows((res.items || []).map(tenantToRow));
+            setCanAdminTenants(true);
+          }
+        }
+      } catch (e: any) {
+        if (!cancelled) {
+          setError(e?.message || "Failed to load tenants");
+          setCanAdminTenants(false);
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [tenantId, isSuper, meLoading, qDebounced, sortParam]);
+
+  const { map, toggle, setAll, visible } = hooks.useColumns(COLUMNS, STORAGE_KEY);
+  const visibleSafe = Array.isArray(visible) && visible.length ? visible : COLUMNS;
+
+  type FilterKind = "text" | "select" | "date";
+  const FILTER_TYPES: Partial<Record<keyof TenantRow & string, { kind: FilterKind }>> = {
+    name: { kind: "text" }, primaryEmail: { kind: "text" }, createdAt: { kind: "date" }, updatedAt: { kind: "date" },
+    usersCount: { kind: "text" }, organizationsCount: { kind: "text" }, contactsCount: { kind: "text" }, animalsCount: { kind: "text" },
+  };
+  const filterSchemaForFiltersRow = React.useMemo(() => {
+    return visibleSafe.map(col => {
+      if (col.key === "createdAt") {
+        return { key: col.key, label: col.label, editor: "dateRange" as const, fromKey: "createdAt_from", toKey: "createdAt_to" };
+      }
+      if (col.key === "updatedAt") {
+        return { key: col.key, label: col.label, editor: "dateRange" as const, fromKey: "updatedAt_from", toKey: "updatedAt_to" };
+      }
+      // keep everything else as text/select/date (your existing behavior)
+      const cfg = FILTER_TYPES[col.key] || { kind: "text" as const };
+      if (cfg.kind === "date") return ({ key: col.key, label: col.label, editor: "date" as const });
+      if (cfg.kind === "select") return ({ key: col.key, label: col.label, editor: "select" as const });
+      return ({ key: col.key, label: col.label, editor: "text" as const });
+    });
+  }, [visibleSafe]);
+
+  const DATE_KEYS = new Set(["createdAt", "updatedAt"] as const);
+
+  // --- date helpers + tiny chips ---
+  const toISODateOnly = (iso?: string | null) => (iso ? String(iso).slice(0, 10) : "");
+  const inDateRange = (valueISO?: string | null, from?: string, to?: string) => {
+    const d = toISODateOnly(valueISO);
+    if (!d) return false;
+    if (from && d < from) return false;
+    if (to && d > to) return false;
+    return true;
+  };
+
+  // Simple, local filter chips (shared version is fine too if you have it)
+  function FilterChips({
+    filters, onChange, prettyLabel,
+  }: {
+    filters: Record<string, string>;
+    onChange: (next: Record<string, string>) => void;
+    prettyLabel?: (key: string) => string;
+  }) {
+    const entries = Object.entries(filters).filter(([, v]) => (v ?? "") !== "");
+    if (!entries.length) return null;
+
+    const labelFor = (k: string) => {
+      if (prettyLabel) return prettyLabel(k);
+      if (k.endsWith("_from")) return k.replace("_from", " ≥");
+      if (k.endsWith("_to")) return k.replace("_to", " ≤");
+      return k;
+    };
+
+    const clearOne = (key: string) => {
+      const next = { ...filters };
+      delete next[key];
+      onChange(next);
+    };
+    const clearAll = () => onChange({});
+
+    return (
+      <div className="px-3 pb-2 flex flex-wrap items-center gap-2">
+        {entries.map(([k, v]) => (
+          <span key={k} className="inline-flex items-center gap-2 rounded-full border border-hairline bg-surface-strong px-2.5 py-1 text-xs">
+            <span className="text-secondary">{labelFor(k)}:</span>
+            <span className="text-primary">{v}</span>
+            <button
+              type="button"
+              className="rounded hover:bg-white/10 px-1"
+              aria-label={`Clear ${labelFor(k)}`}
+              onClick={() => clearOne(k)}
+            >
+              ×
+            </button>
+          </span>
+        ))}
+        <button
+          type="button"
+          className="ml-1 text-xs underline text-secondary hover:text-primary"
+          onClick={clearAll}
+        >
+          Clear all
+        </button>
+      </div>
+    );
+  }
+
+
+  const displayRows = React.useMemo(() => {
+    const active = Object.entries(filters || {}).filter(([, v]) => (v ?? "") !== "");
+    if (!active.length && !qDebounced) return rows;
+
+    const lc = (v: any) => String(v ?? "").toLowerCase();
+    let data = [...rows];
+
+    // free text search (unchanged)
+    if (qDebounced) {
+      const ql = qDebounced.toLowerCase();
+      data = data.filter(r => {
+        const hay = [
+          r.name, r.primaryEmail, r.billing?.plan, r.billing?.status,
+          r.usersCount, r.organizationsCount, r.contactsCount, r.animalsCount,
+          r.createdAt, r.updatedAt,
+        ].filter(Boolean).join(" ").toLowerCase();
+        return hay.includes(ql);
+      });
+    }
+
+    if (active.length) {
+      const createdFrom = filters["createdAt_from"];
+      const createdTo = filters["createdAt_to"];
+      const updatedFrom = filters["updatedAt_from"];
+      const updatedTo = filters["updatedAt_to"];
+
+      data = data.filter(r => {
+        // text-like filters (ignore the range keys)
+        const textOk = active.every(([key, val]) => {
+          if (key === "createdAt_from" || key === "createdAt_to" || key === "updatedAt_from" || key === "updatedAt_to") {
+            return true;
+          }
+          const raw = (r as any)[key];
+          const isDate = key === "createdAt" || key === "updatedAt";
+          const hay = isDate && raw ? String(raw).slice(0, 10) : String(raw ?? "");
+          return lc(hay).includes(lc(val));
+        });
+
+        if (!textOk) return false;
+
+        // inclusive date ranges (YYYY-MM-DD comparisons)
+        const createdOk = (createdFrom || createdTo) ? inDateRange(r.createdAt, createdFrom, createdTo) : true;
+        const updatedOk = (updatedFrom || updatedTo) ? inDateRange(r.updatedAt, updatedFrom, updatedTo) : true;
+
+        return createdOk && updatedOk;
+      });
+    }
+
+    return data;
+  }, [rows, filters, qDebounced]);
+
+  const sortedRows = React.useMemo(() => {
+    if (!sorts.length) return displayRows;
+    if (isSuper) return displayRows; // server already sorted it
+    const out = [...displayRows];
+    out.sort((a, b) => {
+      for (const s of sorts) {
+        const av = (a as any)[s.key];
+        const bv = (b as any)[s.key];
+        const cmp = String(av ?? "").localeCompare(String(bv ?? ""), undefined, { numeric: true, sensitivity: "base" });
+        if (cmp !== 0) return s.dir === "asc" ? cmp : -cmp;
+      }
+      return 0;
+    });
+    return out;
+  }, [displayRows, sorts, isSuper]);
+
+  // ── derived pagination values (used by table + footer)
+  const pageCount = React.useMemo(
+    () => Math.max(1, Math.ceil(sortedRows.length / pageSize)),
+    [sortedRows.length, pageSize]
+  );
+  const clampedPage = Math.min(page, pageCount);
+  const start = sortedRows.length === 0 ? 0 : (clampedPage - 1) * pageSize + 1;
+  const end = sortedRows.length === 0 ? 0 : Math.min(sortedRows.length, (clampedPage - 1) * pageSize + pageSize);
+
+  const pageRows = React.useMemo(() => {
+    const from = (clampedPage - 1) * pageSize;
+    const to = from + pageSize;
+    return sortedRows.slice(from, to);
+  }, [sortedRows, clampedPage, pageSize]);
+
+
+  /* sections for overview */
+  const tenantSections = (mode: "view" | "edit") => ([
+    {
+      title: "Tenant",
+      fields: [
+        {
+          label: "Email",
+          view: (r: TenantRow) => r.primaryEmail ?? "—",
+          edit: (r, set) => <Input size="sm" defaultValue={r.primaryEmail ?? ""} onChange={e => set({ primaryEmail: e.target.value })} />,
+        },
+        // CHANGE THIS LINE:
+        { label: "Users", view: (r: TenantRow) => String(usersExclOwner(r)) },
+        { label: "Orgs", view: (r: TenantRow) => String(r.organizationsCount ?? 0) },
+        { label: "Contacts", view: (r: TenantRow) => String(r.contactsCount ?? 0) },
+        { label: "Animals", view: (r: TenantRow) => String(r.animalsCount ?? 0) },
+        { label: "Created", view: (r: TenantRow) => fmtDate(r.createdAt) || "—" },
+        { label: "Updated", view: (r: TenantRow) => fmtDate(r.updatedAt) || "—" },
+      ],
+    },
+  ]);
+
+  /* details host config (no hooks inside render!) */
+  const detailsConfig = React.useMemo(() => ({
+    idParam: "tenantId",
+    getRowId: (r: TenantRow) => r.id,
+    width: 820,
+    placement: "center" as const,
+    align: "top" as const,
+    fetchRow: (id: number) => adminApi.getTenant(id),
+    onSave: async (id: number, draft: Partial<TenantRow>) => {
+      const updated = await adminApi.patchTenant(id, draft);
+      setRows(prev => prev.map(r => (r.id === id ? { ...r, ...tenantToRow(updated) } : r)));
+    },
+    header: (r: TenantRow) => ({ title: r.name, subtitle: r.primaryEmail || "" }),
+    tabs: [
+      { key: "overview", label: "Overview" },
+      { key: "users", label: "Users" },
+      { key: "billing", label: "Billing" },
+      { key: "audit", label: "Audit" },
+    ],
+    customChrome: true,
+    render: (props: any) => (
+      <TenantDetailsView {...props} tenantSections={tenantSections} />
+    ),
+  }), []);
+
+  console.debug('[admin gate]', {
+    meLoading,
+    isSuper: !!me?.isSuperAdmin,
+    canAdminTenants,
+    canShowNewTenant: canAdminTenants,
+  });
+
+  return (
+    <div className="p-4 space-y-4">
+      {/* Header row with absolutely-positioned right actions */}
+      <div className="relative">
+        <PageHeader
+          title="Admin"
+          subtitle="Create and Manage User Accounts In Your Tenant"
+        />
+
+        {/* Right-side actions, same visual row as the header */}
+        <div
+          className="absolute right-0 top-0 h-full flex items-center gap-2 pr-1"
+          style={{ zIndex: 5, pointerEvents: "auto" }}
+        >
+          {/* New Tenant (left) */}
+          {((!meLoading && !!me?.isSuperAdmin) || canAdminTenants) && (
+            <Button size="sm" onClick={() => setCreateOpen(true)}>
+              New tenant
+            </Button>
+          )}
+
+          {/* More (right) */}
+          <Button size="sm" variant="outline">
+            ...
+          </Button>
+        </div>
+      </div>
+
+
+
+      {/* main table */}
+      <Card>
+        <DetailsHost rows={rows} config={detailsConfig}>
+          <Table
+            columns={COLUMNS}
+            columnState={map}
+            onColumnStateChange={setAll}
+            getRowId={(r: TenantRow) => r.id}
+            pageSize={25}
+            renderStickyRight={() => (
+              <ColumnsPopover columns={map} onToggle={toggle} onSet={setAll} allColumns={COLUMNS} triggerClassName="bhq-columns-trigger" />
+            )}
+            stickyRightWidthPx={40}
+          >
+            {/* toolbar */}
+            <div className="bhq-table__toolbar px-2 pt-2 pb-3 relative z-30">
+              <SearchBar
+                value={q}
+                onChange={setQ}
+                placeholder="Search any field…"
+                widthPx={520}
+                rightSlot={
+                  <div className="flex items-center gap-2">
+
+                    {/* Filters toggle (kept as-is) */}
+                    <button
+                      type="button"
+                      onClick={() => setFiltersOpen(v => !v)}
+                      aria-expanded={filtersOpen}
+                      title="Filters"
+                      className="h-7 w-7 rounded-md flex items-center justify-center hover:bg-white/5 focus:outline-none"
+                    >
+                      <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                        <path d="M3 5h18M7 12h10M10 19h4" strokeLinecap="round" />
+                      </svg>
+                    </button>
+                  </div>
+                }
+              />
+            </div>
+
+            {/* filters */}
+            {filtersOpen && (
+              <FiltersRow
+                filters={filters}
+                onChange={(next) => setFilters(next)}
+                schema={filterSchemaForFiltersRow}
+              />
+            )}
+
+            <FilterChips
+              filters={filters}
+              onChange={setFilters}
+              prettyLabel={(k) => {
+                if (k === "primaryEmail") return "Email";
+                if (k === "createdAt_from") return "Created ≥";
+                if (k === "createdAt_to") return "Created ≤";
+                if (k === "updatedAt_from") return "Updated ≥";
+                if (k === "updatedAt_to") return "Updated ≤";
+                return k;
+              }}
+            />
+
+            {/* table */}
+            <table className="min-w-max w-full text-sm">
+              <TableHeader columns={visibleSafe} sorts={sorts} onToggleSort={onToggleSort} />
+              <tbody>
+                {!isSuper && tenantId == null && (
+                  <TableRow><TableCell colSpan={visibleSafe.length}><div className="py-8 text-center text-sm text-secondary">Resolving tenant…</div></TableCell></TableRow>
+                )}
+                {loading && (
+                  <TableRow><TableCell colSpan={visibleSafe.length}><div className="py-8 text-center text-sm text-secondary">Loading tenants…</div></TableCell></TableRow>
+                )}
+                {!loading && error && (
+                  <TableRow><TableCell colSpan={visibleSafe.length}><div className="py-8 text-center text-sm text-red-600">Error: {error}</div></TableCell></TableRow>
+                )}
+                {!loading && !error && pageRows.length === 0 && (
+                  <TableRow><TableCell colSpan={visibleSafe.length}><div className="py-8 text-center text-sm text-secondary">No tenants to display yet.</div></TableCell></TableRow>
+                )}
+                {!loading && !error && pageRows.length > 0 &&
+                  pageRows.map(r => (
+                    <TableRow key={r.id} detailsRow={r}>
+                      {visibleSafe.map(c => {
+                        // Special-case: Users column shows count excluding owner
+                        if (c.key === "usersCount") {
+                          const shown = usersExclOwner(r);
+                          return (
+                            <TableCell key={c.key} title={`${r.usersCount ?? 0} total (incl. owner)`}>
+                              {String(shown)}
+                            </TableCell>
+                          );
+                        }
+
+                        let v = (r as any)[c.key] as any;
+                        if (c.key === "createdAt" || c.key === "updatedAt") v = fmtDate(v);
+                        if (typeof v === "number") v = String(v);
+                        return <TableCell key={c.key}>{v ?? ""}</TableCell>;
+                      })}
+                    </TableRow>
+                  ))
+                }
+              </tbody>
+            </table>
+
+            <TableFooter
+              entityLabel="tenants"
+              page={clampedPage}
+              pageCount={pageCount}
+              pageSize={pageSize}
+              pageSizeOptions={[10, 25, 50, 100]}
+              onPageChange={(p) => setPage(p)}
+              onPageSizeChange={(n) => { setPageSize(n); setPage(1); }}
+              start={sortedRows.length === 0 ? 0 : (clampedPage - 1) * pageSize + 1}
+              end={sortedRows.length === 0 ? 0 : Math.min(sortedRows.length, (clampedPage - 1) * pageSize + pageSize)}
+              filteredTotal={sortedRows.length}
+              total={rows.length}
+            />
+          </Table>
+        </DetailsHost>
+      </Card>
+      {/* ───────────────────── Provision Tenant Modal ───────────────────── */}
+      {createOpen && (
+        <div role="dialog" aria-modal="true" className="fixed inset-0 z-[100] flex items-center justify-center">
+          {/* backdrop */}
+          <div className="absolute inset-0 bg-black/50" onClick={() => !createWorking && setCreateOpen(false)} />
+
+          {/* card */}
+          <div className="relative w-[520px] max-w-[92vw] rounded-xl border border-hairline bg-surface shadow-xl p-4">
+            <div className="text-lg font-semibold mb-1">Provision Tenant</div>
+            <div className="text-sm text-secondary mb-4">
+              Create a new tenant and set the primary email for the account owner.
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <div className="text-xs text-secondary mb-1">
+                  Tenant name <span className="text-[hsl(var(--brand-orange))]">*</span>
+                </div>
+                <Input
+                  value={newName}
+                  onChange={(e) => setNewName(e.currentTarget.value)}
+                  placeholder="Acme Ranch LLC"
+                />
+              </div>
+
+              <div>
+                <div className="text-xs text-secondary mb-1">
+                  Owner email <span className="text-[hsl(var(--brand-orange))]">*</span>
+                </div>
+                <Input
+                  value={newEmail}
+                  onChange={(e) => setNewEmail(e.currentTarget.value)}
+                  placeholder="owner@acme-ranch.test"
+                />
+              </div>
+
+              {createErr && <div className="text-sm text-red-600">{createErr}</div>}
+
+              <div className="flex items-center justify-between pt-2">
+                <div className="text-xs text-secondary">
+                  <span className="text-[hsl(var(--brand-orange))]">*</span> Required
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button variant="outline" onClick={() => setCreateOpen(false)} disabled={createWorking}>
+                    Cancel
+                  </Button>
+                  <Button onClick={doCreateTenant} disabled={!canCreate || createWorking}>
+                    {createWorking ? "Creating…" : "Create tenant"}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ───────────────────────── Tabs (unchanged from previous drop except props) ───────────────────────── */
+
+function UsersTab({
+  tenantId, mode, onDirty, registerSave,
+}: {
+  tenantId: number; mode: "view" | "edit";
+  onDirty: (v: boolean) => void;
+  registerSave?: (cb: () => Promise<void>) => () => void;
+}) {
+  // Roles available for non-owner users (OWNER intentionally excluded)
+  const ROLE_OPTIONS: Array<Exclude<AdminTenantUser["role"], "OWNER">> = [
+    "ADMIN", "MEMBER", "BILLING", "VIEWER",
+  ];
+
   const [loading, setLoading] = React.useState(true);
   const [err, setErr] = React.useState("");
-  const [items, setItems] = React.useState<TenantUserDTO[]>([]);
-  const [page, setPage] = React.useState(1);
-  const [limit] = React.useState(50);
+  const [items, setItems] = React.useState<AdminTenantUser[]>([]);
+  const [showArchived, setShowArchived] = React.useState(false);
 
-  const [addEmail, setAddEmail] = React.useState("");
-  const [addName, setAddName] = React.useState("");
-  const [addRole, setAddRole] = React.useState<TenantUserDTO["role"]>("MEMBER");
+  const [firstName, setFirstName] = React.useState("");
+  const [lastName, setLastName] = React.useState("");
+  const [email, setEmail] = React.useState("");
+  const [role, setRole] = React.useState<typeof ROLE_OPTIONS[number]>("MEMBER");
 
-  const [activeUser, setActiveUser] = React.useState<TenantUserDTO | null>(null);
+  const [changedRoles, setChangedRoles] =
+    React.useState<Record<string, AdminTenantUser["role"]>>({});
+  const changedRef = React.useRef(changedRoles);
+  React.useEffect(() => {
+    changedRef.current = changedRoles;
+    onDirty(Object.keys(changedRoles).length > 0);
+  }, [changedRoles, onDirty]);
 
   const reload = React.useCallback(() => {
-    setLoading(true);
-    setErr("");
-    API.listUsers(tenantId, { page, limit })
-      .then((res) => setItems(res.items || []))
+    setLoading(true); setErr("");
+    adminApi
+      .listUsers(tenantId, { page: 1, limit: 50, includeArchived: showArchived } as any)
+      .then((res: any) => {
+        // Hide the tenant owner from the list
+        const list: AdminTenantUser[] = (res?.items || []).filter(u => u.role !== "OWNER");
+        setItems(list);
+      })
       .catch((e: any) => setErr(e?.message || "Failed to load users"))
       .finally(() => setLoading(false));
-  }, [tenantId, page, limit]);
+  }, [tenantId, showArchived]);
 
   React.useEffect(() => {
     reload();
   }, [reload]);
 
-  if (loading) return <div className="text-secondary text-sm">Loading users…</div>;
-  if (err) return <div className="text-red-400 text-sm">Error: {err}</div>;
+  // parent registers a saver that applies any pending role changes
+  React.useEffect(() => {
+    if (!registerSave) return;
+    const dispose = registerSave(async () => {
+      const entries = Object.entries(changedRef.current);
+      for (const [userId, newRole] of entries) {
+        const current = items.find((u) => u.userId === userId)?.role;
+        if (current && current !== newRole) {
+          // eslint-disable-next-line no-await-in-loop
+          await adminApi.setRole(tenantId, userId, newRole);
+        }
+      }
+      if (entries.length) {
+        setChangedRoles({});
+        await reload();
+      }
+    });
+    return dispose;
+  }, [registerSave, tenantId, items, reload]);
+
+  const canInvite = firstName.trim() && lastName.trim() && email.trim();
 
   return (
     <div className="space-y-4 text-primary">
-      {/* Add / Invite */}
-      <Card className="p-3 border border-hairline bg-surface">
-        <div className="text-xs uppercase tracking-wide text-secondary mb-2">Add / Invite</div>
-        <div className="flex flex-nowrap items-center gap-2">
-          <Input
-            placeholder="email@tenant.test"
-            value={addEmail}
-            onChange={(e) => setAddEmail(e.currentTarget.value)}
-            className="h-10 min-w-0 flex-[2_1_0%] text-primary placeholder:text-secondary"
-          />
-          <Input
-            placeholder="Name (optional)"
-            value={addName}
-            onChange={(e) => setAddName(e.currentTarget.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !addEmail) {
-                e.preventDefault();
-              }
-            }}
-            className="h-10 min-w-0 flex-[1.2_1_0%] text-primary placeholder:text-secondary"
-          />
+      <SectionCard title="Add / Invite">
+        {/* Row 1: First / Last (required) */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 items-end mb-2">
+          <div>
+            <div className="text-xs text-secondary mb-1">
+              First name <span className="text-[hsl(var(--brand-orange))]">*</span>
+            </div>
+            <Input
+              value={firstName}
+              onChange={(e) => setFirstName(e.currentTarget.value)}
+              placeholder="First name"
+              className="h-9"
+            />
+          </div>
+          <div>
+            <div className="text-xs text-secondary mb-1">
+              Last name <span className="text-[hsl(var(--brand-orange))]">*</span>
+            </div>
+            <Input
+              value={lastName}
+              onChange={(e) => setLastName(e.currentTarget.value)}
+              placeholder="Last name"
+              className="h-9"
+            />
+          </div>
+        </div>
+
+        {/* Row 2: Email + ROLE (same line, all breakpoints) */}
+        <div className="flex items-end gap-2">
+          {/* Email (flex grows) */}
+          <div className="flex-1 min-w-[260px]">
+            <div className="text-xs text-secondary mb-1">
+              Email address <span className="text-[hsl(var(--brand-orange))]">*</span>
+            </div>
+            <Input
+              value={email}
+              onChange={(e) => setEmail(e.currentTarget.value)}
+              placeholder="email@tenant.test"
+              className="h-9"
+            />
+          </div>
+
+          {/* ROLE label */}
+          <div className="text-xs font-medium text-secondary pb-1">
+            ROLE:
+          </div>
+
+          {/* Role select (fixed width so it sits on same line) */}
+          <div className="w-[200px]">
+            <select
+              className="w-full h-9 rounded-md border border-hairline bg-surface px-2 text-sm text-primary"
+              value={role}
+              onChange={(e) => setRole(e.currentTarget.value as typeof ROLE_OPTIONS[number])}
+            >
+              {ROLE_OPTIONS.map(r => (
+                <option key={r} value={r}>{r}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Add button */}
           <Button
-            className="h-10 px-5 flex-none"
+            className="h-9 px-4"
             onClick={async () => {
               try {
-                if (!addEmail) throw new Error("Email is required");
-                await API.addUser(tenantId, { email: addEmail, name: addName || undefined, role: addRole });
-                setAddEmail(""); setAddName(""); setAddRole("MEMBER");
-                reload();
+                if (!canInvite) throw new Error('First name, last name, and email are required.');
+                await adminApi.addUser(tenantId, {
+                  email, firstName, lastName, name: `${firstName} ${lastName}`.trim(), role
+                } as any);
+                setFirstName(''); setLastName(''); setEmail(''); setRole('MEMBER'); reload();
               } catch (e: any) {
-                alert(e?.message || "Add failed");
+                alert(e?.message || 'Add failed');
               }
             }}
+            disabled={!canInvite}
           >
             Add
           </Button>
         </div>
-      </Card>
 
-      {/* Users */}
-      <Card className="p-3 border border-hairline bg-surface">
-        <div className="text-xs uppercase tracking-wide text-secondary mb-2">Users</div>
-        <div className="overflow-hidden rounded border border-hairline">
-          <table className="w-full text-sm">
-            <thead className="text-secondary bg-surface-strong">
-              <tr>
-                <th className="text-left px-3 py-2">Email</th>
-                <th className="text-left px-3 py-2">Name</th>
-                <th className="text-left px-3 py-2">Role</th>
-                <th className="text-left px-3 py-2">Created</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-hairline">
-              {items.map((u) => (
-                <tr
-                  key={u.userId}
-                  className="hover:bg-[hsl(var(--brand-orange))]/8 cursor-pointer"
-                  onClick={() => setActiveUser(u)}
-                >
-                  <td className="px-3 py-2 text-primary">
-                    <div className="flex items-center gap-2">
-                      <span className="break-all">{u.email}</span>
-
-                      {u.isSuperAdmin && (
-                        <span
-                          className="inline-flex items-center text-[10px] leading-4 px-1.5 py-0.5 rounded bg-[hsl(var(--brand-orange))]/20 border border-[hsl(var(--brand-orange))]/40 text-[hsl(var(--brand-orange))]"
-                          title="Global platform role"
-                        >
-                          Super Admin
-                        </span>
-                      )}
-
-                      {u.verified && (
-                        <span
-                          className="inline-flex items-center text-[10px] leading-4 px-1 py-0.5 rounded bg-emerald-500/15 border border-emerald-500/30 text-emerald-500"
-                          title="Email verified"
-                        >
-                          Verified
-                        </span>
-                      )}
-                    </div>
-                  </td>
-                  <td className="px-3 py-2 text-primary">{u.name || "—"}</td>
-                  <td className="px-3 py-2 text-primary">{u.role}</td>
-                  <td className="px-3 py-2 text-primary">{formatDate(u.createdAt)}</td>
-                </tr>
-              ))}
-              {!items.length && (
-                <tr>
-                  <td className="px-3 py-6 text-secondary" colSpan={4}>No users yet.</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+        {/* Legend */}
+        <div className="text-xs text-secondary mt-2">
+          <span className="text-[hsl(var(--brand-orange))]">*</span> Required
         </div>
-      </Card>
+      </SectionCard>
 
-      {/* Per-user details modal */}
-      {activeUser && (
-        <UserDetailsModal
-          tenantId={tenantId}
-          user={activeUser}
-          onClose={() => setActiveUser(null)}
-          onChanged={async () => { await reload(); }}
-        />
-      )}
+      <SectionCard
+        title="Users"
+        right={
+          <label className="inline-flex items-center gap-2 text-xs">
+            <input
+              type="checkbox"
+              checked={showArchived}
+              onChange={(e) => setShowArchived(e.currentTarget.checked)}
+            />
+            Show archived
+          </label>
+        }
+      >
+        {loading && <div className="text-secondary text-sm">Loading users…</div>}
+        {err && <div className="text-red-600 text-sm">Error: {err}</div>}
+        {!loading && !err && (
+          <div className="overflow-hidden rounded border border-hairline">
+            <table className="w-full text-sm">
+              <thead className="text-secondary bg-surface-strong">
+                <tr>
+                  <th className="text-left px-3 py-2">Email</th>
+                  <th className="text-left px-3 py-2">Name</th>
+                  <th className="text-left px-3 py-2">Role</th>
+                  <th className="text-left px-3 py-2">Verified</th>
+                  <th className="text-left px-3 py-2">Created</th>
+                  <th className="text-right px-3 py-2">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-hairline">
+                {items.map((u) => (
+                  <UserRow
+                    key={u.userId}
+                    tenantId={tenantId}
+                    user={u}
+                    mode={mode}
+                    onChanged={reload}
+                    onRoleChange={(next) =>
+                      setChangedRoles((m) => ({ ...m, [u.userId]: next }))
+                    }
+                  />
+                ))}
+                {!items.length && (
+                  <tr>
+                    <td className="px-3 py-6 text-secondary" colSpan={6}>
+                      No users yet.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </SectionCard>
     </div>
   );
 }
 
-function UserDetailsModal({
-  tenantId,
-  user,
-  onClose,
-  onChanged,
-}: {
-  tenantId: ID;
-  user: TenantUserDTO;
-  onClose: () => void;
-  onChanged: () => void;
-}) {
+function UserRow({
+  tenantId, user, mode, onChanged, onRoleChange,
+}: { tenantId: number; user: AdminTenantUser; mode: "view" | "edit"; onChanged: () => void; onRoleChange: (role: AdminTenantUser["role"]) => void; }) {
   const [working, setWorking] = React.useState(false);
-  const [role, setRole] = React.useState<TenantUserDTO["role"]>(user.role);
-  const [verified, setVerified] = React.useState(!!user.verified);
-  const [newPassword, setNewPassword] = React.useState("");
-  const [pwErr, setPwErr] = React.useState("");
+  const [role, setRole] = React.useState<AdminTenantUser["role"]>(user.role);
+  const [showPw, setShowPw] = React.useState(false);
+  const [password, setPassword] = React.useState("");
 
-  const doSetPassword = async () => {
-    try {
-      setPwErr("");
-      if (!newPassword || newPassword.length < 8) {
-        setPwErr("Password must be at least 8 characters.");
-        return;
-      }
-      setWorking(true);
-      await API.setPassword(tenantId, user.userId, newPassword);
-      setNewPassword("");
-      alert("Password updated.");
-    } catch (e: any) {
-      setPwErr(e?.message || "Set password failed");
-    } finally {
-      setWorking(false);
-    }
-  };
-  const doSetRole = async () => {
-    try {
-      setWorking(true);
-      await API.setRole(tenantId, user.userId, role);
-      await onChanged();
-    } catch (e: any) {
-      alert(e?.message || "Role update failed");
-    } finally {
-      setWorking(false);
-    }
+  const doVerify = async () => { try { setWorking(true); await adminApi.verifyEmail(tenantId, user.userId); onChanged(); } catch (e: any) { alert(e?.message || "Verify failed"); } finally { setWorking(false); } };
+  const doArchive = async () => {
+    const ok = window.confirm(`Archive ${user.email}?`); if (!ok) return;
+    try { setWorking(true); const fn = (adminApi as any).archiveUser ?? adminApi.removeUser; await fn(tenantId, user.userId); onChanged(); }
+    catch (e: any) { alert(e?.message || "Archive failed"); } finally { setWorking(false); }
   };
 
-  const doVerify = async () => {
-    try {
-      setWorking(true);
-      await API.verifyEmail(tenantId, user.userId);
-      setVerified(true);
-      await onChanged();
-    } catch (e: any) {
-      alert(e?.message || "Verify failed");
-    } finally {
-      setWorking(false);
-    }
+  const isComplex = (pw: string) => pw.length >= 12 && /[A-Z]/.test(pw) && /[a-z]/.test(pw) && /\d/.test(pw) && /[^A-Za-z0-9]/.test(pw);
+  const doSetPw = async () => {
+    if (!isComplex(password)) { alert("Password must be at least 12 characters and include upper, lower, number, and special."); return; }
+    try { setWorking(true); await adminApi.setPassword(tenantId, user.userId, password); setPassword(""); setShowPw(false); alert("Password updated."); }
+    catch (e: any) { alert(e?.message || "Set password failed"); } finally { setWorking(false); }
   };
 
-  const doReset = async () => {
-    try {
-      setWorking(true);
-      await API.resetPassword(tenantId, user.userId);
-      alert("Password reset email sent.");
-    } catch (e: any) {
-      alert(e?.message || "Reset failed");
-    } finally {
-      setWorking(false);
-    }
-  };
-
-  const doRemove = async () => {
-    if (!confirm(`Remove ${user.email} from tenant?`)) return;
-    try {
-      setWorking(true);
-      await API.removeUser(tenantId, user.userId);
-      await onChanged();
-      onClose();
-    } catch (e: any) {
-      alert(e?.message || "Remove failed");
-    } finally {
-      setWorking(false);
-    }
-  };
+  const fullName = (user.firstName || user.lastName ? [user.firstName, user.lastName].filter(Boolean).join(" ") : user.name) || "—";
+  React.useEffect(() => { setRole(user.role); }, [user.role]);
 
   return (
-    <AnchoredCenterModal onClose={onClose} title={user.email}>
-      <div className="p-4 space-y-4 text-primary">
-        <SectionCard title="User">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <FieldRow label="Email"><span className="break-all">{user.email}</span></FieldRow>
-            <FieldRow label="Name"><span className="break-words">{user.name || "—"}</span></FieldRow>
-            <FieldRow label="Verified"><span>{verified ? "Yes" : "No"}</span></FieldRow>
-            <FieldRow label="Created"><span>{formatDate(user.createdAt)}</span></FieldRow>
-          </div>
-        </SectionCard>
-
-        <SectionCard
-          title="Access"
-          right={
-            <div className="flex items-center gap-2">
-              {!verified && <Button variant="outline" onClick={doVerify} disabled={working}>Verify</Button>}
-              <Button variant="outline" onClick={doReset} disabled={working}>Reset PW</Button>
-              <button /* ...remove button... */>
-                <TrashIcon className="h-4 w-4" />
-              </button>
-            </div>
-          }
-        >
-          {/* 👉 INSERT THIS BLOCK (manual password set) */}
-          <div className="grid grid-cols-1 sm:grid-cols-[auto_1fr_auto] items-center gap-3 mb-3">
-            <div className="text-sm text-secondary">Set password</div>
-            <div className="flex items-center gap-2">
-              <Input
-                type="password"
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.currentTarget.value)}
-                placeholder="New password"
-                className="w-full"
-              />
-              {!!pwErr && <span className="text-xs text-red-400">{pwErr}</span>}
-            </div>
-            <Button onClick={doSetPassword} disabled={working || !newPassword}>Save</Button>
-          </div>
-
-          {/* (existing Role grid stays as-is, below) */}
-          <div className="grid grid-cols-1 sm:grid-cols-[auto_1fr_auto] items-center gap-3">
-            <div className="text-sm text-secondary">Role</div>
-            <select
-              className="h-10 rounded-md border border-hairline bg-surface px-2 text-sm text-primary"
-              value={role}
-              onChange={(e) => setRole(e.currentTarget.value as TenantUserDTO["role"])}
-            >
-              {["OWNER", "ADMIN", "MEMBER", "BILLING", "VIEWER"].map((r) => (
-                <option key={r} value={r}>{r}</option>
-              ))}
-            </select>
-            <Button onClick={doSetRole} disabled={working || role === user.role}>Save</Button>
-          </div>
-        </SectionCard>
-      </div>
-    </AnchoredCenterModal>
-  );
-}
-
-/** ───────────────── New Tenant (trimmed) ───────────────── */
-
-function ProvisionTenantModal({
-  onClose,
-  onCreated,
-}: {
-  onClose: () => void;
-  onCreated: (tenantId: number) => void;
-}) {
-  // Tenant
-  const [name, setName] = useState("");
-
-  // Owner
-  const [ownerEmail, setOwnerEmail] = useState("");
-  const [ownerName, setOwnerName] = useState("");
-  const [verify, setVerify] = useState(true);
-
-  // Owner → Advanced
-  const [makeDefault, setMakeDefault] = useState(false);
-  const [ownerAdvancedOpen, setOwnerAdvancedOpen] = useState(false);
-
-  // Billing (optional)
-  const [billingOpen, setBillingOpen] = useState(false);
-  const [advancedBillingOpen, setAdvancedBillingOpen] = useState(false);
-
-  // Minimal billing fields
-  const [plan, setPlan] = useState("");
-  const [status, setStatus] = useState("");
-  const [customerId, setCustomerId] = useState("");
-
-  // Advanced billing
-  const [provider, setProvider] = useState("");
-  const [subscriptionId, setSubscriptionId] = useState("");
-  const [currentPeriodEnd, setCurrentPeriodEnd] = useState("");
-
-  // UX state
-  const [working, setWorking] = useState(false);
-  const [err, setErr] = useState("");
-
-  const missingName = !name.trim();
-  const missingOwnerEmail = !ownerEmail.trim();
-
-  const submit = async () => {
-    try {
-      setWorking(true);
-      setErr("");
-      if (!name || !ownerEmail) throw new Error("Tenant name and owner email are required.");
-
-      const billing =
-        plan || status || provider || customerId || subscriptionId || currentPeriodEnd
-          ? {
-            plan: plan || null,
-            status: status || null,
-            provider: provider || null,
-            customerId: customerId || null,
-            subscriptionId: subscriptionId || null,
-            currentPeriodEnd: currentPeriodEnd || null,
-          }
-          : undefined;
-
-      const res = await API.adminProvisionTenant({
-        tenant: { name, primaryEmail: ownerEmail || null },
-        owner: { email: ownerEmail, name: ownerName || null, verify, makeDefault },
-        billing,
-      });
-
-      onCreated((res as any).tenant.id);
-    } catch (e: any) {
-      const msg = String(e?.message || "");
-      const lower = msg.toLowerCase();
-      if (lower.includes("csrf") || lower.includes("xsrf") || lower.includes("forbidden") || lower.includes("403")) {
-        setErr("CSRF check failed. Refresh the page and try again.");
-      } else {
-        setErr(msg || "Create failed");
-      }
-    } finally {
-      setWorking(false);
-    }
-  };
-
-  return (
-    <AnchoredCenterModal onClose={onClose} title="New tenant">
-      <div className="p-4 space-y-4">
-        {err && <div className="text-red-400 text-sm">{err}</div>}
-
-        {/* Tenant */}
-        <SectionCard title="Tenant">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <Labeled label="Name" value={name} onChange={setName} />
-              {missingName && <div className="mt-1 text-xs text-red-400">Tenant name is required</div>}
-            </div>
-          </div>
-        </SectionCard>
-
-        {/* Owner */}
-        <SectionCard
-          title="Owner user"
-          right={
-            <button
-              className="text-xs text-secondary hover:underline"
-              onClick={() => setOwnerAdvancedOpen((v) => !v)}
-            >
-              {ownerAdvancedOpen ? "Hide advanced" : "Advanced"}
-            </button>
-          }
-        >
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <Labeled label="Owner email" value={ownerEmail} onChange={setOwnerEmail} />
-              {missingOwnerEmail && <div className="mt-1 text-xs text-red-400">Owner email is required</div>}
-            </div>
-            <Labeled label="Owner name (optional)" value={ownerName} onChange={setOwnerName} />
-            <label className="flex items-center gap-2 text-sm sm:col-span-2">
-              <input type="checkbox" checked={verify} onChange={(e) => setVerify(e.currentTarget.checked)} />
-              Verify email now
-            </label>
-
-            {ownerAdvancedOpen && (
-              <label className="flex items-center gap-2 text-sm sm:col-span-2">
-                <input
-                  type="checkbox"
-                  checked={makeDefault}
-                  onChange={(e) => setMakeDefault(e.currentTarget.checked)}
-                />
-                Make this the user’s default tenant
-              </label>
-            )}
-          </div>
-        </SectionCard>
-
-        {/* Billing (optional) */}
-        <SectionCard
-          title="Billing (optional)"
-          right={
-            <div className="flex items-center gap-3">
-              <button
-                className="text-xs text-secondary hover:underline"
-                onClick={() => setAdvancedBillingOpen((v) => !v)}
-                disabled={!billingOpen}
-                title={billingOpen ? "More billing fields" : "Open billing to access advanced"}
-              >
-                {advancedBillingOpen ? "Hide advanced" : "Advanced"}
-              </button>
-              <Button variant="outline" size="sm" onClick={() => setBillingOpen((v) => !v)}>
-                {billingOpen ? "Remove billing" : "Add billing"}
-              </Button>
-            </div>
-          }
-        >
-          {billingOpen ? (
-            <div className="space-y-3">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <Labeled label="Plan" value={plan} onChange={setPlan} />
-                <Labeled label="Status" value={status} onChange={setStatus} />
-                <Labeled label="Customer ID" value={customerId} onChange={setCustomerId} />
-              </div>
-
-              {advancedBillingOpen && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <Labeled label="Provider" value={provider} onChange={setProvider} />
-                  <Labeled label="Subscription ID" value={subscriptionId} onChange={setSubscriptionId} />
-                  <Labeled
-                    label="Current period end (ISO)"
-                    value={currentPeriodEnd}
-                    onChange={setCurrentPeriodEnd}
-                    placeholder="2025-01-31T23:59:59.000Z"
-                  />
-                </div>
-              )}
-            </div>
-          ) : (
-            <div className="text-secondary text-sm">No billing will be set up during creation.</div>
+    <tr className="align-top">
+      <td className="px-3 py-2">
+        <div className="flex items-center gap-2">
+          <span className="break-all">{user.email}</span>
+          {user.isSuperAdmin && (
+            <span className="inline-flex items-center text-[10px] leading-4 px-1.5 py-0.5 rounded bg-[hsl(var(--brand-orange))]/20 border border-[hsl(var(--brand-orange))]/40 text-[hsl(var(--brand-orange))]">
+              Super Admin
+            </span>
           )}
-        </SectionCard>
+        </div>
+      </td>
+      <td className="px-3 py-2">{fullName}</td>
 
-        <div className="flex justify-end gap-2">
-          <Button variant="outline" onClick={onClose} disabled={working}>Cancel</Button>
-          <Button onClick={submit} disabled={working || missingName || missingOwnerEmail}>
-            {working ? "Creating…" : "Create tenant"}
+      <td className="px-3 py-2">
+        {mode === "view" ? (
+          <span>{user.role}</span>
+        ) : (
+          <div className="flex items-center gap-2">
+            <select
+              className="h-8 rounded-md border border-hairline bg-surface px-2 text-sm text-primary"
+              value={role}
+              onChange={(e) => { const next = e.currentTarget.value as AdminTenantUser["role"]; setRole(next); onRoleChange(next); }}
+            >
+              {["OWNER", "ADMIN", "MEMBER", "BILLING", "VIEWER"].map(r => <option key={r} value={r}>{r}</option>)}
+            </select>
+          </div>
+        )}
+      </td>
+
+      <td className="px-3 py-2">{user.verified ? "Yes" : "No"}</td>
+      <td className="px-3 py-2">{fmtDate(user.createdAt)}</td>
+
+      <td className="px-3 py-2">
+        <div className="flex flex-wrap items-center gap-3 justify-end">
+          {!user.verified && <Button size="sm" variant="outline" onClick={doVerify} disabled={working}>Verify</Button>}
+          <Button size="sm" variant="outline" onClick={() => setShowPw(v => !v)} disabled={working}>{showPw ? "Close" : "Reset PW"}</Button>
+          <Button size="icon" variant="ghost" title="Archive user" onClick={doArchive} disabled={working} aria-label="Archive">
+            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+              <path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+              <path d="M10 11v6M14 11v6" />
+            </svg>
           </Button>
         </div>
-      </div>
-    </AnchoredCenterModal>
-  );
-}
 
-function TrashIcon(props: React.SVGProps<SVGSVGElement>) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" {...props}>
-      <path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-      <path d="M10 11v6M14 11v6" />
-    </svg>
-  );
-}
-
-/** ───────────────────────── Small UI bits ───────────────────────── */
-
-function Labeled({
-  label,
-  value,
-  onChange,
-  placeholder,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  placeholder?: string;
-}) {
-  return (
-    <div>
-      <label className="block text-xs font-medium text-secondary mb-1">{label}</label>
-      <Input
-        value={value}
-        onChange={(e) => onChange(e.currentTarget.value)}
-        placeholder={placeholder}
-        className="text-primary placeholder:text-secondary"
-      />
-    </div>
-  );
-}
-
-function FieldRow({ label, children, className = "" }: { label: React.ReactNode; children: React.ReactNode; className?: string }) {
-  return (
-    <div className={["grid grid-cols-[auto_1fr] items-center gap-x-2", className].join(" ")}>
-      <div className="text-sm text-secondary whitespace-nowrap">{label}:</div>
-      <div className="min-w-0 text-sm leading-5 text-primary">{children}</div>
-    </div>
-  );
-}
-
-function SectionCard({ title, children, right, className = "" }: { title: React.ReactNode; right?: React.ReactNode; children: React.ReactNode; className?: string }) {
-  return (
-    <div className={["rounded-xl border border-hairline bg-surface p-3", className].join(" ")}>
-      <div className="flex items-center justify-between mb-2">
-        <div className="text-xs uppercase tracking-wide text-secondary">{title}</div>
-        {right}
-      </div>
-      {children}
-    </div>
-  );
-}
-
-function MiniStat({ label, value }: { label: string; value: React.ReactNode }) {
-  return (
-    <div className="rounded border border-hairline bg-surface px-3 py-2">
-      <div className="text-xs text-secondary mb-1 uppercase tracking-wide">{label}</div>
-      <div className="text-sm text-primary">{value}</div>
-    </div>
-  );
-}
-
-function FilterRow({
-  columns,
-  filters,
-  onChange,
-}: {
-  columns: Record<string, boolean>;
-  filters: Record<string, string>;
-  onChange: (next: Record<string, string>) => void;
-}) {
-  const set = (k: string, v: string) => onChange({ ...filters, [k]: v });
-  const visible = ALL_COLUMNS.filter((c) => columns[c.key]);
-  const textCols = visible.filter((c) => c.type === "text");
-  const dateCols = visible.filter((c) => c.type === "date");
-
-  return (
-    <div className="space-y-3">
-      <div>
-        <label className="block text-xs font-medium text-secondary mb-1">Search all fields</label>
-        <Input placeholder="Name, email…" value={filters.__text || ""} onChange={(e) => set("__text", getEventValue(e))} className="w-full" />
-      </div>
-
-      {textCols.length > 0 && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          {["name", "primaryEmail"].filter((k) => textCols.some((c) => c.key === k)).map((k) => {
-            const label = k === "primaryEmail" ? "Owner" : k[0].toUpperCase() + k.slice(1);
-            const v = (filters as any)[k] || "";
-            return (
-              <div key={k}>
-                <label className="block text-xs font-medium text-secondary mb-1">{label}</label>
-                <Input placeholder={`Filter ${label}`} value={v} onChange={(e) => set(k, getEventValue(e))} className="w-full" />
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {dateCols.length > 0 && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          {dateCols.map((c) => {
-            const k = String(c.key);
-            return (
-              <div key={k} className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="block text-xs font-medium text-secondary mb-1">{c.label} start</label>
-                  <Input type="date" value={(filters as any)[`${k}Start`] || ""} onChange={(e) => set(`${k}Start`, getEventValue(e))} className="w-full" />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-secondary mb-1">{c.label} end</label>
-                  <Input type="date" value={(filters as any)[`${k}End`] || ""} onChange={(e) => set(`${k}End`, getEventValue(e))} className="w-full" />
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      <div className="flex gap-2 pt-1">
-        <Button variant="outline" size="sm" onClick={() => onChange({})}>
-          Clear
-        </Button>
-      </div>
-    </div>
-  );
-}
-
-function ColumnsPopover({
-  columns,
-  onToggle,
-  onSet,
-}: {
-  columns: Record<string, boolean>;
-  onToggle: (k: string) => void;
-  onSet: (next: Record<string, boolean>) => void;
-}) {
-  const [open, setOpen] = React.useState(false);
-  const btnRef = React.useRef<HTMLButtonElement | null>(null);
-  const [pos, setPos] = React.useState<{ top: number; left: number } | null>(null);
-
-  React.useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
-    if (open) document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [open]);
-
-  React.useEffect(() => {
-    if (!open) return;
-
-    const W = 320;
-    const PAD = 12;
-
-    const sync = () => {
-      const el = btnRef.current;
-      if (!el) return;
-      const r = el.getBoundingClientRect();
-      const right = Math.min(window.innerWidth - PAD, r.right);
-      const left = Math.max(PAD, right - W);
-      const estH = 360;
-      const below = r.bottom + 8;
-      const above = Math.max(PAD, r.top - estH - 8);
-      const top = below + estH + PAD > window.innerHeight ? above : Math.min(window.innerHeight - PAD, below);
-      setPos({ top, left });
-    };
-
-    const getScrollParents = (el: HTMLElement | null) => {
-      const out: HTMLElement[] = [];
-      let p = el?.parentElement as HTMLElement | null;
-      while (p) {
-        const s = getComputedStyle(p);
-        if (/(auto|scroll|overlay)/.test(`${s.overflow}${s.overflowY}${s.overflowX}`)) out.push(p);
-        p = p.parentElement;
-      }
-      return out;
-    };
-
-    const parents = getScrollParents(btnRef.current);
-    sync();
-    window.addEventListener("resize", sync);
-    window.addEventListener("scroll", sync, { passive: true });
-    parents.forEach((n) => n.addEventListener("scroll", sync, { passive: true }));
-
-    return () => {
-      window.removeEventListener("resize", sync);
-      window.removeEventListener("scroll", sync);
-      parents.forEach((n) => n.removeEventListener("scroll", sync));
-    };
-  }, [open]);
-
-  const selectAll = () => {
-    const next = { ...columns };
-    ALL_COLUMNS.forEach((c) => (next[String(c.key)] = true));
-    onSet(next);
-  };
-  const clearAll = () => {
-    const next = { ...columns };
-    ALL_COLUMNS.forEach((c) => (next[String(c.key)] = false));
-    onSet(next);
-  };
-  const setDefault = () => {
-    const ON = new Set(["name", "primaryEmail", "usersCount", "animalsCount", "createdAt"]);
-    const next = { ...columns };
-    ALL_COLUMNS.forEach((c) => (next[String(c.key)] = ON.has(String(c.key))));
-    onSet(next);
-  };
-
-  const menu =
-    open && pos
-      ? createPortal(
-        <>
-          <div
-            onClick={() => setOpen(false)}
-            style={{
-              position: "fixed",
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              zIndex: 2147483644,
-              background: "transparent",
-              pointerEvents: "auto",
-            }}
-          />
-          <div
-            role="menu"
-            data-popover="columns"
-            className="rounded-md border border-hairline bg-surface p-2 pr-3 shadow-[0_8px_30px_hsla(0,0%,0%,0.35)]"
-            style={{
-              position: "fixed",
-              zIndex: 2147483645,
-              top: pos.top!,
-              left: pos.left!,
-              right: "auto",
-              bottom: "auto",
-              width: 320,
-              maxWidth: "calc(100vw - 24px)",
-              maxHeight: 360,
-              overflow: "auto",
-            }}
-          >
-            <div className="flex items-center justify-between px-2 pb-1">
-              <div className="text-xs font-medium uppercase text-secondary">Show columns</div>
-              <div className="flex items-center gap-3">
-                <a role="button" tabIndex={0} onClick={selectAll} className="text-xs font-medium hover:underline" style={{ color: "hsl(24 95% 54%)" }}>
-                  All
-                </a>
-                <a role="button" tabIndex={0} onClick={setDefault} className="text-xs font-medium hover:underline" style={{ color: "hsl(190 90% 45%)" }}>
-                  Default
-                </a>
-                <a role="button" tabIndex={0} onClick={clearAll} className="text-xs font-medium text-secondary hover:underline">
-                  Clear
-                </a>
-              </div>
-            </div>
-
-            {ALL_COLUMNS.map((c) => {
-              const k = String(c.key);
-              const checked = !!columns[k];
-              return (
-                <label
-                  key={k}
-                  data-col={k}
-                  tabIndex={0}
-                  role="checkbox"
-                  aria-checked={checked ? "true" : "false"}
-                  className="flex items-center gap-2 w-full min-w-0 px-2 py-1.5 text-[13px] leading-5 rounded hover:bg-[hsl(var(--brand-orange))]/12 cursor-pointer select-none"
-                  onClick={() => onToggle(k)}
-                  onKeyDown={(e) => {
-                    if (e.key === " " || e.key === "Enter") {
-                      e.preventDefault();
-                      onToggle(k);
-                    }
-                  }}
-                >
-                  <input
-                    type="checkbox"
-                    className="h-4 w-4 shrink-0 accent-[hsl(var(--brand-orange))]"
-                    aria-label={c.label}
-                    checked={checked}
-                    onChange={() => onToggle(k)}
-                  />
-                  <span className="truncate text-primary">{c.label}</span>
-                </label>
-              );
-            })}
-
-            <div className="flex justify-end pt-2">
-              <Button size="sm" variant="outline" onClick={() => setOpen(false)}>
-                Close
-              </Button>
+        {showPw && (
+          <div className="mt-2 rounded border border-hairline bg-surface-strong p-2">
+            <div className="text-xs text-secondary mb-1">New password (min 12 chars, upper + lower + number + special)</div>
+            <div className="flex items-center gap-2">
+              <Input type="password" placeholder="Strong password" value={password} onChange={(e) => setPassword(e.currentTarget.value)} className="h-8 w-[260px]" />
+              <Button size="sm" onClick={doSetPw} disabled={working || !password}>Save</Button>
             </div>
           </div>
-        </>,
-        getOverlayRoot()
-      )
-      : null;
+        )}
+      </td>
+    </tr>
+  );
+}
 
-  return (
-    <div className="relative inline-flex">
-      <Button
-        ref={btnRef as any}
-        variant="outline"
-        size="icon"
-        onClick={() => setOpen((o) => !o)}
-        aria-expanded={open}
-        aria-haspopup="menu"
-        className="h-9 w-9"
-        title="Choose columns"
-      >
-        <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
-          <rect x="3" y="4" width="5" height="16" rx="1.5" />
-          <rect x="10" y="4" width="5" height="16" rx="1.5" />
-          <rect x="17" y="4" width="4" height="16" rx="1.5" />
-        </svg>
-      </Button>
-      {menu}
+function BillingTab({ tenantId, mode, onDirty }: { tenantId: number; mode: "view" | "edit"; onDirty: (v: boolean) => void; }) {
+  const [loading, setLoading] = React.useState(true);
+  const [err, setErr] = React.useState("");
+  const [billing, setBilling] = React.useState<BillingDTO>(null);
+  const [draft, setDraft] = React.useState<Partial<NonNullable<BillingDTO>>>({});
+
+  React.useEffect(() => {
+    let cancelled = false;
+    setErr(""); setLoading(true);
+    adminApi.getBilling(tenantId)
+      .then((b: BillingDTO) => { if (!cancelled) { setBilling(b); setDraft({}); onDirty(false); } })
+      .catch((e: any) => { if (!cancelled) setErr(e?.message || "Failed to load billing"); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [tenantId, onDirty]);
+
+  React.useEffect(() => {
+    const dirty = ["provider", "customerId", "subscriptionId", "plan", "status", "currentPeriodEnd"].some(k => (draft as any)[k] !== undefined);
+    onDirty(dirty);
+  }, [draft, onDirty]);
+
+  const v = <K extends keyof NonNullable<BillingDTO>>(k: K) => (draft as any)[k] !== undefined ? (draft as any)[k] : (billing as any)?.[k] ?? "";
+
+  const Read = ({ label, value }: { label: string; value: React.ReactNode }) => (<div><div className="text-xs text-secondary mb-1">{label}</div><div className="text-sm">{value ?? "—"}</div></div>);
+  const Edit = ({ label, k, placeholder }: { label: string; k: keyof NonNullable<BillingDTO>; placeholder?: string }) => (
+    <div><div className="text-xs text-secondary mb-1">{label}</div>
+      <Input value={v(k)} placeholder={placeholder} onChange={(e) => setDraft(p => ({ ...p, [k]: e.currentTarget.value || null }))} />
     </div>
   );
-}
 
-/** DetailsDrawer + helpers */
-
-
-function TabButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
-    <button
-      onClick={onClick}
-      className={[
-        "relative px-3 py-2 text-sm rounded-t-md transition",
-        active ? "bg-surface text-primary border-x border-t border-hairline" : "text-secondary hover:bg-[hsl(var(--brand-orange))]/12",
-      ].join(" ")}
-    >
-      {children}
-      {active && <span className="absolute left-0 right-0 -bottom-px h-px bg-[hsl(var(--brand-orange))]" />}
-    </button>
-  );
-}
-
-function AnchoredCenterModal({
-  onClose,
-  title,
-  children,
-}: {
-  onClose: () => void;
-  title: React.ReactNode;
-  children: React.ReactNode;
-}) {
-  const [padTop, setPadTop] = React.useState(24);
-  const [maxH, setMaxH] = React.useState(Math.max(320, window.innerHeight - 48));
-
-  React.useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    document.addEventListener("keydown", onKey);
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.removeEventListener("keydown", onKey);
-      document.body.style.overflow = prev;
-    };
-  }, [onClose]);
-
-  React.useEffect(() => {
-    const PADDING_BTM = 24;
-    const GAP = 8;
-
-    const compute = () => {
-      const anchor =
-        document.querySelector<HTMLElement>("[data-admin-align-top]") ||
-        document.body;
-
-      const rect = anchor.getBoundingClientRect();
-      const scrollY = window.scrollY || window.pageYOffset || 0;
-
-      // Align modal's top to the table block's top (plus a tiny gap).
-      const topPx = Math.max(12, Math.round(rect.top + scrollY + GAP));
-      const available = Math.round(window.innerHeight - (topPx - scrollY) - PADDING_BTM);
-
-      setPadTop(topPx);
-      setMaxH(Math.max(280, available));
-    };
-
-    compute();
-    const onScroll = () => compute();
-    const onResize = () => compute();
-
-    window.addEventListener("scroll", onScroll, { passive: true });
-    window.addEventListener("resize", onResize);
-
-    // If layout shifts (filters open/close, etc.), recompute.
-    const obs = new MutationObserver(compute);
-    obs.observe(document.body, { childList: true, subtree: true });
-
-    return () => {
-      window.removeEventListener("scroll", onScroll);
-      window.removeEventListener("resize", onResize);
-      obs.disconnect();
-    };
-  }, []);
-
-  return createPortal(
-    <div className="fixed inset-0 z-[2147483647]">
-      {/* Dimmer with blur to match Contacts feel */}
-      <div
-        className="absolute inset-0 bg-black/40 backdrop-blur-sm backdrop-saturate-150"
-        onClick={onClose}
-        aria-hidden
-      />
-
-      {/* Flex wrapper for horizontal centering; top spacing via padding */}
-      <div
-        className="fixed inset-0 p-4 flex justify-center items-start pointer-events-none"
-        style={{ paddingTop: padTop }}
-      >
-        <section
-          role="dialog"
-          aria-modal="true"
-          className={[
-            "pointer-events-auto",
-            "bg-surface border border-hairline rounded-xl shadow-2xl",
-            "flex flex-col shrink-0 box-border"
-          ].join(" ")}
-          style={{ width: "min(760px, 96vw)", maxHeight: maxH }}
+    <div className="space-y-4">
+      {loading && <div className="text-sm text-secondary">Loading billing…</div>}
+      {err && <div className="text-sm text-red-600">Error: {err}</div>}
+      {!loading && !err && (
+        <SectionCard
+          title="Billing"
+          right={mode === "edit" && (
+            <div className="flex gap-2">
+              <Button onClick={async () => {
+                try {
+                  const body = {
+                    provider: draft.provider !== undefined ? draft.provider : (billing as any)?.provider ?? null,
+                    customerId: draft.customerId !== undefined ? draft.customerId : (billing as any)?.customerId ?? null,
+                    subscriptionId: draft.subscriptionId !== undefined ? draft.subscriptionId : (billing as any)?.subscriptionId ?? null,
+                    plan: draft.plan !== undefined ? draft.plan : (billing as any)?.plan ?? null,
+                    status: draft.status !== undefined ? draft.status : (billing as any)?.status ?? null,
+                    currentPeriodEnd: draft.currentPeriodEnd !== undefined ? draft.currentPeriodEnd : (billing as any)?.currentPeriodEnd ?? null,
+                  };
+                  const saved = await adminApi.patchBilling(tenantId, body as any);
+                  setBilling(saved); setDraft({}); onDirty(false);
+                } catch (e: any) { alert(e?.message || "Save failed"); }
+              }}>Save</Button>
+              <Button variant="outline" onClick={() => setDraft({})}>Reset</Button>
+            </div>
+          )}
         >
-          <header className="flex items-center gap-2 px-4 py-3 border-b border-hairline rounded-t-xl">
-            <div className="font-medium truncate text-primary">{title}</div>
-            <button
-              type="button"
-              onClick={onClose}
-              className="ml-auto inline-grid place-items-center h-8 w-8 rounded text-secondary hover:text-primary hover:bg-white/10 focus:outline-none focus:shadow-[0_0_0_2px_hsl(var(--brand-orange))]"
-              aria-label="Close"
-            >
-              <svg viewBox="0 0 24 24" className="h-4 w-4">
-                <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-              </svg>
-            </button>
-          </header>
+          {mode === "view" ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <Read label="Provider" value={(billing as any)?.provider || "—"} />
+              <Read label="Plan" value={(billing as any)?.plan || "—"} />
+              <Read label="Status" value={(billing as any)?.status || "—"} />
+              <Read label="Customer ID" value={(billing as any)?.customerId || "—"} />
+              <Read label="Subscription ID" value={(billing as any)?.subscriptionId || "—"} />
+              <Read label="Current Period End" value={fmtDate((billing as any)?.currentPeriodEnd) || "—"} />
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <Edit label="Provider" k="provider" />
+              <Edit label="Plan" k="plan" />
+              <Edit label="Status" k="status" />
+              <Edit label="Customer ID" k="customerId" />
+              <Edit label="Subscription ID" k="subscriptionId" />
+              <Edit label="Current Period End (ISO)" k="currentPeriodEnd" placeholder="2025-01-31T23:59:59.000Z" />
+            </div>
+          )}
 
-          <div className="flex-1 overflow-auto text-primary">{children}</div>
-        </section>
-      </div>
-    </div>,
-    getOverlayRoot()
+          <div className="grid grid-cols-2 gap-3 mt-3">
+            <div className="rounded border border-hairline bg-surface px-3 py-2">
+              <div className="text-xs text-secondary mb-1 uppercase tracking-wide">Created</div>
+              <div className="text-sm text-primary">{fmtDate((billing as any)?.createdAt) || "—"}</div>
+            </div>
+            <div className="rounded border border-hairline bg-surface px-3 py-2">
+              <div className="text-xs text-secondary mb-1 uppercase tracking-wide">Updated</div>
+              <div className="text-sm text-primary">{fmtDate((billing as any)?.updatedAt) || "—"}</div>
+            </div>
+          </div>
+        </SectionCard>
+      )}
+    </div>
   );
 }

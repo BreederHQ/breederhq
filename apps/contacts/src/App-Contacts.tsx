@@ -1,10 +1,12 @@
 ﻿// App-Contacts.tsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Card, Button, Input, EmptyState, ColumnsPopover, TableFooter } from "@bhq/ui";
+import { Card, Button, Input, EmptyState, ColumnsPopover, TableFooter, utils } from "@bhq/ui";
 import { getOverlayRoot } from "@bhq/ui/overlay";
 import "@bhq/ui/styles/table.css"
 import { makeApi } from "./api";
+
+const { readTenantIdFast, resolveTenantId } = utils;
 
 type ID = string | number;
 type SortDir = "asc" | "desc";
@@ -97,34 +99,6 @@ type AuditRow = {
   userEmail?: string | null;
   createdAt: string; // ISO
 };
-
-function getTenantId(): number | null {
-  const t = resolveTenantIdFromAnySource();
-  return t != null && Number.isFinite(t) && t > 0 ? t : null;
-}
-
-
-function resolveTenantIdFromAnySource(): number | null {
-  const w = window as any;
-  const fromGlobal = Number(w.__BHQ_TENANT_ID__);
-  if (Number.isFinite(fromGlobal) && fromGlobal > 0) return fromGlobal;
-
-  // cookie wonâ€™t be readable when HttpOnly; keep the code but donâ€™t rely on it
-  const fromCookie = tenantIdFromSessionCookie();
-  if (Number.isFinite(fromCookie) && fromCookie > 0) return fromCookie;
-
-  try {
-    const fromLS = Number(localStorage.getItem("BHQ_TENANT_ID") || "");
-    if (Number.isFinite(fromLS) && fromLS > 0) return fromLS;
-  } catch { }
-
-  const fromEnv = Number((import.meta as any)?.env?.VITE_DEV_TENANT_ID || "");
-  if (Number.isFinite(fromEnv) && fromEnv > 0) return fromEnv;
-
-  return null;
-}
-
-
 
 function shapeContact(row: any) {
   const {
@@ -670,7 +644,7 @@ function buildContactPayload(base: any, src: any, opts?: { countries?: { code: s
     display_name,
 
     email: s.email ?? base.email ?? null,
-    phoneE164: s.phone ?? base.phone ?? null,
+    phoneE164: (s.phone || (prefs as any)?.whatsappPhone) ?? base.phone ?? null,
     whatsappE164: (prefs as any)?.whatsappPhone ?? (s as any)?.whatsappPhone ?? null,
     street: s.street ?? base.street ?? null,
     street2: s.street2 ?? base.street2 ?? null,
@@ -831,35 +805,6 @@ function LabeledInputBare(props: {
 const RequiredMark = () => <span className="text-red-500 ml-1" aria-hidden="true">*</span>;
 
 //******€ module-scope helpers (PUT THESE AT TOP OF FILE)**************************************************************************”€
-function readCookie(name: string): string {
-  try {
-    const c = document.cookie.split("; ").find(x => x.startsWith(name + "="));
-    return c ? decodeURIComponent(c.slice(name.length + 1)) : "";
-  } catch { return ""; }
-}
-
-function b64json(s: string): any {
-  const pad = (x: string) => x + "===".slice((x.length + 3) % 4);
-  const norm = pad(s.replace(/-/g, "+").replace(/_/g, "/"));
-  return JSON.parse(atob(norm));
-}
-
-function tenantIdFromSessionCookie(): number {
-  const raw = readCookie("bhq_s");
-  if (!raw) return NaN;
-  try {
-    const parts = raw.split(".");
-    const payloadB64 = parts.length === 3 ? parts[1] : parts[0];
-    const payload = b64json(payloadB64);
-    const id =
-      Number(payload?.tenantId) ??
-      Number(payload?.tenantID) ??
-      Number(payload?.tenant_id) ??
-      Number(payload?.tenant?.id);
-    return Number.isFinite(id) ? id : NaN;
-  } catch { return NaN; }
-}
-
 
 export default function AppContacts() {
   useEffect(() => {
@@ -868,12 +813,33 @@ export default function AppContacts() {
     try { localStorage.setItem("BHQ_LAST_MODULE", label); } catch { }
   }, []);
 
+  const [tenantId, setTenantId] = React.useState<number | null>(() => readTenantIdFast() ?? null);
+  const [tenantErr, setTenantErr] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (tenantId != null) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const t = await resolveTenantId();
+        if (!cancelled) setTenantId(t);
+      } catch (e: any) {
+        if (!cancelled) setTenantErr(e?.message || "Failed to resolve tenant");
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [tenantId]);
+
   const apiBase = useMemo(() => getApiBase(), []);
+
   const api = useMemo(() => {
-    const client = makeApi(apiBase, () => ({}));
+    if (tenantId == null) return null;
+    // Pass tenant info to your client; adjust to your makeApi signature.
+    // Common patterns: header `x-tenant-id`, query param, or internal context.
+    const client = makeApi(apiBase, () => ({ 'x-tenant-id': String(tenantId) }));
     (window as any).__api = client;
     return client;
-  }, [apiBase]);
+  }, [apiBase, tenantId]);
 
   // ===== Columns state & helpers (INSIDE AppContacts) =====
   const COL_STORAGE_KEY = 'bhq_contacts_cols_v1';
@@ -907,61 +873,17 @@ export default function AppContacts() {
   };
   // ===== end columns block =====
 
-
-  const [tenantReady, setTenantReady] = React.useState(false);
-
-
-  // TENANT bootstrap: learn tenant id from session and cache it
-  React.useEffect(() => {
-    let cancelled = false;
-
-    (async () => {
-      try {
-        const data: any = await api.session.get();
-        const t = Number(
-          data?.tenant?.id ??
-          data?.tenantId ??
-          data?.tenantID
-        );
-
-        if (!cancelled && Number.isFinite(t) && t > 0) {
-          (window as any).__BHQ_TENANT_ID__ = t;
-          try { localStorage.setItem("BHQ_TENANT_ID", String(t)); } catch { }
-          setTenantReady(true);
-        }
-      } catch {
-        // swallow: unauth or no session just leaves tenantReady=false
-      }
-    })();
-
-    return () => { cancelled = true; };
-  }, []);
-
-  React.useEffect(() => {
-    if (tenantReady) return;
-    let timer: number | undefined;
-    const tick = () => {
-      const t = getTenantId();
-      if (t != null) {
-        setTenantReady(true);
-      } else {
-        timer = window.setTimeout(tick, 100);
-      }
-    };
-    tick();
-    return () => { if (timer) clearTimeout(timer); };
-  }, [tenantReady]);
-
-
   /** API base + auth helpers (usable by both makeApi and manual fetches) */
   function getApiBase() {
+    if (import.meta.env.DEV) return "";
+
     const w = window as any;
     const globalBase = w.__BHQ_API_BASE__ as string | undefined;
     const envBase = (import.meta as any)?.env?.VITE_API_URL as string | undefined;
     const storedBase = (() => { try { return localStorage.getItem("BHQ_API_URL") || undefined; } catch { return undefined; } })();
-    let base = (globalBase || envBase || storedBase || location.origin);
+    let base = (globalBase || envBase || storedBase || window.location.origin);
     try { base = String(base).replace(/\/+$/, "").replace(/\/api\/v1$/, ""); } catch { }
-    return base;
+    return "";
   }
 
   // Drop any keys that aren't in ALL_COLUMNS (e.g., old 'commPrefs')
@@ -1040,7 +962,7 @@ export default function AppContacts() {
   const [formTriedSubmit, setFormTriedSubmit] = useState(false);
 
   /** Data */
-  const [loading, setLoading] = useState<boolean>(true);
+  const [loading, setLoading] = useState<boolean>(tenantId != null);
   const [error, setError] = useState<string>("");
   const [rows, setRows] = useState<ContactRow[]>([]);
   const [total, setTotal] = useState<number>(0);
@@ -1107,7 +1029,7 @@ export default function AppContacts() {
   const [affiliations, setAffiliations] = React.useState<number[]>([]);
 
   useEffect(() => {
-    if (!tenantReady) return;
+    if (!api) return;
     (async () => {
       try {
         const res = await api.lookups.searchOrganizations("");
@@ -1130,7 +1052,7 @@ export default function AppContacts() {
         setOrganizations([]);
       }
     })();
-  }, [tenantReady, api]);
+  }, [api]);
 
   /** Countries */
   const countries = useCountries();
@@ -1187,14 +1109,13 @@ export default function AppContacts() {
   const [tagsError, setTagsError] = useState<string>("");
 
   useEffect(() => {
-    if (!tenantReady) return;
+    if (!api) return;
 
     let cancelled = false;
 
     (async () => {
       try {
         setTagsError("");
-        console.debug("Fetching CONTACT tags; tenant:", getTenantId());
         const res = await api.tags.list("CONTACT");
 
         // support either { items: [...] } or bare array
@@ -1210,7 +1131,7 @@ export default function AppContacts() {
     })();
 
     return () => { cancelled = true; };
-  }, [tenantReady, api]); // v1 not used here, so donâ€™t include it
+  }, [api]);
 
   /** Persist prefs */
   useEffect(() => { localStorage.setItem(COL_STORAGE_KEY, JSON.stringify(columns)); }, [columns]);
@@ -1229,7 +1150,7 @@ export default function AppContacts() {
 
   /** List fetch */
   useEffect(() => {
-    if (!tenantReady) return;
+    if (!api) return;
     let ignore = false;
     setLoading(true);
     setError("");
@@ -1253,11 +1174,11 @@ export default function AppContacts() {
       .finally(() => { if (!ignore) setLoading(false); });
 
     return () => { ignore = true; };
-  }, [tenantReady, api, dq, pageSize, includeArchived, page, sorts]);
+  }, [api, dq, pageSize, includeArchived, page, sorts]);
 
   // [ADD] load org affiliations for this contact when we select/open it
   useEffect(() => {
-    if (!tenantReady || selectedId == null) return;
+    if (!api || selectedId == null) return;
     let ignore = false;
     (async () => {
       try {
@@ -1270,10 +1191,10 @@ export default function AppContacts() {
       }
     })();
     return () => { ignore = true; };
-  }, [tenantReady, api, selectedId]);
+  }, [api, selectedId]);
 
   useEffect(() => {
-    if (!tenantReady || selectedId == null) return;
+    if (!api || selectedId == null) return;
     let ignore = false;
 
     (async () => {
@@ -1292,11 +1213,11 @@ export default function AppContacts() {
     })();
 
     return () => { ignore = true; };
-  }, [tenantReady, api, selectedId]);
+  }, [api, selectedId]);
 
   // Load audit stream when the Audit tab is selected
   useEffect(() => {
-    if (!tenantReady || drawerTab !== "audit" || !selectedId) return;
+    if (!api || drawerTab !== "audit" || !selectedId) return;
 
     let ignore = false;
     setAuditLoading(true);
@@ -1318,7 +1239,7 @@ export default function AppContacts() {
       });
 
     return () => { ignore = true; };
-  }, [tenantReady, api, drawerTab, selectedId]);
+  }, [api, drawerTab, selectedId]);
 
   const dFilters = useDebounced(filters, 250);
   /** Derived rows: client-side filtering */
@@ -1508,6 +1429,7 @@ export default function AppContacts() {
   }
 
   async function bulkStatus(next: "Active" | "Inactive") {
+    if (!api) return;
     if (selected.size === 0) return;
     setLoading(true); setError("");
     try {
@@ -1523,6 +1445,7 @@ export default function AppContacts() {
   }
 
   async function bulkApplyTags() {
+    if (!api) return;
     if (selected.size === 0) return;
     setLoading(true); setError("");
 
@@ -1602,6 +1525,7 @@ export default function AppContacts() {
   };
 
   async function submitForm(e: React.FormEvent) {
+    if (!api) return;
     e.preventDefault();
     setFormTriedSubmit(true);
     setLoading(true);
@@ -1653,6 +1577,16 @@ export default function AppContacts() {
     <>
       <div className="space-y-3">
         {error && <div className="rounded-md border border-hairline bg-surface-strong px-3 py-2 text-sm text-secondary">{error}</div>}
+        {tenantId == null && !tenantErr && (
+          <div className="rounded-md border border-hairline bg-surface px-3 py-2 text-sm text-secondary">
+            Resolving tenant…
+          </div>
+        )}
+        {tenantErr && (
+          <div className="rounded-md border border-red-300/60 bg-red-100/50 px-3 py-2 text-sm text-red-700">
+            Tenant error: {tenantErr}
+          </div>
+        )}
 
         <Card className="bhq-card border border-hairline bg-surface">
           {/* Toolbar */}
@@ -2277,7 +2211,7 @@ export default function AppContacts() {
                         setDraft(p => ({ ...(p || {}), organizationId: idNum }));
                       }}
                     >
-                      <option value="">— Select Organization**€”</option>
+                      <option value="">— Select Organization”</option>
                       {organizations.map((o) => (
                         <option key={o.id} value={String(o.id)}>{o.name}</option>
                       ))}
@@ -2671,7 +2605,7 @@ export default function AppContacts() {
 
                 {/* Organization */}
                 <div className="sm:col-span-2">
-                  <label className="block text-xs mb-1">Organization</label>
+                  <label className="block text-xs mb-1">Organizational Association</label>
                   <div className="relative">
                     <select
                       className="w-full h-10 appearance-none pr-8 rounded-md bg-surface border border-hairline px-3 text-sm text-primary placeholder:text-secondary outline-none focus:shadow-[0_0_0_2px_hsl(var(--brand-orange))]"
@@ -2681,7 +2615,7 @@ export default function AppContacts() {
                         setForm((f) => ({ ...f, organizationId: v ? Number(v) : null }));
                       }}
                     >
-                      <option value="">— Select Organization**€”</option>
+                      <option value="">Select Organization</option>
                       {organizations.map((o) => (
                         <option key={o.id} value={String(o.id)}>
                           {o.name ?? `Org #${o.id}`}
@@ -2702,58 +2636,54 @@ export default function AppContacts() {
                   onChange={(v) => setForm((f) => ({ ...f, email: v }))}
                 />
 
-                {/* Phone row */}
-                <div className="sm:col-span-2">
-                  <label className="block text-xs mb-1">Phone</label>
+                {/* ===== PHONES (3 rows: Cell, Landline, WhatsApp) –– REPLACEMENT ===== */}
+                <div className="sm:col-span-2 space-y-3">
 
-                  <div className="grid grid-cols-1 sm:grid-cols-[minmax(120px,180px)_1fr] gap-2">
-                    {/* Type */}
-                    <div className="relative">
-                      <select
-                        className="h-10 w-full appearance-none pr-8 rounded-md bg-surface border border-hairline px-3 text-sm text-primary outline-none focus:shadow-[0_0_0_2px_hsl(var(--brand-orange))]"
-                        value={String(form.phoneType ?? "cell")}
-                        onChange={(e) => setForm((f) => ({ ...f, phoneType: getEventValue(e) }))}
-                        aria-label="Phone type"
-                      >
-                        <option value="cell">Cell</option>
-                        <option value="landline">Landline</option>
-                      </select>
-                      <svg className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-secondary" viewBox="0 0 20 20" aria-hidden="true">
-                        <path d="M5.5 7.5l4.5 4 4.5-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                      </svg>
-                    </div>
-
-                    {/* WhatsApp (optional, used as phone if Phone left empty) */}
-                    <div className="sm:col-span-2">
-                      <label className="block text-xs mb-1">WhatsApp (optional)</label>
-                      <IntlPhoneField
-                        value={String((form as any)?.commPrefs?.whatsappPhone ?? "")}
-                        onChange={(next) =>
-                          setForm((f) => ({
-                            ...f,
-                            commPrefs: { ...((f as any)?.commPrefs || {}), whatsappPhone: next }
-                          }))
-                        }
-                        inferredCountryName={countryNameFromValue(form.country, countries)}
-                        countries={countries}
-                        className="w-full"
-                      />
-                      <div className="text-xs text-secondary mt-1">
-                        If Phone is left empty, this will be used as the phone on save.
-                      </div>
-                    </div>
-
-
-                    {/* Number (auto-formatted & length-capped) */}
+                  {/* Row 1: Cell */}
+                  <div>
+                    <label className="block text-xs mb-1">Cell Phone</label>
                     <IntlPhoneField
-                      value={String(form.phone ?? "")}             // store E.164 in form.phone
+                      value={String(form.phone ?? "")}
                       onChange={(next) => setForm((f) => ({ ...f, phone: next }))}
                       inferredCountryName={countryNameFromValue(form.country, countries)}
                       countries={countries}
-                      className="w-full"
+                      className="w-full max-w-[640px]"
                     />
                   </div>
+
+                  {/* Row 2: Landline */}
+                  <div>
+                    <label className="block text-xs mb-1">Landline</label>
+                    <IntlPhoneField
+                      value={String((form as any)?.landline ?? "")}
+                      onChange={(next) => setForm((f: any) => ({ ...f, landline: next }))}
+                      inferredCountryName={countryNameFromValue(form.country, countries)}
+                      countries={countries}
+                      className="w-full max-w-[640px]"
+                    />
+                  </div>
+
+                  {/* Row 3: WhatsApp */}
+                  <div>
+                    <label className="block text-xs mb-1">WhatsApp</label>
+                    <IntlPhoneField
+                      value={String((form as any)?.commPrefs?.whatsappPhone ?? "")}
+                      onChange={(next) =>
+                        setForm((f: any) => ({
+                          ...f,
+                          commPrefs: { ...(f?.commPrefs || {}), whatsappPhone: next },
+                        }))
+                      }
+                      inferredCountryName={countryNameFromValue(form.country, countries)}
+                      countries={countries}
+                      className="w-full max-w-[640px]"
+                    />
+                    <div className="text-xs text-secondary mt-1">
+                      If Cell Phone is left empty, this will be used as the phone on save.
+                    </div>
+                  </div>
                 </div>
+
 
                 {/* Address */}
                 <div className="sm:col-span-2">

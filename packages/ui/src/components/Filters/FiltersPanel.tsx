@@ -1,6 +1,6 @@
 // packages/ui/src/components/Filters/FiltersPanel.tsx
 import * as React from "react";
-import { Input, Button } from "../";
+import { Input, Button } from "..";
 import { cn } from "../../utils/cn";
 
 export type FilterKind = "text" | "select";
