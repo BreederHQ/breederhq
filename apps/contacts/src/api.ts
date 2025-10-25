@@ -1,6 +1,4 @@
-/* apps/contacts/src/api.ts
-   v1 client + apiUtils for Contacts app
-*/
+// apps/contacts/src/api.ts
 
 export type ID = string | number;
 
@@ -74,24 +72,24 @@ function resolveTenantIdFromAnySource(): number | null {
       const v = Number(w.resolveTenantIdFromAnySource());
       return Number.isFinite(v) && v > 0 ? v : null;
     }
-  } catch {}
+  } catch { }
   try {
     const w = window as any;
     const fromGlobal = Number(w.__BHQ_TENANT_ID__);
     if (Number.isFinite(fromGlobal) && fromGlobal > 0) return fromGlobal;
-  } catch {}
+  } catch { }
   try {
     const fromCookie = tenantIdFromSessionCookie();
     if (fromCookie) return fromCookie;
-  } catch {}
+  } catch { }
   try {
     const fromLS = Number(localStorage.getItem("BHQ_TENANT_ID") || "");
     if (Number.isFinite(fromLS) && fromLS > 0) return fromLS;
-  } catch {}
+  } catch { }
   try {
     const fromEnv = Number((import.meta as any)?.env?.VITE_DEV_TENANT_ID || "");
     if (Number.isFinite(fromEnv) && fromEnv > 0) return fromEnv;
-  } catch {}
+  } catch { }
   return null;
 }
 
@@ -120,12 +118,21 @@ function getCsrfHeaders(method?: string): Record<string, string> {
  *  - fetchJson: tenant-aware (normal authenticated API calls)
  * ------------------------------------------------------------------------- */
 
+function baseHeaders(init: RequestInit) {
+  // Only include Content-Type when we actually send a body (non-GET).
+  const method = String(init?.method || "GET").toUpperCase();
+  const hasBody = !!(init as any)?.body && method !== "GET" && method !== "HEAD";
+  return {
+    accept: "application/json",
+    ...(hasBody ? { "content-type": "application/json" } : {}),
+  } as Record<string, string>;
+}
+
 async function bareFetchJson<T = any>(url: string, init: RequestInit = {}): Promise<T> {
   const res = await fetch(url, {
     ...init,
     headers: {
-      "content-type": "application/json",
-      accept: "application/json",
+      ...baseHeaders(init),
       ...(init.headers as any),
     },
     credentials: "include",
@@ -154,8 +161,7 @@ async function fetchJson<T = any>(
   const res = await fetch(url, {
     ...init,
     headers: {
-      "content-type": "application/json",
-      accept: "application/json",
+      ...baseHeaders(init),
       ...getTenantHeaders(),
       ...getCsrfHeaders(init.method),
       ...extraHeaders,
@@ -313,8 +319,8 @@ export function makeApi(baseOrigin: string = "", authHeaderFn?: () => Record<str
         kind === "CONTACT"
           ? { contactId: Number(entityId) }
           : kind === "ORGANIZATION"
-          ? { organizationId: Number(entityId) }
-          : { animalId: Number(entityId) };
+            ? { organizationId: Number(entityId) }
+            : { animalId: Number(entityId) };
       return fetchJson<any>(url, { method: "POST", body: JSON.stringify(body) }, withAuth());
     },
     async unassign(tagId: ID, entityId: ID, kind: Module = "CONTACT") {
@@ -323,8 +329,8 @@ export function makeApi(baseOrigin: string = "", authHeaderFn?: () => Record<str
         kind === "CONTACT"
           ? { contactId: Number(entityId) }
           : kind === "ORGANIZATION"
-          ? { organizationId: Number(entityId) }
-          : { animalId: Number(entityId) };
+            ? { organizationId: Number(entityId) }
+            : { animalId: Number(entityId) };
       return fetchJson<any>(url, { method: "POST", body: JSON.stringify(body) }, withAuth());
     },
     async listForContact(contactId: ID): Promise<Array<{ id: number; name: string }>> {

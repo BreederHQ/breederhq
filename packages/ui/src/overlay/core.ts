@@ -1,98 +1,83 @@
 // packages/ui/src/overlay/core.ts
-
-// ---- runtime marker (for quick DevTools verification) ----
-;(window as any).__BHQ_OVERLAY_IMPL = "overlay/core.ts";
-
-// ---- constants ----
 export const OVERLAY_ROOT_ID = "bhq-overlay-root";
-const MAX_Z = 2147483647; // 2^31-1 (fits in CSS int z-index)
+export const FLYOUT_ROOT_ID  = "bhq-flyout-root";
 
-// ---- module state ----
-let mounts = 0;
-let cached: HTMLElement | null = null;
+const MAX_Z = 2147483647;
 
-/**
- * Always typed as Element for consumers (e.g., createPortal expects Element|DocumentFragment).
- * In SSR, we return a typed stub so DTS is happy. Callers that actually render should only run in the browser.
- */
-export function getOverlayRoot(): Element {
-  // SSR: return a typed no-op stub to satisfy types; rendering code should bail on the server
-  if (typeof document === "undefined") {
-    return {} as unknown as Element;
-  }
+let cachedOverlay: HTMLElement | null = null;
+let cachedFlyout: HTMLElement | null = null;
+let overlayRefCount = 0;
 
-  // If we have a cached node but it got detached, forget it
-  if (cached && !document.contains(cached)) {
-    if (process.env.NODE_ENV !== "production") {
-      console.debug("[overlay] cached root was detached; recreating");
-    }
-    cached = null;
-  }
+function ensureInBody(el: HTMLElement) {
+  if (el.parentElement !== document.body) document.body.appendChild(el);
+  return el;
+}
 
-  // Find existing node or create one
-  let el = (cached ?? document.getElementById(OVERLAY_ROOT_ID)) as HTMLElement | null;
-  const created = !el;
+export function getOverlayRoot(): HTMLElement {
+  if (typeof document === "undefined") return {} as any;
+  if (cachedOverlay && !document.contains(cachedOverlay)) cachedOverlay = null;
 
+  let el = cachedOverlay ?? (document.getElementById(OVERLAY_ROOT_ID) as HTMLElement | null);
   if (!el) {
     el = document.createElement("div");
     el.id = OVERLAY_ROOT_ID;
     document.body.appendChild(el);
-  } else if (el.parentNode !== document.body) {
-    // Ensure it's a direct child of <body> (avoid weird stacking/transform contexts)
-    document.body.appendChild(el);
   }
+  ensureInBody(el);
 
-  // Baseline safety styles (idempotent). Use inline so consumers don’t need global CSS.
-  if (!el.style.position) el.style.position = "fixed";
-  if (!el.style.zIndex) el.style.zIndex = String(MAX_Z);
-  if (!el.style.pointerEvents) el.style.pointerEvents = "none";
-  if (!el.style.getPropertyValue("inset")) el.style.setProperty("inset", "0");
+  // baseline styles
+  el.style.position = "fixed";
+  el.style.setProperty("inset", "0");
+  el.style.zIndex = String(MAX_Z - 1); // below flyout
+  el.style.pointerEvents = el.style.pointerEvents || "none";
+  el.dataset.role ||= "bhq-overlay-root";
 
-  // Helpful to distinguish in DevTools
-  if (!el.dataset.role) el.dataset.role = "bhq-overlay-root";
-
-  cached = el;
-
-  if (process.env.NODE_ENV !== "production") {
-    console.debug(
-      `[overlay] getOverlayRoot() ${created ? "created" : "reused"} #${OVERLAY_ROOT_ID}`,
-      {
-        zIndex: el.style.zIndex,
-        position: el.style.position,
-        pointerEvents: el.style.pointerEvents,
-      }
-    );
-  }
-
+  cachedOverlay = el;
   return el;
 }
 
-// Reference-count pointer event enabling while any overlay is open.
-export function acquireOverlayHost(): () => void {
-  const el = getOverlayRoot() as HTMLElement;
+export function getFlyoutRoot(): HTMLElement {
+  if (typeof document === "undefined") return {} as any;
+  if (cachedFlyout && !document.contains(cachedFlyout)) cachedFlyout = null;
 
-  // increment mounts & enable interactions
-  mounts += 1;
-  el.style.pointerEvents = "auto";
-  (window as any).__BHQ_OVERLAY_RC = mounts; // tiny breadcrumb for DevTools
-
-  if (process.env.NODE_ENV !== "production") {
-    console.debug("[overlay] acquire → mounts =", mounts);
+  let el = cachedFlyout ?? (document.getElementById(FLYOUT_ROOT_ID) as HTMLElement | null);
+  if (!el) {
+    el = document.createElement("div");
+    el.id = FLYOUT_ROOT_ID;
+    document.body.appendChild(el);
   }
+  ensureInBody(el);
 
-  // disposer
+  // always strictly above overlay root
+  el.style.position = "fixed";
+  el.style.setProperty("inset", "0");
+  el.style.zIndex = String(MAX_Z);
+  el.style.pointerEvents = el.style.pointerEvents || "none";
+  el.dataset.role ||= "bhq-flyout-root";
+
+  cachedFlyout = el;
+  return el;
+}
+
+/** RC helper for overlay host pointer-events. */
+export function acquireOverlayHost(): () => void {
+  const el = getOverlayRoot();
+  overlayRefCount += 1;
+  el.style.pointerEvents = "auto";
+  (window as any).__BHQ_OVERLAY_RC = overlayRefCount;
+
   return () => {
-    mounts = Math.max(0, mounts - 1);
-    (window as any).__BHQ_OVERLAY_RC = mounts;
-
-    if (process.env.NODE_ENV !== "production") {
-      console.debug("[overlay] release → mounts =", mounts);
-    }
-
-    if (mounts === 0) {
-      // disable click-through when nothing is mounted
-      const root = getOverlayRoot() as HTMLElement; // revalidate after HMR
-      root.style.pointerEvents = "none";
-    }
+    overlayRefCount = Math.max(0, overlayRefCount - 1);
+    (window as any).__BHQ_OVERLAY_RC = overlayRefCount;
+    if (overlayRefCount === 0) getOverlayRoot().style.pointerEvents = "none";
   };
+}
+
+/** Optional: auto flip pointer-events based on child count. */
+export function autoPointerEvents(el: HTMLElement) {
+  const bump = () => { el.style.pointerEvents = el.childElementCount > 0 ? "auto" : "none"; };
+  bump();
+  const mo = new MutationObserver(bump);
+  mo.observe(el, { childList: true });
+  return () => mo.disconnect();
 }

@@ -1,6 +1,7 @@
 ﻿// packages/ui/src/hooks/index.ts
 export * from "./useAsyncList";
 export * from "./useBreedProgram";
+export * from "./useBreedSearch";
 export * from "./useColumns";
 export * from "./useCountries";
 export * from "./useDebounced";

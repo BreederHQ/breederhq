@@ -1,4 +1,5 @@
 // packages/ui/src/components/index.ts
+export * from "./Address";
 export * from "./AppSection";
 export * from "./Badge";
 export * from "./BreedSelect";
@@ -17,6 +18,7 @@ export * from "./Input";
 export * from "./IntlPhoneField";
 export * from "./MiniStat";
 export * from "./OverlayShell";
+export * from "./Ownership";
 export * from "./PageHeader";
 export * from "./PillToggle";
 export * from "./Popover";

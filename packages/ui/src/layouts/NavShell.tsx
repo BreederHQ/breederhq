@@ -1,6 +1,6 @@
+// NavShell.tsx
 import * as React from "react";
 import logoUrl from "../../assets/logo.png";
-import { OverlayRoot } from "@bhq/ui/overlay";
 
 export type NavItem = {
   key: string;
@@ -18,19 +18,15 @@ export type NavShellProps = {
   };
   envBadge?: "Dev" | "Staging" | "Prod" | string;
   actions?: React.ReactNode;
-  showGlobalSearch?: boolean; // ← NEW
+  showGlobalSearch?: boolean;
   auth?: {
     isAuthenticated: boolean;
     onLogin?: () => void;
     onLogout?: () => void;
   };
-  /** Organization display/name; shown to the left of Settings. */
   orgName?: string;
-  /** Click to switch orgs (opens your chooser). */
   onOrgClick?: () => void;
-  /** Click handler for the gear/settings button. */
   onSettingsClick?: () => void;
-
   children?: React.ReactNode;
 };
 
@@ -74,7 +70,6 @@ const Icon = {
   ),
 };
 
-// Emoji fallback for module icons
 function emojiFor(label: string) {
   const k = label.toLowerCase();
   if (k.includes("contact")) return "📇";
@@ -105,25 +100,21 @@ export const NavShell: React.FC<NavShellProps> = ({
   onOrgClick,
   onSettingsClick,
 }) => {
-  // Listen for module announcements to drive breadcrumb & active nav
   const [announcedTitle, setAnnouncedTitle] = React.useState<string>();
   React.useEffect(() => {
     const onModule = (e: Event) => {
       const detail = (e as CustomEvent).detail as { label?: string };
       if (detail?.label) {
         setAnnouncedTitle(detail.label);
-        try { localStorage.setItem("BHQ_LAST_MODULE", detail.label); } catch { }
+        try { localStorage.setItem("BHQ_LAST_MODULE", detail.label); } catch {}
       }
     };
     window.addEventListener("bhq:module", onModule as any);
     return () => window.removeEventListener("bhq:module", onModule as any);
   }, []);
 
-
-  // Prefer announced title, then prop, then fallback
   const displayTitle = announcedTitle || title || "BreederHQ";
 
-  // (existing state)
   const [railOpen, setRailOpen] = React.useState<boolean>(() => {
     try {
       const v = localStorage.getItem("BHQ_RAIL_OPEN");
@@ -132,15 +123,11 @@ export const NavShell: React.FC<NavShellProps> = ({
       return true;
     }
   });
-
   React.useEffect(() => {
-    try {
-      localStorage.setItem("BHQ_RAIL_OPEN", JSON.stringify(railOpen));
-    } catch { }
+    try { localStorage.setItem("BHQ_RAIL_OPEN", JSON.stringify(railOpen)); } catch {}
   }, [railOpen]);
 
   const loggedIn = !!(auth && auth.isAuthenticated);
-  // Default modules if none are passed
   const defaultItems: NavItem[] = [
     { key: "contacts", label: "Contacts", href: "/contacts/" },
     { key: "organizations", label: "Organizations", href: "/organizations/" },
@@ -149,44 +136,29 @@ export const NavShell: React.FC<NavShellProps> = ({
     { key: "offspring", label: "Offspring", href: "/offspring/" },
     { key: "admin", label: "Admin", href: "/admin/" },
   ];
-
   const navItems = items && items.length ? items : defaultItems;
 
-  // If we don't yet have an announced title, try to infer from URL or restore the last value
   React.useEffect(() => {
     if (announcedTitle) return;
-
-    // 1) URL inference
     const path = (typeof location !== "undefined" ? location.pathname : "").toLowerCase();
-    const hit = navItems.find(i =>
-      path.includes((i.href || "").toLowerCase().replace(/\/+$/, ""))
-    );
-    const inferred = hit?.label;
-
-    // 2) LocalStorage fallback
-    let fromStorage: string | undefined;
-    try { fromStorage = localStorage.getItem("BHQ_LAST_MODULE") || undefined; } catch { }
-
-    const next = inferred || fromStorage;
+    const hit = navItems.find(i => path.includes((i.href || "").toLowerCase().replace(/\/+$/, "")));
+    let next = hit?.label;
+    if (!next) {
+      try { next = localStorage.getItem("BHQ_LAST_MODULE") || undefined; } catch {}
+    }
     if (next) setAnnouncedTitle(next);
   }, [announcedTitle, navItems]);
 
-
-  // Determine active item: prefer title match, otherwise infer from URL
   const activeKey = React.useMemo(() => {
     const t = (displayTitle || "").toLowerCase();
-    const byTitle = navItems.find(i =>
-      i.label.toLowerCase() === t || i.key.toLowerCase() === t
-    );
+    const byTitle = navItems.find(i => i.label.toLowerCase() === t || i.key.toLowerCase() === t);
     if (byTitle) return byTitle.key;
 
     const path = (typeof location !== "undefined" ? location.pathname : "").toLowerCase();
-    const byPath = navItems.find(i =>
-      path.includes((i.href || "").toLowerCase().replace(/\/+$/, ""))
-    );
+    const byPath = navItems.find(i => path.includes((i.href || "").toLowerCase().replace(/\/+$/, "")));
     return byPath?.key;
   }, [displayTitle, navItems]);
-  
+
   return (
     <div className="min-h-screen bg-background text-foreground">
       {/* Top bar */}
@@ -222,14 +194,16 @@ export const NavShell: React.FC<NavShellProps> = ({
                       {brand?.name || "BreederHQ"}
                     </div>
                     {envBadge ? (
-                      <span className={cls(
-                        "text-[11px] px-2 py-0.5 rounded-full border",
-                        envBadge === "Prod"
-                          ? "border-emerald-600/30 bg-emerald-500/10 text-emerald-300"
-                          : envBadge === "Staging"
+                      <span
+                        className={cls(
+                          "text-[11px] px-2 py-0.5 rounded-full border",
+                          envBadge === "Prod"
+                            ? "border-emerald-600/30 bg-emerald-500/10 text-emerald-300"
+                            : envBadge === "Staging"
                             ? "border-amber-600/30 bg-amber-500/10 text-amber-300"
                             : "border-sky-600/30 bg-sky-500/10 text-sky-300"
-                      )}>
+                        )}
+                      >
                         {envBadge}
                       </span>
                     ) : null}
@@ -241,7 +215,7 @@ export const NavShell: React.FC<NavShellProps> = ({
                 <div className="text-sm font-semibold">{displayTitle}</div>
               </div>
 
-              {/* Middle: global search (non-functional for now) */}
+              {/* Middle: global search (optional) */}
               {showGlobalSearch && (
                 <div className="hidden md:block flex-1 max-w-xl">
                   <div className="relative">
@@ -267,7 +241,6 @@ export const NavShell: React.FC<NavShellProps> = ({
                   <Icon.Bell className="h-5 w-5" />
                 </button>
 
-                {/* Org name link (to the LEFT of Settings) */}
                 {orgName ? (
                   <button
                     onClick={onOrgClick}
@@ -286,7 +259,6 @@ export const NavShell: React.FC<NavShellProps> = ({
                   <Icon.Gear className="h-5 w-5" />
                 </button>
 
-                {/* Auth control */}
                 {loggedIn ? (
                   <button
                     onClick={() => auth?.onLogout?.()}
@@ -295,7 +267,9 @@ export const NavShell: React.FC<NavShellProps> = ({
                   >
                     <Icon.CircleUser className="h-5 w-5" />
                     <span className="hidden md:inline text-sm">Logout</span>
-                    <Icon.Logout className="h-5 w-5 md:hidden" />
+                    <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5 md:hidden">
+                      <path d="M16 17l5-5-5-5M21 12H9" stroke="currentColor" strokeWidth="2" />
+                    </svg>
                   </button>
                 ) : (
                   <button
@@ -303,7 +277,9 @@ export const NavShell: React.FC<NavShellProps> = ({
                     className="inline-flex h-9 items-center gap-2 rounded-lg border border-hairline bg-surface px-3 hover:bg-surface-strong transition"
                     aria-label="Login"
                   >
-                    <Icon.Login className="h-5 w-5" />
+                    <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5">
+                      <path d="M10 17l5-5-5-5M15 12H3" stroke="currentColor" strokeWidth="2" />
+                    </svg>
                     <span className="hidden md:inline text-sm">Login</span>
                   </button>
                 )}
@@ -315,16 +291,10 @@ export const NavShell: React.FC<NavShellProps> = ({
 
       {/* Body */}
       <div className="w-full px-4 sm:px-6 lg:px-8 py-4">
-        {/* Left rail + content */}
         <div className="flex gap-4">
-          <aside
-            className={cls(
-              "shrink-0 transition-all",
-              railOpen ? "w-56" : "w-[72px]"
-            )}
-          >
+          <aside className={cls("shrink-0 transition-all", railOpen ? "w-56" : "w-[72px]")}>
             <nav className="rounded-2xl border border-hairline bg-surface p-1.5">
-              {navItems.map((it) => {
+              {(items && items.length ? items : defaultItems).map((it) => {
                 const isActive = activeKey === it.key;
                 return (
                   <a
@@ -343,26 +313,19 @@ export const NavShell: React.FC<NavShellProps> = ({
                     <span className="h-8 w-8 shrink-0 flex items-center justify-center">
                       {it.icon ?? <span aria-hidden className="text-[28px] leading-none">{emojiFor(it.label)}</span>}
                     </span>
-                    {railOpen && (
-                      <span className="text-[20px] font-normal">{it.label}</span>
-                    )}
+                    {railOpen && <span className="text-[20px] font-normal">{it.label}</span>}
                     {isActive && (
-                      <span
-                        className="pointer-events-none absolute left-1.5 right-1.5 bottom-1 h-0.5 rounded bg-[hsl(var(--brand-orange))]"
-                      />
+                      <span className="pointer-events-none absolute left-1.5 right-1.5 bottom-1 h-0.5 rounded bg-[hsl(var(--brand-orange))]" />
                     )}
                   </a>
                 );
-              })}            </nav>
+              })}
+            </nav>
           </aside>
 
-          <main className="min-w-0 flex-1">
-            {children}
-          </main>
+          <main className="min-w-0 flex-1">{children}</main>
         </div>
       </div>
-      {/* Shared overlay host (menus, popovers, dialogs) */}
-      <OverlayRoot />
     </div>
   );
 };

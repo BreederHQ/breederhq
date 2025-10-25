@@ -18,7 +18,7 @@ import {
   SectionCard,
   Button,
   Input,
-  // NEW: helpers for ranges
+  // ranges
   buildRangeAwareSchema,
   inDateRange,
 } from "@bhq/ui";
@@ -96,6 +96,8 @@ function orgToRow(p: any): OrgRow {
   };
 }
 
+const isEmail = (s: string) => /\S+@\S+\.\S+/.test(s);
+
 /** ─────────────────────────────────────────────────────────────────────────────
  * Component
  * ──────────────────────────────────────────────────────────────────────────── */
@@ -122,13 +124,8 @@ export default function AppOrganizations() {
     try { return JSON.parse(localStorage.getItem("bhq_organizations_filters_v1") || "{}"); } catch { return {}; }
   });
 
-  React.useEffect(() => {
-    try { localStorage.setItem("bhq_organizations_q_v1", q); } catch { }
-  }, [q]);
-
-  React.useEffect(() => {
-    try { localStorage.setItem("bhq_organizations_filters_v1", JSON.stringify(filters || {})); } catch { }
-  }, [filters]);
+  React.useEffect(() => { try { localStorage.setItem("bhq_organizations_q_v1", q); } catch {} }, [q]);
+  React.useEffect(() => { try { localStorage.setItem("bhq_organizations_filters_v1", JSON.stringify(filters || {})); } catch {} }, [filters]);
 
   const [qDebounced, setQDebounced] = React.useState(q);
   React.useEffect(() => {
@@ -156,7 +153,7 @@ export default function AppOrganizations() {
           page: 1,
           limit: 50,
         });
-        if (!cancelled) setRows(res.items.map(orgToRow));
+        if (!cancelled) setRows((res.items || []).map(orgToRow));
       } catch (e: any) {
         if (!cancelled) setError(e?.data?.error || e?.message || "Failed to load organizations");
       } finally {
@@ -228,13 +225,8 @@ export default function AppOrganizations() {
         if (!textOk) return false;
 
         // 2) inclusive date ranges
-        const createdOk = (createdFrom || createdTo)
-          ? inDateRange(r.created_at, createdFrom, createdTo)
-          : true;
-
-        const updatedOk = (updatedFrom || updatedTo)
-          ? inDateRange(r.updated_at, updatedFrom, updatedTo)
-          : true;
+        const createdOk = (createdFrom || createdTo) ? inDateRange(r.created_at, createdFrom, createdTo) : true;
+        const updatedOk = (updatedFrom || updatedTo) ? inDateRange(r.updated_at, updatedFrom, updatedTo) : true;
 
         return createdOk && updatedOk;
       });
@@ -288,10 +280,7 @@ export default function AppOrganizations() {
   }, [sortedRows, clampedPage, pageSize]);
 
   // Clear filters helper
-  const clearFilters = () => {
-    setQ("");
-    setFilters({});
-  };
+  const clearFilters = () => { setQ(""); setFilters({}); };
 
   // Sections & fields (use shared Input so focus ring + sizing is consistent)
   const orgSections = (mode: "view" | "edit") => ([
@@ -300,21 +289,15 @@ export default function AppOrganizations() {
       fields: [
         {
           label: "Email", view: (r: OrgRow) => r.email ?? "—",
-          edit: (r, set) => (
-            <Input size="sm" defaultValue={r.email ?? ""} onChange={e => set({ email: e.target.value })} />
-          ),
+          edit: (r, set) => (<Input size="sm" defaultValue={r.email ?? ""} onChange={e => set({ email: e.target.value })} />),
         },
         {
           label: "Phone", view: (r) => r.phone ?? "—",
-          edit: (r, set) => (
-            <Input size="sm" defaultValue={r.phone ?? ""} onChange={e => set({ phone: e.target.value })} />
-          ),
+          edit: (r, set) => (<Input size="sm" defaultValue={r.phone ?? ""} onChange={e => set({ phone: e.target.value })} />),
         },
         {
           label: "Website", view: (r) => r.website ?? "—",
-          edit: (r, set) => (
-            <Input size="sm" defaultValue={r.website ?? ""} onChange={e => set({ website: e.target.value })} />
-          ),
+          edit: (r, set) => (<Input size="sm" defaultValue={r.website ?? ""} onChange={e => set({ website: e.target.value })} />),
         },
         {
           label: "Address", view: (r) =>
@@ -384,12 +367,65 @@ export default function AppOrganizations() {
     ),
   }), [api]);
 
+  /* ───────────── New Organization Modal state ───────────── */
+  const [createOpen, setCreateOpen] = React.useState(false);
+  const [createWorking, setCreateWorking] = React.useState(false);
+  const [createErr, setCreateErr] = React.useState<string | null>(null);
+
+  const [newName, setNewName] = React.useState("");
+  const [newEmail, setNewEmail] = React.useState("");
+  const [newPhone, setNewPhone] = React.useState("");
+  const [newWebsite, setNewWebsite] = React.useState("");
+
+  const canCreate = newName.trim().length > 0 && (newEmail.trim() === "" || isEmail(newEmail.trim()));
+
+  const doCreateOrganization = async () => {
+    if (!canCreate) {
+      setCreateErr("Please enter a name and a valid email (or leave email blank).");
+      return;
+    }
+    try {
+      setCreateWorking(true);
+      setCreateErr(null);
+
+      // Adjust this to match your API shape if needed:
+      const created = await (api.organizations as any).create?.({
+        name: newName.trim(),
+        email: newEmail.trim() || null,
+        phone: newPhone.trim() || null,
+        website: newWebsite.trim() || null,
+        status: "Active",
+      });
+
+      const row = orgToRow(created);
+      setRows(prev => [row, ...prev]);
+
+      setNewName(""); setNewEmail(""); setNewPhone(""); setNewWebsite("");
+      setCreateOpen(false);
+    } catch (e: any) {
+      setCreateErr(e?.message || "Failed to create organization");
+    } finally {
+      setCreateWorking(false);
+    }
+  };
+
   return (
     <div className="p-4 space-y-4">
-      <PageHeader
-        title="Organizations"
-        subtitle="Manage organizations, vendors, and partners"
-      />
+      {/* Header row with absolutely-positioned right actions (same pattern as Admin) */}
+      <div className="relative">
+        <PageHeader
+          title="Organizations"
+          subtitle="Manage organizations, vendors, and partners"
+        />
+
+        <div
+          className="absolute right-0 top-0 h-full flex items-center gap-2 pr-1"
+          style={{ zIndex: 5, pointerEvents: "auto" }}
+        >
+          <Button size="sm" onClick={() => setCreateOpen(true)}>New Organization</Button>
+          <Button size="sm" variant="outline">...</Button>
+        </div>
+      </div>
 
       <Card>
         <DetailsHost rows={rows} config={detailsConfig}>
@@ -425,7 +461,7 @@ export default function AppOrganizations() {
                     title="Filters"
                     className="h-7 w-7 rounded-md flex items-center justify-center hover:bg-white/5 focus:outline-none"
                   >
-                    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
+                    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
                       <path d="M3 5h18M7 12h10M10 19h4" strokeLinecap="round" />
                     </svg>
                   </button>
@@ -518,6 +554,80 @@ export default function AppOrganizations() {
           </Table>
         </DetailsHost>
       </Card>
+
+      {/* ───────────────────── New Organization Modal ───────────────────── */}
+      {createOpen && (
+        <div role="dialog" aria-modal="true" className="fixed inset-0 z-[100] flex items-center justify-center">
+          {/* backdrop */}
+          <div className="absolute inset-0 bg-black/50" onClick={() => !createWorking && setCreateOpen(false)} />
+
+          {/* card */}
+          <div className="relative w-[560px] max-w-[92vw] rounded-xl border border-hairline bg-surface shadow-xl p-4">
+            <div className="text-lg font-semibold mb-1">New organization</div>
+            <div className="text-sm text-secondary mb-4">
+              Create an organization record. Only the name is required.
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <div className="text-xs text-secondary mb-1">
+                  Organization name <span className="text-[hsl(var(--brand-orange))]">*</span>
+                </div>
+                <Input
+                  value={newName}
+                  onChange={(e) => setNewName(e.currentTarget.value)}
+                  placeholder="Acme Ranch LLC"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <div className="text-xs text-secondary mb-1">Email</div>
+                  <Input
+                    value={newEmail}
+                    onChange={(e) => setNewEmail(e.currentTarget.value)}
+                    placeholder="info@acme-ranch.test"
+                  />
+                </div>
+                <div>
+                  <div className="text-xs text-secondary mb-1">Phone</div>
+                  <Input
+                    value={newPhone}
+                    onChange={(e) => setNewPhone(e.currentTarget.value)}
+                    placeholder="(555) 123-4567"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <div className="text-xs text-secondary mb-1">Website</div>
+                <Input
+                  value={newWebsite}
+                  onChange={(e) => setNewWebsite(e.currentTarget.value)}
+                  placeholder="https://acme.example"
+                />
+              </div>
+
+              {createErr && <div className="text-sm text-red-600">{createErr}</div>}
+
+              <div className="flex items-center justify-between pt-2">
+                <div className="text-xs text-secondary">
+                  <span className="text-[hsl(var(--brand-orange))]">*</span> Required
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button variant="outline" onClick={() => setCreateOpen(false)} disabled={createWorking}>
+                    Cancel
+                  </Button>
+                  <Button onClick={doCreateOrganization} disabled={!canCreate || createWorking}>
+                    {createWorking ? "Creating…" : "Create organization"}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

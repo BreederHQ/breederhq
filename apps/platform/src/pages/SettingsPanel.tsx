@@ -1,7 +1,8 @@
 import React from "react";
 import { Button, Card } from "@bhq/ui";
 import { api } from "../api";
-import { bootstrapAuthAndOrg } from "../bootstrapFetch";
+import { createPortal } from "react-dom";
+import { getOverlayRoot } from "@bhq/ui/overlay";
 
 
 function getAuthHeaders(): Record<string, string> {
@@ -387,7 +388,8 @@ export default function SettingsPanel({ open, dirty, onDirtyChange, onClose }: P
         onClose();
     }
 
-    return (
+    // ── NEW: render the panel via a stable portal host to avoid insertBefore NotFoundError
+    const panel = (
         <div className="fixed inset-0 z-[60] pointer-events-none">
             {/* inert backdrop (no click-to-close) */}
             <div className="absolute inset-0 bg-black/50 backdrop-blur-sm pointer-events-none" />
@@ -527,6 +529,8 @@ export default function SettingsPanel({ open, dirty, onDirtyChange, onClose }: P
             </div>
         </div>
     );
+
+    return createPortal(panel, getOverlayRoot());
 }
 
 /** Save dispatcher. Replace internals with real API calls for each tab. */

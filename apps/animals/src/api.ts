@@ -15,17 +15,20 @@ function readCookie(name: string): string {
   return m ? decodeURIComponent(m[2]) : "";
 }
 
-function getTenantHeader(): HeadersMap {
+/** Only tenant header — no org for breeds anymore */
+function getTenantHeaders(): HeadersMap {
   const h: HeadersMap = {};
   try {
     const w: any = window as any;
-    const runtime = Number(w?.__BHQ_TENANT_ID__);
-    const fromLS = Number(localStorage.getItem("BHQ_TENANT_ID") || "NaN");
-    const id =
-      Number.isFinite(runtime) && runtime > 0 ? runtime :
-      Number.isFinite(fromLS) && fromLS > 0 ? fromLS :
+
+    const runtimeTenant = Number(w?.__BHQ_TENANT_ID__);
+    const lsTenant = Number(localStorage.getItem("BHQ_TENANT_ID") || "NaN");
+    const tenantId =
+      Number.isFinite(runtimeTenant) && runtimeTenant > 0 ? runtimeTenant :
+      Number.isFinite(lsTenant) && lsTenant > 0 ? lsTenant :
       NaN;
-    if (Number.isFinite(id)) h["x-tenant-id"] = String(id);
+
+    if (Number.isFinite(tenantId)) h["x-tenant-id"] = String(tenantId);
   } catch {}
   return h;
 }
@@ -46,7 +49,7 @@ async function parse<T>(res: Response): Promise<T> {
 
 /**
  * makeApi(base?, extraHeadersFn?)
- * - Sends x-tenant-id automatically
+ * - Sends x-tenant-id automatically (from runtime/LS)
  * - Merges any extra headers you pass
  * - Adds Content-Type and CSRF only for mutating methods
  */
@@ -60,7 +63,7 @@ export function makeApi(
     const h = new Headers(init?.headers as any);
 
     // Tenant header
-    Object.entries(getTenantHeader()).forEach(([k, v]) => h.set(k, v));
+    Object.entries(getTenantHeaders()).forEach(([k, v]) => h.set(k, v));
 
     // Optional extra headers
     try {
@@ -82,8 +85,8 @@ export function makeApi(
 
   /** ---------- Lookups used by editor UIs ---------- */
   const lookups = {
+    // Kept for other UIs (ownership editors, etc.)
     async getCreatingOrganization(): Promise<{ id: string; display_name: string } | null> {
-      // Local or dev fallback
       try {
         const id = localStorage.getItem("BHQ_ORG_ID");
         if (id) {
@@ -92,7 +95,6 @@ export function makeApi(
         }
       } catch {}
 
-      // Server session
       try {
         const res = await fetch(`${root}/session`, { credentials: "include", headers: hdrs() });
         const ctx = await parse<any>(res);
@@ -122,6 +124,15 @@ export function makeApi(
   };
 
   /** ---------- Animals ---------- */
+  type OwnerRow = {
+    partyType: "Organization" | "Contact";
+    organizationId?: number | null;
+    contactId?: number | null;
+    display_name?: string | null;
+    is_primary?: boolean | null;
+    percent?: number | null;
+  };
+
   const animals = {
     async list(query: { q?: string; limit?: number; page?: number; includeArchived?: boolean; sort?: string } = {}) {
       const sp = new URLSearchParams();
@@ -144,7 +155,18 @@ export function makeApi(
       return parse<any>(res);
     },
 
-    async create(body: any) {
+    async create(body: {
+      name: string;
+      species: "DOG" | "CAT" | "HORSE";
+      sex: "FEMALE" | "MALE";
+      status?: string;
+      birthDate?: string | null;
+      microchip?: string | null;
+      notes?: string | null;
+      breed?: string | null;            // free text field
+      canonicalBreedId?: number | null; // optional normalization
+      customBreedId?: number | null;    // optional normalization
+    }) {
       const res = await fetch(`${root}/animals`, {
         method: "POST",
         credentials: "include",
@@ -160,6 +182,16 @@ export function makeApi(
         credentials: "include",
         headers: hdrs({ method: "PATCH" }),
         body: JSON.stringify(patch),
+      });
+      return parse<any>(res);
+    },
+
+    async putOwners(id: string | number, owners: OwnerRow[]) {
+      const res = await fetch(`${root}/animals/${encodeURIComponent(String(id))}/owners`, {
+        method: "PUT",
+        credentials: "include",
+        headers: hdrs({ method: "PUT" }),
+        body: JSON.stringify({ owners }),
       });
       return parse<any>(res);
     },
@@ -192,12 +224,23 @@ export function makeApi(
     },
   };
 
-  /** ---------- Breeds ---------- */
+  /** ---------- Breeds (canonical + tenant custom) ---------- */
   type Species = "DOG" | "CAT" | "HORSE";
-  type BreedItem = { id?: number; name: string; species: Species; source?: "canonical" | "custom" };
+  type UiSpecies = "Dog" | "Cat" | "Horse";
+
+  const toUiSpecies = (s: Species): UiSpecies =>
+    s === "DOG" ? "Dog" : s === "CAT" ? "Cat" : "Horse";
+
+  type BreedHit = {
+    id?: number;                         // present for custom
+    name: string;
+    species: UiSpecies;                  // UI-friendly case
+    source: "canonical" | "custom";
+    canonicalBreedId?: number | null;    // reserved if you later normalize canonicals
+  };
 
   const breeds = {
-    /** Get enum list from server */
+    /** Enum list from server (uppercase enums) */
     async species(): Promise<Species[]> {
       const res = await fetch(`${root}/species`, { credentials: "include", headers: hdrs() });
       const data = await parse<{ items: Species[] }>(res);
@@ -205,60 +248,52 @@ export function makeApi(
     },
 
     /**
-     * Canonical plus custom search.
-     * Pass organizationId to allow the server to merge org custom breeds.
+     * Canonical + tenant custom search (no org).
+     * Server merges customs based on req.tenantId automatically.
      */
-    async search(opts: {
-      species: Species;
-      q?: string;
-      limit?: number;
-      registries?: string[];
-      organizationId?: string | number;
-    }): Promise<BreedItem[]> {
+    async search(opts: { species: Species; q?: string; limit?: number }): Promise<BreedHit[]> {
       const sp = new URLSearchParams();
       sp.set("species", (opts.species || "DOG").toUpperCase());
       if (opts.q?.trim()) sp.set("q", opts.q.trim());
       if (opts.limit != null) sp.set("limit", String(Math.min(Math.max(opts.limit, 1), 200)));
-      if (opts.registries?.length) sp.set("registries", opts.registries.join(","));
-      if (opts.organizationId != null) sp.set("organizationId", String(opts.organizationId));
       const url = `${root}/breeds/search?${sp.toString()}`;
 
       try {
         const res = await fetch(url, { credentials: "include", headers: hdrs() });
-        const data = await parse<{ items?: BreedItem[] } | BreedItem[]>(res);
+        const data = await parse<{ items?: any[] } | any[]>(res);
         const items: any[] = Array.isArray((data as any)?.items) ? (data as any).items : Array.isArray(data) ? (data as any) : [];
-        return items as BreedItem[];
+        // normalize species casing for UI
+        return items.map(it => ({
+          id: it.id,
+          name: it.name,
+          species: toUiSpecies((it.species || "DOG") as Species),
+          source: (it.source || "canonical") as "canonical" | "custom",
+          canonicalBreedId: it.canonicalBreedId ?? null,
+        })) as BreedHit[];
       } catch {
         return [];
       }
     },
 
-    // Custom breeds require organizationId
-    async customList(opts: {
-      organizationId: string | number;
-      species?: Species;
-      q?: string;
-      page?: number;
-      limit?: number;
-    }) {
+    // Tenant-scoped customs — no org in query/body
+    async customList(opts: { species?: Species; q?: string; page?: number; limit?: number }) {
       const sp = new URLSearchParams();
-      sp.set("organizationId", String(opts.organizationId));
       if (opts.species) sp.set("species", opts.species);
       if (opts.q) sp.set("q", opts.q);
       if (opts.page != null) sp.set("page", String(opts.page));
       if (opts.limit != null) sp.set("limit", String(opts.limit));
-      const url = `${root}/breeds/custom?${sp.toString()}`;
+      const url = `${root}/breeds/custom${sp.toString() ? `?${sp.toString()}` : ""}`;
       const res = await fetch(url, { credentials: "include", headers: hdrs() });
       return parse<any>(res);
     },
 
-    async customGet(id: string | number, organizationId: string | number) {
-      const url = `${root}/breeds/custom/${encodeURIComponent(String(id))}?organizationId=${encodeURIComponent(String(organizationId))}`;
+    async customGet(id: string | number) {
+      const url = `${root}/breeds/custom/${encodeURIComponent(String(id))}`;
       const res = await fetch(url, { credentials: "include", headers: hdrs() });
       return parse<any>(res);
     },
 
-    async customCreate(payload: { organizationId: string | number; species: Species; name: string }) {
+    async customCreate(payload: { species: Species; name: string }) {
       const res = await fetch(`${root}/breeds/custom`, {
         method: "POST",
         credentials: "include",
@@ -268,7 +303,7 @@ export function makeApi(
       return parse<any>(res);
     },
 
-    async customUpdate(id: string | number, payload: { organizationId: string | number; name?: string; species?: Species }) {
+    async customUpdate(id: string | number, payload: { name?: string; species?: Species }) {
       const res = await fetch(`${root}/breeds/custom/${encodeURIComponent(String(id))}`, {
         method: "PATCH",
         credentials: "include",
@@ -278,9 +313,33 @@ export function makeApi(
       return parse<any>(res);
     },
 
-    async customDelete(id: string | number, organizationId: string | number) {
-      const url = `${root}/breeds/custom/${encodeURIComponent(String(id))}?organizationId=${encodeURIComponent(String(organizationId))}`;
+    async customDelete(id: string | number) {
+      const url = `${root}/breeds/custom/${encodeURIComponent(String(id))}`;
       const res = await fetch(url, { method: "DELETE", credentials: "include", headers: hdrs({ method: "DELETE" }) });
+      return parse<any>(res);
+    },
+
+    /**
+     * Optional: recipes/blends (only if you added endpoints server-side).
+     * Kept here for forward-compat; harmless if unused.
+     */
+    async getRecipe(customBreedId: string | number) {
+      const url = `${root}/breeds/custom/${encodeURIComponent(String(customBreedId))}/recipe`;
+      const res = await fetch(url, { credentials: "include", headers: hdrs() });
+      return parse<any>(res);
+    },
+
+    async putRecipe(
+      customBreedId: string | number,
+      body: { ingredients: Array<{ canonicalBreedId: number; percentage?: number | null }> }
+    ) {
+      const url = `${root}/breeds/custom/${encodeURIComponent(String(customBreedId))}/recipe`;
+      const res = await fetch(url, {
+        method: "PUT",
+        credentials: "include",
+        headers: hdrs({ method: "PUT" }),
+        body: JSON.stringify(body),
+      });
       return parse<any>(res);
     },
   };

@@ -26,8 +26,6 @@ type BillingDTO = {
 
 type SessionUser = { id: string; email: string; name?: string | null; isSuperAdmin?: boolean | null };
 
-
-
 const COLUMNS: Array<{ key: keyof TenantRow & string; label: string; default?: boolean }> = [
   { key: "name", label: "Tenant", default: true },
   { key: "primaryEmail", label: "Email", default: true },
@@ -44,7 +42,11 @@ const { readTenantIdFast, resolveTenantId } = utils;
 
 /* utils */
 const Required = () => <span className="ml-1 text-xs text-[hsl(var(--brand-orange))] align-middle">* Required</span>;
-function fmtDate(iso?: string | null) { if (!iso) return ""; const d = new Date(iso); return Number.isNaN(d.getTime()) ? "" : new Intl.DateTimeFormat(undefined, { year: "numeric", month: "2-digit", day: "2-digit" }).format(d); }
+function fmtDate(iso?: string | null) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? "" : new Intl.DateTimeFormat(undefined, { year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
+}
 function tenantToRow(t: TenantDTO): TenantRow { return { ...t, primaryEmail: t.primaryEmail ?? null, billing: t.billing ?? null }; }
 async function getSessionUser(): Promise<SessionUser | null> {
   try {
@@ -53,8 +55,8 @@ async function getSessionUser(): Promise<SessionUser | null> {
   } catch {
     return null;
   }
-} const usersExclOwner = (r: TenantRow) => Math.max(0, (r.usersCount ?? 0) - 1);
-
+}
+const usersExclOwner = (r: TenantRow) => Math.max(0, (r.usersCount ?? 0) - 1);
 
 /* ───────────────────────── New: TenantDetailsView component ───────────────────────── */
 function TenantDetailsView({
@@ -182,12 +184,9 @@ export default function AppAdmin() {
     let cancelled = false;
     (async () => {
       try {
-        // First try the normal call (should work now that the header is present)
         const res = await adminApi.me();
         if (!cancelled) setMe(res?.user ?? null);
       } catch {
-        // Fallback: if you've implemented #1 (adminApi.me can accept a tenantId),
-        // retry forcing the header explicitly. Safe no-op if #1 wasn’t applied.
         try {
           const res2 = await (adminApi as any).me?.(tenantId);
           if (!cancelled) setMe(res2?.user ?? null);
@@ -206,7 +205,6 @@ export default function AppAdmin() {
   const [me, setMe] = React.useState<SessionUser | null>(null);
   const [meLoading, setMeLoading] = React.useState(true);
   const [canAdminTenants, setCanAdminTenants] = React.useState(false);
-
 
   // Load session user (scoped; needs tenant header)
   React.useEffect(() => {
@@ -286,17 +284,12 @@ export default function AppAdmin() {
     }
   };
 
-
-  // data load — single tenant by default; all tenants for super admins
-
-  // ── sorting (state + server sort param)  ← PLACE THIS ABOVE THE DATA LOAD EFFECT
+  /* ── sorting (state + server sort param) — MUST be declared before any effect that uses sortParam ── */
   const [sorts, setSorts] = React.useState<Array<{ key: string; dir: "asc" | "desc" }>>([]);
-
   const sortParam = React.useMemo(
     () => (sorts.length ? sorts.map(s => `${s.key}:${s.dir}`).join(",") : undefined),
     [sorts]
   );
-
   const onToggleSort = React.useCallback(
     (key: string, opts?: { shiftKey?: boolean }) => {
       setSorts(prev => {
@@ -311,34 +304,48 @@ export default function AppAdmin() {
     },
     []
   );
-
-  // keep paging in sync when sort changes
+  // keep paging in sync when search/filters/sorts change
   React.useEffect(() => { setPage(1); }, [qDebounced, filters, sorts]);
 
+  /* ── data load — single tenant by default; all tenants for super admins ── */
   React.useEffect(() => {
     if (meLoading) return;
-    if (!isSuper && tenantId == null) return;
 
     let cancelled = false;
+
     (async () => {
       setLoading(true);
       setError(null);
+
       try {
         if (isSuper) {
+          // Super admins can see every tenant
           const res = await adminApi.listTenantsAll({
             q: qDebounced || undefined,
             page: 1,
             limit: 50,
-            sort: sortParam, // ← send multi-sort to server
+            sort: sortParam,
           });
+
           if (!cancelled) {
             setRows((res.items || []).map(tenantToRow));
             setCanAdminTenants(true);
+          }
+        } else {
+          // Normal users should see their own tenant
+          if (tenantId == null) return; // still resolving
+
+          const t = await adminApi.getTenant(tenantId);
+
+          if (!cancelled) {
+            setRows([tenantToRow(t)]);
+            setCanAdminTenants(false);
           }
         }
       } catch (e: any) {
         if (!cancelled) {
           setError(e?.message || "Failed to load tenants");
+          setRows([]);
           setCanAdminTenants(false);
         }
       } finally {
@@ -347,7 +354,7 @@ export default function AppAdmin() {
     })();
 
     return () => { cancelled = true; };
-  }, [tenantId, isSuper, meLoading, qDebounced, sortParam]);
+  }, [meLoading, isSuper, tenantId, qDebounced, sortParam]);
 
   const { map, toggle, setAll, visible } = hooks.useColumns(COLUMNS, STORAGE_KEY);
   const visibleSafe = Array.isArray(visible) && visible.length ? visible : COLUMNS;
@@ -437,7 +444,6 @@ export default function AppAdmin() {
     );
   }
 
-
   const displayRows = React.useMemo(() => {
     const active = Object.entries(filters || {}).filter(([, v]) => (v ?? "") !== "");
     if (!active.length && !qDebounced) return rows;
@@ -520,7 +526,6 @@ export default function AppAdmin() {
     return sortedRows.slice(from, to);
   }, [sortedRows, clampedPage, pageSize]);
 
-
   /* sections for overview */
   const tenantSections = (mode: "view" | "edit") => ([
     {
@@ -591,7 +596,7 @@ export default function AppAdmin() {
           {/* New Tenant (left) */}
           {((!meLoading && !!me?.isSuperAdmin) || canAdminTenants) && (
             <Button size="sm" onClick={() => setCreateOpen(true)}>
-              New tenant
+              New Tenant
             </Button>
           )}
 
@@ -601,8 +606,6 @@ export default function AppAdmin() {
           </Button>
         </div>
       </div>
-
-
 
       {/* main table */}
       <Card>
@@ -627,8 +630,7 @@ export default function AppAdmin() {
                 widthPx={520}
                 rightSlot={
                   <div className="flex items-center gap-2">
-
-                    {/* Filters toggle (kept as-is) */}
+                    {/* Filters toggle */}
                     <button
                       type="button"
                       onClick={() => setFiltersOpen(v => !v)}
@@ -724,6 +726,7 @@ export default function AppAdmin() {
           </Table>
         </DetailsHost>
       </Card>
+
       {/* ───────────────────── Provision Tenant Modal ───────────────────── */}
       {createOpen && (
         <div role="dialog" aria-modal="true" className="fixed inset-0 z-[100] flex items-center justify-center">
@@ -1104,9 +1107,12 @@ function BillingTab({ tenantId, mode, onDirty }: { tenantId: number; mode: "view
     onDirty(dirty);
   }, [draft, onDirty]);
 
-  const v = <K extends keyof NonNullable<BillingDTO>>(k: K) => (draft as any)[k] !== undefined ? (draft as any)[k] : (billing as any)?.[k] ?? "";
+  const v = <K extends keyof NonNullable<BillingDTO>>(k: K) =>
+    (draft as any)[k] !== undefined ? (draft as any)[k] : (billing as any)?.[k] ?? "";
 
-  const Read = ({ label, value }: { label: string; value: React.ReactNode }) => (<div><div className="text-xs text-secondary mb-1">{label}</div><div className="text-sm">{value ?? "—"}</div></div>);
+  const Read = ({ label, value }: { label: string; value: React.ReactNode }) => (
+    <div><div className="text-xs text-secondary mb-1">{label}</div><div className="text-sm">{value ?? "—"}</div></div>
+  );
   const Edit = ({ label, k, placeholder }: { label: string; k: keyof NonNullable<BillingDTO>; placeholder?: string }) => (
     <div><div className="text-xs text-secondary mb-1">{label}</div>
       <Input value={v(k)} placeholder={placeholder} onChange={(e) => setDraft(p => ({ ...p, [k]: e.currentTarget.value || null }))} />
