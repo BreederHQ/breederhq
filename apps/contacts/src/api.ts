@@ -1,4 +1,5 @@
 // apps/contacts/src/api.ts
+import { readTenantIdFast } from "@bhq/ui/utils/tenant";
 
 export type ID = string | number;
 
@@ -65,40 +66,47 @@ function tenantIdFromSessionCookie(): number | null {
   }
 }
 
-function resolveTenantIdFromAnySource(): number | null {
-  try {
-    const w = window as any;
-    if (typeof w.resolveTenantIdFromAnySource === "function") {
-      const v = Number(w.resolveTenantIdFromAnySource());
-      return Number.isFinite(v) && v > 0 ? v : null;
-    }
-  } catch { }
-  try {
-    const w = window as any;
-    const fromGlobal = Number(w.__BHQ_TENANT_ID__);
-    if (Number.isFinite(fromGlobal) && fromGlobal > 0) return fromGlobal;
-  } catch { }
-  try {
-    const fromCookie = tenantIdFromSessionCookie();
-    if (fromCookie) return fromCookie;
-  } catch { }
-  try {
-    const fromLS = Number(localStorage.getItem("BHQ_TENANT_ID") || "");
-    if (Number.isFinite(fromLS) && fromLS > 0) return fromLS;
-  } catch { }
-  try {
-    const fromEnv = Number((import.meta as any)?.env?.VITE_DEV_TENANT_ID || "");
-    if (Number.isFinite(fromEnv) && fromEnv > 0) return fromEnv;
-  } catch { }
+function firstValidInt(...vals: Array<number | undefined | null>): number | null {
+  for (const v of vals) if (Number.isInteger(v) && (v as number) > 0) return v as number;
   return null;
 }
 
 /** Add x-tenant-id header if we can resolve it */
 export function getTenantHeaders(): Record<string, string> {
-  const tenantId = resolveTenantIdFromAnySource();
-  const headers: Record<string, string> = {};
-  if (tenantId) headers["x-tenant-id"] = String(tenantId);
-  return headers;
+  // 1) Preferred: shared fast path (cookie/window) from @bhq/ui
+  const fast = readTenantIdFast();
+
+  // 2) Your local helpers (already in this file)
+  const fromSessionCookie = tenantIdFromSessionCookie();
+
+  // 3) Shell/global fallbacks
+  const w = window as any;
+  const fromBhqObj = Number(w?.__bhq?.tenantId);
+  const fromLegacyGlobal = Number(w?.__BHQ_TENANT_ID__);
+
+  // 4) LocalStorage + .env fallback for dev
+  const fromLS = (() => {
+    try { const n = Number(localStorage.getItem("BHQ_TENANT_ID") || ""); return Number.isInteger(n) ? n : undefined; } catch { return undefined; }
+  })();
+  const fromEnv = Number((import.meta as any)?.env?.VITE_DEV_TENANT_ID || "");
+
+  const tenantId = firstValidInt(fast, fromSessionCookie, fromBhqObj, fromLegacyGlobal, fromLS, fromEnv);
+
+  if (!tenantId) {
+    // one-time noisy log so you can see why the header is missing
+    console.warn("[BHQ] Missing x-tenant-id. Sources:", {
+      fast,
+      fromSessionCookie,
+      fromBhqObj,
+      fromLegacyGlobal,
+      fromLS,
+      fromEnv,
+      cookie_bhq_s_present: !!document.cookie.match(/(?:^|; )bhq_s=/),
+    });
+    return {};
+  }
+
+  return { "x-tenant-id": String(tenantId) };
 }
 
 /** Server expects x-csrf-token header that matches XSRF-TOKEN cookie on writes */

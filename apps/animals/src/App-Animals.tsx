@@ -1,4 +1,3 @@
-// apps/animals/src/App-Animals.tsx
 import * as React from "react";
 import { createPortal } from "react-dom";
 import {
@@ -22,21 +21,18 @@ import {
   Input,
   buildRangeAwareSchema,
   inDateRange,
-  EmptyState,
-  BreedSelect,
-  BreedHit,
   OwnershipChips,
   OwnershipEditor,
   CustomBreedDialog,
+  BreedCombo,
 } from "@bhq/ui";
-import { getOverlayRoot } from "@bhq/ui/overlay";
+import { Overlay, getOverlayRoot } from "@bhq/ui/overlay";
 import "@bhq/ui/styles/table.css";
 import { makeApi } from "./api";
 
-/** ─────────────────────────────────────────────────────────────────────────────
+/** ────────────────────────────────────────────────────────────────────────
  * Types & utils
- * ──────────────────────────────────────────────────────────────────────────── */
-
+ * ─────────────────────────────────────────────────────────────────────── */
 type OwnershipRow = {
   partyType: "Organization" | "Contact";
   organizationId?: number | null;
@@ -49,6 +45,7 @@ type OwnershipRow = {
 type AnimalRow = {
   id: number;
   name: string;
+  nickname?: string | null;
   species?: string | null;
   breed?: string | null;
   sex?: string | null;
@@ -63,6 +60,8 @@ type AnimalRow = {
   updated_at?: string | null;
 
   lastCycle?: string | null;
+
+  cycleStartDates?: string[]; // persisted via API
 };
 
 const COLUMNS: Array<{ key: keyof AnimalRow & string; label: string; default?: boolean }> = [
@@ -93,6 +92,7 @@ function animalToRow(p: any): AnimalRow {
   return {
     id: Number(p.id),
     name: p.name,
+    nickname: p.nickname ?? null,
     species: p.species ?? null,
     breed: p.breed ?? null,
     sex: p.sex ?? null,
@@ -105,6 +105,7 @@ function animalToRow(p: any): AnimalRow {
     created_at: p.created_at ?? p.createdAt ?? null,
     updated_at: p.updated_at ?? p.updatedAt ?? null,
     lastCycle: p.lastCycle ?? null,
+    cycleStartDates: Array.isArray(p.cycleStartDates) ? p.cycleStartDates : [],
   };
 }
 
@@ -112,83 +113,131 @@ async function safeGetCreatingOrg(api: any) {
   try {
     const org = await api?.lookups?.getCreatingOrganization?.();
     if (org && org.id != null) return org;
-  } catch {}
+  } catch { }
   try {
     const id = localStorage.getItem("BHQ_ORG_ID");
     if (id) return { id, display_name: localStorage.getItem("BHQ_ORG_NAME") || "My Organization" };
-  } catch {}
+  } catch { }
   return null;
 }
 
-/** ─────────────────────────────────────────────────────────────────────────────
- * Simple Cycle tab
- * ──────────────────────────────────────────────────────────────────────────── */
-function CycleTab({ animal }: { animal: AnimalRow }) {
-  const [dates, setDates] = React.useState<string[]>(() => (animal as any).cycleStartDates || []);
-  React.useEffect(() => {
-    (animal as any).cycleStartDates = dates;
-  }, [animal, dates]);
-  const last = dates.length ? new Date(dates[dates.length - 1]).toLocaleDateString() : "—";
+const PencilIcon = (props: React.SVGProps<SVGSVGElement>) => (
+  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" {...props}>
+    <path d="M12 20h9" />
+    <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
+  </svg>
+);
+
+const TrashIcon = (props: React.SVGProps<SVGSVGElement>) => (
+  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" {...props}>
+    <polyline points="3 6 5 6 21 6" />
+    <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+    <path d="M10 11v6M14 11v6" />
+    <path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2" />
+  </svg>
+);
+
+/** ────────────────────────────────────────────────────────────────────────
+ * Cycle Tab (calendar edit, icon delete + confirm, persisted)
+ * ─────────────────────────────────────────────────────────────────────── */
+function CycleTab({ animal, api, onSaved }: { animal: AnimalRow; api: any; onSaved: (dates: string[]) => void }) {
+  const [dates, setDates] = React.useState<string[]>(() => [...(animal.cycleStartDates || [])].sort());
+  const [editing, setEditing] = React.useState<Record<string, boolean>>({});
+
+  const add = (v: string) => {
+    if (!v) return;
+    const next = Array.from(new Set([...dates, v])).sort();
+    setDates(next);
+  };
+
+  const remove = async (d: string) => {
+    if (!confirm("Delete this cycle start date?")) return;
+    const next = dates.filter((x) => x !== d);
+    setDates(next);
+  };
+
+  const persist = async () => {
+    await api.animals.putCycleStartDates(animal.id, dates);
+    onSaved(dates);
+  };
 
   return (
     <div className="space-y-2">
       <SectionCard title="Cycle Summary">
-        <div className="text-sm">Last: {last}</div>
+        <div className="text-sm">
+          Last: {dates.length ? new Date(dates[dates.length - 1]).toLocaleDateString() : "—"}
+        </div>
       </SectionCard>
+
       <SectionCard title="Cycle Start Dates">
+        {/* Add row */}
         <div className="flex items-center gap-2 mb-2">
           <Input
             type="date"
             onChange={(e) => {
               const v = (e.currentTarget as HTMLInputElement).value;
-              if (!v) return;
-              setDates((arr) => Array.from(new Set([...arr, v])).sort());
-              (e.currentTarget as HTMLInputElement).value = "";
+              if (v) {
+                add(v);
+                (e.currentTarget as HTMLInputElement).value = "";
+              }
             }}
             placeholder="YYYY-MM-DD"
           />
-          <Button
-            variant="outline"
-            onClick={() => {
-              const v = prompt("Add date (yyyy-mm-dd)", "");
-              if (v) setDates((arr) => Array.from(new Set([...arr, v])).sort());
-            }}
-          >
-            Add
-          </Button>
+          <Button variant="outline" onClick={persist}>Save Dates</Button>
         </div>
+
+        {/* List */}
         <div className="rounded-md border border-hairline divide-y">
           {dates.length === 0 && <div className="p-2 text-sm text-secondary">No dates yet.</div>}
-          {dates.map((d) => (
-            <div key={d} className="p-2 flex items-center justify-between text-sm">
-              <div>{new Date(d).toLocaleDateString()}</div>
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    const next = prompt("Edit date (yyyy-mm-dd)", d);
-                    if (next) setDates((arr) => arr.map((x) => (x === d ? next : x)).sort());
-                  }}
-                >
-                  Edit
-                </Button>
-                <Button variant="ghost" size="sm" onClick={() => setDates((arr) => arr.filter((x) => x !== d))}>
-                  Delete
-                </Button>
+          {dates.map((d) => {
+            const isEditing = editing[d];
+            return (
+              <div key={d} className="p-2 flex items-center justify-between text-sm gap-3">
+                {!isEditing && <div className="min-w-[10rem]">{new Date(d).toLocaleDateString()}</div>}
+                {isEditing && (
+                  <Input
+                    type="date"
+                    defaultValue={d}
+                    onChange={(e) => {
+                      const nextValue = (e.currentTarget as HTMLInputElement).value;
+                      if (!nextValue) return;
+                      setDates((arr) => {
+                        const copy = arr.filter((x) => x !== d);
+                        return Array.from(new Set([...copy, nextValue])).sort();
+                      });
+                    }}
+                    className="min-w-[12rem]"
+                  />
+                )}
+
+                <div className="flex items-center gap-2">
+                  {!isEditing ? (
+                    <Button size="sm" variant="outline" onClick={() => setEditing((m) => ({ ...m, [d]: true }))}>
+                      <span className="inline-flex items-center gap-1">
+                        <PencilIcon /> Edit
+                      </span>
+                    </Button>
+                  ) : (
+                    <Button size="sm" variant="outline" onClick={() => setEditing((m) => ({ ...m, [d]: false }))}>
+                      Done
+                    </Button>
+                  )}
+                  <Button size="sm" variant="ghost" onClick={() => remove(d)} title="Delete date">
+                    <TrashIcon />
+                  </Button>
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </SectionCard>
     </div>
   );
 }
 
-/** ─────────────────────────────────────────────────────────────────────────────
- * Main component
- * ──────────────────────────────────────────────────────────────────────────── */
-
+/** ────────────────────────────────────────────────────────────────────────
+ * Main
+ * ─────────────────────────────────────────────────────────────────────── */
 export default function AppAnimals() {
   React.useEffect(() => {
     window.dispatchEvent(new CustomEvent("bhq:module", { detail: { key: "animals", label: "Animals" } }));
@@ -201,6 +250,16 @@ export default function AppAnimals() {
   }, []);
 
   const api = React.useMemo(() => makeApi("/api/v1"), []);
+
+  const breedBrowseApi = React.useMemo(
+    () => ({
+      breeds: {
+        listCanonical: (opts: { species: string; orgId?: number; limit?: number }) =>
+          (api as any)?.breeds?.listCanonical?.(opts) ?? Promise.resolve([]),
+      },
+    }),
+    [api]
+  );
 
   // Resolve orgId once for breed searches (custom breeds can be org/tenant-scoped)
   const [orgIdForBreeds, setOrgIdForBreeds] = React.useState<number | null>(null);
@@ -216,7 +275,7 @@ export default function AppAnimals() {
     };
   }, [api]);
 
-  // Search/filters (gold master parity)
+  // Search/filters
   const [q, setQ] = React.useState(() => {
     try {
       return localStorage.getItem("bhq_animals_q_v1") || "";
@@ -235,12 +294,12 @@ export default function AppAnimals() {
   React.useEffect(() => {
     try {
       localStorage.setItem("bhq_animals_q_v1", q);
-    } catch {}
+    } catch { }
   }, [q]);
   React.useEffect(() => {
     try {
       localStorage.setItem("bhq_animals_filters_v1", JSON.stringify(filters || {}));
-    } catch {}
+    } catch { }
   }, [filters]);
 
   const [qDebounced, setQDebounced] = React.useState(q);
@@ -303,6 +362,7 @@ export default function AppAnimals() {
       data = data.filter((r) => {
         const hay = [
           r.name,
+          r.nickname,
           r.species,
           r.breed,
           r.sex,
@@ -394,245 +454,335 @@ export default function AppAnimals() {
     return sortedRows.slice(from, to);
   }, [sortedRows, clampedPage, pageSize]);
 
-  /** ───────────── Custom Breed dialog state (must be before animalSections) ───────────── */
+  /** ────────── Custom Breed dialog state (before sections) ────────── */
   const [customBreedOpen, setCustomBreedOpen] = React.useState(false);
   const [customBreedSpecies, setCustomBreedSpecies] = React.useState<"DOG" | "CAT" | "HORSE">("DOG");
   const [onCustomBreedCreated, setOnCustomBreedCreated] =
     React.useState<((c: { id: number; name: string; species: "DOG" | "CAT" | "HORSE" }) => void) | null>(null);
 
-  /** ───────────── Details drawer ───────────── */
+  /** ────────── Sections (Overview cleaned + editable Name/Nickname) ────────── */
   const animalSections = (
     mode: "view" | "edit",
     row: AnimalRow,
     setDraft: (p: Partial<AnimalRow>) => void
   ) => [
-    {
-      title: "Profile",
-      fields: [
-        {
-          label: "Species",
-          view: (r) => r.species ?? "—",
-          edit: (_r, set) => (
-            <select
-              className="h-8 w-full rounded-md bg-surface border border-hairline px-2 text-sm text-primary"
-              defaultValue={row.species || "Dog"}
-              onChange={(e) => set({ species: e.target.value })}
-            >
-              <option>Dog</option>
-              <option>Cat</option>
-              <option>Horse</option>
-            </select>
-          ),
-        },
-        {
-          label: "Breed",
-          view: (r) => r.breed ?? "—",
-          edit: (_r, set) => (
-            <div className="flex items-center gap-2">
-              <div className="flex-1">
-                <BreedSelect
-                  orgId={orgIdForBreeds ?? undefined}
-                  species={(row.species as "Dog" | "Cat" | "Horse") || "Dog"}
-                  value={
-                    row.breed
-                      ? ({
-                          id: "current",
-                          name: row.breed,
-                          species: (row.species as any) || "Dog",
-                          source: "canonical",
-                        } as BreedHit)
-                      : null
-                  }
-                  onChange={(hit) => set({ breed: hit?.name ?? null })}
-                  placeholder="Search breed…"
-                />
-              </div>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  const speciesEnum = (String(row.species || "Dog").toUpperCase() as "DOG" | "CAT" | "HORSE");
-                  setCustomBreedSpecies(speciesEnum);
-                  setOnCustomBreedCreated(() => (created) => {
-                    set({ breed: created.name });
-                    setCustomBreedOpen(false);
-                  });
-                  setCustomBreedOpen(true);
-                }}
+      // Identity row (Name + Nickname on same line)
+      {
+        title: "Identity",
+        fields: [
+          {
+            label: "Name",
+            view: (r) => r.name || "—",
+            edit: (_r, set) => (
+              <Input size="sm" defaultValue={row.name} onChange={(e) => set({ name: e.currentTarget.value })} />
+            ),
+          },
+          {
+            label: "Nickname",
+            view: (r) => r.nickname || "—",
+            edit: (_r, set) => (
+              <Input size="sm" defaultValue={row.nickname ?? ""} onChange={(e) => set({ nickname: e.currentTarget.value })} />
+            ),
+          },
+        ],
+        // arrange 2-up
+        gridCols: 2 as any,
+      },
+      // Species/Breed row
+      {
+        title: "Profile",
+        fields: [
+          {
+            label: "Species",
+            view: (r) => r.species ?? "—",
+            edit: (_r, set) => (
+              <select
+                className="h-8 w-full rounded-md bg-surface border border-hairline px-2 text-sm text-primary"
+                defaultValue={row.species || "Dog"}
+                onChange={(e) => set({ species: e.target.value })}
               >
-                New custom
-              </Button>
-            </div>
-          ),
-        },
-        {
-          label: "Sex",
-          view: (r) => r.sex ?? "—",
-          edit: (_r, set) => (
-            <select
-              className="h-8 w-full rounded-md bg-surface border border-hairline px-2 text-sm text-primary"
-              defaultValue={row.sex || "Female"}
-              onChange={(e) => set({ sex: e.target.value })}
-            >
-              <option>Female</option>
-              <option>Male</option>
-            </select>
-          ),
-        },
-        { label: "Owner", view: (r) => r.ownerName ?? "—" },
-        {
-          label: "Ownership",
-          view: (r) => <OwnershipChips owners={((r as any).owners || []) as any[]} />,
-          edit: (_r, _set) => (
-            <OwnershipEditor
-              api={{
-                searchContacts: (q) => api?.lookups?.searchContacts?.(q) ?? Promise.resolve([]),
-                searchOrganizations: (q) => api?.lookups?.searchOrganizations?.(q) ?? Promise.resolve([]),
-              }}
-              value={(((row as any).owners) || []) as any[]}
-              onChange={(rows) => (setDraft as any)({ ...(row as any), owners: rows })}
-            />
-          ),
-        },
-        {
-          label: "Tags",
-          view: (r) => (r.tags || []).join(", ") || "—",
-          edit: (_r, set) => (
-            <Input
-              size="sm"
-              defaultValue={(row.tags || []).join(", ")}
-              onChange={(e) => {
-                const tags = (e.currentTarget.value || "")
-                  .split(",")
-                  .map((s) => s.trim())
-                  .filter(Boolean);
-                set({ tags });
-              }}
-            />
-          ),
-        },
-        {
-          label: "Status",
-          view: (r) => r.status ?? "Active",
-          edit: (_r, set) => (
-            <select
-              className="h-8 w-full rounded-md bg-surface border border-hairline px-2 text-sm text-primary"
-              defaultValue={row.status || "Active"}
-              onChange={(e) => set({ status: e.target.value })}
-            >
-              {["Active", "Breeding", "Unavailable", "Retired", "Deceased", "Prospect"].map((s) => (
-                <option key={s}>{s}</option>
-              ))}
-            </select>
-          ),
-        },
-      ],
-    },
-    {
-      title: "Identifiers",
-      fields: [
-        {
-          label: "Microchip #",
-          view: (r) => r.microchip ?? "—",
-          edit: (_r, set) => (
-            <Input size="sm" defaultValue={row.microchip ?? ""} onChange={(e) => set({ microchip: e.currentTarget.value })} />
-          ),
-        },
-      ],
-    },
-    {
-      title: "Dates",
-      fields: [
-        {
-          label: "DOB",
-          view: (r) => fmt(r.dob) || "—",
-          edit: (_r, set) => (
-            <Input
-              size="sm"
-              type="date"
-              defaultValue={(row.dob || "").slice(0, 10)}
-              onChange={(e) => set({ dob: e.currentTarget.value })}
-            />
-          ),
-        },
-        { label: "Created", view: (r) => fmt(r.created_at) || "—" },
-        { label: "Updated", view: (r) => fmt(r.updated_at) || "—" },
-      ],
-    },
-    {
-      title: "Notes",
-      fields: [
-        {
-          label: "Notes",
-          view: (r) => r.notes || "—",
-          edit: (_r, set) => (
-            <textarea
-              className="h-24 w-full rounded-md bg-surface border border-hairline px-3 text-sm text-primary outline-none"
-              defaultValue={row.notes ?? ""}
-              onChange={(e) => set({ notes: (e.currentTarget as HTMLTextAreaElement).value })}
-            />
-          ),
-        },
-      ],
-    },
-  ];
+                <option>Dog</option>
+                <option>Cat</option>
+                <option>Horse</option>
+              </select>
+            ),
+          },
+          {
+            label: "Breed",
+            view: (r) => r.breed ?? "—",
+            edit: (_r, set) => (
+              <div className="flex items-center gap-2">
+                <div className="flex-1">
+                  {/* small wrapper to keep row tight */}
+                  <div>
+                    <CustomBreedCombo
+                      species={(row.species as "Dog" | "Cat" | "Horse") || "Dog"}
+                      value={row.breed || null}
+                      onChange={(name) => set({ breed: name ?? null })}
+                      api={breedBrowseApi}
+                      orgIdForBreeds={orgIdForBreeds ?? undefined}
+                      onOpenCustom={() => {
+                        const speciesEnum = (String(row.species || "Dog").toUpperCase() as "DOG" | "CAT" | "HORSE");
+                        setCustomBreedSpecies(speciesEnum);
+                        setOnCustomBreedCreated(() => (created) => {
+                          set({ breed: created.name });
+                          setCustomBreedOpen(false);
+                        });
+                        setCustomBreedOpen(true);
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
+            ),
+          },
+          {
+            label: "Sex",
+            view: (r) => r.sex ?? "—",
+            edit: (_r, set) => (
+              <select
+                className="h-8 w-full rounded-md bg-surface border border-hairline px-2 text-sm text-primary"
+                defaultValue={row.sex || "Female"}
+                onChange={(e) => set({ sex: e.target.value })}
+              >
+                <option>Female</option>
+                <option>Male</option>
+              </select>
+            ),
+          },
+          {
+            label: "Status",
+            view: (r) => r.status ?? "Active",
+            edit: (_r, set) => (
+              <select
+                className="h-8 w-full rounded-md bg-surface border border-hairline px-2 text-sm text-primary"
+                defaultValue={row.status || "Active"}
+                onChange={(e) => set({ status: e.target.value })}
+              >
+                {["Active", "Breeding", "Unavailable", "Retired", "Deceased", "Prospect"].map((s) => (
+                  <option key={s}>{s}</option>
+                ))}
+              </select>
+            ),
+          },
+        ],
+        gridCols: 4 as any,
+      },
+      // Ownership row
+      {
+        title: "Ownership",
+        fields: [
+          { label: "Owner", view: (r) => r.ownerName ?? "—" },
+          {
+            label: "Ownership",
+            view: (r) => <OwnershipChips owners={((r as any).owners || []) as any[]} />,
+            edit: (_r, _set) => (
+              <OwnershipEditor
+                api={{
+                  searchContacts: (q) => api?.lookups?.searchContacts?.(q) ?? Promise.resolve([]),
+                  searchOrganizations: (q) => api?.lookups?.searchOrganizations?.(q) ?? Promise.resolve([]),
+                }}
+                value={(((row as any).owners) || []) as any[]}
+                onChange={(rows) => (setDraft as any)({ ...(row as any), owners: rows })}
+              />
+            ),
+          },
+        ],
+        gridCols: 2 as any,
+      },
+      // Identifiers + Dates (only DOB here; Created/Updated moved to Audit tab)
+      {
+        title: "Identifiers & Dates",
+        fields: [
+          {
+            label: "Microchip #",
+            view: (r) => r.microchip ?? "—",
+            edit: (_r, set) => (
+              <Input size="sm" defaultValue={row.microchip ?? ""} onChange={(e) => set({ microchip: e.currentTarget.value })} />
+            ),
+          },
+          {
+            label: "DOB",
+            view: (r) => fmt(r.dob) || "—",
+            edit: (_r, set) => (
+              <Input
+                size="sm"
+                type="date"
+                defaultValue={(row.dob || "").slice(0, 10)}
+                onChange={(e) => set({ dob: e.currentTarget.value })}
+              />
+            ),
+          },
+        ],
+        gridCols: 2 as any,
+      },
+      // Tags + Notes wide
+      {
+        title: "Notes & Tags",
+        fields: [
+          {
+            label: "Tags",
+            view: (r) => (r.tags || []).join(", ") || "—",
+            edit: (_r, set) => (
+              <Input
+                size="sm"
+                defaultValue={(row.tags || []).join(", ")}
+                onChange={(e) => {
+                  const tags = (e.currentTarget.value || "")
+                    .split(",")
+                    .map((s) => s.trim())
+                    .filter(Boolean);
+                  set({ tags });
+                }}
+              />
+            ),
+          },
+          {
+            label: "Notes",
+            view: (r) => r.notes || "—",
+            edit: (_r, set) => (
+              <textarea
+                className="h-24 w-full rounded-md bg-surface border border-hairline px-3 text-sm text-primary outline-none"
+                defaultValue={row.notes ?? ""}
+                onChange={(e) => set({ notes: (e.currentTarget as HTMLTextAreaElement).value })}
+              />
+            ),
+          },
+        ],
+      },
+    ];
 
+  /** Clean little wrapper so breed browse fits in a spec cell nicely */
+  /** Clean little wrapper so breed browse fits in a spec cell nicely */
+  function CustomBreedCombo({
+    species,
+    value,
+    onChange,
+    api,
+    orgIdForBreeds,
+    onOpenCustom,
+  }: {
+    species: "Dog" | "Cat" | "Horse";
+    value: string | null;
+    onChange: (name: string | null) => void;
+    api: any;
+    orgIdForBreeds?: number;
+    onOpenCustom: () => void;
+  }) {
+    return (
+      <div className="flex items-center gap-2">
+        <div className="flex-1">
+          <BreedCombo
+            orgId={orgIdForBreeds}
+            species={species}
+            value={
+              value
+                ? ({ id: "current", name: value, species, source: "canonical" } as any)
+                : null
+            }
+            onChange={(hit: any) => onChange(hit?.name ?? null)}
+            api={{ breeds: { listCanonical: api.breeds.listCanonical } }}
+          />
+        </div>
+        <Button variant="outline" size="sm" onClick={onOpenCustom}>
+          New custom
+        </Button>
+      </div>
+    );
+  }
+
+  /** ────────── Details config ────────── */
   const detailsConfig = React.useMemo(
     () => ({
       idParam: "animalId",
       getRowId: (r: AnimalRow) => r.id,
-      width: 820,
+      width: 860,
       placement: "center" as const,
       align: "top" as const,
-      fetchRow: (id: number) => api.animals.get(id),
+      fetchRow: async (id: number) => animalToRow(await api.animals.get(id)),
       onSave: async (id: number, draft: Partial<AnimalRow>) => {
+        // persist main patch
         const updated = await api.animals.update(id, draft);
+
+        // ownership (separate endpoint)
         const owners: OwnershipRow[] | undefined = (draft as any)?.owners;
         if (owners) {
           try {
             await api.animals.putOwners?.(id, owners);
-          } catch {}
+          } catch { }
         }
         setRows((prev) => prev.map((r) => (r.id === id ? { ...r, ...animalToRow(updated) } : r)));
       },
-      header: (r: AnimalRow) => ({ title: r.name, subtitle: r.breed || r.ownerName || "" }),
-      tabs: [
-        { key: "overview", label: "Overview" },
-        { key: "cycle", label: "Cycle" },
-        { key: "audit", label: "Audit" },
-      ],
+      header: (r: AnimalRow) => ({ title: r.name, subtitle: r.nickname || r.breed || r.ownerName || "" }),
+      tabs: (r: AnimalRow) => {
+        const tabs = [{ key: "overview", label: "Overview" } as const];
+        // Cycle tab only for females
+        if ((r.sex || "").toLowerCase().startsWith("f")) {
+          tabs.push({ key: "cycle", label: "Cycle Info" } as any);
+        }
+        tabs.push({ key: "audit", label: "Audit" } as any);
+        return tabs;
+      },
       customChrome: true,
       render: ({ row, mode, setMode, setDraft, activeTab, setActiveTab, requestSave }: any) => (
         <DetailsScaffold
           title={row.name}
-          subtitle={row.breed || row.ownerName || ""}
+          subtitle={row.nickname || row.breed || row.ownerName || ""}
           mode={mode}
           onEdit={() => setMode("edit")}
-          onCancel={() => {
-            setMode("view");
-          }}
+          onCancel={() => setMode("view")}
           onSave={requestSave}
-          tabs={[
-            { key: "overview", label: "Overview" },
-            { key: "cycle", label: "Cycle" },
-            { key: "audit", label: "Audit" },
-          ]}
+          tabs={detailsConfig.tabs(row)}
           activeTab={activeTab}
           onTabChange={setActiveTab}
-          rightActions={<Button size="sm" variant="outline">Archive</Button>}
+          rightActions={
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={async () => {
+                if (!confirm("Archive this animal?")) return;
+                await api.animals.archive(row.id);
+                // Optimistic UI: remove from list (or mark status)
+                setRows((prev) => prev.filter((r) => r.id !== row.id));
+              }}
+            >
+              Archive
+            </Button>
+          }
         >
           {activeTab === "overview" && (
             <DetailsSpecRenderer<AnimalRow>
               row={row}
               mode={mode}
+              // grid support: DetailsSpecRenderer respects `gridCols` on sections
               setDraft={(p) => setDraft((d: any) => ({ ...d, ...p }))}
               sections={animalSections(mode, row, (p) => setDraft((d: any) => ({ ...d, ...p })))}
             />
           )}
-          {activeTab === "cycle" && <CycleTab animal={row} />}
+
+          {activeTab === "cycle" && (
+            <CycleTab
+              animal={row}
+              api={api}
+              onSaved={(dates) => setDraft({ cycleStartDates: dates })}
+            />
+          )}
+
           {activeTab === "audit" && (
             <div className="space-y-2">
               <SectionCard title="Audit">
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <div>
+                    <div className="text-xs text-secondary">Created</div>
+                    <div>{fmt(row.created_at) || "—"}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-secondary">Last Updated</div>
+                    <div>{fmt(row.updated_at) || "—"}</div>
+                  </div>
+                </div>
+              </SectionCard>
+              <SectionCard title="Events">
                 <div className="text-sm text-secondary">Events will appear here.</div>
               </SectionCard>
             </div>
@@ -640,16 +790,14 @@ export default function AppAnimals() {
         </DetailsScaffold>
       ),
     }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [api, orgIdForBreeds]
   );
 
   /** ───────────── Create Animal modal ───────────── */
-
   const [createOpen, setCreateOpen] = React.useState(false);
   const [createWorking, setCreateWorking] = React.useState(false);
   const [createErr, setCreateErr] = React.useState<string | null>(null);
-
-  const toEnumSpecies = (s: string | undefined): "DOG" | "CAT" | "HORSE" => (String(s || "Dog").toUpperCase() as any);
 
   // form state
   const [newName, setNewName] = React.useState("");
@@ -660,13 +808,15 @@ export default function AppAnimals() {
   >("Active");
   const [newDob, setNewDob] = React.useState("");
   const [newMicrochip, setNewMicrochip] = React.useState("");
-  const [newBreed, setNewBreed] = React.useState<BreedHit | null>(null);
+  const [newBreed, setNewBreed] = React.useState<any>(null);
   const [owners, setOwners] = React.useState<OwnershipRow[]>([]);
   const [tagsStr, setTagsStr] = React.useState("");
   const [notes, setNotes] = React.useState("");
+  const [nickname, setNickname] = React.useState("");
 
   const resetCreateForm = () => {
     setNewName("");
+    setNickname("");
     setNewSpecies("Dog");
     setNewSex("Female");
     setNewStatus("Active");
@@ -692,6 +842,7 @@ export default function AppAnimals() {
 
       const payload: any = {
         name: newName.trim(),
+        nickname: nickname.trim() || null,
         species: newSpecies.toUpperCase(),
         sex: newSex.toUpperCase(),
         status: newStatus.toUpperCase(),
@@ -725,9 +876,7 @@ export default function AppAnimals() {
       try {
         await (api.animals as any).putOwners?.(row.id, toSaveOwners);
         (row as any).owners = toSaveOwners;
-      } catch {
-        /* non-blocking */
-      }
+      } catch { }
 
       // Optimistically prepend
       setRows((prev) => [row, ...prev]);
@@ -740,11 +889,11 @@ export default function AppAnimals() {
     }
   };
 
-  /** ───────────────────────────────────────────────────────────────────────── */
+  /** ─────────────────────────────────────────────────────────────────── */
 
   return (
     <div className="p-4 space-y-4">
-      {/* Header + actions (matches Orgs) */}
+      {/* Header + actions */}
       <div className="relative">
         <PageHeader title="Animals" subtitle="Manage your animals, profiles, and records" />
         <div className="absolute right-0 top-0 h-full flex items-center gap-2 pr-1" style={{ zIndex: 5, pointerEvents: "auto" }}>
@@ -757,7 +906,7 @@ export default function AppAnimals() {
         </div>
       </div>
 
-      {/* Custom Breed Dialog (portaled to overlay root so it sits above the Create modal) */}
+      {/* Custom Breed Dialog */}
       {getOverlayRoot() &&
         createPortal(
           <CustomBreedDialog
@@ -766,7 +915,7 @@ export default function AppAnimals() {
             api={{
               breeds: {
                 customCreate: api.breeds.customCreate,
-                // optional: safe to pass even if backend ignores it
+                // optional
                 putRecipe: (api as any)?.breeds?.putRecipe,
               },
             }}
@@ -900,166 +1049,170 @@ export default function AppAnimals() {
         </DetailsHost>
       </Card>
 
-      {/* Create Animal Modal — fix stacking & pointer events */}
-      {createOpen &&
-        getOverlayRoot() &&
-        createPortal(
-          <div role="dialog" aria-modal="true" className="fixed inset-0 z-[1000] pointer-events-none">
-            {/* Backdrop */}
-            <div className="absolute inset-0 bg-black/50 pointer-events-auto" onClick={() => !createWorking && setCreateOpen(false)} />
+      {createOpen && (
+        <Overlay
+          open={createOpen}
+          onOpenChange={(v) => { if (!createWorking) setCreateOpen(v); }}
+          ariaLabel="Create Animal"
+          size="lg"
+          overlayId="create-animal"
+        >
+          <div className="relative w-full">
+            {/* Header */}
+            <div className="mb-2 flex items-center justify-between">
+              <div className="text-lg font-semibold">Create Animal</div>
+              <Button variant="ghost" onClick={() => setCreateOpen(false)}>✕</Button>
+            </div>
 
-            {/* Center the card */}
-            <div className="absolute inset-0 flex items-center justify-center">
-              <div className="pointer-events-auto relative z-10 w-[760px] max-w-[95vw] rounded-xl border border-hairline bg-surface shadow-xl p-4">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="text-lg font-semibold">Create Animal</div>
-                  <Button variant="ghost" onClick={() => setCreateOpen(false)}>
-                    ✕
+            {/* Form */}
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {/* Name */}
+              <div>
+                <div className="mb-1 text-xs text-secondary">
+                  Name <span className="text-[hsl(var(--brand-orange))]">*</span>
+                </div>
+                <Input value={newName} onChange={(e) => setNewName((e.currentTarget as HTMLInputElement).value)} />
+              </div>
+
+              {/* Nickname */}
+              <div>
+                <div className="mb-1 text-xs text-secondary">Nickname</div>
+                <Input value={nickname} onChange={(e) => setNickname((e.currentTarget as HTMLInputElement).value)} />
+              </div>
+
+              {/* Species */}
+              <div>
+                <div className="mb-1 text-xs text-secondary">Species *</div>
+                <select
+                  className="h-9 w-full rounded-md border border-hairline bg-surface px-2 text-sm text-primary"
+                  value={newSpecies}
+                  onChange={(e) => setNewSpecies(e.currentTarget.value as any)}
+                >
+                  <option>Dog</option>
+                  <option>Cat</option>
+                  <option>Horse</option>
+                </select>
+              </div>
+
+              {/* Breed (search + browse + new custom) */}
+              <div className="sm:col-span-2">
+                <div className="mb-1 text-xs text-secondary">Breed</div>
+                <div className="flex items-center gap-2">
+                  <div className="flex-1">
+                    <BreedCombo
+                      orgId={orgIdForBreeds ?? undefined}
+                      species={newSpecies}
+                      value={newBreed}
+                      onChange={setNewBreed}
+                      api={breedBrowseApi}
+                    />
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      const speciesEnum = (String(newSpecies).toUpperCase() as "DOG" | "CAT" | "HORSE");
+                      setCustomBreedSpecies(speciesEnum);
+                      setOnCustomBreedCreated(() => (created) => {
+                        setNewBreed({ id: created.id, name: created.name, species: newSpecies, source: "custom" } as any);
+                        setCustomBreedOpen(false);
+                      });
+                      setCustomBreedOpen(true);
+                    }}
+                  >
+                    New custom
                   </Button>
                 </div>
+              </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {/* Name */}
-                  <div>
-                    <div className="text-xs text-secondary mb-1">
-                      Name <span className="text-[hsl(var(--brand-orange))]">*</span>
-                    </div>
-                    <Input value={newName} onChange={(e) => setNewName((e.currentTarget as HTMLInputElement).value)} placeholder="" />
-                  </div>
+              {/* Sex */}
+              <div>
+                <div className="mb-1 text-xs text-secondary">Sex *</div>
+                <select
+                  className="h-9 w-full rounded-md border border-hairline bg-surface px-2 text-sm text-primary"
+                  value={newSex}
+                  onChange={(e) => setNewSex(e.currentTarget.value as any)}
+                >
+                  <option>Female</option>
+                  <option>Male</option>
+                </select>
+              </div>
 
-                  {/* Species */}
-                  <div>
-                    <div className="text-xs text-secondary mb-1">Species *</div>
-                    <select
-                      className="w-full h-9 rounded-md border border-hairline bg-surface px-2 text-sm text-primary"
-                      value={newSpecies}
-                      onChange={(e) => setNewSpecies(e.currentTarget.value as any)}
-                    >
-                      <option>Dog</option>
-                      <option>Cat</option>
-                      <option>Horse</option>
-                    </select>
-                  </div>
+              {/* DOB */}
+              <div>
+                <div className="mb-1 text-xs text-secondary">Date of Birth *</div>
+                <Input type="date" value={newDob} onChange={(e) => setNewDob((e.currentTarget as HTMLInputElement).value)} />
+              </div>
 
-                  {/* Breed */}
-                  <div className="sm:col-span-2">
-                    <div className="text-xs text-secondary mb-1">Breed</div>
-                    <div className="flex items-center gap-2">
-                      <div className="flex-1">
-                        <BreedSelect
-                          orgId={orgIdForBreeds ?? undefined}
-                          species={newSpecies}
-                          value={newBreed}
-                          onChange={(hit) => setNewBreed(hit)}
-                          placeholder="Search breed…"
-                        />
-                      </div>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          setCustomBreedSpecies(toEnumSpecies(newSpecies));
-                          setOnCustomBreedCreated(() => (created) => {
-                            setNewBreed({
-                              id: created.id,
-                              name: created.name,
-                              species: newSpecies,
-                              source: "custom",
-                            } as any);
-                            setCustomBreedOpen(false);
-                          });
-                          setCustomBreedOpen(true);
-                        }}
-                      >
-                        New Custom
-                      </Button>
-                    </div>
-                  </div>
+              {/* Status */}
+              <div>
+                <div className="mb-1 text-xs text-secondary">Status</div>
+                <select
+                  className="h-9 w-full rounded-md border border-hairline bg-surface px-2 text-sm text-primary"
+                  value={newStatus}
+                  onChange={(e) => setNewStatus(e.currentTarget.value as any)}
+                >
+                  {["Active", "Breeding", "Unavailable", "Retired", "Deceased", "Prospect"].map((s) => (
+                    <option key={s}>{s}</option>
+                  ))}
+                </select>
+              </div>
 
-                  {/* Sex */}
-                  <div>
-                    <div className="text-xs text-secondary mb-1">Sex *</div>
-                    <select
-                      className="w-full h-9 rounded-md border border-hairline bg-surface px-2 text-sm text-primary"
-                      value={newSex}
-                      onChange={(e) => setNewSex(e.currentTarget.value as any)}
-                    >
-                      <option>Female</option>
-                      <option>Male</option>
-                    </select>
-                  </div>
+              {/* Microchip */}
+              <div className="sm:col-span-2">
+                <div className="mb-1 text-xs text-secondary">Microchip #</div>
+                <Input value={newMicrochip} onChange={(e) => setNewMicrochip((e.currentTarget as HTMLInputElement).value)} />
+              </div>
 
-                  {/* DOB */}
-                  <div>
-                    <div className="text-xs text-secondary mb-1">Date of Birth *</div>
-                    <Input type="date" value={newDob} onChange={(e) => setNewDob((e.currentTarget as HTMLInputElement).value)} />
-                  </div>
+              {/* Ownership */}
+              <div className="sm:col-span-2">
+                <OwnershipEditor
+                  api={{
+                    searchContacts: (q) => (api as any)?.lookups?.searchContacts?.(q) ?? Promise.resolve([]),
+                    searchOrganizations: (q) => (api as any)?.lookups?.searchOrganizations?.(q) ?? Promise.resolve([]),
+                  }}
+                  value={owners}
+                  onChange={(rows) => setOwners(rows)}
+                />
+              </div>
 
-                  {/* Status */}
-                  <div>
-                    <div className="text-xs text-secondary mb-1">Status</div>
-                    <select
-                      className="w-full h-9 rounded-md border border-hairline bg-surface px-2 text-sm text-primary"
-                      value={newStatus}
-                      onChange={(e) => setNewStatus(e.currentTarget.value as any)}
-                    >
-                      {["Active", "Breeding", "Unavailable", "Retired", "Deceased", "Prospect"].map((s) => (
-                        <option key={s}>{s}</option>
-                      ))}
-                    </select>
-                  </div>
+              {/* Tags */}
+              <div className="sm:col-span-2">
+                <div className="mb-1 text-xs text-secondary">Tags</div>
+                <Input
+                  placeholder="tag1, tag2"
+                  value={tagsStr}
+                  onChange={(e) => setTagsStr((e.currentTarget as HTMLInputElement).value)}
+                />
+              </div>
 
-                  {/* Microchip */}
-                  <div className="sm:col-span-2">
-                    <div className="text-xs text-secondary mb-1">Microchip #</div>
-                    <Input value={newMicrochip} onChange={(e) => setNewMicrochip((e.currentTarget as HTMLInputElement).value)} />
-                  </div>
+              {/* Notes */}
+              <div className="sm:col-span-2">
+                <div className="mb-1 text-xs text-secondary">Notes</div>
+                <textarea
+                  className="h-24 w-full rounded-md border border-hairline bg-surface px-3 text-sm text-primary placeholder:text-secondary outline-none"
+                  value={notes}
+                  onChange={(e) => setNotes((e.currentTarget as HTMLTextAreaElement).value)}
+                  placeholder="Temperament, observations, etc."
+                />
+              </div>
 
-                  {/* Ownership */}
-                  <div className="sm:col-span-2">
-                    <OwnershipEditor
-                      api={{
-                        searchContacts: (q) => (api as any)?.lookups?.searchContacts?.(q) ?? Promise.resolve([]),
-                        searchOrganizations: (q) => (api as any)?.lookups?.searchOrganizations?.(q) ?? Promise.resolve([]),
-                      }}
-                      value={owners}
-                      onChange={(rows) => setOwners(rows)}
-                    />
-                  </div>
+              {/* Error */}
+              {createErr && <div className="sm:col-span-2 text-sm text-red-600">{createErr}</div>}
 
-                  {/* Tags */}
-                  <div className="sm:col-span-2">
-                    <div className="text-xs text-secondary mb-1">Tags</div>
-                    <Input placeholder="tag1, tag2" value={tagsStr} onChange={(e) => setTagsStr((e.currentTarget as HTMLInputElement).value)} />
-                  </div>
-
-                  {/* Notes */}
-                  <div className="sm:col-span-2">
-                    <div className="text-xs text-secondary mb-1">Notes</div>
-                    <textarea
-                      className="h-24 w-full rounded-md bg-surface border border-hairline px-3 text-sm text-primary placeholder:text-secondary outline-none"
-                      value={notes}
-                      onChange={(e) => setNotes((e.currentTarget as HTMLTextAreaElement).value)}
-                      placeholder="Temperament, observations, etc."
-                    />
-                  </div>
-
-                  {createErr && <div className="sm:col-span-2 text-sm text-red-600">{createErr}</div>}
-
-                  <div className="sm:col-span-2 flex items-center justify-end gap-2 mt-2">
-                    <Button variant="outline" onClick={() => { resetCreateForm(); setCreateOpen(false); }} disabled={createWorking}>
-                      Cancel
-                    </Button>
-                    <Button onClick={doCreateAnimal} disabled={!canCreate || createWorking}>
-                      {createWorking ? "Saving…" : "Save"}
-                    </Button>
-                  </div>
-                </div>
+              {/* Actions */}
+              <div className="mt-2 flex items-center justify-end gap-2 sm:col-span-2">
+                <Button variant="outline" onClick={() => { resetCreateForm(); setCreateOpen(false); }} disabled={createWorking}>
+                  Cancel
+                </Button>
+                <Button onClick={doCreateAnimal} disabled={!canCreate || createWorking}>
+                  {createWorking ? "Saving…" : "Save"}
+                </Button>
               </div>
             </div>
-          </div>,
-          getOverlayRoot()!
-        )}
+          </div>
+        </Overlay>
+      )}
     </div>
   );
 }

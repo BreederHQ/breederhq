@@ -1,3 +1,5 @@
+// File: packages/ui/src/utils/species.ts
+
 import type { SpeciesUI, SpeciesAPI } from "./types";
 
 export const SPECIES_UI: SpeciesUI[] = ["Dog", "Cat", "Horse"];

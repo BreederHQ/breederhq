@@ -1,4 +1,4 @@
-// NavShell.tsx
+// packages/ui/src/layouts/NavShell.tsx
 import * as React from "react";
 import logoUrl from "../../assets/logo.png";
 
@@ -106,7 +106,9 @@ export const NavShell: React.FC<NavShellProps> = ({
       const detail = (e as CustomEvent).detail as { label?: string };
       if (detail?.label) {
         setAnnouncedTitle(detail.label);
-        try { localStorage.setItem("BHQ_LAST_MODULE", detail.label); } catch {}
+        try {
+          localStorage.setItem("BHQ_LAST_MODULE", detail.label);
+        } catch {}
       }
     };
     window.addEventListener("bhq:module", onModule as any);
@@ -124,7 +126,9 @@ export const NavShell: React.FC<NavShellProps> = ({
     }
   });
   React.useEffect(() => {
-    try { localStorage.setItem("BHQ_RAIL_OPEN", JSON.stringify(railOpen)); } catch {}
+    try {
+      localStorage.setItem("BHQ_RAIL_OPEN", JSON.stringify(railOpen));
+    } catch {}
   }, [railOpen]);
 
   const loggedIn = !!(auth && auth.isAuthenticated);
@@ -144,7 +148,9 @@ export const NavShell: React.FC<NavShellProps> = ({
     const hit = navItems.find(i => path.includes((i.href || "").toLowerCase().replace(/\/+$/, "")));
     let next = hit?.label;
     if (!next) {
-      try { next = localStorage.getItem("BHQ_LAST_MODULE") || undefined; } catch {}
+      try {
+        next = localStorage.getItem("BHQ_LAST_MODULE") || undefined;
+      } catch {}
     }
     if (next) setAnnouncedTitle(next);
   }, [announcedTitle, navItems]);
@@ -173,14 +179,10 @@ export const NavShell: React.FC<NavShellProps> = ({
               <div className="flex items-center gap-3">
                 <button
                   aria-label="Toggle navigation"
-                  onClick={() => setRailOpen((v) => !v)}
+                  onClick={() => setRailOpen(v => !v)}
                   className="inline-flex h-11 w-11 items-center justify-center rounded-lg border border-hairline bg-surface hover:bg-surface-strong transition"
                 >
-                  {railOpen ? (
-                    <Icon.ChevronLeft className="h-5 w-5" />
-                  ) : (
-                    <Icon.Menu className="h-5 w-5" />
-                  )}
+                  {railOpen ? <Icon.ChevronLeft className="h-5 w-5" /> : <Icon.Menu className="h-5 w-5" />}
                 </button>
 
                 <div className="flex items-center gap-2">
@@ -190,9 +192,7 @@ export const NavShell: React.FC<NavShellProps> = ({
                     className="h-14 w-14 object-contain shrink-0 max-h-full"
                   />
                   <div className="flex items-baseline gap-2">
-                    <div className="text-base font-medium tracking-wide">
-                      {brand?.name || "BreederHQ"}
-                    </div>
+                    <div className="text-base font-medium tracking-wide">{brand?.name || "BreederHQ"}</div>
                     {envBadge ? (
                       <span
                         className={cls(
@@ -294,8 +294,10 @@ export const NavShell: React.FC<NavShellProps> = ({
         <div className="flex gap-4">
           <aside className={cls("shrink-0 transition-all", railOpen ? "w-56" : "w-[72px]")}>
             <nav className="rounded-2xl border border-hairline bg-surface p-1.5">
-              {(items && items.length ? items : defaultItems).map((it) => {
+              {(items && items.length ? items : defaultItems).map(it => {
                 const isActive = activeKey === it.key;
+                const compact = !railOpen;
+
                 return (
                   <a
                     key={it.key}
@@ -303,17 +305,20 @@ export const NavShell: React.FC<NavShellProps> = ({
                     title={it.label}
                     data-active={isActive || undefined}
                     aria-current={isActive ? "page" : undefined}
-                    className={[
-                      "group relative flex items-center gap-3 rounded-lg border px-3 py-2 transition min-h-[48px]",
+                    className={cls(
+                      "group relative rounded-lg border transition min-h-[48px] w-full",
+                      compact ? "flex items-center justify-center px-0 py-2 gap-0" : "flex items-center px-3 py-2 gap-3",
                       isActive
                         ? "border-[hsl(var(--brand-orange))/40] bg-transparent text-foreground"
                         : "border-transparent hover:bg-[hsl(var(--brand-orange))]/10 text-muted-foreground"
-                    ].join(" ")}
+                    )}
                   >
                     <span className="h-8 w-8 shrink-0 flex items-center justify-center">
                       {it.icon ?? <span aria-hidden className="text-[28px] leading-none">{emojiFor(it.label)}</span>}
                     </span>
+
                     {railOpen && <span className="text-[20px] font-normal">{it.label}</span>}
+
                     {isActive && (
                       <span className="pointer-events-none absolute left-1.5 right-1.5 bottom-1 h-0.5 rounded bg-[hsl(var(--brand-orange))]" />
                     )}

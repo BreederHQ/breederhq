@@ -1,0 +1,11 @@
+:root {
+  --ui-scale: 1; /* 1.0 = 100% */
+}
+
+/* Anything inside overlays will scale via font-size so layouts remain clean */
+.bhq-overlay [data-scale-container] {
+  font-size: calc(1rem * var(--ui-scale));
+}
+
+/* If you want tables/forms to scale too, you can optionally apply: */
+/* .app-root { font-size: calc(1rem * var(--ui-scale)); } */

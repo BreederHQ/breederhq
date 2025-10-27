@@ -1,103 +1,201 @@
-// packages/ui/src/hooks/useBreedSearch.ts
 import * as React from "react";
-import { toApiSpecies, toUiSpecies, type BreedHit, type SpeciesUI } from "../utils";
+import type { BreedHit } from "../utils";
 
-/** Normalize one server row to a BreedHit and synthesize a stable id for canonical rows */
-export function normalizeBreedRow(row: any): BreedHit {
-  const species = toUiSpecies(row?.species);
-  const source: "canonical" | "custom" = row?.source === "custom" ? "custom" : "canonical";
-  const name = String(row?.name || "");
+function normBase(): string {
+  const w = typeof window !== "undefined" ? (window as any) : {};
+  let b = String(w.__BHQ_API_BASE__ || "").trim();
+  if (!b && typeof window !== "undefined") b = window.location.origin;
+  b = b.replace(/\/+$/g, "").replace(/\/api\/v1$/i, "");
+  return `${b}/api/v1`;
+}
 
-  if (source === "custom") {
-    const rawId = row?.id ?? row?.breedId ?? row?.code ?? row?.uuid ?? row?._id;
-    const id = rawId != null ? `custom:${String(rawId)}` : `custom:name:${name.toLowerCase()}`;
-    return { id, species, name, source, canonicalBreedId: null };
+let __tenantResolving: Promise<number> | null = null;
+
+async function ensureTenantId(baseUrl: string): Promise<number> {
+  try {
+    const w: any = window as any;
+    const rt = Number(w?.__BHQ_TENANT_ID__);
+    const ls = Number(localStorage.getItem("BHQ_TENANT_ID") || "NaN");
+    const t = Number.isInteger(rt) && rt > 0 ? rt : (Number.isInteger(ls) && ls > 0 ? ls : NaN);
+    if (Number.isInteger(t) && t > 0) return t;
+  } catch {}
+  if (!__tenantResolving) {
+    __tenantResolving = fetch(`${baseUrl}/session`, { credentials: "include" })
+      .then(r => r.ok ? r.json().catch(() => ({})) : {})
+      .then((data: any) => {
+        const t = Number(data?.tenantId ?? data?.tenant_id ?? data?.tenant?.id);
+        if (t && typeof window !== "undefined") {
+          try { (window as any).__BHQ_TENANT_ID__ = t; localStorage.setItem("BHQ_TENANT_ID", String(t)); } catch {}
+        }
+        return t || 0;
+      });
   }
-
-  // canonical
-  const slug = name.toLowerCase().trim().replace(/\s+/g, "_");
-  return {
-    id: `canon:${toApiSpecies(species)}:${slug}`,
-    species,
-    name,
-    source,
-    canonicalBreedId: null,
-  };
+  const t = await __tenantResolving.catch(() => 0);
+  if (!t || t <= 0) throw new Error("Tenant could not be resolved; user may not be logged in.");
+  return t;
 }
 
-/** Imperative fetcher (works even without React) */
-export async function searchBreedsOnce(params: {
-  orgId?: number;              // optional: include to fetch custom org breeds
-  species: SpeciesUI;
-  q: string;
-  limit?: number;
-  signal?: AbortSignal;
-}): Promise<BreedHit[]> {
-  const { orgId, species, q, limit = 20, signal } = params;
-
-  const qs = new URLSearchParams();
-  qs.set("species", toApiSpecies(species));
-  qs.set("q", q);
-  qs.set("limit", String(limit));
-  if (orgId != null) qs.set("organizationId", String(orgId)); // only when available
-
-  const res = await fetch(`/api/v1/breeds/search?${qs.toString()}`, { signal });
-  if (!res.ok) return [];
-  const data = await res.json();
-  const items = Array.isArray(data?.items) ? data.items : [];
-  return items.map(normalizeBreedRow);
+function toUiSpecies(s: string): "Dog" | "Cat" | "Horse" {
+  const up = String(s || "").toUpperCase();
+  return up === "CAT" ? "Cat" : up === "HORSE" ? "Horse" : "Dog";
 }
 
-/** React hook that manages loading state and results */
-export function useBreedSearch(args: {
-  orgId?: number;              // optional: canonical results still work without it
-  species: SpeciesUI;
-  q: string;
-  limit?: number;
-}) {
-  const { orgId, species, q, limit = 20 } = args;
+/** Normalize a name for matching (case/space/punct insensitive) */
+function keyOf(name: string): string {
+  return String(name || "")
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+/** Read local override list of custom names (CSV or JSON array). */
+function readLocalCustomNames(): string[] {
+  const w: any = typeof window !== "undefined" ? window : {};
+  const fromWin: string[] = Array.isArray(w.__BHQ_CUSTOM_BREEDS__) ? w.__BHQ_CUSTOM_BREEDS__ : [];
+  let fromLS: string[] = [];
+  try {
+    const raw = localStorage.getItem("BHQ_CUSTOM_BREEDS") || "";
+    if (raw) {
+      if (raw.trim().startsWith("[")) fromLS = JSON.parse(raw);
+      else fromLS = raw.split(",").map(s => s.trim()).filter(Boolean);
+    }
+  } catch {}
+  return [...new Set([...fromWin, ...fromLS])];
+}
+
+type UseBreedSearchArgs = {
+  species: "DOG" | "CAT" | "HORSE";
+  q?: string;
+  limit?: number;   // caller can increase (max 200)
+  orgId?: number;
+  debounceMs?: number;
+};
+
+export function useBreedSearch({
+  species,
+  q = "",
+  limit = 20,
+  orgId,
+  debounceMs = 150,
+}: UseBreedSearchArgs) {
   const [hits, setHits] = React.useState<BreedHit[]>([]);
   const [loading, setLoading] = React.useState(false);
-  const [error, setError] = React.useState<string | null>(null);
-  const abortRef = React.useRef<AbortController | null>(null);
+  const base = React.useMemo(() => normBase(), []);
 
   React.useEffect(() => {
-    const needle = q.trim();
-    if (!needle) {
-      setHits([]);
-      setLoading(false);
-      setError(null);
-      return;
-    }
-
-    abortRef.current?.abort();
-    const ac = new AbortController();
-    abortRef.current = ac;
-
     let alive = true;
-    setLoading(true);
-    setError(null);
 
-    searchBreedsOnce({ orgId, species, q: needle, limit, signal: ac.signal })
-      .then((rows) => {
-        if (!alive) return;
-        setHits(rows);
-      })
-      .catch((e) => {
-        if (!alive || e?.name === "AbortError") return;
-        setHits([]);
-        setError("Failed to search breeds");
-      })
-      .finally(() => {
-        if (!alive) return;
-        setLoading(false);
-      });
+    const run = async () => {
+      const query = (q || "").trim();
+      setLoading(true);
+      try {
+        const tenantId = await ensureTenantId(base);
 
+        // Shared QS builder
+        const buildQS = (lmt: number) => {
+          const sp = new URLSearchParams();
+          sp.set("species", species.toUpperCase());
+          if (query) sp.set("q", query);
+          sp.set("limit", String(Math.max(1, Math.min(lmt, 200))));
+          if (Number.isFinite(orgId)) sp.set("orgId", String(orgId)); // optional legacy
+          return sp.toString();
+        };
+
+        // fetch both primary search and explicit tenant customs
+        const [searchRes, customRes] = await Promise.all([
+          fetch(`${base}/breeds/search?${buildQS(limit ?? 20)}`, {
+            method: "GET",
+            headers: { "x-tenant-id": String(tenantId) },
+            credentials: "include",
+          }),
+          fetch(`${base}/breeds/custom?${buildQS(200)}`, {
+            method: "GET",
+            headers: { "x-tenant-id": String(tenantId) },
+            credentials: "include",
+          }),
+        ]);
+
+        const parse = async (r: Response) => {
+          if (!r.ok || r.status === 204) return [] as any[];
+          const t = await r.text();
+          if (!t) return [] as any[];
+          const d = JSON.parse(t);
+          return Array.isArray(d?.items) ? d.items : Array.isArray(d) ? d : [];
+        };
+
+        const [rawSearch, rawCustom] = await Promise.all([parse(searchRes), parse(customRes)]);
+
+        // Build “custom by name” set from API + local overrides
+        const customKeys = new Set<string>();
+        for (const it of rawCustom) {
+          const k = keyOf(it?.name ?? "");
+          if (k) customKeys.add(k);
+        }
+        for (const name of readLocalCustomNames()) {
+          const k = keyOf(name);
+          if (k) customKeys.add(k);
+        }
+
+        // Map search results; force custom if in customKeys
+        const mappedFromSearch: (BreedHit & { registries?: any[]; _isCustom?: boolean })[] = rawSearch.map((it) => {
+          const k = keyOf(it?.name ?? "");
+          const forceCustom = k && customKeys.has(k);
+          const isCustomApi =
+            it?.source === "custom" || it?.custom === true || it?.customBreedId != null || it?.custom_breed_id != null;
+
+          const isCustom = forceCustom || isCustomApi;
+
+          return {
+            id: it.id,
+            name: it.name,
+            species: toUiSpecies(it.species || species),
+            source: (isCustom ? "custom" : (it.source || "canonical")) as "canonical" | "custom",
+            canonicalBreedId: it.canonicalBreedId ?? it.canonical_breed_id ?? null,
+            registries: isCustom ? [] : (Array.isArray(it.registries) ? it.registries : []),
+            _isCustom: isCustom ? true : undefined,
+          };
+        });
+
+        // Ensure customs exist even if search omitted them
+        const byName = new Map<string, BreedHit & { registries?: any[]; _isCustom?: boolean }>();
+        for (const h of mappedFromSearch) byName.set(keyOf(h.name), h);
+        for (const it of rawCustom) {
+          const k = keyOf(it?.name ?? "");
+          if (!k) continue;
+          const existing = byName.get(k);
+          const baseHit = {
+            id: it.id,
+            name: it.name,
+            species: toUiSpecies(it.species || species),
+            source: "custom" as const,
+            canonicalBreedId: null,
+            registries: [] as any[],
+            _isCustom: true,
+          };
+          if (!existing) {
+            byName.set(k, baseHit);
+          } else {
+            byName.set(k, { ...existing, ...baseHit }); // force custom
+          }
+        }
+
+        const finalHits = Array.from(byName.values());
+        if (alive) setHits(finalHits);
+      } catch {
+        if (alive) setHits([]);
+      } finally {
+        if (alive) setLoading(false);
+      }
+    };
+
+    const t = setTimeout(run, Math.max(0, debounceMs));
     return () => {
       alive = false;
-      ac.abort();
+      clearTimeout(t);
     };
-  }, [orgId, species, q, limit]);
+  }, [base, species, q, limit, orgId, debounceMs]);
 
-  return { hits, loading, error };
+  return { hits, loading };
 }

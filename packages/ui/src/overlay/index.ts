@@ -2,3 +2,6 @@
 export { getOverlayRoot, acquireOverlayHost, getFlyoutRoot, autoPointerEvents } from "./core";
 export { PortalHosts } from "./PortalHosts";
 export { useOverlayHost } from "../hooks/useOverlayHost";
+export { Overlay } from "./Overlay";
+
+

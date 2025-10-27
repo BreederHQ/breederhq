@@ -1,25 +1,39 @@
-// apps/animals/src/main.tsx
+// apps/<module>/src/main.tsx
 import React from "react";
 import { createRoot } from "react-dom/client";
 
-/** 1) App/theme tokens (your app can set/override CSS vars here) */
-import "./theme.css";
+// Change per app:
+import App from "./App-Animals"; 
 
-/** 2) Shared BHQ UI layers (brings the Contacts look & table header styles) */
-import "@bhq/ui/styles/global.css";
-import "@bhq/ui/styles/table.css";
+// One stylesheet to rule them all
+import "@bhq/ui/styles/bhq.css";
 
-/** 3) App-specific overrides LAST (only if needed) */
-import "./index.css";
+function ensureOverlayRoot() {
+  const mode = (window as any).__BHQ_OVERLAY_MODE as "local" | "global" | undefined;
+  if (mode === "global") return;                               // Platform owns it
+  if (document.getElementById("bhq-overlay-root")) return;     // Already present
 
-import App from "./App-Animals";
-
-// Mount
-const rootEl = document.getElementById("root");
-if (!rootEl) {
-  throw new Error("No #root element found to mount Animals app.");
+  // Only for truly-standalone local runs:
+  const el = document.createElement("div");
+  el.id = "bhq-overlay-root";
+  el.style.position = "fixed";
+  el.style.inset = "0";
+  el.style.zIndex = "2147483647";
+  el.style.pointerEvents = "none";
+  document.body.appendChild(el);
 }
-createRoot(rootEl).render(<App />);
 
-// Also export the component for host shells that import this module directly.
-export default App;
+function mount() {
+  ensureOverlayRoot();
+
+  let rootEl = document.getElementById("root");
+  if (!rootEl) {
+    rootEl = document.createElement("div");
+    rootEl.id = "root";
+    document.body.appendChild(rootEl);
+  }
+
+  createRoot(rootEl).render(<App />);
+}
+
+mount();

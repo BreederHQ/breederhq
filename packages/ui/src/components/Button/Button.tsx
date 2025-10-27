@@ -31,7 +31,7 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>((
 
   const variants =
     variant === "primary"
-      ? "text-black bg-[hsl(var(--brand-orange))] " +
+      ? "text-white bg-[hsl(var(--brand-orange))] " +
       "hover:-translate-y-px hover:shadow-[0_10px_28px_-12px_hsl(var(--brand-orange))]"
       : variant === "secondary"
         ? "text-primary bg-surface-strong border border-hairline hover:bg-surface hover:-translate-y-px"

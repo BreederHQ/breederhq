@@ -8,5 +8,5 @@
     "outDir": "dist",
     "types": ["vite/client"]
   },
-  "include": ["src/**/*"]
+  "include": ["src/**/*", "../biology/cycle.ts"]
 }

@@ -1,27 +1,33 @@
-/* apps/animals/src/bhq.css
-   Minimal + safe: identical visuals to your original,
-   only adds DS token bridges. No new borders, no overrides.
-*/
+/* packages/ui/src/bhq.css */
 
-/* THEME SCOPE (dark by default, change to :root for light) */
-:root.theme-dark, html.theme-dark {
+/* ─────────────────────────────────────────────────────────────
+   BHQ Design System (tokens, utilities, components, portals)
+   ───────────────────────────────────────────────────────────── */
+
+/* THEME SCOPE (dark by default) */
+:root.theme-dark,
+html.theme-dark {
+  /* Core palette */
   --page: 0 0% 7%;
   --surface: 0 0% 10%;
+  --surface-2: 0 0% 12%;
   --surface-strong: 0 0% 14%;
   --primary: 0 0% 96%;
   --secondary: 0 0% 70%;
   --hairline: 0 0% 22%;
   --brand-orange: 24 94% 50%;
 
-  /* === DS bridges (read-only mappings; no visual change) === */
+  /* Bridges / aliases expected by UI pieces */
   --background: var(--page);
   --foreground: var(--primary);
+  --muted: 0 0% 18%;
   --muted-foreground: var(--secondary);
   --border: var(--hairline);
   --accent: var(--brand-orange);
+  --shadow: 0 0% 0%;
 }
 
-/* CORE TOKEN UTILITIES – these MUST exist without Tailwind */
+/* ===== Core utilities (framework-agnostic) */
 .bg-page           { background-color: hsl(var(--page)); }
 .bg-surface        { background-color: hsl(var(--surface)); }
 .bg-surface-strong { background-color: hsl(var(--surface-strong)); }
@@ -29,28 +35,101 @@
 .text-secondary    { color: hsl(var(--secondary)); }
 .border-hairline   { border-color: hsl(var(--hairline)); }
 
-/* GLASS + CTA that everything expects */
+/* Inputs: show real indeterminate/— state consistently */
+input[type="checkbox"] { appearance: auto !important; }
+
+/* ===== Cards / panels / glass */
 .bhq-card {
   background-color: hsl(var(--surface));
   backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   border: 1px solid hsl(var(--hairline));
   border-radius: 12px;
   box-shadow: 0 8px 30px rgba(0,0,0,.25);
 }
-.bhq-cta:focus,
-.bhq-cta:focus-visible {
+
+.bhq-panel,
+.bhq-card {
+  background: linear-gradient(180deg, hsl(var(--surface) / 0.72), hsl(var(--surface-2) / 0.72));
+  border: 1px solid hsl(var(--border) / 0.75);
+  border-radius: 0.9rem;
+  backdrop-filter: blur(12px) saturate(120%);
+  -webkit-backdrop-filter: blur(12px) saturate(120%);
+  box-shadow:
+    0 1px 1px hsl(var(--shadow) / 0.35),
+    0 12px 28px hsl(var(--shadow) / 0.30),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.bhq-panel--soft {
+  background:
+    radial-gradient(600px 320px at 20% -40%, rgba(255, 127, 39, 0.10), rgba(255, 127, 39, 0) 70%),
+    linear-gradient(180deg, hsl(var(--surface) / 0.68), hsl(var(--surface-2) / 0.68));
+}
+
+/* ===== Table density */
+.bhq-table thead th { padding: 0.6rem 1rem; }
+.bhq-table tbody td { padding: 0.55rem 1rem; }
+.bhq-table thead    { background: hsl(var(--surface) / 0.94); }
+.bhq-row            { border-top: 1px solid hsl(var(--border) / 0.9); }
+.bhq-row:hover      { background: hsl(var(--muted) / 0.18); }
+
+/* ===== Badges / progress */
+.bhq-badge { display:inline-flex; align-items:center; padding:.125rem .5rem; font-size:.75rem; border-radius:9999px; }
+.bhq-badge--active   { background:hsl(var(--accent)/0.15); color:hsl(var(--accent)); }
+.bhq-badge--inactive { background:hsl(var(--muted)); color:hsl(var(--muted-foreground)); }
+.bhq-progress { height:8px; border-radius:9999px; background:hsl(var(--muted)/0.55); }
+.bhq-progress > span { display:block; height:100%; border-radius:inherit; background:linear-gradient(90deg, hsl(var(--accent)), hsl(var(--accent)/0.7)); }
+
+/* ===== Focus rings (DS-level) */
+.bhq-focus,
+.bhq-focus:focus,
+.bhq-focus:focus-visible {
   outline: none;
   box-shadow: 0 0 0 2px hsl(var(--brand-orange));
+  border-color: hsl(var(--brand-orange));
 }
 
-/* Ensure the browser shows the native “—” state */
-input[type="checkbox"] {
-  appearance: auto !important;
+/* ===== Pointer-proximity glow helper */
+[data-glow] { position: relative; }
+[data-glow]::after {
+  content:""; position:absolute; inset:-1px; border-radius:inherit; pointer-events:none;
+  background: radial-gradient(160px 120px at var(--px,-999px) var(--py,-999px), hsl(var(--brand-orange)/.22), transparent 65%);
+  opacity:0; transition:opacity 150ms linear;
+}
+[data-glow]:hover::after { opacity:1; }
+
+/* ===== Headline helper */
+.h1-strong {
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+  font-weight: 700; letter-spacing:-0.01em; line-height:1.2;
+  font-size: clamp(1rem, 0.9rem + 0.35vw, 1.25rem);
 }
 
-#bhq-overlay-root {
-  position: fixed;   /* root in the viewport */
-  inset: 0;          /* cover the whole screen */
-  z-index: 2147483647;
-  pointer-events: none;   /* default non-interactive */
+/* ===== Logo sizing via CSS vars */
+.bhq-logo { width:var(--logo-size,28px); height:var(--logo-size,28px); }
+@media (min-width:640px){ .bhq-logo{ width:var(--logo-size-sm,var(--logo-size,28px)); height:var(--logo-size-sm,var(--logo-size,28px)); } }
+@media (min-width:768px){ .bhq-logo{ width:var(--logo-size-md,var(--logo-size-sm,var(--logo-size,28px))); height:var(--logo-size-md,var(--logo-size-sm,var(--logo-size,28px))); } }
+@media (min-width:1024px){ .bhq-logo{ width:var(--logo-size-lg,var(--logo-size-md,var(--logo-size,28px))); height:var(--logo-size-lg,var(--logo-size-md,var(--logo-size,28px))); } }
+@media (min-width:1280px){ .bhq-logo{ width:var(--logo-size-xl,var(--logo-size-lg,var(--logo-size,28px))); height:var(--logo-size-xl,var(--logo-size-lg,var(--logo-size,28px))); } }
+
+/* ===== Portals (single source of truth) ===================== */
+/* Hosts never eat clicks; children are interactive; flyout > overlay */
+#bhq-overlay-root,
+#bhq-flyout-root {
+  position: fixed;
+  inset: 0;
+  pointer-events: none !important;
 }
+
+#bhq-overlay-root { z-index: 2147483600; }  /* drawers, modals, backdrops */
+#bhq-flyout-root  { z-index: 2147483647; }  /* menus, tooltips, selects   */
+
+#bhq-overlay-root > *,
+#bhq-flyout-root  > * { pointer-events: auto !important; }
+
+#bhq-overlay-root:empty,
+#bhq-flyout-root:empty { display: contents; }
+
+#bhq-overlay-root[aria-hidden="true"],
+#bhq-flyout-root[aria-hidden="true"] { pointer-events: none !important; }

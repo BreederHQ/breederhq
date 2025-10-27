@@ -1,6 +1,6 @@
 import * as React from "react";
 import { createPortal } from "react-dom";
-import { getOverlayRoot } from "../../overlay";
+import { getOverlayRoot, getFlyoutRoot } from "../../overlay";
 
 /* -------------------------------------------------------------------------- */
 /* Types                                                                      */
@@ -34,15 +34,15 @@ type Props = {
 /* -------------------------------------------------------------------------- */
 
 const DIAL_BY_ISO_DEFAULT: Record<string, string> = {
-  US:"1", CA:"1", MX:"52", GB:"44", IE:"353", FR:"33", DE:"49", ES:"34", IT:"39",
-  AU:"61", NZ:"64", BR:"55", AR:"54", CL:"56", CO:"57", PE:"51", VE:"58",
-  CN:"86", HK:"852", JP:"81", KR:"82", IN:"91", PK:"92", BD:"880",
-  SA:"966", AE:"971", IL:"972", TR:"90", EG:"20", ZA:"27", NG:"234", KE:"254",
-  NO:"47", SE:"46", FI:"358", DK:"45", NL:"31", BE:"32", LU:"352", CH:"41",
-  AT:"43", PL:"48", CZ:"420", SK:"421", HU:"36", GR:"30", PT:"351",
-  RO:"40", BG:"359", HR:"385", SI:"386", RS:"381", UA:"380",
-  SG:"65", TH:"66", MY:"60", PH:"63", ID:"62", VN:"84",
-  RU:"7",  KZ:"7",
+  US: "1", CA: "1", MX: "52", GB: "44", IE: "353", FR: "33", DE: "49", ES: "34", IT: "39",
+  AU: "61", NZ: "64", BR: "55", AR: "54", CL: "56", CO: "57", PE: "51", VE: "58",
+  CN: "86", HK: "852", JP: "81", KR: "82", IN: "91", PK: "92", BD: "880",
+  SA: "966", AE: "971", IL: "972", TR: "90", EG: "20", ZA: "27", NG: "234", KE: "254",
+  NO: "47", SE: "46", FI: "358", DK: "45", NL: "31", BE: "32", LU: "352", CH: "41",
+  AT: "43", PL: "48", CZ: "420", SK: "421", HU: "36", GR: "30", PT: "351",
+  RO: "40", BG: "359", HR: "385", SI: "386", RS: "381", UA: "380",
+  SG: "65", TH: "66", MY: "60", PH: "63", ID: "62", VN: "84",
+  RU: "7", KZ: "7",
 };
 
 const NANP = "1";
@@ -59,35 +59,35 @@ const e164Value = (cc: string, rest: string) => {
 const formatLocal = (rest: string, cc: string) => {
   const d = onlyDigits(rest);
   if (cc === NANP) {
-    const a = d.slice(0,3), b = d.slice(3,6), c = d.slice(6,10);
+    const a = d.slice(0, 3), b = d.slice(3, 6), c = d.slice(6, 10);
     if (d.length <= 3) return a;
     if (d.length <= 6) return `(${a}) ${b}`;
     return `(${a}) ${b}-${c}`;
   }
   const groups: string[] = [];
-  for (let i=0;i<d.length;) {
+  for (let i = 0; i < d.length;) {
     const take = i === 0 ? 3 : 4;
-    groups.push(d.slice(i, i+take));
+    groups.push(d.slice(i, i + take));
     i += take;
   }
   return groups.filter(Boolean).join(" ");
 };
 
-const parseIncoming = (val: ValueProp | undefined, dialMap: Record<string,string>) => {
+const parseIncoming = (val: ValueProp | undefined, dialMap: Record<string, string>) => {
   if (!val) return { mode: "string" as const, cc: "", rest: "", iso: "US" };
   if (typeof val === "string") {
     const s = val.trim();
     if (!s) return { mode: "string" as const, cc: "", rest: "", iso: "US" };
     if (s.startsWith("+")) {
       const digits = s.slice(1).replace(/\D/g, "");
-      const known = Array.from(new Set(Object.values(dialMap))).sort((a,b)=>b.length-a.length);
+      const known = Array.from(new Set(Object.values(dialMap))).sort((a, b) => b.length - a.length);
       for (const dial of known) {
         if (digits.startsWith(dial)) {
           const iso = Object.keys(dialMap).find(k => dialMap[k] === dial) || "US";
           return { mode: "string" as const, cc: dial, rest: digits.slice(dial.length), iso };
         }
       }
-      return { mode: "string" as const, cc: digits.slice(0,1), rest: digits.slice(1), iso: "US" };
+      return { mode: "string" as const, cc: digits.slice(0, 1), rest: digits.slice(1), iso: "US" };
     }
     const m = s.match(/^([A-Za-z]{2})\s*(.*)$/);
     if (m) {
@@ -112,22 +112,22 @@ const buildPhoneValue = (iso: string, cc: string, rest: string): PhoneValue => (
   e164: e164Value(cc || NANP, rest) || null,
 });
 
-function findDialFromCountryName(name?: string, list?: Ctry[], dialMap?: Record<string,string>) {
+function findDialFromCountryName(name?: string, list?: Ctry[], dialMap?: Record<string, string>) {
   if (!name || !list?.length) return undefined;
   const hit = list.find(c => c.name.toUpperCase() === name.toUpperCase());
   return hit ? (dialMap?.[hit.code.toUpperCase()] ?? DIAL_BY_ISO_DEFAULT[hit.code.toUpperCase()]) : undefined;
 }
 
-function useDefaultCountries(fallback: Ctry[] | undefined, dialMap: Record<string,string>): Ctry[] {
+function useDefaultCountries(fallback: Ctry[] | undefined, dialMap: Record<string, string>): Ctry[] {
   return React.useMemo(() => {
     if (fallback && fallback.length) return fallback;
     let dn: Intl.DisplayNames | null = null;
     try {
       dn = typeof Intl !== "undefined" && (Intl as any).DisplayNames
         ? new (Intl as any).DisplayNames(
-            [typeof navigator !== "undefined" ? navigator.language : "en"],
-            { type: "region" }
-          )
+          [typeof navigator !== "undefined" ? navigator.language : "en"],
+          { type: "region" }
+        )
         : null;
     } catch { dn = null; }
 
@@ -306,7 +306,7 @@ export function IntlPhoneField({
 
     if (s.startsWith("+")) {
       const digits = s.slice(1).replace(/\D/g, "");
-      const known = Array.from(new Set(Object.values(DIAL))).sort((a,b)=>b.length-a.length);
+      const known = Array.from(new Set(Object.values(DIAL))).sort((a, b) => b.length - a.length);
       for (const dial of known) {
         if (digits.startsWith(dial)) {
           const iso = Object.keys(DIAL).find(k => DIAL[k] === dial) || selectedIso;
@@ -330,7 +330,7 @@ export function IntlPhoneField({
         position: "fixed",
         top: pos.top,
         left: pos.left,
-        zIndex: 2147483645,
+        zIndex: 2147483647,
         pointerEvents: "auto",
       }}
     >
@@ -372,11 +372,11 @@ export function IntlPhoneField({
       </div>
     </div>,
     (() => {
-      // Ensure HTMLElement for TS + provide a safe fallback for SSR/edge cases
+      // Prefer flyout root (highest z), then overlay, then body.
       const mount: HTMLElement =
+        (getFlyoutRoot() as HTMLElement | null) ??
         (getOverlayRoot() as HTMLElement | null) ??
         (typeof document !== "undefined" ? document.body : (null as unknown as HTMLElement));
-      // Now it's definitely an HTMLElement, so .style is valid
       if (mount) mount.style.pointerEvents = "auto";
       return mount;
     })()
