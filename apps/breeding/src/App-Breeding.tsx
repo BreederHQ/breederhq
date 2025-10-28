@@ -1726,7 +1726,10 @@ function PlanDetailsView(props: {
       {/* mark chrome for outside click guard */}
       <div className="relative" data-bhq-details>
         {/* Tab row */}
-        <div className="mt-2 mb-3 flex items-center justify-between border-b border-hairline">
+        <div
+          className="mt-2 mb-3 flex items-end justify-between border-b border-hairline"
+          data-bhq-tabs
+        >
           <div className="flex gap-2">
             {[
               { key: "overview", label: "Overview" },
@@ -1739,17 +1742,15 @@ function PlanDetailsView(props: {
                   key={t.key}
                   type="button"
                   onClick={() => setActiveTab(t.key)}
-                  className={["relative h-8 px-3 rounded-t-md text-sm hover:bg-white/5 -mb-px", active ? "bg-white/5" : ""].join(" ")}
-                  style={active ? { borderColor: "hsl(var(--brand-orange))" } : undefined}
+                  className="relative h-8 px-3 rounded-t-md text-sm hover:bg-white/5"
+                  style={{
+                    marginBottom: '-1px',
+                    borderBottomWidth: 2,
+                    borderBottomStyle: 'solid',
+                    borderBottomColor: active ? 'hsl(var(--brand-orange))' : 'transparent',
+                  }}
                 >
                   {t.label}
-                  {active && (
-                    <span
-                      aria-hidden
-                      className="pointer-events-none absolute left-0 right-0 bottom-0 h-[2px] z-10"
-                      style={{ background: "hsl(var(--brand-orange))" }}
-                    />
-                  )}
                 </button>
               );
             })}
