@@ -2,9 +2,10 @@
   "name": "breederhq",
   "version": "0.1.0",
   "private": true,
-  "packageManager": "npm@10.9.3",
+  "packageManager": "npm@10.8.2",
   "engines": {
-    "node": ">=22 <23"
+    "node": ">=20.19.0 <21",
+    "npm": ">=10.8.0 <11"
   },
   "workspaces": [
     "apps/*",
@@ -16,7 +17,7 @@
     "dev:animals": "npm -C ./apps/animals run dev",
     "dev:breeding": "npm -C ./apps/breeding run dev",
     "dev:offspring": "npm -C ./apps/offspring run dev",
-    "dev:all": "cross-env npm_config_workspaces=false npx concurrently \"npm -C ./apps/platform run dev\" \"npm -C ./apps/contacts run dev\" \"npm -C ./apps/animals run dev\" \"npm -C ./apps/breeding run dev\" \"npm -C ./apps/offspring run dev\"",
+    "dev:all": "npx concurrently \"npm -C ./apps/platform run dev\" \"npm -C ./apps/contacts run dev\" \"npm -C ./apps/animals run dev\" \"npm -C ./apps/breeding run dev\" \"npm -C ./apps/offspring run dev\"",
     "dev": "npm run dev:all",
     "build": "tsup src/index.ts --dts --format esm,cjs --sourcemap --clean",
     "lint": "eslint . --ext .ts,.tsx --max-warnings=0",
@@ -35,7 +36,6 @@
     "@types/react-dom": "^19.1.9",
     "autoprefixer": "^10.4.21",
     "concurrently": "^8.2.2",
-    "cross-env": "^10.0.0",
     "eslint": "^9.13.0",
     "eslint-config-prettier": "^9.1.0",
     "eslint-plugin-react": "^7.34.4",

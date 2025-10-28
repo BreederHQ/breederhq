@@ -1,13 +1,12 @@
-// packages/ui/src/utils/types.ts
 export type SpeciesUI = "Dog" | "Cat" | "Horse";
 export type SpeciesAPI = "DOG" | "CAT" | "HORSE";
 
 export type BreedHit = {
-  id?: number;                      
+  id: number | string;        
   name: string;
-  species: SpeciesUI;               
+  species: SpeciesUI;
   source: "canonical" | "custom";
-  canonicalBreedId?: number | null; 
+  canonicalBreedId?: number | null;
   registries?: Array<{
     code: string;
     status?: string | null;

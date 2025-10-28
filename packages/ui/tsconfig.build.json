@@ -1,11 +1,12 @@
 {
-  "extends": "./tsconfig.json",
   "compilerOptions": {
-    "composite": false,
-    "declaration": false,
-    "emitDeclarationOnly": false,
-    "skipLibCheck": true,
-    "types": ["vite/client", "node"]   // ⬅️ add "node"
+    "target": "ES2022",
+    "module": "ESNext",
+    "lib": ["ES2022", "DOM"],
+    "moduleResolution": "Bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "skipLibCheck": true
   },
-  "include": ["src", "src/**/*.ts", "src/**/*.tsx"]
+  "include": ["src/**/*"]
 }

@@ -73,6 +73,20 @@ type UseBreedSearchArgs = {
   debounceMs?: number;
 };
 
+/** Minimal shape of items returned by /breeds/search and /breeds/custom */
+type ApiBreed = {
+  id: number | string;
+  name: string;
+  species?: string;
+  source?: "canonical" | "custom" | string;
+  canonicalBreedId?: number | null;
+  canonical_breed_id?: number | null;
+  custom?: boolean;
+  customBreedId?: number | null;
+  custom_breed_id?: number | null;
+  registries?: any[];
+};
+
 export function useBreedSearch({
   species,
   q = "",
@@ -117,15 +131,18 @@ export function useBreedSearch({
           }),
         ]);
 
-        const parse = async (r: Response) => {
-          if (!r.ok || r.status === 204) return [] as any[];
+        const parse = async (r: Response): Promise<any[]> => {
+          if (!r.ok || r.status === 204) return [];
           const t = await r.text();
-          if (!t) return [] as any[];
+          if (!t) return [];
           const d = JSON.parse(t);
           return Array.isArray(d?.items) ? d.items : Array.isArray(d) ? d : [];
         };
 
-        const [rawSearch, rawCustom] = await Promise.all([parse(searchRes), parse(customRes)]);
+        const [rawSearch, rawCustom] = (await Promise.all([
+          parse(searchRes),
+          parse(customRes),
+        ])) as [ApiBreed[], ApiBreed[]];
 
         // Build “custom by name” set from API + local overrides
         const customKeys = new Set<string>();
@@ -139,24 +156,29 @@ export function useBreedSearch({
         }
 
         // Map search results; force custom if in customKeys
-        const mappedFromSearch: (BreedHit & { registries?: any[]; _isCustom?: boolean })[] = rawSearch.map((it) => {
-          const k = keyOf(it?.name ?? "");
-          const forceCustom = k && customKeys.has(k);
-          const isCustomApi =
-            it?.source === "custom" || it?.custom === true || it?.customBreedId != null || it?.custom_breed_id != null;
+        const mappedFromSearch: (BreedHit & { registries?: any[]; _isCustom?: boolean })[] =
+          rawSearch.map((it: ApiBreed) => {
+            const k = keyOf(it?.name ?? "");
+            const forceCustom = k && customKeys.has(k);
+            const isCustomApi =
+              (it as any)?.source === "custom" ||
+              (it as any)?.custom === true ||
+              (it as any)?.customBreedId != null ||
+              (it as any)?.custom_breed_id != null;
 
-          const isCustom = forceCustom || isCustomApi;
+            const isCustom = !!(forceCustom || isCustomApi);
 
-          return {
-            id: it.id,
-            name: it.name,
-            species: toUiSpecies(it.species || species),
-            source: (isCustom ? "custom" : (it.source || "canonical")) as "canonical" | "custom",
-            canonicalBreedId: it.canonicalBreedId ?? it.canonical_breed_id ?? null,
-            registries: isCustom ? [] : (Array.isArray(it.registries) ? it.registries : []),
-            _isCustom: isCustom ? true : undefined,
-          };
-        });
+            return {
+              id: (it as any).id,
+              name: (it as any).name,
+              species: toUiSpecies((it as any).species || species),
+              source: (isCustom ? "custom" : ((it as any).source || "canonical")) as "canonical" | "custom",
+              canonicalBreedId:
+                (it as any).canonicalBreedId ?? (it as any).canonical_breed_id ?? null,
+              registries: isCustom ? [] : (Array.isArray((it as any).registries) ? (it as any).registries : []),
+              _isCustom: isCustom ? true : undefined,
+            };
+          });
 
         // Ensure customs exist even if search omitted them
         const byName = new Map<string, BreedHit & { registries?: any[]; _isCustom?: boolean }>();
@@ -166,9 +188,9 @@ export function useBreedSearch({
           if (!k) continue;
           const existing = byName.get(k);
           const baseHit = {
-            id: it.id,
-            name: it.name,
-            species: toUiSpecies(it.species || species),
+            id: (it as any).id,
+            name: (it as any).name,
+            species: toUiSpecies((it as any).species || species),
             source: "custom" as const,
             canonicalBreedId: null,
             registries: [] as any[],

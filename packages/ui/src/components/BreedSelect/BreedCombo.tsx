@@ -1,9 +1,19 @@
 import * as React from "react";
-import { BreedSelect, BreedHit } from "@bhq/ui";
+import type { BreedHit } from "../../utils";
+import { BreedSelect } from "../../index";
+
+type SpeciesApi = "DOG" | "CAT" | "HORSE";
+type SpeciesUI = "Dog" | "Cat" | "Horse";
+
+function toUiSpecies(s: SpeciesApi | SpeciesUI): SpeciesUI {
+  const up = String(s).toUpperCase();
+  return up === "CAT" ? "Cat" : up === "HORSE" ? "Horse" : up === "DOG" ? "Dog" : (s as SpeciesUI);
+}
 
 export type BreedComboProps = {
   orgId?: number | null;
-  species: "Dog" | "Cat" | "Horse";
+  /** Accept either API form or UI form */
+  species: SpeciesApi | SpeciesUI;
   value: BreedHit | null;
   onChange: (hit: BreedHit | null) => void;
   api?: {
@@ -11,7 +21,8 @@ export type BreedComboProps = {
       listCanonical: (opts: { species: string; orgId?: number; limit?: number }) => Promise<BreedHit[]>;
     };
   };
-  limit?: number; // kept for API compatibility, not used here
+  /** kept for API compatibility, not used here */
+  limit?: number;
 };
 
 export function BreedCombo({
@@ -25,7 +36,7 @@ export function BreedCombo({
       <div className="flex-1">
         <BreedSelect
           orgId={orgId ?? undefined}
-          species={species}
+          species={toUiSpecies(species)}
           value={value}
           onChange={onChange}
           placeholder="Search breed…"
@@ -36,4 +47,3 @@ export function BreedCombo({
 }
 
 export default BreedCombo;
-export type { BreedComboProps };

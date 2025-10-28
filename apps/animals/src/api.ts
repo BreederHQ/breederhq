@@ -1,4 +1,6 @@
 import { readTenantIdFast, resolveTenantId } from "@bhq/ui/utils/tenant";
+import type { BreedHit } from "@bhq/ui";
+
 
 type HeadersMap = Record<string, string>;
 
@@ -237,15 +239,7 @@ export function makeApi(
   type UiSpecies = "Dog" | "Cat" | "Horse";
   const toUiSpecies = (s: Species): UiSpecies => (s === "DOG" ? "Dog" : s === "CAT" ? "Cat" : "Horse");
 
-  type BreedHit = {
-    id?: number;
-    name: string;
-    species: UiSpecies;
-    source: "canonical" | "custom";
-    canonicalBreedId?: number | null;
-  };
-
-  const breeds = {
+    const breeds = {
     async species(): Promise<Species[]> {
       const data = await reqWithExtra<{ items: Species[] }>(`/species`);
       return Array.isArray(data?.items) ? data.items : [];

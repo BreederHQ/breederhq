@@ -40,7 +40,6 @@ import {
   type ExpectedDates as PlannerExpected,
 } from "@bhq/ui/hooks";
 
-
 const MODAL_Z = 2147485000;
 const modalRoot = typeof document !== "undefined" ? document.body : null;
 
@@ -119,6 +118,23 @@ const COLUMNS: Array<{ key: keyof PlanRow & string; label: string; default?: boo
 const STORAGE_KEY = "bhq_breeding_cols_v2";
 
 /* ─────────────────────── Helpers ─────────────────────── */
+function __bhq_findDetailsDrawerOnClose(): (() => void) | null {
+  try {
+    const root = document.querySelector("[data-bhq-details]") || document.body;
+    const key = Object.keys(root as any).find((k) => k.startsWith("__reactFiber$"));
+    let f: any = key ? (root as any)[key] : null;
+    while (f) {
+      const t = f.type || f.elementType || {};
+      const name = t.displayName || t.name || "";
+      if (name === "DetailsDrawer") {
+        const fn = f.memoizedProps?.onClose;
+        return typeof fn === "function" ? fn : null;
+      }
+      f = f.return;
+    }
+  } catch { }
+  return null;
+}
 
 async function safeGetCreatingOrg(api: any) {
   try {
@@ -131,7 +147,6 @@ async function safeGetCreatingOrg(api: any) {
   } catch { }
   return null;
 }
-
 
 function DisplayValue({ value }: { value?: string | null }) {
   return (
@@ -192,6 +207,42 @@ function planToRow(p: any): PlanRow {
   };
 }
 
+type Status =
+  | "PLANNING"
+  | "COMMITTED"
+  | "BRED"
+  | "WHELPED"
+  | "WEANED"
+  | "HOMING_STARTED"
+  | "COMPLETE";
+
+function deriveBreedingStatus(p: {
+  name?: string | null;
+  species?: string | null;
+  damId?: number | null;
+  sireId?: number | null;
+  lockedCycleStart?: string | null;
+  committedAt?: string | null;
+  breedDateActual?: string | null;
+  birthDateActual?: string | null;
+  weanedDateActual?: string | null;
+  goHomeDateActual?: string | null;
+  lastGoHomeDateActual?: string | null;
+  completedDateActual?: string | null;
+}): Status {
+  if (p.completedDateActual?.trim()) return "COMPLETE";
+  if ((p.lastGoHomeDateActual ?? p.goHomeDateActual)?.trim()) return "HOMING_STARTED";
+  if (p.weanedDateActual?.trim()) return "WEANED";
+  if (p.birthDateActual?.trim()) return "WHELPED";
+  if (p.breedDateActual?.trim()) return "BRED";
+
+  const hasBasics = Boolean((p.name ?? "").trim() && (p.species ?? "").trim() && p.damId != null);
+  const hasCommitPrereqs = hasBasics && p.sireId != null && (p.lockedCycleStart ?? "").trim();
+
+  if (hasCommitPrereqs && (p.committedAt ?? "").trim()) return "COMMITTED";
+  return "PLANNING";
+}
+
 /** Minimal animal for Dam/Sire search */
 type AnimalLite = {
   id: number;
@@ -230,7 +281,7 @@ async function fetchAnimals(opts: {
   const qs = new URLSearchParams();
   if (opts.q) qs.set("q", opts.q);
   if (opts.species) qs.set("species", opts.species);
-  if (opts.sexHint) qs.set("sex", opts.sexHint);
+  if (opts.sexHint) qs.set("sexHint", opts.sexHint);
   qs.set("limit", String(opts.limit ?? 300));
 
   const res = await fetch(`${opts.baseUrl.replace(/\/+$/, "")}/animals?${qs}`, {
@@ -257,13 +308,19 @@ async function fetchAnimals(opts: {
 /* ───────────────────────── Confirm Modal (overlay root) ───────────────────────── */
 
 function confirmModal(message: string): Promise<boolean> {
-  const rootEl = getOverlayRoot();          // body-level mount point
+  const rootEl = getOverlayRoot();
   const host = document.createElement("div");
   host.style.pointerEvents = "auto";
   rootEl.appendChild(host);
 
   return new Promise((resolve) => {
-    const close = (ok: boolean) => { resolve(ok); try { r.unmount(); } catch { } host.remove(); };
+    const close = (ok: boolean) => {
+      resolve(ok);
+      try {
+        r.unmount();
+      } catch { }
+      host.remove();
+    };
     const r = createRoot(host);
     r.render(
       <div className="fixed inset-0 z-[2147483647]">
@@ -273,7 +330,9 @@ function confirmModal(message: string): Promise<boolean> {
             <div className="text-base font-semibold mb-2">Change species?</div>
             <div className="text-sm text-secondary mb-4">{message}</div>
             <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => close(false)}>Cancel</Button>
+              <Button variant="outline" onClick={() => close(false)}>
+                Cancel
+              </Button>
               <Button onClick={() => close(true)}>Yes, reset</Button>
             </div>
           </div>
@@ -296,9 +355,14 @@ export default function AppBreeding() {
     if (tenantId != null) return;
     let cancelled = false;
     (async () => {
-      try { const t = await resolveTenantId(); if (!cancelled) setTenantId(t); } catch { }
+      try {
+        const t = await resolveTenantId();
+        if (!cancelled) setTenantId(t);
+      } catch { }
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [tenantId, resolveTenantId]);
 
   const api = React.useMemo(() => {
@@ -306,7 +370,7 @@ export default function AppBreeding() {
     return makeBreedingApi({ baseUrl: "/api/v1", tenantId, withCsrf: true });
   }, [tenantId]);
 
-  // Canonical breed list API (like New Animal)
+  // Canonical breed list API
   const breedBrowseApi = React.useMemo(
     () => ({
       breeds: {
@@ -326,21 +390,46 @@ export default function AppBreeding() {
       if (!alive) return;
       if (org?.id != null) setOrgIdForBreeds(Number(org.id));
     })();
-    return () => { alive = false; };
+    return () => {
+      alive = false;
+    };
   }, [api]);
 
-  /* Search and filters like Contacts */
+  /* Search and filters */
   const Q_KEY = "bhq_breeding_q_v2";
   const FILTERS_KEY = "bhq_breeding_filters_v2";
 
-  const [q, setQ] = React.useState(() => { try { return localStorage.getItem(Q_KEY) || ""; } catch { return ""; } });
+  const [q, setQ] = React.useState(() => {
+    try {
+      return localStorage.getItem(Q_KEY) || "";
+    } catch {
+      return "";
+    }
+  });
   const [filtersOpen, setFiltersOpen] = React.useState(false);
-  const [filters, setFilters] = React.useState<Record<string, string>>(() => { try { return JSON.parse(localStorage.getItem(FILTERS_KEY) || "{}"); } catch { return {}; } });
-  React.useEffect(() => { try { localStorage.setItem(Q_KEY, q); } catch { } }, [q]);
-  React.useEffect(() => { try { localStorage.setItem(FILTERS_KEY, JSON.stringify(filters || {})); } catch { } }, [filters]);
+  const [filters, setFilters] = React.useState<Record<string, string>>(() => {
+    try {
+      return JSON.parse(localStorage.getItem(FILTERS_KEY) || "{}");
+    } catch {
+      return {};
+    }
+  });
+  React.useEffect(() => {
+    try {
+      localStorage.setItem(Q_KEY, q);
+    } catch { }
+  }, [q]);
+  React.useEffect(() => {
+    try {
+      localStorage.setItem(FILTERS_KEY, JSON.stringify(filters || {}));
+    } catch { }
+  }, [filters]);
 
   const [qDebounced, setQDebounced] = React.useState(q);
-  React.useEffect(() => { const t = setTimeout(() => setQDebounced(q.trim()), 300); return () => clearTimeout(t); }, [q]);
+  React.useEffect(() => {
+    const t = setTimeout(() => setQDebounced(q.trim()), 300);
+    return () => clearTimeout(t);
+  }, [q]);
 
   /* Data */
   const [rows, setRows] = React.useState<PlanRow[]>([]);
@@ -350,7 +439,10 @@ export default function AppBreeding() {
   React.useEffect(() => {
     let cancelled = false;
     (async () => {
-      if (!api) { setLoading(true); return; }
+      if (!api) {
+        setLoading(true);
+        return;
+      }
       setLoading(true);
       setError(null);
       try {
@@ -363,66 +455,89 @@ export default function AppBreeding() {
         if (!cancelled) setLoading(false);
       }
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [api, qDebounced]);
 
   /* Columns */
   const { map, toggle, setAll, visible } = hooks.useColumns(COLUMNS, STORAGE_KEY);
   const visibleSafe = Array.isArray(visible) && visible.length ? visible : COLUMNS;
 
-  /* Filter schema with date detection like Contacts */
+  /* Filter schema */
   const FILTER_SCHEMA = React.useMemo(() => {
     const dateKeys = new Set([
-      "expectedDue", "expectedGoHome", "breedDateActual", "birthDateActual", "weanedDateActual",
-      "goHomeDateActual", "lastGoHomeDateActual", "lockedCycleStart", "lockedOvulationDate", "lockedDueDate", "lockedGoHomeDate",
+      "expectedDue",
+      "expectedGoHome",
+      "breedDateActual",
+      "birthDateActual",
+      "weanedDateActual",
+      "goHomeDateActual",
+      "lastGoHomeDateActual",
+      "lockedCycleStart",
+      "lockedOvulationDate",
+      "lockedDueDate",
+      "lockedGoHomeDate",
     ] as const);
-    return visibleSafe.map(col => {
-      if (dateKeys.has(col.key as any)) return ({ key: col.key, label: col.label, editor: "date" as const });
+    return visibleSafe.map((col) => {
+      if (dateKeys.has(col.key as any)) return { key: col.key, label: col.label, editor: "date" as const };
       if (col.key === "status") {
-        return ({
+        return {
           key: "status",
           label: "Status",
           editor: "select" as const,
           options: [
             { label: "Planning", value: "PLANNING" },
-            { label: "Cycle Expected", value: "CYCLE_EXPECTED" },
-            { label: "Hormone Testing", value: "HORMONE_TESTING" },
+            { label: "Committed", value: "COMMITTED" },
             { label: "Bred", value: "BRED" },
-            { label: "Pregnant", value: "PREGNANT" },
             { label: "Whelped", value: "WHELPED" },
             { label: "Weaned", value: "WEANED" },
+            { label: "Homing Started", value: "HOMING_STARTED" },
             { label: "Complete", value: "COMPLETE" },
             { label: "Canceled", value: "CANCELED" },
           ],
-        });
+        };
       }
       if (col.key === "species") {
-        return ({
+        return {
           key: "species",
           label: "Species",
           editor: "select" as const,
-          options: [{ label: "Dog", value: "Dog" }, { label: "Cat", value: "Cat" }, { label: "Horse", value: "Horse" }],
-        });
+          options: [
+            { label: "Dog", value: "Dog" },
+            { label: "Cat", value: "Cat" },
+            { label: "Horse", value: "Horse" },
+          ],
+        };
       }
-      return ({ key: col.key, label: col.label, editor: "text" as const });
+      return { key: col.key, label: col.label, editor: "text" as const };
     });
   }, [visibleSafe]);
 
   /* Sorting */
   const [sorts, setSorts] = React.useState<Array<{ key: string; dir: "asc" | "desc" }>>([]);
   const onToggleSort = (key: string) => {
-    setSorts(prev => {
-      const found = prev.find(s => s.key === key);
+    setSorts((prev) => {
+      const found = prev.find((s) => s.key === key);
       if (!found) return [{ key, dir: "asc" }];
-      if (found.dir === "asc") return prev.map(s => (s.key === key ? { ...s, dir: "desc" } : s));
-      return prev.filter(s => s.key !== key);
+      if (found.dir === "asc") return prev.map((s) => (s.key === key ? { ...s, dir: "desc" } : s));
+      return prev.filter((s) => s.key !== key);
     });
   };
 
-  /* Client search and filter composition */
+  /* Client search+filters */
   const DATE_KEYS = new Set([
-    "expectedDue", "expectedGoHome", "breedDateActual", "birthDateActual", "weanedDateActual",
-    "goHomeDateActual", "lastGoHomeDateActual", "lockedCycleStart", "lockedOvulationDate", "lockedDueDate", "lockedGoHomeDate",
+    "expectedDue",
+    "expectedGoHome",
+    "breedDateActual",
+    "birthDateActual",
+    "weanedDateActual",
+    "goHomeDateActual",
+    "lastGoHomeDateActual",
+    "lockedCycleStart",
+    "lockedOvulationDate",
+    "lockedDueDate",
+    "lockedGoHomeDate",
   ] as const);
 
   const displayRows = React.useMemo(() => {
@@ -433,18 +548,38 @@ export default function AppBreeding() {
 
     if (qDebounced) {
       const ql = qDebounced.toLowerCase();
-      data = data.filter(r => {
+      data = data.filter((r) => {
         const hay = [
-          r.name, r.nickname, r.breedText, r.status, r.damName, r.sireName, r.species, r.orgName, r.code,
-          r.expectedDue, r.expectedGoHome, r.birthDateActual, r.weanedDateActual, r.breedDateActual, r.goHomeDateActual, r.lastGoHomeDateActual,
-          r.lockedCycleStart, r.lockedOvulationDate, r.lockedDueDate, r.lockedGoHomeDate,
-        ].filter(Boolean).join(" ").toLowerCase();
+          r.name,
+          r.nickname,
+          r.breedText,
+          r.status,
+          r.damName,
+          r.sireName,
+          r.species,
+          r.orgName,
+          r.code,
+          r.expectedDue,
+          r.expectedGoHome,
+          r.birthDateActual,
+          r.weanedDateActual,
+          r.breedDateActual,
+          r.goHomeDateActual,
+          r.lastGoHomeDateActual,
+          r.lockedCycleStart,
+          r.lockedOvulationDate,
+          r.lockedDueDate,
+          r.lockedGoHomeDate,
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
         return hay.includes(ql);
       });
     }
 
     if (active.length) {
-      data = data.filter(r =>
+      data = data.filter((r) =>
         active.every(([key, val]) => {
           const raw = (r as any)[key];
           const isDate = DATE_KEYS.has(key as any);
@@ -491,7 +626,6 @@ export default function AppBreeding() {
   const [onCustomBreedCreated, setOnCustomBreedCreated] =
     React.useState<((c: { id: number; name: string; species: "DOG" | "CAT" | "HORSE" }) => void) | null>(null);
 
-
   const [newName, setNewName] = React.useState("");
   const [newSpeciesUi, setNewSpeciesUi] = React.useState<SpeciesUi | "">("");
   const [newCode, setNewCode] = React.useState("");
@@ -509,12 +643,13 @@ export default function AppBreeding() {
 
   const speciesWire = toWireSpecies(newSpeciesUi);
   const speciesSelected = !!speciesWire;
+  const createBreedKey = `${newSpeciesUi || "Dog"}|${!!newBreed}`;
 
   const filterAnimals = React.useCallback(
     (items: AnimalLite[], sex: "FEMALE" | "MALE") => {
       if (!speciesWire) return [];
       return items
-        .filter(a => a.sex === sex && a.species === speciesWire)
+        .filter((a) => a.sex === sex && a.species === speciesWire)
         .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base", numeric: true }))
         .slice(0, 300);
     },
@@ -524,7 +659,9 @@ export default function AppBreeding() {
   React.useEffect(() => {
     const prevOverflow = document.body.style.overflow;
     if (createOpen) document.body.style.overflow = "hidden";
-    return () => { document.body.style.overflow = prevOverflow || ""; };
+    return () => {
+      document.body.style.overflow = prevOverflow || "";
+    };
   }, [createOpen]);
 
   React.useEffect(() => {
@@ -543,13 +680,17 @@ export default function AppBreeding() {
       if (!cancelled) setDamOptions(filterAnimals(all, "FEMALE"));
     };
     const t = setTimeout(run, 120);
-    return () => { cancelled = true; clearTimeout(t); };
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
   }, [api, tenantId, speciesSelected, speciesWire, damFocused, damQuery, filterAnimals]);
 
   React.useEffect(() => {
     if (!api || tenantId == null || !speciesSelected || !sireFocused) return;
     let cancelled = false;
     const baseUrl = "/api/v1";
+
     const run = async () => {
       const all = await fetchAnimals({
         baseUrl,
@@ -561,15 +702,22 @@ export default function AppBreeding() {
       });
       if (!cancelled) setSireOptions(filterAnimals(all, "MALE"));
     };
+
     const t = setTimeout(run, 120);
-    return () => { cancelled = true; clearTimeout(t); };
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
   }, [api, tenantId, speciesSelected, speciesWire, sireFocused, sireQuery, filterAnimals]);
 
   const canCreate = Boolean(newName.trim() && newSpeciesUi && damId);
 
   const doCreatePlan = async () => {
     if (!api) return;
-    if (!canCreate) { setCreateErr("Enter name, species, and select a Dam."); return; }
+    if (!canCreate) {
+      setCreateErr("Enter name, species, and select a Dam.");
+      return;
+    }
     try {
       setCreateWorking(true);
       setCreateErr(null);
@@ -585,12 +733,18 @@ export default function AppBreeding() {
 
       const res = await api.createPlan(payload);
       const plan = (res as any)?.plan ?? res;
-      setRows(prev => [planToRow(plan), ...prev]);
+      setRows((prev) => [planToRow(plan), ...prev]);
 
-      setNewName(""); setNewSpeciesUi(""); setNewCode(""); setNewBreed(null);
-      setDamQuery(""); setSireQuery("");
-      setDamOptions([]); setSireOptions([]);
-      setDamId(null); setSireId(null);
+      setNewName("");
+      setNewSpeciesUi("");
+      setNewCode("");
+      setNewBreed(null);
+      setDamQuery("");
+      setSireQuery("");
+      setDamOptions([]);
+      setSireOptions([]);
+      setDamId(null);
+      setSireId(null);
       setCreateOpen(false);
     } catch (e: any) {
       setCreateErr(e?.payload?.error || e?.message || "Failed to create breeding plan");
@@ -603,30 +757,36 @@ export default function AppBreeding() {
   const [quickAddOpen, setQuickAddOpen] = React.useState(false);
   const [quickAddPlanId, setQuickAddPlanId] = React.useState<ID | null>(null);
 
-  const createEvent = React.useCallback(async (input: { planId: number; type: string; date: string; note?: string }) => {
-    if (!api) return;
-    switch (input.type) {
-      case "HORMONE_TEST":
-        await api.createTest(input.planId, { kind: "PROGESTERONE", date: input.date, note: input.note });
-        break;
-      case "ATTEMPT":
-        await api.createAttempt(input.planId, { method: "NATURAL", date: input.date, note: input.note });
-        break;
-      case "PREG_CHECK":
-        await api.createPregCheck(input.planId, { method: "ULTRASOUND", date: input.date, result: "POSITIVE", note: input.note });
-        break;
-      case "WHELPED":
-        await api.createEvent(input.planId, { type: "WHELPED", date: input.date, note: input.note });
-        break;
-      case "WEANED":
-        await api.createEvent(input.planId, { type: "WEANED", date: input.date, note: input.note });
-        break;
-    }
-    const fresh = await api.getPlan(input.planId, "parents,org");
-    setRows(prev => prev.map(r => (Number(r.id) === input.planId ? planToRow(fresh) : r)));
-  }, [api]);
+  const createEvent = React.useCallback(
+    async (input: { planId: number; type: string; date: string; note?: string }) => {
+      if (!api) return;
+      switch (input.type) {
+        case "HORMONE_TEST":
+          await api.createTest(input.planId, { kind: "PROGESTERONE", date: input.date, note: input.note });
+          break;
+        case "ATTEMPT":
+          await api.createAttempt(input.planId, { method: "NATURAL", date: input.date, note: input.note });
+          break;
+        case "PREG_CHECK":
+          await api.createPregCheck(input.planId, { method: "ULTRASOUND", date: input.date, result: "POSITIVE", note: input.note });
+          break;
+        case "WHELPED":
+          await api.createEvent(input.planId, { type: "WHELPED", date: input.date, note: input.note });
+          break;
+        case "WEANED":
+          await api.createEvent(input.planId, { type: "WEANED", date: input.date, note: input.note });
+          break;
+      }
+      const fresh = await api.getPlan(input.planId, "parents,org");
+      setRows((prev) => prev.map((r) => (Number(r.id) === input.planId ? planToRow(fresh) : r)));
+    },
+    [api]
+  );
 
-  /* Details Drawer Config aligned with Contacts */
+  /* === Drawer editing awareness for outside-click behavior === */
+  const [drawerIsEditing, setDrawerIsEditing] = React.useState(false);
+
+  /* Details Drawer Config */
   const detailsConfig = React.useMemo(() => {
     return {
       idParam: "planId",
@@ -634,11 +794,35 @@ export default function AppBreeding() {
       width: 900,
       placement: "center" as const,
       align: "top" as const,
-      fetchRow: async (id: ID) => planToRow(await api!.getPlan(Number(id), "parents,org")),
+      fetchRow: async (id: ID) => {
+        const fallback = rows.find((r) => String(r.id) === String(id));
+        if (!api) return fallback as PlanRow;
+        try {
+          const full = await api.getPlan(Number(id), "parents,org");
+          return planToRow(full);
+        } catch {
+          return fallback as PlanRow;
+        }
+      },
       onSave: async (id: ID, draft: Partial<PlanRow>) => {
         if (!api) return;
-        const updated = await api.updatePlan(Number(id), draft as any);
-        setRows(prev => prev.map(r => (r.id === id ? planToRow(updated) : r)));
+        const current = rows.find((r) => r.id === id);
+        const merged = { ...current, ...draft };
+        const status = deriveBreedingStatus({
+          name: merged.name,
+          species: merged.species,
+          damId: merged.damId as any,
+          sireId: merged.sireId as any,
+          lockedCycleStart: merged.lockedCycleStart as any,
+          breedDateActual: merged.breedDateActual as any,
+          birthDateActual: merged.birthDateActual as any,
+          weanedDateActual: merged.weanedDateActual as any,
+          goHomeDateActual: merged.goHomeDateActual as any,
+          lastGoHomeDateActual: merged.lastGoHomeDateActual as any,
+          completedDateActual: merged.completedDateActual as any,
+        });
+        const updated = await api.updatePlan(Number(id), { ...draft, status } as any);
+        setRows((prev) => prev.map((r) => (r.id === id ? planToRow(updated) : r)));
       },
       header: (r: PlanRow) => ({ title: r.name, subtitle: r.status || "" }),
       tabs: [
@@ -657,37 +841,73 @@ export default function AppBreeding() {
           openCustomBreed={(speciesUi: SpeciesUi, onCreated: (name: string) => void) => {
             const s = (speciesUi || "Dog").toUpperCase() as "DOG" | "CAT" | "HORSE";
             setCustomBreedSpecies(s);
-            setOnCustomBreedCreated(() => (c) => {
-              onCreated(c.name);
-              setCustomBreedOpen(false);
-            });
+            setOnCustomBreedCreated(
+              () => (c) => {
+                onCreated(c.name);
+                setCustomBreedOpen(false);
+              }
+            );
             setCustomBreedOpen(true);
           }}
+          onCommitted={async (planId: ID) => {
+            if (!api) return;
+            if ((api as any).commitPlan) {
+              const updated = await (api as any).commitPlan(Number(planId), {});
+              setRows((prev) => prev.map((r) => (Number(r.id) === Number(planId) ? planToRow(updated) : r)));
+              return;
+            }
+            const current = await api.getPlan(Number(planId), "parents,org");
+            const proposedCode = current.code || `PLN-${new Date().getFullYear()}-${String(current.id).padStart(5, "0")}`;
+            const updated = await api.updatePlan(Number(planId), {
+              status: "COMMITTED",
+              code: proposedCode,
+              expectedDue: current.expectedDue ?? current.lockedDueDate ?? null,
+              expectedGoHome: current.expectedGoHome ?? current.lockedGoHomeDate ?? null,
+            } as any);
+            setRows((prev) => prev.map((r) => (Number(r.id) === Number(planId) ? planToRow(updated) : r)));
+          }}
+          closeDrawer={props.close}
+          onModeChange={setDrawerIsEditing}
         />
       ),
     };
-  }, [api, tenantId, setRows]);
+  }, [api, tenantId, setRows, rows]);
 
-  /* Table custom cells */
+  /* Table custom cells (gate expected dates on lock) */
   const CELL_RENDERERS: Record<string, (r: PlanRow) => React.ReactNode> = {
-    expectedDue: (r) => <div className="py-1"><div className="text-xs mb-1">{fmt(r.expectedDue) || ""}</div></div>,
-    expectedGoHome: (r) => <div className="py-1"><div className="text-xs mb-1">{fmt(r.expectedGoHome) || ""}</div></div>,
+    expectedDue: (r) => (
+      <div className="py-1">
+        <div className="text-xs mb-1">{r.lockedCycleStart ? fmt(r.expectedDue) : ""}</div>
+      </div>
+    ),
+    expectedGoHome: (r) => (
+      <div className="py-1">
+        <div className="text-xs mb-1">{r.lockedCycleStart ? fmt(r.expectedGoHome) : ""}</div>
+      </div>
+    ),
   };
 
   return (
     <>
-      {/* Ensure the overlay host exists at app boot */}
       <OverlayMount />
 
       <div className="p-4 space-y-4">
         <div className="relative">
           <PageHeader title="Breeding" subtitle="Create and manage breeding plans" />
-          <div className="absolute right-0 top-0 h-full flex items-center gap-2 pr-1" style={{ zIndex: 5, pointerEvents: "auto" }}>
-            <Button size="sm" onClick={() => setCreateOpen(true)} disabled={!api}>New Breeding Plan</Button>
+          <div
+            className="absolute right-0 top-0 h-full flex items-center gap-2 pr-1"
+            style={{ zIndex: 5, pointerEvents: "auto" }}
+          >
+            <Button size="sm" onClick={() => setCreateOpen(true)} disabled={!api}>
+              New Breeding Plan
+            </Button>
             <Button
               size="sm"
               variant="outline"
-              onClick={() => { setQuickAddPlanId(pageRows[0]?.id ?? null); setQuickAddOpen(true); }}
+              onClick={() => {
+                setQuickAddPlanId(pageRows[0]?.id ?? null);
+                setQuickAddOpen(true);
+              }}
               disabled={!api}
             >
               + Event
@@ -695,7 +915,8 @@ export default function AppBreeding() {
           </div>
         </div>
 
-        {customBreedOpen && modalRoot &&
+        {customBreedOpen &&
+          modalRoot &&
           createPortal(
             <div className="fixed inset-0" style={{ zIndex: MODAL_Z, isolation: "isolate" }}>
               <div className="absolute inset-0 bg-black/50" />
@@ -717,12 +938,56 @@ export default function AppBreeding() {
               </div>
             </div>,
             modalRoot
-          )
-        }
+          )}
 
         <Card>
-          <div className="bhq-details-drawer">
-            <DetailsHost rows={rows} config={detailsConfig}>
+          {/* Prevent outside click close while editing (pointer + mouse + click) */}
+          <div
+            className="bhq-details-guard"
+            data-testid="bhq-details-guard"
+            onPointerDownCapture={(e) => {
+              if (!drawerIsEditing) return;
+              const t = e.target as HTMLElement | null;
+              const inside = !!t?.closest?.("[data-bhq-details]");
+              if (!inside) {
+                console.debug("[Breeding] blocked outside pointerdown while editing", { inside, target: t });
+                e.preventDefault();
+                e.stopPropagation();
+              }
+            }}
+            onMouseDownCapture={(e) => {
+              if (!drawerIsEditing) return;
+              const t = e.target as HTMLElement | null;
+              const inside = !!t?.closest?.("[data-bhq-details]");
+              if (!inside) {
+                console.debug("[Breeding] blocked outside mousedown while editing", { inside, target: t });
+                e.preventDefault();
+                e.stopPropagation();
+              }
+            }}
+            onClickCapture={(e) => {
+              if (!drawerIsEditing) return;
+              const t = e.target as HTMLElement | null;
+              const inside = !!t?.closest?.("[data-bhq-details]");
+              if (!inside) {
+                console.debug("[Breeding] blocked outside click while editing", { inside, target: t });
+                e.preventDefault();
+                e.stopPropagation();
+              }
+            }}
+          >
+            <DetailsHost
+              rows={rows}
+              config={detailsConfig}
+              closeOnOutsideClick={!drawerIsEditing}
+              closeOnEscape={false}
+
+              onOpenChange={(open: boolean) => {
+                if (drawerIsEditing && !open) {
+                  console.debug("[Breeding] DetailsHost attempted to close while editing — blocked by props");
+                }
+              }}
+            >
               <Table
                 columns={COLUMNS}
                 columnState={map}
@@ -750,12 +1015,19 @@ export default function AppBreeding() {
                     rightSlot={
                       <button
                         type="button"
-                        onClick={() => setFiltersOpen(v => !v)}
+                        onClick={() => setFiltersOpen((v) => !v)}
                         aria-expanded={filtersOpen}
                         title="Filters"
                         className="h-7 w-7 rounded-md flex items-center justify-center hover:bg-white/5 focus:outline-none"
                       >
-                        <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                        <svg
+                          viewBox="0 0 24 24"
+                          className="h-4 w-4"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          aria-hidden="true"
+                        >
                           <path d="M3 5h18M7 12h10M10 19h4" strokeLinecap="round" />
                         </svg>
                       </button>
@@ -764,47 +1036,56 @@ export default function AppBreeding() {
                 </div>
 
                 {/* Filters */}
-                {filtersOpen && (
-                  <FiltersRow
-                    filters={filters}
-                    onChange={(next) => setFilters(next)}
-                    schema={FILTER_SCHEMA}
-                  />
-                )}
+                {filtersOpen && <FiltersRow filters={filters} onChange={(next) => setFilters(next)} schema={FILTER_SCHEMA} />}
 
                 {/* Table */}
                 <table className="min-w-max w-full text-sm">
                   <TableHeader columns={visibleSafe} sorts={sorts} onToggleSort={onToggleSort} />
                   <tbody>
                     {!api && (
-                      <TableRow><TableCell colSpan={visibleSafe.length}><div className="py-8 text-center text-sm text-secondary">Resolving tenant…</div></TableCell></TableRow>
+                      <TableRow>
+                        <TableCell colSpan={visibleSafe.length}>
+                          <div className="py-8 text-center text-sm text-secondary">Resolving tenant…</div>
+                        </TableCell>
+                      </TableRow>
                     )}
 
                     {api && loading && (
-                      <TableRow><TableCell colSpan={visibleSafe.length}><div className="py-8 text-center text-sm text-secondary">Loading plans…</div></TableCell></TableRow>
+                      <TableRow>
+                        <TableCell colSpan={visibleSafe.length}>
+                          <div className="py-8 text-center text-sm text-secondary">Loading plans…</div>
+                        </TableCell>
+                      </TableRow>
                     )}
 
                     {api && !loading && error && (
-                      <TableRow><TableCell colSpan={visibleSafe.length}><div className="py-8 text-center text-sm text-red-600">Error: {error}</div></TableCell></TableRow>
+                      <TableRow>
+                        <TableCell colSpan={visibleSafe.length}>
+                          <div className="py-8 text-center text-sm text-red-600">Error: {error}</div>
+                        </TableCell>
+                      </TableRow>
                     )}
 
                     {api && !loading && !error && pageRows.length === 0 && (
-                      <TableRow><TableCell colSpan={visibleSafe.length}><div className="py-8 text-center text-sm text-secondary">No breeding plans yet.</div></TableCell></TableRow>
+                      <TableRow>
+                        <TableCell colSpan={visibleSafe.length}>
+                          <div className="py-8 text-center text-sm text-secondary">No breeding plans yet.</div>
+                        </TableCell>
+                      </TableRow>
                     )}
 
-                    {api && !loading && !error && pageRows.length > 0 &&
-                      pageRows.map(r => (
+                    {api &&
+                      !loading &&
+                      !error &&
+                      pageRows.length > 0 &&
+                      pageRows.map((r) => (
                         <TableRow key={r.id} detailsRow={r}>
-                          {visibleSafe.map(c => {
+                          {visibleSafe.map((c) => {
                             let v = (r as any)[c.key] as any;
                             if (DATE_KEYS.has(c.key as any)) v = fmt(v);
                             if (Array.isArray(v)) v = v.join(", ");
                             const custom = CELL_RENDERERS[c.key];
-                            return (
-                              <TableCell key={c.key}>
-                                {custom ? custom(r) : (v ?? "")}
-                              </TableCell>
-                            );
+                            return <TableCell key={c.key}>{custom ? custom(r) : v ?? ""}</TableCell>;
                           })}
                         </TableRow>
                       ))}
@@ -818,7 +1099,10 @@ export default function AppBreeding() {
                   pageSize={pageSize}
                   pageSizeOptions={[10, 25, 50, 100]}
                   onPageChange={(p) => setPage(p)}
-                  onPageSizeChange={(n) => { setPageSize(n); setPage(1); }}
+                  onPageSizeChange={(n) => {
+                    setPageSize(n);
+                    setPage(1);
+                  }}
                   start={start}
                   end={end}
                   filteredTotal={displayRows.length}
@@ -827,13 +1111,16 @@ export default function AppBreeding() {
               </Table>
             </DetailsHost>
 
-            {/* Quick Add Event modal — force its own top-level stacking context */}
-            {quickAddOpen && modalRoot &&
+            {/* Quick Add Event modal */}
+            {quickAddOpen &&
+              modalRoot &&
               createPortal(
                 <div
                   className="fixed inset-0"
                   style={{ zIndex: MODAL_Z, isolation: "isolate" }}
-                  onMouseDown={(e) => { if (e.target === e.currentTarget) setQuickAddOpen(false); }}
+                  onMouseDown={(e) => {
+                    if (e.target === e.currentTarget) setQuickAddOpen(false);
+                  }}
                 >
                   {/* Backdrop */}
                   <div className="absolute inset-0 bg-black/50" />
@@ -850,16 +1137,17 @@ export default function AppBreeding() {
                   </div>
                 </div>,
                 modalRoot
-              )
-            }
+              )}
           </div>
         </Card>
 
-        {/* Create Plan Modal — identical overlay pattern to Contacts */}
+        {/* Create Plan Modal */}
         <Overlay
           root={modalRoot}
           open={createOpen}
-          onOpenChange={(v) => { if (!createWorking) setCreateOpen(v); }}
+          onOpenChange={(v) => {
+            if (!createWorking) setCreateOpen(v);
+          }}
           ariaLabel="Create Breeding Plan"
           closeOnEscape
           closeOnOutsideClick
@@ -902,21 +1190,30 @@ export default function AppBreeding() {
                         <div className="text-xs text-secondary mb-1">
                           Plan name <span className="text-[hsl(var(--brand-orange))]">*</span>
                         </div>
-                        <Input value={newName} onChange={(e) => setNewName(e.currentTarget.value)} placeholder="Luna × TBD, Fall 2026" />
+                        <Input
+                          value={newName}
+                          onChange={(e) => setNewName(e.currentTarget.value)}
+                          placeholder="Luna × TBD, Fall 2026"
+                        />
                       </div>
 
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                         <div>
-                          <div className="text-xs text-secondary mb-1">Species <span className="text-[hsl(var(--brand-orange))]">*</span></div>
+                          <div className="text-xs text-secondary mb-1">
+                            Species <span className="text-[hsl(var(--brand-orange))]">*</span>
+                          </div>
                           <select
                             className="w-full h-9 rounded-md border border-hairline bg-surface px-2 text-sm text-primary"
                             value={newSpeciesUi}
                             onChange={(e) => {
-                              const next = e.target.value as SpeciesUi | "";
+                              const next = e.currentTarget.value as SpeciesUi | "";
                               setNewSpeciesUi(next);
-                              setDamId(null); setSireId(null);
-                              setDamQuery(""); setSireQuery("");
-                              setDamOptions([]); setSireOptions([]);
+                              setDamId(null);
+                              setSireId(null);
+                              setDamQuery("");
+                              setSireQuery("");
+                              setDamOptions([]);
+                              setSireOptions([]);
                             }}
                           >
                             <option value="">—</option>
@@ -928,19 +1225,25 @@ export default function AppBreeding() {
 
                         <div className="sm:col-span-2">
                           <div className="text-xs text-secondary mb-1">Code</div>
-                          <Input value={newCode} onChange={(e) => setNewCode(e.currentTarget.value)} placeholder="PLN-2026-01" />
+                          <Input
+                            value={newCode}
+                            onChange={(e) => setNewCode(e.currentTarget.value)}
+                            placeholder="PLN-2026-01"
+                          />
                         </div>
                       </div>
+
                       {/* Breed (search + browse + new custom) */}
                       <div className="sm:col-span-3">
                         <div className="text-xs text-secondary mb-1">Breed</div>
                         <div className="flex items-center gap-2">
                           <div className="flex-1">
                             <BreedCombo
+                              key={createBreedKey}
                               orgId={orgIdForBreeds ?? undefined}
                               species={newSpeciesUi || "Dog"}
                               value={newBreed}
-                              onChange={setNewBreed}
+                              onChange={(hit: any) => setNewBreed(hit ?? null)}
                               api={breedBrowseApi}
                             />
                           </div>
@@ -948,12 +1251,19 @@ export default function AppBreeding() {
                             variant="outline"
                             size="sm"
                             onClick={() => {
-                              const speciesEnum = (String(newSpeciesUi || "Dog").toUpperCase() as "DOG" | "CAT" | "HORSE");
+                              const speciesEnum = String(newSpeciesUi || "Dog").toUpperCase() as "DOG" | "CAT" | "HORSE";
                               setCustomBreedSpecies(speciesEnum);
-                              setOnCustomBreedCreated(() => (created) => {
-                                setNewBreed({ id: created.id, name: created.name, species: newSpeciesUi || "Dog", source: "custom" } as any);
-                                setCustomBreedOpen(false);
-                              });
+                              setOnCustomBreedCreated(
+                                () => (created) => {
+                                  setNewBreed({
+                                    id: created.id,
+                                    name: created.name,
+                                    species: newSpeciesUi || "Dog",
+                                    source: "custom",
+                                  } as any);
+                                  setCustomBreedOpen(false);
+                                }
+                              );
                               setCustomBreedOpen(true);
                             }}
                           >
@@ -979,12 +1289,16 @@ export default function AppBreeding() {
                           {damFocused && speciesSelected && (
                             <div className="mt-2 max-h-56 overflow-auto rounded-md border border-hairline bg-surface">
                               {damOptions.length > 0 ? (
-                                damOptions.map(a => (
+                                damOptions.map((a) => (
                                   <button
                                     key={a.id}
                                     type="button"
                                     onMouseDown={(e) => e.preventDefault()}
-                                    onClick={() => { setDamId(a.id); setDamQuery(a.name); setDamFocused(false); }}
+                                    onClick={() => {
+                                      setDamId(a.id);
+                                      setDamQuery(a.name);
+                                      setDamFocused(false);
+                                    }}
                                     className={`w-full px-2 py-1 text-left hover:bg-white/5 ${damId === a.id ? "bg-white/10" : ""}`}
                                   >
                                     <div className="flex items-center justify-between">
@@ -1005,7 +1319,10 @@ export default function AppBreeding() {
                               <button
                                 type="button"
                                 className="text-xs text-secondary underline hover:text-primary"
-                                onClick={() => { setDamId(null); setDamQuery(""); }}
+                                onClick={() => {
+                                  setDamId(null);
+                                  setDamQuery("");
+                                }}
                               >
                                 Clear Dam
                               </button>
@@ -1030,12 +1347,16 @@ export default function AppBreeding() {
                           {sireFocused && speciesSelected && (
                             <div className="mt-2 max-h-56 overflow-auto rounded-md border border-hairline bg-surface">
                               {sireOptions.length > 0 ? (
-                                sireOptions.map(a => (
+                                sireOptions.map((a) => (
                                   <button
                                     key={a.id}
                                     type="button"
                                     onMouseDown={(e) => e.preventDefault()}
-                                    onClick={() => { setSireId(a.id); setSireQuery(a.name); setSireFocused(false); }}
+                                    onClick={() => {
+                                      setSireId(a.id);
+                                      setSireQuery(a.name);
+                                      setSireFocused(false);
+                                    }}
                                     className={`w-full px-2 py-1 text-left hover:bg-white/5 ${sireId === a.id ? "bg-white/10" : ""}`}
                                   >
                                     <div className="flex items-center justify-between">
@@ -1056,7 +1377,10 @@ export default function AppBreeding() {
                               <button
                                 type="button"
                                 className="text-xs text-secondary underline hover:text-primary"
-                                onClick={() => { setSireId(null); setSireQuery(""); }}
+                                onClick={() => {
+                                  setSireId(null);
+                                  setSireQuery("");
+                                }}
                               >
                                 Clear Sire
                               </button>
@@ -1072,7 +1396,9 @@ export default function AppBreeding() {
                           <span className="text-[hsl(var(--brand-orange))]">*</span> Required
                         </div>
                         <div className="flex items-center gap-2">
-                          <Button variant="outline" onClick={() => setCreateOpen(false)} disabled={createWorking}>Cancel</Button>
+                          <Button variant="outline" onClick={() => setCreateOpen(false)} disabled={createWorking}>
+                            Cancel
+                          </Button>
                           <Button onClick={doCreatePlan} disabled={!canCreate || createWorking || !api}>
                             {createWorking ? "Creating…" : "Create plan"}
                           </Button>
@@ -1117,7 +1443,10 @@ function CalendarInput({
         <svg
           viewBox="0 0 24 24"
           className="absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-secondary pointer-events-none"
-          fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          aria-hidden="true"
         >
           <rect x="3" y="4" width="18" height="18" rx="2" />
           <path d="M16 2v4M8 2v4M3 10h18" />
@@ -1136,9 +1465,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-/* ───────── Details View aligned to Contacts ───────── */
-
-
+/* ───────── Details View ───────── */
 
 function PlanDetailsView(props: {
   row: PlanRow;
@@ -1153,9 +1480,48 @@ function PlanDetailsView(props: {
   breedBrowseApi: { breeds: { listCanonical: (opts: { species: string; orgId?: number; limit?: number }) => Promise<any[]> } };
   orgIdForBreeds: number | null;
   openCustomBreed: (speciesUi: SpeciesUi, onCreated: (name: string) => void) => void;
+  onCommitted?: (id: ID) => Promise<void> | void;
+  closeDrawer: () => void;
+  onModeChange?: (editing: boolean) => void;
 }) {
-  const { row, mode, setMode, setDraft, activeTab, setActiveTab, requestSave, api, tenantId, breedBrowseApi, orgIdForBreeds, openCustomBreed } = props;
+  const {
+    row,
+    mode,
+    setMode,
+    setDraft,
+    activeTab,
+    setActiveTab,
+    requestSave,
+    api,
+    tenantId,
+    breedBrowseApi,
+    orgIdForBreeds,
+    openCustomBreed,
+    onCommitted,
+    closeDrawer,
+    onModeChange,
+  } = props;
+
   const isEdit = mode === "edit";
+  React.useEffect(() => {
+    onModeChange?.(isEdit);
+  }, [isEdit, onModeChange]);
+
+  const isCommitted = row.status === "COMMITTED";
+  const canEditDates = isEdit && isCommitted;
+
+  // live draft overlay
+  const draftRef = React.useRef<Partial<PlanRow>>({});
+  const [draftTick, setDraftTick] = React.useState(0);
+  const setDraftLive = React.useCallback(
+    (patch: Partial<PlanRow>) => {
+      draftRef.current = { ...draftRef.current, ...patch };
+      setDraft(patch);
+      setDraftTick((t) => t + 1);
+    },
+    [setDraft]
+  );
+  const effective = React.useMemo(() => ({ ...row, ...draftRef.current }), [row, draftTick]);
 
   type DamReproEvent = { kind: "heat_start" | "ovulation" | "insemination" | "whelp"; date: string };
   type DamReproData = { last_heat: string | null; repro: DamReproEvent[] };
@@ -1184,7 +1550,9 @@ function PlanDetailsView(props: {
         if (!cancelled) setDamLoadError(e?.message || "Failed to load Dam cycle history");
       }
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [api, row.damId]);
 
   const species = (row.species || "Dog") as PlannerSpecies;
@@ -1207,12 +1575,18 @@ function PlanDetailsView(props: {
     setLockedPreview(Boolean(row.lockedCycleStart));
   }, [row.lockedCycleStart, computeFromLocked]);
 
+  // lock precondition: must select an Upcoming Cycle date (no “—”)
+  const canLockNow = !!(pendingCycle && String(pendingCycle).trim());
+
   function lockCycle() {
-    if (!pendingCycle) return; // no mode flip
+    if (!pendingCycle || !String(pendingCycle).trim()) {
+      console.debug("[Breeding] lockCycle blocked: no pendingCycle");
+      return; // hard guard: cannot lock on null/empty
+    }
     const expected = computeFromLocked(pendingCycle);
     setExpectedPreview(expected);
     setLockedPreview(true);
-    setDraft({
+    setDraftLive({
       lockedCycleStart: pendingCycle,
       lockedOvulationDate: expected.ovulation,
       lockedDueDate: expected.birth_expected,
@@ -1224,7 +1598,7 @@ function PlanDetailsView(props: {
   function unlockCycle() {
     setExpectedPreview(null);
     setLockedPreview(false);
-    setDraft({
+    setDraftLive({
       lockedCycleStart: null,
       lockedOvulationDate: null,
       lockedDueDate: null,
@@ -1234,9 +1608,11 @@ function PlanDetailsView(props: {
     });
   }
 
-  const expectedBirth = expectedPreview?.birth_expected || row.lockedDueDate || row.expectedDue || "";
-  const expectedGoHome = expectedPreview?.gohome_expected || row.lockedGoHomeDate || row.expectedGoHome || "";
-  const expectedBreed = expectedPreview?.ovulation || row.lockedOvulationDate || "";
+  const isLocked = Boolean(lockedPreview || (effective.lockedCycleStart ?? "").trim());
+  const expectedBreed = isLocked ? (expectedPreview?.ovulation ?? row.lockedOvulationDate ?? "") : "";
+  const expectedBirth = isLocked ? (expectedPreview?.birth_expected ?? row.lockedDueDate ?? row.expectedDue ?? "") : "";
+  const expectedGoHome = isLocked ? (expectedPreview?.gohome_expected ?? row.lockedGoHomeDate ?? row.expectedGoHome ?? "") : "";
+  const expectedGoHomeExtended = isLocked ? (expectedPreview?.gohome_extended_end ?? "") : "";
 
   const [editDamQuery, setEditDamQuery] = React.useState<string>("");
   const [editSireQuery, setEditSireQuery] = React.useState<string>("");
@@ -1247,7 +1623,10 @@ function PlanDetailsView(props: {
 
   const wasEditRef = React.useRef(isEdit);
   React.useEffect(() => {
-    if (!wasEditRef.current && isEdit) {
+    const enteringEdit = !wasEditRef.current && isEdit;
+    const editingAndRowChanged = isEdit && wasEditRef.current;
+
+    if (enteringEdit || editingAndRowChanged) {
       setEditDamQuery(row.damName || "");
       setEditSireQuery(row.sireName || "");
     }
@@ -1267,9 +1646,11 @@ function PlanDetailsView(props: {
         sexHint: "FEMALE",
         limit: 300,
       });
-      if (!cancelled) setEditDamOptions(all.filter(a => a.species === key && a.sex === "FEMALE"));
+      if (!cancelled) setEditDamOptions(all.filter((a) => a.species === key && a.sex === "FEMALE"));
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [isEdit, editDamFocus, editDamQuery, row.species, tenantId]);
 
   React.useEffect(() => {
@@ -1285,62 +1666,27 @@ function PlanDetailsView(props: {
         sexHint: "MALE",
         limit: 300,
       });
-      if (!cancelled) setEditSireOptions(all.filter(a => a.species === key && a.sex === "MALE"));
+      if (!cancelled) setEditSireOptions(all.filter((a) => a.species === key && a.sex === "MALE"));
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [isEdit, editSireFocus, editSireQuery, row.species, tenantId]);
 
-  const canEditDates = isEdit && !!row.damId && (lockedPreview || !!row.lockedCycleStart);
+  // readiness
+  const hasBreed = typeof (effective.breedText ?? "") === "string" && (effective.breedText ?? "").trim().length > 0;
+  const canCommit = Boolean(
+    effective.damId != null &&
+    effective.sireId != null &&
+    hasBreed &&
+    (lockedPreview || (effective.lockedCycleStart ?? "").trim()) &&
+    !["COMMITTED", "BRED", "WHELPED", "WEANED", "HOMING_STARTED", "COMPLETE"].includes(effective.status)
+  );
+  const expectedsEnabled = Boolean(
+    effective.damId != null && effective.sireId != null && (lockedPreview || (effective.lockedCycleStart ?? "").trim())
+  );
 
-  const CycleLockButton = () => {
-    const locked = lockedPreview;
-    const hasSelection = !!pendingCycle;
-    const disabled = !locked && !hasSelection;
-
-    const borderColor = disabled
-      ? "hsl(var(--hairline))"
-      : locked
-        ? "hsl(var(--green-600))"
-        : "hsl(var(--red-600))";
-
-    const textColor = disabled
-      ? "hsl(var(--secondary))"
-      : locked
-        ? "hsl(var(--green-300))"
-        : "hsl(var(--red-300))";
-
-    return (
-      <div className="rounded-md" style={{ background: borderColor, padding: 2 }}>
-        <button
-          type="button"
-          onClick={locked ? unlockCycle : lockCycle}
-          disabled={disabled}
-          className={[
-            "h-9 px-3 rounded-[6px] text-sm font-medium",
-            "bg-transparent flex items-center gap-2",
-            disabled ? "cursor-not-allowed" : "hover:bg-white/5",
-          ].join(" ")}
-          style={{ color: textColor, boxShadow: `inset 0 0 0 9999px rgba(0,0,0,0)` }}
-          title={locked ? "Unlock cycle" : hasSelection ? "Lock cycle" : "Select a cycle first"}
-        >
-          <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-            {locked ? (
-              <>
-                <path d="M7 10V7a5 5 0 0 1 10 0v3" />
-                <rect x="5" y="10" width="14" height="10" rx="2" />
-              </>
-            ) : (
-              <>
-                <path d="M12 5a5 5 0 0 1 5 5" />
-                <rect x="5" y="10" width="14" height="10" rx="2" />
-              </>
-            )}
-          </svg>
-          Cycle Lock
-        </button>
-      </div>
-    );
-  };
+  const breedComboKey = `${effective.species || "Dog"}|${hasBreed}`;
 
   return (
     <DetailsScaffold
@@ -1350,370 +1696,559 @@ function PlanDetailsView(props: {
       onEdit={() => setMode("edit")}
       onCancel={() => setMode("view")}
       onSave={requestSave}
-      tabs={[
-        { key: "overview", label: "Overview" },
-        { key: "deposits", label: "Deposits" },
-        { key: "audit", label: "Audit" },
-      ]}
+      tabs={[]}
       activeTab={activeTab}
       onTabChange={setActiveTab}
-      rightActions={<Button size="sm" variant="outline">Archive</Button>}
+      rightActions={
+        <div className="flex gap-2 items-center">
+          {/* Commit button lives here, same size as Archive/Edit */}
+          {row.status === "COMMITTED" ? (
+            <Button size="sm" variant="outline" disabled>
+              Committed
+            </Button>
+          ) : (
+            <Button
+              size="sm"
+              onClick={async () => {
+                if (canCommit) await onCommitted?.(effective.id);
+              }}
+              disabled={!canCommit || !api}
+            >
+              Commit Plan
+            </Button>
+          )}
+          <Button size="sm" variant="outline">
+            Archive
+          </Button>
+        </div>
+      }
     >
-      {activeTab === "overview" && (
-        <div className="space-y-4 mt-2">
-          {/* Plan Info matches Contacts grid patterns */}
-          <SectionCard title="Plan Info">
-            {/* Row 1 */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div className="min-w-0">
-                <div className="text-xs text-secondary mb-1">Plan Name</div>
-                {isEdit
-                  ? <Input defaultValue={row.name} onChange={(e) => setDraft({ name: e.currentTarget.value })} />
-                  : <DisplayValue value={row.name} />}
-              </div>
-              <div className="min-w-0">
-                <div className="text-xs text-secondary mb-1">Nickname</div>
-                {isEdit
-                  ? <Input defaultValue={row.nickname ?? ''} onChange={(e) => setDraft({ nickname: e.currentTarget.value })} />
-                  : <DisplayValue value={row.nickname ?? ''} />}
-              </div>
-              <div className="min-w-0">
-                <div className="text-xs text-secondary mb-1">Plan Code</div>
-                {isEdit
-                  ? <Input defaultValue={row.code ?? ''} onChange={(e) => setDraft({ code: e.currentTarget.value })} />
-                  : <DisplayValue value={row.code ?? ''} />}
-              </div>
-            </div>
-
-            {/* Row 2 */}
-            {/* Row 2 — make Species ~1/3 width and Breed ~2/3 width */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-4">
-              {/* Species: 1 column on sm+ */}
-              <div className="min-w-0 sm:col-span-1">
-                <div className="text-xs text-secondary mb-1">Species</div>
-                {isEdit ? (
-                  <select
-                    className="w-full h-9 rounded-md border border-hairline bg-surface px-2 text-sm text-primary"
-                    defaultValue={row.species || ""}
-                    onChange={(e) => setDraft({ species: e.currentTarget.value as any, breedText: null })}
-                  >
-                    <option value="">—</option>
-                    <option value="Dog">Dog</option>
-                    <option value="Cat">Cat</option>
-                    <option value="Horse">Horse</option>
-                  </select>
-                ) : (
-                  <DisplayValue value={row.species || ""} />
-                )}
-              </div>
-
-              {/* Breed: 2 columns on sm+ */}
-              <div className="min-w-0 sm:col-span-2">
-                <div className="text-xs text-secondary mb-1">Breed</div>
-                {isEdit ? (
-                  <div className="flex items-center gap-2">
-                    <div className="flex-1 min-w-0">
-                      <BreedCombo
-                        orgId={orgIdForBreeds ?? undefined}
-                        species={(row.species || "Dog") as SpeciesUi}
-                        value={row.breedText ? { id: "current", name: row.breedText, species: row.species || "Dog", source: "canonical" } as any : null}
-                        onChange={(hit: any) => setDraft({ breedText: hit?.name ?? null })}
-                        api={breedBrowseApi}
-                      />
-                    </div>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => openCustomBreed((row.species || "Dog") as SpeciesUi, (name) => setDraft({ breedText: name }))}
-                    >
-                      New custom
-                    </Button>
-                  </div>
-                ) : (
-                  <DisplayValue value={row.breedText ?? ""} />
-                )}
-              </div>
-            </div>
-          </SectionCard>
-
-          {/* Parents section mirrors Contacts editor behavior for popovers */}
-          <SectionCard title="Parents">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <Field label="Dam">
-                {!isEdit ? (
-                  <div className="text-sm">{row.damName || "—"}</div>
-                ) : (
-                  <>
-                    <Input
-                      value={editDamQuery}
-                      onChange={(e) => setEditDamQuery(e.currentTarget.value)}
-                      onFocus={() => setEditDamFocus(true)}
-                      onBlur={() => setEditDamFocus(false)}
-                      placeholder="Search Dam…"
+      {/* mark chrome for outside click guard */}
+      <div className="relative" data-bhq-details>
+        {/* Tab row */}
+        <div className="mt-2 mb-3 flex items-center justify-between border-b border-hairline">
+          <div className="flex gap-2">
+            {[
+              { key: "overview", label: "Overview" },
+              { key: "deposits", label: "Deposits" },
+              { key: "audit", label: "Audit" },
+            ].map((t) => {
+              const active = activeTab === t.key;
+              return (
+                <button
+                  key={t.key}
+                  type="button"
+                  onClick={() => setActiveTab(t.key)}
+                  className={["relative h-8 px-3 rounded-t-md text-sm hover:bg-white/5 -mb-px", active ? "bg-white/5" : ""].join(" ")}
+                  style={active ? { borderColor: "hsl(var(--brand-orange))" } : undefined}
+                >
+                  {t.label}
+                  {active && (
+                    <span
+                      aria-hidden
+                      className="pointer-events-none absolute left-0 right-0 bottom-0 h-[2px] z-10"
+                      style={{ background: "hsl(var(--brand-orange))" }}
                     />
-                    {editDamFocus && (
-                      <div className="mt-2 max-h-56 overflow-auto rounded-md border border-hairline bg-surface">
-                        {editDamOptions.length > 0 ? editDamOptions.map(a => (
-                          <button
-                            key={a.id}
-                            type="button"
-                            onMouseDown={(e) => e.preventDefault()}
-                            onClick={() => {
-                              setDraft({ damId: a.id, damName: a.name });
-                              setEditDamQuery(a.name);
-                              setEditDamFocus(false);
-                            }}
-                            className={`w-full px-2 py-1 text-left hover:bg-white/5 ${row.damId === a.id ? "bg-white/10" : ""}`}
-                          >
-                            <div className="flex items-center justify-between">
-                              <span>{a.name}</span>
-                              {a.organization?.name ? <span className="text-xs text-secondary ml-2">({a.organization.name})</span> : null}
-                            </div>
-                          </button>
-                        )) : <div className="px-2 py-2 text-sm text-secondary">No females found</div>}
-                      </div>
-                    )}
-                  </>
-                )}
-              </Field>
-
-              <Field label="Sire">
-                {!isEdit ? (
-                  <div className="text-sm">{row.sireName || "—"}</div>
-                ) : (
-                  <>
-                    <Input
-                      value={editSireQuery}
-                      onChange={(e) => setEditSireQuery(e.currentTarget.value)}
-                      onFocus={() => setEditSireFocus(true)}
-                      onBlur={() => setEditSireFocus(false)}
-                      placeholder="Search Sire…"
-                    />
-                    {editSireFocus && (
-                      <div className="mt-2 max-h-56 overflow-auto rounded-md border border-hairline bg-surface">
-                        {editSireOptions.length > 0 ? editSireOptions.map(a => (
-                          <button
-                            key={a.id}
-                            type="button"
-                            onMouseDown={(e) => e.preventDefault()}
-                            onClick={() => {
-                              setDraft({ sireId: a.id, sireName: a.name });
-                              setEditSireQuery(a.name);
-                              setEditSireFocus(false);
-                            }}
-                            className={`w-full px-2 py-1 text-left hover:bg-white/5 ${row.sireId === a.id ? "bg-white/10" : ""}`}
-                          >
-                            <div className="flex items-center justify-between">
-                              <span>{a.name}</span>
-                              {a.organization?.name ? <span className="text-xs text-secondary ml-2">({a.organization.name})</span> : null}
-                            </div>
-                          </button>
-                        )) : <div className="px-2 py-2 text-sm text-secondary">No males found</div>}
-                      </div>
-                    )}
-                  </>
-                )}
-              </Field>
-            </div>
-          </SectionCard>
-
-          {/* Cycle Selection */}
-          <SectionCard title="Breeding Cycle Selection">
-            <div className="grid grid-cols-[1fr_auto] gap-4 items-end">
-              <div>
-                <div className="text-xs text-secondary mb-1">Upcoming Cycles (Projected)</div>
-                {(() => {
-                  const hasSelection = !!pendingCycle;
-                  const ringColor = !row.damId
-                    ? "hsl(var(--hairline))"
-                    : lockedPreview
-                      ? "hsl(var(--green-600))"
-                      : hasSelection
-                        ? "hsl(var(--red-600))"
-                        : "hsl(var(--hairline))";
-                  return (
-                    <div className="relative">
-                      <select
-                        className={[
-                          "relative z-10 w-full h-9 rounded-md px-2 text-sm text-primary bg-surface border border-hairline",
-                          lockedPreview || !row.damId ? "opacity-60 pointer-events-none" : "",
-                        ].join(" ")}
-                        value={pendingCycle ?? ""}
-                        onChange={(e) => setPendingCycle(e.currentTarget.value || null)}
-                        disabled={lockedPreview || !row.damId}
-                      >
-                        <option value="">{!row.damId ? "Select a Dam to view cycles" : "—"}</option>
-                        {projectedCycles.map((d) => <option key={d} value={d}>{d}</option>)}
-                      </select>
-                      <div aria-hidden className="pointer-events-none absolute inset-0 rounded-md" style={{ boxShadow: `0 0 0 2px ${ringColor}` }} />
-                    </div>
-                  );
-                })()}
-                {!!damLoadError && <div className="text-xs text-red-600 mt-1">{damLoadError}</div>}
-              </div>
-
-              <CycleLockButton />
-            </div>
-          </SectionCard>
-
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <SectionCard title="EXPECTED DATES (SYSTEM CALCULATED)">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <div className="text-xs text-secondary mb-1">BREED DATE (EXPECTED)</div>
-                  <Input value={expectedBreed} readOnly className="h-8 py-0 px-2 text-sm bg-transparent border-hairline" />
-                </div>
-                <div>
-                  <div className="text-xs text-secondary mb-1">BIRTH DATE (EXPECTED)</div>
-                  <Input value={expectedBirth} readOnly className="h-8 py-0 px-2 text-sm bg-transparent border-hairline" />
-                </div>
-                <div>
-                  <div className="text-xs text-secondary mb-1">GO HOME DATE (EXPECTED)</div>
-                  <Input value={expectedGoHome} readOnly className="h-8 py-0 px-2 text-sm bg-transparent border-hairline" />
-                </div>
-                <div>
-                  <div className="text-xs text-secondary mb-1">LAST OFFSPRING GO HOME DATE (EXPECTED)</div>
-                  <Input value={expectedGoHome} readOnly className="h-8 py-0 px-2 text-sm bg-transparent border-hairline" />
-                </div>
-              </div>
-            </SectionCard>
-
-            <SectionCard title="ACTUAL DATES">
-              {isEdit && !canEditDates && (
-                <div className="text-xs text-[hsl(var(--brand-orange))] mb-2">
-                  Select a Female and Male and lock the cycle period to enable dates
-                </div>
-              )}
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
-                <div>
-                  <div className="text-xs text-secondary mb-1">BREEDING DATE (ACTUAL)</div>
-                  <CalendarInput
-                    defaultValue={row.breedDateActual ?? ""}
-                    onChange={(e) => canEditDates && setDraft({ breedDateActual: e.currentTarget.value })}
-                    readOnly={!canEditDates}
-                    showIcon={canEditDates}
-                  />
-                </div>
-
-                <div>
-                  <div className="text-xs text-secondary mb-1">WHELPED (ACTUAL)</div>
-                  <CalendarInput
-                    defaultValue={row.birthDateActual ?? ""}
-                    onChange={(e) => canEditDates && setDraft({ birthDateActual: e.currentTarget.value })}
-                    readOnly={!canEditDates}
-                    showIcon={canEditDates}
-                  />
-                </div>
-
-                <div>
-                  <div className="text-xs text-secondary mb-1">WEANED (ACTUAL)</div>
-                  <CalendarInput
-                    defaultValue={row.weanedDateActual ?? ""}
-                    onChange={(e) => canEditDates && setDraft({ weanedDateActual: e.currentTarget.value })}
-                    readOnly={!canEditDates}
-                    showIcon={canEditDates}
-                  />
-                </div>
-
-                <div>
-                  <div className="text-xs text-secondary mb-1">HOMING STARTED (ACTUAL)</div>
-                  <CalendarInput
-                    defaultValue={row.goHomeDateActual ?? ""}
-                    onChange={(e) => canEditDates && setDraft({ goHomeDateActual: e.currentTarget.value })}
-                    readOnly={!canEditDates}
-                    showIcon={canEditDates}
-                  />
-                </div>
-
-                <div>
-                  <div className="text-xs text-secondary mb-1">COMPLETED (ACTUAL)</div>
-                  <CalendarInput
-                    defaultValue={row.completedDateActual ?? ""}
-                    onChange={(e) => canEditDates && setDraft({ completedDateActual: e.currentTarget.value })}
-                    readOnly={!canEditDates}
-                    showIcon={canEditDates}
-                  />
-                </div>
-
-                <div className="flex justify-end items-end">
-                  <Button
-                    variant="outline"
-                    disabled={!canEditDates}
-                    onClick={() => {
-                      if (!canEditDates) return;
-                      if (!window.confirm("Reset ALL actual date fields (Breeding, Whelped, Weaned, Homing Started, Completed)?")) return;
-                      setDraft({
-                        breedDateActual: null,
-                        birthDateActual: null,
-                        weanedDateActual: null,
-                        goHomeDateActual: null,
-                        lastGoHomeDateActual: null,
-                        completedDateActual: null,
-                      });
-                    }}
-                  >
-                    Reset Dates
-                  </Button>
-                </div>
-              </div>
-            </SectionCard>
-
-            <SectionCard title="NOTES">
-              {isEdit ? (
-                <textarea
-                  className="w-full min-h-[120px] rounded-md px-2 py-2 text-sm border border-hairline bg-surface"
-                  defaultValue={row.notes ?? ""}
-                  onChange={(e) => setDraft({ notes: e.currentTarget.value })}
-                  placeholder="Add notes…"
-                />
-              ) : (
-                <div className="text-sm select-none pointer-events-none min-h-[24px]">
-                  {row.notes || "—"}
-                </div>
-              )}
-            </SectionCard>
+                  )}
+                </button>
+              );
+            })}
           </div>
         </div>
-      )}
 
-      {activeTab === "deposits" && (
-        <div className="space-y-2">
-          <SectionCard title="Deposits">
-            <div className="grid grid-cols-2 gap-4 text-sm">
-              <div>
-                <div className="text-xs text-secondary mb-1">Deposits Committed</div>
-                <div>${((row.depositsCommitted ?? 0) / 100).toLocaleString()}</div>
+        {activeTab === "overview" && (
+          <div className="space-y-4 mt-2">
+            {/* Plan Info */}
+            <SectionCard title="Plan Info">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="min-w-0">
+                  <div className="text-xs text-secondary mb-1">Plan Name</div>
+                  {isEdit ? (
+                    <Input defaultValue={row.name} onChange={(e) => setDraftLive({ name: e.currentTarget.value })} />
+                  ) : (
+                    <DisplayValue value={row.name} />
+                  )}
+                </div>
+                <div className="min-w-0">
+                  <div className="text-xs text-secondary mb-1">Nickname</div>
+                  {isEdit ? (
+                    <Input defaultValue={row.nickname ?? ""} onChange={(e) => setDraftLive({ nickname: e.currentTarget.value })} />
+                  ) : (
+                    <DisplayValue value={row.nickname ?? ""} />
+                  )}
+                </div>
+                <div className="min-w-0">
+                  <div className="text-xs text-secondary mb-1">Plan Code</div>
+                  {isEdit ? (
+                    <Input defaultValue={row.code ?? ""} onChange={(e) => setDraftLive({ code: e.currentTarget.value })} />
+                  ) : (
+                    <DisplayValue value={row.code ?? ""} />
+                  )}
+                </div>
               </div>
-              <div>
-                <div className="text-xs text-secondary mb-1">Deposits Paid</div>
-                <div>${((row.depositsPaid ?? 0) / 100).toLocaleString()}</div>
-              </div>
-              <div className="col-span-2">
-                <div className="text-xs text-secondary mb-1">Deposit Risk</div>
-                <div>{row.depositRisk ?? 0}%</div>
-              </div>
-            </div>
-          </SectionCard>
-        </div>
-      )}
 
-      {activeTab === "audit" && (
-        <div className="space-y-2">
-          <SectionCard title="Audit">
-            <div className="grid grid-cols-2 gap-4 text-sm">
-              <div>
-                <div className="text-xs text-secondary mb-1">Created</div>
-                <div>{fmt(row.createdAt) || "—"}</div>
+              {/* Species + Breed */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-4">
+                <div className="min-w-0 sm:col-span-1">
+                  <div className="text-xs text-secondary mb-1">Species</div>
+                  {isEdit ? (
+                    <select
+                      className="w-full h-9 rounded-md border border-hairline bg-surface px-2 text-sm text-primary"
+                      value={effective.species || ""}
+                      onChange={async (e) => {
+                        const next = e.currentTarget.value as SpeciesUi;
+                        const willClear = Boolean((effective.damId ?? null) || (effective.sireId ?? null) || (effective.breedText ?? ""));
+                        if (willClear) {
+                          const ok = await confirmModal("Changing species will clear Dam, Sire, and Breed. Continue?");
+                          if (!ok) {
+                            return;
+                          }
+                        }
+                        setDraftLive({
+                          species: next as any,
+                          breedText: "",
+                          damId: null,
+                          damName: "" as any,
+                          sireId: null,
+                          sireName: "" as any,
+                        });
+                      }}
+                    >
+                      <option value="">—</option>
+                      <option value="Dog">Dog</option>
+                      <option value="Cat">Cat</option>
+                      <option value="Horse">Horse</option>
+                    </select>
+                  ) : (
+                    <DisplayValue value={row.species || ""} />
+                  )}
+                </div>
+
+                <div className="min-w-0 sm:col-span-2">
+                  <div className="text-xs text-secondary mb-1">Breed</div>
+                  {isEdit ? (
+                    <div className="flex items-center gap-2">
+                      <div className="flex-1 min-w-0">
+                        <BreedCombo
+                          key={breedComboKey}
+                          orgId={orgIdForBreeds ?? undefined}
+                          species={(effective.species || "Dog") as SpeciesUi}
+                          value={
+                            hasBreed
+                              ? ({
+                                id: "current",
+                                name: (effective.breedText ?? "").trim(),
+                                species: effective.species || "Dog",
+                                source: "canonical",
+                              } as any)
+                              : null
+                          }
+                          onChange={(hit: any) => setDraftLive({ breedText: hit?.name ?? "" })}
+                          api={breedBrowseApi}
+                        />
+                      </div>
+
+                      {hasBreed && (
+                        <Button variant="ghost" size="sm" onClick={() => setDraftLive({ breedText: "" })}>
+                          Clear
+                        </Button>
+                      )}
+
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() =>
+                          openCustomBreed((effective.species || "Dog") as SpeciesUi, (name) => setDraftLive({ breedText: name || "" }))
+                        }
+                      >
+                        New custom
+                      </Button>
+                    </div>
+                  ) : (
+                    <DisplayValue value={row.breedText ?? ""} />
+                  )}
+                </div>
               </div>
-              <div>
-                <div className="text-xs text-secondary mb-1">Last Updated</div>
-                <div>{fmt(row.updatedAt) || "—"}</div>
+            </SectionCard>
+
+            {/* Parents */}
+            <SectionCard title="Parents">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <Field label="Dam">
+                  {!isEdit ? (
+                    <div className="text-sm">{row.damName || "—"}</div>
+                  ) : (
+                    <>
+                      <Input
+                        value={editDamQuery}
+                        onChange={(e) => setEditDamQuery(e.currentTarget.value)}
+                        onFocus={() => {
+                          setEditDamFocus(true);
+                          if (editDamQuery.trim() === (row.damName || "").trim()) setEditDamQuery("");
+                        }}
+                        onBlur={() => setEditDamFocus(false)}
+                        placeholder="Search Dam…"
+                      />
+                      {editDamFocus && (
+                        <div className="mt-2 max-h-56 overflow-auto rounded-md border border-hairline bg-surface">
+                          {editDamOptions.length > 0 ? (
+                            editDamOptions.map((a) => (
+                              <button
+                                key={a.id}
+                                type="button"
+                                onMouseDown={(e) => e.preventDefault()}
+                                onClick={() => {
+                                  setDraftLive({ damId: a.id, damName: a.name });
+                                  setEditDamQuery(a.name);
+                                  setEditDamFocus(false);
+                                }}
+                                className={`w-full px-2 py-1 text-left hover:bg-white/5 ${row.damId === a.id ? "bg-white/10" : ""}`}
+                              >
+                                <div className="flex items-center justify-between">
+                                  <span>{a.name}</span>
+                                  {a.organization?.name ? (
+                                    <span className="text-xs text-secondary ml-2">({a.organization.name})</span>
+                                  ) : null}
+                                </div>
+                              </button>
+                            ))
+                          ) : (
+                            <div className="px-2 py-2 text-sm text-secondary">No females found</div>
+                          )}
+                        </div>
+                      )}
+                    </>
+                  )}
+                </Field>
+
+                <Field label="Sire">
+                  {!isEdit ? (
+                    <div className="text-sm">{row.sireName || "—"}</div>
+                  ) : (
+                    <>
+                      <Input
+                        value={editSireQuery}
+                        onChange={(e) => setEditSireQuery(e.currentTarget.value)}
+                        onFocus={() => {
+                          setEditSireFocus(true);
+                          if (editSireQuery.trim) {
+                            if (editSireQuery.trim() === (row.sireName || "").trim()) setEditSireQuery("");
+                          }
+                        }}
+                        onBlur={() => setEditSireFocus(false)}
+                        placeholder="Search Sire…"
+                      />
+                      {editSireFocus && (
+                        <div className="mt-2 max-h-56 overflow-auto rounded-md border border-hairline bg-surface">
+                          {editSireOptions.length > 0 ? (
+                            editSireOptions.map((a) => (
+                              <button
+                                key={a.id}
+                                type="button"
+                                onMouseDown={(e) => e.preventDefault()}
+                                onClick={() => {
+                                  setDraftLive({ sireId: a.id, sireName: a.name });
+                                  setEditSireQuery(a.name);
+                                  setEditSireFocus(false);
+                                }}
+                                className={`w-full px-2 py-1 text-left hover:bg-white/5 ${row.sireId === a.id ? "bg-white/10" : ""}`}
+                              >
+                                <div className="flex items-center justify-between">
+                                  <span>{a.name}</span>
+                                  {a.organization?.name ? (
+                                    <span className="text-xs text-secondary ml-2">({a.organization.name})</span>
+                                  ) : null}
+                                </div>
+                              </button>
+                            ))
+                          ) : (
+                            <div className="px-2 py-2 text-sm text-secondary">No males found</div>
+                          )}
+                        </div>
+                      )}
+                    </>
+                  )}
+                </Field>
               </div>
+            </SectionCard>
+
+            {/* Cycle Selection */}
+            <SectionCard title="Breeding Cycle Selection">
+              <div className="grid grid-cols-[1fr_auto] gap-4 items-end">
+                <div>
+                  <div className="text-xs text-secondary mb-1">Upcoming Cycles (Projected)</div>
+                  {(() => {
+                    const hasSelection = !!pendingCycle;
+                    const ringColor = !row.damId
+                      ? "hsl(var(--hairline))"
+                      : lockedPreview
+                        ? "hsl(var(--green-600))"
+                        : hasSelection
+                          ? "hsl(var(--red-600))"
+                          : "hsl(var(--hairline))";
+                    return (
+                      <div className="relative">
+                        <select
+                          className={[
+                            "relative z-10 w-full h-9 rounded-md px-2 text-sm text-primary bg-surface border border-hairline",
+                            lockedPreview || !row.damId ? "opacity-60 pointer-events-none" : "",
+                          ].join(" ")}
+                          value={pendingCycle ?? ""}
+                          onChange={(e) => setPendingCycle(e.currentTarget.value || null)}
+                          disabled={lockedPreview || !row.damId}
+                        >
+                          <option value="">{!row.damId ? "Select a Dam to view cycles" : "—"}</option>
+                          {projectedCycles.map((d) => (
+                            <option key={d} value={d}>
+                              {d}
+                            </option>
+                          ))}
+                        </select>
+                        <div aria-hidden className="pointer-events-none absolute inset-0 rounded-md" style={{ boxShadow: `0 0 0 2px ${ringColor}` }} />
+                      </div>
+                    );
+                  })()}
+                  {!!damLoadError && <div className="text-xs text-red-600 mt-1">{damLoadError}</div>}
+                </div>
+
+                <div className="rounded-md" style={{ padding: 2, background: lockedPreview ? "var(--green-600,#166534)" : "var(--red-600,#dc2626)" }}>
+                  <button
+                    type="button"
+                    onClick={lockedPreview ? unlockCycle : lockCycle}
+                    disabled={lockedPreview ? false : !canLockNow}
+                    className="h-9 px-3 rounded-[6px] text-sm font-medium bg-transparent flex items-center gap-2"
+                    style={{ color: lockedPreview ? "var(--green-200,#bbf7d0)" : "var(--red-200,#fecaca)" }}
+                    title={
+                      lockedPreview
+                        ? "Unlock cycle"
+                        : canLockNow
+                          ? "Lock cycle"
+                          : "Select a cycle and both parents first"
+                    }
+                  >
+                    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                      {lockedPreview ? (
+                        <>
+                          <path d="M7 10V7a5 5 0 0 1 10 0v3" />
+                          <rect x="5" y="10" width="14" height="10" rx="2" />
+                        </>
+                      ) : (
+                        <>
+                          <path d="M12 5a5 5 0 0 1 5 5" />
+                          <rect x="5" y="10" width="14" height="10" rx="2" />
+                        </>
+                      )}
+                    </svg>
+                    {lockedPreview ? "Cycle LOCKED" : "Cycle LOCK"}
+                  </button>
+                </div>
+              </div>
+            </SectionCard>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <SectionCard title="EXPECTED DATES (SYSTEM CALCULATED)">
+                {isEdit && !expectedsEnabled && (
+                  <div className="text-xs text-[hsl(var(--brand-orange))] mb-2">
+                    Select a <b>Female</b>, select a <b>Male</b>, and <b>lock the cycle</b> to enable Expected Dates.
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <div className="text-xs text-secondary mb-1">BREEDING DATE (EXPECTED)</div>
+                    <Input value={fmt(expectedBreed)} readOnly className="h-8 py-0 px-2 text-sm bg-transparent border-hairline" />
+                  </div>
+                  <div>
+                    <div className="text-xs text-secondary mb-1">WHELPING DATE (EXPECTED)</div>
+                    <Input value={fmt(expectedBirth)} readOnly className="h-8 py-0 px-2 text-sm bg-transparent border-hairline" />
+                  </div>
+                  <div>
+                    <div className="text-xs text-secondary mb-1">HOMING STARTS (EXPECTED)</div>
+                    <Input value={fmt(expectedGoHome)} readOnly className="h-8 py-0 px-2 text-sm bg-transparent border-hairline" />
+                  </div>
+                  <div>
+                    <div className="text-xs text-secondary mb-1">HOMING EXTENDED ENDS (EXPECTED)</div>
+                    <Input value={fmt(expectedGoHomeExtended)} readOnly className="h-8 py-0 px-2 text-sm bg-transparent border-hairline" />
+                  </div>
+                </div>
+              </SectionCard>
+
+              <SectionCard title="ACTUAL DATES">
+                {isEdit && !isCommitted && (
+                  <div className="text-xs text-[hsl(var(--brand-orange))] mb-2">Commit the plan to enable Actual Dates.</div>
+                )}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
+                  <div>
+                    <div className="text-xs text-secondary mb-1">BREEDING DATE (ACTUAL)</div>
+                    <CalendarInput
+                      defaultValue={row.breedDateActual ?? ""}
+                      onChange={(e) => canEditDates && setDraftLive({ breedDateActual: e.currentTarget.value })}
+                      readOnly={!canEditDates}
+                      showIcon={canEditDates}
+                    />
+                  </div>
+
+                  <div>
+                    <div className="text-xs text-secondary mb-1">WHELPED DATE (ACTUAL)</div>
+                    <CalendarInput
+                      defaultValue={row.birthDateActual ?? ""}
+                      onChange={(e) => canEditDates && setDraftLive({ birthDateActual: e.currentTarget.value })}
+                      readOnly={!canEditDates}
+                      showIcon={canEditDates}
+                    />
+                  </div>
+
+                  <div>
+                    <div className="text-xs text-secondary mb-1">WEANED DATE (ACTUAL)</div>
+                    <CalendarInput
+                      defaultValue={row.weanedDateActual ?? ""}
+                      onChange={(e) => canEditDates && setDraftLive({ weanedDateActual: e.currentTarget.value })}
+                      readOnly={!canEditDates}
+                      showIcon={canEditDates}
+                    />
+                  </div>
+
+                  <div>
+                    <div className="text-xs text-secondary mb-1">HOMING STARTED DATE (ACTUAL)</div>
+                    <CalendarInput
+                      defaultValue={row.goHomeDateActual ?? ""}
+                      onChange={(e) => canEditDates && setDraftLive({ goHomeDateActual: e.currentTarget.value })}
+                      readOnly={!canEditDates}
+                      showIcon={canEditDates}
+                    />
+                  </div>
+
+                  <div>
+                    <div className="text-xs text-secondary mb-1">PLAN COMPLETED DATE (ACTUAL)</div>
+                    <CalendarInput
+                      defaultValue={row.completedDateActual ?? ""}
+                      onChange={(e) => canEditDates && setDraftLive({ completedDateActual: e.currentTarget.value })}
+                      readOnly={!canEditDates}
+                      showIcon={canEditDates}
+                    />
+                  </div>
+
+                  {isEdit && (
+                    <div className="flex justify-end items-end">
+                      <Button
+                        variant="outline"
+                        disabled={!canEditDates}
+                        onClick={() => {
+                          if (!canEditDates) return;
+                          if (!window.confirm("Reset ALL actual date fields (Breeding, Whelped, Weaned, Homing Started, Completed)?")) return;
+                          setDraftLive({
+                            breedDateActual: null,
+                            birthDateActual: null,
+                            weanedDateActual: null,
+                            goHomeDateActual: null,
+                            lastGoHomeDateActual: null,
+                            completedDateActual: null,
+                          });
+                        }}
+                      >
+                        Reset Dates
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              </SectionCard>
             </div>
-          </SectionCard>
-        </div>
-      )}
+
+            {/* Sticky footer Close button */}
+            <div className="sticky bottom-0 pt-4 mt-8 bg-gradient-to-t from-[rgba(0,0,0,0.04)] to-transparent">
+              <div className="flex justify-end">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    try { typeof setMode === "function" && setMode("view"); } catch { }
+                    console.debug("[Breeding] Close button pressed → closing drawer");
+
+                    // Resolve at click time (fresh fiber every time)
+                    const fn =
+                      (typeof closeDrawer === "function" && closeDrawer) ||
+                      __bhq_findDetailsDrawerOnClose();
+
+                    if (typeof fn === "function") {
+                      try { fn(); } catch (err) { console.error("[Breeding] close fn threw", err); }
+                    } else {
+                      console.warn("[Breeding] No close function available (fallbacks exhausted)");
+                    }
+                  }}
+                >
+                  Close
+                </Button>              </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === "deposits" && (
+          <div className="space-y-2">
+            <SectionCard title="Deposits">
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <div className="text-xs text-secondary mb-1">Deposits Committed</div>
+                  <div>${((row.depositsCommitted ?? 0) / 100).toLocaleString()}</div>
+                </div>
+                <div>
+                  <div className="text-xs text-secondary mb-1">Deposits Paid</div>
+                  <div>${((row.depositsPaid ?? 0) / 100).toLocaleString()}</div>
+                </div>
+                <div className="col-span-2">
+                  <div className="text-xs text-secondary mb-1">Deposit Risk</div>
+                  <div>{row.depositRisk ?? 0}%</div>
+                </div>
+              </div>
+            </SectionCard>
+
+            {/* Sticky footer Close */}
+            <div className="sticky bottom-0 pt-4 mt-8 bg-gradient-to-t from-[rgba(0,0,0,0.04)] to-transparent">              <div className="flex justify-end">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  try { typeof setMode === "function" && setMode("view"); } catch { }
+                  console.debug("[Breeding] Close button pressed → closing drawer");
+                  closeDrawer();
+                }}
+              >
+                Close
+              </Button>
+            </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === "audit" && (
+          <div className="space-y-2">
+            <SectionCard title="Audit">
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <div className="text-xs text-secondary mb-1">Created</div>
+                  <div>{fmt(row.createdAt) || "—"}</div>
+                </div>
+                <div>
+                  <div className="text-xs text-secondary mb-1">Last Updated</div>
+                  <div>{fmt(row.updatedAt) || "—"}</div>
+                </div>
+              </div>
+            </SectionCard>
+
+            {/* Sticky footer Close */}
+            <div className="sticky bottom-0 pt-4 mt-8 bg-gradient-to-t from-[rgba(0,0,0,0.04)] to-transparent">              <div className="flex justify-end">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  try { typeof setMode === "function" && setMode("view"); } catch { }
+                  console.debug("[Breeding] Close button pressed → closing drawer");
+                  closeDrawer();
+                }}
+              >
+                Close
+              </Button>
+            </div>
+            </div>
+          </div>
+        )}
+      </div>
     </DetailsScaffold>
   );
 }

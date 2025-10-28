@@ -25,7 +25,7 @@ function getCookie(name: string): string | null {
 async function toError(res: Response) {
   let payload: any = null;
   try { payload = await res.json(); } catch {
-    try { payload = { error: await res.text() }; } catch {}
+    try { payload = { error: await res.text() }; } catch { }
   }
   const err = new Error(payload?.error || `HTTP ${res.status}`);
   (err as any).status = res.status;
@@ -165,6 +165,12 @@ export function makeBreedingApi(opts: ApiOpts) {
     updatePlan(id: number, body: any) {
       return patch<any>(`/breeding/plans/${id}`, body);
     },
+
+    // POST /breeding/plans/:id/commit
+    commitPlan(id: number, body?: { codeHint?: string }) {
+      return post<any>(`/breeding/plans/${id}/commit`, body ?? {});
+    },
+
 
     // POST /breeding/plans/:id/archive
     archivePlan(id: number) {

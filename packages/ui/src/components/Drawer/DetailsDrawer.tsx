@@ -1,6 +1,6 @@
 import * as React from "react";
 import { createPortal } from "react-dom";
-import { getOverlayRoot } from "@bhq/ui/overlay";
+import { getOverlayRoot } from "../../overlay";
 
 type Placement = "right" | "center";
 type Align = "center" | "top";

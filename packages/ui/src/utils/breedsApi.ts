@@ -1,4 +1,4 @@
-import { readTenantIdFast, resolveTenantId } from "../utils/tenant"; // your existing util
+import { readTenantIdFast, resolveTenantId } from "../utils/tenant";
 
 function normBase(base?: string): string {
   let b = String(base || (typeof window !== "undefined" ? window.location.origin : "http://localhost:6170")).trim();

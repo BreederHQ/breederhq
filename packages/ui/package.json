@@ -1,37 +1,21 @@
 {
-  "name": "@bhq/ui",
-  "version": "0.1.1",
-  "private": false,
-  "type": "module",
-  "main": "dist/index.cjs",
-  "module": "dist/index.js",
-  "types": "dist/index.d.ts",
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js",
-      "require": "./dist/index.cjs"
-    },
-    "./overlay": {
-      "types": "./dist/overlay.d.ts",
-      "import": "./dist/overlay.js",
-      "require": "./dist/overlay.cjs"
-    },
-    "./styles/*": "./styles/*",
-    "./package.json": "./package.json"
+  "dependencies": {
+    "clsx": "^2.1.1",
+    "lucide-react": "^0.544.0",
+    "@fullcalendar/react": "^6.1.19",
+    "@fullcalendar/daygrid": "^6.1.19",
+    "@fullcalendar/interaction": "^6.1.19"
   },
-  "files": [
-    "dist",
-    "styles",
-    "bhq.css"
-  ],
-  "sideEffects": [
-    "*.css",
-    "./styles/*"
-  ],
-  "scripts": {
-    "build": "tsup",
-    "dev": "tsup --watch"
+  "peerDependencies": {
+    "react": ">=18",
+    "react-dom": ">=18"
+  },
+  "devDependencies": {
+    "@types/node": "^24.9.1",
+    "concurrently": "^9.2.1",
+    "tsup": "^8.5.0",
+    "typescript": "^5.5.4",
+    "vite": "^5.4.0"
   },
   "tsup": {
     "entry": {
@@ -49,22 +33,15 @@
     "minify": false,
     "external": [
       "react",
-      "react-dom"
+      "react-dom",
+      "@fullcalendar/react",
+      "@fullcalendar/daygrid",
+      "@fullcalendar/interaction"
     ]
   },
-  "dependencies": {
-    "clsx": "^2.1.1",
-    "lucide-react": "^0.544.0"
-  },
-  "peerDependencies": {
-    "react": ">=18",
-    "react-dom": ">=18"
-  },
-  "devDependencies": {
-    "@types/node": "^24.9.1",
-    "concurrently": "^9.2.1",
-    "tsup": "^8.5.0",
-    "typescript": "^5.5.4",
-    "vite": "^5.4.0"
+  "name": "@bhq/ui",
+  "version": "0.1.0",
+  "scripts": {
+    "build": "tsup"
   }
 }
