@@ -253,6 +253,7 @@ export function makeBreedingApi(opts: ApiOpts) {
       to?: string;   // ISO
       page?: number;
       limit?: number;
+      archived?: "include" | "only" | "exclude";
     }) {
       const qs = new URLSearchParams();
       if (params) {
