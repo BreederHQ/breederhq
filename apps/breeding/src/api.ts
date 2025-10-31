@@ -24,8 +24,14 @@ function getCookie(name: string): string | null {
 
 async function toError(res: Response) {
   let payload: any = null;
-  try { payload = await res.json(); } catch {
-    try { payload = { error: await res.text() }; } catch { }
+  try {
+    payload = await res.json();
+  } catch {
+    try {
+      payload = { error: await res.text() };
+    } catch {
+      // ignore
+    }
   }
   const err = new Error(payload?.error || `HTTP ${res.status}`);
   (err as any).status = res.status;
@@ -50,9 +56,89 @@ export type PlanInclude =
 /** Common list response shape used by several endpoints */
 export type Paged<T> = { items: T[]; total: number; page: number; limit: number };
 
+/** Params for GET /breeding/plans */
+export type ListPlansParams = {
+  status?: string;
+  damId?: number;
+  sireId?: number;
+  q?: string;
+  include?: PlanInclude | `${PlanInclude},${string}`;
+  page?: number;
+  limit?: number;
+  archived?: "include" | "only" | "exclude";
+  includeArchived?: boolean | "true" | "false";
+  include_archived?: boolean | "true" | "false";
+  withArchived?: boolean | "true" | "false";
+  showArchived?: boolean | "true" | "false";
+};
+
+/** Availability prefs shape kept on Tenant.availabilityPrefs */
+export type AvailabilityPrefs = {
+  testing_risky_from_full_start: number;
+  testing_risky_to_full_end: number;
+  testing_unlikely_from_likely_start: number;
+  testing_unlikely_to_likely_end: number;
+  post_risky_from_full_start: number;
+  post_risky_to_full_end: number;
+  post_unlikely_from_likely_start: number;
+  post_unlikely_to_likely_end: number;
+};
+
+/* ───────────────────────── payload normalizers ─────────────────────────
+   Accept older caller keys and rewrite them to the new placement schema
+   before sending to the server. This keeps UI code flexible and safe.   */
+
+function normalizePlanDates(body: any) {
+  if (!body || typeof body !== "object") return body;
+
+  const b: any = { ...body };
+
+  // expected → placement
+  if (b.expectedGoHome !== undefined && b.expectedPlacementStart === undefined) {
+    b.expectedPlacementStart = b.expectedGoHome;
+    delete b.expectedGoHome;
+  }
+  if (b.expectedGoHomeExtendedEnd !== undefined && b.expectedPlacementCompleted === undefined) {
+    b.expectedPlacementCompleted = b.expectedGoHomeExtendedEnd;
+    delete b.expectedGoHomeExtendedEnd;
+  }
+
+  // locked → placement
+  if (b.lockedGoHomeDate !== undefined && b.lockedPlacementStartDate === undefined) {
+    b.lockedPlacementStartDate = b.lockedGoHomeDate;
+    delete b.lockedGoHomeDate;
+  }
+
+  // actuals → placement
+  if (b.goHomeDateActual !== undefined && b.placementStartDateActual === undefined) {
+    b.placementStartDateActual = b.goHomeDateActual;
+    delete b.goHomeDateActual;
+  }
+  if (b.lastGoHomeDateActual !== undefined && b.placementCompletedDateActual === undefined) {
+    b.placementCompletedDateActual = b.lastGoHomeDateActual;
+    delete b.lastGoHomeDateActual;
+  }
+
+  // pass through new actuals, including the new hormone testing field
+  // hormoneTestingStartDateActual already named correctly
+
+  return b;
+}
+
+function normalizeCycleDates(body: any) {
+  if (!body || typeof body !== "object") return body;
+  const b: any = { ...body };
+  // legacy acceptor: goHomeDate → placementStartDate
+  if (b.goHomeDate !== undefined && b.placementStartDate === undefined) {
+    b.placementStartDate = b.goHomeDate;
+    delete b.goHomeDate;
+  }
+  return b;
+}
+
 export function makeBreedingApi(opts: ApiOpts) {
   const fetchFn: typeof fetch =
-    opts.fetch ? opts.fetch : globalThis.fetch.bind(globalThis);
+    opts.fetch ? opts.fetch : (globalThis.fetch ? globalThis.fetch.bind(globalThis) : (undefined as any));
 
   const base = opts.baseUrl ?? "/api/v1";
   const tenantHeader = { "x-tenant-id": String(opts.tenantId) };
@@ -129,17 +215,19 @@ export function makeBreedingApi(opts: ApiOpts) {
       return get<{ ok: true; time: string; env: any }>("/__diag");
     },
 
+    /* Tenant availability prefs for Planning and Calendar travel bands */
+    // GET /tenants/:id/availability
+    getTenantAvailability(tenantId: number) {
+      return get<AvailabilityPrefs>(`/tenants/${tenantId}/availability`);
+    },
+    // PATCH /tenants/:id/availability
+    updateTenantAvailability(tenantId: number, body: Partial<AvailabilityPrefs>) {
+      return patch<AvailabilityPrefs>(`/tenants/${tenantId}/availability`, body);
+    },
+
     /* Breeding Plans */
     // GET /breeding/plans?status=&damId=&sireId=&q=&include=&page=&limit=
-    listPlans(params?: {
-      status?: string;
-      damId?: number;
-      sireId?: number;
-      q?: string;
-      include?: PlanInclude | `${PlanInclude},${string}`;
-      page?: number;
-      limit?: number;
-    }) {
+    listPlans(params?: ListPlansParams) {
       const qs = new URLSearchParams();
       if (params) {
         for (const [k, v] of Object.entries(params)) {
@@ -158,19 +246,19 @@ export function makeBreedingApi(opts: ApiOpts) {
 
     // POST /breeding/plans
     createPlan(body: any) {
-      return post<any>("/breeding/plans", body);
+      return post<any>("/breeding/plans", normalizePlanDates(body));
     },
 
     // PATCH /breeding/plans/:id
     updatePlan(id: number, body: any) {
-      return patch<any>(`/breeding/plans/${id}`, body);
+      return patch<any>(`/breeding/plans/${id}`, normalizePlanDates(body));
     },
 
     // POST /breeding/plans/:id/commit
     commitPlan(id: number, body?: { codeHint?: string }) {
+      // commit does not need date normalization, but pass through for consistency if provided
       return post<any>(`/breeding/plans/${id}/commit`, body ?? {});
     },
-
 
     // POST /breeding/plans/:id/archive
     archivePlan(id: number) {
@@ -250,7 +338,7 @@ export function makeBreedingApi(opts: ApiOpts) {
     listCycles(params?: {
       femaleId?: number;
       from?: string; // ISO
-      to?: string;   // ISO
+      to?: string; // ISO
       page?: number;
       limit?: number;
       archived?: "include" | "only" | "exclude";
@@ -267,12 +355,12 @@ export function makeBreedingApi(opts: ApiOpts) {
 
     // POST /breeding/cycles
     createCycle(body: any) {
-      return post<any>("/breeding/cycles", body);
+      return post<any>("/breeding/cycles", normalizeCycleDates(body));
     },
 
     // PATCH /breeding/cycles/:id
     updateCycle(id: number, body: any) {
-      return patch<any>(`/breeding/cycles/${id}`, body);
+      return patch<any>(`/breeding/cycles/${id}`, normalizeCycleDates(body));
     },
   };
 }

@@ -460,313 +460,301 @@ const ContactDetailsView: React.FC<ContactDetailsViewProps> = ({
       onTabChange={setActiveTab}
       rightActions={<Button size="sm" variant="outline">Archive</Button>}
     >
-      {activeTab === "overview" && (
-        <div className="space-y-3">
-          {/* Identity */}
-          <SectionCard title={titleFlair("Identity")}>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div>
-                <div className="text-xs text-secondary mb-1">First Name</div>
-                {mode === "view" ? <div className="text-sm">{row.firstName || "—"}</div> : editText("firstName")}
+      {activeTab === "overview" && (() => {
+        // normalize once so display values always work regardless of snake/camel input
+        const norm = contactToRow(row);
+
+        return (
+          <div className="space-y-3">
+            {/* Identity */}
+            <SectionCard title="Identity">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div>
+                  <div className="text-xs text-secondary mb-1">First Name</div>
+                  {mode === "view"
+                    ? <div className="text-sm">{norm.firstName || "—"}</div>
+                    : editText("firstName")}
+                </div>
+
+                <div>
+                  <div className="text-xs text-secondary mb-1">Last Name</div>
+                  {mode === "view"
+                    ? <div className="text-sm">{norm.lastName || "—"}</div>
+                    : editText("lastName")}
+                </div>
+
+                <div>
+                  <div className="text-xs text-secondary mb-1">Nickname</div>
+                  {mode === "view"
+                    ? <div className="text-sm">{norm.nickname || "—"}</div>
+                    : editText("nickname")}
+                </div>
+
+                <div className="sm:col-span-3">
+                  <div className="text-xs text-secondary mb-1">Organization</div>
+                  {mode === "view" ? (
+                    <div className="text-sm">{norm.organizationName || "—"}</div>
+                  ) : (
+                    <OrganizationSelect
+                      value={
+                        norm.organizationId
+                          ? { id: Number(norm.organizationId), name: norm.organizationName || "" }
+                          : null
+                      }
+                      onChange={(opt) =>
+                        setDraft((d: any) => ({
+                          ...d,
+                          organizationId: opt?.id ?? null,
+                          organizationName: opt?.name ?? null,
+                        }))
+                      }
+                      placeholder="— Select Organization"
+                    />
+                  )}
+                </div>
               </div>
-              <div>
-                <div className="text-xs text-secondary mb-1">Last Name</div>
-                {mode === "view" ? <div className="text-sm">{row.lastName || "—"}</div> : editText("lastName")}
+            </SectionCard>
+
+            {/* Address */}
+            <SectionCard title="Address">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <div className="text-xs text-secondary mb-1">Street</div>
+                  {mode === "view"
+                    ? <div className="text-sm">{norm.street || "—"}</div>
+                    : editText("street")}
+                </div>
+
+                <div>
+                  <div className="text-xs text-secondary mb-1">Street 2</div>
+                  {mode === "view"
+                    ? <div className="text-sm">{norm.street2 || "—"}</div>
+                    : editText("street2")}
+                </div>
+
+                <div>
+                  <div className="text-xs text-secondary mb-1">City</div>
+                  {mode === "view"
+                    ? <div className="text-sm">{norm.city || "—"}</div>
+                    : editText("city")}
+                </div>
+
+                <div>
+                  <div className="text-xs text-secondary mb-1">State / Region</div>
+                  {mode === "view"
+                    ? <div className="text-sm">{norm.state || "—"}</div>
+                    : editText("state")}
+                </div>
+
+                <div>
+                  <div className="text-xs text-secondary mb-1">Postal Code</div>
+                  {mode === "view"
+                    ? <div className="text-sm">{norm.postalCode || "—"}</div>
+                    : editText("postalCode")}
+                </div>
+
+                <div>
+                  <div className="text-xs text-secondary mb-1">Country</div>
+                  {mode === "view" ? (
+                    <div className="text-sm">{norm.country || "—"}</div>
+                  ) : (
+                    <CountrySelect
+                      value={norm.country}
+                      onChange={(v) => setDraft((d: any) => ({ ...d, country: v }))}
+                    />
+                  )}
+                </div>
               </div>
-              <div>
-                <div className="text-xs text-secondary mb-1">Nickname</div>
-                {mode === "view" ? <div className="text-sm">{row.nickname || "—"}</div> : editText("nickname")}
+            </SectionCard>
+
+            {/* Communication Preferences */}
+            <SectionCard title="Communication Preferences">
+              <div className="flex flex-wrap items-center gap-2 mb-3">
+                <PillToggle on={!!prefs.email} label="Email" onClick={() => togglePref("email")} className={mode === "view" ? "opacity-50 pointer-events-none" : ""} />
+                <PillToggle on={!!prefs.sms} label="SMS" onClick={() => togglePref("sms")} className={mode === "view" ? "opacity-50 pointer-events-none" : ""} />
+                <PillToggle on={!!prefs.phone} label="Phone" onClick={() => togglePref("phone")} className={mode === "view" ? "opacity-50 pointer-events-none" : ""} />
+                <PillToggle on={!!prefs.mail} label="Mail" onClick={() => togglePref("mail")} className={mode === "view" ? "opacity-50 pointer-events-none" : ""} />
+                <PillToggle on={!!prefs.whatsapp} label="WhatsApp" onClick={() => togglePref("whatsapp")} className={mode === "view" ? "opacity-50 pointer-events-none" : ""} />
               </div>
-              <div className="sm:col-span-3">
-                <div className="text-xs text-secondary mb-1">Organization</div>
+
+              {/* Email */}
+              <div>
+                <div className="text-xs text-secondary mb-1">Email</div>
                 {mode === "view" ? (
-                  <div className="text-sm">{row.organizationName || "—"}</div>
+                  <div className="text-sm">{norm.email || "—"}</div>
                 ) : (
-                  <OrganizationSelect
-                    value={
-                      row.organizationId
-                        ? { id: Number(row.organizationId), name: row.organizationName || "" }
-                        : null
-                    }
-                    onChange={(opt) =>
-                      setDraft((d: any) => ({
-                        ...d,
-                        organizationId: opt?.id ?? null,
-                        organizationName: opt?.name ?? null,
-                      }))
-                    }
-                    placeholder="— Select Organization"
+                  <Input
+                    size="sm"
+                    type="email"
+                    defaultValue={norm.email ?? ""}
+                    onChange={(e) => setDraft((d: any) => ({ ...d, email: (e.currentTarget as HTMLInputElement).value }))}
                   />
                 )}
               </div>
-            </div>
-          </SectionCard>
 
-          {/* Address */}
-          <SectionCard title={titleFlair("Address")}>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <div className="text-xs text-secondary mb-1">Street</div>
-                {mode === "view" ? <div className="text-sm">{row.street || "—"}</div> : editText("street")}
-              </div>
-              <div>
-                <div className="text-xs text-secondary mb-1">Street 2</div>
-                {mode === "view" ? <div className="text-sm">{row.street2 || "—"}</div> : editText("street2")}
-              </div>
-              <div>
-                <div className="text-xs text-secondary mb-1">City</div>
-                {mode === "view" ? <div className="text-sm">{row.city || "—"}</div> : editText("city")}
-              </div>
-              <div>
-                <div className="text-xs text-secondary mb-1">State / Region</div>
-                {mode === "view" ? <div className="text-sm">{row.state || "—"}</div> : editText("state")}
-              </div>
-              <div>
-                <div className="text-xs text-secondary mb-1">Postal Code</div>
-                {mode === "view" ? <div className="text-sm">{row.postalCode || "—"}</div> : editText("postalCode")}
-              </div>
-              <div>
-                <div className="text-xs text-secondary mb-1">Country</div>
+              {/* Phones */}
+              <div className="sm:col-span-2">
+                <div className="text-xs text-secondary mb-1">Cell Phone</div>
                 {mode === "view" ? (
-                  <div className="text-sm">{row.country || "—"}</div>
+                  <div className="text-sm">{(row as any).phoneMobileE164 || norm.phone || "—"}</div>
                 ) : (
-                  <CountrySelect
-                    value={row.country}
-                    onChange={(v) => setDraft((d: any) => ({ ...d, country: v }))}
-                  />
+                  <div className="relative">
+                    {/* @ts-ignore */}
+                    <IntlPhoneField
+                      value={cell}
+                      onChange={(v) => {
+                        setCell(v);
+                        setDraft((d: any) => ({
+                          ...d,
+                          phoneMobileE164: v?.e164 ?? null,
+                          phone: (v?.e164 ?? null) || (wa?.e164 ?? null),
+                        }));
+                      }}
+                    />
+                  </div>
                 )}
               </div>
-            </div>
-          </SectionCard>
 
-          {/* Communication Preferences */}
-          <SectionCard title={titleFlair("Communication Preferences")}>
-            <div className="flex flex-wrap items-center gap-2 mb-3">
-              <PillToggle on={!!prefs.email} label="Email" onClick={() => togglePref("email")} className={mode === "view" ? "opacity-50 pointer-events-none" : ""} />
-              <PillToggle on={!!prefs.sms} label="SMS" onClick={() => togglePref("sms")} className={mode === "view" ? "opacity-50 pointer-events-none" : ""} />
-              <PillToggle on={!!prefs.phone} label="Phone" onClick={() => togglePref("phone")} className={mode === "view" ? "opacity-50 pointer-events-none" : ""} />
-              <PillToggle on={!!prefs.mail} label="Mail" onClick={() => togglePref("mail")} className={mode === "view" ? "opacity-50 pointer-events-none" : ""} />
-              <PillToggle on={!!prefs.whatsapp} label="WhatsApp" onClick={() => togglePref("whatsapp")} className={mode === "view" ? "opacity-50 pointer-events-none" : ""} />
-            </div>
+              <div className="sm:col-span-2">
+                <div className="text-xs text-secondary mb-1">Landline</div>
+                {mode === "view" ? (
+                  <div className="text-sm">{(row as any).phoneLandlineE164 || "—"}</div>
+                ) : (
+                  <div className="relative">
+                    {/* @ts-ignore */}
+                    <IntlPhoneField
+                      value={land}
+                      onChange={(v) => setLand(v)}
+                    />
+                  </div>
+                )}
+              </div>
 
-            {/* Email */}
-            <div>
-              <div className="text-xs text-secondary mb-1">Email</div>
-              {mode === "view" ? (
-                <div className="text-sm">{row.email || "—"}</div>
-              ) : (
-                <Input
-                  size="sm"
-                  type="email"
-                  defaultValue={row.email ?? ""}
-                  onChange={(e) => setDraft((d: any) => ({ ...d, email: (e.currentTarget as HTMLInputElement).value }))}
-                />
-              )}
-            </div>
+              <div className="sm:col-span-2">
+                <div className="text-xs text-secondary mb-1">WhatsApp</div>
+                {mode === "view" ? (
+                  <div className="text-sm">{(row as any).whatsappE164 || "—"}</div>
+                ) : (
+                  <div className="relative">
+                    {/* @ts-ignore */}
+                    <IntlPhoneField
+                      value={wa}
+                      onChange={(v) => {
+                        setWa(v);
+                        setDraft((d: any) => ({
+                          ...d,
+                          whatsappE164: v?.e164 ?? null,
+                          phone: (cell?.e164 ?? null) || (v?.e164 ?? null),
+                        }));
+                      }}
+                    />
+                  </div>
+                )}
+              </div>
 
-            {/* Phones */}
-            <div className="sm:col-span-2">
-              <div className="text-xs text-secondary mb-1">Cell Phone</div>
-              {mode === "view" ? (
-                <div className="text-sm">{(row as any).phoneMobileE164 || row.phone || "—"}</div>
-              ) : (
-                <div className="relative">
-                  {/* @ts-ignore */}
-                  <IntlPhoneField
-                    value={cell}
-                    onChange={(v) => {
-                      setCell(v);
-                      setDraft((d: any) => ({
-                        ...d,
-                        phoneMobileE164: v?.e164 ?? null,
-                        phone: (v?.e164 ?? null) || (wa?.e164 ?? null),
-                      }));
-                    }}
-                  />
+              {mode === "edit" && (
+                <div className="text-xs text-secondary">
+                  If Cell Phone is left empty, WhatsApp will be used as the phone on save.
                 </div>
               )}
-            </div>
+            </SectionCard>
 
-            <div className="sm:col-span-2">
-              <div className="text-xs text-secondary mb-1">Landline</div>
+            {/* Compliance */}
+            <SectionCard title="Compliance">
+              <div className="text-xs text-secondary mb-2">
+                System sets these from unsubscribes. Click “Reset” to opt the user back in; action is logged on Save.
+              </div>
+
               {mode === "view" ? (
-                <div className="text-sm">{(row as any).phoneLandlineE164 || "—"}</div>
+                <div className="flex flex-wrap items-center gap-6">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs">EMAIL</span>
+                    <span className="text-xs px-2 py-0.5 rounded border border-hairline">
+                      {(row as any).emailUnsubscribed ? "unsubscribed" : "subscribed"}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs">SMS</span>
+                    <span className="text-xs px-2 py-0.5 rounded border border-hairline">
+                      {(row as any).smsUnsubscribed ? "unsubscribed" : "subscribed"}
+                    </span>
+                  </div>
+                </div>
               ) : (
-                <div className="relative">
-                  {/* @ts-ignore */}
-                  <IntlPhoneField
-                    value={land}
-                    onChange={(v) => setLand(v)}
-                  />
+                <div className="flex flex-wrap items-center gap-8">
+                  {/* EMAIL Reset */}
+                  <label className="flex items-center gap-2 text-xs">
+                    <span>EMAIL</span>
+                    <span className="px-2 py-0.5 rounded border border-hairline text-xs">
+                      {(row as any).emailUnsubscribed ? "unsubscribed" : "subscribed"}
+                    </span>
+                    <input
+                      type="checkbox"
+                      defaultChecked={!!(row as any).emailOptOutOverride}
+                      onChange={(e) => {
+                        const el = e.currentTarget as HTMLInputElement;
+                        const checked = el.checked;
+
+                        if (checked) {
+                          setConfirmReset({
+                            channel: "email",
+                            onAnswer: (ok) => {
+                              if (ok) {
+                                setDraft((d: any) => ({ ...d, emailOptOutOverride: true }));
+                                el.checked = true;
+                              } else {
+                                el.checked = false;
+                              }
+                              setConfirmReset(null);
+                            },
+                          });
+                        } else {
+                          setDraft((d: any) => ({ ...d, emailOptOutOverride: false }));
+                        }
+                      }}
+                    />
+                    <span>Reset</span>
+                  </label>
+
+                  {/* SMS Reset */}
+                  <label className="flex items-center gap-2 text-xs">
+                    <span>SMS</span>
+                    <span className="px-2 py-0.5 rounded border border-hairline text-xs">
+                      {(row as any).smsUnsubscribed ? "unsubscribed" : "subscribed"}
+                    </span>
+                    <input
+                      type="checkbox"
+                      defaultChecked={!!(row as any).smsOptOutOverride}
+                      onChange={(e) => {
+                        const el = e.currentTarget as HTMLInputElement;
+                        const checked = el.checked;
+
+                        if (checked) {
+                          setConfirmReset({
+                            channel: "sms",
+                            onAnswer: (ok) => {
+                              if (ok) {
+                                setDraft((d: any) => ({ ...d, smsOptOutOverride: true }));
+                                el.checked = true;
+                              } else {
+                                el.checked = false;
+                              }
+                              setConfirmReset(null);
+                            },
+                          });
+                        } else {
+                          setDraft((d: any) => ({ ...d, smsOptOutOverride: false }));
+                        }
+                      }}
+                    />
+                    <span>Reset</span>
+                  </label>
                 </div>
               )}
-            </div>
-
-            <div className="sm:col-span-2">
-              <div className="text-xs text-secondary mb-1">WhatsApp</div>
-              {mode === "view" ? (
-                <div className="text-sm">{(row as any).whatsappE164 || "—"}</div>
-              ) : (
-                <div className="relative">
-                  {/* @ts-ignore */}
-                  <IntlPhoneField
-                    value={wa}
-                    onChange={(v) => {
-                      setWa(v);
-                      setDraft((d: any) => ({
-                        ...d,
-                        whatsappE164: v?.e164 ?? null,
-                        phone: (cell?.e164 ?? null) || (v?.e164 ?? null),
-                      }));
-                    }}
-                  />
-                </div>
-              )}
-            </div>
-
-            {mode === "edit" && (
-              <div className="text-xs text-secondary">
-                If Cell Phone is left empty, WhatsApp will be used as the phone on save.
-              </div>
-            )}
-          </SectionCard>
-
-          {/* Compliance */}
-          <SectionCard title={<span className="text-[11px] font-semibold tracking-wide uppercase text-secondary">Compliance</span>}>
-            <div className="text-xs text-secondary mb-2">
-              System sets these from unsubscribes. Click “Reset” to opt the user back in; action is logged on Save.
-            </div>
-
-            {mode === "view" ? (
-              <div className="flex flex-wrap items-center gap-6">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs">EMAIL</span>
-                  <span className="text-xs px-2 py-0.5 rounded border border-hairline">
-                    {(row as any).emailUnsubscribed ? "unsubscribed" : "subscribed"}
-                  </span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs">SMS</span>
-                  <span className="text-xs px-2 py-0.5 rounded border border-hairline">
-                    {(row as any).smsUnsubscribed ? "unsubscribed" : "subscribed"}
-                  </span>
-                </div>
-              </div>
-            ) : (
-              <div className="flex flex-wrap items-center gap-8">
-                {/* EMAIL Reset */}
-                <label className="flex items-center gap-2 text-xs">
-                  <span>EMAIL</span>
-                  <span className="px-2 py-0.5 rounded border border-hairline text-xs">
-                    {(row as any).emailUnsubscribed ? "unsubscribed" : "subscribed"}
-                  </span>
-                  <input
-                    type="checkbox"
-                    defaultChecked={!!(row as any).emailOptOutOverride}
-                    onChange={(e) => {
-                      const el = e.currentTarget as HTMLInputElement;
-                      const checked = el.checked;
-
-                      if (checked) {
-                        setConfirmReset({
-                          channel: "email",
-                          onAnswer: (ok) => {
-                            if (ok) {
-                              setDraft((d: any) => ({ ...d, emailOptOutOverride: true }));
-                              el.checked = true;
-                            } else {
-                              el.checked = false;
-                            }
-                            setConfirmReset(null);
-                          },
-                        });
-                      } else {
-                        setDraft((d: any) => ({ ...d, emailOptOutOverride: false }));
-                      }
-                    }}
-                  />
-                  <span>Reset</span>
-                </label>
-
-                {/* SMS Reset */}
-                <label className="flex items-center gap-2 text-xs">
-                  <span>SMS</span>
-                  <span className="px-2 py-0.5 rounded border border-hairline text-xs">
-                    {(row as any).smsUnsubscribed ? "unsubscribed" : "subscribed"}
-                  </span>
-                  <input
-                    type="checkbox"
-                    defaultChecked={!!(row as any).smsOptOutOverride}
-                    onChange={(e) => {
-                      const el = e.currentTarget as HTMLInputElement;
-                      const checked = el.checked;
-
-                      if (checked) {
-                        setConfirmReset({
-                          channel: "sms",
-                          onAnswer: (ok) => {
-                            if (ok) {
-                              setDraft((d: any) => ({ ...d, smsOptOutOverride: true }));
-                              el.checked = true;
-                            } else {
-                              el.checked = false;
-                            }
-                            setConfirmReset(null);
-                          },
-                        });
-                      } else {
-                        setDraft((d: any) => ({ ...d, smsOptOutOverride: false }));
-                      }
-                    }}
-                  />
-                  <span>Reset</span>
-                </label>
-              </div>
-            )}
-          </SectionCard>
-        </div>
-      )}
-
-      {activeTab === "animals" && (
-        <div className="space-y-2">
-          <SectionCard title={titleFlair("Associated Animals")}>
-            <div className="text-sm text-secondary">Linked animals will appear here.</div>
-          </SectionCard>
-        </div>
-      )}
-
-      {activeTab === "audit" && (
-        <div className="space-y-2">
-          <SectionCard title={titleFlair("Audit")}>
-            <div className="text-sm text-secondary">Events will appear here.</div>
-          </SectionCard>
-        </div>
-      )}
-
-      {confirmReset && overlayRoot && createPortal(
-        <div className="fixed inset-0">
-          <div
-            className="absolute inset-0 bg-black/50"
-            onClick={() => confirmReset.onAnswer(false)}
-          />
-          <div className="absolute inset-0 flex items-center justify-center">
-            <div className="w-[520px] max-w-[95vw] rounded-xl border border-hairline bg-surface shadow-xl p-4">
-              <div className="text-base font-semibold">
-                Reset {confirmReset.channel.toUpperCase()} opt-out?
-              </div>
-              <div className="text-sm text-secondary mt-2">
-                You are about to override the user's communication preferences and opt them back into
-                receiving sales/marketing correspondence. Are you sure?
-              </div>
-              <div className="mt-4 flex items-center justify-end gap-2">
-                <Button variant="outline" onClick={() => confirmReset.onAnswer(false)}>Cancel</Button>
-                <Button onClick={() => confirmReset.onAnswer(true)}>Yes, reset</Button>
-              </div>
-            </div>
+            </SectionCard>
           </div>
-        </div>,
-        overlayRoot
-      )}
+        );
+      })()}
     </DetailsScaffold>
   );
 };
@@ -1263,168 +1251,168 @@ export default function AppContacts() {
         </div>
       </Card>
 
-{/* Create Contact Modal (Overlay) */}
-<Overlay
-  open={createOpen}
-  onOpenChange={(v) => { if (!createWorking) setCreateOpen(v); }}
-  ariaLabel="Create Contact"
-  closeOnEscape
-  closeOnOutsideClick // harmless if your Overlay doesn't implement it; we also handle outside below
->
-  {(() => {
-    const panelRef = React.useRef<HTMLDivElement>(null);
+      {/* Create Contact Modal (Overlay) */}
+      <Overlay
+        open={createOpen}
+        onOpenChange={(v) => { if (!createWorking) setCreateOpen(v); }}
+        ariaLabel="Create Contact"
+        closeOnEscape
+        closeOnOutsideClick // harmless if your Overlay doesn't implement it; we also handle outside below
+      >
+        {(() => {
+          const panelRef = React.useRef<HTMLDivElement>(null);
 
-    const handleOutsideMouseDown: React.MouseEventHandler<HTMLDivElement> = (e) => {
-      const p = panelRef.current;
-      if (!p) return;
-      if (!p.contains(e.target as Node)) {
-        if (!createWorking) setCreateOpen(false);
-      }
-    };
+          const handleOutsideMouseDown: React.MouseEventHandler<HTMLDivElement> = (e) => {
+            const p = panelRef.current;
+            if (!p) return;
+            if (!p.contains(e.target as Node)) {
+              if (!createWorking) setCreateOpen(false);
+            }
+          };
 
-    return (
-      // Fullscreen hit-area for outside clicks
-      <div className="fixed inset-0" onMouseDown={handleOutsideMouseDown}>
-        {/* Backdrop */}
-        <div className="absolute inset-0 bg-black/50" />
+          return (
+            // Fullscreen hit-area for outside clicks
+            <div className="fixed inset-0" onMouseDown={handleOutsideMouseDown}>
+              {/* Backdrop */}
+              <div className="absolute inset-0 bg-black/50" />
 
-        {/* Centered panel */}
-        <div className="absolute inset-0 flex items-center justify-center">
-          <div
-            ref={panelRef}
-            role="dialog"
-            aria-modal="true"
-            className="pointer-events-auto relative w-[760px] max-w-[95vw] rounded-xl border border-hairline bg-surface shadow-xl p-4"
-          >
-            <div className="flex items-center justify-between mb-2">
-              <div className="text-lg font-semibold">Create Contact</div>
-              <Button variant="ghost" onClick={() => setCreateOpen(false)}>✕</Button>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {/* Names */}
-              <div>
-                <div className="text-xs text-secondary mb-1">
-                  First name <span className="text-[hsl(var(--brand-orange))]">*</span>
-                </div>
-                <Input value={firstName} onChange={(e) => setFirstName((e.currentTarget as HTMLInputElement).value)} />
-              </div>
-              <div>
-                <div className="text-xs text-secondary mb-1">
-                  Last name <span className="text-[hsl(var(--brand-orange))]">*</span>
-                </div>
-                <Input value={lastName} onChange={(e) => setLastName((e.currentTarget as HTMLInputElement).value)} />
-              </div>
-
-              {/* Nickname */}
-              <div className="sm:col-span-2">
-                <div className="text-xs text-secondary mb-1">Preferred / Nickname</div>
-                <Input value={nickname} onChange={(e) => setNickname((e.currentTarget as HTMLInputElement).value)} />
-              </div>
-
-              {/* Organization */}
-              <div className="sm:col-span-2">
-                <div className="text-xs text-secondary mb-1">Organizational Association</div>
-                <OrganizationSelect value={org} onChange={setOrg} />
-              </div>
-
-              {/* Email */}
-              <div className="sm:col-span-2">
-                <div className="text-xs text-secondary mb-1">Email</div>
-                <Input type="email" value={email} onChange={(e) => setEmail((e.currentTarget as HTMLInputElement).value)} />
-              </div>
-
-              {/* Phones */}
-              <div className="sm:col-span-2">
-                <div className="text-xs text-secondary mb-1">Cell Phone</div>
-                {/* @ts-ignore */}
-                <IntlPhoneField value={cell} onChange={setCell} />
-              </div>
-
-              <div className="sm:col-span-2">
-                <div className="text-xs text-secondary mb-1">Landline</div>
-                {/* @ts-ignore */}
-                <IntlPhoneField value={landline} onChange={setLandline} />
-              </div>
-
-              <div className="sm:col-span-2">
-                <div className="text-xs text-secondary mb-1">WhatsApp</div>
-                {/* @ts-ignore */}
-                <IntlPhoneField value={whatsapp} onChange={setWhatsapp} />
-                <div className="text-xs text-secondary mt-1">
-                  If Cell Phone is left empty, this will be used as the phone on save.
-                </div>
-              </div>
-
-              {/* Address */}
-              <div className="sm:col-span-2">
-                <div className="text-xs text-secondary mb-1">Street</div>
-                <Input value={street} onChange={(e) => setStreet((e.currentTarget as HTMLInputElement).value)} />
-              </div>
-              <div className="sm:col-span-2">
-                <div className="text-xs text-secondary mb-1">Street 2</div>
-                <Input value={street2} onChange={(e) => setStreet2((e.currentTarget as HTMLInputElement).value)} />
-              </div>
-
-              <div>
-                <div className="text-xs text-secondary mb-1">City</div>
-                <Input value={city} onChange={(e) => setCity((e.currentTarget as HTMLInputElement).value)} />
-              </div>
-              <div>
-                <div className="text-xs text-secondary mb-1">State / Region</div>
-                <Input value={stateRegion} onChange={(e) => setStateRegion((e.currentTarget as HTMLInputElement).value)} />
-              </div>
-
-              <div className="sm:col-span-2">
-                <div className="text-xs text-secondary mb-1">Zip / Postal code</div>
-                <Input value={postalCode} onChange={(e) => setPostalCode((e.currentTarget as HTMLInputElement).value)} />
-              </div>
-
-              <div className="sm:col-span-2">
-                <div className="text-xs text-secondary mb-1">Country</div>
-                <select
-                  className="w-full h-9 rounded-md border border-hairline bg-surface px-2 text-sm text-primary"
-                  value={country}
-                  onChange={(e) => setCountry((e.target as HTMLSelectElement).value)}
+              {/* Centered panel */}
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div
+                  ref={panelRef}
+                  role="dialog"
+                  aria-modal="true"
+                  className="pointer-events-auto relative w-[760px] max-w-[95vw] rounded-xl border border-hairline bg-surface shadow-xl p-4"
                 >
-                  {COUNTRIES.filter((c) => c !== "— Select country").map((c) => (
-                    <option key={c} value={c}>{c}</option>
-                  ))}
-                </select>
-              </div>
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="text-lg font-semibold">Create Contact</div>
+                    <Button variant="ghost" onClick={() => setCreateOpen(false)}>✕</Button>
+                  </div>
 
-              {/* Notes */}
-              <div className="sm:col-span-2">
-                <div className="text-xs text-secondary mb-1">Notes</div>
-                <textarea
-                  className="h-24 w-full rounded-md bg-surface border border-hairline px-3 text-sm text-primary placeholder:text-secondary outline-none"
-                  value={notes}
-                  onChange={(e) => setNotes((e.currentTarget as HTMLTextAreaElement).value)}
-                  placeholder="Context, preferences, etc."
-                />
-              </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {/* Names */}
+                    <div>
+                      <div className="text-xs text-secondary mb-1">
+                        First name <span className="text-[hsl(var(--brand-orange))]">*</span>
+                      </div>
+                      <Input value={firstName} onChange={(e) => setFirstName((e.currentTarget as HTMLInputElement).value)} />
+                    </div>
+                    <div>
+                      <div className="text-xs text-secondary mb-1">
+                        Last name <span className="text-[hsl(var(--brand-orange))]">*</span>
+                      </div>
+                      <Input value={lastName} onChange={(e) => setLastName((e.currentTarget as HTMLInputElement).value)} />
+                    </div>
 
-              {createErr && <div className="sm:col-span-2 text-sm text-red-600">{createErr}</div>}
+                    {/* Nickname */}
+                    <div className="sm:col-span-2">
+                      <div className="text-xs text-secondary mb-1">Preferred / Nickname</div>
+                      <Input value={nickname} onChange={(e) => setNickname((e.currentTarget as HTMLInputElement).value)} />
+                    </div>
 
-              <div className="sm:col-span-2 flex items-center justify-end gap-2 mt-2">
-                <Button
-                  variant="outline"
-                  onClick={() => { resetCreateForm(); setCreateOpen(false); }}
-                  disabled={createWorking}
-                >
-                  Cancel
-                </Button>
-                <Button onClick={doCreate} disabled={!canCreate || createWorking}>
-                  {createWorking ? "Saving…" : "Save"}
-                </Button>
+                    {/* Organization */}
+                    <div className="sm:col-span-2">
+                      <div className="text-xs text-secondary mb-1">Organizational Association</div>
+                      <OrganizationSelect value={org} onChange={setOrg} />
+                    </div>
+
+                    {/* Email */}
+                    <div className="sm:col-span-2">
+                      <div className="text-xs text-secondary mb-1">Email</div>
+                      <Input type="email" value={email} onChange={(e) => setEmail((e.currentTarget as HTMLInputElement).value)} />
+                    </div>
+
+                    {/* Phones */}
+                    <div className="sm:col-span-2">
+                      <div className="text-xs text-secondary mb-1">Cell Phone</div>
+                      {/* @ts-ignore */}
+                      <IntlPhoneField value={cell} onChange={setCell} />
+                    </div>
+
+                    <div className="sm:col-span-2">
+                      <div className="text-xs text-secondary mb-1">Landline</div>
+                      {/* @ts-ignore */}
+                      <IntlPhoneField value={landline} onChange={setLandline} />
+                    </div>
+
+                    <div className="sm:col-span-2">
+                      <div className="text-xs text-secondary mb-1">WhatsApp</div>
+                      {/* @ts-ignore */}
+                      <IntlPhoneField value={whatsapp} onChange={setWhatsapp} />
+                      <div className="text-xs text-secondary mt-1">
+                        If Cell Phone is left empty, this will be used as the phone on save.
+                      </div>
+                    </div>
+
+                    {/* Address */}
+                    <div className="sm:col-span-2">
+                      <div className="text-xs text-secondary mb-1">Street</div>
+                      <Input value={street} onChange={(e) => setStreet((e.currentTarget as HTMLInputElement).value)} />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <div className="text-xs text-secondary mb-1">Street 2</div>
+                      <Input value={street2} onChange={(e) => setStreet2((e.currentTarget as HTMLInputElement).value)} />
+                    </div>
+
+                    <div>
+                      <div className="text-xs text-secondary mb-1">City</div>
+                      <Input value={city} onChange={(e) => setCity((e.currentTarget as HTMLInputElement).value)} />
+                    </div>
+                    <div>
+                      <div className="text-xs text-secondary mb-1">State / Region</div>
+                      <Input value={stateRegion} onChange={(e) => setStateRegion((e.currentTarget as HTMLInputElement).value)} />
+                    </div>
+
+                    <div className="sm:col-span-2">
+                      <div className="text-xs text-secondary mb-1">Zip / Postal code</div>
+                      <Input value={postalCode} onChange={(e) => setPostalCode((e.currentTarget as HTMLInputElement).value)} />
+                    </div>
+
+                    <div className="sm:col-span-2">
+                      <div className="text-xs text-secondary mb-1">Country</div>
+                      <select
+                        className="w-full h-9 rounded-md border border-hairline bg-surface px-2 text-sm text-primary"
+                        value={country}
+                        onChange={(e) => setCountry((e.target as HTMLSelectElement).value)}
+                      >
+                        {COUNTRIES.filter((c) => c !== "— Select country").map((c) => (
+                          <option key={c} value={c}>{c}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Notes */}
+                    <div className="sm:col-span-2">
+                      <div className="text-xs text-secondary mb-1">Notes</div>
+                      <textarea
+                        className="h-24 w-full rounded-md bg-surface border border-hairline px-3 text-sm text-primary placeholder:text-secondary outline-none"
+                        value={notes}
+                        onChange={(e) => setNotes((e.currentTarget as HTMLTextAreaElement).value)}
+                        placeholder="Context, preferences, etc."
+                      />
+                    </div>
+
+                    {createErr && <div className="sm:col-span-2 text-sm text-red-600">{createErr}</div>}
+
+                    <div className="sm:col-span-2 flex items-center justify-end gap-2 mt-2">
+                      <Button
+                        variant="outline"
+                        onClick={() => { resetCreateForm(); setCreateOpen(false); }}
+                        disabled={createWorking}
+                      >
+                        Cancel
+                      </Button>
+                      <Button onClick={doCreate} disabled={!canCreate || createWorking}>
+                        {createWorking ? "Saving…" : "Save"}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
-          </div>
-        </div>
-      </div>
-    );
-  })()}
-</Overlay>
+          );
+        })()}
+      </Overlay>
     </div>
   );
 }

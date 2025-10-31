@@ -1,21 +1,32 @@
 // apps/breeding/src/adapters/planToEvents.ts
-import { breedingMath } from "@bhq/ui";
+import {
+  fromPlan,
+  windowsToCalendarEvents,
+  DEFAULT_STAGE_LABELS,
+  type Species,
+} from "@bhq/ui/utils/breedingMath";
 
 export type BreedingPlanLike = {
-  id: string;
-  species: breedingMath.Species;
+  id: string | number;
+  species: Species;
   earliestHeatStart: Date | string;
   latestHeatStart: Date | string;
   ovulationDate?: Date | string | null;
   title?: string;
 };
 
+const toIso = (d: Date | string | null | undefined) =>
+  d == null ? null : (d instanceof Date ? d : new Date(d)).toISOString();
+
 export function planToCalendarEvents(plan: BreedingPlanLike) {
-  const wr = breedingMath.fromPlan({
+  const wr = fromPlan({
     species: plan.species,
-    earliestHeatStart: plan.earliestHeatStart,
-    latestHeatStart: plan.latestHeatStart,
-    ovulationDate: plan.ovulationDate ?? null,
+    earliestHeatStart: toIso(plan.earliestHeatStart)!,
+    latestHeatStart: toIso(plan.latestHeatStart)!,
+    ovulationDate: toIso(plan.ovulationDate) ?? null,
   });
-  return breedingMath.windowsToCalendarEvents(plan.id, breedingMath.DEFAULT_STAGE_LABELS, wr);
+
+  return windowsToCalendarEvents(String(plan.id), DEFAULT_STAGE_LABELS, wr, {
+    title: plan.title,
+  });
 }

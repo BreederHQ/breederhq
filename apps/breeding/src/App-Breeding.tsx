@@ -26,12 +26,16 @@ import {
 import { Overlay } from "@bhq/ui/overlay";
 import { OverlayMount } from "@bhq/ui/overlay/OverlayMount";
 import { getOverlayRoot } from "@bhq/ui/overlay/core";
+import { NavLink, useInRouterContext } from "react-router-dom";
+import MasterPlanGantt from "./components/MasterPlanGantt";
+import { PlannerModeSwitch } from "./components/PlannerSwitch";
 import "@bhq/ui/styles/table.css";
+import "@bhq/ui/styles/details.css";
 import { makeBreedingApi } from "./api";
 
-/* Local components */
-import EventQuickAdd from "./components/EventQuickAdd";
-
+// ── Calendar / Planning wiring ─────────────────────────────
+import BreedingCalendar from "./components/BreedingCalendar";
+import BreedingPlans from "./components/BreedingPlans";
 /* Cycle math */
 import {
   useCyclePlanner,
@@ -41,6 +45,13 @@ import {
 
 const MODAL_Z = 2147485000;
 const modalRoot = typeof document !== "undefined" ? document.body : null;
+
+const PLAN_TABS = [
+  { key: "overview", label: "Overview" },
+  { key: "dates", label: "Dates" },            // ← NEW TAB
+  { key: "deposits", label: "Deposits" },
+  { key: "audit", label: "Audit" },
+] as const;
 
 /* ───────────────────────── Types ───────────────────────── */
 
@@ -71,6 +82,8 @@ type PlanRow = {
 
   expectedDue?: string | null;
   expectedGoHome?: string | null;
+  expectedWeaned?: string | null;
+  expectedGoHomeExtendedEnd?: string | null;
 
   breedDateActual?: string | null;
   birthDateActual?: string | null;
@@ -112,6 +125,8 @@ const COLUMNS: Array<{ key: keyof PlanRow & string; label: string; default?: boo
   { key: "birthDateActual", label: "Whelped" },
   { key: "weanedDateActual", label: "Weaned" },
   { key: "goHomeDateActual", label: "Go Home (Actual)" },
+  { key: "expectedWeaned", label: "Weaned (Exp)" },
+  { key: "expectedGoHomeExtendedEnd", label: "Go Home Ext. (Exp)" },
 ];
 
 const STORAGE_KEY = "bhq_breeding_cols_v2";
@@ -131,7 +146,7 @@ function __bhq_findDetailsDrawerOnClose(): (() => void) | null {
       }
       f = f.return;
     }
-  } catch { }
+  } catch {}
   return null;
 }
 
@@ -139,11 +154,11 @@ async function safeGetCreatingOrg(api: any) {
   try {
     const org = await api?.lookups?.getCreatingOrganization?.();
     if (org && org.id != null) return org;
-  } catch { }
+  } catch {}
   try {
     const id = localStorage.getItem("BHQ_ORG_ID");
     if (id) return { id, display_name: localStorage.getItem("BHQ_ORG_NAME") || "My Organization" };
-  } catch { }
+  } catch {}
   return null;
 }
 
@@ -178,6 +193,10 @@ function planToRow(p: any): PlanRow {
 
     expectedDue: p.expectedDue ?? p.lockedDueDate ?? null,
     expectedGoHome: p.expectedGoHome ?? p.lockedGoHomeDate ?? null,
+    expectedWeaned: p.expectedWeaned ?? null,
+    expectedGoHomeExtendedEnd: p.expectedGoHomeExtendedEnd ?? null,
+    femaleCycleLenOverrideDays: p.femaleCycleLenOverrideDays ?? null,
+    homingStartWeeksOverride: p.homingStartWeeksOverride ?? null,
 
     breedDateActual: p.breedDateActual ?? null,
     birthDateActual: p.birthDateActual ?? null,
@@ -203,7 +222,7 @@ function planToRow(p: any): PlanRow {
 
     createdAt: p.createdAt ?? p.created_at ?? null,
     updatedAt: p.updatedAt ?? p.updated_at ?? null,
-  };
+  } as any;
 }
 
 type Status =
@@ -310,23 +329,23 @@ function confirmModal(
   opts:
     | string
     | {
-      title?: string;
-      message: string;
-      confirmText?: string;
-      cancelText?: string;
-      tone?: "default" | "danger"; // danger = red accent for destructive actions
-    }
+        title?: string;
+        message: string;
+        confirmText?: string;
+        cancelText?: string;
+        tone?: "default" | "danger"; // danger = red accent for destructive actions
+      }
 ): Promise<boolean> {
   const { title, message, confirmText, cancelText, tone } =
     typeof opts === "string"
       ? { title: "Confirm", message: opts, confirmText: "Confirm", cancelText: "Cancel", tone: "default" as const }
       : {
-        title: opts.title ?? "Confirm",
-        message: opts.message,
-        confirmText: opts.confirmText ?? "Confirm",
-        cancelText: opts.cancelText ?? "Cancel",
-        tone: opts.tone ?? "default",
-      };
+          title: opts.title ?? "Confirm",
+          message: opts.message,
+          confirmText: opts.confirmText ?? "Confirm",
+          cancelText: opts.cancelText ?? "Cancel",
+          tone: opts.tone ?? "default",
+        };
 
   const rootEl = getOverlayRoot();
   const host = document.createElement("div");
@@ -336,7 +355,9 @@ function confirmModal(
   return new Promise((resolve) => {
     const close = (ok: boolean) => {
       resolve(ok);
-      try { r.unmount(); } catch { }
+      try {
+        r.unmount();
+      } catch {}
       host.remove();
     };
 
@@ -367,6 +388,32 @@ function confirmModal(
 }
 
 /* ───────────────────────── Component ───────────────────────── */
+function SafeNavLink({
+  to,
+  children,
+  className,
+  end,
+}: {
+  to: string;
+  children: React.ReactNode;
+  className: ((arg: { isActive: boolean }) => string) | string;
+  end?: boolean;
+}) {
+  const inRouter = useInRouterContext();
+  if (!inRouter) {
+    const cls = typeof className === "function" ? className({ isActive: false }) : className;
+    return (
+      <a href={to} className={cls}>
+        {children}
+      </a>
+    );
+  }
+  return (
+    <NavLink to={to} end={end} className={className as any}>
+      {children}
+    </NavLink>
+  );
+}
 
 export default function AppBreeding() {
   React.useEffect(() => {
@@ -382,7 +429,7 @@ export default function AppBreeding() {
       try {
         const t = await resolveTenantId();
         if (!cancelled) setTenantId(t);
-      } catch { }
+      } catch {}
     })();
     return () => {
       cancelled = true;
@@ -425,12 +472,34 @@ export default function AppBreeding() {
 
   const SHOW_ARCH_KEY = "bhq_breeding_show_archived";
   const [showArchived, setShowArchived] = React.useState<boolean>(() => {
-    try { return localStorage.getItem(SHOW_ARCH_KEY) === "1"; } catch { return false; }
+    try {
+      return localStorage.getItem(SHOW_ARCH_KEY) === "1";
+    } catch {
+      return false;
+    }
   });
   React.useEffect(() => {
-    try { localStorage.setItem(SHOW_ARCH_KEY, showArchived ? "1" : "0"); } catch { }
+    try {
+      localStorage.setItem(SHOW_ARCH_KEY, showArchived ? "1" : "0");
+    } catch {}
   }, [showArchived]);
 
+  // ── Planner view state ─────────────────────────────────────
+  const [plannerMode, setPlannerMode] = React.useState<"per-plan" | "master">("master");
+
+  // Start empty, then seed once rows arrive (avoids TDZ + preserves user toggles)
+  const [selectedIds, setSelectedIds] = React.useState<Set<ID>>(() => new Set());
+
+  const [availabilityOn, setAvailabilityOn] = React.useState<boolean>(false);
+
+  const now = new Date();
+  const plannerHorizon = React.useMemo(
+    () => ({
+      start: new Date(now.getFullYear(), now.getMonth() - 1, 1),
+      end: new Date(now.getFullYear(), now.getMonth() + 13, 0),
+    }),
+    [] // fixed horizon window
+  );
 
   const [q, setQ] = React.useState(() => {
     try {
@@ -450,12 +519,12 @@ export default function AppBreeding() {
   React.useEffect(() => {
     try {
       localStorage.setItem(Q_KEY, q);
-    } catch { }
+    } catch {}
   }, [q]);
   React.useEffect(() => {
     try {
       localStorage.setItem(FILTERS_KEY, JSON.stringify(filters || {}));
-    } catch { }
+    } catch {}
   }, [filters]);
 
   const [qDebounced, setQDebounced] = React.useState(q);
@@ -466,31 +535,44 @@ export default function AppBreeding() {
 
   /* Data */
   const [rows, setRows] = React.useState<PlanRow[]>([]);
+  const allPlans = rows;
   const [loading, setLoading] = React.useState<boolean>(true);
   const [error, setError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
+    if (selectedIds.size === 0 && allPlans.length > 0) {
+      setSelectedIds(new Set(allPlans.map((p) => p.id)));
+    }
+  }, [allPlans, selectedIds.size]);
+
+  React.useEffect(() => {
     let cancelled = false;
+
     (async () => {
+      // no API yet? keep spinner up while tenant resolves
       if (!api) {
         setLoading(true);
         return;
       }
+
       setLoading(true);
       setError(null);
-      try {
-        const res = await api.listPlans({
-          include: "parents,org",
-          page: 1,
-          limit: 100,
-          q: qDebounced || undefined,
-          archived: showArchived ? "include" : "exclude",
-          includeArchived: showArchived,
-          withArchived: showArchived,
-          archived: showArchived ? "include" : "exclude",
-        } as any);
 
-        const items = Array.isArray((res as any)?.items) ? (res as any).items : [];
+      try {
+        const resp = await api.listPlans({
+          q: qDebounced || undefined,
+          include: "parents,org",
+          archived: showArchived ? "include" : "exclude",
+          page: 1,
+          limit: 500,
+        });
+
+        const items = Array.isArray((resp as any)?.items)
+          ? (resp as any).items
+          : Array.isArray(resp)
+          ? (resp as any)
+          : [];
+
         if (!cancelled) setRows(items.map(planToRow));
       } catch (e: any) {
         if (!cancelled) setError(e?.payload?.error || e?.message || "Failed to load plans");
@@ -498,8 +580,11 @@ export default function AppBreeding() {
         if (!cancelled) setLoading(false);
       }
     })();
-    return () => { cancelled = true; };
-  }, [api, qDebounced, showArchived]); 
+
+    return () => {
+      cancelled = true;
+    };
+  }, [api, qDebounced, showArchived]);
 
   /* Columns */
   const { map, toggle, setAll, visible } = hooks.useColumns(COLUMNS, STORAGE_KEY);
@@ -510,6 +595,8 @@ export default function AppBreeding() {
     const dateKeys = new Set([
       "expectedDue",
       "expectedGoHome",
+      "expectedWeaned",
+      "expectedGoHomeExtendedEnd",
       "breedDateActual",
       "birthDateActual",
       "weanedDateActual",
@@ -570,6 +657,8 @@ export default function AppBreeding() {
   const DATE_KEYS = new Set([
     "expectedDue",
     "expectedGoHome",
+    "expectedWeaned",
+    "expectedGoHomeExtendedEnd",
     "breedDateActual",
     "birthDateActual",
     "weanedDateActual",
@@ -661,6 +750,54 @@ export default function AppBreeding() {
     const to = from + pageSize;
     return displayRows.slice(from, to);
   }, [displayRows, clampedPage, pageSize]);
+  /* ───────── View routing (list | calendar | planner) ───────── */
+  type ViewRoute = "list" | "calendar" | "planner";
+
+  // Determine the module base path (e.g., "/breeding") so links work even when not at site root
+  const getBasePath = React.useCallback(() => {
+    if (typeof window === "undefined") return "";
+    const p = window.location.pathname || "/";
+    // Strip trailing slash for consistency
+    const clean = p.replace(/\/+$/, "");
+    // If URL already includes a sub-view, remove it to get the base
+    if (clean.endsWith("/calendar")) return clean.slice(0, -"/calendar".length) || "/";
+    if (clean.endsWith("/planner")) return clean.slice(0, -"/planner".length) || "/";
+    return clean || "/";
+  }, []);
+
+  const basePath = React.useMemo(() => getBasePath(), [getBasePath]);
+
+  const getViewFromLocation = (): ViewRoute => {
+    if (typeof window === "undefined") return "list";
+    const p = window.location.pathname || "/";
+    // Use includes so it still works if a tenant prefix or module base precedes it
+    if (p.includes("/calendar")) return "calendar";
+    if (p.includes("/planner")) return "planner";
+    return "list";
+  };
+
+  const [currentView, setCurrentView] = React.useState<ViewRoute>(getViewFromLocation());
+
+  React.useEffect(() => {
+    const onPop = () => setCurrentView(getViewFromLocation());
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
+
+  // Programmatically open a plan in the Details drawer by setting ?planId=
+  const openPlanDrawer = React.useCallback((id: ID) => {
+    if (typeof window === "undefined") return;
+    const url = new URL(window.location.href);
+    url.searchParams.set("planId", String(id));
+    window.history.pushState({}, "", url.toString());
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  }, []);
+
+  // Quick-add launcher helper for Calendar or Planner
+  const openQuickAddFor = React.useCallback((planId?: ID) => {
+    setQuickAddPlanId(planId ?? null);
+    setQuickAddOpen(true);
+  }, []);
 
   /* Create Plan Drawer state */
   const [createOpen, setCreateOpen] = React.useState(false);
@@ -804,19 +941,46 @@ export default function AppBreeding() {
       if (!api) return;
       switch (input.type) {
         case "HORMONE_TEST":
-          await api.createTest(input.planId, { kind: "PROGESTERONE", date: input.date, note: input.note });
+          await api.createTest(input.planId, {
+            kind: "PROGESTERONE",
+            collectedAt: input.date,
+            notes: input.note ?? null
+          });
           break;
+
         case "ATTEMPT":
-          await api.createAttempt(input.planId, { method: "NATURAL", date: input.date, note: input.note });
+          await api.createAttempt(input.planId, {
+            method: "NATURAL",
+            attemptAt: input.date,
+            notes: input.note ?? null
+          });
           break;
+
         case "PREG_CHECK":
-          await api.createPregCheck(input.planId, { method: "ULTRASOUND", date: input.date, result: "POSITIVE", note: input.note });
+          await api.createPregCheck(input.planId, {
+            method: "ULTRASOUND",
+            result: true,
+            checkedAt: input.date,
+            notes: input.note ?? null
+          });
           break;
+
         case "WHELPED":
-          await api.createEvent(input.planId, { type: "WHELPED", date: input.date, note: input.note });
+          await api.createEvent(input.planId, {
+            type: "WHELPED",
+            occurredAt: input.date,
+            label: "Whelped",
+            notes: input.note ?? null
+          });
           break;
+
         case "WEANED":
-          await api.createEvent(input.planId, { type: "WEANED", date: input.date, note: input.note });
+          await api.createEvent(input.planId, {
+            type: "WEANED",
+            occurredAt: input.date,
+            label: "Weaned",
+            notes: input.note ?? null
+          });
           break;
       }
       const fresh = await api.getPlan(input.planId, "parents,org");
@@ -867,17 +1031,14 @@ export default function AppBreeding() {
         setRows((prev) => prev.map((r) => (r.id === id ? planToRow(updated) : r)));
       },
       header: (r: PlanRow) => ({ title: r.name, subtitle: r.status || "" }),
-      tabs: [
-        { key: "overview", label: "Overview" },
-        { key: "deposits", label: "Deposits" },
-        { key: "audit", label: "Audit" },
-      ],
       customChrome: true,
+      tabs: PLAN_TABS as any,
       render: (props: any) => (
         <PlanDetailsView
           {...props}
           api={api}
           tenantId={tenantId}
+          tabs={PLAN_TABS as any}
           breedBrowseApi={breedBrowseApi}
           orgIdForBreeds={orgIdForBreeds}
           openCustomBreed={(speciesUi: SpeciesUi, onCreated: (name: string) => void) => {
@@ -899,7 +1060,7 @@ export default function AppBreeding() {
               // Preferred: server commits and generates code
               updatedPlan = await (api as any).commitPlan(Number(planId), {});
             } else {
-              // Legacy fallback: do NOT set code client-side
+              // Legacy fallback: do not set code client-side
               const planNow = await api.getPlan(Number(planId), "parents,org");
               updatedPlan = await api.updatePlan(Number(planId), {
                 status: "COMMITTED",
@@ -907,14 +1068,21 @@ export default function AppBreeding() {
                 expectedGoHome: planNow.expectedGoHome ?? planNow.lockedGoHomeDate ?? null,
               } as any);
             }
+
+            // Update the table row
             setRows((prev) => prev.map((r) => (Number(r.id) === Number(planId) ? planToRow(updatedPlan) : r)));
           }}
 
-          /* NEW: archive/unarchive */
+          /* NEW: child can call this after lock/unlock to refresh the row */
+          onPlanUpdated={(id, fresh) => {
+            setRows((prev) => prev.map((r) => (Number(r.id) === Number(id) ? planToRow(fresh) : r)));
+          }}
+
+          /* Archive or unarchive */
           onArchive={async (planId: ID, archived: boolean) => {
             if (!api) return;
             const updated = await api.updatePlan(Number(planId), { archived } as any);
-            setRows((prev) => prev.map((r) => (Number(r.id) === Number(planId) ? planToRow(updated) : r)));
+            setRows((prev) => prev.map((r) => (r.id === Number(planId) ? planToRow(updated) : r)));
           }}
 
           closeDrawer={props.close}
@@ -936,6 +1104,8 @@ export default function AppBreeding() {
         <div className="text-xs mb-1">{r.lockedCycleStart ? fmt(r.expectedGoHome) : ""}</div>
       </div>
     ),
+    expectedWeaned: (r) => <div className="py-1"><div className="text-xs mb-1">{r.lockedCycleStart ? fmt(r.expectedWeaned) : ""}</div></div>,
+    expectedGoHomeExtendedEnd: (r) => <div className="py-1"><div className="text-xs mb-1">{r.lockedCycleStart ? fmt(r.expectedGoHomeExtendedEnd) : ""}</div></div>,
   };
 
   return (
@@ -947,21 +1117,53 @@ export default function AppBreeding() {
           <PageHeader title="Breeding" subtitle="Create and manage breeding plans" />
           <div
             className="absolute right-0 top-0 h-full flex items-center gap-2 pr-1"
-            style={{ zIndex: 5, pointerEvents: "auto" }}
+            style={{ zIndex: 50, pointerEvents: "auto" }}
           >
+            {/* Top-right page navigation */}
+            <nav className="flex items-center gap-1 mr-1">
+              <SafeNavLink
+                to={basePath === "/" ? "/" : `${basePath}/`}
+                end
+                className={({ isActive }) =>
+                  `px-2 py-1.5 rounded-md text-sm transition ${
+                    isActive
+                      ? "border-b-2 border-[hsl(var(--brand-orange))] text-primary"
+                      : "text-secondary hover:text-primary"
+                  }`
+                }
+              >
+                Plans
+              </SafeNavLink>
+
+              <SafeNavLink
+                to={`${basePath}/calendar`}
+                className={({ isActive }) =>
+                  `px-2 py-1.5 rounded-md text-sm transition ${
+                    isActive
+                      ? "border-b-2 border-[hsl(var(--brand-orange))] text-primary"
+                      : "text-secondary hover:text-primary"
+                  }`
+                }
+              >
+                Calendar
+              </SafeNavLink>
+
+              <SafeNavLink
+                to={`${basePath}/planner`}
+                className={({ isActive }) =>
+                  `px-2 py-1.5 rounded-md text-sm transition ${
+                    isActive
+                      ? "border-b-2 border-[hsl(var(--brand-orange))] text-primary"
+                      : "text-secondary hover:text-primary"
+                  }`
+                }
+              >
+                Planner
+              </SafeNavLink>
+            </nav>
+
             <Button size="sm" onClick={() => setCreateOpen(true)} disabled={!api}>
               New Breeding Plan
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => {
-                setQuickAddPlanId(pageRows[0]?.id ?? null);
-                setQuickAddOpen(true);
-              }}
-              disabled={!api}
-            >
-              + Event
             </Button>
           </div>
         </div>
@@ -992,171 +1194,223 @@ export default function AppBreeding() {
           )}
 
         <Card>
-          {/* Prevent outside click close while editing (pointer + mouse + click) */}
-          <div
-            className="bhq-details-guard"
-            data-testid="bhq-details-guard"
-          >
-            <DetailsHost
-              rows={rows}
-              config={detailsConfig}
-              closeOnOutsideClick={!drawerIsEditing}
-              closeOnEscape={false}
-            >
-              <Table
-                columns={COLUMNS}
-                columnState={map}
-                onColumnStateChange={setAll}
-                getRowId={(r: PlanRow) => r.id}
-                pageSize={25}
-                renderStickyRight={() => (
-                  <ColumnsPopover
-                    columns={map}
-                    onToggle={toggle}
-                    onSet={setAll}
-                    allColumns={COLUMNS}
-                    triggerClassName="bhq-columns-trigger"
-                  />
-                )}
-                stickyRightWidthPx={40}
-              >
-                {/* Toolbar */}
-                <div className="bhq-table__toolbar px-2 pt-2 pb-3 relative z-30">
-                  <SearchBar
-                    value={q}
-                    onChange={setQ}
-                    placeholder="Search any field…"
-                    widthPx={520}
-                    rightSlot={
-                      <button
-                        type="button"
-                        onClick={() => setFiltersOpen((v) => !v)}
-                        aria-expanded={filtersOpen}
-                        title="Filters"
-                        className="h-7 w-7 rounded-md flex items-center justify-center hover:bg-white/5 focus:outline-none"
-                      >
-                        <svg
-                          viewBox="0 0 24 24"
-                          className="h-4 w-4"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          aria-hidden="true"
-                        >
-                          <path d="M3 5h18M7 12h10M10 19h4" strokeLinecap="round" />
-                        </svg>
-                      </button>
-                    }
-                  />
-                </div>
-
-                {/* Filters */}
-                {filtersOpen && <FiltersRow filters={filters} onChange={(next) => setFilters(next)} schema={FILTER_SCHEMA} />}
-
-                {/* Table */}
-                <table className="min-w-max w-full text-sm">
-                  <TableHeader columns={visibleSafe} sorts={sorts} onToggleSort={onToggleSort} />
-                  <tbody>
-                    {!api && (
-                      <TableRow>
-                        <TableCell colSpan={visibleSafe.length}>
-                          <div className="py-8 text-center text-sm text-secondary">Resolving tenant…</div>
-                        </TableCell>
-                      </TableRow>
-                    )}
-
-                    {api && loading && (
-                      <TableRow>
-                        <TableCell colSpan={visibleSafe.length}>
-                          <div className="py-8 text-center text-sm text-secondary">Loading plans…</div>
-                        </TableCell>
-                      </TableRow>
-                    )}
-
-                    {api && !loading && error && (
-                      <TableRow>
-                        <TableCell colSpan={visibleSafe.length}>
-                          <div className="py-8 text-center text-sm text-red-600">Error: {error}</div>
-                        </TableCell>
-                      </TableRow>
-                    )}
-
-                    {api && !loading && !error && pageRows.length === 0 && (
-                      <TableRow>
-                        <TableCell colSpan={visibleSafe.length}>
-                          <div className="py-8 text-center text-sm text-secondary">No breeding plans yet.</div>
-                        </TableCell>
-                      </TableRow>
-                    )}
-
-                    {api &&
-                      !loading &&
-                      !error &&
-                      pageRows.length > 0 &&
-                      pageRows.map((r) => (
-                        <TableRow key={r.id} detailsRow={r} className={r.archived ? "opacity-60" : ""}>
-                          {visibleSafe.map((c) => {
-                            let v = (r as any)[c.key] as any;
-                            if (DATE_KEYS.has(c.key as any)) v = fmt(v);
-                            if (Array.isArray(v)) v = v.join(", ");
-                            const custom = CELL_RENDERERS[c.key];
-                            return <TableCell key={c.key}>{custom ? custom(r) : v ?? ""}</TableCell>;
-                          })}
-                        </TableRow>
-                      ))}
-                  </tbody>
-                </table>
-
-                <TableFooter
-                  entityLabel="plans"
-                  page={clampedPage}
-                  pageCount={pageCount}
-                  pageSize={pageSize}
-                  pageSizeOptions={[10, 25, 50, 100]}
-                  onPageChange={(p) => setPage(p)}
-                  onPageSizeChange={(n) => {
-                    setPageSize(n);
-                    setPage(1);
-                  }}
-                  start={start}
-                  end={end}
-                  filteredTotal={displayRows.length}
-                  total={rows.length}
-                  includeArchived={showArchived}
-                  onIncludeArchivedChange={(checked) => { setShowArchived(checked); setPage(1); }}
-                  includeArchivedLabel="Show archived"
-                />
-              </Table>
-            </DetailsHost>
-
-            {/* Quick Add Event modal */}
-            {quickAddOpen &&
-              modalRoot &&
-              createPortal(
-                <div
-                  className="fixed inset-0"
-                  style={{ zIndex: MODAL_Z, isolation: "isolate" }}
-                  onMouseDown={(e) => {
-                    if (e.target === e.currentTarget) setQuickAddOpen(false);
-                  }}
+          {currentView === "list" && (
+            <>
+              {/* Prevent outside click close while editing (pointer + mouse + click) */}
+              <div className="bhq-details-guard" data-testid="bhq-details-guard">
+                <DetailsHost
+                  rows={rows}
+                  config={detailsConfig}
+                  closeOnOutsideClick={!drawerIsEditing}
+                  closeOnEscape={false}
                 >
-                  {/* Backdrop */}
-                  <div className="absolute inset-0 bg-black/50" />
-
-                  {/* Centered content */}
-                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                    <div className="pointer-events-auto">
-                      <EventQuickAdd
-                        planId={quickAddPlanId ?? undefined}
-                        onClose={() => setQuickAddOpen(false)}
-                        onCreate={createEvent}
+                  <Table
+                    columns={COLUMNS}
+                    columnState={map}
+                    onColumnStateChange={setAll}
+                    getRowId={(r: PlanRow) => r.id}
+                    pageSize={25}
+                    renderStickyRight={() => (
+                      <ColumnsPopover
+                        columns={map}
+                        onToggle={toggle}
+                        onSet={setAll}
+                        allColumns={COLUMNS}
+                        triggerClassName="bhq-columns-trigger"
+                      />
+                    )}
+                    stickyRightWidthPx={40}
+                  >
+                    {/* Toolbar */}
+                    <div className="bhq-table__toolbar px-2 pt-2 pb-3 relative z-30">
+                      <SearchBar
+                        value={q}
+                        onChange={setQ}
+                        placeholder="Search any field…"
+                        widthPx={520}
+                        rightSlot={
+                          <button
+                            type="button"
+                            onClick={() => setFiltersOpen((v) => !v)}
+                            aria-expanded={filtersOpen}
+                            title="Filters"
+                            className="h-7 w-7 rounded-md flex items-center justify-center hover:bg-white/5 focus:outline-none"
+                          >
+                            <svg
+                              viewBox="0 0 24 24"
+                              className="h-4 w-4"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                              aria-hidden="true"
+                            >
+                              <path d="M3 5h18M7 12h10M10 19h4" strokeLinecap="round" />
+                            </svg>
+                          </button>
+                        }
                       />
                     </div>
-                  </div>
-                </div>,
-                modalRoot
+
+                    {/* Filters */}
+                    {filtersOpen && (
+                      <FiltersRow
+                        filters={filters}
+                        onChange={(next) => setFilters(next)}
+                        schema={FILTER_SCHEMA}
+                      />
+                    )}
+
+                    {/* Table */}
+                    <table className="min-w-max w-full text-sm">
+                      <TableHeader columns={visibleSafe} sorts={sorts} onToggleSort={onToggleSort} />
+                      <tbody>
+                        {!api && (
+                          <TableRow>
+                            <TableCell colSpan={visibleSafe.length}>
+                              <div className="py-8 text-center text-sm text-secondary">
+                                Resolving tenant…
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        )}
+
+                        {api && loading && (
+                          <TableRow>
+                            <TableCell colSpan={visibleSafe.length}>
+                              <div className="py-8 text-center text-sm text-secondary">
+                                Loading plans…
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        )}
+
+                        {api && !loading && error && (
+                          <TableRow>
+                            <TableCell colSpan={visibleSafe.length}>
+                              <div className="py-8 text-center text-sm text-red-600">
+                                Error: {error}
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        )}
+
+                        {api && !loading && !error && pageRows.length === 0 && (
+                          <TableRow>
+                            <TableCell colSpan={visibleSafe.length}>
+                              <div className="py-8 text-center text-sm text-secondary">
+                                No breeding plans yet.
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        )}
+
+                        {api &&
+                          !loading &&
+                          !error &&
+                          pageRows.length > 0 &&
+                          pageRows.map((r) => (
+                            <TableRow key={r.id} detailsRow={r} className={r.archived ? "opacity-60" : ""}>
+                              {visibleSafe.map((c) => {
+                                let v = (r as any)[c.key] as any;
+                                if (DATE_KEYS.has(c.key as any)) v = fmt(v);
+                                if (Array.isArray(v)) v = v.join(", ");
+                                const custom = CELL_RENDERERS[c.key];
+                                return <TableCell key={c.key}>{custom ? custom(r) : v ?? ""}</TableCell>;
+                              })}
+                            </TableRow>
+                          ))}
+                      </tbody>
+                    </table>
+
+                    <TableFooter
+                      entityLabel="plans"
+                      page={clampedPage}
+                      pageCount={pageCount}
+                      pageSize={pageSize}
+                      pageSizeOptions={[10, 25, 50, 100]}
+                      onPageChange={(p) => setPage(p)}
+                      onPageSizeChange={(n) => {
+                        setPageSize(n);
+                        setPage(1);
+                      }}
+                      start={start}
+                      end={end}
+                      filteredTotal={displayRows.length}
+                      total={rows.length}
+                      includeArchived={showArchived}
+                      onIncludeArchivedChange={(checked) => {
+                        setShowArchived(checked);
+                        setPage(1);
+                      }}
+                      includeArchivedLabel="Show archived"
+                    />
+                  </Table>
+                </DetailsHost>
+
+                {/* Quick Add Event modal */}
+                {quickAddOpen &&
+                  modalRoot &&
+                  createPortal(
+                    <div
+                      className="fixed inset-0"
+                      style={{ zIndex: MODAL_Z, isolation: "isolate" }}
+                      onMouseDown={(e) => {
+                        if (e.target === e.currentTarget) setQuickAddOpen(false);
+                      }}
+                    >
+                      {/* Backdrop */}
+                      <div className="absolute inset-0 bg-black/50" />
+
+                      {/* Centered content */}
+                      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                        <div className="pointer-events-auto">
+                        </div>
+                      </div>
+                    </div>,
+                    modalRoot
+                  )}
+              </div>
+            </>
+          )}
+
+          {/* ───────── Calendar View ───────── */}
+          {currentView === "calendar" && (
+            <div className="p-2">
+              <BreedingCalendar
+                plans={allPlans}
+                selectedPlanIds={[]}
+                navigateToPlan={(id: any) => openPlanDrawer(id)}
+              />
+            </div>
+          )}
+
+          {/* ───────── Planner (Gantt) View ───────── */}
+          {currentView === "planner" && (
+            <div className="p-2 space-y-3">
+              <div className="flex items-center justify-between">
+                <PlannerModeSwitch mode={plannerMode} onChange={setPlannerMode} />
+                <div className="text-sm text-secondary">Planner view</div>
+              </div>
+
+              {plannerMode === "per-plan" ? (
+                <BreedingPlans
+                  plans={allPlans}
+                  onOpenPlan={(planId: ID) => openPlanDrawer(planId)}
+                  onQuickAdd={(planId?: ID) => openQuickAddFor(planId)}
+                />
+              ) : (
+                <MasterPlanGantt
+                  plans={allPlans}
+                  horizon={plannerHorizon}
+                  today={now}
+                  availabilityOn={availabilityOn}
+                  onAvailabilityToggle={setAvailabilityOn}
+                  selected={selectedIds}
+                  onSelectedChange={setSelectedIds}
+                />
               )}
-          </div>
+            </div>
+          )}
         </Card>
 
         {/* Create Plan Modal */}
@@ -1490,6 +1744,8 @@ function PlanDetailsView(props: {
   closeDrawer: () => void;
   onModeChange?: (editing: boolean) => void;
   onArchive?: (id: ID, archived: boolean) => Promise<void> | void;
+  onPlanUpdated?: (id: ID, fresh: any) => void;
+  tabs: ReadonlyArray<{ key: string; label: string }>
 }) {
   const {
     row,
@@ -1508,6 +1764,8 @@ function PlanDetailsView(props: {
     onArchive,
     closeDrawer,
     onModeChange,
+    onPlanUpdated,
+    tabs,
   } = props;
 
   const isEdit = mode === "edit";
@@ -1552,7 +1810,7 @@ function PlanDetailsView(props: {
             const last_heat = (res?.last_heat ?? res?.lastHeat ?? null) as string | null;
             data = { repro, last_heat };
           }
-        } catch { }
+        } catch {}
         if (!cancelled) setDamRepro(data ?? { repro: [], last_heat: null });
       } catch (e: any) {
         if (!cancelled) setDamLoadError(e?.message || "Failed to load Dam cycle history");
@@ -1563,19 +1821,34 @@ function PlanDetailsView(props: {
     };
   }, [api, row.damId]);
 
+  // ===== Cycle math + projections/expected dates =====
   const species = (row.species || "Dog") as PlannerSpecies;
+
+  // Pull Dam repro history we fetched earlier
+  const damHeatStartsAsc = React.useMemo(
+    () =>
+      (damRepro?.repro ?? [])
+        .filter((e) => e.kind === "heat_start" && e.date)
+        .map((e) => e.date)
+        .sort(),
+    [damRepro]
+  );
+  const lastHeatStart = damRepro?.last_heat ?? (damHeatStartsAsc.length ? damHeatStartsAsc[damHeatStartsAsc.length - 1] : null);
+
   const { projectedCycles, computeFromLocked } = useCyclePlanner({
     species,
-    reproAsc: damRepro?.repro ?? [],
-    lastActualHeatStart: damRepro?.last_heat ?? null,
+    reproAsc: (damRepro?.repro ?? []) as any,
+    lastActualHeatStart: lastHeatStart as any,
     futureCount: 12,
   });
 
+  // Local UI preview state around locking
   const [pendingCycle, setPendingCycle] = React.useState<string | null>(row.lockedCycleStart ?? null);
   const [lockedPreview, setLockedPreview] = React.useState<boolean>(Boolean(row.lockedCycleStart));
   const [expectedPreview, setExpectedPreview] = React.useState<PlannerExpected | null>(() =>
     row.lockedCycleStart ? computeFromLocked(row.lockedCycleStart) : null
   );
+
   React.useEffect(() => {
     setPendingCycle(row.lockedCycleStart ?? null);
     const e = row.lockedCycleStart ? computeFromLocked(row.lockedCycleStart) : null;
@@ -1583,38 +1856,25 @@ function PlanDetailsView(props: {
     setLockedPreview(Boolean(row.lockedCycleStart));
   }, [row.lockedCycleStart, computeFromLocked]);
 
-  const handleCancel = React.useCallback(() => {
-    // Build an undo patch for only the fields that were edited
-    const undo: Partial<PlanRow> = {};
-    for (const k of Object.keys(draftRef.current)) {
-      (undo as any)[k] = (row as any)[k];
-    }
-
-    // Push the undo patch so DetailsHost's draft is overwritten
-    if (Object.keys(undo).length) setDraft(undo);
-
-    // Clear local overlay state
-    draftRef.current = {};
-
-    // Reset lock/expected previews to persisted server values on the row
-    const persistedLocked = Boolean(row.lockedCycleStart && String(row.lockedCycleStart).trim());
-    setLockedPreview(persistedLocked);
-    setExpectedPreview(persistedLocked ? computeFromLocked(row.lockedCycleStart as string) : null);
-    setPendingCycle(row.lockedCycleStart ?? null);
-
-    // Leave edit mode
-    setMode("view");
-  }, [row, setDraft, setMode, computeFromLocked]);
-
-
   // lock precondition: must select an Upcoming Cycle date (no “—”)
   async function lockCycle() {
-    if (!pendingCycle || !String(pendingCycle).trim()) {
-      return;
-    }
+    if (!pendingCycle || !String(pendingCycle).trim()) return;
     if (!api) return;
 
     const expected = computeFromLocked(pendingCycle);
+
+    // NEW: pull the extra fields from the computed object (falling back defensively)
+    const weanedExp =
+      (expected as any).weaning_expected ??
+      (expected as any).weaned_expected ??
+      (expected as any).puppy_care_likely?.[0] ??
+      null;
+
+    const extendedEndExp =
+      (expected as any).gohome_extended_end ??
+      (expected as any).gohome_extended_end_expected ??
+      (expected as any).gohome_extended_full?.[1] ??
+      null;
 
     // Local preview so the UI feels instant
     setExpectedPreview(expected);
@@ -1626,24 +1886,30 @@ function PlanDetailsView(props: {
       lockedGoHomeDate: expected.gohome_expected,
       expectedDue: expected.birth_expected,
       expectedGoHome: expected.gohome_expected,
+
+      // NEW
+      expectedWeaned: weanedExp,
+      expectedGoHomeExtendedEnd: extendedEndExp,
     });
 
     try {
-      // 1) Persist to DB
+      // Persist to DB
       await api.updatePlan(Number(row.id), {
-        // store both a key and the dates so the server has an immutable snapshot
-        lockedCycleKey: String(pendingCycle), // optional but helpful if your model has it
+        lockedCycleKey: String(pendingCycle),
         lockedCycleStart: pendingCycle,
         lockedOvulationDate: expected.ovulation,
         lockedDueDate: expected.birth_expected,
         lockedGoHomeDate: expected.gohome_expected,
 
-        // seed expected* on the plan as the UI depends on them elsewhere
         expectedDue: row.expectedDue ?? expected.birth_expected ?? null,
         expectedGoHome: row.expectedGoHome ?? expected.gohome_expected ?? null,
+
+        // NEW
+        expectedWeaned: weanedExp,
+        expectedGoHomeExtendedEnd: extendedEndExp,
       } as any);
 
-      // 2) Write an audit event with the durable lock timestamp
+      // (keep your audit event)
       await api.createEvent(Number(row.id), {
         type: "CYCLE_LOCKED",
         occurredAt: new Date().toISOString(),
@@ -1653,15 +1919,17 @@ function PlanDetailsView(props: {
           ovulation: expected.ovulation,
           due: expected.birth_expected,
           goHome: expected.gohome_expected,
+
+          // NEW (optional detail in audit data)
+          weaned: weanedExp,
+          goHomeExtendedEnd: extendedEndExp,
         },
       });
 
-      // 3) Fetch fresh plan and update table so a reopen shows the saved values
       const fresh = await api.getPlan(Number(row.id), "parents,org");
-      setRows((prev) => prev.map((r) => (Number(r.id) === Number(row.id) ? planToRow(fresh) : r)));
+      onPlanUpdated?.(row.id, fresh);
     } catch (e) {
       console.error("[Breeding] lockCycle persist or audit failed", e);
-      // Soft revert preview if persist failed
       setExpectedPreview(null);
       setLockedPreview(false);
       setDraftLive({
@@ -1669,6 +1937,12 @@ function PlanDetailsView(props: {
         lockedOvulationDate: null,
         lockedDueDate: null,
         lockedGoHomeDate: null,
+
+        // NEW
+        expectedDue: null,
+        expectedGoHome: null,
+        expectedWeaned: null,
+        expectedGoHomeExtendedEnd: null,
       });
       utils.toast?.error?.("Failed to lock cycle. Please try again.");
     }
@@ -1687,10 +1961,13 @@ function PlanDetailsView(props: {
       lockedGoHomeDate: null,
       expectedDue: null,
       expectedGoHome: null,
+
+      // NEW
+      expectedWeaned: null,
+      expectedGoHomeExtendedEnd: null,
     });
 
     try {
-      // 1) Clear from DB
       await api.updatePlan(Number(row.id), {
         lockedCycleKey: null,
         lockedCycleStart: null,
@@ -1699,9 +1976,12 @@ function PlanDetailsView(props: {
         lockedGoHomeDate: null,
         expectedDue: null,
         expectedGoHome: null,
+
+        // NEW
+        expectedWeaned: null,
+        expectedGoHomeExtendedEnd: null,
       } as any);
 
-      // 2) Audit event for unlock
       await api.createEvent(Number(row.id), {
         type: "CYCLE_UNLOCKED",
         occurredAt: new Date().toISOString(),
@@ -1709,12 +1989,10 @@ function PlanDetailsView(props: {
         data: {},
       });
 
-      // 3) Refresh the plan so reopen shows cleared fields
       const fresh = await api.getPlan(Number(row.id), "parents,org");
-      setRows((prev) => prev.map((r) => (Number(r.id) === Number(row.id) ? planToRow(fresh) : r)));
+      onPlanUpdated?.(row.id, fresh);
     } catch (e) {
       console.error("[Breeding] unlockCycle persist or audit failed", e);
-      // Restore UI if server failed to clear
       const expected = pendingCycle ? computeFromLocked(pendingCycle) : null;
       setExpectedPreview(expected);
       setLockedPreview(Boolean(pendingCycle));
@@ -1723,11 +2001,39 @@ function PlanDetailsView(props: {
   }
 
   const isLocked = Boolean((effective.lockedCycleStart ?? "").trim());
-  const expectedBreed = isLocked ? (expectedPreview?.ovulation ?? row.lockedOvulationDate ?? "") : "";
-  const expectedBirth = isLocked ? (expectedPreview?.birth_expected ?? row.lockedDueDate ?? row.expectedDue ?? "") : "";
-  const expectedWeaned = isLocked ? ((expectedPreview as any)?.weaned_expected ?? "") : "";
-  const expectedGoHome = isLocked ? (expectedPreview?.gohome_expected ?? row.lockedGoHomeDate ?? row.expectedGoHome ?? "") : "";
-  const expectedGoHomeExtended = isLocked ? ((expectedPreview as any)?.gohome_extended_end ?? (expectedPreview as any)?.gohome_extended ?? "") : "";
+  const expectedBreed = isLocked
+    ? (expectedPreview?.ovulation ?? row.lockedOvulationDate ?? "")
+    : "";
+
+  const expectedBirth = isLocked
+    ? (expectedPreview?.birth_expected ?? row.lockedDueDate ?? row.expectedDue ?? "")
+    : "";
+
+  const expectedWeaned = isLocked
+    ? (
+      (expectedPreview as any)?.weaning_expected ??
+      (expectedPreview as any)?.weaned_expected ??
+      (expectedPreview as any)?.puppy_care_likely?.[0] ??
+      (effective as any)?.expectedWeaned ??
+      row.expectedWeaned ??
+      ""
+    )
+    : "";
+
+  const expectedGoHome = isLocked
+    ? (expectedPreview?.gohome_expected ?? row.lockedGoHomeDate ?? row.expectedGoHome ?? "")
+    : "";
+
+  const expectedGoHomeExtended = isLocked
+    ? (
+      (expectedPreview as any)?.gohome_extended_end ??
+      (expectedPreview as any)?.gohome_extended_end_expected ??
+      (expectedPreview as any)?.gohome_extended_full?.[1] ??
+      (effective as any)?.expectedGoHomeExtendedEnd ??
+      row.expectedGoHomeExtendedEnd ??
+      ""
+    )
+    : "";
 
   const [editDamQuery, setEditDamQuery] = React.useState<string>("");
   const [editSireQuery, setEditSireQuery] = React.useState<string>("");
@@ -1792,16 +2098,42 @@ function PlanDetailsView(props: {
   const hasBreed = typeof (effective.breedText ?? "") === "string" && (effective.breedText ?? "").trim().length > 0;
   const canCommit = Boolean(
     effective.damId != null &&
-    effective.sireId != null &&
-    hasBreed &&
-    (lockedPreview || (effective.lockedCycleStart ?? "").trim()) &&
-    !["COMMITTED", "BRED", "WHELPED", "WEANED", "HOMING_STARTED", "COMPLETE", "CANCELED"].includes(effective.status)
+      effective.sireId != null &&
+      hasBreed &&
+      (lockedPreview || (effective.lockedCycleStart ?? "").trim()) &&
+      !["COMMITTED", "BRED", "WHELPED", "WEANED", "HOMING_STARTED", "COMPLETE", "CANCELED"].includes(effective.status)
   );
   const expectedsEnabled = Boolean(
     effective.damId != null && effective.sireId != null && (lockedPreview || (effective.lockedCycleStart ?? "").trim())
   );
 
   const breedComboKey = `${effective.species || "Dog"}|${hasBreed}`;
+
+  const handleCancel = React.useCallback(() => {
+    // Build an undo patch for only the fields that were edited
+    const undo: Partial<PlanRow> = {};
+    for (const k of Object.keys(draftRef.current)) {
+      (undo as any)[k] = (row as any)[k];
+    }
+
+    // Overwrite the draft that DetailsHost tracks
+    if (Object.keys(undo).length) setDraft(undo);
+
+    // Clear local overlay state
+    draftRef.current = {};
+
+    // Reset lock/expected previews to persisted server values on the row
+    const persistedLocked = Boolean(row.lockedCycleStart && String(row.lockedCycleStart).trim());
+    setLockedPreview(persistedLocked);
+    setExpectedPreview(persistedLocked ? computeFromLocked(row.lockedCycleStart as string) : null);
+    setPendingCycle(row.lockedCycleStart ?? null);
+
+    // Leave edit mode
+    setMode("view");
+  }, [row, setDraft, setMode, computeFromLocked]);
+
+  type ViewMode = "list" | "calendar" | "timeline";
+  const [view, setView] = React.useState<ViewMode>("list");
 
   return (
     <DetailsScaffold
@@ -1811,7 +2143,7 @@ function PlanDetailsView(props: {
       onEdit={() => setMode("edit")}
       onCancel={handleCancel}
       onSave={requestSave}
-      tabs={[]}
+      tabs={tabs}
       activeTab={activeTab}
       onTabChange={setActiveTab}
       rightActions={
@@ -1890,8 +2222,6 @@ function PlanDetailsView(props: {
                   try {
                     await onArchive(row.id, next);
                     utils.toast?.success?.(next ? "Plan archived." : "Plan restored.");
-                    // If you want to close the drawer after archiving, you can:
-                    // closeDrawer?.();
                   } catch (e) {
                     console.error("[Breeding] archive toggle failed", e);
                     const verb = next ? "archive" : "restore";
@@ -1909,38 +2239,6 @@ function PlanDetailsView(props: {
     >
       {/* mark chrome for outside click guard */}
       <div className="relative" data-bhq-details>
-        {/* Tab row */}
-        <div
-          className="mt-2 mb-3 flex items-end justify-between border-b border-hairline"
-          data-bhq-tabs
-        >
-          <div className="flex gap-2">
-            {[
-              { key: "overview", label: "Overview" },
-              { key: "deposits", label: "Deposits" },
-              { key: "audit", label: "Audit" },
-            ].map((t) => {
-              const active = activeTab === t.key;
-              return (
-                <button
-                  key={t.key}
-                  type="button"
-                  onClick={() => setActiveTab(t.key)}
-                  className="relative h-8 px-3 rounded-t-md text-sm hover:bg-white/5"
-                  style={{
-                    marginBottom: '-1px',
-                    borderBottomWidth: 2,
-                    borderBottomStyle: 'solid',
-                    borderBottomColor: active ? 'hsl(var(--brand-orange))' : 'transparent',
-                  }}
-                >
-                  {t.label}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
         {activeTab === "overview" && (
           <div className="space-y-4 mt-2">
             {/* Plan Info */}
@@ -1985,7 +2283,6 @@ function PlanDetailsView(props: {
                             message: "Changing species will clear Dam, Sire, and Breed. Continue?",
                             confirmText: "Yes, reset",
                             cancelText: "Cancel",
-                            tone: "default",
                           });
                           if (!ok) return;
                         }
@@ -2021,11 +2318,11 @@ function PlanDetailsView(props: {
                           value={
                             hasBreed
                               ? ({
-                                id: "current",
-                                name: (effective.breedText ?? "").trim(),
-                                species: effective.species || "Dog",
-                                source: "canonical",
-                              } as any)
+                                  id: "current",
+                                  name: (effective.breedText ?? "").trim(),
+                                  species: effective.species || "Dog",
+                                  source: "canonical",
+                                } as any)
                               : null
                           }
                           onChange={(hit: any) => setDraftLive({ breedText: hit?.name ?? "" })}
@@ -2161,7 +2458,7 @@ function PlanDetailsView(props: {
             <SectionCard title="Breeding Cycle Selection">
               <div className="grid grid-cols-[1fr_auto] gap-4 items-end">
                 <div>
-                  <div className="text-xs text-secondary mb-1">Upcoming Cycles (Projected)</div>
+                  <div className="text-xs text-secondary mb-1">Upcoming Cycles (Projected Start Dates)</div>
 
                   {isLocked ? (
                     <DisplayValue value={fmt(effective.lockedCycleStart)} />
@@ -2171,8 +2468,8 @@ function PlanDetailsView(props: {
                       const ringColor = !row.damId
                         ? "hsl(var(--hairline))"
                         : hasSelection
-                          ? "hsl(var(--red-600))"
-                          : "hsl(var(--hairline))";
+                        ? "hsl(var(--red-600))"
+                        : "hsl(var(--hairline))";
 
                       // Ensure the current selection appears even if it isn’t in projections
                       const options = [...projectedCycles];
@@ -2234,13 +2531,38 @@ function PlanDetailsView(props: {
                         <path d="M12 5a5 5 0 0 1 5 5" />
                         <rect x="5" y="10" width="14" height="10" rx="2" />
                       </svg>
-                      Cycle LOCK
+                      Select Cycle to Lock
                     </button>
                   </div>
                 )}
               </div>
             </SectionCard>
 
+            {/* Sticky footer Close button for Overview */}
+            <div className="sticky bottom-0 pt-4 mt-8 bg-gradient-to-t from-[rgba(0,0,0,0.04)] to-transparent">
+              <div className="flex justify-end">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    if (mode === "edit") {
+                      handleCancel();
+                    }
+                    const fn = (typeof closeDrawer === "function" && closeDrawer) || __bhq_findDetailsDrawerOnClose();
+                    if (typeof fn === "function") {
+                      try { fn(); } catch (err) { console.error("[Breeding] close fn threw", err); }
+                    }
+                  }}
+                >
+                  Close
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ───────── NEW DATES TAB ───────── */}
+        {activeTab === "dates" && (
+          <div className="space-y-4 mt-2">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               <SectionCard title="EXPECTED DATES (SYSTEM CALCULATED)">
                 {isEdit && !expectedsEnabled && (
@@ -2367,25 +2689,24 @@ function PlanDetailsView(props: {
               </SectionCard>
             </div>
 
-            {/* Sticky footer Close button */}
+            {/* Sticky footer Close button for Dates tab */}
             <div className="sticky bottom-0 pt-4 mt-8 bg-gradient-to-t from-[rgba(0,0,0,0.04)] to-transparent">
               <div className="flex justify-end">
                 <Button
                   variant="outline"
                   onClick={() => {
-                    // If editing, discard draft first
                     if (mode === "edit") {
-                      handleCancel();         // this will switch to view and reset the draft
+                      handleCancel();
                     }
-                    // Then close the drawer (existing logic)
                     const fn = (typeof closeDrawer === "function" && closeDrawer) || __bhq_findDetailsDrawerOnClose();
                     if (typeof fn === "function") {
                       try { fn(); } catch (err) { console.error("[Breeding] close fn threw", err); }
-                    } else {
                     }
-                  }}                >
+                  }}
+                >
                   Close
-                </Button>              </div>
+                </Button>
+              </div>
             </div>
           </div>
         )}
@@ -2410,24 +2731,23 @@ function PlanDetailsView(props: {
             </SectionCard>
 
             {/* Sticky footer Close */}
-            <div className="sticky bottom-0 pt-4 mt-8 bg-gradient-to-t from-[rgba(0,0,0,0.04)] to-transparent">              <div className="flex justify-end">
-              <Button
-                variant="outline"
-                onClick={() => {
-                  // If editing, discard draft first
-                  if (mode === "edit") {
-                    handleCancel();         // this will switch to view and reset the draft
-                  }
-                  // Then close the drawer (existing logic)
-                  const fn = (typeof closeDrawer === "function" && closeDrawer) || __bhq_findDetailsDrawerOnClose();
-                  if (typeof fn === "function") {
-                    try { fn(); } catch (err) { console.error("[Breeding] close fn threw", err); }
-                  } else {
-                  }
-                }}              >
-                Close
-              </Button>
-            </div>
+            <div className="sticky bottom-0 pt-4 mt-8 bg-gradient-to-t from-[rgba(0,0,0,0.04)] to-transparent">
+              <div className="flex justify-end">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    if (mode === "edit") {
+                      handleCancel();
+                    }
+                    const fn = (typeof closeDrawer === "function" && closeDrawer) || __bhq_findDetailsDrawerOnClose();
+                    if (typeof fn === "function") {
+                      try { fn(); } catch (err) { console.error("[Breeding] close fn threw", err); }
+                    }
+                  }}
+                >
+                  Close
+                </Button>
+              </div>
             </div>
           </div>
         )}
@@ -2448,24 +2768,23 @@ function PlanDetailsView(props: {
             </SectionCard>
 
             {/* Sticky footer Close */}
-            <div className="sticky bottom-0 pt-4 mt-8 bg-gradient-to-t from-[rgba(0,0,0,0.04)] to-transparent">              <div className="flex justify-end">
-              <Button
-                variant="outline"
-                onClick={() => {
-                  // If editing, discard draft first
-                  if (mode === "edit") {
-                    handleCancel();         // this will switch to view and reset the draft
-                  }
-                  // Then close the drawer (existing logic)
-                  const fn = (typeof closeDrawer === "function" && closeDrawer) || __bhq_findDetailsDrawerOnClose();
-                  if (typeof fn === "function") {
-                    try { fn(); } catch (err) { console.error("[Breeding] close fn threw", err); }
-                  } else {
-                  }
-                }}              >
-                Close
-              </Button>
-            </div>
+            <div className="sticky bottom-0 pt-4 mt-8 bg-gradient-to-t from-[rgba(0,0,0,0.04)] to-transparent">
+              <div className="flex justify-end">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    if (mode === "edit") {
+                      handleCancel();
+                    }
+                    const fn = (typeof closeDrawer === "function" && closeDrawer) || __bhq_findDetailsDrawerOnClose();
+                    if (typeof fn === "function") {
+                      try { fn(); } catch (err) { console.error("[Breeding] close fn threw", err); }
+                    }
+                  }}
+                >
+                  Close
+                </Button>
+              </div>
             </div>
           </div>
         )}

@@ -1,0 +1,175 @@
+/* packages/ui/src/components/Calendar/calendar.css */
+.bhq-cal {
+  --cal-bg: hsl(0 0% 9%);
+  --cal-panel: hsl(0 0% 11%);
+  --cal-border: rgba(255,255,255,0.10);
+  --cal-grid: rgba(255,255,255,0.12);
+  --cal-grid-week: rgba(255,255,255,0.16);
+  --cal-text: hsl(0 0% 92%);
+  --cal-muted: hsl(0 0% 70%);
+  --cal-today: rgba(255, 208, 0, 0.08);
+  --cal-today-ring: rgba(255, 208, 0, 0.9);
+  --cal-btn-bg: hsl(215 16% 21%);
+  --cal-btn-bg-hover: hsl(215 16% 26%);
+  --cal-btn-text: #e5e7eb;
+  --cal-chip-bg: hsl(0 0% 14%);
+}
+
+.bhq-cal {
+  color: var(--cal-text);
+}
+.bhq-cal .fc {
+  background: transparent;
+  color: var(--cal-text);
+  --fc-border-color: var(--cal-border);
+  --fc-neutral-bg-color: transparent;
+  --fc-today-bg-color: var(--cal-today); /* day cell bg */
+}
+
+/* Layout: rail + calendar gap already handled in component */
+
+.bhq-cal aside {
+  background: var(--cal-panel);
+  border: 1px solid var(--cal-border);
+  box-shadow: 0 1px 0 rgba(255,255,255,0.03) inset;
+}
+
+/* Mini month */
+.bhq-cal aside table thead th {
+  color: var(--cal-muted);
+}
+.bhq-cal aside td {
+  color: var(--cal-text);
+}
+.bhq-cal aside button {
+  color: var(--cal-text);
+}
+
+/* Section header in rail */
+.bhq-cal aside .bhq-cal__rail-head {
+  font-size: 11px;
+  letter-spacing: .06em;
+  color: var(--cal-muted);
+}
+
+/* “All / Clear” chips */
+.bhq-cal aside .bhq-chip {
+  background: var(--cal-chip-bg);
+  border: 1px solid var(--cal-border);
+  color: var(--cal-text);
+}
+.bhq-cal aside .bhq-chip:hover {
+  background: #1e1e1e;
+}
+
+/* Toolbar */
+.bhq-cal .fc .fc-toolbar.fc-header-toolbar {
+  margin-bottom: 8px;
+}
+.bhq-cal .fc .fc-toolbar-title {
+  font-size: 22px;
+  font-weight: 600;
+}
+.bhq-cal .fc .fc-button {
+  background: var(--cal-btn-bg);
+  border: 1px solid var(--cal-border);
+  color: var(--cal-btn-text);
+  text-transform: lowercase;
+  border-radius: 10px;
+  padding: 6px 10px;
+}
+.bhq-cal .fc .fc-button:hover,
+.bhq-cal .fc .fc-button:focus {
+  background: var(--cal-btn-bg-hover);
+}
+.bhq-cal .fc .fc-button-primary:not(:disabled).fc-button-active,
+.bhq-cal .fc .fc-button-primary:not(:disabled):active {
+  background: var(--cal-btn-bg-hover);
+  border-color: var(--cal-border);
+}
+
+/* View switch buttons spacing */
+.bhq-cal .fc .fc-toolbar-chunk:last-child .fc-button {
+  margin-left: 8px;
+}
+
+/* Day grid headers */
+.bhq-cal .fc-theme-standard th {
+  background: transparent;
+  color: var(--cal-muted);
+  font-weight: 600;
+  border-bottom: 1px solid var(--cal-grid-week);
+}
+.bhq-cal .fc .fc-col-header-cell-cushion {
+  padding: 6px 0;
+  text-decoration: none;
+  color: var(--cal-muted);
+}
+
+/* Day cells */
+.bhq-cal .fc .fc-daygrid-day {
+  background: transparent;
+}
+.bhq-cal .fc .fc-daygrid-day {
+  border-bottom: 1px solid var(--cal-grid);
+}
+.bhq-cal .fc .fc-daygrid-day-frame {
+  padding: 2px 3px 4px 3px;
+}
+.bhq-cal .fc .fc-daygrid-day-number {
+  color: var(--cal-muted);
+  border-radius: 999px;
+  padding: 2px 6px;
+  text-decoration: none;
+}
+.bhq-cal .fc .fc-day-today .fc-daygrid-day-number {
+  color: var(--cal-text);
+  box-shadow: 0 0 0 1.5px var(--cal-today-ring) inset;
+}
+
+/* Events: pill style like Google */
+.bhq-cal .fc .fc-daygrid-event {
+  border-radius: 6px;
+  padding: 1px 6px;
+  border: 1px solid transparent;
+  font-size: 12px;
+  line-height: 18px;
+}
+.bhq-cal .fc .fc-daygrid-event:hover {
+  filter: brightness(1.05);
+}
+
+/* More link */
+.bhq-cal .fc .fc-daygrid-more-link {
+  color: var(--cal-muted);
+}
+
+/* Today outline for entire cell */
+.bhq-cal .fc .fc-day-today {
+  background: var(--cal-today);
+}
+
+/* Month grid verticals heavier */
+.bhq-cal .fc-theme-standard td,
+.bhq-cal .fc-theme-standard th {
+  border-color: var(--cal-grid);
+}
+
+/* Light mode refinement if you ever flip themes */
+@media (prefers-color-scheme: light) {
+  .bhq-cal {
+    --cal-bg: #fff;
+    --cal-panel: #fff;
+    --cal-border: rgba(0,0,0,0.12);
+    --cal-grid: rgba(0,0,0,0.10);
+    --cal-grid-week: rgba(0,0,0,0.14);
+    --cal-text: #111;
+    --cal-muted: #6b7280;
+    --cal-today: rgba(255, 221, 0, 0.12);
+    --cal-today-ring: #111;
+    --cal-btn-bg: #f3f4f6;
+    --cal-btn-bg-hover: #e5e7eb;
+    --cal-btn-text: #111;
+    --cal-chip-bg: #f7f7f7;
+  }
+}

@@ -499,7 +499,11 @@ export default function AppAnimals() {
               <select
                 className="h-8 w-full rounded-md bg-surface border border-hairline px-2 text-sm text-primary"
                 defaultValue={row.species || "Dog"}
-                onChange={(e) => set({ species: e.target.value })}
+                onChange={(e) => {
+                  const next = e.target.value as "Dog" | "Cat" | "Horse";
+                  // clear breed when species changes
+                  set({ species: next, breed: null });
+                }}
               >
                 <option>Dog</option>
                 <option>Cat</option>
@@ -653,7 +657,6 @@ export default function AppAnimals() {
     ];
 
   /** Clean little wrapper so breed browse fits in a spec cell nicely */
-  /** Clean little wrapper so breed browse fits in a spec cell nicely */
   function CustomBreedCombo({
     species,
     value,
@@ -669,21 +672,50 @@ export default function AppAnimals() {
     orgIdForBreeds?: number;
     onOpenCustom: () => void;
   }) {
+    // Internal mirror so the combo always reflects the latest pick immediately
+    const [local, setLocal] = React.useState<string | null>(value ?? null);
+    React.useEffect(() => { setLocal(value ?? null); }, [value]);
+
+    // Remount when species changes so the list refreshes instantly
+    const speciesKey = `breed-${species}`;
+
+    // Convert simple string into the option shape BreedCombo expects
+    const valueObj = local
+      ? ({ id: "__current__", name: local, species, source: "canonical" } as any)
+      : null;
+
     return (
       <div className="flex items-center gap-2">
         <div className="flex-1">
           <BreedCombo
+            key={speciesKey}
             orgId={orgIdForBreeds}
             species={species}
-            value={
-              value
-                ? ({ id: "current", name: value, species, source: "canonical" } as any)
-                : null
-            }
-            onChange={(hit: any) => onChange(hit?.name ?? null)}
+            value={valueObj}
+            onChange={(hit: any) => {
+              const nextName = hit?.name ?? null;
+              setLocal(nextName);
+              // always push the new name up to overwrite existing breed
+              onChange(nextName);
+            }}
             api={{ breeds: { listCanonical: api.breeds.listCanonical } }}
           />
         </div>
+
+        {/* Clear current breed */}
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => {
+            setLocal(null);
+            onChange(null);
+          }}
+          title="Clear breed"
+        >
+          Clear
+        </Button>
+
+        {/* Create custom breed */}
         <Button variant="outline" size="sm" onClick={onOpenCustom}>
           New custom
         </Button>

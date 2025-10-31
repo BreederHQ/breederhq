@@ -2,7 +2,6 @@
 // Pure util: biology math + windows for Gantt and Calendar
 
 export type Species = "DOG" | "CAT" | "HORSE";
-
 export type DateLike = Date | string | number;
 
 export type Range = { start: Date; end: Date }; // inclusive end-date math for bars
@@ -13,8 +12,8 @@ export type StageKey =
   | "breeding"
   | "whelping"
   | "puppyCare"
-  | "goHomeNormal"
-  | "goHomeExtended";
+  | "goHomeNormal"    // internal key retained for compatibility
+  | "goHomeExtended"; // internal key retained for compatibility
 
 export type StageWindows = {
   key: StageKey;
@@ -23,7 +22,7 @@ export type StageWindows = {
 };
 
 export type TravelBand = {
-  kind: "risk" | "unlikely";
+  kind: "risky" | "unlikely"; // normalized
   range: Range;
   label: string;
 };
@@ -51,25 +50,21 @@ export const DEFAULTS: CycleDefaults = {
 export function toDate(d: DateLike): Date {
   return d instanceof Date ? d : new Date(d);
 }
-
 export function addDays(d: DateLike, n: number): Date {
   const dt = toDate(d);
   const out = new Date(dt);
   out.setDate(out.getDate() + n);
   return out;
 }
-
 export function clampRange(r: Range, min: Date, max: Date): Range {
   return {
     start: new Date(Math.max(r.start.getTime(), min.getTime())),
     end: new Date(Math.min(r.end.getTime(), max.getTime())),
   };
 }
-
 export function makeRange(start: DateLike, end: DateLike): Range {
   return { start: toDate(start), end: toDate(end) };
 }
-
 export function daysBetweenInclusive(a: DateLike, b: DateLike): number {
   const A = Date.UTC(toDate(a).getFullYear(), toDate(a).getMonth(), toDate(a).getDate());
   const B = Date.UTC(toDate(b).getFullYear(), toDate(b).getMonth(), toDate(b).getDate());
@@ -81,26 +76,25 @@ export type HeatWindow = {
   earliestHeatStart: Date;
   latestHeatStart: Date;
 };
-
 export type PlanAnchors = {
   species: Species;
   heat: HeatWindow;
   ovulationDate?: Date | null;
 };
 
+// Use Placement labels by default
 export type StageLabels = Record<StageKey, string>;
-
 export const DEFAULT_STAGE_LABELS: StageLabels = {
   preBreeding: "Pre-breeding Heat",
   hormoneTesting: "Hormone Testing",
   breeding: "Breeding",
   whelping: "Whelping",
   puppyCare: "Puppy Care",
-  goHomeNormal: "Go Home, Normal",
-  goHomeExtended: "Go Home, Extended",
+  goHomeNormal: "Placement",
+  goHomeExtended: "Placement (Extended)",
 };
 
-// default order top to bottom, provided for callers that want it
+// default order top to bottom
 export const DEFAULT_STAGE_ORDER: StageKey[] = [
   "preBreeding",
   "hormoneTesting",
@@ -156,21 +150,21 @@ export function computeWindows(
   const puppyCareFull = makeRange(whelpFull.start, addDays(whelpFull.end, 56));
   const puppyCareLikely = makeRange(whelpLikely.start, addDays(whelpLikely.end, 56));
 
-  // Go Home Normal
+  // Placement start (was Go Home Normal)
   const goHomeNormalFull = makeRange(addDays(whelpFull.start, 56), addDays(whelpFull.end, 56));
   const goHomeNormalLikely = makeRange(addDays(whelpLikely.start, 55), addDays(whelpLikely.end, 57));
 
-  // Go Home Extended
+  // Placement extended (was Go Home Extended)
   const goHomeExtendedFull = makeRange(addDays(goHomeNormalFull.end, 1), addDays(goHomeNormalFull.end, 21));
 
   // Cap likely windows into full windows
   const preBreedingLikely = clampRange(preBreedingLikelyRaw, preBreedingFull.start, preBreedingFull.end);
   const hormoneLikely = clampRange(hormoneLikelyRaw, hormoneFull.start, hormoneFull.end);
 
-  // Travel bands
+  // Travel bands (normalized to "risky")
   const travel: TravelBand[] = [
-    { kind: "risk", range: makeRange(hormoneFull.start, breedingFull.end), label: "Travel Risky" },
-    { kind: "risk", range: makeRange(whelpFull.start, goHomeExtendedFull.end), label: "Travel Risky" },
+    { kind: "risky", range: makeRange(hormoneFull.start, breedingFull.end), label: "Travel Risky" },
+    { kind: "risky", range: makeRange(whelpFull.start, goHomeExtendedFull.end), label: "Travel Risky" },
     { kind: "unlikely", range: makeRange(hormoneLikely.start, breedingLikely.end), label: "Travel Unlikely" },
     { kind: "unlikely", range: makeRange(puppyCareLikely.start, goHomeNormalLikely.end), label: "Travel Unlikely" },
   ];
@@ -185,8 +179,8 @@ export function computeWindows(
     { key: "breeding", full: breedingFull, likely: breedingLikely },
     { key: "whelping", full: whelpFull, likely: whelpLikely },
     { key: "puppyCare", full: puppyCareFull, likely: puppyCareLikely },
-    { key: "goHomeNormal", full: goHomeNormalFull, likely: goHomeNormalLikely },
-    { key: "goHomeExtended", full: goHomeExtendedFull },
+    { key: "goHomeNormal", full: goHomeNormalFull, likely: goHomeNormalLikely }, // label = Placement
+    { key: "goHomeExtended", full: goHomeExtendedFull }, // label = Placement (Extended)
   ];
 
   return { stages, travel, today, horizon };
@@ -262,4 +256,122 @@ export function windowsToCalendarEvents(
     });
   }
   return events;
+}
+
+// ───────────────── Expected milestones from a locked cycle ─────────────────
+
+export type SpeciesRules = {
+  ovulationFromHeatStartDays: number; // usually 12
+  gestationDays: number;              // 63
+  weanFromBirthDays: number;          // usually 42
+  goHomeFromBirthDays: number;        // usually 56
+};
+
+const SPECIES_RULES: Record<Species, SpeciesRules> = {
+  DOG:   { ovulationFromHeatStartDays: 12, gestationDays: 63,  weanFromBirthDays: 42,  goHomeFromBirthDays: 56 },
+  CAT:   { ovulationFromHeatStartDays: 10, gestationDays: 63,  weanFromBirthDays: 42,  goHomeFromBirthDays: 56 },
+  HORSE: { ovulationFromHeatStartDays: 12, gestationDays: 340, weanFromBirthDays: 180, goHomeFromBirthDays: 210 },
+};
+
+/** ISO date (YYYY-MM-DD) from Date */
+function isoDay(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+/** Baseline average cycle length by species */
+export const SPECIES_BASELINE_CYCLE_LEN_DAYS: Record<Species, number> = {
+  DOG: 180,
+  CAT: 60,
+  HORSE: 21,
+};
+
+export type CycleHistory = { heatStarts: DateLike[] };
+
+export function resolveCycleLengthDays(
+  species: Species,
+  history: CycleHistory | null | undefined,
+  femaleOverrideDays: number | null | undefined
+): { days: number; source: "learned" | "override" | "baseline" } {
+  const starts = (history?.heatStarts ?? [])
+    .map(toDate)
+    .filter(d => Number.isFinite(d.getTime()))
+    .sort((a, b) => a.getTime() - b.getTime());
+
+  if (starts.length >= 3) {
+    const gaps: number[] = [];
+    for (let i = 1; i < starts.length; i++) {
+      const prev = starts[i - 1];
+      const cur = starts[i];
+      const delta = Math.max(1, Math.round((cur.getTime() - prev.getTime()) / 86400000));
+      gaps.push(delta);
+    }
+    if (gaps.length >= 2) {
+      const avg = Math.round(gaps.reduce((a, b) => a + b, 0) / gaps.length);
+      if (avg > 0) return { days: avg, source: "learned" };
+    }
+  }
+  if (femaleOverrideDays && Number.isFinite(femaleOverrideDays) && femaleOverrideDays > 0) {
+    return { days: Math.round(femaleOverrideDays), source: "override" };
+  }
+  const base = SPECIES_BASELINE_CYCLE_LEN_DAYS[species] ?? SPECIES_BASELINE_CYCLE_LEN_DAYS.DOG;
+  return { days: base, source: "baseline" };
+}
+
+export function projectUpcomingCycles(
+  lastHeatStart: DateLike,
+  cycleLenDays: number,
+  count: number
+): string[] {
+  const out: string[] = [];
+  const start = toDate(lastHeatStart);
+  let cur = new Date(start);
+  for (let i = 0; i < count; i++) {
+    cur = addDays(cur, cycleLenDays);
+    out.push(cur.toISOString().slice(0, 10));
+  }
+  return out;
+}
+
+/**
+ * Expected milestone dates from a locked heat start.
+ * Returns new Placement field names and keeps legacy aliases for compatibility.
+ */
+export function expectedMilestonesFromLocked(
+  lockedHeatStart: DateLike,
+  species: Species
+): {
+  ovulation: string;
+  breeding_expected: string;
+  birth_expected: string;
+  weaned_expected: string;
+  placement_start_expected: string;
+  placement_completed_expected: string | null;
+  // legacy aliases
+  gohome_expected: string;
+  gohome_extended_end_expected: string | null;
+} {
+  const rules = SPECIES_RULES[species] ?? SPECIES_RULES.DOG;
+
+  const heat = toDate(lockedHeatStart);
+  const ovulation = addDays(heat, rules.ovulationFromHeatStartDays);
+  const whelp = addDays(ovulation, rules.gestationDays);
+  const weaned = addDays(whelp, rules.weanFromBirthDays);
+  const placementStart = addDays(whelp, rules.goHomeFromBirthDays);
+
+  const placementCompleted: string | null = null; // learn later
+
+  return {
+    ovulation: isoDay(ovulation),
+    breeding_expected: isoDay(ovulation),
+    birth_expected: isoDay(whelp),
+    weaned_expected: isoDay(weaned),
+    placement_start_expected: isoDay(placementStart),
+    placement_completed_expected: placementCompleted,
+    // legacy aliases
+    gohome_expected: isoDay(placementStart),
+    gohome_extended_end_expected: placementCompleted,
+  };
 }

@@ -1,0 +1,64 @@
+/* packages/ui/src/styles/gantt.css */
+
+/* ───────────────────────── Gantt base ───────────────────────── */
+.bhq-gantt {
+  --grid-month: rgba(255,255,255,0.18);
+  --rowline: rgba(255,255,255,0.12);
+  --today: rgba(255, 60, 60, 0.95);
+  --bar-opacity: 0.96;
+  color: hsl(var(--muted-foreground, 0 0% 90%));
+  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+}
+
+.bhq-gantt__title { margin-bottom: 6px; font-size: 13px; font-weight: 600; }
+
+.bhq-gantt__frame {
+  overflow: hidden;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.10);
+  background: hsl(0 0% 8%);
+  position: relative;
+}
+
+/* SVG should not block “Open plan” links */
+.bhq-gantt__svg { width: 100%; display: block; pointer-events: none; }
+
+/* Axis */
+.bhq-gantt__grid-month { stroke: var(--grid-month); stroke-width: 1; opacity: .45; }
+.bhq-gantt__month { fill: rgba(255,255,255,0.78); }
+
+/* Rows */
+.bhq-gantt__rowline { stroke: var(--rowline); stroke-width: 1; }
+
+/* Labels / year */
+.bhq-gantt__label { fill: rgba(255,255,255,0.94); font-weight: 600; letter-spacing: .2px; }
+.bhq-gantt__yearrange { fill: rgba(255,255,255,0.58); }
+
+/* Bars, dots, likely */
+.bhq-gantt__bar { opacity: var(--bar-opacity); }
+.bhq-gantt__dot { opacity: var(--bar-opacity); }
+.bhq-gantt__likely { mix-blend-mode: multiply; opacity: .35; }
+
+/* Today */
+.bhq-gantt__today { stroke: var(--today); stroke-width: 2; stroke-dasharray: 4 4; }
+
+/* Keep text sizes stable (avoid UI-scale blowups) */
+.bhq-gantt svg text { font-size: 12px; line-height: 1; letter-spacing: .2px; }
+.bhq-gantt__label { font-size: 14px; }
+.bhq-gantt__month { font-size: 12px; }
+
+/* ───────────── Availability bands (first-class) ───────────── */
+.bhq-gantt__availabilitywrap,
+.bhq-gantt__availability,
+.bhq-gantt__availability-outline { pointer-events: none; }
+
+.bhq-gantt__availability { mix-blend-mode: multiply; }
+/* normalized class names */
+.bhq-gantt__availability.risky    { fill: hsla(0,   91%, 63%, 0.18); }    /* red tint */
+.bhq-gantt__availability.unlikely { fill: hsla(35, 100%, 52%, 0.18); }    /* amber tint */
+
+.bhq-gantt__availability-outline {
+  stroke: rgba(255,255,255,0.16);
+  stroke-width: 1.25;
+  stroke-dasharray: 6 4;
+}

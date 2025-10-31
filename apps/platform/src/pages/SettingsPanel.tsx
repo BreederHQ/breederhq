@@ -1,9 +1,10 @@
-// apps/platform/src/pages/SettingsPanel.tsx
 import React from "react";
 import { Button, Card } from "@bhq/ui";
 import { createPortal } from "react-dom";
 import { getOverlayRoot } from "@bhq/ui/overlay";
 import { useUiScale } from "@bhq/ui/settings/UiScaleProvider";
+import type { AvailabilityPrefs } from "@bhq/ui/utils/availability";
+import { DEFAULT_AVAILABILITY_PREFS } from "@bhq/ui/utils/availability";
 
 function getAuthHeaders(): Record<string, string> {
   const w = window as any;
@@ -21,7 +22,10 @@ function getAuthHeaders(): Record<string, string> {
 
   function readTenantFromCookie(): number {
     try {
-      const raw = document.cookie.split("; ").find(s => s.startsWith("bhq_s="))?.split("=")[1] || "";
+      const raw = document.cookie
+        .split("; ")
+        .find((s) => s.startsWith("bhq_s="))
+        ?.split("=")[1] || "";
       if (!raw) return NaN;
       const json = atob(raw.replace(/-/g, "+").replace(/_/g, "/"));
       const obj = JSON.parse(json);
@@ -33,9 +37,11 @@ function getAuthHeaders(): Record<string, string> {
   }
 
   const tenantId =
-    (Number.isFinite(fromGlobal) && fromGlobal > 0 ? fromGlobal :
-      Number.isFinite(fromLS) && fromLS > 0 ? fromLS :
-        readTenantFromCookie());
+    (Number.isFinite(fromGlobal) && fromGlobal > 0
+      ? fromGlobal
+      : Number.isFinite(fromLS) && fromLS > 0
+      ? fromLS
+      : readTenantFromCookie());
 
   const headers: Record<string, string> = {};
   if (Number.isFinite(tenantId) && tenantId > 0) {
@@ -43,6 +49,38 @@ function getAuthHeaders(): Record<string, string> {
     headers["X-Org-Id"] = String(tenantId);
   }
   return headers;
+}
+
+function getTenantIdFromAnywhere(): number {
+  const w = window as any;
+
+  const fromGlobal = Number(w.__BHQ_TENANT_ID__);
+  if (Number.isFinite(fromGlobal) && fromGlobal > 0) return fromGlobal;
+
+  try {
+    const s = localStorage.getItem("BHQ_TENANT_ID");
+    const n = s ? Number(s) : NaN;
+    if (Number.isFinite(n) && n > 0) return n;
+  } catch {
+    /* ignore */
+  }
+
+  try {
+    const raw = document.cookie
+      .split("; ")
+      .find((s) => s.startsWith("bhq_s="))
+      ?.split("=")[1] || "";
+    if (raw) {
+      const json = atob(raw.replace(/-/g, "+").replace(/_/g, "/"));
+      const obj = JSON.parse(json);
+      const t = Number(obj?.tenantId || obj?.orgId);
+      if (Number.isFinite(t) && t > 0) return t;
+    }
+  } catch {
+    /* ignore */
+  }
+
+  return NaN;
 }
 
 async function fetchJson(url: string, init: RequestInit = {}) {
@@ -153,17 +191,17 @@ export function useCountries(): CountryDef[] {
 export function asCountryCode(country: string, countries: CountryDef[]): string {
   const code = normalizeCountryCode(country);
   if (!code) return "";
-  return countries.some(c => c.code === code) ? code : "";
+  return countries.some((c) => c.code === code) ? code : "";
 }
 
 export function countryNameFromValue(country: string, countries: CountryDef[]): string {
   const code = normalizeCountryCode(country);
-  const found = countries.find(c => c.code === code);
+  const found = countries.find((c) => c.code === code);
   return found ? found.name : "";
 }
 
 function dialForCode(code: string, countries: CountryDef[]): string {
-  const found = countries.find(c => c.code === normalizeCountryCode(code));
+  const found = countries.find((c) => c.code === normalizeCountryCode(code));
   return found?.dial || "";
 }
 
@@ -177,9 +215,9 @@ export function IntlPhoneField(props: {
   const { value, onChange, inferredCountryName, countries, className } = props;
 
   const initialCode = React.useMemo(() => {
-    const byPrefix = countries.find(c => value?.startsWith(c.dial + " "));
+    const byPrefix = countries.find((c) => value?.startsWith(c.dial + " "));
     if (byPrefix) return byPrefix.code;
-    const byName = countries.find(c => c.name === inferredCountryName);
+    const byName = countries.find((c) => c.name === inferredCountryName);
     return byName?.code || "US";
   }, [value, inferredCountryName, countries]);
 
@@ -223,7 +261,7 @@ export function IntlPhoneField(props: {
         onChange={(e) => handleCountryChange(e.currentTarget.value)}
         title={countryNameFromValue(code, countries)}
       >
-        {countries.map(c => (
+        {countries.map((c) => (
           <option key={c.code} value={c.code} title={`${c.name} ${c.dial}`}>
             {c.code} {c.dial}
           </option>
@@ -369,6 +407,7 @@ export default function SettingsPanel({ open, dirty, onDirtyChange, onClose }: P
     accessibility: false,
   });
   const profileRef = React.useRef<ProfileHandle>(null);
+  const breedingRef = React.useRef<BreedingHandle>(null);
   const [profileTitle, setProfileTitle] = React.useState<string>("");
 
   React.useEffect(() => {
@@ -466,6 +505,9 @@ export default function SettingsPanel({ open, dirty, onDirtyChange, onClose }: P
                           if (active === "profile") {
                             await profileRef.current?.save();
                             markDirty("profile", false);
+                          } else if (active === "breeding") {
+                            await breedingRef.current?.save();
+                            markDirty("breeding", false);
                           } else {
                             await saveActive(active, markDirty);
                           }
@@ -514,7 +556,11 @@ export default function SettingsPanel({ open, dirty, onDirtyChange, onClose }: P
                   <TransactionsTab dirty={dirtyMap.transactions} onDirty={(v) => markDirty("transactions", v)} />
                 )}
                 {active === "breeding" && (
-                  <BreedingTab dirty={dirtyMap.breeding} onDirty={(v) => markDirty("breeding", v)} />
+                  <BreedingTab
+                    ref={breedingRef}
+                    dirty={dirtyMap.breeding}
+                    onDirty={(v) => markDirty("breeding", v)}
+                  />
                 )}
                 {active === "breeds" && <BreedsTab onDirty={(v) => markDirty("breeds", v)} />}
                 {active === "users" && <UsersTab dirty={dirtyMap.users} onDirty={(v) => markDirty("users", v)} />}
@@ -725,7 +771,7 @@ const ProfileTab = React.forwardRef<ProfileHandle, {
       }
 
       if (changed.email) {
-        await fetch("/api/v1/auth/logout", { method: "POST", credentials: "include", headers: getAuthHeaders() }).catch(() => { });
+        await fetch("/api/v1/auth/logout", { method: "POST", credentials: "include" }).catch(() => { });
         window.location.assign("/login");
         return;
       }
@@ -817,43 +863,45 @@ const ProfileTab = React.forwardRef<ProfileHandle, {
                 className={`bhq-input ${INPUT_CLS} md:col-span-2`}
                 placeholder="Street"
                 value={form.street}
-                onChange={(e) => setForm(f => ({ ...f, street: e.target.value }))}
+                onChange={(e) => setForm((f) => ({ ...f, street: e.target.value }))}
               />
               <input
                 className={`bhq-input ${INPUT_CLS} md:col-span-2`}
                 placeholder="Street 2"
                 value={form.street2}
-                onChange={(e) => setForm(f => ({ ...f, street2: e.target.value }))}
+                onChange={(e) => setForm((f) => ({ ...f, street2: e.target.value }))}
               />
               <input
                 className={`bhq-input ${INPUT_CLS}`}
                 placeholder="City"
                 value={form.city}
-                onChange={(e) => setForm(f => ({ ...f, city: e.target.value }))}
+                onChange={(e) => setForm((f) => ({ ...f, city: e.target.value }))}
               />
               <input
                 className={`bhq-input ${INPUT_CLS}`}
                 placeholder="State / Region"
                 value={form.state}
-                onChange={(e) => setForm(f => ({ ...f, state: e.target.value }))}
+                onChange={(e) => setForm((f) => ({ ...f, state: e.target.value }))}
               />
               <input
                 className={`bhq-input ${INPUT_CLS}`}
                 placeholder="Postal Code"
                 value={form.postalCode}
-                onChange={(e) => setForm(f => ({ ...f, postalCode: e.target.value }))}
+                onChange={(e) => setForm((f) => ({ ...f, postalCode: e.target.value }))}
               />
               <select
                 className={["bhq-input", INPUT_CLS].join(" ")}
                 value={asCountryCode(form.country, countries)}
                 onChange={(e) => {
                   const code = e.currentTarget.value || "";
-                  setForm(f => ({ ...f, country: code }));
+                  setForm((f) => ({ ...f, country: code }));
                 }}
               >
                 <option value="">Country</option>
                 {countries.map((c) => (
-                  <option key={c.code} value={c.code}>{c.name}</option>
+                  <option key={c.code} value={c.code}>
+                    {c.name}
+                  </option>
                 ))}
               </select>
             </div>
@@ -905,21 +953,21 @@ async function verifyViaLogin(email: string, pw: string): Promise<{ ok: boolean;
 }
 
 function SecurityTab({ onDirty }: { dirty: boolean; onDirty: (v: boolean) => void }) {
-  const [step, setStep] = React.useState<'idle' | 'verifying' | 'ready'>('idle');
+  const [step, setStep] = React.useState<"idle" | "verifying" | "ready">("idle");
   const [verified, setVerified] = React.useState(false);
 
-  const [currentPw, setCurrentPw] = React.useState('');
+  const [currentPw, setCurrentPw] = React.useState("");
   const [showCurrentPw, setShowCurrentPw] = React.useState(false);
 
-  const [newPw, setNewPw] = React.useState('');
+  const [newPw, setNewPw] = React.useState("");
   const [showNewPw, setShowNewPw] = React.useState(false);
 
-  const [confirmPw, setConfirmPw] = React.useState('');
+  const [confirmPw, setConfirmPw] = React.useState("");
   const [showConfirmPw, setShowConfirmPw] = React.useState(false);
 
   const [submitting, setSubmitting] = React.useState(false);
-  const [error, setError] = React.useState<string>('');
-  const [notice, setNotice] = React.useState<string>('');
+  const [error, setError] = React.useState<string>("");
+  const [notice, setNotice] = React.useState<string>("");
 
   React.useEffect(() => {
     onDirty(false);
@@ -952,30 +1000,30 @@ function SecurityTab({ onDirty }: { dirty: boolean; onDirty: (v: boolean) => voi
   async function submitPasswordChange() {
     try {
       setSubmitting(true);
-      setError('');
+      setError("");
       if (!newPw || !confirmPw) {
-        setError('Please enter and confirm your new password.');
+        setError("Please enter and confirm your new password.");
         return;
       }
       if (newPw !== confirmPw) {
-        setError('New password and confirmation do not match.');
+        setError("New password and confirmation do not match.");
         return;
       }
-      const res = await fetch('/api/v1/auth/password', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
+      const res = await fetch("/api/v1/auth/password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ currentPassword: currentPw, newPassword: newPw }),
       });
       if (!res.ok) {
         const j = await res.json().catch(() => ({}));
-        throw new Error(j?.message || 'Password change failed');
+        throw new Error(j?.message || "Password change failed");
       }
-      setNotice('Password changed. You will be logged out to reauthenticate…');
-      await fetch('/api/v1/auth/logout', { method: 'POST', credentials: 'include' }).catch(() => { });
-      window.location.assign('/login');
+      setNotice("Password changed. You will be logged out to reauthenticate…");
+      await fetch("/api/v1/auth/logout", { method: "POST", credentials: "include" }).catch(() => {});
+      window.location.assign("/login");
     } catch (e: any) {
-      setError(e?.message || 'Password change failed');
+      setError(e?.message || "Password change failed");
     } finally {
       setSubmitting(false);
     }
@@ -1021,7 +1069,7 @@ function SecurityTab({ onDirty }: { dirty: boolean; onDirty: (v: boolean) => voi
             <div className="relative w-80">
               <input
                 className={`bhq-input ${INPUT_CLS} pr-10`}
-                type={showCurrentPw ? 'text' : 'password'}
+                type={showCurrentPw ? "text" : "password"}
                 autoComplete="current-password"
                 value={currentPw}
                 onChange={(e) => setCurrentPw(e.target.value)}
@@ -1036,9 +1084,9 @@ function SecurityTab({ onDirty }: { dirty: boolean; onDirty: (v: boolean) => voi
               />
               <button
                 type="button"
-                onClick={() => setShowCurrentPw(v => !v)}
+                onClick={() => setShowCurrentPw((v) => !v)}
                 className="absolute inset-y-0 right-2 my-auto p-1 text-tertiary hover:text-primary"
-                aria-label={showCurrentPw ? 'Hide password' : 'Show password'}
+                aria-label={showCurrentPw ? "Hide password" : "Show password"}
               >
                 {showCurrentPw ? EyeOff : Eye}
               </button>
@@ -1054,14 +1102,14 @@ function SecurityTab({ onDirty }: { dirty: boolean; onDirty: (v: boolean) => voi
             <Button
               size="sm"
               onClick={async () => {
-                if (!currentPw) { setError('Please enter your current password.'); return; }
+                if (!currentPw) { setError("Please enter your current password."); return; }
                 const res = await verifyCurrentPassword(currentPw);
                 if (res.ok) (document.getElementById("new-password-input") as HTMLInputElement | null)?.focus();
               }}
-              disabled={step === 'verifying'}
+              disabled={step === "verifying"}
               title="Verify current password"
             >
-              {step === 'verifying' ? 'Verifying…' : 'Change password'}
+              {step === "verifying" ? "Verifying…" : "Change password"}
             </Button>
           </div>
         )}
@@ -1074,7 +1122,7 @@ function SecurityTab({ onDirty }: { dirty: boolean; onDirty: (v: boolean) => voi
                 <input
                   id="new-password-input"
                   className={`bhq-input ${INPUT_CLS} pr-10`}
-                  type={showNewPw ? 'text' : 'password'}
+                  type={showNewPw ? "text" : "password"}
                   autoComplete="new-password"
                   value={newPw}
                   onChange={(e) => setNewPw(e.target.value)}
@@ -1088,9 +1136,9 @@ function SecurityTab({ onDirty }: { dirty: boolean; onDirty: (v: boolean) => voi
                 />
                 <button
                   type="button"
-                  onClick={() => setShowNewPw(v => !v)}
+                  onClick={() => setShowNewPw((v) => !v)}
                   className="absolute inset-y-0 right-2 my-auto p-1 text-tertiary hover:text-primary"
-                  aria-label={showNewPw ? 'Hide password' : 'Show password'}
+                  aria-label={showNewPw ? "Hide password" : "Show password"}
                 >
                   {showNewPw ? EyeOff : Eye}
                 </button>
@@ -1102,7 +1150,7 @@ function SecurityTab({ onDirty }: { dirty: boolean; onDirty: (v: boolean) => voi
               <div className="relative w-80">
                 <input
                   className={`bhq-input ${INPUT_CLS} pr-10`}
-                  type={showConfirmPw ? 'text' : 'password'}
+                  type={showConfirmPw ? "text" : "password"}
                   autoComplete="new-password"
                   value={confirmPw}
                   onChange={(e) => setConfirmPw(e.target.value)}
@@ -1117,9 +1165,9 @@ function SecurityTab({ onDirty }: { dirty: boolean; onDirty: (v: boolean) => voi
                 />
                 <button
                   type="button"
-                  onClick={() => setShowConfirmPw(v => !v)}
+                  onClick={() => setShowConfirmPw((v) => !v)}
                   className="absolute inset-y-0 right-2 my-auto p-1 text-tertiary hover:text-primary"
-                  aria-label={showConfirmPw ? 'Hide password' : 'Show password'}
+                  aria-label={showConfirmPw ? "Hide password" : "Show password"}
                 >
                   {showConfirmPw ? EyeOff : Eye}
                 </button>
@@ -1132,7 +1180,7 @@ function SecurityTab({ onDirty }: { dirty: boolean; onDirty: (v: boolean) => voi
 
             <div>
               <Button size="sm" onClick={submitPasswordChange} disabled={submitting}>
-                {submitting ? 'Submitting…' : 'Submit'}
+                {submitting ? "Submitting…" : "Submit"}
               </Button>
             </div>
           </div>
@@ -1164,18 +1212,273 @@ function SubscriptionTab({ onDirty }: { dirty: boolean; onDirty: (v: boolean) =>
   );
 }
 
-function BreedingTab({ onDirty }: { dirty: boolean; onDirty: (v: boolean) => void }) {
-  return (
-    <Card className="p-4 space-y-3">
-      <h4 className="font-medium">Breeding defaults</h4>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <Field placeholder="Cycle length (days)" onChange={() => onDirty(true)} />
-        <Field placeholder="Ovulation day from heat start" onChange={() => onDirty(true)} />
-        <Field placeholder="Start buffer (days)" className="md:col-span-2" onChange={() => onDirty(true)} />
+/** ───────── Breeding Settings: Availability prefs + Local overrides ───────── */
+type BreedingHandle = { save: () => Promise<void> };
+
+const BreedingTab = React.forwardRef<BreedingHandle, { dirty: boolean; onDirty: (v: boolean) => void }>(
+  function BreedingTabImpl({ onDirty }, ref) {
+    const DEFAULTS: AvailabilityPrefs = DEFAULT_AVAILABILITY_PREFS;
+
+    // Local browser overrides
+    const [showGanttBands, setShowGanttBands] = React.useState<boolean>(() => {
+      try { return localStorage.getItem("BHQ_BREEDING_SHOW_GANTT_BANDS") !== "0"; } catch { return true; }
+    });
+    const [showCalendarBands, setShowCalendarBands] = React.useState<boolean>(() => {
+      try { return localStorage.getItem("BHQ_BREEDING_SHOW_CAL_BANDS") !== "0"; } catch { return true; }
+    });
+    const [ganttHorizonMonths, setGanttHorizonMonths] = React.useState<number>(() => {
+      const raw = (localStorage.getItem("BHQ_BREEDING_HORIZON_MONTHS") || "").trim();
+      const n = Number(raw);
+      return Number.isFinite(n) && n > 0 ? n : 18;
+    });
+
+    const [loading, setLoading] = React.useState(true);
+    const [error, setError] = React.useState<string>("");
+
+    const [initial, setInitial] = React.useState<AvailabilityPrefs>(DEFAULTS);
+    const [form, setForm] = React.useState<AvailabilityPrefs>(DEFAULTS);
+
+    const isDirty = React.useMemo(() => {
+      const serverDirty = JSON.stringify(form) !== JSON.stringify(initial);
+      const localDirty =
+        showGanttBands !== (localStorage.getItem("BHQ_BREEDING_SHOW_GANTT_BANDS") !== "0") ||
+        showCalendarBands !== (localStorage.getItem("BHQ_BREEDING_SHOW_CAL_BANDS") !== "0") ||
+        ganttHorizonMonths !== (Number(localStorage.getItem("BHQ_BREEDING_HORIZON_MONTHS") || "18") || 18);
+      return serverDirty || localDirty;
+    }, [form, initial, showGanttBands, showCalendarBands, ganttHorizonMonths]);
+
+    React.useEffect(() => onDirty(isDirty), [isDirty, onDirty]);
+
+    React.useEffect(() => {
+      let ignore = false;
+      (async () => {
+        try {
+          setLoading(true);
+          setError("");
+          const tenantId = getTenantIdFromAnywhere();
+          if (!Number.isFinite(tenantId) || tenantId <= 0) throw new Error("Missing tenant id");
+          const res = await fetchJson(`/api/v1/tenants/${tenantId}/availability-prefs`);
+          const data = (res?.data ?? res) as Partial<AvailabilityPrefs> | undefined;
+          const merged: AvailabilityPrefs = { ...DEFAULTS, ...(data || {}) };
+          if (!ignore) {
+            setInitial(merged);
+            setForm(merged);
+          }
+        } catch (e: any) {
+          const msg = (e?.message || "").toString();
+          if (!ignore) {
+            if (/not found/i.test(msg)) {
+              setInitial(DEFAULTS);
+              setForm(DEFAULTS);
+              setError("");
+            } else {
+              setError(msg || "Failed to load breeding preferences");
+            }
+          }
+        } finally {
+          if (!ignore) setLoading(false);
+        }
+      })();
+      return () => { ignore = true; };
+    }, []);
+
+    async function saveAll() {
+      setError("");
+      try {
+        const tenantId = getTenantIdFromAnywhere();
+        if (!Number.isFinite(tenantId) || tenantId <= 0) throw new Error("Missing tenant id");
+
+        // Save server prefs if changed
+        const changed = Object.fromEntries(
+          Object.entries(form).filter(([k, v]) => (initial as any)[k] !== v)
+        );
+        if (Object.keys(changed).length > 0) {
+          const res = await fetchJson(`/api/v1/tenants/${tenantId}/availability-prefs`, {
+            method: "PUT",
+            body: JSON.stringify(changed),
+          });
+          const saved = (res?.data ?? res) as AvailabilityPrefs;
+          setInitial(saved);
+          setForm(saved);
+        }
+
+        // Save local overrides
+        try {
+          localStorage.setItem("BHQ_BREEDING_SHOW_GANTT_BANDS", showGanttBands ? "1" : "0");
+          localStorage.setItem("BHQ_BREEDING_SHOW_CAL_BANDS", showCalendarBands ? "1" : "0");
+          localStorage.setItem(
+            "BHQ_BREEDING_HORIZON_MONTHS",
+            String(Math.max(6, Math.min(36, ganttHorizonMonths || 18)))
+          );
+        } catch {
+          /* ignore */
+        }
+
+        onDirty(false);
+      } catch (e: any) {
+        setError(e?.message || "Failed to save breeding preferences");
+      }
+    }
+
+    React.useImperativeHandle(ref, () => ({
+      async save() { await saveAll(); },
+    }));
+
+    function resetServerDefaults() {
+      setForm(DEFAULTS);
+    }
+
+    function numField<K extends keyof AvailabilityPrefs>(key: K, label: string, hint?: string) {
+      return (
+        <label className="space-y-1">
+          <div className="text-xs text-secondary">{label}</div>
+          <input
+            type="number"
+            className={`bhq-input ${INPUT_CLS}`}
+            value={Number(form[key] ?? 0)}
+            onChange={(e) =>
+              setForm((f) => ({ ...f, [key]: Number(e.currentTarget.value || 0) }))
+            }
+          />
+          {hint ? <div className="text-[11px] text-tertiary">{hint}</div> : null}
+        </label>
+      );
+    }
+
+    return (
+      <div className="space-y-6">
+        <Card className="p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <h4 className="font-medium">Availability bands (server backed)</h4>
+            <div className="flex items-center gap-2">
+              <Button size="sm" variant="outline" onClick={resetServerDefaults}>Reset to defaults</Button>
+              {/* Save lives in the panel header. */}
+            </div>
+          </div>
+          <p className="text-sm text-secondary">
+            Configure offsets for Risky and Unlikely bands around your computed windows.
+          </p>
+
+          {error && (
+            <div className="rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
+              {error}
+            </div>
+          )}
+
+          {loading ? (
+            <div className="text-sm text-secondary">Loading…</div>
+          ) : (
+            <>
+              <div className="mb-1 text-xs uppercase tracking-wide text-secondary">Testing and Breeding</div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {numField(
+                  "testing_unlikely_from_likely_start",
+                  "Unlikely: from Hormone Testing LIKELY start (days)",
+                  "Negative starts earlier"
+                )}
+                {numField(
+                  "testing_unlikely_to_likely_end",
+                  "Unlikely: to Breeding LIKELY end (days)",
+                  "Positive extends later"
+                )}
+                {numField(
+                  "testing_risky_from_full_start",
+                  "Risky: from Hormone Testing FULL start (days)"
+                )}
+                {numField(
+                  "testing_risky_to_full_end",
+                  "Risky: to Breeding FULL end (days)"
+                )}
+              </div>
+
+              <div className="mt-4 mb-1 text-xs uppercase tracking-wide text-secondary">Post whelp to placement</div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {numField(
+                  "post_unlikely_from_likely_start",
+                  "Unlikely: from Puppy Care LIKELY start (days)"
+                )}
+                {numField(
+                  "post_unlikely_to_likely_end",
+                  "Unlikely: to Go Home Normal LIKELY end (days)"
+                )}
+                {numField(
+                  "post_risky_from_full_start",
+                  "Risky: from Whelping FULL start (days)"
+                )}
+                {numField(
+                  "post_risky_to_full_end",
+                  "Risky: to Go Home Extended FULL end (days)"
+                )}
+              </div>
+            </>
+          )}
+        </Card>
+
+        <Card className="p-4 space-y-3">
+          <h4 className="font-medium">Global overrides (local, instant)</h4>
+          <p className="text-sm text-secondary">
+            These apply in your browser and can be used by Gantt and Calendar as defaults.
+          </p>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={showGanttBands}
+                onChange={(e) => setShowGanttBands(e.currentTarget.checked)}
+              />
+              <span className="text-sm">Show Availability Bands by default in Gantt</span>
+            </label>
+
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={showCalendarBands}
+                onChange={(e) => setShowCalendarBands(e.currentTarget.checked)}
+              />
+              <span className="text-sm">Show Availability Bands by default in Calendar</span>
+            </label>
+
+            <label className="space-y-1 md:col-span-2">
+              <div className="text-xs text-secondary">Default Gantt horizon (months)</div>
+              <input
+                type="number"
+                className={`bhq-input ${INPUT_CLS} w-40`}
+                min={6}
+                max={36}
+                value={ganttHorizonMonths}
+                onChange={(e) => setGanttHorizonMonths(Number(e.currentTarget.value || 18))}
+              />
+              <div className="text-[11px] text-tertiary">6 to 36 months. Default is 18.</div>
+            </label>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {/* Save lives in the panel header. */}
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                try {
+                  setShowGanttBands(localStorage.getItem("BHQ_BREEDING_SHOW_GANTT_BANDS") !== "0");
+                  setShowCalendarBands(localStorage.getItem("BHQ_BREEDING_SHOW_CAL_BANDS") !== "0");
+                  const hm = Number(localStorage.getItem("BHQ_BREEDING_HORIZON_MONTHS") || "18") || 18;
+                  setGanttHorizonMonths(hm);
+                } catch {
+                  setShowGanttBands(true);
+                  setShowCalendarBands(true);
+                  setGanttHorizonMonths(18);
+                }
+              }}
+            >
+              Revert local changes
+            </Button>
+          </div>
+        </Card>
       </div>
-    </Card>
-  );
-}
+    );
+  }
+);
 
 function BreedsTab({ onDirty }: { onDirty: (v: boolean) => void }) {
   React.useEffect(() => onDirty(false), [onDirty]);
@@ -1288,7 +1591,7 @@ function BreedsTab({ onDirty }: { onDirty: (v: boolean) => void }) {
   return (
     <div className="space-y-6">
       <Card className="p-4 space-y-3">
-        <h4 className="font-medium">Breeds (tenant custom + canonical lookup)</h4>
+        <h4 className="font-medium">Breeds (tenant custom and canonical lookup)</h4>
         <p className="text-sm text-secondary">
           Canonical breeds are read only. Add custom breeds for your org, then optionally link to a canonical breed for analytics and search.
         </p>
@@ -1384,7 +1687,7 @@ function BreedsTab({ onDirty }: { onDirty: (v: boolean) => void }) {
             className={`bhq-input ${INPUT_CLS} flex-1`}
             placeholder={`Add custom ${species.toLowerCase()} breed…`}
             value={newName}
-            onChange={(e) => (setNewName(e.target.value))}
+            onChange={(e) => setNewName(e.target.value)}
             onKeyDown={async (e) => {
               if (e.key === "Enter" && newName.trim()) {
                 try {
@@ -1424,7 +1727,11 @@ function BreedsTab({ onDirty }: { onDirty: (v: boolean) => void }) {
                   onBlur={async (e) => {
                     const next = e.currentTarget.value.trim();
                     if (next && next !== c.name) {
-                      try { await renameCustom(c.id, next); } catch (e: any) { setErr(e?.message || "Rename failed"); }
+                      try {
+                        await renameCustom(c.id, next);
+                      } catch (e: any) {
+                        setErr(e?.message || "Rename failed");
+                      }
                     }
                   }}
                 />
@@ -1442,7 +1749,11 @@ function BreedsTab({ onDirty }: { onDirty: (v: boolean) => void }) {
                       size="sm"
                       variant="outline"
                       onClick={async () => {
-                        try { await linkCanonical(c.id, null); } catch (e: any) { setErr(e?.message || "Unlink failed"); }
+                        try {
+                          await linkCanonical(c.id, null);
+                        } catch (e: any) {
+                          setErr(e?.message || "Unlink failed");
+                        }
                       }}
                     >
                       Unlink
@@ -1453,7 +1764,11 @@ function BreedsTab({ onDirty }: { onDirty: (v: boolean) => void }) {
                     variant="outline"
                     onClick={async () => {
                       if (!confirm(`Delete "${c.name}"?`)) return;
-                      try { await removeCustom(c.id); } catch (e: any) { setErr(e?.message || "Delete failed"); }
+                      try {
+                        await removeCustom(c.id);
+                      } catch (e: any) {
+                        setErr(e?.message || "Delete failed");
+                      }
                     }}
                   >
                     Delete

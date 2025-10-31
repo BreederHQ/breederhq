@@ -20,14 +20,15 @@ export function SectionCard({
   const headerRight = right ?? rightSlot;
 
   return (
-    <div className={["rounded-xl border border-hairline bg-surface p-3", className].join(" ")}>
+    <div className={["bhq-section-card rounded-xl border border-hairline bg-surface p-3", className].join(" ")}>
       {(title || headerRight) && (
-        <div className="flex items-center justify-between mb-2">
-          <div className="text-xs uppercase tracking-wide text-secondary">{title}</div>
+        <div className="bhq-section-header flex items-center justify-between mb-2">
+          {/* remove the forced all-caps, give a stable class for global styling */}
+          <div className="bhq-section-title">{title}</div>
           {headerRight}
         </div>
       )}
-      {children}
+      <div className="bhq-section-body">{children}</div>
     </div>
   );
 }

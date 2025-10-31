@@ -1,10 +1,26 @@
 {
+  "name": "@bhq/ui",
+  "version": "0.1.0",
+  "files": [
+    "dist",
+    "styles"
+  ],
+  "exports": {
+    ".": "./dist/index.js",
+    "./overlay": "./dist/overlay.js",
+    "./styles/*": "./styles/*"
+  },
+  "sideEffects": [
+    "*.css",
+    "styles/*.css"
+  ],
   "dependencies": {
+    "@fullcalendar/daygrid": "^6.1.19",
+    "@fullcalendar/interaction": "^6.1.19",
+    "@fullcalendar/react": "^6.1.19",
     "clsx": "^2.1.1",
     "lucide-react": "^0.544.0",
-    "@fullcalendar/react": "^6.1.19",
-    "@fullcalendar/daygrid": "^6.1.19",
-    "@fullcalendar/interaction": "^6.1.19"
+    "zod": "^4.1.12"
   },
   "peerDependencies": {
     "react": ">=18",
@@ -39,8 +55,6 @@
       "@fullcalendar/interaction"
     ]
   },
-  "name": "@bhq/ui",
-  "version": "0.1.0",
   "scripts": {
     "build": "tsup"
   }

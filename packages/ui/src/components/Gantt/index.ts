@@ -1,2 +1,3 @@
 // packages/ui/src/components/Gantt/index.ts
-export * from "./Gantt";
+  export { default } from "./Gantt";
+  export * from "./Gantt";

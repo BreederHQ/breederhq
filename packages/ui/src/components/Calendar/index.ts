@@ -1,4 +1,5 @@
 // packages/ui/src/components/Calendar/index.ts
-export { default as BHQCalendar } from "./Calendar";
-export type { CalendarEvent, BHQCalendarProps } from "./Calendar";
+export { default } from "./Calendar";
+export { default as Calendar } from "./Calendar";
+export type { BHQCalendarProps, CalendarEvent } from "./Calendar";
 
