@@ -103,6 +103,12 @@ function normalizePlanDates(body: any) {
     delete b.expectedGoHomeExtendedEnd;
   }
 
+  // legacy expectedDue → expectedBirthDate
+  if (b.expectedDue !== undefined && b.expectedBirthDate === undefined) {
+    b.expectedBirthDate = b.expectedDue;
+    delete b.expectedDue;
+  }
+
   // locked → placement
   if (b.lockedGoHomeDate !== undefined && b.lockedPlacementStartDate === undefined) {
     b.lockedPlacementStartDate = b.lockedGoHomeDate;
@@ -110,6 +116,18 @@ function normalizePlanDates(body: any) {
   }
 
   // actuals → placement
+  if (b.actualGoHomeDate !== undefined && b.placementStartDateActual === undefined) {
+    b.placementStartDateActual = b.actualGoHomeDate;
+    delete b.actualGoHomeDate;
+  }
+  if (b.actualHomingStartedDate !== undefined && b.placementStartDateActual === undefined) {
+    b.placementStartDateActual = b.actualHomingStartedDate;
+    delete b.actualHomingStartedDate;
+  }
+  if (b.actualHomingExtendedEnds !== undefined && b.placementCompletedDateActual === undefined) {
+    b.placementCompletedDateActual = b.actualHomingExtendedEnds;
+    delete b.actualHomingExtendedEnds;
+  }
   if (b.goHomeDateActual !== undefined && b.placementStartDateActual === undefined) {
     b.placementStartDateActual = b.goHomeDateActual;
     delete b.goHomeDateActual;
@@ -119,8 +137,15 @@ function normalizePlanDates(body: any) {
     delete b.lastGoHomeDateActual;
   }
 
-  // pass through new actuals, including the new hormone testing field
-  // hormoneTestingStartDateActual already named correctly
+  // very old aliases to keep callers safe
+  if (b.whelpDateActual !== undefined && b.birthDateActual === undefined) {
+    b.birthDateActual = b.whelpDateActual;
+    delete b.whelpDateActual;
+  }
+  if (b.expectedWhelpDate !== undefined && b.expectedBirthDate === undefined) {
+    b.expectedBirthDate = b.expectedWhelpDate;
+    delete b.expectedWhelpDate;
+  }
 
   return b;
 }
@@ -206,27 +231,24 @@ export function makeBreedingApi(opts: ApiOpts) {
   /* ───────── endpoints ───────── */
 
   return {
-    /* Health and diag (useful in UI dev tools) */
+    /* Health and diag */
     healthz() {
       return get<{ ok: true }>("/healthz");
     },
     diag() {
-      // note: this is server-rooted, not under /api/v1 in your server.ts
+      // server-rooted
       return get<{ ok: true; time: string; env: any }>("/__diag");
     },
 
-    /* Tenant availability prefs for Planning and Calendar travel bands */
-    // GET /tenants/:id/availability
+    /* Tenant availability prefs */
     getTenantAvailability(tenantId: number) {
       return get<AvailabilityPrefs>(`/tenants/${tenantId}/availability`);
     },
-    // PATCH /tenants/:id/availability
     updateTenantAvailability(tenantId: number, body: Partial<AvailabilityPrefs>) {
       return patch<AvailabilityPrefs>(`/tenants/${tenantId}/availability`, body);
     },
 
     /* Breeding Plans */
-    // GET /breeding/plans?status=&damId=&sireId=&q=&include=&page=&limit=
     listPlans(params?: ListPlansParams) {
       const qs = new URLSearchParams();
       if (params) {
@@ -238,103 +260,74 @@ export function makeBreedingApi(opts: ApiOpts) {
       return get<Paged<any>>(path);
     },
 
-    // GET /breeding/plans/:id?include=
     getPlan(id: number, include?: PlanInclude | `${PlanInclude},${string}`) {
       const path = `/breeding/plans/${id}${include ? `?include=${encodeURIComponent(include)}` : ""}`;
       return get<any>(path);
     },
 
-    // POST /breeding/plans
     createPlan(body: any) {
       return post<any>("/breeding/plans", normalizePlanDates(body));
     },
 
-    // PATCH /breeding/plans/:id
     updatePlan(id: number, body: any) {
       return patch<any>(`/breeding/plans/${id}`, normalizePlanDates(body));
     },
 
-    // POST /breeding/plans/:id/commit
     commitPlan(id: number, body?: { codeHint?: string }) {
-      // commit does not need date normalization, but pass through for consistency if provided
       return post<any>(`/breeding/plans/${id}/commit`, body ?? {});
     },
 
-    // POST /breeding/plans/:id/archive
     archivePlan(id: number) {
       return post<{ ok: true }>(`/breeding/plans/${id}/archive`, {});
     },
 
-    // POST /breeding/plans/:id/restore
     restorePlan(id: number) {
       return post<{ ok: true }>(`/breeding/plans/${id}/restore`, {});
     },
 
     /* Events / Tests / Attempts / Pregnancy Checks */
-    // GET /breeding/plans/:id/events
     listEvents(planId: number) {
       return get<any[]>(`/breeding/plans/${planId}/events`);
     },
-
-    // POST /breeding/plans/:id/events
     createEvent(planId: number, body: any) {
       return post<any>(`/breeding/plans/${planId}/events`, body);
     },
-
-    // POST /breeding/plans/:id/tests
     createTest(planId: number, body: any) {
       return post<any>(`/breeding/plans/${planId}/tests`, body);
     },
-
-    // POST /breeding/plans/:id/attempts
     createAttempt(planId: number, body: any) {
       return post<any>(`/breeding/plans/${planId}/attempts`, body);
     },
-
-    // POST /breeding/plans/:id/pregnancy-checks
     createPregCheck(planId: number, body: any) {
       return post<any>(`/breeding/plans/${planId}/pregnancy-checks`, body);
     },
 
     /* Litter */
-    // GET /breeding/plans/:id/litter
     getLitter(planId: number) {
       return get<any>(`/breeding/plans/${planId}/litter`);
     },
-
-    // PUT /breeding/plans/:id/litter
     upsertLitter(planId: number, body: any) {
       return put<any>(`/breeding/plans/${planId}/litter`, body);
     },
 
     /* Reservations / Attachments / Shares / Parties */
-    // GET /breeding/plans/:id/reservations
     listReservations(planId: number) {
       return get<any[]>(`/breeding/plans/${planId}/reservations`);
     },
-
-    // POST /breeding/plans/:id/reservations
     createReservation(planId: number, body: any) {
       return post<any>(`/breeding/plans/${planId}/reservations`, body);
     },
-
-    // POST /breeding/plans/:id/attachments
     createAttachment(planId: number, body: any) {
       return post<any>(`/breeding/plans/${planId}/attachments`, body);
     },
-
-    // POST /breeding/plans/:id/shares
     createShare(planId: number, body: any) {
       return post<any>(`/breeding/plans/${planId}/shares`, body);
     },
-
-    // POST /breeding/plans/:id/parties
     createParty(planId: number, body: any) {
       return post<any>(`/breeding/plans/${planId}/parties`, body);
     },
 
     /* Reproductive Cycles */
-    // GET /breeding/cycles?femaleId=&from=&to=&page=&limit=
     listCycles(params?: {
       femaleId?: number;
       from?: string; // ISO
@@ -353,12 +346,10 @@ export function makeBreedingApi(opts: ApiOpts) {
       return get<Paged<any>>(path);
     },
 
-    // POST /breeding/cycles
     createCycle(body: any) {
       return post<any>("/breeding/cycles", normalizeCycleDates(body));
     },
 
-    // PATCH /breeding/cycles/:id
     updateCycle(id: number, body: any) {
       return patch<any>(`/breeding/cycles/${id}`, normalizeCycleDates(body));
     },

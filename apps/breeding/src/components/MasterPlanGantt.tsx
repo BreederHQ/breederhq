@@ -1,239 +1,195 @@
 // apps/breeding/src/components/MasterPlanGantt.tsx
 import * as React from "react";
-import BHQGantt, { type BHQGanttStage } from "@bhq/ui/components/Gantt/Gantt";
+import BHQGantt from "@bhq/ui/components/Gantt/Gantt";
 import type { Range, StageWindows } from "@bhq/ui/utils";
-import { Button, Input } from "@bhq/ui";
+import { Button, Input, SectionCard } from "@bhq/ui";
 
-type ID = number | string;
+// styling + ids/types only (no data builders from here)
+import {
+  GANTT_STAGES,
+  colorFromId,
+  type ID,
+  type PlanRow,
+  type DamRepro,
+  type AvailabilityBand,
+} from "../adapters/ganttShared";
 
-type PlanRow = {
-  id: ID;
-  name: string;
-  status: string;
-  species: "Dog" | "Cat" | "Horse" | "";
-  damId?: number | null;
-  sireId?: number | null;
+// canonical, deterministic plan→windows
+import { fromPlan as buildStageWindows } from "@bhq/ui/utils/breedingMath";
+import { computeAvailabilityBands } from "@bhq/ui/utils/availability";
 
-  lockedCycleStart?: string | null;
-  lockedOvulationDate?: string | null;
-  lockedDueDate?: string | null;
+/* ───────────────── constants ───────────────── */
+const NO_GUTTER: React.CSSProperties = { ["--gantt-right-gutter" as any]: "0px" };
+const PX_PER_MONTH = 160;
 
-  // Placement fields only
-  lockedPlacementStartDate?: string | null;
-  expectedPlacementStart?: string | null;
-  expectedPlacementCompleted?: string | null;
-
-  // optional projections still used elsewhere
-  expectedDue?: string | null;
-  expectedWeaned?: string | null;
+/* ───────────────── helpers ───────────────── */
+const keyOf = (id: ID) => String(id);
+const inSet = (s: Set<ID>, id: ID) => {
+  const needle = keyOf(id);
+  for (const k of s) if (keyOf(k) === needle) return true;
+  return false;
 };
 
-type DamReproEvent = { kind: string; date: string };
-type DamRepro = { last_heat: string | null; repro: DamReproEvent[] };
-
-type AvailabilityBand = {
-  kind: "risky" | "unlikely";
-  range: Range;
-  label?: string;
-  __variant?: "wrap" | "spike" | "focus" | "lane" | "context";
-  __color?: string;
-};
-
-function colorFromId(id: ID) {
-  const s = String(id);
-  let h = 0;
-  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
-  const hue = h % 360;
-  return `hsl(${hue} 70% 52%)`;
-}
-function toDate(d?: string | null) {
-  if (!d) return null;
-  const dt = new Date(d);
-  return Number.isFinite(dt.getTime()) ? dt : null;
-}
-function clampToHorizon(r: Range, h: Range): Range {
-  const start = r.start < h.start ? h.start : r.start;
-  const end = r.end > h.end ? h.end : r.end;
-  return { start, end };
+function monthsBetween(a: Date, b: Date) {
+  return (b.getFullYear() - a.getFullYear()) * 12 + (b.getMonth() - a.getMonth()) + 1;
 }
 function addDays(d: Date, n: number) {
   const x = new Date(d);
   x.setDate(x.getDate() + n);
   return x;
 }
-function monthsBetween(a: Date, b: Date) {
-  return (b.getFullYear() - a.getFullYear()) * 12 + (b.getMonth() - a.getMonth()) + 1;
+function addMonths(d: Date, n: number) {
+  const x = new Date(d);
+  x.setMonth(x.getMonth() + n);
+  return x;
+}
+function toDate(v: unknown): Date | undefined {
+  if (!v) return undefined;
+  if (v instanceof Date) return isNaN(v.getTime()) ? undefined : v;
+  const d = new Date(String(v));
+  return isNaN(d.getTime()) ? undefined : d;
 }
 
-/* rows in the chart */
-const STAGES: BHQGanttStage[] = [
-  { key: "preBreeding", label: "Pre-breeding", baseColor: "#94a3b8", hatchLikely: true },
-  { key: "hormoneTesting", label: "Hormone testing", baseColor: "#38bdf8", hatchLikely: true },
-  { key: "breeding", label: "Breeding", baseColor: "#f59e0b" },
-  { key: "whelping", label: "Whelping", baseColor: "#ef4444" },
-  { key: "puppyCare", label: "Puppy care", baseColor: "#22c55e", hatchLikely: true },
-  { key: "goHomeNormal", label: "Placement", baseColor: "#a78bfa" },
-  { key: "goHomeExtended", label: "Placement (Extended)", baseColor: "#8b5cf6" },
-];
-
-function labelForStageKey(k: string) {
-  switch (k) {
-    case "preBreeding": return "Pre-breeding window";
-    case "hormoneTesting": return "Hormone testing window";
-    case "breeding": return "Breeding window";
-    case "whelping": return "Whelping window";
-    case "puppyCare": return "Puppy care window";
-    case "goHomeNormal": return "Placement";
-    case "goHomeExtended": return "Placement (Extended)";
-    default: return k;
+/** clamp to ≤1 month before first bar and ≤1 month after last bar */
+function clampToOneMonthAroundData(h: Range, rows: StageWindows[]): Range {
+  if (!rows.length) return h;
+  let min = rows[0].full.start;
+  let max = rows[0].full.end;
+  for (const r of rows) {
+    if (r.full.start < min) min = r.full.start;
+    if (r.full.end > max) max = r.full.end;
   }
+  const start = new Date(Math.max(addMonths(min, -1).getTime(), h.start.getTime()));
+  const end = new Date(Math.min(addMonths(max, 1).getTime(), h.end.getTime()));
+  return end > start ? { start, end } : h;
 }
 
-import {
-  fromPlan,
-  type Species as MathSpecies,
-} from "@bhq/ui/utils/breedingMath";
+/** Normalize incoming plan into the shape the math expects */
+function normalizePlan(raw: PlanRow): PlanRow & {
+  species: "Dog" | "Cat" | "Horse" | "";
+  lockedCycleStart?: Date;
+  lockedOvulationDate?: Date;
+  lockedDueDate?: Date;
+} {
+  const p: any = { ...raw };
 
-function toMathSpecies(s: PlanRow["species"]): MathSpecies {
-  switch ((s || "").toUpperCase()) {
-    case "DOG": case "D": case "DOGS": return "DOG";
-    case "CAT": case "C": case "CATS": return "CAT";
-    case "HORSE": case "H": case "HORSES": return "HORSE";
-    default: return "DOG";
-  }
-}
-function safeDate(x?: string | null) {
-  if (!x) return null;
-  const d = new Date(x);
-  return Number.isFinite(d.getTime()) ? d : null;
-}
+  // snake_case → camelCase fallbacks
+  if (p.locked_cycle_start && !p.lockedCycleStart) p.lockedCycleStart = p.locked_cycle_start;
+  if (p.locked_ovulation_date && !p.lockedOvulationDate) p.lockedOvulationDate = p.locked_ovulation_date;
+  if (p.locked_due_date && !p.lockedDueDate) p.lockedDueDate = p.locked_due_date;
 
-/** Build StageWindows using species rules, then overlay explicit placement dates. */
-function windowsFromPlan(p: PlanRow): StageWindows[] {
-  const out: StageWindows[] = [];
+  // Coerce all ISO strings to Dates
+  p.lockedCycleStart = toDate(p.lockedCycleStart);
+  p.lockedOvulationDate = toDate(p.lockedOvulationDate);
+  p.lockedDueDate = toDate(p.lockedDueDate);
+  p.lockedPlacementStartDate = toDate(p.lockedPlacementStartDate);
+  p.expectedPlacementStart = toDate(p.expectedPlacementStart);
+  p.expectedPlacementCompleted = toDate(p.expectedPlacementCompleted);
 
-  // Biology windows if we have a locked cycle
-  if (p.lockedCycleStart) {
-    const heat = new Date(p.lockedCycleStart);
-    const species = toMathSpecies(p.species);
-    const math = fromPlan({
-      species,
-      earliestHeatStart: heat,
-      latestHeatStart: heat,
-      ovulationDate: safeDate(p.lockedOvulationDate) ?? undefined,
-    });
-    for (const s of math.stages) {
-      out.push({ key: s.key, full: s.full, likely: s.likely });
-    }
-  }
+  // species default
+  if (!p.species) p.species = "Dog";
 
-  // Placement overlay from new fields
-  const placement = safeDate(p.lockedPlacementStartDate) ?? safeDate(p.expectedPlacementStart);
-  const placementExt = safeDate(p.expectedPlacementCompleted);
-
-  if (placement) {
-    const i = out.findIndex((s) => s.key === "goHomeNormal");
-    const node: StageWindows = { key: "goHomeNormal", full: { start: placement, end: placement } };
-    if (i >= 0) out[i] = node; else out.push(node);
-  }
-  if (placement && placementExt && placementExt >= placement) {
-    const i = out.findIndex((s) => s.key === "goHomeExtended");
-    const node: StageWindows = { key: "goHomeExtended", full: { start: placement, end: placementExt } };
-    if (i >= 0) out[i] = node; else out.push(node);
-  }
-
-  if (!p.lockedCycleStart && out.length === 0 && placement) {
-    out.push({ key: "goHomeNormal", full: { start: placement, end: placement } });
-    if (placementExt && placementExt >= placement) {
-      out.push({ key: "goHomeExtended", full: { start: placement, end: placementExt } });
-    }
-  }
-  return out;
+  return p;
 }
 
-/* availability bands */
-function availabilityBands(
-  p: PlanRow,
-  repro: DamRepro | undefined,
-  horizon: Range
-): AvailabilityBand[] {
-  if (!p.lockedCycleStart) return [];
+/**
+ * Safety net: if the math builder returns no rows (version mismatch, etc.),
+ * synthesize minimal windows from locked dates using the standing defaults:
+ * - ovulation = cycle + 12 (if missing)
+ * - birth full = ovulation +63 ±2
+ * - puppy-care full = whelp-full-start → whelp-full-end + 8 weeks
+ * - placement full = whelp-full-start + 8 weeks → whelp-full-end + 8 weeks
+ * We only emit ranges that we can derive deterministically from available locks.
+ */
+function fallbackWindowsFromLocks(p: ReturnType<typeof normalizePlan>): StageWindows[] {
+  const rows: StageWindows[] = [];
 
-  const bands: AvailabilityBand[] = [];
-  const ovul = toDate(p.lockedOvulationDate);
-  const due = toDate(p.lockedDueDate ?? p.expectedDue);
-  const placementStart = toDate(p.lockedPlacementStartDate ?? p.expectedPlacementStart);
-  const placementEnd = toDate(p.expectedPlacementCompleted);
+  const cycle = p.lockedCycleStart;
+  const ovu = p.lockedOvulationDate ?? (cycle ? addDays(cycle, 12) : undefined);
+  const due = p.lockedDueDate ?? (ovu ? addDays(ovu, 63) : undefined);
 
-  const testStart = ovul ? addDays(ovul, -7) : toDate(p.lockedCycleStart);
-  const endAnchor = placementEnd ?? placementStart ?? due ?? ovul ?? toDate(p.lockedCycleStart);
+  // Only build when we have at least cycle (for testing/breeding) or ovulation (for due)
+  if (cycle) {
+    // Pre-breeding (approx) ends day before testing starts; here we just anchor to cycle window visually
+    const preStart = addDays(cycle, -14);
+    const preEnd = addDays(cycle, -1);
+    rows.push({
+      key: "prebreeding",
+      label: "Pre-breeding Heat",
+      full: { start: preStart, end: preEnd },
+      likely: { start: addDays(preStart, 4), end: addDays(preEnd, -4) },
+    } as any);
 
-  if (testStart && endAnchor && testStart <= endAnchor) {
-    bands.push({
-      kind: "unlikely",
-      range: clampToHorizon({ start: testStart, end: endAnchor }, horizon),
-      label: "Availability window",
-      __variant: "wrap",
-    });
+    // Hormone Testing: approx 7–10 days starting ~7 days before ovulation
+    const testStart = ovu ? addDays(ovu, -7) : addDays(cycle, 5);
+    const testEnd = addDays(testStart, 9);
+    rows.push({
+      key: "testing",
+      label: "Hormone Testing",
+      full: { start: testStart, end: testEnd },
+      likely: { start: addDays(testStart, 1), end: addDays(testEnd, -1) },
+    } as any);
+
+    // Breeding: near ovulation, 0–1 day span
+    const breedStart = ovu ?? addDays(cycle, 12);
+    const breedEnd = addDays(breedStart, 1);
+    rows.push({
+      key: "breeding",
+      label: "Breeding",
+      full: { start: breedStart, end: breedEnd },
+      likely: { start: breedStart, end: breedEnd },
+    } as any);
   }
-  if (ovul) {
-    bands.push({
-      kind: "risky",
-      range: clampToHorizon({ start: ovul, end: addDays(ovul, 1) }, horizon),
-      label: "Breeding focus",
-      __variant: "spike",
-    });
-  }
+
   if (due) {
-    bands.push({
-      kind: "risky",
-      range: clampToHorizon({ start: addDays(due, -2), end: addDays(due, 2) }, horizon),
-      label: "Whelping focus",
-      __variant: "focus",
-    });
-  }
-  if (due && placementStart && due <= placementStart) {
-    bands.push({
-      kind: "unlikely",
-      range: clampToHorizon({ start: due, end: placementStart }, horizon),
-      label: "Puppy care",
-      __variant: "lane",
-    });
-  }
-  if (placementStart && placementEnd && placementStart < placementEnd) {
-    bands.push({
-      kind: "unlikely",
-      range: clampToHorizon({ start: placementStart, end: placementEnd }, horizon),
-      label: "Extended placement",
-      __variant: "lane",
-    });
-  }
-  if (repro?.last_heat && ovul) {
-    const last = toDate(repro.last_heat);
-    if (last && last < ovul) {
-      bands.push({
-        kind: "unlikely",
-        range: clampToHorizon({ start: last, end: ovul }, horizon),
-        label: "Last heat → ovulation",
-        __variant: "context",
-      });
-    }
+    // birth full: due ±2 days; likely: ±1 day
+    const wStart = addDays(due, -2);
+    const wEnd = addDays(due, 2);
+    rows.push({
+      key: "birth",
+      label: "birth",
+      full: { start: wStart, end: wEnd },
+      likely: { start: addDays(due, -1), end: addDays(due, 1) },
+    } as any);
+
+    // Puppy Care: whelp full span → +8 weeks
+    const pcStart = wStart;
+    const pcEnd = addDays(wEnd, 56);
+    rows.push({
+      key: "puppycare",
+      label: "Puppy Care",
+      full: { start: pcStart, end: pcEnd },
+      likely: { start: pcStart, end: pcEnd },
+    } as any);
+
+    // Placement (Normal): 8 weeks after whelp full start (single-day window rendered as minimal span)
+    const Placement = addDays(wStart, 56);
+    rows.push({
+      key: "placement",
+      label: "Placement",
+      full: { start: Placement, end: addDays(Placement, 1) },
+      likely: { start: Placement, end: addDays(Placement, 1) },
+    } as any);
   }
 
-  return bands;
+  return rows;
 }
 
-/* scroll container */
 function ScrollX({ widthPx, children }: { widthPx: number; children: React.ReactNode }) {
   const min = Math.max(1200, widthPx);
   return (
-    <div className="overflow-x-auto overflow-y-visible w-full" role="region" aria-label="Gantt timeline scroll">
-      <div style={{ minWidth: min, width: "100%" }}>{children}</div>
+    <div
+      className="overflow-x-auto overflow-y-visible w-full"
+      role="region"
+      aria-label="Gantt timeline scroll"
+      style={{ scrollbarGutter: "stable both-edges" }}
+    >
+      <div style={{ minWidth: min, width: widthPx }}>{children}</div>
     </div>
   );
 }
 
-/* plan picker */
+/* ───────────────── Plan Picker ───────────────── */
 function PlanPicker({
   plans,
   selected,
@@ -250,12 +206,37 @@ function PlanPicker({
     return plans.filter((p) => `${p.name} ${p.status}`.toLowerCase().includes(s));
   }, [plans, q]);
 
-  const allChecked = filtered.length > 0 && filtered.every((p) => selected.has(p.id));
-  const someChecked = filtered.some((p) => selected.has(p.id)) && !allChecked;
+  const allVisible = filtered.length > 0 && filtered.every((p) => inSet(selected, p.id));
+  const someVisible = filtered.some((p) => inSet(selected, p.id)) && !allVisible;
+
+  function setChecked(id: ID, checked: boolean) {
+    const next = new Set<ID>(selected);
+    if (checked) next.add(id);
+    else {
+      const needle = keyOf(id);
+      for (const k of Array.from(next)) if (keyOf(k) === needle) next.delete(k);
+    }
+    onChange(next);
+  }
+  function selectVisible(v: boolean) {
+    const next = new Set<ID>(selected);
+    if (v) filtered.forEach((p) => next.add(p.id));
+    else {
+      const needles = new Set(filtered.map((p) => keyOf(p.id)));
+      for (const k of Array.from(next)) if (needles.has(keyOf(k))) next.delete(k);
+    }
+    onChange(next);
+  }
+  function selectAll() {
+    onChange(new Set<ID>(plans.map((p) => p.id)));
+  }
+  function clearAll() {
+    onChange(new Set<ID>());
+  }
 
   return (
     <div className="rounded-lg border border-hairline p-2 bg-surface" role="group" aria-label="Plan picker">
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 mb-2">
         <label className="sr-only" htmlFor="plan-filter">Filter plans</label>
         <Input
           id="plan-filter"
@@ -263,161 +244,172 @@ function PlanPicker({
           onChange={(e) => setQ(e.currentTarget.value)}
           placeholder="Filter plans…"
           className="h-8 w-64"
-          aria-label="Filter plans"
         />
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={() => {
-            const next = new Set(selected);
-            if (allChecked) filtered.forEach((p) => next.delete(p.id));
-            else filtered.forEach((p) => next.add(p.id));
-            onChange(next);
-          }}
-          aria-pressed={someChecked || allChecked}
-          aria-label={allChecked ? "Clear visible plans" : "Select visible plans"}
-        >
-          {allChecked ? "Clear visible" : "Select visible"}
-        </Button>
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={() => {
-            const next = new Set<ID>();
-            plans.forEach((p) => next.add(p.id));
-            onChange(next);
-          }}
-          aria-label="Select all plans"
-        >
-          All
-        </Button>
-        <Button size="sm" variant="outline" onClick={() => onChange(new Set<ID>())} aria-label="Clear all plans">
-          Clear
-        </Button>
+        <Button size="sm" variant="outline" onClick={() => selectVisible(true)}>Select visible</Button>
+        <Button size="sm" variant="outline" onClick={selectAll}>All</Button>
+        <Button size="sm" variant="outline" onClick={clearAll}>Clear all</Button>
+
+        <label className="ml-auto inline-flex items-center gap-2">
+          <input
+            type="checkbox"
+            checked={allVisible}
+            ref={(el) => {
+              if (el) el.indeterminate = someVisible;
+            }}
+            onChange={(e) => selectVisible(e.currentTarget.checked)}
+          />
+          <span className="text-sm">Toggle visible</span>
+        </label>
       </div>
 
-      <div className="mt-2 max-h-56 overflow-auto pr-1" role="list" aria-label="Plans">
-        {filtered.map((p) => {
-          const checked = selected.has(p.id);
-          const checkboxId = `plan-cb-${p.id}`;
-          return (
-            <label
-              key={p.id}
-              htmlFor={checkboxId}
-              className="flex items-center gap-2 py-1 px-1 rounded hover:bg-white/5 cursor-pointer"
-              role="listitem"
-            >
-              <input
-                id={checkboxId}
-                type="checkbox"
-                checked={checked}
-                onChange={(e) => {
-                  const next = new Set(selected);
-                  if (e.currentTarget.checked) next.add(p.id);
-                  else next.delete(p.id);
-                  onChange(next);
-                }}
-                aria-label={`Toggle plan ${p.name}`}
-              />
-              <span className="truncate">
-                <span className="font-medium">{p.name}</span>
-                <span className="text-secondary text-xs ml-2">{p.status}</span>
-              </span>
-              <span className="ml-auto w-3 h-3 rounded" style={{ background: colorFromId(p.id) }} aria-hidden />
-            </label>
-          );
-        })}
-        {filtered.length === 0 && <div className="text-sm text-secondary px-1 py-2">No plans</div>}
+      <div className="max-h-44 overflow-auto pr-1">
+        {filtered.length === 0 ? (
+          <div className="text-sm text-secondary px-1 py-2">No plans match your filter.</div>
+        ) : (
+          <ul className="space-y-1">
+            {filtered.map((p) => {
+              const checked = inSet(selected, p.id);
+              return (
+                <li key={String(p.id)} className="flex items-center gap-2">
+                  <input
+                    id={`pick-${p.id}`}
+                    type="checkbox"
+                    checked={checked}
+                    onChange={(e) => setChecked(p.id, e.currentTarget.checked)}
+                  />
+                  <label htmlFor={`pick-${p.id}`} className="cursor-pointer text-sm flex items-center gap-2">
+                    <span aria-hidden className="inline-block h-3 w-3 rounded-sm" style={{ background: colorFromId(p.id) }} />
+                    <span className="truncate max-w-[28ch]">{p.name}</span>
+                    <span className="text-xs text-secondary">({p.status || "—"})</span>
+                  </label>
+                </li>
+              );
+            })}
+          </ul>
+        )}
       </div>
     </div>
   );
 }
 
-/* ───────────────── main ───────────────── */
+/* ───────────────── Main ───────────────── */
 export default function MasterPlanGantt({
-  plans,
-  damReproByPlan,
+  plans = [],
+  selected = new Set<ID>(),
+  onSelectedChange = () => {},
+  availabilityOn = false,
+  onAvailabilityToggle = () => {},
+  damReproByPlan = {},
   horizon,
   today = new Date(),
-  availabilityOn,
-  onAvailabilityToggle,
-  selected,
-  onSelectedChange,
 }: {
-  plans: PlanRow[];
+  plans?: PlanRow[];
   damReproByPlan?: Record<string | number, DamRepro>;
   horizon: Range;
   today?: Date;
-  availabilityOn: boolean;
-  onAvailabilityToggle: (v: boolean) => void;
-  selected: Set<ID>;
-  onSelectedChange: (next: Set<ID>) => void;
+  availabilityOn?: boolean;
+  onAvailabilityToggle?: (v: boolean) => void;
+  selected?: Set<ID>;
+  onSelectedChange?: (next: Set<ID>) => void;
 }) {
-  const shown = React.useMemo(() => plans.filter((p) => selected.has(p.id)), [plans, selected]);
-  const derivedHorizon = horizon;
+  const shown = React.useMemo(() => plans.filter((p) => inSet(selected, p.id)), [plans, selected]);
 
   const { stageData, availabilityData } = React.useMemo(() => {
-    const stageData: StageWindows[] = [];
-    const availabilityData: AvailabilityBand[] = [];
+    const stage: StageWindows[] = [];
+    const avail: AvailabilityBand[] = [];
 
-    for (const p of shown) {
-      const color = colorFromId(p.id);
+    for (const raw of shown) {
+      const plan = normalizePlan(raw);
 
-      const rows = windowsFromPlan(p);
-      for (const r of rows) {
-        stageData.push({
-          key: r.key as any,
-          full: r.full,
-          likely: r.likely,
-          __tooltip: `${p.name} • ${labelForStageKey(r.key)}`,
-        } as any);
+      // try canonical builder first
+      let tmp: any;
+      try {
+        tmp = buildStageWindows(plan);
+      } catch (e) {
+        console.warn("[MasterPlanGantt] fromPlan threw", { id: plan?.id, e });
+        tmp = undefined;
       }
 
-      const repro = damReproByPlan?.[p.id as any];
-      const bands = availabilityBands(p, repro, derivedHorizon);
-      bands.forEach((b) => {
-        availabilityData.push({ ...b, __color: color });
-      });
+      // normalize possible return shapes
+      let rows: StageWindows[] =
+        Array.isArray(tmp) ? tmp : Array.isArray(tmp?.windows) ? tmp.windows : [];
+
+      // if still empty and we have a locked cycle, synthesize conservative windows
+      if ((!rows || rows.length === 0) && plan.lockedCycleStart) {
+        rows = fallbackWindowsFromLocks(plan);
+      }
+
+      if (!rows || rows.length === 0) {
+        console.warn("[MasterPlanGantt] No rows for plan:", {
+          id: plan?.id,
+          name: plan?.name,
+          species: plan?.species,
+          lockedCycleStart: plan.lockedCycleStart,
+          lockedOvulationDate: plan.lockedOvulationDate,
+          lockedDueDate: plan.lockedDueDate,
+        });
+      } else {
+        for (const r of rows) stage.push({ ...r, __tooltip: `${plan.name}` } as any);
+        try {
+          const color = colorFromId(plan.id);
+          const bands = computeAvailabilityBands(rows, horizon);
+          bands.forEach((b: any) => avail.push({ ...b, __color: color }));
+        } catch {
+          /* ignore */
+        }
+      }
     }
 
-    return { stageData, availabilityData };
-  }, [shown, damReproByPlan, derivedHorizon]);
+    return { stageData: stage, availabilityData: avail };
+  }, [shown, horizon]);
 
-  const months = monthsBetween(derivedHorizon.start, derivedHorizon.end);
-  const pxPerMonth = 160;
-  const widthPx = Math.ceil(months * pxPerMonth);
+  const effectiveHorizon = React.useMemo(
+    () => (stageData.length ? clampToOneMonthAroundData(horizon, stageData) : horizon),
+    [horizon, stageData]
+  );
+
+  const months = monthsBetween(effectiveHorizon.start, effectiveHorizon.end);
+  const widthPx = Math.ceil(months * PX_PER_MONTH);
 
   return (
-    <div className="space-y-3" aria-label="Master Plan Gantt">
-      <div className="flex flex-wrap items-center gap-3">
-        <PlanPicker plans={plans} selected={selected} onChange={onSelectedChange} />
-        <div className="flex items-center gap-2">
+    <SectionCard title="Planner view" className="space-y-3">
+      <ScrollX widthPx={widthPx}>
+        <BHQGantt
+          title={undefined}
+          stages={GANTT_STAGES}
+          data={stageData}
+          availability={availabilityOn ? (availabilityData as any) : []}
+          horizon={effectiveHorizon}
+          today={today}
+          heightPerRow={26}
+          showAvailability={availabilityOn}
+          fitToContent={false}
+          style={NO_GUTTER}
+          className="bhq-gantt--no-aside rounded-lg border border-hairline"
+        />
+      </ScrollX>
+
+      {(shown.length === 0 || stageData.length === 0) && (
+        <div className="text-sm text-secondary px-1">
+          {shown.length === 0
+            ? "No plans selected. Use the picker to choose plans to display."
+            : "Selected plans do not have drawable bars yet. Lock a cycle or set placement dates to populate the timeline."}
+        </div>
+      )}
+
+      <div className="flex gap-3 flex-wrap items-start">
+        <PlanPicker plans={plans as any} selected={selected} onChange={onSelectedChange} />
+        <div className="ml-auto flex items-center gap-2">
           <label className="inline-flex items-center gap-2">
             <input
               type="checkbox"
               checked={availabilityOn}
               onChange={(e) => onAvailabilityToggle(e.currentTarget.checked)}
-              aria-label="Toggle availability wrappers"
             />
             <span className="text-sm">Show availability wrappers</span>
           </label>
         </div>
       </div>
-
-      <ScrollX widthPx={widthPx}>
-        <BHQGantt
-          title="Master Plan"
-          stages={STAGES}
-          data={stageData}
-          availability={availabilityOn ? availabilityData : []}
-          horizon={derivedHorizon}
-          today={today}
-          heightPerRow={28}
-          showAvailability={availabilityOn}
-          fitToContent={false}
-          className="rounded-lg border border-hairline"
-        />
-      </ScrollX>
-    </div>
+    </SectionCard>
   );
 }

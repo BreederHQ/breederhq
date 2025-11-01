@@ -1,12 +1,12 @@
+// apps/animals/src/api.ts
 import { readTenantIdFast, resolveTenantId } from "@bhq/ui/utils/tenant";
 import type { BreedHit } from "@bhq/ui";
 
-
-type HeadersMap = Record<string, string>;
+/* ───────── base + cookies ───────── */
 
 function normBase(base?: string): string {
   let b = String(base || (window as any).__BHQ_API_BASE__ || "").trim();
-  if (!b) b = (typeof window !== "undefined" ? window.location.origin : "http://localhost:6170");
+  if (!b) b = typeof window !== "undefined" ? window.location.origin : "http://localhost:6170";
   b = b.replace(/\/+$/g, "").replace(/\/api\/v1$/i, "");
   return `${b}/api/v1`;
 }
@@ -17,7 +17,8 @@ function readCookie(name: string): string {
   return m ? decodeURIComponent(m[2]) : "";
 }
 
-/** Tenant resolution */
+/* ───────── tenant resolution ───────── */
+
 let __tenantResolved: number | null = null;
 let __tenantResolving: Promise<number> | null = null;
 
@@ -32,8 +33,12 @@ async function ensureTenantId(baseUrl: string): Promise<number> {
     const w: any = window as any;
     const runtimeTenant = Number(w?.__BHQ_TENANT_ID__);
     const lsTenant = Number(localStorage.getItem("BHQ_TENANT_ID") || "NaN");
-    const cached = Number.isInteger(runtimeTenant) && runtimeTenant > 0 ? runtimeTenant
-      : (Number.isInteger(lsTenant) && lsTenant > 0 ? lsTenant : NaN);
+    const cached =
+      Number.isInteger(runtimeTenant) && runtimeTenant > 0
+        ? runtimeTenant
+        : Number.isInteger(lsTenant) && lsTenant > 0
+        ? lsTenant
+        : NaN;
     if (Number.isInteger(cached) && cached > 0) {
       __tenantResolved = cached;
       return cached;
@@ -41,7 +46,7 @@ async function ensureTenantId(baseUrl: string): Promise<number> {
   } catch {}
 
   if (!__tenantResolving) {
-    __tenantResolving = resolveTenantId({ baseUrl }).then((t) => {
+    __tenantResolving = resolveTenantId({ baseUrl }).then(t => {
       __tenantResolved = t;
       try {
         (window as any).__BHQ_TENANT_ID__ = t;
@@ -74,7 +79,11 @@ function buildHeaders(tenantId: number, init?: RequestInit): Headers {
 async function parse<T>(res: Response): Promise<T> {
   const text = await res.text();
   let data: any;
-  try { data = text ? JSON.parse(text) : undefined; } catch { data = text; }
+  try {
+    data = text ? JSON.parse(text) : undefined;
+  } catch {
+    data = text;
+  }
   if (!res.ok) {
     const msg = data?.message || data?.error || `HTTP ${res.status}`;
     const err: any = new Error(msg);
@@ -83,19 +92,6 @@ async function parse<T>(res: Response): Promise<T> {
     throw err;
   }
   return data as T;
-}
-
-async function req<T>(
-  baseUrl: string,
-  path: string,
-  init?: RequestInit & { json?: any }
-): Promise<T> {
-  const tenantId = await ensureTenantId(baseUrl);
-  const url = path.startsWith("http") ? path : `${baseUrl}${path}`;
-  const body = (init as any)?.json !== undefined ? JSON.stringify((init as any).json) : init?.body;
-  const headers = buildHeaders(tenantId, init);
-  const res = await fetch(url, { ...init, headers, credentials: "include", body });
-  return parse<T>(res);
 }
 
 function spFrom(obj: Record<string, any>): string {
@@ -108,10 +104,9 @@ function spFrom(obj: Record<string, any>): string {
   return q ? `?${q}` : "";
 }
 
-export function makeApi(
-  base?: string,
-  extraHeadersFn?: () => Record<string, string>
-) {
+/* ───────── public factory ───────── */
+
+export function makeApi(base?: string, extraHeadersFn?: () => Record<string, string>) {
   const root = normBase(base);
 
   const reqWithExtra = async <T>(path: string, init?: RequestInit & { json?: any }) => {
@@ -129,7 +124,8 @@ export function makeApi(
     return parse<T>(res);
   };
 
-  /** Lookups used by editor UIs */
+  /* ───────── Lookups used by editor UIs ───────── */
+
   const lookups = {
     async getCreatingOrganization(): Promise<{ id: string; display_name: string } | null> {
       try {
@@ -152,35 +148,39 @@ export function makeApi(
     async searchContacts(q: string): Promise<Array<{ id: string | number; display_name: string }>> {
       const data = await reqWithExtra<any>(`/contacts${spFrom({ q })}`);
       const items: any[] = Array.isArray(data?.items) ? data.items : Array.isArray(data) ? data : [];
-      return items.map((c) => ({ id: c.id, display_name: c.display_name || c.name || c.full_name || "Contact" }));
+      return items.map(c => ({ id: c.id, display_name: c.display_name || c.name || c.full_name || "Contact" }));
     },
 
     async searchOrganizations(q: string): Promise<Array<{ id: string | number; display_name: string }>> {
-      // primary endpoint
       try {
         const data = await reqWithExtra<any>(`/organizations${spFrom({ q })}`);
         const items: any[] = Array.isArray(data?.items) ? data.items : Array.isArray(data) ? data : [];
-        return items.map((o) => ({ id: o.id, display_name: o.display_name || o.name || "Organization" }));
+        return items.map(o => ({ id: o.id, display_name: o.display_name || o.name || "Organization" }));
       } catch {
-        // fallback (covers older backends)
         const data = await reqWithExtra<any>(`/orgs${spFrom({ q })}`);
         const items: any[] = Array.isArray(data?.items) ? data.items : Array.isArray(data) ? data : [];
-        return items.map((o) => ({ id: o.id, display_name: o.display_name || o.name || "Organization" }));
+        return items.map(o => ({ id: o.id, display_name: o.display_name || o.name || "Organization" }));
       }
     },
   };
 
-  /** Animals */
+  /* ───────── Animals API (matches server routes) ───────── */
+
+  type Species = "DOG" | "CAT" | "HORSE";
+  type UiSpecies = "Dog" | "Cat" | "Horse";
+  const toUiSpecies = (s: Species): UiSpecies => (s === "DOG" ? "Dog" : s === "CAT" ? "Cat" : "Horse");
+
+  type OwnerPartyType = "Organization" | "Contact";
   type OwnerRow = {
-    partyType: "Organization" | "Contact";
+    partyType: OwnerPartyType;
     organizationId?: number | null;
     contactId?: number | null;
-    display_name?: string | null;
-    is_primary?: boolean | null;
-    percent?: number | null;
+    percent: number;
+    isPrimary?: boolean;
   };
 
   const animals = {
+    /* list / get / create / update */
     async list(query: { q?: string; limit?: number; page?: number; includeArchived?: boolean; sort?: string } = {}) {
       return reqWithExtra<any>(`/animals${spFrom(query)}`);
     },
@@ -191,8 +191,7 @@ export function makeApi(
 
     async create(body: {
       name: string;
-      nickname?: string | null;
-      species: "DOG" | "CAT" | "HORSE";
+      species: Species;
       sex: "FEMALE" | "MALE";
       status?: string;
       birthDate?: string | null;
@@ -201,16 +200,13 @@ export function makeApi(
       breed?: string | null;
       canonicalBreedId?: number | null;
       customBreedId?: number | null;
+      organizationId?: number | null;
     }) {
       return reqWithExtra<any>(`/animals`, { method: "POST", json: body });
     },
 
     async update(id: string | number, patch: any) {
       return reqWithExtra<any>(`/animals/${encodeURIComponent(String(id))}`, { method: "PATCH", json: patch });
-    },
-
-    async putOwners(id: string | number, owners: OwnerRow[]) {
-      return reqWithExtra<any>(`/animals/${encodeURIComponent(String(id))}/owners`, { method: "PUT", json: { owners } });
     },
 
     async archive(id: string | number) {
@@ -225,21 +221,79 @@ export function makeApi(
       return reqWithExtra<any>(`/animals/${encodeURIComponent(String(id))}`, { method: "DELETE" });
     },
 
-    // NEW: persist cycle start dates for an animal
-    async putCycleStartDates(id: string | number, dates: string[]) {
-      return reqWithExtra<any>(`/animals/${encodeURIComponent(String(id))}/cycle-start-dates`, {
-        method: "PUT",
-        json: { dates },
-      });
+    /* owners: GET list, POST add, PATCH update, DELETE remove */
+    owners: {
+      async list(id: string | number) {
+        return reqWithExtra<any>(`/animals/${encodeURIComponent(String(id))}/owners`);
+      },
+      async add(id: string | number, row: OwnerRow) {
+        return reqWithExtra<any>(`/animals/${encodeURIComponent(String(id))}/owners`, { method: "POST", json: row });
+      },
+      async update(id: string | number, ownerId: string | number, patch: Partial<OwnerRow>) {
+        return reqWithExtra<any>(
+          `/animals/${encodeURIComponent(String(id))}/owners/${encodeURIComponent(String(ownerId))}`,
+          { method: "PATCH", json: patch }
+        );
+      },
+      async remove(id: string | number, ownerId: string | number) {
+        return reqWithExtra<any>(
+          `/animals/${encodeURIComponent(String(id))}/owners/${encodeURIComponent(String(ownerId))}`,
+          { method: "DELETE" }
+        );
+      },
+    },
+
+    /* tags parity */
+    tags: {
+      async list(id: string | number) {
+        return reqWithExtra<any>(`/animals/${encodeURIComponent(String(id))}/tags`);
+      },
+      async add(id: string | number, tagId: number) {
+        return reqWithExtra<any>(`/animals/${encodeURIComponent(String(id))}/tags`, {
+          method: "POST",
+          json: { tagId },
+        });
+      },
+      async remove(id: string | number, tagId: number) {
+        return reqWithExtra<any>(`/animals/${encodeURIComponent(String(id))}/tags/${encodeURIComponent(String(tagId))}`, {
+          method: "DELETE",
+        });
+      },
+    },
+
+    /* registries parity */
+    registries: {
+      async list(id: string | number) {
+        return reqWithExtra<any>(`/animals/${encodeURIComponent(String(id))}/registries`);
+      },
+      async add(id: string | number, payload: { registryId: number; identifier: string; registrarOfRecord?: string | null; issuedAt?: string | null }) {
+        return reqWithExtra<any>(`/animals/${encodeURIComponent(String(id))}/registries`, {
+          method: "POST",
+          json: payload,
+        });
+      },
+      async update(
+        id: string | number,
+        identifierId: string | number,
+        patch: Partial<{ identifier: string; registrarOfRecord: string | null; issuedAt: string | null; registryId: number }>
+      ) {
+        return reqWithExtra<any>(
+          `/animals/${encodeURIComponent(String(id))}/registries/${encodeURIComponent(String(identifierId))}`,
+          { method: "PATCH", json: patch }
+        );
+      },
+      async remove(id: string | number, identifierId: string | number) {
+        return reqWithExtra<any>(
+          `/animals/${encodeURIComponent(String(id))}/registries/${encodeURIComponent(String(identifierId))}`,
+          { method: "DELETE" }
+        );
+      },
     },
   };
 
-  /** Breeds (canonical + tenant custom) */
-  type Species = "DOG" | "CAT" | "HORSE";
-  type UiSpecies = "Dog" | "Cat" | "Horse";
-  const toUiSpecies = (s: Species): UiSpecies => (s === "DOG" ? "Dog" : s === "CAT" ? "Cat" : "Horse");
+  /* ───────── Breeds (unchanged, assuming backend exists) ───────── */
 
-    const breeds = {
+  const breeds = {
     async species(): Promise<Species[]> {
       const data = await reqWithExtra<{ items: Species[] }>(`/species`);
       return Array.isArray(data?.items) ? data.items : [];
@@ -253,8 +307,12 @@ export function makeApi(
           limit: opts.limit != null ? Math.min(Math.max(opts.limit, 1), 200) : undefined,
         })}`
       );
-      const items: any[] = Array.isArray((data as any)?.items) ? (data as any).items : Array.isArray(data) ? (data as any) : [];
-      return items.map((it) => ({
+      const items: any[] = Array.isArray((data as any)?.items)
+        ? (data as any).items
+        : Array.isArray(data)
+        ? (data as any)
+        : [];
+      return items.map(it => ({
         id: it.id,
         name: it.name,
         species: toUiSpecies((it.species || "DOG") as Species),

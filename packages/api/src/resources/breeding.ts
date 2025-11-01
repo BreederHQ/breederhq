@@ -7,12 +7,12 @@ export type UiBreedingPlan = {
   ovulation_at?: string | null;
   expected?: {
     breeding: { start: string; end: string };
-    whelping: { start: string; end: string };
+    birth: { start: string; end: string };
     goHome:   { start: string; end: string };
   } | null;
   actuals?: {
     bred_on?: string[] | null;
-    whelped_on?: string | null;
+    birth_on?: string | null;
     go_home_on?: string | null;
   } | null;
   status?: string | null;

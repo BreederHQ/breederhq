@@ -5,6 +5,6 @@ export type BreedingPlanDTO = {
   lockedCycle?: boolean;           // locks female selection only
   cycle_start_at?: string | null;  // optional
   ovulation_at?: string | null;    // expected window anchor
-  actuals?: { bred_on?: string[]; whelped_on?: string | null; go_home_on?: string | null };
-  status?: "planned"|"active"|"whelped"|"complete"|"canceled";
+  actuals?: { bred_on?: string[]; birth_on?: string | null; placement_started_on?: string | null };
+  status?: "planned"|"active"|"birthed"|"placement"|"complete"|"canceled";
 };

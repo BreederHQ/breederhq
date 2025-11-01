@@ -10,10 +10,10 @@ export type StageKey =
   | "preBreeding"
   | "hormoneTesting"
   | "breeding"
-  | "whelping"
+  | "birth"
   | "puppyCare"
-  | "goHomeNormal"    // internal key retained for compatibility
-  | "goHomeExtended"; // internal key retained for compatibility
+  | "PlacementNormal"    // internal key retained for compatibility
+  | "PlacementExtended"; // internal key retained for compatibility
 
 export type StageWindows = {
   key: StageKey;
@@ -21,14 +21,25 @@ export type StageWindows = {
   likely?: Range;
 };
 
+/** Canonical name going forward */
+export type AvailabilityBand = {
+  kind: "risk" | "unlikely";
+  range: Range;
+  label: string;
+};
+
+/** Back-compat name, retained so existing import sites do not break */
 export type TravelBand = {
-  kind: "risky" | "unlikely"; // normalized
+  kind: "risk" | "unlikely"; // normalized to match Availability everywhere
   range: Range;
   label: string;
 };
 
 export type WindowsResult = {
   stages: StageWindows[];
+  /** Canonical going forward */
+  availability: AvailabilityBand[];
+  /** Back-compat alias. Mirrors `availability`. Prefer not to use. */
   travel: TravelBand[];
   today: Date;
   horizon: Range;
@@ -85,13 +96,13 @@ export type PlanAnchors = {
 // Use Placement labels by default
 export type StageLabels = Record<StageKey, string>;
 export const DEFAULT_STAGE_LABELS: StageLabels = {
-  preBreeding: "Pre-breeding Heat",
+  preBreeding: "Cycle",
   hormoneTesting: "Hormone Testing",
   breeding: "Breeding",
-  whelping: "Whelping",
+  birth: "birth",
   puppyCare: "Puppy Care",
-  goHomeNormal: "Placement",
-  goHomeExtended: "Placement (Extended)",
+  PlacementNormal: "Placement",
+  PlacementExtended: "Placement (Extended)",
 };
 
 // default order top to bottom
@@ -99,10 +110,10 @@ export const DEFAULT_STAGE_ORDER: StageKey[] = [
   "preBreeding",
   "hormoneTesting",
   "breeding",
-  "whelping",
+  "birth",
   "puppyCare",
-  "goHomeNormal",
-  "goHomeExtended",
+  "PlacementNormal",
+  "PlacementExtended",
 ];
 
 export function computeWindows(
@@ -133,7 +144,10 @@ export function computeWindows(
 
   // Hormone Testing
   const hormoneFull = makeRange(addDays(earliestHeatStart, 7), latestOvulation);
-  const hormoneLikelyRaw = makeRange(addDays(preBreedingLikelyRaw.end, 1), addDays(preBreedingLikelyRaw.end, 7));
+  const hormoneLikelyRaw = makeRange(
+    addDays(preBreedingLikelyRaw.end, 1),
+    addDays(preBreedingLikelyRaw.end, 7)
+  );
 
   // Breeding
   const breedingFull = makeRange(
@@ -142,34 +156,35 @@ export function computeWindows(
   );
   const breedingLikely = makeRange(ovulationCenter, addDays(ovulationCenter, 1));
 
-  // Whelping
+  // birth (gestation ~63 days; show ±2 in full, ±1 in likely)
   const whelpFull = makeRange(addDays(ovulationCenter, 61), addDays(ovulationCenter, 65));
   const whelpLikely = makeRange(addDays(ovulationCenter, 62), addDays(ovulationCenter, 64));
 
-  // Puppy Care
+  // Puppy Care: birth through 8 weeks after full window
   const puppyCareFull = makeRange(whelpFull.start, addDays(whelpFull.end, 56));
   const puppyCareLikely = makeRange(whelpLikely.start, addDays(whelpLikely.end, 56));
 
-  // Placement start (was Go Home Normal)
-  const goHomeNormalFull = makeRange(addDays(whelpFull.start, 56), addDays(whelpFull.end, 56));
-  const goHomeNormalLikely = makeRange(addDays(whelpLikely.start, 55), addDays(whelpLikely.end, 57));
+  // Placement Normal
+  const PlacementNormalFull = makeRange(addDays(whelpFull.start, 56), addDays(whelpFull.end, 56));
+  const PlacementNormalLikely = makeRange(addDays(whelpLikely.start, 55), addDays(whelpLikely.end, 57));
 
-  // Placement extended (was Go Home Extended)
-  const goHomeExtendedFull = makeRange(addDays(goHomeNormalFull.end, 1), addDays(goHomeNormalFull.end, 21));
+  // Placement Extended - Default +3 weeks after normal window
+  const PlacementExtendedFull = makeRange(addDays(PlacementNormalFull.end, 1), addDays(PlacementNormalFull.end, 21));
 
   // Cap likely windows into full windows
   const preBreedingLikely = clampRange(preBreedingLikelyRaw, preBreedingFull.start, preBreedingFull.end);
   const hormoneLikely = clampRange(hormoneLikelyRaw, hormoneFull.start, hormoneFull.end);
 
-  // Travel bands (normalized to "risky")
-  const travel: TravelBand[] = [
-    { kind: "risky", range: makeRange(hormoneFull.start, breedingFull.end), label: "Travel Risky" },
-    { kind: "risky", range: makeRange(whelpFull.start, goHomeExtendedFull.end), label: "Travel Risky" },
-    { kind: "unlikely", range: makeRange(hormoneLikely.start, breedingLikely.end), label: "Travel Unlikely" },
-    { kind: "unlikely", range: makeRange(puppyCareLikely.start, goHomeNormalLikely.end), label: "Travel Unlikely" },
+  // Availability bands (canonical). Kinds use "risk" | "unlikely".
+  // Labels use Availability nomenclature, not Travel.
+  const availability: AvailabilityBand[] = [
+    { kind: "risk",     range: makeRange(hormoneFull.start, breedingFull.end),             label: "Availability: Risky" },
+    { kind: "risk",     range: makeRange(whelpFull.start, PlacementExtendedFull.end),         label: "Availability: Risky" },
+    { kind: "unlikely", range: makeRange(hormoneLikely.start, breedingLikely.end),         label: "Availability: Unlikely" },
+    { kind: "unlikely", range: makeRange(puppyCareLikely.start, PlacementNormalLikely.end),   label: "Availability: Unlikely" },
   ];
 
-  // Horizon about 18 months from the first stage start
+  // Horizon: 18 months from first stage start
   const minStart = preBreedingFull.start;
   const horizon = makeRange(minStart, addDays(minStart, 548));
 
@@ -177,13 +192,16 @@ export function computeWindows(
     { key: "preBreeding", full: preBreedingFull, likely: preBreedingLikely },
     { key: "hormoneTesting", full: hormoneFull, likely: hormoneLikely },
     { key: "breeding", full: breedingFull, likely: breedingLikely },
-    { key: "whelping", full: whelpFull, likely: whelpLikely },
+    { key: "birth", full: whelpFull, likely: whelpLikely },
     { key: "puppyCare", full: puppyCareFull, likely: puppyCareLikely },
-    { key: "goHomeNormal", full: goHomeNormalFull, likely: goHomeNormalLikely }, // label = Placement
-    { key: "goHomeExtended", full: goHomeExtendedFull }, // label = Placement (Extended)
+    { key: "PlacementNormal", full: PlacementNormalFull, likely: PlacementNormalLikely }, // label = Placement
+    { key: "PlacementExtended", full: PlacementExtendedFull }, // label = Placement (Extended)
   ];
 
-  return { stages, travel, today, horizon };
+  // Back-compat alias mirrors canonical availability so callers using .travel keep working
+  const travel: TravelBand[] = availability.map(a => ({ ...a }));
+
+  return { stages, availability, travel, today, horizon };
 }
 
 // Convenience: derive from a plan slice
@@ -245,14 +263,17 @@ export function windowsToCalendarEvents(
       });
     }
   }
-  for (const t of windows.travel) {
+
+  // Prefer canonical availability, fall back to legacy travel
+  const avail = windows.availability?.length ? windows.availability : windows.travel ?? [];
+  for (const t of avail) {
     events.push({
-      id: `${planId}:travel:${t.kind}:${t.range.start.toISOString()}`,
+      id: `${planId}:availability:${t.kind}:${t.range.start.toISOString()}`,
       title: t.label,
       start: t.range.start,
       end: add1(t.range.end),
       allDay: true,
-      meta: { stage: "travel", type: t.kind, planId },
+      meta: { stage: "availability", type: t.kind, planId },
     });
   }
   return events;
@@ -264,13 +285,13 @@ export type SpeciesRules = {
   ovulationFromHeatStartDays: number; // usually 12
   gestationDays: number;              // 63
   weanFromBirthDays: number;          // usually 42
-  goHomeFromBirthDays: number;        // usually 56
+  PlacementFromBirthDays: number;        // usually 56
 };
 
 const SPECIES_RULES: Record<Species, SpeciesRules> = {
-  DOG:   { ovulationFromHeatStartDays: 12, gestationDays: 63,  weanFromBirthDays: 42,  goHomeFromBirthDays: 56 },
-  CAT:   { ovulationFromHeatStartDays: 10, gestationDays: 63,  weanFromBirthDays: 42,  goHomeFromBirthDays: 56 },
-  HORSE: { ovulationFromHeatStartDays: 12, gestationDays: 340, weanFromBirthDays: 180, goHomeFromBirthDays: 210 },
+  DOG:   { ovulationFromHeatStartDays: 12, gestationDays: 63,  weanFromBirthDays: 42,  PlacementFromBirthDays: 56 },
+  CAT:   { ovulationFromHeatStartDays: 3,  gestationDays: 63,  weanFromBirthDays: 42,  PlacementFromBirthDays: 56 },
+  HORSE: { ovulationFromHeatStartDays: 5,  gestationDays: 340, weanFromBirthDays: 180, PlacementFromBirthDays: 210 },
 };
 
 /** ISO date (YYYY-MM-DD) from Date */
@@ -350,28 +371,28 @@ export function expectedMilestonesFromLocked(
   placement_start_expected: string;
   placement_completed_expected: string | null;
   // legacy aliases
-  gohome_expected: string;
-  gohome_extended_end_expected: string | null;
+  Placement_expected: string;
+  Placement_extended_end_expected: string | null;
 } {
   const rules = SPECIES_RULES[species] ?? SPECIES_RULES.DOG;
 
   const heat = toDate(lockedHeatStart);
   const ovulation = addDays(heat, rules.ovulationFromHeatStartDays);
-  const whelp = addDays(ovulation, rules.gestationDays);
-  const weaned = addDays(whelp, rules.weanFromBirthDays);
-  const placementStart = addDays(whelp, rules.goHomeFromBirthDays);
+  const birth = addDays(ovulation, rules.gestationDays);
+  const weaned = addDays(birth, rules.weanFromBirthDays);
+  const placementStart = addDays(birth, rules.PlacementFromBirthDays);
 
   const placementCompleted: string | null = null; // learn later
 
   return {
     ovulation: isoDay(ovulation),
     breeding_expected: isoDay(ovulation),
-    birth_expected: isoDay(whelp),
+    birth_expected: isoDay(birth),
     weaned_expected: isoDay(weaned),
     placement_start_expected: isoDay(placementStart),
     placement_completed_expected: placementCompleted,
-    // legacy aliases
-    gohome_expected: isoDay(placementStart),
-    gohome_extended_end_expected: placementCompleted,
+    // legacy aliases for consumers not yet migrated
+    Placement_expected: isoDay(placementStart),
+    Placement_extended_end_expected: placementCompleted,
   };
 }

@@ -1,64 +1,82 @@
 /* packages/ui/src/styles/gantt.css */
 
-/* ───────────────────────── Gantt base ───────────────────────── */
+/* Root tokens (can be overridden per-instance with class or inline style) */
 .bhq-gantt {
-  --grid-month: rgba(255,255,255,0.18);
-  --rowline: rgba(255,255,255,0.12);
-  --today: rgba(255, 60, 60, 0.95);
-  --bar-opacity: 0.96;
+  --gantt-right-gutter: 240px;          /* reserved space on the right, read by component */
+  --grid-month: rgba(255, 255, 255, 0.16);
+  --rowline: rgba(255, 255, 255, 0.10);
+  --today: rgba(255, 72, 72, 0.9);
+  --bar-opacity: 0.90;
+
   color: hsl(var(--muted-foreground, 0 0% 90%));
   font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
 }
 
-.bhq-gantt__title { margin-bottom: 6px; font-size: 13px; font-weight: 600; }
+.bhq-gantt__title {
+  margin-bottom: 6px;
+  font-size: 12px;
+  font-weight: 600;
+}
 
+/* Frame */
 .bhq-gantt__frame {
   overflow: hidden;
-  border-radius: 12px;
-  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.10);
   background: hsl(0 0% 8%);
   position: relative;
 }
 
-/* SVG should not block “Open plan” links */
-.bhq-gantt__svg { width: 100%; display: block; pointer-events: none; }
+/* SVG base */
+.bhq-gantt__svg {
+  width: 100%;
+  display: block;
+  pointer-events: none; /* bars are non-interactive by design */
+}
 
-/* Axis */
+/* Grid and axis labels */
 .bhq-gantt__grid-month { stroke: var(--grid-month); stroke-width: 1; opacity: .45; }
-.bhq-gantt__month { fill: rgba(255,255,255,0.78); }
+.bhq-gantt__month      { fill: rgba(255, 255, 255, 0.78); }
+.bhq-gantt__rowline    { stroke: var(--rowline); stroke-width: 1; }
 
-/* Rows */
-.bhq-gantt__rowline { stroke: var(--rowline); stroke-width: 1; }
+/* Typography */
+.bhq-gantt svg text {
+  font-size: 11px;
+  line-height: 1;
+  letter-spacing: .2px;
+  text-transform: none;
+  text-rendering: optimizeLegibility;
+  font-kerning: normal;
+}
+.bhq-gantt__label     { fill: rgba(255, 255, 255, 0.94); font-weight: 600; letter-spacing: .2px; font-size: 12px; }
+.bhq-gantt__yearrange { fill: rgba(255, 255, 255, 0.58); }
 
-/* Labels / year */
-.bhq-gantt__label { fill: rgba(255,255,255,0.94); font-weight: 600; letter-spacing: .2px; }
-.bhq-gantt__yearrange { fill: rgba(255,255,255,0.58); }
+/* Bars and dots */
+.bhq-gantt__bar   { opacity: var(--bar-opacity); }
+.bhq-gantt__dot   { opacity: var(--bar-opacity); }
+.bhq-gantt__likely { mix-blend-mode: multiply; opacity: .28; }
 
-/* Bars, dots, likely */
-.bhq-gantt__bar { opacity: var(--bar-opacity); }
-.bhq-gantt__dot { opacity: var(--bar-opacity); }
-.bhq-gantt__likely { mix-blend-mode: multiply; opacity: .35; }
+/* Today line */
+.bhq-gantt__today {
+  stroke: var(--today);
+  stroke-width: 2;
+  stroke-dasharray: 4 4;
+}
 
-/* Today */
-.bhq-gantt__today { stroke: var(--today); stroke-width: 2; stroke-dasharray: 4 4; }
-
-/* Keep text sizes stable (avoid UI-scale blowups) */
-.bhq-gantt svg text { font-size: 12px; line-height: 1; letter-spacing: .2px; }
-.bhq-gantt__label { font-size: 14px; }
-.bhq-gantt__month { font-size: 12px; }
-
-/* ───────────── Availability bands (first-class) ───────────── */
+/* Availability wrappers */
 .bhq-gantt__availabilitywrap,
 .bhq-gantt__availability,
-.bhq-gantt__availability-outline { pointer-events: none; }
-
-.bhq-gantt__availability { mix-blend-mode: multiply; }
-/* normalized class names */
-.bhq-gantt__availability.risky    { fill: hsla(0,   91%, 63%, 0.18); }    /* red tint */
-.bhq-gantt__availability.unlikely { fill: hsla(35, 100%, 52%, 0.18); }    /* amber tint */
-
 .bhq-gantt__availability-outline {
-  stroke: rgba(255,255,255,0.16);
-  stroke-width: 1.25;
+  pointer-events: none;
+}
+.bhq-gantt__availability { mix-blend-mode: multiply; }
+.bhq-gantt__availability.risky    { fill: hsla(0,   91%, 63%, 0.14); }
+.bhq-gantt__availability.unlikely { fill: hsla(35, 100%, 52%, 0.14); }
+.bhq-gantt__availability-outline {
+  stroke: rgba(255, 255, 255, 0.14);
+  stroke-width: 1.1;
   stroke-dasharray: 6 4;
 }
+
+/* Utility: remove right gutter so the plot reaches the frame edge */
+.bhq-gantt--no-aside { --gantt-right-gutter: 0px; }

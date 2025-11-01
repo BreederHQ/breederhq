@@ -3,6 +3,8 @@ import * as React from "react";
 import type { StageWindows, Range } from "../../utils";
 import "../../styles/gantt.css";
 
+/* ───────────────── types ───────────────── */
+
 export type BHQGanttStage = {
   key: string;
   label: string;
@@ -10,9 +12,8 @@ export type BHQGanttStage = {
   hatchLikely?: boolean;
 };
 
-/** Accept "risky" or "unlikely". Normalize internally. */
 export type AvailabilityBand = {
-  kind: "risky" | "unlikely";
+  kind: "risk" | "unlikely";
   range: Range;
   label?: string;
   __color?: string;
@@ -23,321 +24,270 @@ export type BHQGanttProps = {
   stages: BHQGanttStage[];
   data: StageWindows[];
   availability?: AvailabilityBand[];
+  travel?: AvailabilityBand[];
   horizon: Range;
   today?: Date;
   heightPerRow?: number;
   showToday?: boolean;
   showAvailability?: boolean;
+  showTravel?: boolean;
   fitToContent?: boolean;
+  rightGutter?: number;
   className?: string;
+  style?: React.CSSProperties;
 };
 
+/* ───────────────── utils ───────────────── */
+
+function atMidnight(d: Date) {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+}
 function daysDiff(a: Date, b: Date) {
   const A = Date.UTC(a.getFullYear(), a.getMonth(), a.getDate());
   const B = Date.UTC(b.getFullYear(), b.getMonth(), b.getDate());
   return Math.floor((B - A) / 86400000);
 }
-function yearRangeText(a: Date, b: Date) {
-  const y1 = a.getFullYear();
-  const y2 = b.getFullYear();
-  return y1 === y2 ? String(y1) : `${y1}-${y2}`;
+function monthsDiff(a: Date, b: Date) {
+  return (b.getFullYear() - a.getFullYear()) * 12 + (b.getMonth() - a.getMonth());
 }
-function fmtDateShort(d: Date) {
-  const y = d.getFullYear();
-  const m = d.getMonth() + 1;
-  const day = d.getDate();
-  const mm = m < 10 ? `0${m}` : String(m);
-  const dd = day < 10 ? `0${day}` : String(day);
-  return `${y}-${mm}-${dd}`;
+function clamp(n: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, n));
+}
+function toDate(x: any | undefined | null): Date | null {
+  if (!x) return null;
+  if (x instanceof Date) return x;
+  const d = new Date(x as any);
+  return isNaN(d.getTime()) ? null : d;
 }
 
-export default function BHQGantt({
-  title,
-  stages,
-  data,
-  availability,
-  horizon,
-  today,
-  heightPerRow = 26,
-  showToday = true,
-  showAvailability = true,
-  fitToContent = true,
-  className,
-}: BHQGanttProps) {
-  const rows = stages.map((s) => s.key);
+type StageWinLoose = {
+  key?: string;
+  full?: Range;
+  likely?: Range | null;
+  dot?: Date | string | null;
+  fullRange?: Range;
+  likelyRange?: Range | null;
+  point?: Date | string | null;
+  __tooltip?: string;
+  __color?: string;
+} & Record<string, any>;
 
-  const vbWidth = 1200;
-  const labelGutter = 220;
-  const chartX0 = labelGutter;
-  const chartX1 = vbWidth - 12;
-  const chartWidth = chartX1 - chartX0;
-
-  const topAxisPad = 26;
-  const rowTopOffset = topAxisPad + 12;
-  const barH = Math.max(18, heightPerRow);
-  const rowGap = 5;
-  const rowY = (i: number) => rowTopOffset + i * (barH + rowGap);
-  const lastRowBottom = rows.length ? rowY(rows.length - 1) + barH : rowTopOffset + barH;
-  const vbHeight = Math.ceil(lastRowBottom + 24);
-  const pixelHeight = vbHeight;
-
-  // normalize availability kinds for CSS class
-  const avail = (availability ?? []).map((b) => ({ ...b, kind: b.kind === "risky" ? "risky" : "unlikely" }));
-
-  const clampMin = new Date(horizon.start);
-  const clampMax = new Date(horizon.end);
-
-  let fitMin = new Date(clampMin);
-  let fitMax = new Date(clampMax);
-
-  if (fitToContent) {
-    const PAD_DAYS = 14;
-    const allDates: number[] = [];
-    for (const sw of data) {
-      const fs = new Date(sw.full.start as any).getTime();
-      const fe = new Date(sw.full.end as any).getTime();
-      if (Number.isFinite(fs)) allDates.push(fs);
-      if (Number.isFinite(fe)) allDates.push(fe);
-      if (sw.likely) {
-        const ls = new Date(sw.likely.start as any).getTime();
-        const le = new Date(sw.likely.end as any).getTime();
-        if (Number.isFinite(ls)) allDates.push(ls);
-        if (Number.isFinite(le)) allDates.push(le);
-      }
+function pickRange(obj: any, keys: string[]): Range | null {
+  for (const k of keys) {
+    const r = obj?.[k];
+    if (r && r.start && r.end) {
+      const s = toDate(r.start);
+      const e = toDate(r.end);
+      if (s && e) return { start: s, end: e };
     }
-    for (const t of avail) {
-      const ts = new Date(t.range.start as any).getTime();
-      const te = new Date(t.range.end as any).getTime();
-      if (Number.isFinite(ts)) allDates.push(ts);
-      if (Number.isFinite(te)) allDates.push(te);
+  }
+  return null;
+}
+function pickDate(obj: any, keys: string[]): Date | null {
+  for (const k of keys) {
+    const d = toDate(obj?.[k]);
+    if (d) return d;
+  }
+  return null;
+}
+
+function useCssRightGutter(rootRef: React.RefObject<HTMLElement | null>, fallback: number) {
+  const [val, setVal] = React.useState<number>(fallback);
+  React.useLayoutEffect(() => {
+    const el = rootRef.current;
+    if (!el) return;
+    const raw = getComputedStyle(el).getPropertyValue("--gantt-right-gutter").trim();
+    const n = parseInt(raw || "", 10);
+    if (Number.isFinite(n)) setVal(n);
+  }, [rootRef]);
+  return val;
+}
+
+/* ───────────────── component ───────────────── */
+
+export default function BHQGantt(props: BHQGanttProps) {
+  const {
+    title,
+    stages,
+    data,
+    availability = [],
+    travel = [],
+    horizon,
+    today = new Date(),
+    heightPerRow = 28,
+    showToday = true,
+    showAvailability = true,
+    showTravel = false,
+    fitToContent = true,
+    rightGutter,
+    className,
+    style,
+  } = props;
+
+  const rootRef = React.useRef<HTMLElement>(null as any);
+
+  const LEFT_LABEL_W = 160;
+  const MONTH_PX = 160;
+
+  const cssGutter = useCssRightGutter(rootRef, 240);
+  const RG = typeof rightGutter === "number" ? rightGutter : cssGutter;
+
+  const start = atMidnight(toDate(horizon.start) || new Date());
+  const end = atMidnight(toDate(horizon.end) || new Date());
+  const months = clamp(monthsDiff(start, end), 0, 240);
+  const contentW = Math.max(1, Math.ceil(months * MONTH_PX));
+  const plotW = LEFT_LABEL_W + contentW + RG;
+
+  const rows = stages.length;
+  const rowH = heightPerRow;
+  const topPad = 20;
+  const bottomPad = 16;
+  const frameH = topPad + rows * rowH + bottomPad;
+
+  const totalDays = Math.max(1, daysDiff(start, end));
+  const pxPerDay = contentW / totalDays;
+  const xOf = (d: Date) => LEFT_LABEL_W + Math.round(pxPerDay * clamp(daysDiff(start, d), 0, totalDays));
+
+  const monthTicks: { label: string; x: number }[] = [];
+  {
+    const cur = new Date(start.getFullYear(), start.getMonth(), 1);
+    while (cur <= end) {
+      const label =
+        cur.getMonth() === 0
+          ? cur.toLocaleString(undefined, { month: "short" }) + " "
+          : cur.toLocaleString(undefined, { month: "short" });
+      monthTicks.push({ label, x: xOf(cur) });
+      cur.setMonth(cur.getMonth() + 1);
     }
-    if (allDates.length) {
-      const minDate = new Date(Math.min(...allDates));
-      const maxDate = new Date(Math.max(...allDates));
-      fitMin = new Date(Math.max(clampMin.getTime(), minDate.getTime() - PAD_DAYS * 86400000));
-      fitMax = new Date(Math.min(clampMax.getTime(), maxDate.getTime() + PAD_DAYS * 86400000));
-    }
-  } else {
-    fitMin = new Date(clampMin.getFullYear(), clampMin.getMonth(), 1);
-    fitMax = new Date(clampMax.getFullYear(), clampMax.getMonth() + 1, 0);
   }
 
-  const totalDays = Math.max(1, daysDiff(fitMin, fitMax));
-  const clampDate = (d: Date) =>
-    new Date(Math.min(fitMax.getTime(), Math.max(fitMin.getTime(), d.getTime())));
+  type Part = { full?: Range | null; likely?: Range | null; dot?: Date | null; tooltip?: string; color?: string };
+  const partsByKey = new Map<string, Part[]>();
+  for (const s of stages) partsByKey.set(s.key, []);
+  for (const row of data as unknown as StageWinLoose[]) {
+    const key = (row.key || row.stage || row.name) as string;
+    if (!key || !partsByKey.has(key)) continue;
+    const full = pickRange(row, ["full", "fullRange"]);
+    const likely = pickRange(row, ["likely", "likelyRange"]);
+    const dot = pickDate(row, ["dot", "point"]);
+    const part: Part = { full, likely, dot, tooltip: row.__tooltip, color: row.__color };
+    partsByKey.get(key)!.push(part);
+  }
 
-  const xUnit = (d: Date) => {
-    const dx = Math.min(totalDays, Math.max(0, daysDiff(fitMin, d)));
-    return chartX0 + (chartWidth * dx) / totalDays;
-  };
-  const widthUnit = (s: Date, e: Date) => {
-    const cs = clampDate(s);
-    const ce = clampDate(e);
-    const wDays = Math.max(0, daysDiff(cs, ce) + 1);
-    return (chartWidth * wDays) / totalDays;
-  };
+  const avail = (availability && availability.length ? availability : travel) as AvailabilityBand[];
 
-  const byKey = new Map<string, StageWindows>(data.map((d) => [d.key, d]));
-  const uid = React.useId();
+  // inline style beats .bhq-gantt__svg { width: 100% }
+  const svgStyle: React.CSSProperties = fitToContent
+    ? { width: `${plotW}px` }
+    : { width: "100%" };
 
-  const tooltipFor = (sw: StageWindows, stage: BHQGanttStage) => {
-    const custom = (sw as any).__tooltip;
-    if (custom) return String(custom);
-    const s = new Date(sw.full.start as any);
-    const e = new Date(sw.full.end as any);
-    const range = fmtDateShort(s) + (daysDiff(s, e) !== 0 ? ` → ${fmtDateShort(e)}` : "");
-    return `${stage.label} • ${range}`;
-  };
+  const viewW = plotW;
 
   return (
-    <div className={`bhq-gantt ${className ?? ""}`} role="figure" aria-label={title || "Gantt chart"}>
+    <div
+      ref={rootRef as unknown as React.RefObject<HTMLDivElement>}
+      className={`bhq-gantt ${className || ""}`}
+      style={style}
+    >
       {title ? <div className="bhq-gantt__title">{title}</div> : null}
+
       <div className="bhq-gantt__frame">
         <svg
-          viewBox={`0 0 ${vbWidth} ${vbHeight}`}
-          preserveAspectRatio="none"
           className="bhq-gantt__svg"
-          style={{ width: "100%", height: pixelHeight }}
+          style={svgStyle}
+          height={frameH}
+          viewBox={`0 0 ${viewW} ${frameH}`}
           role="img"
-          aria-labelledby={title ? `${uid}-title` : undefined}
+          aria-label="Gantt timeline"
         >
-          {title ? <title id={`${uid}-title`}>{title}</title> : null}
+          {/* month grid */}
+          {monthTicks.map((t, i) => (
+            <g key={`m-${i}`}>
+              <line className="bhq-gantt__grid-month" x1={t.x} x2={t.x} y1={0} y2={frameH} />
+              <text className="bhq-gantt__month" x={t.x + 8} y={14}>{t.label}</text>
+            </g>
+          ))}
 
-          {/* AVAILABILITY BANDS */}
-          {showAvailability &&
-            avail.map((t, i) => {
-              const s = new Date(t.range.start as any);
-              const e = new Date(t.range.end as any);
-              const x = xUnit(clampDate(s));
-              const w = widthUnit(s, e);
-              const y = topAxisPad;
-              const h = vbHeight - topAxisPad - 12;
-              const fillOverride = t.__color;
-              const label = t.label || (t.kind === "risky" ? "Availability Risky" : "Availability Unlikely");
-              const cls = t.kind === "risky" ? "risky" : "unlikely";
-              return (
-                <g key={`avail-${i}`} className="bhq-gantt__availabilitywrap">
-                  <rect
-                    x={x}
-                    y={y}
-                    width={w}
-                    height={h}
-                    className={`bhq-gantt__availability ${cls}`}
-                    style={fillOverride ? { fill: fillOverride, opacity: 0.10 } : undefined}
-                  >
-                    <title>{label}</title>
-                  </rect>
-                  <rect x={x} y={y} width={w} height={h} fill="none" className="bhq-gantt__availability-outline" />
-                </g>
-              );
-            })}
-
-          {/* MONTH GRID */}
-          {(() => {
-            const nodes: React.ReactNode[] = [];
-            const start = new Date(fitMin.getFullYear(), fitMin.getMonth(), 1);
-            const afterEnd = new Date(fitMax.getFullYear(), fitMax.getMonth() + 1, 1);
-
-            for (let d = new Date(start); d < afterEnd; d.setMonth(d.getMonth() + 1)) {
-              const monthStart = new Date(d);
-              const next = new Date(d.getFullYear(), d.getMonth() + 1, 1);
-              const xStart = xUnit(monthStart);
-              const xEnd = xUnit(next);
-              const xMid = xStart + (xEnd - xStart) / 2;
-
-              nodes.push(
-                <line
-                  key={`mline-${monthStart.getFullYear()}-${monthStart.getMonth()}`}
-                  x1={xStart}
-                  x2={xStart}
-                  y1={topAxisPad}
-                  y2={vbHeight - 10}
-                  className="bhq-gantt__grid-month"
-                  vectorEffect="non-scaling-stroke"
-                />
-              );
-
-              nodes.push(
-                <text
-                  key={`mlabel-${monthStart.getFullYear()}-${monthStart.getMonth()}`}
-                  x={xMid}
-                  y={topAxisPad - 6}
-                  className="bhq-gantt__month"
-                  textAnchor="middle"
-                >
-                  {monthStart.toLocaleString(undefined, { month: "short" })}
-                  {monthStart.getMonth() === 0 ? ` ${String(monthStart.getFullYear()).slice(-2)}` : ""}
-                </text>
-              );
-            }
-
-            nodes.push(
-              <line
-                key="axis-right-close"
-                x1={xUnit(afterEnd)}
-                x2={xUnit(afterEnd)}
-                y1={topAxisPad}
-                y2={vbHeight - 10}
-                className="bhq-gantt__grid-month"
-                vectorEffect="non-scaling-stroke"
-              />
-            );
-            nodes.push(
-              <line
-                key="axis-top"
-                x1={chartX0}
-                x2={chartX1}
-                y1={topAxisPad}
-                y2={topAxisPad}
-                className="bhq-gantt__rowline"
-                vectorEffect="non-scaling-stroke"
-              />
-            );
-            return nodes;
-          })()}
-
-          {/* YEAR TAG */}
-          <text x={chartX1} y={topAxisPad - 6} className="bhq-gantt__yearrange" textAnchor="end">
-            {yearRangeText(fitMin, fitMax)}
+          {/* year on right */}
+          <text className="bhq-gantt__yearrange" x={LEFT_LABEL_W + contentW - 20} y={14}>
+            {end.getFullYear()}
           </text>
 
-          {/* ROW LINES */}
-          {stages.map((_, i) => (
-            <line
-              key={`rowline-${i}`}
-              x1={chartX0}
-              x2={chartX1}
-              y1={rowY(i) + barH + 2}
-              y2={rowY(i) + barH + 2}
-              className="bhq-gantt__rowline"
-              vectorEffect="non-scaling-stroke"
-            />
-          ))}
-
-          {/* LEFT LABELS */}
-          {stages.map((s, idx) => (
-            <text key={`label-${s.key}`} x={14} y={rowY(idx) + barH * 0.72} className="bhq-gantt__label">
-              {s.label}
-            </text>
-          ))}
-
-          {/* STAGE BARS */}
-          {stages.map((s, idx) => {
-            const sw = byKey.get(s.key);
-            const yTop = rowY(idx);
-            if (!sw) return null;
-
-            const fs = new Date(sw.full.start as any);
-            const fe = new Date(sw.full.end as any);
-            const x = xUnit(fs);
-            const w = widthUnit(fs, fe);
-            const barColor = ((sw as any).__barColor as string) || s.baseColor;
-            const tip = tooltipFor(sw, s);
-
+          {/* rows and labels */}
+          {stages.map((s, i) => {
+            const y = topPad + i * rowH;
+            const mid = y + rowH / 2;
             return (
               <g key={s.key}>
-                {w < 1.2 ? (
-                  <circle cx={x} cy={yTop + barH / 2} r={3.2} fill={barColor} className="bhq-gantt__dot">
-                    <title>{tip}</title>
-                  </circle>
-                ) : (
-                  <rect x={x} y={yTop} width={w} height={barH} rx={3} fill={barColor} className="bhq-gantt__bar">
-                    <title>{tip}</title>
-                  </rect>
-                )}
-
-                {sw.likely && s.hatchLikely ? (
-                  <>
-                    <pattern id={`${uid}-hatch-${s.key}`} patternUnits="userSpaceOnUse" width="4" height="4">
-                      <path d="M0,4 l4,-4" stroke={barColor} strokeWidth="0.25" />
-                    </pattern>
-                    <rect
-                      x={xUnit(new Date(sw.likely.start as any))}
-                      y={yTop}
-                      width={widthUnit(new Date(sw.likely.start as any), new Date(sw.likely.end as any))}
-                      height={barH}
-                      rx={3}
-                      fill={`url(#${uid}-hatch-${s.key})`}
-                      className="bhq-gantt__likely"
-                    >
-                      <title>{`${s.label} (likely)`}</title>
-                    </rect>
-                  </>
-                ) : null}
+                <line className="bhq-gantt__rowline" x1={0} x2={viewW} y1={y + rowH} y2={y + rowH} />
+                <text className="bhq-gantt__label" x={12} y={mid + 4}>{s.label}</text>
               </g>
             );
           })}
 
-          {/* TODAY */}
-          {showToday && today ? (
-            <line
-              x1={xUnit(today)}
-              x2={xUnit(today)}
-              y1={topAxisPad}
-              y2={vbHeight - 10}
-              className="bhq-gantt__today"
-              vectorEffect="non-scaling-stroke"
-            />
+          {/* availability */}
+          {showAvailability &&
+            avail.map((a, i) => {
+              const s = toDate(a.range.start);
+              const e = toDate(a.range.end);
+              if (!s || !e) return null;
+              const x1 = xOf(s);
+              const x2 = xOf(e);
+              const w = Math.max(1, x2 - x1);
+              const y = topPad + 0.5;
+              const h = rows * rowH - 1;
+              const cls = `bhq-gantt__availability ${a.kind}`;
+              return (
+                <g key={`av-${i}`} className="bhq-gantt__availabilitywrap">
+                  <rect className={cls} x={x1} y={y} width={w} height={h} />
+                  <rect className="bhq-gantt__availability-outline" fill="none" x={x1} y={y} width={w} height={h} />
+                </g>
+              );
+            })}
+
+          {/* bars */}
+          {stages.map((s, i) => {
+            const parts = partsByKey.get(s.key) || [];
+            const y = topPad + i * rowH + 6;
+            const h = rowH - 12;
+            return (
+              <g key={`bars-${s.key}`}>
+                {parts.map((p, j) => {
+                  const items: React.ReactNode[] = [];
+                  const base = p.color || s.baseColor;
+
+                  if (p.full?.start && p.full?.end) {
+                    const x1 = xOf(p.full.start);
+                    const x2 = xOf(p.full.end);
+                    const w = Math.max(1, x2 - x1);
+                    items.push(
+                      <rect key={`f-${j}`} className="bhq-gantt__bar" x={x1} y={y} width={w} height={h} rx={4} ry={4} fill={base} />
+                    );
+                  }
+
+                  if (p.likely?.start && p.likely?.end) {
+                    const x1 = xOf(p.likely.start);
+                    const x2 = xOf(p.likely.end);
+                    const w = Math.max(1, x2 - x1);
+                    items.push(
+                      <rect key={`l-${j}`} className="bhq-gantt__likely" x={x1} y={y} width={w} height={h} rx={4} ry={4} fill={base} />
+                    );
+                  }
+
+                  if (p.dot) {
+                    const x = xOf(p.dot);
+                    items.push(<circle key={`d-${j}`} className="bhq-gantt__dot" cx={x} cy={y + h / 2} r={4} fill={base} />);
+                  }
+
+                  return items;
+                })}
+              </g>
+            );
+          })}
+
+          {/* today */}
+          {showToday && today && today >= start && today <= end ? (
+            <line className="bhq-gantt__today" x1={xOf(today)} x2={xOf(today)} y1={0} y2={frameH} />
           ) : null}
         </svg>
       </div>

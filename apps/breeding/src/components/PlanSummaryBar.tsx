@@ -7,7 +7,8 @@ export type PlanSummary = {
   damName?: string | null;
   sireName?: string | null;
   expectedDue?: string | null;
-  expectedGoHome?: string | null;
+  /** was expectedGoHome */
+  expectedPlacementStart?: string | null;
   riskScore?: number | null; // 0–100
   depositsCommitted?: number | null; // cents
   depositsPaid?: number | null;      // cents
@@ -22,6 +23,10 @@ export default function PlanSummaryBar({ plan }: { plan: PlanSummary }) {
   const risk = Math.max(0, Math.min(100, plan.riskScore ?? 0));
   const riskColor =
     risk >= 67 ? "bg-red-500" : risk >= 34 ? "bg-yellow-500" : "bg-emerald-500";
+
+  // Legacy alias fallback while codebase migrates off expectedGoHome
+  const placementExpected =
+    plan.expectedPlacementStart ?? (plan as any).expectedGoHome ?? null;
 
   return (
     <div className="mb-3 rounded-xl border border-hairline bg-surface/70 backdrop-blur p-3">
@@ -43,9 +48,9 @@ export default function PlanSummaryBar({ plan }: { plan: PlanSummary }) {
             </span>
           </div>
           <div className="text-xs text-secondary">
-            Go home (exp):{" "}
+            Placement (exp):{" "}
             <span className="text-primary">
-              {plan.expectedGoHome ? new Date(plan.expectedGoHome).toLocaleDateString() : "—"}
+              {placementExpected ? new Date(placementExpected).toLocaleDateString() : "—"}
             </span>
           </div>
           <div className="flex items-center gap-1">

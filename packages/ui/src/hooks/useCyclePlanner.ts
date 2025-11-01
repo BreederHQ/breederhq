@@ -1,3 +1,5 @@
+// Full drop-in
+
 import * as React from "react";
 import { SPECIES_DEFAULTS, computeCycleSummary, type BioSpecies, type ISODate } from "../utils/repro";
 
@@ -11,6 +13,7 @@ export type CycleDefaults = {
 
 export type ReproEvent = { kind: "heat_start" | "ovulation" | "insemination" | "whelp"; date: ISODate; note?: string };
 
+/** Window keys remain unchanged to preserve stage keys */
 export type ExpectedWindows = {
   pre_breeding_full: [ISODate, ISODate];
   hormone_testing_full: [ISODate, ISODate];
@@ -27,16 +30,29 @@ export type ExpectedWindows = {
   gohome_normal_likely: [ISODate, ISODate];
 };
 
-export type TravelBand = { kind: "Risky" | "Unlikely"; start: ISODate; end: ISODate; label: string };
+/** Availability kinds normalized to lowercase "risky" | "unlikely" */
+export type TravelBand = { kind: "risky" | "unlikely"; start: ISODate; end: ISODate; label: string };
 
+/** Returned milestone keys include new placement names and legacy aliases */
 export type ExpectedDates = {
   cycle_start: ISODate;
   ovulation: ISODate;
   breed_expected: ISODate;
   birth_expected: ISODate;
-  weaning_expected: ISODate;                  // ← NEW canonical key
-  gohome_expected: ISODate;
+  /** Canonical standardized key that already existed in your draft */
+  weaning_expected: ISODate;
+
+  /** NEW canonical names */
+  placement_start_expected: ISODate;
+  placement_completed_expected: ISODate;
+
+  /** Legacy aliases kept for back-compat */
+  gohome_expected: ISODate;                    // mirrors placement_start_expected
+  gohome_extended_end_expected: ISODate;       // mirrors placement_completed_expected
+
+  /** You already had this; leaving as-is for consumers that still read it */
   last_offspring_gohome_expected: ISODate;
+
   windows: ExpectedWindows;
   travel: TravelBand[];
 };
@@ -54,7 +70,6 @@ function uiToBio(species: Species): BioSpecies {
 export function pickDefaults(species: Species): CycleDefaults {
   const key = uiToBio(species);
   const cycle_len_days = SPECIES_DEFAULTS[key] ?? SPECIES_DEFAULTS.OTHER;
-  // Keep your existing ovulation offsets + buffers per species
   return species === "Dog"
     ? { cycle_len_days, start_buffer_days: 14, ovulation_day_from_heat_start: 12 }
     : species === "Cat"
@@ -64,15 +79,13 @@ export function pickDefaults(species: Species): CycleDefaults {
         : { cycle_len_days, start_buffer_days: 14, ovulation_day_from_heat_start: 12 };
 }
 
-/** Species default for when homing starts (in weeks after birth). */
+/** Species default for placement window start (weeks after birth). */
 function speciesHomingStartWeeksDefault(species: Species): number {
-  return species === "Horse" ? 30 : 8; // Dogs/Cats 8wk; Horses ~30wk (≈210d)
+  return species === "Horse" ? 30 : 8;
 }
 
 /** Species default for weaning (days after birth). */
 function speciesWeaningDaysDefault(species: Species): number {
-  // Align with your org norms; safe, conservative defaults:
-  // Dogs/Cats ≈ 6 weeks; Horses ≈ 5 months
   return species === "Horse" ? 150 : 42;
 }
 
@@ -89,7 +102,6 @@ export function projectUpcomingCycles(opts: {
   lastActualHeatStart?: ISODate | null;
   allActualHeatStartsAsc?: ISODate[];
   count?: number;
-  /** per-female override for cycle length (days) */
   femaleCycleLenOverrideDays?: number | null;
 }): ISODate[] {
   const { species, lastActualHeatStart, allActualHeatStartsAsc = [], count = 8, femaleCycleLenOverrideDays } = opts;
@@ -112,19 +124,16 @@ export function projectUpcomingCycles(opts: {
   return out;
 }
 
-// ────────── expected windows + dates; homing start weeks precedence ──────────
+// ────────── expected windows + dates; placement start weeks precedence ──────────
 export function computeExpectedFromCycle(opts: {
   species: Species;
   cycleStart: ISODate;
-  /** per-plan override (weeks), if set use it */
   homingStartWeeksOverride?: number | null;
-  /** global default (weeks) if plan doesn’t override */
   homingStartWeeksDefault?: number | null;
 }): ExpectedDates {
   const { species, cycleStart, homingStartWeeksOverride, homingStartWeeksDefault } = opts;
   const d = pickDefaults(species);
 
-  // homing start weeks precedence: plan override → global default → species default
   const homingWeeks =
     (typeof homingStartWeeksOverride === "number" && homingStartWeeksOverride > 0
       ? Math.round(homingStartWeeksOverride)
@@ -145,12 +154,12 @@ export function computeExpectedFromCycle(opts: {
 
   const birth_expected = addDaysISO(ovulation, 63);
 
-  // Canonical weaning date (standardized)
+  // Weaning
   const weaning_expected = addDaysISO(birth_expected, speciesWeaningDaysDefault(species));
 
   const homingDays = homingWeeks * 7;
 
-  // Puppy care & homing windows
+  // Puppy care and placement windows (stage keys preserved)
   const puppyCareFullStart = whelpFullStart;
   const puppyCareFullEnd   = addDaysISO(whelpFullEnd, homingDays);
 
@@ -158,7 +167,7 @@ export function computeExpectedFromCycle(opts: {
   const goHomeNormalFullEnd   = addDaysISO(whelpFullEnd, homingDays);
 
   const goHomeExtendedFullStart = goHomeNormalFullEnd;
-  const goHomeExtendedFullEnd   = addDaysISO(goHomeExtendedFullStart, 7 * 3); // generic +3wk buffer
+  const goHomeExtendedFullEnd   = addDaysISO(goHomeExtendedFullStart, 7 * 3); // +3 weeks buffer
 
   const breedingFullStart = addDaysISO(cycle, d.ovulation_day_from_heat_start - 1);
   const breedingFullEnd   = addDaysISO(cycle, d.ovulation_day_from_heat_start + 2);
@@ -177,21 +186,36 @@ export function computeExpectedFromCycle(opts: {
   const goHomeLikelyStart = addDaysISO(whelpLikelyStart, homingDays - 1);
   const goHomeLikelyEnd   = addDaysISO(whelpLikelyEnd,   homingDays + 1);
 
+  // Availability bands with normalized kinds
   const travel: TravelBand[] = [
-    { kind: "Risky",    start: hormoneTestingFullStart, end: breedingFullEnd,      label: "" },
-    { kind: "Risky",    start: whelpFullStart,          end: goHomeExtendedFullEnd, label: "" },
-    { kind: "Unlikely", start: preBreedingFullEnd,      end: breedingLikelyEnd,     label: "" },
-    { kind: "Unlikely", start: puppyCareLikelyStart,    end: goHomeLikelyEnd,       label: "" },
+    { kind: "risky",    start: hormoneTestingFullStart, end: breedingFullEnd,       label: "" },
+    { kind: "risky",    start: whelpFullStart,          end: goHomeExtendedFullEnd, label: "" },
+    { kind: "unlikely", start: preBreedingFullEnd,      end: breedingLikelyEnd,     label: "" },
+    { kind: "unlikely", start: puppyCareLikelyStart,    end: goHomeLikelyEnd,       label: "" },
   ];
+
+  // New placement milestones + legacy aliases
+  const placement_start_expected = addDaysISO(whelpLikelyStart, homingDays);
+  const placement_completed_expected = goHomeExtendedFullEnd;
+
+  const gohome_expected = placement_start_expected;
+  const gohome_extended_end_expected = placement_completed_expected;
 
   return {
     cycle_start: cycle,
     ovulation,
     breed_expected: ovulation,
     birth_expected,
-    weaning_expected,                         // ← now returned like the others
-    gohome_expected: addDaysISO(whelpLikelyStart, homingDays),
+    weaning_expected,
+
+    placement_start_expected,
+    placement_completed_expected,
+
+    gohome_expected,
+    gohome_extended_end_expected,
+
     last_offspring_gohome_expected: goHomeNormalFullEnd,
+
     windows: {
       pre_breeding_full:   [preBreedingFullStart,   preBreedingFullEnd],
       hormone_testing_full:[hormoneTestingFullStart,hormoneTestingFullEnd],
@@ -211,16 +235,16 @@ export function computeExpectedFromCycle(opts: {
   };
 }
 
-// ────────── The hook (backward compatible, with new optional params) ──────────
+// ────────── The hook (unchanged API, now returns placement fields via compute) ──────────
 export function useCyclePlanner(params: {
   species: Species;
   reproAsc?: ReproEvent[];
   lastActualHeatStart?: ISODate | null;
   futureCount?: number;
 
-  femaleCycleLenOverrideDays?: number | null;   // NEW
-  homingStartWeeksDefault?: number | null;      // NEW
-  homingStartWeeksOverride?: number | null;     // NEW
+  femaleCycleLenOverrideDays?: number | null;
+  homingStartWeeksDefault?: number | null;
+  homingStartWeeksOverride?: number | null;
 }) {
   const {
     species, reproAsc = [], lastActualHeatStart, futureCount = 12,
@@ -254,7 +278,6 @@ export function useCyclePlanner(params: {
     return out;
   }, [lastActualHeatStart, defaults.start_buffer_days, effectiveCycleLen, futureCount]);
 
-  // Keep precedence centralized in computeExpectedFromCycle
   const computeFromLocked = React.useCallback(
     (cycleStart: ISODate) => {
       const resolvedHomingStartWeeks =

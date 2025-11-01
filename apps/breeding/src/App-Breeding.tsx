@@ -28,7 +28,7 @@ import { OverlayMount } from "@bhq/ui/overlay/OverlayMount";
 import { getOverlayRoot } from "@bhq/ui/overlay/core";
 import { NavLink, useInRouterContext } from "react-router-dom";
 import MasterPlanGantt from "./components/MasterPlanGantt";
-import { PlannerModeSwitch } from "./components/PlannerSwitch";
+import PlannerSwitch from "./components/PlannerSwitch";
 import "@bhq/ui/styles/table.css";
 import "@bhq/ui/styles/details.css";
 import { makeBreedingApi } from "./api";
@@ -48,7 +48,7 @@ const modalRoot = typeof document !== "undefined" ? document.body : null;
 
 const PLAN_TABS = [
   { key: "overview", label: "Overview" },
-  { key: "dates", label: "Dates" },            // ← NEW TAB
+  { key: "dates", label: "Dates" }, // NEW
   { key: "deposits", label: "Deposits" },
   { key: "audit", label: "Audit" },
 ] as const;
@@ -109,6 +109,10 @@ type PlanRow = {
 
   createdAt?: string | null;
   updatedAt?: string | null;
+
+  // optional overrides used by planner master view
+  femaleCycleLenOverrideDays?: number | null;
+  homingStartWeeksOverride?: number | null;
 };
 
 const COLUMNS: Array<{ key: keyof PlanRow & string; label: string; default?: boolean }> = [
@@ -132,6 +136,8 @@ const COLUMNS: Array<{ key: keyof PlanRow & string; label: string; default?: boo
 const STORAGE_KEY = "bhq_breeding_cols_v2";
 
 /* ─────────────────────── Helpers ─────────────────────── */
+const toKey = (id: ID) => String(id);
+
 function __bhq_findDetailsDrawerOnClose(): (() => void) | null {
   try {
     const root = document.querySelector("[data-bhq-details]") || document.body;
@@ -146,7 +152,7 @@ function __bhq_findDetailsDrawerOnClose(): (() => void) | null {
       }
       f = f.return;
     }
-  } catch {}
+  } catch { }
   return null;
 }
 
@@ -154,11 +160,11 @@ async function safeGetCreatingOrg(api: any) {
   try {
     const org = await api?.lookups?.getCreatingOrganization?.();
     if (org && org.id != null) return org;
-  } catch {}
+  } catch { }
   try {
     const id = localStorage.getItem("BHQ_ORG_ID");
     if (id) return { id, display_name: localStorage.getItem("BHQ_ORG_NAME") || "My Organization" };
-  } catch {}
+  } catch { }
   return null;
 }
 
@@ -323,29 +329,29 @@ async function fetchAnimals(opts: {
   return normalized;
 }
 
-/* ───────────────────────── Confirm Modal (overlay root) ───────────────────────── */
+/* ───────────────────────── Confirm Modal ───────────────────────── */
 
 function confirmModal(
   opts:
     | string
     | {
-        title?: string;
-        message: string;
-        confirmText?: string;
-        cancelText?: string;
-        tone?: "default" | "danger"; // danger = red accent for destructive actions
-      }
+      title?: string;
+      message: string;
+      confirmText?: string;
+      cancelText?: string;
+      tone?: "default" | "danger";
+    }
 ): Promise<boolean> {
   const { title, message, confirmText, cancelText, tone } =
     typeof opts === "string"
       ? { title: "Confirm", message: opts, confirmText: "Confirm", cancelText: "Cancel", tone: "default" as const }
       : {
-          title: opts.title ?? "Confirm",
-          message: opts.message,
-          confirmText: opts.confirmText ?? "Confirm",
-          cancelText: opts.cancelText ?? "Cancel",
-          tone: opts.tone ?? "default",
-        };
+        title: opts.title ?? "Confirm",
+        message: opts.message,
+        confirmText: opts.confirmText ?? "Confirm",
+        cancelText: opts.cancelText ?? "Cancel",
+        tone: opts.tone ?? "default",
+      };
 
   const rootEl = getOverlayRoot();
   const host = document.createElement("div");
@@ -357,7 +363,7 @@ function confirmModal(
       resolve(ok);
       try {
         r.unmount();
-      } catch {}
+      } catch { }
       host.remove();
     };
 
@@ -388,6 +394,7 @@ function confirmModal(
 }
 
 /* ───────────────────────── Component ───────────────────────── */
+
 function SafeNavLink({
   to,
   children,
@@ -429,7 +436,7 @@ export default function AppBreeding() {
       try {
         const t = await resolveTenantId();
         if (!cancelled) setTenantId(t);
-      } catch {}
+      } catch { }
     })();
     return () => {
       cancelled = true;
@@ -466,6 +473,14 @@ export default function AppBreeding() {
     };
   }, [api]);
 
+  /* Data: declare early so later hooks can safely reference allPlans */
+  const [rows, setRows] = React.useState<PlanRow[]>([]);
+  /** Alias so downstream code can keep using allPlans */
+  const allPlans = rows;
+  const [loading, setLoading] = React.useState<boolean>(true);
+  const [error, setError] = React.useState<string | null>(null);
+
+
   /* Search and filters */
   const Q_KEY = "bhq_breeding_q_v2";
   const FILTERS_KEY = "bhq_breeding_filters_v2";
@@ -481,14 +496,37 @@ export default function AppBreeding() {
   React.useEffect(() => {
     try {
       localStorage.setItem(SHOW_ARCH_KEY, showArchived ? "1" : "0");
-    } catch {}
+    } catch { }
   }, [showArchived]);
 
   // ── Planner view state ─────────────────────────────────────
-  const [plannerMode, setPlannerMode] = React.useState<"per-plan" | "master">("master");
+  const [plannerMode, setPlannerMode] = React.useState<"per-plan" | "master">("per-plan");
 
-  // Start empty, then seed once rows arrive (avoids TDZ + preserves user toggles)
-  const [selectedIds, setSelectedIds] = React.useState<Set<ID>>(() => new Set());
+  // Selection (keep raw ID types; do NOT stringify)
+  const [selectedKeys, setSelectedKeys] = React.useState<Set<ID>>(() => new Set<ID>());
+  // Remember if the user has changed selection at least once
+  const [selectionTouched, setSelectionTouched] = React.useState(false);
+
+  // Keep selection stable across data refreshes.
+  // Auto-select-all only once (first load) and never after user interaction.
+  React.useEffect(() => {
+    if (allPlans.length === 0) return;
+
+    setSelectedKeys((prev) => {
+      const valid = new Set<ID>(allPlans.map((p) => p.id));
+
+      // First load only: select all
+      const base = !selectionTouched && prev.size === 0 ? valid : prev;
+
+      // Always prune removed plans, never add new ones once touched
+      const next = new Set<ID>();
+      base.forEach((k) => {
+        if (valid.has(k)) next.add(k);
+      });
+
+      return next;
+    });
+  }, [allPlans, selectionTouched]);
 
   const [availabilityOn, setAvailabilityOn] = React.useState<boolean>(false);
 
@@ -519,12 +557,12 @@ export default function AppBreeding() {
   React.useEffect(() => {
     try {
       localStorage.setItem(Q_KEY, q);
-    } catch {}
+    } catch { }
   }, [q]);
   React.useEffect(() => {
     try {
       localStorage.setItem(FILTERS_KEY, JSON.stringify(filters || {}));
-    } catch {}
+    } catch { }
   }, [filters]);
 
   const [qDebounced, setQDebounced] = React.useState(q);
@@ -533,23 +571,10 @@ export default function AppBreeding() {
     return () => clearTimeout(t);
   }, [q]);
 
-  /* Data */
-  const [rows, setRows] = React.useState<PlanRow[]>([]);
-  const allPlans = rows;
-  const [loading, setLoading] = React.useState<boolean>(true);
-  const [error, setError] = React.useState<string | null>(null);
-
-  React.useEffect(() => {
-    if (selectedIds.size === 0 && allPlans.length > 0) {
-      setSelectedIds(new Set(allPlans.map((p) => p.id)));
-    }
-  }, [allPlans, selectedIds.size]);
-
   React.useEffect(() => {
     let cancelled = false;
 
     (async () => {
-      // no API yet? keep spinner up while tenant resolves
       if (!api) {
         setLoading(true);
         return;
@@ -570,8 +595,8 @@ export default function AppBreeding() {
         const items = Array.isArray((resp as any)?.items)
           ? (resp as any).items
           : Array.isArray(resp)
-          ? (resp as any)
-          : [];
+            ? (resp as any)
+            : [];
 
         if (!cancelled) setRows(items.map(planToRow));
       } catch (e: any) {
@@ -750,34 +775,30 @@ export default function AppBreeding() {
     const to = from + pageSize;
     return displayRows.slice(from, to);
   }, [displayRows, clampedPage, pageSize]);
+
   /* ───────── View routing (list | calendar | planner) ───────── */
   type ViewRoute = "list" | "calendar" | "planner";
 
-  // Determine the module base path (e.g., "/breeding") so links work even when not at site root
+  // Determine the module base path
   const getBasePath = React.useCallback(() => {
     if (typeof window === "undefined") return "";
     const p = window.location.pathname || "/";
-    // Strip trailing slash for consistency
     const clean = p.replace(/\/+$/, "");
-    // If URL already includes a sub-view, remove it to get the base
     if (clean.endsWith("/calendar")) return clean.slice(0, -"/calendar".length) || "/";
     if (clean.endsWith("/planner")) return clean.slice(0, -"/planner".length) || "/";
     return clean || "/";
   }, []);
-
   const basePath = React.useMemo(() => getBasePath(), [getBasePath]);
 
   const getViewFromLocation = (): ViewRoute => {
     if (typeof window === "undefined") return "list";
     const p = window.location.pathname || "/";
-    // Use includes so it still works if a tenant prefix or module base precedes it
     if (p.includes("/calendar")) return "calendar";
     if (p.includes("/planner")) return "planner";
     return "list";
   };
 
   const [currentView, setCurrentView] = React.useState<ViewRoute>(getViewFromLocation());
-
   React.useEffect(() => {
     const onPop = () => setCurrentView(getViewFromLocation());
     window.addEventListener("popstate", onPop);
@@ -944,7 +965,7 @@ export default function AppBreeding() {
           await api.createTest(input.planId, {
             kind: "PROGESTERONE",
             collectedAt: input.date,
-            notes: input.note ?? null
+            notes: input.note ?? null,
           });
           break;
 
@@ -952,7 +973,7 @@ export default function AppBreeding() {
           await api.createAttempt(input.planId, {
             method: "NATURAL",
             attemptAt: input.date,
-            notes: input.note ?? null
+            notes: input.note ?? null,
           });
           break;
 
@@ -961,7 +982,7 @@ export default function AppBreeding() {
             method: "ULTRASOUND",
             result: true,
             checkedAt: input.date,
-            notes: input.note ?? null
+            notes: input.note ?? null,
           });
           break;
 
@@ -970,7 +991,7 @@ export default function AppBreeding() {
             type: "WHELPED",
             occurredAt: input.date,
             label: "Whelped",
-            notes: input.note ?? null
+            notes: input.note ?? null,
           });
           break;
 
@@ -979,7 +1000,7 @@ export default function AppBreeding() {
             type: "WEANED",
             occurredAt: input.date,
             label: "Weaned",
-            notes: input.note ?? null
+            notes: input.note ?? null,
           });
           break;
       }
@@ -1044,12 +1065,10 @@ export default function AppBreeding() {
           openCustomBreed={(speciesUi: SpeciesUi, onCreated: (name: string) => void) => {
             const s = (speciesUi || "Dog").toUpperCase() as "DOG" | "CAT" | "HORSE";
             setCustomBreedSpecies(s);
-            setOnCustomBreedCreated(
-              () => (c) => {
-                onCreated(c.name);
-                setCustomBreedOpen(false);
-              }
-            );
+            setOnCustomBreedCreated(() => (c) => {
+              onCreated(c.name);
+              setCustomBreedOpen(false);
+            });
             setCustomBreedOpen(true);
           }}
           onCommitted={async (planId: ID) => {
@@ -1057,10 +1076,8 @@ export default function AppBreeding() {
             let updatedPlan: any;
 
             if ((api as any).commitPlan) {
-              // Preferred: server commits and generates code
               updatedPlan = await (api as any).commitPlan(Number(planId), {});
             } else {
-              // Legacy fallback: do not set code client-side
               const planNow = await api.getPlan(Number(planId), "parents,org");
               updatedPlan = await api.updatePlan(Number(planId), {
                 status: "COMMITTED",
@@ -1069,28 +1086,22 @@ export default function AppBreeding() {
               } as any);
             }
 
-            // Update the table row
             setRows((prev) => prev.map((r) => (Number(r.id) === Number(planId) ? planToRow(updatedPlan) : r)));
           }}
-
-          /* NEW: child can call this after lock/unlock to refresh the row */
           onPlanUpdated={(id, fresh) => {
             setRows((prev) => prev.map((r) => (Number(r.id) === Number(id) ? planToRow(fresh) : r)));
           }}
-
-          /* Archive or unarchive */
           onArchive={async (planId: ID, archived: boolean) => {
             if (!api) return;
             const updated = await api.updatePlan(Number(planId), { archived } as any);
             setRows((prev) => prev.map((r) => (r.id === Number(planId) ? planToRow(updated) : r)));
           }}
-
           closeDrawer={props.close}
           onModeChange={setDrawerIsEditing}
         />
       ),
     };
-  }, [api, tenantId, setRows, rows]);
+  }, [api, tenantId, rows]);
 
   /* Table custom cells (gate expected dates on lock) */
   const CELL_RENDERERS: Record<string, (r: PlanRow) => React.ReactNode> = {
@@ -1104,10 +1115,19 @@ export default function AppBreeding() {
         <div className="text-xs mb-1">{r.lockedCycleStart ? fmt(r.expectedGoHome) : ""}</div>
       </div>
     ),
-    expectedWeaned: (r) => <div className="py-1"><div className="text-xs mb-1">{r.lockedCycleStart ? fmt(r.expectedWeaned) : ""}</div></div>,
-    expectedGoHomeExtendedEnd: (r) => <div className="py-1"><div className="text-xs mb-1">{r.lockedCycleStart ? fmt(r.expectedGoHomeExtendedEnd) : ""}</div></div>,
+    expectedWeaned: (r) => (
+      <div className="py-1">
+        <div className="text-xs mb-1">{r.lockedCycleStart ? fmt(r.expectedWeaned) : ""}</div>
+      </div>
+    ),
+    expectedGoHomeExtendedEnd: (r) => (
+      <div className="py-1">
+        <div className="text-xs mb-1">{r.lockedCycleStart ? fmt(r.expectedGoHomeExtendedEnd) : ""}</div>
+      </div>
+    ),
   };
 
+  /* ============================ RENDER ============================ */
   return (
     <>
       <OverlayMount />
@@ -1115,20 +1135,14 @@ export default function AppBreeding() {
       <div className="p-4 space-y-4">
         <div className="relative">
           <PageHeader title="Breeding" subtitle="Create and manage breeding plans" />
-          <div
-            className="absolute right-0 top-0 h-full flex items-center gap-2 pr-1"
-            style={{ zIndex: 50, pointerEvents: "auto" }}
-          >
+          <div className="absolute right-0 top-0 h-full flex items-center gap-2 pr-1" style={{ zIndex: 50, pointerEvents: "auto" }}>
             {/* Top-right page navigation */}
             <nav className="flex items-center gap-1 mr-1">
               <SafeNavLink
                 to={basePath === "/" ? "/" : `${basePath}/`}
                 end
                 className={({ isActive }) =>
-                  `px-2 py-1.5 rounded-md text-sm transition ${
-                    isActive
-                      ? "border-b-2 border-[hsl(var(--brand-orange))] text-primary"
-                      : "text-secondary hover:text-primary"
+                  `px-2 py-1.5 rounded-md text-sm transition ${isActive ? "border-b-2 border-[hsl(var(--brand-orange))] text-primary" : "text-secondary hover:text-primary"
                   }`
                 }
               >
@@ -1138,10 +1152,7 @@ export default function AppBreeding() {
               <SafeNavLink
                 to={`${basePath}/calendar`}
                 className={({ isActive }) =>
-                  `px-2 py-1.5 rounded-md text-sm transition ${
-                    isActive
-                      ? "border-b-2 border-[hsl(var(--brand-orange))] text-primary"
-                      : "text-secondary hover:text-primary"
+                  `px-2 py-1.5 rounded-md text-sm transition ${isActive ? "border-b-2 border-[hsl(var(--brand-orange))] text-primary" : "text-secondary hover:text-primary"
                   }`
                 }
               >
@@ -1151,10 +1162,7 @@ export default function AppBreeding() {
               <SafeNavLink
                 to={`${basePath}/planner`}
                 className={({ isActive }) =>
-                  `px-2 py-1.5 rounded-md text-sm transition ${
-                    isActive
-                      ? "border-b-2 border-[hsl(var(--brand-orange))] text-primary"
-                      : "text-secondary hover:text-primary"
+                  `px-2 py-1.5 rounded-md text-sm transition ${isActive ? "border-b-2 border-[hsl(var(--brand-orange))] text-primary" : "text-secondary hover:text-primary"
                   }`
                 }
               >
@@ -1168,42 +1176,12 @@ export default function AppBreeding() {
           </div>
         </div>
 
-        {customBreedOpen &&
-          modalRoot &&
-          createPortal(
-            <div className="fixed inset-0" style={{ zIndex: MODAL_Z, isolation: "isolate" }}>
-              <div className="absolute inset-0 bg-black/50" />
-              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                <div className="pointer-events-auto">
-                  <CustomBreedDialog
-                    open
-                    onClose={() => setCustomBreedOpen(false)}
-                    api={{
-                      breeds: {
-                        customCreate: (api as any)?.breeds?.customCreate,
-                        putRecipe: (api as any)?.breeds?.putRecipe,
-                      },
-                    }}
-                    species={customBreedSpecies}
-                    onCreated={(c) => onCustomBreedCreated?.(c)}
-                  />
-                </div>
-              </div>
-            </div>,
-            modalRoot
-          )}
-
         <Card>
+          {/* LIST VIEW */}
           {currentView === "list" && (
             <>
-              {/* Prevent outside click close while editing (pointer + mouse + click) */}
               <div className="bhq-details-guard" data-testid="bhq-details-guard">
-                <DetailsHost
-                  rows={rows}
-                  config={detailsConfig}
-                  closeOnOutsideClick={!drawerIsEditing}
-                  closeOnEscape={false}
-                >
+                <DetailsHost rows={rows} config={detailsConfig} closeOnOutsideClick={!drawerIsEditing} closeOnEscape={false}>
                   <Table
                     columns={COLUMNS}
                     columnState={map}
@@ -1215,6 +1193,7 @@ export default function AppBreeding() {
                         columns={map}
                         onToggle={toggle}
                         onSet={setAll}
+                        onReset={() => setAll(COLUMNS)}
                         allColumns={COLUMNS}
                         triggerClassName="bhq-columns-trigger"
                       />
@@ -1236,14 +1215,7 @@ export default function AppBreeding() {
                             title="Filters"
                             className="h-7 w-7 rounded-md flex items-center justify-center hover:bg-white/5 focus:outline-none"
                           >
-                            <svg
-                              viewBox="0 0 24 24"
-                              className="h-4 w-4"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="2"
-                              aria-hidden="true"
-                            >
+                            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
                               <path d="M3 5h18M7 12h10M10 19h4" strokeLinecap="round" />
                             </svg>
                           </button>
@@ -1252,13 +1224,7 @@ export default function AppBreeding() {
                     </div>
 
                     {/* Filters */}
-                    {filtersOpen && (
-                      <FiltersRow
-                        filters={filters}
-                        onChange={(next) => setFilters(next)}
-                        schema={FILTER_SCHEMA}
-                      />
-                    )}
+                    {filtersOpen && <FiltersRow filters={filters} onChange={(next) => setFilters(next)} schema={FILTER_SCHEMA} />}
 
                     {/* Table */}
                     <table className="min-w-max w-full text-sm">
@@ -1267,9 +1233,7 @@ export default function AppBreeding() {
                         {!api && (
                           <TableRow>
                             <TableCell colSpan={visibleSafe.length}>
-                              <div className="py-8 text-center text-sm text-secondary">
-                                Resolving tenant…
-                              </div>
+                              <div className="py-8 text-center text-sm text-secondary">Resolving tenant…</div>
                             </TableCell>
                           </TableRow>
                         )}
@@ -1277,9 +1241,7 @@ export default function AppBreeding() {
                         {api && loading && (
                           <TableRow>
                             <TableCell colSpan={visibleSafe.length}>
-                              <div className="py-8 text-center text-sm text-secondary">
-                                Loading plans…
-                              </div>
+                              <div className="py-8 text-center text-sm text-secondary">Loading plans…</div>
                             </TableCell>
                           </TableRow>
                         )}
@@ -1287,9 +1249,7 @@ export default function AppBreeding() {
                         {api && !loading && error && (
                           <TableRow>
                             <TableCell colSpan={visibleSafe.length}>
-                              <div className="py-8 text-center text-sm text-red-600">
-                                Error: {error}
-                              </div>
+                              <div className="py-8 text-center text-sm text-red-600">Error: {error}</div>
                             </TableCell>
                           </TableRow>
                         )}
@@ -1297,9 +1257,7 @@ export default function AppBreeding() {
                         {api && !loading && !error && pageRows.length === 0 && (
                           <TableRow>
                             <TableCell colSpan={visibleSafe.length}>
-                              <div className="py-8 text-center text-sm text-secondary">
-                                No breeding plans yet.
-                              </div>
+                              <div className="py-8 text-center text-sm text-secondary">No breeding plans yet.</div>
                             </TableCell>
                           </TableRow>
                         )}
@@ -1358,13 +1316,9 @@ export default function AppBreeding() {
                         if (e.target === e.currentTarget) setQuickAddOpen(false);
                       }}
                     >
-                      {/* Backdrop */}
                       <div className="absolute inset-0 bg-black/50" />
-
-                      {/* Centered content */}
                       <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                        <div className="pointer-events-auto">
-                        </div>
+                        <div className="pointer-events-auto">{/* quick add content slot */}</div>
                       </div>
                     </div>,
                     modalRoot
@@ -1373,54 +1327,58 @@ export default function AppBreeding() {
             </>
           )}
 
-          {/* ───────── Calendar View ───────── */}
+          {/* CALENDAR VIEW */}
           {currentView === "calendar" && (
             <div className="p-2">
-              <BreedingCalendar
-                plans={allPlans}
-                selectedPlanIds={[]}
-                navigateToPlan={(id: any) => openPlanDrawer(id)}
-              />
+              <BreedingCalendar plans={allPlans} selectedPlanIds={[]} navigateToPlan={(id: any) => openPlanDrawer(id)} />
             </div>
           )}
 
-          {/* ───────── Planner (Gantt) View ───────── */}
+          {/* PLANNER VIEW */}
           {currentView === "planner" && (
             <div className="p-2 space-y-3">
               <div className="flex items-center justify-between">
-                <PlannerModeSwitch mode={plannerMode} onChange={setPlannerMode} />
+                <PlannerSwitch mode={plannerMode} onChange={setPlannerMode} />
                 <div className="text-sm text-secondary">Planner view</div>
               </div>
+              {(() => {
+                // Map to placement fields for master chart
+                const masterPlans = allPlans.map((p) => ({
+                  ...p,
+                  lockedPlacementStartDate: p.lockedGoHomeDate ?? null,
+                  expectedPlacementStart: p.expectedGoHome ?? null,
+                  expectedPlacementCompleted: p.expectedGoHomeExtendedEnd ?? null,
+                }));
+                return plannerMode === "per-plan" ? (
+                  <BreedingPlans
+                    plans={allPlans}
+                    onOpenPlan={(planId: ID) => openPlanDrawer(planId)}
+                    onQuickAdd={(planId?: ID) => openQuickAddFor(planId)}
+                  />
+                ) : (
+                  <MasterPlanGantt
+                    plans={masterPlans as any}
+                    damReproByPlan={{}}
+                    horizon={plannerHorizon}
+                    availabilityOn={availabilityOn}
+                    onAvailabilityToggle={setAvailabilityOn}
+                    selected={selectedKeys}
+                    onSelectedChange={(next) => {
+                      setSelectionTouched(true);
+                      // Accept either Set or iterable; keep raw ID types
+                      const incoming = next instanceof Set ? next : new Set(next as Iterable<ID>);
+                      setSelectedKeys(incoming);
+                    }}
+                  />
 
-              {plannerMode === "per-plan" ? (
-                <BreedingPlans
-                  plans={allPlans}
-                  onOpenPlan={(planId: ID) => openPlanDrawer(planId)}
-                  onQuickAdd={(planId?: ID) => openQuickAddFor(planId)}
-                />
-              ) : (
-                <MasterPlanGantt
-                  plans={allPlans}
-                  horizon={plannerHorizon}
-                  today={now}
-                  availabilityOn={availabilityOn}
-                  onAvailabilityToggle={setAvailabilityOn}
-                  selected={selectedIds}
-                  onSelectedChange={setSelectedIds}
-                />
-              )}
+                );
+              })()}
             </div>
           )}
         </Card>
 
         {/* Create Plan Modal */}
-        <Overlay
-          root={modalRoot}
-          open={createOpen}
-          ariaLabel="Create Breeding Plan"
-          closeOnEscape
-          closeOnOutsideClick
-        >
+        <Overlay root={modalRoot} open={createOpen} ariaLabel="Create Breeding Plan" closeOnEscape closeOnOutsideClick>
           {(() => {
             const panelRef = React.useRef<HTMLDivElement>(null);
 
@@ -1433,15 +1391,8 @@ export default function AppBreeding() {
             };
 
             return (
-              <div
-                className="fixed inset-0"
-                style={{ zIndex: MODAL_Z, isolation: "isolate" }}
-                onMouseDown={handleOutsideMouseDown}
-              >
-                {/* Backdrop */}
+              <div className="fixed inset-0" style={{ zIndex: MODAL_Z, isolation: "isolate" }} onMouseDown={handleOutsideMouseDown}>
                 <div className="absolute inset-0 bg-black/50" />
-
-                {/* Centered card */}
                 <div className="absolute inset-0 flex items-center justify-center">
                   <div
                     ref={panelRef}
@@ -1459,11 +1410,7 @@ export default function AppBreeding() {
                         <div className="text-xs text-secondary mb-1">
                           Plan name <span className="text-[hsl(var(--brand-orange))]">*</span>
                         </div>
-                        <Input
-                          value={newName}
-                          onChange={(e) => setNewName(e.currentTarget.value)}
-                          placeholder="Luna × TBD, Fall 2026"
-                        />
+                        <Input value={newName} onChange={(e) => setNewName(e.currentTarget.value)} placeholder="Luna × TBD, Fall 2026" />
                       </div>
 
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -1514,15 +1461,16 @@ export default function AppBreeding() {
                               const speciesEnum = String(newSpeciesUi || "Dog").toUpperCase() as "DOG" | "CAT" | "HORSE";
                               setCustomBreedSpecies(speciesEnum);
                               setOnCustomBreedCreated(
-                                () => (created) => {
-                                  setNewBreed({
-                                    id: created.id,
-                                    name: created.name,
-                                    species: newSpeciesUi || "Dog",
-                                    source: "custom",
-                                  } as any);
-                                  setCustomBreedOpen(false);
-                                }
+                                () =>
+                                  (created) => {
+                                    setNewBreed({
+                                      id: created.id,
+                                      name: created.name,
+                                      species: newSpeciesUi || "Dog",
+                                      source: "custom",
+                                    } as any);
+                                    setCustomBreedOpen(false);
+                                  }
                               );
                               setCustomBreedOpen(true);
                             }}
@@ -1671,13 +1619,38 @@ export default function AppBreeding() {
             );
           })()}
         </Overlay>
+
+        {/* Custom Breed Dialog (portal) */}
+        {customBreedOpen &&
+          modalRoot &&
+          createPortal(
+            <div className="fixed inset-0" style={{ zIndex: MODAL_Z, isolation: "isolate" }}>
+              <div className="absolute inset-0 bg-black/50" />
+              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                <div className="pointer-events-auto">
+                  <CustomBreedDialog
+                    open
+                    onClose={() => setCustomBreedOpen(false)}
+                    api={{
+                      breeds: {
+                        customCreate: (api as any)?.breeds?.customCreate,
+                        putRecipe: (api as any)?.breeds?.putRecipe,
+                      },
+                    }}
+                    species={customBreedSpecies}
+                    onCreated={(c) => onCustomBreedCreated?.(c)}
+                  />
+                </div>
+              </div>
+            </div>,
+            modalRoot
+          )}
       </div>
     </>
   );
 }
 
 /* ───────── Small helpers ───────── */
-
 function CalendarInput({
   showIcon,
   readOnly,
@@ -1745,7 +1718,7 @@ function PlanDetailsView(props: {
   onModeChange?: (editing: boolean) => void;
   onArchive?: (id: ID, archived: boolean) => Promise<void> | void;
   onPlanUpdated?: (id: ID, fresh: any) => void;
-  tabs: ReadonlyArray<{ key: string; label: string }>
+  tabs: ReadonlyArray<{ key: string; label: string }>;
 }) {
   const {
     row,
@@ -1810,7 +1783,7 @@ function PlanDetailsView(props: {
             const last_heat = (res?.last_heat ?? res?.lastHeat ?? null) as string | null;
             data = { repro, last_heat };
           }
-        } catch {}
+        } catch { }
         if (!cancelled) setDamRepro(data ?? { repro: [], last_heat: null });
       } catch (e: any) {
         if (!cancelled) setDamLoadError(e?.message || "Failed to load Dam cycle history");
@@ -1821,10 +1794,9 @@ function PlanDetailsView(props: {
     };
   }, [api, row.damId]);
 
-  // ===== Cycle math + projections/expected dates =====
+  // ===== Cycle math + projections =====
   const species = (row.species || "Dog") as PlannerSpecies;
 
-  // Pull Dam repro history we fetched earlier
   const damHeatStartsAsc = React.useMemo(
     () =>
       (damRepro?.repro ?? [])
@@ -1842,7 +1814,6 @@ function PlanDetailsView(props: {
     futureCount: 12,
   });
 
-  // Local UI preview state around locking
   const [pendingCycle, setPendingCycle] = React.useState<string | null>(row.lockedCycleStart ?? null);
   const [lockedPreview, setLockedPreview] = React.useState<boolean>(Boolean(row.lockedCycleStart));
   const [expectedPreview, setExpectedPreview] = React.useState<PlannerExpected | null>(() =>
@@ -1856,14 +1827,12 @@ function PlanDetailsView(props: {
     setLockedPreview(Boolean(row.lockedCycleStart));
   }, [row.lockedCycleStart, computeFromLocked]);
 
-  // lock precondition: must select an Upcoming Cycle date (no “—”)
   async function lockCycle() {
     if (!pendingCycle || !String(pendingCycle).trim()) return;
     if (!api) return;
 
     const expected = computeFromLocked(pendingCycle);
 
-    // NEW: pull the extra fields from the computed object (falling back defensively)
     const weanedExp =
       (expected as any).weaning_expected ??
       (expected as any).weaned_expected ??
@@ -1876,7 +1845,6 @@ function PlanDetailsView(props: {
       (expected as any).gohome_extended_full?.[1] ??
       null;
 
-    // Local preview so the UI feels instant
     setExpectedPreview(expected);
     setLockedPreview(true);
     setDraftLive({
@@ -1886,30 +1854,23 @@ function PlanDetailsView(props: {
       lockedGoHomeDate: expected.gohome_expected,
       expectedDue: expected.birth_expected,
       expectedGoHome: expected.gohome_expected,
-
-      // NEW
       expectedWeaned: weanedExp,
       expectedGoHomeExtendedEnd: extendedEndExp,
     });
 
     try {
-      // Persist to DB
       await api.updatePlan(Number(row.id), {
         lockedCycleKey: String(pendingCycle),
         lockedCycleStart: pendingCycle,
         lockedOvulationDate: expected.ovulation,
         lockedDueDate: expected.birth_expected,
         lockedGoHomeDate: expected.gohome_expected,
-
         expectedDue: row.expectedDue ?? expected.birth_expected ?? null,
         expectedGoHome: row.expectedGoHome ?? expected.gohome_expected ?? null,
-
-        // NEW
         expectedWeaned: weanedExp,
         expectedGoHomeExtendedEnd: extendedEndExp,
       } as any);
 
-      // (keep your audit event)
       await api.createEvent(Number(row.id), {
         type: "CYCLE_LOCKED",
         occurredAt: new Date().toISOString(),
@@ -1919,8 +1880,6 @@ function PlanDetailsView(props: {
           ovulation: expected.ovulation,
           due: expected.birth_expected,
           goHome: expected.gohome_expected,
-
-          // NEW (optional detail in audit data)
           weaned: weanedExp,
           goHomeExtendedEnd: extendedEndExp,
         },
@@ -1937,8 +1896,6 @@ function PlanDetailsView(props: {
         lockedOvulationDate: null,
         lockedDueDate: null,
         lockedGoHomeDate: null,
-
-        // NEW
         expectedDue: null,
         expectedGoHome: null,
         expectedWeaned: null,
@@ -1951,7 +1908,6 @@ function PlanDetailsView(props: {
   async function unlockCycle() {
     if (!api) return;
 
-    // Local preview first
     setExpectedPreview(null);
     setLockedPreview(false);
     setDraftLive({
@@ -1961,8 +1917,6 @@ function PlanDetailsView(props: {
       lockedGoHomeDate: null,
       expectedDue: null,
       expectedGoHome: null,
-
-      // NEW
       expectedWeaned: null,
       expectedGoHomeExtendedEnd: null,
     });
@@ -1976,8 +1930,6 @@ function PlanDetailsView(props: {
         lockedGoHomeDate: null,
         expectedDue: null,
         expectedGoHome: null,
-
-        // NEW
         expectedWeaned: null,
         expectedGoHomeExtendedEnd: null,
       } as any);
@@ -2000,40 +1952,30 @@ function PlanDetailsView(props: {
     }
   }
 
-  const isLocked = Boolean((effective.lockedCycleStart ?? "").trim());
-  const expectedBreed = isLocked
-    ? (expectedPreview?.ovulation ?? row.lockedOvulationDate ?? "")
-    : "";
-
-  const expectedBirth = isLocked
-    ? (expectedPreview?.birth_expected ?? row.lockedDueDate ?? row.expectedDue ?? "")
-    : "";
-
-  const expectedWeaned = isLocked
-    ? (
-      (expectedPreview as any)?.weaning_expected ??
-      (expectedPreview as any)?.weaned_expected ??
-      (expectedPreview as any)?.puppy_care_likely?.[0] ??
-      (effective as any)?.expectedWeaned ??
-      row.expectedWeaned ??
-      ""
-    )
-    : "";
-
-  const expectedGoHome = isLocked
-    ? (expectedPreview?.gohome_expected ?? row.lockedGoHomeDate ?? row.expectedGoHome ?? "")
-    : "";
-
-  const expectedGoHomeExtended = isLocked
-    ? (
-      (expectedPreview as any)?.gohome_extended_end ??
-      (expectedPreview as any)?.gohome_extended_end_expected ??
-      (expectedPreview as any)?.gohome_extended_full?.[1] ??
-      (effective as any)?.expectedGoHomeExtendedEnd ??
-      row.expectedGoHomeExtendedEnd ??
-      ""
-    )
-    : "";
+  const isLocked = Boolean(((row.lockedCycleStart ?? draftRef.current.lockedCycleStart) ?? "").toString().trim());
+  const expectedBreed = isLocked ? (expectedPreview?.ovulation ?? row.lockedOvulationDate ?? "") : "";
+  const expectedBirth = isLocked ? (expectedPreview?.birth_expected ?? row.lockedDueDate ?? row.expectedDue ?? "") : "";
+  const expectedWeaned =
+    isLocked
+      ? (
+        (expectedPreview as any)?.weaning_expected ??
+        (expectedPreview as any)?.weaned_expected ??
+        (expectedPreview as any)?.puppy_care_likely?.[0] ??
+        (row as any)?.expectedWeaned ??
+        ""
+      )
+      : "";
+  const expectedGoHome = isLocked ? (expectedPreview?.gohome_expected ?? row.lockedGoHomeDate ?? row.expectedGoHome ?? "") : "";
+  const expectedGoHomeExtended =
+    isLocked
+      ? (
+        (expectedPreview as any)?.gohome_extended_end ??
+        (expectedPreview as any)?.gohome_extended_end_expected ??
+        (expectedPreview as any)?.gohome_extended_full?.[1] ??
+        (row as any)?.expectedGoHomeExtendedEnd ??
+        ""
+      )
+      : "";
 
   const [editDamQuery, setEditDamQuery] = React.useState<string>("");
   const [editSireQuery, setEditSireQuery] = React.useState<string>("");
@@ -2094,43 +2036,29 @@ function PlanDetailsView(props: {
     };
   }, [isEdit, editSireFocus, editSireQuery, row.species, tenantId]);
 
-  // readiness
   const hasBreed = typeof (effective.breedText ?? "") === "string" && (effective.breedText ?? "").trim().length > 0;
   const canCommit = Boolean(
     effective.damId != null &&
-      effective.sireId != null &&
-      hasBreed &&
-      (lockedPreview || (effective.lockedCycleStart ?? "").trim()) &&
-      !["COMMITTED", "BRED", "WHELPED", "WEANED", "HOMING_STARTED", "COMPLETE", "CANCELED"].includes(effective.status)
+    effective.sireId != null &&
+    hasBreed &&
+    ((row.lockedCycleStart ?? draftRef.current.lockedCycleStart) ?? "") &&
+    !["COMMITTED", "BRED", "WHELPED", "WEANED", "HOMING_STARTED", "COMPLETE", "CANCELED"].includes(effective.status)
   );
   const expectedsEnabled = Boolean(
-    effective.damId != null && effective.sireId != null && (lockedPreview || (effective.lockedCycleStart ?? "").trim())
+    effective.damId != null && effective.sireId != null && ((row.lockedCycleStart ?? draftRef.current.lockedCycleStart) ?? "")
   );
 
   const breedComboKey = `${effective.species || "Dog"}|${hasBreed}`;
 
   const handleCancel = React.useCallback(() => {
-    // Build an undo patch for only the fields that were edited
     const undo: Partial<PlanRow> = {};
     for (const k of Object.keys(draftRef.current)) {
       (undo as any)[k] = (row as any)[k];
     }
-
-    // Overwrite the draft that DetailsHost tracks
     if (Object.keys(undo).length) setDraft(undo);
-
-    // Clear local overlay state
     draftRef.current = {};
-
-    // Reset lock/expected previews to persisted server values on the row
-    const persistedLocked = Boolean(row.lockedCycleStart && String(row.lockedCycleStart).trim());
-    setLockedPreview(persistedLocked);
-    setExpectedPreview(persistedLocked ? computeFromLocked(row.lockedCycleStart as string) : null);
-    setPendingCycle(row.lockedCycleStart ?? null);
-
-    // Leave edit mode
     setMode("view");
-  }, [row, setDraft, setMode, computeFromLocked]);
+  }, [row, setDraft, setMode]);
 
   type ViewMode = "list" | "calendar" | "timeline";
   const [view, setView] = React.useState<ViewMode>("list");
@@ -2148,7 +2076,6 @@ function PlanDetailsView(props: {
       onTabChange={setActiveTab}
       rightActions={
         <div className="flex gap-2 items-center" data-bhq-details>
-          {/* Commit button lives here, same size as Archive/Edit */}
           {row.status === "COMMITTED" ? (
             <Button size="sm" variant="outline" disabled>
               Committed
@@ -2159,12 +2086,11 @@ function PlanDetailsView(props: {
               onClick={async () => {
                 if (!api || !canCommit) return;
 
-                // 1) If lock only exists in preview (not persisted yet), persist it
-                if (lockedPreview && !row.lockedCycleStart && pendingCycle) {
-                  const e = computeFromLocked(pendingCycle);
+                if (!row.lockedCycleStart && draftRef.current.lockedCycleStart) {
+                  const e = (computeFromLocked as any)(draftRef.current.lockedCycleStart);
                   try {
                     await api.updatePlan(Number(row.id), {
-                      lockedCycleStart: pendingCycle,
+                      lockedCycleStart: draftRef.current.lockedCycleStart,
                       lockedOvulationDate: e.ovulation,
                       lockedDueDate: e.birth_expected,
                       lockedGoHomeDate: e.gohome_expected,
@@ -2177,7 +2103,6 @@ function PlanDetailsView(props: {
                   }
                 }
 
-                // 2) If Dam/Sire changed in draft vs server row, persist them too
                 const parentPatch: any = {};
                 if (effective.damId !== row.damId) parentPatch.damId = effective.damId;
                 if (effective.sireId !== row.sireId) parentPatch.sireId = effective.sireId;
@@ -2190,7 +2115,6 @@ function PlanDetailsView(props: {
                   }
                 }
 
-                // 3) Commit (server will now pass preconditions)
                 await onCommitted?.(effective.id);
               }}
               disabled={!canCommit || !api}
@@ -2206,7 +2130,6 @@ function PlanDetailsView(props: {
                 variant="outline"
                 onClick={async () => {
                   if (!onArchive) return;
-
                   const next = !isArchived;
                   const ok = await confirmModal({
                     title: next ? "Archive plan?" : "Restore plan?",
@@ -2237,7 +2160,6 @@ function PlanDetailsView(props: {
         </div>
       }
     >
-      {/* mark chrome for outside click guard */}
       <div className="relative" data-bhq-details>
         {activeTab === "overview" && (
           <div className="space-y-4 mt-2">
@@ -2318,11 +2240,11 @@ function PlanDetailsView(props: {
                           value={
                             hasBreed
                               ? ({
-                                  id: "current",
-                                  name: (effective.breedText ?? "").trim(),
-                                  species: effective.species || "Dog",
-                                  source: "canonical",
-                                } as any)
+                                id: "current",
+                                name: (effective.breedText ?? "").trim(),
+                                species: effective.species || "Dog",
+                                source: "canonical",
+                              } as any)
                               : null
                           }
                           onChange={(hit: any) => setDraftLive({ breedText: hit?.name ?? "" })}
@@ -2340,7 +2262,9 @@ function PlanDetailsView(props: {
                         variant="outline"
                         size="sm"
                         onClick={() =>
-                          openCustomBreed((effective.species || "Dog") as SpeciesUi, (name) => setDraftLive({ breedText: name || "" }))
+                          openCustomBreed((effective.species || "Dog") as SpeciesUi, (name) =>
+                            setDraftLive({ breedText: name || "" })
+                          )
                         }
                       >
                         New custom
@@ -2413,9 +2337,7 @@ function PlanDetailsView(props: {
                         onChange={(e) => setEditSireQuery(e.currentTarget.value)}
                         onFocus={() => {
                           setEditSireFocus(true);
-                          if (editSireQuery.trim) {
-                            if (editSireQuery.trim() === (row.sireName || "").trim()) setEditSireQuery("");
-                          }
+                          if (editSireQuery.trim && editSireQuery.trim() === (row.sireName || "").trim()) setEditSireQuery("");
                         }}
                         onBlur={() => setEditSireFocus(false)}
                         placeholder="Search Sire…"
@@ -2465,13 +2387,8 @@ function PlanDetailsView(props: {
                   ) : (
                     (() => {
                       const hasSelection = !!pendingCycle;
-                      const ringColor = !row.damId
-                        ? "hsl(var(--hairline))"
-                        : hasSelection
-                        ? "hsl(var(--red-600))"
-                        : "hsl(var(--hairline))";
-
-                      // Ensure the current selection appears even if it isn’t in projections
+                      const parentsSet = effective.damId != null && effective.sireId != null;
+                      const ringColor = hasSelection && parentsSet ? "hsl(var(--green-600))" : "hsl(var(--hairline))";
                       const options = [...projectedCycles];
                       if (pendingCycle && !options.includes(pendingCycle)) options.unshift(pendingCycle);
 
@@ -2508,7 +2425,6 @@ function PlanDetailsView(props: {
                       style={{ color: "var(--green-200,#bbf7d0)" }}
                       title="Unlock cycle"
                     >
-                      {/* closed lock icon */}
                       <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
                         <path d="M7 10V7a5 5 0 0 1 10 0v3" />
                         <rect x="5" y="10" width="14" height="10" rx="2" />
@@ -2517,23 +2433,31 @@ function PlanDetailsView(props: {
                     </button>
                   </div>
                 ) : (
-                  <div className="rounded-md" style={{ padding: 2, background: "var(--red-600,#dc2626)" }}>
-                    <button
-                      type="button"
-                      onClick={lockCycle}
-                      disabled={!(pendingCycle && effective.damId != null && effective.sireId != null)}
-                      className="h-9 px-3 rounded-[6px] text-sm font-medium bg-transparent flex items-center gap-2 disabled:opacity-60"
-                      style={{ color: "var(--red-200,#fecaca)" }}
-                      title={pendingCycle && effective.damId != null && effective.sireId != null ? "Lock cycle" : "Select a cycle and both parents first"}
-                    >
-                      {/* open lock icon */}
-                      <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-                        <path d="M12 5a5 5 0 0 1 5 5" />
-                        <rect x="5" y="10" width="14" height="10" rx="2" />
-                      </svg>
-                      Select Cycle to Lock
-                    </button>
-                  </div>
+                  (() => {
+                    const lockEnabled = !!(pendingCycle && effective.damId != null && effective.sireId != null);
+                    return (
+                      <div className="rounded-md" style={{ padding: 2 }}>
+                        <button
+                          type="button"
+                          onClick={lockCycle}
+                          disabled={!lockEnabled}
+                          className={[
+                            "h-9 px-3 rounded-[6px] text-sm font-medium flex items-center gap-2",
+                            "border-2",
+                            lockEnabled ? "border-[hsl(var(--green-600))] text-[hsl(var(--green-200))]" : "border-hairline text-secondary",
+                            "bg-transparent disabled:opacity-60",
+                          ].join(" ")}
+                          title={lockEnabled ? "Lock cycle" : "Select a cycle and both parents first"}
+                        >
+                          <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                            <path d="M12 5a5 5 0 0 1 5 5" />
+                            <rect x="5" y="10" width="14" height="10" rx="2" />
+                          </svg>
+                          Select Cycle to Lock
+                        </button>
+                      </div>
+                    );
+                  })()
                 )}
               </div>
             </SectionCard>
@@ -2549,7 +2473,11 @@ function PlanDetailsView(props: {
                     }
                     const fn = (typeof closeDrawer === "function" && closeDrawer) || __bhq_findDetailsDrawerOnClose();
                     if (typeof fn === "function") {
-                      try { fn(); } catch (err) { console.error("[Breeding] close fn threw", err); }
+                      try {
+                        fn();
+                      } catch (err) {
+                        console.error("[Breeding] close fn threw", err);
+                      }
                     }
                   }}
                 >
@@ -2560,7 +2488,7 @@ function PlanDetailsView(props: {
           </div>
         )}
 
-        {/* ───────── NEW DATES TAB ───────── */}
+        {/* DATES TAB */}
         {activeTab === "dates" && (
           <div className="space-y-4 mt-2">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -2580,13 +2508,10 @@ function PlanDetailsView(props: {
                     <div className="text-xs text-secondary mb-1">WHELPING DATE (EXPECTED)</div>
                     <Input value={fmt(expectedBirth)} readOnly className="h-8 py-0 px-2 text-sm bg-transparent border-hairline" />
                   </div>
-
-                  {/* NEW */}
                   <div>
                     <div className="text-xs text-secondary mb-1">WEANED DATE (EXPECTED)</div>
                     <Input value={fmt(expectedWeaned)} readOnly className="h-8 py-0 px-2 text-sm bg-transparent border-hairline" />
                   </div>
-
                   <div>
                     <div className="text-xs text-secondary mb-1">HOMING STARTS (EXPECTED)</div>
                     <Input value={fmt(expectedGoHome)} readOnly className="h-8 py-0 px-2 text-sm bg-transparent border-hairline" />
@@ -2670,7 +2595,12 @@ function PlanDetailsView(props: {
                         disabled={!canEditDates}
                         onClick={() => {
                           if (!canEditDates) return;
-                          if (!window.confirm("Reset ALL actual date fields (Breeding, Whelped, Weaned, Homing Started, Completed)?")) return;
+                          if (
+                            !window.confirm(
+                              "Reset ALL actual date fields (Breeding, Whelped, Weaned, Homing Started, Completed)?"
+                            )
+                          )
+                            return;
                           setDraftLive({
                             breedDateActual: null,
                             birthDateActual: null,
@@ -2700,7 +2630,11 @@ function PlanDetailsView(props: {
                     }
                     const fn = (typeof closeDrawer === "function" && closeDrawer) || __bhq_findDetailsDrawerOnClose();
                     if (typeof fn === "function") {
-                      try { fn(); } catch (err) { console.error("[Breeding] close fn threw", err); }
+                      try {
+                        fn();
+                      } catch (err) {
+                        console.error("[Breeding] close fn threw", err);
+                      }
                     }
                   }}
                 >
@@ -2741,7 +2675,11 @@ function PlanDetailsView(props: {
                     }
                     const fn = (typeof closeDrawer === "function" && closeDrawer) || __bhq_findDetailsDrawerOnClose();
                     if (typeof fn === "function") {
-                      try { fn(); } catch (err) { console.error("[Breeding] close fn threw", err); }
+                      try {
+                        fn();
+                      } catch (err) {
+                        console.error("[Breeding] close fn threw", err);
+                      }
                     }
                   }}
                 >
@@ -2778,7 +2716,11 @@ function PlanDetailsView(props: {
                     }
                     const fn = (typeof closeDrawer === "function" && closeDrawer) || __bhq_findDetailsDrawerOnClose();
                     if (typeof fn === "function") {
-                      try { fn(); } catch (err) { console.error("[Breeding] close fn threw", err); }
+                      try {
+                        fn();
+                      } catch (err) {
+                        console.error("[Breeding] close fn threw", err);
+                      }
                     }
                   }}
                 >

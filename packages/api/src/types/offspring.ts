@@ -4,7 +4,7 @@ export type OffspringGroupDTO = {
   species: "dog"|"cat"|"horse";
   breed?: string | null;
   litter_name?: string | null;
-  whelped_at?: string | null;
+  birthed_at?: string | null; // aligns with Litter.birthedStartAt/birthedEndAt semantics
   invoices?: Array<{ id:string; contact_id:string; assigned_at:string; status:"paid"|"unpaid"|"partial"|"refunded" }>;
 };
 

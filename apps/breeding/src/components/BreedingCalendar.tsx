@@ -125,7 +125,7 @@ export default function BreedingCalendar({
 
   const groups = React.useMemo(() => [planGroup, overlayGroup], [planGroup, overlayGroup]);
 
-  // Calendar events: expected and actual points for every plan + optional availability overlay
+  // Calendar events: expected and actual points for every plan plus optional availability overlay
   const events = React.useMemo(() => {
     return plans.flatMap((p, idx) => {
       const species: MathSpecies =
@@ -170,7 +170,7 @@ export default function BreedingCalendar({
 
       const bands = computeAvailabilityBands(math.stages);
       const overlay = bands.map((b, i) => {
-        const kind = b.kind; // already "risky" | "unlikely"
+        const kind = b.kind; // "risky" | "unlikely"
         return {
           id: `plan:${planId}:avail:${kind}:${i}`,
           title: b.label,

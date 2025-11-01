@@ -27,14 +27,24 @@ export type Plan = {
   species: Species;
   damId?: number | null;
   sireId?: number | null;
+
+  // unchanged key for cycle lock
   lockedCycleStart?: string | null;
+
+  // computed
   expected?: ExpectedDates | null;
-  // Actuals
+
+  // Actuals (renamed per spec)
   breeding_actual?: string | null;
   whelped_actual?: string | null;
   weaned_actual?: string | null;
-  homing_started_actual?: string | null;
-  completed_actual?: string | null;
+
+  /** placementStartDateActual replaces homing_started_actual */
+  placementStartDateActual?: string | null;
+
+  /** placementCompletedDateActual replaces completed_actual / actualHomingExtendedEnds */
+  placementCompletedDateActual?: string | null;
+
   // Deposits (snapshot)
   deposits_count?: number;
   deposits_committed?: number;
@@ -44,10 +54,10 @@ export type Plan = {
 function canComplete(p: Plan): boolean {
   return Boolean(
     p.breeding_actual &&
-    p.whelped_actual &&
-    p.weaned_actual &&
-    p.homing_started_actual &&
-    p.completed_actual
+      p.whelped_actual &&
+      p.weaned_actual &&
+      p.placementStartDateActual &&
+      p.placementCompletedDateActual
   );
 }
 
@@ -85,6 +95,17 @@ export function PlanDrawer(props: {
   function save() { props.onSave(plan); }
 
   const completeDisabled = !canComplete(plan);
+
+  // Helper to read expected placement dates with legacy fallback
+  const placementStartExpected =
+    plan.expected?.placement_start_expected ??
+    plan.expected?.gohome_expected ?? // legacy alias
+    "";
+
+  const placementCompletedExpected =
+    plan.expected?.placement_completed_expected ??
+    plan.expected?.gohome_extended_end_expected ?? // legacy alias
+    "";
 
   const content = (
     <div className="fixed inset-0 z-[1000] bg-black/30 backdrop-blur-sm">
@@ -171,8 +192,9 @@ export function PlanDrawer(props: {
                     breeding: plan.breeding_actual ?? null,
                     whelped: plan.whelped_actual ?? null,
                     weaned: plan.weaned_actual ?? null,
-                    homingStarted: plan.homing_started_actual ?? null,
-                    completed: plan.completed_actual ?? null,
+                    // map new placement actuals into calendar’s existing prop names
+                    homingStarted: plan.placementStartDateActual ?? null,
+                    completed: plan.placementCompletedDateActual ?? null,
                   }}
                 />
               ) : (
@@ -186,19 +208,18 @@ export function PlanDrawer(props: {
               <div className="grid grid-cols-3 gap-4">
                 <Input label="Breeding (Expected)" value={plan.expected?.breed_expected ?? ""} readOnly />
                 <Input label="Birth (Expected)" value={plan.expected?.birth_expected ?? ""} readOnly />
-                <Input label="Go Home (Expected)" value={plan.expected?.gohome_expected ?? ""} readOnly />
+                <Input label="Placement (Expected)" value={placementStartExpected} readOnly />
+                <Input label="Placement (Extended) (Expected)" value={placementCompletedExpected} readOnly />
               </div>
             </SectionCard>
 
             <SectionCard title="Actual Dates (user)">
               <div className="grid grid-cols-3 gap-4">
-                {[
+                {([
                   ["Breeding", "breeding_actual"],
                   ["Whelped", "whelped_actual"],
                   ["Weaned", "weaned_actual"],
-                  ["Homing Started", "homing_started_actual"],
-                  ["Homing Completed", "completed_actual"],
-                ].map(([label, key]) => (
+                ] as const).map(([label, key]) => (
                   <Input
                     key={key}
                     type="date"
@@ -208,6 +229,21 @@ export function PlanDrawer(props: {
                     onChange={e => setPlan(p => ({ ...p, [key]: e.currentTarget.value } as any))}
                   />
                 ))}
+
+                <Input
+                  type="date"
+                  label="Placement Started"
+                  value={plan.placementStartDateActual ?? ""}
+                  disabled={!plan.lockedCycleStart || !plan.damId || !plan.sireId}
+                  onChange={e => setPlan(p => ({ ...p, placementStartDateActual: e.currentTarget.value }))}
+                />
+                <Input
+                  type="date"
+                  label="Placement Completed"
+                  value={plan.placementCompletedDateActual ?? ""}
+                  disabled={!plan.lockedCycleStart || !plan.damId || !plan.sireId}
+                  onChange={e => setPlan(p => ({ ...p, placementCompletedDateActual: e.currentTarget.value }))}
+                />
               </div>
             </SectionCard>
 
@@ -219,8 +255,8 @@ export function PlanDrawer(props: {
                     breeding: plan.breeding_actual ?? null,
                     whelped: plan.whelped_actual ?? null,
                     weaned: plan.weaned_actual ?? null,
-                    homingStarted: plan.homing_started_actual ?? null,
-                    completed: plan.completed_actual ?? null,
+                    homingStarted: plan.placementStartDateActual ?? null,
+                    completed: plan.placementCompletedDateActual ?? null,
                   }}
                 />
               ) : (

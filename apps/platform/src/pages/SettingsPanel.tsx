@@ -40,14 +40,16 @@ function getAuthHeaders(): Record<string, string> {
     (Number.isFinite(fromGlobal) && fromGlobal > 0
       ? fromGlobal
       : Number.isFinite(fromLS) && fromLS > 0
-      ? fromLS
-      : readTenantFromCookie());
+        ? fromLS
+        : readTenantFromCookie());
 
   const headers: Record<string, string> = {};
-  if (Number.isFinite(tenantId) && tenantId > 0) {
-    headers["X-Tenant-Id"] = String(tenantId);
-    headers["X-Org-Id"] = String(tenantId);
-  }
+if (Number.isFinite(tenantId) && tenantId > 0) {
+  headers["X-Tenant-Id"] = String(tenantId);
+  headers["x-tenant-id"] = String(tenantId);
+  headers["X-Org-Id"] = String(tenantId);
+  headers["x-org-id"] = String(tenantId);
+}
   return headers;
 }
 
@@ -1020,7 +1022,7 @@ function SecurityTab({ onDirty }: { dirty: boolean; onDirty: (v: boolean) => voi
         throw new Error(j?.message || "Password change failed");
       }
       setNotice("Password changed. You will be logged out to reauthenticate…");
-      await fetch("/api/v1/auth/logout", { method: "POST", credentials: "include" }).catch(() => {});
+      await fetch("/api/v1/auth/logout", { method: "POST", credentials: "include" }).catch(() => { });
       window.location.assign("/login");
     } catch (e: any) {
       setError(e?.message || "Password change failed");
@@ -1257,7 +1259,7 @@ const BreedingTab = React.forwardRef<BreedingHandle, { dirty: boolean; onDirty: 
           setError("");
           const tenantId = getTenantIdFromAnywhere();
           if (!Number.isFinite(tenantId) || tenantId <= 0) throw new Error("Missing tenant id");
-          const res = await fetchJson(`/api/v1/tenants/${tenantId}/availability-prefs`);
+          const res = await fetchJson(`/api/v1/tenants/${tenantId}/availability`);
           const data = (res?.data ?? res) as Partial<AvailabilityPrefs> | undefined;
           const merged: AvailabilityPrefs = { ...DEFAULTS, ...(data || {}) };
           if (!ignore) {
@@ -1293,8 +1295,8 @@ const BreedingTab = React.forwardRef<BreedingHandle, { dirty: boolean; onDirty: 
           Object.entries(form).filter(([k, v]) => (initial as any)[k] !== v)
         );
         if (Object.keys(changed).length > 0) {
-          const res = await fetchJson(`/api/v1/tenants/${tenantId}/availability-prefs`, {
-            method: "PUT",
+          const res = await fetchJson(`/api/v1/tenants/${tenantId}/availability`, {
+            method: "PATCH",
             body: JSON.stringify(changed),
           });
           const saved = (res?.data ?? res) as AvailabilityPrefs;
@@ -1403,7 +1405,7 @@ const BreedingTab = React.forwardRef<BreedingHandle, { dirty: boolean; onDirty: 
                 )}
                 {numField(
                   "post_risky_from_full_start",
-                  "Risky: from Whelping FULL start (days)"
+                  "Risky: from Birth FULL start (days)"
                 )}
                 {numField(
                   "post_risky_to_full_end",
