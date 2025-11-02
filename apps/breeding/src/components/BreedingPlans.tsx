@@ -1,26 +1,23 @@
-// apps/breeding/src/components/BreedingPlans.tsx
 import * as React from "react";
 import BHQGantt from "@bhq/ui/components/Gantt";
-import type { Range, StageWindows, TravelBand } from "@bhq/ui/utils";
+import type { Range, StageWindows } from "@bhq/ui/utils";
 import { Card } from "@bhq/ui";
 
 type ID = number | string;
 
+type SpeciesUi = "Dog" | "Cat" | "Horse" | "";
+
 type PlanRow = {
   id: ID;
   name: string;
-  species: "Dog" | "Cat" | "Horse" | "";
+  species: SpeciesUi | "";
   lockedCycleStart?: string | null;
 
-  // Expected (new canonical)
-  expectedDue?: string | null;
+  // Canonical expected keys
+  expectedBirthDate?: string | null;          // canonical for due/birth
   expectedPlacementStart?: string | null;
   expectedWeaned?: string | null;
   expectedPlacementCompleted?: string | null;
-
-  // Legacy aliases tolerated during migration
-  expectedGoHome?: string | null;
-  expectedGoHomeExtendedEnd?: string | null;
 };
 
 export default function BreedingPlans(props: {
@@ -30,30 +27,31 @@ export default function BreedingPlans(props: {
 }) {
   const { plans, onOpenPlan } = props;
 
-  // Stage row config and order (keys unchanged; labels updated)
+  // Stage row config and order
   const stages = [
-    { key: "preBreeding",    label: "Pre-breeding Heat",  baseColor: "var(--cyan-400,#22d3ee)",  hatchLikely: true },
-    { key: "hormoneTesting", label: "Hormone Testing",    baseColor: "var(--amber-400,#fbbf24)", hatchLikely: true },
-    { key: "breeding",       label: "Breeding",           baseColor: "var(--green-400,#34d399)", hatchLikely: false },
-    { key: "whelping",       label: "Whelping",           baseColor: "var(--rose-400,#fb7185)",  hatchLikely: false },
-    { key: "puppyCare",      label: "Puppy Care",         baseColor: "var(--violet-400,#a78bfa)",hatchLikely: true },
-    { key: "goHomeNormal",   label: "Placement",          baseColor: "var(--zinc-400,#a1a1aa)",  hatchLikely: false },
-    { key: "goHomeExtended", label: "Placement (Extended)", baseColor: "var(--zinc-500,#71717a)", hatchLikely: false },
+    { key: "preBreeding",          label: "Pre-breeding Heat",  baseColor: "var(--cyan-400,#22d3ee)",  hatchLikely: true },
+    { key: "hormoneTesting",       label: "Hormone Testing",    baseColor: "var(--amber-400,#fbbf24)", hatchLikely: true },
+    { key: "breeding",             label: "Breeding",           baseColor: "var(--green-400,#34d399)", hatchLikely: false },
+    { key: "birth",                label: "Birth",              baseColor: "var(--rose-400,#fb7185)",  hatchLikely: false },
+    { key: "puppyCare",            label: "Puppy Care",         baseColor: "var(--violet-400,#a78bfa)",hatchLikely: true },
+    { key: "placement",            label: "Placement",          baseColor: "var(--zinc-400,#a1a1aa)",  hatchLikely: false },
+    { key: "placementExtended",    label: "Placement (Extended)", baseColor: "var(--zinc-500,#71717a)", hatchLikely: false },
   ] as const;
 
   // Build a sensible horizon around all visible plans
   const horizon: Range = React.useMemo(() => {
     const dates: number[] = [];
     for (const p of plans) {
-      // support both new and legacy expected fields
-      const placementStart = p.expectedPlacementStart ?? p.expectedGoHome ?? null;
-      const placementCompleted = p.expectedPlacementCompleted ?? p.expectedGoHomeExtendedEnd ?? null;
+      // Canonical with legacy fallback
+      const birthIso = p.expectedBirthDate ?? p.expectedDue ?? null;
+      const placementStart = p.expectedPlacementStart ?? null;
+      const placementCompleted = p.expectedPlacementCompleted ?? null;
 
       for (const iso of [
-        p.lockedCycleStart,
-        p.expectedDue,
+        p.lockedCycleStart ?? null,
+        birthIso,
         placementStart,
-        p.expectedWeaned,
+        p.expectedWeaned ?? null,
         placementCompleted,
       ]) {
         if (!iso) continue;
@@ -100,31 +98,33 @@ export default function BreedingPlans(props: {
           data.push({ key: key as any, full: { start: s, end: e } });
         };
 
-        const placementStart = p.expectedPlacementStart ?? p.expectedGoHome ?? null;
-        const placementCompleted = p.expectedPlacementCompleted ?? p.expectedGoHomeExtendedEnd ?? null;
+        // Canonical with legacy fallback for birth date
+        const birthIso = p.expectedBirthDate ?? p.expectedDue ?? null;
+        const placementStart = p.expectedPlacementStart ?? null;
+        const placementCompleted = p.expectedPlacementCompleted ?? null;
 
         // Derive minimal windows from expected fields when biology windows aren't provided
-        if (p.lockedCycleStart && p.expectedDue) {
-          const hs = new Date(p.lockedCycleStart);
-          const birth = new Date(p.expectedDue);
+        if (p.lockedCycleStart && birthIso) {
+          const heatStart = new Date(p.lockedCycleStart);
+          const birth = new Date(birthIso);
 
           // estimate ovulation ≈ birth - 63
           const ov = new Date(birth); ov.setDate(ov.getDate() - 63);
 
           // Hormone Testing: heat +7 → ovulation
-          const htStart = new Date(hs); htStart.setDate(htStart.getDate() + 7);
+          const htStart = new Date(heatStart); htStart.setDate(htStart.getDate() + 7);
           pushRange("hormoneTesting", htStart.toISOString(), ov.toISOString());
 
           // Pre-breeding: heat start → ovulation - 1
           const preEnd = new Date(ov); preEnd.setDate(preEnd.getDate() - 1);
-          pushRange("preBreeding", hs.toISOString(), preEnd.toISOString());
+          pushRange("preBreeding", heatStart.toISOString(), preEnd.toISOString());
 
           // Breeding: treat ovulation as a 1-day window
           data.push({ key: "breeding" as any, full: { start: ov, end: ov } });
 
-          // Whelping: dot at birth
+          // Birth: dot at birth
           const birthEnd = new Date(birth);
-          data.push({ key: "whelping" as any, full: { start: birth, end: birthEnd } });
+          data.push({ key: "birth" as any, full: { start: birth, end: birthEnd } });
 
           // Puppy Care: birth → birth + 8w
           const puppyStart = new Date(birth);
@@ -133,19 +133,17 @@ export default function BreedingPlans(props: {
         }
 
         if (placementStart) {
-          // Placement (Normal): show a ~10-day band starting at expected start
+          // Placement (Normal): 10-day band starting at expected start
           const nStart = new Date(placementStart);
           const nEnd = new Date(placementStart); nEnd.setDate(nEnd.getDate() + 10);
-          pushRange("goHomeNormal", nStart.toISOString(), nEnd.toISOString());
+          pushRange("placement", nStart.toISOString(), nEnd.toISOString());
         }
 
         if (placementCompleted && placementStart) {
           const exStart = new Date(placementStart);
           const exEnd = new Date(placementCompleted);
-          pushRange("goHomeExtended", exStart.toISOString(), exEnd.toISOString());
+          pushRange("placementExtended", exStart.toISOString(), exEnd.toISOString());
         }
-
-        const travel: TravelBand[] = []; // keep overlays off here; toggle via showTravel if needed
 
         return (
           <Card key={p.id} className="p-3">
@@ -164,7 +162,6 @@ export default function BreedingPlans(props: {
               title=""
               stages={stages as any}
               data={data}
-              travel={travel}
               horizon={horizon}
               today={today}
               heightPerRow={36}

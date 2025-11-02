@@ -36,13 +36,13 @@ export type Plan = {
 
   // Actuals (renamed per spec)
   breeding_actual?: string | null;
-  whelped_actual?: string | null;
+  birthDateActual?: string | null;
   weaned_actual?: string | null;
 
   /** placementStartDateActual replaces homing_started_actual */
   placementStartDateActual?: string | null;
 
-  /** placementCompletedDateActual replaces completed_actual / actualHomingExtendedEnds */
+  /** placementCompletedDateActual replaces completed_actual / placementCompletedDateActual */
   placementCompletedDateActual?: string | null;
 
   // Deposits (snapshot)
@@ -54,7 +54,7 @@ export type Plan = {
 function canComplete(p: Plan): boolean {
   return Boolean(
     p.breeding_actual &&
-      p.whelped_actual &&
+      p.birthDateActual &&
       p.weaned_actual &&
       p.placementStartDateActual &&
       p.placementCompletedDateActual
@@ -99,12 +99,12 @@ export function PlanDrawer(props: {
   // Helper to read expected placement dates with legacy fallback
   const placementStartExpected =
     plan.expected?.placement_start_expected ??
-    plan.expected?.gohome_expected ?? // legacy alias
+    plan.expected?.placement_expected ?? // legacy alias
     "";
 
   const placementCompletedExpected =
     plan.expected?.placement_completed_expected ??
-    plan.expected?.gohome_extended_end_expected ?? // legacy alias
+    plan.expected?.placement_extended_end_expected ?? // legacy alias
     "";
 
   const content = (
@@ -190,7 +190,7 @@ export function PlanDrawer(props: {
                   expected={plan.expected}
                   actual={{
                     breeding: plan.breeding_actual ?? null,
-                    whelped: plan.whelped_actual ?? null,
+                    birth: plan.birthDateActual ?? null,
                     weaned: plan.weaned_actual ?? null,
                     // map new placement actuals into calendar’s existing prop names
                     homingStarted: plan.placementStartDateActual ?? null,
@@ -217,7 +217,7 @@ export function PlanDrawer(props: {
               <div className="grid grid-cols-3 gap-4">
                 {([
                   ["Breeding", "breeding_actual"],
-                  ["Whelped", "whelped_actual"],
+                  ["Birth", "birthDateActual"],
                   ["Weaned", "weaned_actual"],
                 ] as const).map(([label, key]) => (
                   <Input
@@ -253,7 +253,7 @@ export function PlanDrawer(props: {
                   expected={plan.expected}
                   actual={{
                     breeding: plan.breeding_actual ?? null,
-                    whelped: plan.whelped_actual ?? null,
+                    birth: plan.birthDateActual ?? null,
                     weaned: plan.weaned_actual ?? null,
                     homingStarted: plan.placementStartDateActual ?? null,
                     completed: plan.placementCompletedDateActual ?? null,

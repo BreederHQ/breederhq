@@ -94,13 +94,13 @@ function normalizePlanDates(body: any) {
   const b: any = { ...body };
 
   // expected → placement
-  if (b.expectedGoHome !== undefined && b.expectedPlacementStart === undefined) {
-    b.expectedPlacementStart = b.expectedGoHome;
-    delete b.expectedGoHome;
+  if (b.expectedPlacementStart !== undefined && b.expectedPlacementStart === undefined) {
+    b.expectedPlacementStart = b.expectedPlacementStart;
+    delete b.expectedPlacementStart;
   }
-  if (b.expectedGoHomeExtendedEnd !== undefined && b.expectedPlacementCompleted === undefined) {
-    b.expectedPlacementCompleted = b.expectedGoHomeExtendedEnd;
-    delete b.expectedGoHomeExtendedEnd;
+  if (b.expectedPlacementCompleted !== undefined && b.expectedPlacementCompleted === undefined) {
+    b.expectedPlacementCompleted = b.expectedPlacementCompleted;
+    delete b.expectedPlacementCompleted;
   }
 
   // legacy expectedDue → expectedBirthDate
@@ -110,9 +110,9 @@ function normalizePlanDates(body: any) {
   }
 
   // locked → placement
-  if (b.lockedGoHomeDate !== undefined && b.lockedPlacementStartDate === undefined) {
-    b.lockedPlacementStartDate = b.lockedGoHomeDate;
-    delete b.lockedGoHomeDate;
+  if (b.lockedPlacementStartDate !== undefined && b.lockedPlacementStartDate === undefined) {
+    b.lockedPlacementStartDate = b.lockedPlacementStartDate;
+    delete b.lockedPlacementStartDate;
   }
 
   // actuals → placement
@@ -120,31 +120,31 @@ function normalizePlanDates(body: any) {
     b.placementStartDateActual = b.actualGoHomeDate;
     delete b.actualGoHomeDate;
   }
-  if (b.actualHomingStartedDate !== undefined && b.placementStartDateActual === undefined) {
-    b.placementStartDateActual = b.actualHomingStartedDate;
-    delete b.actualHomingStartedDate;
+  if (b.placementStartDateActual !== undefined && b.placementStartDateActual === undefined) {
+    b.placementStartDateActual = b.placementStartDateActual;
+    delete b.placementStartDateActual;
   }
-  if (b.actualHomingExtendedEnds !== undefined && b.placementCompletedDateActual === undefined) {
-    b.placementCompletedDateActual = b.actualHomingExtendedEnds;
-    delete b.actualHomingExtendedEnds;
+  if (b.placementCompletedDateActual !== undefined && b.placementCompletedDateActual === undefined) {
+    b.placementCompletedDateActual = b.placementCompletedDateActual;
+    delete b.placementCompletedDateActual;
   }
-  if (b.goHomeDateActual !== undefined && b.placementStartDateActual === undefined) {
-    b.placementStartDateActual = b.goHomeDateActual;
-    delete b.goHomeDateActual;
+  if (b.placementStartDateActual !== undefined && b.placementStartDateActual === undefined) {
+    b.placementStartDateActual = b.placementStartDateActual;
+    delete b.placementStartDateActual;
   }
-  if (b.lastGoHomeDateActual !== undefined && b.placementCompletedDateActual === undefined) {
-    b.placementCompletedDateActual = b.lastGoHomeDateActual;
-    delete b.lastGoHomeDateActual;
+  if (b.placementCompletedDateActual !== undefined && b.placementCompletedDateActual === undefined) {
+    b.placementCompletedDateActual = b.placementCompletedDateActual;
+    delete b.placementCompletedDateActual;
   }
 
   // very old aliases to keep callers safe
-  if (b.whelpDateActual !== undefined && b.birthDateActual === undefined) {
-    b.birthDateActual = b.whelpDateActual;
-    delete b.whelpDateActual;
+  if (b.birthDateActual !== undefined && b.birthDateActual === undefined) {
+    b.birthDateActual = b.birthDateActual;
+    delete b.birthDateActual;
   }
-  if (b.expectedWhelpDate !== undefined && b.expectedBirthDate === undefined) {
-    b.expectedBirthDate = b.expectedWhelpDate;
-    delete b.expectedWhelpDate;
+  if (b.expectedBirthDate !== undefined && b.expectedBirthDate === undefined) {
+    b.expectedBirthDate = b.expectedBirthDate;
+    delete b.expectedBirthDate;
   }
 
   return b;

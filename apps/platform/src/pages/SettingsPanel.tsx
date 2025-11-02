@@ -5,101 +5,76 @@ import { getOverlayRoot } from "@bhq/ui/overlay";
 import { useUiScale } from "@bhq/ui/settings/UiScaleProvider";
 import type { AvailabilityPrefs } from "@bhq/ui/utils/availability";
 import { DEFAULT_AVAILABILITY_PREFS } from "@bhq/ui/utils/availability";
+import { resolveTenantId } from "@bhq/ui/utils/tenant";
+import { SectionCard } from "@bhq/ui";
+import type { BreedingProgramProfile } from "@bhq/ui/utils/breedingProgram";
 
-function getAuthHeaders(): Record<string, string> {
-  const w = window as any;
-
-  const fromGlobal = Number(w.__BHQ_TENANT_ID__);
-
-  const fromLS = (() => {
-    try {
-      const s = localStorage.getItem("BHQ_TENANT_ID");
-      return s ? Number(s) : NaN;
-    } catch {
-      return NaN;
-    }
-  })();
-
-  function readTenantFromCookie(): number {
-    try {
-      const raw = document.cookie
-        .split("; ")
-        .find((s) => s.startsWith("bhq_s="))
-        ?.split("=")[1] || "";
-      if (!raw) return NaN;
-      const json = atob(raw.replace(/-/g, "+").replace(/_/g, "/"));
-      const obj = JSON.parse(json);
-      const t = Number(obj?.tenantId || obj?.orgId);
-      return Number.isFinite(t) && t > 0 ? t : NaN;
-    } catch {
-      return NaN;
-    }
-  }
-
-  const tenantId =
-    (Number.isFinite(fromGlobal) && fromGlobal > 0
-      ? fromGlobal
-      : Number.isFinite(fromLS) && fromLS > 0
-        ? fromLS
-        : readTenantFromCookie());
-
-  const headers: Record<string, string> = {};
-if (Number.isFinite(tenantId) && tenantId > 0) {
-  headers["X-Tenant-Id"] = String(tenantId);
-  headers["x-tenant-id"] = String(tenantId);
-  headers["X-Org-Id"] = String(tenantId);
-  headers["x-org-id"] = String(tenantId);
+/** ───────── Robust tenant resolution + headers (cached) ───────── */
+let TENANT_ID_CACHE: string | null = null;
+function readCookie(name: string): string | null {
+  const m = document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]*)`));
+  return m ? decodeURIComponent(m[1]) : null;
 }
-  return headers;
+function readMeta(name: string): string | null {
+  const el = document.querySelector(`meta[name="${name}"]`) as HTMLMetaElement | null;
+  return el?.content?.trim() || null;
 }
-
-function getTenantIdFromAnywhere(): number {
-  const w = window as any;
-
-  const fromGlobal = Number(w.__BHQ_TENANT_ID__);
-  if (Number.isFinite(fromGlobal) && fromGlobal > 0) return fromGlobal;
-
+async function resolveTenantIdSafe(): Promise<string | null> {
+  if (TENANT_ID_CACHE) return TENANT_ID_CACHE;
   try {
-    const s = localStorage.getItem("BHQ_TENANT_ID");
-    const n = s ? Number(s) : NaN;
-    if (Number.isFinite(n) && n > 0) return n;
-  } catch {
-    /* ignore */
-  }
-
+    const t = await resolveTenantId();
+    const s = (t == null ? "" : String(t)).trim();
+    if (s) return (TENANT_ID_CACHE = s);
+  } catch { }
+  const g = (globalThis as any) || {};
+  const hinted = g.BHQ_TENANT_ID ?? g.__BHQ_TENANT_ID ?? (window as any).__TENANT_ID ?? null;
+  if (hinted) return (TENANT_ID_CACHE = String(hinted).trim());
   try {
-    const raw = document.cookie
-      .split("; ")
-      .find((s) => s.startsWith("bhq_s="))
-      ?.split("=")[1] || "";
-    if (raw) {
-      const json = atob(raw.replace(/-/g, "+").replace(/_/g, "/"));
-      const obj = JSON.parse(json);
-      const t = Number(obj?.tenantId || obj?.orgId);
-      if (Number.isFinite(t) && t > 0) return t;
+    const ls =
+      localStorage.getItem("BHQ_TENANT_ID") ||
+      localStorage.getItem("X_TENANT_ID") ||
+      localStorage.getItem("x-tenant-id") || "";
+    if (ls.trim()) return (TENANT_ID_CACHE = ls.trim());
+  } catch { }
+  const cookieTenant = readCookie("X-Tenant-Id") || readCookie("x-tenant-id");
+  if (cookieTenant?.trim()) return (TENANT_ID_CACHE = cookieTenant.trim());
+  const metaTenant = readMeta("x-tenant-id") || readMeta("X-Tenant-Id");
+  if (metaTenant?.trim()) return (TENANT_ID_CACHE = metaTenant.trim());
+  try {
+    const res = await fetch("/api/v1/session", { credentials: "include", headers: { Accept: "application/json" } });
+    if (res.ok) {
+      const j = await res.json().catch(() => ({}));
+      const t =
+        j?.tenant?.id ?? j?.org?.id ?? j?.organization?.id ??
+        j?.user?.tenantId ?? j?.user?.orgId ?? j?.user?.organizationId ?? null;
+      if (t) return (TENANT_ID_CACHE = String(t));
     }
-  } catch {
-    /* ignore */
-  }
+  } catch { }
+  return null;
+}
+/** ───────── Tenant headers: send a single canonical header each ───────── */
+const TENANT_HEADER = "x-tenant-id";
+const ORG_HEADER = "x-org-id";
 
-  return NaN;
+async function tenantHeaders(): Promise<Record<string, string>> {
+  const id = await resolveTenantIdSafe();
+  if (!id) return {};
+  const clean = String(id).split(",")[0].trim();
+  return { [TENANT_HEADER]: clean, [ORG_HEADER]: clean };
 }
 
 async function fetchJson(url: string, init: RequestInit = {}) {
   const method = (init.method || "GET").toUpperCase();
   const hasBody = init.body != null && !(method === "GET" || method === "HEAD");
-
-  const headers: Record<string, string> = {
-    Accept: "application/json",
-    ...getAuthHeaders(),
-    ...(hasBody ? { "Content-Type": "application/json" } : {}),
-    ...(init.headers as Record<string, string> | undefined),
-  };
-
   const res = await fetch(url, {
     credentials: "include",
     ...init,
-    headers,
+    headers: {
+      Accept: "application/json",
+      ...(hasBody ? { "Content-Type": "application/json" } : {}),
+      ...(await tenantHeaders()),
+      ...(init.headers as Record<string, string> | undefined),
+    },
   });
 
   const text = await res.text().catch(() => "");
@@ -512,6 +487,7 @@ export default function SettingsPanel({ open, dirty, onDirtyChange, onClose }: P
                             markDirty("breeding", false);
                           } else {
                             await saveActive(active, markDirty);
+                            markDirty(active, false);
                           }
                         }}
                         disabled={!dirtyMap[active]}
@@ -667,7 +643,7 @@ const ProfileTab = React.forwardRef<ProfileHandle, {
   async function getSessionUserId(): Promise<{ id: string; email: string }> {
     const res = await fetch("/api/v1/session", {
       credentials: "include",
-      headers: getAuthHeaders(),
+      headers: { Accept: "application/json" },
     });
     if (res.status === 401) {
       window.location.assign("/login");
@@ -678,6 +654,12 @@ const ProfileTab = React.forwardRef<ProfileHandle, {
     const id = String(j?.user?.id || "");
     const email = String(j?.user?.email || "");
     if (!id) throw new Error("Missing user id in session");
+    try {
+      const t =
+        j?.tenant?.id ?? j?.org?.id ?? j?.organization?.id ??
+        j?.user?.tenantId ?? j?.user?.orgId ?? j?.user?.organizationId ?? null;
+      if (t) (TENANT_ID_CACHE = String(t));
+    } catch { }
     return { id, email };
   }
 
@@ -763,7 +745,7 @@ const ProfileTab = React.forwardRef<ProfileHandle, {
       const res = await fetch(`/api/v1/users/${encodeURIComponent(id)}`, {
         method: "PATCH",
         credentials: "include",
-        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+        headers: { "Content-Type": "application/json", ...(await tenantHeaders()) },
         body: JSON.stringify(changed),
       });
 
@@ -824,7 +806,7 @@ const ProfileTab = React.forwardRef<ProfileHandle, {
                   />
                 </div>
                 <p className="text-[11px] text-tertiary">
-                  Changing your email will require re-auth and will sign you out after saving.
+                  Changing your email will require re auth and will sign you out after saving.
                 </p>
               </label>
             </div>
@@ -916,7 +898,10 @@ const ProfileTab = React.forwardRef<ProfileHandle, {
 
 /** ───────── Password verification via login endpoint ───────── */
 async function getSessionEmail(): Promise<string> {
-  const res = await fetch("/api/v1/session", { credentials: "include" });
+  const res = await fetch("/api/v1/session", {
+    credentials: "include",
+    headers: { Accept: "application/json" },
+  });
   if (!res.ok) throw new Error("Unable to load session.");
   const j = await res.json().catch(() => ({}));
   const email = (j?.user?.email ?? "").toString();
@@ -928,7 +913,7 @@ async function verifyViaLogin(email: string, pw: string): Promise<{ ok: boolean;
   const res = await fetch("/api/v1/auth/login", {
     method: "POST",
     credentials: "include",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...(await tenantHeaders()) },
     body: JSON.stringify({ email, password: pw }),
   });
 
@@ -1013,7 +998,7 @@ function SecurityTab({ onDirty }: { dirty: boolean; onDirty: (v: boolean) => voi
       }
       const res = await fetch("/api/v1/auth/password", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...(await tenantHeaders()) },
         credentials: "include",
         body: JSON.stringify({ currentPassword: currentPw, newPassword: newPw }),
       });
@@ -1190,7 +1175,7 @@ function SecurityTab({ onDirty }: { dirty: boolean; onDirty: (v: boolean) => voi
       </Card>
 
       <Card className="p-4 space-y-3">
-        <h4 className="font-medium">Two-factor authentication</h4>
+        <h4 className="font-medium">Two factor authentication</h4>
         <p className="text-sm text-secondary">Enable, verify, disable TOTP and manage recovery codes.</p>
         <div className="flex gap-2">
           <Button size="sm">Enable TOTP</Button>
@@ -1214,8 +1199,18 @@ function SubscriptionTab({ onDirty }: { dirty: boolean; onDirty: (v: boolean) =>
   );
 }
 
-/** ───────── Breeding Settings: Availability prefs + Local overrides ───────── */
+/* ───────── Breeding Settings: Availability prefs + Local overrides ───────── */
 type BreedingHandle = { save: () => Promise<void> };
+
+type BreedingSubTab = "general" | "phases" | "dates" | "overrides" | "program";
+
+const BREEDING_SUBTABS: Array<{ key: BreedingSubTab; label: string }> = [
+  { key: "general", label: "General" },
+  { key: "phases", label: "Timeline Phases" },
+  { key: "dates", label: "Exact Dates" },
+  { key: "overrides", label: "Global Overrides" },
+  { key: "program", label: "Program Profile" },
+];
 
 const BreedingTab = React.forwardRef<BreedingHandle, { dirty: boolean; onDirty: (v: boolean) => void }>(
   function BreedingTabImpl({ onDirty }, ref) {
@@ -1234,20 +1229,65 @@ const BreedingTab = React.forwardRef<BreedingHandle, { dirty: boolean; onDirty: 
       return Number.isFinite(n) && n > 0 ? n : 18;
     });
 
+    const [activeSub, setActiveSub] = React.useState<BreedingSubTab>("general");
+
     const [loading, setLoading] = React.useState(true);
     const [error, setError] = React.useState<string>("");
 
+    // Server-backed: availability prefs
     const [initial, setInitial] = React.useState<AvailabilityPrefs>(DEFAULTS);
     const [form, setForm] = React.useState<AvailabilityPrefs>(DEFAULTS);
 
+    // Server-backed: program profile
+    const EMPTY_PROFILE: BreedingProgramProfile & {
+      // safe extension so TS is happy even if the upstream type has not been updated yet
+      cyclePolicy?: (BreedingProgramProfile["cyclePolicy"] & { retireRule?: "age_only" | "litters_only" | "either" });
+      publication?: { publishInDirectory: boolean; summary?: string | null };
+    } = {
+      kennelName: "",
+      registryPrefixes: [],
+      website: null,
+      socials: [],
+      species: ["DOG"],
+      sellRegions: [],
+      shippingAllowed: false,
+      travelPolicy: "case_by_case",
+      cyclePolicy: {
+        minDamAgeMonths: 18,
+        minDamWeightLbs: null,
+        minHeatsBetween: 1,
+        maxLittersLifetime: 4,
+        retireAfterAgeMonths: null,
+        retireRule: "either",
+        lockApproverRole: "manager",
+      },
+      methods: { allowed: ["natural", "ai_fresh", "ai_chilled"], preferredBySpecies: {}, externalStudDocsRequired: ["brucellosis"] },
+      hormoneTesting: { progesteroneInHouse: true, progesteroneLab: true, lhTesting: false, ovulationNgMlTarget: 5, decisionOwnerRole: "manager" },
+      pregnancyChecks: { ultrasoundDayFromOvulation: 28, relaxinUsed: false, xrayDayFromOvulation: 55 },
+      whelping: { expectedDaysFromOvulation: 63, interveneIfNoPupHours: 2, emergencyVetName: null, emergencyVetPhone: null },
+      puppyCare: { dewclawPolicy: "breed_specific", tailPolicy: "breed_specific", dewormScheduleDays: [14, 28, 42], firstVaccineDay: 56, microchipAtWeeks: 8, registrationAuthority: null },
+      placement: { earliestDaysFromBirth: 56, standardDaysFromBirth: 63, extendedHoldPolicy: "offered_fee", contractTemplateId: null, healthGuaranteeMonths: 24, depositRequired: true, depositAmountUSD: 300, paymentMethods: ["ach", "zelle"], waitlistPolicy: "priority_order" },
+      healthTesting: { requiredByBreed: {}, acceptedLabs: ["Embark", "OFA"], recheckMonths: 24 },
+      docsAndData: { readyToBreedChecklist: ["dam_health_tests", "stud_clearances", "contract_ready"], marketingMediaPolicy: "buyers_only", showClientNames: false },
+      comms: { prospectDuringPregnancyCadenceDays: 7, postBirthUpdateCadenceDays: 7, channels: ["email"], sendAutoMilestones: true },
+
+      publication: { publishInDirectory: false, summary: null },
+
+      availabilityDefaults: { showGanttBands: true, showCalendarBands: true, horizonMonths: 18 },
+    };
+
+    const [profileInit, setProfileInit] = React.useState<BreedingProgramProfile>(EMPTY_PROFILE);
+    const [profile, setProfile] = React.useState<BreedingProgramProfile>(EMPTY_PROFILE);
+
     const isDirty = React.useMemo(() => {
-      const serverDirty = JSON.stringify(form) !== JSON.stringify(initial);
+      const serverDirty = JSON.stringify(form) !== JSON.stringify(initial)
+        || JSON.stringify(profile) !== JSON.stringify(profileInit);
       const localDirty =
         showGanttBands !== (localStorage.getItem("BHQ_BREEDING_SHOW_GANTT_BANDS") !== "0") ||
         showCalendarBands !== (localStorage.getItem("BHQ_BREEDING_SHOW_CAL_BANDS") !== "0") ||
         ganttHorizonMonths !== (Number(localStorage.getItem("BHQ_BREEDING_HORIZON_MONTHS") || "18") || 18);
       return serverDirty || localDirty;
-    }, [form, initial, showGanttBands, showCalendarBands, ganttHorizonMonths]);
+    }, [form, initial, profile, profileInit, showGanttBands, showCalendarBands, ganttHorizonMonths]);
 
     React.useEffect(() => onDirty(isDirty), [isDirty, onDirty]);
 
@@ -1257,51 +1297,125 @@ const BreedingTab = React.forwardRef<BreedingHandle, { dirty: boolean; onDirty: 
         try {
           setLoading(true);
           setError("");
-          const tenantId = getTenantIdFromAnywhere();
-          if (!Number.isFinite(tenantId) || tenantId <= 0) throw new Error("Missing tenant id");
-          const res = await fetchJson(`/api/v1/tenants/${tenantId}/availability`);
-          const data = (res?.data ?? res) as Partial<AvailabilityPrefs> | undefined;
-          const merged: AvailabilityPrefs = { ...DEFAULTS, ...(data || {}) };
+
+          const tenantRaw = await resolveTenantId();
+          const tenantId = String(tenantRaw ?? "").trim();
+          if (!tenantId) throw new Error("Missing tenant id");
+
+          // Load availability (same as before)
+          const av = await fetchJson(`/api/v1/tenants/${encodeURIComponent(tenantId)}/availability`);
+          const avData = (av?.data ?? av) as Partial<AvailabilityPrefs> | undefined;
+          const avMerged: AvailabilityPrefs = { ...DEFAULTS, ...(avData || {}) };
+
+          // Load program profile with 404 tolerance
+          const prUrl = `/api/v1/tenants/${encodeURIComponent(tenantId)}/breeding-program`;
+          let profMerged: BreedingProgramProfile;
+
+          try {
+            const prRes = await fetch(prUrl, {
+              method: "GET",
+              credentials: "include",
+              headers: { Accept: "application/json", ...(await tenantHeaders()) },
+            });
+
+            if (prRes.status === 404) {
+              // No profile created yet, use EMPTY_PROFILE
+              profMerged = { ...EMPTY_PROFILE };
+            } else if (!prRes.ok) {
+              const j = await prRes.json().catch(() => ({}));
+              throw new Error(j?.message || j?.error || `Program profile load failed (HTTP ${prRes.status})`);
+            } else {
+              const pr = await prRes.json().catch(() => ({}));
+              const prData = (pr?.data ?? pr) as Partial<BreedingProgramProfile> | undefined;
+              // Always ensure publication is a non-null object so checkbox never crashes
+              const safePublication = prData?.publication ?? { publishInDirectory: false, summary: null };
+              profMerged = { ...EMPTY_PROFILE, ...(prData || {}), publication: safePublication };
+            }
+          } catch (e: any) {
+            // If anything unexpected goes wrong, still keep the UI alive with EMPTY_PROFILE
+            profMerged = { ...EMPTY_PROFILE };
+          }
+
           if (!ignore) {
-            setInitial(merged);
-            setForm(merged);
+            setInitial(avMerged);
+            setForm(avMerged);
+            setProfileInit(profMerged);
+            setProfile(profMerged);
           }
         } catch (e: any) {
-          const msg = (e?.message || "").toString();
-          if (!ignore) {
-            if (/not found/i.test(msg)) {
-              setInitial(DEFAULTS);
-              setForm(DEFAULTS);
-              setError("");
-            } else {
-              setError(msg || "Failed to load breeding preferences");
-            }
-          }
+          if (!ignore) setError(e?.message || "Failed to load breeding settings");
         } finally {
           if (!ignore) setLoading(false);
         }
       })();
       return () => { ignore = true; };
+      // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     async function saveAll() {
       setError("");
       try {
-        const tenantId = getTenantIdFromAnywhere();
-        if (!Number.isFinite(tenantId) || tenantId <= 0) throw new Error("Missing tenant id");
+        const tenantRaw = await resolveTenantId();
+        const tenantId = String(tenantRaw ?? "").trim();
+        if (!tenantId) throw new Error("Missing tenant id");
 
-        // Save server prefs if changed
-        const changed = Object.fromEntries(
+        // Save availability if changed
+        const avChanged = Object.fromEntries(
           Object.entries(form).filter(([k, v]) => (initial as any)[k] !== v)
         );
-        if (Object.keys(changed).length > 0) {
-          const res = await fetchJson(`/api/v1/tenants/${tenantId}/availability`, {
+        if (Object.keys(avChanged).length > 0) {
+          const avRes = await fetchJson(`/api/v1/tenants/${encodeURIComponent(tenantId)}/availability`, {
             method: "PATCH",
-            body: JSON.stringify(changed),
+            body: JSON.stringify(avChanged),
           });
-          const saved = (res?.data ?? res) as AvailabilityPrefs;
-          setInitial(saved);
-          setForm(saved);
+          const avSaved = (avRes?.data ?? avRes) as AvailabilityPrefs;
+          setInitial(avSaved);
+          setForm(avSaved);
+        }
+
+        // Save program profile if changed (PATCH → if 404 then POST to create)
+        {
+          const profChanged = Object.fromEntries(
+            Object.entries(profile).filter(([k, v]) => JSON.stringify((profileInit as any)[k]) !== JSON.stringify(v))
+          );
+
+          if (Object.keys(profChanged).length > 0) {
+            // Always ensure publication is an object, never null
+            const safeBody = {
+              ...profile,
+              publication: profile.publication ?? { publishInDirectory: false, summary: null },
+            };
+
+            let prRes: any = null;
+            try {
+              prRes = await fetch(`/api/v1/tenants/${encodeURIComponent(tenantId)}/breeding-program`, {
+                method: "PATCH",
+                credentials: "include",
+                headers: { "Content-Type": "application/json", ...(await tenantHeaders()) },
+                body: JSON.stringify(safeBody),
+              });
+              if (prRes.status === 404) {
+                // create instead
+                prRes = await fetch(`/api/v1/tenants/${encodeURIComponent(tenantId)}/breeding-program`, {
+                  method: "POST",
+                  credentials: "include",
+                  headers: { "Content-Type": "application/json", ...(await tenantHeaders()) },
+                  body: JSON.stringify(safeBody),
+                });
+              }
+              if (!prRes.ok) {
+                const j = await prRes.json().catch(() => ({}));
+                throw new Error(j?.message || j?.error || "Program profile save failed");
+              }
+            } catch (e: any) {
+              throw new Error(e?.message || "Program profile save failed");
+            }
+
+            const prSavedJ = await prRes.json().catch(() => ({}));
+            const prSaved = (prSavedJ?.data ?? prSavedJ) as BreedingProgramProfile;
+            setProfileInit(prSaved);
+            setProfile(prSaved);
+          }
         }
 
         // Save local overrides
@@ -1312,13 +1426,11 @@ const BreedingTab = React.forwardRef<BreedingHandle, { dirty: boolean; onDirty: 
             "BHQ_BREEDING_HORIZON_MONTHS",
             String(Math.max(6, Math.min(36, ganttHorizonMonths || 18)))
           );
-        } catch {
-          /* ignore */
-        }
+        } catch { }
 
         onDirty(false);
       } catch (e: any) {
-        setError(e?.message || "Failed to save breeding preferences");
+        setError(e?.message || "Failed to save breeding settings");
       }
     }
 
@@ -1326,162 +1438,708 @@ const BreedingTab = React.forwardRef<BreedingHandle, { dirty: boolean; onDirty: 
       async save() { await saveAll(); },
     }));
 
-    function resetServerDefaults() {
-      setForm(DEFAULTS);
+    function resetServerDefaults() { setForm(DEFAULTS); }
+
+    // small setter that writes numeric values into AvailabilityPrefs
+    function _setPref<K extends keyof AvailabilityPrefs>(key: K, val: number) {
+      setForm(f => ({ ...f, [key]: Number.isFinite(val) ? val : 0 } as AvailabilityPrefs));
     }
 
-    function numField<K extends keyof AvailabilityPrefs>(key: K, label: string, hint?: string) {
+    const UnlikelyBeforeAfter: React.FC<{
+      beforeKey: keyof AvailabilityPrefs;
+      afterKey: keyof AvailabilityPrefs;
+    }> = ({ beforeKey, afterKey }) => (
+      <TwoCol>
+        <FieldNum
+          label="Unlikely: days before"
+          value={Number(form[beforeKey] ?? 0)}
+          onChange={(n) => _setPref(beforeKey, n)}
+        />
+        <FieldNum
+          label="Unlikely: days after"
+          value={Number(form[afterKey] ?? 0)}
+          onChange={(n) => _setPref(afterKey, n)}
+        />
+      </TwoCol>
+    );
+
+    const RiskyBeforeAfter: React.FC<{
+      beforeKey: keyof AvailabilityPrefs;
+      afterKey: keyof AvailabilityPrefs;
+    }> = ({ beforeKey, afterKey }) => (
+      <TwoCol>
+        <FieldNum
+          label="Risky: days before"
+          value={Number(form[beforeKey] ?? 0)}
+          onChange={(n) => _setPref(beforeKey, n)}
+        />
+        <FieldNum
+          label="Risky: days after"
+          value={Number(form[afterKey] ?? 0)}
+          onChange={(n) => _setPref(afterKey, n)}
+        />
+      </TwoCol>
+    );
+
+    /** General tab helpers */
+    function applyPreset(kind: "conservative" | "balanced" | "generous") {
+      // Start from defaults then scale all risky/unlikely offsets
+      const base = { ...DEFAULTS };
+      const scale = kind === "conservative" ? 1.4 : kind === "balanced" ? 1.0 : 0.6;
+      const next: any = { ...base };
+      for (const [k, v] of Object.entries(base)) {
+        if (/_risky_|_unlikely_/.test(k)) {
+          const n = Math.round((Number(v) || 0) * scale);
+          next[k] = n;
+        } else {
+          next[k] = v;
+        }
+      }
+      setForm(next);
+    }
+
+    function exportBreedingConfig() {
+      const payload = {
+        availability: form,
+        programProfile: profile,
+        local: {
+          showGanttBands,
+          showCalendarBands,
+          ganttHorizonMonths,
+        },
+        meta: {
+          exportedAt: new Date().toISOString(),
+          tenant: TENANT_ID_CACHE || null,
+          version: 1,
+        },
+      };
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "breeding-settings.json";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    }
+
+    function importBreedingConfig(file: File) {
+      const reader = new FileReader();
+      reader.onload = () => {
+        try {
+          const data = JSON.parse(String(reader.result || "{}"));
+          if (data?.availability) setForm({ ...DEFAULTS, ...data.availability });
+          if (data?.programProfile) setProfile({ ...EMPTY_PROFILE, ...data.programProfile });
+          if (data?.local) {
+            const l = data.local || {};
+            if (typeof l.showGanttBands === "boolean") setShowGanttBands(l.showGanttBands);
+            if (typeof l.showCalendarBands === "boolean") setShowCalendarBands(l.showCalendarBands);
+            if (typeof l.ganttHorizonMonths === "number") setGanttHorizonMonths(l.ganttHorizonMonths);
+          }
+        } catch {
+          alert("Could not import. Invalid file.");
+        }
+      };
+      reader.readAsText(file);
+    }
+
+    const SmallLegendPreview = () => (
+      <div className="flex items-center gap-2">
+        <span className="inline-flex items-center gap-1">
+          <span className="inline-block w-4 h-3 rounded bg-[hsl(var(--brand-orange))]/30 border border-[hsl(var(--brand-orange))]/50" />
+          <span className="text-xs">Risky</span>
+        </span>
+        <span className="inline-flex items-center gap-1">
+          <span className="inline-block w-4 h-3 rounded bg-[hsl(var(--brand-orange))]/15 border border-[hsl(var(--brand-orange))]/40" />
+          <span className="text-xs">Unlikely</span>
+        </span>
+      </div>
+    );
+
+    function KeyValue({ k, v }: { k: string; v: React.ReactNode }) {
       return (
-        <label className="space-y-1">
-          <div className="text-xs text-secondary">{label}</div>
-          <input
-            type="number"
-            className={`bhq-input ${INPUT_CLS}`}
-            value={Number(form[key] ?? 0)}
-            onChange={(e) =>
-              setForm((f) => ({ ...f, [key]: Number(e.currentTarget.value || 0) }))
-            }
-          />
-          {hint ? <div className="text-[11px] text-tertiary">{hint}</div> : null}
-        </label>
+        <div className="flex items-center justify-between py-1">
+          <div className="text-xs text-tertiary">{k}</div>
+          <div className="text-sm">{v}</div>
+        </div>
       );
     }
 
-    return (
+    // Subtab headers
+    const Tabs = (
+      <div className="flex items-center gap-2 border-b border-hairline">
+        {BREEDING_SUBTABS.map(t => (
+          <button
+            key={t.key}
+            onClick={() => setActiveSub(t.key)}
+            className={[
+              "px-3 py-2 text-sm",
+              activeSub === t.key ? "border-b-2 border-[hsl(var(--brand-orange))] text-primary" : "text-secondary"
+            ].join(" ")}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+    );
+
+    // ───────── General subtab (now a real home) ─────────
+    const GeneralTab = (
       <div className="space-y-6">
-        <Card className="p-4 space-y-3">
-          <div className="flex items-center justify-between">
-            <h4 className="font-medium">Availability bands (server backed)</h4>
-            <div className="flex items-center gap-2">
-              <Button size="sm" variant="outline" onClick={resetServerDefaults}>Reset to defaults</Button>
-              {/* Save lives in the panel header. */}
-            </div>
-          </div>
-          <p className="text-sm text-secondary">
-            Configure offsets for Risky and Unlikely bands around your computed windows.
-          </p>
-
-          {error && (
-            <div className="rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
-              {error}
-            </div>
-          )}
-
+        <SectionCard
+          title="Breeding control center"
+          subtitle="Adjust the most important defaults in one place. Phases follow whole windows. Exact Dates follow a single anchor point."
+          right={<SmallLegendPreview />}
+          className="space-y-4"
+        >
           {loading ? (
             <div className="text-sm text-secondary">Loading…</div>
           ) : (
             <>
-              <div className="mb-1 text-xs uppercase tracking-wide text-secondary">Testing and Breeding</div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {numField(
-                  "testing_unlikely_from_likely_start",
-                  "Unlikely: from Hormone Testing LIKELY start (days)",
-                  "Negative starts earlier"
-                )}
-                {numField(
-                  "testing_unlikely_to_likely_end",
-                  "Unlikely: to Breeding LIKELY end (days)",
-                  "Positive extends later"
-                )}
-                {numField(
-                  "testing_risky_from_full_start",
-                  "Risky: from Hormone Testing FULL start (days)"
-                )}
-                {numField(
-                  "testing_risky_to_full_end",
-                  "Risky: to Breeding FULL end (days)"
-                )}
+              {/* Quick actions */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <Card className="p-3 space-y-2">
+                  <div className="text-sm font-medium">Presets</div>
+                  <div className="flex flex-wrap gap-2">
+                    <Button size="sm" variant="outline" onClick={() => applyPreset("conservative")}>Conservative</Button>
+                    <Button size="sm" variant="outline" onClick={() => applyPreset("balanced")}>Balanced</Button>
+                    <Button size="sm" variant="outline" onClick={() => applyPreset("generous")}>Generous</Button>
+                  </div>
+                  <Hint>Presets scale all risky and unlikely offsets. Balanced equals platform defaults.</Hint>
+                </Card>
+
+                <Card className="p-3 space-y-2">
+                  <div className="text-sm font-medium">Local display</div>
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={showGanttBands}
+                      onChange={(e) => setShowGanttBands(e.currentTarget.checked)}
+                    />
+                    <span className="text-sm">Show bands by default in Gantt</span>
+                  </label>
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={showCalendarBands}
+                      onChange={(e) => setShowCalendarBands(e.currentTarget.checked)}
+                    />
+                    <span className="text-sm">Show bands by default in Calendar</span>
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-secondary">Gantt horizon</span>
+                    <input
+                      type="number"
+                      min={6}
+                      max={36}
+                      value={ganttHorizonMonths}
+                      onChange={(e) => setGanttHorizonMonths(Number(e.currentTarget.value || 18))}
+                      className="bhq-input w-20 h-8 rounded-md border border-hairline bg-surface px-2 text-sm"
+                      aria-label="Gantt horizon months"
+                    />
+                    <span className="text-xs text-tertiary">months</span>
+                  </div>
+                  <Hint>Local preferences save in your browser.</Hint>
+                </Card>
+
+                <Card className="p-3 space-y-2">
+                  <div className="text-sm font-medium">Import and Export</div>
+                  <div className="flex items-center gap-2">
+                    <Button size="sm" onClick={exportBreedingConfig}>Export JSON</Button>
+                    <label className="inline-flex items-center gap-2 text-sm">
+                      <input
+                        type="file"
+                        accept="application/json"
+                        onChange={(e) => {
+                          const f = e.currentTarget.files?.[0];
+                          if (f) importBreedingConfig(f);
+                          e.currentTarget.value = "";
+                        }}
+                      />
+                    </label>
+                  </div>
+                  <Hint>Includes availability, program profile, and your local display prefs.</Hint>
+                </Card>
               </div>
 
-              <div className="mt-4 mb-1 text-xs uppercase tracking-wide text-secondary">Post whelp to placement</div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {numField(
-                  "post_unlikely_from_likely_start",
-                  "Unlikely: from Puppy Care LIKELY start (days)"
-                )}
-                {numField(
-                  "post_unlikely_to_likely_end",
-                  "Unlikely: to Go Home Normal LIKELY end (days)"
-                )}
-                {numField(
-                  "post_risky_from_full_start",
-                  "Risky: from Birth FULL start (days)"
-                )}
-                {numField(
-                  "post_risky_to_full_end",
-                  "Risky: to Go Home Extended FULL end (days)"
-                )}
-              </div>
+              {/* Snapshot: Program Profile summary */}
+              <Card className="p-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-sm font-medium">Program Profile snapshot</div>
+                    <Hint>This summary affects cycle math, dates, and buyer expectations.</Hint>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button size="sm" variant="outline" onClick={() => setActiveSub("program")}>Edit profile</Button>
+                    <Button size="sm" variant="outline" onClick={() => setActiveSub("phases")}>Edit phases</Button>
+                    <Button size="sm" variant="outline" onClick={() => setActiveSub("dates")}>Edit exact dates</Button>
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-3">
+                  <div className="rounded-md border border-hairline p-3">
+                    <KeyValue k="Kennel" v={profile.kennelName || "—"} />
+                    <KeyValue k="Website" v={profile.website || "—"} />
+                    <KeyValue k="Species" v={(profile.species || []).join(", ") || "—"} />
+                    <KeyValue k="Travel policy" v={profile.travelPolicy} />
+                  </div>
+                  <div className="rounded-md border border-hairline p-3">
+                    <div className="text-xs text-tertiary mb-1">Cycle policy</div>
+                    <KeyValue k="Min dam age (mo)" v={profile.cyclePolicy?.minDamAgeMonths ?? "—"} />
+                    <KeyValue k="Min heats between" v={profile.cyclePolicy?.minHeatsBetween ?? "—"} />
+                    <KeyValue k="Max litters lifetime" v={profile.cyclePolicy?.maxLittersLifetime ?? "—"} />
+                    <KeyValue k="Retire rule" v={profile.cyclePolicy?.retireRule || "either"} />
+                  </div>
+                  <div className="rounded-md border border-hairline p-3">
+                    <div className="text-xs text-tertiary mb-1">Placement</div>
+                    <KeyValue k="Earliest days from birth" v={profile.placement?.earliestDaysFromBirth ?? "—"} />
+                    <KeyValue k="Standard days from birth" v={profile.placement?.standardDaysFromBirth ?? "—"} />
+                    <KeyValue k="Guarantee months" v={profile.placement?.healthGuaranteeMonths ?? "—"} />
+                    <KeyValue k="Deposit required" v={profile.placement?.depositRequired ? "Yes" : "No"} />
+                  </div>
+                </div>
+              </Card>
+
+              {/* What General controls explanation */}
+              <Card className="p-3">
+                <div className="text-sm font-medium mb-1">What this page controls</div>
+                <ul className="list-disc pl-5 text-sm text-secondary space-y-1">
+                  <li>Presets scale all availability band offsets in one click.</li>
+                  <li>Local display changes your default view for bands and horizon, not server values.</li>
+                  <li>Use Phases to wrap whole windows. Use Exact Dates to wrap single anchors.</li>
+                </ul>
+                <div className="mt-3"><Legend /></div>
+              </Card>
             </>
           )}
-        </Card>
+        </SectionCard>
+      </div>
+    );
 
-        <Card className="p-4 space-y-3">
-          <h4 className="font-medium">Global overrides (local, instant)</h4>
-          <p className="text-sm text-secondary">
-            These apply in your browser and can be used by Gantt and Calendar as defaults.
-          </p>
+    // Phases subtab
+    const PhasesTab = (
+      <SectionCard
+        title="Timeline Phases"
+        className="space-y-4"
+        subtitle="Bands that follow a whole phase span."
+        right={<Legend />}
+      >
+        {loading ? (
+          <div className="text-sm text-secondary">Loading…</div>
+        ) : (
+          <div className="space-y-5">
+            <div className="rounded-md border border-hairline p-3 bg-surface">
+              <div className="text-sm font-medium mb-1">Testing through Breeding</div>
+              <Hint>Unlikely wraps the likely span. Risky wraps the full span.</Hint>
+              <div className="mt-3 space-y-3">
+                <UnlikelyBeforeAfter
+                  beforeKey={"testing_unlikely_from_likely_start"}
+                  afterKey={"testing_unlikely_to_likely_end"}
+                />
+                <RiskyBeforeAfter
+                  beforeKey={"testing_risky_from_full_start"}
+                  afterKey={"testing_risky_to_full_end"}
+                />
+              </div>
+            </div>
 
+            <div className="rounded-md border border-hairline p-3 bg-surface">
+              <div className="text-sm font-medium mb-1">Birth through Placement</div>
+              <Hint>Unlikely wraps the likely span. Risky wraps the full span.</Hint>
+              <div className="mt-3 space-y-3">
+                <UnlikelyBeforeAfter
+                  beforeKey={"post_unlikely_from_likely_start"}
+                  afterKey={"post_unlikely_to_likely_end"}
+                />
+                <RiskyBeforeAfter
+                  beforeKey={"post_risky_from_full_start"}
+                  afterKey={"post_risky_to_full_end"}
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <Button size="sm" variant="outline" onClick={resetServerDefaults}>Reset to defaults</Button>
+              <Hint>This resets only the server values above.</Hint>
+            </div>
+          </div>
+        )}
+      </SectionCard>
+    );
+
+    // Dates subtab
+    const DatesTab = (
+      <SectionCard
+        title="Exact Dates"
+        className="space-y-4"
+        subtitle="Wrap a single expected or actual calendar date."
+      >
+        {loading ? (
+          <div className="text-sm text-secondary">Loading…</div>
+        ) : (
+          <div className="space-y-4">
+            <div className="text-sm text-secondary">
+              Set days before and after each anchor. Positive adds after. Negative adds before.
+            </div>
+
+            <ExactDateRow
+              title="Cycle Start"
+              riskyFromKey={"date_cycle_risky_from"}
+              riskyToKey={"date_cycle_risky_to"}
+              unlikelyFromKey={"date_cycle_unlikely_from"}
+              unlikelyToKey={"date_cycle_unlikely_to"}
+              form={form}
+              setForm={setForm}
+            />
+
+            <ExactDateRow
+              title="Testing Start"
+              riskyFromKey={"date_testing_risky_from"}
+              riskyToKey={"date_testing_risky_to"}
+              unlikelyFromKey={"date_testing_unlikely_from"}
+              unlikelyToKey={"date_testing_unlikely_to"}
+              form={form}
+              setForm={setForm}
+            />
+
+            <ExactDateRow
+              title="Breeding"
+              riskyFromKey={"date_breeding_risky_from"}
+              riskyToKey={"date_breeding_risky_to"}
+              unlikelyFromKey={"date_breeding_unlikely_from"}
+              unlikelyToKey={"date_breeding_unlikely_to"}
+              form={form}
+              setForm={setForm}
+            />
+
+            <ExactDateRow
+              title="Birth"
+              riskyFromKey={"date_birth_risky_from"}
+              riskyToKey={"date_birth_risky_to"}
+              unlikelyFromKey={"date_birth_unlikely_from"}
+              unlikelyToKey={"date_birth_unlikely_to"}
+              form={form}
+              setForm={setForm}
+            />
+
+            <ExactDateRow
+              title="Weaned"
+              riskyFromKey={"date_weaned_risky_from"}
+              riskyToKey={"date_weaned_risky_to"}
+              unlikelyFromKey={"date_weaned_unlikely_from"}
+              unlikelyToKey={"date_weaned_unlikely_to"}
+              form={form}
+              setForm={setForm}
+            />
+
+            <ExactDateRow
+              title="Placement Start"
+              riskyFromKey={"date_placement_start_risky_from"}
+              riskyToKey={"date_placement_start_risky_to"}
+              unlikelyFromKey={"date_placement_start_unlikely_from"}
+              unlikelyToKey={"date_placement_start_unlikely_to"}
+              form={form}
+              setForm={setForm}
+            />
+
+            <ExactDateRow
+              title="Placement Completed"
+              riskyFromKey={"date_placement_completed_risky_from"}
+              riskyToKey={"date_placement_completed_risky_to"}
+              unlikelyFromKey={"date_placement_completed_unlikely_from"}
+              unlikelyToKey={"date_placement_completed_unlikely_to"}
+              form={form}
+              setForm={setForm}
+            />
+          </div>
+        )}
+      </SectionCard>
+    );
+
+    // Program Profile subtab
+    const ProgramTab = (
+      <SectionCard title="Program Profile" subtitle="Global rules and preferences that inform every plan.">
+        {loading ? (
+          <div className="text-sm text-secondary">Loading…</div>
+        ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <label className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                checked={showGanttBands}
-                onChange={(e) => setShowGanttBands(e.currentTarget.checked)}
-              />
-              <span className="text-sm">Show Availability Bands by default in Gantt</span>
-            </label>
-
-            <label className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                checked={showCalendarBands}
-                onChange={(e) => setShowCalendarBands(e.currentTarget.checked)}
-              />
-              <span className="text-sm">Show Availability Bands by default in Calendar</span>
-            </label>
-
             <label className="space-y-1 md:col-span-2">
-              <div className="text-xs text-secondary">Default Gantt horizon (months)</div>
+              <div className="text-xs text-secondary">Kennel name</div>
               <input
-                type="number"
-                className={`bhq-input ${INPUT_CLS} w-40`}
-                min={6}
-                max={36}
-                value={ganttHorizonMonths}
-                onChange={(e) => setGanttHorizonMonths(Number(e.currentTarget.value || 18))}
+                className={`bhq-input ${INPUT_CLS}`}
+                value={profile.kennelName}
+                onChange={(e) => setProfile(p => ({ ...p, kennelName: e.target.value }))}
               />
-              <div className="text-[11px] text-tertiary">6 to 36 months. Default is 18.</div>
             </label>
-          </div>
 
-          <div className="flex items-center gap-2">
-            {/* Save lives in the panel header. */}
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => {
-                try {
-                  setShowGanttBands(localStorage.getItem("BHQ_BREEDING_SHOW_GANTT_BANDS") !== "0");
-                  setShowCalendarBands(localStorage.getItem("BHQ_BREEDING_SHOW_CAL_BANDS") !== "0");
-                  const hm = Number(localStorage.getItem("BHQ_BREEDING_HORIZON_MONTHS") || "18") || 18;
-                  setGanttHorizonMonths(hm);
-                } catch {
-                  setShowGanttBands(true);
-                  setShowCalendarBands(true);
-                  setGanttHorizonMonths(18);
-                }
-              }}
-            >
-              Revert local changes
-            </Button>
+            <label className="space-y-1">
+              <div className="text-xs text-secondary">Website</div>
+              <input
+                className={`bhq-input ${INPUT_CLS}`}
+                value={profile.website ?? ""}
+                onChange={(e) => setProfile(p => ({ ...p, website: e.target.value || null }))}
+              />
+            </label>
+
+            <label className="space-y-1">
+              <div className="text-xs text-secondary">Species</div>
+              <div className="flex flex-wrap gap-4">
+                <Chk
+                  label="Dog"
+                  checked={profile.species.includes("DOG")}
+                  onChange={(ck) =>
+                    setProfile(p => ({
+                      ...p,
+                      species: ck ? Array.from(new Set([...(p.species || []), "DOG"])) : (p.species || []).filter(s => s !== "DOG"),
+                    }))
+                  }
+                />
+                <Chk
+                  label="Cat"
+                  checked={profile.species.includes("CAT")}
+                  onChange={(ck) =>
+                    setProfile(p => ({
+                      ...p,
+                      species: ck ? Array.from(new Set([...(p.species || []), "CAT"])) : (p.species || []).filter(s => s !== "CAT"),
+                    }))
+                  }
+                />
+                <Chk
+                  label="Horse"
+                  checked={profile.species.includes("HORSE")}
+                  onChange={(ck) =>
+                    setProfile(p => ({
+                      ...p,
+                      species: ck ? Array.from(new Set([...(p.species || []), "HORSE"])) : (p.species || []).filter(s => s !== "HORSE"),
+                    }))
+                  }
+                />
+              </div>
+              <Hint>Choose one or more.</Hint>
+            </label>
+
+            <label className="space-y-1">
+              <div className="text-xs text-secondary">Travel policy</div>
+              <select
+                className={`bhq-input ${INPUT_CLS}`}
+                value={profile.travelPolicy}
+                onChange={(e) => setProfile(p => ({ ...p, travelPolicy: e.target.value as any }))}
+              >
+                <option value="none">No travel</option>
+                <option value="limited">Limited</option>
+                <option value="case_by_case">Case by case</option>
+              </select>
+            </label>
+
+            <div className="md:col-span-2 rounded-md border border-hairline p-3">
+              <div className="text-sm font-medium mb-2">Cycle policy</div>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <FieldNum
+                  label="Min dam age (mo)"
+                  value={profile.cyclePolicy.minDamAgeMonths}
+                  onChange={(n) => setProfile(p => ({ ...p, cyclePolicy: { ...p.cyclePolicy, minDamAgeMonths: n } }))}
+                />
+                <FieldNum
+                  label="Min heats between"
+                  value={profile.cyclePolicy.minHeatsBetween}
+                  onChange={(n) => setProfile(p => ({ ...p, cyclePolicy: { ...p.cyclePolicy, minHeatsBetween: n } }))}
+                />
+                <FieldNum
+                  label="Max litters lifetime"
+                  value={profile.cyclePolicy.maxLittersLifetime}
+                  onChange={(n) => setProfile(p => ({ ...p, cyclePolicy: { ...p.cyclePolicy, maxLittersLifetime: n } }))}
+                />
+                <FieldNum
+                  label="Retire after age (mo)"
+                  value={profile.cyclePolicy.retireAfterAgeMonths ?? 0}
+                  onChange={(n) => setProfile(p => ({
+                    ...p, cyclePolicy: { ...p.cyclePolicy, retireAfterAgeMonths: n || null }
+                  }))}
+                />
+              </div>
+              {/* Retirement rule selector */}
+              <label className="space-y-1 md:col-span-2">
+                <div className="text-xs text-secondary">Retirement rule</div>
+                <select
+                  className={`bhq-input ${INPUT_CLS} w-full`}
+                  value={profile.cyclePolicy.retireRule || "either"}
+                  onChange={(e) =>
+                    setProfile(p => ({
+                      ...p,
+                      cyclePolicy: { ...p.cyclePolicy, retireRule: e.currentTarget.value as any },
+                    }))
+                  }
+                >
+                  <option value="either">After age or after X breedings</option>
+                  <option value="age_only">After age only</option>
+                  <option value="litters_only">After X breedings only</option>
+                </select>
+                <Hint>
+                  Uses “Retire after age (mo)” and “Max litters lifetime.” “Either” means whichever happens first.
+                </Hint>
+              </label>
+
+            </div>
+
+            <div className="md:col-span-2 rounded-md border border-hairline p-3">
+              <div className="text-sm font-medium mb-2">Placement</div>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <FieldNum
+                  label="Earliest days from birth"
+                  value={profile.placement.earliestDaysFromBirth}
+                  onChange={(n) => setProfile(p => ({ ...p, placement: { ...p.placement, earliestDaysFromBirth: n } }))}
+                />
+                <FieldNum
+                  label="Standard days from birth"
+                  value={profile.placement.standardDaysFromBirth}
+                  onChange={(n) => setProfile(p => ({ ...p, placement: { ...p.placement, standardDaysFromBirth: n } }))}
+                />
+                <FieldNum
+                  label="Guarantee months"
+                  value={profile.placement.healthGuaranteeMonths}
+                  onChange={(n) => setProfile(p => ({ ...p, placement: { ...p.placement, healthGuaranteeMonths: n } }))}
+                />
+                <FieldNum
+                  label="Deposit amount USD"
+                  value={profile.placement.depositAmountUSD ?? 0}
+                  onChange={(n) => setProfile(p => ({
+                    ...p, placement: { ...p.placement, depositAmountUSD: n || null }
+                  }))}
+                />
+              </div>
+              {/* Public directory */}
+              <div className="md:col-span-2 rounded-md border border-hairline p-3">
+                <div className="text-sm font-medium mb-2">Public directory</div>
+
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={!!(profile.publication && profile.publication.publishInDirectory)}
+                    onChange={(e) => {
+                      // Capture synchronously to avoid synthetic event pooling
+                      const isChecked = (e.currentTarget as HTMLInputElement).checked;
+                      setProfile((p) => {
+                        const pub = p.publication ?? { publishInDirectory: false, summary: null };
+                        return { ...p, publication: { ...pub, publishInDirectory: isChecked } };
+                      });
+                    }}
+                  />
+                  <span className="text-sm">Publish this program to the public breeder directory</span>
+                </label>
+
+                <Hint>Off by default. Turn on to appear in public search for selected species and breeds.</Hint>
+
+                {/* Optional short blurb buyers can see */}
+                <label className="space-y-1 mt-3">
+                  <div className="text-xs text-secondary">Directory summary (optional)</div>
+                  <textarea
+                    className={`bhq-input ${INPUT_CLS} h-24`}
+                    placeholder="Short intro that appears in the public directory…"
+                    value={profile.publication?.summary ?? ""}
+                    onChange={(e) => {
+                      const next = e.currentTarget.value || "";
+                      setProfile((p) => {
+                        const pub = p.publication ?? { publishInDirectory: !!p.publication?.publishInDirectory, summary: null };
+                        return { ...p, publication: { ...pub, summary: next || null } };
+                      });
+                    }}
+                  />
+                </label>
+              </div>
+            </div>
           </div>
-        </Card>
+        )}
+      </SectionCard>
+    );
+
+    // Overrides subtab
+    const OverridesTab = (
+      <SectionCard
+        title="Global overrides"
+        className="space-y-3"
+        subtitle="Saved in your browser as your personal defaults."
+      >
+        <TwoCol>
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={showGanttBands}
+              onChange={(e) => setShowGanttBands(e.currentTarget.checked)}
+            />
+            <span className="text-sm">Show Availability Bands by default in Gantt</span>
+          </label>
+
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={showCalendarBands}
+              onChange={(e) => setShowCalendarBands(e.currentTarget.checked)}
+            />
+            <span className="text-sm">Show Availability Bands by default in Calendar</span>
+          </label>
+        </TwoCol>
+
+        <label className="space-y-1 mt-3">
+          <div className="text-xs text-secondary">Default Gantt horizon in months</div>
+          <input
+            type="number"
+            className="bhq-input w-40 h-9 rounded-md border border-hairline bg-surface px-2 text-sm"
+            min={6}
+            max={36}
+            value={ganttHorizonMonths}
+            onChange={(e) => setGanttHorizonMonths(Number(e.currentTarget.value || 18))}
+          />
+          <Hint>Range 6 to 36. Default is 18.</Hint>
+        </label>
+
+        <div className="flex items-center gap-2 mt-2">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              try {
+                setShowGanttBands(localStorage.getItem("BHQ_BREEDING_SHOW_GANTT_BANDS") !== "0");
+                setShowCalendarBands(localStorage.getItem("BHQ_BREEDING_SHOW_CAL_BANDS") !== "0");
+                const hm = Number(localStorage.getItem("BHQ_BREEDING_HORIZON_MONTHS") || "18") || 18;
+                setGanttHorizonMonths(hm);
+              } catch {
+                setShowGanttBands(true);
+                setShowCalendarBands(true);
+                setGanttHorizonMonths(18);
+              }
+            }}
+          >
+            Revert local changes
+          </Button>
+        </div>
+      </SectionCard>
+    );
+
+    return (
+      <div className="space-y-6">
+        {HELP_BOX}
+
+        {error && (
+          <div className="rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
+            {error}
+          </div>
+        )}
+
+        {Tabs}
+
+        {activeSub === "general" && GeneralTab}
+        {activeSub === "phases" && PhasesTab}
+        {activeSub === "dates" && DatesTab}
+        {activeSub === "overrides" && OverridesTab}
+        {activeSub === "program" && ProgramTab}
       </div>
     );
   }
 );
 
+export { BreedingTab };
+
+/** ───────── Breeds tab ───────── */
 function BreedsTab({ onDirty }: { onDirty: (v: boolean) => void }) {
   React.useEffect(() => onDirty(false), [onDirty]);
 
@@ -1785,6 +2443,7 @@ function BreedsTab({ onDirty }: { onDirty: (v: boolean) => void }) {
   );
 }
 
+/** ───────── Users, Payments, Transactions, Groups, Tags ───────── */
 function UsersTab({ onDirty }: { dirty: boolean; onDirty: (v: boolean) => void }) {
   return (
     <div className="space-y-6">
@@ -1878,5 +2537,119 @@ function TagsTab({ onDirty }: { dirty: boolean; onDirty: (v: boolean) => void })
         <Button size="sm" onClick={() => onDirty(true)}>Add tag</Button>
       </div>
     </Card>
+  );
+}
+
+/** ───────── Shared small UI helpers for Breeding tab ───────── */
+function Chk({ label, checked, onChange }: { label: string; checked: boolean; onChange: (c: boolean) => void }) {
+  return (
+    <label className="inline-flex items-center gap-2 text-sm select-none">
+      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.currentTarget.checked)} />
+      <span>{label}</span>
+    </label>
+  );
+}
+
+function FieldNum(props: { label: string; value: number; onChange: (n: number) => void }) {
+  return (
+    <label className="space-y-1">
+      <div className="text-xs text-secondary">{props.label}</div>
+      <input
+        type="number"
+        className="bhq-input w-28 h-9 rounded-md border border-hairline bg-surface px-2 text-sm"
+        value={Number.isFinite(props.value) ? props.value : 0}
+        onChange={(e) => props.onChange(Number(e.currentTarget.value || 0))}
+      />
+    </label>
+  );
+}
+
+function TwoCol({ children }: { children: React.ReactNode }) {
+  return <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">{children}</div>;
+}
+function Hint({ children }: { children: React.ReactNode }) {
+  return <p className="text-xs text-tertiary">{children}</p>;
+}
+function Legend() {
+  return (
+    <div className="flex flex-wrap items-center gap-3 text-xs">
+      <span className="inline-flex items-center gap-1">
+        <span className="inline-block w-3 h-3 rounded bg-[hsl(var(--brand-orange))]/30 border border-[hsl(var(--brand-orange))]/50" />
+        Risky band
+      </span>
+      <span className="inline-flex items-center gap-1">
+        <span className="inline-block w-3 h-3 rounded bg-[hsl(var(--brand-orange))]/15 border border-[hsl(var(--brand-orange))]/40" />
+        Unlikely band
+      </span>
+      <span className="text-tertiary">Sort order is by start date.</span>
+    </div>
+  );
+}
+const HELP_BOX = (
+  <Card className="p-3">
+    <div className="text-sm font-medium mb-1">How availability works</div>
+    <p className="text-xs text-tertiary">
+      Use phase wraps to follow a whole window like Testing to Breeding, or use exact date wraps to follow a single
+      calendar date. Risky should represent do not travel windows. Unlikely should mark soft caution windows.
+    </p>
+  </Card>
+);
+
+/** Row for editing exact-date band offsets */
+function ExactDateRow(props: {
+  title: string;
+  riskyFromKey: keyof AvailabilityPrefs;
+  riskyToKey: keyof AvailabilityPrefs;
+  unlikelyFromKey: keyof AvailabilityPrefs;
+  unlikelyToKey: keyof AvailabilityPrefs;
+  form: AvailabilityPrefs;
+  setForm: React.Dispatch<React.SetStateAction<AvailabilityPrefs>>;
+}) {
+  const {
+    title,
+    riskyFromKey,
+    riskyToKey,
+    unlikelyFromKey,
+    unlikelyToKey,
+    form,
+    setForm,
+  } = props;
+
+  function set<K extends keyof AvailabilityPrefs>(key: K, val: number) {
+    setForm((f) => ({ ...f, [key]: val } as AvailabilityPrefs));
+  }
+
+  return (
+    <div className="rounded-md border border-hairline p-3 bg-surface space-y-3">
+      <div className="text-sm font-medium">{title}</div>
+
+      <div className="space-y-3">
+        <TwoCol>
+          <FieldNum
+            label="Unlikely: days before"
+            value={Number(form[unlikelyFromKey] ?? 0)}
+            onChange={(n) => set(unlikelyFromKey, n)}
+          />
+          <FieldNum
+            label="Unlikely: days after"
+            value={Number(form[unlikelyToKey] ?? 0)}
+            onChange={(n) => set(unlikelyToKey, n)}
+          />
+        </TwoCol>
+
+        <TwoCol>
+          <FieldNum
+            label="Risky: days before"
+            value={Number(form[riskyFromKey] ?? 0)}
+            onChange={(n) => set(riskyFromKey, n)}
+          />
+          <FieldNum
+            label="Risky: days after"
+            value={Number(form[riskyToKey] ?? 0)}
+            onChange={(n) => set(riskyToKey, n)}
+          />
+        </TwoCol>
+      </div>
+    </div>
   );
 }

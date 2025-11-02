@@ -4,21 +4,31 @@ let _tenantCache: number | null = null;
 let _pending: Promise<number> | null = null;
 
 export function readTenantIdFast(): number | undefined {
+  // 1) cookie (supports JWT or plain base64 JSON)
   try {
     const raw = document.cookie.match(/(?:^|; )bhq_s=([^;]*)/)?.[1];
     if (raw) {
-      const json = typeof atob === "function"
-        ? atob(raw.replace(/-/g, "+").replace(/_/g, "/"))
-        : Buffer.from(raw, "base64").toString("utf8");
+      const payloadB64 = raw.includes(".") ? raw.split(".")[1] : raw; // JWT payload or raw
+      const json =
+        typeof atob === "function"
+          ? atob(payloadB64.replace(/-/g, "+").replace(/_/g, "/"))
+          : Buffer.from(payloadB64, "base64").toString("utf8");
       const obj = JSON.parse(json);
-      const t = Number(obj?.tenantId);
+      const t = Number(obj?.tenantId ?? obj?.orgId ?? obj?.tenantID ?? obj?.tenant_id);
       if (Number.isInteger(t) && t > 0) return t;
     }
-  } catch {}
+  } catch { /* ignore */ }
+
+  // 2) platform global (both shapes)
   try {
-    const t = Number((window as any).__bhq?.tenantId);
-    if (Number.isInteger(t) && t > 0) return t;
-  } catch {}
+    const a = Number((window as any).__bhq?.tenantId);
+    if (Number.isInteger(a) && a > 0) return a;
+  } catch { /* ignore */ }
+  try {
+    const b = Number((window as any).__BHQ_TENANT_ID__);
+    if (Number.isInteger(b) && b > 0) return b;
+  } catch { /* ignore */ }
+
   return undefined;
 }
 

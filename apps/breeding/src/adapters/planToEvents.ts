@@ -1,4 +1,3 @@
-// apps/breeding/src/adapters/planToEvents.ts
 import {
   fromPlan,
   windowsToCalendarEvents,
@@ -8,11 +7,11 @@ import {
 
 export type BreedingPlanLike = {
   id: string | number;
-  species: Species;
+  species: Species;               // "DOG" | "CAT" | "HORSE"
   earliestHeatStart: Date | string;
   latestHeatStart: Date | string;
   ovulationDate?: Date | string | null;
-  title?: string;
+  title?: string;                 // optional, not used by windowsToCalendarEvents
 };
 
 const toIso = (d: Date | string | null | undefined) =>
@@ -26,7 +25,6 @@ export function planToCalendarEvents(plan: BreedingPlanLike) {
     ovulationDate: toIso(plan.ovulationDate) ?? null,
   });
 
-  return windowsToCalendarEvents(String(plan.id), DEFAULT_STAGE_LABELS, wr, {
-    title: plan.title,
-  });
+  // windowsToCalendarEvents(planId, labels, windows) — canonical signature
+  return windowsToCalendarEvents(String(plan.id), DEFAULT_STAGE_LABELS, wr);
 }

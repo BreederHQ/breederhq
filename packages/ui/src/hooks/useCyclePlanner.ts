@@ -18,16 +18,16 @@ export type ExpectedWindows = {
   pre_breeding_full: [ISODate, ISODate];
   hormone_testing_full: [ISODate, ISODate];
   breeding_full: [ISODate, ISODate];
-  whelping_full: [ISODate, ISODate];
+  birth_full: [ISODate, ISODate];
   puppy_care_full: [ISODate, ISODate];
-  gohome_normal_full: [ISODate, ISODate];
-  gohome_extended_full: [ISODate, ISODate];
+  placement_normal_full: [ISODate, ISODate];
+  placement_extended_full: [ISODate, ISODate];
   pre_breeding_likely: [ISODate, ISODate];
   hormone_testing_likely: [ISODate, ISODate];
   breeding_likely: [ISODate, ISODate];
-  whelping_likely: [ISODate, ISODate];
+  birth_likely: [ISODate, ISODate];
   puppy_care_likely: [ISODate, ISODate];
-  gohome_normal_likely: [ISODate, ISODate];
+  placement_normal_likely: [ISODate, ISODate];
 };
 
 /** Availability kinds normalized to lowercase "risky" | "unlikely" */
@@ -47,11 +47,11 @@ export type ExpectedDates = {
   placement_completed_expected: ISODate;
 
   /** Legacy aliases kept for back-compat */
-  gohome_expected: ISODate;                    // mirrors placement_start_expected
-  gohome_extended_end_expected: ISODate;       // mirrors placement_completed_expected
+  placement_expected: ISODate;                    // mirrors placement_start_expected
+  placement_extended_end_expected: ISODate;       // mirrors placement_completed_expected
 
   /** You already had this; leaving as-is for consumers that still read it */
-  last_offspring_gohome_expected: ISODate;
+  last_offspring_placement_expected: ISODate;
 
   windows: ExpectedWindows;
   travel: TravelBand[];
@@ -146,11 +146,11 @@ export function computeExpectedFromCycle(opts: {
   const cycle = cycleStart;
   const ovulation = addDaysISO(cycle, d.ovulation_day_from_heat_start);
 
-  // Whelping windows
-  const whelpLikelyStart = addDaysISO(ovulation, 63 - 1);
-  const whelpLikelyEnd   = addDaysISO(ovulation, 63 + 1);
-  const whelpFullStart   = addDaysISO(ovulation, 63 - 2);
-  const whelpFullEnd     = addDaysISO(ovulation, 63 + 2);
+  // Birth windows
+  const birthLikelyStart = addDaysISO(ovulation, 63 - 1);
+  const birthLikelyEnd   = addDaysISO(ovulation, 63 + 1);
+  const birthFullStart   = addDaysISO(ovulation, 63 - 2);
+  const birthFullEnd     = addDaysISO(ovulation, 63 + 2);
 
   const birth_expected = addDaysISO(ovulation, 63);
 
@@ -160,14 +160,14 @@ export function computeExpectedFromCycle(opts: {
   const homingDays = homingWeeks * 7;
 
   // Puppy care and placement windows (stage keys preserved)
-  const puppyCareFullStart = whelpFullStart;
-  const puppyCareFullEnd   = addDaysISO(whelpFullEnd, homingDays);
+  const puppyCareFullStart = birthFullStart;
+  const puppyCareFullEnd   = addDaysISO(birthFullEnd, homingDays);
 
-  const goHomeNormalFullStart = addDaysISO(whelpFullStart, homingDays);
-  const goHomeNormalFullEnd   = addDaysISO(whelpFullEnd, homingDays);
+  const placementFullStart = addDaysISO(birthFullStart, homingDays);
+  const placementFullEnd   = addDaysISO(birthFullEnd, homingDays);
 
-  const goHomeExtendedFullStart = goHomeNormalFullEnd;
-  const goHomeExtendedFullEnd   = addDaysISO(goHomeExtendedFullStart, 7 * 3); // +3 weeks buffer
+  const placementExtendedFullStart = placementFullEnd;
+  const placementExtendedFullEnd   = addDaysISO(placementExtendedFullStart, 7 * 3); // +3 weeks buffer
 
   const breedingFullStart = addDaysISO(cycle, d.ovulation_day_from_heat_start - 1);
   const breedingFullEnd   = addDaysISO(cycle, d.ovulation_day_from_heat_start + 2);
@@ -180,26 +180,26 @@ export function computeExpectedFromCycle(opts: {
   const hormoneTestingFullStart = addDaysISO(cycle, 7);
   const hormoneTestingFullEnd   = ovulation;
 
-  const puppyCareLikelyStart = whelpLikelyStart;
+  const puppyCareLikelyStart = birthLikelyStart;
   const puppyCareLikelyEnd   = addDaysISO(puppyCareLikelyStart, homingDays);
 
-  const goHomeLikelyStart = addDaysISO(whelpLikelyStart, homingDays - 1);
-  const goHomeLikelyEnd   = addDaysISO(whelpLikelyEnd,   homingDays + 1);
+  const placementLikelyStart = addDaysISO(birthLikelyStart, homingDays - 1);
+  const placementLikelyEnd   = addDaysISO(birthLikelyEnd,   homingDays + 1);
 
   // Availability bands with normalized kinds
   const travel: TravelBand[] = [
     { kind: "risky",    start: hormoneTestingFullStart, end: breedingFullEnd,       label: "" },
-    { kind: "risky",    start: whelpFullStart,          end: goHomeExtendedFullEnd, label: "" },
+    { kind: "risky",    start: birthFullStart,          end: placementExtendedFullEnd, label: "" },
     { kind: "unlikely", start: preBreedingFullEnd,      end: breedingLikelyEnd,     label: "" },
-    { kind: "unlikely", start: puppyCareLikelyStart,    end: goHomeLikelyEnd,       label: "" },
+    { kind: "unlikely", start: puppyCareLikelyStart,    end: placementLikelyEnd,       label: "" },
   ];
 
   // New placement milestones + legacy aliases
-  const placement_start_expected = addDaysISO(whelpLikelyStart, homingDays);
-  const placement_completed_expected = goHomeExtendedFullEnd;
+  const placement_start_expected = addDaysISO(birthLikelyStart, homingDays);
+  const placement_completed_expected = placementExtendedFullEnd;
 
-  const gohome_expected = placement_start_expected;
-  const gohome_extended_end_expected = placement_completed_expected;
+  const placement_expected = placement_start_expected;
+  const placement_extended_end_expected = placement_completed_expected;
 
   return {
     cycle_start: cycle,
@@ -211,25 +211,25 @@ export function computeExpectedFromCycle(opts: {
     placement_start_expected,
     placement_completed_expected,
 
-    gohome_expected,
-    gohome_extended_end_expected,
+    placement_expected,
+    placement_extended_end_expected,
 
-    last_offspring_gohome_expected: goHomeNormalFullEnd,
+    last_offspring_placement_expected: placementFullEnd,
 
     windows: {
       pre_breeding_full:   [preBreedingFullStart,   preBreedingFullEnd],
       hormone_testing_full:[hormoneTestingFullStart,hormoneTestingFullEnd],
       breeding_full:       [breedingFullStart,      breedingFullEnd],
-      whelping_full:       [whelpFullStart,         whelpFullEnd],
+      birth_full:       [birthFullStart,         birthFullEnd],
       puppy_care_full:     [puppyCareFullStart,     puppyCareFullEnd],
-      gohome_normal_full:  [goHomeNormalFullStart,  goHomeNormalFullEnd],
-      gohome_extended_full:[goHomeExtendedFullStart,goHomeExtendedFullEnd],
+      placement_normal_full:  [placementFullStart,  placementFullEnd],
+      placement_extended_full:[placementExtendedFullStart,placementExtendedFullEnd],
       pre_breeding_likely: [preBreedingFullStart,   preBreedingFullEnd],
       hormone_testing_likely:[preBreedingFullEnd,   hormoneTestingFullEnd],
       breeding_likely:     [breedingLikelyStart,    breedingLikelyEnd],
-      whelping_likely:     [whelpLikelyStart,       whelpLikelyEnd],
+      birth_likely:     [birthLikelyStart,       birthLikelyEnd],
       puppy_care_likely:   [puppyCareLikelyStart,   puppyCareLikelyEnd],
-      gohome_normal_likely:[goHomeLikelyStart,      goHomeLikelyEnd],
+      placement_normal_likely:[placementLikelyStart,      placementLikelyEnd],
     },
     travel,
   };

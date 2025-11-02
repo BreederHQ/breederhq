@@ -157,16 +157,16 @@ export function computeWindows(
   const breedingLikely = makeRange(ovulationCenter, addDays(ovulationCenter, 1));
 
   // birth (gestation ~63 days; show ±2 in full, ±1 in likely)
-  const whelpFull = makeRange(addDays(ovulationCenter, 61), addDays(ovulationCenter, 65));
-  const whelpLikely = makeRange(addDays(ovulationCenter, 62), addDays(ovulationCenter, 64));
+  const birthFull = makeRange(addDays(ovulationCenter, 61), addDays(ovulationCenter, 65));
+  const birthLikely = makeRange(addDays(ovulationCenter, 62), addDays(ovulationCenter, 64));
 
   // Puppy Care: birth through 8 weeks after full window
-  const puppyCareFull = makeRange(whelpFull.start, addDays(whelpFull.end, 56));
-  const puppyCareLikely = makeRange(whelpLikely.start, addDays(whelpLikely.end, 56));
+  const puppyCareFull = makeRange(birthFull.start, addDays(birthFull.end, 56));
+  const puppyCareLikely = makeRange(birthLikely.start, addDays(birthLikely.end, 56));
 
   // Placement Normal
-  const PlacementNormalFull = makeRange(addDays(whelpFull.start, 56), addDays(whelpFull.end, 56));
-  const PlacementNormalLikely = makeRange(addDays(whelpLikely.start, 55), addDays(whelpLikely.end, 57));
+  const PlacementNormalFull = makeRange(addDays(birthFull.start, 56), addDays(birthFull.end, 56));
+  const PlacementNormalLikely = makeRange(addDays(birthLikely.start, 55), addDays(birthLikely.end, 57));
 
   // Placement Extended - Default +3 weeks after normal window
   const PlacementExtendedFull = makeRange(addDays(PlacementNormalFull.end, 1), addDays(PlacementNormalFull.end, 21));
@@ -178,9 +178,9 @@ export function computeWindows(
   // Availability bands (canonical). Kinds use "risk" | "unlikely".
   // Labels use Availability nomenclature, not Travel.
   const availability: AvailabilityBand[] = [
-    { kind: "risk",     range: makeRange(hormoneFull.start, breedingFull.end),             label: "Availability: Risky" },
-    { kind: "risk",     range: makeRange(whelpFull.start, PlacementExtendedFull.end),         label: "Availability: Risky" },
-    { kind: "unlikely", range: makeRange(hormoneLikely.start, breedingLikely.end),         label: "Availability: Unlikely" },
+    { kind: "risk",     range: makeRange(hormoneFull.start, breedingFull.end),                label: "Availability: Risky" },
+    { kind: "risk",     range: makeRange(birthFull.start, PlacementExtendedFull.end),         label: "Availability: Risky" },
+    { kind: "unlikely", range: makeRange(hormoneLikely.start, breedingLikely.end),            label: "Availability: Unlikely" },
     { kind: "unlikely", range: makeRange(puppyCareLikely.start, PlacementNormalLikely.end),   label: "Availability: Unlikely" },
   ];
 
@@ -192,7 +192,7 @@ export function computeWindows(
     { key: "preBreeding", full: preBreedingFull, likely: preBreedingLikely },
     { key: "hormoneTesting", full: hormoneFull, likely: hormoneLikely },
     { key: "breeding", full: breedingFull, likely: breedingLikely },
-    { key: "birth", full: whelpFull, likely: whelpLikely },
+    { key: "birth", full: birthFull, likely: birthLikely },
     { key: "puppyCare", full: puppyCareFull, likely: puppyCareLikely },
     { key: "PlacementNormal", full: PlacementNormalFull, likely: PlacementNormalLikely }, // label = Placement
     { key: "PlacementExtended", full: PlacementExtendedFull }, // label = Placement (Extended)
@@ -285,7 +285,7 @@ export type SpeciesRules = {
   ovulationFromHeatStartDays: number; // usually 12
   gestationDays: number;              // 63
   weanFromBirthDays: number;          // usually 42
-  PlacementFromBirthDays: number;        // usually 56
+  PlacementFromBirthDays: number;     // usually 56
 };
 
 const SPECIES_RULES: Record<Species, SpeciesRules> = {
@@ -357,12 +357,48 @@ export function projectUpcomingCycles(
 }
 
 /**
+ * Program default helpers without importing availability to avoid cycles.
+ * Pass whatever you have from tenant prefs. All fields are optional.
+ */
+export type ProgramDefaultsLike = Partial<{
+  placement_start_from_birth_weeks: number;
+  weaned_from_birth_days: number;
+  testing_from_cycle_start_days: number;
+}>;
+
+export function expectedPlacementStartFromBirth(
+  birthDate: Date,
+  prefs?: ProgramDefaultsLike
+): Date {
+  const weeks = Number(prefs?.placement_start_from_birth_weeks ?? 8);
+  return addDays(birthDate, weeks * 7);
+}
+
+export function expectedWeanedFromBirth(
+  birthDate: Date,
+  prefs?: ProgramDefaultsLike
+): Date {
+  const days = Number(prefs?.weaned_from_birth_days ?? 42);
+  return addDays(birthDate, days);
+}
+
+export function expectedTestingFromCycleStart(
+  cycleStart: Date,
+  prefs?: ProgramDefaultsLike
+): Date {
+  const days = Number(prefs?.testing_from_cycle_start_days ?? 7);
+  return addDays(cycleStart, days);
+}
+
+/**
  * Expected milestone dates from a locked heat start.
- * Returns new Placement field names and keeps legacy aliases for compatibility.
+ * Uses species rules, with optional program defaults to override
+ * weaned and placement start anchors.
  */
 export function expectedMilestonesFromLocked(
   lockedHeatStart: DateLike,
-  species: Species
+  species: Species,
+  programDefaults?: ProgramDefaultsLike
 ): {
   ovulation: string;
   breeding_expected: string;
@@ -379,10 +415,16 @@ export function expectedMilestonesFromLocked(
   const heat = toDate(lockedHeatStart);
   const ovulation = addDays(heat, rules.ovulationFromHeatStartDays);
   const birth = addDays(ovulation, rules.gestationDays);
-  const weaned = addDays(birth, rules.weanFromBirthDays);
-  const placementStart = addDays(birth, rules.PlacementFromBirthDays);
 
-  const placementCompleted: string | null = null; // learn later
+  const weaned = programDefaults
+    ? expectedWeanedFromBirth(birth, programDefaults)
+    : addDays(birth, rules.weanFromBirthDays);
+
+  const placementStart = programDefaults
+    ? expectedPlacementStartFromBirth(birth, programDefaults)
+    : addDays(birth, rules.PlacementFromBirthDays);
+
+  const placementCompleted: string | null = null; // learned from history later
 
   return {
     ovulation: isoDay(ovulation),

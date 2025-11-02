@@ -80,21 +80,33 @@ type PlanRow = {
   orgName?: string | null;
   code?: string | null;
 
+  /* Legacy expected fields still referenced in places */
   expectedDue?: string | null;
-  expectedGoHome?: string | null;
+  expectedPlacementStart?: string | null;
   expectedWeaned?: string | null;
-  expectedGoHomeExtendedEnd?: string | null;
+  expectedPlacementCompleted?: string | null;
 
+  /* Canonical expected timeline (added, non-breaking) */
+  expectedCycleStart?: string | null;
+  expectedHormoneTestingStart?: string | null;
+  expectedBreedDate?: string | null;
+  expectedBirthDate?: string | null;
+
+  /* Actuals (keep existing, add missing two) */
+  cycleStartDateActual?: string | null;             // added
+  hormoneTestingStartDateActual?: string | null;     // added
   breedDateActual?: string | null;
   birthDateActual?: string | null;
   weanedDateActual?: string | null;
-  goHomeDateActual?: string | null;
-  lastGoHomeDateActual?: string | null;
+  placementStartDateActual?: string | null;
+  placementCompletedDateActual?: string | null;
+  completedDateActual?: string | null;
 
+  /* Locks */
   lockedCycleStart?: string | null;
   lockedOvulationDate?: string | null;
   lockedDueDate?: string | null;
-  lockedGoHomeDate?: string | null;
+  lockedPlacementStartDate?: string | null;
 
   nickname?: string | null;
   breedText?: string | null;
@@ -104,7 +116,6 @@ type PlanRow = {
 
   archived?: boolean;
 
-  completedDateActual?: string | null;
   notes?: string | null;
 
   createdAt?: string | null;
@@ -116,21 +127,41 @@ type PlanRow = {
 };
 
 const COLUMNS: Array<{ key: keyof PlanRow & string; label: string; default?: boolean }> = [
+  // Identity
   { key: "name", label: "Plan Name", default: true },
-  { key: "status", label: "Status", default: true },
+  { key: "nickname", label: "Nickname", default: false },
   { key: "species", label: "Species", default: true },
+  { key: "breedText", label: "Breed", default: true },
+  { key: "status", label: "Status", default: true },
   { key: "damName", label: "Dam", default: true },
   { key: "sireName", label: "Sire", default: true },
-  { key: "expectedDue", label: "Birth (Exp)", default: true },
-  { key: "expectedGoHome", label: "Go Home (Exp)", default: true },
-  { key: "code", label: "Code" },
-  { key: "nickname", label: "Nickname" },
-  { key: "breedText", label: "Breed" },
-  { key: "birthDateActual", label: "Whelped" },
-  { key: "weanedDateActual", label: "Weaned" },
-  { key: "goHomeDateActual", label: "Go Home (Actual)" },
-  { key: "expectedWeaned", label: "Weaned (Exp)" },
-  { key: "expectedGoHomeExtendedEnd", label: "Go Home Ext. (Exp)" },
+  { key: "code", label: "Code", default: false },
+
+  // Expected timeline (new canonical keys)
+  { key: "expectedCycleStart", label: "Cycle Start (Exp)", default: false },
+  { key: "expectedHormoneTestingStart", label: "Testing Start (Exp)", default: false },
+  { key: "expectedBreedDate", label: "Breeding (Exp)", default: false },
+  { key: "expectedBirthDate", label: "Birth (Exp)", default: false },
+  { key: "expectedWeaned", label: "Weaned (Exp)", default: false },
+  { key: "expectedPlacementStart", label: "Placement Start (Exp)", default: false },
+  { key: "expectedPlacementCompleted", label: "Placement Completed (Exp)", default: false },
+
+  // Actuals
+  { key: "cycleStartDateActual", label: "Cycle Start (Actual)", default: false },
+  { key: "hormoneTestingStartDateActual", label: "Testing Start (Actual)", default: false },
+  { key: "breedDateActual", label: "Breeding (Actual)", default: false },
+  { key: "birthDateActual", label: "Birthed", default: false },
+  { key: "weanedDateActual", label: "Weaned", default: false },
+  { key: "placementStartDateActual", label: "Placement Start (Actual)", default: false },
+  { key: "placementCompletedDateActual", label: "Placement Completed (Actual)", default: false },
+  { key: "completedDateActual", label: "Plan Completed (Actual)", default: false },
+
+  // Locked snapshot (optional but useful in tables)
+  { key: "lockedCycleStart", label: "Cycle Start (Locked)", default: false },
+  { key: "lockedOvulationDate", label: "Ovulation (Locked)", default: false },
+  { key: "lockedDueDate", label: "Due (Locked)", default: false },
+  { key: "lockedPlacementStartDate", label: "Placement Start (Locked)", default: false },
+
 ];
 
 const STORAGE_KEY = "bhq_breeding_cols_v2";
@@ -197,37 +228,54 @@ function planToRow(p: any): PlanRow {
     orgName: p.organization?.name ?? null,
     code: p.code ?? null,
 
+    /* Legacy expected still supported */
     expectedDue: p.expectedDue ?? p.lockedDueDate ?? null,
-    expectedGoHome: p.expectedGoHome ?? p.lockedGoHomeDate ?? null,
+    expectedPlacementStart: p.expectedPlacementStart ?? p.lockedPlacementStartDate ?? null,
     expectedWeaned: p.expectedWeaned ?? null,
-    expectedGoHomeExtendedEnd: p.expectedGoHomeExtendedEnd ?? null,
-    femaleCycleLenOverrideDays: p.femaleCycleLenOverrideDays ?? null,
-    homingStartWeeksOverride: p.homingStartWeeksOverride ?? null,
+    expectedPlacementCompleted: p.expectedPlacementCompleted ?? null,
 
+    /* Canonical expected timeline (populate from API, with safe fallbacks) */
+    expectedCycleStart: p.expectedCycleStart ?? p.lockedCycleStart ?? null,
+    expectedHormoneTestingStart:
+      p.expectedHormoneTestingStart ??
+      p.testingStartExpected ?? // tolerate older name if present
+      null,
+    expectedBreedDate: p.expectedBreedDate ?? p.lockedOvulationDate ?? null,
+    expectedBirthDate: p.expectedBirthDate ?? p.expectedDue ?? p.lockedDueDate ?? null,
+
+    /* Actuals (include missing two) */
+    cycleStartDateActual: p.cycleStartDateActual ?? null,
+    hormoneTestingStartDateActual: p.hormoneTestingStartDateActual ?? null,
     breedDateActual: p.breedDateActual ?? null,
     birthDateActual: p.birthDateActual ?? null,
     weanedDateActual: p.weanedDateActual ?? null,
-    goHomeDateActual: p.goHomeDateActual ?? null,
-    lastGoHomeDateActual: p.lastGoHomeDateActual ?? null,
+    placementStartDateActual: p.placementStartDateActual ?? null,
+    placementCompletedDateActual: p.placementCompletedDateActual ?? null,
+    completedDateActual: p.completedDateActual ?? null,
 
+    /* Locks */
     lockedCycleStart: p.lockedCycleStart ?? null,
     lockedOvulationDate: p.lockedOvulationDate ?? null,
     lockedDueDate: p.lockedDueDate ?? null,
-    lockedGoHomeDate: p.lockedGoHomeDate ?? null,
+    lockedPlacementStartDate: p.lockedPlacementStartDate ?? null,
 
+    /* Misc */
     nickname: p.nickname ?? null,
     breedText: p.breedText ?? null,
     depositsCommitted: p.depositsCommittedCents ?? null,
     depositsPaid: p.depositsPaidCents ?? null,
     depositRisk: p.depositRiskScore ?? null,
 
-    archived: p.archived,
+    archived: p.archived ?? false,
 
-    completedDateActual: p.completedDateActual ?? null,
     notes: p.notes ?? null,
 
     createdAt: p.createdAt ?? p.created_at ?? null,
     updatedAt: p.updatedAt ?? p.updated_at ?? null,
+
+    /* Planner overrides */
+    femaleCycleLenOverrideDays: p.femaleCycleLenOverrideDays ?? null,
+    homingStartWeeksOverride: p.homingStartWeeksOverride ?? null,
   } as any;
 }
 
@@ -235,7 +283,7 @@ type Status =
   | "PLANNING"
   | "COMMITTED"
   | "BRED"
-  | "WHELPED"
+  | "BIRTHED"
   | "WEANED"
   | "HOMING_STARTED"
   | "COMPLETE";
@@ -250,14 +298,14 @@ function deriveBreedingStatus(p: {
   breedDateActual?: string | null;
   birthDateActual?: string | null;
   weanedDateActual?: string | null;
-  goHomeDateActual?: string | null;
-  lastGoHomeDateActual?: string | null;
+  placementStartDateActual?: string | null;
+  placementCompletedDateActual?: string | null;
   completedDateActual?: string | null;
 }): Status {
   if (p.completedDateActual?.trim()) return "COMPLETE";
-  if ((p.lastGoHomeDateActual ?? p.goHomeDateActual)?.trim()) return "HOMING_STARTED";
+  if ((p.placementCompletedDateActual ?? p.placementStartDateActual)?.trim()) return "HOMING_STARTED";
   if (p.weanedDateActual?.trim()) return "WEANED";
-  if (p.birthDateActual?.trim()) return "WHELPED";
+  if (p.birthDateActual?.trim()) return "BIRTHED";
   if (p.breedDateActual?.trim()) return "BRED";
 
   const hasBasics = Boolean((p.name ?? "").trim() && (p.species ?? "").trim() && p.damId != null);
@@ -619,18 +667,18 @@ export default function AppBreeding() {
   const FILTER_SCHEMA = React.useMemo(() => {
     const dateKeys = new Set([
       "expectedDue",
-      "expectedGoHome",
+      "expectedPlacementStart",
       "expectedWeaned",
-      "expectedGoHomeExtendedEnd",
+      "expectedPlacementCompleted",
       "breedDateActual",
       "birthDateActual",
       "weanedDateActual",
-      "goHomeDateActual",
-      "lastGoHomeDateActual",
+      "placementStartDateActual",
+      "placementCompletedDateActual",
       "lockedCycleStart",
       "lockedOvulationDate",
       "lockedDueDate",
-      "lockedGoHomeDate",
+      "lockedPlacementStartDate",
     ] as const);
     return visibleSafe.map((col) => {
       if (dateKeys.has(col.key as any)) return { key: col.key, label: col.label, editor: "date" as const };
@@ -643,9 +691,9 @@ export default function AppBreeding() {
             { label: "Planning", value: "PLANNING" },
             { label: "Committed", value: "COMMITTED" },
             { label: "Bred", value: "BRED" },
-            { label: "Whelped", value: "WHELPED" },
+            { label: "Birthed", value: "BIRTHED" },
             { label: "Weaned", value: "WEANED" },
-            { label: "Homing Started", value: "HOMING_STARTED" },
+            { label: "Placement Started", value: "HOMING_STARTED" },
             { label: "Complete", value: "COMPLETE" },
             { label: "Canceled", value: "CANCELED" },
           ],
@@ -680,19 +728,33 @@ export default function AppBreeding() {
 
   /* Client search+filters */
   const DATE_KEYS = new Set([
+    /* Legacy expected */
     "expectedDue",
-    "expectedGoHome",
+    "expectedPlacementStart",
     "expectedWeaned",
-    "expectedGoHomeExtendedEnd",
+    "expectedPlacementCompleted",
+
+    /* Canonical expected (added) */
+    "expectedCycleStart",
+    "expectedHormoneTestingStart",
+    "expectedBreedDate",
+    "expectedBirthDate",
+
+    /* Actuals (added missing two + completed) */
+    "cycleStartDateActual",
+    "hormoneTestingStartDateActual",
     "breedDateActual",
     "birthDateActual",
     "weanedDateActual",
-    "goHomeDateActual",
-    "lastGoHomeDateActual",
+    "placementStartDateActual",
+    "placementCompletedDateActual",
+    "completedDateActual",
+
+    /* Locks */
     "lockedCycleStart",
     "lockedOvulationDate",
     "lockedDueDate",
-    "lockedGoHomeDate",
+    "lockedPlacementStartDate",
   ] as const);
 
   const displayRows = React.useMemo(() => {
@@ -715,16 +777,16 @@ export default function AppBreeding() {
           r.orgName,
           r.code,
           r.expectedDue,
-          r.expectedGoHome,
+          r.expectedPlacementStart,
           r.birthDateActual,
           r.weanedDateActual,
           r.breedDateActual,
-          r.goHomeDateActual,
-          r.lastGoHomeDateActual,
+          r.placementStartDateActual,
+          r.placementCompletedDateActual,
           r.lockedCycleStart,
           r.lockedOvulationDate,
           r.lockedDueDate,
-          r.lockedGoHomeDate,
+          r.lockedPlacementStartDate,
         ]
           .filter(Boolean)
           .join(" ")
@@ -986,11 +1048,11 @@ export default function AppBreeding() {
           });
           break;
 
-        case "WHELPED":
+        case "BIRTHED":
           await api.createEvent(input.planId, {
-            type: "WHELPED",
+            type: "BIRTHED",
             occurredAt: input.date,
-            label: "Whelped",
+            label: "Birthed",
             notes: input.note ?? null,
           });
           break;
@@ -1044,8 +1106,8 @@ export default function AppBreeding() {
           breedDateActual: merged.breedDateActual as any,
           birthDateActual: merged.birthDateActual as any,
           weanedDateActual: merged.weanedDateActual as any,
-          goHomeDateActual: merged.goHomeDateActual as any,
-          lastGoHomeDateActual: merged.lastGoHomeDateActual as any,
+          placementStartDateActual: merged.placementStartDateActual as any,
+          placementCompletedDateActual: merged.placementCompletedDateActual as any,
           completedDateActual: merged.completedDateActual as any,
         });
         const updated = await api.updatePlan(Number(id), { ...draft, status } as any);
@@ -1082,7 +1144,7 @@ export default function AppBreeding() {
               updatedPlan = await api.updatePlan(Number(planId), {
                 status: "COMMITTED",
                 expectedDue: planNow.expectedDue ?? planNow.lockedDueDate ?? null,
-                expectedGoHome: planNow.expectedGoHome ?? planNow.lockedGoHomeDate ?? null,
+                expectedPlacementStart: planNow.expectedPlacementStart ?? planNow.lockedPlacementStartDate ?? null,
               } as any);
             }
 
@@ -1110,9 +1172,9 @@ export default function AppBreeding() {
         <div className="text-xs mb-1">{r.lockedCycleStart ? fmt(r.expectedDue) : ""}</div>
       </div>
     ),
-    expectedGoHome: (r) => (
+    expectedPlacementStart: (r) => (
       <div className="py-1">
-        <div className="text-xs mb-1">{r.lockedCycleStart ? fmt(r.expectedGoHome) : ""}</div>
+        <div className="text-xs mb-1">{r.lockedCycleStart ? fmt(r.expectedPlacementStart) : ""}</div>
       </div>
     ),
     expectedWeaned: (r) => (
@@ -1120,9 +1182,9 @@ export default function AppBreeding() {
         <div className="text-xs mb-1">{r.lockedCycleStart ? fmt(r.expectedWeaned) : ""}</div>
       </div>
     ),
-    expectedGoHomeExtendedEnd: (r) => (
+    expectedPlacementCompleted: (r) => (
       <div className="py-1">
-        <div className="text-xs mb-1">{r.lockedCycleStart ? fmt(r.expectedGoHomeExtendedEnd) : ""}</div>
+        <div className="text-xs mb-1">{r.lockedCycleStart ? fmt(r.expectedPlacementCompleted) : ""}</div>
       </div>
     ),
   };
@@ -1345,9 +1407,9 @@ export default function AppBreeding() {
                 // Map to placement fields for master chart
                 const masterPlans = allPlans.map((p) => ({
                   ...p,
-                  lockedPlacementStartDate: p.lockedGoHomeDate ?? null,
-                  expectedPlacementStart: p.expectedGoHome ?? null,
-                  expectedPlacementCompleted: p.expectedGoHomeExtendedEnd ?? null,
+                  lockedPlacementStartDate: p.lockedPlacementStartDate ?? null,
+                  expectedPlacementStart: p.expectedPlacementStart ?? null,
+                  expectedPlacementCompleted: p.expectedPlacementCompleted ?? null,
                 }));
                 return plannerMode === "per-plan" ? (
                   <BreedingPlans
@@ -1651,40 +1713,83 @@ export default function AppBreeding() {
 }
 
 /* ───────── Small helpers ───────── */
+/* ───────── CalendarInput: text field + hidden date picker ───────── */
 function CalendarInput({
-  showIcon,
   readOnly,
   className,
+  onChange,
+  value,
+  defaultValue,
+  placeholder = "mm/dd/yyyy",
   ...rest
 }: React.ComponentProps<typeof Input> & { showIcon?: boolean }) {
   const isReadOnly = !!readOnly;
-  const inputType = isReadOnly ? "text" : "date";
+
+  // Visible text value (mirror controlled/uncontrolled use)
+  const [internal, setInternal] = React.useState<string>(() =>
+    (value as any) ?? (defaultValue as any) ?? ""
+  );
+  React.useEffect(() => {
+    if (value !== undefined) setInternal(String(value ?? ""));
+  }, [value]);
+
+  const hiddenRef = React.useRef<HTMLInputElement>(null);
+
+  const pushChange = React.useCallback(
+    (next: string) => {
+      setInternal(next);
+      // Synthesize a minimal event that matches what callers expect
+      onChange?.({ currentTarget: { value: next } } as any);
+    },
+    [onChange]
+  );
 
   return (
     <div className="relative">
+      {/* Visible text input (never type=date, so no native icon) */}
       <Input
         {...rest}
-        type={inputType as any}
+        type="text"
         readOnly={isReadOnly}
-        className={[
-          "w-full h-8 py-0 px-2 text-sm bg-transparent border-hairline",
-          !isReadOnly ? "appearance-none [::-webkit-calendar-picker-indicator]:hidden [color-scheme:dark]" : "",
-          className || "",
-        ].join(" ")}
+        value={internal}
+        onChange={(e) => pushChange(e.currentTarget.value)}
+        placeholder={placeholder}
+        className={["w-full h-8 py-0 pl-2 pr-9 text-sm bg-transparent border-hairline", className || ""].join(" ")}
+        style={{ colorScheme: "dark" }}
       />
-      {showIcon && !isReadOnly && (
-        <svg
-          viewBox="0 0 24 24"
-          className="absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-secondary pointer-events-none"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          aria-hidden="true"
+
+      {/* Right-aligned single trigger */}
+      {!isReadOnly && (
+        <button
+          type="button"
+          onClick={() => {
+            const el = hiddenRef.current;
+            if (!el) return;
+            // prime the hidden input with current value so clearing/edits roundtrip
+            el.value = internal || "";
+            // focus first so Esc/Enter work consistently
+            el.focus();
+            el.showPicker?.();
+          }}
+          title="Open date picker"
+          className="absolute right-2 top-1/2 -translate-y-1/2 h-5 w-5 rounded-md hover:bg-white/5 flex items-center justify-center"
+          aria-label="Open date picker"
         >
-          <rect x="3" y="4" width="18" height="18" rx="2" />
-          <path d="M16 2v4M8 2v4M3 10h18" />
-        </svg>
+          <svg viewBox="0 0 24 24" className="h-4 w-4 text-secondary" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+            <rect x="3" y="4" width="18" height="18" rx="2" />
+            <path d="M16 2v4M8 2v4M3 10h18" />
+          </svg>
+        </button>
       )}
+
+      {/* Hidden real date input (no layout, no icon) */}
+      <input
+        ref={hiddenRef}
+        type="date"
+        className="sr-only absolute opacity-0 -z-10 pointer-events-none"
+        tabIndex={-1}
+        onChange={(e) => pushChange(e.currentTarget.value)}
+      />
     </div>
   );
 }
@@ -1840,9 +1945,9 @@ function PlanDetailsView(props: {
       null;
 
     const extendedEndExp =
-      (expected as any).gohome_extended_end ??
-      (expected as any).gohome_extended_end_expected ??
-      (expected as any).gohome_extended_full?.[1] ??
+      (expected as any).placement_extended_end ??
+      (expected as any).placement_extended_end_expected ??
+      (expected as any).placement_extended_full?.[1] ??
       null;
 
     setExpectedPreview(expected);
@@ -1851,11 +1956,11 @@ function PlanDetailsView(props: {
       lockedCycleStart: pendingCycle,
       lockedOvulationDate: expected.ovulation,
       lockedDueDate: expected.birth_expected,
-      lockedGoHomeDate: expected.gohome_expected,
+      lockedPlacementStartDate: expected.placement_expected,
       expectedDue: expected.birth_expected,
-      expectedGoHome: expected.gohome_expected,
+      expectedPlacementStart: expected.placement_expected,
       expectedWeaned: weanedExp,
-      expectedGoHomeExtendedEnd: extendedEndExp,
+      expectedPlacementCompleted: extendedEndExp,
     });
 
     try {
@@ -1864,11 +1969,11 @@ function PlanDetailsView(props: {
         lockedCycleStart: pendingCycle,
         lockedOvulationDate: expected.ovulation,
         lockedDueDate: expected.birth_expected,
-        lockedGoHomeDate: expected.gohome_expected,
+        lockedPlacementStartDate: expected.placement_expected,
         expectedDue: row.expectedDue ?? expected.birth_expected ?? null,
-        expectedGoHome: row.expectedGoHome ?? expected.gohome_expected ?? null,
+        expectedPlacementStart: row.expectedPlacementStart ?? expected.placement_expected ?? null,
         expectedWeaned: weanedExp,
-        expectedGoHomeExtendedEnd: extendedEndExp,
+        expectedPlacementCompleted: extendedEndExp,
       } as any);
 
       await api.createEvent(Number(row.id), {
@@ -1879,7 +1984,7 @@ function PlanDetailsView(props: {
           cycleStart: pendingCycle,
           ovulation: expected.ovulation,
           due: expected.birth_expected,
-          goHome: expected.gohome_expected,
+          goHome: expected.placement_expected,
           weaned: weanedExp,
           goHomeExtendedEnd: extendedEndExp,
         },
@@ -1895,11 +2000,11 @@ function PlanDetailsView(props: {
         lockedCycleStart: null,
         lockedOvulationDate: null,
         lockedDueDate: null,
-        lockedGoHomeDate: null,
+        lockedPlacementStartDate: null,
         expectedDue: null,
-        expectedGoHome: null,
+        expectedPlacementStart: null,
         expectedWeaned: null,
-        expectedGoHomeExtendedEnd: null,
+        expectedPlacementCompleted: null,
       });
       utils.toast?.error?.("Failed to lock cycle. Please try again.");
     }
@@ -1914,11 +2019,11 @@ function PlanDetailsView(props: {
       lockedCycleStart: null,
       lockedOvulationDate: null,
       lockedDueDate: null,
-      lockedGoHomeDate: null,
+      lockedPlacementStartDate: null,
       expectedDue: null,
-      expectedGoHome: null,
+      expectedPlacementStart: null,
       expectedWeaned: null,
-      expectedGoHomeExtendedEnd: null,
+      expectedPlacementCompleted: null,
     });
 
     try {
@@ -1927,11 +2032,11 @@ function PlanDetailsView(props: {
         lockedCycleStart: null,
         lockedOvulationDate: null,
         lockedDueDate: null,
-        lockedGoHomeDate: null,
+        lockedPlacementStartDate: null,
         expectedDue: null,
-        expectedGoHome: null,
+        expectedPlacementStart: null,
         expectedWeaned: null,
-        expectedGoHomeExtendedEnd: null,
+        expectedPlacementCompleted: null,
       } as any);
 
       await api.createEvent(Number(row.id), {
@@ -1965,17 +2070,32 @@ function PlanDetailsView(props: {
         ""
       )
       : "";
-  const expectedGoHome = isLocked ? (expectedPreview?.gohome_expected ?? row.lockedGoHomeDate ?? row.expectedGoHome ?? "") : "";
+  const expectedPlacementStart = isLocked ? (expectedPreview?.placement_expected ?? row.lockedPlacementStartDate ?? row.expectedPlacementStart ?? "") : "";
   const expectedGoHomeExtended =
     isLocked
       ? (
-        (expectedPreview as any)?.gohome_extended_end ??
-        (expectedPreview as any)?.gohome_extended_end_expected ??
-        (expectedPreview as any)?.gohome_extended_full?.[1] ??
-        (row as any)?.expectedGoHomeExtendedEnd ??
+        (expectedPreview as any)?.placement_extended_end ??
+        (expectedPreview as any)?.placement_extended_end_expected ??
+        (expectedPreview as any)?.placement_extended_full?.[1] ??
+        (row as any)?.expectedPlacementCompleted ??
         ""
       )
       : "";
+
+  const expectedCycleStart =
+    isLocked ? (row.lockedCycleStart || pendingCycle || "") : "";
+
+  const expectedTestingStart =
+    isLocked
+      ? (
+        (expectedPreview as any)?.hormone_testing_expected ??
+        (expectedPreview as any)?.testing_expected ??
+        (expectedPreview as any)?.testing_start ??
+        (expectedPreview as any)?.hormone_testing_full?.[0] ??
+        ""
+      )
+      : "";
+
 
   const [editDamQuery, setEditDamQuery] = React.useState<string>("");
   const [editSireQuery, setEditSireQuery] = React.useState<string>("");
@@ -2042,7 +2162,7 @@ function PlanDetailsView(props: {
     effective.sireId != null &&
     hasBreed &&
     ((row.lockedCycleStart ?? draftRef.current.lockedCycleStart) ?? "") &&
-    !["COMMITTED", "BRED", "WHELPED", "WEANED", "HOMING_STARTED", "COMPLETE", "CANCELED"].includes(effective.status)
+    !["COMMITTED", "BRED", "BIRTHED", "WEANED", "HOMING_STARTED", "COMPLETE", "CANCELED"].includes(effective.status)
   );
   const expectedsEnabled = Boolean(
     effective.damId != null && effective.sireId != null && ((row.lockedCycleStart ?? draftRef.current.lockedCycleStart) ?? "")
@@ -2093,9 +2213,9 @@ function PlanDetailsView(props: {
                       lockedCycleStart: draftRef.current.lockedCycleStart,
                       lockedOvulationDate: e.ovulation,
                       lockedDueDate: e.birth_expected,
-                      lockedGoHomeDate: e.gohome_expected,
+                      lockedPlacementStartDate: e.placement_expected,
                       expectedDue: row.expectedDue ?? e.birth_expected ?? null,
-                      expectedGoHome: row.expectedGoHome ?? e.gohome_expected ?? null,
+                      expectedPlacementStart: row.expectedPlacementStart ?? e.placement_expected ?? null,
                     } as any);
                   } catch (err) {
                     console.error("[Breeding] commit pre-persist (lock) failed", err);
@@ -2501,11 +2621,19 @@ function PlanDetailsView(props: {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
+                    <div className="text-xs text-secondary mb-1">CYCLE START (EXPECTED)</div>
+                    <Input value={fmt(expectedCycleStart)} readOnly className="h-8 py-0 px-2 text-sm bg-transparent border-hairline" />
+                  </div>
+                  <div>
+                    <div className="text-xs text-secondary mb-1">TESTING START (EXPECTED)</div>
+                    <Input value={fmt(expectedTestingStart)} readOnly className="h-8 py-0 px-2 text-sm bg-transparent border-hairline" />
+                  </div>
+                  <div>
                     <div className="text-xs text-secondary mb-1">BREEDING DATE (EXPECTED)</div>
                     <Input value={fmt(expectedBreed)} readOnly className="h-8 py-0 px-2 text-sm bg-transparent border-hairline" />
                   </div>
                   <div>
-                    <div className="text-xs text-secondary mb-1">WHELPING DATE (EXPECTED)</div>
+                    <div className="text-xs text-secondary mb-1">BIRTH DATE (EXPECTED)</div>
                     <Input value={fmt(expectedBirth)} readOnly className="h-8 py-0 px-2 text-sm bg-transparent border-hairline" />
                   </div>
                   <div>
@@ -2513,11 +2641,11 @@ function PlanDetailsView(props: {
                     <Input value={fmt(expectedWeaned)} readOnly className="h-8 py-0 px-2 text-sm bg-transparent border-hairline" />
                   </div>
                   <div>
-                    <div className="text-xs text-secondary mb-1">HOMING STARTS (EXPECTED)</div>
-                    <Input value={fmt(expectedGoHome)} readOnly className="h-8 py-0 px-2 text-sm bg-transparent border-hairline" />
+                    <div className="text-xs text-secondary mb-1">PLACEMENT START (EXPECTED)</div>
+                    <Input value={fmt(expectedPlacementStart)} readOnly className="h-8 py-0 px-2 text-sm bg-transparent border-hairline" />
                   </div>
                   <div>
-                    <div className="text-xs text-secondary mb-1">HOMING EXTENDED ENDS (EXPECTED)</div>
+                    <div className="text-xs text-secondary mb-1">PLACEMENT COMPLETED (EXPECTED)</div>
                     <Input value={fmt(expectedGoHomeExtended)} readOnly className="h-8 py-0 px-2 text-sm bg-transparent border-hairline" />
                   </div>
                 </div>
@@ -2529,6 +2657,26 @@ function PlanDetailsView(props: {
                 )}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
                   <div>
+                    <div className="text-xs text-secondary mb-1">CYCLE START (ACTUAL)</div>
+                    <CalendarInput
+                      defaultValue={row.cycleStartDateActual ?? ""}
+                      onChange={(e) => canEditDates && setDraftLive({ cycleStartDateActual: e.currentTarget.value })}
+                      readOnly={!canEditDates}
+                      showIcon={canEditDates}
+                    />
+                  </div>
+
+                  <div>
+                    <div className="text-xs text-secondary mb-1">TESTING START (ACTUAL)</div>
+                    <CalendarInput
+                      defaultValue={row.hormoneTestingStartDateActual ?? ""}
+                      onChange={(e) => canEditDates && setDraftLive({ hormoneTestingStartDateActual: e.currentTarget.value })}
+                      readOnly={!canEditDates}
+                      showIcon={canEditDates}
+                    />
+                  </div>
+
+                  <div>
                     <div className="text-xs text-secondary mb-1">BREEDING DATE (ACTUAL)</div>
                     <CalendarInput
                       defaultValue={row.breedDateActual ?? ""}
@@ -2539,7 +2687,7 @@ function PlanDetailsView(props: {
                   </div>
 
                   <div>
-                    <div className="text-xs text-secondary mb-1">WHELPED DATE (ACTUAL)</div>
+                    <div className="text-xs text-secondary mb-1">BIRTHED DATE (ACTUAL)</div>
                     <CalendarInput
                       defaultValue={row.birthDateActual ?? ""}
                       onChange={(e) => canEditDates && setDraftLive({ birthDateActual: e.currentTarget.value })}
@@ -2559,27 +2707,27 @@ function PlanDetailsView(props: {
                   </div>
 
                   <div>
-                    <div className="text-xs text-secondary mb-1">HOMING STARTED DATE (ACTUAL)</div>
+                    <div className="text-xs text-secondary mb-1">PLACEMENT START (ACTUAL)</div>
                     <CalendarInput
-                      defaultValue={row.goHomeDateActual ?? ""}
-                      onChange={(e) => canEditDates && setDraftLive({ goHomeDateActual: e.currentTarget.value })}
+                      defaultValue={row.placementStartDateActual ?? ""}
+                      onChange={(e) => canEditDates && setDraftLive({ placementStartDateActual: e.currentTarget.value })}
                       readOnly={!canEditDates}
                       showIcon={canEditDates}
                     />
                   </div>
 
                   <div>
-                    <div className="text-xs text-secondary mb-1">HOMING EXTENDED ENDS (ACTUAL)</div>
+                    <div className="text-xs text-secondary mb-1">PLACEMENT COMPLETED (ACTUAL)</div>
                     <CalendarInput
-                      defaultValue={row.lastGoHomeDateActual ?? ""}
-                      onChange={(e) => canEditDates && setDraftLive({ lastGoHomeDateActual: e.currentTarget.value })}
+                      defaultValue={row.placementCompletedDateActual ?? ""}
+                      onChange={(e) => canEditDates && setDraftLive({ placementCompletedDateActual: e.currentTarget.value })}
                       readOnly={!canEditDates}
                       showIcon={canEditDates}
                     />
                   </div>
 
                   <div>
-                    <div className="text-xs text-secondary mb-1">PLAN COMPLETED DATE (ACTUAL)</div>
+                    <div className="text-xs text-secondary mb-1">PLAN COMPLETED (ACTUAL)</div>
                     <CalendarInput
                       defaultValue={row.completedDateActual ?? ""}
                       onChange={(e) => canEditDates && setDraftLive({ completedDateActual: e.currentTarget.value })}
@@ -2589,7 +2737,7 @@ function PlanDetailsView(props: {
                   </div>
 
                   {isEdit && (
-                    <div className="flex justify-end items-end">
+                    <div className="md:col-span-2 flex justify-end">
                       <Button
                         variant="outline"
                         disabled={!canEditDates}
@@ -2597,16 +2745,18 @@ function PlanDetailsView(props: {
                           if (!canEditDates) return;
                           if (
                             !window.confirm(
-                              "Reset ALL actual date fields (Breeding, Whelped, Weaned, Homing Started, Completed)?"
+                              "Reset ALL actual date fields (Cycle Start, Testing Start, Breeding, Birthed, Weaned, Placement Start, Placement Completed, Plan Completed)?"
                             )
                           )
                             return;
                           setDraftLive({
+                            cycleStartDateActual: null,
+                            hormoneTestingStartDateActual: null,
                             breedDateActual: null,
                             birthDateActual: null,
                             weanedDateActual: null,
-                            goHomeDateActual: null,
-                            lastGoHomeDateActual: null,
+                            placementStartDateActual: null,
+                            placementCompletedDateActual: null,
                             completedDateActual: null,
                           });
                         }}

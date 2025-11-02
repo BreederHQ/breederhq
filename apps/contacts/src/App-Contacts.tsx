@@ -23,6 +23,7 @@ import {
   buildRangeAwareSchema,
   inDateRange,
   PillToggle,
+  Badge,
 } from "@bhq/ui";
 import { Overlay, getOverlayRoot } from "@bhq/ui/overlay";
 import "@bhq/ui/styles/table.css";
@@ -47,6 +48,14 @@ function tinyDebounce<T extends (...args: any[]) => any>(fn: T, ms = 300) {
     clearTimeout(t);
     t = setTimeout(() => fn(...args), ms);
   };
+}
+
+function sameStr(a?: string | null, b?: string | null) {
+  return String(a || "").trim().toLowerCase() === String(b || "").trim().toLowerCase();
+}
+
+function normalizePhone(e164?: string | null) {
+  return (e164 || "").replace(/[^\+\d]/g, "");
 }
 
 /* ────────────────────────────────────────────────────────────────────────────
@@ -77,6 +86,20 @@ export type ContactRow = {
   birthday?: string | null;
   lastContacted?: string | null;
   nextFollowUp?: string | null;
+
+  // optional channel prefs + compliance flags (may be undefined from older payloads)
+  prefersEmail?: boolean | null;
+  prefersSms?: boolean | null;
+  prefersPhone?: boolean | null;
+  prefersMail?: boolean | null;
+  prefersWhatsapp?: boolean | null;
+
+  emailUnsubscribed?: boolean | null;
+  smsUnsubscribed?: boolean | null;
+
+  phoneMobileE164?: string | null;
+  phoneLandlineE164?: string | null;
+  whatsappE164?: string | null;
 
   created_at?: string | null;
   updated_at?: string | null;
@@ -131,8 +154,15 @@ function computeDisplayName(r: any) {
 }
 
 function contactToRow(p: any): ContactRow {
+  const orgId =
+    p.organizationId ??
+    p.organization_id ??
+    p.organization?.id ??
+    null;
+
   const orgName =
     p.organizationName ??
+    p.organization_name ??
     p.organization?.name ??
     p.organization?.displayName ??
     p.organization?.label ??
@@ -144,10 +174,17 @@ function contactToRow(p: any): ContactRow {
     lastName: p.lastName ?? p.last_name ?? null,
     nickname: p.nickname ?? null,
     displayName: p.displayName ?? p.display_name ?? null,
-    organizationId: p.organizationId ?? p.organization?.id ?? null,
+
+    organizationId: orgId,
     organizationName: orgName,
+
     email: p.email ?? null,
-    phone: p.phone ?? p.phoneMobileE164 ?? p.whatsappE164 ?? p.phoneE164 ?? null,
+    phone:
+      p.phone ??
+      p.phoneMobileE164 ??
+      p.whatsappE164 ??
+      p.phoneE164 ??
+      null,
     status: p.status ?? "Active",
     leadStatus: p.leadStatus ?? null,
     tags: Array.isArray(p.tags) ? p.tags.filter(Boolean) : [],
@@ -158,9 +195,24 @@ function contactToRow(p: any): ContactRow {
     state: p.state ?? null,
     postalCode: p.postalCode ?? p.zip ?? null,
     country: p.country ?? null,
+
     birthday: p.birthday ?? null,
     lastContacted: p.lastContacted ?? null,
     nextFollowUp: p.nextFollowUp ?? null,
+
+    prefersEmail: p.prefersEmail ?? null,
+    prefersSms: p.prefersSms ?? null,
+    prefersPhone: p.prefersPhone ?? null,
+    prefersMail: p.prefersMail ?? null,
+    prefersWhatsapp: p.prefersWhatsapp ?? null,
+
+    emailUnsubscribed: p.emailUnsubscribed ?? null,
+    smsUnsubscribed: p.smsUnsubscribed ?? null,
+
+    phoneMobileE164: p.phoneMobileE164 ?? null,
+    phoneLandlineE164: p.phoneLandlineE164 ?? null,
+    whatsappE164: p.whatsappE164 ?? null,
+
     created_at: p.created_at ?? p.createdAt ?? null,
     updated_at: p.updated_at ?? p.updatedAt ?? null,
     archived: p.archived ?? null,
@@ -345,6 +397,260 @@ const CountrySelect: React.FC<{
 );
 
 /* ────────────────────────────────────────────────────────────────────────────
+ * Drawer view helpers
+ * ────────────────────────────────────────────────────────────────────────── */
+
+function formatNextFollowUpLabel(d?: string | null) {
+  if (!d) return null;
+  const dt = new Date(d);
+  if (!Number.isFinite(dt.getTime())) return d;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const when = dt.getTime() - today.getTime();
+  const one = 24 * 60 * 60 * 1000;
+  if (when === 0) return "Follow-up today";
+  if (when === one) return "Follow-up tomorrow";
+  if (when < 0) return `Follow-up overdue`;
+  return `Follow-up ${dt.toLocaleDateString()}`;
+}
+
+/* ───────────────── SnoozeMenu (viewport-clamped) ───────────────── */
+
+const SnoozeMenu: React.FC<{
+  anchorRect: DOMRect | null;
+  onPick: (iso: string | null) => void;
+  onClose: () => void;
+}> = ({ anchorRect, onPick, onClose }) => {
+  // Known width from class w-40 (10rem ≈ 160px). Height varies; use a safe estimate for flip.
+  const MENU_W = 160;
+  const MENU_H_EST = 200; // enough to decide flip
+
+  // Compute a clamped viewport position. Right-align to the anchor.
+  const { top, left } = React.useMemo(() => {
+    const pad = 8;      // viewport padding
+    const gap = 6;      // space between button and menu
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+
+    if (!anchorRect) {
+      return { top: Math.min(60, vh - MENU_H_EST - pad), left: Math.max(pad, vw - MENU_W - pad) };
+    }
+
+    // Default below the button
+    let t = Math.round(anchorRect.bottom + gap);
+    let l = Math.round(anchorRect.right - MENU_W);
+
+    // Flip above if not enough space below
+    if (t + MENU_H_EST > vh - pad) {
+      t = Math.round(anchorRect.top - gap - MENU_H_EST);
+    }
+
+    // Clamp to viewport
+    t = Math.max(pad, Math.min(t, vh - MENU_H_EST - pad));
+    l = Math.max(pad, Math.min(l, vw - MENU_W - pad));
+
+    return { top: t, left: l };
+  }, [anchorRect]);
+
+  // Close on Escape
+  React.useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  // Close on outside click
+  const panelRef = React.useRef<HTMLDivElement | null>(null);
+  React.useEffect(() => {
+    const onDown = (e: MouseEvent) => {
+      const p = panelRef.current;
+      if (!p) return;
+      if (!p.contains(e.target as Node)) onClose();
+    };
+    document.addEventListener("mousedown", onDown, true);
+    return () => document.removeEventListener("mousedown", onDown, true);
+  }, [onClose]);
+
+  // Render to body so it is never clipped by parents
+  return createPortal(
+    <div
+      ref={panelRef}
+      role="menu"
+      style={{
+        position: "fixed",
+        top,
+        left,
+        width: MENU_W,
+        zIndex: 2147483646,
+      }}
+      className="rounded-md border border-hairline bg-surface shadow-lg p-1"
+    >
+      <button className="block w-full text-left px-3 py-1.5 text-sm hover:bg-white/5"
+        onClick={() => { onPick(new Date().toISOString()); onClose(); }}>
+        Today
+      </button>
+      <button className="block w-full text-left px-3 py-1.5 text-sm hover:bg-white/5"
+        onClick={() => {
+          const d = new Date(); d.setHours(0, 0, 0, 0);
+          onPick(d.toISOString()); onClose();
+        }}>
+        Start of today
+      </button>
+      <button className="block w-full text-left px-3 py-1.5 text-sm hover:bg-white/5"
+        onClick={() => { const b = new Date(); b.setHours(0, 0, 0, 0); b.setDate(b.getDate() + 1); onPick(b.toISOString()); onClose(); }}>
+        +1 day
+      </button>
+      <button className="block w-full text-left px-3 py-1.5 text-sm hover:bg-white/5"
+        onClick={() => { const b = new Date(); b.setHours(0, 0, 0, 0); b.setDate(b.getDate() + 3); onPick(b.toISOString()); onClose(); }}>
+        +3 days
+      </button>
+      <button className="block w-full text-left px-3 py-1.5 text-sm hover:bg-white/5"
+        onClick={() => { const b = new Date(); b.setHours(0, 0, 0, 0); b.setDate(b.getDate() + 7); onPick(b.toISOString()); onClose(); }}>
+        +1 week
+      </button>
+      <div className="border-t border-hairline my-1" />
+      <button className="block w-full text-left px-3 py-1.5 text-sm hover:bg-white/5"
+        onClick={() => { onPick(null); onClose(); }}>
+        Clear
+      </button>
+    </div>,
+    document.body
+  );
+};
+
+/* ─────────────── NextFollowUpChip (passes anchor rect) ─────────────── */
+
+const NextFollowUpChip: React.FC<{
+  value?: string | null;
+  onChange: (iso: string | null) => void;
+}> = ({ value, onChange }) => {
+  const [open, setOpen] = React.useState(false);
+  const [anchorRect, setAnchorRect] = React.useState<DOMRect | null>(null);
+  const btnRef = React.useRef<HTMLButtonElement | null>(null);
+
+  const label = formatNextFollowUpLabel(value) || "Set follow-up";
+
+  // Recompute anchor rect when opening, and on resize/scroll
+  const recompute = React.useCallback(() => {
+    if (!btnRef.current) return;
+    setAnchorRect(btnRef.current.getBoundingClientRect());
+  }, []);
+  React.useEffect(() => {
+    if (!open) return;
+    recompute();
+    const onScroll = () => recompute();
+    const onResize = () => recompute();
+    window.addEventListener("scroll", onScroll, true);
+    window.addEventListener("resize", onResize);
+    return () => {
+      window.removeEventListener("scroll", onScroll, true);
+      window.removeEventListener("resize", onResize);
+    };
+  }, [open, recompute]);
+
+  return (
+    <div className="relative inline-flex items-center">
+      <button
+        ref={btnRef}
+        type="button"
+        className="h-7 px-2 rounded-md border border-hairline text-xs hover:bg-white/5"
+        onClick={() => setOpen(v => !v)}
+      >
+        {label}
+      </button>
+      {open && (
+        <SnoozeMenu
+          anchorRect={anchorRect}
+          onPick={onChange}
+          onClose={() => setOpen(false)}
+        />
+      )}
+    </div>
+  );
+};
+
+function findDuplicates(all: ContactRow[], currentId: ID | null, email?: string | null, mobile?: string | null, whatsapp?: string | null, anyPhone?: string | null) {
+  const emailLc = (email || "").trim().toLowerCase();
+  const phones = new Set<string>([
+    normalizePhone(mobile || ""),
+    normalizePhone(whatsapp || ""),
+    normalizePhone(anyPhone || ""),
+  ].filter(Boolean));
+
+  return all.filter((r) => {
+    if (String(r.id) === String(currentId ?? "")) return false;
+    const rEmailLc = (r.email || "").trim().toLowerCase();
+    if (emailLc && rEmailLc && emailLc === rEmailLc) return true;
+
+    const rPhones = [
+      normalizePhone(r.phoneMobileE164 || ""),
+      normalizePhone(r.whatsappE164 || ""),
+      normalizePhone(r.phone || ""),
+    ].filter(Boolean);
+
+    return rPhones.some((p) => phones.has(p));
+  });
+}
+
+type AnimalRow = {
+  id: ID;
+  name: string | null;
+  species: string | null;
+  sex: string | null;
+  status: string | null;
+  role: string | null;   // Owner, Co-owner, Guardian, etc.
+  sharePct: number | null;
+};
+
+/** Return true if the animal is linked to `contactId` by any known shape. */
+function isLinkedToContact(animal: any, contactId: ID): boolean {
+  const cid = String(contactId);
+
+  // Common direct fields
+  const directOwner =
+    animal?.ownerId ?? animal?.owner_id ?? animal?.contactId ?? animal?.contact_id ?? null;
+  if (directOwner != null && String(directOwner) === cid) return true;
+
+  // Primary owner object shapes
+  const primaryOwner =
+    animal?.owner ??
+    animal?.primaryOwner ??
+    animal?.primary_owner ??
+    null;
+  if (primaryOwner && String(primaryOwner.id ?? primaryOwner.contactId ?? primaryOwner.contact_id) === cid) {
+    return true;
+  }
+
+  // Arrays of links (various shapes)
+  const linkArrays = [
+    animal?.owners,
+    animal?.ownerships,
+    animal?.contacts,
+    animal?.links,
+    animal?.animalOwners,
+    animal?.animal_owners,
+  ].filter(Boolean);
+
+  for (const arr of linkArrays) {
+    const list = Array.isArray(arr) ? arr : Array.isArray(arr?.items) ? arr.items : [];
+    if (list.some((o: any) => String(o?.contactId ?? o?.contact_id ?? o?.id) === cid)) {
+      return true;
+    }
+  }
+
+  // Some APIs return { owners: [{ contact: { id } }]}
+  for (const arr of linkArrays) {
+    const list = Array.isArray(arr) ? arr : Array.isArray(arr?.items) ? arr.items : [];
+    if (list.some((o: any) => String(o?.contact?.id) === cid)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+
+/* ────────────────────────────────────────────────────────────────────────────
  * Drawer view
  * ────────────────────────────────────────────────────────────────────────── */
 
@@ -356,6 +662,8 @@ type ContactDetailsViewProps = {
   activeTab: string;
   setActiveTab: (k: string) => void;
   requestSave: () => Promise<void>;
+  allRows: ContactRow[]; // for duplicate checks
+  api: ReturnType<typeof makeApi>;
 };
 
 const ContactDetailsView: React.FC<ContactDetailsViewProps> = ({
@@ -366,6 +674,8 @@ const ContactDetailsView: React.FC<ContactDetailsViewProps> = ({
   activeTab,
   setActiveTab,
   requestSave,
+  allRows,
+  api,
 }) => {
   const [cell, setCell] = React.useState<PhoneValue>({
     countryCode: "US",
@@ -393,6 +703,90 @@ const ContactDetailsView: React.FC<ContactDetailsViewProps> = ({
     mail: !!(row as any).prefersMail,
     whatsapp: !!(row as any).prefersWhatsapp,
   }));
+
+  const [dupList, setDupList] = React.useState<ContactRow[]>([]);
+  React.useEffect(() => {
+    const dups = findDuplicates(
+      allRows,
+      row?.id ?? null,
+      row?.email ?? null,
+      (row as any).phoneMobileE164 ?? null,
+      (row as any).whatsappE164 ?? null,
+      row?.phone ?? null
+    );
+    setDupList(dups);
+  }, [allRows, row]);
+
+  const [animals, setAnimals] = React.useState<AnimalRow[] | null>(null);
+  const [animalsErr, setAnimalsErr] = React.useState<string | null>(null);
+  React.useEffect(() => {
+    let cancelled = false;
+    if (activeTab !== "animals" || animals !== null) return;
+
+    (async () => {
+      try {
+        setAnimalsErr(null);
+
+        // Try the most specific things first.
+        const attempts: Array<() => Promise<any>> = [
+          // 1) Contacts → Animals (ideal)
+          () => (api as any).contacts?.getAnimals?.(row.id),
+          // 2) Animals service variants that accept a contact id
+          () => (api as any).animals?.listByContact?.(row.id),
+          () => (api as any).animals?.list?.({ contactId: row.id }),
+          () => (api as any).animals?.list?.({ ownerId: row.id }),
+          // 3) Very broad fallbacks (must client-filter)
+          () => (api as any).animals?.list?.(),
+          () => (api as any).animals?.all?.(),
+        ].filter(Boolean);
+
+        let raw: any[] = [];
+        for (const tryFn of attempts) {
+          try {
+            const res = await tryFn();
+            const arr =
+              Array.isArray(res) ? res :
+                Array.isArray(res?.items) ? res.items :
+                  Array.isArray(res?.data) ? res.data :
+                    null;
+            if (arr) { raw = arr; break; }
+          } catch {
+            // ignore and try next
+          }
+        }
+
+        // Always filter to ONLY animals linked to this contact.
+        const scoped = (raw || []).filter((a: any) => isLinkedToContact(a, row.id));
+
+        const mapped: AnimalRow[] = scoped.map((a: any) => ({
+          id: a.id,
+          name: a.name ?? a.displayName ?? a.callName ?? null,
+          species: a.species ?? null,
+          sex: a.sex ?? null,
+          status: a.status ?? null,
+          role:
+            a.ownershipRole ??
+            a.role ??
+            // sometimes link lives under a nested primary owner for display:
+            a?.owner?.role ??
+            a?.primaryOwner?.role ??
+            null,
+          sharePct:
+            a.ownershipSharePct ??
+            a.sharePct ??
+            a?.owner?.sharePct ??
+            a?.primaryOwner?.sharePct ??
+            null,
+        }));
+
+        if (!cancelled) setAnimals(mapped);
+      } catch (e: any) {
+        if (!cancelled) setAnimalsErr(e?.message || "Failed to load animals");
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [activeTab, animals, api, row?.id]);
 
   const overlayRoot = typeof document !== "undefined" ? document.getElementById("bhq-overlay-root") : null;
 
@@ -437,10 +831,31 @@ const ContactDetailsView: React.FC<ContactDetailsViewProps> = ({
     />
   );
 
-  const titleFlair = (txt: string) => (
-    <span className="text-[11px] font-semibold tracking-wide uppercase text-secondary">
-      {txt}
-    </span>
+  /* Header actions: Next Follow-up chip + Archive */
+  const [snoozing, setSnoozing] = React.useState(false);
+
+  const headerRight = (
+    <div className="flex items-center gap-2">
+      <NextFollowUpChip
+        value={row.nextFollowUp}
+        onChange={async (iso) => {
+          const value = iso ? new Date(iso).toISOString() : null;
+          try {
+            setSnoozing(true);
+            await api.contacts.update(row.id, { nextFollowUp: value });
+            setDraft((d: any) => ({ ...d, nextFollowUp: value }));
+            console.log("[Contacts] nextFollowUp saved (direct)");
+          } catch (e) {
+            console.error("[Contacts] nextFollowUp save failed", e);
+          } finally {
+            setSnoozing(false);
+          }
+        }}
+      />
+      <Button size="sm" variant="outline" disabled={snoozing}>
+        {snoozing ? "Saving…" : "Archive"}
+      </Button>
+    </div>
   );
 
   return (
@@ -458,10 +873,26 @@ const ContactDetailsView: React.FC<ContactDetailsViewProps> = ({
       ]}
       activeTab={activeTab}
       onTabChange={setActiveTab}
-      rightActions={<Button size="sm" variant="outline">Archive</Button>}
+      rightActions={headerRight}
     >
+      {/* Duplicate banner */}
+      {dupList.length > 0 && (
+        <div className="mb-3 rounded-md border border-[color:var(--brand-orange)]/40 bg-[color:var(--brand-orange)]/10 p-2">
+          <div className="text-sm font-medium">Possible duplicates found</div>
+          <div className="text-xs text-secondary">
+            Another contact shares the same email or phone. Review before saving changes.
+          </div>
+          <div className="mt-1 flex flex-wrap gap-2">
+            {dupList.slice(0, 3).map((d) => (
+              <Badge key={String(d.id)}>{computeDisplayName(d)}</Badge>
+            ))}
+            {dupList.length > 3 && <span className="text-xs text-secondary">+{dupList.length - 3} more</span>}
+            <Button size="xs" variant="outline" className="ml-auto opacity-70 cursor-not-allowed">Open merge (soon)</Button>
+          </div>
+        </div>
+      )}
+
       {activeTab === "overview" && (() => {
-        // normalize once so display values always work regardless of snake/camel input
         const norm = contactToRow(row);
 
         return (
@@ -471,23 +902,17 @@ const ContactDetailsView: React.FC<ContactDetailsViewProps> = ({
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
                   <div className="text-xs text-secondary mb-1">First Name</div>
-                  {mode === "view"
-                    ? <div className="text-sm">{norm.firstName || "—"}</div>
-                    : editText("firstName")}
+                  {mode === "view" ? <div className="text-sm">{norm.firstName || "—"}</div> : editText("firstName")}
                 </div>
 
                 <div>
                   <div className="text-xs text-secondary mb-1">Last Name</div>
-                  {mode === "view"
-                    ? <div className="text-sm">{norm.lastName || "—"}</div>
-                    : editText("lastName")}
+                  {mode === "view" ? <div className="text-sm">{norm.lastName || "—"}</div> : editText("lastName")}
                 </div>
 
                 <div>
                   <div className="text-xs text-secondary mb-1">Nickname</div>
-                  {mode === "view"
-                    ? <div className="text-sm">{norm.nickname || "—"}</div>
-                    : editText("nickname")}
+                  {mode === "view" ? <div className="text-sm">{norm.nickname || "—"}</div> : editText("nickname")}
                 </div>
 
                 <div className="sm:col-span-3">
@@ -520,37 +945,27 @@ const ContactDetailsView: React.FC<ContactDetailsViewProps> = ({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <div className="text-xs text-secondary mb-1">Street</div>
-                  {mode === "view"
-                    ? <div className="text-sm">{norm.street || "—"}</div>
-                    : editText("street")}
+                  {mode === "view" ? <div className="text-sm">{norm.street || "—"}</div> : editText("street")}
                 </div>
 
                 <div>
                   <div className="text-xs text-secondary mb-1">Street 2</div>
-                  {mode === "view"
-                    ? <div className="text-sm">{norm.street2 || "—"}</div>
-                    : editText("street2")}
+                  {mode === "view" ? <div className="text-sm">{norm.street2 || "—"}</div> : editText("street2")}
                 </div>
 
                 <div>
                   <div className="text-xs text-secondary mb-1">City</div>
-                  {mode === "view"
-                    ? <div className="text-sm">{norm.city || "—"}</div>
-                    : editText("city")}
+                  {mode === "view" ? <div className="text-sm">{norm.city || "—"}</div> : editText("city")}
                 </div>
 
                 <div>
                   <div className="text-xs text-secondary mb-1">State / Region</div>
-                  {mode === "view"
-                    ? <div className="text-sm">{norm.state || "—"}</div>
-                    : editText("state")}
+                  {mode === "view" ? <div className="text-sm">{norm.state || "—"}</div> : editText("state")}
                 </div>
 
                 <div>
                   <div className="text-xs text-secondary mb-1">Postal Code</div>
-                  {mode === "view"
-                    ? <div className="text-sm">{norm.postalCode || "—"}</div>
-                    : editText("postalCode")}
+                  {mode === "view" ? <div className="text-sm">{norm.postalCode || "—"}</div> : editText("postalCode")}
                 </div>
 
                 <div>
@@ -662,7 +1077,7 @@ const ContactDetailsView: React.FC<ContactDetailsViewProps> = ({
             {/* Compliance */}
             <SectionCard title="Compliance">
               <div className="text-xs text-secondary mb-2">
-                System sets these from unsubscribes. Click “Reset” to opt the user back in; action is logged on Save.
+                System sets these from unsubscribes. Select Reset to opt the user back in. Action is logged on save.
               </div>
 
               {mode === "view" ? (
@@ -755,6 +1170,56 @@ const ContactDetailsView: React.FC<ContactDetailsViewProps> = ({
           </div>
         );
       })()}
+
+      {activeTab === "animals" && (
+        <div className="space-y-3">
+          <SectionCard title="Animals">
+            {!animals && !animalsErr && <div className="text-sm text-secondary py-4">Loading…</div>}
+            {animalsErr && <div className="text-sm text-red-600 py-4">Error: {animalsErr}</div>}
+            {animals && animals.length === 0 && <div className="text-sm text-secondary py-4">No animals yet.</div>}
+            {animals && animals.length > 0 && (
+              <div className="overflow-auto">
+                <table className="min-w-max w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-hairline">
+                      <th className="text-left py-2 pr-3 font-medium">Name</th>
+                      <th className="text-left py-2 pr-3 font-medium">Species</th>
+                      <th className="text-left py-2 pr-3 font-medium">Sex</th>
+                      <th className="text-left py-2 pr-3 font-medium">Status</th>
+                      <th className="text-left py-2 pr-3 font-medium">Role</th>
+                      <th className="text-left py-2 pr-3 font-medium">% Share</th>
+                      <th className="text-right py-2 pl-3 font-medium">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {animals.map((a) => (
+                      <tr key={String(a.id)} className="border-b border-hairline/60">
+                        <td className="py-2 pr-3">{a.name || "—"}</td>
+                        <td className="py-2 pr-3">{a.species || "—"}</td>
+                        <td className="py-2 pr-3">{a.sex || "—"}</td>
+                        <td className="py-2 pr-3">{a.status || "—"}</td>
+                        <td className="py-2 pr-3">{a.role || "—"}</td>
+                        <td className="py-2 pr-3">{a.sharePct ?? "—"}</td>
+                        <td className="py-2 pl-3 text-right">
+                          <Button size="xs" variant="outline" onClick={() => (window as any).bhq?.nav?.open?.("animal", a.id)}>Open</Button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </SectionCard>
+        </div>
+      )}
+
+      {activeTab === "audit" && (
+        <div className="space-y-3">
+          <SectionCard title="Audit">
+            <div className="text-sm text-secondary">Audit events will show here.</div>
+          </SectionCard>
+        </div>
+      )}
     </DetailsScaffold>
   );
 };
@@ -991,7 +1456,32 @@ export default function AppContacts() {
           }
         }
 
-        const payload = { ...draft, ...compliancePatch };
+        // Also apply nextFollowUp changes and phone precedence in the payload
+        const resolvedOrgId =
+          (draft?.organizationId ?? null) !== undefined
+            ? draft?.organizationId ?? null
+            : original?.organizationId ?? null;
+
+        const payload = {
+          ...draft,
+          ...compliancePatch,
+
+          // phone precedence
+          phone:
+            draft?.phoneMobileE164 ||
+            draft?.whatsappE164 ||
+            draft?.phone ||
+            original?.phone ||
+            null,
+
+          // send both shapes for compatibility
+          organizationId: resolvedOrgId,
+          organization_id: resolvedOrgId,
+
+          // optional helper shape some APIs accept
+          ...(resolvedOrgId ? { organization: { id: resolvedOrgId } } : { organization: null }),
+        };
+
         const updated = await api.contacts.update(id, payload);
 
         if (complianceActions.length) {
@@ -1004,7 +1494,26 @@ export default function AppContacts() {
         }
 
         setRows((prev) =>
-          prev.map((r) => (String(r.id) === String(id) ? { ...r, ...contactToRow(updated) } : r))
+          prev.map((r) => {
+            if (String(r.id) !== String(id)) return r;
+
+            const mapped = contactToRow(updated);
+
+            // If API did not echo org name, keep the one we already know.
+            const safeOrgName =
+              mapped.organizationName ??
+              draft?.organizationName ??
+              (r as any).organizationName ??
+              null;
+
+            const safeOrgId =
+              mapped.organizationId ??
+              draft?.organizationId ??
+              (r as any).organizationId ??
+              null;
+
+            return { ...r, ...mapped, organizationName: safeOrgName, organizationId: safeOrgId };
+          })
         );
       },
       header: (r: ContactRow) => ({
@@ -1017,7 +1526,13 @@ export default function AppContacts() {
         { key: "audit", label: "Audit" },
       ],
       customChrome: true,
-      render: (props: any) => <ContactDetailsView {...props} />,
+      render: (props: any) => (
+        <ContactDetailsView
+          {...props}
+          allRows={rows}
+          api={api}
+        />
+      ),
     }),
     [api, rows]
   );
@@ -1057,6 +1572,18 @@ export default function AppContacts() {
   // Tags/Notes
   const [tagsStr, setTagsStr] = React.useState("");
   const [notes, setNotes] = React.useState("");
+
+  // Create-time duplicate surface
+  const createDups = React.useMemo(() => {
+    return findDuplicates(
+      rows,
+      null,
+      email || null,
+      cell?.e164 || null,
+      whatsapp?.e164 || null,
+      cell?.e164 || whatsapp?.e164 || null
+    );
+  }, [rows, email, cell?.e164, whatsapp?.e164]);
 
   const resetCreateForm = () => {
     setFirstName(""); setLastName(""); setNickname(""); setEmail("");
@@ -1257,7 +1784,7 @@ export default function AppContacts() {
         onOpenChange={(v) => { if (!createWorking) setCreateOpen(v); }}
         ariaLabel="Create Contact"
         closeOnEscape
-        closeOnOutsideClick // harmless if your Overlay doesn't implement it; we also handle outside below
+        closeOnOutsideClick
       >
         {(() => {
           const panelRef = React.useRef<HTMLDivElement>(null);
@@ -1271,7 +1798,6 @@ export default function AppContacts() {
           };
 
           return (
-            // Fullscreen hit-area for outside clicks
             <div className="fixed inset-0" onMouseDown={handleOutsideMouseDown}>
               {/* Backdrop */}
               <div className="absolute inset-0 bg-black/50" />
@@ -1288,6 +1814,21 @@ export default function AppContacts() {
                     <div className="text-lg font-semibold">Create Contact</div>
                     <Button variant="ghost" onClick={() => setCreateOpen(false)}>✕</Button>
                   </div>
+
+                  {createDups.length > 0 && (
+                    <div className="mb-3 rounded-md border border-[color:var(--brand-orange)]/40 bg-[color:var(--brand-orange)]/10 p-2">
+                      <div className="text-sm font-medium">Possible duplicates found</div>
+                      <div className="text-xs text-secondary">
+                        Another contact shares the same email or phone.
+                      </div>
+                      <div className="mt-1 flex flex-wrap gap-2">
+                        {createDups.slice(0, 3).map((d) => (
+                          <Badge key={String(d.id)}>{computeDisplayName(d)}</Badge>
+                        ))}
+                        {createDups.length > 3 && <span className="text-xs text-secondary">+{createDups.length - 3} more</span>}
+                      </div>
+                    </div>
+                  )}
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     {/* Names */}

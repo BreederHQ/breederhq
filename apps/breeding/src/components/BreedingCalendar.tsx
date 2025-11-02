@@ -26,8 +26,8 @@ type PlanRow = {
   actualBreedingDate?: string | Date | null;
   actualWhelpedDate?: string | Date | null;
   actualWeanedDate?: string | Date | null;
-  placementStartDateActual?: string | Date | null;      // was actualHomingStartedDate
-  placementCompletedDateActual?: string | Date | null;  // was actualHomingExtendedEnds
+  placementStartDateActual?: string | Date | null;    
+  placementCompletedDateActual?: string | Date | null;
   actualPlanCompletedDate?: string | Date | null;
 
   // Legacy aliases (still tolerated if present)
@@ -58,23 +58,30 @@ function byKey(stages: StageWindows[]) {
 
 function expectedPoints(stages: StageWindows[]) {
   const m = byKey(stages);
-  const pre = m.get("preBreeding");
-  const test = m.get("hormoneTesting");
+  const pre   = m.get("preBreeding");
+  const test  = m.get("hormoneTesting");
   const breed = m.get("breeding");
-  const whelp = m.get("whelping");
+  const birth = m.get("birth");
   const puppy = m.get("puppyCare");
-  const placeStart = m.get("goHomeNormal");
-  const placeExt = m.get("goHomeExtended") ?? placeStart;
+  const placementNormal   = m.get("PlacementNormal");
+  const placementExtended = m.get("PlacementExtended");
 
-  return [
-    { key: "Cycle Start (Expected)", date: pre?.likely?.start ?? pre?.full.start ?? null },
-    { key: "Hormone Testing Start (Expected)", date: test?.likely?.start ?? test?.full.start ?? null },
-    { key: "Breeding Date (Expected)", date: breed?.likely?.start ?? (breed ? centerOf(breed.full) : null) },
-    { key: "Whelping Date (Expected)", date: whelp?.likely ? centerOf(whelp.likely) : (whelp ? centerOf(whelp.full) : null) },
-    { key: "Weaned Date (Expected)", date: puppy?.likely?.end ?? puppy?.full.end ?? null },
-    { key: "Placement Starts (Expected)", date: placeStart?.likely?.start ?? placeStart?.full.start ?? null },
-    { key: "Placement Extended Ends (Expected)", date: placeExt?.full.end ?? null },
-  ].filter((x): x is { key: string; date: Date } => Boolean(x.date));
+  const out = [
+    // one-day point for the first day you can treat as “Cycle Start”
+    { key: "Cycle Start (Expected)",               date: pre?.likely?.start ?? pre?.full.start ?? null },
+    { key: "Hormone Testing Start (Expected)",     date: test?.likely?.start ?? test?.full.start ?? null },
+    // breeding: use likely start if present, otherwise the center of the full window
+    { key: "Breeding Date (Expected)",             date: breed?.likely?.start ?? (breed ? centerOf(breed.full) : null) },
+    // birth: center of likely window else center of full
+    { key: "Birth Date (Expected)",                date: birth?.likely ? centerOf(birth.likely) : (birth ? centerOf(birth.full) : null) },
+    // weaned: last day of puppy-care likely if present, else last day of full
+    { key: "Weaned Date (Expected)",               date: puppy?.likely?.end ?? puppy?.full.end ?? null },
+    // placement starts: first day of Placement (Normal)
+    { key: "Placement Starts (Expected)",          date: placementNormal?.likely?.start ?? placementNormal?.full.start ?? null },
+    // placement completed: prefer the end of extended if it exists, else end of normal
+    { key: "Placement Completed (Expected)",       date: placementExtended?.full.end ?? placementNormal?.full.end ?? null },
+  ];
+  return out.filter((x): x is { key: string; date: Date } => Boolean(x.date));
 }
 
 function actualPoints(p: PlanRow) {
@@ -83,7 +90,7 @@ function actualPoints(p: PlanRow) {
     { key: "Cycle Start (Actual)", date: pick(p.actualCycleStart ?? p.actualHeatStart) },
     { key: "Hormone Testing Start (Actual)", date: pick(p.actualHormoneTestingStart) },
     { key: "Breeding Date (Actual)", date: pick(p.actualBreedingDate) },
-    { key: "Whelped Date (Actual)", date: pick(p.actualWhelpedDate ?? p.actualWhelpDate) },
+    { key: "Birthed Date (Actual)", date: pick(p.actualWhelpedDate ?? p.actualWhelpDate) },
     { key: "Weaned Date (Actual)", date: pick(p.actualWeanedDate) },
     { key: "Placement Started (Actual)", date: pick(p.placementStartDateActual ?? p.actualGoHomeDate) },
     { key: "Placement Completed (Actual)", date: pick(p.placementCompletedDateActual) },

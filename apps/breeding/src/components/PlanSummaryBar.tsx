@@ -7,7 +7,7 @@ export type PlanSummary = {
   damName?: string | null;
   sireName?: string | null;
   expectedDue?: string | null;
-  /** was expectedGoHome */
+  /** was expectedPlacementStart */
   expectedPlacementStart?: string | null;
   riskScore?: number | null; // 0–100
   depositsCommitted?: number | null; // cents
@@ -24,9 +24,9 @@ export default function PlanSummaryBar({ plan }: { plan: PlanSummary }) {
   const riskColor =
     risk >= 67 ? "bg-red-500" : risk >= 34 ? "bg-yellow-500" : "bg-emerald-500";
 
-  // Legacy alias fallback while codebase migrates off expectedGoHome
+  // Legacy alias fallback while codebase migrates off expectedPlacementStart
   const placementExpected =
-    plan.expectedPlacementStart ?? (plan as any).expectedGoHome ?? null;
+    plan.expectedPlacementStart ?? (plan as any).expectedPlacementStart ?? null;
 
   return (
     <div className="mb-3 rounded-xl border border-hairline bg-surface/70 backdrop-blur p-3">
