@@ -1,9 +1,9 @@
 // apps/breeding/src/adapters/planToGantt.ts
-// Single source of truth for converting plans into chart-ready data.
+// Single source of truth for converting plans into chart-ready data and horizons.
 
 export type ID = number | string;
 
-export type Range = { start: Date; end: Date }; // inclusive end
+export type Range = { start: Date; end: Date }; // inclusive end for bars
 export type StageKey =
   | "preBreeding"
   | "hormoneTesting"
@@ -17,6 +17,7 @@ export type StageWindows = { key: StageKey; full: Range; likely?: Range };
 export type PlanRow = {
   id: ID;
   name: string;
+  status?: string | null;
   species?: "Dog" | "Cat" | "Horse" | string | null;
 
   // Sources for expected dates
@@ -32,50 +33,68 @@ export type PlanRow = {
   expected_go_home?: string | null;
 };
 
-/* ───────── general helpers ───────── */
+export type NormalizedPlan = {
+  plan: PlanRow;
+  windows: StageWindows[];
+};
+
+/* ───────── date helpers ───────── */
 const iso = (d?: string | null) => (d ? new Date(d) : null);
 const clampDay = (dt: Date) => new Date(dt.getFullYear(), dt.getMonth(), dt.getDate());
 export const addDays = (dt: Date, days: number) =>
   new Date(dt.getFullYear(), dt.getMonth(), dt.getDate() + days);
-const sameDay = (a: Date, b: Date) =>
-  a.getFullYear() === b.getFullYear() &&
-  a.getMonth() === b.getMonth() &&
-  a.getDate() === b.getDate();
 
 export function oneDayRange(d: Date): Range {
   const s = clampDay(d);
   return { start: s, end: s };
 }
 
-export function monthsBetween(start: Date, end: Date) {
-  const m =
-    (end.getFullYear() - start.getFullYear()) * 12 +
-    (end.getMonth() - start.getMonth()) +
-    1;
+export function monthsBetween(start: Date, end: Date): number {
+  const s = new Date(start.getFullYear(), start.getMonth(), 1);
+  const e = new Date(end.getFullYear(), end.getMonth(), 1);
+  const m = (e.getFullYear() - s.getFullYear()) * 12 + (e.getMonth() - s.getMonth()) + 1;
   return Math.max(1, m);
 }
 
+/** Pad a span by one empty calendar month on both ends */
 export function padByOneMonth(r: Range): Range {
-  // first day of month prior to start, last day of month after end
   const a = new Date(r.start.getFullYear(), r.start.getMonth() - 1, 1);
   const b = new Date(r.end.getFullYear(), r.end.getMonth() + 2, 0);
   return { start: a, end: b };
 }
 
-export function rangeOfWindows(ws: StageWindows[]): Range | null {
-  if (!ws.length) return null;
-  let s = ws[0].full.start;
-  let e = ws[0].full.end;
-  for (const w of ws) {
-    if (w.full.start < s) s = w.full.start;
-    if (w.full.end > e) e = w.full.end;
+/** Expected span for a set of windows. Prefer likely if present, else full. */
+export function expectedRangeOfWindows(ws: StageWindows[]): Range {
+  if (!ws.length) {
+    const t = clampDay(new Date());
+    return { start: t, end: t };
   }
-  return { start: s, end: e };
+  let min = ws[0].likely?.start ?? ws[0].full.start;
+  let max = ws[0].likely?.end ?? ws[0].full.end;
+  for (const w of ws) {
+    const r = w.likely ?? w.full;
+    if (r.start < min) min = r.start;
+    if (r.end > max) max = r.end;
+  }
+  return { start: min, end: max };
 }
 
-/* ───────── windows builder (expected only) ─────────
-   Keep this deterministic and free of UI concerns.
-*/
+/** Union of several ranges */
+export function unionRange(ranges: Range[]): Range {
+  if (!ranges.length) {
+    const t = clampDay(new Date());
+    return { start: t, end: t };
+  }
+  let min = ranges[0].start;
+  let max = ranges[0].end;
+  for (const r of ranges) {
+    if (r.start < min) min = r.start;
+    if (r.end > max) max = r.end;
+  }
+  return { start: min, end: max };
+}
+
+/* ───────── windows builder (expected only) ───────── */
 export function windowsFromPlan(p: PlanRow): StageWindows[] {
   const out: StageWindows[] = [];
 
@@ -87,41 +106,27 @@ export function windowsFromPlan(p: PlanRow): StageWindows[] {
 
   if (dCycle) out.push({ key: "preBreeding", full: oneDayRange(dCycle) });
 
-  if (dCycle && dOv && !sameDay(dCycle, dOv)) {
-    // Represent the expected test completion at ovulation
+  // Use ovulation as expected testing completion marker and breeding anchor
+  if (dCycle && dOv && dOv.getTime() !== dCycle.getTime()) {
     out.push({ key: "hormoneTesting", full: oneDayRange(dOv) });
   }
-
   if (dOv) out.push({ key: "breeding", full: oneDayRange(dOv) });
   if (dDue) out.push({ key: "whelping", full: oneDayRange(dDue) });
 
   if (dDue && dGo) {
-    out.push({
-      key: "puppyCare",
-      full: { start: clampDay(dDue), end: clampDay(dGo) },
-    });
+    out.push({ key: "puppyCare", full: { start: clampDay(dDue), end: clampDay(dGo) } });
   }
-
   if (dGo) out.push({ key: "goHomeNormal", full: oneDayRange(dGo) });
 
   return out;
 }
 
-/* ───────── availability bands (placeholder) ─────────
-   Keep this simple for now. You can replace with production logic.
-*/
-export type AvailabilityBand = {
-  label: string;
-  range: Range;
-  kind: "unlikely" | "risky";
-};
-
-export function availabilityForPlan(_p: PlanRow): AvailabilityBand[] {
-  // Implement your final rules here. Returning empty by default.
-  return [];
+/** Build once upstream: map raw plans to normalized windows */
+export function normalizePlans(plans: PlanRow[]): NormalizedPlan[] {
+  return plans.map((plan) => ({ plan, windows: windowsFromPlan(plan) }));
 }
 
-/* ───────── color hash ───────── */
+/* ───────── color hash for plan chips ───────── */
 export function colorFromId(id: ID): string {
   const s = String(id);
   let h = 2166136261 >>> 0;
@@ -132,10 +137,10 @@ export function colorFromId(id: ID): string {
 
 /* ───────── stage list for the renderer ───────── */
 export const GANTT_STAGES = [
-  { key: "preBreeding", label: "Pre-breeding Heat", baseColor: "#38bdf8", hatchLikely: true },
-  { key: "hormoneTesting", label: "Hormone Testing", baseColor: "#f59e0b", hatchLikely: true },
-  { key: "breeding", label: "Breeding", baseColor: "#10b981" },
-  { key: "whelping", label: "Whelping", baseColor: "#ef4444" },
-  { key: "puppyCare", label: "Puppy Care", baseColor: "#6366f1", hatchLikely: true },
-  { key: "goHomeNormal", label: "Go Home", baseColor: "#22c55e" },
+  { key: "preBreeding",    label: "Pre-breeding Heat", baseColor: "#38bdf8", hatchLikely: true },
+  { key: "hormoneTesting", label: "Hormone Testing",   baseColor: "#f59e0b", hatchLikely: true },
+  { key: "breeding",       label: "Breeding",          baseColor: "#10b981" },
+  { key: "whelping",       label: "Whelping",          baseColor: "#ef4444" },
+  { key: "puppyCare",      label: "Puppy Care",        baseColor: "#6366f1", hatchLikely: true },
+  { key: "goHomeNormal",   label: "Go Home",           baseColor: "#22c55e" },
 ] as const;

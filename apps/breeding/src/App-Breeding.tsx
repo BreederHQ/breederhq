@@ -28,6 +28,7 @@ import { OverlayMount } from "@bhq/ui/overlay/OverlayMount";
 import { getOverlayRoot } from "@bhq/ui/overlay/core";
 import { NavLink, useInRouterContext } from "react-router-dom";
 import MasterPlanGantt from "./components/MasterPlanGantt";
+import PerPlanGantt from "./components/PerPlanGantt";
 import PlannerSwitch from "./components/PlannerSwitch";
 import "@bhq/ui/styles/table.css";
 import "@bhq/ui/styles/details.css";
@@ -35,13 +36,18 @@ import { makeBreedingApi } from "./api";
 
 // ── Calendar / Planning wiring ─────────────────────────────
 import BreedingCalendar from "./components/BreedingCalendar";
-import BreedingPlans from "./components/BreedingPlans";
 /* Cycle math */
 import {
   useCyclePlanner,
   type Species as PlannerSpecies,
   type ExpectedDates as PlannerExpected,
 } from "@bhq/ui/hooks";
+
+import {
+  normalizePlans,
+  type NormalizedPlan,
+  type PlanRow, // keep if you already have this type defined elsewhere
+} from "./adapters/planToGantt";
 
 const MODAL_Z = 2147485000;
 const modalRoot = typeof document !== "undefined" ? document.body : null;
@@ -584,7 +590,13 @@ export default function AppBreeding() {
       start: new Date(now.getFullYear(), now.getMonth() - 1, 1),
       end: new Date(now.getFullYear(), now.getMonth() + 13, 0),
     }),
-    [] // fixed horizon window
+    []
+  );
+
+  // Build pre-normalized data once and reuse everywhere ===
+  const normalized = React.useMemo<NormalizedPlan[]>(
+    () => normalizePlans(allPlans),
+    [allPlans]
   );
 
   const [q, setQ] = React.useState(() => {
@@ -1403,38 +1415,28 @@ export default function AppBreeding() {
                 <PlannerSwitch mode={plannerMode} onChange={setPlannerMode} />
                 <div className="text-sm text-secondary">Planner view</div>
               </div>
-              {(() => {
-                // Map to placement fields for master chart
-                const masterPlans = allPlans.map((p) => ({
-                  ...p,
-                  lockedPlacementStartDate: p.lockedPlacementStartDate ?? null,
-                  expectedPlacementStart: p.expectedPlacementStart ?? null,
-                  expectedPlacementCompleted: p.expectedPlacementCompleted ?? null,
-                }));
-                return plannerMode === "per-plan" ? (
-                  <BreedingPlans
-                    plans={allPlans}
-                    onOpenPlan={(planId: ID) => openPlanDrawer(planId)}
-                    onQuickAdd={(planId?: ID) => openQuickAddFor(planId)}
-                  />
-                ) : (
-                  <MasterPlanGantt
-                    plans={masterPlans as any}
-                    damReproByPlan={{}}
-                    horizon={plannerHorizon}
-                    availabilityOn={availabilityOn}
-                    onAvailabilityToggle={setAvailabilityOn}
-                    selected={selectedKeys}
-                    onSelectedChange={(next) => {
-                      setSelectionTouched(true);
-                      // Accept either Set or iterable; keep raw ID types
-                      const incoming = next instanceof Set ? next : new Set(next as Iterable<ID>);
-                      setSelectedKeys(incoming);
-                    }}
-                  />
-
-                );
-              })()}
+              {plannerMode === "per-plan" ? (
+                <PerPlanGantt
+                  items={normalized}
+                  today={now}
+                  onOpenPlan={(planId: ID) => openPlanDrawer(planId)}
+                  onQuickAdd={(planId?: ID) => openQuickAddFor(planId)}
+                />
+              ) : (
+                <MasterPlanGantt
+                  items={normalized}
+                  horizon={plannerHorizon}
+                  today={now}
+                  availabilityOn={availabilityOn}
+                  onAvailabilityToggle={setAvailabilityOn}
+                  selected={selectedKeys}
+                  onSelectedChange={(next) => {
+                    setSelectionTouched(true);
+                    const incoming = next instanceof Set ? next : new Set(next as Iterable<ID>);
+                    setSelectedKeys(incoming);
+                  }}
+                />
+              )}
             </div>
           )}
         </Card>
