@@ -1,7 +1,7 @@
 // apps/breeding/src/components/SettingsProtocols.tsx
 import * as React from "react";
-import { SectionCard, Button, Input } from "@bhq/ui";
-import { loadSettings, saveSettings, type BreederSettings } from "@bhq/ui/utils/breederSettings";
+import { SectionCard, Button, Input } from "..";
+import { loadSettings, saveSettings, type BreederSettings } from "../../utils/breederSettings";
 
 export default function SettingsProtocols() {
   const [s, setS] = React.useState<BreederSettings>(() => loadSettings());
@@ -27,7 +27,8 @@ export default function SettingsProtocols() {
   function save() { saveSettings(s); setDirty(false); }
 
   return (
-    <SectionCard title="Medication Protocols" subtitle="Custom dose rules and age triggers">
+    <SectionCard title="Medication Protocols">
+      <div className="text-sm opacity-70 mb-3">Define dose rules and schedules</div>
       <div className="flex items-center gap-2 mb-3">
         <label className="text-sm">Units</label>
         <select

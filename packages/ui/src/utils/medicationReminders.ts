@@ -1,5 +1,5 @@
 // packages/ui/src/utils/medicationReminders.ts
-import { MedicationProtocol } from "./medication";
+import { MedicationProtocol } from "./medications";
 
 function ageInWeeks(dobIso: string, onDateIso: string): number {
   const d0 = new Date(dobIso).getTime();

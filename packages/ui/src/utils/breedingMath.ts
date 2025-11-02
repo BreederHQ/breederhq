@@ -82,6 +82,38 @@ export function daysBetweenInclusive(a: DateLike, b: DateLike): number {
   return Math.floor((B - A) / 86400000) + 1;
 }
 
+/** Return a new Date at local midnight for stable day math. */
+export function clampDay(dt: Date): Date {
+  return new Date(dt.getFullYear(), dt.getMonth(), dt.getDate());
+}
+
+/** Inclusive one-day range for milestone-like bars. */
+export function oneDayRange(d: Date): Range {
+  const s = clampDay(d);
+  return { start: s, end: s };
+}
+
+/** Inclusive count of calendar months spanned by start..end. */
+export function monthsBetween(start: Date, end: Date): number {
+  // Normalize to the first of each month so partial months count once.
+  const s = new Date(start.getFullYear(), start.getMonth(), 1);
+  const e = new Date(end.getFullYear(), end.getMonth(), 1);
+  const m =
+    (e.getFullYear() - s.getFullYear()) * 12 +
+    (e.getMonth() - s.getMonth()) +
+    1;
+  return Math.max(1, m);
+}
+
+/** Pad a span by one empty calendar month on both ends. */
+export function padByOneMonth(r: Range): Range {
+  // First day of month prior to start, last day of month after end
+  const a = new Date(r.start.getFullYear(), r.start.getMonth() - 1, 1);
+  const b = new Date(r.end.getFullYear(), r.end.getMonth() + 2, 0);
+  return { start: a, end: b };
+}
+
+
 // biology rules
 export type HeatWindow = {
   earliestHeatStart: Date;

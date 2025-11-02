@@ -32,26 +32,12 @@ export default function PuppyMedicationDoser({ puppy }: { puppy: Puppy }) {
     }
 
     return (
-        <SectionCard title="Medication Doser" subtitle="Auto dose from weight">
-            <div className="grid grid-cols-12 gap-2 items-end">
-                <div className="col-span-4">
-                    <label className="text-sm">Protocol</label>
-                    <select className="w-full border rounded px-2 py-1" value={protocolId} onChange={e => setProtocolId(e.target.value)}>
-                        {s.protocols.map(pr => <option key={pr.id} value={pr.id}>{pr.label}</option>)}
-                    </select>
-                </div>
-                <div className="col-span-3">
-                    <label className="text-sm">Weight ({s.unitSystem === "imperial" ? "lb" : "kg"})</label>
-                    <Input type="number" step="0.01" value={weight} onChange={e => setWeight(Number(e.target.value || 0))} />
-                </div>
-                <div className="col-span-3">
-                    <label className="text-sm">Dose (mL)</label>
-                    <Input readOnly value={Number.isFinite(doseMl) ? doseMl.toFixed(2) : ""} />
-                </div>
-                <div className="col-span-2 text-right">
-                    <Button onClick={save}>Enter</Button>
-                </div>
+        <SectionCard title="Puppy Medication Doser">
+            {/* Former subtitle moved into content to match SectionCardProps */}
+            <div className="text-sm opacity-70 mb-3">
+                Compute liquid dose by weight
             </div>
+            {/* content */}
         </SectionCard>
     );
 }
