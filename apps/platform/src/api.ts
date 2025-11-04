@@ -1,8 +1,69 @@
 // apps/platform/src/api.ts
 
+// ───────────────────────── types ─────────────────────────
 export type ListParams = { q?: string; page?: number; limit?: number; includeArchived?: boolean };
 export type HeadersMap = Record<string, string>;
 export type Json = Record<string, any>;
+export type ID = number | string;
+
+/* Shared domain types used by dashboard and planner consumers */
+export type PlanRow = {
+  id: ID;
+  name: string;
+  status: string;
+  species: "Dog" | "Cat" | "Horse" | "";
+  damId?: number | null;
+  sireId?: number | null;
+
+  // cycle anchors
+  lockedCycleStart?: string | null;
+  lockedOvulationDate?: string | null;
+  lockedDueDate?: string | null;
+
+  // placement fields
+  lockedPlacementStartDate?: string | null;
+  expectedPlacementStart?: string | null;
+  expectedPlacementCompleted?: string | null;
+
+  // projections
+  expectedDue?: string | null;
+  expectedWeaned?: string | null;
+  expectedNextCycleStart?: string | Date | null;
+};
+
+export type DashboardTask = {
+  id: ID;
+  kind: "Check" | "Weigh" | "Contract" | "Appointment" | "Reminder";
+  title: string;
+  due: string; // yyyy-mm-dd
+  severity: "info" | "warning" | "overdue";
+  link?: string;
+};
+
+export type DashboardKPI = {
+  key: string;
+  label: string;
+  value: number;
+  unit?: "%" | "" | "days";
+  trend?: "up" | "down" | "flat";
+};
+
+export type DashboardFeedItem = {
+  id: ID;
+  when: string; // iso
+  who?: string;
+  text: string;
+  link?: string;
+};
+
+export type DashboardCounts = {
+  animals: number;
+  activeCycles: number;
+  littersInCare: number;
+  upcomingBreedings: number;
+};
+
+// ───────────────────────── utils ─────────────────────────
 
 function normalizeBase(base: string): string {
   let b = String(base || "").trim();
@@ -22,7 +83,9 @@ function qs(params: Record<string, string | number | boolean | undefined>) {
   return s ? `?${s}` : "";
 }
 
-/* ───────────────────────── helpers ───────────────────────── */
+function enc(id: string | number) {
+  return encodeURIComponent(String(id));
+}
 
 function readCookie(name: string): string {
   if (typeof document === "undefined") return "";
@@ -30,7 +93,7 @@ function readCookie(name: string): string {
   return m ? decodeURIComponent(m[2]) : "";
 }
 
-/** Resolve tenant/org once per request (runtime → localStorage → env) */
+/** Resolve tenant and org once per request (runtime, localStorage, env) */
 function resolveScope(): { tenantId?: number; orgId?: number } {
   const w: any = (typeof window !== "undefined" ? window : {}) as any;
 
@@ -44,7 +107,7 @@ function resolveScope(): { tenantId?: number; orgId?: number } {
     (Number.isFinite(envTid) && envTid > 0 && envTid) ||
     undefined;
 
-  // org (optional; harmless if unused by server)
+  // org
   const rtOid = Number(w?.__BHQ_ORG_ID__);
   const lsOid = (() => { try { return Number(localStorage.getItem("BHQ_ORG_ID") || "NaN"); } catch { return NaN; } })();
   const envOid = Number(((import.meta as any)?.env?.VITE_DEV_ORG_ID) || "");
@@ -57,24 +120,18 @@ function resolveScope(): { tenantId?: number; orgId?: number } {
   return { tenantId, orgId };
 }
 
-/** Centralized fetch with cookies + tenant/org + CSRF (mutations) + nice errors */
+/** Centralized fetch with cookies, tenant and org headers, CSRF on mutations, and clean errors */
 async function request(url: string, init: RequestInit = {}) {
   const method = String(init.method || "GET").toUpperCase();
   const scope = resolveScope();
 
-  // Start with any caller-supplied headers
   const headers = new Headers(init.headers as any);
 
-  // Always accept JSON
   if (!headers.has("accept")) headers.set("accept", "application/json");
 
-  // Tenant (required for tenant-scoped APIs)
   if (scope.tenantId) headers.set("x-tenant-id", String(scope.tenantId));
-
-  // Optional org context (legacy/optional)
   if (scope.orgId) headers.set("x-org-id", String(scope.orgId));
 
-  // CSRF + default JSON content-type only for mutating methods
   if (method !== "GET" && method !== "HEAD" && method !== "OPTIONS") {
     const xsrf = readCookie("XSRF-TOKEN");
     if (xsrf && !headers.has("x-csrf-token")) headers.set("x-csrf-token", xsrf);
@@ -101,7 +158,25 @@ async function request(url: string, init: RequestInit = {}) {
   return ct.includes("application/json") ? json : text;
 }
 
-/* ───────────────────────── factory ───────────────────────── */
+/** Return fallback if the server replies 404 */
+async function requestOr404<T>(url: string, init: RequestInit, fallback: T): Promise<T> {
+  try {
+    return (await request(url, init)) as T;
+  } catch (e: any) {
+    if (e?.status === 404) return fallback;
+    throw e;
+  }
+}
+
+/** Gate remote dashboard calls behind a runtime or env flag */
+function dashboardRemoteEnabled(): boolean {
+  const w = (typeof window !== "undefined" ? window : {}) as any;
+  if (typeof w.__BHQ_DASHBOARD_REMOTE__ === "boolean") return w.__BHQ_DASHBOARD_REMOTE__;
+  const env = (import.meta as any)?.env?.VITE_DASHBOARD_REMOTE;
+  return env === "1" || env === "true" || env === true;
+}
+
+// ───────────────────────── factory ─────────────────────────
 
 export function makeApi(base?: string) {
   const root = normalizeBase(base || "");
@@ -125,9 +200,9 @@ export function makeApi(base?: string) {
     contacts: {
       list: (p: ListParams = {}) => request(`${root}/contacts` + qs(p), { method: "GET" }),
       get: (id: string | number) =>
-        request(`${root}/contacts/${encodeURIComponent(String(id))}`, { method: "GET" }),
+        request(`${root}/contacts/${enc(id)}`, { method: "GET" }),
       update: (id: string | number, body: Json) =>
-        request(`${root}/contacts/${encodeURIComponent(String(id))}`, {
+        request(`${root}/contacts/${enc(id)}`, {
           method: "PATCH",
           body: JSON.stringify(body),
           headers: { "content-type": "application/json" },
@@ -139,13 +214,13 @@ export function makeApi(base?: string) {
           headers: { "content-type": "application/json" },
         }),
       archive: (id: string | number, reason?: string) =>
-        request(`${root}/contacts/${encodeURIComponent(String(id))}/archive`, {
+        request(`${root}/contacts/${enc(id)}/archive`, {
           method: "POST",
           body: JSON.stringify({ reason: reason ?? null }),
           headers: { "content-type": "application/json" },
         }),
       restore: (id: string | number) =>
-        request(`${root}/contacts/${encodeURIComponent(String(id))}/restore`, { method: "POST" }),
+        request(`${root}/contacts/${enc(id)}/restore`, { method: "POST" }),
     },
 
     tags: {
@@ -158,7 +233,7 @@ export function makeApi(base?: string) {
         request(`${root}/organizations` + qs(p), { method: "GET" }),
 
       get: (id: string | number) =>
-        request(`${root}/organizations/${encodeURIComponent(String(id))}`, { method: "GET" }),
+        request(`${root}/organizations/${enc(id)}`, { method: "GET" }),
 
       create: (body: Json) =>
         request(`${root}/organizations`, {
@@ -168,29 +243,112 @@ export function makeApi(base?: string) {
         }),
 
       update: (id: string | number, patch: Json) =>
-        request(`${root}/organizations/${encodeURIComponent(String(id))}`, {
+        request(`${root}/organizations/${enc(id)}`, {
           method: "PATCH",
           body: JSON.stringify(patch),
           headers: { "content-type": "application/json" },
         }),
 
       archive: (id: string | number, reason?: string) =>
-        request(`${root}/organizations/${encodeURIComponent(String(id))}/archive`, {
+        request(`${root}/organizations/${enc(id)}/archive`, {
           method: "POST",
           body: JSON.stringify({ reason: reason ?? null }),
           headers: { "content-type": "application/json" },
         }),
 
       restore: (id: string | number) =>
-        request(`${root}/organizations/${encodeURIComponent(String(id))}/restore`, { method: "POST" }),
+        request(`${root}/organizations/${enc(id)}/restore`, { method: "POST" }),
 
       remove: (id: string | number) =>
-        request(`${root}/organizations/${encodeURIComponent(String(id))}`, { method: "DELETE" }),
+        request(`${root}/organizations/${enc(id)}`, { method: "DELETE" }),
+    },
+
+    /* Breeding endpoints used by dashboard and planner */
+    breeding: {
+      plans: {
+        list: (p: { status?: string; q?: string; page?: number; limit?: number } = {}) =>
+          request(`${root}/breeding/plans` + qs(p), { method: "GET" }),
+        get: (id: ID) => request(`${root}/breeding/plans/${enc(id)}`, { method: "GET" }),
+        create: (body: Json) =>
+          request(`${root}/breeding/plans`, {
+            method: "POST",
+            body: JSON.stringify(body),
+            headers: { "content-type": "application/json" },
+          }),
+        update: (id: ID, patch: Json) =>
+          request(`${root}/breeding/plans/${enc(id)}`, {
+            method: "PATCH",
+            body: JSON.stringify(patch),
+            headers: { "content-type": "application/json" },
+          }),
+        remove: (id: ID) => request(`${root}/breeding/plans/${enc(id)}`, { method: "DELETE" }),
+      },
+      program: {
+        getForTenant: (tenantId?: number) =>
+          request(
+            `${root}/tenants/${enc(tenantId ?? resolveScope().tenantId ?? 0)}/breeding-program`,
+            { method: "GET" }
+          ),
+      },
+    },
+
+    /* Dashboard read models with remote gate and 404 fallbacks */
+    dashboard: {
+      counts: () => {
+        if (!dashboardRemoteEnabled()) {
+          const fallback: DashboardCounts = { animals: 0, activeCycles: 0, littersInCare: 0, upcomingBreedings: 0 };
+          return Promise.resolve(fallback);
+        }
+        return requestOr404<DashboardCounts>(
+          `${root}/dashboard/counts`,
+          { method: "GET" },
+          { animals: 0, activeCycles: 0, littersInCare: 0, upcomingBreedings: 0 }
+        );
+      },
+
+      tasks: (p: { limit?: number } = {}) => {
+        if (!dashboardRemoteEnabled()) return Promise.resolve<DashboardTask[]>([]);
+        return requestOr404<DashboardTask[]>(
+          `${root}/dashboard/tasks` + qs(p),
+          { method: "GET" },
+          []
+        );
+      },
+
+      kpis: (p: { window?: "3m" | "6m" | "12m" } = { window: "6m" }) => {
+        if (!dashboardRemoteEnabled()) return Promise.resolve<DashboardKPI[]>([]);
+        return requestOr404<DashboardKPI[]>(
+          `${root}/dashboard/kpis` + qs(p),
+          { method: "GET" },
+          []
+        );
+      },
+
+      feed: (p: { limit?: number } = { limit: 25 }) => {
+        if (!dashboardRemoteEnabled()) return Promise.resolve<DashboardFeedItem[]>([]);
+        return requestOr404<DashboardFeedItem[]>(
+          `${root}/dashboard/feed` + qs(p),
+          { method: "GET" },
+          []
+        );
+      },
+
+      // tolerant read for planner data used by the dashboard
+      plans: async (p: { status?: string } = { status: "Active,Planned" }) => {
+        // stop all network calls for dashboard in local dev
+        if (!dashboardRemoteEnabled()) return [];
+        try {
+          const r = await request(`${root}/breeding/plans` + qs(p), { method: "GET" });
+          return Array.isArray(r) ? (r as PlanRow[]) : [];
+        } catch {
+          return [];
+        }
+      },
     },
   };
 }
 
-/* ───────────────────────── singleton (optional) ───────────────────────── */
+// ───────────────────────── singleton ─────────────────────────
 
 const globalBase =
   (typeof window !== "undefined" && (window as any).__BHQ_API_BASE__) ||

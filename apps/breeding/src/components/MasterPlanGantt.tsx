@@ -5,17 +5,12 @@ import { Button, Input, SectionCard } from "@bhq/ui";
 
 import {
   GANTT_STAGES,
-  monthsBetween,
-  padByOneMonth,
-  expectedRangeOfWindows,
-  unionRange,
   colorFromId,
-  type Range,
-  type StageWindows,
-  type NormalizedPlan,
   type ID,
-} from "../adapters/planToGantt";
-
+  type PlanRow,
+  type DamRepro,
+  type AvailabilityBand,
+} from "../adapters/ganttShared";
 const PX_PER_MONTH = 160;
 
 const keyOf = (id: ID) => String(id);
@@ -127,7 +122,7 @@ function PlanPicker({
 export default function MasterPlanGantt({
   items = [],
   selected = new Set<ID>(),
-  onSelectedChange = () => {},
+  onSelectedChange = () => { },
   today = new Date(),
 }: {
   items?: NormalizedPlan[]; // pre-normalized plans with windows

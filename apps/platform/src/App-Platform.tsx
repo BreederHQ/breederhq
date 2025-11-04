@@ -9,21 +9,23 @@ import "@bhq/ui/styles/global.css";
 import "@bhq/ui/styles/table.css";
 
 // Platform declares global overlay ownership
-;(window as any).__BHQ_OVERLAY_MODE = "global";
+; (window as any).__BHQ_OVERLAY_MODE = "global";
 
 // Modules
 import AppContacts from "@bhq/contacts/App-Contacts";
 import AppOrganizations from "@bhq/organizations/App-Organizations";
 import AppAnimals from "@bhq/animals/App-Animals";
 import AppBreeding from "@bhq/breeding/App-Breeding";
+import AppOffspring from "@bhq/offspring/App-Offspring";
 import AdminModule from "@bhq/admin/App-Admin";
+import DashboardPage from "./pages/Dashboard";
 
 // Support Pages
 import SettingsPanel from "./pages/SettingsPanel";
 
 // Lightweight “current module” state (key + label)
-type ActiveModule = { key: "contacts" | "organizations" | "animals" | "breeding" | "offspring"; label: string };
-const DEFAULT_MODULE: ActiveModule = { key: "contacts", label: "Contacts" };
+type ActiveModule = { key: "dashboard" | "contacts" | "organizations" | "animals" | "breeding" | "offspring" | "admin"; label: string };
+const DEFAULT_MODULE: ActiveModule = { key: "dashboard", label: "Dashboard" };
 
 type AuthState = {
   user?: { id: string; email?: string | null } | null;
@@ -119,10 +121,13 @@ const API_ROOT = (
 ).replace(/\/+$/, "").replace(/\/api\/v1$/i, "");
 (window as any).__BHQ_API_BASE__ = API_ROOT;
 
+// disable dashboard network calls in dev
+; (window as any).__BHQ_DASHBOARD_REMOTE__ = false;
+
 // Simple path router
 function RouteView() {
   const [path, setPath] = React.useState<string>(() => {
-    try { return window.location.pathname.toLowerCase(); } catch { return "/contacts"; }
+    try { return window.location.pathname.toLowerCase(); } catch { return "/"; }
   });
 
   useEffect(() => {
@@ -133,12 +138,14 @@ function RouteView() {
 
   const p = path.endsWith("/") ? path.slice(0, -1) : path;
 
+  if (p === "" || p === "/") return <DashboardPage />;
+  if (p === "/contacts" || p.startsWith("/contacts")) return <AppContacts />;
   if (p === "/organizations" || p.startsWith("/organizations")) return <AppOrganizations />;
   if (p === "/animals" || p.startsWith("/animals")) return <AppAnimals />;
-  if (p === "/contacts" || p.startsWith("/contacts")) return <AppContacts />;
   if (p === "/breeding" || p.startsWith("/breeding")) return <AppBreeding />;
+  if (p === "/offspring" || p.startsWith("/offspring")) return <AppOffspring />;
   if (p === "/admin" || p.startsWith("/admin")) return <AdminModule />;
-  return <AppContacts />;
+  return <DashboardPage />;
 }
 
 // --- MAIN ---
@@ -154,6 +161,12 @@ export default function AppPlatform() {
     }
     window.addEventListener("bhq:module", onModule as any);
     return () => window.removeEventListener("bhq:module", onModule as any);
+  }, []);
+
+  // Keep title in sync for the Dashboard route
+  useEffect(() => {
+    const p = (typeof window !== "undefined" ? window.location.pathname.toLowerCase() : "/").replace(/\/$/, "");
+    if (p === "" || p === "/") setActiveModule({ key: "dashboard", label: "Dashboard" });
   }, []);
 
   const pathname = typeof window !== "undefined" ? window.location.pathname : "/";
@@ -231,8 +244,6 @@ export default function AppPlatform() {
       delete (window as any).platform.currentOrgId;
       window.dispatchEvent(new CustomEvent("platform:orgChanged", { detail: { orgId: null } }));
     }
-
-    if (import.meta.env?.DEV) console.log("[platform] org selected =", has ? n : null);
   }, [computedOrgId]);
 
   // Bootstrap tenant
@@ -303,6 +314,7 @@ export default function AppPlatform() {
             activeKey={activeModule.key}
             logoSize={40}
             navItems={[
+              { key: "dashboard", label: "Dashboard", href: "/", icon: "home" },
               { key: "contacts", label: "Contacts", href: "/contacts", icon: "contacts" },
               { key: "organizations", label: "Organizations", href: "/organizations", icon: "organizations" },
               { key: "animals", label: "Animals", href: "/animals", icon: "animals" },

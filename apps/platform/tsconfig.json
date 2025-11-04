@@ -6,6 +6,7 @@
     "paths": {
       "@bhq/ui": ["../../packages/ui/src/index.ts"],
       "@bhq/ui/*": ["../../packages/ui/src/*"],
+
       "@bhq/ui/layouts": ["../../packages/ui/src/layouts"],
       "@bhq/ui/styles": ["../../packages/ui/src"],
 
@@ -19,6 +20,15 @@
 
       "@bhq/animals": ["../animals/src/index.ts"],
       "@bhq/animals/*": ["../animals/src/*"],
+
+      "@bhq/offspring": ["../offspring/src/index.ts"],
+      "@bhq/offspring/*": ["../offspring/src/*"],
+
+      "@bhq/admin": ["../admin/src/index.ts"],
+      "@bhq/admin/*": ["../admin/src/*"],
+
+      "@bhq/breeding": ["../breeding/src/index.ts"],
+      "@bhq/breeding/*": ["../breeding/src/*"],
 
       "@bhq/organizations": ["../organizations/src/index.ts"],
       "@bhq/organizations/*": ["../organizations/src/*"]

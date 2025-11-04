@@ -1,7 +1,7 @@
 // packages/ui/src/utils/breedingMath.ts
 // Pure util: biology math + windows for Gantt and Calendar
 
-export type Species = "DOG" | "CAT" | "HORSE";
+export type Species = "DOG" | "CAT" | "HORSE" | "GOAT" | "RABBIT";
 export type DateLike = Date | string | number;
 
 export type Range = { start: Date; end: Date }; // inclusive end-date math for bars
@@ -23,14 +23,14 @@ export type StageWindows = {
 
 /** Canonical name going forward */
 export type AvailabilityBand = {
-  kind: "risk" | "unlikely";
+  kind: "risky" | "unlikely";
   range: Range;
   label: string;
 };
 
 /** Back-compat name, retained so existing import sites do not break */
 export type TravelBand = {
-  kind: "risk" | "unlikely"; // normalized to match Availability everywhere
+  kind: "risky" | "unlikely";
   range: Range;
   label: string;
 };
@@ -45,19 +45,117 @@ export type WindowsResult = {
   horizon: Range;
 };
 
+/* ───────────────── Biological constants: single source of truth ─────────────────
+   DOG defaults live in BIO. Species overrides for CAT, HORSE, GOAT, RABBIT below.
+*/
+
+// Use a proper interface so values are typed as numbers (not numeric literals)
+export interface Biology {
+  /** Average cycle length used for planning windows (days) */
+  cycleLenDays: number;
+
+  /** Guard days before we assume a cycle started if only an approximate window exists (days) */
+  startBufferDays: number;
+
+  /** Default ovulation day relative to heat start (days) */
+  ovulationOffsetDays: number;
+
+  /** Hormone testing anchor relative to cycle start (days) */
+  hormoneTestingFromCycleStartDays: number;
+
+  /** Gestation from ovulation to birth (days) */
+  whelpingDaysFromOvulation: number;
+
+  /** Jitter used to construct "full" and "likely" birth windows (days) */
+  whelpingJitterFullDays: number;
+  whelpingJitterLikelyDays: number;
+
+  /** Likely window half width around heat center for preBreeding (days) */
+  preBreedingLikelyHalfWidthDays: number;
+
+  /** Breeding window padding relative to ovulation (days) */
+  breedingPreOvulationDays: number; // full start is ovulationOffset - this
+  breedingPostOvulationDays: number; // full end is ovulationOffset + this
+
+  /** Puppy/kit care duration after birth that drives placement timing (weeks) */
+  puppyCareWeeks: number;
+
+  /** Weaning default in days after birth */
+  weanFromBirthDays: number;
+
+  /** Extra weeks for the extended placement window */
+  placementExtendedWeeks: number;
+}
+
+export const BIO: Biology = {
+  cycleLenDays: 180,                // Dog baseline (about 6 months)
+  startBufferDays: 14,
+  ovulationOffsetDays: 12,
+  hormoneTestingFromCycleStartDays: 7,
+  whelpingDaysFromOvulation: 63,
+  whelpingJitterFullDays: 2,
+  whelpingJitterLikelyDays: 1,
+  preBreedingLikelyHalfWidthDays: 5,
+  breedingPreOvulationDays: 1,
+  breedingPostOvulationDays: 2,
+  puppyCareWeeks: 8,
+  weanFromBirthDays: 42,
+  placementExtendedWeeks: 3,
+};
+
+/** Species overrides (authoritative) */
+export const BIO_BY_SPECIES: Partial<Record<Species, Partial<Biology>>> = {
+  CAT: {
+    cycleLenDays: 60,               // queens cycle more frequently
+    ovulationOffsetDays: 3,         // induced ovulators, breeding near heat onset
+    whelpingDaysFromOvulation: 63,  // practical planning assumption
+    weanFromBirthDays: 56,          // 8 weeks
+    puppyCareWeeks: 8,              // homing about 8 to 10 weeks
+  },
+  HORSE: {
+    cycleLenDays: 21,               // estrous cycle
+    ovulationOffsetDays: 5,
+    whelpingDaysFromOvulation: 340, // about 11 months
+    weanFromBirthDays: 150,         // about 5 months
+    puppyCareWeeks: 30,             // placement analogue later for foals
+  },
+  GOAT: {
+    cycleLenDays: 21,               // does are polyestrous
+    ovulationOffsetDays: 1,         // near end of short heat
+    whelpingDaysFromOvulation: 150, // about 150 days
+    weanFromBirthDays: 70,          // about 10 weeks
+    puppyCareWeeks: 10,
+  },
+  RABBIT: {
+    cycleLenDays: 14,               // planning cadence, rabbits are induced ovulators
+    ovulationOffsetDays: 0,         // at or just after breeding
+    whelpingDaysFromOvulation: 31,  // kits in about 31 days
+    weanFromBirthDays: 42,          // around 6 weeks
+    puppyCareWeeks: 8,
+  },
+};
+
+export function bioFor(species: Species | undefined): Biology {
+  const o = species ? BIO_BY_SPECIES[species] : undefined;
+  return { ...BIO, ...(o || {}) };
+}
+
+/* ───────────────── Legacy defaults kept for signature compatibility ───────────────── */
+
 export type CycleDefaults = {
   cycleLenDays: number;
   startBufferDays: number;
-  ovulationDayFromHeatStart: number; // 12 by default
+  ovulationDayFromHeatStart: number;
 };
 
 export const DEFAULTS: CycleDefaults = {
-  cycleLenDays: 180,
-  startBufferDays: 14,
-  ovulationDayFromHeatStart: 12,
+  cycleLenDays: BIO.cycleLenDays,
+  startBufferDays: BIO.startBufferDays,
+  ovulationDayFromHeatStart: BIO.ovulationOffsetDays,
 };
 
-// helpers
+/* ───────────────── helpers ───────────────── */
+
 export function toDate(d: DateLike): Date {
   return d instanceof Date ? d : new Date(d);
 }
@@ -95,7 +193,6 @@ export function oneDayRange(d: Date): Range {
 
 /** Inclusive count of calendar months spanned by start..end. */
 export function monthsBetween(start: Date, end: Date): number {
-  // Normalize to the first of each month so partial months count once.
   const s = new Date(start.getFullYear(), start.getMonth(), 1);
   const e = new Date(end.getFullYear(), end.getMonth(), 1);
   const m =
@@ -107,14 +204,13 @@ export function monthsBetween(start: Date, end: Date): number {
 
 /** Pad a span by one empty calendar month on both ends. */
 export function padByOneMonth(r: Range): Range {
-  // First day of month prior to start, last day of month after end
   const a = new Date(r.start.getFullYear(), r.start.getMonth() - 1, 1);
   const b = new Date(r.end.getFullYear(), r.end.getMonth() + 2, 0);
   return { start: a, end: b };
 }
 
+/* ───────────────── biology rules ───────────────── */
 
-// biology rules
 export type HeatWindow = {
   earliestHeatStart: Date;
   latestHeatStart: Date;
@@ -131,7 +227,7 @@ export const DEFAULT_STAGE_LABELS: StageLabels = {
   preBreeding: "Cycle",
   hormoneTesting: "Hormone Testing",
   breeding: "Breeding",
-  birth: "birth",
+  birth: "Birth",
   puppyCare: "Puppy Care",
   PlacementNormal: "Placement",
   PlacementExtended: "Placement (Extended)",
@@ -152,9 +248,12 @@ export function computeWindows(
   anchors: PlanAnchors,
   opts?: Partial<CycleDefaults>
 ): WindowsResult {
-  const cfg = { ...DEFAULTS, ...opts };
+  // Merge legacy opts to keep signature stable, but prefer species-aware biology
+  const legacy = { ...DEFAULTS, ...opts };
+  const b = bioFor(anchors.species);
+
   const { earliestHeatStart, latestHeatStart } = anchors.heat;
-  const ovulationOffset = cfg.ovulationDayFromHeatStart;
+  const ovulationOffset = legacy.ovulationDayFromHeatStart ?? b.ovulationOffsetDays;
   const today = new Date();
 
   const earliestOvulation = addDays(earliestHeatStart, ovulationOffset);
@@ -167,15 +266,21 @@ export function computeWindows(
   // Pre-breeding Heat
   const preBreedingFull = makeRange(
     earliestHeatStart,
-    addDays(latestHeatStart, ovulationOffset - 1)
+    addDays(latestHeatStart, ovulationOffset - b.breedingPreOvulationDays)
   );
   const heatCenter = new Date(
     Math.round((earliestHeatStart.getTime() + latestHeatStart.getTime()) / 2)
   );
-  const preBreedingLikelyRaw = makeRange(addDays(heatCenter, -5), addDays(heatCenter, +5));
+  const preBreedingLikelyRaw = makeRange(
+    addDays(heatCenter, -b.preBreedingLikelyHalfWidthDays),
+    addDays(heatCenter, +b.preBreedingLikelyHalfWidthDays)
+  );
 
   // Hormone Testing
-  const hormoneFull = makeRange(addDays(earliestHeatStart, 7), latestOvulation);
+  const hormoneFull = makeRange(
+    addDays(earliestHeatStart, b.hormoneTestingFromCycleStartDays),
+    latestOvulation
+  );
   const hormoneLikelyRaw = makeRange(
     addDays(preBreedingLikelyRaw.end, 1),
     addDays(preBreedingLikelyRaw.end, 7)
@@ -183,42 +288,55 @@ export function computeWindows(
 
   // Breeding
   const breedingFull = makeRange(
-    addDays(earliestHeatStart, ovulationOffset - 1),
-    addDays(latestHeatStart, ovulationOffset + 2)
+    addDays(earliestHeatStart, ovulationOffset - b.breedingPreOvulationDays),
+    addDays(latestHeatStart, ovulationOffset + b.breedingPostOvulationDays)
   );
   const breedingLikely = makeRange(ovulationCenter, addDays(ovulationCenter, 1));
 
-  // birth (gestation ~63 days; show ±2 in full, ±1 in likely)
-  const birthFull = makeRange(addDays(ovulationCenter, 61), addDays(ovulationCenter, 65));
-  const birthLikely = makeRange(addDays(ovulationCenter, 62), addDays(ovulationCenter, 64));
+  // Birth windows from ovulation biology
+  const birthFull = makeRange(
+    addDays(ovulationCenter, b.whelpingDaysFromOvulation - b.whelpingJitterFullDays),
+    addDays(ovulationCenter, b.whelpingDaysFromOvulation + b.whelpingJitterFullDays)
+  );
+  const birthLikely = makeRange(
+    addDays(ovulationCenter, b.whelpingDaysFromOvulation - b.whelpingJitterLikelyDays),
+    addDays(ovulationCenter, b.whelpingDaysFromOvulation + b.whelpingJitterLikelyDays)
+  );
 
-  // Puppy Care: birth through 8 weeks after full window
-  const puppyCareFull = makeRange(birthFull.start, addDays(birthFull.end, 56));
-  const puppyCareLikely = makeRange(birthLikely.start, addDays(birthLikely.end, 56));
+  // Puppy Care
+  const puppyCareFull = makeRange(birthFull.start, addDays(birthFull.end, b.puppyCareWeeks * 7));
+  const puppyCareLikely = makeRange(birthLikely.start, addDays(birthLikely.end, b.puppyCareWeeks * 7));
 
-  // Placement Normal
-  const PlacementNormalFull = makeRange(addDays(birthFull.start, 56), addDays(birthFull.end, 56));
-  const PlacementNormalLikely = makeRange(addDays(birthLikely.start, 55), addDays(birthLikely.end, 57));
+  // Placement
+  const PlacementNormalFull = makeRange(
+    addDays(birthFull.start, b.puppyCareWeeks * 7),
+    addDays(birthFull.end, b.puppyCareWeeks * 7)
+  );
+  const PlacementNormalLikely = makeRange(
+    addDays(birthLikely.start, b.puppyCareWeeks * 7 - 1),
+    addDays(birthLikely.end, b.puppyCareWeeks * 7 + 1)
+  );
 
-  // Placement Extended - Default +3 weeks after normal window
-  const PlacementExtendedFull = makeRange(addDays(PlacementNormalFull.end, 1), addDays(PlacementNormalFull.end, 21));
+  const PlacementExtendedFull = makeRange(
+    addDays(PlacementNormalFull.end, 1),
+    addDays(PlacementNormalFull.end, b.placementExtendedWeeks * 7)
+  );
 
   // Cap likely windows into full windows
   const preBreedingLikely = clampRange(preBreedingLikelyRaw, preBreedingFull.start, preBreedingFull.end);
   const hormoneLikely = clampRange(hormoneLikelyRaw, hormoneFull.start, hormoneFull.end);
 
-  // Availability bands (canonical). Kinds use "risk" | "unlikely".
-  // Labels use Availability nomenclature, not Travel.
+  // Availability bands
   const availability: AvailabilityBand[] = [
-    { kind: "risk",     range: makeRange(hormoneFull.start, breedingFull.end),                label: "Availability: Risky" },
-    { kind: "risk",     range: makeRange(birthFull.start, PlacementExtendedFull.end),         label: "Availability: Risky" },
-    { kind: "unlikely", range: makeRange(hormoneLikely.start, breedingLikely.end),            label: "Availability: Unlikely" },
-    { kind: "unlikely", range: makeRange(puppyCareLikely.start, PlacementNormalLikely.end),   label: "Availability: Unlikely" },
+    { kind: "risky",     range: makeRange(hormoneFull.start, breedingFull.end),              label: "Availability: Risky" },
+    { kind: "risky",     range: makeRange(birthFull.start, PlacementExtendedFull.end),       label: "Availability: Risky" },
+    { kind: "unlikely",  range: makeRange(hormoneLikely.start, breedingLikely.end),          label: "Availability: Unlikely" },
+    { kind: "unlikely",  range: makeRange(puppyCareLikely.start, PlacementNormalLikely.end), label: "Availability: Unlikely" },
   ];
 
   // Horizon: 18 months from first stage start
   const minStart = preBreedingFull.start;
-  const horizon = makeRange(minStart, addDays(minStart, 548));
+  const horizon = makeRange(minStart, addDays(minStart, 18 * 30 + 8)); // nominal 548 days
 
   const stages: StageWindows[] = [
     { key: "preBreeding", full: preBreedingFull, likely: preBreedingLikely },
@@ -226,17 +344,17 @@ export function computeWindows(
     { key: "breeding", full: breedingFull, likely: breedingLikely },
     { key: "birth", full: birthFull, likely: birthLikely },
     { key: "puppyCare", full: puppyCareFull, likely: puppyCareLikely },
-    { key: "PlacementNormal", full: PlacementNormalFull, likely: PlacementNormalLikely }, // label = Placement
-    { key: "PlacementExtended", full: PlacementExtendedFull }, // label = Placement (Extended)
+    { key: "PlacementNormal", full: PlacementNormalFull, likely: PlacementNormalLikely },
+    { key: "PlacementExtended", full: PlacementExtendedFull },
   ];
 
-  // Back-compat alias mirrors canonical availability so callers using .travel keep working
-  const travel: TravelBand[] = availability.map(a => ({ ...a }));
+  const travel: TravelBand[] = availability.map(a => ({ ...a })); // back compat alias
 
   return { stages, availability, travel, today, horizon };
 }
 
-// Convenience: derive from a plan slice
+/* ───────────────── Convenience: derive from a plan slice ───────────────── */
+
 export type MinimalPlan = {
   species: Species;
   earliestHeatStart: DateLike;
@@ -258,7 +376,8 @@ export function fromPlan(plan: MinimalPlan, opts?: Partial<CycleDefaults>): Wind
   );
 }
 
-// Calendar events helper
+/* ───────────────── Calendar events helper ───────────────── */
+
 export type CalendarEvent = {
   id: string;
   title: string;
@@ -296,7 +415,6 @@ export function windowsToCalendarEvents(
     }
   }
 
-  // Prefer canonical availability, fall back to legacy travel
   const avail = windows.availability?.length ? windows.availability : windows.travel ?? [];
   for (const t of avail) {
     events.push({
@@ -311,20 +429,24 @@ export function windowsToCalendarEvents(
   return events;
 }
 
-// ───────────────── Expected milestones from a locked cycle ─────────────────
+/* ───────────────── Expected milestones from a locked cycle ───────────────── */
 
 export type SpeciesRules = {
-  ovulationFromHeatStartDays: number; // usually 12
-  gestationDays: number;              // 63
-  weanFromBirthDays: number;          // usually 42
-  PlacementFromBirthDays: number;     // usually 56
+  ovulationFromHeatStartDays: number;
+  gestationDays: number;
+  weanFromBirthDays: number;
+  PlacementFromBirthDays: number;
 };
 
-const SPECIES_RULES: Record<Species, SpeciesRules> = {
-  DOG:   { ovulationFromHeatStartDays: 12, gestationDays: 63,  weanFromBirthDays: 42,  PlacementFromBirthDays: 56 },
-  CAT:   { ovulationFromHeatStartDays: 3,  gestationDays: 63,  weanFromBirthDays: 42,  PlacementFromBirthDays: 56 },
-  HORSE: { ovulationFromHeatStartDays: 5,  gestationDays: 340, weanFromBirthDays: 180, PlacementFromBirthDays: 210 },
-};
+function rulesFor(species: Species): SpeciesRules {
+  const b = bioFor(species);
+  return {
+    ovulationFromHeatStartDays: b.ovulationOffsetDays,
+    gestationDays: b.whelpingDaysFromOvulation,
+    weanFromBirthDays: b.weanFromBirthDays,
+    PlacementFromBirthDays: b.puppyCareWeeks * 7,
+  };
+}
 
 /** ISO date (YYYY-MM-DD) from Date */
 function isoDay(d: Date): string {
@@ -334,11 +456,13 @@ function isoDay(d: Date): string {
   return `${y}-${m}-${day}`;
 }
 
-/** Baseline average cycle length by species */
+/** Baseline average cycle length by species (derived from bioFor) */
 export const SPECIES_BASELINE_CYCLE_LEN_DAYS: Record<Species, number> = {
-  DOG: 180,
-  CAT: 60,
-  HORSE: 21,
+  DOG: bioFor("DOG").cycleLenDays,
+  CAT: bioFor("CAT").cycleLenDays,
+  HORSE: bioFor("HORSE").cycleLenDays,
+  GOAT: bioFor("GOAT").cycleLenDays,
+  RABBIT: bioFor("RABBIT").cycleLenDays,
 };
 
 export type CycleHistory = { heatStarts: DateLike[] };
@@ -402,7 +526,7 @@ export function expectedPlacementStartFromBirth(
   birthDate: Date,
   prefs?: ProgramDefaultsLike
 ): Date {
-  const weeks = Number(prefs?.placement_start_from_birth_weeks ?? 8);
+  const weeks = Number(prefs?.placement_start_from_birth_weeks ?? bioFor("DOG").puppyCareWeeks);
   return addDays(birthDate, weeks * 7);
 }
 
@@ -410,7 +534,7 @@ export function expectedWeanedFromBirth(
   birthDate: Date,
   prefs?: ProgramDefaultsLike
 ): Date {
-  const days = Number(prefs?.weaned_from_birth_days ?? 42);
+  const days = Number(prefs?.weaned_from_birth_days ?? BIO.weanFromBirthDays);
   return addDays(birthDate, days);
 }
 
@@ -418,7 +542,7 @@ export function expectedTestingFromCycleStart(
   cycleStart: Date,
   prefs?: ProgramDefaultsLike
 ): Date {
-  const days = Number(prefs?.testing_from_cycle_start_days ?? 7);
+  const days = Number(prefs?.testing_from_cycle_start_days ?? BIO.hormoneTestingFromCycleStartDays);
   return addDays(cycleStart, days);
 }
 
@@ -442,7 +566,7 @@ export function expectedMilestonesFromLocked(
   Placement_expected: string;
   Placement_extended_end_expected: string | null;
 } {
-  const rules = SPECIES_RULES[species] ?? SPECIES_RULES.DOG;
+  const rules = rulesFor(species);
 
   const heat = toDate(lockedHeatStart);
   const ovulation = addDays(heat, rules.ovulationFromHeatStartDays);

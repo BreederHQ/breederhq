@@ -1,198 +1,117 @@
 // apps/breeding/src/components/BreedingCalendar.tsx
 import * as React from "react";
 import { Calendar as BHQCalendar } from "@bhq/ui/components/Calendar";
-import {
-  fromPlan,
-  type Species as MathSpecies,
-  type StageWindows,
-} from "@bhq/ui/utils/breedingMath";
 import { computeAvailabilityBands } from "@bhq/ui/utils/availability";
 
-/* ───────────────────────── types ───────────────────────── */
-
-type PlanRow = {
-  id: string | number;
-  name: string;
-  species: "Dog" | "Cat" | "Horse" | "";
-  earliestHeatStart?: string | Date | null;
-  latestHeatStart?: string | Date | null;
-  ovulationDate?: string | Date | null;
-  lockedCycleStart?: string | null;
-  lockedOvulationDate?: string | null;
-
-  // Actuals (aligned to DB)
-  actualCycleStart?: string | Date | null;
-  actualHormoneTestingStart?: string | Date | null;
-  actualBreedingDate?: string | Date | null;
-  actualWhelpedDate?: string | Date | null;
-  actualWeanedDate?: string | Date | null;
-  placementStartDateActual?: string | Date | null;    
-  placementCompletedDateActual?: string | Date | null;
-  actualPlanCompletedDate?: string | Date | null;
-
-  // Legacy aliases (still tolerated if present)
-  actualHeatStart?: string | Date | null;
-  actualOvulationDate?: string | Date | null;
-  actualWhelpDate?: string | Date | null;
-  actualGoHomeDate?: string | Date | null;
-};
+import {
+  windowsFromPlan,
+  colorFromId,
+  type PlanRow as NormalizedPlan,
+  type Range,
+} from "../adapters/planToGantt";
+import { eventsForItems } from "../adapters/planToEvents";
 
 /* ───────────────────────── helpers ───────────────────────── */
 
-const COLORS = [
-  "#7C3AED", "#2563EB", "#059669", "#16A34A", "#84CC16",
-  "#F59E0B", "#EA580C", "#DC2626", "#E11D48", "#DB2777",
-  "#8B5CF6", "#06B6D4", "#22C55E", "#10B981", "#A3E635",
-  "#F97316", "#EF4444", "#F43F5E", "#D946EF", "#6366F1",
-];
-
-const colorFor = (i: number) => COLORS[i % COLORS.length];
-const toIso = (d: Date | string | null | undefined) =>
-  d == null ? null : (d instanceof Date ? d : new Date(d)).toISOString();
-const isValidDateish = (v: any) => v != null && !Number.isNaN(new Date(v as any).getTime());
-const centerOf = (r: { start: Date; end: Date }) => new Date((r.end.getTime() + r.start.getTime()) / 2);
-
-function byKey(stages: StageWindows[]) {
-  return new Map(stages.map((s) => [s.key, s]));
-}
-
-function expectedPoints(stages: StageWindows[]) {
-  const m = byKey(stages);
-  const pre   = m.get("preBreeding");
-  const test  = m.get("hormoneTesting");
-  const breed = m.get("breeding");
-  const birth = m.get("birth");
-  const puppy = m.get("puppyCare");
-  const placementNormal   = m.get("PlacementNormal");
-  const placementExtended = m.get("PlacementExtended");
-
-  const out = [
-    // one-day point for the first day you can treat as “Cycle Start”
-    { key: "Cycle Start (Expected)",               date: pre?.likely?.start ?? pre?.full.start ?? null },
-    { key: "Hormone Testing Start (Expected)",     date: test?.likely?.start ?? test?.full.start ?? null },
-    // breeding: use likely start if present, otherwise the center of the full window
-    { key: "Breeding Date (Expected)",             date: breed?.likely?.start ?? (breed ? centerOf(breed.full) : null) },
-    // birth: center of likely window else center of full
-    { key: "Birth Date (Expected)",                date: birth?.likely ? centerOf(birth.likely) : (birth ? centerOf(birth.full) : null) },
-    // weaned: last day of puppy-care likely if present, else last day of full
-    { key: "Weaned Date (Expected)",               date: puppy?.likely?.end ?? puppy?.full.end ?? null },
-    // placement starts: first day of Placement (Normal)
-    { key: "Placement Starts (Expected)",          date: placementNormal?.likely?.start ?? placementNormal?.full.start ?? null },
-    // placement completed: prefer the end of extended if it exists, else end of normal
-    { key: "Placement Completed (Expected)",       date: placementExtended?.full.end ?? placementNormal?.full.end ?? null },
-  ];
-  return out.filter((x): x is { key: string; date: Date } => Boolean(x.date));
-}
-
-function actualPoints(p: PlanRow) {
-  const pick = (v: any) => (isValidDateish(v) ? new Date(v as any) : null);
-  return [
-    { key: "Cycle Start (Actual)", date: pick(p.actualCycleStart ?? p.actualHeatStart) },
-    { key: "Hormone Testing Start (Actual)", date: pick(p.actualHormoneTestingStart) },
-    { key: "Breeding Date (Actual)", date: pick(p.actualBreedingDate) },
-    { key: "Birthed Date (Actual)", date: pick(p.actualWhelpedDate ?? p.actualWhelpDate) },
-    { key: "Weaned Date (Actual)", date: pick(p.actualWeanedDate) },
-    { key: "Placement Started (Actual)", date: pick(p.placementStartDateActual ?? p.actualGoHomeDate) },
-    { key: "Placement Completed (Actual)", date: pick(p.placementCompletedDateActual) },
-    { key: "Plan Completed (Actual)", date: pick(p.actualPlanCompletedDate) },
-  ].filter((x): x is { key: string; date: Date } => Boolean(x.date));
+function toFcEvent(ev: {
+  id: string;
+  planId: string | number;
+  planName: string;
+  date: string; // yyyy-mm-dd
+  color: string;
+  kind: string;
+}) {
+  return {
+    id: ev.id,
+    title: ev.planName ? `${ev.kind.replace(/_/g, " ").toLowerCase()}` : ev.kind,
+    start: new Date(ev.date),
+    allDay: true,
+    calendarId: `plan:${ev.planId}`,
+    color: ev.color,
+    extendedProps: { planId: String(ev.planId), variant: "expected" as const, kind: ev.kind },
+  };
 }
 
 /* ───────────────────────── component ───────────────────────── */
 
 export default function BreedingCalendar({
-  plans = [],
+  items = [],
+  selectedPlanIds,
+  horizon,
   navigateToPlan,
   className,
 }: {
-  plans?: PlanRow[];
-  navigateToPlan?: (id: string) => void;
+  items?: NormalizedPlan[];
+  selectedPlanIds?: Array<string | number> | Set<string | number>;
+  horizon?: Range;
+  navigateToPlan?: (id: string | number) => void;
   className?: string;
 }) {
+  const selectedSet: Set<string | number> | null = React.useMemo(() => {
+    if (!selectedPlanIds) return null;
+    return selectedPlanIds instanceof Set ? selectedPlanIds : new Set(selectedPlanIds);
+  }, [selectedPlanIds]);
+
   // Left rail groups
   const planGroup = React.useMemo(() => {
-    const items = plans.map((p, idx) => ({
+    const groupItems = items.map((p) => ({
       id: `plan:${p.id}`,
       label: String(p.name || `Plan ${p.id}`),
-      color: colorFor(idx),
-      defaultOn: true,
+      color: colorFromId(p.id),
+      defaultOn: selectedSet ? selectedSet.has(p.id as any) : true,
     }));
-    return { id: "breeding:plans", label: "Breeding Plans", items };
-  }, [plans]);
+    return { id: "breeding:plans", label: "Breeding Plans", items: groupItems };
+  }, [items, selectedSet]);
 
-  const overlayGroup = React.useMemo(() => {
-    return {
+  const overlayGroup = React.useMemo(
+    () => ({
       id: "overlays",
       label: "Overlays",
-      items: [
-        { id: "overlay:availability", label: "Availability Bands", color: "#F59E0B", defaultOn: false },
-      ],
-    };
-  }, []);
+      items: [{ id: "overlay:availability", label: "Availability Bands", color: "#F59E0B", defaultOn: false }],
+    }),
+    []
+  );
 
   const groups = React.useMemo(() => [planGroup, overlayGroup], [planGroup, overlayGroup]);
 
-  // Calendar events: expected and actual points for every plan plus optional availability overlay
+  // Calendar events: anchor points from adapter + availability overlay derived from stage windows
   const events = React.useMemo(() => {
-    return plans.flatMap((p, idx) => {
-      const species: MathSpecies =
-        p.species === "Dog" || p.species === "Cat" || p.species === "Horse" ? p.species : "Dog";
+    const pointEvents = eventsForItems(items, {
+      horizon: horizon ?? undefined,
+      planIds: selectedSet ?? undefined,
+    }).map(toFcEvent);
 
-      // If only lockedCycleStart exists, use it for both bounds
-      const locked = p.lockedCycleStart ?? null;
-      const earliest = p.earliestHeatStart ?? locked ?? null;
-      const latest = p.latestHeatStart ?? locked ?? null;
-      if (!earliest || !latest) return [];
+    const overlayEvents = items
+      .filter((p) => !selectedSet || selectedSet.has(p.id as any))
+      .flatMap((p) => {
+        const stages = windowsFromPlan(p);
+        const bands = computeAvailabilityBands(stages);
+        const planId = String(p.id);
+        const baseColor = colorFromId(p.id);
 
-      const math = fromPlan({
-        species,
-        earliestHeatStart: toIso(earliest)!,
-        latestHeatStart: toIso(latest)!,
-        ovulationDate: toIso(p.ovulationDate ?? p.lockedOvulationDate ?? null),
-      });
-
-      const baseColor = colorFor(idx);
-      const planId = String(p.id);
-
-      const points = [
-        ...expectedPoints(math.stages).map((m, i) => ({
-          id: `plan:${planId}:exp:${i}`,
-          title: m.key,
-          start: m.date,
-          allDay: true,
-          calendarId: `plan:${planId}`,
-          color: baseColor,
-          extendedProps: { planId, variant: "expected" as const },
-        })),
-        ...actualPoints(p).map((m, i) => ({
-          id: `plan:${planId}:act:${i}`,
-          title: m.key,
-          start: m.date,
-          allDay: true,
-          calendarId: `plan:${planId}`,
-          color: baseColor,
-          extendedProps: { planId, variant: "actual" as const },
-        })),
-      ];
-
-      const bands = computeAvailabilityBands(math.stages);
-      const overlay = bands.map((b, i) => {
-        const kind = b.kind; // "risky" | "unlikely"
-        return {
-          id: `plan:${planId}:avail:${kind}:${i}`,
+        return bands.map((b, i) => ({
+          id: `plan:${planId}:avail:${b.kind}:${i}`,
           title: b.label,
           start: b.range.start,
           end: b.range.end,
           allDay: true,
           calendarId: "overlay:availability",
-          color: kind === "risky" ? "#EF4444" : "#F59E0B",
-          extendedProps: { planId, variant: "availability" as const, availabilityKind: kind },
-        };
+          color: b.kind === "risky" ? "#EF4444" : baseColor,
+          extendedProps: { planId, variant: "availability" as const, availabilityKind: b.kind },
+        }));
       });
 
-      return [...points, ...overlay];
-    });
-  }, [plans]);
+    // Optional horizon clamp for overlay spans too
+    const clamped = horizon
+      ? overlayEvents.filter((e) => {
+          const s = new Date(e.start as any).getTime();
+          const en = new Date(e.end as any).getTime();
+          return en >= horizon.start.getTime() && s <= horizon.end.getTime();
+        })
+      : overlayEvents;
+
+    return [...pointEvents, ...clamped];
+  }, [items, selectedSet, horizon]);
 
   return (
     <BHQCalendar
@@ -200,9 +119,9 @@ export default function BreedingCalendar({
       headerTitle="Breeding Calendar"
       groups={groups}
       events={events}
-      storageKey="bhq_calendar_breeding_v1"
+      storageKey="bhq_calendar_breeding_v2"
       onEventClick={(ev) => {
-        const planId = String((ev.extendedProps as any)?.planId ?? "");
+        const planId = String((ev as any)?.extendedProps?.planId ?? "");
         if (planId) navigateToPlan?.(planId);
       }}
     />

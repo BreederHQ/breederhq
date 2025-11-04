@@ -1,9 +1,9 @@
 /* --- Global drawer typography baseline --- */
 .bhq-drawer,
 [data-bhq-drawer="true"] {
-    font-size: 0.9rem;
-    line-height: 1.35rem;
-    color: var(--color-text, #c9c9c9);
+  font-size: 0.9rem;
+  line-height: 1.35rem;
+  color: var(--color-text, #c9c9c9);
 }
 
 .bhq-details-drawer,
@@ -17,47 +17,70 @@
 /* ===== Global SectionCard heading polish ===== */
 
 :root {
-    --bhq-accent: #ff7a1a;
-    --bhq-title-strong: var(--color-text-strong, #e9e9e9);
-    --bhq-title-dim: var(--color-text, #c9c9c9);
+  --bhq-accent: #ff7a1a;
+  --bhq-title-strong: var(--color-text-strong, #e9e9e9);
+  --bhq-title-dim: var(--color-text, #c9c9c9);
+}
+
+/* sweep animation (right → left) */
+@keyframes bhq-title-sweep {
+  from { background-position-x: 200%; }
+  to   { background-position-x: -200%; }
 }
 
 .bhq-section-card .bhq-section-title {
-    font-weight: 700;
-    font-size: 0.95rem;
-    line-height: 1.25rem;
-    letter-spacing: 0.2px;
-    color: var(--color-text-strong, #e9e9e9);
-    margin: 0 0 10px 0;
-    padding-bottom: 6px;
-    position: relative;
+  font-weight: 700;
+  font-size: 0.95rem;
+  line-height: 1.25rem;
+  letter-spacing: 0.2px;
+  color: var(--color-text-strong, #e9e9e9);
+  margin: 0 0 10px 0;
+  padding-bottom: 6px;
+  position: relative;
 }
 
 .bhq-section-card .bhq-section-title::after {
-    content: "";
-    position: absolute;
-    left: 0;
-    bottom: 0;
-    height: 2px;
-    width: 28px;
-    border-radius: 2px;
-    background: linear-gradient(90deg, var(--bhq-accent), transparent);
-    opacity: 0.95;
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 2px;
+  width: 28px;                       /* change if you want a longer line */
+  border-radius: 2px;
+  /* animated gradient sweep */
+  background: linear-gradient(90deg, transparent, var(--bhq-accent), transparent);
+  background-size: 200% 100%;
+  animation: bhq-title-sweep 11s ease-in-out infinite; /* slowed by 50% */
+  opacity: 0.95;
+}
+
+/* speed up a bit on hover/focus of the header area */
+.bhq-section-card .bhq-section-header:hover .bhq-section-title::after,
+.bhq-section-card .bhq-section-header:focus-within .bhq-section-title::after {
+  animation-duration: 6.4s; /* adjusted proportionally */
+}
+
+/* respect reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .bhq-section-card .bhq-section-title::after {
+    animation: none;
+    opacity: 0.75;
+  }
 }
 
 .bhq-drawer .bhq-section-card .bhq-section-title,
 [data-bhq-drawer="true"] .bhq-section-card .bhq-section-title {
-    font-size: 1.05rem;
-    line-height: 1.35rem;
+  font-size: 1.05rem;
+  line-height: 1.35rem;
 }
 
 .bhq-section-card {
-    --_bg: var(--brand-surface2, rgba(255, 255, 255, 0.02));
-    background: var(--_bg);
+  --_bg: var(--brand-surface2, rgba(255, 255, 255, 0.02));
+  background: var(--_bg);
 }
 
 .bhq-section-card .bhq-section-body label,
 .bhq-section-card .bhq-section-body .field-label {
-    color: var(--bhq-title-dim);
-    font-weight: 500;
+  color: var(--bhq-title-dim);
+  font-weight: 500;
 }

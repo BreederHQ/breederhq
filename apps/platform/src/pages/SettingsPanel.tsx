@@ -576,7 +576,9 @@ function Field(props: React.InputHTMLAttributes<HTMLInputElement>) {
 type ProfileHandle = { save: () => Promise<void> };
 
 type ProfileForm = {
-  userName: string;
+  firstName: string;
+  lastName: string;
+  nickname: string;
   userEmail: string;
   phoneE164: string;
   whatsappE164: string;
@@ -590,14 +592,13 @@ type ProfileForm = {
 
 function mapUserToProfileForm(u: any, countries: CountryDef[]): ProfileForm {
   const email = String(u?.email ?? "");
-  let userName = String(u?.name ?? "");
-  if (!userName && email) {
-    const local = email.split("@")[0] || "";
-    const parts = local.replace(/[._-]+/g, " ").split(/\s+/);
-    userName = [parts[0] || "", parts.slice(1).join(" ")].filter(Boolean).join(" ");
-  }
+  const firstName = String(u?.firstName ?? "");
+  const lastName = String(u?.lastName ?? "");
+  const nickname = String(u?.nickname ?? "");
   return {
-    userName,
+    firstName,
+    lastName,
+    nickname,
     userEmail: email,
     phoneE164: String(u?.phoneE164 ?? ""),
     whatsappE164: String(u?.whatsappE164 ?? ""),
@@ -622,7 +623,9 @@ const ProfileTab = React.forwardRef<ProfileHandle, {
   const emailInputRef = React.useRef<HTMLInputElement>(null);
 
   const empty: ProfileForm = {
-    userName: "",
+    firstName: "",
+    lastName: "",
+    nickname: "",
     userEmail: "",
     phoneE164: "",
     whatsappE164: "",
@@ -639,6 +642,15 @@ const ProfileTab = React.forwardRef<ProfileHandle, {
 
   const isDirty = React.useMemo(() => JSON.stringify(form) !== JSON.stringify(initial), [form, initial]);
   React.useEffect(() => onDirty(isDirty), [isDirty, onDirty]);
+
+  function deriveDisplayName(f: ProfileForm): string {
+    const emailLocal = (f.userEmail || "").split("@")[0] || "";
+    const emailGuess = emailLocal
+      .replace(/[._-]+/g, " ")
+      .trim();
+    return (f.nickname || `${f.firstName} ${f.lastName}`.trim() || emailGuess || "Profile").trim();
+  }
+
 
   async function getSessionUserId(): Promise<{ id: string; email: string }> {
     const res = await fetch("/api/v1/session", {
@@ -687,7 +699,7 @@ const ProfileTab = React.forwardRef<ProfileHandle, {
         if (!ignore) {
           setInitial(next);
           setForm(next);
-          onTitle(next.userName || next.userEmail || "Profile");
+          onTitle(deriveDisplayName(next));
         }
       } catch (e: any) {
         if (!ignore) setError(e?.message || "Unable to load profile");
@@ -711,7 +723,9 @@ const ProfileTab = React.forwardRef<ProfileHandle, {
       }
 
       const bodyAll: any = {
-        name: form.userName,
+        firstName: form.firstName || null,
+        lastName: form.lastName || null,
+        nickname: form.nickname || null,
         email: form.userEmail.trim().toLowerCase(),
         phoneE164: e164FromDisplay(displayFromE164(form.phoneE164, countries) || form.phoneE164) || null,
         whatsappE164: e164FromDisplay(displayFromE164(form.whatsappE164, countries) || form.whatsappE164) || null,
@@ -724,7 +738,9 @@ const ProfileTab = React.forwardRef<ProfileHandle, {
       };
 
       const mapInit: any = {
-        name: initial.userName,
+        firstName: initial.firstName || null,
+        lastName: initial.lastName || null,
+        nickname: initial.nickname || null,
         email: initial.userEmail,
         phoneE164: initial.phoneE164 || null,
         whatsappE164: initial.whatsappE164 || null,
@@ -764,6 +780,7 @@ const ProfileTab = React.forwardRef<ProfileHandle, {
       const next = mapUserToProfileForm(saved, countries);
       setInitial(next);
       setForm(next);
+      onTitle(deriveDisplayName(next));
       onDirty(false);
     },
   }));
@@ -783,13 +800,32 @@ const ProfileTab = React.forwardRef<ProfileHandle, {
           <div className="rounded-xl border border-hairline bg-surface p-3">
             <div className="mb-2 text-xs uppercase tracking-wide text-secondary">Account</div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <label className="space-y-1 md:col-span-2">
-                <div className="text-xs text-secondary">Full Name</div>
+              <label className="space-y-1">
+                <div className="text-xs text-secondary">First name</div>
                 <input
                   className={`bhq-input ${INPUT_CLS}`}
-                  autoComplete="name"
-                  value={form.userName}
-                  onChange={(e) => setForm((f) => ({ ...f, userName: e.target.value }))}
+                  autoComplete="given-name"
+                  value={form.firstName}
+                  onChange={(e) => setForm((f) => ({ ...f, firstName: e.target.value }))}
+                />
+              </label>
+              <label className="space-y-1">
+                <div className="text-xs text-secondary">Last name</div>
+                <input
+                  className={`bhq-input ${INPUT_CLS}`}
+                  autoComplete="family-name"
+                  value={form.lastName}
+                  onChange={(e) => setForm((f) => ({ ...f, lastName: e.target.value }))}
+                />
+              </label>
+              <label className="space-y-1 md:col-span-2">
+                <div className="text-xs text-secondary">Nickname</div>
+                <input
+                  className={`bhq-input ${INPUT_CLS}`}
+                  autoComplete="nickname"
+                  placeholder="Optional"
+                  value={form.nickname}
+                  onChange={(e) => setForm((f) => ({ ...f, nickname: e.target.value }))}
                 />
               </label>
 
@@ -1841,6 +1877,25 @@ const BreedingTab = React.forwardRef<BreedingHandle, { dirty: boolean; onDirty: 
               form={form}
               setForm={setForm}
             />
+            
+            {/* ── Placement Start bands enable ───────────────────────────── */}
+            <div className="rounded-md border border-hairline p-3 bg-surface space-y-2">
+              <div className="text-sm font-medium">Placement Start bands</div>
+              <label className="inline-flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={!!form.placement_start_enable_bands}
+                  onChange={(e) =>
+                    setForm(f => ({ ...f, placement_start_enable_bands: !!e.currentTarget.checked }))
+                  }
+                />
+                <span>Enable Availability Bands around Placement Start</span>
+              </label>
+              <p className="text-xs text-tertiary">
+                When off, Placement Start exact-date bands will not render, even if offsets are set.
+              </p>
+            </div>
+
 
             <ExactDateRow
               title="Placement Completed"

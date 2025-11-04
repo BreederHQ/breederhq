@@ -11,6 +11,7 @@ export default defineConfig({
       "@bhq/contacts": fileURLToPath(new URL("../contacts/src", import.meta.url)),
       "@bhq/animals": fileURLToPath(new URL("../animals/src", import.meta.url)),
       "@bhq/breeding": fileURLToPath(new URL("../breeding/src", import.meta.url)),
+      "@bhq/offspring": fileURLToPath(new URL("../offspring/src", import.meta.url)),
       "@bhq/organizations": fileURLToPath(new URL("../organizations/src", import.meta.url)),
       "@bhq/admin": fileURLToPath(new URL("../admin/src", import.meta.url)),
     },

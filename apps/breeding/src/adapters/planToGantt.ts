@@ -1,146 +1,156 @@
 // apps/breeding/src/adapters/planToGantt.ts
-// Single source of truth for converting plans into chart-ready data and horizons.
+import {
+  fromPlan as biologyFromPlan,
+  type Species,
+  type StageWindows,
+  type WindowsResult,
+  type Range,
+} from "@bhq/ui/utils/breedingMath";
 
+/* ───────────────── types ───────────────── */
 export type ID = number | string;
 
-export type Range = { start: Date; end: Date }; // inclusive end for bars
-export type StageKey =
-  | "preBreeding"
-  | "hormoneTesting"
-  | "breeding"
-  | "whelping"
-  | "puppyCare"
-  | "goHomeNormal";
-
-export type StageWindows = { key: StageKey; full: Range; likely?: Range };
-
-export type PlanRow = {
+export type BreedingPlanLike = {
   id: ID;
-  name: string;
+  species: Species; // "DOG" | "CAT" | "HORSE"
+  earliestHeatStart: Date | string | null;
+  latestHeatStart: Date | string | null;
+  ovulationDate?: Date | string | null;
+  name?: string | null;
   status?: string | null;
-  species?: "Dog" | "Cat" | "Horse" | string | null;
-
-  // Sources for expected dates
-  lockedCycle?: {
-    cycleStart?: string | null;
-    ovulation?: string | null;
-    due?: string | null;
-    goHome?: string | null;
-  } | null;
-
-  // Optional expected mirrors
-  expected_due?: string | null;
-  expected_go_home?: string | null;
 };
 
 export type NormalizedPlan = {
-  plan: PlanRow;
-  windows: StageWindows[];
+  plan: { id: ID; name: string; status?: string | null };
+  windows: StageWindows[]; // always normalized to an array
 };
 
-/* ───────── date helpers ───────── */
-const iso = (d?: string | null) => (d ? new Date(d) : null);
-const clampDay = (dt: Date) => new Date(dt.getFullYear(), dt.getMonth(), dt.getDate());
-export const addDays = (dt: Date, days: number) =>
-  new Date(dt.getFullYear(), dt.getMonth(), dt.getDate() + days);
+/* ───────────────── visuals ───────────────── */
 
-export function oneDayRange(d: Date): Range {
-  const s = clampDay(d);
-  return { start: s, end: s };
-}
-
-export function monthsBetween(start: Date, end: Date): number {
-  const s = new Date(start.getFullYear(), start.getMonth(), 1);
-  const e = new Date(end.getFullYear(), end.getMonth(), 1);
-  const m = (e.getFullYear() - s.getFullYear()) * 12 + (e.getMonth() - s.getMonth()) + 1;
-  return Math.max(1, m);
-}
-
-/** Pad a span by one empty calendar month on both ends */
-export function padByOneMonth(r: Range): Range {
-  const a = new Date(r.start.getFullYear(), r.start.getMonth() - 1, 1);
-  const b = new Date(r.end.getFullYear(), r.end.getMonth() + 2, 0);
-  return { start: a, end: b };
-}
-
-/** Expected span for a set of windows. Prefer likely if present, else full. */
-export function expectedRangeOfWindows(ws: StageWindows[]): Range {
-  if (!ws.length) {
-    const t = clampDay(new Date());
-    return { start: t, end: t };
-  }
-  let min = ws[0].likely?.start ?? ws[0].full.start;
-  let max = ws[0].likely?.end ?? ws[0].full.end;
-  for (const w of ws) {
-    const r = w.likely ?? w.full;
-    if (r.start < min) min = r.start;
-    if (r.end > max) max = r.end;
-  }
-  return { start: min, end: max };
-}
-
-/** Union of several ranges */
-export function unionRange(ranges: Range[]): Range {
-  if (!ranges.length) {
-    const t = clampDay(new Date());
-    return { start: t, end: t };
-  }
-  let min = ranges[0].start;
-  let max = ranges[0].end;
-  for (const r of ranges) {
-    if (r.start < min) min = r.start;
-    if (r.end > max) max = r.end;
-  }
-  return { start: min, end: max };
-}
-
-/* ───────── windows builder (expected only) ───────── */
-export function windowsFromPlan(p: PlanRow): StageWindows[] {
-  const out: StageWindows[] = [];
-
-  const lock = p.lockedCycle ?? {};
-  const dCycle = iso(lock.cycleStart);
-  const dOv = iso(lock.ovulation);
-  const dDue = iso(lock.due) || iso(p.expected_due);
-  const dGo = iso(lock.goHome) || iso(p.expected_go_home);
-
-  if (dCycle) out.push({ key: "preBreeding", full: oneDayRange(dCycle) });
-
-  // Use ovulation as expected testing completion marker and breeding anchor
-  if (dCycle && dOv && dOv.getTime() !== dCycle.getTime()) {
-    out.push({ key: "hormoneTesting", full: oneDayRange(dOv) });
-  }
-  if (dOv) out.push({ key: "breeding", full: oneDayRange(dOv) });
-  if (dDue) out.push({ key: "whelping", full: oneDayRange(dDue) });
-
-  if (dDue && dGo) {
-    out.push({ key: "puppyCare", full: { start: clampDay(dDue), end: clampDay(dGo) } });
-  }
-  if (dGo) out.push({ key: "goHomeNormal", full: oneDayRange(dGo) });
-
-  return out;
-}
-
-/** Build once upstream: map raw plans to normalized windows */
-export function normalizePlans(plans: PlanRow[]): NormalizedPlan[] {
-  return plans.map((plan) => ({ plan, windows: windowsFromPlan(plan) }));
-}
-
-/* ───────── color hash for plan chips ───────── */
-export function colorFromId(id: ID): string {
-  const s = String(id);
-  let h = 2166136261 >>> 0;
-  for (let i = 0; i < s.length; i++) h = (h ^ s.charCodeAt(i)) * 16777619;
-  const hue = h % 360;
-  return `hsl(${hue}deg 70% 45%)`;
-}
-
-/* ───────── stage list for the renderer ───────── */
 export const GANTT_STAGES = [
-  { key: "preBreeding",    label: "Pre-breeding Heat", baseColor: "#38bdf8", hatchLikely: true },
-  { key: "hormoneTesting", label: "Hormone Testing",   baseColor: "#f59e0b", hatchLikely: true },
-  { key: "breeding",       label: "Breeding",          baseColor: "#10b981" },
-  { key: "whelping",       label: "Whelping",          baseColor: "#ef4444" },
-  { key: "puppyCare",      label: "Puppy Care",        baseColor: "#6366f1", hatchLikely: true },
-  { key: "goHomeNormal",   label: "Go Home",           baseColor: "#22c55e" },
+  { key: "preBreeding",       label: "Pre-breeding Heat",   baseColor: "hsl(var(--brand-cyan, 186 100% 40%))",  hatchLikely: true },
+  { key: "hormoneTesting",    label: "Hormone Testing",     baseColor: "hsl(var(--brand-orange, 36 100% 50%))",  hatchLikely: true },
+  { key: "breeding",          label: "Breeding",            baseColor: "hsl(var(--brand-green, 140 70% 45%))" },
+  { key: "birth",             label: "Birth",               baseColor: "hsl(var(--brand-pink, 345 80% 55%))" },
+  { key: "puppyCare",         label: "Puppy Care",          baseColor: "hsl(var(--brand-purple, 270 90% 60%))" },
+  { key: "PlacementNormal",   label: "Placement",           baseColor: "hsl(var(--brand-gray, 220 10% 60%))" },
+  { key: "PlacementExtended", label: "Placement (Extended)",baseColor: "hsl(var(--brand-gray, 220 10% 60%))" },
 ] as const;
+
+// stable color chip per plan id
+export function colorFromId(id: ID) {
+  const s = String(id);
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+  const hue = h % 360;
+  return `hsl(${hue} 70% 46%)`;
+}
+
+/* ───────────────── date helpers ───────────────── */
+
+export function monthsBetween(a: Date, b: Date) {
+  const s = a < b ? a : b;
+  const e = a < b ? b : a;
+  return (e.getFullYear() - s.getFullYear()) * 12 + (e.getMonth() - s.getMonth()) + 1;
+}
+
+export function padByOneMonth(r: Range): Range {
+  const a = new Date(r.start);
+  const b = new Date(r.end);
+  const s = new Date(a.getFullYear(), a.getMonth() - 1, 1);
+  const e = new Date(b.getFullYear(), b.getMonth() + 2, 0); // end of month after b
+  return { start: s, end: e };
+}
+
+export function unionRange(spans: Array<Range | null | undefined>): Range {
+  let min: Date | null = null;
+  let max: Date | null = null;
+  for (const r of spans) {
+    if (!r) continue;
+    if (!min || r.start < min) min = r.start;
+    if (!max || r.end > max) max = r.end;
+  }
+  const now = new Date();
+  return {
+    start: min ?? new Date(now.getFullYear(), now.getMonth(), 1),
+    end: max ?? new Date(now.getFullYear(), now.getMonth() + 1, 0),
+  };
+}
+
+/* ───────────────── normalization ───────────────── */
+
+const toIso = (d: Date | string | null | undefined) =>
+  d == null ? null : (d instanceof Date ? d : new Date(d)).toISOString();
+
+function normalizeWindows(input: StageWindows[] | WindowsResult | null | undefined): StageWindows[] {
+  if (!input) return [];
+  // WindowsResult from biology util
+  if (typeof (input as any).stages !== "undefined") {
+    const stages = (input as any).stages;
+    return Array.isArray(stages) ? stages : [];
+  }
+  // Already an array
+  return Array.isArray(input) ? input : [];
+}
+
+/**
+ * Safe overall expected range across stage windows. Accepts either a WindowsResult
+ * or an array of StageWindows. Never throws.
+ */
+
+
+type AnyWindows =
+  | Array<{ full?: Range; likely?: Range }>
+  | Record<string, { full?: Range; likely?: Range }>
+  | null
+  | undefined;
+
+function expectedRangeOfWindows(windows: AnyWindows): Range | null {
+  if (!windows) return null;
+
+  // Accept either an array or a map-like object
+  const list = Array.isArray(windows) ? windows : Object.values(windows);
+
+  if (!list.length) return null;
+
+  let start: Date | null = null;
+  let end: Date | null = null;
+
+  for (const w of list) {
+    const full = w?.full;
+    if (!full) continue;
+    start = !start || full.start < start ? full.start : start;
+    end   = !end   || full.end   > end   ? full.end   : end;
+  }
+
+  return start && end ? { start, end } : null;
+}
+
+/**
+ * Lightweight helper: build StageWindows from a basic plan-like slice.
+ * Use this if a caller has not already run the biology util.
+ */
+export function windowsFromPlan(plan: BreedingPlanLike): StageWindows[] {
+  if (!plan.earliestHeatStart || !plan.latestHeatStart) return [];
+  const wr = biologyFromPlan({
+    species: plan.species,
+    earliestHeatStart: toIso(plan.earliestHeatStart)!,
+    latestHeatStart: toIso(plan.latestHeatStart)!,
+    ovulationDate: toIso(plan.ovulationDate) ?? null,
+  });
+  return normalizeWindows(wr);
+}
+
+/**
+ * Normalize an arbitrary list of BreedingPlanLike items into NormalizedPlan[]
+ * that always carry a windows array.
+ */
+export function normalizePlanItems(items: BreedingPlanLike[] | Array<BreedingPlanLike & { windows?: StageWindows[] | WindowsResult }>): NormalizedPlan[] {
+  return (items || []).map((p) => {
+    const name = (p as any).name ?? `Plan ${String(p.id)}`;
+    const status = (p as any).status ?? null;
+    const maybeWindows = (p as any).windows as StageWindows[] | WindowsResult | undefined;
+    const windows = normalizeWindows(maybeWindows) ?? windowsFromPlan(p as BreedingPlanLike);
+    return { plan: { id: p.id, name, status }, windows };
+  });
+}

@@ -1,6 +1,7 @@
 // packages/ui/src/utils/availability.ts
 import { z } from "zod";
 import type { StageWindows, Range, StageKey } from "./breedingMath";
+import { BIO } from "./breedingMath";
 
 /* ───────────────── Canonical breeding date keys ───────────────── */
 
@@ -141,6 +142,7 @@ export type AvailabilityBand = {
 /**
  * Span wraps between stage windows. Backward compatible with existing UI.
  * Also holds your General program defaults and the Placement Start bands toggle.
+ * Defaults pull from breedingMath.BIO where available.
  */
 export const AvailabilityPrefsSchema = z.object({
   // Phase span wraps
@@ -195,8 +197,8 @@ export const AvailabilityPrefsSchema = z.object({
   /**
    * General program defaults and Placement Start bands toggle
    */
-  placement_start_from_birth_weeks: z.number().int().min(0).max(52).default(8),
-  weaned_from_birth_days: z.number().int().min(0).max(365).default(42),
+  placement_start_from_birth_weeks: z.number().int().min(0).max(52).default(BIO.puppyCareWeeks),
+  weaned_from_birth_days: z.number().int().min(0).max(365).default(BIO.weanFromBirthDays),
   testing_from_cycle_start_days: z.number().int().min(0).max(60).default(7),
   placement_start_enable_bands: z.boolean().default(false),
 });
@@ -248,8 +250,8 @@ export const DEFAULT_AVAILABILITY_PREFS: Readonly<AvailabilityPrefs> = Object.fr
     date_placement_completed_unlikely_from: 0,
     date_placement_completed_unlikely_to: 0,
 
-    placement_start_from_birth_weeks: 8,
-    weaned_from_birth_days: 42,
+    placement_start_from_birth_weeks: BIO.puppyCareWeeks,
+    weaned_from_birth_days: BIO.weanFromBirthDays,
     testing_from_cycle_start_days: 7,
     placement_start_enable_bands: false,
   })
@@ -275,9 +277,10 @@ function mkRange(a: Date, b: Date): Range {
 function byKey(stages: ReadonlyArray<StageWindows>, k: StageKey) {
   return stages.find((s) => s.key === k);
 }
+
 const LABELS = Object.freeze({
-  risky: "Availability Risky",
-  unlikely: "Availability Unlikely",
+  risky: "Availability: Risky",
+  unlikely: "Availability: Unlikely",
 } as const);
 
 const PER_DATE_ANCHOR_LABELS = Object.freeze({
@@ -367,13 +370,13 @@ export function computeAvailabilityBands(
   }
 
   // Puppy care to placement start (unlikely)
-  const puppyLikelyStart = prefer(D._anchors?.weanedDate, D.weanedDateActual, D.expectedWeaned, PC?.likely?.start, PC?.full.start);
+  const puppyLikelyStart = prefer(D._anchors?.weanedDate, D.weanedDateActual, D.expectedWeaned, PC?.likely?.start, PC?.full?.start);
   const placementLikelyStart = prefer(
     D._anchors?.placementStart,
     D.placementStartDateActual,
     D.expectedPlacementStart,
     PL?.likely?.start,
-    PL?.full.start
+    PL?.full?.start
   );
   if (puppyLikelyStart && placementLikelyStart) {
     const a = addDays(puppyLikelyStart, P.post_unlikely_from_likely_start);
@@ -525,13 +528,13 @@ export function summarizeAvailabilityWraps(
     PLE?.full?.end,
     PL?.full?.end
   );
-  const puppyLikelyStart = prefer(D._anchors?.weanedDate, D.weanedDateActual, D.expectedWeaned, PC?.likely?.start, PC?.full.start);
+  const puppyLikelyStart = prefer(D._anchors?.weanedDate, D.weanedDateActual, D.expectedWeaned, PC?.likely?.start, PC?.full?.start);
   const placementLikelyStart = prefer(
     D._anchors?.placementStart,
     D.placementStartDateActual,
     D.expectedPlacementStart,
     PL?.likely?.start,
-    PL?.full.start
+    PL?.full?.start
   );
 
   const out: AvailabilityWrapSummary[] = [];

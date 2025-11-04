@@ -1,9 +1,14 @@
 // apps/breeding/src/api.ts
+
+// ⬇⬇ Adjust this import path to your monorepo alias/layout ⬇⬇
+import { readTenantIdFast, resolveTenantId } from "../../../packages/ui/src/utils/tenant";
+// If you have path aliases, e.g. "@ui/utils/tenant", switch to that import.
+
 export type ApiOpts = {
   /** e.g. "/api/v1" (recommended with Vite proxy) or "http://localhost:6001/api/v1" */
   baseUrl?: string;
-  /** required for tenant-scoped subtree */
-  tenantId: number;
+  /** If omitted, we’ll auto-resolve using the shared tenant util */
+  tenantId?: number;
   /** optional custom fetch (node/polyfill) */
   fetch?: typeof fetch;
   /** when true, add XSRF header from cookie on non-GET */
@@ -33,7 +38,12 @@ async function toError(res: Response) {
       // ignore
     }
   }
-  const err = new Error(payload?.error || `HTTP ${res.status}`);
+  const msg =
+    payload?.error ||
+    payload?.message ||
+    (payload?.detail ? String(payload.detail) : null) ||
+    `HTTP ${res.status}`;
+  const err = new Error(msg);
   (err as any).status = res.status;
   (err as any).payload = payload;
   return err;
@@ -81,27 +91,15 @@ export type AvailabilityPrefs = {
   post_risky_from_full_start: number;
   post_risky_to_full_end: number;
   post_unlikely_from_likely_start: number;
+  post_unlikely_from_likely_end: number; // (legacy-safe)
   post_unlikely_to_likely_end: number;
 };
 
-/* ───────────────────────── payload normalizers ─────────────────────────
-   Accept older caller keys and rewrite them to the new placement schema
-   before sending to the server. This keeps UI code flexible and safe.   */
+/* ───────────────────────── payload normalizers ───────────────────────── */
 
 function normalizePlanDates(body: any) {
   if (!body || typeof body !== "object") return body;
-
   const b: any = { ...body };
-
-  // expected → placement
-  if (b.expectedPlacementStart !== undefined && b.expectedPlacementStart === undefined) {
-    b.expectedPlacementStart = b.expectedPlacementStart;
-    delete b.expectedPlacementStart;
-  }
-  if (b.expectedPlacementCompleted !== undefined && b.expectedPlacementCompleted === undefined) {
-    b.expectedPlacementCompleted = b.expectedPlacementCompleted;
-    delete b.expectedPlacementCompleted;
-  }
 
   // legacy expectedDue → expectedBirthDate
   if (b.expectedDue !== undefined && b.expectedBirthDate === undefined) {
@@ -109,44 +107,13 @@ function normalizePlanDates(body: any) {
     delete b.expectedDue;
   }
 
-  // locked → placement
-  if (b.lockedPlacementStartDate !== undefined && b.lockedPlacementStartDate === undefined) {
-    b.lockedPlacementStartDate = b.lockedPlacementStartDate;
-    delete b.lockedPlacementStartDate;
-  }
-
-  // actuals → placement
+  // legacy actual go-home → placement actual start
   if (b.actualGoHomeDate !== undefined && b.placementStartDateActual === undefined) {
     b.placementStartDateActual = b.actualGoHomeDate;
     delete b.actualGoHomeDate;
   }
-  if (b.placementStartDateActual !== undefined && b.placementStartDateActual === undefined) {
-    b.placementStartDateActual = b.placementStartDateActual;
-    delete b.placementStartDateActual;
-  }
-  if (b.placementCompletedDateActual !== undefined && b.placementCompletedDateActual === undefined) {
-    b.placementCompletedDateActual = b.placementCompletedDateActual;
-    delete b.placementCompletedDateActual;
-  }
-  if (b.placementStartDateActual !== undefined && b.placementStartDateActual === undefined) {
-    b.placementStartDateActual = b.placementStartDateActual;
-    delete b.placementStartDateActual;
-  }
-  if (b.placementCompletedDateActual !== undefined && b.placementCompletedDateActual === undefined) {
-    b.placementCompletedDateActual = b.placementCompletedDateActual;
-    delete b.placementCompletedDateActual;
-  }
 
-  // very old aliases to keep callers safe
-  if (b.birthDateActual !== undefined && b.birthDateActual === undefined) {
-    b.birthDateActual = b.birthDateActual;
-    delete b.birthDateActual;
-  }
-  if (b.expectedBirthDate !== undefined && b.expectedBirthDate === undefined) {
-    b.expectedBirthDate = b.expectedBirthDate;
-    delete b.expectedBirthDate;
-  }
-
+  // no-op guards removed (previous version had redundant checks)
   return b;
 }
 
@@ -166,14 +133,30 @@ export function makeBreedingApi(opts: ApiOpts) {
     opts.fetch ? opts.fetch : (globalThis.fetch ? globalThis.fetch.bind(globalThis) : (undefined as any));
 
   const base = opts.baseUrl ?? "/api/v1";
-  const tenantHeader = { "x-tenant-id": String(opts.tenantId) };
+
+  // Tenant resolution (fast sync, else one-time async)
+  let tenantId: number | undefined = typeof opts.tenantId === "number" ? opts.tenantId : readTenantIdFast();
+  let tenantPromise: Promise<number> | null = tenantId ? null : resolveTenantId({ baseUrl: base });
+
+  const ensureTenant = async () => {
+    if (!tenantId && tenantPromise) {
+      tenantId = await tenantPromise;
+      tenantPromise = null;
+    }
+    if (!tenantId) {
+      // give a helpful client-side error that mirrors server behavior
+      const e: any = new Error("Missing or invalid tenant context (X-Tenant-Id or session tenant)");
+      e.status = 400;
+      throw e;
+    }
+  };
 
   /** Build headers per request, attaching CSRF for non-GET when asked */
   const buildHeaders = (method: string, extra?: HeadersInit): HeadersInit => {
     const h: Record<string, string> = {
       "content-type": "application/json",
-      ...tenantHeader,
     };
+    if (tenantId) h["x-tenant-id"] = String(tenantId);
     if (opts.withCsrf && method !== "GET" && typeof document !== "undefined") {
       const token = getCookie("XSRF-TOKEN");
       if (token) h["x-csrf-token"] = token;
@@ -182,6 +165,7 @@ export function makeBreedingApi(opts: ApiOpts) {
   };
 
   const get = async <T>(path: string, init?: RequestInit): Promise<T> => {
+    await ensureTenant();
     const res = await fetchFn(joinUrl(base, path), {
       method: "GET",
       credentials: "include",
@@ -193,6 +177,7 @@ export function makeBreedingApi(opts: ApiOpts) {
   };
 
   const post = async <T>(path: string, body: any, init?: RequestInit): Promise<T> => {
+    await ensureTenant();
     const res = await fetchFn(joinUrl(base, path), {
       method: "POST",
       credentials: "include",
@@ -205,6 +190,7 @@ export function makeBreedingApi(opts: ApiOpts) {
   };
 
   const patch = async <T>(path: string, body: any, init?: RequestInit): Promise<T> => {
+    await ensureTenant();
     const res = await fetchFn(joinUrl(base, path), {
       method: "PATCH",
       credentials: "include",
@@ -217,6 +203,7 @@ export function makeBreedingApi(opts: ApiOpts) {
   };
 
   const put = async <T>(path: string, body: any, init?: RequestInit): Promise<T> => {
+    await ensureTenant();
     const res = await fetchFn(joinUrl(base, path), {
       method: "PUT",
       credentials: "include",
@@ -241,11 +228,11 @@ export function makeBreedingApi(opts: ApiOpts) {
     },
 
     /* Tenant availability prefs */
-    getTenantAvailability(tenantId: number) {
-      return get<AvailabilityPrefs>(`/tenants/${tenantId}/availability`);
+    getTenantAvailability(tid: number) {
+      return get<AvailabilityPrefs>(`/tenants/${tid}/availability`);
     },
-    updateTenantAvailability(tenantId: number, body: Partial<AvailabilityPrefs>) {
-      return patch<AvailabilityPrefs>(`/tenants/${tenantId}/availability`, body);
+    updateTenantAvailability(tid: number, body: Partial<AvailabilityPrefs>) {
+      return patch<AvailabilityPrefs>(`/tenants/${tid}/availability`, body);
     },
 
     /* Breeding Plans */

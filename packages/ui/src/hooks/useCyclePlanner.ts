@@ -1,7 +1,7 @@
-// Full drop-in
-
+// packages/ui/src/hooks/useCyclePlanner.ts
 import * as React from "react";
 import { SPECIES_DEFAULTS, computeCycleSummary, type BioSpecies, type ISODate } from "../utils/repro";
+import { BIO } from "../utils/breedingMath"; // ← centralize constants
 
 export type Species = "Dog" | "Cat" | "Horse";
 
@@ -47,12 +47,10 @@ export type ExpectedDates = {
   placement_completed_expected: ISODate;
 
   /** Legacy aliases kept for back-compat */
-  placement_expected: ISODate;                    // mirrors placement_start_expected
-  placement_extended_end_expected: ISODate;       // mirrors placement_completed_expected
+  placement_expected: ISODate;
+  placement_extended_end_expected: ISODate;
 
-  /** You already had this; leaving as-is for consumers that still read it */
   last_offspring_placement_expected: ISODate;
-
   windows: ExpectedWindows;
   travel: TravelBand[];
 };
@@ -71,22 +69,24 @@ export function pickDefaults(species: Species): CycleDefaults {
   const key = uiToBio(species);
   const cycle_len_days = SPECIES_DEFAULTS[key] ?? SPECIES_DEFAULTS.OTHER;
   return species === "Dog"
-    ? { cycle_len_days, start_buffer_days: 14, ovulation_day_from_heat_start: 12 }
+    ? { cycle_len_days, start_buffer_days: BIO.startBufferDays, ovulation_day_from_heat_start: BIO.ovulationOffsetDays }
     : species === "Cat"
       ? { cycle_len_days, start_buffer_days: 7, ovulation_day_from_heat_start: 3 }
       : species === "Horse"
         ? { cycle_len_days, start_buffer_days: 7, ovulation_day_from_heat_start: 5 }
-        : { cycle_len_days, start_buffer_days: 14, ovulation_day_from_heat_start: 12 };
+        : { cycle_len_days, start_buffer_days: BIO.startBufferDays, ovulation_day_from_heat_start: BIO.ovulationOffsetDays };
 }
 
 /** Species default for placement window start (weeks after birth). */
 function speciesHomingStartWeeksDefault(species: Species): number {
-  return species === "Horse" ? 30 : 8;
+  // BIO.puppyCareWeeks is our canonical; horses override via BIO_BY_SPECIES if needed
+  return species === "Horse" ? (BIO.puppyCareWeeks /* overridden in BIO_BY_SPECIES */) : BIO.puppyCareWeeks;
 }
 
 /** Species default for weaning (days after birth). */
 function speciesWeaningDaysDefault(species: Species): number {
-  return species === "Horse" ? 150 : 42;
+  // Centralized to BIO.weanFromBirthDays; horses override via BIO_BY_SPECIES if needed
+  return BIO.weanFromBirthDays;
 }
 
 // ────────── learned cycle length (avg of last 3 intervals) ──────────
@@ -147,12 +147,12 @@ export function computeExpectedFromCycle(opts: {
   const ovulation = addDaysISO(cycle, d.ovulation_day_from_heat_start);
 
   // Birth windows
-  const birthLikelyStart = addDaysISO(ovulation, 63 - 1);
-  const birthLikelyEnd   = addDaysISO(ovulation, 63 + 1);
-  const birthFullStart   = addDaysISO(ovulation, 63 - 2);
-  const birthFullEnd     = addDaysISO(ovulation, 63 + 2);
+  const birthLikelyStart = addDaysISO(ovulation, BIO.whelpingDaysFromOvulation - 1);
+  const birthLikelyEnd   = addDaysISO(ovulation, BIO.whelpingDaysFromOvulation + 1);
+  const birthFullStart   = addDaysISO(ovulation, BIO.whelpingDaysFromOvulation - 2);
+  const birthFullEnd     = addDaysISO(ovulation, BIO.whelpingDaysFromOvulation + 2);
 
-  const birth_expected = addDaysISO(ovulation, 63);
+  const birth_expected = addDaysISO(ovulation, BIO.whelpingDaysFromOvulation);
 
   // Weaning
   const weaning_expected = addDaysISO(birth_expected, speciesWeaningDaysDefault(species));
@@ -167,17 +167,17 @@ export function computeExpectedFromCycle(opts: {
   const placementFullEnd   = addDaysISO(birthFullEnd, homingDays);
 
   const placementExtendedFullStart = placementFullEnd;
-  const placementExtendedFullEnd   = addDaysISO(placementExtendedFullStart, 7 * 3); // +3 weeks buffer
+  const placementExtendedFullEnd   = addDaysISO(placementExtendedFullStart, 7 * BIO.placementExtendedWeeks);
 
-  const breedingFullStart = addDaysISO(cycle, d.ovulation_day_from_heat_start - 1);
-  const breedingFullEnd   = addDaysISO(cycle, d.ovulation_day_from_heat_start + 2);
+  const breedingFullStart = addDaysISO(cycle, d.ovulation_day_from_heat_start - BIO.breedingPreOvulationDays);
+  const breedingFullEnd   = addDaysISO(cycle, d.ovulation_day_from_heat_start + BIO.breedingPostOvulationDays);
   const breedingLikelyStart = ovulation;
   const breedingLikelyEnd   = addDaysISO(ovulation, 1);
 
   const preBreedingFullStart = cycle;
-  const preBreedingFullEnd   = addDaysISO(cycle, d.ovulation_day_from_heat_start - 1);
+  const preBreedingFullEnd   = addDaysISO(cycle, d.ovulation_day_from_heat_start - BIO.breedingPreOvulationDays);
 
-  const hormoneTestingFullStart = addDaysISO(cycle, 7);
+  const hormoneTestingFullStart = addDaysISO(cycle, BIO.hormoneTestingFromCycleStartDays);
   const hormoneTestingFullEnd   = ovulation;
 
   const puppyCareLikelyStart = birthLikelyStart;
@@ -188,10 +188,10 @@ export function computeExpectedFromCycle(opts: {
 
   // Availability bands with normalized kinds
   const travel: TravelBand[] = [
-    { kind: "risky",    start: hormoneTestingFullStart, end: breedingFullEnd,       label: "" },
+    { kind: "risky",    start: hormoneTestingFullStart, end: breedingFullEnd,         label: "" },
     { kind: "risky",    start: birthFullStart,          end: placementExtendedFullEnd, label: "" },
-    { kind: "unlikely", start: preBreedingFullEnd,      end: breedingLikelyEnd,     label: "" },
-    { kind: "unlikely", start: puppyCareLikelyStart,    end: placementLikelyEnd,       label: "" },
+    { kind: "unlikely", start: preBreedingFullEnd,      end: breedingLikelyEnd,       label: "" },
+    { kind: "unlikely", start: puppyCareLikelyStart,    end: placementLikelyEnd,      label: "" },
   ];
 
   // New placement milestones + legacy aliases
@@ -220,16 +220,16 @@ export function computeExpectedFromCycle(opts: {
       pre_breeding_full:   [preBreedingFullStart,   preBreedingFullEnd],
       hormone_testing_full:[hormoneTestingFullStart,hormoneTestingFullEnd],
       breeding_full:       [breedingFullStart,      breedingFullEnd],
-      birth_full:       [birthFullStart,         birthFullEnd],
+      birth_full:          [birthFullStart,         birthFullEnd],
       puppy_care_full:     [puppyCareFullStart,     puppyCareFullEnd],
       placement_normal_full:  [placementFullStart,  placementFullEnd],
       placement_extended_full:[placementExtendedFullStart,placementExtendedFullEnd],
       pre_breeding_likely: [preBreedingFullStart,   preBreedingFullEnd],
       hormone_testing_likely:[preBreedingFullEnd,   hormoneTestingFullEnd],
       breeding_likely:     [breedingLikelyStart,    breedingLikelyEnd],
-      birth_likely:     [birthLikelyStart,       birthLikelyEnd],
+      birth_likely:        [birthLikelyStart,       birthLikelyEnd],
       puppy_care_likely:   [puppyCareLikelyStart,   puppyCareLikelyEnd],
-      placement_normal_likely:[placementLikelyStart,      placementLikelyEnd],
+      placement_normal_likely:[placementLikelyStart, placementLikelyEnd],
     },
     travel,
   };
@@ -285,7 +285,7 @@ export function useCyclePlanner(params: {
           ? (homingStartWeeksOverride as number)
           : Number.isFinite(homingStartWeeksDefault ?? NaN) && (homingStartWeeksDefault as number) > 0
             ? (homingStartWeeksDefault as number)
-            : 8;
+            : BIO.puppyCareWeeks; // ← centralized default
 
       return computeExpectedFromCycle({
         species,

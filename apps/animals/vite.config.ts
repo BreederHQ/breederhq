@@ -14,7 +14,6 @@ export default defineConfig({
       // Config/preset and API SDK
       '@bhq/config': fileURLToPath(new URL('../../packages/config', import.meta.url)),
       '@bhq/api': fileURLToPath(new URL('../../packages/api/src', import.meta.url)),
-      "@bhq/biology": fileURLToPath(new URL("../../packages/biology/src", import.meta.url))
     },
     dedupe: ['react', 'react-dom'],
   },

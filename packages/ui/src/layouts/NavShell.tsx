@@ -59,7 +59,7 @@ const Icon = {
   ),
   Logout: (p: any) => (
     <svg viewBox="0 0 24 24" fill="none" className={p.className}>
-      <path d="M9 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h2M16 17l5-5-5-5M21 12H9" stroke="currentColor" strokeWidth="2" />
+      <path d="M9 21H7a2 2 0 0 1-2-2V5a2 2 0  1 2-2h2M16 17l5-5-5-5M21 12H9" stroke="currentColor" strokeWidth="2" />
     </svg>
   ),
   CircleUser: (p: any) => (
@@ -72,6 +72,7 @@ const Icon = {
 
 function emojiFor(label: string) {
   const k = label.toLowerCase();
+  if (k.includes("dashboard")) return "🌐";
   if (k.includes("contact")) return "📇";
   if (k.includes("organizations")) return "🏤";
   if (k.includes("animal")) return "🐾";
@@ -85,6 +86,10 @@ function emojiFor(label: string) {
 
 function cls(...xs: Array<string | false | null | undefined>) {
   return xs.filter(Boolean).join(" ");
+}
+
+function normPath(s: string) {
+  return String(s || "").toLowerCase().replace(/\/+$/, "");
 }
 
 export const NavShell: React.FC<NavShellProps> = ({
@@ -101,14 +106,13 @@ export const NavShell: React.FC<NavShellProps> = ({
   onSettingsClick,
 }) => {
   const [announcedTitle, setAnnouncedTitle] = React.useState<string>();
+
   React.useEffect(() => {
     const onModule = (e: Event) => {
       const detail = (e as CustomEvent).detail as { label?: string };
       if (detail?.label) {
         setAnnouncedTitle(detail.label);
-        try {
-          localStorage.setItem("BHQ_LAST_MODULE", detail.label);
-        } catch {}
+        try { localStorage.setItem("BHQ_LAST_MODULE", detail.label); } catch {}
       }
     };
     window.addEventListener("bhq:module", onModule as any);
@@ -126,13 +130,12 @@ export const NavShell: React.FC<NavShellProps> = ({
     }
   });
   React.useEffect(() => {
-    try {
-      localStorage.setItem("BHQ_RAIL_OPEN", JSON.stringify(railOpen));
-    } catch {}
+    try { localStorage.setItem("BHQ_RAIL_OPEN", JSON.stringify(railOpen)); } catch {}
   }, [railOpen]);
 
   const loggedIn = !!(auth && auth.isAuthenticated);
   const defaultItems: NavItem[] = [
+    { key: "dashboard", label: "Dashboard", href: "/" },
     { key: "contacts", label: "Contacts", href: "/contacts/" },
     { key: "organizations", label: "Organizations", href: "/organizations/" },
     { key: "animals", label: "Animals", href: "/animals/" },
@@ -142,27 +145,48 @@ export const NavShell: React.FC<NavShellProps> = ({
   ];
   const navItems = items && items.length ? items : defaultItems;
 
+  // INITIAL title bootstrap from URL, but **ignore "/"** so Dashboard doesn't claim everything.
   React.useEffect(() => {
     if (announcedTitle) return;
-    const path = (typeof location !== "undefined" ? location.pathname : "").toLowerCase();
-    const hit = navItems.find(i => path.includes((i.href || "").toLowerCase().replace(/\/+$/, "")));
-    let next = hit?.label;
+    const path = typeof location !== "undefined" ? normPath(location.pathname) : "";
+    let next: string | undefined;
+
+    if (path === "" || path === "/") {
+      next = "Dashboard";
+    } else {
+      const hit = navItems.find(i => {
+        const href = normPath(i.href || "");
+        if (!href || href === "/") return false; // don't let root hijack
+        return path === href || path.startsWith(href + "/");
+      });
+      next = hit?.label;
+    }
+
     if (!next) {
-      try {
-        next = localStorage.getItem("BHQ_LAST_MODULE") || undefined;
-      } catch {}
+      try { next = localStorage.getItem("BHQ_LAST_MODULE") || undefined; } catch {}
     }
     if (next) setAnnouncedTitle(next);
   }, [announcedTitle, navItems]);
 
+  // ACTIVE key prefers path (URL) first, then falls back to title
   const activeKey = React.useMemo(() => {
+    const path = typeof location !== "undefined" ? normPath(location.pathname) : "";
+
+    // 1) strict path match
+    const byPath = navItems.find(i => {
+      const href = normPath(i.href || "");
+      if (!href) return false;
+      if (href === "/" || href === "") return path === "" || path === "/";
+      return path === href || path.startsWith(href + "/");
+    });
+    if (byPath?.key) return byPath.key;
+
+    // 2) title/key fallback
     const t = (displayTitle || "").toLowerCase();
     const byTitle = navItems.find(i => i.label.toLowerCase() === t || i.key.toLowerCase() === t);
-    if (byTitle) return byTitle.key;
+    if (byTitle?.key) return byTitle.key;
 
-    const path = (typeof location !== "undefined" ? location.pathname : "").toLowerCase();
-    const byPath = navItems.find(i => path.includes((i.href || "").toLowerCase().replace(/\/+$/, "")));
-    return byPath?.key;
+    return undefined;
   }, [displayTitle, navItems]);
 
   return (

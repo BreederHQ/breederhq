@@ -122,6 +122,24 @@ input[type="checkbox"] { appearance: auto !important; }
   pointer-events: none !important;
 }
 
+/* ───── Fix Dates tab grid overflow + shorten date fields ───── */
+[data-bhq-details] .grid.grid-cols-1.md\:grid-cols-2 > div > .relative {
+  box-sizing: border-box;
+  min-width: 0;
+  max-width: 100%;
+}
+
+[data-bhq-details] .grid.grid-cols-1.md\:grid-cols-2 > div > .relative input,
+[data-bhq-details] .grid.grid-cols-1.md\:grid-cols-2 > div > .relative .bhq-input {
+  width: 33%;
+  min-width: 10rem; /* keeps them readable */
+}
+
+[data-bhq-details] .bhq-section-body {
+  overflow-x: hidden;
+}
+
+
 #bhq-overlay-root { z-index: 2147483600; }  /* drawers, modals, backdrops */
 #bhq-flyout-root  { z-index: 2147483647; }  /* menus, tooltips, selects   */
 
@@ -133,3 +151,4 @@ input[type="checkbox"] { appearance: auto !important; }
 
 #bhq-overlay-root[aria-hidden="true"],
 #bhq-flyout-root[aria-hidden="true"] { pointer-events: none !important; }
+
