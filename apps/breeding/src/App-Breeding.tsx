@@ -32,6 +32,7 @@ import PerPlanGantt from "./components/PerPlanGantt";
 import PlannerSwitch from "./components/PlannerSwitch";
 import "@bhq/ui/styles/table.css";
 import "@bhq/ui/styles/details.css";
+import "@bhq/ui/styles/datefield.css";
 import { makeBreedingApi } from "./api";
 
 // ── Calendar / Planning wiring ─────────────────────────────
@@ -47,9 +48,8 @@ import {
 
 import { type NormalizedPlan } from "./adapters/planToGantt";
 
-const dateFieldW = "w-full md:w-[220px]";
+const dateFieldW = "w-full";
 const dateInputCls = "h-8 py-0 px-2 text-sm bg-transparent border-hairline";
-
 
 const MODAL_Z = 2147485000;
 const modalRoot = typeof document !== "undefined" ? document.body : null;
@@ -62,9 +62,6 @@ const PLAN_TABS = [
 ] as const;
 
 /* ───────────────────────── Types ───────────────────────── */
-
-
-
 type ID = number | string;
 
 type SpeciesWire = "DOG" | "CAT" | "HORSE";
@@ -135,8 +132,8 @@ type PlanRow = {
   expectedBirthDate?: string | null;
 
   /* Actuals (keep existing, add missing two) */
-  cycleStartDateActual?: string | null;             // added
-  hormoneTestingStartDateActual?: string | null;     // added
+  cycleStartDateActual?: string | null;         
+  hormoneTestingStartDateActual?: string | null;
   breedDateActual?: string | null;
   birthDateActual?: string | null;
   weanedDateActual?: string | null;
@@ -204,8 +201,6 @@ const COLUMNS: Array<{ key: keyof PlanRow & string; label: string; default?: boo
 ];
 
 const STORAGE_KEY = "bhq_breeding_cols_v2";
-
-
 
 /* ─────────────────────── Helpers ─────────────────────── */
 
@@ -318,7 +313,7 @@ function hoistAndPlaceDatePopup(triggerEl: HTMLElement) {
         window.removeEventListener("resize", onRelayout);
         window.removeEventListener("scroll", onRelayout, true);
         return;
-        }
+      }
       doPosition();
     };
     window.addEventListener("resize", onRelayout);
@@ -622,24 +617,46 @@ function SafeNavLink({
   to,
   children,
   className,
+  style,
   end,
 }: {
   to: string;
   children: React.ReactNode;
   className: ((arg: { isActive: boolean }) => string) | string;
+  style?: ((arg: { isActive: boolean }) => React.CSSProperties) | React.CSSProperties;
   end?: boolean;
 }) {
   const inRouter = useInRouterContext();
+
+  // helper to compute active when not in a Router
+  const computeActive = React.useCallback(() => {
+    try {
+      const here = (typeof window !== "undefined" ? window.location.pathname : "/").replace(/\/+$/, "") || "/";
+      const target = new URL(to, typeof window !== "undefined" ? window.location.href : "http://x").pathname
+        .replace(/\/+$/, "") || "/";
+      if (end) {
+        return here === target;
+      }
+      // treat '/planner' as active for '/planner' and '/planner/...'
+      return here === target || here.startsWith(target + "/");
+    } catch {
+      return false;
+    }
+  }, [to, end]);
+
   if (!inRouter) {
-    const cls = typeof className === "function" ? className({ isActive: false }) : className;
+    const isActive = computeActive();
+    const cls = typeof className === "function" ? className({ isActive }) : className;
+    const sty = typeof style === "function" ? style({ isActive }) : style;
     return (
-      <a href={to} className={cls}>
+      <a href={to} className={cls} style={sty}>
         {children}
       </a>
     );
   }
+
   return (
-    <NavLink to={to} end={end} className={className as any}>
+    <NavLink to={to} end={end} className={className as any} style={style as any}>
       {children}
     </NavLink>
   );
@@ -1372,8 +1389,13 @@ export default function AppBreeding() {
                 to={basePath === "/" ? "/" : `${basePath}/`}
                 end
                 className={({ isActive }) =>
-                  `px-2 py-1.5 rounded-md text-sm transition ${isActive ? "border-b-2 border-[hsl(var(--brand-orange))] text-primary" : "text-secondary hover:text-primary"
-                  }`
+                  [
+                    "h-9 px-2 text-sm font-semibold leading-9 border-b-2 border-transparent transition-colors",
+                    isActive ? "text-primary" : "text-secondary hover:text-primary",
+                  ].join(" ")
+                }
+                style={({ isActive }) =>
+                  isActive ? { borderBottomColor: "hsl(var(--brand-orange))" } : undefined
                 }
               >
                 Plans
@@ -1382,8 +1404,13 @@ export default function AppBreeding() {
               <SafeNavLink
                 to={`${basePath}/calendar`}
                 className={({ isActive }) =>
-                  `px-2 py-1.5 rounded-md text-sm transition ${isActive ? "border-b-2 border-[hsl(var(--brand-orange))] text-primary" : "text-secondary hover:text-primary"
-                  }`
+                  [
+                    "h-9 px-2 text-sm font-semibold leading-9 border-b-2 border-transparent transition-colors",
+                    isActive ? "text-primary" : "text-secondary hover:text-primary",
+                  ].join(" ")
+                }
+                style={({ isActive }) =>
+                  isActive ? { borderBottomColor: "hsl(var(--brand-orange))" } : undefined
                 }
               >
                 Calendar
@@ -1392,17 +1419,18 @@ export default function AppBreeding() {
               <SafeNavLink
                 to={`${basePath}/planner`}
                 className={({ isActive }) =>
-                  `px-2 py-1.5 rounded-md text-sm transition ${isActive ? "border-b-2 border-[hsl(var(--brand-orange))] text-primary" : "text-secondary hover:text-primary"
-                  }`
+                  [
+                    "h-9 px-2 text-sm font-semibold leading-9 border-b-2 border-transparent transition-colors",
+                    isActive ? "text-primary" : "text-secondary hover:text-primary",
+                  ].join(" ")
+                }
+                style={({ isActive }) =>
+                  isActive ? { borderBottomColor: "hsl(var(--brand-orange))" } : undefined
                 }
               >
                 Planner
               </SafeNavLink>
             </nav>
-
-            <Button size="sm" onClick={() => setCreateOpen(true)} disabled={!api}>
-              New Breeding Plan
-            </Button>
           </div>
         </div>
 
@@ -1431,26 +1459,37 @@ export default function AppBreeding() {
                     stickyRightWidthPx={40}
                   >
                     {/* Toolbar */}
-                    <div className="bhq-table__toolbar px-2 pt-2 pb-3 relative z-30">
-                      <SearchBar
-                        value={q}
-                        onChange={setQ}
-                        placeholder="Search any field…"
-                        widthPx={520}
-                        rightSlot={
-                          <button
-                            type="button"
-                            onClick={() => setFiltersOpen((v) => !v)}
-                            aria-expanded={filtersOpen}
-                            title="Filters"
-                            className="h-7 w-7 rounded-md flex items-center justify-center hover:bg-white/5 focus:outline-none"
-                          >
-                            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-                              <path d="M3 5h18M7 12h10M10 19h4" strokeLinecap="round" />
-                            </svg>
-                          </button>
-                        }
-                      />
+                    <div className="bhq-table__toolbar px-2 pt-2 pb-3 relative z-30 flex items-center gap-2">
+                      <div className="min-w-0 flex-1">
+                        <SearchBar
+                          value={q}
+                          onChange={setQ}
+                          placeholder="Search any field…"
+                          // widthPx={520}  // ⟵ remove this so it flexes
+                          rightSlot={
+                            <button
+                              type="button"
+                              onClick={() => setFiltersOpen((v) => !v)}
+                              aria-expanded={filtersOpen}
+                              title="Filters"
+                              className="h-7 w-7 rounded-md flex items-center justify-center hover:bg-white/5 focus:outline-none"
+                            >
+                              <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                                <path d="M3 5h18M7 12h10M10 19h4" strokeLinecap="round" />
+                              </svg>
+                            </button>
+                          }
+                        />
+                      </div>
+
+                      <Button
+                        size="sm"
+                        onClick={() => setCreateOpen(true)}
+                        disabled={!api}
+                        className="ml-auto shrink-0"
+                      >
+                        New Breeding Plan
+                      </Button>
                     </div>
 
                     {/* Filters */}
@@ -1601,7 +1640,7 @@ export default function AppBreeding() {
             </div>
           )}
         </Card>
-
+   
         {/* Create Plan Modal */}
         <Overlay root={modalRoot} open={createOpen} ariaLabel="Create Breeding Plan" closeOnEscape closeOnOutsideClick>
           {(() => {
@@ -1901,11 +1940,12 @@ function pickExpectedTestingStart(preview: any, lockedCycleStart?: string | null
 }
 
 /* ───────── CalendarInput: text field + native date picker ───────── */
+/* ───────── CalendarInput: text field + native date picker ───────── */
 type CalendarInputProps = Omit<React.ComponentProps<typeof Input>, "className" | "onChange"> & {
   showIcon?: boolean;
   className?: string;      // wrapper width
   inputClassName?: string; // visible input styling
-  onChange?: (e: { currentTarget: { value: string } }) => void; // emits ISO (YYYY-MM-DD)
+  onChange?: (e: { currentTarget: { value: string } }) => void; // emits ISO
 };
 
 function CalendarInput({
@@ -1921,28 +1961,24 @@ function CalendarInput({
 }: CalendarInputProps) {
   const isReadOnly = !!readOnly;
 
-  // Helpers: ISO <-> display
-  const onlyISO = (s: string) => (s || "").slice(0, 10); // YYYY-MM-DD part
+  // ISO <-> display helpers
+  const onlyISO = (s: string) => (s || "").slice(0, 10);
   const toDisplay = (s?: string) => {
     if (!s) return "";
     const iso = onlyISO(s);
     const [y, m, d] = iso.split("-");
-    if (!y || !m || !d) return s;
-    return `${Number(m)}/${Number(d)}/${y}`;
+    return y && m && d ? `${Number(m)}/${Number(d)}/${y}` : s!;
   };
   const toISO = (s?: string) => {
     if (!s) return "";
-    // already ISO?
     if (/^\d{4}-\d{2}-\d{2}/.test(s)) return onlyISO(s);
-    // try mm/dd/yyyy
     const m = s.match(/^\s*(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})\s*$/);
     if (m) {
       const mm = String(m[1]).padStart(2, "0");
       const dd = String(m[2]).padStart(2, "0");
-      const yyyy = String(m[3]).padStart(4, "20"); // naive pad
+      const yyyy = String(m[3]).padStart(4, "20");
       return `${yyyy}-${mm}-${dd}`;
     }
-    // last resort Date()
     const dt = new Date(s);
     if (Number.isFinite(dt.getTime())) {
       const yyyy = dt.getFullYear();
@@ -1953,7 +1989,6 @@ function CalendarInput({
     return "";
   };
 
-  // internal = display string
   const [internal, setInternal] = React.useState<string>(
     () => (value !== undefined ? toDisplay(String(value)) : toDisplay(String(defaultValue ?? "")))
   );
@@ -1961,68 +1996,136 @@ function CalendarInput({
     if (value !== undefined) setInternal(toDisplay(String(value ?? "")));
   }, [value]);
 
-  const hiddenRef = React.useRef<HTMLInputElement>(null);
-
   const pushChange = React.useCallback(
     (nextDisplay: string) => {
       setInternal(nextDisplay);
-      const iso = toISO(nextDisplay);                     // always emit ISO
+      const iso = toISO(nextDisplay);
       onChange?.({ currentTarget: { value: iso || "" } } as any);
     },
     [onChange]
   );
 
+  // Refs
+  const shellRef = React.useRef<HTMLDivElement>(null);
+  const inputRef = React.useRef<HTMLInputElement>(null);
+  const buttonRef = React.useRef<HTMLButtonElement>(null);
+  const hiddenRef = React.useRef<HTMLInputElement>(null);
+
+  // Track popup so we can (a) keep ring on, (b) place it by the icon
+  const setExpanded = (on: boolean) => {
+    const b = buttonRef.current;
+    if (!b) return;
+    if (on) b.setAttribute("aria-expanded", "true");
+    else b.removeAttribute("aria-expanded");
+  };
+
+  // Helper imported above in this file — positions any 3rd-party date popup.
+  // If you moved it out, keep this call the same.
+  const placePopup = React.useCallback(() => {
+    try {
+      // @ts-ignore - helper exists earlier in file
+      hoistAndPlaceDatePopup(buttonRef.current!);
+    } catch {}
+  }, []);
+
+  // Close watcher: when popup disappears, drop aria-expanded
+  React.useEffect(() => {
+    const mo = new MutationObserver(() => {
+      // if no known date popups remain, drop expanded
+      const any =
+        document.querySelector('[data-radix-popper-content-wrapper],.react-datepicker,.rdp,.rdp-root,[role="dialog"][data-state="open"]');
+      if (!any) setExpanded(false);
+    });
+    mo.observe(document.body, { childList: true, subtree: true });
+    return () => mo.disconnect();
+  }, []);
+
   return (
-    <div className={["relative min-w-0", className || "w-full"].join(" ")}>
-      {/* Visible text box */}
-      <Input
-        {...rest}
-        type="text"
-        readOnly={isReadOnly}
-        value={internal}
-        onChange={(e) => pushChange(e.currentTarget.value)}
-        placeholder={placeholder}
-        className={["w-full min-w-0 pr-10", inputClassName || ""].join(" ")}
-        style={{ colorScheme: "dark" }}
-      />
-
-      {/* Icon trigger (absolutely positioned, clickable) */}
-      {!isReadOnly && showIcon && (
-        <button
-          type="button"
-          title="Open date picker"
-          aria-label="Open date picker"
-          className="absolute right-2 top-1/2 -translate-y-1/2 h-5 w-5 rounded-md hover:bg-white/5 flex items-center justify-center z-10"
-          onMouseDown={(e) => {
-            // keep focus on the text input so libs that auto-close on blur don't insta-close
-            e.preventDefault();
+    <div data-bhq-details-exempt className={["min-w-0", className || "w-full"].join(" ")} style={{ position: "relative" }}>
+      {/* SHELL owns the border so the orange ring can wrap input+icon together */}
+      <div
+        ref={shellRef}
+        className="w-full rounded-md"
+        style={{
+          position: "relative",
+          height: "2rem",
+          display: "flex",
+          alignItems: "center",
+          background: "var(--surface, transparent)",
+          border: "1px solid var(--hairline, hsl(0 0% 20%))",
+        }}
+      >
+        <Input
+          {...rest}
+          ref={inputRef as any}
+          type="text"
+          readOnly={isReadOnly}
+          value={internal}
+          onChange={(e) => pushChange(e.currentTarget.value)}
+          placeholder={placeholder}
+          className={["min-w-0 flex-1", inputClassName || ""].join(" ")}
+          style={{
+            height: "100%",
+            paddingLeft: "0.5rem",
+            paddingRight: "2.25rem",
+            background: "transparent",
+            border: 0,
+            outline: "none",
+            boxShadow: "none",
+            WebkitAppearance: "none",
+            appearance: "none",
           }}
-          onClick={(e) => {
-            // 1) open the native date picker (if available)
-            const hid = hiddenRef.current;
-            if (hid) {
+        />
+
+        {!isReadOnly && showIcon && (
+          <button
+            ref={buttonRef}
+            type="button"
+            title="Open date picker"
+            aria-label="Open date picker"
+            onMouseDown={(e) => {
+              // keep focus on the input so :focus-within triggers
+              e.preventDefault();
+              inputRef.current?.focus();
+              setExpanded(true);
+            }}
+            onClick={() => {
+              // Focus input (orange ring), open picker, and force placement by the icon
+              inputRef.current?.focus();
+              setExpanded(true);
+
+              const hid = hiddenRef.current;
               try {
-                // sync current ISO into the hidden input so native picker starts at the right date
-                const iso = toISO(internal);
-                if (iso) hid.value = iso;
+                if (hid) {
+                  const iso = ((): string => {
+                    const v = internal;
+                    const iso = toISO(v);
+                    return iso || "";
+                  })();
+                  if (iso) hid.value = iso;
+                  // @ts-ignore
+                  if (typeof hid?.showPicker === "function") hid.showPicker();
+                  else hid?.click();
+                }
+              } catch {}
 
-                // open picker
-                // @ts-ignore - showPicker is supported in Chromium
-                if (typeof hid.showPicker === "function") hid.showPicker();
-                else hid.click();
-              } catch { }
-            }
-
-            // 2) if a library popup appears, hoist/position it next tick
-            hoistAndPlaceDatePopup(e.currentTarget);
-          }}
-        >
-          <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-            <rect x="3" y="4" width="18" height="18" rx="2" />
-            <path d="M16 2v4M8 2v4M3 10h18" />
-          </svg>
-        </button>
-      )}
+              placePopup();
+              // re-place after render/layout settles
+              setTimeout(placePopup, 30);
+            }}
+            style={{
+              position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)",
+              width: 20, height: 20, display: "inline-flex", alignItems: "center", justifyContent: "center",
+              background: "transparent", border: 0, padding: 0, cursor: "pointer", lineHeight: 0,
+            }}
+          >
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+              <rect x="3" y="4" width="18" height="18" rx="2" />
+              <path d="M16 2v4M8 2v4M3 10h18" />
+            </svg>
+          </button>
+        )}
+      </div>
 
       {/* Hidden native date input (drives OS picker) */}
       <input
@@ -2031,9 +2134,12 @@ function CalendarInput({
         className="absolute opacity-0 pointer-events-none w-0 h-0"
         tabIndex={-1}
         onChange={(e) => {
-          const iso = e.currentTarget.value; // YYYY-MM-DD
-          const display = toDisplay(iso);
+          const iso = e.currentTarget.value;
+          const [y,m,d] = (iso || "").split("-");
+          const display = y && m && d ? `${Number(m)}/${Number(d)}/${y}` : "";
           pushChange(display);
+          // picker closed after selection – drop expanded
+          setExpanded(false);
         }}
       />
     </div>
@@ -2866,107 +2972,110 @@ function PlanDetailsView(props: {
 
               <div className="min-w-0">
                 <SectionCard title="ACTUAL DATES">
-                  {isEdit && !isCommitted && (
-                    <div className="text-xs text-[hsl(var(--brand-orange))] mb-2">
-                      Commit the plan to enable Actual Dates.
-                    </div>
-                  )}
+                  {/* Exempt this whole section from drawer compaction */}
+                  <div data-bhq-details-exempt className="bhq-details-exempt">
+                    {isEdit && !isCommitted && (
+                      <div className="text-xs text-[hsl(var(--brand-orange))] mb-2">
+                        Commit the plan to enable Actual Dates.
+                      </div>
+                    )}
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
-                    <div>
-                      <div className="text-xs text-secondary mb-1">CYCLE START (ACTUAL)</div>
-                      <CalendarInput
-                        defaultValue={row.cycleStartDateActual ?? ""}
-                        readOnly={!canEditDates}
-                        onChange={(e) => canEditDates && setDraftLive({ cycleStartDateActual: e.currentTarget.value })}
-                        className={dateFieldW}
-                        inputClassName={dateInputCls}
-                        placeholder="mm/dd/yyyy"
-                      />
-                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
+                      <div>
+                        <div className="text-xs text-secondary mb-1">CYCLE START (ACTUAL)</div>
+                        <CalendarInput
+                          defaultValue={row.cycleStartDateActual ?? ""}
+                          readOnly={!canEditDates}
+                          onChange={(e) => canEditDates && setDraftLive({ cycleStartDateActual: e.currentTarget.value })}
+                          className={dateFieldW}
+                          inputClassName={dateInputCls}
+                          placeholder="mm/dd/yyyy"
+                        />
+                      </div>
 
-                    <div>
-                      <div className="text-xs text-secondary mb-1">HORMONE TESTING START (ACTUAL)</div>
-                      <CalendarInput
-                        defaultValue={row.hormoneTestingStartDateActual ?? ""}
-                        readOnly={!canEditDates}
-                        onChange={(e) => canEditDates && setDraftLive({ hormoneTestingStartDateActual: e.currentTarget.value })}
-                        className={dateFieldW}
-                        inputClassName={dateInputCls}
-                        placeholder="mm/dd/yyyy"
-                      />
-                    </div>
+                      <div>
+                        <div className="text-xs text-secondary mb-1">HORMONE TESTING START (ACTUAL)</div>
+                        <CalendarInput
+                          defaultValue={row.hormoneTestingStartDateActual ?? ""}
+                          readOnly={!canEditDates}
+                          onChange={(e) => canEditDates && setDraftLive({ hormoneTestingStartDateActual: e.currentTarget.value })}
+                          className={dateFieldW}
+                          inputClassName={dateInputCls}
+                          placeholder="mm/dd/yyyy"
+                        />
+                      </div>
 
-                    <div>
-                      <div className="text-xs text-secondary mb-1">BREEDING DATE (ACTUAL)</div>
-                      <CalendarInput
-                        defaultValue={row.breedDateActual ?? ""}
-                        readOnly={!canEditDates}
-                        onChange={(e) => canEditDates && setDraftLive({ breedDateActual: e.currentTarget.value })}
-                        className={dateFieldW}
-                        inputClassName={dateInputCls}
-                        placeholder="mm/dd/yyyy"
-                      />
-                    </div>
+                      <div>
+                        <div className="text-xs text-secondary mb-1">BREEDING DATE (ACTUAL)</div>
+                        <CalendarInput
+                          defaultValue={row.breedDateActual ?? ""}
+                          readOnly={!canEditDates}
+                          onChange={(e) => canEditDates && setDraftLive({ breedDateActual: e.currentTarget.value })}
+                          className={dateFieldW}
+                          inputClassName={dateInputCls}
+                          placeholder="mm/dd/yyyy"
+                        />
+                      </div>
 
-                    <div>
-                      <div className="text-xs text-secondary mb-1">BIRTHED DATE (ACTUAL)</div>
-                      <CalendarInput
-                        defaultValue={row.birthDateActual ?? ""}
-                        readOnly={!canEditDates}
-                        onChange={(e) => canEditDates && setDraftLive({ birthDateActual: e.currentTarget.value })}
-                        className={dateFieldW}
-                        inputClassName={dateInputCls}
-                        placeholder="mm/dd/yyyy"
-                      />
-                    </div>
+                      <div>
+                        <div className="text-xs text-secondary mb-1">BIRTHED DATE (ACTUAL)</div>
+                        <CalendarInput
+                          defaultValue={row.birthDateActual ?? ""}
+                          readOnly={!canEditDates}
+                          onChange={(e) => canEditDates && setDraftLive({ birthDateActual: e.currentTarget.value })}
+                          className={dateFieldW}
+                          inputClassName={dateInputCls}
+                          placeholder="mm/dd/yyyy"
+                        />
+                      </div>
 
-                    <div>
-                      <div className="text-xs text-secondary mb-1">WEANED DATE (ACTUAL)</div>
-                      <CalendarInput
-                        defaultValue={row.weanedDateActual ?? ""}
-                        readOnly={!canEditDates}
-                        onChange={(e) => canEditDates && setDraftLive({ weanedDateActual: e.currentTarget.value })}
-                        className={dateFieldW}
-                        inputClassName={dateInputCls}
-                        placeholder="mm/dd/yyyy"
-                      />
-                    </div>
+                      <div>
+                        <div className="text-xs text-secondary mb-1">WEANED DATE (ACTUAL)</div>
+                        <CalendarInput
+                          defaultValue={row.weanedDateActual ?? ""}
+                          readOnly={!canEditDates}
+                          onChange={(e) => canEditDates && setDraftLive({ weanedDateActual: e.currentTarget.value })}
+                          className={dateFieldW}
+                          inputClassName={dateInputCls}
+                          placeholder="mm/dd/yyyy"
+                        />
+                      </div>
 
-                    <div>
-                      <div className="text-xs text-secondary mb-1">PLACEMENT START (ACTUAL)</div>
-                      <CalendarInput
-                        defaultValue={row.placementStartDateActual ?? ""}
-                        readOnly={!canEditDates}
-                        onChange={(e) => canEditDates && setDraftLive({ placementStartDateActual: e.currentTarget.value })}
-                        className={dateFieldW}
-                        inputClassName={dateInputCls}
-                        placeholder="mm/dd/yyyy"
-                      />
-                    </div>
+                      <div>
+                        <div className="text-xs text-secondary mb-1">PLACEMENT START (ACTUAL)</div>
+                        <CalendarInput
+                          defaultValue={row.placementStartDateActual ?? ""}
+                          readOnly={!canEditDates}
+                          onChange={(e) => canEditDates && setDraftLive({ placementStartDateActual: e.currentTarget.value })}
+                          className={dateFieldW}
+                          inputClassName={dateInputCls}
+                          placeholder="mm/dd/yyyy"
+                        />
+                      </div>
 
-                    <div>
-                      <div className="text-xs text-secondary mb-1">PLACEMENT COMPLETED (ACTUAL)</div>
-                      <CalendarInput
-                        defaultValue={row.placementCompletedDateActual ?? ""}
-                        readOnly={!canEditDates}
-                        onChange={(e) => canEditDates && setDraftLive({ placementCompletedDateActual: e.currentTarget.value })}
-                        className={dateFieldW}
-                        inputClassName={dateInputCls}
-                        placeholder="mm/dd/yyyy"
-                      />
-                    </div>
+                      <div>
+                        <div className="text-xs text-secondary mb-1">PLACEMENT COMPLETED (ACTUAL)</div>
+                        <CalendarInput
+                          defaultValue={row.placementCompletedDateActual ?? ""}
+                          readOnly={!canEditDates}
+                          onChange={(e) => canEditDates && setDraftLive({ placementCompletedDateActual: e.currentTarget.value })}
+                          className={dateFieldW}
+                          inputClassName={dateInputCls}
+                          placeholder="mm/dd/yyyy"
+                        />
+                      </div>
 
-                    <div>
-                      <div className="text-xs text-secondary mb-1">PLAN COMPLETED (ACTUAL)</div>
-                      <CalendarInput
-                        defaultValue={row.completedDateActual ?? ""}
-                        readOnly={!canEditDates}
-                        onChange={(e) => canEditDates && setDraftLive({ completedDateActual: e.currentTarget.value })}
-                        className={dateFieldW}
-                        inputClassName={dateInputCls}
-                        placeholder="mm/dd/yyyy"
-                      />
+                      <div>
+                        <div className="text-xs text-secondary mb-1">PLAN COMPLETED (ACTUAL)</div>
+                        <CalendarInput
+                          defaultValue={row.completedDateActual ?? ""}
+                          readOnly={!canEditDates}
+                          onChange={(e) => canEditDates && setDraftLive({ completedDateActual: e.currentTarget.value })}
+                          className={dateFieldW}
+                          inputClassName={dateInputCls}
+                          placeholder="mm/dd/yyyy"
+                        />
+                      </div>
                     </div>
 
                     {isEdit && (
@@ -2976,13 +3085,9 @@ function PlanDetailsView(props: {
                           disabled={!canEditDates}
                           onClick={() => {
                             if (!canEditDates) return;
-                            if (
-                              !window.confirm(
-                                "Reset ALL actual date fields (Cycle Start, Hormone Testing Start, Breeding, Birthed, Weaned, Placement Start, Placement Completed, Plan Completed)?"
-                              )
-                            ) {
-                              return;
-                            }
+                            if (!window.confirm(
+                              "Reset ALL actual date fields (Cycle Start, Hormone Testing Start, Breeding, Birthed, Weaned, Placement Start, Placement Completed, Plan Completed)?"
+                            )) return;
                             setDraftLive({
                               cycleStartDateActual: null,
                               hormoneTestingStartDateActual: null,

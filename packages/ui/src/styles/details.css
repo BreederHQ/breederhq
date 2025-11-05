@@ -1,20 +1,11 @@
-/* --- Global drawer typography baseline --- */
+/* ───────────────── Drawer / Details base (unchanged essentials) ─────────── */
 .bhq-drawer,
-[data-bhq-drawer="true"] {
+[data-bhq-drawer="true"],
+.bhq-details-drawer {
   font-size: 0.9rem;
   line-height: 1.35rem;
   color: var(--color-text, #c9c9c9);
 }
-
-.bhq-details-drawer,
-.bhq-drawer,
-[data-bhq-drawer="true"] {
-  font-size: 0.9rem;
-  line-height: 1.35rem;
-  color: var(--color-text, #c9c9c9);
-}
-
-/* ===== Global SectionCard heading polish ===== */
 
 :root {
   --bhq-accent: #ff7a1a;
@@ -22,65 +13,80 @@
   --bhq-title-dim: var(--color-text, #c9c9c9);
 }
 
-/* sweep animation (right → left) */
 @keyframes bhq-title-sweep {
   from { background-position-x: 200%; }
   to   { background-position-x: -200%; }
 }
 
+.bhq-section-card { --_bg: var(--brand-surface2, rgba(255,255,255,.02)); background: var(--_bg); }
 .bhq-section-card .bhq-section-title {
-  font-weight: 700;
-  font-size: 0.95rem;
-  line-height: 1.25rem;
-  letter-spacing: 0.2px;
-  color: var(--color-text-strong, #e9e9e9);
-  margin: 0 0 10px 0;
-  padding-bottom: 6px;
-  position: relative;
+  font-weight: 700; font-size: .95rem; line-height: 1.25rem; letter-spacing: .2px;
+  color: var(--bhq-title-strong); margin: 0 0 10px 0; padding-bottom: 6px; position: relative;
 }
-
 .bhq-section-card .bhq-section-title::after {
-  content: "";
-  position: absolute;
-  left: 0;
-  bottom: 0;
-  height: 2px;
-  width: 28px;                       /* change if you want a longer line */
-  border-radius: 2px;
-  /* animated gradient sweep */
-  background: linear-gradient(90deg, transparent, var(--bhq-accent), transparent);
-  background-size: 200% 100%;
-  animation: bhq-title-sweep 11s ease-in-out infinite; /* slowed by 50% */
-  opacity: 0.95;
+  content:""; position:absolute; left:0; bottom:0; height:2px; width:28px; border-radius:2px;
+  background: linear-gradient(90deg,transparent,var(--bhq-accent),transparent);
+  background-size:200% 100%; animation: bhq-title-sweep 11s ease-in-out infinite; opacity:.95;
 }
-
-/* speed up a bit on hover/focus of the header area */
-.bhq-section-card .bhq-section-header:hover .bhq-section-title::after,
-.bhq-section-card .bhq-section-header:focus-within .bhq-section-title::after {
-  animation-duration: 6.4s; /* adjusted proportionally */
-}
-
-/* respect reduced motion */
 @media (prefers-reduced-motion: reduce) {
-  .bhq-section-card .bhq-section-title::after {
-    animation: none;
-    opacity: 0.75;
-  }
+  .bhq-section-card .bhq-section-title::after { animation: none; opacity: .75; }
 }
 
-.bhq-drawer .bhq-section-card .bhq-section-title,
-[data-bhq-drawer="true"] .bhq-section-card .bhq-section-title {
-  font-size: 1.05rem;
-  line-height: 1.35rem;
+/* Compact sizing tokens inside drawers */
+.bhq-details-drawer, [data-bhq-details="true"], [data-bhq-drawer="true"] {
+  --details-control-h: 2rem;
+  --details-control-px: .5rem;
+}
+:where(.bhq-details-exempt,[data-bhq-details-exempt]) {}
+
+/* Normalize controls (only when not exempt) */
+.bhq-details-drawer :not(.bhq-details-exempt):not([data-bhq-details-exempt]) input,
+.bhq-details-drawer :not(.bhq-details-exempt):not([data-bhq-details-exempt]) select,
+.bhq-details-drawer :not(.bhq-details-exempt):not([data-bhq-details-exempt]) textarea,
+.bhq-details-drawer :not(.bhq-details-exempt):not([data-bhq-details-exempt]) button,
+[data-bhq-details="true"] :not(.bhq-details-exempt):not([data-bhq-details-exempt]) input,
+[data-bhq-details="true"] :not(.bhq-details-exempt):not([data-bhq-details-exempt]) select,
+[data-bhq-details="true"] :not(.bhq-details-exempt):not([data-bhq-details-exempt]) textarea,
+[data-bhq-details="true"] :not(.bhq-details-exempt):not([data-bhq-details-exempt]) button,
+[data-bhq-drawer="true"] :not(.bhq-details-exempt):not([data-bhq-details-exempt]) input,
+[data-bhq-drawer="true"] :not(.bhq-details-exempt):not([data-bhq-details-exempt]) select,
+[data-bhq-drawer="true"] :not(.bhq-details-exempt):not([data-bhq-details-exempt]) textarea,
+[data-bhq-drawer="true"] :not(.bhq-details-exempt):not([data-bhq-details-exempt]) button {
+  min-height: var(--details-control-h);
+  height: var(--details-control-h);
+  padding-left: var(--details-control-px);
+  padding-right: var(--details-control-px);
+  box-sizing: border-box;
 }
 
-.bhq-section-card {
-  --_bg: var(--brand-surface2, rgba(255, 255, 255, 0.02));
-  background: var(--_bg);
+/* Allow exempt blocks (like calendar inputs) to position adornments */
+.bhq-details-drawer :where(.bhq-details-exempt,[data-bhq-details-exempt]),
+[data-bhq-details="true"] :where(.bhq-details-exempt,[data-bhq-details-exempt]),
+[data-bhq-drawer="true"] :where(.bhq-details-exempt,[data-bhq-details-exempt]) {
+  position: relative; min-width: 0; overflow: visible;
 }
 
-.bhq-section-card .bhq-section-body label,
-.bhq-section-card .bhq-section-body .field-label {
-  color: var(--bhq-title-dim);
-  font-weight: 500;
+/* === FIX: Unwanted scrollbar in non-edit mode ==============================
+   Some skins were giving .bhq-section-card bodies a constrained height with
+   overflow:auto. We force section bodies in drawers to be fully auto-sized in
+   view mode so no inner scrollbar appears.
+*/
+[data-bhq-details] .bhq-section-card,
+[data-bhq-drawer="true"] .bhq-section-card,
+.bhq-details-drawer .bhq-section-card {
+  overflow: visible !important;
+}
+
+[data-bhq-details] .bhq-section-card .bhq-section-body,
+[data-bhq-drawer="true"] .bhq-section-card .bhq-section-body,
+.bhq-details-drawer .bhq-section-card .bhq-section-body {
+  max-height: none !important;
+  overflow: visible !important;
+}
+
+/* Keep date icon anchored when inside drawers (works with current markup) */
+:where(.bhq-details-drawer,[data-bhq-details="true"],[data-bhq-drawer="true"])
+  button[aria-label="Open date picker"] {
+  position: absolute !important;
+  right: .5rem; top: 50%; transform: translateY(-50%);
 }

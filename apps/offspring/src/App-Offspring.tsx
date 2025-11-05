@@ -26,30 +26,112 @@ import { readTenantIdFast, resolveTenantId } from "@bhq/ui/utils/tenant";
 import { makeOffspringApi, OffspringRow, WaitlistEntry } from "./api";
 
 /* ───────────────────────── shared utils ───────────────────────── */
+
+/** 🔶 polished field style used across Quick Add + date/select fields */
+const inputClass =
+  "w-full h-9 rounded-md border border-hairline bg-surface px-3 text-sm text-primary " +
+  "placeholder:text-secondary/80 focus:outline-none focus:ring-1 focus:ring-[hsl(var(--brand-orange))] " +
+  "focus:border-[hsl(var(--brand-orange))] shadow-[inset_0_0_0_9999px_rgba(255,255,255,0.02)]";
+
+/** 🔶 compact label text */
+const labelClass = "text-xs text-secondary";
+
+/** 🔶 stylized section heading: used for Contacts/Organizations lists below the search bar */
+function SectionChipHeading({ icon, text }: { icon: React.ReactNode; text: string }) {
+  return (
+    <div className="sticky top-0 z-10 px-2 py-1.5 bg-gradient-to-r from-white/8 to-transparent border-b border-white/10">
+      <div className="flex items-center gap-2 text-[11px] font-semibold tracking-wide uppercase text-[var(--color-text,#c9c9c9)]">
+        {icon}
+        <span>{text}</span>
+        <span className="ml-auto h-px w-24 rounded-full bg-[hsl(var(--brand-orange)/0.65)]" />
+      </div>
+    </div>
+  );
+}
+
+/* ───────────────────────── Underline tabs (brand-orange) ───────────────────────── */
+function UnderlineTabs({
+  value,
+  onChange,
+}: {
+  value: "groups" | "waitlist";
+  onChange: (v: "groups" | "waitlist") => void;
+}) {
+  const base =
+    "h-9 px-1.5 text-sm font-semibold leading-9 border-b-2 border-solid border-transparent transition-colors";
+  const activeText = "text-[var(--color-text-strong,#e9e9e9)]";
+
+  return (
+    <div role="tablist" aria-label="Offspring tabs" className="flex gap-6">
+      <button
+        role="tab"
+        aria-selected={value === "groups"}
+        className={[base, value === "groups" ? activeText : ""].join(" ")}
+        onClick={() => onChange("groups")}
+        style={value === "groups" ? { borderBottomColor: "hsl(var(--brand-orange))" } : undefined}
+      >
+        Groups
+      </button>
+      <button
+        role="tab"
+        aria-selected={value === "waitlist"}
+        className={[base, value === "waitlist" ? activeText : ""].join(" ")}
+        onClick={() => onChange("waitlist")}
+        style={value === "waitlist" ? { borderBottomColor: "hsl(var(--brand-orange))" } : undefined}
+      >
+        Waitlist
+      </button>
+    </div>
+  );
+}
+
 function fmtDate(d?: string | null) {
   if (!d) return "";
   const dt = new Date(d);
   return Number.isFinite(dt.getTime()) ? dt.toLocaleDateString() : "";
 }
-async function withTenant(init?: RequestInit & { tenantId?: number | null }) {
-  let tenantId = init?.tenantId ?? readTenantIdFast();
-  if (!tenantId) tenantId = await resolveTenantId();
 
-  // try to grab a CSRF token if the shell exposes one
-  const metaCsrf =
-    (document.querySelector('meta[name="csrf-token"]') as HTMLMetaElement | null)?.content ||
-    (document.querySelector('meta[name="x-csrf-token"]') as HTMLMetaElement | null)?.content ||
-    undefined;
+/* ───────────────────────── Small helpers that need tenant header ───────────────────────── */
 
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-    ...(init?.headers as any),
-    "x-tenant-id": String(tenantId),
-    ...(metaCsrf ? { "x-csrf-token": metaCsrf } : {}),
+/** Only send `accept` on GETs to avoid unnecessary preflights */
+function buildGetHeaders(tenantId: number | null | undefined) {
+  const h: Record<string, string> = { accept: "application/json" };
+  if (tenantId != null) h["x-tenant-id"] = String(tenantId);
+  return h;
+}
+
+/** Include JSON headers and CSRF for POST/PATCH/DELETE */
+function getCsrfToken() {
+  return (document.querySelector('meta[name="csrf-token"]') as HTMLMetaElement | null)?.content || null;
+}
+function buildJsonPostHeaders(tenantId: number | null | undefined) {
+  const h: Record<string, string> = {
+    accept: "application/json",
+    "content-type": "application/json",
   };
+  if (tenantId != null) h["x-tenant-id"] = String(tenantId);
+  const csrf = getCsrfToken();
+  if (csrf) h["x-csrf-token"] = csrf;
+  return h;
+}
 
-  // IMPORTANT: send cookies for CSRF validation
-  return { ...init, headers, credentials: "include" as const };
+/** Strict JSON reader with better content-type handling */
+async function readJsonOrThrow(res: Response, url: string) {
+  const ct = (res.headers.get("content-type") || "").toLowerCase();
+  const txt = await res.text();
+  if (!res.ok) {
+    throw new Error(`HTTP ${res.status} from ${url}: ${txt.slice(0, 200)}`);
+  }
+  // Allow 204 or empty body
+  if (res.status === 204 || txt.trim() === "") return null;
+  if (!/application\/(json|problem\+json)/.test(ct)) {
+    throw new Error(`Expected JSON from ${url} but got ${ct || "unknown"}: ${txt.slice(0, 200)}`);
+  }
+  try {
+    return JSON.parse(txt);
+  } catch (e: any) {
+    throw new Error(`Invalid JSON from ${url}: ${e?.message || String(e)}`);
+  }
 }
 
 /* ───────────────────────── Groups table ───────────────────────── */
@@ -104,7 +186,9 @@ function mapDetailToTableRow(d: OffspringRow): GroupTableRow {
     expectedPlacementStart: d.dates.placementStartAt ?? d.plan?.expectedPlacementStart ?? null,
     expectedPlacementCompleted: d.dates.placementCompletedAt ?? d.plan?.expectedPlacementCompleted ?? null,
     countLive: d.counts.live ?? null,
-    countReserved: d.counts.animals != null ? (d.counts.animals - (d.counts.live ?? 0)) : null,
+    // clamp to avoid negatives when live > animals
+    countReserved:
+      d.counts.animals != null ? Math.max(0, d.counts.animals - (d.counts.live ?? 0)) : null,
     countSold: null,
     status: d.plan ? (d.plan.code ? "Committed" : "Planning") : "Unknown",
     updatedAt: d.updatedAt,
@@ -156,53 +240,7 @@ const WAITLIST_COLS: Array<{ key: keyof WaitlistRow & string; label: string; def
 
 const WAITLIST_STORAGE_KEY = "bhq_waitlist_cols_v2";
 
-/* ───────────────────────── API adapter (no hooks) ───────────────────────── */
-function makeApiAdapter() {
-  const core: any = makeOffspringApi("/api/v1");
-  return {
-    list: core.list ?? core.offspring?.list,
-    get: core.get ?? core.offspring?.get,
-    create: core.create ?? core.offspring?.create,
-    patch: core.patch ?? core.offspring?.patch,
-    moveWaitlist: core.moveWaitlist ?? core.offspring?.moveWaitlist,
-  };
-}
-const api = makeApiAdapter();
-
-/* ───────────────────────── Plan fetch (COMMITTED only) ───────────────────────── */
-type PlanOption = {
-  id: number;
-  code: string | null;
-  name: string;
-  species: string;
-  breedText: string | null;
-};
-async function fetchCommittedPlans(): Promise<PlanOption[]> {
-  const res = await fetch(`/api/v1/breeding/plans?status=COMMITTED&include=parents`, await withTenant({ method: "GET" }));
-  if (!res.ok) throw new Error(`Failed to load committed plans (HTTP ${res.status})`);
-  const data = await res.json();
-  const items = Array.isArray(data) ? data : (data?.items ?? []);
-  return items.map((p: any) => ({
-    id: p.id,
-    code: p.code ?? null,
-    name: p.name,
-    species: p.species,
-    breedText: p.breedText ?? null,
-  }));
-}
-
-/* ───────────────────────── Waitlist fetch (global) ───────────────────────── */
-type WaitlistListResp = { items: WaitlistEntry[]; total?: number };
-async function fetchWaitlist(params?: { q?: string; limit?: number }): Promise<WaitlistListResp> {
-  const qs = new URLSearchParams();
-  if (params?.q) qs.set("q", params.q);
-  if (params?.limit) qs.set("limit", String(params.limit));
-  const res = await fetch(`/api/v1/waitlist${qs.toString() ? `?${qs.toString()}` : ""}`, await withTenant({ method: "GET" }));
-  if (!res.ok) throw new Error(`Failed to load waitlist (HTTP ${res.status})`);
-  return await res.json();
-}
-
-/* ───────────────────────── Directory search (contacts + orgs only) ───────────────────────── */
+/* ───────────────────────── Directory/Animals helpers (GETs use tenant header) ───────────────────────── */
 type SpeciesWire = "DOG" | "CAT" | "HORSE";
 type SpeciesUi = "Dog" | "Cat" | "Horse";
 const SPECIES_UI_ALL: SpeciesUi[] = ["Dog", "Cat", "Horse"];
@@ -213,91 +251,134 @@ type DirectoryHit =
   | { kind: "contact"; id: number; label: string; sub?: string }
   | { kind: "org"; id: number; label: string; sub?: string };
 
-async function searchDirectory(q: string): Promise<DirectoryHit[]> {
-  const headers = await withTenant({}).then(({ headers }) => headers as any);
-
+async function searchDirectory(q: string, tenantId: number | null): Promise<DirectoryHit[]> {
+  const headers = buildGetHeaders(tenantId);
   const [cRes, oRes] = await Promise.allSettled([
-    fetch(`/api/v1/contacts?q=${encodeURIComponent(q)}&limit=25`, { method: "GET", headers }),
-    fetch(`/api/v1/organizations?q=${encodeURIComponent(q)}&limit=25`, { method: "GET", headers }),
+    fetch(`/api/v1/contacts?q=${encodeURIComponent(q)}&limit=25`, { method: "GET", headers, credentials: "include" }),
+    fetch(`/api/v1/organizations?q=${encodeURIComponent(q)}&limit=25`, { method: "GET", headers, credentials: "include" }),
   ]);
 
   const hits: DirectoryHit[] = [];
+
   if (cRes.status === "fulfilled" && cRes.value.ok) {
-    const body = await cRes.value.json();
+    const url = `/api/v1/contacts?q=${encodeURIComponent(q)}&limit=25`;
+    const body = await readJsonOrThrow(cRes.value, url);
     const items: any[] = Array.isArray(body) ? body : body?.items ?? [];
-    items.forEach((c) => {
-      const name = c.display_name || `${c.first_name ?? ""} ${c.last_name ?? ""}`.trim() || "(No name)";
-      hits.push({ kind: "contact", id: Number(c.id), label: name, sub: c.email || c.phoneE164 || "" });
-    });
+    for (const c of items) {
+      const name =
+        c.display_name || `${c.first_name ?? ""} ${c.last_name ?? ""}`.trim() || "(No name)";
+      hits.push({
+        kind: "contact",
+        id: Number(c.id),
+        label: name,
+        sub: c.email || c.phoneE164 || "",
+      });
+    }
   }
+
   if (oRes.status === "fulfilled" && oRes.value.ok) {
-    const body = await oRes.value.json();
+    const url = `/api/v1/organizations?q=${encodeURIComponent(q)}&limit=25`;
+    const body = await readJsonOrThrow(oRes.value, url);
     const items: any[] = Array.isArray(body) ? body : body?.items ?? [];
-    items.forEach((o) => {
-      hits.push({ kind: "org", id: Number(o.id), label: o.name, sub: o.website || o.email || "" });
-    });
+    for (const o of items) {
+      hits.push({
+        kind: "org",
+        id: Number(o.id),
+        label: o.name,
+        sub: o.website || o.email || "",
+      });
+    }
   }
+
   return hits;
 }
 
-/* ───────────────────────── Animals + waitlist creation ───────────────────────── */
 type AnimalLite = { id: number; name: string; species: SpeciesWire; sex: "FEMALE" | "MALE" };
-async function fetchAnimals(opts: { q?: string; species?: SpeciesWire; sex?: "FEMALE" | "MALE"; limit?: number }) {
+async function fetchAnimals(
+  tenantId: number | null,
+  opts: { q?: string; species?: SpeciesWire; sex?: "FEMALE" | "MALE"; limit?: number }
+) {
   const qs = new URLSearchParams();
   if (opts.q) qs.set("q", opts.q);
   if (opts.species) qs.set("species", opts.species);
   if (opts.sex) qs.set("sexHint", opts.sex);
   qs.set("limit", String(opts.limit ?? 25));
-  const res = await fetch(`/api/v1/animals?${qs}`, await withTenant({ method: "GET" }));
+  const url = `/api/v1/animals?${qs}`;
+  const res = await fetch(url, {
+    method: "GET",
+    headers: buildGetHeaders(tenantId),
+    credentials: "include",
+  });
   if (!res.ok) return [];
-  const body = await res.json();
+  const body = await readJsonOrThrow(res, url);
   const raw: any[] = Array.isArray(body) ? body : body?.items ?? [];
-  return raw.map(a => ({
+  return raw.map((a) => ({
     id: Number(a.id),
     name: String(a.name ?? "").trim(),
-    species: (String(a.species ?? "DOG").toUpperCase() as SpeciesWire),
-    sex: (String(a.sex ?? "FEMALE").toUpperCase() as "FEMALE" | "MALE"),
+    species: String(a.species ?? "DOG").toUpperCase() as SpeciesWire,
+    sex: String(a.sex ?? "FEMALE").toUpperCase() as "FEMALE" | "MALE",
   })) as AnimalLite[];
 }
 
-async function createWaitlistEntry(payload: {
-  contactId?: number | null;
-  organizationId?: number | null;
-  speciesPref: SpeciesWire;
-  breedPrefText: string;
-  damPrefId?: number | null;
-  sirePrefId?: number | null;
-}) {
-  const res = await fetch(`/api/v1/waitlist`, await withTenant({ method: "POST", body: JSON.stringify(payload) }));
-  if (!res.ok) {
-    const t = await res.text().catch(() => "");
-    throw new Error(t || `Failed to create waitlist entry (HTTP ${res.status})`);
-  }
-  return await res.json();
+/* ───────────────────────── Plan fetch (COMMITTED only; GET) ───────────────────────── */
+type PlanOption = {
+  id: number;
+  code: string | null;
+  name: string;
+  species: string;
+  breedText: string | null;
+};
+async function fetchCommittedPlans(tenantId: number | null): Promise<PlanOption[]> {
+  const url = `/api/v1/breeding/plans?status=COMMITTED&include=parents`;
+  const res = await fetch(url, { method: "GET", headers: buildGetHeaders(tenantId), credentials: "include" });
+  const data = await readJsonOrThrow(res, url);
+  const items = Array.isArray(data) ? data : data?.items ?? [];
+  return items.map((p: any) => ({
+    id: p.id, code: p.code ?? null, name: p.name, species: p.species, breedText: p.breedText ?? null,
+  }));
 }
 
-/* ───────────────────────── Dam/Sire search helpers ───────────────────────── */
-
-function useAnimalSearch(query: string, species: SpeciesWire | undefined, sex: "FEMALE" | "MALE") {
+/* ───────────────────────── Dam/Sire search hooks ───────────────────────── */
+function useAnimalSearch(
+  tenantId: number | null,
+  query: string,
+  species: SpeciesWire | undefined,
+  sex: "FEMALE" | "MALE"
+) {
   const [hits, setHits] = React.useState<AnimalLite[]>([]);
   React.useEffect(() => {
     let alive = true;
     (async () => {
-      if (!species || !query.trim()) { if (alive) setHits([]); return; }
-      const res = await fetchAnimals({ q: query.trim(), species, sex, limit: 25 });
+      if (!species || !query.trim()) {
+        if (alive) setHits([]);
+        return;
+      }
+      const res = await fetchAnimals(tenantId, { q: query.trim(), species, sex, limit: 25 });
       if (alive) setHits(res);
     })();
-    return () => { alive = false; };
-  }, [query, species, sex]);
+    return () => {
+      alive = false;
+    };
+  }, [tenantId, query, species, sex]);
   return hits;
 }
 
-function DamResults({ query, species, onPick }: { query: string; species?: SpeciesWire; onPick: (a: AnimalLite) => void; }) {
-  const hits = useAnimalSearch(query, species, "FEMALE");
+function DamResults({
+  tenantId,
+  query,
+  species,
+  onPick,
+}: {
+  tenantId: number | null;
+  query: string;
+  species?: SpeciesWire;
+  onPick: (a: AnimalLite) => void;
+}) {
+  const hits = useAnimalSearch(tenantId, query, species, "FEMALE");
   if (!hits.length) return <div className="px-2 py-2 text-sm text-secondary">No females found</div>;
   return (
     <>
-      {hits.map(a => (
+      {hits.map((a) => (
         <button key={a.id} type="button" onClick={() => onPick(a)} className="w-full text-left px-2 py-1 hover:bg-white/5">
           {a.name}
         </button>
@@ -306,12 +387,22 @@ function DamResults({ query, species, onPick }: { query: string; species?: Speci
   );
 }
 
-function SireResults({ query, species, onPick }: { query: string; species?: SpeciesWire; onPick: (a: AnimalLite) => void; }) {
-  const hits = useAnimalSearch(query, species, "MALE");
+function SireResults({
+  tenantId,
+  query,
+  species,
+  onPick,
+}: {
+  tenantId: number | null;
+  query: string;
+  species?: SpeciesWire;
+  onPick: (a: AnimalLite) => void;
+}) {
+  const hits = useAnimalSearch(tenantId, query, species, "MALE");
   if (!hits.length) return <div className="px-2 py-2 text-sm text-secondary">No males found</div>;
   return (
     <>
-      {hits.map(a => (
+      {hits.map((a) => (
         <button key={a.id} type="button" onClick={() => onPick(a)} className="w-full text-left px-2 py-1 hover:bg-white/5">
           {a.name}
         </button>
@@ -321,10 +412,16 @@ function SireResults({ query, species, onPick }: { query: string; species?: Spec
 }
 
 /* ───────────────────────── Create Group form ───────────────────────── */
+const MODAL_Z = 2147485000;
+
 function CreateGroupForm({
+  api,
+  tenantId,
   onCreated,
   onCancel,
 }: {
+  api: ReturnType<typeof makeOffspringApi> | null;
+  tenantId: number | null;
   onCreated: () => void;
   onCancel: () => void;
 }) {
@@ -341,9 +438,10 @@ function CreateGroupForm({
   React.useEffect(() => {
     let cancelled = false;
     (async () => {
-      setLoading(true); setError(null);
+      setLoading(true);
+      setError(null);
       try {
-        const list = await fetchCommittedPlans();
+        const list = await fetchCommittedPlans(tenantId);
         if (!cancelled) setPlans(list);
       } catch (e: any) {
         if (!cancelled) setError(e?.message || "Failed to load committed plans");
@@ -351,18 +449,22 @@ function CreateGroupForm({
         if (!cancelled) setLoading(false);
       }
     })();
-    return () => { cancelled = true; };
-  }, []);
+    return () => {
+      cancelled = true;
+    };
+  }, [tenantId]);
 
   const [submitting, setSubmitting] = React.useState(false);
   const [submitErr, setSubmitErr] = React.useState<string | null>(null);
 
   const handleSubmit = async () => {
+    if (!api) return;
     if (planId === "" || !Number(planId)) {
       setSubmitErr("Please choose a committed plan.");
       return;
     }
-    setSubmitting(true); setSubmitErr(null);
+    setSubmitting(true);
+    setSubmitErr(null);
     try {
       await api.create(
         {
@@ -393,40 +495,44 @@ function CreateGroupForm({
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <label className="flex flex-col gap-1">
-              <span className="text-xs text-secondary">Committed Plan <span className="text-[hsl(var(--brand-orange))]">*</span></span>
+              <span className={labelClass}>
+                Committed Plan <span className="text-[hsl(var(--brand-orange))]">*</span>
+              </span>
               <select
-                className="bhq-input"
+                className={inputClass}
                 value={planId}
-                onChange={e => setPlanId(e.target.value ? Number(e.target.value) : "")}
+                onChange={(e) => setPlanId(e.target.value ? Number(e.target.value) : "")}
                 disabled={loading}
               >
                 <option value="">Select a plan…</option>
-                {plans.map(p => (
+                {plans.map((p) => (
                   <option key={p.id} value={p.id}>
-                    {p.code ? `${p.code} — ` : ""}{p.name} ({p.species}{p.breedText ? ` · ${p.breedText}` : ""})
+                    {p.code ? `${p.code} — ` : ""}
+                    {p.name} ({p.species}
+                    {p.breedText ? ` · ${p.breedText}` : ""})
                   </option>
                 ))}
               </select>
             </label>
 
             <label className="flex flex-col gap-1">
-              <span className="text-xs text-secondary">Identifier (optional)</span>
-              <input className="bhq-input" value={identifier} onChange={e => setIdentifier(e.target.value)} placeholder="e.g., A Litter" />
+              <span className={labelClass}>Identifier (optional)</span>
+              <input className={inputClass} value={identifier} onChange={(e) => setIdentifier(e.target.value)} placeholder="e.g., A Litter" />
             </label>
 
             <label className="flex flex-col gap-1">
-              <span className="text-xs text-secondary">Weaned At (optional)</span>
-              <input className="bhq-input" type="date" value={weanedAt} onChange={e => setWeanedAt(e.target.value)} />
+              <span className={labelClass}>Weaned At (optional)</span>
+              <input className={inputClass} type="date" value={weanedAt} onChange={(e) => setWeanedAt(e.target.value)} />
             </label>
 
             <label className="flex flex-col gap-1">
-              <span className="text-xs text-secondary">Placement Start (optional)</span>
-              <input className="bhq-input" type="date" value={placementStartAt} onChange={e => setPlacementStartAt(e.target.value)} />
+              <span className={labelClass}>Placement Start (optional)</span>
+              <input className={inputClass} type="date" value={placementStartAt} onChange={(e) => setPlacementStartAt(e.target.value)} />
             </label>
 
             <label className="flex flex-col gap-1">
-              <span className="text-xs text-secondary">Placement Completed (optional)</span>
-              <input className="bhq-input" type="date" value={placementCompletedAt} onChange={e => setPlacementCompletedAt(e.target.value)} />
+              <span className={labelClass}>Placement Completed (optional)</span>
+              <input className={inputClass} type="date" value={placementCompletedAt} onChange={(e) => setPlacementCompletedAt(e.target.value)} />
             </label>
           </div>
 
@@ -434,8 +540,10 @@ function CreateGroupForm({
           {submitErr && <div className="text-sm text-red-600">{submitErr}</div>}
 
           <div className="flex gap-2 justify-end">
-            <Button variant="outline" onClick={onCancel} disabled={submitting}>Cancel</Button>
-            <Button onClick={handleSubmit} disabled={submitting || !planId}>
+            <Button variant="outline" onClick={onCancel} disabled={submitting}>
+              Cancel
+            </Button>
+            <Button onClick={handleSubmit} disabled={submitting || !planId || !api}>
               {submitting ? "Creating…" : "Create group"}
             </Button>
           </div>
@@ -446,20 +554,19 @@ function CreateGroupForm({
 }
 
 /* ───────────────────────── Add to Waitlist modal ───────────────────────── */
-const MODAL_Z = 2147485000;
-const MODAL_BODY_H = 620;
-
 function AddToWaitlistModal({
+  api,
+  tenantId,
   open,
   onClose,
   onCreated,
-  breedBrowseApi,
   allowedSpecies = SPECIES_UI_ALL,
 }: {
+  api: ReturnType<typeof makeOffspringApi> | null;
+  tenantId: number | null;
   open: boolean;
   onClose: () => void;
   onCreated: () => Promise<void> | void;
-  breedBrowseApi: { breeds: { listCanonical: (opts: { species: string; orgId?: number; limit?: number }) => Promise<any[]> } };
   allowedSpecies?: SpeciesUi[];
 }) {
   const panelRef = React.useRef<HTMLDivElement>(null);
@@ -467,7 +574,9 @@ function AddToWaitlistModal({
   React.useEffect(() => {
     const prev = document.body.style.overflow;
     if (open) document.body.style.overflow = "hidden";
-    return () => { document.body.style.overflow = prev || ""; };
+    return () => {
+      document.body.style.overflow = prev || "";
+    };
   }, [open]);
 
   // link target
@@ -482,16 +591,24 @@ function AddToWaitlistModal({
     let alive = true;
     const run = async () => {
       const qq = q.trim();
-      if (!qq || link) { setHits([]); return; }
+      if (!qq || link) {
+        setHits([]);
+        return;
+      }
       setBusy(true);
       try {
-        const r = await searchDirectory(qq);
+        const r = await searchDirectory(qq, tenantId);
         if (alive) setHits(r);
-      } finally { if (alive) setBusy(false); }
+      } finally {
+        if (alive) setBusy(false);
+      }
     };
     const t = setTimeout(run, 250);
-    return () => { alive = false; clearTimeout(t); };
-  }, [q, link]);
+    return () => {
+      alive = false;
+      clearTimeout(t);
+    };
+  }, [q, link, tenantId]);
 
   // quick add (inline)
   const [quickOpen, setQuickOpen] = React.useState<null | "contact" | "org">(null);
@@ -501,33 +618,65 @@ function AddToWaitlistModal({
   const [createErr, setCreateErr] = React.useState<string | null>(null);
 
   async function quickCreateContact(body: { firstName?: string; lastName?: string; email?: string; phone?: string }) {
-    const payload = {
+    if (!api?.contacts?.create) {
+      const url = `/api/v1/contacts`;
+      const res = await fetch(url, {
+        method: "POST",
+        credentials: "include",
+        headers: buildJsonPostHeaders(tenantId),
+        body: JSON.stringify({
+          display_name: `${(body.firstName ?? "").trim()} ${(body.lastName ?? "").trim()}`.trim() || "New Contact",
+          first_name: body.firstName ?? null,
+          last_name: body.lastName ?? null,
+          email: body.email ?? null,
+          phoneE164: body.phone ?? null,
+        }),
+      });
+      return await readJsonOrThrow(res, url);
+    }
+    return api.contacts.create({
       display_name: `${(body.firstName ?? "").trim()} ${(body.lastName ?? "").trim()}`.trim() || "New Contact",
       first_name: body.firstName ?? null,
       last_name: body.lastName ?? null,
       email: body.email ?? null,
       phoneE164: body.phone ?? null,
-    };
-    const res = await fetch(`/api/v1/contacts`, await withTenant({ method: "POST", body: JSON.stringify(payload) }));
-    if (!res.ok) throw new Error(`Failed to create contact (HTTP ${res.status})`);
-    return await res.json();
+    });
   }
+
   async function quickCreateOrg(body: { name: string; website?: string }) {
-    const res = await fetch(`/api/v1/organizations`, await withTenant({ method: "POST", body: JSON.stringify({ name: body.name, website: body.website ?? null }) }));
-    if (!res.ok) throw new Error(`Failed to create organization (HTTP ${res.status})`);
-    return await res.json();
+    if (!api?.organizations?.create) {
+      const url = `/api/v1/organizations`;
+      const res = await fetch(url, {
+        method: "POST",
+        credentials: "include",
+        headers: buildJsonPostHeaders(tenantId),
+        body: JSON.stringify({ name: body.name, website: body.website ?? null }),
+      });
+      return await readJsonOrThrow(res, url);
+    }
+    return api.organizations.create({ name: body.name, website: body.website ?? null });
   }
+
   async function doQuickAdd() {
     try {
-      setCreating(true); setCreateErr(null);
+      setCreating(true);
+      setCreateErr(null);
       if (quickOpen === "contact") {
         const c = await quickCreateContact(qc);
-        setLink({ kind: "contact", id: Number(c.id), label: c.display_name || `${c.first_name ?? ""} ${c.last_name ?? ""}`.trim() || "(New contact)" });
-        setQuickOpen(null); setQ(""); setHits([]);
+        setLink({
+          kind: "contact",
+          id: Number(c.id),
+          label: c.display_name || `${c.first_name ?? ""} ${c.last_name ?? ""}`.trim() || "(New contact)",
+        });
+        setQuickOpen(null);
+        setQ("");
+        setHits([]);
       } else if (quickOpen === "org") {
         const o = await quickCreateOrg(qo);
         setLink({ kind: "org", id: Number(o.id), label: o.name || "(New organization)" });
-        setQuickOpen(null); setQ(""); setHits([]);
+        setQuickOpen(null);
+        setQ("");
+        setHits([]);
       }
     } catch (e: any) {
       setCreateErr(e?.message || "Create failed.");
@@ -540,12 +689,12 @@ function AddToWaitlistModal({
   const [speciesUi, setSpeciesUi] = React.useState<SpeciesUi | "">("");
   const speciesWire = toWireSpecies(speciesUi);
 
-  // breed picker: force re-mount on EVERY pick to close menu and allow immediate reselect (even same value)
+  // breed picker: force re-mount on EVERY pick to close menu and allow immediate reselect
   const [breed, setBreed] = React.useState<any>(null);
   const [breedNonce, setBreedNonce] = React.useState(0);
   const onBreedPick = React.useCallback((hit: any) => {
-    setBreed(hit ? { ...hit } : null);  // clone so React sees a new object even if same breed
-    setBreedNonce((n) => n + 1);        // re-mount combo => no click-out needed
+    setBreed(hit ? { ...hit } : null);
+    setBreedNonce((n) => n + 1);
   }, []);
 
   // parents (optional)
@@ -554,7 +703,7 @@ function AddToWaitlistModal({
   const [damId, setDamId] = React.useState<number | null>(null);
   const [sireId, setSireId] = React.useState<number | null>(null);
 
-  // dropdown open flags so we can forcibly close to avoid ghost artifacts
+  // dropdown open flags
   const [damOpen, setDamOpen] = React.useState(false);
   const [sireOpen, setSireOpen] = React.useState(false);
 
@@ -562,8 +711,8 @@ function AddToWaitlistModal({
   const canSubmit = !!link && !!speciesWire && !!(breed?.name || "").trim();
 
   async function handleSubmit() {
-    if (!canSubmit) return;
-    await createWaitlistEntry({
+    if (!api || !canSubmit) return;
+    await api.waitlist.create({
       contactId: link?.kind === "contact" ? link.id : null,
       organizationId: link?.kind === "org" ? link.id : null,
       speciesPref: speciesWire!,
@@ -575,26 +724,31 @@ function AddToWaitlistModal({
     onClose();
   }
 
-  // global reset for cancel/close/reopen
   function resetAll() {
     setLink(null);
-    setQ(""); setHits([]); setBusy(false); setQuickOpen(null);
+    setQ("");
+    setHits([]);
+    setBusy(false);
+    setQuickOpen(null);
     setQc({ firstName: "", lastName: "", email: "", phone: "" });
     setQo({ name: "", website: "" });
-    setCreating(false); setCreateErr(null);
-    setSpeciesUi(""); setBreed(null); setBreedNonce(0);
-    setDamQ(""); setSireQ(""); setDamId(null); setSireId(null);
-    setDamOpen(false); setSireOpen(false);
+    setCreating(false);
+    setCreateErr(null);
+    setSpeciesUi("");
+    setBreed(null);
+    setBreedNonce(0);
+    setDamQ("");
+    setSireQ("");
+    setDamId(null);
+    setSireId(null);
+    setDamOpen(false);
+    setSireOpen(false);
   }
 
   React.useEffect(() => {
-    if (open) resetAll(); // fresh each time it opens
-    // when it closes, state is wiped too
-    if (!open) resetAll();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
+    if (open) resetAll();
+  }, [open]); // reset on open
 
-  // helpers
   const searchValue = link ? `${link.kind === "contact" ? "Contact" : "Org"} · ${link.label}` : q;
   const clearLinkAndSearch = React.useCallback(() => {
     setLink(null);
@@ -603,37 +757,58 @@ function AddToWaitlistModal({
     setBusy(false);
   }, []);
 
-  // client-side refine for the “c shows Droids-R-Us” case
+  // normalizer to reduce false positives
+  const norm = (s: string) =>
+    s
+      .toLowerCase()
+      .replace(/[._\-\/]/g, " ")
+      .replace(/\b(organization|org|inc|llc|co|company|ltd)\b/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
+
   const filteredHits = React.useMemo(() => {
-    const qq = q.trim().toLowerCase();
+    const qq = norm(q);
     if (!qq) return [];
-    return hits.filter(h => (h.label || "").toLowerCase().includes(qq));
+    return hits.filter((h) => {
+      const hay = norm(`${h.label || ""} ${h.sub || ""}`);
+      return hay.includes(qq);
+    });
   }, [hits, q]);
 
-  // sex-strict animal search with client-side guard (in case backend is loose)
+  // strict animal search
   const [damResults, setDamResults] = React.useState<AnimalLite[]>([]);
   const [sireResults, setSireResults] = React.useState<AnimalLite[]>([]);
   React.useEffect(() => {
     let alive = true;
     (async () => {
-      if (!speciesWire || !damOpen || !damQ.trim()) { if (alive) setDamResults([]); return; }
-      const list = await fetchAnimals({ q: damQ.trim(), species: speciesWire, sex: "FEMALE", limit: 25 });
-      const strict = list.filter(a => a.sex === "FEMALE");
+      if (!speciesWire || !damOpen || !damQ.trim()) {
+        if (alive) setDamResults([]);
+        return;
+      }
+      const list = await fetchAnimals(tenantId, { q: damQ.trim(), species: speciesWire, sex: "FEMALE", limit: 25 });
+      const strict = list.filter((a) => a.sex === "FEMALE");
       if (alive) setDamResults(strict);
     })();
-    return () => { alive = false; };
-  }, [damQ, speciesWire, damOpen]);
+    return () => {
+      alive = false;
+    };
+  }, [damQ, speciesWire, damOpen, tenantId]);
 
   React.useEffect(() => {
     let alive = true;
     (async () => {
-      if (!speciesWire || !sireOpen || !sireQ.trim()) { if (alive) setSireResults([]); return; }
-      const list = await fetchAnimals({ q: sireQ.trim(), species: speciesWire, sex: "MALE", limit: 25 });
-      const strict = list.filter(a => a.sex === "MALE");
+      if (!speciesWire || !sireOpen || !sireQ.trim()) {
+        if (alive) setSireResults([]);
+        return;
+      }
+      const list = await fetchAnimals(tenantId, { q: sireQ.trim(), species: speciesWire, sex: "MALE", limit: 25 });
+      const strict = list.filter((a) => a.sex === "MALE");
       if (alive) setSireResults(strict);
     })();
-    return () => { alive = false; };
-  }, [sireQ, speciesWire, sireOpen]);
+    return () => {
+      alive = false;
+    };
+  }, [sireQ, speciesWire, sireOpen, tenantId]);
 
   return (
     <Overlay open={open} ariaLabel="Add to Waitlist" closeOnEscape closeOnOutsideClick>
@@ -648,21 +823,37 @@ function AddToWaitlistModal({
       >
         <div className="absolute inset-0 bg-black/50" />
         <div className="absolute inset-0 flex items-center justify-center">
-          <div ref={panelRef} className="pointer-events-auto w-[820px] max-w-[95vw]">
-            <Card>
-              {/* fixed-height interior; contents scroll */}
-              <div className="p-4 space-y-4" style={{ height: MODAL_BODY_H, overflowY: "auto" }}>
-                <div className="text-lg font-semibold">Add to Waitlist</div>
+          <div
+            ref={panelRef}
+            className="pointer-events-auto overflow-hidden"
+            style={{ width: 820, maxWidth: "95vw", height: 620, maxHeight: "82vh" }}
+            data-waitlist
+          >
+            <Card className="h-full">
+              <div className="h-full p-4 space-y-4 overflow-y-auto">
+                <div className="flex items-center gap-2">
+                  <div className="text-lg font-semibold">Add to Waitlist</div>
+                  {link && (
+                    <button
+                      className="ml-auto text-xs underline text-secondary hover:text-primary"
+                      onClick={clearLinkAndSearch}
+                    >
+                      Clear selection
+                    </button>
+                  )}
+                </div>
 
                 {/* Search Contacts/Orgs */}
                 <div className="relative">
-                  <div className="text-xs text-secondary mb-1">Search Contacts or Organizations</div>
+                  <div className={labelClass + " mb-1"}>Search Contacts or Organizations</div>
                   <div className="relative">
                     <SearchBar
                       value={searchValue}
                       onChange={(val) => {
-                        if (link) { clearLinkAndSearch(); setQ(val); }
-                        else setQ(val);
+                        if (link) {
+                          clearLinkAndSearch();
+                          setQ(val);
+                        } else setQ(val);
                       }}
                       placeholder="Type a name, email, phone, or organization..."
                       widthPx={720}
@@ -671,14 +862,14 @@ function AddToWaitlistModal({
                   </div>
                 </div>
 
-                {/* Two-column results under search (no drawer growth; container already scrolls) */}
+                {/* Results list with stylized headers */}
                 {!link && q.trim() && (
                   <div className="rounded-md border border-hairline max-h-56 overflow-auto p-2">
                     {busy ? (
                       <div className="px-2 py-2 text-sm text-secondary">Searching…</div>
                     ) : (() => {
-                      const contacts = filteredHits.filter(h => h.kind === "contact");
-                      const orgs = filteredHits.filter(h => h.kind === "org");
+                      const contacts = filteredHits.filter((h) => h.kind === "contact");
+                      const orgs = filteredHits.filter((h) => h.kind === "org");
                       const sectionClass = "rounded-md bg-white/5";
                       const pill = (t: string) => <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/10">{t}</span>;
                       const noContact = !contacts.length;
@@ -688,36 +879,47 @@ function AddToWaitlistModal({
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                           {/* Contacts */}
                           <div className={sectionClass}>
-                            <div className="px-2 py-1 text-xs text-secondary sticky top-0 bg-white/5">Contacts</div>
+                            <SectionChipHeading
+                              icon={<span className="i-lucide-user-2 h-3.5 w-3.5" aria-hidden="true" />}
+                              text="Contacts"
+                            />
                             {noContact ? (
                               <div className="px-2 py-2 text-sm">
                                 <div className="text-secondary">No contacts</div>
                                 <div className="mt-2">
-                                  <button
-                                    className="underline text-primary hover:opacity-80"
-                                    onClick={() => setQuickOpen("contact")}
-                                  >
+                                  <button className="underline text-primary hover:opacity-80" onClick={() => setQuickOpen("contact")}>
                                     + Quick Add Contact
                                   </button>
                                 </div>
                               </div>
-                            ) : contacts.map(h => (
-                              <button
-                                key={`contact:${h.id}`}
-                                type="button"
-                                onClick={() => { setLink({ kind: "contact", id: h.id, label: h.label }); setQ(""); setHits([]); }}
-                                className="w-full text-left px-2 py-1 hover:bg-white/5"
-                              >
-                                <div className="flex items-center gap-2">
-                                  {pill("Contact")}<span>{h.label}</span>{h.sub ? <span className="text-xs text-secondary">• {h.sub}</span> : null}
-                                </div>
-                              </button>
-                            ))}
+                            ) : (
+                              contacts.map((h) => (
+                                <button
+                                  key={`contact:${h.id}`}
+                                  type="button"
+                                  onClick={() => {
+                                    setLink({ kind: "contact", id: h.id, label: h.label });
+                                    setQ("");
+                                    setHits([]);
+                                  }}
+                                  className="w-full text-left px-2 py-1 hover:bg-white/5"
+                                >
+                                  <div className="flex items-center gap-2">
+                                    {pill("Contact")}
+                                    <span>{h.label}</span>
+                                    {h.sub ? <span className="text-xs text-secondary">• {h.sub}</span> : null}
+                                  </div>
+                                </button>
+                              ))
+                            )}
                           </div>
 
                           {/* Orgs */}
                           <div className={sectionClass}>
-                            <div className="px-2 py-1 text-xs text-secondary sticky top-0 bg-white/5">Organizations</div>
+                            <SectionChipHeading
+                              icon={<span className="i-lucide-building-2 h-3.5 w-3.5" aria-hidden="true" />}
+                              text="Organizations"
+                            />
                             {noOrg ? (
                               <div className="px-2 py-2 text-sm">
                                 <div className="text-secondary">No organizations</div>
@@ -727,18 +929,26 @@ function AddToWaitlistModal({
                                   </button>
                                 </div>
                               </div>
-                            ) : orgs.map(h => (
-                              <button
-                                key={`org:${h.id}`}
-                                type="button"
-                                onClick={() => { setLink({ kind: "org", id: h.id, label: h.label }); setQ(""); setHits([]); }}
-                                className="w-full text-left px-2 py-1 hover:bg-white/5"
-                              >
-                                <div className="flex items-center gap-2">
-                                  {pill("Org")}<span>{h.label}</span>{h.sub ? <span className="text-xs text-secondary">• {h.sub}</span> : null}
-                                </div>
-                              </button>
-                            ))}
+                            ) : (
+                              orgs.map((h) => (
+                                <button
+                                  key={`org:${h.id}`}
+                                  type="button"
+                                  onClick={() => {
+                                    setLink({ kind: "org", id: h.id, label: h.label });
+                                    setQ("");
+                                    setHits([]);
+                                  }}
+                                  className="w-full text-left px-2 py-1 hover:bg-white/5"
+                                >
+                                  <div className="flex items-center gap-2">
+                                    {pill("Org")}
+                                    <span>{h.label}</span>
+                                    {h.sub ? <span className="text-xs text-secondary">• {h.sub}</span> : null}
+                                  </div>
+                                </button>
+                              ))
+                            )}
                           </div>
                         </div>
                       );
@@ -750,32 +960,37 @@ function AddToWaitlistModal({
                 {!link && quickOpen && (
                   <div className="rounded-lg border border-hairline p-3 bg-surface/60">
                     <div className="flex items-center justify-between">
-                      <div className="text-sm font-medium">
-                        {quickOpen === "contact" ? "Quick Add Contact" : "Quick Add Organization"}
-                      </div>
-                      <button className="text-xs text-secondary hover:underline" onClick={() => setQuickOpen(null)}>Close</button>
+                      <div className="text-sm font-medium">{quickOpen === "contact" ? "Quick Add Contact" : "Quick Add Organization"}</div>
+                      <button className="text-xs text-secondary hover:underline" onClick={() => setQuickOpen(null)}>
+                        Close
+                      </button>
                     </div>
 
                     {quickOpen === "contact" ? (
                       <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2">
-                        <input className="bhq-input" placeholder="First name" value={qc.firstName} onChange={e => setQc({ ...qc, firstName: e.target.value })} />
-                        <input className="bhq-input" placeholder="Last name" value={qc.lastName} onChange={e => setQc({ ...qc, lastName: e.target.value })} />
-                        <input className="bhq-input" placeholder="Email" value={qc.email} onChange={e => setQc({ ...qc, email: e.target.value })} />
-                        <input className="bhq-input" placeholder="Phone" value={qc.phone} onChange={e => setQc({ ...qc, phone: e.target.value })} />
+                        {/* 🔶 polished fields */}
+                        <input className={inputClass} placeholder="First name" value={qc.firstName} onChange={(e) => setQc({ ...qc, firstName: e.target.value })} />
+                        <input className={inputClass} placeholder="Last name" value={qc.lastName} onChange={(e) => setQc({ ...qc, lastName: e.target.value })} />
+                        <input className={inputClass} placeholder="Email" value={qc.email} onChange={(e) => setQc({ ...qc, email: e.target.value })} />
+                        <input className={inputClass} placeholder="Phone" value={qc.phone} onChange={(e) => setQc({ ...qc, phone: e.target.value })} />
                         {createErr && <div className="md:col-span-2 text-sm text-red-600">{createErr}</div>}
                         <div className="md:col-span-2 flex justify-end gap-2">
-                          <Button variant="outline" onClick={() => setQc({ firstName: "", lastName: "", email: "", phone: "" })}>Clear</Button>
-                          <Button onClick={doQuickAdd} disabled={creating}>{creating ? "Creating…" : "Create & Link"}</Button>
+                          <Button variant="outline" onClick={() => setQc({ firstName: "", lastName: "", email: "", phone: "" })}>
+                            Clear
+                          </Button>
+                          <Button onClick={doQuickAdd} disabled={creating || !api}>
+                            {creating ? "Creating…" : "Create & Link"}
+                          </Button>
                         </div>
                       </div>
                     ) : (
                       <div className="mt-2 grid grid-cols-1 gap-2">
-                        <input className="bhq-input" placeholder="Organization name" value={qo.name} onChange={e => setQo({ ...qo, name: e.target.value })} />
-                        <input className="bhq-input" placeholder="Website (optional)" value={qo.website} onChange={e => setQo({ ...qo, website: e.target.value })} />
+                        <input className={inputClass} placeholder="Organization name" value={qo.name} onChange={(e) => setQo({ ...qo, name: e.target.value })} />
+                        <input className={inputClass} placeholder="Website (optional)" value={qo.website} onChange={(e) => setQo({ ...qo, website: e.target.value })} />
                         {createErr && <div className="text-sm text-red-600">{createErr}</div>}
                         <div className="flex justify-end gap-2">
                           <Button variant="outline" onClick={() => setQo({ name: "", website: "" })}>Clear</Button>
-                          <Button onClick={doQuickAdd} disabled={creating || !qo.name.trim()}>{creating ? "Creating…" : "Create & Link"}</Button>
+                          <Button onClick={doQuickAdd} disabled={creating || !qo.name.trim() || !api}>{creating ? "Creating…" : "Create & Link"}</Button>
                         </div>
                       </div>
                     )}
@@ -786,31 +1001,48 @@ function AddToWaitlistModal({
                 <SectionCard title="Preferences (required)">
                   <div className="p-2 grid grid-cols-1 md:grid-cols-3 gap-3">
                     <label className="flex flex-col gap-1">
-                      <span className="text-xs text-secondary">Species</span>
+                      <span className={labelClass}>Species</span>
                       <select
-                        className="w-full h-9 rounded-md border border-hairline bg-surface px-2 text-sm text-primary"
+                        className={inputClass}
                         value={speciesUi}
-                        onChange={(e) => { setSpeciesUi(e.currentTarget.value as SpeciesUi); setDamId(null); setSireId(null); setDamQ(""); setSireQ(""); setDamOpen(false); setSireOpen(false); setBreed(null); setBreedNonce(n => n + 1); }}
+                        onChange={(e) => {
+                          setSpeciesUi(e.currentTarget.value as SpeciesUi);
+                          setDamId(null);
+                          setSireId(null);
+                          setDamQ("");
+                          setSireQ("");
+                          setDamOpen(false);
+                          setSireOpen(false);
+                          setBreed(null);
+                          setBreedNonce((n) => n + 1);
+                        }}
                       >
                         <option value="">—</option>
-                        {allowedSpecies.map(s => <option key={s} value={s}>{s}</option>)}
+                        {allowedSpecies.map((s) => (
+                          <option key={s} value={s}>
+                            {s}
+                          </option>
+                        ))}
                       </select>
                     </label>
 
                     <div className="md:col-span-2 relative">
-                      <div className="text-xs text-secondary mb-1">Breed</div>
+                      <div className={labelClass + " mb-1"}>Breed</div>
                       {speciesUi ? (
                         <BreedCombo
                           key={`breed-${speciesUi}-${breedNonce}`}
                           species={speciesUi as SpeciesUi}
                           value={breed}
                           onChange={onBreedPick}
-                          api={breedBrowseApi}
+                          api={{
+                            breeds: {
+                              listCanonical: (opts: { species: string; orgId?: number; limit?: number }) =>
+                                api?.breeds?.listCanonical?.(opts) ?? Promise.resolve([]),
+                            },
+                          }}
                         />
                       ) : (
-                        <div className="h-9 px-3 flex items-center rounded-md border border-hairline bg-surface/60 text-sm text-secondary">
-                          Select Species
-                        </div>
+                        <div className="h-9 px-3 flex items-center rounded-md border border-hairline bg-surface/60 text-sm text-secondary">Select Species</div>
                       )}
                     </div>
                   </div>
@@ -821,40 +1053,34 @@ function AddToWaitlistModal({
                   <div className="p-2 grid grid-cols-1 md:grid-cols-2 gap-3">
                     {/* Dam (Female) */}
                     <label className="flex flex-col gap-1 relative">
-                      <span className="text-xs text-secondary">Dam (Female)</span>
+                      <span className={labelClass}>Dam (Female)</span>
                       {!speciesWire ? (
-                        <div className="h-9 px-3 flex items-center rounded-md border border-hairline bg-surface/60 text-sm text-secondary">
-                          Select Species
-                        </div>
+                        <div className="h-9 px-3 flex items-center rounded-md border border-hairline bg-surface/60 text-sm text-secondary">Select Species</div>
                       ) : (
                         <>
                           <SearchBar
                             value={damQ}
-                            onChange={(val) => { setDamQ(val); setDamOpen(!!val.trim()); }}
+                            onChange={(val) => {
+                              setDamQ(val);
+                              setDamOpen(!!val.trim());
+                            }}
                             onFocus={() => setDamOpen(!!damQ.trim())}
                             onBlur={() => setTimeout(() => setDamOpen(false), 100)}
                             placeholder="Search females…"
                             widthPx={360}
                           />
                           {damOpen && damQ.trim() && (
-                            <div
-                              className="absolute z-10 left-0 right-0 rounded-md border border-hairline bg-surface"
-                              style={{ top: "calc(100% + 6px)", maxHeight: 160, overflowY: "auto" }}
-                            >
-                              {damResults.length ? (
-                                damResults.map(a => (
-                                  <button
-                                    key={a.id}
-                                    type="button"
-                                    onClick={() => { setDamId(a.id); setDamQ(a.name); setDamOpen(false); }}
-                                    className="w-full text-left px-2 py-1 hover:bg-white/5"
-                                  >
-                                    {a.name}
-                                  </button>
-                                ))
-                              ) : (
-                                <div className="px-2 py-2 text-sm text-secondary">No females found</div>
-                              )}
+                            <div className="absolute z-10 left-0 right-0 rounded-md border border-hairline bg-surface" style={{ top: "calc(100% + 6px)", maxHeight: 160, overflowY: "auto" }}>
+                              <DamResults
+                                tenantId={tenantId}
+                                query={damQ}
+                                species={speciesWire}
+                                onPick={(a) => {
+                                  setDamId(a.id);
+                                  setDamQ(a.name);
+                                  setDamOpen(false);
+                                }}
+                              />
                             </div>
                           )}
                         </>
@@ -863,40 +1089,34 @@ function AddToWaitlistModal({
 
                     {/* Sire (Male) */}
                     <label className="flex flex-col gap-1 relative">
-                      <span className="text-xs text-secondary">Sire (Male)</span>
+                      <span className={labelClass}>Sire (Male)</span>
                       {!speciesWire ? (
-                        <div className="h-9 px-3 flex items-center rounded-md border border-hairline bg-surface/60 text-sm text-secondary">
-                          Select Species
-                        </div>
+                        <div className="h-9 px-3 flex items-center rounded-md border border-hairline bg-surface/60 text-sm text-secondary">Select Species</div>
                       ) : (
                         <>
                           <SearchBar
                             value={sireQ}
-                            onChange={(val) => { setSireQ(val); setSireOpen(!!val.trim()); }}
+                            onChange={(val) => {
+                              setSireQ(val);
+                              setSireOpen(!!val.trim());
+                            }}
                             onFocus={() => setSireOpen(!!sireQ.trim())}
                             onBlur={() => setTimeout(() => setSireOpen(false), 100)}
                             placeholder="Search males…"
                             widthPx={360}
                           />
                           {sireOpen && sireQ.trim() && (
-                            <div
-                              className="absolute z-10 left-0 right-0 rounded-md border border-hairline bg-surface"
-                              style={{ top: "calc(100% + 6px)", maxHeight: 160, overflowY: "auto" }}
-                            >
-                              {sireResults.length ? (
-                                sireResults.map(a => (
-                                  <button
-                                    key={a.id}
-                                    type="button"
-                                    onClick={() => { setSireId(a.id); setSireQ(a.name); setSireOpen(false); }}
-                                    className="w-full text-left px-2 py-1 hover:bg-white/5"
-                                  >
-                                    {a.name}
-                                  </button>
-                                ))
-                              ) : (
-                                <div className="px-2 py-2 text-sm text-secondary">No males found</div>
-                              )}
+                            <div className="absolute z-10 left-0 right-0 rounded-md border border-hairline bg-surface" style={{ top: "calc(100% + 6px)", maxHeight: 160, overflowY: "auto" }}>
+                              <SireResults
+                                tenantId={tenantId}
+                                query={sireQ}
+                                species={speciesWire}
+                                onPick={(a) => {
+                                  setSireId(a.id);
+                                  setSireQ(a.name);
+                                  setSireOpen(false);
+                                }}
+                              />
                             </div>
                           )}
                         </>
@@ -906,8 +1126,18 @@ function AddToWaitlistModal({
                 </SectionCard>
 
                 <div className="flex justify-end gap-2">
-                  <Button variant="outline" onClick={() => { resetAll(); onClose(); }}>Cancel</Button>
-                  <Button onClick={handleSubmit} disabled={!canSubmit}>Add to waitlist</Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      resetAll();
+                      onClose();
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                  <Button onClick={handleSubmit} disabled={!canSubmit || !api}>
+                    Add to waitlist
+                  </Button>
                 </div>
               </div>
             </Card>
@@ -919,7 +1149,7 @@ function AddToWaitlistModal({
 }
 
 /* ───────────────────────── Tabs ───────────────────────── */
-function OffspringGroupsTab() {
+function OffspringGroupsTab({ api, tenantId }: { api: ReturnType<typeof makeOffspringApi> | null; tenantId: number | null }) {
   const [q, setQ] = React.useState("");
   const [rows, setRows] = React.useState<GroupTableRow[]>([]);
   const [raw, setRaw] = React.useState<OffspringRow[]>([]);
@@ -931,14 +1161,17 @@ function OffspringGroupsTab() {
   React.useEffect(() => {
     const prev = document.body.style.overflow;
     if (createOpen) document.body.style.overflow = "hidden";
-    return () => { document.body.style.overflow = prev || ""; };
+    return () => {
+      document.body.style.overflow = prev || "";
+    };
   }, [createOpen]);
 
   const load = React.useCallback(async () => {
+    if (!api) return;
     setLoading(true);
     setError(null);
     try {
-      const res = await api.list({ q: q || undefined, limit: 100 });
+      const res = await (api.list ?? api.offspring?.list)({ q: q || undefined, limit: 100 });
       setRaw(res.items);
       setRows(res.items.map(mapDetailToTableRow));
     } catch (e: any) {
@@ -946,7 +1179,7 @@ function OffspringGroupsTab() {
     } finally {
       setLoading(false);
     }
-  }, [q]);
+  }, [api, q]);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -954,7 +1187,9 @@ function OffspringGroupsTab() {
       if (cancelled) return;
       await load();
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [q, load]);
 
   const { map, toggle, setAll, visible } = hooks.useColumns(GROUP_COLS, GROUP_STORAGE_KEY);
@@ -962,13 +1197,22 @@ function OffspringGroupsTab() {
 
   const [sorts, setSorts] = React.useState<Array<{ key: string; dir: "asc" | "desc" }>>([]);
   const onToggleSort = (key: string) => {
-    setSorts(prev => {
-      const f = prev.find(s => s.key === key);
+    setSorts((prev) => {
+      const f = prev.find((s) => s.key === key);
       if (!f) return [{ key, dir: "asc" }];
-      if (f.dir === "asc") return prev.map(s => (s.key === key ? { ...s, dir: "desc" } : s));
-      return prev.filter(s => s.key !== key);
+      if (f.dir === "asc") return prev.map((s) => (s.key === key ? { ...s, dir: "desc" } : s));
+      return prev.filter((s) => s.key !== key);
     });
   };
+
+  // Smarter comparator for numbers/dates/strings
+  function cmp(a: any, b: any) {
+    const na = Number(a), nb = Number(b);
+    if (!Number.isNaN(na) && !Number.isNaN(nb)) return na - nb;
+    const da = Date.parse(a), db = Date.parse(b);
+    if (!Number.isNaN(da) && !Number.isNaN(db)) return da - db;
+    return String(a ?? "").localeCompare(String(b ?? ""), undefined, { numeric: true, sensitivity: "base" });
+  }
 
   const [pageSize, setPageSize] = React.useState(25);
   const [page, setPage] = React.useState(1);
@@ -980,8 +1224,8 @@ function OffspringGroupsTab() {
       for (const s of sorts) {
         const av = (a as any)[s.key];
         const bv = (b as any)[s.key];
-        const cmp = String(av ?? "").localeCompare(String(bv ?? ""), undefined, { numeric: true, sensitivity: "base" });
-        if (cmp !== 0) return s.dir === "asc" ? cmp : -cmp;
+        const c = cmp(av, bv);
+        if (c !== 0) return s.dir === "asc" ? c : -c;
       }
       return 0;
     });
@@ -990,8 +1234,7 @@ function OffspringGroupsTab() {
 
   const pageCount = Math.max(1, Math.ceil(sorted.length / pageSize));
   const clampedPage = Math.min(page, pageCount);
-  const start = sorted.length === 0 ? 0 : (clampedPage - 1) * pageSize + 1;
-  const end = sorted.length === 0 ? 0 : Math.min(sorted.length, start - 1 + pageSize);
+
   const pageRows = React.useMemo(() => {
     const from = (clampedPage - 1) * pageSize;
     const to = from + pageSize;
@@ -1000,13 +1243,12 @@ function OffspringGroupsTab() {
 
   return (
     <Card>
-      {/* Overlay root + modal */}
       <OverlayMount />
-
-      {/* Absolute top-right button cluster */}
       <div className="relative">
         <div className="absolute right-0 top-0 h-10 flex items-center gap-2 pr-2" style={{ zIndex: 50, pointerEvents: "auto" }}>
-          <Button size="sm" onClick={() => setCreateOpen(true)}>Create Group</Button>
+          <Button size="sm" onClick={() => setCreateOpen(true)}>
+            Create Group
+          </Button>
         </div>
 
         <DetailsHost
@@ -1017,8 +1259,9 @@ function OffspringGroupsTab() {
             width: 920,
             placement: "center",
             align: "top",
-            fetchRow: async (id: number) => raw.find(r => r.id === id)!,
+            fetchRow: async (id: number) => raw.find((r) => r.id === id)!,
             onSave: async (row: OffspringRow, draft: any) => {
+              if (!api) return;
               const body: any = {};
               if (draft.identifier !== undefined) body.identifier = draft.identifier;
               if (draft.counts) {
@@ -1039,8 +1282,8 @@ function OffspringGroupsTab() {
                   placementCompletedAt: draft.dates.placementCompletedAt ?? null,
                 };
               }
-              const updated = await api.patch(row.id, body);
-              const idx = raw.findIndex(r => r.id === row.id);
+              const updated = await (api.patch ?? api.offspring?.patch)(row.id, body);
+              const idx = raw.findIndex((r) => r.id === row.id);
               if (idx >= 0) {
                 const next = [...raw];
                 next[idx] = updated as any;
@@ -1082,12 +1325,7 @@ function OffspringGroupsTab() {
                   }
                 >
                   {activeTab === "overview" && (
-                    <DetailsSpecRenderer<GroupTableRow>
-                      row={tblRow}
-                      mode={mode}
-                      setDraft={() => { }}
-                      sections={groupSections(mode)}
-                    />
+                    <DetailsSpecRenderer<GroupTableRow> row={tblRow} mode={mode} setDraft={() => {}} sections={groupSections(mode)} />
                   )}
                   {activeTab === "buyers" && (
                     <SectionCard title="Buyers">
@@ -1112,9 +1350,7 @@ function OffspringGroupsTab() {
             onColumnStateChange={setAll}
             getRowId={(r: GroupTableRow) => r.id}
             pageSize={25}
-            renderStickyRight={() => (
-              <ColumnsPopover columns={map} onToggle={toggle} onSet={setAll} allColumns={GROUP_COLS} triggerClassName="bhq-columns-trigger" />
-            )}
+            renderStickyRight={() => <ColumnsPopover columns={map} onToggle={toggle} onSet={setAll} allColumns={GROUP_COLS} triggerClassName="bhq-columns-trigger" />}
             stickyRightWidthPx={40}
           >
             <div className="bhq-table__toolbar px-2 pt-2 pb-3 relative z-30 flex items-center justify-between">
@@ -1149,7 +1385,7 @@ function OffspringGroupsTab() {
                 {!loading &&
                   !error &&
                   pageRows.map((r) => (
-                    <TableRow key={r.id} detailsRow={raw.find(x => x.id === r.id)!}>
+                    <TableRow key={r.id} detailsRow={raw.find((x) => x.id === r.id)!}>
                       {visibleSafe.map((c) => {
                         let v: any = (r as any)[c.key];
                         if (c.key === "expectedBirth" || c.key === "expectedPlacementStart" || c.key === "expectedPlacementCompleted" || c.key === "updatedAt") {
@@ -1197,6 +1433,8 @@ function OffspringGroupsTab() {
               <div className="absolute inset-0 flex items-center justify-center">
                 <div ref={panelRef} className="pointer-events-auto">
                   <CreateGroupForm
+                    api={api}
+                    tenantId={tenantId}
                     onCreated={async () => {
                       setCreateOpen(false);
                       await load();
@@ -1213,7 +1451,7 @@ function OffspringGroupsTab() {
   );
 }
 
-function WaitlistTab() {
+function WaitlistTab({ api, tenantId }: { api: ReturnType<typeof makeOffspringApi> | null; tenantId: number | null }) {
   const [q, setQ] = React.useState("");
   const [rows, setRows] = React.useState<WaitlistRow[]>([]);
   const [loading, setLoading] = React.useState(true);
@@ -1227,37 +1465,48 @@ function WaitlistTab() {
       setLoading(true);
       setError(null);
       try {
-        const res = await fetchWaitlist({ q: q || undefined, limit: 100 });
-        if (!cancelled) setRows(res.items);
+        if (!api) return;
+        // Prefer client; fallback to GET if not exposed
+        let items: WaitlistEntry[] = [];
+        if (api.waitlist?.list) {
+          const res = await api.waitlist.list({ q: q || undefined, limit: 100 });
+          items = res.items;
+        } else {
+          const qs = new URLSearchParams();
+          if (q) qs.set("q", q);
+          qs.set("limit", "100");
+          const url = `/api/v1/waitlist?${qs}`;
+          const r = await fetch(url, {
+            method: "GET",
+            headers: buildGetHeaders(tenantId),
+            credentials: "include",
+          });
+          const body = await readJsonOrThrow(r, url);
+          items = Array.isArray(body) ? body : body?.items ?? [];
+        }
+        if (!cancelled) setRows(items);
       } catch (e: any) {
         if (!cancelled) setError(e?.message || "Failed to load waitlist");
       } finally {
         if (!cancelled) setLoading(false);
       }
     })();
-    return () => { cancelled = true; };
-  }, [q]);
+    return () => {
+      cancelled = true;
+    };
+  }, [q, api, tenantId]);
 
   const { map, toggle, setAll, visible } = hooks.useColumns(WAITLIST_COLS, WAITLIST_STORAGE_KEY);
   const visibleSafe = visible?.length ? visible : WAITLIST_COLS;
-
-  const breedBrowseApi = React.useMemo(
-    () => ({
-      breeds: {
-        listCanonical: (opts: { species: string; orgId?: number; limit?: number }) =>
-          fetch(`/api/v1/breeds/canonical?species=${encodeURIComponent(opts.species)}&limit=${opts.limit ?? 50}`, { method: "GET" })
-            .then(r => r.ok ? r.json() : Promise.resolve([])),
-      },
-    }),
-    []
-  );
 
   return (
     <Card>
       <OverlayMount />
       <div className="relative">
         <div className="absolute right-0 top-0 h-10 flex items-center gap-2 pr-2" style={{ zIndex: 50, pointerEvents: "auto" }}>
-          <Button size="sm" onClick={() => setAddOpen(true)}>Add to Waitlist</Button>
+          <Button size="sm" onClick={() => setAddOpen(true)}>
+            Add to Waitlist
+          </Button>
         </div>
 
         <Table
@@ -1266,9 +1515,7 @@ function WaitlistTab() {
           onColumnStateChange={setAll}
           getRowId={(r: WaitlistRow) => r.id}
           pageSize={25}
-          renderStickyRight={() => (
-            <ColumnsPopover columns={map} onToggle={toggle} onSet={setAll} allColumns={WAITLIST_COLS} triggerClassName="bhq-columns-trigger" />
-          )}
+          renderStickyRight={() => <ColumnsPopover columns={map} onToggle={toggle} onSet={setAll} allColumns={WAITLIST_COLS} triggerClassName="bhq-columns-trigger" />}
           stickyRightWidthPx={40}
         >
           <div className="bhq-table__toolbar px-2 pt-2 pb-3 relative z-30 flex items-center justify-between">
@@ -1277,43 +1524,130 @@ function WaitlistTab() {
           </div>
 
           <table className="min-w-max w-full text-sm">
-            <TableHeader columns={visibleSafe} sorts={[]} onToggleSort={() => { }} />
+            <TableHeader columns={visibleSafe} sorts={[]} onToggleSort={() => {}} />
             <tbody>
               {loading && (
-                <TableRow><TableCell colSpan={visibleSafe.length}><div className="py-8 text-center text-sm text-secondary">Loading waitlist…</div></TableCell></TableRow>
+                <TableRow>
+                  <TableCell colSpan={visibleSafe.length}>
+                    <div className="py-8 text-center text-sm text-secondary">Loading waitlist…</div>
+                  </TableCell>
+                </TableRow>
               )}
               {!loading && error && (
-                <TableRow><TableCell colSpan={visibleSafe.length}><div className="py-8 text-center text-sm text-red-600">Error: {error}</div></TableCell></TableRow>
+                <TableRow>
+                  <TableCell colSpan={visibleSafe.length}>
+                    <div className="py-8 text-center text-sm text-red-600">Error: {error}</div>
+                  </TableCell>
+                </TableRow>
               )}
               {!loading && !error && rows.length === 0 && (
-                <TableRow><TableCell colSpan={visibleSafe.length}><div className="py-8 text-center text-sm text-secondary">No entries.</div></TableCell></TableRow>
-              )}
-              {!loading && !error && rows.length > 0 && rows.map(r => (
-                <TableRow key={r.id}>
-                  {visibleSafe.map(c => {
-                    let v: any = (r as any)[c.key];
-                    if (c.key === "depositPaidAt" || c.key === "lastActivityAt") v = fmtDate(v);
-                    return <TableCell key={c.key}>{Array.isArray(v) ? v.join(", ") : (v ?? "")}</TableCell>;
-                  })}
+                <TableRow>
+                  <TableCell colSpan={visibleSafe.length}>
+                    <div className="py-8 text-center text-sm text-secondary">No entries.</div>
+                  </TableCell>
                 </TableRow>
-              ))}
+              )}
+              {!loading &&
+                !error &&
+                rows.length > 0 &&
+                rows.map((r) => (
+                  <TableRow key={r.id}>
+                    {visibleSafe.map((c) => {
+                      let v: any = (r as any)[c.key];
+                      if (c.key === "depositPaidAt" || c.key === "lastActivityAt") v = fmtDate(v);
+                      return <TableCell key={c.key}>{Array.isArray(v) ? v.join(", ") : v ?? ""}</TableCell>;
+                    })}
+                  </TableRow>
+                ))}
             </tbody>
           </table>
         </Table>
       </div>
 
       <AddToWaitlistModal
+        api={api}
+        tenantId={tenantId}
         open={addOpen}
         onClose={() => setAddOpen(false)}
         onCreated={async () => {
           try {
-            const res = await fetchWaitlist({ q: q || undefined, limit: 100 });
-            setRows(res.items);
-          } catch { /* noop */ }
+            if (!api) return;
+            if (api.waitlist?.list) {
+              const res = await api.waitlist.list({ q: q || undefined, limit: 100 });
+              setRows(res.items);
+            } else {
+              const qs = new URLSearchParams();
+              if (q) qs.set("q", q);
+              qs.set("limit", "100");
+              const url = `/api/v1/waitlist?${qs}`;
+              const r = await fetch(url, {
+                method: "GET",
+                headers: buildGetHeaders(tenantId),
+                credentials: "include",
+              });
+              const body = await readJsonOrThrow(r, url);
+              const items = Array.isArray(body) ? body : body?.items ?? [];
+              setRows(items);
+            }
+          } catch {}
         }}
-        breedBrowseApi={breedBrowseApi}
+        allowedSpecies={SPECIES_UI_ALL}
       />
     </Card>
+  );
+}
+
+/* ───────────────────────── Segmented tabs control (kept for potential reuse) ───────────────────────── */
+function SegmentedTabs({
+  value,
+  onChange,
+}: {
+  value: "groups" | "waitlist";
+  onChange: (v: "groups" | "waitlist") => void;
+}) {
+  const btnBase =
+    "relative inline-flex items-center gap-2 px-3 h-9 rounded-md border text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-offset-0";
+  const inactive =
+    "bg-white/5 border-white/10 text-[var(--color-text,#c9c9c9)] hover:bg-white/10";
+  const active =
+    "bg-[hsl(var(--brand-orange)/0.14)] border-[hsl(var(--brand-orange)/0.55)] text-white ring-2 ring-[hsl(var(--brand-orange))]";
+
+  const refLeft = React.useRef<HTMLButtonElement>(null);
+  const refRight = React.useRef<HTMLButtonElement>(null);
+  const onKey = (e: React.KeyboardEvent) => {
+    if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+      e.preventDefault();
+      if (e.key === "ArrowLeft") onChange("groups");
+      if (e.key === "ArrowRight") onChange("waitlist");
+      (e.key === "ArrowLeft" ? refLeft : refRight).current?.focus();
+    }
+  };
+
+  return (
+    <div role="tablist" aria-label="Offspring tabs" className="inline-flex items-center gap-1 bg-white/5 p-1 rounded-lg border border-white/10">
+      <button
+        ref={refLeft}
+        role="tab"
+        aria-selected={value === "groups"}
+        className={[btnBase, value === "groups" ? active : inactive].join(" ")}
+        onClick={() => onChange("groups")}
+        onKeyDown={onKey}
+      >
+        <span className="i-lucide-users h-4 w-4" aria-hidden="true" />
+        <span className="font-semibold">Groups</span>
+      </button>
+      <button
+        ref={refRight}
+        role="tab"
+        aria-selected={value === "waitlist"}
+        className={[btnBase, value === "waitlist" ? active : inactive].join(" ")}
+        onClick={() => onChange("waitlist")}
+        onKeyDown={onKey}
+      >
+        <span className="i-lucide-list-checks h-4 w-4" aria-hidden="true" />
+        <span className="font-semibold">Waitlist</span>
+      </button>
+    </div>
   );
 }
 
@@ -1329,35 +1663,40 @@ export default function OffspringModule() {
     }
   }, []);
 
+  // ── Mirror Breeding: resolve tenant once, then memo the API with CSRF enabled ──
+  const [tenantId, setTenantId] = React.useState<number | null>(() => readTenantIdFast() ?? null);
+  React.useEffect(() => {
+    if (tenantId != null) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const t = await resolveTenantId();
+        if (!cancelled) setTenantId(t);
+      } catch {}
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [tenantId]);
+
+  const api = React.useMemo(() => {
+    if (tenantId == null) return null;
+    // IMPORTANT: align with Breeding (CSRF + tenant baked in)
+    return makeOffspringApi({ baseUrl: "/api/v1", tenantId, withCsrf: true });
+  }, [tenantId]);
+
   const [activeTab, setActiveTab] = React.useState<"groups" | "waitlist">("groups");
 
   return (
     <div className="p-4 space-y-4">
       <PageHeader
         title="Offspring"
-        subtitle="Offspring Groups and the global Waitlist"
-        rightSlot={
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              className={["px-3 h-8 rounded-md text-sm", activeTab === "groups" ? "bg-white/10" : "bg-white/5 hover:bg-white/10"].join(" ")}
-              onClick={() => setActiveTab("groups")}
-            >
-              Groups
-            </button>
-            <button
-              type="button"
-              className={["px-3 h-8 rounded-md text-sm", activeTab === "waitlist" ? "bg-white/10" : "bg-white/5 hover:bg-white/10"].join(" ")}
-              onClick={() => setActiveTab("waitlist")}
-            >
-              Waitlist
-            </button>
-          </div>
-        }
+        subtitle={activeTab === "groups" ? "Offspring Groups" : "Global Waitlist"}
+        rightSlot={<UnderlineTabs value={activeTab} onChange={setActiveTab} />}
       />
 
-      {activeTab === "groups" && <OffspringGroupsTab />}
-      {activeTab === "waitlist" && <WaitlistTab />}
+      {activeTab === "groups" && <OffspringGroupsTab api={api} tenantId={tenantId} />}
+      {activeTab === "waitlist" && <WaitlistTab api={api} tenantId={tenantId} />}
     </div>
   );
 }

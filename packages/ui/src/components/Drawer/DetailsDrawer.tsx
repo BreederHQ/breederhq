@@ -5,6 +5,7 @@ import { getOverlayRoot } from "../../overlay";
 type Placement = "right" | "center";
 type Align = "center" | "top";
 
+/** Hardens the Details drawer against reflow, clipping, and transform issues. */
 export function DetailsDrawer({
   title,
   open = true,
@@ -49,17 +50,17 @@ export function DetailsDrawer({
   const isRight = placement === "right";
   const isCenter = placement === "center";
 
-  // Panel base: fixed, no stacking-context creators, accepts pointer events.
+  /* ─────────────────────────── Layout Hardening ─────────────────────────── */
+
   const basePanelStyle: React.CSSProperties = {
     position: "fixed",
-    zIndex: 2147483600, // var(--z-drawer)
+    zIndex: 2147483600, // use token later: var(--z-drawer)
     pointerEvents: "auto",
     transform: "none",
     filter: "none",
     perspective: "none",
-    contain: "none",
-    isolation: "auto",
-    overflow: "auto",
+    contain: "layout paint",
+    isolation: "isolate",
     background: "hsl(var(--surface))",
   };
 
@@ -71,6 +72,9 @@ export function DetailsDrawer({
         bottom: 0,
         width,
         borderLeft: "1px solid hsl(var(--border))",
+        overflow: "hidden", // lock shell
+        display: "flex",
+        flexDirection: "column",
       }
     : {
         ...basePanelStyle,
@@ -84,6 +88,9 @@ export function DetailsDrawer({
         border: "1px solid hsl(var(--border))",
         borderRadius: 12,
         boxShadow: "0 20px 48px rgba(0,0,0,.32)",
+        overflow: "hidden",
+        display: "flex",
+        flexDirection: "column",
       };
 
   return createPortal(
@@ -92,11 +99,10 @@ export function DetailsDrawer({
       role="dialog"
       aria-modal="true"
       aria-label={typeof title === "string" ? title : "Details"}
-      // Wrapper: fixed full-viewport, allows clicks, no stacking-context creators.
       style={{
         position: "fixed",
         inset: 0,
-        zIndex: 2147483599, // wrapper under the panel, above app
+        zIndex: 2147483599,
         pointerEvents: "auto",
         transform: "none",
         filter: "none",
@@ -114,13 +120,25 @@ export function DetailsDrawer({
           style={{ zIndex: 2147483599 }}
         />
       )}
+
+      {/* Panel */}
       <aside
         data-drawer-panel
         className="bg-surface"
         style={panelStyle}
         onClick={(e) => e.stopPropagation()}
       >
-        {children}
+        {/* Inner scroller to avoid reflowing shell */}
+        <div
+          data-drawer-scroll
+          className="flex-1 overflow-auto"
+          style={{
+            WebkitOverflowScrolling: "touch",
+            overscrollBehavior: "contain",
+          }}
+        >
+          {children}
+        </div>
       </aside>
     </div>,
     host

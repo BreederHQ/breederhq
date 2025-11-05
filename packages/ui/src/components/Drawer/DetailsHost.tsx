@@ -1,3 +1,4 @@
+// packages/ui/src/components/Drawer/DetailsHost.tsx
 import * as React from "react";
 import { DetailsDrawer } from "./DetailsDrawer";
 import { DrawerHeader, DrawerTabs, DrawerActions, useDrawerState } from "./DrawerParts";

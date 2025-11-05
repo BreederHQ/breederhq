@@ -1,0 +1,66 @@
+/* === Calendar / Date field glue (no markup changes needed) ================== */
+
+/* 1) Make room for the icon and kill native adornments that collide */
+:where(.bhq-section-card) input[type="text"] {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+/* 2) Icon lives visually inside the input, without shifting layout */
+:where(.bhq-section-card) button[aria-label="Open date picker"] {
+  position: absolute !important;
+  right: .5rem;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 1.125rem;
+  height: 1.125rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: auto;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  line-height: 0;
+}
+
+/* 3) Reserve space on the text input for the icon so text doesn't collide */
+:where(.bhq-section-card) input[type="text"] {
+  padding-right: 2.25rem !important;
+}
+
+/* 4) Kill any stray markers/hyphens that some resets add to buttons */
+:where(.bhq-section-card) button[aria-label="Open date picker"]::marker,
+:where(.bhq-section-card) button[aria-label="Open date picker"]::before,
+:where(.bhq-section-card) button[aria-label="Open date picker"]::after {
+  content: none !important;
+}
+
+/* 5) --- FIX: focus ring looked chopped on the left --------------------------
+      We suppress the input’s own glow and re-draw it on the *shell* (the div
+      that contains the input + the calendar button). No class needed; we
+      target the shell via :has() and :focus-within so this works with your
+      current markup.
+   ------------------------------------------------------------------------- */
+
+/* hide the input's native shadow so it doesn't fight our shell ring */
+:where(.bhq-section-card) div:has(> button[aria-label="Open date picker"]) > input[type="text"]:focus {
+  outline: 0 !important;
+  box-shadow: none !important;
+}
+
+/* draw the orange ring on the shell so it wraps the whole control cleanly */
+:where(.bhq-section-card)
+  div:has(> button[aria-label="Open date picker"]):focus-within {
+  border-color: hsl(var(--brand-orange, 29 100% 50%)) !important;
+  box-shadow: 0 0 0 2px hsl(var(--brand-orange, 29 100% 50%)) !important;
+  border-radius: .375rem; /* match your Input radius */
+}
+
+/* ensure the shell is a positioning context and doesn't clip the ring or icon */
+:where(.bhq-section-card)
+  div:has(> button[aria-label="Open date picker"]) {
+  position: relative;
+  overflow: visible !important;
+}

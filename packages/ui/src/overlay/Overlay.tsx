@@ -31,7 +31,7 @@ function findCanonicalHost(): HTMLElement | null {
 
   const nodes = Array.from(document.querySelectorAll<HTMLElement>(`#${HOST_ID}`));
   if (nodes.length > 1) {
-    nodes.slice(1).forEach(n => n.parentElement?.removeChild(n));
+    nodes.slice(1).forEach((n) => n.parentElement?.removeChild(n));
   }
   const el = nodes[0] ?? null;
   return el;
@@ -93,7 +93,9 @@ export const Overlay: React.FC<OverlayProps> = ({
     if (!open || typeof document === "undefined") return;
     const prev = document.documentElement.style.overflow;
     document.documentElement.style.overflow = "hidden";
-    return () => { document.documentElement.style.overflow = prev; };
+    return () => {
+      document.documentElement.style.overflow = prev;
+    };
   }, [open]);
 
   // Close on Escape
@@ -132,7 +134,8 @@ export const Overlay: React.FC<OverlayProps> = ({
       role="dialog"
       aria-label={ariaLabel}
       aria-modal="true"
-      className="bhq-overlay fixed inset-0 z-[1000]" /* keep below higher menus if any */
+      className="bhq-overlay fixed inset-0"
+      style={{ zIndex: "var(--z-overlay, 1000)" }} // default fallback if token missing
       data-bhq-overlay
     >
       {/* Backdrop */}
@@ -146,18 +149,25 @@ export const Overlay: React.FC<OverlayProps> = ({
           mouseDownOnBackdrop.current = false;
         }}
       />
-      {/* Panel */}
+
+      {/* Panel area */}
       <div className="absolute inset-0 flex items-start justify-center">
         <div
           ref={panelRef}
-          className={[
-            "mt-10 max-w-[95vw] rounded-xl border border-hairline bg-surface shadow-xl p-4 outline-none",
-            SIZES[size],
-          ].join(" ")}
           tabIndex={-1}
           data-scale-container
+          className={[
+            // fixed-size shell: height capped by viewport; content will scroll inside
+            "mt-10 max-w-[95vw] rounded-xl border border-hairline bg-surface shadow-xl outline-none",
+            "overflow-hidden",                    // children won't resize the shell
+            "max-h-[calc(100vh-5rem)]",          // keep margin around the panel
+            SIZES[size],
+          ].join(" ")}
         >
-          {children}
+          {/* Inner scroller: content may grow; the shell stays put */}
+          <div className="h-full overflow-auto p-4" data-bhq-overlay-body>
+            {children}
+          </div>
         </div>
       </div>
     </div>,
