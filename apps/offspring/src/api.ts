@@ -1,10 +1,11 @@
-// api.ts
+// apps/offspring/src/api.ts
 import { readTenantIdFast, resolveTenantId } from "@bhq/ui/utils/tenant";
 
-/* ───────────────────────── types ───────────────────────── */
-
+/* ───────────────────────── types (unchanged + additions for Breeding) ───────────────────────── */
 export type Sex = "FEMALE" | "MALE";
 export type Species = "DOG" | "CAT" | "HORSE";
+
+/* ===== Offspring (Litters) ===== */
 
 export type OffspringPlanLite = {
   id: number;
@@ -70,40 +71,36 @@ export type TagLite = { id: number; name: string; color?: string | null };
 export type WaitlistEntry = {
   id: number;
   tenantId: number;
-
   status: string;
   priority: number | null;
 
-  // finance pointers (read only here)
   depositRequiredCents: number | null;
   depositPaidCents: number | null;
   balanceDueCents: number | null;
   depositPaidAt: string | null;
 
-  // associations
   contactId: number | null;
   organizationId: number | null;
   litterId: number | null;
   planId: number | null;
 
-  // preferences
   speciesPref: Species | null;
-  breedPrefs: any | null;                 // router returns JSON; often string[]
+  breedPrefs: any | null;
   sirePrefId: number | null;
   damPrefId: number | null;
 
-  // denormalized helpers
   contact?: { id: number; display_name: string; email?: string | null; phoneE164?: string | null } | null;
   organization?: { id: number; name: string; email?: string | null; phone?: string | null } | null;
   sirePref?: { id: number; name: string } | null;
   damPref?: { id: number; name: string } | null;
 
-  // tags
   TagAssignment?: Array<{ id: number; tagId: number; tag: TagLite }>;
 
-  // policy
   skipCount?: number | null;
   lastSkipAt?: string | null;
+
+  breedPrefText?: string | null;
+  lastActivityAt?: string | null;
 };
 
 export type OffspringDetail = {
@@ -235,36 +232,219 @@ export type CreateOffspringAttachmentBody = {
   createdByUserId?: string | null;
 };
 
-/* ───────────────────────── http helper ───────────────────────── */
+/* ===== Breeding (READ-ONLY for offspring UI) ===== */
+
+export type BreedingPlanStatus =
+  | "PLANNING"
+  | "COMMITTED"
+  | "BRED"
+  | "PREGNANT"
+  | "BIRTHED"
+  | "WEANED"
+  | "PLACEMENT"
+  | "HOMING"
+  | "HOMING_STARTED"
+  | "COMPLETE"
+  | "CANCELED";
+
+export type BreedingPlan = {
+  id: number;
+  tenantId: number;
+  organizationId: number | null;
+  code: string | null;
+  name: string;
+  nickname: string | null;
+  species: Species;
+  breedText: string | null;
+  damId: number;
+  sireId: number | null;
+
+  lockedCycleKey: string | null;
+  lockedCycleStart: string | null;
+  lockedOvulationDate: string | null;
+  lockedDueDate: string | null;
+  lockedPlacementStartDate: string | null;
+
+  expectedCycleStart: string | null;
+  expectedHormoneTestingStart: string | null;
+  expectedBreedDate: string | null;
+  expectedBirthDate: string | null;
+  expectedPlacementStart: string | null;
+  expectedWeaned: string | null;
+  expectedPlacementCompleted: string | null;
+
+  cycleStartDateActual: string | null;
+  hormoneTestingStartDateActual: string | null;
+  breedDateActual: string | null;
+  birthDateActual: string | null;
+  weanedDateActual: string | null;
+  placementStartDateActual: string | null;
+  placementCompletedDateActual: string | null;
+  completedDateActual: string | null;
+
+  status: BreedingPlanStatus;
+  notes: string | null;
+  archived?: boolean;
+
+  dam?: { id: number; name: string } | null;
+  sire?: { id: number; name: string } | null;
+  organization?: { id: number; name: string } | null;
+};
+
+export type BreedingEvent = {
+  id: number;
+  tenantId: number;
+  planId: number;
+  type: string;
+  occurredAt: string;
+  label: string | null;
+  notes: string | null;
+  data: any | null;
+};
+
+export type TestResult = {
+  id: number;
+  tenantId: number;
+  planId: number;
+  animalId: number | null;
+  kind: string;
+  method: string | null;
+  labName: string | null;
+  valueNumber: number | null;
+  valueText: string | null;
+  units: string | null;
+  referenceRange: string | null;
+  collectedAt: string;
+  resultAt: string | null;
+  notes: string | null;
+  data: any | null;
+};
+
+export type BreedingAttempt = {
+  id: number;
+  tenantId: number;
+  planId: number;
+  method: string;
+  attemptAt: string | null;
+  windowStart: string | null;
+  windowEnd: string | null;
+  studOwnerContactId: number | null;
+  semenBatchId: number | null;
+  success: boolean | null;
+  notes: string | null;
+  data: any | null;
+};
+
+export type PregnancyCheck = {
+  id: number;
+  tenantId: number;
+  planId: number;
+  method: string;
+  result: boolean;
+  checkedAt: string;
+  notes: string | null;
+  data: any | null;
+};
+
+export type BreedingPlanListResp = {
+  items: BreedingPlan[];
+  total: number;
+  page: number;
+  limit: number;
+};
+
+/* ───────────────────────── animals-style http core ───────────────────────── */
+
+const isMutating = (m?: string) => !["GET", "HEAD", "OPTIONS"].includes((m || "GET").toUpperCase());
+function readCookie(name: string) {
+  const m = document.cookie.match(new RegExp(`(?:^|; )${name.replace(/([$?*|{}.:+^\\]\\-])/g, "\\$1")}=([^;]*)`));
+  return m ? decodeURIComponent(m[1]) : null;
+}
+function readAdminToken() {
+  return (
+    (document.querySelector('meta[name="x-admin-token"]') as HTMLMetaElement | null)?.content ||
+    localStorage.getItem("bhq_admin_token") ||
+    null
+  );
+}
 
 async function withTenantHeaders(init?: RequestInit & { tenantId?: number | null }) {
   let tenantId = init?.tenantId ?? readTenantIdFast();
   if (!tenantId) tenantId = await resolveTenantId();
 
   const headers: Record<string, string> = {
-    "Content-Type": "application/json",
+    accept: "application/json",
     ...(init?.headers as Record<string, string> | undefined),
-    "x-tenant-id": String(tenantId),
   };
-  return { ...init, headers };
+  if (tenantId != null) headers["x-tenant-id"] = String(tenantId);
+
+  if (isMutating(init?.method)) {
+    headers["x-requested-with"] = "XMLHttpRequest";
+    headers["content-type"] = headers["content-type"] || "application/json";
+
+    const xsrf =
+      readCookie("XSRF-TOKEN") ||
+      (document.querySelector('meta[name="csrf-token"]') as HTMLMetaElement | null)?.content ||
+      null;
+
+    if (xsrf) {
+      headers["x-xsrf-token"] = xsrf;
+      headers["x-csrf-token"] = xsrf;
+    }
+
+    if (!headers["x-admin-token"]) {
+      const admin = readAdminToken();
+      if (admin) headers["x-admin-token"] = admin;
+    }
+  }
+
+  return { ...init, headers, credentials: "include" as const };
 }
 
 async function http<T>(base: string, path: string, init?: RequestInit & { tenantId?: number | null }) {
-  const res = await fetch(`${base}${path}`, await withTenantHeaders(init));
+  const url = `${base}${path}`;
+  const res = await fetch(url, await withTenantHeaders(init));
+  const text = await res.text();
+
   if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err?.error || `HTTP ${res.status}`);
+    let msg = `HTTP ${res.status}`;
+    try {
+      const j = text ? JSON.parse(text) : {};
+      msg = j?.error || j?.message || msg;
+    } catch {}
+    throw new Error(msg);
   }
-  return (await res.json()) as T;
+
+  if (!text.trim()) return null as unknown as T;
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    throw new Error(`Expected JSON from ${url} but got: ${text.slice(0, 200)}`);
+  }
 }
 
 /* ───────────────────────── API factory ───────────────────────── */
 
-export function makeOffspringApi(base = "/api/v1") {
+type MakeOpts = string | { baseUrl?: string };
+export function makeOffspringApi(opts: MakeOpts = "/api/v1") {
+  const base = typeof opts === "string" ? opts : opts.baseUrl || "/api/v1";
+
   return {
+    /** Low-level helpers (use sparingly) */
+    raw: {
+      get: <T>(path: string, init?: RequestInit & { tenantId?: number | null }) =>
+        http<T>(base, path, { ...init, method: "GET" }),
+      post: <T>(path: string, body?: any, init?: RequestInit & { tenantId?: number | null }) =>
+        http<T>(base, path, { ...init, method: "POST", body: body == null ? undefined : JSON.stringify(body) }),
+      patch: <T>(path: string, body?: any, init?: RequestInit & { tenantId?: number | null }) =>
+        http<T>(base, path, { ...init, method: "PATCH", body: body == null ? undefined : JSON.stringify(body) }),
+      del: <T>(path: string, init?: RequestInit & { tenantId?: number | null }) =>
+        http<T>(base, path, { ...init, method: "DELETE" }),
+    },
+
     /** Offspring Groups (Litters) */
     offspring: {
-      list(params?: {
+      list: (params?: {
         q?: string;
         tenantId?: number | null;
         limit?: number;
@@ -274,7 +454,7 @@ export function makeOffspringApi(base = "/api/v1") {
         dateField?: "birthed" | "weaned" | "placementStart" | "placementCompleted";
         dateFrom?: string;
         dateTo?: string;
-      }) {
+      }) => {
         const qs = new URLSearchParams();
         if (params?.q) qs.set("q", params.q);
         if (params?.limit) qs.set("limit", String(params.limit));
@@ -288,184 +468,267 @@ export function makeOffspringApi(base = "/api/v1") {
         return http<OffspringListResp>(base, `/offspring${query}`, { tenantId: params?.tenantId });
       },
 
-      get(id: number, opts?: { tenantId?: number | null }) {
-        return http<OffspringDetail>(base, `/offspring/${id}`, { tenantId: opts?.tenantId });
-      },
+      get: (id: number, opts?: { tenantId?: number | null }) =>
+        http<OffspringDetail>(base, `/offspring/${id}`, { tenantId: opts?.tenantId }),
 
-      create(body: CreateOffspringBody, opts?: { tenantId?: number | null; adminToken?: string }) {
-        return http<OffspringDetail>(base, `/offspring`, {
+      create: (body: CreateOffspringBody, opts?: { tenantId?: number | null; adminToken?: string }) =>
+        http<OffspringDetail>(base, `/offspring`, {
           method: "POST",
           body: JSON.stringify(body),
           tenantId: opts?.tenantId,
           headers: opts?.adminToken ? { "x-admin-token": opts.adminToken } : undefined,
-        });
-      },
+        }),
 
-      patch(id: number, body: PatchOffspringBody, opts?: { tenantId?: number | null; adminToken?: string }) {
-        return http<OffspringDetail>(base, `/offspring/${id}`, {
+      patch: (id: number, body: PatchOffspringBody, opts?: { tenantId?: number | null; adminToken?: string }) =>
+        http<OffspringDetail>(base, `/offspring/${id}`, {
           method: "PATCH",
           body: JSON.stringify(body),
           tenantId: opts?.tenantId,
           headers: opts?.adminToken ? { "x-admin-token": opts.adminToken } : undefined,
-        });
-      },
+        }),
 
-      delete(id: number, opts?: { tenantId?: number | null; adminToken?: string }) {
-        return http<{ ok: true; id: number }>(base, `/offspring/${id}`, {
+      delete: (id: number, opts?: { tenantId?: number | null; adminToken?: string }) =>
+        http<{ ok: true; id: number }>(base, `/offspring/${id}`, {
           method: "DELETE",
           tenantId: opts?.tenantId,
           headers: opts?.adminToken ? { "x-admin-token": opts.adminToken } : undefined,
-        });
-      },
+        }),
 
-      moveWaitlist(id: number, waitlistEntryIds: number[], opts?: { tenantId?: number | null; adminToken?: string }) {
-        return http<{ moved: number }>(base, `/offspring/${id}/move-waitlist`, {
+      moveWaitlist: (id: number, waitlistEntryIds: number[], opts?: { tenantId?: number | null; adminToken?: string }) =>
+        http<{ moved: number }>(base, `/offspring/${id}/move-waitlist`, {
           method: "POST",
           body: JSON.stringify({ waitlistEntryIds }),
           tenantId: opts?.tenantId,
           headers: opts?.adminToken ? { "x-admin-token": opts.adminToken } : undefined,
-        });
-      },
+        }),
 
-      /* ── nested: animals under a litter ── */
-      createAnimal(id: number, body: CreateOffspringAnimalBody, opts?: { tenantId?: number | null; adminToken?: string }) {
-        return http<AnimalLite>(base, `/offspring/${id}/animals`, {
+      /* nested: animals under a litter */
+      createAnimal: (id: number, body: CreateOffspringAnimalBody, opts?: { tenantId?: number | null; adminToken?: string }) =>
+        http<AnimalLite>(base, `/offspring/${id}/animals`, {
           method: "POST",
           body: JSON.stringify(body),
           tenantId: opts?.tenantId,
           headers: opts?.adminToken ? { "x-admin-token": opts.adminToken } : undefined,
-        });
-      },
+        }),
 
-      updateAnimal(
+      updateAnimal: (
         id: number,
         animalId: number,
         body: UpdateOffspringAnimalBody,
         opts?: { tenantId?: number | null; adminToken?: string },
-      ) {
-        return http<AnimalLite>(base, `/offspring/${id}/animals/${animalId}`, {
+      ) =>
+        http<AnimalLite>(base, `/offspring/${id}/animals/${animalId}`, {
           method: "PATCH",
           body: JSON.stringify(body),
           tenantId: opts?.tenantId,
-          headers: opts?.adminToken ? { "x-admin-token": opts.adminToken } : undefined,
-        });
-      },
+          headers: opts?.adminToken ? { "x-admin-token": opts?.adminToken } : undefined,
+        }),
 
-      removeAnimal(
+      removeAnimal: (
         id: number,
         animalId: number,
         mode: "unlink" | "delete" = "unlink",
         opts?: { tenantId?: number | null; adminToken?: string },
-      ) {
-        const qs = `?mode=${encodeURIComponent(mode)}`;
-        return http<{ ok: true; deleted?: number; unlinked?: number }>(base, `/offspring/${id}/animals/${animalId}${qs}`, {
-          method: "DELETE",
-          tenantId: opts?.tenantId,
-          headers: opts?.adminToken ? { "x-admin-token": opts.adminToken } : undefined,
-        });
-      },
+      ) =>
+        http<{ ok: true; deleted?: number; unlinked?: number }>(
+          base,
+          `/offspring/${id}/animals/${animalId}?mode=${encodeURIComponent(mode)}`,
+          {
+            method: "DELETE",
+            tenantId: opts?.tenantId,
+            headers: opts?.adminToken ? { "x-admin-token": opts?.adminToken } : undefined,
+          },
+        ),
 
-      /* ── nested: waitlist under a litter ── */
-      addWaitlist(
-        id: number,
-        body: CreateOffspringWaitlistBody,
-        opts?: { tenantId?: number | null; adminToken?: string },
-      ) {
-        return http<WaitlistEntry>(base, `/offspring/${id}/waitlist`, {
+      /* nested: waitlist under a litter */
+      addWaitlist: (id: number, body: CreateOffspringWaitlistBody, opts?: { tenantId?: number | null; adminToken?: string }) =>
+        http<WaitlistEntry>(base, `/offspring/${id}/waitlist`, {
           method: "POST",
           body: JSON.stringify(body),
           tenantId: opts?.tenantId,
           headers: opts?.adminToken ? { "x-admin-token": opts.adminToken } : undefined,
-        });
-      },
+        }),
 
-      updateWaitlist(
+      updateWaitlist: (
         id: number,
         wid: number,
         body: UpdateOffspringWaitlistBody,
         opts?: { tenantId?: number | null; adminToken?: string },
-      ) {
-        return http<WaitlistEntry>(base, `/offspring/${id}/waitlist/${wid}`, {
+      ) =>
+        http<WaitlistEntry>(base, `/offspring/${id}/waitlist/${wid}`, {
           method: "PATCH",
           body: JSON.stringify(body),
           tenantId: opts?.tenantId,
-          headers: opts?.adminToken ? { "x-admin-token": opts.adminToken } : undefined,
-        });
-      },
+          headers: opts?.adminToken ? { "x-admin-token": opts?.adminToken } : undefined,
+        }),
 
-      removeWaitlist(
+      removeWaitlist: (
         id: number,
         wid: number,
         mode: "unlink" | "delete" = "unlink",
         opts?: { tenantId?: number | null; adminToken?: string },
-      ) {
-        const qs = `?mode=${encodeURIComponent(mode)}`;
-        return http<{ ok: true; deleted?: number; unlinked?: number }>(base, `/offspring/${id}/waitlist/${wid}${qs}`, {
-          method: "DELETE",
-          tenantId: opts?.tenantId,
-          headers: opts?.adminToken ? { "x-admin-token": opts.adminToken } : undefined,
-        });
-      },
+      ) =>
+        http<{ ok: true; deleted?: number; unlinked?: number }>(
+          base,
+          `/offspring/${id}/waitlist/${wid}?mode=${encodeURIComponent(mode)}`,
+          {
+            method: "DELETE",
+            tenantId: opts?.tenantId,
+            headers: opts?.adminToken ? { "x-admin-token": opts?.adminToken } : undefined,
+          },
+        ),
 
-      /* ── nested: attachments under a litter ── */
-      addAttachment(
-        id: number,
-        body: CreateOffspringAttachmentBody,
-        opts?: { tenantId?: number | null; adminToken?: string },
-      ) {
-        return http<any>(base, `/offspring/${id}/attachments`, {
+      /* nested: attachments under a litter */
+      addAttachment: (id: number, body: CreateOffspringAttachmentBody, opts?: { tenantId?: number | null; adminToken?: string }) =>
+        http<any>(base, `/offspring/${id}/attachments`, {
           method: "POST",
           body: JSON.stringify(body),
           tenantId: opts?.tenantId,
           headers: opts?.adminToken ? { "x-admin-token": opts.adminToken } : undefined,
-        });
-      },
+        }),
 
-      deleteAttachment(id: number, attachmentId: number, opts?: { tenantId?: number | null; adminToken?: string }) {
-        return http<{ ok: true; deleted: number }>(base, `/offspring/${id}/attachments/${attachmentId}`, {
+      deleteAttachment: (id: number, attachmentId: number, opts?: { tenantId?: number | null; adminToken?: string }) =>
+        http<{ ok: true; deleted: number }>(base, `/offspring/${id}/attachments/${attachmentId}`, {
           method: "DELETE",
           tenantId: opts?.tenantId,
           headers: opts?.adminToken ? { "x-admin-token": opts.adminToken } : undefined,
-        });
-      },
+        }),
     },
 
-    /** Individuals = Animals with litterId not null (existing global Animals API still works if you need it) */
+    /** Individuals (animals with litterId not null) */
     individuals: {
-      list(params?: { q?: string; tenantId?: number | null; limit?: number; cursor?: string }) {
+      list: (params?: { q?: string; tenantId?: number | null; limit?: number; cursor?: string }) => {
         const qs = new URLSearchParams();
         qs.set("hasLitter", "1");
         if (params?.q) qs.set("q", params.q);
-        if (params?.limit) qs.set("limit", String(params.limit));
-        if (params?.cursor) qs.set("cursor", params.cursor);
-        const query = `?${qs.toString()}`;
-        return http<{ items: AnimalLite[]; total: number }>(base, `/animals${query}`, { tenantId: params?.tenantId });
+        if (params?.limit) qs.set("limit", String(params?.limit));
+        if (params?.cursor) qs.set("cursor", params?.cursor);
+        return http<{ items: AnimalLite[]; total: number }>(base, `/animals?${qs}`, { tenantId: params?.tenantId });
       },
-      get(id: number, opts?: { tenantId?: number | null }) {
-        return http<AnimalLite>(base, `/animals/${id}`, { tenantId: opts?.tenantId });
+      get: (id: number, opts?: { tenantId?: number | null }) =>
+        http<AnimalLite>(base, `/animals/${id}`, { tenantId: opts?.tenantId }),
+      patch: (id: number, body: Partial<AnimalLite>, opts?: { tenantId?: number | null }) =>
+        http<AnimalLite>(base, `/animals/${id}`, { method: "PATCH", body: JSON.stringify(body), tenantId: opts?.tenantId }),
+      delete: (id: number, opts?: { tenantId?: number | null }) =>
+        http<{ ok: true }>(base, `/animals/${id}`, { method: "DELETE", tenantId: opts?.tenantId }),
+    },
+
+    /** Global Animals (for Dam/Sire search or general directory) */
+    animals: {
+      list: (params?: {
+        q?: string;
+        species?: Species;
+        sex?: Sex;
+        status?: "ACTIVE" | "BREEDING" | "UNAVAILABLE" | "RETIRED" | "DECEASED" | "PROSPECT";
+        includeArchived?: boolean;
+        page?: number;
+        limit?: number;
+        sort?: string; // e.g. "-createdAt,name"
+        tenantId?: number | null;
+      }) => {
+        const qs = new URLSearchParams();
+        if (params?.q) qs.set("q", params.q);
+        if (params?.species) qs.set("species", params.species);
+        if (params?.sex) qs.set("sex", params.sex);
+        if (params?.status) qs.set("status", params.status);
+        if (params?.includeArchived) qs.set("includeArchived", "true");
+        if (params?.page != null) qs.set("page", String(params.page));
+        if (params?.limit != null) qs.set("limit", String(params.limit));
+        if (params?.sort) qs.set("sort", params.sort);
+        const query = qs.toString() ? `?${qs.toString()}` : "";
+        return http<{ items: AnimalLite[]; total: number; page: number; limit: number }>(
+          base,
+          `/animals${query}`,
+          { tenantId: params?.tenantId },
+        );
       },
-      patch(id: number, body: Partial<AnimalLite>, opts?: { tenantId?: number | null }) {
-        return http<AnimalLite>(base, `/animals/${id}`, {
-          method: "PATCH",
-          body: JSON.stringify(body),
-          tenantId: opts?.tenantId,
-        });
+      get: (id: number, opts?: { tenantId?: number | null }) =>
+        http<AnimalLite>(base, `/animals/${id}`, { tenantId: opts?.tenantId }),
+      patch: (id: number, body: Partial<AnimalLite>, opts?: { tenantId?: number | null }) =>
+        http<AnimalLite>(base, `/animals/${id}`, { method: "PATCH", body: JSON.stringify(body), tenantId: opts?.tenantId }),
+      delete: (id: number, opts?: { tenantId?: number | null }) =>
+        http<{ ok: true }>(base, `/animals/${id}`, { method: "DELETE", tenantId: opts?.tenantId }),
+    },
+
+    /** Breeding (READ endpoints from apps/api/src/routes/breeding.ts) */
+    breeding: {
+      plans: {
+        list: (params?: {
+          q?: string;
+          status?: BreedingPlanStatus | string;
+          damId?: number;
+          sireId?: number;
+          include?: string; // e.g. "parents,events,tests,attempts,waitlist,attachments,litter,org,parties"
+          page?: number;
+          limit?: number;
+          archived?: "include" | "exclude" | "only";
+          tenantId?: number | null;
+        }) => {
+          const qs = new URLSearchParams();
+          if (params?.q) qs.set("q", params.q);
+          if (params?.status) qs.set("status", params.status);
+          if (params?.damId) qs.set("damId", String(params.damId));
+          if (params?.sireId) qs.set("sireId", String(params.sireId));
+          if (params?.include) qs.set("include", params.include);
+          if (params?.page != null) qs.set("page", String(params.page));
+          if (params?.limit != null) qs.set("limit", String(params.limit));
+          if (params?.archived) qs.set("archived", params.archived);
+          const query = qs.toString() ? `?${qs.toString()}` : "";
+          return http<BreedingPlanListResp>(base, `/breeding/plans${query}`, { tenantId: params?.tenantId });
+        },
+        get: (id: number, opts?: { include?: string; tenantId?: number | null }) => {
+          const qs = new URLSearchParams();
+          if (opts?.include) qs.set("include", opts.include);
+          const query = qs.toString() ? `?${qs.toString()}` : "";
+          return http<BreedingPlan>(base, `/breeding/plans/${id}${query}`, { tenantId: opts?.tenantId });
+        },
+        /* events / tests / attempts / preg-checks are created via backend;
+           Offspring UI reads them. We expose list endpoints aligned to routes. */
+        listEvents: (planId: number, opts?: { tenantId?: number | null }) =>
+          http<BreedingEvent[]>(base, `/breeding/plans/${planId}/events`, { tenantId: opts?.tenantId }),
+        listTests: (planId: number, opts?: { tenantId?: number | null }) =>
+          http<TestResult[]>(base, `/breeding/plans/${planId}/tests`, { tenantId: opts?.tenantId }),
+        listAttempts: (planId: number, opts?: { tenantId?: number | null }) =>
+          http<BreedingAttempt[]>(base, `/breeding/plans/${planId}/attempts`, { tenantId: opts?.tenantId }),
+        listPregnancyChecks: (planId: number, opts?: { tenantId?: number | null }) =>
+          http<PregnancyCheck[]>(base, `/breeding/plans/${planId}/pregnancy-checks`, { tenantId: opts?.tenantId }),
       },
-      delete(id: number, opts?: { tenantId?: number | null }) {
-        return http<{ ok: true }>(base, `/animals/${id}`, { method: "DELETE", tenantId: opts?.tenantId });
+      /* cycles read for timeline views */
+      cycles: {
+        list: (params?: {
+          femaleId?: number;
+          from?: string;
+          to?: string;
+          page?: number;
+          limit?: number;
+          tenantId?: number | null;
+        }) => {
+          const qs = new URLSearchParams();
+          if (params?.femaleId) qs.set("femaleId", String(params.femaleId));
+          if (params?.from) qs.set("from", params.from);
+          if (params?.to) qs.set("to", params.to);
+          if (params?.page != null) qs.set("page", String(params.page));
+          if (params?.limit != null) qs.set("limit", String(params.limit));
+          const query = qs.toString() ? `?${qs.toString()}` : "";
+          return http<{ items: any[]; total: number; page: number; limit: number }>(
+            base,
+            `/breeding/cycles${query}`,
+            { tenantId: params?.tenantId },
+          );
+        },
       },
     },
 
-    /** Global Waitlist (parking lot) — unchanged if your global endpoints already exist */
+    /** Global Waitlist (parking lot) */
     waitlist: {
-      list(params?: {
+      list: (params?: {
         q?: string;
         status?: string;
         species?: Species;
         tenantId?: number | null;
         limit?: number;
         cursor?: string;
-      }) {
+      }) => {
         const qs = new URLSearchParams();
         if (params?.q) qs.set("q", params.q);
         if (params?.status) qs.set("status", params.status);
@@ -477,31 +740,111 @@ export function makeOffspringApi(base = "/api/v1") {
           tenantId: params?.tenantId,
         });
       },
-      get(id: number, opts?: { tenantId?: number | null }) {
-        return http<WaitlistEntry>(base, `/waitlist/${id}`, { tenantId: opts?.tenantId });
-      },
-      create(body: Partial<WaitlistEntry>, opts?: { tenantId?: number | null }) {
-        return http<WaitlistEntry>(base, `/waitlist`, {
+      get: (id: number, opts?: { tenantId?: number | null }) =>
+        http<WaitlistEntry>(base, `/waitlist/${id}`, { tenantId: opts?.tenantId }),
+      create: (body: CreateOffspringWaitlistBody, opts?: { tenantId?: number | null; adminToken?: string }) =>
+        http<WaitlistEntry>(base, `/waitlist`, {
           method: "POST",
           body: JSON.stringify(body),
           tenantId: opts?.tenantId,
-        });
-      },
-      patch(id: number, body: Partial<WaitlistEntry>, opts?: { tenantId?: number | null }) {
-        return http<WaitlistEntry>(base, `/waitlist/${id}`, {
+          headers: opts?.adminToken ? { "x-admin-token": opts.adminToken } : undefined,
+        }),
+      patch: (id: number, body: Partial<WaitlistEntry>, opts?: { tenantId?: number | null }) =>
+        http<WaitlistEntry>(base, `/waitlist/${id}`, {
           method: "PATCH",
           body: JSON.stringify(body),
           tenantId: opts?.tenantId,
+        }),
+      delete: (id: number, opts?: { tenantId?: number | null }) =>
+        http<{ ok: true }>(base, `/waitlist/${id}`, { method: "DELETE", tenantId: opts?.tenantId }),
+      skip: (id: number, opts?: { tenantId?: number | null }) =>
+        http<{ skipCount: number }>(base, `/waitlist/${id}/skip`, { method: "POST", tenantId: opts?.tenantId }),
+    },
+
+    /** Directory search (Contacts / Organizations) — create/read for Offspring UI */
+    contacts: {
+      list: (params?: {
+        q?: string;
+        includeArchived?: boolean;
+        page?: number;
+        limit?: number;
+        sort?: string;
+        tenantId?: number | null;
+      }) => {
+        const qs = new URLSearchParams();
+        if (params?.q) qs.set("q", params.q);
+        if (params?.includeArchived) qs.set("includeArchived", "true");
+        if (params?.page != null) qs.set("page", String(params.page));
+        if (params?.limit != null) qs.set("limit", String(params.limit));
+        if (params?.sort) qs.set("sort", params.sort);
+        const query = qs.toString() ? `?${qs.toString()}` : "";
+        return http<{ items: any[]; total: number; page: number; limit: number }>(base, `/contacts${query}`, {
+          tenantId: params?.tenantId,
         });
       },
-      delete(id: number, opts?: { tenantId?: number | null }) {
-        return http<{ ok: true }>(base, `/waitlist/${id}`, { method: "DELETE", tenantId: opts?.tenantId });
-      },
-      skip(id: number, opts?: { tenantId?: number | null }) {
-        return http<{ skipCount: number }>(base, `/waitlist/${id}/skip`, {
+      get: (id: number, opts?: { tenantId?: number | null }) =>
+        http<any>(base, `/contacts/${id}`, { tenantId: opts?.tenantId }),
+      create: (body: any, opts?: { tenantId?: number | null; adminToken?: string }) =>
+        http<any>(base, `/contacts`, {
           method: "POST",
+          body: JSON.stringify(body),
           tenantId: opts?.tenantId,
+          headers: opts?.adminToken ? { "x-admin-token": opts.adminToken } : undefined,
+        }),
+      patch: (id: number, body: any, opts?: { tenantId?: number | null; adminToken?: string }) =>
+        http<any>(base, `/contacts/${id}`, {
+          method: "PATCH",
+          body: JSON.stringify(body),
+          tenantId: opts?.tenantId,
+          headers: opts?.adminToken ? { "x-admin-token": opts.adminToken } : undefined,
+        }),
+    },
+
+    organizations: {
+      list: (params?: {
+        q?: string;
+        includeArchived?: boolean;
+        page?: number;
+        limit?: number;
+        sort?: string;
+        tenantId?: number | null;
+      }) => {
+        const qs = new URLSearchParams();
+        if (params?.q) qs.set("q", params.q);
+        if (params?.includeArchived) qs.set("includeArchived", "true");
+        if (params?.page != null) qs.set("page", String(params.page));
+        if (params?.limit != null) qs.set("limit", String(params.limit));
+        if (params?.sort) qs.set("sort", params.sort);
+        const query = qs.toString() ? `?${qs.toString()}` : "";
+        return http<{ items: any[]; total: number; page: number; limit: number }>(base, `/organizations${query}`, {
+          tenantId: params?.tenantId,
         });
+      },
+      get: (id: number, opts?: { tenantId?: number | null }) =>
+        http<any>(base, `/organizations/${id}`, { tenantId: opts?.tenantId }),
+      create: (body: any, opts?: { tenantId?: number | null; adminToken?: string }) =>
+        http<any>(base, `/organizations`, {
+          method: "POST",
+          body: JSON.stringify(body),
+          tenantId: opts?.tenantId,
+          headers: opts?.adminToken ? { "x-admin-token": opts.adminToken } : undefined,
+        }),
+      patch: (id: number, body: any, opts?: { tenantId?: number | null; adminToken?: string }) =>
+        http<any>(base, `/organizations/${id}`, {
+          method: "PATCH",
+          body: JSON.stringify(body),
+          tenantId: opts?.tenantId,
+          headers: opts?.adminToken ? { "x-admin-token": opts.adminToken } : undefined,
+        }),
+    },
+
+    breeds: {
+      listCanonical: (opts: { species: string; orgId?: number; limit?: number }) => {
+        const qs = new URLSearchParams();
+        qs.set("species", opts.species);
+        if (opts.orgId != null) qs.set("orgId", String(opts.orgId));
+        if (opts.limit != null) qs.set("limit", String(opts.limit));
+        return http<any[]>(base, `/breeds/canonical?${qs.toString()}`);
       },
     },
   };

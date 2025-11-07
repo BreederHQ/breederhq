@@ -146,10 +146,19 @@ export type AvailabilityBand = {
  */
 export const AvailabilityPrefsSchema = z.object({
   // Phase span wraps
+  // Old testing→breeding keys kept for back compat. New cycle→breeding keys replace them.
   testing_risky_from_full_start: z.number().int().min(-365).max(365),
   testing_risky_to_full_end: z.number().int().min(-365).max(365),
   testing_unlikely_from_likely_start: z.number().int().min(-365).max(365),
   testing_unlikely_to_likely_end: z.number().int().min(-365).max(365),
+
+  // New preferred band: Cycle Start → Breeding
+  cycle_breeding_risky_from_full_start: z.number().int().min(-365).max(365),
+  cycle_breeding_risky_to_full_end: z.number().int().min(-365).max(365),
+  cycle_breeding_unlikely_from_likely_start: z.number().int().min(-365).max(365),
+  cycle_breeding_unlikely_to_likely_end: z.number().int().min(-365).max(365),
+
+  // Post birth → placement
   post_risky_from_full_start: z.number().int().min(-365).max(365),
   post_risky_to_full_end: z.number().int().min(-365).max(365),
   post_unlikely_from_likely_start: z.number().int().min(-365).max(365),
@@ -210,6 +219,12 @@ export const DEFAULT_AVAILABILITY_PREFS: Readonly<AvailabilityPrefs> = Object.fr
     testing_risky_to_full_end: 0,
     testing_unlikely_from_likely_start: 0,
     testing_unlikely_to_likely_end: 0,
+
+    cycle_breeding_risky_from_full_start: 0,
+    cycle_breeding_risky_to_full_end: 0,
+    cycle_breeding_unlikely_from_likely_start: 0,
+    cycle_breeding_unlikely_to_likely_end: 0,
+
     post_risky_from_full_start: 0,
     post_risky_to_full_end: 0,
     post_unlikely_from_likely_start: 0,
@@ -294,9 +309,10 @@ const PER_DATE_ANCHOR_LABELS = Object.freeze({
 } as const);
 export type PerDateAnchorKey = keyof typeof PER_DATE_ANCHOR_LABELS;
 
-/* ───────────────── Stage span based availability (existing) ─────────────────
-   If you pass the optional `dates` extracted via `extractBreedingDates`,
-   it will prefer those anchors over stage windows.
+/* ───────────────── Stage span based availability (updated) ─────────────────
+   Replaced Testing→Breeding with Cycle Start→Breeding.
+   Back compat shim maps testing_* offsets into cycle_breeding_* when unset.
+   If you pass the optional `dates`, anchors are preferred over stage windows.
 */
 export function computeAvailabilityBands(
   stages: ReadonlyArray<StageWindows>,
@@ -304,8 +320,28 @@ export function computeAvailabilityBands(
   dates?: BreedingDateSnapshot | null
 ): AvailabilityBand[] {
   const P = { ...DEFAULT_AVAILABILITY_PREFS, ...AvailabilityPrefsSchema.partial().parse(prefs) };
+  // Back compat shim
+  if (
+    P.cycle_breeding_risky_from_full_start === 0 &&
+    P.cycle_breeding_risky_to_full_end === 0 &&
+    P.cycle_breeding_unlikely_from_likely_start === 0 &&
+    P.cycle_breeding_unlikely_to_likely_end === 0 &&
+    (
+      P.testing_risky_from_full_start !== 0 ||
+      P.testing_risky_to_full_end !== 0 ||
+      P.testing_unlikely_from_likely_start !== 0 ||
+      P.testing_unlikely_to_likely_end !== 0
+    )
+  ) {
+    (P as any).cycle_breeding_risky_from_full_start = P.testing_risky_from_full_start;
+    (P as any).cycle_breeding_risky_to_full_end = P.testing_risky_to_full_end;
+    (P as any).cycle_breeding_unlikely_from_likely_start = P.testing_unlikely_from_likely_start;
+    (P as any).cycle_breeding_unlikely_to_likely_end = P.testing_unlikely_to_likely_end;
+  }
+
   const D = dates ?? {};
 
+  const PRE = byKey(stages, "preBreeding");
   const HT = byKey(stages, "hormoneTesting");
   const BR = byKey(stages, "breeding");
   const WH = byKey(stages, "birth");
@@ -324,33 +360,43 @@ export function computeAvailabilityBands(
 
   const out: AvailabilityBand[] = [];
 
-  // Testing to Breeding (risky)
-  const testingFullStart = prefer(D._anchors?.testingStart, D.hormoneTestingStartDateActual, D.expectedHormoneTestingStart, HT?.full.start);
-  const breedingFullEnd = prefer(D._anchors?.breedingDate, D.breedDateActual, D.expectedBreedDate, BR?.full.end);
-  if (testingFullStart && breedingFullEnd) {
-    const a = addDays(testingFullStart, P.testing_risky_from_full_start);
-    const b = addDays(breedingFullEnd, P.testing_risky_to_full_end);
+  // Cycle Start to Breeding (risky)
+  const cycleFullStart = prefer(
+    D._anchors?.cycleStart,
+    (D as any).cycleStartDateActual,
+    (D as any).expectedCycleStart,
+    PRE?.full?.start
+  );
+  const breedingFullEnd = prefer(
+    D._anchors?.breedingDate,
+    D.breedDateActual,
+    D.expectedBreedDate,
+    BR?.full?.end
+  );
+  if (cycleFullStart && breedingFullEnd) {
+    const a = addDays(cycleFullStart, P.cycle_breeding_risky_from_full_start);
+    const b = addDays(breedingFullEnd, P.cycle_breeding_risky_to_full_end);
     if (a <= b) out.push({ kind: "risky", label: LABELS.risky, range: mkRange(a, b) });
   }
 
-  // Testing to Breeding (unlikely)
-  const testingLikelyStart = prefer(
-    D._anchors?.testingStart,
-    D.hormoneTestingStartDateActual,
-    D.expectedHormoneTestingStart,
-    HT?.likely?.start,
-    HT?.full.start
+  // Cycle Start to Breeding (unlikely)
+  const cycleLikelyStart = prefer(
+    D._anchors?.cycleStart,
+    (D as any).cycleStartDateActual,
+    (D as any).expectedCycleStart,
+    PRE?.likely?.start,
+    PRE?.full?.start
   );
   const breedingLikelyEnd = prefer(
     D._anchors?.breedingDate,
     D.breedDateActual,
     D.expectedBreedDate,
     BR?.likely?.end,
-    BR?.full.end
+    BR?.full?.end
   );
-  if (testingLikelyStart && breedingLikelyEnd) {
-    const a = addDays(testingLikelyStart, P.testing_unlikely_from_likely_start);
-    const b = addDays(breedingLikelyEnd, P.testing_unlikely_to_likely_end);
+  if (cycleLikelyStart && breedingLikelyEnd) {
+    const a = addDays(cycleLikelyStart, P.cycle_breeding_unlikely_from_likely_start);
+    const b = addDays(breedingLikelyEnd, P.cycle_breeding_unlikely_to_likely_end);
     if (a <= b) out.push({ kind: "unlikely", label: LABELS.unlikely, range: mkRange(a, b) });
   }
 
@@ -387,7 +433,7 @@ export function computeAvailabilityBands(
   return out.sort((x, y) => x.range.start.getTime() - y.range.start.getTime());
 }
 
-/* ───────────────── Per date availability bands (new) ───────────────── */
+/* ───────────────── Per date availability bands (existing) ───────────────── */
 
 export function computePerDateAvailabilityBands(
   stages: ReadonlyArray<StageWindows>,
@@ -464,7 +510,7 @@ type Dateish = Date | null | undefined;
 const iso = (d: Dateish) => (d ? d.toISOString().slice(0, 10) : "—");
 
 export type AvailabilityWrapSummary = {
-  band: "testing:risky" | "testing:unlikely" | "post:risky" | "post:unlikely";
+  band: "cycle:risky" | "cycle:unlikely" | "post:risky" | "post:unlikely";
   label: string;
   fromLabel: string;
   fromBase: string;
@@ -482,9 +528,28 @@ export function summarizeAvailabilityWraps(
   dates?: BreedingDateSnapshot | null
 ): AvailabilityWrapSummary[] {
   const P = { ...DEFAULT_AVAILABILITY_PREFS, ...AvailabilityPrefsSchema.partial().parse(prefs) };
+  // Back compat shim
+  if (
+    P.cycle_breeding_risky_from_full_start === 0 &&
+    P.cycle_breeding_risky_to_full_end === 0 &&
+    P.cycle_breeding_unlikely_from_likely_start === 0 &&
+    P.cycle_breeding_unlikely_to_likely_end === 0 &&
+    (
+      P.testing_risky_from_full_start !== 0 ||
+      P.testing_risky_to_full_end !== 0 ||
+      P.testing_unlikely_from_likely_start !== 0 ||
+      P.testing_unlikely_to_likely_end !== 0
+    )
+  ) {
+    (P as any).cycle_breeding_risky_from_full_start = P.testing_risky_from_full_start;
+    (P as any).cycle_breeding_risky_to_full_end = P.testing_risky_to_full_end;
+    (P as any).cycle_breeding_unlikely_from_likely_start = P.testing_unlikely_from_likely_start;
+    (P as any).cycle_breeding_unlikely_to_likely_end = P.testing_unlikely_to_likely_end;
+  }
+
   const D = dates ?? {};
 
-  const HT = byKey(stages, "hormoneTesting");
+  const PRE = byKey(stages, "preBreeding");
   const BR = byKey(stages, "breeding");
   const WH = byKey(stages, "birth");
   const PC = byKey(stages, "puppyCare");
@@ -499,19 +564,19 @@ export function summarizeAvailabilityWraps(
     return null;
   };
 
-  const testingFullStart = prefer(
-    D._anchors?.testingStart,
-    D.hormoneTestingStartDateActual,
-    D.expectedHormoneTestingStart,
-    HT?.full.start
+  const cycleFullStart = prefer(
+    D._anchors?.cycleStart,
+    (D as any).cycleStartDateActual,
+    (D as any).expectedCycleStart,
+    PRE?.full.start
   );
   const breedingFullEnd = prefer(D._anchors?.breedingDate, D.breedDateActual, D.expectedBreedDate, BR?.full.end);
-  const testingLikelyStart = prefer(
-    D._anchors?.testingStart,
-    D.hormoneTestingStartDateActual,
-    D.expectedHormoneTestingStart,
-    HT?.likely?.start,
-    HT?.full.start
+  const cycleLikelyStart = prefer(
+    D._anchors?.cycleStart,
+    (D as any).cycleStartDateActual,
+    (D as any).expectedCycleStart,
+    PRE?.likely?.start,
+    PRE?.full.start
   );
   const breedingLikelyEnd = prefer(
     D._anchors?.breedingDate,
@@ -538,34 +603,34 @@ export function summarizeAvailabilityWraps(
   );
 
   const out: AvailabilityWrapSummary[] = [];
-  if (testingFullStart && breedingFullEnd) {
-    const a = addDays(testingFullStart, P.testing_risky_from_full_start);
-    const b = addDays(breedingFullEnd, P.testing_risky_to_full_end);
+  if (cycleFullStart && breedingFullEnd) {
+    const a = addDays(cycleFullStart, P.cycle_breeding_risky_from_full_start);
+    const b = addDays(breedingFullEnd, P.cycle_breeding_risky_to_full_end);
     out.push({
-      band: "testing:risky",
+      band: "cycle:risky",
       label: LABELS.risky,
-      fromLabel: "Testing full start",
-      fromBase: iso(testingFullStart),
-      fromOffset: P.testing_risky_from_full_start,
+      fromLabel: "Cycle full start",
+      fromBase: iso(cycleFullStart),
+      fromOffset: P.cycle_breeding_risky_from_full_start,
       toLabel: "Breeding full end",
       toBase: iso(breedingFullEnd),
-      toOffset: P.testing_risky_to_full_end,
+      toOffset: P.cycle_breeding_risky_to_full_end,
       resultStart: iso(a),
       resultEnd: iso(b),
     });
   }
-  if (testingLikelyStart && breedingLikelyEnd) {
-    const a = addDays(testingLikelyStart, P.testing_unlikely_from_likely_start);
-    const b = addDays(breedingLikelyEnd, P.testing_unlikely_to_likely_end);
+  if (cycleLikelyStart && breedingLikelyEnd) {
+    const a = addDays(cycleLikelyStart, P.cycle_breeding_unlikely_from_likely_start);
+    const b = addDays(breedingLikelyEnd, P.cycle_breeding_unlikely_to_likely_end);
     out.push({
-      band: "testing:unlikely",
+      band: "cycle:unlikely",
       label: LABELS.unlikely,
-      fromLabel: "Testing likely start",
-      fromBase: iso(testingLikelyStart),
-      fromOffset: P.testing_unlikely_from_likely_start,
+      fromLabel: "Cycle likely start",
+      fromBase: iso(cycleLikelyStart),
+      fromOffset: P.cycle_breeding_unlikely_from_likely_start,
       toLabel: "Breeding likely end",
       toBase: iso(breedingLikelyEnd),
-      toOffset: P.testing_unlikely_to_likely_end,
+      toOffset: P.cycle_breeding_unlikely_to_likely_end,
       resultStart: iso(a),
       resultEnd: iso(b),
     });

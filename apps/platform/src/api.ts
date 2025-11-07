@@ -289,7 +289,26 @@ export function makeApi(base?: string) {
             `${root}/tenants/${enc(tenantId ?? resolveScope().tenantId ?? 0)}/breeding-program`,
             { method: "GET" }
           ),
+        updateForTenant: (body: Json, tenantId?: number) =>
+          request(
+            `${root}/tenants/${enc(tenantId ?? resolveScope().tenantId ?? 0)}/breeding-program`,
+            { method: "PUT", body: JSON.stringify(body), headers: { "content-type": "application/json" } }
+          ),
       },
+    },
+
+    /* Generic tenant settings for future modules */
+    settings: {
+      get: (namespace: string, tenantId?: number) =>
+        request(
+          `${root}/tenants/${enc(tenantId ?? resolveScope().tenantId ?? 0)}/settings/${encodeURIComponent(namespace)}`,
+          { method: "GET" }
+        ),
+      put: (namespace: string, body: Json, tenantId?: number) =>
+        request(
+          `${root}/tenants/${enc(tenantId ?? resolveScope().tenantId ?? 0)}/settings/${encodeURIComponent(namespace)}`,
+          { method: "PUT", body: JSON.stringify(body), headers: { "content-type": "application/json" } }
+        ),
     },
 
     /* Dashboard read models with remote gate and 404 fallbacks */
@@ -335,7 +354,6 @@ export function makeApi(base?: string) {
 
       // tolerant read for planner data used by the dashboard
       plans: async (p: { status?: string } = { status: "Active,Planned" }) => {
-        // stop all network calls for dashboard in local dev
         if (!dashboardRemoteEnabled()) return [];
         try {
           const r = await request(`${root}/breeding/plans` + qs(p), { method: "GET" });

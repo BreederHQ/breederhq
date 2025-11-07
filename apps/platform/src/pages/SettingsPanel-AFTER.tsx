@@ -9,155 +9,39 @@ import type { AvailabilityPrefs } from "@bhq/ui/utils/availability";
 import { DEFAULT_AVAILABILITY_PREFS } from "@bhq/ui/utils/availability";
 import { resolveTenantId } from "@bhq/ui/utils/tenant";
 import type { BreedingProgramProfile } from "@bhq/ui/utils/breedingProgram";
-import ProgramProfileSnapshot from "../components/ProgramProfileSnapshot";
 import { api } from "../api";
 
 /** ───────── Tenant helpers ───────── */
 let TENANT_ID_CACHE: string | null = null;
-function cleanTenantId(raw: string | null | undefined): string | null {
-  if (!raw) return null;
-  // take the first entry, trim spaces, keep only [A-Za-z0-9-_] to be safe
-  const first = String(raw).split(",")[0].trim();
-  const safe = first.replace(/[^A-Za-z0-9_-]/g, "");
-  return safe || null;
-}
 function readCookie(name: string): string | null {
-  if (typeof document === "undefined") return null;
-  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const m = document.cookie.match(new RegExp(`(?:^|; )${escaped}=([^;]*)`));
+  const m = document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]*)`));
   return m ? decodeURIComponent(m[1]) : null;
 }
 function readMeta(name: string): string | null {
-  if (typeof document === "undefined") return null;
   const el = document.querySelector(`meta[name="${name}"]`) as HTMLMetaElement | null;
   return el?.content?.trim() || null;
 }
-
-// --- Exact date rows meta (ids + keys) used for locks, resets, shifts/scales, and preview
-const EXACT_ROWS = [
-  { id: "cycle", title: "Cycle Start", keys: { rf: "date_cycle_risky_from", rt: "date_cycle_risky_to", uf: "date_cycle_unlikely_from", ut: "date_cycle_unlikely_to" } },
-  { id: "testing", title: "Testing Start", keys: { rf: "date_testing_risky_from", rt: "date_testing_risky_to", uf: "date_testing_unlikely_from", ut: "date_testing_unlikely_to" } },
-  { id: "breed", title: "Breeding Date", keys: { rf: "date_breeding_risky_from", rt: "date_breeding_risky_to", uf: "date_breeding_unlikely_from", ut: "date_breeding_unlikely_to" } },
-  { id: "birth", title: "Birth Date", keys: { rf: "date_birth_risky_from", rt: "date_birth_risky_to", uf: "date_birth_unlikely_from", ut: "date_birth_unlikely_to" } },
-  { id: "weaned", title: "Weaned Date", keys: { rf: "date_weaned_risky_from", rt: "date_weaned_risky_to", uf: "date_weaned_unlikely_from", ut: "date_weaned_unlikely_to" } },
-  { id: "placed", title: "Placement Completed", keys: { rf: "date_placement_completed_risky_from", rt: "date_placement_completed_risky_to", uf: "date_placement_completed_unlikely_from", ut: "date_placement_completed_unlikely_to" } },
-] as const;
-
-/** ENSURE: Unlikely is visibly wider than Risky when Risky ≠ 0; Placement has no BEFORE band */
-function normalizeExactBands(draft: AvailabilityPrefs, enforcePlusOne: boolean = true) {
-  EXACT_ROWS.forEach((row) => {
-    const k = row.keys as any;
-
-    // BEFORE (negative): Placement has no "before" bands at all
-    if (row.id === "placed") {
-      draft[k.rf] = 0;
-      draft[k.uf] = 0;
-    } else if (enforcePlusOne) {
-      const rf = Number(draft[k.rf] ?? 0); // risky before (days)
-      const uf = Number(draft[k.uf] ?? 0); // unlikely before (days)
-      // Only enforce widening when Risky is present; otherwise preserve Unlikely
-      if (rf > 0 && uf <= rf) draft[k.uf] = rf + 1;
-    }
-
-    // AFTER (positive): only widen if Risky side is non-zero
-    if (enforcePlusOne) {
-      const rt = Number(draft[k.rt] ?? 0); // risky after
-      const ut = Number(draft[k.ut] ?? 0); // unlikely after
-      if (rt > 0 && ut <= rt) draft[k.ut] = rt + 1;
-    }
-  });
-  return draft;
-}
-
-/** ENSURE (Phases): Unlikely is strictly wider than Risky when Risky ≠ 0 */
-function normalizePhaseBands(draft: AvailabilityPrefs, enforcePlusOne: boolean = true) {
-  if (!enforcePlusOne) return draft;
-
-  const QUADS = [
-    {
-      ub: "cycle_breeding_unlikely_from_likely_start",
-      ua: "cycle_breeding_unlikely_to_likely_end",
-      rb: "cycle_breeding_risky_from_full_start",
-      ra: "cycle_breeding_risky_to_full_end",
-    },
-    {
-      ub: "post_unlikely_from_likely_start",
-      ua: "post_unlikely_to_likely_end",
-      rb: "post_risky_from_full_start",
-      ra: "post_risky_to_full_end",
-    },
-  ] as const;
-
-  QUADS.forEach((q) => {
-    const rb = Number((draft as any)[q.rb] ?? 0);
-    const ub = Number((draft as any)[q.ub] ?? 0);
-    if (rb === 0) (draft as any)[q.ub] = 0;
-    else if (ub <= rb) (draft as any)[q.ub] = rb + 1;
-
-    const ra = Number((draft as any)[q.ra] ?? 0);
-    const ua = Number((draft as any)[q.ua] ?? 0);
-    if (ra === 0) (draft as any)[q.ua] = 0;
-    else if (ua <= ra) (draft as any)[q.ua] = ra + 1;
-  });
-
-  return draft;
-}
-
-function readCsrfToken(): string | null {
-  // meta tags first
-  const meta =
-    readMeta("csrf-token") ||
-    readMeta("x-csrf-token") ||
-    readMeta("csrf") ||
-    null;
-  if (meta?.trim()) return meta.trim();
-
-  // cookies (now includes your cookie name)
-  const cookie =
-    readCookie("csrfToken") ||
-    readCookie("X-CSRF-Token") ||
-    readCookie("x-csrf-token") ||
-    readCookie("XSRF-TOKEN") ||
-    readCookie("xsrf-token") ||
-    readCookie("csrftoken") ||
-    null;
-
-  return cookie?.trim() || null;
-}
-
 async function resolveTenantIdSafe(): Promise<string | null> {
   if (TENANT_ID_CACHE) return TENANT_ID_CACHE;
   try {
-    const raw = await resolveTenantId();
-    const trimmed = (raw == null ? "" : String(raw)).trim();
-    const cleaned = cleanTenantId(trimmed);
-    if (cleaned) return (TENANT_ID_CACHE = cleaned);
-  } catch { }
-
+    const t = await resolveTenantId();
+    const s = (t == null ? "" : String(t)).trim();
+    if (s) return (TENANT_ID_CACHE = s);
+  } catch {}
   const g = (globalThis as any) || {};
-  const hinted = cleanTenantId(
-    g.BHQ_TENANT_ID ??
-    g.__BHQ_TENANT_ID ??
-    g.window?.__TENANT_ID ??
-    null
-  );
-  if (hinted) return (TENANT_ID_CACHE = hinted);
-
+  const hinted = g.BHQ_TENANT_ID ?? g.__BHQ_TENANT_ID ?? (window as any).__TENANT_ID ?? null;
+  if (hinted) return (TENANT_ID_CACHE = String(hinted).trim());
   try {
     const ls =
       localStorage.getItem("BHQ_TENANT_ID") ||
       localStorage.getItem("X_TENANT_ID") ||
       localStorage.getItem("x-tenant-id") || "";
-    const s = cleanTenantId(ls);
-    if (s) return (TENANT_ID_CACHE = s);
-  } catch { }
-
-  const cookieTenant = cleanTenantId(readCookie("X-Tenant-Id") || readCookie("x-tenant-id"));
-  if (cookieTenant) return (TENANT_ID_CACHE = cookieTenant);
-
-  const metaTenant = cleanTenantId(readMeta("x-tenant-id") || readMeta("X-Tenant-Id"));
-  if (metaTenant) return (TENANT_ID_CACHE = metaTenant);
-
+    if (ls.trim()) return (TENANT_ID_CACHE = ls.trim());
+  } catch {}
+  const cookieTenant = readCookie("X-Tenant-Id") || readCookie("x-tenant-id");
+  if (cookieTenant?.trim()) return (TENANT_ID_CACHE = cookieTenant.trim());
+  const metaTenant = readMeta("x-tenant-id") || readMeta("X-Tenant-Id");
+  if (metaTenant?.trim()) return (TENANT_ID_CACHE = metaTenant.trim());
   try {
     const res = await fetch("/api/v1/session", { credentials: "include", headers: { Accept: "application/json" } });
     if (res.ok) {
@@ -165,129 +49,39 @@ async function resolveTenantIdSafe(): Promise<string | null> {
       const t =
         j?.tenant?.id ?? j?.org?.id ?? j?.organization?.id ??
         j?.user?.tenantId ?? j?.user?.orgId ?? j?.user?.organizationId ?? null;
-      const s = cleanTenantId(t);
-      if (s) return (TENANT_ID_CACHE = s);
+      if (t) return (TENANT_ID_CACHE = String(t));
     }
-  } catch { }
+  } catch {}
   return null;
 }
-
 const TENANT_HEADER = "x-tenant-id";
 const ORG_HEADER = "x-org-id";
 async function tenantHeaders(): Promise<Record<string, string>> {
   const id = await resolveTenantIdSafe();
   if (!id) return {};
-  return { [TENANT_HEADER]: id, [ORG_HEADER]: id };
+  const clean = String(id).split(",")[0].trim();
+  return { [TENANT_HEADER]: clean, [ORG_HEADER]: clean };
 }
 async function fetchJson(url: string, init: RequestInit = {}) {
   const method = (init.method || "GET").toUpperCase();
   const hasBody = init.body != null && !(method === "GET" || method === "HEAD");
-
-  let csrf = readCsrfToken();
-
   const res = await fetch(url, {
     credentials: "include",
     ...init,
     headers: {
       Accept: "application/json",
-      "X-Requested-With": "XMLHttpRequest",
       ...(hasBody ? { "Content-Type": "application/json" } : {}),
       ...(await tenantHeaders()),
-      ...(csrf ? { "x-csrf-token": csrf, "x-xsrf-token": csrf, "X-XSRF-TOKEN": csrf } : {}),
       ...(init.headers as Record<string, string> | undefined),
     },
   });
-
-  // SAFE JSON PARSE
-  const ct = res.headers.get("content-type") || "";
-  const rawText = await res.text().catch(() => "");
-  let body: any = {};
-  try { body = ct.includes("application/json") && rawText ? JSON.parse(rawText) : {}; } catch { body = {}; }
-
-  // Happy path
-  if (res.ok) return body;
-
-  // 403 → try to acquire CSRF once, then retry original call
-  if (res.status === 403) {
-    if (!csrf) {
-      const candidates = ["/csrf", "/csrf-token", "/auth/csrf"];
-      for (const path of candidates) {
-        try {
-          const probe = await fetch(path, { credentials: "include" });
-          if (probe.ok) {
-            csrf = readCsrfToken();
-            if (csrf) {
-              const retry = await fetch(url, {
-                credentials: "include",
-                ...init,
-                headers: {
-                  Accept: "application/json",
-                  "X-Requested-With": "XMLHttpRequest",
-                  ...(hasBody ? { "Content-Type": "application/json" } : {}),
-                  ...(await tenantHeaders()),
-                  "x-csrf-token": csrf,
-                  "x-xsrf-token": csrf,
-                  "X-XSRF-TOKEN": csrf,
-                  ...(init.headers as Record<string, string> | undefined),
-                },
-              });
-              const retryText = await retry.text().catch(() => "");
-              let retryBody: any = {};
-              try { retryBody = retryText ? JSON.parse(retryText) : {}; } catch { retryBody = {}; }
-              if (retry.ok) return retryBody;
-
-              const retryMsg =
-                (retryBody && (retryBody.message || retryBody.error)) ||
-                `HTTP ${retry.status}`;
-              throw new Error(retry.status === 403
-                ? (retryBody?.message || "Forbidden. You may lack permission to update Availability, or a CSRF token is missing/invalid.")
-                : retryMsg);
-            }
-          }
-        } catch { /* keep trying */ }
-      }
-    }
-
-    // Some servers echo a token back in headers (rare but harmless to support)
-    const hdrToken =
-      res.headers.get("x-csrf-token") ||
-      res.headers.get("x-xsrf-token") ||
-      res.headers.get("X-XSRF-TOKEN");
-    if (hdrToken) {
-      const retry = await fetch(url, {
-        credentials: "include",
-        ...init,
-        headers: {
-          Accept: "application/json",
-          "X-Requested-With": "XMLHttpRequest",
-          ...(hasBody ? { "Content-Type": "application/json" } : {}),
-          ...(await tenantHeaders()),
-          "x-csrf-token": hdrToken,
-          "x-xsrf-token": hdrToken,
-          "X-XSRF-TOKEN": hdrToken,
-          ...(init.headers as Record<string, string> | undefined),
-        },
-      });
-      const retryText = await retry.text().catch(() => "");
-      let retryBody: any = {};
-      try { retryBody = retryText ? JSON.parse(retryText) : {}; } catch { retryBody = {}; }
-      if (retry.ok) return retryBody;
-
-      const retryMsg =
-        (retryBody && (retryBody.message || retryBody.error)) ||
-        `HTTP ${retry.status}`;
-      throw new Error(retry.status === 403
-        ? (retryBody?.message || "Forbidden. You may lack permission to update Availability, or a CSRF token is missing/invalid.")
-        : retryMsg);
-    }
+  const text = await res.text().catch(() => "");
+  const body = text ? JSON.parse(text) : {};
+  if (!res.ok) {
+    const msg = (body && (body.message || body.error)) || `HTTP ${res.status}`;
+    throw new Error(msg);
   }
-
-  const msg =
-    (body && (body.message || body.error)) ||
-    (res.status === 403
-      ? "Forbidden. You may lack permission to update Availability, or a CSRF token is missing/invalid."
-      : `HTTP ${res.status}`);
-  throw new Error(msg);
+  return body;
 }
 
 /** ───────── Accessibility tab (unchanged) ───────── */
@@ -456,8 +250,7 @@ type Tab =
   | "payments"
   | "transactions"
   | "breeding"
-  | "programProfile"
-  | "platformSnapshot"
+  | "programProfile" // NEW top-level
   | "breeds"
   | "users"
   | "groups"
@@ -490,8 +283,7 @@ const NAV: NavSection[] = [
   {
     title: "Platform Management",
     items: [
-      { key: "platformSnapshot", label: "Platform Snapshot" },
-      { key: "programProfile", label: "Program Profile" },
+      { key: "programProfile", label: "Program Profile" }, // moved here
       { key: "breeds", label: "Breeds" },
       { key: "users", label: "Users" },
       { key: "groups", label: "Groups" },
@@ -513,7 +305,7 @@ export default function SettingsPanel({ open, dirty, onDirtyChange, onClose }: P
   const [active, setActive] = React.useState<Tab>("profile");
   const [dirtyMap, setDirtyMap] = React.useState<Record<Tab, boolean>>({
     profile: false, security: false, subscription: false, payments: false, transactions: false,
-    breeding: false, programProfile: false, platformSnapshot: false, users: false, groups: false, tags: false, breeds: false, accessibility: false,
+    breeding: false, programProfile: false, users: false, groups: false, tags: false, breeds: false, accessibility: false,
   });
   const profileRef = React.useRef<ProfileHandle>(null);
   const breedingRef = React.useRef<BreedingHandle>(null);
@@ -522,16 +314,6 @@ export default function SettingsPanel({ open, dirty, onDirtyChange, onClose }: P
 
   React.useEffect(() => { onDirtyChange(!!dirtyMap[active]); }, [active, dirtyMap, onDirtyChange]);
   if (!open) return null;
-
-  function jumpToProgramProfile() {
-    setActive("programProfile");
-  }
-
-  function jumpToBreeding(sub: BreedingSubTab) {
-    setActive("breeding");
-    // ensure the child is mounted, then switch subtab
-    requestAnimationFrame(() => breedingRef.current?.goto(sub));
-  }
 
   function markDirty(tab: Tab, isDirty: boolean) {
     setDirtyMap((m) => (m[tab] === isDirty ? m : { ...m, [tab]: isDirty }));
@@ -644,15 +426,6 @@ export default function SettingsPanel({ open, dirty, onDirtyChange, onClose }: P
                 {active === "transactions" && <TransactionsTab dirty={dirtyMap.transactions} onDirty={(v) => markDirty("transactions", v)} />}
                 {active === "breeding" && <BreedingTab ref={breedingRef} dirty={dirtyMap.breeding} onDirty={(v) => markDirty("breeding", v)} />}
                 {active === "programProfile" && <ProgramProfileTab ref={programRef} dirty={dirtyMap.programProfile} onDirty={(v) => markDirty("programProfile", v)} />}
-                {active === "platformSnapshot" && (
-                  <PlatformSnapshotTab
-                    dirty={dirtyMap.platformSnapshot}
-                    onDirty={(v) => markDirty("platformSnapshot", v)}
-                    onEditProfile={jumpToProgramProfile}
-                    onEditPhases={() => jumpToBreeding("phases")}
-                    onEditExactDates={() => jumpToBreeding("dates")}
-                  />
-                )}
                 {active === "breeds" && <BreedsTab onDirty={(v) => markDirty("breeds", v)} />}
                 {active === "users" && <UsersTab dirty={dirtyMap.users} onDirty={(v) => markDirty("users", v)} />}
                 {active === "groups" && <GroupsTab dirty={dirtyMap.groups} onDirty={(v) => markDirty("groups", v)} />}
@@ -723,7 +496,7 @@ const ProfileTab = React.forwardRef<ProfileHandle, {
         j?.tenant?.id ?? j?.org?.id ?? j?.organization?.id ??
         j?.user?.tenantId ?? j?.user?.orgId ?? j?.user?.organizationId ?? null;
       if (t) (TENANT_ID_CACHE = String(t));
-    } catch { }
+    } catch {}
     return { id, email };
   }
   async function guardEmailChange(currentEmail: string): Promise<boolean> {
@@ -787,7 +560,7 @@ const ProfileTab = React.forwardRef<ProfileHandle, {
         throw new Error(j?.message || j?.error || "User save failed");
       }
       if (changed.email) {
-        await fetch("/api/v1/auth/logout", { method: "POST", credentials: "include" }).catch(() => { });
+        await fetch("/api/v1/auth/logout", { method: "POST", credentials: "include" }).catch(() => {});
         window.location.assign("/login"); return;
       }
       const saved = await res.json().catch(() => ({}));
@@ -890,7 +663,7 @@ async function verifyViaLogin(email: string, pw: string): Promise<{ ok: boolean;
       else if (pwErr?.message) msg = pwErr.message;
       else msg = "Invalid password.";
     }
-  } catch { }
+  } catch {}
   return { ok: false, msg };
 }
 function SecurityTab({ onDirty }: { dirty: boolean; onDirty: (v: boolean) => void }) {
@@ -923,7 +696,7 @@ function SecurityTab({ onDirty }: { dirty: boolean; onDirty: (v: boolean) => voi
       });
       if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error(j?.message || "Password change failed"); }
       setNotice("Password changed. You will be logged out to reauthenticate…");
-      await fetch("/api/v1/auth/logout", { method: "POST", credentials: "include" }).catch(() => { });
+      await fetch("/api/v1/auth/logout", { method: "POST", credentials: "include" }).catch(() => {});
       window.location.assign("/login");
     } catch (e: any) { setError(e?.message || "Password change failed"); } finally { setSubmitting(false); }
   }
@@ -1069,11 +842,7 @@ function TransactionsTab({ onDirty }: { dirty: boolean; onDirty: (v: boolean) =>
 }
 
 /** ───────── Breeding (now: General=Local Display only; Phases Presets A; Dates Presets B) ───────── */
-type BreedingHandle = {
-  save: () => Promise<void>;
-  goto: (sub: BreedingSubTab) => void;
-};
-
+type BreedingHandle = { save: () => Promise<void> };
 type BreedingSubTab = "general" | "phases" | "dates" | "overrides";
 const BREEDING_SUBTABS: Array<{ key: BreedingSubTab; label: string }> = [
   { key: "general", label: "General" },
@@ -1097,13 +866,6 @@ const BreedingTab = React.forwardRef<BreedingHandle, { dirty: boolean; onDirty: 
       const raw = (localStorage.getItem("BHQ_BREEDING_HORIZON_MONTHS") || "").trim();
       const n = Number(raw); return Number.isFinite(n) && n > 0 ? n : 18;
     });
-    // Local-only: auto-widen (+1) overrides
-    const [enforcePlusOneDates, setEnforcePlusOneDates] = React.useState<boolean>(() => {
-      try { return localStorage.getItem("BHQ_ENFORCE_PLUSONE_DATES") !== "0"; } catch { return true; }
-    });
-    const [enforcePlusOnePhases, setEnforcePlusOnePhases] = React.useState<boolean>(() => {
-      try { return localStorage.getItem("BHQ_ENFORCE_PLUSONE_PHASES") !== "0"; } catch { return true; }
-    });
 
     const [activeSub, setActiveSub] = React.useState<BreedingSubTab>("general");
     const [loading, setLoading] = React.useState(true);
@@ -1112,30 +874,15 @@ const BreedingTab = React.forwardRef<BreedingHandle, { dirty: boolean; onDirty: 
     // Server-backed: availability prefs only
     const [initial, setInitial] = React.useState<AvailabilityPrefs>(DEFAULTS);
     const [form, setForm] = React.useState<AvailabilityPrefs>(DEFAULTS);
-    // Run normalization immediately when the toggle turns ON
-    React.useEffect(() => {
-      if (enforcePlusOneDates) {
-        setForm((f) => normalizeExactBands({ ...f }, true));
-      }
-    }, [enforcePlusOneDates]); // setForm is stable; no need to depend on it
-
-    React.useEffect(() => {
-      if (enforcePlusOnePhases) {
-        setForm((f) => normalizePhaseBands({ ...f }, true));
-      }
-    }, [enforcePlusOnePhases]); // same note as above
-
 
     const isDirty = React.useMemo(() => {
       const serverDirty = JSON.stringify(form) !== JSON.stringify(initial);
       const localDirty =
         showGanttBands !== (localStorage.getItem("BHQ_BREEDING_SHOW_GANTT_BANDS") !== "0") ||
         showCalendarBands !== (localStorage.getItem("BHQ_BREEDING_SHOW_CAL_BANDS") !== "0") ||
-        ganttHorizonMonths !== (Number(localStorage.getItem("BHQ_BREEDING_HORIZON_MONTHS") || "18") || 18) ||
-        enforcePlusOneDates !== (localStorage.getItem("BHQ_ENFORCE_PLUSONE_DATES") !== "0") ||
-        enforcePlusOnePhases !== (localStorage.getItem("BHQ_ENFORCE_PLUSONE_PHASES") !== "0");
+        ganttHorizonMonths !== (Number(localStorage.getItem("BHQ_BREEDING_HORIZON_MONTHS") || "18") || 18);
       return serverDirty || localDirty;
-    }, [form, initial, showGanttBands, showCalendarBands, ganttHorizonMonths, enforcePlusOneDates, enforcePlusOnePhases]);
+    }, [form, initial, showGanttBands, showCalendarBands, ganttHorizonMonths]);
     React.useEffect(() => onDirty(isDirty), [isDirty, onDirty]);
 
     React.useEffect(() => {
@@ -1143,7 +890,8 @@ const BreedingTab = React.forwardRef<BreedingHandle, { dirty: boolean; onDirty: 
       (async () => {
         try {
           setLoading(true); setError("");
-          const tenantId = await resolveTenantIdSafe();
+          const tenantRaw = await resolveTenantId();
+          const tenantId = String(tenantRaw ?? "").trim();
           if (!tenantId) throw new Error("Missing tenant id");
           const av = await fetchJson(`/api/v1/tenants/${encodeURIComponent(tenantId)}/availability`);
           const avData = (av?.data ?? av) as Partial<AvailabilityPrefs> | undefined;
@@ -1160,7 +908,8 @@ const BreedingTab = React.forwardRef<BreedingHandle, { dirty: boolean; onDirty: 
     async function saveAll() {
       setError("");
       try {
-        const tenantId = await resolveTenantIdSafe();
+        const tenantRaw = await resolveTenantId();
+        const tenantId = String(tenantRaw ?? "").trim();
         if (!tenantId) throw new Error("Missing tenant id");
 
         // Save availability if changed
@@ -1178,146 +927,59 @@ const BreedingTab = React.forwardRef<BreedingHandle, { dirty: boolean; onDirty: 
           localStorage.setItem("BHQ_BREEDING_SHOW_GANTT_BANDS", showGanttBands ? "1" : "0");
           localStorage.setItem("BHQ_BREEDING_SHOW_CAL_BANDS", showCalendarBands ? "1" : "0");
           localStorage.setItem("BHQ_BREEDING_HORIZON_MONTHS", String(Math.max(6, Math.min(36, ganttHorizonMonths || 18))));
-          localStorage.setItem("BHQ_ENFORCE_PLUSONE_DATES", enforcePlusOneDates ? "1" : "0");
-          localStorage.setItem("BHQ_ENFORCE_PLUSONE_PHASES", enforcePlusOnePhases ? "1" : "0");
-        } catch { }
+        } catch {}
         onDirty(false);
       } catch (e: any) {
         setError(e?.message || "Failed to save breeding settings");
       }
     }
-    React.useImperativeHandle(ref, () => ({
-      async save() { await saveAll(); },
-      goto(sub: BreedingSubTab) { setActiveSub(sub); },
-    }));
+    React.useImperativeHandle(ref, () => ({ async save() { await saveAll(); } }));
 
     function _setPref<K extends keyof AvailabilityPrefs>(key: K, val: number | boolean) {
       setForm((f) => ({ ...f, [key]: val as any } as AvailabilityPrefs));
     }
 
     // ── Presets A: affect ONLY phase span keys
-    // ── Preset baselines + seeding helper (add this once above the preset helpers) ─────────
-    const BASE_PHASE = {
-      unlikelyBefore: -7,  // whole-phase: days before anchor span
-      unlikelyAfter: 7,
-      riskyBefore: -3,
-      riskyAfter: 3,
-    } as const;
-
-    const BASE_DATE = {
-      unlikelyBefore: -10, // per-date: days before anchor
-      unlikelyAfter: 10,
-      riskyBefore: -5,
-      riskyAfter: 5,
-    } as const;
-
-    // If current & default are 0, seed so presets actually move numbers.
-    // Otherwise prefer current, or fall back to default.
-    function seedOrCurrent(cur: number | undefined, def: number | undefined, seed: number) {
-      const c = Number(cur || 0);
-      const d = Number(def || 0);
-      return (c === 0 && d === 0) ? seed : (c || d);
-    }
-
     function applyPhasePreset(kind: "tight" | "balanced" | "wide") {
-      const mult = { tight: 0.6, balanced: 1.0, wide: 1.4 }[kind];
-      const keys: Array<[keyof AvailabilityPrefs, number]> = [
-        ["cycle_breeding_unlikely_from_likely_start", BASE_PHASE.unlikelyBefore],
-        ["cycle_breeding_unlikely_to_likely_end", BASE_PHASE.unlikelyAfter],
-        ["cycle_breeding_risky_from_full_start", BASE_PHASE.riskyBefore],
-        ["cycle_breeding_risky_to_full_end", BASE_PHASE.riskyAfter],
-        ["post_unlikely_from_likely_start", BASE_PHASE.unlikelyBefore],
-        ["post_unlikely_to_likely_end", BASE_PHASE.unlikelyAfter],
-        ["post_risky_from_full_start", BASE_PHASE.riskyBefore],
-        ["post_risky_to_full_end", BASE_PHASE.riskyAfter],
-      ];
-      setForm((f) => {
-        const next = { ...f };
-        for (const [k, seed] of keys) {
-          const seeded = seedOrCurrent((next as any)[k], (DEFAULTS as any)[k], seed);
-          (next as any)[k] = Math.round(seeded * mult);
-        }
-        return normalizePhaseBands(next, enforcePlusOnePhases);
-      });
-    }
-
-    function adjustPhasesBy(delta: number) {
-      if (!delta) return;
+      const P = { tight: 0.6, balanced: 1.0, wide: 1.4 }[kind];
       const keys: (keyof AvailabilityPrefs)[] = [
-        "cycle_breeding_unlikely_from_likely_start", "cycle_breeding_unlikely_to_likely_end",
-        "cycle_breeding_risky_from_full_start", "cycle_breeding_risky_to_full_end",
-        "post_unlikely_from_likely_start", "post_unlikely_to_likely_end",
-        "post_risky_from_full_start", "post_risky_to_full_end",
+        "testing_unlikely_from_likely_start","testing_unlikely_to_likely_end",
+        "testing_risky_from_full_start","testing_risky_to_full_end",
+        "post_unlikely_from_likely_start","post_unlikely_to_likely_end",
+        "post_risky_from_full_start","post_risky_to_full_end",
       ];
-      setForm(f => {
-        const next = { ...f };
-        for (const k of keys) (next as any)[k] = Number((next as any)[k] || 0) + delta;
-        return normalizePhaseBands(next, enforcePlusOnePhases);
-      });
+      const next = { ...form };
+      for (const k of keys) (next as any)[k] = Math.round(((DEFAULTS as any)[k] || 0) * P);
+      setForm(next);
     }
-    function scalePhases(mult: number) {
+    function resetPhasesToDefaults() {
       const keys: (keyof AvailabilityPrefs)[] = [
-        "cycle_breeding_unlikely_from_likely_start", "cycle_breeding_unlikely_to_likely_end",
-        "cycle_breeding_risky_from_full_start", "cycle_breeding_risky_to_full_end",
-        "post_unlikely_from_likely_start", "post_unlikely_to_likely_end",
-        "post_risky_from_full_start", "post_risky_to_full_end",
+        "testing_unlikely_from_likely_start","testing_unlikely_to_likely_end",
+        "testing_risky_from_full_start","testing_risky_to_full_end",
+        "post_unlikely_from_likely_start","post_unlikely_to_likely_end",
+        "post_risky_from_full_start","post_risky_to_full_end",
       ];
-      setForm(f => {
-        const next = { ...f };
-        for (const k of keys) (next as any)[k] = Math.round(((DEFAULTS as any)[k] || 0) * mult);
-        return normalizePhaseBands(next, enforcePlusOnePhases);
-      });
+      const next = { ...form };
+      for (const k of keys) (next as any)[k] = (DEFAULTS as any)[k] ?? 0;
+      setForm(next);
     }
 
     // ── Presets B: affect ONLY per-date keys (date_*), not the toggle
     function applyDatePreset(kind: "tight" | "balanced" | "wide") {
-      const mult = { tight: 0.6, balanced: 1.0, wide: 1.4 }[kind];
-      setForm((f) => {
-        const next = { ...f };
-        withUnlockedRows((row) => {
-          const k = row.keys as any;
-          const rfCur = seedOrCurrent((next as any)[k.rf], (DEFAULTS as any)[k.rf], BASE_DATE.riskyBefore);
-          const rtCur = seedOrCurrent((next as any)[k.rt], (DEFAULTS as any)[k.rt], BASE_DATE.riskyAfter);
-          const ufCur = seedOrCurrent((next as any)[k.uf], (DEFAULTS as any)[k.uf], BASE_DATE.unlikelyBefore);
-          const utCur = seedOrCurrent((next as any)[k.ut], (DEFAULTS as any)[k.ut], BASE_DATE.unlikelyAfter);
-          (next as any)[k.rf] = Math.round(rfCur * mult);
-          (next as any)[k.rt] = Math.round(rtCur * mult);
-          (next as any)[k.uf] = Math.round(ufCur * mult);
-          (next as any)[k.ut] = Math.round(utCur * mult);
-        });
-        return normalizeExactBands(next, enforcePlusOneDates);
-      });
+      const P = { tight: 0.6, balanced: 1.0, wide: 1.4 }[kind];
+      const next = { ...form };
+      (Object.keys(DEFAULTS) as (keyof AvailabilityPrefs)[])
+        .filter((k) => String(k).startsWith("date_"))
+        .forEach((k) => { (next as any)[k] = Math.round(((DEFAULTS as any)[k] || 0) * P); });
+      setForm(next);
     }
-
-    function shiftAllDatesBy(delta: number) {
-      if (!delta) return;
-      setForm((f) => {
-        const next = { ...f };
-        withUnlockedRows((row) => {
-          const k = row.keys as any;
-          (next as any)[k.rf] = Number((next as any)[k.rf] || 0) + delta;
-          (next as any)[k.rt] = Number((next as any)[k.rt] || 0) + delta;
-          (next as any)[k.uf] = Number((next as any)[k.uf] || 0) + delta;
-          (next as any)[k.ut] = Number((next as any)[k.ut] || 0) + delta;
-        });
-        return normalizeExactBands(next, enforcePlusOneDates);
-      });
+    function resetAllDatesToDefaults() {
+      const next = { ...form };
+      (Object.keys(DEFAULTS) as (keyof AvailabilityPrefs)[])
+        .filter((k) => String(k).startsWith("date_"))
+        .forEach((k) => { (next as any)[k] = (DEFAULTS as any)[k] ?? 0; });
+      setForm(next);
     }
-
-    function scaleAllDates(mult: number) {
-      setForm((f) => {
-        const next = { ...f };
-        withUnlockedRows((row) => {
-          const k = row.keys as any;
-          (next as any)[k.rf] = Math.round(((DEFAULTS as any)[k.rf] || 0) * mult);
-          (next as any)[k.rt] = Math.round(((DEFAULTS as any)[k.rt] || 0) * mult);
-          (next as any)[k.uf] = Math.round(((DEFAULTS as any)[k.uf] || 0) * mult);
-          (next as any)[k.ut] = Math.round(((DEFAULTS as any)[k.ut] || 0) * mult);
-        });
-        return normalizeExactBands(next, enforcePlusOneDates);
-      });
-    }
-
 
     // ── Subtab headers
     const Tabs = (
@@ -1363,7 +1025,7 @@ const BreedingTab = React.forwardRef<BreedingHandle, { dirty: boolean; onDirty: 
           <Card className="p-3 space-y-1">
             <div className="text-sm font-medium">What controls availability</div>
             <ul className="list-disc pl-5 text-xs text-secondary space-y-1">
-              <li><strong>Timeline Phases</strong> wraps whole windows (Cycle Start→Breeding, Birth→Placement).</li>
+              <li><strong>Timeline Phases</strong> wraps whole windows (Testing→Breeding, Birth→Placement).</li>
               <li><strong>Exact Dates</strong> wraps a single anchor (Cycle, Testing, Breeding, Birth, etc.).</li>
             </ul>
           </Card>
@@ -1376,62 +1038,24 @@ const BreedingTab = React.forwardRef<BreedingHandle, { dirty: boolean; onDirty: 
       <SectionCard title="Timeline Phases" subtitle="Bands that follow a whole phase span." right={<Legend />} className="space-y-4">
         {loading ? <div className="text-sm text-secondary">Loading…</div> : (
           <>
-            <Card className="p-3 space-y-3">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {/* Left: Presets (Phases) */}
-                <div>
-                  <div className="text-sm font-medium mb-1">Presets (Phases)</div>
-                  {/* Presets (Phases) */}
-                  <div className="flex flex-wrap gap-2">
-                    <Button size="sm" variant="outline" onClick={() => applyPhasePreset("tight")}>Tight</Button>
-                    <Button size="sm" variant="outline" onClick={() => applyPhasePreset("balanced")}>Balanced</Button>
-                    <Button size="sm" variant="outline" onClick={() => applyPhasePreset("wide")}>Wide</Button>
-                    <Button size="sm" variant="ghost" onClick={resetPhasesToDefaults}>Reset to defaults</Button>
-                  </div>
-                </div>
-                {/* Right: Quick adjust (mirror Exact Dates: Shift-only) */}
-                <div className="space-y-2">
-                  <div className="text-sm font-medium">Quick adjust</div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-xs text-secondary">Shift</span>
-                    <Button size="xs" variant="outline" onClick={() => adjustPhasesBy(-14)}>-14d</Button>
-                    <Button size="xs" variant="outline" onClick={() => adjustPhasesBy(-7)}>-7d</Button>
-                    <Button size="xs" variant="outline" onClick={() => adjustPhasesBy(-1)}>-1d</Button>
-                    <Button size="xs" variant="outline" onClick={() => adjustPhasesBy(+1)}>+1d</Button>
-                    <Button size="xs" variant="outline" onClick={() => adjustPhasesBy(+7)}>+7d</Button>
-                    <Button size="xs" variant="outline" onClick={() => adjustPhasesBy(+14)}>+14d</Button>
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <div className="text-sm font-medium">Behavior</div>
-                  <label className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={enforcePlusOnePhases}
-                      onChange={(e) => {
-                        const checked = e.currentTarget.checked;
-                        setEnforcePlusOnePhases(checked);
-                        if (checked) setForm((f) => normalizePhaseBands({ ...f }, true));
-                      }}
-                    />
-                    <span className="text-sm">Auto-widen Unlikely to be ≥ Risky + 1</span>
-                  </label>
-                </div>
+            <Card className="p-3 space-y-2">
+              <div className="text-sm font-medium">Presets (Phases)</div>
+              <div className="flex flex-wrap gap-2">
+                <Button size="sm" variant="outline" onClick={() => applyPhasePreset("tight")}>Tight</Button>
+                <Button size="sm" variant="outline" onClick={() => applyPhasePreset("balanced")}>Balanced</Button>
+                <Button size="sm" variant="outline" onClick={() => applyPhasePreset("wide")}>Wide</Button>
+                <Button size="sm" variant="ghost" onClick={resetPhasesToDefaults}>Reset to defaults</Button>
               </div>
+              <Hint>Only affects the phase-span fields; Exact Dates are untouched here.</Hint>
             </Card>
-            {/* Inline planner preview for phases */}
-            <div className="rounded-md border border-hairline p-2 bg-surface">
-              <div className="text-sm font-medium mb-1">Planner Preview (Phases)</div>
-              <PhasePreview form={form} />
-            </div>
 
             <PhaseBlock
-              title="Cycle Start → Breeding"
-              unlikelyBeforeKey="cycle_breeding_unlikely_from_likely_start"
-              unlikelyAfterKey="cycle_breeding_unlikely_to_likely_end"
-              riskyBeforeKey="cycle_breeding_risky_from_full_start"
-              riskyAfterKey="cycle_breeding_risky_to_full_end"
-              form={form} setForm={setForm} defaults={DEFAULTS} plusOnePhases={enforcePlusOnePhases}
+              title="Testing → Breeding"
+              unlikelyBeforeKey="testing_unlikely_from_likely_start"
+              unlikelyAfterKey="testing_unlikely_to_likely_end"
+              riskyBeforeKey="testing_risky_from_full_start"
+              riskyAfterKey="testing_risky_to_full_end"
+              form={form} setForm={setForm} defaults={DEFAULTS}
             />
 
             <PhaseBlock
@@ -1440,137 +1064,85 @@ const BreedingTab = React.forwardRef<BreedingHandle, { dirty: boolean; onDirty: 
               unlikelyAfterKey="post_unlikely_to_likely_end"
               riskyBeforeKey="post_risky_from_full_start"
               riskyAfterKey="post_risky_to_full_end"
-              form={form} setForm={setForm} defaults={DEFAULTS} plusOnePhases={enforcePlusOnePhases}
+              form={form} setForm={setForm} defaults={DEFAULTS}
             />
           </>
         )}
       </SectionCard>
     );
 
-    type LockMap = Partial<Record<(typeof EXACT_ROWS)[number]["id"], boolean>>;
-    const LOCKS_KEY = "BHQ_EXACT_DATE_LOCKS";
-
-
-    function loadLocks(): LockMap {
-      try { return JSON.parse(localStorage.getItem(LOCKS_KEY) || "{}") || {}; } catch { return {}; }
-    }
-    function saveLocks(m: LockMap) { try { localStorage.setItem(LOCKS_KEY, JSON.stringify(m)); } catch { } }
-
-    const [locks, setLocks] = React.useState<LockMap>(() => loadLocks());
-    const isLocked = (id: (typeof EXACT_ROWS)[number]["id"]) => !!locks[id];
-    const toggleLock = (id: (typeof EXACT_ROWS)[number]["id"]) =>
-      setLocks(m => { const next = { ...m, [id]: !m[id] }; saveLocks(next); return next; });
-
-    // helper: iterate keys in unlocked rows
-    function withUnlockedRows(fn: (row: typeof EXACT_ROWS[number]) => void) {
-      EXACT_ROWS.forEach(row => { if (!isLocked(row.id)) fn(row); });
-    }
-
-    // Reset ALL per-date fields (Exact Dates) back to defaults. Respects row locks.
-    function resetAllDatesToDefaults() {
-      setForm((f) => {
-        const next = { ...f };
-        withUnlockedRows((row) => {
-          const k = row.keys as any;
-          (next as any)[k.rf] = (DEFAULTS as any)[k.rf] ?? 0;
-          (next as any)[k.rt] = (DEFAULTS as any)[k.rt] ?? 0;
-          (next as any)[k.uf] = (DEFAULTS as any)[k.uf] ?? 0;
-          (next as any)[k.ut] = (DEFAULTS as any)[k.ut] ?? 0;
-        });
-        return normalizeExactBands(next, enforcePlusOneDates);
-      });
-    }
-
-    function resetPhasesToDefaults() {
-      setForm((f) => normalizePhaseBands({
-        ...f,
-        cycle_breeding_unlikely_from_likely_start: DEFAULTS.cycle_breeding_unlikely_from_likely_start,
-        cycle_breeding_unlikely_to_likely_end: DEFAULTS.cycle_breeding_unlikely_to_likely_end,
-        cycle_breeding_risky_from_full_start: DEFAULTS.cycle_breeding_risky_from_full_start,
-        cycle_breeding_risky_to_full_end: DEFAULTS.cycle_breeding_risky_to_full_end,
-        post_unlikely_from_likely_start: DEFAULTS.post_unlikely_from_likely_start,
-        post_unlikely_to_likely_end: DEFAULTS.post_unlikely_to_likely_end,
-        post_risky_from_full_start: DEFAULTS.post_risky_from_full_start,
-        post_risky_to_full_end: DEFAULTS.post_risky_to_full_end,
-      } as AvailabilityPrefs, enforcePlusOnePhases));
-    }
-
-
     // ── Dates subtab (with Presets B + placement toggle)
     const DatesTab = (
       <SectionCard title="Exact Dates" subtitle="Wrap a single expected or actual calendar date." right={<Legend />} className="space-y-4">
         {loading ? <div className="text-sm text-secondary">Loading…</div> : (
           <>
-            <Card className="p-3 space-y-3">
-              {/* Row 1: side-by-side */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div>
-                  <div className="text-sm font-medium mb-1">Presets (Exact Dates)</div>
-                  {/* Presets (Phases) */}
-                  <div className="flex flex-wrap gap-2">
-                    <Button size="sm" variant="outline" onClick={() => applyDatePreset("tight")}>Tight</Button>
-                    <Button size="sm" variant="outline" onClick={() => applyDatePreset("balanced")}>Balanced</Button>
-                    <Button size="sm" variant="outline" onClick={() => applyDatePreset("wide")}>Wide</Button>
-                    <Button size="sm" variant="ghost" onClick={resetAllDatesToDefaults}>Reset to defaults</Button>
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <div className="text-sm font-medium">Quick adjust</div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-xs text-secondary">Shift</span>
-                    <Button size="xs" variant="outline" onClick={() => shiftAllDatesBy(-14)}>-14d</Button>
-                    <Button size="xs" variant="outline" onClick={() => shiftAllDatesBy(-7)}>-7d</Button>
-                    <Button size="xs" variant="outline" onClick={() => shiftAllDatesBy(-1)}>-1d</Button>
-                    <Button size="xs" variant="outline" onClick={() => shiftAllDatesBy(+1)}>+1d</Button>
-                    <Button size="xs" variant="outline" onClick={() => shiftAllDatesBy(+7)}>+7d</Button>
-                    <Button size="xs" variant="outline" onClick={() => shiftAllDatesBy(+14)}>+14d</Button>
-                  </div>
-                </div>
+            <Card className="p-3 space-y-2">
+              <div className="text-sm font-medium">Presets (Exact Dates)</div>
+              <div className="flex flex-wrap gap-2">
+                <Button size="sm" variant="outline" onClick={() => applyDatePreset("tight")}>Tight</Button>
+                <Button size="sm" variant="outline" onClick={() => applyDatePreset("balanced")}>Balanced</Button>
+                <Button size="sm" variant="outline" onClick={() => applyDatePreset("wide")}>Wide</Button>
+                <Button size="sm" variant="ghost" onClick={resetAllDatesToDefaults}>Reset all dates</Button>
               </div>
-              {/* Row 2: chart full width */}
-              <div className="rounded-md border border-hairline p-2 bg-surface">
-                <div className="text-sm font-medium mb-1">Planner Preview (Exact Dates) </div>
-                <MiniPreview form={form} />
-              </div>
-              <div className="space-y-2">
-                <div className="text-sm font-medium">Behavior</div>
-                <label className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={enforcePlusOneDates}
-                    onChange={(e) => {
-                      const checked = e.currentTarget.checked;
-                      setEnforcePlusOneDates(checked);
-                      if (checked) setForm((f) => normalizeExactBands({ ...f }, true));
-                    }}
-                  />
-                  <span className="text-sm">Auto-widen Unlikely to be ≥ Risky + 1</span>
-                </label>
-              </div>
-
+              <Hint>Only affects date_* fields; Phase spans are untouched here.</Hint>
             </Card>
-            {EXACT_ROWS.map((row) => (
-              <ExactDateRow
-                key={row.id}
-                rowId={row.id}
-                title={row.title}
-                locked={isLocked(row.id)}
-                onToggleLock={() => toggleLock(row.id)}
-                riskyFromKey={row.keys.rf as keyof AvailabilityPrefs}
-                riskyToKey={row.keys.rt as keyof AvailabilityPrefs}
-                unlikelyFromKey={row.keys.uf as keyof AvailabilityPrefs}
-                unlikelyToKey={row.keys.ut as keyof AvailabilityPrefs}
-                form={form}
-                setForm={setForm}
-                derivedDefaults={DEFAULTS}
-                hideBefore={row.id === "placed"}
-                plusOneDates={enforcePlusOneDates}
-              />
-            ))}
+
+            <MiniPreview form={form} placementEnabled={!!form.placement_start_enable_bands} />
+
+            <ExactDateRow title="Cycle Start"
+              riskyFromKey="date_cycle_risky_from" riskyToKey="date_cycle_risky_to"
+              unlikelyFromKey="date_cycle_unlikely_from" unlikelyToKey="date_cycle_unlikely_to"
+              form={form} setForm={setForm} derivedDefaults={DEFAULTS}
+            />
+            <ExactDateRow title="Testing Start"
+              riskyFromKey="date_testing_risky_from" riskyToKey="date_testing_risky_to"
+              unlikelyFromKey="date_testing_unlikely_from" unlikelyToKey="date_testing_unlikely_to"
+              form={form} setForm={setForm} derivedDefaults={DEFAULTS}
+            />
+            <ExactDateRow title="Breeding"
+              riskyFromKey="date_breeding_risky_from" riskyToKey="date_breeding_risky_to"
+              unlikelyFromKey="date_breeding_unlikely_from" unlikelyToKey="date_breeding_unlikely_to"
+              form={form} setForm={setForm} derivedDefaults={DEFAULTS}
+            />
+            <ExactDateRow title="Birth"
+              riskyFromKey="date_birth_risky_from" riskyToKey="date_birth_risky_to"
+              unlikelyFromKey="date_birth_unlikely_from" unlikelyToKey="date_birth_unlikely_to"
+              form={form} setForm={setForm} derivedDefaults={DEFAULTS}
+            />
+            <ExactDateRow title="Weaned"
+              riskyFromKey="date_weaned_risky_from" riskyToKey="date_weaned_risky_to"
+              unlikelyFromKey="date_weaned_unlikely_from" unlikelyToKey="date_weaned_unlikely_to"
+              form={form} setForm={setForm} derivedDefaults={DEFAULTS}
+            />
+
+            {/* Toggle for Placement Start bands */}
+            <Card className="p-3 space-y-2">
+              <div className="text-sm font-medium">Placement Start bands</div>
+              <label className="inline-flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={!!form.placement_start_enable_bands}
+                  onChange={(e) => _setPref("placement_start_enable_bands", e.currentTarget.checked)}
+                />
+                <span className="text-sm">Enable per-date bands for Placement Start</span>
+              </label>
+              {form.placement_start_enable_bands && (
+                <ExactDateRow title="Placement Start"
+                  riskyFromKey="date_placement_start_risky_from" riskyToKey="date_placement_start_risky_to"
+                  unlikelyFromKey="date_placement_start_unlikely_from" unlikelyToKey="date_placement_start_unlikely_to"
+                  form={form} setForm={setForm} derivedDefaults={DEFAULTS}
+                />
+              )}
+            </Card>
+
+            <ExactDateRow title="Placement Completed"
+              riskyFromKey="date_placement_completed_risky_from" riskyToKey="date_placement_completed_risky_to"
+              unlikelyFromKey="date_placement_completed_unlikely_from" unlikelyToKey="date_placement_completed_unlikely_to"
+              form={form} setForm={setForm} derivedDefaults={DEFAULTS}
+            />
           </>
-        )
-        }
-      </SectionCard >
+        )}
+      </SectionCard>
     );
 
     // ── Local overrides subtab (same as before)
@@ -1602,14 +1174,8 @@ const BreedingTab = React.forwardRef<BreedingHandle, { dirty: boolean; onDirty: 
               setShowCalendarBands(localStorage.getItem("BHQ_BREEDING_SHOW_CAL_BANDS") !== "0");
               const hm = Number(localStorage.getItem("BHQ_BREEDING_HORIZON_MONTHS") || "18") || 18;
               setGanttHorizonMonths(hm);
-              setEnforcePlusOneDates(localStorage.getItem("BHQ_ENFORCE_PLUSONE_DATES") !== "0");
-              setEnforcePlusOnePhases(localStorage.getItem("BHQ_ENFORCE_PLUSONE_PHASES") !== "0");
             } catch {
-              setShowGanttBands(true);
-              setShowCalendarBands(true);
-              setGanttHorizonMonths(18);
-              setEnforcePlusOneDates(true);
-              setEnforcePlusOnePhases(true);
+              setShowGanttBands(true); setShowCalendarBands(true); setGanttHorizonMonths(18);
             }
           }}>Reset to Default</Button>
         </div>
@@ -1652,6 +1218,7 @@ const ProgramProfileTab = React.forwardRef<ProgramProfileHandle, { dirty: boolea
       docsAndData: { readyToBreedChecklist: ["dam_health_tests", "stud_clearances", "contract_ready"], marketingMediaPolicy: "buyers_only", showClientNames: false },
       comms: { prospectDuringPregnancyCadenceDays: 7, postBirthUpdateCadenceDays: 7, channels: ["email"], sendAutoMilestones: true },
       publication: { publishInDirectory: false, summary: null },
+      // NOTE: availabilityDefaults removed from here; display is local
     };
 
     const [loading, setLoading] = React.useState(true);
@@ -1667,7 +1234,8 @@ const ProgramProfileTab = React.forwardRef<ProgramProfileHandle, { dirty: boolea
       (async () => {
         try {
           setLoading(true); setError("");
-          const tenantId = await resolveTenantIdSafe();
+          const tenantRaw = await resolveTenantId();
+          const tenantId = String(tenantRaw ?? "").trim();
           if (!tenantId) throw new Error("Missing tenant id");
           let profMerged: BreedingProgramProfile;
           try {
@@ -1703,7 +1271,7 @@ const ProgramProfileTab = React.forwardRef<ProgramProfileHandle, { dirty: boolea
     }
     React.useImperativeHandle(ref, () => ({ async save() { await saveProfile(); } }));
 
-    // Import/Export . Export both Program Profile & Availability prefs.
+    // Import/Export (moved here). Export both Program Profile & Availability prefs.
     async function exportAll() {
       try {
         const tenantRaw = await resolveTenantId();
@@ -1866,92 +1434,6 @@ const ProgramProfileTab = React.forwardRef<ProgramProfileHandle, { dirty: boolea
     );
   }
 );
-
-/** ───────── Platform Snapshot (read-only summary with deep links) ───────── */
-function Kv({ label, value }: { label: string; value?: React.ReactNode }) {
-  return (
-    <div className="flex items-start justify-between gap-6 py-1 text-sm">
-      <div className="text-secondary w-40 shrink-0">{label}</div>
-      <div className="flex-1">{value ?? <span className="text-tertiary">—</span>}</div>
-    </div>
-  );
-}
-function Badge({ children }: { children: React.ReactNode }) {
-  return <span className="px-2 py-0.5 rounded bg-surface-strong text-xs border border-hairline">{children}</span>;
-}
-
-function PlatformSnapshotTab({
-  dirty,
-  onDirty,
-  onEditProfile,
-  onEditPhases,
-  onEditExactDates,
-}: {
-  dirty: boolean;
-  onDirty: (v: boolean) => void;
-  onEditProfile: () => void;
-  onEditPhases: () => void;
-  onEditExactDates: () => void;
-}) {
-  React.useEffect(() => onDirty(false), [onDirty]);
-
-  const [loading, setLoading] = React.useState(true);
-  const [error, setError] = React.useState<string>("");
-  const [profile, setProfile] = React.useState<BreedingProgramProfile | null>(null);
-
-  React.useEffect(() => {
-    let ignore = false;
-    (async () => {
-      try {
-        setError("");
-        setLoading(true);
-
-        const tenantRaw = await resolveTenantId();
-        const tenantId = String(tenantRaw ?? "").trim();
-        if (!tenantId) throw new Error("Missing tenant id");
-
-        // Load Program Profile
-        const pr = await api.breeding.program.getForTenant(Number(tenantId));
-        const profileData = (pr?.data ?? pr) as BreedingProgramProfile;
-        if (!ignore) setProfile(profileData);
-
-        // Load Availability and merge with defaults
-      } catch (e: any) {
-        if (!ignore) setError(e?.message || "Failed to load Program Profile");
-      } finally {
-        if (!ignore) setLoading(false);
-      }
-    })();
-    return () => { ignore = true; };
-  }, []);
-
-  return (
-    <div className="space-y-6">
-      {error && (
-        <div className="rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
-          {error}
-        </div>
-      )}
-      {loading ? (
-        <Card className="p-3 text-sm text-secondary">Loading…</Card>
-      ) : (
-        <>
-          {profile && (
-            <Card className="p-3 space-y-3">
-              <ProgramProfileSnapshot
-                profile={profile}
-                onEditProfile={onEditProfile}
-                onEditPhases={onEditPhases}
-                onEditExactDates={onEditExactDates}
-              />
-            </Card>
-          )}
-        </>
-      )}
-    </div>
-  );
-}
-
 
 /** ───────── Breeds / Users / Groups / Tags (unchanged placeholders + working CRUD) ───────── */
 function BreedsTab({ onDirty }: { onDirty: (v: boolean) => void }) {
@@ -2167,15 +1649,8 @@ function Chk({ label, checked, onChange }: { label: string; checked: boolean; on
   );
 }
 function bandWidth(from: number, to: number) { return (to || 0) - (from || 0); }
-function exactDateInvalid(from?: number | null, to?: number | null): boolean {
-  // If either side is not a finite number, don't mark invalid yet.
-  if (!Number.isFinite(from as number) || !Number.isFinite(to as number)) return false;
-  return (to as number) < (from as number);
-}
-
-function phaseInvalid(beforeDays: number, afterDays: number): boolean {
-  return bandWidth(-Math.abs(beforeDays || 0), Math.abs(afterDays || 0)) < 0;
-}
+function exactDateInvalid(from: number, to: number): boolean { return bandWidth(from, to) < 0; }
+function phaseInvalid(beforeDays: number, afterDays: number): boolean { return bandWidth(-Math.abs(beforeDays || 0), Math.abs(afterDays || 0)) < 0; }
 
 function FieldNum(props: { label: string; value: number; onChange: (n: number) => void }) {
   return (
@@ -2198,6 +1673,7 @@ function Legend() {
       <span className="inline-flex items-center gap-1">
         <span className="inline-block w-3 h-3 rounded bg-[hsl(var(--brand-orange))]/15 border border-[hsl(var(--brand-orange))]/40" /> Unlikely
       </span>
+      <span className="text-tertiary">Sort order is by start date.</span>
     </div>
   );
 }
@@ -2211,294 +1687,50 @@ const HELP_BOX = (
   </Card>
 );
 
-/** Mini preview v3: one solid center line, solid per-row bars, unique colors */
-function MiniPreview({ form }: { form: AvailabilityPrefs }) {
-  // layout
-  const PAD_X = 10;
-  const ROW_H = 16;
-  const VIEW_W = 800;
-
-  function niceStep(span: number) {
-    const candidates = [1, 2, 5, 10, 15, 20, 25, 30];
-    const approx = span / 10;
-    return candidates.reduce((best, c) =>
-      Math.abs(c - approx) < Math.abs(best - approx) ? c : best, candidates[0]);
-  }
-
-  // center line color
-  const colToday = "hsl(var(--brand-orange, 20 90% 55%))";
-  const strokeHair = "hsl(var(--hairline, 0 0% 35% / 0.6))";
-
-  const rows = [
-    {
-      id: "cycle",
-      label: "Cycle",
-      rf: form.date_cycle_risky_from,
-      rt: form.date_cycle_risky_to,
-      uf: form.date_cycle_unlikely_from,
-      ut: form.date_cycle_unlikely_to,
-    },
-    {
-      id: "testing",
-      label: "Testing",
-      rf: form.date_testing_risky_from,
-      rt: form.date_testing_risky_to,
-      uf: form.date_testing_unlikely_from,
-      ut: form.date_testing_unlikely_to,
-    },
-    {
-      id: "breed",
-      label: "Breeding",
-      rf: form.date_breeding_risky_from,
-      rt: form.date_breeding_risky_to,
-      uf: form.date_breeding_unlikely_from,
-      ut: form.date_breeding_unlikely_to,
-    },
-    {
-      id: "birth",
-      label: "Birth",
-      rf: form.date_birth_risky_from,
-      rt: form.date_birth_risky_to,
-      uf: form.date_birth_unlikely_from,
-      ut: form.date_birth_unlikely_to,
-    },
-    {
-      id: "weaned",
-      label: "Weaned",
-      rf: form.date_weaned_risky_from,
-      rt: form.date_weaned_risky_to,
-      uf: form.date_weaned_unlikely_from,
-      ut: form.date_weaned_unlikely_to,
-    },
-    {
-      id: "placed",
-      label: "Placement",
-      // ⬇️ Important: zero-out BEFORE bands for Placement
-      rf: 0,
-      rt: form.date_placement_completed_risky_to,
-      uf: 0,
-      ut: form.date_placement_completed_unlikely_to,
-    },
+/** Mini preview for date offsets */
+function MiniPreview({ form, placementEnabled }: { form: AvailabilityPrefs; placementEnabled: boolean }) {
+  const today = new Date();
+  const W = 320, H = 12, PAD = 6, TOTAL = 120;
+  const cx = (n: number) => Math.round(((n + TOTAL / 2) / TOTAL) * (W - PAD * 2)) + PAD;
+  const anchors = [
+    { label: "Cycle", f: form.date_cycle_risky_from, t: form.date_cycle_risky_to, uf: form.date_cycle_unlikely_from, ut: form.date_cycle_unlikely_to },
+    { label: "Breed", f: form.date_breeding_risky_from, t: form.date_breeding_risky_to, uf: form.date_breeding_unlikely_from, ut: form.date_breeding_unlikely_to },
+    { label: "Birth", f: form.date_birth_risky_from, t: form.date_birth_risky_to, uf: form.date_birth_unlikely_from, ut: form.date_birth_unlikely_to },
+    ...(placementEnabled ? [{
+      label: "Place ▶", f: form.date_placement_start_risky_from, t: form.date_placement_start_risky_to,
+      uf: form.date_placement_start_unlikely_from, ut: form.date_placement_start_unlikely_to
+    }] : []),
   ];
-
-  const palette: Record<string, string> = {
-    cycle: "hsl(200 90% 55%)",
-    testing: "hsl(160 70% 45%)",
-    breed: "hsl(30  90% 55%)",
-    birth: "hsl(345 80% 55%)",
-    weaned: "hsl(260 70% 55%)",
-    placed: "hsl(120 65% 45%)",
-  };
-
-  const maxBefore = Math.max(...rows.map(r => Math.max(Math.abs(Number(r.rf || 0)), Math.abs(Number(r.uf || 0)))));
-  const maxAfter = Math.max(...rows.map(r => Math.max(Math.abs(Number(r.rt || 0)), Math.abs(Number(r.ut || 0)))));
-  let minDay = -maxBefore, maxDay = maxAfter;
-  if (!Number.isFinite(minDay) || !Number.isFinite(maxDay) || (minDay === 0 && maxDay === 0)) { minDay = -7; maxDay = 7; }
-  const span0 = Math.max(1, maxDay - minDay);
-  const pad = Math.max(2, Math.round(span0 * 0.10));
-  minDay = Math.floor((minDay - pad) / 5) * 5;
-  maxDay = Math.ceil((maxDay + pad) / 5) * 5;
-  const span = maxDay - minDay;
-  const step = niceStep(span);
-  const cx = (day: number) => Math.round(((day - minDay) / span) * (VIEW_W - PAD_X * 2)) + PAD_X;
-
-  const svgH = rows.length * ROW_H;
-  const ticks: Array<{ x: number; day: number }> = [];
-  const startTick = Math.ceil(minDay / step) * step;
-  for (let d = startTick; d <= maxDay; d += step) ticks.push({ x: cx(d), day: d });
-
   return (
-    <div className="mt-2">
-      <div className="flex gap-2">
-        <div className="flex flex-col items-end justify-between w-16 text-[11px] text-secondary py-[2px] pr-1">
-          {rows.map(r => <div key={r.id} style={{ height: ROW_H }} className="leading-none">{r.label}</div>)}
-          <div style={{ height: 24 }} className="leading-none mt-1">Days</div>
-        </div>
-        <div className="flex-1 min-w-0">
-          <svg viewBox={`0 0 ${VIEW_W} ${svgH}`} className="w-full" style={{ height: svgH }}>
-            <defs>
-              {rows.map((r) => (
-                <pattern id={`hatch-${r.id}`} key={`pat-${r.id}`} patternUnits="userSpaceOnUse" width="6" height="6" patternTransform="rotate(45)">
-                  <rect width="6" height="6" fill="transparent" />
-                  <line x1="0" y1="0" x2="0" y2="6" stroke={palette[r.id]} strokeOpacity="0.35" strokeWidth="2" />
-                </pattern>
-              ))}
-            </defs>
-            <line x1={cx(0)} x2={cx(0)} y1={0} y2={svgH} stroke={colToday} strokeWidth="1.5" />
-            {rows.map((r, i) => {
-              const y = i * ROW_H + 3;
-              let rf = -Math.abs(Number(r.rf || 0)), rt = Math.abs(Number(r.rt || 0));
-              let uf = -Math.abs(Number(r.uf || 0)), ut = Math.abs(Number(r.ut || 0));
-              if (r.id === "placed") {
-                rf = 0;
-                uf = 0;
-              }
-              const x1u = cx(uf), x2u = cx(ut), x1r = cx(rf), x2r = cx(rt);
-              const xu = Math.min(x1u, x2u), wu = Math.max(1, Math.abs(x2u - x1u));
-              const xr = Math.min(x1r, x2r), wr = Math.max(1, Math.abs(x2r - x1r));
-              return (
-                <g key={r.id}>
-                  {/* Unlikely UNDER, then Risky OVER */}
-                  <rect x={xu} y={y} width={wu} height={ROW_H - 6} rx="2"
-                    fill={`url(#hatch-${r.id})`} stroke={palette[r.id]} strokeOpacity="0.5" />
-                  <rect x={xr} y={y} width={wr} height={ROW_H - 6} rx="2"
-                    fill={palette[r.id]} fillOpacity="1" stroke={palette[r.id]} strokeOpacity="0.9" />
-                </g>
-              );
-            })}
-          </svg>
-          <svg viewBox={`0 0 ${VIEW_W} 24`} className="w-full h-[24px] mt-1">
-            <line x1={PAD_X} y1={9} x2={VIEW_W - PAD_X} y2={9} stroke={strokeHair} />
-            {ticks.map((t, i) => (
-              <g key={i}>
-                <line x1={t.x} y1={6} x2={t.x} y2={12} stroke={strokeHair} />
-                <text x={t.x} y={17} textAnchor="middle" fontSize="9" className="fill-current opacity-70">
-                  {t.day > 0 ? `+${t.day}` : t.day}
-                </text>
-              </g>
-            ))}
-          </svg>
-        </div>
+    <div className="rounded-md border border-hairline p-2 bg-surface">
+      <div className="text-xs text-secondary mb-1">Live preview (relative to today)</div>
+      <div className="space-y-2">
+        {anchors.map((a) => {
+          const riskyW = Math.max(0, cx(a.t) - cx(a.f));
+          const unlikW = Math.max(0, cx(a.ut) - cx(a.uf));
+          return (
+            <div key={a.label} className="flex items-center gap-2">
+              <div className="w-16 text-[11px] text-right text-secondary">{a.label}</div>
+              <svg width={W} height={H + 2} className="shrink-0">
+                <line x1={W / 2} y1={0} x2={W / 2} y2={H} stroke="currentColor" opacity="0.25" />
+                <rect x={cx(a.uf)} y={1} width={unlikW} height={H - 2} fill="currentColor" opacity="0.15" stroke="currentColor" strokeOpacity="0.4" />
+                <rect x={cx(a.f)} y={3} width={riskyW} height={H - 6} fill="currentColor" opacity="0.3" stroke="currentColor" strokeOpacity="0.5" />
+              </svg>
+            </div>
+          );
+        })}
       </div>
-    </div>
-  );
-} // ← make sure this brace closes MiniPreview
-
-
-/** Phase preview (Testing→Breeding and Birth→Placement) */
-function PhasePreview({ form }: { form: AvailabilityPrefs }) {
-  const PAD_X = 10;
-  const ROW_H = 18;
-  const VIEW_W = 800;
-
-  const colToday = "hsl(var(--brand-orange, 20 90% 55%))";
-  const strokeHair = "hsl(var(--hairline, 0 0% 35% / 0.6))";
-
-  const phases = [
-    {
-      id: "cb",
-      label: "Cycle Start → Breeding",
-      uf: -Math.abs(Number(form.cycle_breeding_unlikely_from_likely_start || 0)),
-      ut: Math.abs(Number(form.cycle_breeding_unlikely_to_likely_end || 0)),
-      rf: -Math.abs(Number(form.cycle_breeding_risky_from_full_start || 0)),
-      rt: Math.abs(Number(form.cycle_breeding_risky_to_full_end || 0)),
-      color: "hsl(200 85% 55%)",
-    },
-    {
-      id: "bp",
-      label: "Birth → Placement",
-      uf: -Math.abs(Number(form.post_unlikely_from_likely_start || 0)),
-      ut: Math.abs(Number(form.post_unlikely_to_likely_end || 0)),
-      rf: -Math.abs(Number(form.post_risky_from_full_start || 0)),
-      rt: Math.abs(Number(form.post_risky_to_full_end || 0)),
-      color: "hsl(345 80% 55%)",
-    },
-  ];
-
-  const maxBefore = Math.max(...phases.map(p => Math.max(Math.abs(p.uf), Math.abs(p.rf))));
-  const maxAfter = Math.max(...phases.map(p => Math.max(Math.abs(p.ut), Math.abs(p.rt))));
-  let minDay = -maxBefore, maxDay = maxAfter;
-  if (!Number.isFinite(minDay) || !Number.isFinite(maxDay) || (minDay === 0 && maxDay === 0)) { minDay = -7; maxDay = 7; }
-  const span0 = Math.max(1, maxDay - minDay);
-  const pad = Math.max(2, Math.round(span0 * 0.10));
-  minDay = Math.floor((minDay - pad) / 5) * 5;
-  maxDay = Math.ceil((maxDay + pad) / 5) * 5;
-  const span = maxDay - minDay;
-  const cx = (day: number) => Math.round(((day - minDay) / span) * (VIEW_W - PAD_X * 2)) + PAD_X;
-
-  const niceStep = (s: number) => [1, 2, 5, 10, 15, 20, 25, 30].reduce((b, x) => Math.abs(x - (s / 10)) < Math.abs(b - (s / 10)) ? x : b, 1);
-  const step = niceStep(span);
-  const ticks: Array<{ x: number; day: number }> = [];
-  const startTick = Math.ceil(minDay / step) * step;
-  for (let d = startTick; d <= maxDay; d += step) ticks.push({ x: cx(d), day: d });
-
-  const svgH = phases.length * ROW_H;
-
-  return (
-    <div className="mt-2">
-      <div className="flex gap-2">
-        <div className="flex flex-col items-end justify-between w-32 text-[11px] text-secondary py-[2px] pr-1">
-          {phases.map(p => <div key={p.id} style={{ height: ROW_H }} className="leading-none">{p.label}</div>)}
-          <div style={{ height: 24 }} className="leading-none mt-1">Days</div>
-        </div>
-        <div className="flex-1 min-w-0">
-          <svg viewBox={`0 0 ${VIEW_W} ${svgH}`} className="w-full" style={{ height: svgH }}>
-            <defs>
-              {phases.map(p => (
-                <pattern id={`phase-hatch-${p.id}`} key={p.id} patternUnits="userSpaceOnUse" width="6" height="6" patternTransform="rotate(45)">
-                  <rect width="6" height="6" fill="transparent" />
-                  <line x1="0" y1="0" x2="0" y2="6" stroke={p.color} strokeOpacity="0.35" strokeWidth="2" />
-                </pattern>
-              ))}
-            </defs>
-            <line x1={cx(0)} x2={cx(0)} y1={0} y2={svgH} stroke={colToday} strokeWidth="1.5" />
-            {phases.map((p, i) => {
-              const y = i * ROW_H + 3;
-              const x1u = cx(p.uf), x2u = cx(p.ut);
-              const x1r = cx(p.rf), x2r = cx(p.rt);
-              const xu = Math.min(x1u, x2u), wu = Math.max(1, Math.abs(x2u - x1u));
-              const xr = Math.min(x1r, x2r), wr = Math.max(1, Math.abs(x2r - x1r));
-              return (
-                <g key={p.id}>
-                  <rect x={xu} y={y} width={wu} height={ROW_H - 6} rx="2"
-                    fill={`url(#phase-hatch-${p.id})`} stroke={p.color} strokeOpacity="0.5" />
-                  <rect x={xr} y={y} width={wr} height={ROW_H - 6} rx="2"
-                    fill={p.color} fillOpacity="1" stroke={p.color} strokeOpacity="0.9" />
-                </g>
-              );
-            })}
-          </svg>
-          <svg viewBox={`0 0 ${VIEW_W} 24`} className="w-full h-[24px] mt-1">
-            <line x1={PAD_X} y1={9} x2={VIEW_W - PAD_X} y2={9} stroke={strokeHair} />
-            {ticks.map((t, i) => (
-              <g key={i}>
-                <line x1={t.x} y1={6} x2={t.x} y2={12} stroke={strokeHair} />
-                <text x={t.x} y={17} textAnchor="middle" fontSize="9" className="fill-current opacity-70">
-                  {t.day > 0 ? `+${t.day}` : t.day}
-                </text>
-              </g>
-            ))}
-          </svg>
-        </div>
-      </div>
+      <div className="mt-1 text-[10px] text-tertiary">Today is the vertical line. Bars update as you type.</div>
     </div>
   );
 }
 
 /** Phase editor block */
 function FieldNumDerived(props: {
-  label: string;
-  value: number;
-  derived: number;
-  onChange: (n: number) => void;
-  onReset?: () => void;
-  invalid?: boolean;
-  help?: string;
-  disabled?: boolean;
+  label: string; value: number; derived: number; onChange: (n: number) => void; onReset?: () => void; invalid?: boolean; help?: string;
 }) {
-  const { label, value, derived, onChange, onReset, invalid, help, disabled } = props;
+  const { label, value, derived, onChange, onReset, invalid, help } = props;
   const delta = Math.round((value || 0) - (derived || 0));
-  const [text, setText] = React.useState<string>(() => String(Number.isFinite(value) ? value : ""));
-  const lastCommitted = React.useRef<string>(String(Number.isFinite(value) ? value : ""));
-  React.useEffect(() => {
-    // keep external changes in sync
-    const next = Number.isFinite(value) ? String(value) : "";
-    setText(next);
-    lastCommitted.current = next;
-  }, [value]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  function commit(vRaw: string) {
-    const v = vRaw.trim();
-    // Allow a leading '-' while typing, but on commit treat lone '-' as unchanged.
-    if (v === "" || v === "-") { setText(lastCommitted.current); return; }
-    // Parse as base-10 integer (no floats here)
-    const n = Number.parseInt(v, 10);
-    if (Number.isNaN(n)) { setText(lastCommitted.current); return; }
-    const next = String(n);
-    if (next === lastCommitted.current) return; // idempotent
-    lastCommitted.current = next;
-    onChange(n);
-  }
   return (
     <label className="space-y-1">
       <div className="flex items-center gap-2">
@@ -2515,165 +1747,70 @@ function FieldNumDerived(props: {
             Reset
           </button>
         )}
-        <input
-          type="number"
-          step="1"
-          inputMode="numeric"
-          disabled={!!disabled}
-          className={[
-            "bhq-input w-24 h-8 rounded-md border bg-surface px-2 text-sm",
-            disabled ? "opacity-60 cursor-not-allowed" : "",
-            invalid ? "border-red-500/60 focus:shadow-[0_0_0_2px_rgba(244,63,94,.6)]" : "border-hairline",
-          ].join(" ")}
-          value={text}
-          onChange={(e) => {
-            const v = e.currentTarget.value;
-            if (!/^-?\d*$/.test(v)) return;
-            setText(v);
-            // if it is a complete integer (not empty or lone "-"), push it to parent immediately
-            if (/^-?\d+$/.test(v)) onChange(Number.parseInt(v, 10));
-          }}
-          onBlur={() => commit(text)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") { e.preventDefault(); commit(text); }
-          }}
-          aria-invalid={invalid ? "true" : "false"}
-        />
-        {help ? <p className="text-[10px] text-tertiary">{help}</p> : null}
       </div>
+      <input
+        type="number"
+        className={[
+          "bhq-input w-28 h-9 rounded-md border bg-surface px-2 text-sm",
+          invalid ? "border-red-500/60 focus:shadow-[0_0_0_2px_rgba(244,63,94,.6)]" : "border-hairline",
+        ].join(" ")}
+        value={Number.isFinite(value) ? value : 0}
+        onChange={(e) => onChange(Number(e.currentTarget.value || 0))}
+        aria-invalid={invalid ? "true" : "false"}
+      />
+      {help ? <p className="text-[10px] text-tertiary">{help}</p> : null}
     </label>
   );
 }
 function ExactDateRow(props: {
-  rowId: string; locked: boolean; onToggleLock: () => void;
   title: string;
   riskyFromKey: keyof AvailabilityPrefs; riskyToKey: keyof AvailabilityPrefs;
   unlikelyFromKey: keyof AvailabilityPrefs; unlikelyToKey: keyof AvailabilityPrefs;
   form: AvailabilityPrefs; setForm: React.Dispatch<React.SetStateAction<AvailabilityPrefs>>;
   derivedDefaults?: AvailabilityPrefs;
-  hideBefore?: boolean;
-  plusOneDates: boolean;
 }) {
-  const {
-    title, riskyFromKey, riskyToKey, unlikelyFromKey, unlikelyToKey,
-    form, setForm, derivedDefaults, hideBefore,
-  } = props;
+  const { title, riskyFromKey, riskyToKey, unlikelyFromKey, unlikelyToKey, form, setForm, derivedDefaults } = props;
   const DER = derivedDefaults || DEFAULT_AVAILABILITY_PREFS;
-
-  const riskyFrom = Number.isFinite(form[riskyFromKey] as any) ? Number(form[riskyFromKey] as any) : 0;
-  const riskyTo = Number.isFinite(form[riskyToKey] as any) ? Number(form[riskyToKey] as any) : 0;
-  const unrFrom = Number.isFinite(form[unlikelyFromKey] as any) ? Number(form[unlikelyFromKey] as any) : 0;
-  const unrTo = Number.isFinite(form[unlikelyToKey] as any) ? Number(form[unlikelyToKey] as any) : 0;
-
-  const invalidRisky = exactDateInvalid(-Math.abs(riskyFrom), Math.abs(riskyTo));
-  const invalidUnlk = exactDateInvalid(-Math.abs(unrFrom), Math.abs(unrTo));
-
-  function set<K extends keyof AvailabilityPrefs>(key: K, val: number) {
-    props.setForm((f) => normalizeExactBands({ ...f, [key]: val } as AvailabilityPrefs, props.plusOneDates));
-  }
-
+  const riskyFrom = Number(form[riskyFromKey] ?? 0), riskyTo = Number(form[riskyToKey] ?? 0);
+  const unrFrom = Number(form[unlikelyFromKey] ?? 0), unrTo = Number(form[unlikelyToKey] ?? 0);
+  const invalidRisky = exactDateInvalid(riskyFrom, riskyTo); const invalidUnlk = exactDateInvalid(unrFrom, unrTo);
+  function set<K extends keyof AvailabilityPrefs>(key: K, val: number) { setForm((f) => ({ ...f, [key]: val } as AvailabilityPrefs)); }
   function resetRow() {
-    if (props.locked) return;
-    setForm((f) => normalizeExactBands({
+    setForm((f) => ({
       ...f,
       [riskyFromKey]: (DER as any)[riskyFromKey] ?? 0,
       [riskyToKey]: (DER as any)[riskyToKey] ?? 0,
       [unlikelyFromKey]: (DER as any)[unlikelyFromKey] ?? 0,
       [unlikelyToKey]: (DER as any)[unlikelyToKey] ?? 0,
-    } as AvailabilityPrefs, enforcePlusOneDates));
+    } as AvailabilityPrefs));
   }
-
   return (
     <div className="rounded-md border border-hairline p-3 bg-surface space-y-3">
-      <div className="text-sm font-medium">{title}</div>
-
+      <div className="flex items-center justify-between">
+        <div className="text-sm font-medium">{title}</div>
+        <Button size="xs" variant="outline" onClick={resetRow} title="Reset all four fields in this row">Reset row</Button>
+      </div>
       <div className="space-y-3">
         <TwoCol>
-          {!hideBefore && (
-            <FieldNumDerived
-              label="Unlikely: days before"
-              value={unrFrom}
-              derived={Number((DER as any)[unlikelyFromKey] ?? 0)}
-              onChange={(n) => set(unlikelyFromKey, n)}
-              onReset={() => set(unlikelyFromKey, Number((DER as any)[unlikelyFromKey] ?? 0))}
-              invalid={invalidUnlk}
-              help={invalidUnlk ? "Unlikely band collapses (to < from)." : undefined}
-              disabled={props.locked}
-            />
-          )}
-          <FieldNumDerived
-            label="Unlikely: days after"
-            value={unrTo} // <-- was wrong before
-            derived={Number((DER as any)[unlikelyToKey] ?? 0)}
-            onChange={(n) => set(unlikelyToKey, n)}
-            onReset={() => set(unlikelyToKey, Number((DER as any)[unlikelyToKey] ?? 0))}
-            invalid={invalidUnlk}
-            disabled={props.locked}
-          />
+          <FieldNumDerived label="Unlikely: days before" value={unrFrom} derived={Number((DER as any)[unlikelyFromKey] ?? 0)} onChange={(n) => set(unlikelyFromKey, n)} onReset={() => set(unlikelyFromKey, Number((DER as any)[unlikelyFromKey] ?? 0))} invalid={invalidUnlk} help={invalidUnlk ? "Unlikely band collapses (to < from)." : undefined} />
+          <FieldNumDerived label="Unlikely: days after" value={unrTo} derived={Number((DER as any)[unlikelyToKey] ?? 0)} onChange={(n) => set(unlikelyToKey, n)} onReset={() => set(unlikelyToKey, Number((DER as any)[unlikelyToKey] ?? 0))} invalid={invalidUnlk} />
         </TwoCol>
-
         <TwoCol>
-          {!hideBefore && (
-            <FieldNumDerived
-              label="Risky: days before"
-              value={riskyFrom}
-              derived={Number((DER as any)[riskyFromKey] ?? 0)}
-              onChange={(n) => set(riskyFromKey, n)}
-              onReset={() => set(riskyFromKey, Number((DER as any)[riskyFromKey] ?? 0))}
-              invalid={invalidRisky}
-              help={invalidRisky ? "Risky band collapses (to < from)." : undefined}
-              disabled={props.locked}
-            />
-          )}
-          <FieldNumDerived
-            label="Risky: days after"
-            value={riskyTo}
-            derived={Number((DER as any)[riskyToKey] ?? 0)}
-            onChange={(n) => set(riskyToKey, n)}
-            onReset={() => set(riskyToKey, Number((DER as any)[riskyToKey] ?? 0))}
-            invalid={invalidRisky}
-            disabled={props.locked}
-          />
+          <FieldNumDerived label="Risky: days before" value={riskyFrom} derived={Number((DER as any)[riskyFromKey] ?? 0)} onChange={(n) => set(riskyFromKey, n)} onReset={() => set(riskyFromKey, Number((DER as any)[riskyFromKey] ?? 0))} invalid={invalidRisky} help={invalidRisky ? "Risky band collapses (to < from)." : undefined} />
+          <FieldNumDerived label="Risky: days after" value={riskyTo} derived={Number((DER as any)[riskyToKey] ?? 0)} onChange={(n) => set(riskyToKey, n)} onReset={() => set(riskyToKey, Number((DER as any)[riskyToKey] ?? 0))} invalid={invalidRisky} />
         </TwoCol>
-
-        <div className="flex items-center gap-2 pt-1">
-          <Button
-            size="xs"
-            variant={props.locked ? "secondary" : "outline"}
-            onClick={props.onToggleLock}
-            title={props.locked ? "Unlock this row" : "Lock this row to prevent edits and bulk actions"}
-          >
-            {props.locked ? "LOCKED" : "Lock"}
-          </Button>
-          <Button
-            size="xs"
-            variant="outline"
-            onClick={resetRow}
-            disabled={props.locked}
-            title="Reset all four fields in this row"
-          >
-            Reset row
-          </Button>
-        </div>
       </div>
     </div>
   );
 }
-
 function PhaseBlock(props: {
   title: string;
-  unlikelyBeforeKey: keyof AvailabilityPrefs;
-  unlikelyAfterKey: keyof AvailabilityPrefs;
-  riskyBeforeKey: keyof AvailabilityPrefs;
-  riskyAfterKey: keyof AvailabilityPrefs;
-  form: AvailabilityPrefs;
-  setForm: React.Dispatch<React.SetStateAction<AvailabilityPrefs>>;
-  defaults: AvailabilityPrefs;
-  plusOnePhases: boolean;
+  unlikelyBeforeKey: keyof AvailabilityPrefs; unlikelyAfterKey: keyof AvailabilityPrefs;
+  riskyBeforeKey: keyof AvailabilityPrefs; riskyAfterKey: keyof AvailabilityPrefs;
+  form: AvailabilityPrefs; setForm: React.Dispatch<React.SetStateAction<AvailabilityPrefs>>; defaults: AvailabilityPrefs;
 }) {
   const { title, unlikelyBeforeKey, unlikelyAfterKey, riskyBeforeKey, riskyAfterKey, form, setForm, defaults } = props;
-  const set = <K extends keyof AvailabilityPrefs>(k: K, n: number) =>
-    props.setForm((f) => normalizePhaseBands({ ...f, [k]: n } as AvailabilityPrefs, props.plusOnePhases));
+  const set = <K extends keyof AvailabilityPrefs>(k: K, n: number) => setForm((f) => ({ ...f, [k]: n } as AvailabilityPrefs));
   return (
     <div className="rounded-md border border-hairline p-3 bg-surface space-y-3">
       <div className="text-sm font-medium">{title}</div>
@@ -2710,5 +1847,3 @@ function PhaseBlock(props: {
     </div>
   );
 }
-
-
