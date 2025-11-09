@@ -1,44 +1,51 @@
+// packages/ui/src/hooks/useAvailabilityPrefs.ts
 import * as React from "react";
-import { DEFAULT_AVAILABILITY_PREFS, type AvailabilityPrefs } from "../utils/availability";
+import { fetchAvailabilityPrefs, mapTenantPrefs, DEFAULT_AVAILABILITY_PREFS } from "../utils/availability";
+import { readTenantIdFast } from "../utils/tenant";
 
-type UseAvailabilityOpts = {
-  tenantId: number; // pass from your app shell or session
+type Options = {
+  /** Explicit tenant id. If omitted we’ll try readTenantIdFast(). */
+  tenantId?: string | number | null;
+  /** If true, returns the raw DB payload instead of sanitized UI prefs (defaults to false). */
+  raw?: boolean;
 };
 
-export function useAvailabilityPrefs(opts: UseAvailabilityOpts) {
-  const { tenantId } = opts;
-  const [prefs, setPrefsState] = React.useState<AvailabilityPrefs>(DEFAULT_AVAILABILITY_PREFS);
-  const [loading, setLoading] = React.useState(true);
-  const [error, setError] = React.useState<string | null>(null);
+export function useAvailabilityPrefs(opts: Options = {}) {
+  const wantedId = opts.tenantId ?? readTenantIdFast?.();
+  const [loading, setLoading] = React.useState<boolean>(true);
+  const [error, setError] = React.useState<string>("");
+  const [prefs, setPrefs] = React.useState(() => DEFAULT_AVAILABILITY_PREFS);
 
   React.useEffect(() => {
-    let alive = true;
-    setLoading(true);
-    fetch(`/tenants/${tenantId}/availability`, { credentials: "include" })
-      .then((r) => (r.ok ? r.json() : r.text().then((t) => Promise.reject(t))))
-      .then((j) => { if (alive) { setPrefsState({ ...DEFAULT_AVAILABILITY_PREFS, ...j }); setLoading(false); } })
-      .catch((e) => { if (alive) { setError(String(e)); setLoading(false); } });
-    return () => { alive = false; };
-  }, [tenantId]);
+    let ignore = false;
+    (async () => {
+      try {
+        setLoading(true);
+        setError("");
+        if (!wantedId) {
+          if (!ignore) setPrefs({ ...DEFAULT_AVAILABILITY_PREFS });
+          return;
+        }
 
-  const save = async (next: Partial<AvailabilityPrefs>) => {
-    // optimistic merge
-    const merged = { ...prefs, ...next };
-    setPrefsState(merged);
-    const res = await fetch(`/tenants/${tenantId}/availability`, {
-      method: "PATCH",
-      headers: { "content-type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify(next),
-    });
-    if (!res.ok) {
-      setError(`Save failed: ${res.status}`);
-      // Optionally re-load from server
-    } else {
-      const j = await res.json();
-      setPrefsState({ ...DEFAULT_AVAILABILITY_PREFS, ...j });
-    }
-  };
+        const ui = await fetchAvailabilityPrefs(wantedId);
+        if (!ignore) {
+          setPrefs(opts.raw ? (ui as any) : mapTenantPrefs(ui));
+        }
+      } catch (e: any) {
+        if (!ignore) {
+          setError(e?.message || "Failed to load availability preferences");
+          setPrefs({ ...DEFAULT_AVAILABILITY_PREFS });
+        }
+      } finally {
+        if (!ignore) setLoading(false);
+      }
+    })();
+    return () => {
+      ignore = true;
+    };
+  }, [wantedId, opts.raw]);
 
-  return { prefs, setPrefs: save, loading, error };
+  return { loading, error, prefs };
 }
+
+export default useAvailabilityPrefs;

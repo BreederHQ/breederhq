@@ -40,6 +40,7 @@ const EXACT_ROWS = [
   { id: "breed", title: "Breeding Date", keys: { rf: "date_breeding_risky_from", rt: "date_breeding_risky_to", uf: "date_breeding_unlikely_from", ut: "date_breeding_unlikely_to" } },
   { id: "birth", title: "Birth Date", keys: { rf: "date_birth_risky_from", rt: "date_birth_risky_to", uf: "date_birth_unlikely_from", ut: "date_birth_unlikely_to" } },
   { id: "weaned", title: "Weaned Date", keys: { rf: "date_weaned_risky_from", rt: "date_weaned_risky_to", uf: "date_weaned_unlikely_from", ut: "date_weaned_unlikely_to" } },
+  { id: "placement_start", title: "Placement Start", keys: { rf: "date_placement_start_risky_from", rt: "date_placement_start_risky_to", uf: "date_placement_start_unlikely_from", ut: "date_placement_start_unlikely_to" } },
   { id: "placed", title: "Placement Completed", keys: { rf: "date_placement_completed_risky_from", rt: "date_placement_completed_risky_to", uf: "date_placement_completed_unlikely_from", ut: "date_placement_completed_unlikely_to" } },
 ] as const;
 
@@ -48,11 +49,8 @@ function normalizeExactBands(draft: AvailabilityPrefs, enforcePlusOne: boolean =
   EXACT_ROWS.forEach((row) => {
     const k = row.keys as any;
 
-    // BEFORE (negative): Placement has no "before" bands at all
-    if (row.id === "placed") {
-      draft[k.rf] = 0;
-      draft[k.uf] = 0;
-    } else if (enforcePlusOne) {
+    // BEFORE side
+    if (enforcePlusOne) {
       const rf = Number(draft[k.rf] ?? 0); // risky before (days)
       const uf = Number(draft[k.uf] ?? 0); // unlikely before (days)
       // Only enforce widening when Risky is present; otherwise preserve Unlikely
@@ -70,7 +68,7 @@ function normalizeExactBands(draft: AvailabilityPrefs, enforcePlusOne: boolean =
 }
 
 /** ENSURE (Phases): Unlikely is strictly wider than Risky when Risky ≠ 0 */
-function normalizePhaseBands(draft: AvailabilityPrefs, enforcePlusOne: boolean = true) {
+function normalizePhaseBands(draft: AvailabilityPrefs, enforcePlusOne = true) {
   if (!enforcePlusOne) return draft;
 
   const QUADS = [
@@ -89,11 +87,13 @@ function normalizePhaseBands(draft: AvailabilityPrefs, enforcePlusOne: boolean =
   ] as const;
 
   QUADS.forEach((q) => {
-    const rb = Number((draft as any)[q.rb] ?? 0);
-    const ub = Number((draft as any)[q.ub] ?? 0);
-    if (rb === 0) (draft as any)[q.ub] = 0;
-    else if (ub <= rb) (draft as any)[q.ub] = rb + 1;
+    // BEFORE (negative numbers): compare by magnitude, always write negative
+    const rbAbs = Math.abs(Number((draft as any)[q.rb] ?? 0));
+    const ubAbs = Math.abs(Number((draft as any)[q.ub] ?? 0));
+    const needBefore = rbAbs === 0 ? 0 : Math.max(ubAbs, rbAbs + 1);
+    (draft as any)[q.ub] = needBefore ? -needBefore : 0;
 
+    // AFTER (positive numbers): current logic is fine
     const ra = Number((draft as any)[q.ra] ?? 0);
     const ua = Number((draft as any)[q.ua] ?? 0);
     if (ra === 0) (draft as any)[q.ua] = 0;
@@ -1074,29 +1074,25 @@ type BreedingHandle = {
   goto: (sub: BreedingSubTab) => void;
 };
 
-type BreedingSubTab = "general" | "phases" | "dates" | "overrides";
+type BreedingSubTab = "general" | "phases" | "dates";
 const BREEDING_SUBTABS: Array<{ key: BreedingSubTab; label: string }> = [
   { key: "general", label: "General" },
   { key: "phases", label: "Timeline Phases" },
   { key: "dates", label: "Exact Dates" },
-  { key: "overrides", label: "Global Overrides" },
 ];
 
 const BreedingTab = React.forwardRef<BreedingHandle, { dirty: boolean; onDirty: (v: boolean) => void }>(
   function BreedingTabImpl({ onDirty }, ref) {
     const DEFAULTS: AvailabilityPrefs = DEFAULT_AVAILABILITY_PREFS;
 
-    // Local-only display prefs
-    const [showGanttBands, setShowGanttBands] = React.useState<boolean>(() => {
-      try { return localStorage.getItem("BHQ_BREEDING_SHOW_GANTT_BANDS") !== "0"; } catch { return true; }
+    // Display prefs, saved to tenant profile
+    const [showGanttBands, setShowGanttBands] = React.useState<boolean>(true);
+    const [showCalendarBands, setShowCalendarBands] = React.useState<boolean>(true);
+    const [initialBands, setInitialBands] = React.useState<{ showInGantt: boolean; showInCalendar: boolean }>({
+      showInGantt: true,
+      showInCalendar: true,
     });
-    const [showCalendarBands, setShowCalendarBands] = React.useState<boolean>(() => {
-      try { return localStorage.getItem("BHQ_BREEDING_SHOW_CAL_BANDS") !== "0"; } catch { return true; }
-    });
-    const [ganttHorizonMonths, setGanttHorizonMonths] = React.useState<number>(() => {
-      const raw = (localStorage.getItem("BHQ_BREEDING_HORIZON_MONTHS") || "").trim();
-      const n = Number(raw); return Number.isFinite(n) && n > 0 ? n : 18;
-    });
+
     // Local-only: auto-widen (+1) overrides
     const [enforcePlusOneDates, setEnforcePlusOneDates] = React.useState<boolean>(() => {
       try { return localStorage.getItem("BHQ_ENFORCE_PLUSONE_DATES") !== "0"; } catch { return true; }
@@ -1104,6 +1100,81 @@ const BreedingTab = React.forwardRef<BreedingHandle, { dirty: boolean; onDirty: 
     const [enforcePlusOnePhases, setEnforcePlusOnePhases] = React.useState<boolean>(() => {
       try { return localStorage.getItem("BHQ_ENFORCE_PLUSONE_PHASES") !== "0"; } catch { return true; }
     });
+
+    function isZeroish(v: any) {
+      const n = Number(v ?? 0);
+      return !Number.isFinite(n) || n === 0;
+    }
+    function availabilityLooksEmpty(av: AvailabilityPrefs) {
+      // any non-zero across either phases or exact-date bands = "initialized"
+      const keys: (keyof AvailabilityPrefs)[] = [
+        // Phases
+        "cycle_breeding_unlikely_from_likely_start",
+        "cycle_breeding_unlikely_to_likely_end",
+        "cycle_breeding_risky_from_full_start",
+        "cycle_breeding_risky_to_full_end",
+        "post_unlikely_from_likely_start",
+        "post_unlikely_to_likely_end",
+        "post_risky_from_full_start",
+        "post_risky_to_full_end",
+        // Exact Dates
+        "date_cycle_risky_from", "date_cycle_risky_to", "date_cycle_unlikely_from", "date_cycle_unlikely_to",
+        "date_testing_risky_from", "date_testing_risky_to", "date_testing_unlikely_from", "date_testing_unlikely_to",
+        "date_breeding_risky_from", "date_breeding_risky_to", "date_breeding_unlikely_from", "date_breeding_unlikely_to",
+        "date_birth_risky_from", "date_birth_risky_to", "date_birth_unlikely_from", "date_birth_unlikely_to",
+        "date_weaned_risky_from", "date_weaned_risky_to", "date_weaned_unlikely_from", "date_weaned_unlikely_to",
+        "date_placement_start_risky_from", "date_placement_start_risky_to",
+        "date_placement_start_unlikely_from", "date_placement_start_unlikely_to",
+        "date_placement_completed_risky_from", "date_placement_completed_risky_to",
+        "date_placement_completed_unlikely_from", "date_placement_completed_unlikely_to",
+      ];
+      return keys.every(k => isZeroish((av as any)[k]));
+    }
+
+    function seedBalancedIfEmpty(
+      current: AvailabilityPrefs,
+      defaults: AvailabilityPrefs,
+      plusOneDates: boolean,
+      plusOnePhases: boolean
+    ): AvailabilityPrefs {
+      if (!availabilityLooksEmpty(current)) return current; // respect existing values
+
+      // Start from defaults, then apply Balanced to phases & dates
+      const next: AvailabilityPrefs = { ...defaults, ...current };
+
+      // —— Phases (Balanced multiplier = 1.0)
+      ([
+        ["cycle_breeding_unlikely_from_likely_start", BASE_PHASE.unlikelyBefore],
+        ["cycle_breeding_unlikely_to_likely_end", BASE_PHASE.unlikelyAfter],
+        ["cycle_breeding_risky_from_full_start", BASE_PHASE.riskyBefore],
+        ["cycle_breeding_risky_to_full_end", BASE_PHASE.riskyAfter],
+        ["post_unlikely_from_likely_start", BASE_PHASE.unlikelyBefore],
+        ["post_unlikely_to_likely_end", BASE_PHASE.unlikelyAfter],
+        ["post_risky_from_full_start", BASE_PHASE.riskyBefore],
+        ["post_risky_to_full_end", BASE_PHASE.riskyAfter],
+      ] as Array<[keyof AvailabilityPrefs, number]>).forEach(([k, seed]) => {
+        const seeded = seedOrCurrent((next as any)[k], (defaults as any)[k], seed);
+        (next as any)[k] = Math.round(seeded * 1.0);
+      });
+
+      // —— Exact dates (Balanced multiplier = 1.0)
+      EXACT_ROWS.forEach((row) => {
+        const k = row.keys as any;
+        const rfCur = seedOrCurrent((next as any)[k.rf], (defaults as any)[k.rf], BASE_DATE.riskyBefore);
+        const rtCur = seedOrCurrent((next as any)[k.rt], (defaults as any)[k.rt], BASE_DATE.riskyAfter);
+        const ufCur = seedOrCurrent((next as any)[k.uf], (defaults as any)[k.uf], BASE_DATE.unlikelyBefore);
+        const utCur = seedOrCurrent((next as any)[k.ut], (defaults as any)[k.ut], BASE_DATE.unlikelyAfter);
+        (next as any)[k.rf] = Math.round(rfCur * 1.0);
+        (next as any)[k.rt] = Math.round(rtCur * 1.0);
+        (next as any)[k.uf] = Math.round(ufCur * 1.0);
+        (next as any)[k.ut] = Math.round(utCur * 1.0);
+      });
+
+      // Normalize (placement before bands, “+1” widening, etc.)
+      const withDates = normalizeExactBands(next, plusOneDates);
+      const withPhases = normalizePhaseBands(withDates, plusOnePhases);
+      return withPhases;
+    }
 
     const [activeSub, setActiveSub] = React.useState<BreedingSubTab>("general");
     const [loading, setLoading] = React.useState(true);
@@ -1128,14 +1199,23 @@ const BreedingTab = React.forwardRef<BreedingHandle, { dirty: boolean; onDirty: 
 
     const isDirty = React.useMemo(() => {
       const serverDirty = JSON.stringify(form) !== JSON.stringify(initial);
-      const localDirty =
-        showGanttBands !== (localStorage.getItem("BHQ_BREEDING_SHOW_GANTT_BANDS") !== "0") ||
-        showCalendarBands !== (localStorage.getItem("BHQ_BREEDING_SHOW_CAL_BANDS") !== "0") ||
-        ganttHorizonMonths !== (Number(localStorage.getItem("BHQ_BREEDING_HORIZON_MONTHS") || "18") || 18) ||
+      const bandDirty =
+        showGanttBands !== initialBands.showInGantt ||
+        showCalendarBands !== initialBands.showInCalendar;
+      const localTogglesDirty =
         enforcePlusOneDates !== (localStorage.getItem("BHQ_ENFORCE_PLUSONE_DATES") !== "0") ||
         enforcePlusOnePhases !== (localStorage.getItem("BHQ_ENFORCE_PLUSONE_PHASES") !== "0");
-      return serverDirty || localDirty;
-    }, [form, initial, showGanttBands, showCalendarBands, ganttHorizonMonths, enforcePlusOneDates, enforcePlusOnePhases]);
+      return serverDirty || bandDirty || localTogglesDirty;
+    }, [
+      form,
+      initial,
+      showGanttBands,
+      showCalendarBands,
+      initialBands.showInGantt,
+      initialBands.showInCalendar,
+      enforcePlusOneDates,
+      enforcePlusOnePhases,
+    ]);
     React.useEffect(() => onDirty(isDirty), [isDirty, onDirty]);
 
     React.useEffect(() => {
@@ -1148,13 +1228,44 @@ const BreedingTab = React.forwardRef<BreedingHandle, { dirty: boolean; onDirty: 
           const av = await fetchJson(`/api/v1/tenants/${encodeURIComponent(tenantId)}/availability`);
           const avData = (av?.data ?? av) as Partial<AvailabilityPrefs> | undefined;
           const avMerged: AvailabilityPrefs = { ...DEFAULTS, ...(avData || {}) };
-          if (!ignore) { setInitial(avMerged); setForm(avMerged); }
+          const seeded = seedBalancedIfEmpty(avMerged, DEFAULTS, enforcePlusOneDates, enforcePlusOnePhases);
+          const wasEmpty =
+            availabilityLooksEmpty(avMerged); // all zeros on server?
+          if (!ignore) {
+            // If we seeded, keep "initial" equal to what the server actually had,
+            // so the form is dirty and Save will PATCH the seeded values.
+            setInitial(wasEmpty ? avMerged : seeded);
+            setForm(seeded);
+          }
         } catch (e: any) {
           if (!ignore) setError(e?.message || "Failed to load breeding availability");
         } finally { if (!ignore) setLoading(false); }
       })();
       return () => { ignore = true; };
       // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    React.useEffect(() => {
+      let ignore = false;
+      (async () => {
+        try {
+          const tenantId = await resolveTenantIdSafe();
+          if (!tenantId) return;
+          try {
+            const pr = await api.breeding.program.getForTenant(Number(tenantId));
+            const prof = (pr?.data ?? pr) as any;
+            const bands = prof?.preferences?.bands || {};
+            if (!ignore) {
+              const g = typeof bands.showInGantt === "boolean" ? bands.showInGantt : true;
+              const c = typeof bands.showInCalendar === "boolean" ? bands.showInCalendar : true;
+              setShowGanttBands(g);
+              setShowCalendarBands(c);
+              setInitialBands({ showInGantt: g, showInCalendar: c });
+            }
+          } catch { /* ignore */ }
+        } catch { /* ignore */ }
+      })();
+      return () => { ignore = true; };
     }, []);
 
     async function saveAll() {
@@ -1173,14 +1284,39 @@ const BreedingTab = React.forwardRef<BreedingHandle, { dirty: boolean; onDirty: 
           setInitial(avSaved); setForm(avSaved);
         }
 
-        // Save local overrides
+        // Save tenant band-visibility preferences
         try {
-          localStorage.setItem("BHQ_BREEDING_SHOW_GANTT_BANDS", showGanttBands ? "1" : "0");
-          localStorage.setItem("BHQ_BREEDING_SHOW_CAL_BANDS", showCalendarBands ? "1" : "0");
-          localStorage.setItem("BHQ_BREEDING_HORIZON_MONTHS", String(Math.max(6, Math.min(36, ganttHorizonMonths || 18))));
+          const tenantRaw2 = await resolveTenantId();
+          const tenantId2 = String(tenantRaw2 ?? "").trim();
+          if (tenantId2) {
+            try {
+              const prCurr = await api.breeding.program.getForTenant(Number(tenantId2));
+              const prof = (prCurr?.data ?? prCurr) as any;
+              const prevPrefs = prof?.preferences || {};
+              const nextPrefs = {
+                ...prevPrefs,
+                bands: {
+                  ...(prevPrefs.bands || {}),
+                  showInGantt: !!showGanttBands,
+                  showInCalendar: !!showCalendarBands,
+                },
+              };
+              await api.breeding.program.updateForTenant({ preferences: nextPrefs } as any, Number(tenantId2));
+            } catch {
+              await fetch(`/api/v1/breeding/program/tenant/${encodeURIComponent(tenantId2)}`, {
+                method: "PUT",
+                headers: { "Content-Type": "application/json", Accept: "application/json" },
+                credentials: "include",
+                body: JSON.stringify({ preferences: { bands: { showInGantt: !!showGanttBands, showInCalendar: !!showCalendarBands } } }),
+              });
+            }
+          }
+        } catch { }
+        setInitialBands({ showInGantt: !!showGanttBands, showInCalendar: !!showCalendarBands });
+        try {
           localStorage.setItem("BHQ_ENFORCE_PLUSONE_DATES", enforcePlusOneDates ? "1" : "0");
           localStorage.setItem("BHQ_ENFORCE_PLUSONE_PHASES", enforcePlusOnePhases ? "1" : "0");
-        } catch { }
+        } catch { /* ignore */ }
         onDirty(false);
       } catch (e: any) {
         setError(e?.message || "Failed to save breeding settings");
@@ -1195,48 +1331,27 @@ const BreedingTab = React.forwardRef<BreedingHandle, { dirty: boolean; onDirty: 
       setForm((f) => ({ ...f, [key]: val as any } as AvailabilityPrefs));
     }
 
-    // ── Presets A: affect ONLY phase span keys
-    // ── Preset baselines + seeding helper (add this once above the preset helpers) ─────────
-    const BASE_PHASE = {
-      unlikelyBefore: -7,  // whole-phase: days before anchor span
-      unlikelyAfter: 7,
-      riskyBefore: -3,
-      riskyAfter: 3,
+    // ── Presets: fixed values per spec
+    const PRESET = {
+      tight: { U: 4, R: 2 },
+      balanced: { U: 7, R: 3 },
+      wide: { U: 10, R: 4 },
     } as const;
-
-    const BASE_DATE = {
-      unlikelyBefore: -10, // per-date: days before anchor
-      unlikelyAfter: 10,
-      riskyBefore: -5,
-      riskyAfter: 5,
-    } as const;
-
-    // If current & default are 0, seed so presets actually move numbers.
-    // Otherwise prefer current, or fall back to default.
-    function seedOrCurrent(cur: number | undefined, def: number | undefined, seed: number) {
-      const c = Number(cur || 0);
-      const d = Number(def || 0);
-      return (c === 0 && d === 0) ? seed : (c || d);
-    }
 
     function applyPhasePreset(kind: "tight" | "balanced" | "wide") {
-      const mult = { tight: 0.6, balanced: 1.0, wide: 1.4 }[kind];
-      const keys: Array<[keyof AvailabilityPrefs, number]> = [
-        ["cycle_breeding_unlikely_from_likely_start", BASE_PHASE.unlikelyBefore],
-        ["cycle_breeding_unlikely_to_likely_end", BASE_PHASE.unlikelyAfter],
-        ["cycle_breeding_risky_from_full_start", BASE_PHASE.riskyBefore],
-        ["cycle_breeding_risky_to_full_end", BASE_PHASE.riskyAfter],
-        ["post_unlikely_from_likely_start", BASE_PHASE.unlikelyBefore],
-        ["post_unlikely_to_likely_end", BASE_PHASE.unlikelyAfter],
-        ["post_risky_from_full_start", BASE_PHASE.riskyBefore],
-        ["post_risky_to_full_end", BASE_PHASE.riskyAfter],
-      ];
+      const { U, R } = PRESET[kind];
       setForm((f) => {
         const next = { ...f };
-        for (const [k, seed] of keys) {
-          const seeded = seedOrCurrent((next as any)[k], (DEFAULTS as any)[k], seed);
-          (next as any)[k] = Math.round(seeded * mult);
-        }
+        // Cycle Start → Breeding
+        (next as any).cycle_breeding_unlikely_from_likely_start = -U;
+        (next as any).cycle_breeding_unlikely_to_likely_end = +U;
+        (next as any).cycle_breeding_risky_from_full_start = -R;
+        (next as any).cycle_breeding_risky_to_full_end = +R;
+        // Birth → Placement
+        (next as any).post_unlikely_from_likely_start = -U;
+        (next as any).post_unlikely_to_likely_end = +U;
+        (next as any).post_risky_from_full_start = -R;
+        (next as any).post_risky_to_full_end = +R;
         return normalizePhaseBands(next, enforcePlusOnePhases);
       });
     }
@@ -1269,25 +1384,22 @@ const BreedingTab = React.forwardRef<BreedingHandle, { dirty: boolean; onDirty: 
       });
     }
 
-    // ── Presets B: affect ONLY per-date keys (date_*), not the toggle
+    // ── Presets B: affect ONLY per-date keys, respect row locks
     function applyDatePreset(kind: "tight" | "balanced" | "wide") {
-      const mult = { tight: 0.6, balanced: 1.0, wide: 1.4 }[kind];
+      const { U, R } = PRESET[kind];
       setForm((f) => {
         const next = { ...f };
         withUnlockedRows((row) => {
           const k = row.keys as any;
-          const rfCur = seedOrCurrent((next as any)[k.rf], (DEFAULTS as any)[k.rf], BASE_DATE.riskyBefore);
-          const rtCur = seedOrCurrent((next as any)[k.rt], (DEFAULTS as any)[k.rt], BASE_DATE.riskyAfter);
-          const ufCur = seedOrCurrent((next as any)[k.uf], (DEFAULTS as any)[k.uf], BASE_DATE.unlikelyBefore);
-          const utCur = seedOrCurrent((next as any)[k.ut], (DEFAULTS as any)[k.ut], BASE_DATE.unlikelyAfter);
-          (next as any)[k.rf] = Math.round(rfCur * mult);
-          (next as any)[k.rt] = Math.round(rtCur * mult);
-          (next as any)[k.uf] = Math.round(ufCur * mult);
-          (next as any)[k.ut] = Math.round(utCur * mult);
+          (next as any)[k.rf] = -R;  // Risky from
+          (next as any)[k.rt] = +R;  // Risky to
+          (next as any)[k.uf] = -U;  // Unlikely from
+          (next as any)[k.ut] = +U;  // Unlikely to
         });
         return normalizeExactBands(next, enforcePlusOneDates);
       });
     }
+
 
     function shiftAllDatesBy(delta: number) {
       if (!delta) return;
@@ -1333,41 +1445,21 @@ const BreedingTab = React.forwardRef<BreedingHandle, { dirty: boolean; onDirty: 
       </div>
     );
 
-    // ── General (Local Display only)
+    // ── General
     const GeneralTab = (
-      <SectionCard title="Local Display" subtitle="Affects only what you see on this device." right={<Legend />}>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <Card className="p-3 space-y-2">
-            <div className="text-sm font-medium">Default bands visibility</div>
-            <label className="flex items-center gap-2">
-              <input type="checkbox" checked={showGanttBands} onChange={(e) => setShowGanttBands(e.currentTarget.checked)} />
-              <span className="text-sm">Show bands in Gantt</span>
-            </label>
-            <label className="flex items-center gap-2">
-              <input type="checkbox" checked={showCalendarBands} onChange={(e) => setShowCalendarBands(e.currentTarget.checked)} />
-              <span className="text-sm">Show bands in Calendar</span>
-            </label>
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-secondary">Gantt horizon</span>
-              <input
-                type="number" min={6} max={36} value={ganttHorizonMonths}
-                onChange={(e) => setGanttHorizonMonths(Number(e.currentTarget.value || 18))}
-                className="bhq-input w-20 h-8 rounded-md border border-hairline bg-surface px-2 text-sm"
-                aria-label="Gantt horizon months"
-              />
-              <span className="text-xs text-tertiary">months</span>
-            </div>
-            <Hint>Saved in your browser. Doesn’t change tenant defaults.</Hint>
-          </Card>
-
-          <Card className="p-3 space-y-1">
-            <div className="text-sm font-medium">What controls availability</div>
-            <ul className="list-disc pl-5 text-xs text-secondary space-y-1">
-              <li><strong>Timeline Phases</strong> wraps whole windows (Cycle Start→Breeding, Birth→Placement).</li>
-              <li><strong>Exact Dates</strong> wraps a single anchor (Cycle, Testing, Breeding, Birth, etc.).</li>
-            </ul>
-          </Card>
-        </div>
+      <SectionCard title="Default Settings" subtitle="Saved to tenant preferences and used by Planner." right={<Legend />}>        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <Card className="p-3 space-y-2">
+          <div className="text-sm font-medium">Default bands visibility</div>
+          <label className="flex items-center gap-2">
+            <input type="checkbox" checked={showGanttBands} onChange={(e) => setShowGanttBands(e.currentTarget.checked)} />
+            <span className="text-sm">Show bands in Gantt</span>
+          </label>
+          <label className="flex items-center gap-2">
+            <input type="checkbox" checked={showCalendarBands} onChange={(e) => setShowCalendarBands(e.currentTarget.checked)} />
+            <span className="text-sm">Show bands in Calendar</span>
+          </label>
+        </Card>
+      </div>
       </SectionCard>
     );
 
@@ -1563,7 +1655,7 @@ const BreedingTab = React.forwardRef<BreedingHandle, { dirty: boolean; onDirty: 
                 form={form}
                 setForm={setForm}
                 derivedDefaults={DEFAULTS}
-                hideBefore={row.id === "placed"}
+                hideBefore={false}
                 plusOneDates={enforcePlusOneDates}
               />
             ))}
@@ -1571,49 +1663,6 @@ const BreedingTab = React.forwardRef<BreedingHandle, { dirty: boolean; onDirty: 
         )
         }
       </SectionCard >
-    );
-
-    // ── Local overrides subtab (same as before)
-    const OverridesTab = (
-      <SectionCard title="Global overrides" subtitle="Saved in your browser as your personal defaults." className="space-y-3">
-        <TwoCol>
-          <label className="flex items-center gap-2">
-            <input type="checkbox" checked={showGanttBands} onChange={(e) => setShowGanttBands(e.currentTarget.checked)} />
-            <span className="text-sm">Show Availability Bands by default in Gantt</span>
-          </label>
-          <label className="flex items-center gap-2">
-            <input type="checkbox" checked={showCalendarBands} onChange={(e) => setShowCalendarBands(e.currentTarget.checked)} />
-            <span className="text-sm">Show Availability Bands by default in Calendar</span>
-          </label>
-        </TwoCol>
-        <label className="space-y-1 mt-3">
-          <div className="text-xs text-secondary">Default Gantt chart horizon in months</div>
-          <input
-            type="number" className="bhq-input w-40 h-9 rounded-md border border-hairline bg-surface px-2 text-sm"
-            min={6} max={36} value={ganttHorizonMonths}
-            onChange={(e) => setGanttHorizonMonths(Number(e.currentTarget.value || 18))}
-          />
-          <Hint>Range 6 to 36. Default is 18.</Hint>
-        </label>
-        <div className="flex items-center gap-2 mt-2">
-          <Button size="sm" variant="outline" onClick={() => {
-            try {
-              setShowGanttBands(localStorage.getItem("BHQ_BREEDING_SHOW_GANTT_BANDS") !== "0");
-              setShowCalendarBands(localStorage.getItem("BHQ_BREEDING_SHOW_CAL_BANDS") !== "0");
-              const hm = Number(localStorage.getItem("BHQ_BREEDING_HORIZON_MONTHS") || "18") || 18;
-              setGanttHorizonMonths(hm);
-              setEnforcePlusOneDates(localStorage.getItem("BHQ_ENFORCE_PLUSONE_DATES") !== "0");
-              setEnforcePlusOnePhases(localStorage.getItem("BHQ_ENFORCE_PLUSONE_PHASES") !== "0");
-            } catch {
-              setShowGanttBands(true);
-              setShowCalendarBands(true);
-              setGanttHorizonMonths(18);
-              setEnforcePlusOneDates(true);
-              setEnforcePlusOnePhases(true);
-            }
-          }}>Reset to Default</Button>
-        </div>
-      </SectionCard>
     );
 
     return (
@@ -1624,7 +1673,6 @@ const BreedingTab = React.forwardRef<BreedingHandle, { dirty: boolean; onDirty: 
         {activeSub === "general" && GeneralTab}
         {activeSub === "phases" && PhasesTab}
         {activeSub === "dates" && DatesTab}
-        {activeSub === "overrides" && OverridesTab}
       </div>
     );
   }
@@ -2271,12 +2319,19 @@ function MiniPreview({ form }: { form: AvailabilityPrefs }) {
       ut: form.date_weaned_unlikely_to,
     },
     {
+      id: "placement_start",
+      label: "Placement Start",
+      rf: form.date_placement_start_risky_from,
+      rt: form.date_placement_start_risky_to,
+      uf: form.date_placement_start_unlikely_from,
+      ut: form.date_placement_start_unlikely_to,
+    },
+    {
       id: "placed",
       label: "Placement",
-      // ⬇️ Important: zero-out BEFORE bands for Placement
-      rf: 0,
+      rf: form.date_placement_completed_risky_from,
       rt: form.date_placement_completed_risky_to,
-      uf: 0,
+      uf: form.date_placement_completed_unlikely_from,
       ut: form.date_placement_completed_unlikely_to,
     },
   ];
@@ -2287,6 +2342,7 @@ function MiniPreview({ form }: { form: AvailabilityPrefs }) {
     breed: "hsl(30  90% 55%)",
     birth: "hsl(345 80% 55%)",
     weaned: "hsl(260 70% 55%)",
+    placement_start: "hsl(120 65% 50%)",
     placed: "hsl(120 65% 45%)",
   };
 
@@ -2329,10 +2385,7 @@ function MiniPreview({ form }: { form: AvailabilityPrefs }) {
               const y = i * ROW_H + 3;
               let rf = -Math.abs(Number(r.rf || 0)), rt = Math.abs(Number(r.rt || 0));
               let uf = -Math.abs(Number(r.uf || 0)), ut = Math.abs(Number(r.ut || 0));
-              if (r.id === "placed") {
-                rf = 0;
-                uf = 0;
-              }
+
               const x1u = cx(uf), x2u = cx(ut), x1r = cx(rf), x2r = cx(rt);
               const xu = Math.min(x1u, x2u), wu = Math.max(1, Math.abs(x2u - x1u));
               const xr = Math.min(x1r, x2r), wr = Math.max(1, Math.abs(x2r - x1r));

@@ -107,24 +107,34 @@ function normalizePlanDates(body: any) {
     delete b.expectedDue;
   }
 
-  // legacy actual go-home → placement actual start
+  // legacy actual go-home → placementStartDateActual
   if (b.actualGoHomeDate !== undefined && b.placementStartDateActual === undefined) {
     b.placementStartDateActual = b.actualGoHomeDate;
     delete b.actualGoHomeDate;
   }
 
-  // no-op guards removed (previous version had redundant checks)
+  // legacy expectedPlacementCompletedDate → expectedPlacementCompleted
+  if (
+    b.expectedPlacementCompletedDate !== undefined &&
+    b.expectedPlacementCompleted === undefined
+  ) {
+    b.expectedPlacementCompleted = b.expectedPlacementCompletedDate;
+    delete b.expectedPlacementCompletedDate;
+  }
+
   return b;
 }
 
 function normalizeCycleDates(body: any) {
   if (!body || typeof body !== "object") return body;
   const b: any = { ...body };
-  // legacy acceptor: goHomeDate → placementStartDate
+
+  // legacy goHomeDate → placementStartDate
   if (b.goHomeDate !== undefined && b.placementStartDate === undefined) {
     b.placementStartDate = b.goHomeDate;
     delete b.goHomeDate;
   }
+
   return b;
 }
 

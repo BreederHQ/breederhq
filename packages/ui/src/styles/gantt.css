@@ -1,82 +1,85 @@
 /* packages/ui/src/styles/gantt.css */
 
-/* Root tokens (can be overridden per-instance with class or inline style) */
+/* Root tokens, Live Planner parity */
 .bhq-gantt {
-  --gantt-right-gutter: 240px;          /* reserved space on the right, read by component */
-  --grid-month: rgba(255, 255, 255, 0.16);
-  --rowline: rgba(255, 255, 255, 0.10);
+  --gantt-right-gutter: 240px;
+  --hairline: 0 0% 35% / 0.6;
+  --brand-orange: 20 90% 55%;
+  --avail-unlikely-fill: hsl(35 100% 52% / 0.12);
+  --avail-unlikely-stroke: hsl(35 100% 52% / 0.35);
+  --avail-risky-fill: hsl(0 91% 63% / 0.20);
+  --avail-risky-stroke: hsl(0 91% 63% / 0.55);
   --today: rgba(255, 72, 72, 0.9);
-  --bar-opacity: 0.90;
 
   color: hsl(var(--muted-foreground, 0 0% 90%));
   font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
 }
 
-.bhq-gantt__title {
-  margin-bottom: 6px;
-  font-size: 12px;
-  font-weight: 600;
-}
+.bhq-gantt__title { margin-bottom: 6px; font-size: 12px; font-weight: 600; }
 
 /* Frame */
 .bhq-gantt__frame {
   overflow: hidden;
   border-radius: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.10);
+  border: 1px solid rgba(255,255,255,0.10);
   background: hsl(0 0% 8%);
   position: relative;
 }
 
-/* SVG base */
-.bhq-gantt__svg {
-  width: 100%;
-  display: block;
-  pointer-events: none; /* bars are non-interactive by design */
-}
+.bhq-gantt__svg { width: 100%; display: block; pointer-events: none; }
 
-/* Grid and axis labels */
-.bhq-gantt__grid-month { stroke: var(--grid-month); stroke-width: 1; opacity: .45; }
-.bhq-gantt__month      { fill: rgba(255, 255, 255, 0.78); }
-.bhq-gantt__rowline    { stroke: var(--rowline); stroke-width: 1; }
+/* Grid and rows */
+.bhq-gantt__grid-month { stroke: hsl(var(--hairline)); stroke-width: 1; opacity: .45; }
+.bhq-gantt__grid-step  { stroke: hsl(var(--hairline)); stroke-width: 1; opacity: .35; }
+.bhq-gantt__rowline    { stroke: hsl(var(--hairline)); stroke-width: 1; opacity: .60; }
 
-/* Typography */
+/* Type */
 .bhq-gantt svg text {
   font-size: 11px;
   line-height: 1;
   letter-spacing: .2px;
-  text-transform: none;
   text-rendering: optimizeLegibility;
   font-kerning: normal;
 }
-.bhq-gantt__label     { fill: rgba(255, 255, 255, 0.94); font-weight: 600; letter-spacing: .2px; font-size: 12px; }
-.bhq-gantt__yearrange { fill: rgba(255, 255, 255, 0.58); }
+.bhq-gantt__label     { fill: hsl(0 0% 92%); font-weight: 600; letter-spacing: .2px; font-size: 12px; }
+.bhq-gantt__ticklabel { fill: hsl(var(--hairline)); }
+.bhq-gantt__month     { fill: hsl(0 0% 92%); }
 
-/* Bars and dots */
-.bhq-gantt__bar   { opacity: var(--bar-opacity); }
-.bhq-gantt__dot   { opacity: var(--bar-opacity); }
-.bhq-gantt__likely { mix-blend-mode: multiply; opacity: .28; }
+/* Bars */
+.bhq-gantt__bar, .bhq-gantt__dot { opacity: 1; }
 
-/* Today line */
-.bhq-gantt__today {
-  stroke: var(--today);
-  stroke-width: 2;
+/* Likely hatch
+   The rect uses fill:url(#pattern). The pattern path uses stroke:currentColor.
+   We tint via inline style "color: <rowColor>" on the rect, then blend. */
+.bhq-gantt__likely { color: var(--row-color); }
+
+/* Today and center lines */
+.bhq-gantt__today       { stroke: var(--today); stroke-width: 2; stroke-dasharray: 4 4; }
+.bhq-gantt__centerline {
+  stroke: hsl(var(--brand-orange));
+  stroke-width: 2;        /* was 1 */
+  stroke-linecap: round;
+}
+
+/* Availability spans */
+.bhq-gantt__availabilitywrap,
+.bhq-gantt__availability,
+.bhq-gantt__availability-outline { pointer-events: none; }
+
+.bhq-gantt__availability.unlikely { fill: var(--avail-unlikely-fill); }
+.bhq-gantt__availability.risky    { fill: var(--avail-risky-fill); }
+
+.bhq-gantt__availability-outline.unlikely {
+  stroke: var(--avail-unlikely-stroke);
+  stroke-width: 1;
   stroke-dasharray: 4 4;
 }
 
-/* Availability wrappers */
-.bhq-gantt__availabilitywrap,
-.bhq-gantt__availability,
-.bhq-gantt__availability-outline {
-  pointer-events: none;
-}
-.bhq-gantt__availability { mix-blend-mode: multiply; }
-.bhq-gantt__availability.risky    { fill: hsla(0,   91%, 63%, 0.14); }
-.bhq-gantt__availability.unlikely { fill: hsla(35, 100%, 52%, 0.14); }
-.bhq-gantt__availability-outline {
-  stroke: rgba(255, 255, 255, 0.14);
-  stroke-width: 1.1;
-  stroke-dasharray: 6 4;
+.bhq-gantt__availability-outline.risky {
+  stroke: var(--avail-risky-stroke);
+  stroke-width: 1.2;
+  stroke-dasharray: none;
 }
 
-/* Utility: remove right gutter so the plot reaches the frame edge */
+/* Utility */
 .bhq-gantt--no-aside { --gantt-right-gutter: 0px; }

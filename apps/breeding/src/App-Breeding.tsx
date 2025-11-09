@@ -34,6 +34,12 @@ import "@bhq/ui/styles/table.css";
 import "@bhq/ui/styles/details.css";
 import "@bhq/ui/styles/datefield.css";
 import { makeBreedingApi } from "./api";
+import {
+  windowsFromPlan,
+  expectedMilestonesFromLocked,
+  expectedTestingFromCycleStart,
+  pickPlacementCompletedAny,   
+} from "@bhq/ui/utils";
 
 // ── Calendar / Planning wiring ─────────────────────────────
 import BreedingCalendar from "./components/BreedingCalendar";
@@ -74,6 +80,51 @@ type BHQDateFieldProps = {
   readOnly?: boolean;
   onChange?: (v: string) => void; // will receive ISO yyyy-mm-dd or ""
 };
+
+function computeExpectedForPlan(plan) {
+  const speciesWire = toWireSpecies(plan.species) ?? "DOG";
+  const locked = plan.lockedCycleStart?.slice(0, 10) || null;
+
+  if (!locked) {
+    return {
+      expectedCycleStart: null,
+      expectedHormoneTestingStart: null,
+      expectedBreedDate: null,
+      expectedBirthDate: null,
+      expectedWeanedDate: null,
+      expectedPlacementStartDate: null,
+      expectedPlacementCompletedDate: null,
+    };
+  }
+
+  const m = expectedMilestonesFromLocked(locked, speciesWire);
+  const testing = expectedTestingFromCycleStart(new Date(locked));
+
+  const iso = (d) => (d instanceof Date ? d.toISOString().slice(0, 10) : d ?? null);
+
+  const placementStart =
+    m.placement_expected ??
+    m.placement_start_expected ??
+    m.placement_start ??
+    null;
+
+  const placementCompleted =
+    m.placement_extended_end ??
+    m.placement_extended_end_expected ??
+    m.placement_expected_end ??
+    m.placement_completed_expected ??
+    null;
+
+  return {
+    expectedCycleStart: locked,
+    expectedHormoneTestingStart: iso(testing),
+    expectedBreedDate: m.breeding_expected,
+    expectedBirthDate: m.birth_expected,
+    expectedWeanedDate: m.weaned_expected,
+    expectedPlacementStartDate: placementStart,
+    expectedPlacementCompletedDate: placementCompleted,
+  };
+}
 
 function DateField({ label, value, defaultValue, readOnly, onChange }: BHQDateFieldProps) {
   const isReadOnly = !!readOnly;
@@ -130,9 +181,12 @@ type PlanRow = {
   expectedHormoneTestingStart?: string | null;
   expectedBreedDate?: string | null;
   expectedBirthDate?: string | null;
+  expectedWeanedDate?: string | null;
+  expectedPlacementStartDate?: string | null;
+  expectedPlacementCompletedDate?: string | null;
 
   /* Actuals (keep existing, add missing two) */
-  cycleStartDateActual?: string | null;         
+  cycleStartDateActual?: string | null;
   hormoneTestingStartDateActual?: string | null;
   breedDateActual?: string | null;
   birthDateActual?: string | null;
@@ -411,6 +465,9 @@ function planToRow(p: any): PlanRow {
     expectedHormoneTestingStart: p.expectedHormoneTestingStart ?? null,
     expectedBreedDate: p.lockedOvulationDate ?? null,
     expectedBirthDate: p.lockedDueDate ?? null,
+    expectedWeanedDate: p.expectedWeanedDate ?? null,
+    expectedPlacementStartDate: p.expectedPlacementStartDate ?? null,
+    expectedPlacementCompletedDate: (pickPlacementCompletedAny(p) as any) ?? null,
 
     /* Actuals (include missing two) */
     cycleStartDateActual: p.cycleStartDateActual ?? null,
@@ -1617,10 +1674,9 @@ export default function AppBreeding() {
               </div>
               {plannerMode === "per-plan" ? (
                 <PerPlanGantt
-                  items={normalized}
-                  today={now}
-                  onOpenPlan={(planId: ID) => openPlanDrawer(planId)}
-                  onQuickAdd={(planId?: ID) => openQuickAddFor(planId)}
+                  plans={normalized}
+                  computeExpected={computeExpectedForPlan}
+                  className="w-full"
                 />
               ) : (
                 <MasterPlanGantt
@@ -1640,7 +1696,7 @@ export default function AppBreeding() {
             </div>
           )}
         </Card>
-   
+
         {/* Create Plan Modal */}
         <Overlay root={modalRoot} open={createOpen} ariaLabel="Create Breeding Plan" closeOnEscape closeOnOutsideClick>
           {(() => {
@@ -2025,7 +2081,7 @@ function CalendarInput({
     try {
       // @ts-ignore - helper exists earlier in file
       hoistAndPlaceDatePopup(buttonRef.current!);
-    } catch {}
+    } catch { }
   }, []);
 
   // Close watcher: when popup disappears, drop aria-expanded
@@ -2107,7 +2163,7 @@ function CalendarInput({
                   if (typeof hid?.showPicker === "function") hid.showPicker();
                   else hid?.click();
                 }
-              } catch {}
+              } catch { }
 
               placePopup();
               // re-place after render/layout settles
@@ -2135,7 +2191,7 @@ function CalendarInput({
         tabIndex={-1}
         onChange={(e) => {
           const iso = e.currentTarget.value;
-          const [y,m,d] = (iso || "").split("-");
+          const [y, m, d] = (iso || "").split("-");
           const display = y && m && d ? `${Number(m)}/${Number(d)}/${y}` : "";
           pushChange(display);
           // picker closed after selection – drop expanded
@@ -2306,6 +2362,12 @@ function PlanDetailsView(props: {
       expectedHormoneTestingStart: testingStart ?? null,
       expectedBreedDate: expected.ovulation ?? null,
       expectedBirthDate: expected.birth_expected ?? null,
+
+      expectedPlacementStartDate: expected.placement_expected ?? null,
+      expectedPlacementCompletedDate:
+        expected.placement_extended_end ??
+        expected.placement_expected_end ??
+        null,
     };
 
     setExpectedPreview(expected);
@@ -2369,6 +2431,9 @@ function PlanDetailsView(props: {
       expectedHormoneTestingStart: null,
       expectedBreedDate: null,
       expectedBirthDate: null,
+
+      expectedPlacementStartDate: null,
+      expectedPlacementCompletedDate: null,
     };
 
     setDraftLive(payload);
