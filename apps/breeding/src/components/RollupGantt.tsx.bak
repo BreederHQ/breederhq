@@ -3,10 +3,15 @@ import Gantt from "@bhq/ui/components/Gantt";
 import { readTenantIdFast } from "@bhq/ui/utils/tenant";
 import { useAvailabilityPrefs } from "@bhq/ui/hooks";
 import { mapTenantPrefs, hasAnyExactValues } from "@bhq/ui/utils/availability";
-import { computeExpected } from "@/path/to/breedingMath";
 import { pickPlacementCompletedAny } from "@bhq/ui/utils";
 
 /* ---------- debug ---------- */
+const DEBUG_ROLLUP_GANTT = true;
+const dlog = (...a: any[]) => { if (DEBUG_ROLLUP_GANTT) console.log(...a); };
+const dgroup = (l: string) => { if (DEBUG_ROLLUP_GANTT) console.groupCollapsed(l); };
+const dgroupEnd = () => { if (DEBUG_ROLLUP_GANTT) console.groupEnd(); };
+const dtable = (rows: any) => { if (DEBUG_ROLLUP_GANTT) console.table(rows); };
+const fmtD = (d?: Date | null) => (d ? d.toISOString().slice(0, 10) : null);
 const fmtNice = new Intl.DateTimeFormat(undefined, { month: "short", day: "2-digit", year: "numeric" });
 
 /* ---------- color util (used to make risky distinct) ---------- */
@@ -152,6 +157,7 @@ function normalizeBands(
     if (utMag === rtMag && rtMag !== 0) utMag = rtMag + 1;
   }
   const out = { rf: -rfMag, rt: +rtMag, uf: -ufMag, ut: +utMag };
+  dlog("[RollupGantt] normalizeBands ->", { risky_from, risky_to, unlikely_from, unlikely_to, autoWiden, out });
   return out;
 }
 
@@ -186,6 +192,16 @@ function resolveExpected(plan: PlanLike, computeExpected?: ComputeExpectedFn): P
     (plan as any).expectedWeaned ??
     (plan as any).weanedDateExpected ??
     null;
+
+  dgroup(`[RollupGantt] incoming wean fields for ${String(plan.name)} (${String(plan.id)})`);
+  dtable([{
+    expectedWeanedDate: (plan as any).expectedWeanedDate ?? null,
+    expectedWeaningDate: (plan as any).expectedWeaningDate ?? null,
+    expectedWeaned: (plan as any).expectedWeaned ?? null,
+    weanedDateExpected: (plan as any).weanedDateExpected ?? null,
+  }]);
+  dgroupEnd();
+
   const planExp: PlanExpected = {
     cycle: parseAnyDate(plan.expectedCycleStart),
     testing: parseAnyDate(plan.expectedHormoneTestingStart),
@@ -196,7 +212,9 @@ function resolveExpected(plan: PlanLike, computeExpected?: ComputeExpectedFn): P
     placementCompleted: parseAnyDate(placementCompletedAny),
   };
 
-  const needsCompute = !(planExp.cycle && planExp.breeding && planExp.birth && planExp.placementCompleted);
+  const needsCompute =
+    !planExp.weaned ||
+    !(planExp.cycle && planExp.breeding && planExp.birth && planExp.placementCompleted);
 
   let computed: PlanExpected | null = null;
 
@@ -234,6 +252,28 @@ function resolveExpected(plan: PlanLike, computeExpected?: ComputeExpectedFn): P
 
   if (!merged.placementStart && merged.birth) merged.placementStart = addDays(merged.birth, 56);
   if (!merged.placementCompleted && merged.placementStart) merged.placementCompleted = addDays(merged.placementStart, 21);
+
+  if (!merged.weaned) {
+    if (merged.placementStart) {
+      dlog("[RollupGantt] weaned missing, inferring from placementStart");
+      merged.weaned = merged.placementStart;
+    } else if (merged.birth) {
+      dlog("[RollupGantt] weaned missing, inferring from birth + 56d");
+      merged.weaned = addDays(merged.birth, 56);
+    }
+  }
+
+  dgroup(`[RollupGantt] resolved expected for plan ${String(plan.name)} (${String(plan.id)})`);
+  dtable([
+    { key: "cycle", date: fmtD(merged.cycle) },
+    { key: "testing", date: fmtD(merged.testing) },
+    { key: "breeding", date: fmtD(merged.breeding) },
+    { key: "birth", date: fmtD(merged.birth) },
+    { key: "weaned", date: fmtD(merged.weaned) },
+    { key: "placementStart", date: fmtD(merged.placementStart) },
+    { key: "placementCompleted", date: fmtD(merged.placementCompleted) },
+  ]);
+  dgroupEnd();
 
   return merged;
 }
@@ -567,7 +607,8 @@ export default function RollupGantt({
     pushExact("exact_pc", exp.placementCompleted, prefs.date_placement_completed_risky_from, prefs.date_placement_completed_risky_to, prefs.date_placement_completed_unlikely_from, prefs.date_placement_completed_unlikely_to, "Placement Completed");
   }
 
-  const visibleExactStages = exactStages();
+  const exactKeysPresent = new Set(exactData.map(d => d.key));
+  const visibleExactStages = exactStages().filter(s => exactKeysPresent.has(s.key));
 
   /* horizon rules */
   const today = new Date();
@@ -578,8 +619,8 @@ export default function RollupGantt({
     const maxs: Date[] = [];
     const collect = (d: StageDatum) => {
       if (d.likelyRange) { mins.push(d.likelyRange.start); maxs.push(d.likelyRange.end); }
-      if (d.fullRange) { mins.push(d.fullRange.start); maxs.push(d.fullRange.end); }
-      if (d.point) { mins.push(d.point); maxs.push(d.point); }
+      if (d.fullRange)   { mins.push(d.fullRange.start);   maxs.push(d.fullRange.end); }
+      if (d.point)       { mins.push(d.point);             maxs.push(d.point); }
     };
     [...phaseData, ...exactData].forEach(collect);
     if (mins.length === 0 || maxs.length === 0) return null;
@@ -633,6 +674,23 @@ export default function RollupGantt({
     const b = exScrollRef.current;
     if (a && b) b.scrollLeft = a.scrollLeft;
   }, [toggles.lockScroll, horizon.start, horizon.end, fitToContent, anyChecked, phases.length]);
+
+  dgroup("[RollupGantt] Gantt payload rows -> StageDatum[]");
+  dtable(
+    [...phaseData, ...exactData].map(o => ({
+      key: o.key,
+      point: fmtD(o.point ?? null),
+      full_start: fmtD(o.fullRange?.start ?? null),
+      full_end: fmtD(o.fullRange?.end ?? null),
+      likely_start: fmtD(o.likelyRange?.start ?? null),
+      likely_end: fmtD(o.likelyRange?.end ?? null),
+      z: (o as any).__z,
+      color: (o as any).color ?? null,
+      opacity: (o as any).opacity ?? null,
+    }))
+  );
+  dgroupEnd();
+
   return (
     <div className={className}>
       {/* Header */}

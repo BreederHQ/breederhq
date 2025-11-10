@@ -7,6 +7,8 @@ import { mapTenantPrefs, hasAnyExactValues } from "@bhq/ui/utils/availability";
 import { pickPlacementCompletedAny } from "@bhq/ui/utils";
 
 /* ---------- debug flag ---------- */
+const DEBUG_PER_PLAN_GANTT = false;
+
 /* ---------- tiny color util: make risky slightly darker ---------- */
 function shade(hex: string, pct: number): string {
   let h = hex.replace("#", "");
@@ -134,6 +136,12 @@ const addMonths = (d: Date, n: number) => new Date(d.getFullYear(), d.getMonth()
 const fmt = new Intl.DateTimeFormat(undefined, { month: "short", day: "2-digit", year: "numeric" });
 
 /* ---------- debug helpers ---------- */
+function dlog(...args: any[]) { if (DEBUG_PER_PLAN_GANTT) console.log(...args); }
+function dgroup(label: string) { if (DEBUG_PER_PLAN_GANTT) console.groupCollapsed(label); }
+function dgroupEnd() { if (DEBUG_PER_PLAN_GANTT) console.groupEnd(); }
+function dtable(rows: any[]) { if (DEBUG_PER_PLAN_GANTT) console.table(rows); }
+function fmtD(d?: Date | null) { return d ? d.toISOString().slice(0, 10) : null; }
+
 /* ---------- math helpers ---------- */
 type Bands = { rf: number; rt: number; uf: number; ut: number };
 function normalizeBands(
@@ -152,7 +160,8 @@ function normalizeBands(
   }
 
   const out = { rf: -rfMag, rt: +rtMag, uf: -ufMag, ut: +utMag };
-return out;
+  dlog("[PerPlanGantt] normalizeBands ->", { risky_from, risky_to, unlikely_from, unlikely_to, autoWiden, out });
+  return out;
 }
 function nonNullMin(a: Date | null, b: Date | null) { if (!a) return b; if (!b) return a; return a < b ? a : b; }
 function nonNullMax(a: Date | null, b: Date | null) { if (!a) return b; if (!b) return a; return a > b ? a : b; }
@@ -236,7 +245,20 @@ function resolveExpected(plan: PlanLike, computeExpected?: ComputeExpectedFn): P
 
   if (!merged.placementStart && merged.birth) merged.placementStart = addDays(merged.birth, 56);
   if (!merged.placementCompleted && merged.placementStart) merged.placementCompleted = addDays(merged.placementStart, 21);
-return merged;
+
+  dgroup("[PerPlanGantt] resolved expected dates");
+  dtable([
+    { key: "cycle", date: fmtD(merged.cycle) },
+    { key: "testing", date: fmtD(merged.testing) },
+    { key: "breeding", date: fmtD(merged.breeding) },
+    { key: "birth", date: fmtD(merged.birth) },
+    { key: "weaned", date: fmtD(merged.weaned) },
+    { key: "placementStart", date: fmtD(merged.placementStart) },
+    { key: "placementCompleted", date: fmtD(merged.placementCompleted) },
+  ]);
+  dgroupEnd();
+
+  return merged;
 }
 
 /* ---------- phase rows (respects showBands; always adds center fill like Rollup) ---------- */

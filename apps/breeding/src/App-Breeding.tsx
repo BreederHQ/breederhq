@@ -1681,17 +1681,15 @@ export default function AppBreeding() {
               ) : (
                 <RollupGantt
                   items={normalized ?? []}
-                  horizon={plannerHorizon}
-                  today={now}
-                  availabilityOn={availabilityOn}
-                  onAvailabilityToggle={setAvailabilityOn}
+                  computeExpected={computeExpectedForPlan}
+                  prefsOverride={{ defaultExactBandsVisible: availabilityOn }}
                   selected={selectedKeys ?? new Set<ID>()}
                   onSelectedChange={(next) => {
                     setSelectionTouched(true);
-                    const incoming = next instanceof Set ? next : new Set(next as Iterable<ID>);
-                    setSelectedKeys(incoming);
+                    setSelectedKeys(next);
                   }}
                 />
+
               )}
             </div>
           )}
