@@ -1,4 +1,3 @@
-// apps/breeding/src/components/RollupGantt.tsx
 import * as React from "react";
 import Gantt from "@bhq/ui/components/Gantt";
 import { readTenantIdFast } from "@bhq/ui/utils/tenant";
@@ -13,6 +12,17 @@ const dgroup = (l: string) => { if (DEBUG_ROLLUP_GANTT) console.groupCollapsed(l
 const dgroupEnd = () => { if (DEBUG_ROLLUP_GANTT) console.groupEnd(); };
 const dtable = (rows: any) => { if (DEBUG_ROLLUP_GANTT) console.table(rows); };
 const fmtD = (d?: Date | null) => (d ? d.toISOString().slice(0, 10) : null);
+const fmtNice = new Intl.DateTimeFormat(undefined, { month: "short", day: "2-digit", year: "numeric" });
+
+/* ---------- color util (used to make risky distinct) ---------- */
+function shade(hex: string, pct: number): string {
+  let h = hex.replace("#", "");
+  if (h.length === 3) h = h.split("").map(c => c + c).join("");
+  const clamp = (n: number) => Math.max(0, Math.min(255, n));
+  const mix = (i: number) => clamp(Math.round(parseInt(h.slice(i, i + 2), 16) + (pct / 100) * 255));
+  const toHex = (n: number) => n.toString(16).padStart(2, "0");
+  return `#${toHex(mix(0))}${toHex(mix(2))}${toHex(mix(4))}`;
+}
 
 /* ---------- types ---------- */
 
@@ -110,7 +120,9 @@ const EXACT_COLORS = ["#06B6D4", "#A78BFA", "#F59E0B", "#14B8A6", "#F97316", "#8
 /* ---------- date utils ---------- */
 
 const dayMs = 24 * 60 * 60 * 1000;
-const isDate = (v: unknown): v is Date => v instanceof Date && !Number.isNaN((v as Date).getTime());
+const isDate = (v: unknown): v is Date =>
+  v instanceof Date && !Number.isNaN((v as Date).getTime());
+
 const parseAnyDate = (v?: string | Date | null) => {
   if (!v) return null;
   if (isDate(v)) return v;
@@ -176,7 +188,6 @@ function resolveExpected(plan: PlanLike, computeExpected?: ComputeExpectedFn): P
 
   const weanedAny =
     plan.expectedWeanedDate ??
-    // tolerate common aliases
     (plan as any).expectedWeaningDate ??
     (plan as any).expectedWeaned ??
     (plan as any).weanedDateExpected ??
@@ -242,7 +253,6 @@ function resolveExpected(plan: PlanLike, computeExpected?: ComputeExpectedFn): P
   if (!merged.placementStart && merged.birth) merged.placementStart = addDays(merged.birth, 56);
   if (!merged.placementCompleted && merged.placementStart) merged.placementCompleted = addDays(merged.placementStart, 21);
 
-  // final fallback to ensure plotting, for Rollup only
   if (!merged.weaned) {
     if (merged.placementStart) {
       dlog("[RollupGantt] weaned missing, inferring from placementStart");
@@ -278,22 +288,22 @@ type StageDatum = {
   point?: Date;
   __tooltip?: string;
   __z?: number;
+  opacity?: number;      // forwarded to Gantt for risky fades
+  color?: string;        // forwarded to Gantt for custom color
 };
 
-function phaseStages(): Stage[] {
-  return [
-    { key: "cycle_to_breeding", label: "Cycle → Breeding", baseColor: PHASES_COLORS.cycleToBreeding, hatchLikely: true },
-    { key: "birth_to_placement", label: "Birth → Placement", baseColor: PHASES_COLORS.birthToPlacement, hatchLikely: true },
-  ];
-}
-function exactStages(): Stage[] {
+/* ---------- stage defs ---------- */
+const phaseStages = (): Stage[] => ([
+  { key: "cycle_to_breeding", label: "Cycle → Breeding", baseColor: PHASES_COLORS.cycleToBreeding, hatchLikely: true },
+  { key: "birth_to_placement", label: "Birth → Placement", baseColor: PHASES_COLORS.birthToPlacement, hatchLikely: true },
+]);
+const exactStages = (): Stage[] => {
   const labels = ["Cycle Start", "Hormone Testing", "Breeding", "Birth", "Weaning", "Placement Start", "Placement Completed"];
   const keys = ["exact_cycle", "exact_testing", "exact_breeding", "exact_birth", "exact_weaning", "exact_ps", "exact_pc"];
   return keys.map((k, i) => ({ key: k, label: labels[i], baseColor: EXACT_COLORS[i], hatchLikely: true }));
-}
+};
 
 /* ---------- ids ---------- */
-
 const idKey = (x: ID) => String(x);
 
 /* ---------- main ---------- */
@@ -341,12 +351,12 @@ export default function RollupGantt({
   const [toggles, setToggles] = React.useState<{
     showPhases: boolean;
     showExact: boolean;
-    showExactBands: boolean;
+    showBands: boolean;     // single flag drives both phases & exact
     lockScroll: boolean;
   }>(() => ({
     showPhases: true,
     showExact: true,
-    showExactBands: defaultBandsVisible,
+    showBands: defaultBandsVisible,
     lockScroll: false,
   }));
 
@@ -385,7 +395,6 @@ export default function RollupGantt({
 
   /* build data */
   const phases: Stage[] = phaseStages();
-  const exactsAll: Stage[] = exactStages();
   const phaseData: StageDatum[] = [];
   const exactData: StageDatum[] = [];
 
@@ -395,15 +404,9 @@ export default function RollupGantt({
   for (const p of activePlans) {
     const exp = resolveExpected(p, computeExpected);
 
+    // Cycle → Breeding
     if (exp.cycle && exp.breeding) {
-      const d: StageDatum = {
-        key: "cycle_to_breeding",
-        point: exp.breeding,
-        __tooltip: `[${p.name}] Cycle to Breeding`,
-        __z: 1,
-      };
-
-      if (toggles.showExactBands) {
+      if (toggles.showBands) {
         const b = normalizeBands(
           prefs.cycle_breeding_risky_from, prefs.cycle_breeding_risky_to,
           prefs.cycle_breeding_unlikely_from, prefs.cycle_breeding_unlikely_to,
@@ -411,31 +414,70 @@ export default function RollupGantt({
         );
         const uStart = addDays(exp.cycle, b.uf);
         const uEnd = addDays(exp.breeding, b.ut);
-        const rStart = addDays(exp.cycle, b.rf);
-        const rEnd = addDays(exp.breeding, b.rt);
-        d.fullRange = { start: rStart, end: rEnd };
-        d.likelyRange = { start: uStart, end: uEnd };
+        const rLeftS = addDays(exp.cycle, b.rf);
+        const rLeftE = exp.cycle;
+        const rRightS = exp.breeding;
+        const rRightE = addDays(exp.breeding, b.rt);
+
+        // Unlikely hatch
+        phaseData.push({
+          key: "cycle_to_breeding",
+          likelyRange: { start: uStart, end: uEnd },
+          __tooltip: `[${p.name}] Cycle → Breeding, Unlikely: ${fmtNice.format(uStart)} → ${fmtNice.format(uEnd)}`,
+          __z: 1,
+        });
+
+        // Risky (distinct tint + subtle fade)
+        const riskyColor = shade(PHASES_COLORS.cycleToBreeding, -28);
+        phaseData.push({
+          key: "cycle_to_breeding",
+          fullRange: { start: rLeftS, end: rLeftE },
+          __tooltip: `[${p.name}] Cycle → Breeding, Risky (Left): ${fmtNice.format(rLeftS)} → ${fmtNice.format(rLeftE)}`,
+          __z: 2,
+          opacity: 0.85,
+          color: riskyColor,
+        });
+        phaseData.push({
+          key: "cycle_to_breeding",
+          fullRange: { start: rRightS, end: rRightE },
+          __tooltip: `[${p.name}] Cycle → Breeding, Risky (Right): ${fmtNice.format(rRightS)} → ${fmtNice.format(rRightE)}`,
+          __z: 2,
+          opacity: 0.85,
+          color: riskyColor,
+        });
+
+        // Center fill strictly between anchors (uses baseColor)
+        phaseData.push({
+          key: "cycle_to_breeding",
+          fullRange: { start: exp.cycle, end: exp.breeding },
+          __tooltip: `[${p.name}] Cycle → Breeding: ${fmtNice.format(exp.cycle)} → ${fmtNice.format(exp.breeding)}`,
+          __z: 3,
+        });
+
         minAll = nonNullMin(minAll, uStart);
-        minAll = nonNullMin(minAll, rStart);
         maxAll = nonNullMax(maxAll, uEnd);
-        maxAll = nonNullMax(maxAll, rEnd);
+        minAll = nonNullMin(minAll, rLeftS);
+        maxAll = nonNullMax(maxAll, rRightE);
       } else {
+        // Only anchor-to-anchor fill
+        phaseData.push({
+          key: "cycle_to_breeding",
+          fullRange: { start: exp.cycle, end: exp.breeding },
+          __tooltip: `[${p.name}] Cycle → Breeding: ${fmtNice.format(exp.cycle)} → ${fmtNice.format(exp.breeding)}`,
+          __z: 2,
+        });
         minAll = nonNullMin(minAll, addDays(exp.cycle, -1));
         maxAll = nonNullMax(maxAll, addDays(exp.breeding, +1));
       }
 
-      phaseData.push(d);
+      // Anchors
+      phaseData.push({ key: "cycle_to_breeding", point: exp.cycle, __tooltip: `[${p.name}] Cycle Start: ${fmtNice.format(exp.cycle)}`, __z: 4 });
+      phaseData.push({ key: "cycle_to_breeding", point: exp.breeding, __tooltip: `[${p.name}] Breeding: ${fmtNice.format(exp.breeding)}`, __z: 4 });
     }
 
+    // Birth → Placement
     if (exp.birth && exp.placementCompleted) {
-      const d: StageDatum = {
-        key: "birth_to_placement",
-        point: exp.placementCompleted,
-        __tooltip: `[${p.name}] Birth to Placement`,
-        __z: 1,
-      };
-
-      if (toggles.showExactBands) {
+      if (toggles.showBands) {
         const b = normalizeBands(
           prefs.post_risky_from_full_start, prefs.post_risky_to_full_end,
           prefs.post_unlikely_from_likely_start, prefs.post_unlikely_to_likely_end,
@@ -443,58 +485,100 @@ export default function RollupGantt({
         );
         const uStart = addDays(exp.birth, b.uf);
         const uEnd = addDays(exp.placementCompleted, b.ut);
-        const rStart = addDays(exp.birth, b.rf);
-        const rEnd = addDays(exp.placementCompleted, b.rt);
-        d.fullRange = { start: rStart, end: rEnd };
-        d.likelyRange = { start: uStart, end: uEnd };
+        const rLeftS = addDays(exp.birth, b.rf);
+        const rLeftE = exp.birth;
+        const rRightS = exp.placementCompleted;
+        const rRightE = addDays(exp.placementCompleted, b.rt);
+
+        // Unlikely hatch
+        phaseData.push({
+          key: "birth_to_placement",
+          likelyRange: { start: uStart, end: uEnd },
+          __tooltip: `[${p.name}] Birth → Placement, Unlikely: ${fmtNice.format(uStart)} → ${fmtNice.format(uEnd)}`,
+          __z: 1,
+        });
+
+        // Risky (distinct tint)
+        const riskyColor = shade(PHASES_COLORS.birthToPlacement, -28);
+        phaseData.push({
+          key: "birth_to_placement",
+          fullRange: { start: rLeftS, end: rLeftE },
+          __tooltip: `[${p.name}] Birth → Placement, Risky (Left): ${fmtNice.format(rLeftS)} → ${fmtNice.format(rLeftE)}`,
+          __z: 2,
+          opacity: 0.85,
+          color: riskyColor,
+        });
+        phaseData.push({
+          key: "birth_to_placement",
+          fullRange: { start: rRightS, end: rRightE },
+          __tooltip: `[${p.name}] Birth → Placement, Risky (Right): ${fmtNice.format(rRightS)} → ${fmtNice.format(rRightE)}`,
+          __z: 2,
+          opacity: 0.85,
+          color: riskyColor,
+        });
+
+        // Center fill strictly between anchors
+        phaseData.push({
+          key: "birth_to_placement",
+          fullRange: { start: exp.birth, end: exp.placementCompleted },
+          __tooltip: `[${p.name}] Birth → Placement: ${fmtNice.format(exp.birth)} → ${fmtNice.format(exp.placementCompleted)}`,
+          __z: 3,
+        });
+
         minAll = nonNullMin(minAll, uStart);
-        minAll = nonNullMin(minAll, rStart);
         maxAll = nonNullMax(maxAll, uEnd);
-        maxAll = nonNullMax(maxAll, rEnd);
+        minAll = nonNullMin(minAll, rLeftS);
+        maxAll = nonNullMax(maxAll, rRightE);
       } else {
+        // Only anchor-to-anchor fill
+        phaseData.push({
+          key: "birth_to_placement",
+          fullRange: { start: exp.birth, end: exp.placementCompleted },
+          __tooltip: `[${p.name}] Birth → Placement: ${fmtNice.format(exp.birth)} → ${fmtNice.format(exp.placementCompleted)}`,
+          __z: 2,
+        });
         minAll = nonNullMin(minAll, addDays(exp.birth, -1));
         maxAll = nonNullMax(maxAll, addDays(exp.placementCompleted, +1));
       }
 
-      phaseData.push(d);
+      // Anchors
+      phaseData.push({ key: "birth_to_placement", point: exp.birth, __tooltip: `[${p.name}] Birth: ${fmtNice.format(exp.birth)}`, __z: 4 });
+      phaseData.push({ key: "birth_to_placement", point: exp.placementCompleted, __tooltip: `[${p.name}] Placement Completed: ${fmtNice.format(exp.placementCompleted)}`, __z: 4 });
     }
 
+    // Exact rows
     const tweak = (a: Date, b: Date) => (a.getTime() === b.getTime() ? addDays(b, 1) : b);
-
     const pushExact = (
       key: string, anchor?: Date | null,
       rf?: number, rt?: number, uf?: number, ut?: number, label?: string
     ) => {
       if (!anchor) return;
 
-      if (toggles.showExactBands) {
+      if (toggles.showBands) {
         const b = normalizeBands(rf, rt, uf, ut, !!prefs.autoWidenUnlikely);
         const uStart = addDays(anchor, b.uf);
         const uEnd = tweak(uStart, addDays(anchor, b.ut));
         const rStart = addDays(anchor, b.rf);
         const rEnd = tweak(rStart, addDays(anchor, b.rt));
 
-        // unlikely band
         exactData.push({
           key,
           likelyRange: { start: uStart, end: uEnd },
-          __tooltip: `[${p.name}] ${label || ""} (Unlikely)`,
+          __tooltip: `[${p.name}] ${label || ""} (Unlikely): ${fmtNice.format(uStart)} → ${fmtNice.format(uEnd)}`,
           __z: 1,
         });
 
-        // risky band
         exactData.push({
           key,
           fullRange: { start: rStart, end: rEnd },
-          __tooltip: `[${p.name}] ${label || ""} (Risky)`,
+          __tooltip: `[${p.name}] ${label || ""} (Risky): ${fmtNice.format(rStart)} → ${fmtNice.format(rEnd)}`,
           __z: 2,
         });
 
-        // anchor line on top
         exactData.push({
           key,
           point: anchor,
-          __tooltip: `[${p.name}] ${label || ""}`,
+          __tooltip: `[${p.name}] ${label || ""}: ${fmtNice.format(anchor)}`,
           __z: 3,
         });
 
@@ -503,11 +587,10 @@ export default function RollupGantt({
         maxAll = nonNullMax(maxAll, uEnd);
         maxAll = nonNullMax(maxAll, rEnd);
       } else {
-        // anchor only
         exactData.push({
           key,
           point: anchor,
-          __tooltip: `[${p.name}] ${label || ""}`,
+          __tooltip: `[${p.name}] ${label || ""}: ${fmtNice.format(anchor)}`,
           __z: 3,
         });
         minAll = nonNullMin(minAll, addDays(anchor, -1));
@@ -522,17 +605,6 @@ export default function RollupGantt({
     pushExact("exact_weaning", exp.weaned, prefs.date_weaned_risky_from, prefs.date_weaned_risky_to, prefs.date_weaned_unlikely_from, prefs.date_weaned_unlikely_to, "Weaning");
     pushExact("exact_ps", exp.placementStart, prefs.date_placement_start_risky_from, prefs.date_placement_start_risky_to, prefs.date_placement_start_unlikely_from, prefs.date_placement_start_unlikely_to, "Placement Start");
     pushExact("exact_pc", exp.placementCompleted, prefs.date_placement_completed_risky_from, prefs.date_placement_completed_risky_to, prefs.date_placement_completed_unlikely_from, prefs.date_placement_completed_unlikely_to, "Placement Completed");
-
-    const weanRows = exactData.filter(d => d.key === "exact_weaning" && (d.point || d.fullRange || d.likelyRange));
-    dlog(`[RollupGantt] weaning payload rows for plan ${String(p.name)} (${String(p.id)}):`,
-      weanRows.map(w => ({
-        point: fmtD(w.point ?? null),
-        full_start: fmtD(w.fullRange?.start ?? null),
-        full_end: fmtD(w.fullRange?.end ?? null),
-        likely_start: fmtD(w.likelyRange?.start ?? null),
-        likely_end: fmtD(w.likelyRange?.end ?? null),
-      }))
-    );
   }
 
   const exactKeysPresent = new Set(exactData.map(d => d.key));
@@ -542,7 +614,20 @@ export default function RollupGantt({
   const today = new Date();
   const emptyStart = startOfMonth(today);
   const emptyEnd = endOfMonth(addMonths(emptyStart, 5));
-  const computed = minAll && maxAll ? { start: startOfMonth(minAll), end: endOfMonth(maxAll) } : null;
+  const computed = ((): { start: Date; end: Date } | null => {
+    const mins: Date[] = [];
+    const maxs: Date[] = [];
+    const collect = (d: StageDatum) => {
+      if (d.likelyRange) { mins.push(d.likelyRange.start); maxs.push(d.likelyRange.end); }
+      if (d.fullRange)   { mins.push(d.fullRange.start);   maxs.push(d.fullRange.end); }
+      if (d.point)       { mins.push(d.point);             maxs.push(d.point); }
+    };
+    [...phaseData, ...exactData].forEach(collect);
+    if (mins.length === 0 || maxs.length === 0) return null;
+    const min = mins.reduce((a, b) => (a < b ? a : b));
+    const max = maxs.reduce((a, b) => (a > b ? a : b));
+    return { start: startOfMonth(min), end: endOfMonth(max) };
+  })();
   const horizon: Horizon = computed ?? { start: emptyStart, end: emptyEnd };
 
   const months = monthsInclusive(horizon.start, horizon.end);
@@ -562,7 +647,6 @@ export default function RollupGantt({
     rightGutter: 0,
   };
 
-  const allChecked = safePlans.length > 0 && safePlans.every(p => selectedKeys.has(idKey(p.id)));
   const anyChecked = selected.size > 0;
 
   /* ---------- scroll lock wiring ---------- */
@@ -588,14 +672,12 @@ export default function RollupGantt({
     if (!toggles.lockScroll) return;
     const a = phScrollRef.current;
     const b = exScrollRef.current;
-    if (a && b) {
-      b.scrollLeft = a.scrollLeft;
-    }
+    if (a && b) b.scrollLeft = a.scrollLeft;
   }, [toggles.lockScroll, horizon.start, horizon.end, fitToContent, anyChecked, phases.length]);
 
   dgroup("[RollupGantt] Gantt payload rows -> StageDatum[]");
   dtable(
-    exactData.concat(phaseData).map(o => ({
+    [...phaseData, ...exactData].map(o => ({
       key: o.key,
       point: fmtD(o.point ?? null),
       full_start: fmtD(o.fullRange?.start ?? null),
@@ -603,22 +685,9 @@ export default function RollupGantt({
       likely_start: fmtD(o.likelyRange?.start ?? null),
       likely_end: fmtD(o.likelyRange?.end ?? null),
       z: (o as any).__z,
+      color: (o as any).color ?? null,
+      opacity: (o as any).opacity ?? null,
     }))
-  );
-  dgroupEnd();
-
-  dgroup("[RollupGantt] exact rows summary, weaning only");
-  dtable(
-    exactData
-      .filter(d => d.key === "exact_weaning")
-      .map(d => ({
-        key: d.key,
-        point: fmtD(d.point ?? null),
-        full_start: fmtD(d.fullRange?.start ?? null),
-        full_end: fmtD(d.fullRange?.end ?? null),
-        likely_start: fmtD(d.likelyRange?.start ?? null),
-        likely_end: fmtD(d.likelyRange?.end ?? null),
-      }))
   );
   dgroupEnd();
 
@@ -640,8 +709,8 @@ export default function RollupGantt({
             <label className="inline-flex items-center gap-1 cursor-pointer">
               <input
                 type="checkbox"
-                checked={toggles.showExactBands}
-                onChange={(e) => setToggles(s => ({ ...s, showExactBands: e.target.checked }))}
+                checked={toggles.showBands}
+                onChange={(e) => setToggles(s => ({ ...s, showBands: e.target.checked }))}
               />
               Availability Bands
             </label>
@@ -653,13 +722,9 @@ export default function RollupGantt({
       <section className="px-3 pt-2 pb-3">
         <div className="px-1 pb-2 text-xs font-medium text-secondary">Timeline Phases</div>
         <div className="rounded-xl border border-white/10 bg-black/20 overflow-hidden">
-          <div
-            className="overflow-x-auto"
-            ref={phScrollRef}
-            onScroll={onPhScroll}
-          >
+          <div className="overflow-x-auto" ref={phScrollRef} onScroll={onPhScroll}>
             <Gantt
-              key={`ph_${horizon.start.toISOString()}_${horizon.end.toISOString()}_${phaseData.length}_${anyChecked}_${toggles.showExactBands}_${fitToContent}`}
+              key={`ph_${horizon.start.toISOString()}_${horizon.end.toISOString()}_${phaseData.length}_${anyChecked}_${toggles.showBands}_${fitToContent}`}
               {...ganttCommon}
               stages={phaseStages()}
               data={anyChecked ? phaseData : []}
@@ -672,13 +737,9 @@ export default function RollupGantt({
       <section className="px-3 pt-2 pb-6">
         <div className="px-1 pb-2 text-xs font-medium text-secondary">Expected Dates</div>
         <div className="rounded-xl border border-white/10 bg-black/20 overflow-hidden">
-          <div
-            className="overflow-x-auto"
-            ref={exScrollRef}
-            onScroll={onExScroll}
-          >
+          <div className="overflow-x-auto" ref={exScrollRef} onScroll={onExScroll}>
             <Gantt
-              key={`ex_${horizon.start.toISOString()}_${horizon.end.toISOString()}_${visibleExactStages.length}_${anyChecked}_${toggles.showExactBands}_${fitToContent}`}
+              key={`ex_${horizon.start.toISOString()}_${horizon.end.toISOString()}_${visibleExactStages.length}_${anyChecked}_${toggles.showBands}_${fitToContent}`}
               {...ganttCommon}
               stages={visibleExactStages}
               data={anyChecked ? exactData : []}
@@ -695,7 +756,6 @@ export default function RollupGantt({
             <label className="text-xs inline-flex items-center gap-2 cursor-pointer">
               <input
                 type="checkbox"
-                checked={safePlans.length > 0 && safePlans.every(p => selectedKeys.has(idKey(p.id)))}
                 onChange={(e) => setAll(e.target.checked)}
               />
               Toggle All Plans
@@ -707,7 +767,11 @@ export default function RollupGantt({
                 <input
                   type="checkbox"
                   checked={selectedKeys.has(idKey(p.id))}
-                  onChange={() => toggleOne(p.id)}
+                  onChange={() => {
+                    const next = new Set(selected);
+                    next.has(p.id) ? next.delete(p.id) : next.add(p.id);
+                    setSelected(next);
+                  }}
                 />
                 <span className="truncate">{p.name || String(p.id)}</span>
               </label>

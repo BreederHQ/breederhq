@@ -9,6 +9,16 @@ import { pickPlacementCompletedAny } from "@bhq/ui/utils";
 /* ---------- debug flag ---------- */
 const DEBUG_PER_PLAN_GANTT = false;
 
+/* ---------- tiny color util: make risky slightly darker ---------- */
+function shade(hex: string, pct: number): string {
+  let h = hex.replace("#", "");
+  if (h.length === 3) h = h.split("").map(c => c + c).join("");
+  const clamp = (n: number) => Math.max(0, Math.min(255, n));
+  const mix = (i: number) => clamp(Math.round(parseInt(h.slice(i, i + 2), 16) + (pct / 100) * 255));
+  const toHex = (n: number) => n.toString(16).padStart(2, "0");
+  return `#${toHex(mix(0))}${toHex(mix(2))}${toHex(mix(4))}`;
+}
+
 /* ---------- types ---------- */
 type Species = "Dog" | "Cat" | "Horse";
 
@@ -126,21 +136,11 @@ const addMonths = (d: Date, n: number) => new Date(d.getFullYear(), d.getMonth()
 const fmt = new Intl.DateTimeFormat(undefined, { month: "short", day: "2-digit", year: "numeric" });
 
 /* ---------- debug helpers ---------- */
-function dlog(...args: any[]) {
-  if (DEBUG_PER_PLAN_GANTT) console.log(...args);
-}
-function dgroup(label: string) {
-  if (DEBUG_PER_PLAN_GANTT) console.groupCollapsed(label);
-}
-function dgroupEnd() {
-  if (DEBUG_PER_PLAN_GANTT) console.groupEnd();
-}
-function dtable(rows: any[]) {
-  if (DEBUG_PER_PLAN_GANTT) console.table(rows);
-}
-function fmtD(d?: Date | null) {
-  return d ? d.toISOString().slice(0, 10) : null;
-}
+function dlog(...args: any[]) { if (DEBUG_PER_PLAN_GANTT) console.log(...args); }
+function dgroup(label: string) { if (DEBUG_PER_PLAN_GANTT) console.groupCollapsed(label); }
+function dgroupEnd() { if (DEBUG_PER_PLAN_GANTT) console.groupEnd(); }
+function dtable(rows: any[]) { if (DEBUG_PER_PLAN_GANTT) console.table(rows); }
+function fmtD(d?: Date | null) { return d ? d.toISOString().slice(0, 10) : null; }
 
 /* ---------- math helpers ---------- */
 type Bands = { rf: number; rt: number; uf: number; ut: number };
@@ -163,7 +163,6 @@ function normalizeBands(
   dlog("[PerPlanGantt] normalizeBands ->", { risky_from, risky_to, unlikely_from, unlikely_to, autoWiden, out });
   return out;
 }
-
 function nonNullMin(a: Date | null, b: Date | null) { if (!a) return b; if (!b) return a; return a < b ? a : b; }
 function nonNullMax(a: Date | null, b: Date | null) { if (!a) return b; if (!b) return a; return a > b ? a : b; }
 
@@ -176,6 +175,7 @@ type GanttRow = {
   color: string;
   anchors: GanttAnchor[];
   bands: GanttBand[];
+  center?: { start: Date; end: Date; tooltip: string }; // center fill between anchors (Rollup color)
 };
 
 type PlanExpected = {
@@ -261,9 +261,9 @@ function resolveExpected(plan: PlanLike, computeExpected?: ComputeExpectedFn): P
   return merged;
 }
 
-/* ---------- phase rows ---------- */
-function buildPhaseRows(exp: PlanExpected, prefs: AvailabilityPrefs) {
-  type Row = { id: string; label: string; color: string; anchors: GanttAnchor[]; bands: GanttBand[] };
+/* ---------- phase rows (respects showBands; always adds center fill like Rollup) ---------- */
+function buildPhaseRows(exp: PlanExpected, prefs: AvailabilityPrefs, showBands: boolean) {
+  type Row = { id: string; label: string; color: string; anchors: GanttAnchor[]; bands: GanttBand[]; center?: GanttRow["center"] };
   const rows: Row[] = [];
   let min: Date | null = null;
   let max: Date | null = null;
@@ -279,6 +279,20 @@ function buildPhaseRows(exp: PlanExpected, prefs: AvailabilityPrefs) {
     const rStart = addDays(exp.cycle, b.rf);
     const rEnd = addDays(exp.breeding, b.rt);
 
+    const bands: GanttBand[] = [];
+    if (showBands) {
+      bands.push({ start: uStart, end: uEnd, style: "unlikely", tooltip: `Cycle to Breeding, Unlikely: ${fmt.format(uStart)} to ${fmt.format(uEnd)}` });
+      bands.push({ start: rStart, end: rEnd, style: "risky", tooltip: `Cycle to Breeding, Risky: ${fmt.format(rStart)} to ${fmt.format(rEnd)}` });
+
+      min = nonNullMin(min, uStart);
+      min = nonNullMin(min, rStart);
+      max = nonNullMax(max, uEnd);
+      max = nonNullMax(max, rEnd);
+    } else {
+      min = nonNullMin(min, addDays(exp.cycle, -1));
+      max = nonNullMax(max, addDays(exp.breeding, +1));
+    }
+
     rows.push({
       id: "phases-cycle-breeding",
       label: "Cycle → Breeding",
@@ -287,28 +301,35 @@ function buildPhaseRows(exp: PlanExpected, prefs: AvailabilityPrefs) {
         { date: exp.cycle, label: "Cycle Start", tooltip: `Cycle Start: ${fmt.format(exp.cycle)}` },
         { date: exp.breeding, label: "Breeding", tooltip: `Breeding: ${fmt.format(exp.breeding)}` },
       ],
-      bands: [
-        { start: uStart, end: uEnd, style: "unlikely", tooltip: `Cycle to Breeding, Unlikely: ${fmt.format(uStart)} to ${fmt.format(uEnd)}` },
-        { start: rStart, end: rEnd, style: "risky", tooltip: `Cycle to Breeding, Risky: ${fmt.format(rStart)} to ${fmt.format(rEnd)}` },
-      ],
+      bands,
+      center: { start: exp.cycle, end: exp.breeding, tooltip: `Cycle → Breeding: ${fmt.format(exp.cycle)} → ${fmt.format(exp.breeding)}` },
     });
-
-    min = nonNullMin(min, uStart);
-    min = nonNullMin(min, rStart);
-    max = nonNullMax(max, uEnd);
-    max = nonNullMax(max, rEnd);
   }
 
   if (exp.birth && exp.placementCompleted) {
     const b = normalizeBands(
       prefs.post_risky_from_full_start, prefs.post_risky_to_full_end,
-      prefs.post_unlikely_from_likely_start, prefs.post_unlikely_to_likely_end,
+      prefs.post_unlikely_from_likely_start, prefs.post_unlikely_to_likely_end, // << correct key
       !!prefs.autoWidenUnlikely
     );
     const uStart = addDays(exp.birth, b.uf);
     const uEnd = addDays(exp.placementCompleted, b.ut);
     const rStart = addDays(exp.birth, b.rf);
     const rEnd = addDays(exp.placementCompleted, b.rt);
+
+    const bands: GanttBand[] = [];
+    if (showBands) {
+      bands.push({ start: uStart, end: uEnd, style: "unlikely", tooltip: `Birth to Placement, Unlikely: ${fmt.format(uStart)} to ${fmt.format(uEnd)}` });
+      bands.push({ start: rStart, end: rEnd, style: "risky", tooltip: `Birth to Placement, Risky: ${fmt.format(rStart)} to ${fmt.format(rEnd)}` });
+
+      min = nonNullMin(min, uStart);
+      min = nonNullMin(min, rStart);
+      max = nonNullMax(max, uEnd);
+      max = nonNullMax(max, rEnd);
+    } else {
+      min = nonNullMin(min, addDays(exp.birth, -1));
+      max = nonNullMax(max, addDays(exp.placementCompleted, +1));
+    }
 
     rows.push({
       id: "phases-birth-placement",
@@ -318,27 +339,10 @@ function buildPhaseRows(exp: PlanExpected, prefs: AvailabilityPrefs) {
         { date: exp.birth, label: "Birth", tooltip: `Birth: ${fmt.format(exp.birth)}` },
         { date: exp.placementCompleted, label: "Placement Completed", tooltip: `Placement Completed: ${fmt.format(exp.placementCompleted)}` },
       ],
-      bands: [
-        { start: uStart, end: uEnd, style: "unlikely", tooltip: `Birth to Placement, Unlikely: ${fmt.format(uStart)} to ${fmt.format(uEnd)}` },
-        { start: rStart, end: rEnd, style: "risky", tooltip: `Birth to Placement, Risky: ${fmt.format(rStart)} to ${fmt.format(rEnd)}` },
-      ],
+      bands,
+      center: { start: exp.birth, end: exp.placementCompleted, tooltip: `Birth → Placement: ${fmt.format(exp.birth)} → ${fmt.format(exp.placementCompleted)}` },
     });
-
-    min = nonNullMin(min, uStart);
-    min = nonNullMin(min, rStart);
-    max = nonNullMax(max, uEnd);
-    max = nonNullMax(max, rEnd);
   }
-
-  dgroup("[PerPlanGantt] phase rows");
-  dtable(rows.map(r => ({
-    id: r.id,
-    unlikely_start: fmtD(r.bands.find(b => b.style === "unlikely")?.start),
-    unlikely_end: fmtD(r.bands.find(b => b.style === "unlikely")?.end),
-    risky_start: fmtD(r.bands.find(b => b.style === "risky")?.start),
-    risky_end: fmtD(r.bands.find(b => b.style === "risky")?.end),
-  })));
-  dgroupEnd();
 
   return { rows, spanMin: min, spanMax: max };
 }
@@ -353,41 +357,27 @@ type ExactRowSpec = {
 
 function buildExactRows(exp: PlanExpected, prefs: AvailabilityPrefs, showBands: boolean) {
   const specs: ExactRowSpec[] = [
-    {
-      id: "exact-cycle", label: "Cycle Start", anchor: exp.cycle,
+    { id: "exact-cycle", label: "Cycle Start", anchor: exp.cycle,
       risky_from: prefs.date_cycle_risky_from, risky_to: prefs.date_cycle_risky_to,
-      unlikely_from: prefs.date_cycle_unlikely_from, unlikely_to: prefs.date_cycle_unlikely_to
-    },
-    {
-      id: "exact-testing", label: "Hormone Testing", anchor: exp.testing,
+      unlikely_from: prefs.date_cycle_unlikely_from, unlikely_to: prefs.date_cycle_unlikely_to },
+    { id: "exact-testing", label: "Hormone Testing", anchor: exp.testing,
       risky_from: prefs.date_testing_risky_from, risky_to: prefs.date_testing_risky_to,
-      unlikely_from: prefs.date_testing_unlikely_from, unlikely_to: prefs.date_testing_unlikely_to
-    },
-    {
-      id: "exact-breeding", label: "Breeding", anchor: exp.breeding,
+      unlikely_from: prefs.date_testing_unlikely_from, unlikely_to: prefs.date_testing_unlikely_to },
+    { id: "exact-breeding", label: "Breeding", anchor: exp.breeding,
       risky_from: prefs.date_breeding_risky_from, risky_to: prefs.date_breeding_risky_to,
-      unlikely_from: prefs.date_breeding_unlikely_from, unlikely_to: prefs.date_breeding_unlikely_to
-    },
-    {
-      id: "exact-birth", label: "Birth", anchor: exp.birth,
+      unlikely_from: prefs.date_breeding_unlikely_from, unlikely_to: prefs.date_breeding_unlikely_to },
+    { id: "exact-birth", label: "Birth", anchor: exp.birth,
       risky_from: prefs.date_birth_risky_from, risky_to: prefs.date_birth_risky_to,
-      unlikely_from: prefs.date_birth_unlikely_from, unlikely_to: prefs.date_birth_unlikely_to
-    },
-    {
-      id: "exact-weaning", label: "Weaning", anchor: exp.weaned,
+      unlikely_from: prefs.date_birth_unlikely_from, unlikely_to: prefs.date_birth_unlikely_to },
+    { id: "exact-weaning", label: "Weaning", anchor: exp.weaned,
       risky_from: prefs.date_weaned_risky_from, risky_to: prefs.date_weaned_risky_to,
-      unlikely_from: prefs.date_weaned_unlikely_from, unlikely_to: prefs.date_weaned_unlikely_to
-    },
-    {
-      id: "exact-placement-start", label: "Placement Start", anchor: exp.placementStart,
+      unlikely_from: prefs.date_weaned_unlikely_from, unlikely_to: prefs.date_weaned_unlikely_to },
+    { id: "exact-placement-start", label: "Placement Start", anchor: exp.placementStart,
       risky_from: prefs.date_placement_start_risky_from, risky_to: prefs.date_placement_start_risky_to,
-      unlikely_from: prefs.date_placement_start_unlikely_from, unlikely_to: prefs.date_placement_start_unlikely_to
-    },
-    {
-      id: "exact-placement-completed", label: "Placement Completed", anchor: exp.placementCompleted,
+      unlikely_from: prefs.date_placement_start_unlikely_from, unlikely_to: prefs.date_placement_start_unlikely_to },
+    { id: "exact-placement-completed", label: "Placement Completed", anchor: exp.placementCompleted,
       risky_from: prefs.date_placement_completed_risky_from, risky_to: prefs.date_placement_completed_risky_to,
-      unlikely_from: prefs.date_placement_completed_unlikely_from, unlikely_to: prefs.date_placement_completed_unlikely_to
-    },
+      unlikely_from: prefs.date_placement_completed_unlikely_from, unlikely_to: prefs.date_placement_completed_unlikely_to },
   ];
 
   const colorOf = (id: string) => {
@@ -399,8 +389,6 @@ function buildExactRows(exp: PlanExpected, prefs: AvailabilityPrefs, showBands: 
   const rows: GanttRow[] = [];
   let min: Date | null = null;
   let max: Date | null = null;
-
-  const debugRows: any[] = [];
 
   for (const s of specs) {
     if (!s.anchor) continue;
@@ -419,7 +407,6 @@ function buildExactRows(exp: PlanExpected, prefs: AvailabilityPrefs, showBands: 
       bands: [],
     };
 
-    // compute band dates
     const uStart = addDays(s.anchor, b.uf);
     const uEnd = addDays(s.anchor, b.ut);
     const rStart = addDays(s.anchor, b.rf);
@@ -435,34 +422,12 @@ function buildExactRows(exp: PlanExpected, prefs: AvailabilityPrefs, showBands: 
       max = nonNullMax(max, uEnd);
       max = nonNullMax(max, rEnd);
     } else {
-      // widen horizon using the anchor
       min = nonNullMin(min, addDays(s.anchor, -1));
       max = nonNullMax(max, addDays(s.anchor, +1));
     }
 
-    // Debug
-    debugRows.push({
-      id: s.id,
-      label: s.label,
-      anchor: fmtD(s.anchor),
-      u_from_days: s.unlikely_from ?? null,
-      u_to_days: s.unlikely_to ?? null,
-      r_from_days: s.risky_from ?? null,
-      r_to_days: s.risky_to ?? null,
-      u_start: fmtD(uStart),
-      u_end: fmtD(uEnd),
-      r_start: fmtD(rStart),
-      r_end: fmtD(rEnd),
-      has_left: (uStart < s.anchor) || (rStart < s.anchor),
-      has_right: (uEnd > s.anchor) || (rEnd > s.anchor),
-    });
-
     rows.push(row);
   }
-
-  dgroup("[PerPlanGantt] exact rows");
-  dtable(debugRows);
-  dgroupEnd();
 
   return { rows, spanMin: min, spanMax: max };
 }
@@ -475,18 +440,18 @@ function padDomainBothSides(min: Date | null, max: Date | null) {
   return { start: left, end: right };
 }
 
-/* ---------- local toggles ---------- */
+/* ---------- local toggles (no lockScroll) ---------- */
 function usePlanToggles(planId: string | number, defaultExactBandsVisible: boolean) {
   const key = `bhq_planner_perplan_${planId}`;
   const [state, set] = React.useState(() => {
     try {
       const raw = localStorage.getItem(key);
       if (raw) return JSON.parse(raw);
-    } catch { }
+    } catch {}
     return { showPhases: true, showExact: true, showExactBands: !!defaultExactBandsVisible };
   });
   React.useEffect(() => {
-    try { localStorage.setItem(key, JSON.stringify(state)); } catch { }
+    try { localStorage.setItem(key, JSON.stringify(state)); } catch {}
   }, [key, state]);
   return [state, set] as const;
 }
@@ -496,11 +461,14 @@ type Stage = { key: string; label: string; baseColor: string; hatchLikely?: bool
 
 type StageDatum = {
   key: string;
-  fullRange?: { start: Date; end: Date };    // solid, risky
+  fullRange?: { start: Date; end: Date };    // solid (center fill or risky)
   likelyRange?: { start: Date; end: Date };  // hatched, unlikely
   point?: Date;                              // centerline anchor
-  __tooltip?: string;                        // used by Gantt to set native title on the element
+  __tooltip?: string;                        // native title
   __z?: number;
+  // per-item overrides respected by Gantt.tsx (fill/opacity)
+  color?: string;
+  opacity?: number;
 };
 
 function toStages(rows: GanttRow[]): Stage[] {
@@ -515,67 +483,50 @@ function toStages(rows: GanttRow[]): Stage[] {
 function toStageData(rows: GanttRow[]): StageDatum[] {
   const out: StageDatum[] = [];
   for (const r of rows) {
+    // unlikely (hatched)
     const unlikely = r.bands.find(b => b.style === "unlikely");
     if (unlikely) {
       out.push({
         key: r.id,
-        likelyRange: { start: unlikely.start, end: unlikely.end }, // no +1 day nudge
+        likelyRange: { start: unlikely.start, end: unlikely.end },
         __tooltip: unlikely.tooltip,
         __z: 1,
       });
     }
 
+    // risky (darken & slightly opaque for phases only; exact rows use base styling)
     const risky = r.bands.find(b => b.style === "risky");
     if (risky) {
+      const isPhase = r.id.startsWith("phases-");
+      const riskyColor = isPhase ? shade(r.color, -28) : undefined;
+      const riskyOpacity = isPhase ? 0.85 : undefined; // match Rollup
       out.push({
         key: r.id,
-        fullRange: { start: risky.start, end: risky.end }, // no +1 day nudge
+        fullRange: { start: risky.start, end: risky.end },
         __tooltip: risky.tooltip,
         __z: 2,
+        color: riskyColor,
+        opacity: riskyOpacity,
       });
     }
 
-    if (r.anchors && r.anchors.length) {
-      for (const a of r.anchors) {
-        if (!a?.date) continue;
-        // Gantt should render this as a 1px vertical line with a native tooltip
-        out.push({
-          key: r.id,
-          point: a.date,
-          __tooltip: a.tooltip, // Per anchor native title
-          __z: 3,
-        });
-      }
+    // center fill between anchors (always shown; uses stage.baseColor == Rollup color)
+    if ((r as any).center) {
+      const c = (r as any).center as { start: Date; end: Date; tooltip: string };
+      out.push({
+        key: r.id,
+        fullRange: { start: c.start, end: c.end },
+        __tooltip: c.tooltip,
+        __z: 3,
+      });
+    }
+
+    // anchors
+    for (const a of r.anchors || []) {
+      if (!a?.date) continue;
+      out.push({ key: r.id, point: a.date, __tooltip: a.tooltip, __z: 4 });
     }
   }
-
-  dgroup("[PerPlanGantt] Gantt payload rows -> StageDatum[]");
-  dtable(
-    out.map(o => ({
-      key: o.key,
-      point: fmtD(o.point ?? null),
-      full_start: fmtD(o.fullRange?.start ?? null),
-      full_end: fmtD(o.fullRange?.end ?? null),
-      likely_start: fmtD(o.likelyRange?.start ?? null),
-      likely_end: fmtD(o.likelyRange?.end ?? null),
-      z: o.__z,
-    }))
-  );
-  dgroupEnd();
-
-  const byKey: Record<string, { left: boolean; right: boolean }> = {};
-  rows.forEach(r => {
-    const a = r.anchors[0]?.date ?? null;
-    const u = r.bands.find(b => b.style === "unlikely");
-    const k = r.id;
-    const left = !!(a && ((u && u.start < a) || r.bands.find(b => b.style === "risky" && b.start < a)));
-    const right = !!(a && ((u && u.end > a) || r.bands.find(b => b.style === "risky" && b.end > a)));
-    byKey[k] = { left, right };
-  });
-  dgroup("[PerPlanGantt] left and right availability per row");
-  dtable(Object.entries(byKey).map(([k, v]) => ({ id: k, has_left: v.left, has_right: v.right })));
-  dgroupEnd();
-
   return out;
 }
 
@@ -590,7 +541,6 @@ export default function PerPlanGantt({ plans, prefsOverride, computeExpected, cl
     ...(prefsOverride || {}),
   };
 
-  // If the tenant provided exact values, default the toggle to visible
   if (prefs.defaultExactBandsVisible == null) {
     prefs.defaultExactBandsVisible = hasAnyExactValues(prefs as any);
   }
@@ -614,27 +564,21 @@ export default function PerPlanGantt({ plans, prefsOverride, computeExpected, cl
   );
 }
 
-/* ---------- per plan block ---------- */
+/* ---------- per plan block (no lock scroll) ---------- */
 function PlanBlock({ plan, prefs, computeExpected }: { plan: PlanLike; prefs: AvailabilityPrefs; computeExpected?: ComputeExpectedFn }) {
   const exp = React.useMemo(() => resolveExpected(plan, computeExpected), [plan, computeExpected]);
   const [toggles, setToggles] = usePlanToggles(plan.id, !!prefs.defaultExactBandsVisible);
 
-  const phases = React.useMemo(() => buildPhaseRows(exp, prefs), [exp, prefs]);
-  const exact = React.useMemo(() => buildExactRows(exp, prefs, toggles.showExactBands), [exp, prefs, toggles.showExactBands]);
+  // Availability Bands toggle affects BOTH sections
+  const phases = React.useMemo(() => buildPhaseRows(exp, prefs, toggles.showExactBands), [exp, prefs, toggles.showExactBands]);
+  const exact  = React.useMemo(() => buildExactRows(exp, prefs, toggles.showExactBands),  [exp, prefs, toggles.showExactBands]);
 
   const rawMin = [phases.spanMin, exact.spanMin].reduce(nonNullMin, null);
   const rawMax = [phases.spanMax, exact.spanMax].reduce(nonNullMax, null);
-  const horizon = padDomainBothSides(rawMin, rawMax);
-
-  dgroup(`[PerPlanGantt] plan summary: ${String(plan.name)} (id=${String(plan.id)})`);
-  console.log("toggles", toggles);
-  console.log("horizon", {
-    start: fmtD(horizon?.start ?? null),
-    end: fmtD(horizon?.end ?? null),
-    rawMin: fmtD(rawMin),
-    rawMax: fmtD(rawMax),
-  });
-  dgroupEnd();
+  const horizon = React.useMemo(() => {
+    if (!rawMin || !rawMax) return null;
+    return padDomainBothSides(rawMin, rawMax);
+  }, [rawMin, rawMax]);
 
   if (!horizon) {
     return (
@@ -654,7 +598,6 @@ function PlanBlock({ plan, prefs, computeExpected }: { plan: PlanLike; prefs: Av
   } as const;
 
   return (
-    // orange border around each plan, plus a fixed 0.25in space between plans
     <div
       className="rounded-xl border"
       style={{ borderColor: "hsl(0 0% 40%)", marginBottom: "0.25in" }}
@@ -663,15 +606,27 @@ function PlanBlock({ plan, prefs, computeExpected }: { plan: PlanLike; prefs: Av
         <div className="font-semibold">{plan.name}</div>
         <div className="flex items-center gap-3 text-xs">
           <label className="inline-flex items-center gap-1 cursor-pointer">
-            <input type="checkbox" checked={toggles.showPhases} onChange={(e) => setToggles(s => ({ ...s, showPhases: e.target.checked }))} />
+            <input
+              type="checkbox"
+              checked={toggles.showPhases}
+              onChange={(e) => setToggles(s => ({ ...s, showPhases: e.target.checked }))}
+            />
             Timeline Phases
           </label>
           <label className="inline-flex items-center gap-1 cursor-pointer">
-            <input type="checkbox" checked={toggles.showExact} onChange={(e) => setToggles(s => ({ ...s, showExact: e.target.checked }))} />
+            <input
+              type="checkbox"
+              checked={toggles.showExact}
+              onChange={(e) => setToggles(s => ({ ...s, showExact: e.target.checked }))}
+            />
             Expected Dates
           </label>
           <label className="inline-flex items-center gap-1 cursor-pointer">
-            <input type="checkbox" checked={toggles.showExactBands} onChange={(e) => setToggles(s => ({ ...s, showExactBands: e.target.checked }))} />
+            <input
+              type="checkbox"
+              checked={toggles.showExactBands}
+              onChange={(e) => setToggles(s => ({ ...s, showExactBands: e.target.checked }))}
+            />
             Availability Bands
           </label>
         </div>
@@ -679,8 +634,7 @@ function PlanBlock({ plan, prefs, computeExpected }: { plan: PlanLike; prefs: Av
 
       {toggles.showPhases && (
         <section className="px-3 pt-3 pb-3">
-          {/* borderless inner container */}
-              <div className="px-1 pb-2 text-xs font-medium text-secondary">Timeline Phases</div>
+          <div className="px-1 pb-2 text-xs font-medium text-secondary">Timeline Phases</div>
           <div className="rounded-xl bg-black/20 p-2 overflow-hidden mb-2" style={{ border: "none" }}>
             <Gantt {...ganttCommon} stages={toStages(phases.rows)} data={toStageData(phases.rows)} />
           </div>

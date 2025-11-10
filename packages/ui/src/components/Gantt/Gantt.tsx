@@ -1,4 +1,3 @@
-// packages/ui/src/components/Gantt/Gantt.tsx
 import * as React from "react";
 import type { StageWindows, Range } from "../../utils";
 import "../../styles/gantt.css";
@@ -71,7 +70,12 @@ type StageWinLoose = {
   likelyRange?: Range | null;
   point?: Date | string | null;
   __tooltip?: string;
+
+  // allow both underscored and plain props from callers
   __color?: string;
+  __opacity?: number;
+  color?: string;
+  opacity?: number;
 } & Record<string, any>;
 
 function pickRange(obj: any, keys: string[]): Range | null {
@@ -219,7 +223,14 @@ export default function BHQGantt(props: BHQGanttProps) {
   }
 
   // normalize incoming rows
-  type Part = { full?: Range | null; likely?: Range | null; dot?: Date | null; tooltip?: string; color?: string };
+  type Part = {
+    full?: Range | null;
+    likely?: Range | null;
+    dot?: Date | null;
+    tooltip?: string;
+    color?: string;
+    opacity?: number;
+  };
   const partsByKey = new Map<string, Part[]>();
   for (const s of stages) partsByKey.set(s.key, []);
   for (const row of (data as unknown as StageWinLoose[])) {
@@ -228,7 +239,15 @@ export default function BHQGantt(props: BHQGanttProps) {
     const full = pickRange(row, ["full", "fullRange"]);
     const likely = pickRange(row, ["likely", "likelyRange"]);
     const dot = pickDate(row, ["dot", "point"]);
-    partsByKey.get(key)!.push({ full, likely, dot, tooltip: row.__tooltip, color: row.__color || undefined });
+    partsByKey.get(key)!.push({
+      full,
+      likely,
+      dot,
+      tooltip: row.__tooltip,
+      // 👇 prefer plain props; fall back to underscored ones
+      color: (row as any).color ?? (row as any).__color ?? undefined,
+      opacity: (row as any).opacity ?? (row as any).__opacity ?? undefined,
+    });
   }
 
   // width behavior
@@ -415,7 +434,9 @@ export default function BHQGantt(props: BHQGanttProps) {
                           fill={`url(#${localPatId})`}
                           clipPath={`url(#${localClipId})`}
                           className="bhq-gantt__likely"
-                        />
+                        >
+                          {p.tooltip ? <title>{p.tooltip}</title> : null}
+                        </rect>
                       );
 
                       items.push(
@@ -435,10 +456,12 @@ export default function BHQGantt(props: BHQGanttProps) {
                       );
                     }
 
-                    // solid inner, risky
+                    // solid inner (center fill or risky bands depending on caller)
                     if (p.full?.start && p.full?.end) {
                       const x1 = xOf(p.full.start);
                       const x2 = Math.min(xOf(p.full.end), contentEndX);
+                      const fillColor = (p as any).color || s.baseColor;
+                      const fillOpacity = (p as any).opacity ?? 1;
                       items.push(
                         <rect
                           key={`full-${j}`}
@@ -449,9 +472,12 @@ export default function BHQGantt(props: BHQGanttProps) {
                           height={h}
                           rx={6}
                           ry={6}
-                          fill={s.baseColor}
+                          fill={fillColor}
+                          opacity={fillOpacity}
                           stroke="none"
-                        />
+                        >
+                          {p.tooltip ? <title>{p.tooltip}</title> : null}
+                        </rect>
                       );
                     }
 
