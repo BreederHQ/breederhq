@@ -143,7 +143,7 @@ export default function BHQGantt(props: BHQGanttProps) {
   const cssGutter = useCssRightGutter(rootRef, 240);
   const RG = typeof rightGutter === "number" ? rightGutter : cssGutter;
 
-  // track available width in fill mode so charts stretch identically
+  // track available width in fill mode
   const [frameW, setFrameW] = React.useState<number | null>(null);
   React.useLayoutEffect(() => {
     const el = frameRef.current;
@@ -174,17 +174,19 @@ export default function BHQGantt(props: BHQGanttProps) {
     (endInc.getFullYear() - start.getFullYear()) * 12 +
     (endInc.getMonth() - start.getMonth()) + 1;
 
-  // if fitToContent, use month pixels; else use the live frame width
+  // if fitToContent, use month pixels; else derive from the live frame width
   const contentWFit = Math.max(1, Math.ceil(months * MONTH_PX));
   const contentWFill = Math.max(
     1,
-    ((frameW ?? 0) - LEFT_LABEL_W - RG) > 0 ? (frameW! - LEFT_LABEL_W - RG) : contentWFit
+    ((frameW ?? 0) - LEFT_LABEL_W) > 0 ? (frameW! - LEFT_LABEL_W) : contentWFit
   );
   const contentW = fitToContent ? contentWFit : contentWFill;
 
   const contentStartX = LEFT_LABEL_W;
   const contentEndX = LEFT_LABEL_W + contentW;
-  const plotW = LEFT_LABEL_W + contentW + RG;
+
+  // frame width should end at contentEndX, no empty right strip
+  const frameWidthFit = `${LEFT_LABEL_W + contentW}px`;
 
   const rows = stages.length;
   const rowH = heightPerRow;
@@ -212,6 +214,7 @@ export default function BHQGantt(props: BHQGanttProps) {
       monthTicks.push({ label, x: x1, mid });
       cur.setMonth(cur.getMonth() + 1);
     }
+    // final line exactly on the right edge
     monthTicks.push({ label: "", x: contentEndX, mid: contentEndX });
   }
 
@@ -233,23 +236,19 @@ export default function BHQGantt(props: BHQGanttProps) {
     ? { width: `${LEFT_LABEL_W + contentW}px` }
     : { width: "100%" };
 
-  // include right gutter in fill mode so the viewBox covers the full frame
-  const viewW = fitToContent ? LEFT_LABEL_W + contentW : LEFT_LABEL_W + contentW + RG;
+  // viewBox should end at the last column, not include any right gutter
+  const viewW = LEFT_LABEL_W + contentW;
 
   // clip & ids
   const clipId = React.useId();
   const hatchBaseId = React.useId();
 
-  // collect centerlines to paint on a top layer with tooltips
+  // centerlines
   type Centerline = { x: number; y1: number; y2: number; title?: string };
   const centerlines: Centerline[] = [];
-
-  // pixels we trim whenever a bar edge coincides with an anchor
-  const ANCHOR_PAD_PX = 1;
-  // relaxed hover tolerance for anchors
-  const CENTERLINE_OVERSHOOT = 10; // was 6
-  const ANCHOR_HIT_W = 28;         // was 14
-  const HIT_Y_PAD = 3;             // extra vertical padding
+  const CENTERLINE_OVERSHOOT = 10;
+  const ANCHOR_HIT_W = 28;
+  const HIT_Y_PAD = 3;
 
   return (
     <div
@@ -262,7 +261,7 @@ export default function BHQGantt(props: BHQGanttProps) {
       <div
         ref={frameRef}
         className="bhq-gantt__frame"
-        style={{ width: fitToContent ? `${plotW}px` : "100%" }}
+        style={{ width: fitToContent ? frameWidthFit : "100%" }}
       >
         <svg
           className="bhq-gantt__svg"
@@ -365,18 +364,6 @@ export default function BHQGantt(props: BHQGanttProps) {
               const y = topPad + i * rowH + 6;
               const h = rowH - 12;
 
-              // all anchor x positions for this row, used to trim bars at anchors
-              const anchorXs: number[] = parts
-                .map(p => (p.dot ? xOf(atMidnight(p.dot)) : null))
-                .filter((v): v is number => v != null);
-
-              const trimToAnchors = (x1: number, x2: number) => {
-                if (anchorXs.some(ax => ax === x1)) x1 += ANCHOR_PAD_PX; // start after anchor
-                if (anchorXs.some(ax => ax === x2)) x2 -= ANCHOR_PAD_PX; // end before anchor
-                if (x2 <= x1) x2 = x1 + 1;
-                return [x1, x2] as const;
-              };
-
               return (
                 <g key={`bars-${s.key}`}>
                   {parts.map((p, j) => {
@@ -384,11 +371,10 @@ export default function BHQGantt(props: BHQGanttProps) {
 
                     // likely, hatched
                     if (p.likely?.start && p.likely?.end) {
-                      let x1 = xOf(p.likely.start);
-                      let x2 = Math.min(xOf(p.likely.end), contentEndX);
-                      [x1, x2] = trimToAnchors(x1, x2);
-
+                      const x1 = xOf(p.likely.start);
+                      const x2 = Math.min(xOf(p.likely.end), contentEndX);
                       const w = Math.max(1, x2 - x1);
+
                       const localPatId = `${hatchBaseId}-${s.key}-${j}`;
                       const localClipId = `${hatchBaseId}-clip-${s.key}-${j}`;
 
@@ -429,9 +415,7 @@ export default function BHQGantt(props: BHQGanttProps) {
                           fill={`url(#${localPatId})`}
                           clipPath={`url(#${localClipId})`}
                           className="bhq-gantt__likely"
-                        >
-                          {p.tooltip ? <title>{p.tooltip}</title> : null}
-                        </rect>
+                        />
                       );
 
                       items.push(
@@ -453,10 +437,8 @@ export default function BHQGantt(props: BHQGanttProps) {
 
                     // solid inner, risky
                     if (p.full?.start && p.full?.end) {
-                      let x1 = xOf(p.full.start);
-                      let x2 = Math.min(xOf(p.full.end), contentEndX);
-                      [x1, x2] = trimToAnchors(x1, x2);
-
+                      const x1 = xOf(p.full.start);
+                      const x2 = Math.min(xOf(p.full.end), contentEndX);
                       items.push(
                         <rect
                           key={`full-${j}`}
@@ -469,13 +451,11 @@ export default function BHQGantt(props: BHQGanttProps) {
                           ry={6}
                           fill={s.baseColor}
                           stroke="none"
-                        >
-                          {p.tooltip ? <title>{p.tooltip}</title> : null}
-                        </rect>
+                        />
                       );
                     }
 
-                    // centerline with hitbox and tooltip
+                    // centerline
                     if (p.dot) {
                       const d0 = atMidnight(p.dot);
                       const x = xOf(d0);
@@ -493,13 +473,13 @@ export default function BHQGantt(props: BHQGanttProps) {
               );
             })}
 
-            {/* today, below centerlines */}
+            {/* today */}
             {showToday && today && today >= start && today <= endInc ? (
               <line className="bhq-gantt__today" x1={xOf(today)} x2={xOf(today)} y1={0} y2={frameH} />
             ) : null}
           </g>
 
-          {/* top layer centerlines, transparent hit area carries <title> */}
+          {/* top layer centerlines with hit area */}
           <g>
             {centerlines.map((c, i) => {
               const hx = c.x - ANCHOR_HIT_W / 2;

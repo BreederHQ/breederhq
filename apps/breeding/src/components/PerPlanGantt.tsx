@@ -680,6 +680,7 @@ function PlanBlock({ plan, prefs, computeExpected }: { plan: PlanLike; prefs: Av
       {toggles.showPhases && (
         <section className="px-3 pt-3 pb-3">
           {/* borderless inner container */}
+              <div className="px-1 pb-2 text-xs font-medium text-secondary">Timeline Phases</div>
           <div className="rounded-xl bg-black/20 p-2 overflow-hidden mb-2" style={{ border: "none" }}>
             <Gantt {...ganttCommon} stages={toStages(phases.rows)} data={toStageData(phases.rows)} />
           </div>

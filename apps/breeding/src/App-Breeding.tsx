@@ -27,7 +27,7 @@ import { Overlay } from "@bhq/ui/overlay";
 import { OverlayMount } from "@bhq/ui/overlay/OverlayMount";
 import { getOverlayRoot } from "@bhq/ui/overlay/core";
 import { NavLink, useInRouterContext } from "react-router-dom";
-import MasterPlanGantt from "./components/MasterPlanGantt";
+import RollupGantt from "./components/RollupGantt";
 import PerPlanGantt from "./components/PerPlanGantt";
 import PlannerSwitch from "./components/PlannerSwitch";
 import "@bhq/ui/styles/table.css";
@@ -38,7 +38,7 @@ import {
   windowsFromPlan,
   expectedMilestonesFromLocked,
   expectedTestingFromCycleStart,
-  pickPlacementCompletedAny,   
+  pickPlacementCompletedAny,
 } from "@bhq/ui/utils";
 
 // ── Calendar / Planning wiring ─────────────────────────────
@@ -1679,13 +1679,13 @@ export default function AppBreeding() {
                   className="w-full"
                 />
               ) : (
-                <MasterPlanGantt
-                  items={normalized}
+                <RollupGantt
+                  items={normalized ?? []}
                   horizon={plannerHorizon}
                   today={now}
                   availabilityOn={availabilityOn}
                   onAvailabilityToggle={setAvailabilityOn}
-                  selected={selectedKeys}
+                  selected={selectedKeys ?? new Set<ID>()}
                   onSelectedChange={(next) => {
                     setSelectionTouched(true);
                     const incoming = next instanceof Set ? next : new Set(next as Iterable<ID>);
