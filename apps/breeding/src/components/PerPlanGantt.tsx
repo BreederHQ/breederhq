@@ -7,7 +7,7 @@ import { mapTenantPrefs, hasAnyExactValues } from "@bhq/ui/utils/availability";
 import { pickPlacementCompletedAny } from "@bhq/ui/utils";
 
 /* ---------- debug flag ---------- */
-const DEBUG_PER_PLAN_GANTT = true;
+const DEBUG_PER_PLAN_GANTT = false;
 
 /* ---------- types ---------- */
 type Species = "Dog" | "Cat" | "Horse";

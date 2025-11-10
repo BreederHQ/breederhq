@@ -35,6 +35,10 @@ export type OffspringRow = {
     stillborn?: number | null;
     male?: number | null;
     female?: number | null;
+    /** NEW */
+    weaned?: number | null;
+    /** NEW */
+    placed?: number | null;
   };
   dates: {
     birthedStartAt: string | null;
@@ -44,6 +48,10 @@ export type OffspringRow = {
     placementCompletedAt: string | null;
   };
   published?: boolean;
+  /** NEW: bubble status override for list UIs */
+  statusOverride?: string | null;
+  /** NEW */
+  statusOverrideReason?: string | null;
   plan: OffspringPlanLite | null;
 };
 
@@ -64,6 +72,13 @@ export type AnimalLite = {
   salePriceCents?: number | null;
   soldAt?: string | null;
   updatedAt?: string | null;
+
+  /** NEW: collar fields */
+  collarColorId?: string | null;
+  collarColorName?: string | null;
+  collarColorHex?: string | null;
+  collarAssignedAt?: string | null;
+  collarLocked?: boolean;
 };
 
 export type TagLite = { id: number; name: string; color?: string | null };
@@ -112,6 +127,13 @@ export type OffspringDetail = {
   coverImageUrl?: string | null;
   themeName?: string | null;
 
+  /** NEW */
+  statusOverride?: string | null;
+  /** NEW */
+  statusOverrideReason?: string | null;
+  /** NEW: arbitrary JSON payload for UI helpers */
+  data?: any | null;
+
   birthedStartAt: string | null;
   birthedEndAt: string | null;
   weanedAt: string | null;
@@ -124,6 +146,10 @@ export type OffspringDetail = {
     stillborn: number | null;
     male: number | null;
     female: number | null;
+    /** NEW */
+    weaned?: number | null;
+    /** NEW */
+    placed?: number | null;
   };
 
   plan: {
@@ -148,6 +174,24 @@ export type CreateOffspringBody = {
   identifier?: string | null;
   notes?: string | null;
   published?: boolean;
+  /** NEW */
+  statusOverride?: string | null;
+  /** NEW */
+  statusOverrideReason?: string | null;
+  /** NEW */
+  data?: any | null;
+  /** NEW */
+  counts?: {
+    countBorn?: number | null;
+    countLive?: number | null;
+    countStillborn?: number | null;
+    countMale?: number | null;
+    countFemale?: number | null;
+    countWeaned?: number | null;  // NEW
+    countPlaced?: number | null;  // NEW
+  };
+  /** NEW */
+  publishedMeta?: { coverImageUrl?: string | null; themeName?: string | null };
   dates?: {
     birthedStartAt?: string | null;
     birthedEndAt?: string | null;
@@ -161,6 +205,12 @@ export type PatchOffspringBody = Partial<{
   identifier: string | null;
   notes: string | null;
   published: boolean;
+  /** NEW */
+  statusOverride: string | null;
+  /** NEW */
+  statusOverrideReason: string | null;
+  /** NEW */
+  data: any | null;
   publishedMeta: { coverImageUrl?: string | null; themeName?: string | null };
   dates: {
     weanedAt?: string | null;
@@ -175,6 +225,10 @@ export type PatchOffspringBody = Partial<{
     countStillborn?: number | null;
     countMale?: number | null;
     countFemale?: number | null;
+    /** NEW */
+    countWeaned?: number | null;
+    /** NEW */
+    countPlaced?: number | null;
   };
 }>;
 
@@ -187,6 +241,12 @@ export type CreateOffspringAnimalBody = {
   breed?: string | null;
   microchip?: string | null;
   notes?: string | null;
+
+  /** NEW: collar fields */
+  collarColorId?: string | null;
+  collarColorName?: string | null;
+  collarColorHex?: string | null;
+  collarLocked?: boolean;
 };
 
 export type UpdateOffspringAnimalBody = Partial<CreateOffspringAnimalBody>;

@@ -6,6 +6,14 @@ import { useAvailabilityPrefs } from "@bhq/ui/hooks";
 import { mapTenantPrefs, hasAnyExactValues } from "@bhq/ui/utils/availability";
 import { pickPlacementCompletedAny } from "@bhq/ui/utils";
 
+/* ---------- debug ---------- */
+const DEBUG_ROLLUP_GANTT = true;
+const dlog = (...a: any[]) => { if (DEBUG_ROLLUP_GANTT) console.log(...a); };
+const dgroup = (l: string) => { if (DEBUG_ROLLUP_GANTT) console.groupCollapsed(l); };
+const dgroupEnd = () => { if (DEBUG_ROLLUP_GANTT) console.groupEnd(); };
+const dtable = (rows: any) => { if (DEBUG_ROLLUP_GANTT) console.table(rows); };
+const fmtD = (d?: Date | null) => (d ? d.toISOString().slice(0, 10) : null);
+
 /* ---------- types ---------- */
 
 type ID = string | number;
@@ -94,17 +102,6 @@ type AvailabilityPrefs = {
 
 type Horizon = { start: Date; end: Date };
 
-type Props = {
-  plans?: PlanLike[] | null;
-  items?: PlanLike[] | null;
-  computeExpected?: ComputeExpectedFn;
-  prefsOverride?: Partial<AvailabilityPrefs>;
-  className?: string;
-
-  selected?: Set<ID> | ID[];
-  onSelectedChange?: (next: Set<ID>) => void;
-};
-
 /* ---------- constants ---------- */
 
 const PHASES_COLORS = { cycleToBreeding: "#3B82F6", birthToPlacement: "#10B981" };
@@ -113,7 +110,7 @@ const EXACT_COLORS = ["#06B6D4", "#A78BFA", "#F59E0B", "#14B8A6", "#F97316", "#8
 /* ---------- date utils ---------- */
 
 const dayMs = 24 * 60 * 60 * 1000;
-const isDate = (v: unknown): v is Date => v instanceof Date && !Number.isNaN(v.getTime());
+const isDate = (v: unknown): v is Date => v instanceof Date && !Number.isNaN((v as Date).getTime());
 const parseAnyDate = (v?: string | Date | null) => {
   if (!v) return null;
   if (isDate(v)) return v;
@@ -147,7 +144,9 @@ function normalizeBands(
     if (ufMag === rfMag && rfMag !== 0) ufMag = rfMag + 1;
     if (utMag === rtMag && rtMag !== 0) utMag = rtMag + 1;
   }
-  return { rf: -rfMag, rt: +rtMag, uf: -ufMag, ut: +utMag };
+  const out = { rf: -rfMag, rt: +rtMag, uf: -ufMag, ut: +utMag };
+  dlog("[RollupGantt] normalizeBands ->", { risky_from, risky_to, unlikely_from, unlikely_to, autoWiden, out });
+  return out;
 }
 
 /* ---------- expected ---------- */
@@ -163,10 +162,7 @@ type PlanExpected = {
 };
 
 function resolveExpected(plan: PlanLike, computeExpected?: ComputeExpectedFn): PlanExpected {
-  const placementCompletedAny =
-    plan.expectedPlacementCompleted ??
-    plan.placementCompletedDateExpected ??
-    pickPlacementCompletedAny(plan);
+  const placementCompletedAny = pickPlacementCompletedAny(plan);
 
   const placementStartAny =
     plan.expectedPlacementStartDate ??
@@ -178,22 +174,40 @@ function resolveExpected(plan: PlanLike, computeExpected?: ComputeExpectedFn): P
     plan.expectedBreedingDate ??
     null;
 
+  const weanedAny =
+    plan.expectedWeanedDate ??
+    // tolerate common aliases
+    (plan as any).expectedWeaningDate ??
+    (plan as any).expectedWeaned ??
+    (plan as any).weanedDateExpected ??
+    null;
+
+  dgroup(`[RollupGantt] incoming wean fields for ${String(plan.name)} (${String(plan.id)})`);
+  dtable([{
+    expectedWeanedDate: (plan as any).expectedWeanedDate ?? null,
+    expectedWeaningDate: (plan as any).expectedWeaningDate ?? null,
+    expectedWeaned: (plan as any).expectedWeaned ?? null,
+    weanedDateExpected: (plan as any).weanedDateExpected ?? null,
+  }]);
+  dgroupEnd();
+
   const planExp: PlanExpected = {
     cycle: parseAnyDate(plan.expectedCycleStart),
     testing: parseAnyDate(plan.expectedHormoneTestingStart),
     breeding: parseAnyDate(breedingAny),
     birth: parseAnyDate(plan.expectedBirthDate),
-    weaned: parseAnyDate(plan.expectedWeanedDate),
+    weaned: parseAnyDate(weanedAny),
     placementStart: parseAnyDate(placementStartAny),
     placementCompleted: parseAnyDate(placementCompletedAny),
   };
 
-  const hasAnyMissing =
+  const needsCompute =
+    !planExp.weaned ||
     !(planExp.cycle && planExp.breeding && planExp.birth && planExp.placementCompleted);
 
   let computed: PlanExpected | null = null;
 
-  if (hasAnyMissing && computeExpected && plan.lockedCycleStart) {
+  if (needsCompute && computeExpected && plan.lockedCycleStart) {
     const r = computeExpected(plan) as any;
     const computedPlacementStartAny =
       r?.expectedPlacementStartDate ?? r?.placementStartDateExpected ?? null;
@@ -203,7 +217,13 @@ function resolveExpected(plan: PlanLike, computeExpected?: ComputeExpectedFn): P
       testing: parseAnyDate(r?.expectedHormoneTestingStart ?? null),
       breeding: parseAnyDate(r?.expectedBreedDate ?? r?.expectedBreedingDate ?? null),
       birth: parseAnyDate(r?.expectedBirthDate ?? null),
-      weaned: parseAnyDate(r?.expectedWeanedDate ?? null),
+      weaned: parseAnyDate(
+        r?.expectedWeanedDate ??
+        r?.expectedWeaningDate ??
+        r?.expectedWeaned ??
+        r?.weanedDateExpected ??
+        null
+      ),
       placementStart: parseAnyDate(computedPlacementStartAny),
       placementCompleted: parseAnyDate(pickPlacementCompletedAny(r)),
     };
@@ -219,9 +239,31 @@ function resolveExpected(plan: PlanLike, computeExpected?: ComputeExpectedFn): P
     placementCompleted: planExp.placementCompleted ?? computed?.placementCompleted ?? null,
   };
 
-  // 🔧 backfill like PerPlanGantt
   if (!merged.placementStart && merged.birth) merged.placementStart = addDays(merged.birth, 56);
   if (!merged.placementCompleted && merged.placementStart) merged.placementCompleted = addDays(merged.placementStart, 21);
+
+  // final fallback to ensure plotting, for Rollup only
+  if (!merged.weaned) {
+    if (merged.placementStart) {
+      dlog("[RollupGantt] weaned missing, inferring from placementStart");
+      merged.weaned = merged.placementStart;
+    } else if (merged.birth) {
+      dlog("[RollupGantt] weaned missing, inferring from birth + 56d");
+      merged.weaned = addDays(merged.birth, 56);
+    }
+  }
+
+  dgroup(`[RollupGantt] resolved expected for plan ${String(plan.name)} (${String(plan.id)})`);
+  dtable([
+    { key: "cycle", date: fmtD(merged.cycle) },
+    { key: "testing", date: fmtD(merged.testing) },
+    { key: "breeding", date: fmtD(merged.breeding) },
+    { key: "birth", date: fmtD(merged.birth) },
+    { key: "weaned", date: fmtD(merged.weaned) },
+    { key: "placementStart", date: fmtD(merged.placementStart) },
+    { key: "placementCompleted", date: fmtD(merged.placementCompleted) },
+  ]);
+  dgroupEnd();
 
   return merged;
 }
@@ -245,9 +287,9 @@ function phaseStages(): Stage[] {
   ];
 }
 function exactStages(): Stage[] {
-  const labels = ["Cycle Start","Hormone Testing","Breeding","Birth","Weaning","Placement Start","Placement Completed"];
-  const keys   = ["exact_cycle","exact_testing","exact_breeding","exact_birth","exact_weaning","exact_ps","exact_pc"];
-  return keys.map((k,i) => ({ key: k, label: labels[i], baseColor: EXACT_COLORS[i], hatchLikely: true }));
+  const labels = ["Cycle Start", "Hormone Testing", "Breeding", "Birth", "Weaning", "Placement Start", "Placement Completed"];
+  const keys = ["exact_cycle", "exact_testing", "exact_breeding", "exact_birth", "exact_weaning", "exact_ps", "exact_pc"];
+  return keys.map((k, i) => ({ key: k, label: labels[i], baseColor: EXACT_COLORS[i], hatchLikely: true }));
 }
 
 /* ---------- ids ---------- */
@@ -255,6 +297,16 @@ function exactStages(): Stage[] {
 const idKey = (x: ID) => String(x);
 
 /* ---------- main ---------- */
+
+type Props = {
+  plans?: PlanLike[] | null;
+  items?: PlanLike[] | null;
+  computeExpected?: ComputeExpectedFn;
+  prefsOverride?: Partial<AvailabilityPrefs>;
+  className?: string;
+  selected?: Set<ID> | ID[];
+  onSelectedChange?: (next: Set<ID>) => void;
+};
 
 export default function RollupGantt({
   plans,
@@ -286,17 +338,21 @@ export default function RollupGantt({
       : hasAnyExactValues(prefs as any);
 
   /* toggles */
-  const [toggles, setToggles] = React.useState<{ showPhases: boolean; showExact: boolean; showExactBands: boolean }>(() => ({
+  const [toggles, setToggles] = React.useState<{
+    showPhases: boolean;
+    showExact: boolean;
+    showExactBands: boolean;
+    lockScroll: boolean;
+  }>(() => ({
     showPhases: true,
     showExact: true,
     showExactBands: defaultBandsVisible,
+    lockScroll: false,
   }));
 
   /* selection, allow empty */
   const controlled = selectedProp instanceof Set ? selectedProp : selectedProp ? new Set(selectedProp) : undefined;
-  const [internalSel, setInternalSel] = React.useState<Set<ID>>(
-    () => new Set<ID>() // start empty so user really controls what appears
-  );
+  const [internalSel, setInternalSel] = React.useState<Set<ID>>(() => new Set<ID>());
   React.useEffect(() => {
     const valid = new Set(safePlans.map(p => idKey(p.id)));
     setInternalSel(prev => {
@@ -314,6 +370,7 @@ export default function RollupGantt({
   const selectedKeys = React.useMemo(() => {
     const s = new Set<string>(); selected.forEach(v => s.add(idKey(v))); return s;
   }, [selected]);
+
   const toggleOne = (id: ID) => {
     const next = new Set(selected);
     next.has(id) ? next.delete(id) : next.add(id);
@@ -328,7 +385,7 @@ export default function RollupGantt({
 
   /* build data */
   const phases: Stage[] = phaseStages();
-  const exacts: Stage[] = exactStages();
+  const exactsAll: Stage[] = exactStages();
   const phaseData: StageDatum[] = [];
   const exactData: StageDatum[] = [];
 
@@ -339,64 +396,23 @@ export default function RollupGantt({
     const exp = resolveExpected(p, computeExpected);
 
     if (exp.cycle && exp.breeding) {
-      const b = normalizeBands(
-        prefs.cycle_breeding_risky_from, prefs.cycle_breeding_risky_to,
-        prefs.cycle_breeding_unlikely_from, prefs.cycle_breeding_unlikely_to,
-        !!prefs.autoWidenUnlikely
-      );
-      const uStart = addDays(exp.cycle, b.uf);
-      const uEnd = addDays(exp.breeding, b.ut);
-      const rStart = addDays(exp.cycle, b.rf);
-      const rEnd = addDays(exp.breeding, b.rt);
-      phaseData.push({
+      const d: StageDatum = {
         key: "cycle_to_breeding",
-        fullRange: { start: rStart, end: rEnd },
-        likelyRange: { start: uStart, end: uEnd },
         point: exp.breeding,
         __tooltip: `[${p.name}] Cycle to Breeding`,
         __z: 1,
-      });
-      minAll = nonNullMin(minAll, uStart);
-      minAll = nonNullMin(minAll, rStart);
-      maxAll = nonNullMax(maxAll, uEnd);
-      maxAll = nonNullMax(maxAll, rEnd);
-    }
-    if (exp.birth && exp.placementCompleted) {
-      const b = normalizeBands(
-        prefs.post_risky_from_full_start, prefs.post_risky_to_full_end,
-        prefs.post_unlikely_from_likely_start, prefs.post_unlikely_to_likely_end,
-        !!prefs.autoWidenUnlikely
-      );
-      const uStart = addDays(exp.birth, b.uf);
-      const uEnd = addDays(exp.placementCompleted, b.ut);
-      const rStart = addDays(exp.birth, b.rf);
-      const rEnd = addDays(exp.placementCompleted, b.rt);
-      phaseData.push({
-        key: "birth_to_placement",
-        fullRange: { start: rStart, end: rEnd },
-        likelyRange: { start: uStart, end: uEnd },
-        point: exp.placementCompleted,
-        __tooltip: `[${p.name}] Birth to Placement`,
-        __z: 1,
-      });
-      minAll = nonNullMin(minAll, uStart);
-      minAll = nonNullMin(minAll, rStart);
-      maxAll = nonNullMax(maxAll, uEnd);
-      maxAll = nonNullMax(maxAll, rEnd);
-    }
+      };
 
-    const pushExact = (
-      key: string, anchor?: Date | null,
-      rf?: number, rt?: number, uf?: number, ut?: number, label?: string
-    ) => {
-      if (!anchor) return;
-      const d: StageDatum = { key, point: anchor, __tooltip: `[${p.name}] ${label || ""}`, __z: 1 };
       if (toggles.showExactBands) {
-        const b = normalizeBands(rf, rt, uf, ut, !!prefs.autoWidenUnlikely);
-        const uStart = addDays(anchor, b.uf);
-        const uEnd = addDays(anchor, b.ut);
-        const rStart = addDays(anchor, b.rf);
-        const rEnd = addDays(anchor, b.rt);
+        const b = normalizeBands(
+          prefs.cycle_breeding_risky_from, prefs.cycle_breeding_risky_to,
+          prefs.cycle_breeding_unlikely_from, prefs.cycle_breeding_unlikely_to,
+          !!prefs.autoWidenUnlikely
+        );
+        const uStart = addDays(exp.cycle, b.uf);
+        const uEnd = addDays(exp.breeding, b.ut);
+        const rStart = addDays(exp.cycle, b.rf);
+        const rEnd = addDays(exp.breeding, b.rt);
         d.fullRange = { start: rStart, end: rEnd };
         d.likelyRange = { start: uStart, end: uEnd };
         minAll = nonNullMin(minAll, uStart);
@@ -404,31 +420,133 @@ export default function RollupGantt({
         maxAll = nonNullMax(maxAll, uEnd);
         maxAll = nonNullMax(maxAll, rEnd);
       } else {
+        minAll = nonNullMin(minAll, addDays(exp.cycle, -1));
+        maxAll = nonNullMax(maxAll, addDays(exp.breeding, +1));
+      }
+
+      phaseData.push(d);
+    }
+
+    if (exp.birth && exp.placementCompleted) {
+      const d: StageDatum = {
+        key: "birth_to_placement",
+        point: exp.placementCompleted,
+        __tooltip: `[${p.name}] Birth to Placement`,
+        __z: 1,
+      };
+
+      if (toggles.showExactBands) {
+        const b = normalizeBands(
+          prefs.post_risky_from_full_start, prefs.post_risky_to_full_end,
+          prefs.post_unlikely_from_likely_start, prefs.post_unlikely_to_likely_end,
+          !!prefs.autoWidenUnlikely
+        );
+        const uStart = addDays(exp.birth, b.uf);
+        const uEnd = addDays(exp.placementCompleted, b.ut);
+        const rStart = addDays(exp.birth, b.rf);
+        const rEnd = addDays(exp.placementCompleted, b.rt);
+        d.fullRange = { start: rStart, end: rEnd };
+        d.likelyRange = { start: uStart, end: uEnd };
+        minAll = nonNullMin(minAll, uStart);
+        minAll = nonNullMin(minAll, rStart);
+        maxAll = nonNullMax(maxAll, uEnd);
+        maxAll = nonNullMax(maxAll, rEnd);
+      } else {
+        minAll = nonNullMin(minAll, addDays(exp.birth, -1));
+        maxAll = nonNullMax(maxAll, addDays(exp.placementCompleted, +1));
+      }
+
+      phaseData.push(d);
+    }
+
+    const tweak = (a: Date, b: Date) => (a.getTime() === b.getTime() ? addDays(b, 1) : b);
+
+    const pushExact = (
+      key: string, anchor?: Date | null,
+      rf?: number, rt?: number, uf?: number, ut?: number, label?: string
+    ) => {
+      if (!anchor) return;
+
+      if (toggles.showExactBands) {
+        const b = normalizeBands(rf, rt, uf, ut, !!prefs.autoWidenUnlikely);
+        const uStart = addDays(anchor, b.uf);
+        const uEnd = tweak(uStart, addDays(anchor, b.ut));
+        const rStart = addDays(anchor, b.rf);
+        const rEnd = tweak(rStart, addDays(anchor, b.rt));
+
+        // unlikely band
+        exactData.push({
+          key,
+          likelyRange: { start: uStart, end: uEnd },
+          __tooltip: `[${p.name}] ${label || ""} (Unlikely)`,
+          __z: 1,
+        });
+
+        // risky band
+        exactData.push({
+          key,
+          fullRange: { start: rStart, end: rEnd },
+          __tooltip: `[${p.name}] ${label || ""} (Risky)`,
+          __z: 2,
+        });
+
+        // anchor line on top
+        exactData.push({
+          key,
+          point: anchor,
+          __tooltip: `[${p.name}] ${label || ""}`,
+          __z: 3,
+        });
+
+        minAll = nonNullMin(minAll, uStart);
+        minAll = nonNullMin(minAll, rStart);
+        maxAll = nonNullMax(maxAll, uEnd);
+        maxAll = nonNullMax(maxAll, rEnd);
+      } else {
+        // anchor only
+        exactData.push({
+          key,
+          point: anchor,
+          __tooltip: `[${p.name}] ${label || ""}`,
+          __z: 3,
+        });
         minAll = nonNullMin(minAll, addDays(anchor, -1));
         maxAll = nonNullMax(maxAll, addDays(anchor, +1));
       }
-      exactData.push(d);
     };
 
-    pushExact("exact_cycle",   exp.cycle,             prefs.date_cycle_risky_from,             prefs.date_cycle_risky_to,             prefs.date_cycle_unlikely_from,             prefs.date_cycle_unlikely_to,             "Cycle Start");
-    pushExact("exact_testing", exp.testing,           prefs.date_testing_risky_from,           prefs.date_testing_risky_to,           prefs.date_testing_unlikely_from,           prefs.date_testing_unlikely_to,           "Hormone Testing");
-    pushExact("exact_breeding",exp.breeding,          prefs.date_breeding_risky_from,          prefs.date_breeding_risky_to,          prefs.date_breeding_unlikely_from,          prefs.date_breeding_unlikely_to,          "Breeding");
-    pushExact("exact_birth",   exp.birth,             prefs.date_birth_risky_from,             prefs.date_birth_risky_to,             prefs.date_birth_unlikely_from,             prefs.date_birth_unlikely_to,             "Birth");
-    pushExact("exact_weaning", exp.weaned,            prefs.date_weaned_risky_from,            prefs.date_weaned_risky_to,            prefs.date_weaned_unlikely_from,            prefs.date_weaned_unlikely_to,            "Weaning");
-    pushExact("exact_ps",      exp.placementStart,    prefs.date_placement_start_risky_from,   prefs.date_placement_start_risky_to,   prefs.date_placement_start_unlikely_from,   prefs.date_placement_start_unlikely_to,   "Placement Start");
-    pushExact("exact_pc",      exp.placementCompleted,prefs.date_placement_completed_risky_from,prefs.date_placement_completed_risky_to,prefs.date_placement_completed_unlikely_from,prefs.date_placement_completed_unlikely_to,"Placement Completed");
+    pushExact("exact_cycle", exp.cycle, prefs.date_cycle_risky_from, prefs.date_cycle_risky_to, prefs.date_cycle_unlikely_from, prefs.date_cycle_unlikely_to, "Cycle Start");
+    pushExact("exact_testing", exp.testing, prefs.date_testing_risky_from, prefs.date_testing_risky_to, prefs.date_testing_unlikely_from, prefs.date_testing_unlikely_to, "Hormone Testing");
+    pushExact("exact_breeding", exp.breeding, prefs.date_breeding_risky_from, prefs.date_breeding_risky_to, prefs.date_breeding_unlikely_from, prefs.date_breeding_unlikely_to, "Breeding");
+    pushExact("exact_birth", exp.birth, prefs.date_birth_risky_from, prefs.date_birth_risky_to, prefs.date_birth_unlikely_from, prefs.date_birth_unlikely_to, "Birth");
+    pushExact("exact_weaning", exp.weaned, prefs.date_weaned_risky_from, prefs.date_weaned_risky_to, prefs.date_weaned_unlikely_from, prefs.date_weaned_unlikely_to, "Weaning");
+    pushExact("exact_ps", exp.placementStart, prefs.date_placement_start_risky_from, prefs.date_placement_start_risky_to, prefs.date_placement_start_unlikely_from, prefs.date_placement_start_unlikely_to, "Placement Start");
+    pushExact("exact_pc", exp.placementCompleted, prefs.date_placement_completed_risky_from, prefs.date_placement_completed_risky_to, prefs.date_placement_completed_unlikely_from, prefs.date_placement_completed_unlikely_to, "Placement Completed");
+
+    const weanRows = exactData.filter(d => d.key === "exact_weaning" && (d.point || d.fullRange || d.likelyRange));
+    dlog(`[RollupGantt] weaning payload rows for plan ${String(p.name)} (${String(p.id)}):`,
+      weanRows.map(w => ({
+        point: fmtD(w.point ?? null),
+        full_start: fmtD(w.fullRange?.start ?? null),
+        full_end: fmtD(w.fullRange?.end ?? null),
+        likely_start: fmtD(w.likelyRange?.start ?? null),
+        likely_end: fmtD(w.likelyRange?.end ?? null),
+      }))
+    );
   }
+
+  const exactKeysPresent = new Set(exactData.map(d => d.key));
+  const visibleExactStages = exactStages().filter(s => exactKeysPresent.has(s.key));
 
   /* horizon rules */
   const today = new Date();
   const emptyStart = startOfMonth(today);
-  const emptyEnd = endOfMonth(addMonths(emptyStart, 5)); // six months, current through five out
+  const emptyEnd = endOfMonth(addMonths(emptyStart, 5));
   const computed = minAll && maxAll ? { start: startOfMonth(minAll), end: endOfMonth(maxAll) } : null;
   const horizon: Horizon = computed ?? { start: emptyStart, end: emptyEnd };
 
-  // adaptive width: fill frame for short ranges, scroll for long ranges
   const months = monthsInclusive(horizon.start, horizon.end);
-  const fitToContent = months > 8; // scroll when wide, fill when narrow
+  const fitToContent = months > 8;
 
   const ganttCommon = {
     horizon,
@@ -437,7 +555,7 @@ export default function RollupGantt({
     showToday: true,
     showAvailability: false,
     showTravel: false,
-    className: "",
+    className: "bhq-gantt planner",
     style: {} as React.CSSProperties,
     trimEdgeMonths: false,
     fitToContent,
@@ -447,6 +565,63 @@ export default function RollupGantt({
   const allChecked = safePlans.length > 0 && safePlans.every(p => selectedKeys.has(idKey(p.id)));
   const anyChecked = selected.size > 0;
 
+  /* ---------- scroll lock wiring ---------- */
+  const phScrollRef = React.useRef<HTMLDivElement | null>(null);
+  const exScrollRef = React.useRef<HTMLDivElement | null>(null);
+  const syncing = React.useRef(false);
+
+  const syncScroll = React.useCallback((source: "ph" | "ex") => {
+    if (!toggles.lockScroll) return;
+    const src = source === "ph" ? phScrollRef.current : exScrollRef.current;
+    const dst = source === "ph" ? exScrollRef.current : phScrollRef.current;
+    if (!src || !dst) return;
+    if (syncing.current) return;
+    syncing.current = true;
+    dst.scrollLeft = src.scrollLeft;
+    requestAnimationFrame(() => { syncing.current = false; });
+  }, [toggles.lockScroll]);
+
+  const onPhScroll = React.useCallback(() => syncScroll("ph"), [syncScroll]);
+  const onExScroll = React.useCallback(() => syncScroll("ex"), [syncScroll]);
+
+  React.useEffect(() => {
+    if (!toggles.lockScroll) return;
+    const a = phScrollRef.current;
+    const b = exScrollRef.current;
+    if (a && b) {
+      b.scrollLeft = a.scrollLeft;
+    }
+  }, [toggles.lockScroll, horizon.start, horizon.end, fitToContent, anyChecked, phases.length]);
+
+  dgroup("[RollupGantt] Gantt payload rows -> StageDatum[]");
+  dtable(
+    exactData.concat(phaseData).map(o => ({
+      key: o.key,
+      point: fmtD(o.point ?? null),
+      full_start: fmtD(o.fullRange?.start ?? null),
+      full_end: fmtD(o.fullRange?.end ?? null),
+      likely_start: fmtD(o.likelyRange?.start ?? null),
+      likely_end: fmtD(o.likelyRange?.end ?? null),
+      z: (o as any).__z,
+    }))
+  );
+  dgroupEnd();
+
+  dgroup("[RollupGantt] exact rows summary, weaning only");
+  dtable(
+    exactData
+      .filter(d => d.key === "exact_weaning")
+      .map(d => ({
+        key: d.key,
+        point: fmtD(d.point ?? null),
+        full_start: fmtD(d.fullRange?.start ?? null),
+        full_end: fmtD(d.fullRange?.end ?? null),
+        likely_start: fmtD(d.likelyRange?.start ?? null),
+        likely_end: fmtD(d.likelyRange?.end ?? null),
+      }))
+  );
+  dgroupEnd();
+
   return (
     <div className={className}>
       {/* Header */}
@@ -454,6 +629,14 @@ export default function RollupGantt({
         <div className="flex items-center gap-2 flex-wrap">
           <div className="font-semibold text-sm text-secondary">Planner view</div>
           <div className="ml-auto flex items-center gap-3 text-xs">
+            <label className="inline-flex items-center gap-1 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={toggles.lockScroll}
+                onChange={(e) => setToggles(s => ({ ...s, lockScroll: e.target.checked }))}
+              />
+              Lock Scroll
+            </label>
             <label className="inline-flex items-center gap-1 cursor-pointer">
               <input
                 type="checkbox"
@@ -469,12 +652,14 @@ export default function RollupGantt({
       {/* Timeline Phases */}
       <section className="px-3 pt-2 pb-3">
         <div className="px-1 pb-2 text-xs font-medium text-secondary">Timeline Phases</div>
-
-        {/* outer rounded border, inner scroller to avoid clipping the border */}
         <div className="rounded-xl border border-white/10 bg-black/20 overflow-hidden">
-          <div className="overflow-x-auto">
+          <div
+            className="overflow-x-auto"
+            ref={phScrollRef}
+            onScroll={onPhScroll}
+          >
             <Gantt
-              key={`ph_${horizon.start.toISOString()}_${horizon.end.toISOString()}_${phaseData.length}_${fitToContent}`}
+              key={`ph_${horizon.start.toISOString()}_${horizon.end.toISOString()}_${phaseData.length}_${anyChecked}_${toggles.showExactBands}_${fitToContent}`}
               {...ganttCommon}
               stages={phaseStages()}
               data={anyChecked ? phaseData : []}
@@ -487,11 +672,15 @@ export default function RollupGantt({
       <section className="px-3 pt-2 pb-6">
         <div className="px-1 pb-2 text-xs font-medium text-secondary">Expected Dates</div>
         <div className="rounded-xl border border-white/10 bg-black/20 overflow-hidden">
-          <div className="overflow-x-auto">
+          <div
+            className="overflow-x-auto"
+            ref={exScrollRef}
+            onScroll={onExScroll}
+          >
             <Gantt
-              key={`ex_${horizon.start.toISOString()}_${horizon.end.toISOString()}_${exactData.length}_${toggles.showExactBands}_${fitToContent}`}
+              key={`ex_${horizon.start.toISOString()}_${horizon.end.toISOString()}_${visibleExactStages.length}_${anyChecked}_${toggles.showExactBands}_${fitToContent}`}
               {...ganttCommon}
-              stages={exactStages()}
+              stages={visibleExactStages}
               data={anyChecked ? exactData : []}
             />
           </div>
@@ -501,11 +690,15 @@ export default function RollupGantt({
       {/* Plan selection */}
       <div className="px-3 pb-6">
         <div className="rounded-xl bg-black/15 p-3">
-          <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-3 mb-2">
             <div className="text-xs font-medium text-secondary">Plans</div>
             <label className="text-xs inline-flex items-center gap-2 cursor-pointer">
-              <input type="checkbox" checked={allChecked} onChange={(e) => setAll(e.target.checked)} />
-              Select All
+              <input
+                type="checkbox"
+                checked={safePlans.length > 0 && safePlans.every(p => selectedKeys.has(idKey(p.id)))}
+                onChange={(e) => setAll(e.target.checked)}
+              />
+              Toggle All Plans
             </label>
           </div>
           <div className="grid grid-cols-1 gap-2 text-xs">

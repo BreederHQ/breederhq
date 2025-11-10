@@ -26,6 +26,20 @@ import "@bhq/ui/styles/table.css";
 import { readTenantIdFast, resolveTenantId } from "@bhq/ui/utils/tenant";
 import { makeOffspringApi, OffspringRow, WaitlistEntry } from "./api";
 
+/* Optional toast, fallback to alert if not present */
+let useToast: any;
+try {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  useToast = require("@bhq/ui").useToast;
+} catch {
+  useToast = () => ({
+    toast: (opts: any) =>
+      (typeof window !== "undefined" && window.alert)
+        ? window.alert(`${opts.title || ""}${opts.description ? ": " + opts.description : ""}`)
+        : void 0,
+  });
+}
+
 /* ───────────────────────── shared utils ───────────────────────── */
 
 function InlineSearch({
@@ -69,7 +83,6 @@ function InlineSearch({
     </div>
   );
 }
-
 
 const inputClass =
   "w-full h-9 rounded-md border border-hairline bg-surface px-3 text-sm text-primary " +
@@ -133,7 +146,7 @@ function fmtDate(d?: string | null) {
 }
 
 /* ───────────────────────── URL driver for DetailsHost ───────────────────────── */
-function openDetails(idParam: "groupId" | "waitlistId", id: number) {
+function setParamAndNotify(idParam: "groupId" | "waitlistId", id: number) {
   const url = new URL(location.href);
   const other = idParam === "groupId" ? "waitlistId" : "groupId";
   const current = url.searchParams.get(idParam);
@@ -142,19 +155,15 @@ function openDetails(idParam: "groupId" | "waitlistId", id: number) {
   url.searchParams.delete(other);
 
   if (current === String(id)) {
-    // Cycle: remove → popstate → re-add → popstate
+    // Cycle: remove then re-add to re-trigger listeners
     url.searchParams.delete(idParam);
     history.replaceState({}, "", url);
     window.dispatchEvent(new Event("popstate"));
-
-    // Re-add on next frame to guarantee a change notification
     requestAnimationFrame(() => {
-      queueMicrotask(() => {
-        const url2 = new URL(location.href);
-        url2.searchParams.set(idParam, String(id));
-        history.replaceState({}, "", url2);
-        window.dispatchEvent(new Event("popstate"));
-      });
+      const again = new URL(location.href);
+      again.searchParams.set(idParam, String(id));
+      history.replaceState({}, "", again);
+      window.dispatchEvent(new Event("popstate"));
     });
   } else {
     url.searchParams.set(idParam, String(id));
@@ -178,6 +187,14 @@ type GroupTableRow = {
   countLive?: number | null;
   countReserved?: number | null;
   countSold?: number | null;
+  /** NEW: derived from backend counts */
+  countWeaned?: number | null;
+  /** NEW: derived from backend counts */
+  countPlaced?: number | null;
+  /** NEW: backend override */
+  statusOverride?: string | null;
+  /** NEW: backend override reason */
+  statusOverrideReason?: string | null;
   status?: string | null;
   updatedAt?: string | null;
 };
@@ -196,13 +213,32 @@ const GROUP_COLS: Array<{ key: keyof GroupTableRow & string; label: string; defa
   { key: "expectedPlacementCompleted", label: "Placement Done", default: false },
   { key: "countLive", label: "Live", default: false },
   { key: "countReserved", label: "Reserved", default: true },
+  /** NEW columns, off by default */
+  { key: "countWeaned", label: "Weaned", default: false },
+  { key: "countPlaced", label: "Placed", default: false },
+  { key: "statusOverride", label: "Status Override", default: false },
   { key: "updatedAt", label: "Updated", default: false },
 ];
 
-const GROUP_STORAGE_KEY = "bhq_offspring_groups_cols_v2";
+const GROUP_STORAGE_KEY = "bhq_offspring_groups_cols_v3";
+
+/** Derive countSold if not provided by backend */
+function deriveCountSold(d: OffspringRow): number {
+  const backendSold = (d as any)?.counts?.sold;
+  if (typeof backendSold === "number" && Number.isFinite(backendSold)) return backendSold;
+  const placed = (d as any)?.counts?.placed;
+  if (typeof placed === "number" && Number.isFinite(placed)) return placed;
+  const animals = d.counts?.animals ?? 0;
+  const reserved = d.counts?.reserved ?? 0;
+  const lastResort = Math.max(0, animals - reserved);
+  return Number.isFinite(lastResort) ? lastResort : 0;
+}
 
 function mapDetailToTableRow(d: OffspringRow): GroupTableRow {
   const planAny = d.plan as any;
+  const baseStatus = d.plan ? (d.plan.code ? "Committed" : "Planning") : "Unknown";
+  const status = (d as any).statusOverride || d.published ? (d as any).statusOverride || baseStatus : baseStatus;
+
   return {
     id: d.id,
     groupName: d.identifier ?? null,
@@ -216,8 +252,13 @@ function mapDetailToTableRow(d: OffspringRow): GroupTableRow {
     expectedPlacementCompleted: d.dates.placementCompletedAt ?? d.plan?.expectedPlacementCompleted ?? null,
     countLive: d.counts.live ?? null,
     countReserved: d.counts.animals != null ? Math.max(0, d.counts.animals - (d.counts.live ?? 0)) : null,
-    countSold: null,
-    status: d.plan ? (d.plan.code ? "Committed" : "Planning") : "Unknown",
+    countSold: deriveCountSold(d),
+    /** NEW pulls; tolerate absence */
+    countWeaned: (d.counts as any)?.weaned ?? null,
+    countPlaced: (d.counts as any)?.placed ?? null,
+    statusOverride: (d as any).statusOverride ?? null,
+    statusOverrideReason: (d as any).statusOverrideReason ?? null,
+    status,
     updatedAt: d.updatedAt,
   };
 }
@@ -226,24 +267,29 @@ const groupSections = (mode: "view" | "edit") => [
   {
     title: "Overview",
     fields: [
-      { label: "Plan Code", key: "planCode", view: (r: GroupTableRow) => r.planCode || "—" },
-      { label: "Group Name", key: "groupName", editor: "text", view: (r: GroupTableRow) => r.groupName || "—" },
-      { label: "Species", key: "species", view: (r: GroupTableRow) => r.species || "—" },
-      { label: "Breed", key: "breed", view: (r: GroupTableRow) => r.breed || "—" },
-      { label: "Dam", key: "damName", view: (r: GroupTableRow) => r.damName || "—" },
-      { label: "Sire", key: "sireName", view: (r: GroupTableRow) => r.sireName || "—" },
-      { label: "Placement Start", key: "expectedPlacementStart", view: (r: GroupTableRow) => fmtDate(r.expectedPlacementStart) || "—" },
-      { label: "Placement Done", key: "expectedPlacementCompleted", view: (r: GroupTableRow) => fmtDate(r.expectedPlacementCompleted) || "—" },
-      { label: "Status", key: "status", view: (r: GroupTableRow) => r.status || "—" },
+      { label: "Plan Code", key: "planCode", view: (r: GroupTableRow) => r.planCode || "-" },
+      { label: "Group Name", key: "groupName", editor: "text", view: (r: GroupTableRow) => r.groupName || "-" },
+      { label: "Species", key: "species", view: (r: GroupTableRow) => r.species || "-" },
+      { label: "Breed", key: "breed", view: (r: GroupTableRow) => r.breed || "-" },
+      { label: "Dam", key: "damName", view: (r: GroupTableRow) => r.damName || "-" },
+      { label: "Sire", key: "sireName", view: (r: GroupTableRow) => r.sireName || "-" },
+      { label: "Placement Start", key: "expectedPlacementStart", view: (r: GroupTableRow) => fmtDate(r.expectedPlacementStart) || "-" },
+      { label: "Placement Done", key: "expectedPlacementCompleted", view: (r: GroupTableRow) => fmtDate(r.expectedPlacementCompleted) || "-" },
+      /** NEW editable status override fields */
+      { label: "Status Override", key: "statusOverride", editor: "text", view: (r: GroupTableRow) => r.statusOverride || "-" },
+      { label: "Override Reason", key: "statusOverrideReason", editor: "textarea", view: (r: GroupTableRow) => r.statusOverrideReason || "-" },
+      { label: "Status (computed)", key: "status", view: (r: GroupTableRow) => r.status || "-" },
     ],
   },
   {
     title: "Counts",
     fields: [
       { label: "Live", key: "countLive", editor: "number", view: (r: GroupTableRow) => String(r.countLive ?? 0) },
+      { label: "Weaned", key: "countWeaned", editor: "number", view: (r: GroupTableRow) => String(r.countWeaned ?? 0) },
+      { label: "Placed", key: "countPlaced", editor: "number", view: (r: GroupTableRow) => String(r.countPlaced ?? 0) },
       { label: "Reserved", key: "countReserved", view: (r: GroupTableRow) => String(r.countReserved ?? 0) },
       { label: "Sold", key: "countSold", view: (r: GroupTableRow) => String(r.countSold ?? 0) },
-      { label: "Updated", key: "updatedAt", view: (r: GroupTableRow) => fmtDate(r.updatedAt) || "—" },
+      { label: "Updated", key: "updatedAt", view: (r: GroupTableRow) => fmtDate(r.updatedAt) || "-" },
     ],
   },
 ];
@@ -327,22 +373,22 @@ const waitlistSections = (mode: "view" | "edit") => [
   {
     title: "Overview",
     fields: [
-      { label: "Contact", key: "contactLabel", view: (r: WaitlistTableRow) => r.contactLabel || "—" },
-      { label: "Organization", key: "orgLabel", view: (r: WaitlistTableRow) => r.orgLabel || "—" },
-      { label: "Species", key: "speciesPref", view: (r: WaitlistTableRow) => r.speciesPref || "—" },
-      { label: "Breeds", key: "breedPrefText", view: (r: WaitlistTableRow) => r.breedPrefText || "—" },
-      { label: "Dam Pref", key: "damPrefName", view: (r: WaitlistTableRow) => r.damPrefName || "—" },
-      { label: "Sire Pref", key: "sirePrefName", view: (r: WaitlistTableRow) => r.sirePrefName || "—" },
-      { label: "Deposit Paid", key: "depositPaidAt", editor: "date", view: (r: WaitlistTableRow) => fmtDate(r.depositPaidAt) || "—" },
-      { label: "Status", key: "status", editor: "text", view: (r: WaitlistTableRow) => r.status || "—" },
-      { label: "Priority", key: "priority", editor: "number", view: (r: WaitlistTableRow) => String(r.priority ?? "") || "—" },
+      { label: "Contact", key: "contactLabel", view: (r: WaitlistTableRow) => r.contactLabel || "-" },
+      { label: "Organization", key: "orgLabel", view: (r: WaitlistTableRow) => r.orgLabel || "-" },
+      { label: "Species", key: "speciesPref", view: (r: WaitlistTableRow) => r.speciesPref || "-" },
+      { label: "Breeds", key: "breedPrefText", view: (r: WaitlistTableRow) => r.breedPrefText || "-" },
+      { label: "Dam Pref", key: "damPrefName", view: (r: WaitlistTableRow) => r.damPrefName || "-" },
+      { label: "Sire Pref", key: "sirePrefName", view: (r: WaitlistTableRow) => r.sirePrefName || "-" },
+      { label: "Deposit Paid", key: "depositPaidAt", editor: "date", view: (r: WaitlistTableRow) => fmtDate(r.depositPaidAt) || "-" },
+      { label: "Status", key: "status", editor: "text", view: (r: WaitlistTableRow) => r.status || "-" },
+      { label: "Priority", key: "priority", editor: "number", view: (r: WaitlistTableRow) => String(r.priority ?? "") || "-" },
       { label: "Skips", key: "skipCount", view: (r: WaitlistTableRow) => String(r.skipCount ?? 0) },
-      { label: "Activity", key: "lastActivityAt", view: (r: WaitlistTableRow) => fmtDate(r.lastActivityAt) || "—" },
+      { label: "Activity", key: "lastActivityAt", view: (r: WaitlistTableRow) => fmtDate(r.lastActivityAt) || "-" },
     ],
   },
   {
     title: "Notes",
-    fields: [{ label: "Notes", key: "notes", editor: "textarea", view: (r: WaitlistTableRow) => r.notes || "—" }],
+    fields: [{ label: "Notes", key: "notes", editor: "textarea", view: (r: WaitlistTableRow) => r.notes || "-" }],
   },
 ];
 
@@ -541,6 +587,12 @@ function CreateGroupForm({
   const [placementStartAt, setPlacementStartAt] = React.useState<string>("");
   const [placementCompletedAt, setPlacementCompletedAt] = React.useState<string>("");
 
+  /** NEW: override and counts */
+  const [statusOverride, setStatusOverride] = React.useState<string>("");
+  const [statusOverrideReason, setStatusOverrideReason] = React.useState<string>("");
+  const [countWeaned, setCountWeaned] = React.useState<string>("");
+  const [countPlaced, setCountPlaced] = React.useState<string>("");
+
   React.useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -563,6 +615,8 @@ function CreateGroupForm({
   const [submitting, setSubmitting] = React.useState(false);
   const [submitErr, setSubmitErr] = React.useState<string | null>(null);
 
+  const { toast } = useToast();
+
   const handleSubmit = async () => {
     if (!api) return;
     if (planId === "" || !Number(planId)) {
@@ -575,26 +629,37 @@ function CreateGroupForm({
       await api.offspring.create({
         planId: Number(planId),
         identifier: identifier.trim() || null,
+        statusOverride: statusOverride.trim() || null,
+        statusOverrideReason: statusOverrideReason.trim() || null,
+        counts:
+          countWeaned || countPlaced
+            ? {
+                countWeaned: countWeaned === "" ? null : Number(countWeaned),
+                countPlaced: countPlaced === "" ? null : Number(countPlaced),
+              }
+            : undefined,
         dates: {
           weanedAt: weanedAt || null,
           placementStartAt: placementStartAt || null,
           placementCompletedAt: placementCompletedAt || null,
         },
       });
+      toast?.({ title: "Group created" });
       onCreated();
     } catch (e: any) {
       setSubmitErr(e?.message || "Failed to create offspring group");
+      toast?.({ title: "Create failed", description: String(e?.message || e), variant: "destructive" });
     } finally {
       setSubmitting(false);
     }
   };
 
   return (
-    <div className="w-[720px] max-w-[94vw]">
+    <div className="w-[820px] max-w-[94vw]">
       <Card>
         <div className="p-4 space-y-4">
           <div className="text-lg font-semibold">New offspring group</div>
-          <div className="text-sm text-secondary">Choose a committed plan and (optionally) add identifiers and dates.</div>
+          <div className="text-sm text-secondary">Choose a committed plan, add identifiers, date(s), and optional overrides.</div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <label className="flex flex-col gap-1">
@@ -607,10 +672,10 @@ function CreateGroupForm({
                 onChange={(e) => setPlanId(e.target.value ? Number(e.target.value) : "")}
                 disabled={loading}
               >
-                <option value="">Select a plan…</option>
+                <option value="">Select a plan...</option>
                 {plans.map((p) => (
                   <option key={p.id} value={p.id}>
-                    {p.code ? `${p.code} — ` : ""}
+                    {p.code ? `${p.code} - ` : ""}
                     {p.name} ({p.species}
                     {p.breedText ? ` · ${p.breedText}` : ""})
                   </option>
@@ -637,6 +702,26 @@ function CreateGroupForm({
               <span className={labelClass}>Placement Completed (optional)</span>
               <input className={inputClass} type="date" value={placementCompletedAt} onChange={(e) => setPlacementCompletedAt(e.target.value)} />
             </label>
+
+            {/* NEW: status override + reason */}
+            <label className="flex flex-col gap-1">
+              <span className={labelClass}>Status Override (optional)</span>
+              <input className={inputClass} value={statusOverride} onChange={(e) => setStatusOverride(e.target.value)} placeholder="e.g., Pause Homing" />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className={labelClass}>Override Reason (optional)</span>
+              <input className={inputClass} value={statusOverrideReason} onChange={(e) => setStatusOverrideReason(e.target.value)} placeholder="Short explanation..." />
+            </label>
+
+            {/* NEW: counts weaned/placed */}
+            <label className="flex flex-col gap-1">
+              <span className={labelClass}>Weaned Count (optional)</span>
+              <input className={inputClass} type="number" value={countWeaned} onChange={(e) => setCountWeaned(e.target.value)} />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className={labelClass}>Placed Count (optional)</span>
+              <input className={inputClass} type="number" value={countPlaced} onChange={(e) => setCountPlaced(e.target.value)} />
+            </label>
           </div>
 
           {error && <div className="text-sm text-red-600">{error}</div>}
@@ -647,7 +732,7 @@ function CreateGroupForm({
               Cancel
             </Button>
             <Button onClick={handleSubmit} disabled={submitting || !planId || !api}>
-              {submitting ? "Creating…" : "Create group"}
+              {submitting ? "Creating..." : "Create group"}
             </Button>
           </div>
         </div>
@@ -655,7 +740,6 @@ function CreateGroupForm({
     </div>
   );
 }
-
 
 /* ───────────────────────── Add to Waitlist modal ───────────────────────── */
 function AddToWaitlistModal({
@@ -1021,7 +1105,7 @@ function AddToWaitlistModal({
                 {!link && q.trim() && (
                   <div className="rounded-md border border-hairline max-h-56 overflow-auto p-2">
                     {busy ? (
-                      <div className="px-2 py-2 text-sm text-secondary">Searching…</div>
+                      <div className="px-2 py-2 text-sm text-secondary">Searching...</div>
                     ) : (
                       (() => {
                         const contacts = filteredHits.filter((h) => h.kind === "contact");
@@ -1119,7 +1203,7 @@ function AddToWaitlistModal({
                             Clear
                           </Button>
                           <Button onClick={doQuickAdd} disabled={creating || !api}>
-                            {creating ? "Creating…" : "Create / Link"}
+                            {creating ? "Creating..." : "Create / Link"}
                           </Button>
                         </div>
                       </div>
@@ -1130,7 +1214,7 @@ function AddToWaitlistModal({
                         {createErr && <div className="text-sm text-red-600">{createErr}</div>}
                         <div className="flex justify-end gap-2">
                           <Button variant="outline" onClick={() => setQo({ name: "", website: "" })}>Clear</Button>
-                          <Button onClick={doQuickAdd} disabled={creating || !qo.name.trim() || !api}>{creating ? "Creating…" : "Create / Link"}</Button>
+                          <Button onClick={doQuickAdd} disabled={creating || !qo.name.trim() || !api}>{creating ? "Creating..." : "Create / Link"}</Button>
                         </div>
                       </div>
                     )}
@@ -1158,7 +1242,7 @@ function AddToWaitlistModal({
                         }}
                         disabled={readOnly}
                       >
-                        <option value="">—</option>
+                        <option value="">-</option>
                         {allowedSpecies.map((s) => (
                           <option key={s} value={s}>
                             {s}
@@ -1201,7 +1285,7 @@ function AddToWaitlistModal({
                             onChange={(val) => { setDamQ(val); setDamOpen(!!val.trim()); }}
                             onFocus={() => setDamOpen(!!damQ.trim())}
                             onBlur={() => setTimeout(() => setDamOpen(false), 100)}
-                            placeholder="Search females…"
+                            placeholder="Search females..."
                             widthPx={400}
                           />
                           {damOpen && damQ.trim() && (
@@ -1234,7 +1318,7 @@ function AddToWaitlistModal({
                             onChange={(val) => { setSireQ(val); setSireOpen(!!val.trim()); }}
                             onFocus={() => setSireOpen(!!sireQ.trim())}
                             onBlur={() => setTimeout(() => setSireOpen(false), 100)}
-                            placeholder="Search males…"
+                            placeholder="Search males..."
                             widthPx={400}
                           />
                           {sireOpen && sireQ.trim() && (
@@ -1280,8 +1364,217 @@ function AddToWaitlistModal({
   );
 }
 
+/* ───────────────────────── Buyers hook and tab ───────────────────────── */
+
+type Candidate = {
+  id: number;
+  contactLabel?: string | null;
+  orgLabel?: string | null;
+  speciesPref?: string | null;
+  breedPrefText?: string | null;
+  depositPaidAt?: string | null;
+  priority?: number | null;
+  skipCount?: number | null;
+  notes?: string | null;
+  source: "waitlist";
+};
+
+function useGroupCandidates(api: ReturnType<typeof makeOffspringApi> | null, group: OffspringRow | null) {
+  const [cands, setCands] = React.useState<Candidate[]>([]);
+  const [loading, setLoading] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    let alive = true;
+    (async () => {
+      if (!api || !group) {
+        if (alive) {
+          setCands([]);
+          setLoading(false);
+          setError(null);
+        }
+        return;
+      }
+      setLoading(true);
+      setError(null);
+      try {
+        const species = group.plan?.species;
+        const breed = group.plan?.breedText;
+        const res = await api.waitlist.list({ limit: 200, species: species as any, q: breed || undefined });
+        const items: any[] = Array.isArray(res) ? res : res?.items ?? [];
+        const mapped: Candidate[] = items
+          .filter((w: any) => {
+            if (!species) return true;
+            if (String(w.speciesPref || "").toUpperCase() !== String(species || "").toUpperCase()) return false;
+            if (breed && w.breedPrefText) {
+              const hay = String(w.breedPrefText).toLowerCase();
+              return hay.includes(String(breed).toLowerCase());
+            }
+            return true;
+          })
+          .slice(0, 25)
+          .map((w: any) => {
+            const t = mapWaitlistToTableRow(w);
+            return {
+              id: t.id,
+              contactLabel: t.contactLabel,
+              orgLabel: t.orgLabel,
+              speciesPref: t.speciesPref,
+              breedPrefText: t.breedPrefText,
+              depositPaidAt: t.depositPaidAt,
+              priority: t.priority,
+              skipCount: t.skipCount,
+              notes: t.notes,
+              source: "waitlist",
+            } as Candidate;
+          });
+        if (alive) setCands(mapped);
+      } catch (e: any) {
+        if (alive) setError(e?.message || "Failed to load candidates");
+      } finally {
+        if (alive) setLoading(false);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [api, group?.id, group?.plan?.species, group?.plan?.breedText]);
+
+  return { cands, loading, error, setCands };
+}
+
+function BuyersTab({
+  api,
+  group,
+  onGroupUpdate,
+}: {
+  api: ReturnType<typeof makeOffspringApi> | null;
+  group: OffspringRow;
+  onGroupUpdate: (updated: OffspringRow) => void;
+}) {
+  const { toast } = useToast();
+  const { cands, loading, error, setCands } = useGroupCandidates(api, group);
+  const [lastAction, setLastAction] = React.useState<null | { kind: "add" | "skip"; payload: any }>(null);
+
+  async function addToGroup(waitlistId: number) {
+    if (!api) return;
+    // optimistic remove from candidates
+    const prev = [...cands];
+    setCands(prev.filter((c) => c.id !== waitlistId));
+    setLastAction({ kind: "add", payload: { prev, waitlistId } });
+    try {
+      const updated = await api.offspring.buyers.add({ groupId: group.id, waitlistId });
+      onGroupUpdate(updated as any);
+      toast?.({ title: "Added buyer to group" });
+    } catch (e: any) {
+      // rollback
+      setCands(prev);
+      setLastAction(null);
+      toast?.({ title: "Add failed", description: String(e?.message || e), variant: "destructive" });
+    }
+  }
+
+  async function skipOnce(waitlistId: number) {
+    if (!api) return;
+    const prev = [...cands];
+    const next = prev.map((c) => (c.id === waitlistId ? { ...c, skipCount: (c.skipCount ?? 0) + 1 } : c));
+    setCands(next);
+    setLastAction({ kind: "skip", payload: { prev } });
+    try {
+      await api.waitlist.skip(waitlistId);
+      toast?.({ title: "Marked skip" });
+    } catch (e: any) {
+      setCands(prev);
+      setLastAction(null);
+      toast?.({ title: "Skip failed", description: String(e?.message || e), variant: "destructive" });
+    }
+  }
+
+  function undo() {
+    if (!lastAction) return;
+    if (lastAction.kind === "add") {
+      setCands(lastAction.payload.prev);
+    } else if (lastAction.kind === "skip") {
+      setCands(lastAction.payload.prev);
+    }
+    setLastAction(null);
+  }
+
+  return (
+    <SectionCard title="Buyers">
+      {error && <div className="text-sm text-red-600 mb-2">Error: {error}</div>}
+      {loading ? (
+        <div className="text-sm text-secondary">Loading candidates...</div>
+      ) : cands.length === 0 ? (
+        <div className="text-sm text-secondary">No matching candidates found.</div>
+      ) : (
+        <div className="space-y-2">
+          {lastAction && (
+            <div className="flex justify-end">
+              <Button size="xs" variant="outline" onClick={undo}>Undo</Button>
+            </div>
+          )}
+          <table className="min-w-full text-sm">
+            <thead>
+              <tr className="text-secondary">
+                <th className="text-left font-medium py-1 pr-2">Contact</th>
+                <th className="text-left font-medium py-1 pr-2">Deposit</th>
+                <th className="text-left font-medium py-1 pr-2">Priority</th>
+                <th className="text-left font-medium py-1 pr-2">Skips</th>
+                <th className="text-left font-medium py-1 pr-2">Notes</th>
+                <th className="text-right font-medium py-1 pl-2">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {cands.map((c) => (
+                <tr key={c.id} className="border-t border-white/10">
+                  <td className="py-1 pr-2">{c.contactLabel || c.orgLabel || `Waitlist #${c.id}`}</td>
+                  <td className="py-1 pr-2">{fmtDate(c.depositPaidAt) || "-"}</td>
+                  <td className="py-1 pr-2">{c.priority ?? "-"}</td>
+                  <td className="py-1 pr-2">{c.skipCount ?? 0}</td>
+                  <td className="py-1 pr-2">{c.notes || ""}</td>
+                  <td className="py-1 pl-2 text-right">
+                    <div className="inline-flex gap-2">
+                      <Button size="xs" onClick={() => addToGroup(c.id)}>Add</Button>
+                      <Button size="xs" variant="outline" onClick={() => skipOnce(c.id)}>Skip once</Button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </SectionCard>
+  );
+}
+
+/* ───────────────────────── Analytics helpers ───────────────────────── */
+
+function computeCoverage(g: OffspringRow): number | null {
+  const reserved = g.counts?.reserved ?? 0;
+  const placed = (g.counts as any)?.placed ?? 0;
+  const sold = Math.max(reserved, placed);
+  const denom = g.counts?.live ?? (g.counts as any)?.weaned ?? g.counts?.animals ?? 0;
+  if (!denom) return null;
+  return Math.min(1, Math.max(0, sold / denom));
+}
+
+function computePlacementVelocity(g: OffspringRow): number | null {
+  const start = g.dates?.placementStartAt ? Date.parse(g.dates.placementStartAt) : NaN;
+  const end = g.dates?.placementCompletedAt ? Date.parse(g.dates.placementCompletedAt) : NaN;
+  if (!Number.isFinite(start)) return null;
+  if (!Number.isFinite(end)) return null;
+  const days = Math.round((end - start) / (1000 * 60 * 60 * 24));
+  return days >= 0 ? days : null;
+}
+
+/* ───────────────────────── URL param helper re-export for tabs ───────────────────────── */
+const openDetails = setParamAndNotify;
+
 /* ───────────────────────── Tabs ───────────────────────── */
-function OffspringGroupsTab({ api, tenantId }: { api: ReturnType<typeof makeOffspringApi> | null; tenantId: number | null }) {
+function OffspringGroupsTab({ api, tenantId, readOnlyGlobal }: { api: ReturnType<typeof makeOffspringApi> | null; tenantId: number | null, readOnlyGlobal: boolean }) {
+  const { toast } = useToast();
   const [q, setQ] = React.useState("");
   const [rows, setRows] = React.useState<GroupTableRow[]>([]);
   const [raw, setRaw] = React.useState<OffspringRow[]>([]);
@@ -1292,32 +1585,6 @@ function OffspringGroupsTab({ api, tenantId }: { api: ReturnType<typeof makeOffs
   React.useEffect(() => {
     window.dispatchEvent(new Event("popstate"));
   }, []);
-
-  const openDetails = React.useCallback((idParam: "groupId" | "waitlistId", id: number) => {
-
-    // B) keep URL in sync and force a change even if same id
-    const other = idParam === "groupId" ? "waitlistId" : "groupId";
-    const url = new URL(location.href);
-    url.searchParams.delete(other);
-    const current = url.searchParams.get(idParam);
-
-    if (current === String(id)) {
-      url.searchParams.delete(idParam);
-      history.replaceState({}, "", url);
-      window.dispatchEvent(new Event("popstate"));
-      requestAnimationFrame(() => {
-        const url2 = new URL(location.href);
-        url2.searchParams.set(idParam, String(id));
-        history.replaceState({}, "", url2);
-        window.dispatchEvent(new Event("popstate"));
-      });
-    } else {
-      url.searchParams.set(idParam, String(id));
-      history.replaceState({}, "", url);
-      window.dispatchEvent(new Event("popstate"));
-    }
-  }, []);
-
 
   React.useEffect(() => {
     const prev = document.body.style.overflow;
@@ -1405,9 +1672,7 @@ function OffspringGroupsTab({ api, tenantId }: { api: ReturnType<typeof makeOffs
     <Card>
       <div className="relative">
         <div className="absolute right-0 top-0 h-10 flex items-center gap-2 pr-2" style={{ zIndex: 50, pointerEvents: "auto" }}>
-          <Button size="sm" onClick={() => setCreateOpen(true)}>
-            Create Group
-          </Button>
+          {!readOnlyGlobal && <Button size="sm" onClick={() => setCreateOpen(true)}>Create Group</Button>}
         </div>
 
         <DetailsHost key="groups"
@@ -1415,21 +1680,28 @@ function OffspringGroupsTab({ api, tenantId }: { api: ReturnType<typeof makeOffs
           config={{
             idParam: "groupId",
             getRowId: (r: OffspringRow) => String(r.id),
-            width: 920,
+            width: 960,
             placement: "center",
             align: "top",
             fetchRow: async (id: string | number) => raw.find((r) => String(r.id) === String(id))!,
             onSave: async (row: OffspringRow, draft: any) => {
-              if (!api) return;
+              if (!api || readOnlyGlobal) return;
               const body: any = {};
               if (draft.identifier !== undefined) body.identifier = draft.identifier;
-              if (draft.counts) {
+              if (draft.statusOverride !== undefined) body.statusOverride = draft.statusOverride ?? null;
+              if (draft.statusOverrideReason !== undefined) body.statusOverrideReason = draft.statusOverrideReason ?? null;
+
+              if (draft.counts || draft.countLive !== undefined || draft.countWeaned !== undefined || draft.countPlaced !== undefined) {
                 body.counts = {
-                  countBorn: draft.counts.countBorn ?? null,
-                  countLive: draft.counts.countLive ?? null,
-                  countStillborn: draft.counts.countStillborn ?? null,
-                  countMale: draft.counts.countMale ?? null,
-                  countFemale: draft.counts.countFemale ?? null,
+                  countBorn: draft.counts?.countBorn ?? draft.countBorn ?? undefined,
+                  countLive: draft.counts?.countLive ?? draft.countLive ?? undefined,
+                  countStillborn: draft.counts?.countStillborn ?? draft.countStillborn ?? undefined,
+                  countMale: draft.counts?.countMale ?? draft.countMale ?? undefined,
+                  countFemale: draft.counts?.countFemale ?? draft.countFemale ?? undefined,
+                  /** NEW */
+                  countWeaned: draft.counts?.countWeaned ?? draft.countWeaned ?? undefined,
+                  /** NEW */
+                  countPlaced: draft.counts?.countPlaced ?? draft.countPlaced ?? undefined,
                 };
               }
               if (draft.dates) {
@@ -1441,17 +1713,24 @@ function OffspringGroupsTab({ api, tenantId }: { api: ReturnType<typeof makeOffs
                   placementCompletedAt: draft.dates.placementCompletedAt ?? null,
                 };
               }
-              const updated = await api.offspring.patch(row.id, body);
-              const idx = raw.findIndex((r) => r.id === row.id);
-              if (idx >= 0) {
-                const next = [...raw];
-                next[idx] = updated as any;
-                setRaw(next);
-                setRows(next.map(mapDetailToTableRow));
+              try {
+                const updated = await api.offspring.patch(row.id, body);
+                const idx = raw.findIndex((r) => r.id === row.id);
+                if (idx >= 0) {
+                  const next = [...raw];
+                  next[idx] = updated as any;
+                  setRaw(next);
+                  setRows(next.map(mapDetailToTableRow));
+                  toast?.({ title: "Saved" });
+                }
+              } catch (e: any) {
+                toast?.({ title: "Save failed", description: String(e?.message || e), variant: "destructive" });
+                throw e;
               }
             },
             header: (r: OffspringRow) => ({
               title: r.identifier || r.plan?.code || `Group #${r.id}`,
+              subtitle: (r as any).statusOverride ? `Override: ${(r as any).statusOverride}` : "",
             }),
             tabs: [
               { key: "overview", label: "Overview" },
@@ -1467,7 +1746,7 @@ function OffspringGroupsTab({ api, tenantId }: { api: ReturnType<typeof makeOffs
                   title={tblRow.groupName || tblRow.planCode || `Group #${tblRow.id}`}
                   subtitle={tblRow.breed || tblRow.species || ""}
                   mode={mode}
-                  onEdit={() => setMode("edit")}
+                  onEdit={() => !readOnlyGlobal && setMode("edit")}
                   onCancel={() => setMode("view")}
                   onSave={requestSave}
                   tabs={[
@@ -1478,29 +1757,65 @@ function OffspringGroupsTab({ api, tenantId }: { api: ReturnType<typeof makeOffs
                   activeTab={activeTab}
                   onTabChange={setActiveTab}
                   rightActions={
-                    <Button size="sm" variant="outline" onClick={() => window.open(`/breeding/plan/${row.plan?.id}`, "_blank")}>
-                      Open plan
-                    </Button>
+                    <div className="flex gap-2">
+                      <Button size="sm" variant="outline" onClick={() => window.open(`/breeding/plan/${row.plan?.id}`, "_blank")}>
+                        Open plan
+                      </Button>
+                      {readOnlyGlobal && <span className="text-xs text-secondary self-center">View only</span>}
+                    </div>
                   }
                 >
                   {activeTab === "overview" && (
                     <DetailsSpecRenderer<GroupTableRow>
                       row={tblRow}
-                      mode={mode}
-                      setDraft={() => { }}
-                      sections={groupSections(mode)}
+                      mode={readOnlyGlobal ? "view" : mode}
+                      setDraft={() => {}}
+                      sections={groupSections(readOnlyGlobal ? "view" : mode)}
                     />
                   )}
                   {activeTab === "buyers" && (
-                    <SectionCard title="Buyers">
-                      <div className="text-sm text-secondary">
-                        Selection order comes from depositPaidAt then createdAt. Use the Waitlist tab to manage entries and move them into this group.
-                      </div>
-                    </SectionCard>
+                    <BuyersTab
+                      api={api}
+                      group={row}
+                      onGroupUpdate={(updated) => {
+                        const idx = raw.findIndex((r) => r.id === updated.id);
+                        if (idx >= 0) {
+                          const next = [...raw];
+                          next[idx] = updated as any;
+                          setRaw(next);
+                          setRows(next.map(mapDetailToTableRow));
+                        }
+                      }}
+                    />
                   )}
                   {activeTab === "analytics" && (
                     <SectionCard title="Analytics">
-                      <div className="text-sm text-secondary">Coverage, skips, and placement nudges will surface here.</div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 p-2">
+                        <Card>
+                          <div className="p-3">
+                            <div className="text-xs text-secondary">Coverage</div>
+                            <div className="text-2xl font-semibold">
+                              {(() => {
+                                const pct = computeCoverage(row);
+                                return pct == null ? "-" : `${Math.round(pct * 100)}%`;
+                              })()}
+                            </div>
+                            <div className="text-xs text-secondary mt-1">Reserved or placed divided by live, weaned, or planned headcount.</div>
+                          </div>
+                        </Card>
+                        <Card>
+                          <div className="p-3">
+                            <div className="text-xs text-secondary">Placement velocity</div>
+                            <div className="text-2xl font-semibold">
+                              {(() => {
+                                const days = computePlacementVelocity(row);
+                                return days == null ? "-" : `${days} days`;
+                              })()}
+                            </div>
+                            <div className="text-xs text-secondary mt-1">Days from placement start to placement completed.</div>
+                          </div>
+                        </Card>
+                      </div>
                     </SectionCard>
                   )}
                 </DetailsScaffold>
@@ -1518,7 +1833,7 @@ function OffspringGroupsTab({ api, tenantId }: { api: ReturnType<typeof makeOffs
             stickyRightWidthPx={40}
           >
             <div className="bhq-table__toolbar px-2 pt-2 pb-3 relative z-30 flex items-center justify-between">
-              <SearchBar value={q} onChange={setQ} placeholder="Search groups…" widthPx={520} />
+              <SearchBar value={q} onChange={(v) => { setQ(v); setPage(1); }} placeholder="Search groups..." widthPx={520} />
               <div />
             </div>
 
@@ -1528,7 +1843,7 @@ function OffspringGroupsTab({ api, tenantId }: { api: ReturnType<typeof makeOffs
                 {loading && (
                   <TableRow>
                     <TableCell colSpan={visibleSafe.length}>
-                      <div className="py-8 text-center text-sm text-secondary">Loading groups…</div>
+                      <div className="py-8 text-center text-sm text-secondary">Loading groups...</div>
                     </TableCell>
                   </TableRow>
                 )}
@@ -1557,7 +1872,12 @@ function OffspringGroupsTab({ api, tenantId }: { api: ReturnType<typeof makeOffs
                     >
                       {visibleSafe.map((c) => {
                         let v: any = (r as any)[c.key];
-                        if (c.key === "expectedBirth" || c.key === "expectedPlacementStart" || c.key === "expectedPlacementCompleted" || c.key === "updatedAt") {
+                        if (
+                          c.key === "expectedBirth" ||
+                          c.key === "expectedPlacementStart" ||
+                          c.key === "expectedPlacementCompleted" ||
+                          c.key === "updatedAt"
+                        ) {
                           v = fmtDate(v);
                         }
                         return <TableCell key={c.key}>{v ?? ""}</TableCell>;
@@ -1643,7 +1963,6 @@ function PortalPopover({ anchorRef, open, children }: { anchorRef: React.RefObje
   );
 }
 
-
 function WaitlistDrawerBody({
   api,
   row,
@@ -1669,7 +1988,6 @@ function WaitlistDrawerBody({
   const damBoxRef = React.useRef<HTMLDivElement>(null);
   const sireBoxRef = React.useRef<HTMLDivElement>(null);
 
-
   // Breed (BreedCombo wants an object {name})
   const [breed, setBreed] = React.useState<any>(() => {
     const name =
@@ -1690,7 +2008,6 @@ function WaitlistDrawerBody({
   const [sireQ, setSireQ] = React.useState<string>(row?.sirePref?.name ?? row?.sirePrefName ?? "");
   const [damOpen, setDamOpen] = React.useState(false);
   const [sireOpen, setSireOpen] = React.useState(false);
-
 
   // Admin fields mirrored from your overview section
   const [status, setStatus] = React.useState<string>(row?.status ?? "");
@@ -1768,7 +2085,7 @@ function WaitlistDrawerBody({
               }}
               disabled={readOnly}
             >
-              <option value="">—</option>
+              <option value="">-</option>
               {SPECIES_UI_ALL.map((s) => (
                 <option key={s} value={s}>
                   {s}
@@ -1784,7 +2101,7 @@ function WaitlistDrawerBody({
               readOnly ? (
                 // READ-ONLY: show the current value, no interaction
                 <div className="h-9 px-3 flex items-center rounded-md border border-hairline bg-surface/60 text-sm">
-                  {breed?.name || "—"}
+                  {breed?.name || "-"}
                 </div>
               ) : (
                 // EDIT: interactive picker
@@ -1820,7 +2137,7 @@ function WaitlistDrawerBody({
                     onChange={(val) => { setDamQ(val); setDamOpen(!!val.trim()); }}
                     onFocus={() => setDamOpen(!!damQ.trim())}
                     onBlur={() => setTimeout(() => setDamOpen(false), 100)}
-                    placeholder="Search females…"
+                    placeholder="Search females..."
                     widthPx={400}
                     disabled={mode !== "edit"}
                   />
@@ -1855,7 +2172,7 @@ function WaitlistDrawerBody({
                     onChange={(val) => { setSireQ(val); setSireOpen(!!val.trim()); }}
                     onFocus={() => setSireOpen(!!sireQ.trim())}
                     onBlur={() => setTimeout(() => setSireOpen(false), 100)}
-                    placeholder="Search males…"
+                    placeholder="Search males..."
                     widthPx={400}
                     disabled={mode !== "edit"}
                   />
@@ -1920,46 +2237,42 @@ function WaitlistDrawerBody({
   );
 }
 
-
-function WaitlistTab({ api, tenantId }: { api: ReturnType<typeof makeOffspringApi> | null; tenantId: number | null }) {
+function WaitlistTab({ api, tenantId, readOnlyGlobal }: { api: ReturnType<typeof makeOffspringApi> | null; tenantId: number | null, readOnlyGlobal: boolean }) {
   const [q, setQ] = React.useState("");
   const [rows, setRows] = React.useState<WaitlistTableRow[]>([]);
   const [raw, setRaw] = React.useState<WaitlistRowWire[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
 
-  // --- DetailsHost imperative open for Waitlist (B1) ---
-  const openDetails = React.useCallback((idParam: "groupId" | "waitlistId", id: number) => {
+  // Sorting for Waitlist table
+  const [sorts, setSorts] = React.useState<Array<{ key: string; dir: "asc" | "desc" }>>([]);
+  const onToggleSort = (key: string) => {
+    setSorts((prev) => {
+      const f = prev.find((s) => s.key === key);
+      if (!f) return [{ key, dir: "asc" }];
+      if (f.dir === "asc") return prev.map((s) => (s.key === key ? { ...s, dir: "desc" } : s));
+      return prev.filter((s) => s.key !== key);
+    });
+  };
+  function cmp(a: any, b: any) {
+    const na = Number(a), nb = Number(b);
+    if (!Number.isNaN(na) && !Number.isNaN(nb)) return na - nb;
+    const da = Date.parse(a), db = Date.parse(b);
+    if (!Number.isNaN(da) && !Number.isNaN(db)) return da - db;
+    return String(a ?? "").localeCompare(String(b ?? ""), undefined, { numeric: true, sensitivity: "base" });
+  }
 
-    // B) keep URL in sync; force a change even if it's the same id
-    const other = idParam === "groupId" ? "waitlistId" : "groupId";
-    const url = new URL(location.href);
-    url.searchParams.delete(other);
-    const current = url.searchParams.get(idParam);
-
-    if (current === String(id)) {
-      // cycle param → popstate → re-add → popstate
-      url.searchParams.delete(idParam);
-      history.replaceState({}, "", url);
-      window.dispatchEvent(new Event("popstate"));
-      requestAnimationFrame(() => {
-        const url2 = new URL(location.href);
-        url2.searchParams.set(idParam, String(id));
-        history.replaceState({}, "", url2);
-        window.dispatchEvent(new Event("popstate"));
-      });
-    } else {
-      url.searchParams.set(idParam, String(id));
-      history.replaceState({}, "", url);
-      window.dispatchEvent(new Event("popstate"));
-    }
+  // --- DetailsHost imperative open for Waitlist ---
+  React.useEffect(() => {
+    window.dispatchEvent(new Event("popstate"));
   }, []);
+
   const load = React.useCallback(async () => {
     if (!api) return;
     setLoading(true);
     setError(null);
     try {
-      const res = await api.waitlist.list({ q: q || undefined, limit: 100 });
+      const res = await api.waitlist.list({ q: q || undefined, limit: 200 });
       const items: any[] = res.items ?? [];
       setRaw(items as WaitlistRowWire[]);
       setRows(items.map(mapWaitlistToTableRow));
@@ -1980,20 +2293,33 @@ function WaitlistTab({ api, tenantId }: { api: ReturnType<typeof makeOffspringAp
   }, [q, load]);
 
   const cols = hooks.useColumns(WAITLIST_COLS, WAITLIST_STORAGE_KEY);
-
-  React.useEffect(() => {
-    window.dispatchEvent(new Event("popstate"));
-  }, []);
-
   const visibleSafe = cols.visible?.length ? cols.visible : WAITLIST_COLS;
+
+  const sorted = React.useMemo(() => {
+    const list = [...rows];
+    if (!sorts.length) return list;
+    list.sort((a: any, b: any) => {
+      for (const s of sorts) {
+        const av = (a as any)[s.key];
+        const bv = (b as any)[s.key];
+        const c = cmp(av, bv);
+        if (c !== 0) return s.dir === "asc" ? c : -c;
+      }
+      return 0;
+    });
+    return list;
+  }, [rows, sorts]);
 
   return (
     <Card>
       <div className="relative">
         <div className="absolute right-0 top-0 h-10 flex items-center gap-2 pr-2" style={{ zIndex: 50, pointerEvents: "auto" }}>
-          <Button size="sm" onClick={() => window.dispatchEvent(new CustomEvent("bhq:offspring:add-waitlist"))}>
-            Add to Waitlist
-          </Button>
+          {!readOnlyGlobal && (
+            <Button size="sm" onClick={() => window.dispatchEvent(new CustomEvent("bhq:offspring:add-waitlist"))}>
+              Add to Waitlist
+            </Button>
+          )}
+          {readOnlyGlobal && <span className="text-xs text-secondary">View only</span>}
         </div>
 
         <DetailsHost key="waitlist"
@@ -2006,16 +2332,16 @@ function WaitlistTab({ api, tenantId }: { api: ReturnType<typeof makeOffspringAp
             align: "top",
             fetchRow: async (id: string | number) => raw.find((r) => String(r.id) === String(id))!,
             onSave: async (row: WaitlistRowWire, draft: any) => {
-              if (!api) return;
+              if (!api || readOnlyGlobal) return;
               const body: any = {};
 
-              // admin fields (already present)
+              // admin fields
               if (draft.status !== undefined) body.status = draft.status ?? null;
               if (draft.priority !== undefined) body.priority = draft.priority ?? null;
               if (draft.depositPaidAt !== undefined) body.depositPaidAt = draft.depositPaidAt ?? null;
               if (draft.notes !== undefined) body.notes = draft.notes ?? null;
 
-              // preference fields (to mirror Add to Waitlist)
+              // preference fields
               if (draft.speciesPref !== undefined) body.speciesPref = draft.speciesPref ?? null;
               if (draft.breedPrefs !== undefined) body.breedPrefs = draft.breedPrefs ?? null;
               if (draft.damPrefId !== undefined) body.damPrefId = draft.damPrefId ?? null;
@@ -2047,8 +2373,8 @@ function WaitlistTab({ api, tenantId }: { api: ReturnType<typeof makeOffspringAp
                 <DetailsScaffold
                   title={tblRow.contactLabel || tblRow.orgLabel || `Waitlist #${tblRow.id}`}
                   subtitle=""
-                  mode={mode}
-                  onEdit={() => setMode("edit")}
+                  mode={readOnlyGlobal ? "view" : mode}
+                  onEdit={() => !readOnlyGlobal && setMode("edit")}
                   onCancel={() => setMode("view")}
                   onSave={requestSave}
                   tabs={[{ key: "overview", label: "Overview" }]}
@@ -2059,7 +2385,7 @@ function WaitlistTab({ api, tenantId }: { api: ReturnType<typeof makeOffspringAp
                     key={row.id ?? "new"}
                     api={api}
                     row={row}
-                    mode={mode}
+                    mode={readOnlyGlobal ? "view" : mode}
                     onChange={handleDraftChange}
                   />
                 </DetailsScaffold>
@@ -2085,17 +2411,17 @@ function WaitlistTab({ api, tenantId }: { api: ReturnType<typeof makeOffspringAp
             stickyRightWidthPx={40}
           >
             <div className="bhq-table__toolbar px-2 pt-2 pb-3 relative z-30 flex items-center justify-between">
-              <SearchBar value={q} onChange={setQ} placeholder="Search waitlist…" widthPx={520} />
+              <SearchBar value={q} onChange={(v) => setQ(v)} placeholder="Search waitlist..." widthPx={520} />
               <div />
             </div>
 
             <table className="min-w-max w-full text-sm">
-              <TableHeader columns={visibleSafe} sorts={[]} onToggleSort={() => { }} />
+              <TableHeader columns={visibleSafe} sorts={sorts} onToggleSort={onToggleSort} />
               <tbody>
                 {loading && (
                   <TableRow>
                     <TableCell colSpan={visibleSafe.length}>
-                      <div className="py-8 text-center text-sm text-secondary">Loading waitlist…</div>
+                      <div className="py-8 text-center text-sm text-secondary">Loading waitlist...</div>
                     </TableCell>
                   </TableRow>
                 )}
@@ -2183,7 +2509,7 @@ export default function OffspringModule() {
       try {
         const t = await resolveTenantId();
         if (!cancelled) setTenantId(t);
-      } catch { }
+      } catch {}
     })();
     return () => {
       cancelled = true;
@@ -2192,7 +2518,47 @@ export default function OffspringModule() {
 
   const api = React.useMemo(() => makeOffspringApi("/api/v1"), []);
 
+  const [allowedSpecies, setAllowedSpecies] = React.useState<SpeciesUi[]>(["Dog", "Cat", "Horse"]);
+  React.useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        // Optional tenant settings endpoint, tolerate absence
+        // Expect shape like { allowedSpecies: ["Dog","Cat"] }
+        const res = await (api as any)?.tenants?.settings?.get?.();
+        const arr: string[] = res?.allowedSpecies ?? res?.offspringAllowedSpecies ?? null;
+        if (alive && Array.isArray(arr) && arr.length) {
+          const cleaned = arr
+            .map((s) => String(s).trim())
+            .filter((s) => ["Dog", "Cat", "Horse"].includes(s)) as SpeciesUi[];
+          if (cleaned.length) setAllowedSpecies(cleaned);
+        }
+      } catch {}
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [api]);
+
+  // Permissions, gate editing
+  const readOnlyGlobal = !((window as any).bhqPerms?.offspring?.canEdit ?? true);
+
   const [activeTab, setActiveTab] = React.useState<"groups" | "waitlist">("groups");
+
+  // URL-driven tab routing and auto-open
+  React.useEffect(() => {
+    const apply = () => {
+      const url = new URL(location.href);
+      const gid = url.searchParams.get("groupId");
+      const wid = url.searchParams.get("waitlistId");
+      if (gid) setActiveTab("groups");
+      else if (wid) setActiveTab("waitlist");
+    };
+    apply();
+    const onPop = () => apply();
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
 
   return (
     <div className="p-4 space-y-4">
@@ -2205,8 +2571,8 @@ export default function OffspringModule() {
         rightSlot={<UnderlineTabs value={activeTab} onChange={setActiveTab} />}
       />
 
-      {activeTab === "groups" && <OffspringGroupsTab api={api} tenantId={tenantId} />}
-      {activeTab === "waitlist" && <WaitlistTab api={api} tenantId={tenantId} />}
+      {activeTab === "groups" && <OffspringGroupsTab api={api} tenantId={tenantId} readOnlyGlobal={readOnlyGlobal} />}
+      {activeTab === "waitlist" && <WaitlistTab api={api} tenantId={tenantId} readOnlyGlobal={readOnlyGlobal} />}
     </div>
   );
 }
