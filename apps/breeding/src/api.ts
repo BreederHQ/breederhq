@@ -91,29 +91,57 @@ export type AvailabilityPrefs = {
   post_risky_from_full_start: number;
   post_risky_to_full_end: number;
   post_unlikely_from_likely_start: number;
-  post_unlikely_from_likely_end: number; // (legacy-safe)
+  post_unlikely_from_likely_end: number; // legacy safe
   post_unlikely_to_likely_end: number;
 };
 
-/* ───────────────────────── payload normalizers ───────────────────────── */
+/* Offspring Groups, types (new) */
+export type OffspringGroupLite = {
+  id: number;
+  tenantId: number;
+  planId: number | null;
+  linkState: "linked" | "orphan" | string;
+  species?: string | null;
+  damId?: number | null;
+  sireId?: number | null;
+  expectedBirthOn?: string | null;
+  actualBirthOn?: string | null;
+  tentativeName?: string | null;
+};
 
+export type OffspringGroupLinkSuggestion = {
+  planId: number;
+  planName: string;
+  matchScore: number;
+  expectedBirthDate: string | null;
+  damName: string | null;
+  sireName: string | null;
+};
+
+/** Response for plan commit that ensures a group */
+export type CommitPlanEnsureResp = {
+  planId: number;
+  group: OffspringGroupLite;
+};
+
+/* payload normalizers */
 function normalizePlanDates(body: any) {
   if (!body || typeof body !== "object") return body;
   const b: any = { ...body };
 
-  // legacy expectedDue → expectedBirthDate
+  // legacy expectedDue -> expectedBirthDate
   if (b.expectedDue !== undefined && b.expectedBirthDate === undefined) {
     b.expectedBirthDate = b.expectedDue;
     delete b.expectedDue;
   }
 
-  // legacy actual go-home → placementStartDateActual
+  // legacy actual go-home -> placementStartDateActual
   if (b.actualGoHomeDate !== undefined && b.placementStartDateActual === undefined) {
     b.placementStartDateActual = b.actualGoHomeDate;
     delete b.actualGoHomeDate;
   }
 
-  // legacy expectedPlacementCompletedDate → expectedPlacementCompleted
+  // legacy expectedPlacementCompletedDate -> expectedPlacementCompleted
   if (
     b.expectedPlacementCompletedDate !== undefined &&
     b.expectedPlacementCompleted === undefined
@@ -129,7 +157,7 @@ function normalizeCycleDates(body: any) {
   if (!body || typeof body !== "object") return body;
   const b: any = { ...body };
 
-  // legacy goHomeDate → placementStartDate
+  // legacy goHomeDate -> placementStartDate
   if (b.goHomeDate !== undefined && b.placementStartDate === undefined) {
     b.placementStartDate = b.goHomeDate;
     delete b.goHomeDate;
@@ -144,7 +172,7 @@ export function makeBreedingApi(opts: ApiOpts) {
 
   const base = opts.baseUrl ?? "/api/v1";
 
-  // Tenant resolution (fast sync, else one-time async)
+  // Tenant resolution, fast sync else one time async
   let tenantId: number | undefined = typeof opts.tenantId === "number" ? opts.tenantId : readTenantIdFast();
   let tenantPromise: Promise<number> | null = tenantId ? null : resolveTenantId({ baseUrl: base });
 
@@ -154,14 +182,13 @@ export function makeBreedingApi(opts: ApiOpts) {
       tenantPromise = null;
     }
     if (!tenantId) {
-      // give a helpful client-side error that mirrors server behavior
       const e: any = new Error("Missing or invalid tenant context (X-Tenant-Id or session tenant)");
       e.status = 400;
       throw e;
     }
   };
 
-  /** Build headers per request, attaching CSRF for non-GET when asked */
+  /** Build headers per request, attach CSRF for non GET when asked */
   const buildHeaders = (method: string, extra?: HeadersInit): HeadersInit => {
     const h: Record<string, string> = {
       "content-type": "application/json",
@@ -225,15 +252,13 @@ export function makeBreedingApi(opts: ApiOpts) {
     return res.json() as Promise<T>;
   };
 
-  /* ───────── endpoints ───────── */
-
+  /* endpoints */
   return {
     /* Health and diag */
     healthz() {
       return get<{ ok: true }>("/healthz");
     },
     diag() {
-      // server-rooted
       return get<{ ok: true; time: string; env: any }>("/__diag");
     },
 
@@ -272,6 +297,11 @@ export function makeBreedingApi(opts: ApiOpts) {
 
     commitPlan(id: number, body?: { codeHint?: string }) {
       return post<any>(`/breeding/plans/${id}/commit`, body ?? {});
+    },
+
+    /* Breeding Plans, commit with ensure group (new) */
+    commitPlanEnsure(id: number, body: { actorId: string }) {
+      return post<CommitPlanEnsureResp>(`/breeding/plans/${id}/commit`, body);
     },
 
     archivePlan(id: number) {
@@ -328,7 +358,7 @@ export function makeBreedingApi(opts: ApiOpts) {
     listCycles(params?: {
       femaleId?: number;
       from?: string; // ISO
-      to?: string; // ISO
+      to?: string;   // ISO
       page?: number;
       limit?: number;
       archived?: "include" | "only" | "exclude";
@@ -350,5 +380,25 @@ export function makeBreedingApi(opts: ApiOpts) {
     updateCycle(id: number, body: any) {
       return patch<any>(`/breeding/cycles/${id}`, normalizeCycleDates(body));
     },
+
+    /* Offspring Groups linkage helpers (new) */
+    offspringGroups: {
+      link(groupId: number, body: { planId: number; actorId: string }) {
+        return post<OffspringGroupLite>(`/offspring/groups/${groupId}/link`, body);
+      },
+      unlink(groupId: number, body: { actorId: string }) {
+        return post<OffspringGroupLite>(`/offspring/groups/${groupId}/unlink`, body);
+      },
+      getLinkSuggestions(groupId: number, params?: { limit?: number }) {
+        const qs = new URLSearchParams();
+        if (params?.limit != null) qs.set("limit", String(params.limit));
+        const query = qs.toString() ? `?${qs}` : "";
+        return get<OffspringGroupLinkSuggestion[]>(
+          `/offspring/groups/${groupId}/link-suggestions${query}`
+        );
+      },
+    },
   };
 }
+
+export default makeBreedingApi;

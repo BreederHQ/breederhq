@@ -18,18 +18,26 @@ export function TableSelectCell({
   "aria-label": ariaLabel,
   header = false,
 }: Props) {
-  // Note the quoted key and local rename:
-  const { ref, ["aria-checked"]: ariaChecked } = useIndeterminate({
+  // useIndeterminate returns an object ref. Wrap it in a callback ref for Input.
+  const { ref: objRef, ["aria-checked"]: ariaChecked } = useIndeterminate({
     checked,
     indeterminate: !!indeterminate,
   });
+
+  const setRef = React.useCallback((el: HTMLInputElement | null) => {
+    // keep original behavior
+    if (objRef && "current" in objRef) {
+      // @ts-expect-error relax nullability for assignment, hook handles null
+      objRef.current = el;
+    }
+  }, [objRef]);
 
   const Comp: any = header ? "th" : "td";
 
   return (
     <Comp className="px-3 py-2 w-10 text-center" {...(header ? { scope: "col" } : {})}>
       <Input
-        ref={ref}
+        ref={setRef}
         type="checkbox"
         aria-label={ariaLabel}
         aria-checked={ariaChecked}

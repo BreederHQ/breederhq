@@ -10,5 +10,7 @@
 			"path": "../Archive/BreederHQ-Archive/Node.js/bhq-mock"
 		}
 	],
-	"settings": {}
+	"settings": {
+		"typescript.tsdk": "breederhq\\node_modules\\typescript\\lib"
+	}
 }

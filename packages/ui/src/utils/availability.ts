@@ -111,11 +111,6 @@ export const DEFAULT_AVAILABILITY_PREFS: AvailabilityPrefs & Record<string, any>
   cycle_breeding_unlikely_from_likely_start: 0,
   cycle_breeding_unlikely_to_likely_end: 0,
 
-  post_risky_from_full_start: 0,
-  post_risky_to_full_end: 0,
-  post_unlikely_from_likely_start: 0,
-  post_unlikely_to_likely_end: 0,
-
   // Placement Completed defaults
   date_placement_completed_risky_from: 0,
   date_placement_completed_risky_to: 5,

@@ -1,14 +1,14 @@
 // packages/ui/src/index.ts
 export * from "./components";
-export * from "./atoms";    
+export * from "./atoms";
 export * as hooks from "./hooks";
 export * as utils from "./utils";
 
-// Re-export breeding math (the file lives under utils/)
 export * as breedingMath from "./utils/breedingMath";
-
-// Canonical types (these live under utils/)
 export type { BreedHit, SpeciesUI, SpeciesAPI } from "./utils/types";
-
-// Species helpers (also under utils/)
 export { SPECIES_UI, toApiSpecies, toUiSpecies } from "./utils/species";
+
+// atoms
+export { Spinner } from "./atoms/Spinner";
+export type { SpinnerProps } from "./atoms/Spinner";
+export { toast, useToast, ToastViewport } from "./atoms/Toast";

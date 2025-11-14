@@ -156,14 +156,29 @@ export const DEFAULTS: CycleDefaults = {
 
 /* ───────────────── helpers ───────────────── */
 
+// --- UTC day helpers (avoid TZ drift/DST) ---
+const DAY_MS = 86_400_000;
+
+/** Parse to a UTC "date-only" (00:00:00Z). Preserves only the calendar day. */
+function toUtcDateOnly(x: DateLike): Date {
+  if (x instanceof Date) {
+    return new Date(Date.UTC(x.getFullYear(), x.getMonth(), x.getDate()));
+  }
+  if (typeof x === "string") {
+    // If 'YYYY-MM-DD' -> build in UTC
+    const m = x.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (m) return new Date(Date.UTC(+m[1], +m[2] - 1, +m[3]));
+  }
+  const d = new Date(x as any);
+  return new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+}
+
 export function toDate(d: DateLike): Date {
-  return d instanceof Date ? d : new Date(d);
+  return toUtcDateOnly(d);
 }
 export function addDays(d: DateLike, n: number): Date {
-  const dt = toDate(d);
-  const out = new Date(dt);
-  out.setDate(out.getDate() + n);
-  return out;
+  const base = toUtcDateOnly(d);
+  return new Date(base.getTime() + n * DAY_MS);
 }
 export function clampRange(r: Range, min: Date, max: Date): Range {
   return {
@@ -172,17 +187,17 @@ export function clampRange(r: Range, min: Date, max: Date): Range {
   };
 }
 export function makeRange(start: DateLike, end: DateLike): Range {
-  return { start: toDate(start), end: toDate(end) };
+  return { start: toUtcDateOnly(start), end: toUtcDateOnly(end) };
 }
 export function daysBetweenInclusive(a: DateLike, b: DateLike): number {
-  const A = Date.UTC(toDate(a).getFullYear(), toDate(a).getMonth(), toDate(a).getDate());
-  const B = Date.UTC(toDate(b).getFullYear(), toDate(b).getMonth(), toDate(b).getDate());
-  return Math.floor((B - A) / 86400000) + 1;
+  const A = Date.UTC(toDate(a).getUTCFullYear(), toDate(a).getUTCMonth(), toDate(a).getUTCDate());
+  const B = Date.UTC(toDate(b).getUTCFullYear(), toDate(b).getUTCMonth(), toDate(b).getUTCDate());
+  return Math.floor((B - A) / DAY_MS) + 1;
 }
 
-/** Return a new Date at local midnight for stable day math. */
+/** Return a new Date at UTC midnight for stable day math. */
 export function clampDay(dt: Date): Date {
-  return new Date(dt.getFullYear(), dt.getMonth(), dt.getDate());
+  return new Date(Date.UTC(dt.getUTCFullYear(), dt.getUTCMonth(), dt.getUTCDate()));
 }
 
 /** Inclusive one-day range for milestone-like bars. */
@@ -193,19 +208,20 @@ export function oneDayRange(d: Date): Range {
 
 /** Inclusive count of calendar months spanned by start..end. */
 export function monthsBetween(start: Date, end: Date): number {
-  const s = new Date(start.getFullYear(), start.getMonth(), 1);
-  const e = new Date(end.getFullYear(), end.getMonth(), 1);
+  // Month math is calendar-based; still safe to use UTC getters.
+  const s = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), 1));
+  const e = new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), 1));
   const m =
-    (e.getFullYear() - s.getFullYear()) * 12 +
-    (e.getMonth() - s.getMonth()) +
+    (e.getUTCFullYear() - s.getUTCFullYear()) * 12 +
+    (e.getUTCMonth() - s.getUTCMonth()) +
     1;
   return Math.max(1, m);
 }
 
 /** Pad a span by one empty calendar month on both ends. */
 export function padByOneMonth(r: Range): Range {
-  const a = new Date(r.start.getFullYear(), r.start.getMonth() - 1, 1);
-  const b = new Date(r.end.getFullYear(), r.end.getMonth() + 2, 0);
+  const a = new Date(Date.UTC(r.start.getUTCFullYear(), r.start.getUTCMonth() - 1, 1));
+  const b = new Date(Date.UTC(r.end.getUTCFullYear(), r.end.getUTCMonth() + 2, 0));
   return { start: a, end: b };
 }
 
@@ -448,11 +464,11 @@ function rulesFor(species: Species): SpeciesRules {
   };
 }
 
-/** ISO date (YYYY-MM-DD) from Date */
+/** ISO date (YYYY-MM-DD) from Date — using UTC parts */
 function isoDay(d: Date): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(d.getUTCDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
 }
 
@@ -482,7 +498,7 @@ export function resolveCycleLengthDays(
     for (let i = 1; i < starts.length; i++) {
       const prev = starts[i - 1];
       const cur = starts[i];
-      const delta = Math.max(1, Math.round((cur.getTime() - prev.getTime()) / 86400000));
+      const delta = Math.max(1, Math.round((cur.getTime() - prev.getTime()) / DAY_MS));
       gaps.push(delta);
     }
     if (gaps.length >= 2) {
@@ -503,11 +519,10 @@ export function projectUpcomingCycles(
   count: number
 ): string[] {
   const out: string[] = [];
-  const start = toDate(lastHeatStart);
-  let cur = new Date(start);
+  let cur = toDate(lastHeatStart);
   for (let i = 0; i < count; i++) {
     cur = addDays(cur, cycleLenDays);
-    out.push(cur.toISOString().slice(0, 10));
+    out.push(isoDay(cur));
   }
   return out;
 }

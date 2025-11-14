@@ -8,8 +8,8 @@
     "./App-Offspring": "./src/App-Offspring.tsx"
   },
   "peerDependencies": {
-    "react": ">=18",
-    "react-dom": ">=18"
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
   },
   "dependencies": {
     "lucide-react": "^0.468.0"

@@ -1,6 +1,4 @@
-import WaitlistPage from "./pages/WaitlistPage";
-import OffspringPage from "./pages/OffspringPage";
-// App-Offspring.tsx (drop-in, compile-ready, aligned with shared DetailsHost/Table pattern)
+// apps/offspring/src/pages/WaitlistPage.tsx
 import * as React from "react";
 import ReactDOM from "react-dom";
 import {
@@ -22,38 +20,47 @@ import {
   BreedCombo,
 } from "@bhq/ui";
 import { Overlay } from "@bhq/ui/overlay";
-import { OverlayMount } from "@bhq/ui/overlay/OverlayMount";
 import { getOverlayRoot } from "@bhq/ui/overlay";
 import "@bhq/ui/styles/table.css";
-
-/* Guarded overlay root resolver shared by embedded pages */
-const overlayRootSafe = (() => {
-  try {
-    return typeof getOverlayRoot === "function" ? getOverlayRoot() : undefined;
-  } catch {
-    return undefined;
-  }
-})();
-
 import { readTenantIdFast, resolveTenantId } from "@bhq/ui/utils/tenant";
-import { makeOffspringApi, OffspringRow, WaitlistEntry } from "./api";
+import { makeOffspringApi, WaitlistEntry } from "../api";
 
-/* Optional toast, fallback to alert if not present */
-let useToast: any;
-try {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  useToast = require("@bhq/ui").useToast;
-} catch {
-  useToast = () => ({
-    toast: (opts: any) =>
-      (typeof window !== "undefined" && window.alert)
-        ? window.alert(`${opts.title || ""}${opts.description ? ": " + opts.description : ""}`)
-        : void 0,
-  });
+
+/* URL param helper used by row clicks to open drawers */
+function setParamAndNotify(name: string, value: string | number | null | undefined) {
+  try {
+    const url = new URL(window.location.href);
+    if (value === null || value === undefined || value === "") url.searchParams.delete(name);
+    else url.searchParams.set(name, String(value));
+    window.history.pushState({}, "", url);
+    window.dispatchEvent(new Event("popstate"));
+  } catch {
+    // no-op in non-browser
+  }
 }
 
-/* ───────────────────────── shared utils ───────────────────────── */
+// local UI tokens
+const labelClass = "text-xs text-secondary";
+const inputClass =
+  "w-full h-9 rounded-md border border-hairline bg-surface px-3 text-sm text-primary " +
+  "placeholder:text-secondary/80 focus:outline-none focus:ring-1 focus:ring-[hsl(var(--brand-orange))] " +
+  "focus:border-[hsl(var(--brand-orange))] shadow-[inset_0_0_0_9999px_rgba(255,255,255,0.02)]";
+function cx(...p: Array<string | false | null | undefined>) {
+  return p.filter(Boolean).join(" ");
+}
 
+function SectionChipHeading({ icon, text }: { icon: React.ReactNode; text: string }) {
+  return (
+    <div className="sticky top-0 z-10 px-2 py-1.5 bg-gradient-to-r from-white/8 to-transparent border-b border-white/10">
+      <div className="flex items-center gap-2 text-[11px] font-semibold tracking-wide uppercase text-[var(--color-text,#c9c9c9)]">
+        {icon}
+        <span>{text}</span>
+        <span className="ml-auto h-px w-24 rounded-full bg-[hsl(var(--brand-orange)/0.65)]" />
+      </div>
+    </div>
+  );
+}
+/** InlineSearch, same look and behavior as the App-Offspring Waitlist tab */
 function InlineSearch({
   value,
   onChange,
@@ -73,17 +80,12 @@ function InlineSearch({
 }) {
   return (
     <div className="relative" style={{ maxWidth: widthPx }}>
-      {/* search icon */}
       <span
         className="i-lucide-search absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-secondary/80 pointer-events-none"
         aria-hidden="true"
       />
-
       <input
-        className={
-          // h-9 plus leading-[36px] keeps placeholder centered
-          inputClass + " pl-7 leading-[36px] [text-indent:0] "
-        }
+        className={cx(inputClass, " pl-7 leading-[36px] [text-indent:0]")}
         style={{ height: 36 }}
         value={value}
         onChange={(e) => onChange(e.target.value)}
@@ -95,474 +97,107 @@ function InlineSearch({
     </div>
   );
 }
-
-const inputClass =
   "w-full h-9 rounded-md border border-hairline bg-surface px-3 text-sm text-primary " +
   "placeholder:text-secondary/80 focus:outline-none focus:ring-1 focus:ring-[hsl(var(--brand-orange))] " +
   "focus:border-[hsl(var(--brand-orange))] shadow-[inset_0_0_0_9999px_rgba(255,255,255,0.02)]";
 
-const labelClass = "text-xs text-secondary";
-
-function SectionChipHeading({ icon, text }: { icon: React.ReactNode; text: string }) {
-  return (
-    <div className="sticky top-0 z-10 px-2 py-1.5 bg-gradient-to-r from-white/8 to-transparent border-b border-white/10">
-      <div className="flex items-center gap-2 text-[11px] font-semibold tracking-wide uppercase text-[var(--color-text,#c9c9c9)]">
-        {icon}
-        <span>{text}</span>
-        <span className="ml-auto h-px w-24 rounded-full bg-[hsl(var(--brand-orange)/0.65)]" />
-      </div>
-    </div>
-  );
-}
-
-/* ───────────────────────── Underline tabs ───────────────────────── */
-function UnderlineTabs({
-  value,
-  onChange,
-}: {
-  value: "offspring" | "groups" | "waitlist";
-  onChange: (v: "offspring" | "groups" | "waitlist") => void;
-}) {
-  const base =
-    "h-9 px-1.5 text-sm font-semibold leading-9 border-b-2 border-solid border-transparent transition-colors";
-  const activeText = "text-[var(--color-text-strong,#e9e9e9)]";
-
-  return (
-    <div role="tablist" aria-label="Offspring tabs" className="flex gap-6">
-      <button
-        role="tab"
-        aria-selected={value === "groups"}
-        className={[base, value === "groups" ? activeText : ""].join(" ")}
-        onClick={() => onChange("groups")}
-        style={value === "groups" ? { borderBottomColor: "hsl(var(--brand-orange))" } : undefined}
-      >
-        Groups
-      </button>
-      <button
-        role="tab"
-        aria-selected={value === "offspring"}
-        className={[base, value === "offspring" ? activeText : ""].join(" ")}
-        onClick={() => onChange("offspring")}
-        style={value === "offspring" ? { borderBottomColor: "hsl(var(--brand-orange))" } : undefined}
-      >
-        Offspring
-      </button>
-      <button
-        role="tab"
-        aria-selected={value === "waitlist"}
-        className={[base, value === "waitlist" ? activeText : ""].join(" ")}
-        onClick={() => onChange("waitlist")}
-        style={value === "waitlist" ? { borderBottomColor: "hsl(var(--brand-orange))" } : undefined}
-      >
-        Waitlist
-      </button>
-    </div>
-  );
-}
-
-function fmtDate(d?: string | null) {
-  if (!d) return "";
-  const dt = new Date(d);
-  return Number.isFinite(dt.getTime()) ? dt.toLocaleDateString() : "";
-}
-
-function fmtRange(start?: string | null, end?: string | null): string {
-  const a = start ? fmtDate(start) : "";
-  const b = end ? fmtDate(end) : "";
-
-  if (a && b) {
-    if (a === b) return a;
-    return `${a} - ${b}`;
-  }
-
-  return a || b || "";
-}
-
-function AttachmentsSection({
-  group,
-  api,
-  mode,
-}: {
-  group: OffspringRow;
-  api: ReturnType<typeof makeOffspringApi> | null;
-  mode: "media" | "health" | "registration";
-}) {
-  // Placeholder implementation so the drawer renders without blowing up.
-  // You can replace this with the real attachment UI later.
-
-  return (
-    <div className="rounded-md border border-border bg-muted/40 p-4 text-xs text-muted-foreground">
-      <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-        {mode === "media"
-          ? "Photos and videos"
-          : mode === "health"
-          ? "Health records and vet docs"
-          : "Registration and paperwork"}
-      </div>
-      <p>
-        Attachment handling for this group is not implemented in this build.
-      </p>
-      <p className="mt-1">
-        Group ID: <span className="font-mono text-[11px]">{group.id}</span>
-      </p>
-    </div>
-  );
-}
-
-
-/* ───────────────────────── URL driver for DetailsHost ───────────────────────── */
-function setParamAndNotify(idParam: "groupId" | "waitlistId", id: number) {
-  const url = new URL(location.href);
-  const other = idParam === "groupId" ? "waitlistId" : "groupId";
-  const current = url.searchParams.get(idParam);
-
-  // Always clear the opposite idParam
-  url.searchParams.delete(other);
-
-  if (current === String(id)) {
-    // Cycle: remove then re-add to re-trigger listeners
-    url.searchParams.delete(idParam);
-    history.replaceState({}, "", url);
-    window.dispatchEvent(new Event("popstate"));
-    requestAnimationFrame(() => {
-      const again = new URL(location.href);
-      again.searchParams.set(idParam, String(id));
-      history.replaceState({}, "", again);
-      window.dispatchEvent(new Event("popstate"));
-    });
-  } else {
-    url.searchParams.set(idParam, String(id));
-    history.replaceState({}, "", url);
-    window.dispatchEvent(new Event("popstate"));
-  }
-}
-
-/* ───────────────────────── Groups table ───────────────────────── */
-type GroupTableRow = {
+// Types and mapping
+type WaitlistRowWire = WaitlistEntry;
+type WaitlistTableRow = {
   id: number;
-  planCode?: string | null;
-  groupName?: string | null;
-  species?: string | null;
-  breed?: string | null;
-  damName?: string | null;
-  sireName?: string | null;
-  expectedBirth?: string | null;
-  expectedPlacementStart?: string | null;
-  expectedPlacementCompleted?: string | null;
-
-  // Core counts already surfaced in the table
-  countLive?: number | null;
-  countReserved?: number | null;
-  countSold?: number | null;
-  /** Derived from backend counts */
-  countWeaned?: number | null;
-  /** Derived from backend counts */
-  countPlaced?: number | null;
-
-  /** Backend override fields */
-  statusOverride?: string | null;
-  statusOverrideReason?: string | null;
-
-  /** Normalized “group status” label for UI */
+  contactLabel?: string | null;
+  orgLabel?: string | null;
+  speciesPref?: string | null;
+  breedPrefText?: string | null;
+  damPrefName?: string | null;
+  sirePrefName?: string | null;
+  depositPaidAt?: string | null;
   status?: string | null;
-
-  /** Season label such as “Spring 2025” */
-  seasonLabel?: string | null;
-
-  /** Aggregated metrics for the summary band */
-  totalOffspring?: number | null;
-  maleCount?: number | null;
-  femaleCount?: number | null;
-  unknownSexCount?: number | null;
-  mortalityCount?: number | null;
-  /** Decimal between 0 and 1 */
-  mortalityRate?: number | null;
-  waitlistOverlapCount?: number | null;
-  /** Average placement price, cents */
-  avgPlacementPriceCents?: number | null;
-
-  updatedAt?: string | null;
+  priority?: number | null;
+  skipCount?: number | null;
+  lastActivityAt?: string | null;
+  notes?: string | null;
 };
 
-const GROUP_COLS: Array<{ key: keyof GroupTableRow & string; label: string; default?: boolean }> = [
-  { key: "groupName", label: "Group", default: true },
-  { key: "species", label: "Species", default: true },
-  { key: "breed", label: "Breed", default: true },
-  { key: "damName", label: "Dam", default: true },
-  { key: "sireName", label: "Sire", default: true },
-  { key: "expectedBirth", label: "Expected Birth", default: true },
-  { key: "countSold", label: "Sold", default: true },
-  { key: "status", label: "Status", default: true },
-  { key: "planCode", label: "Plan", default: false },
-  { key: "expectedPlacementStart", label: "Placement Start", default: false },
-  { key: "expectedPlacementCompleted", label: "Placement Done", default: false },
-  { key: "countLive", label: "Live", default: false },
-  { key: "countReserved", label: "Reserved", default: true },
-  /** NEW columns, off by default */
-  { key: "countWeaned", label: "Weaned", default: false },
-  { key: "countPlaced", label: "Placed", default: false },
-  { key: "statusOverride", label: "Status Override", default: false },
-  { key: "updatedAt", label: "Updated", default: false },
+const WAITLIST_COLS: Array<{ key: keyof WaitlistTableRow & string; label: string; default?: boolean }> = [
+  { key: "contactLabel", label: "Contact", default: true },
+  { key: "orgLabel", label: "Org", default: true },
+  { key: "speciesPref", label: "Species", default: true },
+  { key: "breedPrefText", label: "Breeds", default: true },
+  { key: "damPrefName", label: "Dam", default: true },
+  { key: "sirePrefName", label: "Sire", default: true },
+  { key: "depositPaidAt", label: "Deposit Paid On", default: true },
+  { key: "status", label: "Status", default: false },
+  { key: "priority", label: "Priority", default: false },
+  { key: "skipCount", label: "Skips", default: false },
+  { key: "lastActivityAt", label: "Activity", default: false },
 ];
 
-const GROUP_STORAGE_KEY = "bhq_offspring_groups_cols_v3";
-
-/** Derive countSold if not provided by backend */
-function deriveCountSold(d: OffspringRow): number {
-  const backendSold = (d as any)?.counts?.sold;
-  if (typeof backendSold === "number" && Number.isFinite(backendSold)) return backendSold;
-  const placed = (d as any)?.counts?.placed;
-  if (typeof placed === "number" && Number.isFinite(placed)) return placed;
-  const animals = d.counts?.animals ?? 0;
-  const reserved = d.counts?.reserved ?? 0;
-  const lastResort = Math.max(0, animals - reserved);
-  return Number.isFinite(lastResort) ? lastResort : 0;
-}
-
-function mapDetailToTableRow(d: OffspringRow): GroupTableRow {
-  const plan = d.plan;
-  const planAny: any = plan;
-  const counts = d.counts ?? {};
-
-  // Map backend plan statuses into user friendly group statuses
-  const rawPlanStatus: string | undefined = planAny?.status;
-  let derivedStatus: string | null = null;
-  switch (rawPlanStatus) {
-    case "PLANNING":
-    case "COMMITTED":
-    case "ACTIVE":
-    case "BRED":
-    case "PREGNANT":
-      derivedStatus = "Planned";
-      break;
-    case "BIRTHED":
-      derivedStatus = "Born";
-      break;
-    case "WEANED":
-      derivedStatus = "Weaned";
-      break;
-    case "PLACEMENT":
-    case "HOMING":
-    case "HOMING_STARTED":
-      derivedStatus = "Homing";
-      break;
-    case "COMPLETE":
-      derivedStatus = "Complete";
-      break;
-    case "CANCELED":
-      derivedStatus = "Canceled";
-      break;
-    default:
-      derivedStatus = null;
-  }
-
-  const baseStatus =
-    derivedStatus ??
-    (planAny?.status === "COMMITTED" || planAny?.status === "ACTIVE"
-      ? "Committed"
-      : "Planning");
-
-  const status = d.statusOverride || baseStatus;
-
-  function AttachmentsSection({
-    group,
-    api,
-    mode,
-  }: {
-    group: OffspringRow;
-    api: ReturnType<typeof makeOffspringApi> | null;
-    mode: "media" | "health" | "registration";
-  }) {
-    // Touch props so TypeScript does not complain about unused parameters
-    if (!group || !api) {
-      // Attachment API not wired in this stub
-    }
-
-    return (
-      <p className="text-xs text-muted-foreground">
-        Attachment handling for {mode} is not implemented yet in this build.
-      </p>
-    );
-  }
 
 
-  // Season label from earliest birth expectation we can see
-  const seasonSourceIso =
-    (d.dates && (d.dates.birthedStartAt || d.dates.birthedEndAt)) ||
-    planAny?.expectedBirthDate ||
-    planAny?.expectedPlacementStart ||
+const WAITLIST_STORAGE_KEY = "bhq_waitlist_cols_v2";
+function mapWaitlistToTableRow(w: any): WaitlistTableRow {
+  const contact =
+    w.contact ||
+    (w.contactId != null
+      ? { id: w.contactId, display_name: w.contactName, first_name: w.firstName, last_name: w.lastName }
+      : null);
+  const org = w.organization || (w.organizationId != null ? { id: w.organizationId, name: w.organizationName } : null);
+  const dam = w.damPref || (w.damPrefId != null ? { id: w.damPrefId, name: w.damPrefName } : null);
+  const sire = w.sirePref || (w.sirePrefId != null ? { id: w.sirePrefId, name: w.sirePrefName } : null);
+
+  const contactLabel =
+    contact?.display_name ||
+    `${(contact?.first_name ?? "").trim()} ${(contact?.last_name ?? "").trim()}`.trim() ||
+    (contact ? `#${contact.id}` : null);
+
+  const orgLabel = org?.name ?? (org ? `#${org.id}` : null);
+
+  const breedPrefText =
+    w.breedPrefText ||
+    (Array.isArray(w.breedPrefs) ? w.breedPrefs.filter(Boolean).join(", ") : null) ||
     null;
-  const seasonLabel = safeSeasonLabelFromISO(seasonSourceIso);
 
-  // Aggregate metrics for summary chips
-  const metrics = computeGroupMetrics(d as any);
-
-  const row: GroupTableRow = {
-    id: d.id,
-    planCode: plan?.code ?? null,
-    groupName: plan?.name ?? d.identifier ?? `Group #${d.id}`,
-    species: plan?.species ?? d.species ?? null,
-    breed: plan?.breedText ?? null,
-    damName: plan?.dam?.name ?? null,
-    sireName: plan?.sire?.name ?? null,
-    expectedBirth: planAny?.expectedBirthDate ?? null,
-    expectedPlacementStart: d.expectedPlacementStart ?? null,
-    expectedPlacementCompleted: d.expectedPlacementCompleted ?? null,
-
-    countLive: counts.live ?? null,
-    countReserved: counts.reserved ?? null,
-    countSold: counts.sold ?? null,
-    countWeaned: counts.weaned ?? null,
-    countPlaced: counts.placed ?? null,
-
-    statusOverride: d.statusOverride ?? null,
-    statusOverrideReason: d.statusOverrideReason ?? null,
-    status,
-    seasonLabel,
-
-    totalOffspring: metrics.totalOffspring,
-    maleCount: metrics.maleCount,
-    femaleCount: metrics.femaleCount,
-    unknownSexCount: metrics.unknownSexCount,
-    mortalityCount: metrics.mortalityCount,
-    mortalityRate: metrics.mortalityRate,
-    waitlistOverlapCount: metrics.waitlistOverlapCount,
-    avgPlacementPriceCents: metrics.avgPlacementPriceCents,
-
-    updatedAt: d.updatedAt ?? null,
+  return {
+    id: Number(w.id),
+    contactLabel: contactLabel ?? null,
+    orgLabel: orgLabel ?? null,
+    speciesPref: w.speciesPref ?? null,
+    breedPrefText,
+    damPrefName: dam?.name ?? null,
+    sirePrefName: sire?.name ?? null,
+    depositPaidAt: w.depositPaidAt ?? null,
+    status: w.status ?? null,
+    priority: w.priority ?? null,
+    skipCount: w.skipCount ?? null,
+    lastActivityAt: w.lastActivityAt ?? w.updatedAt ?? w.createdAt ?? null,
+    notes: w.notes ?? null,
   };
-  return row;
 }
-
-const groupSections = (mode: "view" | "edit") => [
+const waitlistSections = (mode: "view" | "edit") => [
   {
     title: "Overview",
     fields: [
-      { label: "Plan Code", key: "planCode", view: (r: GroupTableRow) => r.planCode || "-" },
-      { label: "Group Name", key: "groupName", editor: "text", view: (r: GroupTableRow) => r.groupName || "-" },
-      { label: "Species", key: "species", view: (r: GroupTableRow) => r.species || "-" },
-      { label: "Breed", key: "breed", view: (r: GroupTableRow) => r.breed || "-" },
-      { label: "Dam", key: "damName", view: (r: GroupTableRow) => r.damName || "-" },
-      { label: "Sire", key: "sireName", view: (r: GroupTableRow) => r.sireName || "-" },
-      { label: "Placement Start", key: "expectedPlacementStart", view: (r: GroupTableRow) => fmtDate(r.expectedPlacementStart) || "-" },
-      { label: "Placement Done", key: "expectedPlacementCompleted", view: (r: GroupTableRow) => fmtDate(r.expectedPlacementCompleted) || "-" },
-      /** NEW editable status override fields */
-      { label: "Status Override", key: "statusOverride", editor: "text", view: (r: GroupTableRow) => r.statusOverride || "-" },
-      { label: "Override Reason", key: "statusOverrideReason", editor: "textarea", view: (r: GroupTableRow) => r.statusOverrideReason || "-" },
-      { label: "Status (computed)", key: "status", view: (r: GroupTableRow) => r.status || "-" },
+      { label: "Contact", key: "contactLabel", view: (r: WaitlistTableRow) => r.contactLabel || "-" },
+      { label: "Organization", key: "orgLabel", view: (r: WaitlistTableRow) => r.orgLabel || "-" },
+      { label: "Species", key: "speciesPref", view: (r: WaitlistTableRow) => r.speciesPref || "-" },
+      { label: "Breeds", key: "breedPrefText", view: (r: WaitlistTableRow) => r.breedPrefText || "-" },
+      { label: "Dam Pref", key: "damPrefName", view: (r: WaitlistTableRow) => r.damPrefName || "-" },
+      { label: "Sire Pref", key: "sirePrefName", view: (r: WaitlistTableRow) => r.sirePrefName || "-" },
+      { label: "Deposit Paid", key: "depositPaidAt", editor: "date", view: (r: WaitlistTableRow) => fmtDate(r.depositPaidAt) || "-" },
+      { label: "Status", key: "status", editor: "text", view: (r: WaitlistTableRow) => r.status || "-" },
+      { label: "Priority", key: "priority", editor: "number", view: (r: WaitlistTableRow) => String(r.priority ?? "") || "-" },
+      { label: "Skips", key: "skipCount", view: (r: WaitlistTableRow) => String(r.skipCount ?? 0) },
+      { label: "Activity", key: "lastActivityAt", view: (r: WaitlistTableRow) => fmtDate(r.lastActivityAt) || "-" },
     ],
   },
   {
-    title: "Counts",
-    fields: [
-      { label: "Live", key: "countLive", editor: "number", view: (r: GroupTableRow) => String(r.countLive ?? 0) },
-      { label: "Weaned", key: "countWeaned", editor: "number", view: (r: GroupTableRow) => String(r.countWeaned ?? 0) },
-      { label: "Placed", key: "countPlaced", editor: "number", view: (r: GroupTableRow) => String(r.countPlaced ?? 0) },
-      { label: "Reserved", key: "countReserved", view: (r: GroupTableRow) => String(r.countReserved ?? 0) },
-      { label: "Sold", key: "countSold", view: (r: GroupTableRow) => String(r.countSold ?? 0) },
-      { label: "Updated", key: "updatedAt", view: (r: GroupTableRow) => fmtDate(r.updatedAt) || "-" },
-    ],
+    title: "Notes",
+    fields: [{ label: "Notes", key: "notes", editor: "textarea", view: (r: WaitlistTableRow) => r.notes || "-" }],
   },
 ];
 
-// /* ───────────────────────── Waitlist table ───────────────────────── */
-
-// type WaitlistRowWire = WaitlistEntry;
-
-// type WaitlistTableRow = {
-//   id: number;
-//   contactLabel?: string | null;
-//   orgLabel?: string | null;
-//   speciesPref?: string | null;
-//   breedPrefText?: string | null;
-//   damPrefName?: string | null;
-//   sirePrefName?: string | null;
-//   depositPaidAt?: string | null;
-//   status?: string | null;
-//   priority?: number | null;
-//   skipCount?: number | null;
-//   lastActivityAt?: string | null;
-//   notes?: string | null;
-// };
-
-// const WAITLIST_COLS: Array<{ key: keyof WaitlistTableRow & string; label: string; default?: boolean }> = [
-//   { key: "contactLabel", label: "Contact", default: true },
-//   { key: "orgLabel", label: "Org", default: true },
-//   { key: "speciesPref", label: "Species", default: true },
-//   { key: "breedPrefText", label: "Breeds", default: true },
-//   { key: "damPrefName", label: "Dam", default: true },
-//   { key: "sirePrefName", label: "Sire", default: true },
-//   { key: "depositPaidAt", label: "Deposit Paid On", default: true },
-//   { key: "status", label: "Status", default: false },
-//   { key: "priority", label: "Priority", default: false },
-//   { key: "skipCount", label: "Skips", default: false },
-//   { key: "lastActivityAt", label: "Activity", default: false },
-// ];
-
-// const WAITLIST_STORAGE_KEY = "bhq_waitlist_cols_v2";
-
-// function mapWaitlistToTableRow(w: any): WaitlistTableRow {
-//   const contact =
-//     w.contact ||
-//     (w.contactId != null
-//       ? { id: w.contactId, display_name: w.contactName, first_name: w.firstName, last_name: w.lastName }
-//       : null);
-//   const org = w.organization || (w.organizationId != null ? { id: w.organizationId, name: w.organizationName } : null);
-//   const dam = w.damPref || (w.damPrefId != null ? { id: w.damPrefId, name: w.damPrefName } : null);
-//   const sire = w.sirePref || (w.sirePrefId != null ? { id: w.sirePrefId, name: w.sirePrefName } : null);
-
-//   const contactLabel =
-//     contact?.display_name ||
-//     `${(contact?.first_name ?? "").trim()} ${(contact?.last_name ?? "").trim()}`.trim() ||
-//     (contact ? `#${contact.id}` : null);
-
-//   const orgLabel = org?.name ?? (org ? `#${org.id}` : null);
-
-//   const breedPrefText =
-//     w.breedPrefText ||
-//     (Array.isArray(w.breedPrefs) ? w.breedPrefs.filter(Boolean).join(", ") : null) ||
-//     null;
-
-//   return {
-//     id: Number(w.id),
-//     contactLabel: contactLabel ?? null,
-//     orgLabel: orgLabel ?? null,
-//     speciesPref: w.speciesPref ?? null,
-//     breedPrefText,
-//     damPrefName: dam?.name ?? null,
-//     sirePrefName: sire?.name ?? null,
-//     depositPaidAt: w.depositPaidAt ?? null,
-//     status: w.status ?? null,
-//     priority: w.priority ?? null,
-//     skipCount: w.skipCount ?? null,
-//     lastActivityAt: w.lastActivityAt ?? w.updatedAt ?? w.createdAt ?? null,
-//     notes: w.notes ?? null,
-//   };
-// }
-
-// const waitlistSections = (mode: "view" | "edit") => [
-//   {
-//     title: "Overview",
-//     fields: [
-//       { label: "Contact", key: "contactLabel", view: (r: WaitlistTableRow) => r.contactLabel || "-" },
-//       { label: "Organization", key: "orgLabel", view: (r: WaitlistTableRow) => r.orgLabel || "-" },
-//       { label: "Species", key: "speciesPref", view: (r: WaitlistTableRow) => r.speciesPref || "-" },
-//       { label: "Breeds", key: "breedPrefText", view: (r: WaitlistTableRow) => r.breedPrefText || "-" },
-//       { label: "Dam Pref", key: "damPrefName", view: (r: WaitlistTableRow) => r.damPrefName || "-" },
-//       { label: "Sire Pref", key: "sirePrefName", view: (r: WaitlistTableRow) => r.sirePrefName || "-" },
-//       { label: "Deposit Paid", key: "depositPaidAt", editor: "date", view: (r: WaitlistTableRow) => fmtDate(r.depositPaidAt) || "-" },
-//       { label: "Status", key: "status", editor: "text", view: (r: WaitlistTableRow) => r.status || "-" },
-//       { label: "Priority", key: "priority", editor: "number", view: (r: WaitlistTableRow) => String(r.priority ?? "") || "-" },
-//       { label: "Skips", key: "skipCount", view: (r: WaitlistTableRow) => String(r.skipCount ?? 0) },
-//       { label: "Activity", key: "lastActivityAt", view: (r: WaitlistTableRow) => fmtDate(r.lastActivityAt) || "-" },
-//     ],
-//   },
-//   {
-//     title: "Notes",
-//     fields: [{ label: "Notes", key: "notes", editor: "textarea", view: (r: WaitlistTableRow) => r.notes || "-" }],
-//   },
-// ];
-
+// Directory and contact helpers from App-Offspring
 /* ───────────────────────── Directory/Animals helpers ───────────────────────── */
 type SpeciesWire = "DOG" | "CAT" | "HORSE";
 type SpeciesUi = "Dog" | "Cat" | "Horse";
@@ -737,6 +372,14 @@ function conflictExistingIdFromError(e: any): number | null {
 /* ───────────────────────── Create Group form ───────────────────────── */
 const MODAL_Z = 2147485000;
 
+/* Date formatter used in table and details */
+function fmtDate(d?: string | null) {
+  if (!d) return "";
+  const dt = new Date(d);
+  return Number.isFinite(dt.getTime()) ? dt.toLocaleDateString() : "";
+}
+
+
 function CreateGroupForm({
   api,
   tenantId,
@@ -834,11 +477,11 @@ function CreateGroupForm({
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <label className="flex flex-col gap-1">
-              <span className={labelClass}>
+              <span className={cx(labelClass)}>
                 Committed Plan <span className="text-[hsl(var(--brand-orange))]">*</span>
               </span>
               <select
-                className={inputClass}
+                className={cx(inputClass)}
                 value={planId}
                 onChange={(e) => setPlanId(e.target.value ? Number(e.target.value) : "")}
                 disabled={loading}
@@ -855,43 +498,43 @@ function CreateGroupForm({
             </label>
 
             <label className="flex flex-col gap-1">
-              <span className={labelClass}>Identifier (optional)</span>
-              <input className={inputClass} value={identifier} onChange={(e) => setIdentifier(e.target.value)} placeholder="e.g., A Litter" />
+              <span className={cx(labelClass)}>Identifier (optional)</span>
+              <input className={cx(inputClass)} value={identifier} onChange={(e) => setIdentifier(e.target.value)} placeholder="e.g., A Litter" />
             </label>
 
             <label className="flex flex-col gap-1">
-              <span className={labelClass}>Weaned At (optional)</span>
-              <input className={inputClass} type="date" value={weanedAt} onChange={(e) => setWeanedAt(e.target.value)} />
+              <span className={cx(labelClass)}>Weaned At (optional)</span>
+              <input className={cx(inputClass)} type="date" value={weanedAt} onChange={(e) => setWeanedAt(e.target.value)} />
             </label>
 
             <label className="flex flex-col gap-1">
-              <span className={labelClass}>Placement Start (optional)</span>
-              <input className={inputClass} type="date" value={placementStartAt} onChange={(e) => setPlacementStartAt(e.target.value)} />
+              <span className={cx(labelClass)}>Placement Start (optional)</span>
+              <input className={cx(inputClass)} type="date" value={placementStartAt} onChange={(e) => setPlacementStartAt(e.target.value)} />
             </label>
 
             <label className="flex flex-col gap-1">
-              <span className={labelClass}>Placement Completed (optional)</span>
-              <input className={inputClass} type="date" value={placementCompletedAt} onChange={(e) => setPlacementCompletedAt(e.target.value)} />
+              <span className={cx(labelClass)}>Placement Completed (optional)</span>
+              <input className={cx(inputClass)} type="date" value={placementCompletedAt} onChange={(e) => setPlacementCompletedAt(e.target.value)} />
             </label>
 
             {/* NEW: status override + reason */}
             <label className="flex flex-col gap-1">
-              <span className={labelClass}>Status Override (optional)</span>
-              <input className={inputClass} value={statusOverride} onChange={(e) => setStatusOverride(e.target.value)} placeholder="e.g., Pause Homing" />
+              <span className={cx(labelClass)}>Status Override (optional)</span>
+              <input className={cx(inputClass)} value={statusOverride} onChange={(e) => setStatusOverride(e.target.value)} placeholder="e.g., Pause Homing" />
             </label>
             <label className="flex flex-col gap-1">
-              <span className={labelClass}>Override Reason (optional)</span>
-              <input className={inputClass} value={statusOverrideReason} onChange={(e) => setStatusOverrideReason(e.target.value)} placeholder="Short explanation..." />
+              <span className={cx(labelClass)}>Override Reason (optional)</span>
+              <input className={cx(inputClass)} value={statusOverrideReason} onChange={(e) => setStatusOverrideReason(e.target.value)} placeholder="Short explanation..." />
             </label>
 
             {/* NEW: counts weaned/placed */}
             <label className="flex flex-col gap-1">
-              <span className={labelClass}>Weaned Count (optional)</span>
-              <input className={inputClass} type="number" value={countWeaned} onChange={(e) => setCountWeaned(e.target.value)} />
+              <span className={cx(labelClass)}>Weaned Count (optional)</span>
+              <input className={cx(inputClass)} type="number" value={countWeaned} onChange={(e) => setCountWeaned(e.target.value)} />
             </label>
             <label className="flex flex-col gap-1">
-              <span className={labelClass}>Placed Count (optional)</span>
-              <input className={inputClass} type="number" value={countPlaced} onChange={(e) => setCountPlaced(e.target.value)} />
+              <span className={cx(labelClass)}>Placed Count (optional)</span>
+              <input className={cx(inputClass)} type="number" value={countPlaced} onChange={(e) => setCountPlaced(e.target.value)} />
             </label>
           </div>
 
@@ -1245,7 +888,7 @@ function AddToWaitlistModal({
 
                 {/* Search Contacts/Orgs */}
                 <div className="relative">
-                  <div className={labelClass + " mb-1"}>Search Contacts or Organizations</div>
+                  <div className={cx(labelClass + " mb-1")}>Search Contacts or Organizations</div>
                   <div className="relative">
                     <SearchBar
                       value={searchValue}
@@ -1287,7 +930,7 @@ function AddToWaitlistModal({
                         return (
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                             {/* Contacts */}
-                            <div className={sectionClass}>
+                            <div className={cx(sectionClass)}>
                               <SectionChipHeading
                                 icon={<span className="i-lucide-user-2 h-3.5 w-3.5" aria-hidden="true" />}
                                 text="Contacts"
@@ -1317,7 +960,7 @@ function AddToWaitlistModal({
                             </div>
 
                             {/* Orgs */}
-                            <div className={sectionClass}>
+                            <div className={cx(sectionClass)}>
                               <SectionChipHeading
                                 icon={<span className="i-lucide-building-2 h-3.5 w-3.5" aria-hidden="true" />}
                                 text="Organizations"
@@ -1364,10 +1007,10 @@ function AddToWaitlistModal({
 
                     {quickOpen === "contact" ? (
                       <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2">
-                        <input className={inputClass} placeholder="First name" value={qc.firstName} onChange={(e) => setQc({ ...qc, firstName: e.target.value })} />
-                        <input className={inputClass} placeholder="Last name" value={qc.lastName} onChange={(e) => setQc({ ...qc, lastName: e.target.value })} />
-                        <input className={inputClass} placeholder="Email" value={qc.email} onChange={(e) => setQc({ ...qc, email: e.target.value })} />
-                        <input className={inputClass} placeholder="Phone (E.164)" value={qc.phone} onChange={(e) => setQc({ ...qc, phone: e.target.value })} />
+                        <input className={cx(inputClass)} placeholder="First name" value={qc.firstName} onChange={(e) => setQc({ ...qc, firstName: e.target.value })} />
+                        <input className={cx(inputClass)} placeholder="Last name" value={qc.lastName} onChange={(e) => setQc({ ...qc, lastName: e.target.value })} />
+                        <input className={cx(inputClass)} placeholder="Email" value={qc.email} onChange={(e) => setQc({ ...qc, email: e.target.value })} />
+                        <input className={cx(inputClass)} placeholder="Phone (E.164)" value={qc.phone} onChange={(e) => setQc({ ...qc, phone: e.target.value })} />
                         {createErr && <div className="md:col-span-2 text-sm text-red-600">{createErr}</div>}
                         <div className="md:col-span-2 flex justify-end gap-2">
                           <Button variant="outline" onClick={() => setQc({ firstName: "", lastName: "", email: "", phone: "" })}>
@@ -1380,8 +1023,8 @@ function AddToWaitlistModal({
                       </div>
                     ) : (
                       <div className="mt-2 grid grid-cols-1 gap-2">
-                        <input className={inputClass} placeholder="Organization name" value={qo.name} onChange={(e) => setQo({ ...qo, name: e.target.value })} />
-                        <input className={inputClass} placeholder="Website (optional)" value={qo.website} onChange={(e) => setQo({ ...qo, website: e.target.value })} />
+                        <input className={cx(inputClass)} placeholder="Organization name" value={qo.name} onChange={(e) => setQo({ ...qo, name: e.target.value })} />
+                        <input className={cx(inputClass)} placeholder="Website (optional)" value={qo.website} onChange={(e) => setQo({ ...qo, website: e.target.value })} />
                         {createErr && <div className="text-sm text-red-600">{createErr}</div>}
                         <div className="flex justify-end gap-2">
                           <Button variant="outline" onClick={() => setQo({ name: "", website: "" })}>Clear</Button>
@@ -1396,9 +1039,9 @@ function AddToWaitlistModal({
                 <SectionCard title="Preferences (required)">
                   <div className={"p-2 grid grid-cols-1 md:grid-cols-3 gap-3 " + (readOnly ? "opacity-70" : "")}>
                     <label className="flex flex-col gap-1">
-                      <span className={labelClass}>Species</span>
+                      <span className={cx(labelClass)}>Species</span>
                       <select
-                        className={inputClass}
+                        className={cx(inputClass)}
                         value={speciesUi}
                         onChange={(e) => {
                           setSpeciesUi(e.currentTarget.value as SpeciesUi);
@@ -1423,9 +1066,9 @@ function AddToWaitlistModal({
                     </label>
 
                     <div className="md:col-span-2 relative">
-                      <div className={labelClass + " mb-1"}>Breed</div>
+                      <div className={cx(labelClass + " mb-1")}>Breed</div>
                       {speciesUi ? (
-                        <div className={readOnly ? "pointer-events-none opacity-60" : ""}>
+                        <div className={cx(readOnly ? "pointer-events-none opacity-60" : "")}>
                           <BreedCombo
                             key={`breed-${speciesUi}-${breedNonce}`}
                             species={speciesUi}
@@ -1446,7 +1089,7 @@ function AddToWaitlistModal({
                   <div className="p-2 grid grid-cols-1 md:grid-cols-2 gap-3">
                     {/* Dam */}
                     <label className="flex flex-col gap-1 relative">
-                      <span className={labelClass}>Dam (Female)</span>
+                      <span className={cx(labelClass)}>Dam (Female)</span>
                       {!speciesWire ? (
                         <div className="h-9 px-3 flex items-center rounded-md border border-hairline bg-surface/60 text-sm text-secondary">Select Species</div>
                       ) : (
@@ -1479,7 +1122,7 @@ function AddToWaitlistModal({
 
                     {/* Sire */}
                     <label className="flex flex-col gap-1 relative">
-                      <span className={labelClass}>Sire (Male)</span>
+                      <span className={cx(labelClass)}>Sire (Male)</span>
                       {!speciesWire ? (
                         <div className="h-9 px-3 flex items-center rounded-md border border-hairline bg-surface/60 text-sm text-secondary">Select Species</div>
                       ) : (
@@ -1662,9 +1305,11 @@ function BuyersTab({
   }
 
   function undo() {
-    const prevList = lastAction?.payload?.prev;
-    if (Array.isArray(prevList)) {
-      setCands(prevList);
+    if (!lastAction) return;
+    if (lastAction.kind === "add") {
+      setCands(lastAction.payload.prev);
+    } else if (lastAction.kind === "skip") {
+      setCands(lastAction.payload.prev);
     }
     setLastAction(null);
   }
@@ -1719,118 +1364,6 @@ function BuyersTab({
 }
 
 /* ───────────────────────── Analytics helpers ───────────────────────── */
-
-function safeSeasonLabelFromISO(dateIso: string | null | undefined): string | null {
-  if (!dateIso) return null;
-  const d = new Date(dateIso);
-  if (Number.isNaN(d.getTime())) return null;
-  const month = d.getUTCMonth(); // 0 = Jan
-  const year = d.getUTCFullYear();
-  if (month <= 1) return `Winter ${year}`;
-  if (month <= 4) return `Spring ${year}`;
-  if (month <= 7) return `Summer ${year}`;
-  return `Fall ${year}`;
-}
-
-type GroupMetrics = {
-  totalOffspring: number | null;
-  maleCount: number | null;
-  femaleCount: number | null;
-  unknownSexCount: number | null;
-  mortalityCount: number | null;
-  mortalityRate: number | null;
-  waitlistOverlapCount: number | null;
-  avgPlacementPriceCents: number | null;
-};
-
-function computeGroupMetrics(detail: any): GroupMetrics {
-  const counts = detail?.counts ?? {};
-  const animals: any[] = Array.isArray(detail?.Animals) ? detail.Animals : [];
-  const waitlist: any[] = Array.isArray(detail?.Waitlist) ? detail.Waitlist : [];
-
-  const totalOffspring =
-    typeof counts.animals === "number"
-      ? counts.animals
-      : animals.length || null;
-
-  const maleCount =
-    typeof counts.male === "number"
-      ? counts.male
-      : animals.filter((a) => a.sex === "MALE").length || null;
-
-  const femaleCount =
-    typeof counts.female === "number"
-      ? counts.female
-      : animals.filter((a) => a.sex === "FEMALE").length || null;
-
-  let unknownSexCount: number | null = null;
-  if (totalOffspring != null) {
-    const known = (maleCount || 0) + (femaleCount || 0);
-    const unknown = totalOffspring - known;
-    unknownSexCount = unknown > 0 ? unknown : 0;
-  }
-
-  const mortalityCount =
-    typeof counts.stillborn === "number" ? counts.stillborn : null;
-
-  let mortalityRate: number | null = null;
-  const born = typeof counts.born === "number" ? counts.born : null;
-  if (mortalityCount != null) {
-    const denom = (born || 0) + mortalityCount;
-    if (denom > 0) mortalityRate = mortalityCount / denom;
-  }
-
-  const waitlistOverlapCount =
-    typeof counts.waitlist === "number"
-      ? counts.waitlist
-      : waitlist.length || null;
-
-  // Average placement price, prefer sale price then listed/price
-  let priceSum = 0;
-  let priceCount = 0;
-  for (const a of animals) {
-    const cents =
-      typeof a.salePriceCents === "number"
-        ? a.salePriceCents
-        : typeof a.priceCents === "number"
-          ? a.priceCents
-          : typeof a.listedPriceCents === "number"
-            ? a.listedPriceCents
-            : null;
-    if (cents != null && cents > 0) {
-      priceSum += cents;
-      priceCount += 1;
-    }
-  }
-  const avgPlacementPriceCents =
-    priceCount > 0 ? Math.round(priceSum / priceCount) : null;
-
-  return {
-    totalOffspring,
-    maleCount,
-    femaleCount,
-    unknownSexCount,
-    mortalityCount,
-    mortalityRate,
-    waitlistOverlapCount,
-    avgPlacementPriceCents,
-  };
-}
-
-function formatMoneyFromCents(cents: number | null | undefined): string {
-  if (!cents || cents <= 0) return "—";
-  const dollars = cents / 100;
-  return dollars.toLocaleString("en-US", {
-    style: "currency",
-    currency: "USD",
-    maximumFractionDigits: 0,
-  });
-}
-
-function formatPercent(val: number | null | undefined): string {
-  if (val == null) return "—";
-  return `${Math.round(val * 100)}%`;
-}
 
 function computeCoverage(g: OffspringRow): number | null {
   const reserved = g.counts?.reserved ?? 0;
@@ -1951,12 +1484,7 @@ function OffspringGroupsTab({ api, tenantId, readOnlyGlobal }: { api: ReturnType
 
   return (
     <Card>
-      <div className="relative">
-        <div className="absolute right-0 top-0 h-10 flex items-center gap-2 pr-2" style={{ zIndex: 50, pointerEvents: "auto" }}>
-          {!readOnlyGlobal && <Button size="sm" onClick={() => setCreateOpen(true)}>Create Group</Button>}
-        </div>
-
-        <DetailsHost key="groups"
+      <div className="relative"><DetailsHost key="groups"
           rows={raw}
           config={{
             idParam: "groupId",
@@ -2015,10 +1543,6 @@ function OffspringGroupsTab({ api, tenantId, readOnlyGlobal }: { api: ReturnType
             }),
             tabs: [
               { key: "overview", label: "Overview" },
-              { key: "metrics", label: "Metrics" },
-              { key: "media", label: "Media" },
-              { key: "documents", label: "Documents" },
-              { key: "linkedOffspring", label: "Linked Offspring" },
               { key: "buyers", label: "Buyers" },
               { key: "analytics", label: "Analytics" },
             ],
@@ -2036,10 +1560,6 @@ function OffspringGroupsTab({ api, tenantId, readOnlyGlobal }: { api: ReturnType
                   onSave={requestSave}
                   tabs={[
                     { key: "overview", label: "Overview" },
-                    { key: "metrics", label: "Metrics" },
-                    { key: "media", label: "Media" },
-                    { key: "documents", label: "Documents" },
-                    { key: "linkedOffspring", label: "Linked Offspring" },
                     { key: "buyers", label: "Buyers" },
                     { key: "analytics", label: "Analytics" },
                   ]}
@@ -2047,18 +1567,10 @@ function OffspringGroupsTab({ api, tenantId, readOnlyGlobal }: { api: ReturnType
                   onTabChange={setActiveTab}
                   rightActions={
                     <div className="flex gap-2">
-                      {row.plan?.id && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => window.open(`/breeding/plan/${row.plan?.id}`, "_blank")}
-                        >
-                          Open plan
-                        </Button>
-                      )}
-                      {readOnlyGlobal && (
-                        <span className="self-center text-xs text-secondary">View only</span>
-                      )}
+                      <Button size="sm" variant="outline" onClick={() => window.open(`/breeding/plan/${row.plan?.id}`, "_blank")}>
+                        Open plan
+                      </Button>
+                      {readOnlyGlobal && <span className="text-xs text-secondary self-center">View only</span>}
                     </div>
                   }
                 >
@@ -2070,7 +1582,6 @@ function OffspringGroupsTab({ api, tenantId, readOnlyGlobal }: { api: ReturnType
                       sections={groupSections(readOnlyGlobal ? "view" : mode)}
                     />
                   )}
-
                   {activeTab === "buyers" && (
                     <BuyersTab
                       api={api}
@@ -2086,303 +1597,9 @@ function OffspringGroupsTab({ api, tenantId, readOnlyGlobal }: { api: ReturnType
                       }}
                     />
                   )}
-
-                  {activeTab === "metrics" && (
-                    <div className="grid gap-4 lg:grid-cols-[2fr,1.5fr]">
-                      <SectionCard>
-                        <div className="mb-3 flex items-center justify-between">
-                          <h3 className="text-sm font-semibold">Headcount and breakdown</h3>
-                          <span className="text-xs text-muted-foreground">
-                            Live, weaned, placed
-                          </span>
-                        </div>
-                        <div className="grid gap-2 sm:grid-cols-3">
-                          <div className="rounded-md border p-3">
-                            <div className="text-xs text-muted-foreground">Live</div>
-                            <div className="text-lg font-semibold">
-                              {row.counts?.live ?? "-"}
-                            </div>
-                          </div>
-                          <div className="rounded-md border p-3">
-                            <div className="text-xs text-muted-foreground">Weaned</div>
-                            <div className="text-lg font-semibold">
-                              {row.counts?.weaned ?? "-"}
-                            </div>
-                          </div>
-                          <div className="rounded-md border p-3">
-                            <div className="text-xs text-muted-foreground">Placed</div>
-                            <div className="text-lg font-semibold">
-                              {(row.counts as any)?.placed ?? "-"}
-                            </div>
-                          </div>
-                        </div>
-                      </SectionCard>
-
-                      <SectionCard>
-                        <div className="mb-3 flex items-center justify-between">
-                          <h3 className="text-sm font-semibold">Placement timeline</h3>
-                          <span className="text-xs text-muted-foreground">
-                            Expected and actual
-                          </span>
-                        </div>
-                        <div className="space-y-1 text-xs">
-                          <div>
-                            <span className="font-medium">Breeding</span>
-                            <span className="mx-1">·</span>
-                            <span>{fmtDate(row.dates?.breedingDateExpected)}</span>
-                            {row.dates?.breedingDateActual && (
-                              <span className="ml-2 text-muted-foreground">
-                                (actual {fmtDate(row.dates.breedingDateActual)})
-                              </span>
-                            )}
-                          </div>
-                          <div>
-                            <span className="font-medium">Birth</span>
-                            <span className="mx-1">·</span>
-                            <span>
-                              {fmtRange(
-                                row.dates?.birthedStartAt,
-                                row.dates?.birthedEndAt
-                              )}
-                            </span>
-                          </div>
-                          <div>
-                            <span className="font-medium">Weaning</span>
-                            <span className="mx-1">·</span>
-                            <span>{fmtDate(row.dates?.weanedAt)}</span>
-                          </div>
-                          <div>
-                            <span className="font-medium">Placement</span>
-                            <span className="mx-1">·</span>
-                            <span>
-                              {fmtRange(
-                                row.expectedPlacementStart ??
-                                row.dates?.placementStartDateExpected,
-                                row.expectedPlacementCompleted ??
-                                row.dates?.placementCompletedDateExpected
-                              )}
-                            </span>
-                          </div>
-                        </div>
-                      </SectionCard>
-
-                      <SectionCard>
-                        <div className="mb-3 flex items-center justify-between">
-                          <h3 className="text-sm font-semibold">Coverage and velocity</h3>
-                          <span className="text-xs text-muted-foreground">Auto calculated</span>
-                        </div>
-                        {(() => {
-                          const coverage = computeCoverage(row);
-                          const placementDays = computePlacementVelocity(row);
-                          const reserved = row.counts?.reserved ?? 0;
-                          const placed = (row.counts as any)?.placed ?? 0;
-                          const coveragePct =
-                            coverage == null ? "N/A" : `${Math.round(coverage * 100)}%`;
-
-                          return (
-                            <div className="grid gap-2 sm:grid-cols-2">
-                              <div className="rounded-md border p-3 text-xs">
-                                <div className="mb-1 font-medium">Coverage</div>
-                                <div>Reserved: {reserved}</div>
-                                <div>Placed: {placed}</div>
-                                <div className="mt-1 text-muted-foreground">
-                                  Overall: {coveragePct}
-                                </div>
-                              </div>
-                              <div className="rounded-md border p-3 text-xs">
-                                <div className="mb-1 font-medium">Velocity</div>
-                                <div>
-                                  {placementDays == null
-                                    ? "N/A"
-                                    : `${placementDays} days`}
-                                </div>
-                              </div>
-                            </div>
-                          );
-                        })()}
-                      </SectionCard>
-
-                      <SectionCard>
-                        <div className="mb-3 flex items-center justify-between">
-                          <h3 className="text-sm font-semibold">Waitlist overlap</h3>
-                          <span className="text-xs text-muted-foreground">
-                            Same tenant
-                          </span>
-                        </div>
-                        <div className="text-sm">
-                          {Array.isArray(row.Waitlist) && row.Waitlist.length > 0 ? (
-                            <div>
-                              <p className="mb-2">
-                                {row.Waitlist.length} linked waitlist records.
-                              </p>
-                              <ul className="space-y-1 text-xs">
-                                {row.Waitlist.slice(0, 5).map((w: any) => (
-                                  <li key={w.id} className="flex gap-2">
-                                    <span className="truncate">
-                                      {w.contact?.displayName ||
-                                        w.org?.displayName ||
-                                        `Waitlist #${w.id}`}
-                                    </span>
-                                    {w.status && (
-                                      <span className="text-muted-foreground">
-                                        · {w.status}
-                                      </span>
-                                    )}
-                                  </li>
-                                ))}
-                              </ul>
-                            </div>
-                          ) : (
-                            <p className="text-xs text-muted-foreground">
-                              No overlapping waitlist entries yet.
-                            </p>
-                          )}
-                        </div>
-                      </SectionCard>
-                    </div>
-                  )}
-
-                  {activeTab === "media" && (
-                    <SectionCard>
-                      <div className="mb-3 flex items-center justify-between">
-                        <h3 className="text-sm font-semibold">Group photos</h3>
-                        <span className="text-xs text-muted-foreground">
-                          Uses existing attachment uploader
-                        </span>
-                      </div>
-                      <AttachmentsSection group={row} api={api} mode="media" />
-                    </SectionCard>
-                  )}
-
-                  {activeTab === "documents" && (
-                    <div className="grid gap-4 lg:grid-cols-2">
-                      <SectionCard>
-                        <div className="mb-3 flex items-center justify-between">
-                          <h3 className="text-sm font-semibold">Litter health certificate</h3>
-                          <span className="text-xs text-muted-foreground">
-                            Upload or attach
-                          </span>
-                        </div>
-                        <AttachmentsSection group={row} api={api} mode="health" />
-                      </SectionCard>
-
-                      <SectionCard>
-                        <div className="mb-3 flex items-center justify-between">
-                          <h3 className="text-sm font-semibold">Registration paperwork</h3>
-                          <span className="text-xs text-muted-foreground">
-                            Registry documents
-                          </span>
-                        </div>
-                        <AttachmentsSection
-                          group={row}
-                          api={api}
-                          mode="registration"
-                        />
-                      </SectionCard>
-                    </div>
-                  )}
-
-                  {activeTab === "linkedOffspring" && (
-                    <SectionCard>
-                      <div className="mb-3 flex items-center justify-between">
-                        <h3 className="text-sm font-semibold">Linked offspring</h3>
-                        <div className="flex gap-2">
-                          <Button
-                            size="xs"
-                            variant="outline"
-                            onClick={() =>
-                              api.animals.createForGroup(row.id).then(onRefreshRow)
-                            }
-                          >
-                            Add offspring
-                          </Button>
-                          <Button
-                            size="xs"
-                            variant="outline"
-                            onClick={() =>
-                              api.offspring.syncWaitlist(row.id).then(onRefreshRow)
-                            }
-                          >
-                            Sync waitlist
-                          </Button>
-                          <Button
-                            size="xs"
-                            variant="outline"
-                            onClick={() =>
-                              api.offspring.exportLitterSheet(row.id)
-                            }
-                          >
-                            Export litter sheet
-                          </Button>
-                        </div>
-                      </div>
-                      {Array.isArray(row.Animals) && row.Animals.length > 0 ? (
-                        <Table dense>
-                          <thead>
-                            <tr>
-                              <th className="text-left text-xs font-medium text-muted-foreground">
-                                Name
-                              </th>
-                              <th className="text-left text-xs font-medium text-muted-foreground">
-                                Sex
-                              </th>
-                              <th className="text-left text-xs font-medium text-muted-foreground">
-                                Status
-                              </th>
-                              <th className="text-left text-xs font-medium text-muted-foreground">
-                                Buyer / waitlist
-                              </th>
-                              <th className="text-right text-xs font-medium text-muted-foreground">
-                                Price
-                              </th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {row.Animals.map((a: any) => (
-                              <tr key={a.id} className="text-xs">
-                                <td className="py-1 pr-2">
-                                  {a.name || `Offspring #${a.id}`}
-                                </td>
-                                <td className="py-1 pr-2">
-                                  {a.sex === "MALE"
-                                    ? "M"
-                                    : a.sex === "FEMALE"
-                                      ? "F"
-                                      : "U"}
-                                </td>
-                                <td className="py-1 pr-2">
-                                  {a.status || "-"}
-                                </td>
-                                <td className="py-1 pr-2">
-                                  {a.buyerContact?.displayName ||
-                                    a.buyerOrg?.displayName ||
-                                    a.waitlistEntry?.contact?.displayName ||
-                                    a.waitlistEntry?.org?.displayName ||
-                                    "-"}
-                                </td>
-                                <td className="py-1 pl-2 text-right">
-                                  {formatMoneyFromCents(
-                                    a.salePriceCents ??
-                                    a.priceCents ??
-                                    a.listedPriceCents ??
-                                    null
-                                  )}
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </Table>
-                      ) : (
-                        <p className="text-xs text-muted-foreground">
-                          No individual offspring recorded yet.
-                        </p>
-                      )}
-                    </SectionCard>
-                  )}
-
                   {activeTab === "analytics" && (
                     <SectionCard title="Analytics">
-                      <div className="grid grid-cols-1 gap-3 p-2 md:grid-cols-2">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 p-2">
                         <Card>
                           <div className="p-3">
                             <div className="text-xs text-secondary">Coverage</div>
@@ -2392,10 +1609,7 @@ function OffspringGroupsTab({ api, tenantId, readOnlyGlobal }: { api: ReturnType
                                 return pct == null ? "-" : `${Math.round(pct * 100)}%`;
                               })()}
                             </div>
-                            <div className="mt-1 text-xs text-secondary">
-                              Reserved or placed divided by live, weaned, or planned
-                              headcount.
-                            </div>
+                            <div className="text-xs text-secondary mt-1">Reserved or placed divided by live, weaned, or planned headcount.</div>
                           </div>
                         </Card>
                         <Card>
@@ -2407,9 +1621,7 @@ function OffspringGroupsTab({ api, tenantId, readOnlyGlobal }: { api: ReturnType
                                 return days == null ? "-" : `${days} days`;
                               })()}
                             </div>
-                            <div className="mt-1 text-xs text-secondary">
-                              Days from placement start to placement completed.
-                            </div>
+                            <div className="text-xs text-secondary mt-1">Days from placement start to placement completed.</div>
                           </div>
                         </Card>
                       </div>
@@ -2537,437 +1749,582 @@ function OffspringGroupsTab({ api, tenantId, readOnlyGlobal }: { api: ReturnType
   );
 }
 
-// function PortalPopover({ anchorRef, open, children }: { anchorRef: React.RefObject<HTMLElement>, open: boolean, children: React.ReactNode }) {
-//   const [style, setStyle] = React.useState<React.CSSProperties>({});
-//   React.useLayoutEffect(() => {
-//     if (!open || !anchorRef.current) return;
-//     const r = anchorRef.current.getBoundingClientRect();
-//     setStyle({
-//       position: "fixed",
-//       left: r.left,
-//       top: r.bottom + 6,
-//       width: r.width,
-//       maxHeight: 160,
-//       overflowY: "auto",
-//       zIndex: 2147483646,
-//     });
-//   }, [open, anchorRef]);
-//   if (!open) return null;
-//   const root = getOverlayRoot?.() || document.body;
-//   return ReactDOM.createPortal(
-//     <div className="rounded-md border border-hairline bg-surface" style={style}>{children}</div>,
-//     root
-//   );
-// }
+function PortalPopover({ anchorRef, open, children }: { anchorRef: React.RefObject<HTMLElement>, open: boolean, children: React.ReactNode }) {
+  const [style, setStyle] = React.useState<React.CSSProperties>({});
+  React.useLayoutEffect(() => {
+    if (!open || !anchorRef.current) return;
+    const r = anchorRef.current.getBoundingClientRect();
+    setStyle({
+      position: "fixed",
+      left: r.left,
+      top: r.bottom + 6,
+      width: r.width,
+      maxHeight: 160,
+      overflowY: "auto",
+      zIndex: 2147483646,
+    });
+  }, [open, anchorRef]);
+  if (!open) return null;
+  const root = getOverlayRoot?.() || document.body;
+  return ReactDOM.createPortal(
+    <div className="rounded-md border border-hairline bg-surface" style={style}>{children}</div>,
+    root
+  );
+}
 
-// function WaitlistDrawerBody({
-//   api,
-//   row,
-//   mode,
-//   onChange,
-// }: {
-//   api: ReturnType<typeof makeOffspringApi> | null;
-//   row: any;
-//   mode: "view" | "edit";
-//   onChange: (patch: any) => void;
-// }) {
-//   const onChangeRef = React.useRef(onChange);
-//   React.useEffect(() => { onChangeRef.current = onChange; }, [onChange]);
-//   const readOnly = mode !== "edit";
-//   // derive UI state from row
-//   const initSpeciesUi = (() => {
-//     const w = String(row?.speciesPref || "").toUpperCase();
-//     return w === "DOG" ? "Dog" : w === "CAT" ? "Cat" : w === "HORSE" ? "Horse" : "";
-//   })() as SpeciesUi | "";
+function WaitlistDrawerBody({
+  api,
+  row,
+  mode,
+  onChange,
+}: {
+  api: ReturnType<typeof makeOffspringApi> | null;
+  row: any;
+  mode: "view" | "edit";
+  onChange: (patch: any) => void;
+}) {
+  const onChangeRef = React.useRef(onChange);
+  React.useEffect(() => { onChangeRef.current = onChange; }, [onChange]);
+  const readOnly = mode !== "edit";
+  // derive UI state from row
+  const initSpeciesUi = (() => {
+    const w = String(row?.speciesPref || "").toUpperCase();
+    return w === "DOG" ? "Dog" : w === "CAT" ? "Cat" : w === "HORSE" ? "Horse" : "";
+  })() as SpeciesUi | "";
 
-//   const [speciesUi, setSpeciesUi] = React.useState<SpeciesUi | "">(initSpeciesUi);
-//   const speciesWire = toWireSpecies(speciesUi);
-//   const damBoxRef = React.useRef<HTMLDivElement>(null);
-//   const sireBoxRef = React.useRef<HTMLDivElement>(null);
+  const [speciesUi, setSpeciesUi] = React.useState<SpeciesUi | "">(initSpeciesUi);
+  const speciesWire = toWireSpecies(speciesUi);
+  const damBoxRef = React.useRef<HTMLDivElement>(null);
+  const sireBoxRef = React.useRef<HTMLDivElement>(null);
 
-//   // Breed (BreedCombo wants an object {name})
-//   const [breed, setBreed] = React.useState<any>(() => {
-//     const name =
-//       row?.breedPrefText ??
-//       (Array.isArray(row?.breedPrefs) ? row.breedPrefs.find(Boolean) : null);
-//     return name ? { name } : null;
-//   });
-//   const [breedNonce, setBreedNonce] = React.useState(0);
-//   const onBreedPick = React.useCallback((hit: any) => {
-//     setBreed(hit ? { ...hit } : null);
-//     setBreedNonce((n) => n + 1);
-//   }, []);
-
-//   // Parents (support both raw and mapped shapes)
-//   const [damId, setDamId] = React.useState<number | null>(row?.damPrefId ?? row?.damPref?.id ?? null);
-//   const [sireId, setSireId] = React.useState<number | null>(row?.sirePrefId ?? row?.sirePref?.id ?? null);
-//   const [damQ, setDamQ] = React.useState<string>(row?.damPref?.name ?? row?.damPrefName ?? "");
-//   const [sireQ, setSireQ] = React.useState<string>(row?.sirePref?.name ?? row?.sirePrefName ?? "");
-//   const [damOpen, setDamOpen] = React.useState(false);
-//   const [sireOpen, setSireOpen] = React.useState(false);
-
-//   // Admin fields mirrored from your overview section
-//   const [status, setStatus] = React.useState<string>(row?.status ?? "");
-//   const [priority, setPriority] = React.useState<number | "">(row?.priority ?? "");
-//   const [depositPaidAt, setDepositPaidAt] = React.useState<string>(row?.depositPaidAt ?? "");
-//   const [notes, setNotes] = React.useState<string>(row?.notes ?? "");
-
-//   // RE-SEED LOCAL STATE WHEN THE ROW SHOWN CHANGES
-//   React.useEffect(() => {
-//     const nextSpeciesUi = (() => {
-//       const w = String(row?.speciesPref || "").toUpperCase();
-//       return w === "DOG" ? "Dog" : w === "CAT" ? "Cat" : w === "HORSE" ? "Horse" : "";
-//     })() as SpeciesUi | "";
-//     setSpeciesUi(nextSpeciesUi);
-
-//     const nextBreedName =
-//       row?.breedPrefText ??
-//       (Array.isArray(row?.breedPrefs) ? row.breedPrefs.find(Boolean) : null) ??
-//       null;
-//     setBreed(nextBreedName ? { name: nextBreedName } : null);
-//     setBreedNonce((n) => n + 1);
-
-//     setDamId(row?.damPrefId ?? row?.damPref?.id ?? null);
-//     setSireId(row?.sirePrefId ?? row?.sirePref?.id ?? null);
-//     setDamQ(row?.damPref?.name ?? row?.damPrefName ?? "");
-//     setSireQ(row?.sirePref?.name ?? row?.sirePrefName ?? "");
-//     setDamOpen(false);
-//     setSireOpen(false);
-
-//     setStatus(row?.status ?? "");
-//     setPriority(row?.priority ?? "");
-//     setDepositPaidAt(row?.depositPaidAt ?? "");
-//     setNotes(row?.notes ?? "");
-//   }, [row?.id, row?.updatedAt]);
-
-//   // keep DetailsScaffold draft in sync so Save can pick it up
-//   React.useEffect(() => {
-//     if (mode !== "edit") return;
-//     onChangeRef.current({
-//       speciesPref: speciesWire ?? null,
-//       breedPrefs: (breed?.name ?? "").trim() ? [breed.name.trim()] : null,
-//       damPrefId: damId ?? null,
-//       sirePrefId: sireId ?? null,
-//       status: status || null,
-//       priority: priority === "" ? null : Number(priority),
-//       depositPaidAt: depositPaidAt || null,
-//       notes: notes || null,
-//     });
-//   }, [mode, speciesWire, breed, damId, sireId, status, priority, depositPaidAt, notes]);
-
-//   // live animal search lists
-//   const dams = useAnimalSearch(api, damQ, speciesWire, "FEMALE");
-//   const sires = useAnimalSearch(api, sireQ, speciesWire, "MALE");
-
-//   return (
-//     <div className="space-y-4">
-//       <SectionCard title="Preferences (required)">
-//         <div className={"p-2 grid grid-cols-1 md:grid-cols-3 gap-3 " + (readOnly ? "opacity-70" : "")}>
-//           {/* Species */}
-//           <label className="flex flex-col gap-1">
-//             <span className={labelClass}>Species</span>
-//             <select
-//               className={inputClass}
-//               value={speciesUi}
-//               onChange={(e) => {
-//                 setSpeciesUi(e.currentTarget.value as SpeciesUi);
-//                 setDamId(null);
-//                 setSireId(null);
-//                 setDamQ("");
-//                 setSireQ("");
-//                 setDamOpen(false);
-//                 setSireOpen(false);
-//                 setBreed(null);
-//                 setBreedNonce((n) => n + 1);
-//               }}
-//               disabled={readOnly}
-//             >
-//               <option value="">-</option>
-//               {SPECIES_UI_ALL.map((s) => (
-//                 <option key={s} value={s}>
-//                   {s}
-//                 </option>
-//               ))}
-//             </select>
-//           </label>
-
-//           {/* Breed */}
-//           <div className="md:col-span-2">
-//             <div className={labelClass + " mb-1"}>Breed</div>
-//             {speciesUi ? (
-//               readOnly ? (
-//                 // READ-ONLY: show the current value, no interaction
-//                 <div className="h-9 px-3 flex items-center rounded-md border border-hairline bg-surface/60 text-sm">
-//                   {breed?.name || "-"}
-//                 </div>
-//               ) : (
-//                 // EDIT: interactive picker
-//                 <BreedCombo
-//                   key={`breed-${speciesUi}-${breedNonce}`}
-//                   species={speciesUi}
-//                   value={breed}
-//                   onChange={onBreedPick}
-//                   api={{ breeds: { listCanonical: api!.breeds.listCanonical } }}
-//                 />
-//               )
-//             ) : (
-//               <div className="h-9 px-3 flex items-center rounded-md border border-hairline bg-surface/60 text-sm text-secondary">
-//                 Select Species
-//               </div>
-//             )}
-//           </div>
-//         </div>
-//       </SectionCard>
-
-//       <SectionCard title="Preferred Parents (optional)">
-//         <div className="p-2 grid grid-cols-1 md:grid-cols-2 gap-3">
-//           {/* Dam */}
-//           <label className="flex flex-col gap-1">
-//             <span className={labelClass}>Dam (Female)</span>
-//             {!speciesWire ? (
-//               <div className="h-9 px-3 flex items-center rounded-md border border-hairline bg-surface/60 text-sm text-secondary">Select Species</div>
-//             ) : (
-//               <>
-//                 <div ref={damBoxRef} className="relative" style={{ maxWidth: 420 }}>
-//                   <InlineSearch
-//                     value={damQ}
-//                     onChange={(val) => { setDamQ(val); setDamOpen(!!val.trim()); }}
-//                     onFocus={() => setDamOpen(!!damQ.trim())}
-//                     onBlur={() => setTimeout(() => setDamOpen(false), 100)}
-//                     placeholder="Search females..."
-//                     widthPx={400}
-//                     disabled={mode !== "edit"}
-//                   />
-//                 </div>
-//                 <PortalPopover anchorRef={damBoxRef} open={!readOnly && !!(damOpen && damQ.trim())}>
-//                   {dams.length === 0 ? (
-//                     <div className="px-2 py-2 text-sm text-secondary">No females found</div>
-//                   ) : (
-//                     dams.map((a) => (
-//                       <button key={a.id} type="button" onClick={() => { setDamId(a.id); setDamQ(a.name); setDamOpen(false); }} className="w-full text-left px-2 py-1 hover:bg-white/5">
-//                         {a.name}
-//                       </button>
-//                     ))
-//                   )}
-//                 </PortalPopover>
-//               </>
-//             )}
-//           </label>
-
-//           {/* Sire */}
-//           <label className="flex flex-col gap-1">
-//             <span className={labelClass}>Sire (Male)</span>
-//             {!speciesWire ? (
-//               <div className="h-9 px-3 flex items-center rounded-md border border-hairline bg-surface/60 text-sm text-secondary">
-//                 Select Species
-//               </div>
-//             ) : (
-//               <>
-//                 <div ref={sireBoxRef} className="relative" style={{ maxWidth: 420 }}>
-//                   <InlineSearch
-//                     value={sireQ}
-//                     onChange={(val) => { setSireQ(val); setSireOpen(!!val.trim()); }}
-//                     onFocus={() => setSireOpen(!!sireQ.trim())}
-//                     onBlur={() => setTimeout(() => setSireOpen(false), 100)}
-//                     placeholder="Search males..."
-//                     widthPx={400}
-//                     disabled={mode !== "edit"}
-//                   />
-//                 </div>
-//                 <PortalPopover anchorRef={sireBoxRef} open={!readOnly && !!(sireOpen && sireQ.trim())}>
-//                   {sires.length === 0 ? (
-//                     <div className="px-2 py-2 text-sm text-secondary">No males found</div>
-//                   ) : (
-//                     sires.map((a) => (
-//                       <button
-//                         key={a.id}
-//                         type="button"
-//                         onClick={() => { setSireId(a.id); setSireQ(a.name); setSireOpen(false); }}
-//                         className="w-full text-left px-2 py-1 hover:bg-white/5"
-//                       >
-//                         {a.name}
-//                       </button>
-//                     ))
-//                   )}
-//                 </PortalPopover>
-//               </>
-//             )}
-//           </label>
-//         </div>
-//       </SectionCard>
-
-//       <SectionCard title="Admin">
-//         <div className={"p-2 grid grid-cols-1 md:grid-cols-3 gap-3 " + (readOnly ? "opacity-70" : "")}>
-//           <label className="flex flex-col gap-1">
-//             <span className={labelClass}>Status</span>
-//             <input className={inputClass} value={status} onChange={(e) => setStatus(e.target.value)} disabled={readOnly} />
-//           </label>
-//           <label className="flex flex-col gap-1">
-//             <span className={labelClass}>Priority</span>
-//             <input
-//               className={inputClass}
-//               type="number"
-//               value={priority}
-//               onChange={(e) => setPriority(e.target.value === "" ? "" : Number(e.target.value))} disabled={readOnly}
-//             />
-//           </label>
-//           <label className="flex flex-col gap-1">
-//             <span className={labelClass}>Deposit Paid</span>
-//             <input
-//               className={inputClass}
-//               type="date"
-//               value={depositPaidAt || ""}
-//               onChange={(e) => setDepositPaidAt(e.target.value)} disabled={readOnly}
-//             />
-//           </label>
-//           <label className="flex flex-col gap-1 md:col-span-3">
-//             <span className={labelClass}>Notes</span>
-//             <textarea
-//               className={inputClass + " h-24 resize-vertical"}
-//               value={notes}
-//               onChange={(e) => setNotes(e.target.value)} disabled={readOnly}
-//             />
-//           </label>
-//         </div>
-//       </SectionCard>
-//     </div>
-//   );
-// }
-
-// function WaitlistTab() { return null as any; }
-// /** Small bridge to open AddToWaitlistModal from the toolbar button without custom row hacks */
-// function WaitlistAddBridge({ api, tenantId, onCreated }: { api: ReturnType<typeof makeOffspringApi> | null; tenantId: number | null; onCreated: () => Promise<void> | void }) {
-//   const [open, setOpen] = React.useState(false);
-//   React.useEffect(() => {
-//     const h = () => setOpen(true);
-//     window.addEventListener("bhq:offspring:add-waitlist", h as any);
-//     return () => window.removeEventListener("bhq:offspring:add-waitlist", h as any);
-//   }, []);
-//   return (
-//     <AddToWaitlistModal
-//       api={api}
-//       tenantId={tenantId}
-//       open={open}
-//       onClose={() => setOpen(false)}
-//       onCreated={onCreated}
-//       allowedSpecies={["Dog", "Cat", "Horse"]}
-//     />
-//   );
-// }
-
-/* ───────────────────────── Module shell ───────────────────────── */
-export default function OffspringModule() {
-  React.useEffect(() => {
-    window.dispatchEvent(new CustomEvent("bhq:module", { detail: { key: "offspring", label: "Offspring" } }));
+  // Breed (BreedCombo wants an object {name})
+  const [breed, setBreed] = React.useState<any>(() => {
+    const name =
+      row?.breedPrefText ??
+      (Array.isArray(row?.breedPrefs) ? row.breedPrefs.find(Boolean) : null);
+    return name ? { name } : null;
+  });
+  const [breedNonce, setBreedNonce] = React.useState(0);
+  const onBreedPick = React.useCallback((hit: any) => {
+    setBreed(hit ? { ...hit } : null);
+    setBreedNonce((n) => n + 1);
   }, []);
 
+  // Parents (support both raw and mapped shapes)
+  const [damId, setDamId] = React.useState<number | null>(row?.damPrefId ?? row?.damPref?.id ?? null);
+  const [sireId, setSireId] = React.useState<number | null>(row?.sirePrefId ?? row?.sirePref?.id ?? null);
+  const [damQ, setDamQ] = React.useState<string>(row?.damPref?.name ?? row?.damPrefName ?? "");
+  const [sireQ, setSireQ] = React.useState<string>(row?.sirePref?.name ?? row?.sirePrefName ?? "");
+  const [damOpen, setDamOpen] = React.useState(false);
+  const [sireOpen, setSireOpen] = React.useState(false);
+
+  // Admin fields mirrored from your overview section
+  const [status, setStatus] = React.useState<string>(row?.status ?? "");
+  const [priority, setPriority] = React.useState<number | "">(row?.priority ?? "");
+  const [depositPaidAt, setDepositPaidAt] = React.useState<string>(row?.depositPaidAt ?? "");
+  const [notes, setNotes] = React.useState<string>(row?.notes ?? "");
+
+  // RE-SEED LOCAL STATE WHEN THE ROW SHOWN CHANGES
   React.useEffect(() => {
-    if (!getOverlayRoot()) {
-      console.warn("ColumnsPopover needs an overlay root. Add <div id='bhq-overlay-root'></div> to the shell.");
+    const nextSpeciesUi = (() => {
+      const w = String(row?.speciesPref || "").toUpperCase();
+      return w === "DOG" ? "Dog" : w === "CAT" ? "Cat" : w === "HORSE" ? "Horse" : "";
+    })() as SpeciesUi | "";
+    setSpeciesUi(nextSpeciesUi);
+
+    const nextBreedName =
+      row?.breedPrefText ??
+      (Array.isArray(row?.breedPrefs) ? row.breedPrefs.find(Boolean) : null) ??
+      null;
+    setBreed(nextBreedName ? { name: nextBreedName } : null);
+    setBreedNonce((n) => n + 1);
+
+    setDamId(row?.damPrefId ?? row?.damPref?.id ?? null);
+    setSireId(row?.sirePrefId ?? row?.sirePref?.id ?? null);
+    setDamQ(row?.damPref?.name ?? row?.damPrefName ?? "");
+    setSireQ(row?.sirePref?.name ?? row?.sirePrefName ?? "");
+    setDamOpen(false);
+    setSireOpen(false);
+
+    setStatus(row?.status ?? "");
+    setPriority(row?.priority ?? "");
+    setDepositPaidAt(row?.depositPaidAt ?? "");
+    setNotes(row?.notes ?? "");
+  }, [row?.id, row?.updatedAt]);
+
+  // keep DetailsScaffold draft in sync so Save can pick it up
+  React.useEffect(() => {
+    if (mode !== "edit") return;
+    onChangeRef.current({
+      speciesPref: speciesWire ?? null,
+      breedPrefs: (breed?.name ?? "").trim() ? [breed.name.trim()] : null,
+      damPrefId: damId ?? null,
+      sirePrefId: sireId ?? null,
+      status: status || null,
+      priority: priority === "" ? null : Number(priority),
+      depositPaidAt: depositPaidAt || null,
+      notes: notes || null,
+    });
+  }, [mode, speciesWire, breed, damId, sireId, status, priority, depositPaidAt, notes]);
+
+  // live animal search lists
+  const dams = useAnimalSearch(api, damQ, speciesWire, "FEMALE");
+  const sires = useAnimalSearch(api, sireQ, speciesWire, "MALE");
+
+  return (
+    <div className="space-y-4">
+      <SectionCard title="Preferences (required)">
+        <div className={"p-2 grid grid-cols-1 md:grid-cols-3 gap-3 " + (readOnly ? "opacity-70" : "")}>
+          {/* Species */}
+          <label className="flex flex-col gap-1">
+            <span className={cx(labelClass)}>Species</span>
+            <select
+              className={cx(inputClass)}
+              value={speciesUi}
+              onChange={(e) => {
+                setSpeciesUi(e.currentTarget.value as SpeciesUi);
+                setDamId(null);
+                setSireId(null);
+                setDamQ("");
+                setSireQ("");
+                setDamOpen(false);
+                setSireOpen(false);
+                setBreed(null);
+                setBreedNonce((n) => n + 1);
+              }}
+              disabled={readOnly}
+            >
+              <option value="">-</option>
+              {SPECIES_UI_ALL.map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          {/* Breed */}
+          <div className="md:col-span-2">
+            <div className={cx(labelClass + " mb-1")}>Breed</div>
+            {speciesUi ? (
+              readOnly ? (
+                // READ-ONLY: show the current value, no interaction
+                <div className="h-9 px-3 flex items-center rounded-md border border-hairline bg-surface/60 text-sm">
+                  {breed?.name || "-"}
+                </div>
+              ) : (
+                // EDIT: interactive picker
+                <BreedCombo
+                  key={`breed-${speciesUi}-${breedNonce}`}
+                  species={speciesUi}
+                  value={breed}
+                  onChange={onBreedPick}
+                  api={{ breeds: { listCanonical: api!.breeds.listCanonical } }}
+                />
+              )
+            ) : (
+              <div className="h-9 px-3 flex items-center rounded-md border border-hairline bg-surface/60 text-sm text-secondary">
+                Select Species
+              </div>
+            )}
+          </div>
+        </div>
+      </SectionCard>
+
+      <SectionCard title="Preferred Parents (optional)">
+        <div className="p-2 grid grid-cols-1 md:grid-cols-2 gap-3">
+          {/* Dam */}
+          <label className="flex flex-col gap-1">
+            <span className={cx(labelClass)}>Dam (Female)</span>
+            {!speciesWire ? (
+              <div className="h-9 px-3 flex items-center rounded-md border border-hairline bg-surface/60 text-sm text-secondary">Select Species</div>
+            ) : (
+              <>
+                <div ref={damBoxRef} className="relative" style={{ maxWidth: 420 }}>
+                  <InlineSearch
+                    value={damQ}
+                    onChange={(val) => { setDamQ(val); setDamOpen(!!val.trim()); }}
+                    onFocus={() => setDamOpen(!!damQ.trim())}
+                    onBlur={() => setTimeout(() => setDamOpen(false), 100)}
+                    placeholder="Search females..."
+                    widthPx={400}
+                    disabled={mode !== "edit"}
+                  />
+                </div>
+                <PortalPopover anchorRef={damBoxRef} open={!readOnly && !!(damOpen && damQ.trim())}>
+                  {dams.length === 0 ? (
+                    <div className="px-2 py-2 text-sm text-secondary">No females found</div>
+                  ) : (
+                    dams.map((a) => (
+                      <button key={a.id} type="button" onClick={() => { setDamId(a.id); setDamQ(a.name); setDamOpen(false); }} className="w-full text-left px-2 py-1 hover:bg-white/5">
+                        {a.name}
+                      </button>
+                    ))
+                  )}
+                </PortalPopover>
+              </>
+            )}
+          </label>
+
+          {/* Sire */}
+          <label className="flex flex-col gap-1">
+            <span className={cx(labelClass)}>Sire (Male)</span>
+            {!speciesWire ? (
+              <div className="h-9 px-3 flex items-center rounded-md border border-hairline bg-surface/60 text-sm text-secondary">
+                Select Species
+              </div>
+            ) : (
+              <>
+                <div ref={sireBoxRef} className="relative" style={{ maxWidth: 420 }}>
+                  <InlineSearch
+                    value={sireQ}
+                    onChange={(val) => { setSireQ(val); setSireOpen(!!val.trim()); }}
+                    onFocus={() => setSireOpen(!!sireQ.trim())}
+                    onBlur={() => setTimeout(() => setSireOpen(false), 100)}
+                    placeholder="Search males..."
+                    widthPx={400}
+                    disabled={mode !== "edit"}
+                  />
+                </div>
+                <PortalPopover anchorRef={sireBoxRef} open={!readOnly && !!(sireOpen && sireQ.trim())}>
+                  {sires.length === 0 ? (
+                    <div className="px-2 py-2 text-sm text-secondary">No males found</div>
+                  ) : (
+                    sires.map((a) => (
+                      <button
+                        key={a.id}
+                        type="button"
+                        onClick={() => { setSireId(a.id); setSireQ(a.name); setSireOpen(false); }}
+                        className="w-full text-left px-2 py-1 hover:bg-white/5"
+                      >
+                        {a.name}
+                      </button>
+                    ))
+                  )}
+                </PortalPopover>
+              </>
+            )}
+          </label>
+        </div>
+      </SectionCard>
+
+      <SectionCard title="Admin">
+        <div className={"p-2 grid grid-cols-1 md:grid-cols-3 gap-3 " + (readOnly ? "opacity-70" : "")}>
+          <label className="flex flex-col gap-1">
+            <span className={cx(labelClass)}>Status</span>
+            <input className={cx(inputClass)} value={status} onChange={(e) => setStatus(e.target.value)} disabled={readOnly} />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className={cx(labelClass)}>Priority</span>
+            <input
+              className={cx(inputClass)}
+              type="number"
+              value={priority}
+              onChange={(e) => setPriority(e.target.value === "" ? "" : Number(e.target.value))} disabled={readOnly}
+            />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className={cx(labelClass)}>Deposit Paid</span>
+            <input
+              className={cx(inputClass)}
+              type="date"
+              value={depositPaidAt || ""}
+              onChange={(e) => setDepositPaidAt(e.target.value)} disabled={readOnly}
+            />
+          </label>
+          <label className="flex flex-col gap-1 md:col-span-3">
+            <span className={cx(labelClass)}>Notes</span>
+            <textarea
+              className={cx(inputClass, " h-24 resize-vertical")}
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)} disabled={readOnly}
+            />
+          </label>
+        </div>
+      </SectionCard>
+    </div>
+  );
+}
+
+function WaitlistTab({ api, tenantId, readOnlyGlobal }: { api: ReturnType<typeof makeOffspringApi> | null; tenantId: number | null, readOnlyGlobal: boolean }) {
+  const [q, setQ] = React.useState("");
+  const [rows, setRows] = React.useState<WaitlistTableRow[]>([]);
+  const [raw, setRaw] = React.useState<WaitlistRowWire[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
+
+  // Sorting for Waitlist table
+  const [sorts, setSorts] = React.useState<Array<{ key: string; dir: "asc" | "desc" }>>([]);
+  const onToggleSort = (key: string) => {
+    setSorts((prev) => {
+      const f = prev.find((s) => s.key === key);
+      if (!f) return [{ key, dir: "asc" }];
+      if (f.dir === "asc") return prev.map((s) => (s.key === key ? { ...s, dir: "desc" } : s));
+      return prev.filter((s) => s.key !== key);
+    });
+  };
+  function cmp(a: any, b: any) {
+    const na = Number(a), nb = Number(b);
+    if (!Number.isNaN(na) && !Number.isNaN(nb)) return na - nb;
+    const da = Date.parse(a), db = Date.parse(b);
+    if (!Number.isNaN(da) && !Number.isNaN(db)) return da - db;
+    return String(a ?? "").localeCompare(String(b ?? ""), undefined, { numeric: true, sensitivity: "base" });
+  }
+
+  // --- DetailsHost imperative open for Waitlist ---
+  React.useEffect(() => {
+    window.dispatchEvent(new Event("popstate"));
+  }, []);
+
+  const load = React.useCallback(async () => {
+    if (!api) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await api.waitlist.list({ q: q || undefined, limit: 200 });
+      const items: any[] = res.items ?? [];
+      setRaw(items as WaitlistRowWire[]);
+      setRows(items.map(mapWaitlistToTableRow));
+    } catch (e: any) {
+      setError(e?.message || "Failed to load waitlist");
+    } finally {
+      setLoading(false);
     }
-  }, []);
+  }, [api, q]);
 
-  // Resolve tenant once, memo client
-  const [tenantId, setTenantId] = React.useState<number | null>(() => readTenantIdFast() ?? null);
   React.useEffect(() => {
-    if (tenantId != null) return;
     let cancelled = false;
     (async () => {
-      try {
-        const t = await resolveTenantId();
-        if (!cancelled) setTenantId(t);
-      } catch { }
+      if (cancelled) return;
+      await load();
     })();
-    return () => {
-      cancelled = true;
-    };
-  }, [tenantId]);
+    return () => { cancelled = true; };
+  }, [q, load]);
 
-  const api = React.useMemo(() => makeOffspringApi("/api/v1"), []);
+  const cols = hooks.useColumns(WAITLIST_COLS, WAITLIST_STORAGE_KEY);
+  const visibleSafe = cols.visible?.length ? cols.visible : WAITLIST_COLS;
 
-  const [allowedSpecies, setAllowedSpecies] = React.useState<SpeciesUi[]>(["Dog", "Cat", "Horse"]);
+  const sorted = React.useMemo(() => {
+    const list = [...rows];
+    if (!sorts.length) return list;
+    list.sort((a: any, b: any) => {
+      for (const s of sorts) {
+        const av = (a as any)[s.key];
+        const bv = (b as any)[s.key];
+        const c = cmp(av, bv);
+        if (c !== 0) return s.dir === "asc" ? c : -c;
+      }
+      return 0;
+    });
+    return list;
+  }, [rows, sorts]);
+
+  return (
+    <Card>
+      <div className="relative">
+        <div className="absolute right-0 top-0 h-10 flex items-center gap-2 pr-2" style={{ zIndex: 50, pointerEvents: "auto" }}>
+          {!readOnlyGlobal && (
+            <Button size="sm" onClick={() => window.dispatchEvent(new CustomEvent("bhq:offspring:add-waitlist"))}>
+              Add to Waitlist
+            </Button>
+          )}
+          {readOnlyGlobal && <span className="text-xs text-secondary">View only</span>}
+        </div>
+
+        <DetailsHost key="waitlist"
+          rows={raw}
+          config={{
+            idParam: "waitlistId",
+            getRowId: (r: WaitlistRowWire) => String(r.id),
+            width: 860,
+            placement: "center",
+            align: "top",
+            fetchRow: async (id: string | number) => raw.find((r) => String(r.id) === String(id))!,
+            onSave: async (row: WaitlistRowWire, draft: any) => {
+              if (!api || readOnlyGlobal) return;
+              const body: any = {};
+
+              // admin fields
+              if (draft.status !== undefined) body.status = draft.status ?? null;
+              if (draft.priority !== undefined) body.priority = draft.priority ?? null;
+              if (draft.depositPaidAt !== undefined) body.depositPaidAt = draft.depositPaidAt ?? null;
+              if (draft.notes !== undefined) body.notes = draft.notes ?? null;
+
+              // preference fields
+              if (draft.speciesPref !== undefined) body.speciesPref = draft.speciesPref ?? null;
+              if (draft.breedPrefs !== undefined) body.breedPrefs = draft.breedPrefs ?? null;
+              if (draft.damPrefId !== undefined) body.damPrefId = draft.damPrefId ?? null;
+              if (draft.sirePrefId !== undefined) body.sirePrefId = draft.sirePrefId ?? null;
+
+              const updated = await api.waitlist.patch(row.id, body);
+
+              const idx = raw.findIndex((r) => r.id === row.id);
+              if (idx >= 0) {
+                const nextRaw = [...raw];
+                nextRaw[idx] = updated as any;
+                setRaw(nextRaw);
+                setRows(nextRaw.map(mapWaitlistToTableRow));
+              }
+            },
+            header: (r: WaitlistRowWire) => {
+              const t = mapWaitlistToTableRow(r);
+              return { title: t.contactLabel || t.orgLabel || `Waitlist #${t.id}`, subtitle: "" };
+            },
+            tabs: [{ key: "overview", label: "Overview" }],
+            customChrome: true,
+            render: ({ row, mode, setMode, activeTab, setActiveTab, requestSave, setDraft }: any) => {
+              const tblRow = mapWaitlistToTableRow(row);
+
+              const handleDraftChange = (patch: any) =>
+                setDraft((prev: any) => ({ ...(prev || {}), ...patch }));
+
+              return (
+                <DetailsScaffold
+                  title={tblRow.contactLabel || tblRow.orgLabel || `Waitlist #${tblRow.id}`}
+                  subtitle=""
+                  mode={readOnlyGlobal ? "view" : mode}
+                  onEdit={() => !readOnlyGlobal && setMode("edit")}
+                  onCancel={() => setMode("view")}
+                  onSave={requestSave}
+                  tabs={[{ key: "overview", label: "Overview" }]}
+                  activeTab={activeTab}
+                  onTabChange={setActiveTab}
+                >
+                  <WaitlistDrawerBody
+                    key={row.id ?? "new"}
+                    api={api}
+                    row={row}
+                    mode={readOnlyGlobal ? "view" : mode}
+                    onChange={handleDraftChange}
+                  />
+                </DetailsScaffold>
+              );
+            },
+          }}
+        >
+          <Table
+            columns={WAITLIST_COLS}
+            columnState={cols.map}
+            onColumnStateChange={cols.setAll}
+            getRowId={(r: WaitlistTableRow) => r.id}
+            pageSize={25}
+            renderStickyRight={() => (
+              <ColumnsPopover
+                columns={cols.map}
+                onToggle={cols.toggle}
+                onSet={cols.setAll}
+                allColumns={WAITLIST_COLS}
+                triggerClassName="bhq-columns-trigger"
+              />
+            )}
+            stickyRightWidthPx={40}
+          >
+            <div className="bhq-table__toolbar px-2 pt-2 pb-3 relative z-30 flex items-center justify-between">
+              <SearchBar value={q} onChange={(v) => setQ(v)} placeholder="Search waitlist..." widthPx={520} />
+              <div />
+            </div>
+
+            <table className="min-w-max w-full text-sm">
+              <TableHeader columns={visibleSafe} sorts={sorts} onToggleSort={onToggleSort} />
+              <tbody>
+                {loading && (
+                  <TableRow>
+                    <TableCell colSpan={visibleSafe.length}>
+                      <div className="py-8 text-center text-sm text-secondary">Loading waitlist...</div>
+                    </TableCell>
+                  </TableRow>
+                )}
+                {!loading && error && (
+                  <TableRow>
+                    <TableCell colSpan={visibleSafe.length}>
+                      <div className="py-8 text-center text-sm text-red-600">Error: {error}</div>
+                    </TableCell>
+                  </TableRow>
+                )}
+                {!loading && !error && rows.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={visibleSafe.length}>
+                      <div className="py-8 text-center text-sm text-secondary">No entries.</div>
+                    </TableCell>
+                  </TableRow>
+                )}
+                {!loading &&
+                  !error &&
+                  rows.length > 0 &&
+                  rows.map((r) => (
+                    <TableRow
+                      key={r.id}
+                      detailsRow={raw.find((x) => x.id === r.id)!}
+                      className="cursor-pointer"
+                      onClick={() => openDetails("waitlistId", r.id)}
+                    >
+                      {visibleSafe.map((c) => {
+                        let v: any = (r as any)[c.key];
+                        if (c.key === "depositPaidAt" || c.key === "lastActivityAt") v = fmtDate(v);
+                        return <TableCell key={c.key}>{Array.isArray(v) ? v.join(", ") : v ?? ""}</TableCell>;
+                      })}
+                    </TableRow>
+                  ))}
+              </tbody>
+            </table>
+          </Table>
+        </DetailsHost>
+      </div>
+
+      {/* Add to Waitlist Modal wiring */}
+      <WaitlistAddBridge api={api} tenantId={tenantId} onCreated={load} />
+    </Card>
+  );
+}
+
+/** Small bridge to open AddToWaitlistModal from the toolbar button without custom row hacks */
+function WaitlistAddBridge({ api, tenantId, onCreated }: { api: ReturnType<typeof makeOffspringApi> | null; tenantId: number | null; onCreated: () => Promise<void> | void }) {
+  const [open, setOpen] = React.useState(false);
+  React.useEffect(() => {
+    const h = () => setOpen(true);
+    window.addEventListener("bhq:offspring:add-waitlist", h as any);
+    return () => window.removeEventListener("bhq:offspring:add-waitlist", h as any);
+  }, []);
+  return (
+    <AddToWaitlistModal
+      api={api}
+      tenantId={tenantId}
+      open={open}
+      onClose={() => setOpen(false)}
+      onCreated={onCreated}
+      allowedSpecies={["Dog", "Cat", "Horse"]}
+    />
+  );
+}
+
+export default function WaitlistPage({ embed = false }: { embed?: boolean } = {}) {
+  const [tenantId, setTenantId] = React.useState<number | null>(() => readTenantIdFast() ?? null);
+  const [api, setApi] = React.useState<ReturnType<typeof makeOffspringApi> | null>(null);
+  const [readOnlyGlobal] = React.useState<boolean>(() => {
+    try {
+      const raw = localStorage.getItem("bhq_read_only");
+      return raw === "1" || raw === "true";
+    } catch {
+      return false;
+    }
+  });
+
   React.useEffect(() => {
     let alive = true;
     (async () => {
-      try {
-        // Optional tenant settings endpoint, tolerate absence
-        // Expect shape like { allowedSpecies: ["Dog","Cat"] }
-        const res = await (api as any)?.tenants?.settings?.get?.();
-        const arr: string[] = res?.allowedSpecies ?? res?.offspringAllowedSpecies ?? null;
-        if (alive && Array.isArray(arr) && arr.length) {
-          const cleaned = arr
-            .map((s) => String(s).trim())
-            .filter((s) => ["Dog", "Cat", "Horse"].includes(s)) as SpeciesUi[];
-          if (cleaned.length) setAllowedSpecies(cleaned);
-        }
-      } catch { }
+      const t = tenantId ?? (await resolveTenantId());
+      if (!alive) return;
+      setTenantId(t ?? null);
+      if (t) setApi(makeOffspringApi({ tenantId: t }));
     })();
     return () => {
       alive = false;
     };
-  }, [api]);
-
-  // Permissions, gate editing
-  const readOnlyGlobal = !((window as any).bhqPerms?.offspring?.canEdit ?? true);
-
-  const [activeTab, setActiveTab] =
-    React.useState<"offspring" | "groups" | "waitlist">("groups");
-
-  // URL-driven tab routing and auto-open
-  React.useEffect(() => {
-    const apply = () => {
-      const url = new URL(window.location.href);
-      const directTab = (url.searchParams.get("tab") || url.hash.replace("#", "")) as "offspring" | "groups" | "waitlist" | null;
-      if (directTab && (directTab === "offspring" || directTab === "groups" || directTab === "waitlist")) {
-        setActiveTab(directTab);
-        return;
-      }
-      const gid = url.searchParams.get("groupId");
-      const wid = url.searchParams.get("waitlistId");
-      if (gid) setActiveTab("groups");
-      else if (wid) setActiveTab("waitlist");
-      else setActiveTab("groups"); // default when nothing in URL
-    };
-    apply();
-    const onPop = () => apply();
-    window.addEventListener("popstate", onPop);
-    return () => window.removeEventListener("popstate", onPop);
-  }, []);
-
-  const handleTabChange = React.useCallback(
-    (next: "offspring" | "groups" | "waitlist") => {
-      setActiveTab(next);
-      try {
-        const url = new URL(window.location.href);
-        url.searchParams.set("tab", next);
-        window.history.replaceState({}, "", url.toString());
-      } catch {
-        // ignore URL failures in embedded shells
-      }
-    },
-    []
-  );
+  }, [tenantId]);
 
   return (
-    <div className="p-4 space-y-4">
-      {/* One global mount for overlays and drawers, same as other modules */}
-      <OverlayMount root={overlayRootSafe} />
-
-      <PageHeader
-        title="Offspring"
-        subtitle={
-          activeTab === "offspring"
-            ? "Managed individual Offspring"
-            : activeTab === "groups"
-              ? "Offspring Groups"
-              : "Global Waitlist"
-        }
-        rightSlot={<UnderlineTabs value={activeTab} onChange={handleTabChange} />}
-      />
-
-      {activeTab === "offspring" && <OffspringPage embed />}
-      {activeTab === "groups" && <OffspringGroupsTab api={api} tenantId={tenantId} readOnlyGlobal={readOnlyGlobal} />}
-      {activeTab === "waitlist" && <WaitlistPage embed />}
+    <div className={embed ? "" : "p-3"}>
+      <WaitlistTab api={api} tenantId={tenantId} readOnlyGlobal={readOnlyGlobal} />
     </div>
   );
 }

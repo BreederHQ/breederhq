@@ -1,4 +1,4 @@
-// apps/offspring/src/api.ts
+
 import { readTenantIdFast, resolveTenantId } from "@bhq/ui/utils/tenant";
 
 /* ───────────────────────── types (unchanged + additions for Breeding) ───────────────────────── */
@@ -292,6 +292,45 @@ export type CreateOffspringAttachmentBody = {
   createdByUserId?: string | null;
 };
 
+
+/* ===== Offspring Groups, link state and suggestions (new) ===== */
+export type OffspringGroupLite = {
+  id: number;
+  tenantId: number;
+  planId: number | null;
+  linkState: "linked" | "orphan" | string;
+  species?: Species | null;
+  damId?: number | null;
+  sireId?: number | null;
+  expectedBirthOn?: string | null;
+  actualBirthOn?: string | null;
+  tentativeName?: string | null;
+};
+
+export type OffspringGroupLinkSuggestion = {
+  planId: number;
+  planName: string;
+  matchScore: number;
+  expectedBirthDate: string | null;
+  damName: string | null;
+  sireName: string | null;
+};
+
+/* Response shape for plan commit ensure */
+export type CommitPlanEnsureResp = {
+  planId: number;
+  group: OffspringGroupLite;
+};
+
+export type Attachment = {
+  id: number;
+  name?: string;
+  filename?: string;
+  url?: string;
+  size?: number;
+  createdAt?: string;
+};
+
 /* ===== Breeding (READ-ONLY for offspring UI) ===== */
 
 export type BreedingPlanStatus =
@@ -483,26 +522,107 @@ async function http<T>(base: string, path: string, init?: RequestInit & { tenant
   }
 }
 
+const toItems = (res: any) => (Array.isArray(res) ? res : res?.items ?? []);
+
+/* Special: raw multipart form POST that preserves Content-Type */
+async function httpForm<T>(base: string, path: string, form: FormData, init?: RequestInit & { tenantId?: number | null }) {
+  const url = `${base}${path}`;
+  const prepared = await withTenantHeaders({ ...(init || {}), method: "POST" });
+  // Remove JSON header so the browser sets multipart/form-data with boundary
+  if ((prepared.headers as any)?.["content-type"]) delete (prepared.headers as any)["content-type"];
+  const res = await fetch(url, { ...prepared, body: form });
+  const text = await res.text();
+  if (!res.ok) {
+    let msg = `HTTP ${res.status}`;
+    try {
+      const j = text ? JSON.parse(text) : {};
+      msg = j?.error || j?.message || msg;
+    } catch {}
+    throw new Error(msg);
+  }
+  if (!text.trim()) return null as unknown as T;
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    // some backends return the created attachment object; if not JSON, still return something
+    return ({ ok: true } as unknown) as T;
+  }
+}
+
 /* ───────────────────────── API factory ───────────────────────── */
+
+function makeAttachmentsClient(base: string, raw: {
+  get: <T = any>(url: string) => Promise<T>;
+  postForm: <T = any>(url: string, form: FormData) => Promise<T>;
+  del: (url: string) => Promise<void>;
+}) {
+  async function tryFirst<T>(fns: Array<() => Promise<T>>): Promise<T> {
+    let lastErr: any;
+    for (const fn of fns) {
+      try { return await fn(); } catch (e) { lastErr = e; }
+    }
+    throw lastErr;
+  }
+
+  return {
+    async listForGroup(groupId: number) {
+      return tryFirst<Attachment[]>([
+        // legacy litter route
+        () => raw.get<Attachment[]>(`/offspring/${groupId}/attachments`),
+        // new group route
+        () => raw.get<Attachment[]>(`/offspring-groups/${groupId}/attachments`),
+        // fallback query
+        () => raw.get<Attachment[]>(`/attachments?groupId=${groupId}`),
+      ]);
+    },
+    async uploadToGroup(groupId: number, file: File) {
+      const form = new FormData();
+      form.append("file", file);
+      return tryFirst<Attachment>([
+        () => raw.postForm<Attachment>(`/offspring/${groupId}/attachments`, form),
+        () => raw.postForm<Attachment>(`/offspring-groups/${groupId}/attachments`, form),
+        () => { const f = new FormData(); f.append("file", file); f.append("groupId", String(groupId)); return raw.postForm<Attachment>(`/attachments`, f); },
+      ]);
+    },
+    async removeFromGroup(groupId: number, attachmentId: number) {
+      return tryFirst<void>([
+        () => raw.del(`/offspring/${groupId}/attachments/${attachmentId}`),
+        () => raw.del(`/offspring-groups/${groupId}/attachments/${attachmentId}`),
+        () => raw.del(`/attachments/${attachmentId}`),
+      ]);
+    },
+  };
+}
 
 type MakeOpts = string | { baseUrl?: string };
 export function makeOffspringApi(opts: MakeOpts = "/api/v1") {
   const base = typeof opts === "string" ? opts : opts.baseUrl || "/api/v1";
 
+  const raw = {
+    get: <T>(path: string, init?: RequestInit & { tenantId?: number | null }) =>
+      http<T>(base, path, { ...init, method: "GET" }),
+    post: <T>(path: string, body?: any, init?: RequestInit & { tenantId?: number | null }) =>
+      http<T>(base, path, { ...init, method: "POST", body: body == null ? undefined : JSON.stringify(body) }),
+    patch: <T>(path: string, body?: any, init?: RequestInit & { tenantId?: number | null }) =>
+      http<T>(base, path, { ...init, method: "PATCH", body: body == null ? undefined : JSON.stringify(body) }),
+    del: <T>(path: string, init?: RequestInit & { tenantId?: number | null }) =>
+      http<T>(base, path, { ...init, method: "DELETE" }),
+    postForm: <T>(path: string, form: FormData, init?: RequestInit & { tenantId?: number | null }) =>
+      httpForm<T>(base, path, form, init),
+  };
+
   return {
     /** Low-level helpers (use sparingly) */
-    raw: {
-      get: <T>(path: string, init?: RequestInit & { tenantId?: number | null }) =>
-        http<T>(base, path, { ...init, method: "GET" }),
-      post: <T>(path: string, body?: any, init?: RequestInit & { tenantId?: number | null }) =>
-        http<T>(base, path, { ...init, method: "POST", body: body == null ? undefined : JSON.stringify(body) }),
-      patch: <T>(path: string, body?: any, init?: RequestInit & { tenantId?: number | null }) =>
-        http<T>(base, path, { ...init, method: "PATCH", body: body == null ? undefined : JSON.stringify(body) }),
-      del: <T>(path: string, init?: RequestInit & { tenantId?: number | null }) =>
-        http<T>(base, path, { ...init, method: "DELETE" }),
-    },
+    raw,
 
-    /** Offspring Groups (Litters) */
+    /** Attachments (works for both groups and legacy litter IDs) */
+    attachments: makeAttachmentsClient(base, {
+      get: (url) => raw.get(url),
+      postForm: (url, form) => raw.postForm(url, form),
+      del: (url) => raw.del(url),
+    }),
+
+    /** Offspring Groups (Litters & Group linking) */
     offspring: {
       list: (params?: {
         q?: string;
@@ -653,6 +773,53 @@ export function makeOffspringApi(opts: MakeOpts = "/api/v1") {
           tenantId: opts?.tenantId,
           headers: opts?.adminToken ? { "x-admin-token": opts.adminToken } : undefined,
         }),
+
+      /* ───────────── Groups sub-namespace (moved here; was incorrectly under breeds) ───────────── */
+      groups: {
+        /** POST /api/offspring/groups (create; plan optional; idempotent by plan) */
+        create: (
+          body: { planId?: number | null; actorId: string },
+          opts?: { tenantId?: number | null }
+        ) =>
+          http<OffspringGroupLite>(base, `/offspring/groups`, {
+            method: "POST",
+            body: JSON.stringify(body),
+            tenantId: opts?.tenantId,
+          }),
+
+        /** GET /api/offspring/groups/by-plan/:planId */
+        getByPlan: (planId: number, opts?: { tenantId?: number | null }) =>
+          http<OffspringGroupLite>(base, `/offspring/groups/by-plan/${planId}`, {
+            method: "GET",
+            tenantId: opts?.tenantId,
+          }),
+
+        /** POST /api/offspring/groups/:groupId/link */
+        link: (groupId: number, body: { planId: number; actorId: string }, opts?: { tenantId?: number | null }) =>
+          http<OffspringGroupLite>(base, `/offspring/groups/${groupId}/link`, {
+            method: "POST",
+            body: JSON.stringify(body),
+            tenantId: opts?.tenantId,
+          }),
+
+        /** POST /api/offspring/groups/:groupId/unlink */
+        unlink: (groupId: number, body: { actorId: string }, opts?: { tenantId?: number | null }) =>
+          http<OffspringGroupLite>(base, `/offspring/groups/${groupId}/unlink`, {
+            method: "POST",
+            body: JSON.stringify(body),
+            tenantId: opts?.tenantId,
+          }),
+
+        /** GET /api/offspring/groups/:groupId/link-suggestions */
+        getLinkSuggestions: (groupId: number, params?: { limit?: number; tenantId?: number | null }) => {
+          const qs = new URLSearchParams();
+          if (params?.limit != null) qs.set("limit", String(params.limit));
+          const query = qs.toString() ? `?${qs.toString()}` : "";
+          return http<OffspringGroupLinkSuggestion[]>(base, `/offspring/groups/${groupId}/link-suggestions${query}`, {
+            tenantId: params?.tenantId,
+          });
+        },
+      },
     },
 
     /** Individuals (animals with litterId not null) */
@@ -746,6 +913,13 @@ export function makeOffspringApi(opts: MakeOpts = "/api/v1") {
            Offspring UI reads them. We expose list endpoints aligned to routes. */
         listEvents: (planId: number, opts?: { tenantId?: number | null }) =>
           http<BreedingEvent[]>(base, `/breeding/plans/${planId}/events`, { tenantId: opts?.tenantId }),
+        commit: (planId: number, body: { actorId: string }, opts?: { tenantId?: number | null }) =>
+          http<CommitPlanEnsureResp>(base, `/breeding/plans/${planId}/commit`, {
+            method: "POST",
+            body: JSON.stringify(body),
+            tenantId: opts?.tenantId,
+          }),
+    
         listTests: (planId: number, opts?: { tenantId?: number | null }) =>
           http<TestResult[]>(base, `/breeding/plans/${planId}/tests`, { tenantId: opts?.tenantId }),
         listAttempts: (planId: number, opts?: { tenantId?: number | null }) =>
@@ -898,6 +1072,7 @@ export function makeOffspringApi(opts: MakeOpts = "/api/v1") {
         }),
     },
 
+    /** Breeds (canonical list only) */
     breeds: {
       listCanonical: (opts: { species: string; orgId?: number; limit?: number }) => {
         const qs = new URLSearchParams();
@@ -906,6 +1081,491 @@ export function makeOffspringApi(opts: MakeOpts = "/api/v1") {
         if (opts.limit != null) qs.set("limit", String(opts.limit));
         return http<any[]>(base, `/breeds/canonical?${qs.toString()}`);
       },
+    },
+  };
+}
+
+
+
+/* =====================================================================================
+   Offspring API client, aligned to current schema, appended 2025-11-12
+   Centralized HTTP client for offspring, groups, waitlist, attachments, contracts, invoices.
+   ===================================================================================== */
+
+type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+const API_BASE = "/api/v1";
+
+
+async function httpJson<T>(
+  method: HttpMethod,
+  url: string,
+  body?: any,
+  init?: RequestInit
+): Promise<T> {
+  const tenantId = readTenantIdFast();
+
+  const baseHeaders: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+
+  const initHeaders = (init?.headers || {}) as Record<string, string>;
+
+  const headers: Record<string, string> = {
+    ...baseHeaders,
+    ...initHeaders,
+  };
+
+  // Only add x-tenant-id if caller has not already set it
+  if (tenantId != null && headers["x-tenant-id"] == null) {
+    headers["x-tenant-id"] = String(tenantId);
+  }
+
+  const res = await fetch(url, {
+    ...init,
+    method,
+    headers,
+    body: body == null ? undefined : JSON.stringify(body),
+  });
+
+  if (!res.ok) {
+    throw new Error(`${method} ${url} → ${res.status}`);
+  }
+
+  return (await res.json()) as T;
+}
+
+export type PageResult<T> = { rows: T[]; total: number; page: number; pageSize: number; };
+type QueryParams = Record<string, string | number | boolean | undefined | null>;
+const encQuery = (q?: QueryParams) => q ? "?" + Object.entries(q).filter(([,v])=>v!=null && v!=="").map(([k,v])=>encodeURIComponent(k)+"="+encodeURIComponent(String(v))).join("&") : "";
+
+/* ===== DTOs (schema-derived) ===== */
+export type ContactDTO = {
+  id: number;
+  tenantId: number;
+  organizationId?: number;
+  organization?: Organization;
+  tenant: Tenant;
+  display_name: string;
+  first_name?: string;
+  last_name?: string;
+  nickname?: string;
+  email?: string;
+  phoneE164?: string;
+  whatsappE164?: string;
+  street?: string;
+  street2?: string;
+  city?: string;
+  state?: string;
+  zip?: string;
+  country?: string;
+  tagAssignments: TagAssignment[];
+  animalOwnerships: AnimalOwner[];
+  users: User[];
+  breedingAttemptsAsStudOwner: BreedingAttempt[];
+  waitlistEntries: WaitlistEntry[];
+  animalsPurchased: Animal[];
+  archived: boolean;
+  createdAt: string;
+  updatedAt: string;
+  Attachment: Attachment[];
+  PlanParty: PlanParty[];
+  Offspring: Offspring[];
+  OffspringContracts: OffspringContract[];
+  Invoice: Invoice[];
+  ContractParty: ContractParty[];
+};
+
+export type AnimalDTO = {
+  id: number;
+  tenantId: number;
+  tenant: Tenant;
+  organizationId?: number;
+  organization?: Organization;
+  name: string;
+  species: Species;
+  sex: Sex;
+  status: AnimalStatus;
+  birthDate?: string;
+  microchip?: string;
+  notes?: string;
+  breed?: string;
+  canonicalBreedId?: number;
+  canonicalBreed?: Breed;
+  customBreedId?: number;
+  customBreed?: CustomBreed;
+  reproductiveCycles: ReproductiveCycle[];
+  breedingPlansAsDam: BreedingPlan[];
+  breedingPlansAsSire: BreedingPlan[];
+  litterId?: number;
+  litter?: Litter;
+  offspringGroupId?: number;
+  offspringGroup?: OffspringGroup;
+  offspringGroupsAsDam: OffspringGroup[];
+  offspringGroupsAsSire: OffspringGroup[];
+  waitlistAllocations: WaitlistEntry[];
+  waitlistSirePrefs: WaitlistEntry[];
+  waitlistDamPrefs: WaitlistEntry[];
+  collarColorId?: string;
+  collarColorName?: string;
+  collarColorHex?: string;
+  collarAssignedAt?: string;
+  collarLocked: boolean;
+  buyerPartyType?: OwnerPartyType;
+  buyerContactId?: number;
+  buyerContact?: Contact;
+  buyerOrganizationId?: number;
+  buyerOrganization?: Organization;
+  priceCents?: number;
+  depositCents?: number;
+  saleInvoiceId?: string;
+  contractId?: string;
+  contractSignedAt?: string;
+  paidInFullAt?: string;
+  healthCertAt?: string;
+  microchipAppliedAt?: string;
+  pickupAt?: string;
+  placedAt?: string;
+  tagAssignments: TagAssignment[];
+  owners: AnimalOwner[];
+  registryIds: AnimalRegistryIdentifier[];
+  shares: AnimalShare[];
+  publicListing?: AnimalPublicListing;
+  createdAt: string;
+  updatedAt: string;
+  archived: boolean;
+  TestResult: TestResult[];
+  Attachment: Attachment[];
+  Offspring: Offspring[];
+};
+
+export type BreedingPlanDTO = {
+  id: number;
+  tenantId: number;
+  tenant: Tenant;
+  organizationId?: number;
+  organization?: Organization;
+  code?: string;
+  name: string;
+  nickname?: string;
+  species: Species;
+  breedText?: string;
+  damId: number;
+  dam: Animal;
+  sireId?: number;
+  sire?: Animal;
+  lockedCycleKey?: string;
+  lockedCycleStart?: string;
+  lockedOvulationDate?: string;
+  lockedDueDate?: string;
+  lockedPlacementStartDate?: string;
+  expectedCycleStart?: string;
+  expectedHormoneTestingStart?: string;
+  expectedBreedDate?: string;
+  expectedBirthDate?: string;
+  expectedWeaned?: string;
+  expectedPlacementStart?: string;
+  expectedPlacementCompleted?: string;
+  cycleStartDateActual?: string;
+  hormoneTestingStartDateActual?: string;
+  breedDateActual?: string;
+  birthDateActual?: string;
+  weanedDateActual?: string;
+  placementStartDateActual?: string;
+  placementCompletedDateActual?: string;
+  completedDateActual?: string;
+  status: BreedingPlanStatus;
+  notes?: string;
+  committedAt?: string;
+  committedByUserId?: string;
+  committedByUser?: User;
+  depositsCommittedCents?: number;
+  depositsPaidCents?: number;
+  depositRiskScore?: number;
+  Litter?: Litter;
+  offspringGroup?: OffspringGroup;
+  Events: BreedingPlanEvent[];
+  Waitlist: WaitlistEntry[];
+  Shares: BreedingPlanShare[];
+  TestResults: TestResult[];
+  BreedingAttempts: BreedingAttempt[];
+  PregnancyChecks: PregnancyCheck[];
+  Attachments: Attachment[];
+  Parties: PlanParty[];
+  archived: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type OffspringGroupDTO = {
+  id: number;
+  tenantId: number;
+  tenant: Tenant;
+  planId?: number;
+  plan?: BreedingPlan;
+  linkState: OffspringLinkState;
+  linkReason?: OffspringLinkReason;
+  species: Species;
+  damId: number;
+  dam: Animal;
+  sireId?: number;
+  sire?: Animal;
+  tentativeName?: string;
+  expectedBirthOn?: string;
+  actualBirthOn?: string;
+  countBorn?: number;
+  countLive?: number;
+  countStillborn?: number;
+  countMale?: number;
+  countFemale?: number;
+  countWeaned?: number;
+  countPlaced?: number;
+  weanedAt?: string;
+  placementStartAt?: string;
+  placementCompletedAt?: string;
+  published: boolean;
+  coverImageUrl?: string;
+  themeName?: string;
+  notes?: string;
+  data?: any;
+  Offspring: Offspring[];
+  AnimalsLegacy: Animal[];
+  Waitlist: WaitlistEntry[];
+  Tags: TagAssignment[];
+  Events: OffspringGroupEvent[];
+  Attachment: Attachment[];
+  createdAt: string;
+  updatedAt: string;
+  Invoice: Invoice[];
+  Campaign: Campaign[];
+  Task: Task[];
+  Document: Document[];
+  Contract: Contract[];
+};
+
+export type OffspringDTO = {
+  id: number;
+  tenantId: number;
+  tenant: Tenant;
+  groupId: number;
+  group: OffspringGroup;
+  name?: string;
+  species: Species;
+  sex?: Sex;
+  bornAt?: string;
+  diedAt?: string;
+  status: OffspringStatus;
+  collarColorId?: string;
+  collarColorName?: string;
+  collarColorHex?: string;
+  collarAssignedAt?: string;
+  collarLocked: boolean;
+  buyerPartyType?: OwnerPartyType;
+  buyerContactId?: number;
+  buyerContact?: Contact;
+  buyerOrganizationId?: number;
+  buyerOrganization?: Organization;
+  priceCents?: number;
+  depositCents?: number;
+  contractId?: string;
+  contractSignedAt?: string;
+  paidInFullAt?: string;
+  pickupAt?: string;
+  placedAt?: string;
+  promotedAnimalId?: number;
+  promotedAnimal?: Animal;
+  notes?: string;
+  data?: any;
+  Tags: TagAssignment[];
+  Attachments: Attachment[];
+  Events: OffspringEvent[];
+  WaitlistAllocations: WaitlistEntry[];
+  Invoices: Invoice[];
+  Tasks: Task[];
+  HealthLogs: HealthEvent[];
+  Documents: Document[];
+  Contracts: Contract[];
+  createdAt: string;
+  updatedAt: string;
+  InvoiceLinks: OffspringInvoiceLink[];
+  CampaignAttribution: CampaignAttribution[];
+  OffspringDocument: OffspringDocument[];
+  OffspringContract: OffspringContract[];
+};
+
+export type OffspringEventDTO = {
+  id: number;
+  tenantId: number;
+  tenant: Tenant;
+  offspringId: number;
+  offspring: Offspring;
+  type: string;
+  occurredAt: string;
+  field?: string;
+  before?: any;
+  after?: any;
+  notes?: string;
+  recordedByUserId?: string;
+  recordedByUser?: User;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type WaitlistEntryDTO = {
+  id: number;
+  tenantId: number;
+  tenant: Tenant;
+  planId?: number;
+  plan?: BreedingPlan;
+  litterId?: number;
+  litter?: Litter;
+  offspringGroupId?: number;
+  offspringGroup?: OffspringGroup;
+  partyType: OwnerPartyType;
+  contactId?: number;
+  contact?: Contact;
+  organizationId?: number;
+  organization?: Organization;
+  speciesPref?: Species;
+  breedPrefs?: any;
+  sirePrefId?: number;
+  sirePref?: Animal;
+  damPrefId?: number;
+  damPref?: Animal;
+  status: WaitlistStatus;
+  priority?: number;
+  depositInvoiceId?: string;
+  balanceInvoiceId?: string;
+  depositPaidAt?: string;
+  depositRequiredCents?: number;
+  depositPaidCents?: number;
+  balanceDueCents?: number;
+  animalId?: number;
+  animal?: Animal;
+  offspringId?: number;
+  offspring?: Offspring;
+  skipCount?: number;
+  lastSkipAt?: string;
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+  TagAssignment: TagAssignment[];
+};
+
+export type AttachmentDTO = {
+  id: number;
+  tenantId: number;
+  tenant: Tenant;
+  planId?: number;
+  plan?: BreedingPlan;
+  animalId?: number;
+  animal?: Animal;
+  litterId?: number;
+  litter?: Litter;
+  offspringGroupId?: number;
+  offspringGroup?: OffspringGroup;
+  offspringId?: number;
+  offspring?: Offspring;
+  contactId?: number;
+  contact?: Contact;
+  kind: string;
+  storageProvider: string;
+  storageKey: string;
+  filename: string;
+  mime: string;
+  bytes: number;
+  createdByUserId?: string;
+  createdByUser?: User;
+  createdAt: string;
+  OffspringDocument: OffspringDocument[];
+  OffspringContract: OffspringContract[];
+};
+
+export type OffspringContractDTO = {
+  id: number;
+  tenantId: number;
+  tenant: Tenant;
+  offspringId: number;
+  offspring: Offspring;
+  title: string;
+  version?: string;
+  provider?: EsignProvider;
+  status: EsignStatus;
+  sentAt?: string;
+  viewedAt?: string;
+  signedAt?: string;
+  fileId?: number;
+  file?: Attachment;
+  buyerContactId?: number;
+  buyerContact?: Contact;
+  buyerOrganizationId?: number;
+  buyerOrganization?: Organization;
+  metaJson?: any;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type OffspringInvoiceLinkDTO = {
+  id: number;
+  tenantId: number;
+  tenant: Tenant;
+  offspringId: number;
+  offspring: Offspring;
+  invoiceId?: number;
+  invoice?: Invoice;
+  role: InvoiceRole;
+  amountCents?: number;
+  currency?: string;
+  externalProvider?: string;
+  externalId?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+
+/* ===== Client factory ===== */
+export function makeOffspringApiClient() {
+  const tenantId = readTenantIdFast();
+  return {
+    groups: {
+      list: (q?: QueryParams) => httpJson<PageResult<OffspringGroupDTO>>("GET", `${API_BASE}/offspring/groups${encQuery({ ...q, tenantId })}`),
+      get:  (id: number) => httpJson<OffspringGroupDTO>("GET", `${API_BASE}/offspring/groups/${id}?tenantId=${tenantId}`),
+      create: (data: Partial<OffspringGroupDTO>) => httpJson<OffspringGroupDTO>("POST", `${API_BASE}/offspring/groups?tenantId=${tenantId}`, data),
+      update: (id: number, data: Partial<OffspringGroupDTO>) => httpJson<OffspringGroupDTO>("PATCH", `${API_BASE}/offspring/groups/${id}?tenantId=${tenantId}`, data),
+      remove: (id: number) => httpJson<{ success: true }>("DELETE", `${API_BASE}/offspring/groups/${id}?tenantId=${tenantId}`),
+      ensureForPlan: (planId: number) => httpJson<OffspringGroupDTO>("POST", `${API_BASE}/offspring/groups/ensureForPlan?tenantId=${tenantId}`, { planId }),
+    },
+    offspring: {
+      list: (q?: QueryParams) => httpJson<PageResult<OffspringDTO>>("GET", `${API_BASE}/offspring${encQuery({ ...q, tenantId })}`),
+      get: (id: number) => httpJson<OffspringDTO>("GET", `${API_BASE}/offspring/${id}?tenantId=${tenantId}`),
+      create: (data: Partial<OffspringDTO>) => httpJson<OffspringDTO>("POST", `${API_BASE}/offspring?tenantId=${tenantId}`, data),
+      update: (id: number, data: Partial<OffspringDTO>) => httpJson<OffspringDTO>("PATCH", `${API_BASE}/offspring/${id}?tenantId=${tenantId}`, data),
+      remove: (id: number) => httpJson<{ success: true }>("DELETE", `${API_BASE}/offspring/${id}?tenantId=${tenantId}`),
+      events: {
+        list: (offspringId: number) => httpJson<OffspringEventDTO[]>("GET", `${API_BASE}/offspring/${offspringId}/events?tenantId=${tenantId}`),
+        add:  (offspringId: number, data: Partial<OffspringEventDTO>) => httpJson<OffspringEventDTO>("POST", `${API_BASE}/offspring/${offspringId}/events?tenantId=${tenantId}`, data),
+        remove: (offspringId: number, eventId: number) => httpJson<{ success: true }>("DELETE", `${API_BASE}/offspring/${offspringId}/events/${eventId}?tenantId=${tenantId}`),
+      },
+    },
+    waitlist: {
+      list: (q?: QueryParams) => httpJson<PageResult<WaitlistEntryDTO>>("GET", `${API_BASE}/offspring/waitlist${encQuery({ ...q, tenantId })}`),
+      get: (id: number) => httpJson<WaitlistEntryDTO>("GET", `${API_BASE}/offspring/waitlist/${id}?tenantId=${tenantId}`),
+      create: (data: Partial<WaitlistEntryDTO>) => httpJson<WaitlistEntryDTO>("POST", `${API_BASE}/offspring/waitlist?tenantId=${tenantId}`, data),
+      update: (id: number, data: Partial<WaitlistEntryDTO>) => httpJson<WaitlistEntryDTO>("PATCH", `${API_BASE}/offspring/waitlist/${id}?tenantId=${tenantId}`, data),
+      remove: (id: number) => httpJson<{ success: true }>("DELETE", `${API_BASE}/offspring/waitlist/${id}?tenantId=${tenantId}`),
+    },
+    attachments: {
+      listForGroup: (groupId: number) => httpJson<AttachmentDTO[]>("GET", `${API_BASE}/offspring/groups/${groupId}/attachments?tenantId=${tenantId}`),
+      listForOffspring: (offspringId: number) => httpJson<AttachmentDTO[]>("GET", `${API_BASE}/offspring/${offspringId}/attachments?tenantId=${tenantId}`),
+      addToGroup: (groupId: number, data: Partial<AttachmentDTO>) => httpJson<AttachmentDTO>("POST", `${API_BASE}/offspring/groups/${groupId}/attachments?tenantId=${tenantId}`, data),
+      addToOffspring: (offspringId: number, data: Partial<AttachmentDTO>) => httpJson<AttachmentDTO>("POST", `${API_BASE}/offspring/${offspringId}/attachments?tenantId=${tenantId}`, data),
+      remove: (attachmentId: number) => httpJson<{ success: true }>("DELETE", `${API_BASE}/attachments/${attachmentId}?tenantId=${tenantId}`),
+    },
+    contracts: {
+      listForGroup: (groupId: number) => httpJson<OffspringContractDTO[]>("GET", `${API_BASE}/offspring/groups/${groupId}/contracts?tenantId=${tenantId}`),
+      createForGroup: (groupId: number, data: Partial<OffspringContractDTO>) => httpJson<OffspringContractDTO>("POST", `${API_BASE}/offspring/groups/${groupId}/contracts?tenantId=${tenantId}`, data),
+    },
+    invoices: {
+      listForGroup: (groupId: number) => httpJson<OffspringInvoiceLinkDTO[]>("GET", `${API_BASE}/offspring/groups/${groupId}/invoices?tenantId=${tenantId}`),
     },
   };
 }

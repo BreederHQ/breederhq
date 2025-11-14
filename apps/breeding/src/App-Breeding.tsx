@@ -81,9 +81,37 @@ type BHQDateFieldProps = {
   onChange?: (v: string) => void; // will receive ISO yyyy-mm-dd or ""
 };
 
-function computeExpectedForPlan(plan) {
-  const speciesWire = toWireSpecies(plan.species) ?? "DOG";
-  const locked = plan.lockedCycleStart?.slice(0, 10) || null;
+// ── Canonical “Testing Start” picker: prefer full-window[0] → expected → start; else +7d from locked ──
+function pickExpectedTestingStart(preview: any, lockedCycleStart?: string | null) {
+  const day = (s: any) => (s ? String(s).slice(0, 10) : null);
+
+  const fromPreview =
+    preview?.hormone_testing_full?.[0] ??
+    preview?.hormoneTesting_full?.[0] ??
+    preview?.hormone_testing_expected ??
+    preview?.testing_expected ??
+    preview?.testing_start ??
+    preview?.hormone_testing_start ??
+    null;
+
+  if (fromPreview) return day(fromPreview);
+
+  if (lockedCycleStart) {
+    const [y, m, d] = String(lockedCycleStart).slice(0, 10).split("-").map(Number);
+    const t = Date.UTC(y, m - 1, d) + 7 * 86400000; // +7 days in UTC
+    const dt = new Date(t);
+    const yyyy = dt.getUTCFullYear();
+    const mm = String(dt.getUTCMonth() + 1).padStart(2, "0");
+    const dd = String(dt.getUTCDate()).padStart(2, "0");
+    return `${yyyy}-${mm}-${dd}`;
+  }
+  return null;
+}
+
+
+function computeExpectedForPlan(plan: { species?: string; lockedCycleStart?: string | null }) {
+  const speciesWire = toWireSpecies(plan.species as any) ?? "DOG";
+  const locked = (plan.lockedCycleStart || "").slice(0, 10) || null;
 
   if (!locked) {
     return {
@@ -97,32 +125,66 @@ function computeExpectedForPlan(plan) {
     };
   }
 
-  const m = expectedMilestonesFromLocked(locked, speciesWire);
-  const testing = expectedTestingFromCycleStart(new Date(locked));
+  // ---- helpers: keep everything date-only in UTC, no local Date() drift ----
+  const onlyDay = (v: any): string | null => {
+    if (!v) return null;
+    const s = String(v);
+    if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+    // If it's ISO with time, slice the day; otherwise bail out.
+    const iso = s.includes("T") ? s.slice(0, 10) : null;
+    return /^\d{4}-\d{2}-\d{2}$/.test(iso || "") ? iso : null;
+  };
 
-  const iso = (d) => (d instanceof Date ? d.toISOString().slice(0, 10) : d ?? null);
+  const addDays = (yyyyMmDd: string, n: number): string => {
+    const [y, m, d] = yyyyMmDd.split("-").map(Number);
+    const t = Date.UTC(y, m - 1, d);
+    const dt = new Date(t + n * 86400000);
+    const yy = dt.getUTCFullYear();
+    const mm = String(dt.getUTCMonth() + 1).padStart(2, "0");
+    const dd = String(dt.getUTCDate()).padStart(2, "0");
+    return `${yy}-${mm}-${dd}`;
+  };
 
-  const placementStart =
-    m.placement_expected ??
-    m.placement_start_expected ??
-    m.placement_start ??
-    null;
+  // Core projections from breeding math
+  const m = expectedMilestonesFromLocked(locked, speciesWire) || {};
 
-  const placementCompleted =
-    m.placement_extended_end ??
-    m.placement_extended_end_expected ??
-    m.placement_expected_end ??
-    m.placement_completed_expected ??
-    null;
+  // Match the Dates tab’s preference order for each field
+  const expectedCycleStart = locked;
+
+  // Testing start: mirror pickExpectedTestingStart() logic used in Dates tab
+  const expectedHormoneTestingStart = pickExpectedTestingStart(m, locked);
+
+  // Breed/ovulation (Dates tab shows ovulation as “Breeding (Expected)”)
+  const expectedBreedDate = onlyDay(m.ovulation ?? m.breeding_expected) || null;
+
+  const expectedBirthDate = onlyDay(m.birth_expected) || null;
+
+  // Weaned date: Dates tab prefers weaning_expected, then weaned_expected, then puppy_care_likely[0]
+  const expectedWeanedDate =
+    onlyDay(m.weaning_expected ?? m.weaned_expected ?? m.puppy_care_likely?.[0]) || null;
+
+  // Placement start: Dates tab uses placement_expected primarily
+  const expectedPlacementStartDate =
+    onlyDay(m.placement_expected ?? m.placement_start_expected ?? m.placement_start) || null;
+
+  // Placement completed: Dates tab prefers extended end, then expected end, then “full” window end
+  const expectedPlacementCompletedDate =
+    onlyDay(
+      m.placement_extended_end ??
+      m.placement_extended_end_expected ??
+      m.placement_expected_end ??
+      m.placement_completed_expected ??
+      m.placement_extended_full?.[1]
+    ) || null;
 
   return {
-    expectedCycleStart: locked,
-    expectedHormoneTestingStart: iso(testing),
-    expectedBreedDate: m.breeding_expected,
-    expectedBirthDate: m.birth_expected,
-    expectedWeanedDate: m.weaned_expected,
-    expectedPlacementStartDate: placementStart,
-    expectedPlacementCompletedDate: placementCompleted,
+    expectedCycleStart,
+    expectedHormoneTestingStart,
+    expectedBreedDate,
+    expectedBirthDate,
+    expectedWeanedDate,
+    expectedPlacementStartDate,
+    expectedPlacementCompletedDate,
   };
 }
 
@@ -159,8 +221,14 @@ function DateField({ label, value, defaultValue, readOnly, onChange }: BHQDateFi
 const toUiSpecies = (s?: string | null): SpeciesUi | "" =>
   s === "DOG" ? "Dog" : s === "CAT" ? "Cat" : s === "HORSE" ? "Horse" : "";
 
-const toWireSpecies = (s: SpeciesUi | ""): SpeciesWire | undefined =>
-  s === "Dog" ? "DOG" : s === "Cat" ? "CAT" : s === "Horse" ? "HORSE" : undefined;
+const toWireSpecies = (s: SpeciesUi | SpeciesWire | ""): SpeciesWire | undefined => {
+  const v = String(s || "").toUpperCase();
+  if (v === "DOG" || v === "CAT" || v === "HORSE") return v as SpeciesWire; // pass-through if already wire
+  if (v === "DOG") return "DOG";
+  if (v === "CAT") return "CAT";
+  if (v === "HORSE") return "HORSE";
+  return undefined;
+};
 
 type PlanRow = {
   id: ID;
@@ -235,12 +303,16 @@ const COLUMNS: Array<{ key: keyof PlanRow & string; label: string; default?: boo
   { key: "expectedHormoneTestingStart", label: "Hormone Testing Start (Exp)", default: false },
   { key: "expectedBreedDate", label: "Breeding (Exp)", default: false },
   { key: "expectedBirthDate", label: "Birth (Exp)", default: false },
+  { key: "expectedWeanedDate", label: "Weaned (Exp)", default: false },
+  { key: "expectedPlacementStartDate", label: "Placement Start (Exp)", default: false },
+  { key: "expectedPlacementCompletedDate", label: "Placement Completed (Exp)", default: false },
+
 
   // Actuals
   { key: "cycleStartDateActual", label: "Cycle Start (Actual)", default: false },
   { key: "hormoneTestingStartDateActual", label: "Hormone Testing Start (Actual)", default: false },
   { key: "breedDateActual", label: "Breeding (Actual)", default: false },
-  { key: "birthDateActual", label: "Birthed", default: false },
+  { key: "birthDateActual", label: "Birth (Actual)", default: false },
   { key: "weanedDateActual", label: "Weaned", default: false },
   { key: "placementStartDateActual", label: "Placement Start (Actual)", default: false },
   { key: "placementCompletedDateActual", label: "Placement Completed (Actual)", default: false },
@@ -441,7 +513,9 @@ function DisplayValue({ value }: { value?: string | null }) {
 
 function fmt(d?: string | null) {
   if (!d) return "";
-  const dt = new Date(d);
+  const s = String(d);
+  // If it's date-only, parse as UTC midnight to avoid TZ drift + invalid parsing
+  const dt = /^\d{4}-\d{2}-\d{2}$/.test(s) ? new Date(`${s}T00:00:00Z`) : new Date(s);
   return Number.isFinite(dt.getTime()) ? dt.toLocaleDateString() : "";
 }
 
@@ -521,14 +595,17 @@ function deriveBreedingStatus(p: {
   damId?: number | null;
   sireId?: number | null;
   lockedCycleStart?: string | null;
-  committedAt?: string | null;
   breedDateActual?: string | null;
   birthDateActual?: string | null;
   weanedDateActual?: string | null;
   placementStartDateActual?: string | null;
   placementCompletedDateActual?: string | null;
   completedDateActual?: string | null;
+  status?: string | null; // ⟵ allow pass-through
 }): Status {
+  const explicit = (p.status ?? "").toUpperCase();
+  if (explicit === "CANCELED") return "CANCELED";
+
   if (p.completedDateActual?.trim()) return "COMPLETE";
   if ((p.placementCompletedDateActual ?? p.placementStartDateActual)?.trim()) return "HOMING_STARTED";
   if (p.weanedDateActual?.trim()) return "WEANED";
@@ -538,7 +615,8 @@ function deriveBreedingStatus(p: {
   const hasBasics = Boolean((p.name ?? "").trim() && (p.species ?? "").trim() && p.damId != null);
   const hasCommitPrereqs = hasBasics && p.sireId != null && (p.lockedCycleStart ?? "").trim();
 
-  if (hasCommitPrereqs && (p.committedAt ?? "").trim()) return "COMMITTED";
+  // If you have a committedAt field in your backend, you can check it here (omitted in this POJO).
+  if (hasCommitPrereqs) return "COMMITTED";
   return "PLANNING";
 }
 
@@ -927,6 +1005,9 @@ export default function AppBreeding() {
       "expectedHormoneTestingStart",
       "expectedBreedDate",
       "expectedBirthDate",
+      "expectedWeanedDate",
+      "expectedPlacementStartDate",
+      "expectedPlacementCompletedDate",
 
       // Actuals
       "cycleStartDateActual",
@@ -997,6 +1078,9 @@ export default function AppBreeding() {
     "expectedHormoneTestingStart",
     "expectedBreedDate",
     "expectedBirthDate",
+    "expectedWeanedDate",
+    "expectedPlacementStartDate",
+    "expectedPlacementCompletedDate",
 
     /* Actuals */
     "cycleStartDateActual",
@@ -1363,7 +1447,8 @@ export default function AppBreeding() {
         if (!api) return;
         const current = rows.find((r) => r.id === id);
         const merged = { ...current, ...draft };
-        const status = deriveBreedingStatus({
+
+        const derived = deriveBreedingStatus({
           name: merged.name,
           species: merged.species,
           damId: merged.damId as any,
@@ -1375,7 +1460,12 @@ export default function AppBreeding() {
           placementStartDateActual: merged.placementStartDateActual as any,
           placementCompletedDateActual: merged.placementCompletedDateActual as any,
           completedDateActual: merged.completedDateActual as any,
+          status: merged.status as any, // pass-through
         });
+
+        // Respect an explicit status in the draft (e.g., "CANCELED"); else fall back to derived.
+        const status = draft.status ?? derived;
+
         const updated = await api.updatePlan(Number(id), { ...draft, status } as any);
         setRows((prev) => prev.map((r) => (r.id === id ? planToRow(updated) : r)));
       },
@@ -1401,17 +1491,28 @@ export default function AppBreeding() {
           }}
           onCommitted={async (planId: ID) => {
             if (!api) return;
-            let updatedPlan: any;
 
-            if ((api as any).commitPlan) {
-              updatedPlan = await (api as any).commitPlan(Number(planId), {});
-            } else {
-              updatedPlan = await api.updatePlan(Number(planId), {
-                status: "COMMITTED",
-              } as any);
+            // pick an actor id from your session utils, then fall back
+            const actorId =
+              (utils as any)?.session?.currentUserId?.() ??
+              (utils as any)?.currentUser?.id ??
+              "ui";
+
+            try {
+              // call the API that ensures an Offspring Group inside the same transaction
+              const resp = await (api as any).commitPlanEnsure(Number(planId), { actorId });
+
+              // refresh the plan for the drawer and table
+              const fresh = await api.getPlan(Number(planId), "parents,org");
+              setRows((prev) => prev.map((r) => (Number(r.id) === Number(planId) ? planToRow(fresh) : r)));
+
+              // optional toast
+              utils.toast?.success?.("Plan committed, group linked.");
+            } catch (e: any) {
+              const msg = e?.payload?.error || e?.message || "Commit failed";
+              utils.toast?.error?.(msg);
+              console.error("[Breeding] commit failed", e);
             }
-
-            setRows((prev) => prev.map((r) => (Number(r.id) === Number(planId) ? planToRow(updatedPlan) : r)));
           }}
           onPlanUpdated={(id, fresh) => {
             setRows((prev) => prev.map((r) => (Number(r.id) === Number(id) ? planToRow(fresh) : r)));
@@ -1971,29 +2072,7 @@ export default function AppBreeding() {
 /* ───────── Small helpers ───────── */
 
 // Helper: choose hormone testing start from preview (aliases) or fallback to cycleStart + 7d
-function pickExpectedTestingStart(preview: any, lockedCycleStart?: string | null) {
-  const fromPreview =
-    preview?.hormone_testing_full?.[0] ??
-    preview?.hormoneTesting_full?.[0] ??
-    preview?.hormone_testing_expected ??
-    preview?.testing_expected ??
-    preview?.testing_start ??
-    preview?.hormone_testing_start ??
-    null;
 
-  if (fromPreview) return fromPreview;
-
-  if (lockedCycleStart) {
-    const d = new Date(lockedCycleStart);
-    if (Number.isFinite(d.getTime())) {
-      d.setDate(d.getDate() + 7); // 7 days after Pre-breeding per rule
-      return d.toISOString();
-    }
-  }
-  return null;
-}
-
-/* ───────── CalendarInput: text field + native date picker ───────── */
 /* ───────── CalendarInput: text field + native date picker ───────── */
 type CalendarInputProps = Omit<React.ComponentProps<typeof Input>, "className" | "onChange"> & {
   showIcon?: boolean;
@@ -2355,7 +2434,6 @@ function PlanDetailsView(props: {
       lockedDueDate: expected.birth_expected,
       lockedPlacementStartDate: expected.placement_expected,
 
-      // Canonical expected only (system-derived)
       expectedCycleStart: pendingCycle,
       expectedHormoneTestingStart: testingStart ?? null,
       expectedBreedDate: expected.ovulation ?? null,
@@ -2365,6 +2443,7 @@ function PlanDetailsView(props: {
       expectedPlacementCompletedDate:
         expected.placement_extended_end ??
         expected.placement_expected_end ??
+        expected.placement_extended_full?.[1] ??
         null,
     };
 
@@ -2433,7 +2512,6 @@ function PlanDetailsView(props: {
       expectedPlacementStartDate: null,
       expectedPlacementCompletedDate: null,
     };
-
     setDraftLive(payload);
 
     try {
@@ -3022,13 +3100,13 @@ function PlanDetailsView(props: {
                   )}
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <DateField label="CYCLE START (EXPECTED)" value={fmt(expectedCycleStart)} readOnly />
-                    <DateField label="HORMONE TESTING START (EXPECTED)" value={fmt(expectedTestingStart)} readOnly />
-                    <DateField label="BREEDING DATE (EXPECTED)" value={fmt(expectedBreed)} readOnly />
+                    <DateField label="CYCLE START (EXPECTED)" value={expectedCycleStart} readOnly />
+                    <DateField label="HORMONE TESTING START (EXPECTED)" value={expectedTestingStart} readOnly />
+                    <DateField label="BREEDING DATE (EXPECTED)" value={expectedBreed} readOnly />
                     <DateField label="BIRTH DATE (EXPECTED)" value={fmt(expectedBirth)} readOnly />
-                    <DateField label="WEANED DATE (EXPECTED)" value={fmt(expectedWeaned)} readOnly />
-                    <DateField label="PLACEMENT START (EXPECTED)" value={fmt(expectedPlacementStart)} readOnly />
-                    <DateField label="PLACEMENT COMPLETED (EXPECTED)" value={fmt(expectedGoHomeExtended)} readOnly />
+                    <DateField label="WEANED DATE (EXPECTED)" value={expectedWeaned} readOnly />
+                    <DateField label="PLACEMENT START (EXPECTED)" value={expectedPlacementStart} readOnly />
+                    <DateField label="PLACEMENT COMPLETED (EXPECTED)" value={expectedGoHomeExtended} readOnly />
                   </div>
                 </SectionCard>
               </div>
@@ -3037,7 +3115,7 @@ function PlanDetailsView(props: {
                 <SectionCard title="ACTUAL DATES">
                   {/* Exempt this whole section from drawer compaction */}
                   <div data-bhq-details-exempt className="bhq-details-exempt">
-                    {isEdit && !isCommitted && (
+                    {isEdit && !committedOrLater && (
                       <div className="text-xs text-[hsl(var(--brand-orange))] mb-2">
                         Commit the plan to enable Actual Dates.
                       </div>
@@ -3081,7 +3159,7 @@ function PlanDetailsView(props: {
                       </div>
 
                       <div>
-                        <div className="text-xs text-secondary mb-1">BIRTHED DATE (ACTUAL)</div>
+                        <div className="text-xs text-secondary mb-1">BIRTH DATE (ACTUAL)</div>
                         <CalendarInput
                           defaultValue={row.birthDateActual ?? ""}
                           readOnly={!canEditDates}

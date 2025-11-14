@@ -8,11 +8,13 @@
     "./App-Admin": "./src/App-Admin.tsx"
   },
   "peerDependencies": {
-    "react": ">=18",
-    "react-dom": ">=18"
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
   },
   "dependencies": {
-    "lucide-react": "^0.468.0"
+    "lucide-react": "^0.468.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "4.3.2",
