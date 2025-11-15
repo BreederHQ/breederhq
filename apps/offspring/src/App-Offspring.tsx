@@ -1,3 +1,5 @@
+// App-Offspring.tsx (drop-in, compile-ready, aligned with shared DetailsHost/Table pattern)
+
 import WaitlistPage from "./pages/WaitlistPage";
 import OffspringPage from "./pages/OffspringPage";
 // App-Offspring.tsx (drop-in, compile-ready, aligned with shared DetailsHost/Table pattern)
@@ -16,27 +18,18 @@ import {
   SearchBar,
   DetailsHost,
   DetailsScaffold,
-  DetailsSpecRenderer,
   SectionCard,
   Button,
   BreedCombo,
+  Input,
 } from "@bhq/ui";
+
 import { Overlay } from "@bhq/ui/overlay";
-import { OverlayMount } from "@bhq/ui/overlay/OverlayMount";
-import { getOverlayRoot } from "@bhq/ui/overlay";
 import "@bhq/ui/styles/table.css";
-
-/* Guarded overlay root resolver shared by embedded pages */
-const overlayRootSafe = (() => {
-  try {
-    return typeof getOverlayRoot === "function" ? getOverlayRoot() : undefined;
-  } catch {
-    return undefined;
-  }
-})();
-
 import { readTenantIdFast, resolveTenantId } from "@bhq/ui/utils/tenant";
 import { makeOffspringApi, OffspringRow, WaitlistEntry } from "./api";
+import { expectedMilestonesFromLocked } from "@bhq/ui/utils";
+import clsx from "clsx";
 
 /* Optional toast, fallback to alert if not present */
 let useToast: any;
@@ -101,16 +94,75 @@ const inputClass =
   "placeholder:text-secondary/80 focus:outline-none focus:ring-1 focus:ring-[hsl(var(--brand-orange))] " +
   "focus:border-[hsl(var(--brand-orange))] shadow-[inset_0_0_0_9999px_rgba(255,255,255,0.02)]";
 
+function cx(...p: Array<string | false | null | undefined>) {
+  return p.filter(Boolean).join(" ");
+}
+
 const labelClass = "text-xs text-secondary";
 
 function SectionChipHeading({ icon, text }: { icon: React.ReactNode; text: string }) {
   return (
-    <div className="sticky top-0 z-10 px-2 py-1.5 bg-gradient-to-r from-white/8 to-transparent border-b border-white/10">
+    <div className="sticky top-0 z-10 px-2 py-1.5 bg-black/40 backdrop-blur border-b border-white/10">
       <div className="flex items-center gap-2 text-[11px] font-semibold tracking-wide uppercase text-[var(--color-text,#c9c9c9)]">
         {icon}
         <span>{text}</span>
         <span className="ml-auto h-px w-24 rounded-full bg-[hsl(var(--brand-orange)/0.65)]" />
       </div>
+    </div>
+  );
+}
+
+type DetailsFieldSpec<T> = {
+  label: string;
+  key: keyof T | string;
+  view?: (row: T) => React.ReactNode;
+  editor?: string;
+};
+
+type DetailsSectionSpec<T> = {
+  title: string;
+  fields: DetailsFieldSpec<T>[];
+};
+
+type DetailsSpecRendererProps<T> = {
+  row: T;
+  mode: "view" | "edit";
+  setDraft: (draft: Partial<T>) => void;
+  sections: DetailsSectionSpec<T>[];
+};
+
+function DetailsSpecRenderer<T extends Record<string, any>>({
+  row,
+  sections,
+}: DetailsSpecRendererProps<T>) {
+  return (
+    <div className="space-y-4">
+      {sections.map((section) => (
+        <SectionCard key={section.title} title={section.title}>
+          <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
+            {section.fields.map((field) => {
+              const raw =
+                typeof field.view === "function"
+                  ? field.view(row)
+                  : (row as any)[field.key as keyof T];
+
+              const value =
+                raw === null || raw === undefined || raw === ""
+                  ? "-"
+                  : raw;
+
+              return (
+                <div key={String(field.key)} className="flex flex-col gap-0.5">
+                  <div className="text-xs font-medium text-secondary">
+                    {field.label}
+                  </div>
+                  <div>{value}</div>
+                </div>
+              );
+            })}
+          </div>
+        </SectionCard>
+      ))}
     </div>
   );
 }
@@ -178,6 +230,71 @@ function fmtRange(start?: string | null, end?: string | null): string {
   return a || b || "";
 }
 
+function MiniTimeline({ row }: { row: OffspringRow }) {
+  const dates = row.dates ?? {};
+
+  const breedingExpected = dates.breedingDateExpected ?? null;
+  const breedingActual = dates.breedingDateActual ?? null;
+
+  const birthStart = dates.birthedStartAt ?? null;
+  const birthEnd = dates.birthedEndAt ?? null;
+
+  const weanDate = dates.weanedAt ?? null;
+
+  const placementStart =
+    row.expectedPlacementStart ?? dates.placementStartDateExpected ?? null;
+  const placementEnd =
+    row.expectedPlacementCompleted ?? dates.placementCompletedDateExpected ?? null;
+
+  return (
+    <div className="mt-3 space-y-1 text-[10px]">
+      <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+        Lifecycle bands
+      </div>
+
+      <div className="flex h-3 overflow-hidden rounded-full bg-muted">
+        <div
+          className="flex-1 bg-[color:var(--avail-risky-fill,#3b3b3b)]"
+          title={
+            breedingExpected
+              ? `Breeding · ${fmtDate(breedingExpected)}${breedingActual ? ` (actual ${fmtDate(breedingActual)})` : ""
+              }`
+              : "Breeding"
+          }
+        />
+        <div
+          className="flex-1 bg-[color:var(--brand-orange,#f97316)]"
+          title={
+            birthStart || birthEnd
+              ? `Birth · ${fmtRange(birthStart, birthEnd)}`
+              : "Birth"
+          }
+        />
+        <div
+          className="flex-1 bg-[color:var(--avail-unlikely-fill,#555555)]"
+          title={weanDate ? `Weaning · ${fmtDate(weanDate)}` : "Weaning"}
+        />
+        <div
+          className="flex-1 bg-[color:var(--avail-normal-fill,#777777)]"
+          title={
+            placementStart || placementEnd
+              ? `Placement · ${fmtRange(placementStart, placementEnd)}`
+              : "Placement"
+          }
+        />
+      </div>
+
+      <div className="flex justify-between text-[10px] text-muted-foreground">
+        <span>Breeding</span>
+        <span>Birth</span>
+        <span>Weaning</span>
+        <span>Placement</span>
+      </div>
+    </div>
+  );
+}
+
+
 function AttachmentsSection({
   group,
   api,
@@ -187,24 +304,211 @@ function AttachmentsSection({
   api: ReturnType<typeof makeOffspringApi> | null;
   mode: "media" | "health" | "registration";
 }) {
-  // Placeholder implementation so the drawer renders without blowing up.
-  // You can replace this with the real attachment UI later.
+  const [items, setItems] = React.useState<any[]>([]);
+  const [loading, setLoading] = React.useState(false);
+  const [uploading, setUploading] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (!api || !group?.id) return;
+
+    let cancelled = false;
+
+    async function load() {
+      setLoading(true);
+      setError(null);
+      try {
+        const res =
+          (api as any).attachments?.listForGroup?.(group.id, { category: mode }) ??
+          (api as any).attachments?.listForGroup?.(group.id);
+        const awaited =
+          res && typeof (res as any).then === "function" ? await res : res;
+        if (!cancelled && awaited) {
+          setItems(Array.isArray(awaited) ? awaited : awaited.items ?? []);
+        }
+      } catch (e: any) {
+        if (!cancelled) {
+          console.error("Failed to load attachments", e);
+          setError("Failed to load attachments");
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    }
+
+    load();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [api, group?.id, mode]);
+
+  async function handleUpload(ev: React.ChangeEvent<HTMLInputElement>) {
+    const file = ev.target.files?.[0];
+    if (!file || !api || !group?.id) return;
+    setUploading(true);
+    setError(null);
+    try {
+      const res =
+        (api as any).attachments?.uploadToGroup?.(group.id, file, {
+          category: mode,
+        }) ??
+        (api as any).attachments?.uploadToGroup?.(group.id, file);
+      const uploaded =
+        res && typeof (res as any).then === "function" ? await res : res;
+      if (uploaded) {
+        setItems((prev) => [...prev, uploaded]);
+      }
+    } catch (e: any) {
+      console.error("Upload failed", e);
+      setError("Upload failed");
+    } finally {
+      setUploading(false);
+      // Reset so the same file can be chosen again
+      ev.target.value = "";
+    }
+  }
+
+  async function handleRemove(att: any) {
+    if (!api || !group?.id || !att?.id) return;
+    try {
+      await (api as any).attachments?.remove?.(group.id, att.id);
+      setItems((prev) => prev.filter((x) => x.id !== att.id));
+    } catch (e: any) {
+      console.error("Failed to remove attachment", e);
+      setError("Failed to remove attachment");
+    }
+  }
+
+  const label =
+    mode === "media"
+      ? "Photos and videos"
+      : mode === "health"
+        ? "Health records and vet docs"
+        : "Registration and paperwork";
+
+  const isMedia = mode === "media";
 
   return (
-    <div className="rounded-md border border-border bg-muted/40 p-4 text-xs text-muted-foreground">
-      <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-        {mode === "media"
-          ? "Photos and videos"
-          : mode === "health"
-          ? "Health records and vet docs"
-          : "Registration and paperwork"}
+    <div className="space-y-2">
+      <div className="flex items-center justify-between gap-2">
+        <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+          {label}
+        </div>
+        <div className="flex items-center gap-2">
+          <label className="inline-flex cursor-pointer items-center rounded border border-border bg-background px-2 py-1 text-xs font-medium hover:bg-accent">
+            <span>{uploading ? "Uploading..." : "Upload"}</span>
+            <input
+              type="file"
+              className="hidden"
+              onChange={handleUpload}
+              disabled={uploading || !api}
+            />
+          </label>
+        </div>
       </div>
-      <p>
-        Attachment handling for this group is not implemented in this build.
-      </p>
-      <p className="mt-1">
-        Group ID: <span className="font-mono text-[11px]">{group.id}</span>
-      </p>
+
+      {error && (
+        <div className="rounded border border-destructive/40 bg-destructive/10 p-2 text-[11px] text-destructive">
+          {error}
+        </div>
+      )}
+
+      {loading && (
+        <div className="text-xs text-muted-foreground">Loading attachments...</div>
+      )}
+
+      {!loading && items.length === 0 && (
+        <div className="text-xs text-muted-foreground">No attachments yet.</div>
+      )}
+
+      {!loading && items.length > 0 && isMedia && (
+        <div className="grid grid-cols-2 gap-2 md:grid-cols-3 lg:grid-cols-4">
+          {items.map((att) => {
+            const url = att.url || att.href;
+            const name = att.fileName || att.name || `Attachment #${att.id}`;
+            return (
+              <div
+                key={att.id}
+                className="group relative overflow-hidden rounded border border-border bg-background"
+              >
+                {url ? (
+                  <a
+                    href={url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="block aspect-square overflow-hidden"
+                  >
+                    <img
+                      src={url}
+                      alt={name}
+                      className="h-full w-full object-cover"
+                    />
+                  </a>
+                ) : (
+                  <div className="flex aspect-square items-center justify-center text-[11px] text-muted-foreground">
+                    {name}
+                  </div>
+                )}
+                <button
+                  type="button"
+                  onClick={() => handleRemove(att)}
+                  className="absolute right-1 top-1 rounded bg-background/80 px-1 text-[10px] opacity-0 transition-opacity group-hover:opacity-100"
+                >
+                  Remove
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {!loading && items.length > 0 && !isMedia && (
+        <div className="space-y-1">
+          {items.map((att) => {
+            const url = att.url || att.href;
+            const name = att.fileName || att.name || `Attachment #${att.id}`;
+            const uploadedAt = att.createdAt || att.uploadedAt;
+            return (
+              <div
+                key={att.id}
+                className="flex items-center justify-between gap-2 rounded border border-border bg-background px-2 py-1 text-xs"
+              >
+                <div className="min-w-0 flex-1">
+                  {url ? (
+                    <a
+                      href={url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="truncate text-[11px] font-medium text-primary underline"
+                    >
+                      {name}
+                    </a>
+                  ) : (
+                    <span className="truncate text-[11px] font-medium">
+                      {name}
+                    </span>
+                  )}
+                  {uploadedAt && (
+                    <div className="text-[10px] text-muted-foreground">
+                      Uploaded {fmtDate(uploadedAt)}
+                    </div>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleRemove(att)}
+                  className="shrink-0 rounded border border-border bg-background px-1.5 py-0.5 text-[10px] hover:bg-accent"
+                >
+                  Remove
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -244,41 +548,46 @@ type GroupTableRow = {
   groupName?: string | null;
   species?: string | null;
   breed?: string | null;
+
   damName?: string | null;
+  damId?: number | null;
+
   sireName?: string | null;
+  sireId?: number | null;
+
+  expectedCycleStart?: string | null;
+  expectedHormoneTestingStart?: string | null;
+  expectedBreedDate?: string | null;
   expectedBirth?: string | null;
+  expectedWeanedDate?: string | null;
   expectedPlacementStart?: string | null;
   expectedPlacementCompleted?: string | null;
 
-  // Core counts already surfaced in the table
+  seasonLabel?: string | null;
+
+  // Optional group level tags, from backend if present
+  tags?: string[] | null;
+
+  // Counts
   countLive?: number | null;
   countReserved?: number | null;
   countSold?: number | null;
-  /** Derived from backend counts */
   countWeaned?: number | null;
-  /** Derived from backend counts */
   countPlaced?: number | null;
 
-  /** Backend override fields */
+  // Status and overrides
   statusOverride?: string | null;
   statusOverrideReason?: string | null;
-
-  /** Normalized “group status” label for UI */
   status?: string | null;
 
-  /** Season label such as “Spring 2025” */
-  seasonLabel?: string | null;
-
-  /** Aggregated metrics for the summary band */
+  // Metrics
   totalOffspring?: number | null;
   maleCount?: number | null;
   femaleCount?: number | null;
   unknownSexCount?: number | null;
   mortalityCount?: number | null;
-  /** Decimal between 0 and 1 */
   mortalityRate?: number | null;
   waitlistOverlapCount?: number | null;
-  /** Average placement price, cents */
   avgPlacementPriceCents?: number | null;
 
   updatedAt?: string | null;
@@ -290,6 +599,9 @@ const GROUP_COLS: Array<{ key: keyof GroupTableRow & string; label: string; defa
   { key: "breed", label: "Breed", default: true },
   { key: "damName", label: "Dam", default: true },
   { key: "sireName", label: "Sire", default: true },
+
+  { key: "seasonLabel", label: "Season", default: false },
+
   { key: "expectedBirth", label: "Expected Birth", default: true },
   { key: "countSold", label: "Sold", default: true },
   { key: "status", label: "Status", default: true },
@@ -298,7 +610,8 @@ const GROUP_COLS: Array<{ key: keyof GroupTableRow & string; label: string; defa
   { key: "expectedPlacementCompleted", label: "Placement Done", default: false },
   { key: "countLive", label: "Live", default: false },
   { key: "countReserved", label: "Reserved", default: true },
-  /** NEW columns, off by default */
+
+  // New columns, off by default
   { key: "countWeaned", label: "Weaned", default: false },
   { key: "countPlaced", label: "Placed", default: false },
   { key: "statusOverride", label: "Status Override", default: false },
@@ -319,10 +632,181 @@ function deriveCountSold(d: OffspringRow): number {
   return Number.isFinite(lastResort) ? lastResort : 0;
 }
 
+function onlyDay(v: any): string | null {
+  if (!v) return null;
+  const s = String(v);
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+  const iso = s.includes("T") ? s.slice(0, 10) : null;
+  return /^\d{4}-\d{2}-\d{2}$/.test(iso || "") ? iso : null;
+}
+
+function pickExpectedTestingStart(preview: any, lockedCycleStart?: string | null) {
+  const day = (s: any) => (s ? String(s).slice(0, 10) : null);
+
+  const fromPreview =
+    preview?.hormone_testing_full?.[0] ??
+    preview?.hormoneTesting_full?.[0] ??
+    preview?.hormone_testing_expected ??
+    preview?.testing_expected ??
+    preview?.testing_start ??
+    preview?.hormone_testing_start ??
+    null;
+
+  if (fromPreview) return day(fromPreview);
+
+  if (lockedCycleStart) {
+    const [y, m, d] = String(lockedCycleStart).slice(0, 10).split("-").map(Number);
+    const t = Date.UTC(y, m - 1, d) + 7 * 86400000;
+    const dt = new Date(t);
+    const yyyy = dt.getUTCFullYear();
+    const mm = String(dt.getUTCMonth() + 1).padStart(2, "0");
+    const dd = String(dt.getUTCDate()).padStart(2, "0");
+    return `${yyyy}-${mm}-${dd}`;
+  }
+
+  return null;
+}
+
+function toWireSpeciesLite(s: any): string | undefined {
+  const v = String(s || "").toUpperCase();
+  if (!v) return undefined;
+  return v;
+}
+
+function computeExpectedForPlanLite(plan: { species?: string | null; lockedCycleStart?: string | null }) {
+  const speciesWire = toWireSpeciesLite(plan.species) ?? "DOG";
+  const locked = (plan.lockedCycleStart || "").slice(0, 10) || null;
+
+  if (!locked) {
+    return {
+      expectedCycleStart: null,
+      expectedHormoneTestingStart: null,
+      expectedBreedDate: null,
+      expectedBirthDate: null,
+      expectedWeanedDate: null,
+      expectedPlacementStartDate: null,
+      expectedPlacementCompletedDate: null,
+    };
+  }
+
+  const preview = expectedMilestonesFromLocked(locked, speciesWire) || {};
+
+  const expectedCycleStart = locked;
+  const expectedHormoneTestingStart = pickExpectedTestingStart(preview, locked);
+  const expectedBreedDate = onlyDay(preview.ovulation ?? preview.breeding_expected) || null;
+  const expectedBirthDate = onlyDay(preview.birth_expected) || null;
+  const expectedWeanedDate =
+    onlyDay(
+      preview.weaning_expected ??
+        preview.weaned_expected ??
+        preview.puppy_care_likely?.[0],
+    ) || null;
+
+  const expectedPlacementStartDate =
+    onlyDay(
+      preview.placement_expected ??
+        preview.placement_start_expected ??
+        preview.placement_start,
+    ) || null;
+
+  const expectedPlacementCompletedDate =
+    onlyDay(
+      preview.placement_extended_end ??
+        preview.placement_extended_end_expected ??
+        preview.placement_expected_end ??
+        preview.placement_completed_expected ??
+        preview.placement_extended_full?.[1],
+    ) || null;
+
+  return {
+    expectedCycleStart,
+    expectedHormoneTestingStart,
+    expectedBreedDate,
+    expectedBirthDate,
+    expectedWeanedDate,
+    expectedPlacementStartDate,
+    expectedPlacementCompletedDate,
+  };
+}
+
+type PlannerSpecies = "Dog" | "Cat" | "Horse";
+
+type ExpectedLite = {
+  expectedCycleStart: string | null;
+  expectedHormoneTestingStart: string | null;
+  expectedBreedDate: string | null;
+  expectedBirthDate: string | null;
+  expectedWeanedDate: string | null;
+  expectedPlacementStartDate: string | null;
+  expectedPlacementCompletedDate: string | null;
+};
+
+function computeExpectedForPlanLite(input: {
+  species?: PlannerSpecies | null;
+  lockedCycleStart?: string | null;
+}) : ExpectedLite | null {
+  const species = input.species;
+  const lockedCycleStart = input.lockedCycleStart;
+
+  if (!species || !lockedCycleStart) return null;
+
+  const preview = null;
+  const expected = expectedMilestonesFromLocked({ species, lockedCycleStart, preview });
+
+  const onlyDay = (iso?: string | null) => (iso ? day(iso) : null);
+
+  const expectedCycleStart = onlyDay(expected.cycle_start_expected);
+  const expectedHormoneTestingStart = onlyDay(
+    expected.hormone_testing_start_expected ??
+      expected.testing_start ??
+      expected.hormone_testing_start,
+  );
+  const expectedBreedDate = onlyDay(
+    expected.breeding_expected ?? expected.breeding_full?.[0],
+  );
+  const expectedBirthDate = onlyDay(expected.birth_expected);
+  const expectedWeanedDate = onlyDay(
+    expected.weaning_expected ??
+      expected.weaned_expected ??
+      expected.puppy_care_likely?.[0],
+  );
+  const expectedPlacementStartDate = onlyDay(
+    expected.placement_expected ??
+      expected.placement_start_expected ??
+      expected.placement_start,
+  );
+  const expectedPlacementCompletedDate = onlyDay(
+    expected.placement_extended_end ??
+      expected.placement_extended_end_expected ??
+      expected.placement_expected_end ??
+      expected.placement_completed_expected ??
+      expected.placement_extended_full?.[1],
+  );
+
+  return {
+    expectedCycleStart,
+    expectedHormoneTestingStart,
+    expectedBreedDate,
+    expectedBirthDate,
+    expectedWeanedDate,
+    expectedPlacementStartDate,
+    expectedPlacementCompletedDate,
+  };
+}
+
 function mapDetailToTableRow(d: OffspringRow): GroupTableRow {
   const plan = d.plan;
   const planAny: any = plan;
   const counts = d.counts ?? {};
+  const detailAny: any = d;
+  const dates = d.dates ?? {};
+
+  const expectedFromPlan = plan
+    ? computeExpectedForPlanLite({
+        species: plan.species as any,
+        lockedCycleStart: (planAny.lockedCycleStart as string | null) ?? null,
+      })
+    : null;
 
   // Map backend plan statuses into user friendly group statuses
   const rawPlanStatus: string | undefined = planAny?.status;
@@ -364,34 +848,15 @@ function mapDetailToTableRow(d: OffspringRow): GroupTableRow {
 
   const status = d.statusOverride || baseStatus;
 
-  function AttachmentsSection({
-    group,
-    api,
-    mode,
-  }: {
-    group: OffspringRow;
-    api: ReturnType<typeof makeOffspringApi> | null;
-    mode: "media" | "health" | "registration";
-  }) {
-    // Touch props so TypeScript does not complain about unused parameters
-    if (!group || !api) {
-      // Attachment API not wired in this stub
-    }
-
-    return (
-      <p className="text-xs text-muted-foreground">
-        Attachment handling for {mode} is not implemented yet in this build.
-      </p>
-    );
-  }
-
-
   // Season label from earliest birth expectation we can see
   const seasonSourceIso =
     (d.dates && (d.dates.birthedStartAt || d.dates.birthedEndAt)) ||
+    expectedFromPlan?.expectedBirthDate ||
     planAny?.expectedBirthDate ||
+    expectedFromPlan?.expectedPlacementStartDate ||
     planAny?.expectedPlacementStart ||
     null;
+
   const seasonLabel = safeSeasonLabelFromISO(seasonSourceIso);
 
   // Aggregate metrics for summary chips
@@ -403,64 +868,283 @@ function mapDetailToTableRow(d: OffspringRow): GroupTableRow {
     groupName: plan?.name ?? d.identifier ?? `Group #${d.id}`,
     species: plan?.species ?? d.species ?? null,
     breed: plan?.breedText ?? null,
-    damName: plan?.dam?.name ?? null,
-    sireName: plan?.sire?.name ?? null,
-    expectedBirth: planAny?.expectedBirthDate ?? null,
-    expectedPlacementStart: d.expectedPlacementStart ?? null,
-    expectedPlacementCompleted: d.expectedPlacementCompleted ?? null,
 
+    damName: plan?.dam?.name ?? null,
+    damId: plan?.dam?.id ?? null,
+
+    sireName: plan?.sire?.name ?? null,
+    sireId: plan?.sire?.id ?? null,
+
+    // Timeline values powering the Overview card
+    expectedCycleStart: expectedFromPlan?.expectedCycleStart ?? null,
+    expectedHormoneTestingStart: expectedFromPlan?.expectedHormoneTestingStart ?? null,
+    expectedBreedDate: expectedFromPlan?.expectedBreedDate ?? null,
+    expectedBirth:
+      expectedFromPlan?.expectedBirthDate ??
+      (planAny?.expectedBirthDate as string | null) ??
+      null,
+    expectedWeanedDate:
+      expectedFromPlan?.expectedWeanedDate ??
+      (dates.weanedAt as string | null) ??
+      null,
+    expectedPlacementStart:
+      expectedFromPlan?.expectedPlacementStartDate ??
+      (dates.placementStartAt as string | null) ??
+      null,
+    expectedPlacementCompleted:
+      expectedFromPlan?.expectedPlacementCompletedDate ??
+      (dates.placementCompletedAt as string | null) ??
+      null,
+
+    seasonLabel,
+
+    // Tags from backend if present
+    tags: detailAny.tags ?? null,
+
+    // Counts
     countLive: counts.live ?? null,
     countReserved: counts.reserved ?? null,
-    countSold: counts.sold ?? null,
+    countSold: deriveCountSold(d),
     countWeaned: counts.weaned ?? null,
     countPlaced: counts.placed ?? null,
 
+    // Status
     statusOverride: d.statusOverride ?? null,
     statusOverrideReason: d.statusOverrideReason ?? null,
     status,
-    seasonLabel,
 
+    // Metrics
     totalOffspring: metrics.totalOffspring,
     maleCount: metrics.maleCount,
     femaleCount: metrics.femaleCount,
     unknownSexCount: metrics.unknownSexCount,
     mortalityCount: metrics.mortalityCount,
     mortalityRate: metrics.mortalityRate,
-    waitlistOverlapCount: metrics.waitlistOverlapCount,
-    avgPlacementPriceCents: metrics.avgPlacementPriceCents,
+    waitlistOverlapCount: null,
+    avgPlacementPriceCents: metrics.avgPlacementPriceCents ?? null,
 
     updatedAt: d.updatedAt ?? null,
   };
+
   return row;
 }
 
+function GroupSummaryBand({ row }: { row: GroupTableRow }) {
+  const total = row.totalOffspring ?? row.countLive ?? 0;
+  const male = row.maleCount ?? 0;
+  const female = row.femaleCount ?? 0;
+  const unknown = row.unknownSexCount ?? 0;
+
+  const mortalityCount = row.mortalityCount ?? 0;
+  const mortalityRate =
+    typeof row.mortalityRate === "number" && row.mortalityRate > 0
+      ? `${Math.round(row.mortalityRate * 100)}%`
+      : null;
+
+  const placed = row.countPlaced ?? 0;
+  const placementLabel =
+    total && total > 0 ? `${placed} of ${total} placed` : `${placed} placed`;
+
+  const waitlistOverlap = row.waitlistOverlapCount ?? 0;
+
+  const avgPrice = row.avgPlacementPriceCents ?? null;
+  const avgPriceLabel =
+    avgPrice && avgPrice > 0 ? formatMoneyFromCents(avgPrice) : "n/a";
+
+  return (
+    <div className="mb-4 grid gap-2 md:grid-cols-3 lg:grid-cols-6">
+      <div className="rounded border border-[var(--hairline,#222)] bg-[color:var(--surface-subtle,#111)] px-2 py-1.5">
+        <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+          Total offspring
+        </div>
+        <div className="text-sm font-semibold">{total}</div>
+      </div>
+
+      <div className="rounded border border-[var(--hairline,#222)] bg-[color:var(--surface-subtle,#111)] px-2 py-1.5">
+        <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+          Sex breakdown
+        </div>
+        <div className="text-sm">
+          {male} M · {female} F · {unknown} U
+        </div>
+      </div>
+
+      <div className="rounded border border-[var(--hairline,#222)] bg-[color:var(--surface-subtle,#111)] px-2 py-1.5">
+        <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+          Mortality
+        </div>
+        <div className="text-sm">
+          {mortalityCount}
+          {mortalityRate ? ` (${mortalityRate})` : ""}
+        </div>
+      </div>
+
+      <div className="rounded border border-[var(--hairline,#222)] bg-[color:var(--surface-subtle,#111)] px-2 py-1.5">
+        <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+          Placement
+        </div>
+        <div className="text-sm">{placementLabel}</div>
+      </div>
+
+      <div className="rounded border border-[var(--hairline,#222)] bg-[color:var(--surface-subtle,#111)] px-2 py-1.5">
+        <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+          Waitlist overlap
+        </div>
+        <div className="text-sm">{waitlistOverlap}</div>
+      </div>
+
+      <div className="rounded border border-[var(--hairline,#222)] bg-[color:var(--surface-subtle,#111)] px-2 py-1.5">
+        <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+          Avg placement price
+        </div>
+        <div className="text-sm">{avgPriceLabel}</div>
+      </div>
+    </div>
+  );
+}
+
+function IdentityField(props: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="space-y-0.5">
+      <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+        {props.label}
+      </div>
+      <div className="text-sm">{props.children ?? "-"}</div>
+    </div>
+  );
+}
+
+
 const groupSections = (mode: "view" | "edit") => [
   {
-    title: "Overview",
+    title: "Timeline",
     fields: [
-      { label: "Plan Code", key: "planCode", view: (r: GroupTableRow) => r.planCode || "-" },
-      { label: "Group Name", key: "groupName", editor: "text", view: (r: GroupTableRow) => r.groupName || "-" },
-      { label: "Species", key: "species", view: (r: GroupTableRow) => r.species || "-" },
-      { label: "Breed", key: "breed", view: (r: GroupTableRow) => r.breed || "-" },
-      { label: "Dam", key: "damName", view: (r: GroupTableRow) => r.damName || "-" },
-      { label: "Sire", key: "sireName", view: (r: GroupTableRow) => r.sireName || "-" },
-      { label: "Placement Start", key: "expectedPlacementStart", view: (r: GroupTableRow) => fmtDate(r.expectedPlacementStart) || "-" },
-      { label: "Placement Done", key: "expectedPlacementCompleted", view: (r: GroupTableRow) => fmtDate(r.expectedPlacementCompleted) || "-" },
-      /** NEW editable status override fields */
-      { label: "Status Override", key: "statusOverride", editor: "text", view: (r: GroupTableRow) => r.statusOverride || "-" },
-      { label: "Override Reason", key: "statusOverrideReason", editor: "textarea", view: (r: GroupTableRow) => r.statusOverrideReason || "-" },
-      { label: "Status (computed)", key: "status", view: (r: GroupTableRow) => r.status || "-" },
+      {
+        label: "CYCLE START (EXPECTED)",
+        key: "expectedCycleStart",
+        view: (r: GroupTableRow) => fmtDate(r.expectedCycleStart) || "-",
+      },
+      {
+        label: "HORMONE TESTING START (EXPECTED)",
+        key: "expectedHormoneTestingStart",
+        view: (r: GroupTableRow) => fmtDate(r.expectedHormoneTestingStart) || "-",
+      },
+      {
+        label: "BREEDING DATE (EXPECTED)",
+        key: "expectedBreedDate",
+        view: (r: GroupTableRow) => fmtDate(r.expectedBreedDate) || "-",
+      },
+      {
+        label: "BIRTH DATE (EXPECTED)",
+        key: "expectedBirth",
+        view: (r: GroupTableRow) => fmtDate(r.expectedBirth) || "-",
+      },
+      {
+        label: "WEANED DATE (EXPECTED)",
+        key: "expectedWeanedDate",
+        view: (r: GroupTableRow) => fmtDate(r.expectedWeanedDate) || "-",
+      },
+      {
+        label: "PLACEMENT START (EXPECTED)",
+        key: "expectedPlacementStart",
+        view: (r: GroupTableRow) => fmtDate(r.expectedPlacementStart) || "-",
+      },
+      {
+        label: "PLACEMENT COMPLETED (EXPECTED)",
+        key: "expectedPlacementCompleted",
+        view: (r: GroupTableRow) => fmtDate(r.expectedPlacementCompleted) || "-",
+      },
+    ],
+  },
+
+  {
+    title: "Status & Metadata",
+    fields: [
+      {
+        label: "Status Override",
+        key: "statusOverride",
+        editor: "text",
+        view: (r: GroupTableRow) => r.statusOverride || "-",
+      },
+      {
+        label: "Override Reason",
+        key: "statusOverrideReason",
+        editor: "text",
+        view: (r: GroupTableRow) => r.statusOverrideReason || "-",
+      },
+      {
+        label: "Tags",
+        key: "tags",
+        view: (r: GroupTableRow) =>
+          r.tags && r.tags.length > 0 ? r.tags.join(", ") : "-",
+      },
+      {
+        label: "Status",
+        key: "status",
+        view: (r: GroupTableRow) => r.status || "-",
+      },
+      {
+        label: "Updated",
+        key: "updatedAt",
+        view: (r: GroupTableRow) => fmtDate(r.updatedAt) || "-",
+      },
     ],
   },
   {
+    title: "Tags & Metadata",
+    fields: [
+      {
+        label: "Tags",
+        key: "tags",
+        view: (r: GroupTableRow) =>
+          r.tags && r.tags.length > 0 ? r.tags.join(", ") : "-",
+      },
+      {
+        label: "Status",
+        key: "status",
+        view: (r: GroupTableRow) => r.status || "-",
+      },
+      {
+        label: "Updated",
+        key: "updatedAt",
+        view: (r: GroupTableRow) => fmtDate(r.updatedAt) || "-",
+      },
+    ],
+  },
+
+  {
     title: "Counts",
     fields: [
-      { label: "Live", key: "countLive", editor: "number", view: (r: GroupTableRow) => String(r.countLive ?? 0) },
-      { label: "Weaned", key: "countWeaned", editor: "number", view: (r: GroupTableRow) => String(r.countWeaned ?? 0) },
-      { label: "Placed", key: "countPlaced", editor: "number", view: (r: GroupTableRow) => String(r.countPlaced ?? 0) },
-      { label: "Reserved", key: "countReserved", view: (r: GroupTableRow) => String(r.countReserved ?? 0) },
-      { label: "Sold", key: "countSold", view: (r: GroupTableRow) => String(r.countSold ?? 0) },
-      { label: "Updated", key: "updatedAt", view: (r: GroupTableRow) => fmtDate(r.updatedAt) || "-" },
+      {
+        label: "Live",
+        key: "countLive",
+        editor: "number",
+        view: (r: GroupTableRow) => String(r.countLive ?? 0),
+      },
+      {
+        label: "Weaned",
+        key: "countWeaned",
+        editor: "number",
+        view: (r: GroupTableRow) => String(r.countWeaned ?? 0),
+      },
+      {
+        label: "Placed",
+        key: "countPlaced",
+        editor: "number",
+        view: (r: GroupTableRow) => String(r.countPlaced ?? 0),
+      },
+      {
+        label: "Reserved",
+        key: "countReserved",
+        editor: "number",
+        view: (r: GroupTableRow) => String(r.countReserved ?? 0),
+      },
+      {
+        label: "Sold",
+        key: "countSold",
+        editor: "number",
+        view: (r: GroupTableRow) => String(r.countSold ?? 0),
+      },
     ],
   },
 ];
@@ -797,7 +1481,7 @@ function CreateGroupForm({
     setSubmitting(true);
     setSubmitErr(null);
     try {
-      await api.offspring.create({
+      const created = await api.offspring.create({
         planId: Number(planId),
         identifier: identifier.trim() || null,
         statusOverride: statusOverride.trim() || null,
@@ -816,6 +1500,19 @@ function CreateGroupForm({
         },
       });
       toast?.({ title: "Group created" });
+
+      try {
+        if (created && created.id != null) {
+          window.dispatchEvent(
+            new CustomEvent("bhq:group:created", {
+              detail: { groupId: created.id },
+            })
+          );
+        }
+      } catch {
+        // ignore event failures
+      }
+
       onCreated();
     } catch (e: any) {
       setSubmitErr(e?.message || "Failed to create offspring group");
@@ -1211,23 +1908,27 @@ function AddToWaitlistModal({
   }, [sireQ, speciesWire, sireOpen, api]);
 
   return (
-    <Overlay open={open} ariaLabel="Add to Waitlist" closeOnEscape closeOnOutsideClick>
+    <Overlay
+      open={open}
+      ariaLabel="Add Buyer"
+      closeOnEscape
+      closeOnOutsideClick
+      onOpenChange={(next) => {
+        if (!next) onClose();
+      }}
+    >
       <div
         className="fixed inset-0"
-        style={{ zIndex: MODAL_Z, isolation: "isolate" }}
-        onMouseDown={(e) => {
-          const p = panelRef.current;
-          if (!p) return;
-          if (!p.contains(e.target as Node)) onClose();
-        }}
+        style={{ zIndex: MODAL_Z + 1, isolation: "isolate" }}
+        onMouseDown={handleOutsideMouseDown}
       >
         <div className="absolute inset-0 bg-black/50" />
         <div className="absolute inset-0 flex items-center justify-center">
           <div
             ref={panelRef}
             className="pointer-events-auto overflow-hidden"
-            style={{ width: 820, maxWidth: "95vw", height: 620, maxHeight: "82vh" }}
-            data-waitlist
+            style={{ width: 820, maxWidth: "95vw", height: 520, maxHeight: "82vh" }}
+            data-buyer
           >
             <Card className="h-full">
               <div className="h-full p-4 space-y-4 overflow-y-auto">
@@ -1548,7 +2249,28 @@ type Candidate = {
   skipCount?: number | null;
   notes?: string | null;
   source: "waitlist";
+  /** Higher score means better match for this group */
+  matchScore?: number;
+  /** Human readable explanation of the match, for future UI use */
+  matchTags?: string[];
 };
+
+function scoreMatch(
+  c: Candidate,
+  group: OffspringRow & { plan?: { species?: string | null; breedText?: string | null; damName?: string | null; sireName?: string | null } }
+) {
+  let score = 0;
+  const species = group.plan?.species?.toLowerCase();
+  const breed = group.plan?.breedText?.toLowerCase() ?? "";
+  const prefSpecies = c.speciesPref?.toLowerCase();
+  const prefBreed = c.breedPrefText?.toLowerCase() ?? "";
+
+  if (prefSpecies && species && prefSpecies === species) score += 50;
+  if (prefBreed && breed && prefBreed && breed.includes(prefBreed)) score += 30;
+
+  // later you can extend with parent matching when the waitlist payload exposes preferred dam and sire
+  return score;
+}
 
 function useGroupCandidates(api: ReturnType<typeof makeOffspringApi> | null, group: OffspringRow | null) {
   const [cands, setCands] = React.useState<Candidate[]>([]);
@@ -1575,6 +2297,7 @@ function useGroupCandidates(api: ReturnType<typeof makeOffspringApi> | null, gro
         const items: any[] = Array.isArray(res) ? res : res?.items ?? [];
         const mapped: Candidate[] = items
           .filter((w: any) => {
+            // keep the same basic filter you already had
             if (!species) return true;
             if (String(w.speciesPref || "").toUpperCase() !== String(species || "").toUpperCase()) return false;
             if (breed && w.breedPrefText) {
@@ -1586,6 +2309,27 @@ function useGroupCandidates(api: ReturnType<typeof makeOffspringApi> | null, gro
           .slice(0, 25)
           .map((w: any) => {
             const t = mapWaitlistToTableRow(w);
+
+            const groupSpecies = String(species || "").toUpperCase();
+            const groupBreed = String(breed || "").toLowerCase();
+            const candSpecies = String(t.speciesPref || "").toUpperCase();
+            const candBreed = String(t.breedPrefText || "").toLowerCase();
+
+            let matchScore = 0;
+            const matchTags: string[] = [];
+
+            // species match is the baseline requirement
+            if (groupSpecies && candSpecies && candSpecies === groupSpecies) {
+              matchScore += 10;
+              matchTags.push("species");
+            }
+
+            // breed text match is a bonus on top of species
+            if (groupBreed && candBreed && candBreed.includes(groupBreed)) {
+              matchScore += 5;
+              matchTags.push("breed");
+            }
+
             return {
               id: t.id,
               contactLabel: t.contactLabel,
@@ -1597,8 +2341,13 @@ function useGroupCandidates(api: ReturnType<typeof makeOffspringApi> | null, gro
               skipCount: t.skipCount,
               notes: t.notes,
               source: "waitlist",
+              matchScore,
+              matchTags,
             } as Candidate;
-          });
+          })
+          // highest score first
+          .sort((a, b) => (b.matchScore ?? 0) - (a.matchScore ?? 0));
+
         if (alive) setCands(mapped);
       } catch (e: any) {
         if (alive) setError(e?.message || "Failed to load candidates");
@@ -1613,6 +2362,425 @@ function useGroupCandidates(api: ReturnType<typeof makeOffspringApi> | null, gro
 
   return { cands, loading, error, setCands };
 }
+function AddBuyerToGroupModal({
+  api,
+  group,
+  open,
+  onAdded,
+  onClose,
+}: {
+  api: ReturnType<typeof makeOffspringApi> | null;
+  group: OffspringRow | null;
+  open: boolean;
+  onAdded: () => void;
+  onClose: () => void;
+}) {
+  const [q, setQ] = React.useState("");
+  const [link, setLink] = React.useState<null | { kind: "contact" | "org"; id: number; label: string }>(
+    null,
+  );
+  const [busy, setBusy] = React.useState(false);
+  const [hits, setHits] = React.useState<
+    Array<{ kind: "contact" | "org"; id: number; label: string; subtitle?: string }>
+  >([]);
+  const [quickOpen, setQuickOpen] = React.useState<null | "contact" | "org">(null);
+  const [createErr, setCreateErr] = React.useState<string | null>(null);
+  const [creating, setCreating] = React.useState(false);
+  const [qc, setQc] = React.useState({
+    firstName: "",
+    lastName: "",
+    email: "",
+    phone: "",
+  });
+  const [qo, setQo] = React.useState({
+    name: "",
+    website: "",
+    email: "",
+    phone: "",
+  });
+
+  const quickCreateContact = React.useCallback(async () => {
+    if (!api) throw new Error("API not ready");
+
+    const pre = await exactContactLookup(api, {
+      email: qc.email || undefined,
+      phone: qc.phone || undefined,
+      firstName: qc.firstName || undefined,
+      lastName: qc.lastName || undefined,
+    });
+    if (pre) return pre;
+
+    const payload = stripEmpty({
+      display_name: `${(qc.firstName || "").trim()} ${(qc.lastName || "").trim()}`.trim() || undefined,
+      first_name: qc.firstName || undefined,
+      last_name: qc.lastName || undefined,
+      email: qc.email || undefined,
+      phoneE164: qc.phone || undefined,
+      phone_e164: qc.phone || undefined,
+    });
+
+    return api.contacts.create(payload);
+  }, [api, qc]);
+
+  const quickCreateOrg = React.useCallback(async () => {
+    if (!api) throw new Error("API not ready");
+
+    const payload = stripEmpty({
+      name: qo.name || undefined,
+      website: qo.website || undefined,
+      email: qo.email || undefined,
+      phone: qo.phone || undefined,
+    });
+
+    return api.organizations.create(payload);
+  }, [api, qo]);
+
+  const handleQuickAdd = React.useCallback(async () => {
+    if (!api || !group || !quickOpen) return;
+
+    setCreating(true);
+    setCreateErr(null);
+
+    try {
+      if (quickOpen === "contact") {
+        const c: any = await quickCreateContact();
+        setLink({
+          kind: "contact",
+          id: Number(c.id),
+          label:
+            c.display_name ||
+            `${(c.first_name ?? "").trim()} ${(c.last_name ?? "").trim()}`.trim() ||
+            "(Contact)",
+          subtitle: c.email || c.phoneE164 || c.phone || "",
+        });
+      } else {
+        const o: any = await quickCreateOrg();
+        setLink({
+          kind: "org",
+          id: Number(o.id),
+          label: o.name || "(Organization)",
+          subtitle: o.website || o.email || o.phone || "",
+        });
+      }
+
+      setQuickOpen(null);
+      setQ("");
+      setHits([]);
+    } catch (e: any) {
+      setCreateErr(e?.message || "Quick add failed.");
+    } finally {
+      setCreating(false);
+    }
+  }, [api, group, quickOpen, quickCreateContact, quickCreateOrg, setLink, setQ, setHits]);
+
+
+  const searchValue = link ? link.label : q;
+
+  const panelRef = React.useRef<HTMLDivElement | null>(null);
+
+React.useEffect(() => {
+  let cancelled = false;
+  const t = q.trim();
+
+  if (!api || !group || !t) {
+    setHits([]);
+    return;
+  }
+
+  setBusy(true);
+
+  (async () => {
+    try {
+      const [contactsRes, orgsRes] = await Promise.all([
+        api.contacts.list({ q: t, limit: 25 }),
+        api.organizations.list({ q: t, limit: 25 }),
+      ]);
+
+      if (cancelled) return;
+
+      const contactsArr: any[] = Array.isArray(contactsRes)
+        ? contactsRes
+        : contactsRes?.items ?? [];
+
+      const orgsArr: any[] = Array.isArray(orgsRes)
+        ? orgsRes
+        : orgsRes?.items ?? [];
+
+      const nextHits: Array<{
+        kind: "contact" | "org";
+        id: number;
+        label: string;
+        subtitle?: string;
+      }> = [];
+
+      for (const c of contactsArr) {
+        nextHits.push({
+          kind: "contact",
+          id: Number(c.id),
+          label:
+            c.display_name ||
+            `${c.first_name ?? ""} ${c.last_name ?? ""}`.trim() ||
+            "(Contact)",
+          subtitle: c.email || c.phone || "",
+        });
+      }
+
+      for (const o of orgsArr) {
+        nextHits.push({
+          kind: "org",
+          id: Number(o.id),
+          label: o.name || "(Organization)",
+          subtitle: o.website || o.email || o.phone || "",
+        });
+      }
+
+      setHits(nextHits);
+    } catch (e: any) {
+      if (!cancelled) {
+        setCreateErr(e?.message || "Search failed.");
+      }
+    } finally {
+      if (!cancelled) {
+        setBusy(false);
+      }
+    }
+  })();
+
+  return () => {
+    cancelled = true;
+  };
+}, [q, api, group]);
+
+  const clearLinkAndSearch = React.useCallback(() => {
+    setLink(null);
+    setQ("");
+    setHits([]);
+  }, []);
+
+  const handleSubmit = React.useCallback(async () => {
+    if (!api || !group || !link) return;
+    setCreating(true);
+    setCreateErr(null);
+    try {
+      await api.offspring.buyers.create({
+        groupId: group.id,
+        contactId: link.kind === "contact" ? link.id : null,
+        organizationId: link.kind === "org" ? link.id : null,
+      });
+      onAdded();
+      onClose();
+    } catch (e: any) {
+      setCreateErr(e?.message || "Failed to Add Buyer.");
+    } finally {
+      setCreating(false);
+    }
+  }, [api, group, link, onAdded, onClose]);
+
+  const handleOutsideMouseDown = React.useCallback<
+    React.MouseEventHandler<HTMLDivElement>
+  >(
+    (e) => {
+      const p = panelRef.current;
+      if (!p) return;
+      if (!p.contains(e.target as Node)) onClose();
+    },
+    [onClose],
+  );
+
+  if (!open || !group) return null;
+
+  const modal = (
+    <div
+      className="fixed inset-0 flex items-center justify-center"
+      style={{ zIndex: MODAL_Z + 1, isolation: "isolate" }}
+      onMouseDown={handleOutsideMouseDown}
+    >
+      <div className="absolute inset-0 bg-black/50" />
+      <div className="absolute inset-0 flex items-center justify-center">
+        <div
+          ref={panelRef}
+          className="pointer-events-auto overflow-hidden"
+          style={{ width: 820, maxWidth: "95vw", height: 520, maxHeight: "82vh" }}
+          data-buyer
+        >
+          <Card className="h-full">
+            <div className="h-full p-4 space-y-4 overflow-y-auto">
+              <div className="flex items-center gap-2">
+                <div className="text-lg font-semibold">Add Buyer</div>
+                {link && (
+                  <button
+                    className="ml-auto text-xs underline text-secondary hover:text-primary"
+                    onClick={clearLinkAndSearch}
+                  >
+                    Clear selection
+                  </button>
+                )}
+              </div>
+
+              {/* Search Contacts/Orgs */}
+              <div className="relative">
+                <div className={cx(labelClass + " mb-1")}>Search Contacts or Organizations</div>
+                <div className="relative">
+                  <SearchBar
+                    value={searchValue}
+                    onChange={(val) => {
+                      if (link) {
+                        clearLinkAndSearch();
+                        setQ(val);
+                      } else {
+                        setQ(val);
+                      }
+                    }}
+                    placeholder="Type a name, email, phone, or organization."
+                    widthPx={720}
+                    autoFocus={!link}
+                  />
+                </div>
+
+                <div className="mt-2 flex items-center gap-3">
+                  <Button size="xs" variant="outline" onClick={() => setQuickOpen("contact")}>
+                    + Quick Add Contact
+                  </Button>
+                  <Button size="xs" variant="outline" onClick={() => setQuickOpen("org")}>
+                    + Quick Add Organization
+                  </Button>
+                </div>
+              </div>
+
+              {/* Results list */}
+              {!link && q.trim() && (
+                <div className="rounded-md border border-hairline max-h-56 overflow-auto p-2">
+                  {busy ? (
+                    <div className="px-2 py-2 text-sm text-secondary">Searching.</div>
+                  ) : (
+                    (() => {
+                      const contacts = hits.filter((h) => h.kind === "contact");
+                      const orgs = hits.filter((h) => h.kind === "org");
+                      const sectionClass = "rounded-md bg-white/5";
+                      const pill = (t: string) => (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/10">{t}</span>
+                      );
+
+                      if (!contacts.length && !orgs.length) {
+                        return (
+                          <div className="px-2 py-2 text-sm text-secondary">
+                            No matching candidates found.
+                          </div>
+                        );
+                      }
+
+                      return (
+                        <div className="space-y-2">
+                          {contacts.length > 0 && (
+                            <div className={sectionClass}>
+                              <div className="px-2 py-1.5 flex items-center justify-between border-b border-white/10">
+                                <div className="text-[11px] uppercase tracking-wide text-secondary">
+                                  Contacts
+                                </div>
+                                <div className="flex gap-1 items-center">
+                                  {pill(
+                                    `${contacts.length} result${contacts.length === 1 ? "" : "s"
+                                    }`,
+                                  )}
+                                </div>
+                              </div>
+                              <div className="divide-y divide-white/10">
+                                {contacts.map((c) => (
+                                  <button
+                                    key={`contact-${c.id}`}
+                                    className="w-full px-2 py-1.5 text-left text-sm hover:bg-white/5"
+                                    onClick={() =>
+                                      setLink({
+                                        kind: "contact",
+                                        id: c.id,
+                                        label: c.label,
+                                      })
+                                    }
+                                  >
+                                    <div className="font-medium">{c.label}</div>
+                                    {c.subtitle && (
+                                      <div className="text-[11px] text-secondary">
+                                        {c.subtitle}
+                                      </div>
+                                    )}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {orgs.length > 0 && (
+                            <div className={sectionClass}>
+                              <div className="px-2 py-1.5 flex items-center justify-between border-b border-white/10">
+                                <div className="text-[11px] uppercase tracking-wide text-secondary">
+                                  Organizations
+                                </div>
+                                <div className="flex gap-1 items-center">
+                                  {pill(
+                                    `${orgs.length} result${orgs.length === 1 ? "" : "s"}`,
+                                  )}
+                                </div>
+                              </div>
+                              <div className="divide-y divide-white/10">
+                                {orgs.map((o) => (
+                                  <button
+                                    key={`org-${o.id}`}
+                                    className="w-full px-2 py-1.5 text-left text-sm hover:bg-white/5"
+                                    onClick={() =>
+                                      setLink({
+                                        kind: "org",
+                                        id: o.id,
+                                        label: o.label,
+                                      })
+                                    }
+                                  >
+                                    <div className="font-medium">{o.label}</div>
+                                    {o.subtitle && (
+                                      <div className="text-[11px] text-secondary">
+                                        {o.subtitle}
+                                      </div>
+                                    )}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()
+                  )}
+                </div>
+              )}
+
+              {createErr && <div className="text-xs text-red-500">{createErr}</div>}
+
+              <div className="flex justify-end gap-2 pt-2">
+                <Button
+                  variant="outline"
+                  type="button"
+                  onClick={onClose}
+                  disabled={creating}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  onClick={handleSubmit}
+                  disabled={!link || creating}
+                >
+                  Add Buyer
+                </Button>
+              </div>
+            </div>
+          </Card>
+        </div>
+      </div>
+    </div>
+  );
+
+  return ReactDOM.createPortal(modal, document.body);
+}
+
 
 function BuyersTab({
   api,
@@ -1625,95 +2793,466 @@ function BuyersTab({
 }) {
   const { toast } = useToast();
   const { cands, loading, error, setCands } = useGroupCandidates(api, group);
-  const [lastAction, setLastAction] = React.useState<null | { kind: "add" | "skip"; payload: any }>(null);
+  const [lastAction, setLastAction] =
+    React.useState<null | { kind: "add" | "skip"; payload: any }>(null);
+  const [autoPromptedForGroupId, setAutoPromptedForGroupId] =
+    React.useState<number | null>(null);
 
-  async function addToGroup(waitlistId: number) {
-    if (!api) return;
-    // optimistic remove from candidates
-    const prev = [...cands];
-    setCands(prev.filter((c) => c.id !== waitlistId));
-    setLastAction({ kind: "add", payload: { prev, waitlistId } });
-    try {
-      const updated = await api.offspring.buyers.add({ groupId: group.id, waitlistId });
-      onGroupUpdate(updated as any);
-      toast?.({ title: "Added buyer to group" });
-    } catch (e: any) {
-      // rollback
-      setCands(prev);
-      setLastAction(null);
-      toast?.({ title: "Add failed", description: String(e?.message || e), variant: "destructive" });
+  // inline Add Buyer state
+  const [q, setQ] = React.useState("");
+  const [link, setLink] = React.useState<
+    | null
+    | {
+      kind: "contact" | "org";
+      id: number;
+      label: string;
+      subtitle?: string;
     }
-  }
+  >(null);
+  const [hits, setHits] = React.useState<
+    Array<{ kind: "contact" | "org"; id: number; label: string; subtitle?: string }>
+  >([]);
+  const [searchBusy, setSearchBusy] = React.useState(false);
+  const [createErr, setCreateErr] = React.useState<string | null>(null);
+  const [creating, setCreating] = React.useState(false);
+  const [quickOpen, setQuickOpen] = React.useState<null | "contact" | "org">(null);
 
-  async function skipOnce(waitlistId: number) {
-    if (!api) return;
-    const prev = [...cands];
-    const next = prev.map((c) => (c.id === waitlistId ? { ...c, skipCount: (c.skipCount ?? 0) + 1 } : c));
-    setCands(next);
-    setLastAction({ kind: "skip", payload: { prev } });
-    try {
-      await api.waitlist.skip(waitlistId);
-      toast?.({ title: "Marked skip" });
-    } catch (e: any) {
-      setCands(prev);
-      setLastAction(null);
-      toast?.({ title: "Skip failed", description: String(e?.message || e), variant: "destructive" });
+  // auto prompt logic stays the same
+  React.useEffect(() => {
+    if (!group || !group.id) return;
+    if (!cands || cands.length === 0) return;
+
+    if (autoPromptedForGroupId === group.id) return;
+
+    const [top] = cands;
+    if (!top) return;
+
+    const score = top.matchScore ?? 0;
+
+    if (score < 10) {
+      return;
     }
-  }
 
-  function undo() {
-    const prevList = lastAction?.payload?.prev;
-    if (Array.isArray(prevList)) {
-      setCands(prevList);
+    setAutoPromptedForGroupId(group.id);
+  }, [autoPromptedForGroupId, cands, group]);
+
+  const handleSkip = React.useCallback(
+    (cand: Candidate) => {
+      setLastAction({ kind: "skip", payload: cand });
+      setCands((prev) => prev.filter((c) => c.id !== cand.id));
+    },
+    [setCands],
+  );
+
+  const handleUndo = React.useCallback(() => {
+    if (!lastAction) return;
+    if (lastAction.kind === "skip") {
+      setCands((prev) => [lastAction.payload, ...prev]);
     }
     setLastAction(null);
-  }
+  }, [lastAction, setCands]);
+
+  // search contacts and orgs for inline Add Buyer
+  React.useEffect(() => {
+    let alive = true;
+
+    (async () => {
+      if (!api || !group) return;
+
+      const term = q.trim();
+      if (!term) {
+        if (alive) setHits([]);
+        return;
+      }
+
+      setSearchBusy(true);
+      setCreateErr(null);
+
+      try {
+        const [contacts, orgs] = await Promise.all([
+          api.directory.searchContacts({ q: term, limit: 25 }),
+          api.directory.searchOrgs({ q: term, limit: 25 }),
+        ]);
+
+        if (!alive) return;
+
+        const contactHits =
+          (contacts || []).map((c: any) => ({
+            kind: "contact" as const,
+            id: c.id,
+            label: c.displayName || c.email || `Contact #${c.id}`,
+            subtitle: c.email || c.phone || "",
+          })) ?? [];
+
+        const orgHits =
+          (orgs || []).map((o: any) => ({
+            kind: "org" as const,
+            id: o.id,
+            label: o.name || `Organization #${o.id}`,
+            subtitle: o.email || o.phone || "",
+          })) ?? [];
+
+        setHits([...contactHits, ...orgHits]);
+      } catch (e: any) {
+        if (alive) {
+          setCreateErr(e?.message || "Search failed.");
+          setHits([]);
+        }
+      } finally {
+        if (alive) setSearchBusy(false);
+      }
+    })();
+
+    return () => {
+      alive = false;
+    };
+  }, [api, group, q]);
+
+  const handleInlineSubmit = React.useCallback(async () => {
+    if (!api || !group || !link) return;
+
+    setCreating(true);
+    setCreateErr(null);
+
+    try {
+      await api.offspring.buyers.create({
+        groupId: group.id,
+        contactId: link.kind === "contact" ? link.id : null,
+        organizationId: link.kind === "org" ? link.id : null,
+      });
+
+      const updated = await api.offspring.groups.getById(group.id);
+
+      if (updated) {
+        onGroupUpdate(updated);
+      } else {
+        // non fatal, group will at least be updated server side
+      }
+
+      toast({
+        title: "Buyer added",
+        description: `${link.label} has been linked as a buyer for this group.`,
+      });
+
+      setQ("");
+      setLink(null);
+      setHits([]);
+    } catch (e: any) {
+      setCreateErr(e?.message || "Failed to Add Duyer.");
+    } finally {
+      setCreating(false);
+    }
+  }, [api, group, link, onGroupUpdate, toast]);
 
   return (
     <SectionCard title="Buyers">
-      {error && <div className="text-sm text-red-600 mb-2">Error: {error}</div>}
-      {loading ? (
-        <div className="text-sm text-secondary">Loading candidates...</div>
-      ) : cands.length === 0 ? (
-        <div className="text-sm text-secondary">No matching candidates found.</div>
-      ) : (
-        <div className="space-y-2">
-          {lastAction && (
-            <div className="flex justify-end">
-              <Button size="xs" variant="outline" onClick={undo}>Undo</Button>
-            </div>
+      {/* Header */}
+      <div className="mb-3 flex items-center justify-between">
+        {lastAction && (
+          <Button size="xs" variant="outline" onClick={handleUndo}>
+            Undo last action
+          </Button>
+        )}
+      </div>
+
+      {/* Inline Add Buyer block, now at the top of the tab */}
+      <div className="mb-4 rounded-md border border-hairline bg-surface/60 p-3 space-y-3">
+        <div className="flex items-center justify-between gap-2">
+          <div className="text-sm font-semibold">Add Buyer</div>
+          {link && (
+            <Button
+              size="xs"
+              variant="outline"
+              type="button"
+              onClick={() => setLink(null)}
+              disabled={creating}
+            >
+              Clear selection
+            </Button>
           )}
-          <table className="min-w-full text-sm">
-            <thead>
-              <tr className="text-secondary">
-                <th className="text-left font-medium py-1 pr-2">Contact</th>
-                <th className="text-left font-medium py-1 pr-2">Deposit</th>
-                <th className="text-left font-medium py-1 pr-2">Priority</th>
-                <th className="text-left font-medium py-1 pr-2">Skips</th>
-                <th className="text-left font-medium py-1 pr-2">Notes</th>
-                <th className="text-right font-medium py-1 pl-2">Actions</th>
+        </div>
+
+        <label className="grid gap-1 text-sm">
+          <span className="text-xs text-muted-foreground">
+            Search contacts or organizations
+          </span>
+          <div className="relative">
+            <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-secondary">
+              <span className="i-lucide-search h-3.5 w-3.5" aria-hidden="true" />
+            </span>
+            <Input
+              value={q}
+              className="pl-9 text-sm"
+              onChange={(e) => {
+                const val = e.target.value;
+                setQ(val);
+                setCreateErr(null);
+              }}
+              placeholder="Type a name, email, phone, or organization."
+              autoFocus={!link}
+            />
+          </div>
+        </label>
+
+        {quickOpen === "contact" && !link && (
+          <div className="mt-3 rounded-md border border-hairline bg-surface/70 p-3 space-y-2 text-xs">
+            <div className="font-medium text-sm">Quick Add Contact</div>
+            <div className="grid grid-cols-2 gap-2">
+              <label className="grid gap-1">
+                <span className="text-[11px] text-muted-foreground">First name</span>
+                <input
+                  className="h-7 rounded border border-hairline bg-background px-2 text-xs"
+                  value={qc.firstName}
+                  onChange={(e) => setQc({ ...qc, firstName: e.target.value })}
+                />
+              </label>
+              <label className="grid gap-1">
+                <span className="text-[11px] text-muted-foreground">Last name</span>
+                <input
+                  className="h-7 rounded border border-hairline bg-background px-2 text-xs"
+                  value={qc.lastName}
+                  onChange={(e) => setQc({ ...qc, lastName: e.target.value })}
+                />
+              </label>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <label className="grid gap-1">
+                <span className="text-[11px] text-muted-foreground">Email</span>
+                <input
+                  className="h-7 rounded border border-hairline bg-background px-2 text-xs"
+                  value={qc.email}
+                  onChange={(e) => setQc({ ...qc, email: e.target.value })}
+                />
+              </label>
+              <label className="grid gap-1">
+                <span className="text-[11px] text-muted-foreground">Phone</span>
+                <input
+                  className="h-7 rounded border border-hairline bg-background px-2 text-xs"
+                  value={qc.phone}
+                  onChange={(e) => setQc({ ...qc, phone: e.target.value })}
+                />
+              </label>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button
+                size="xs"
+                type="button"
+                variant="ghost"
+                onClick={() => {
+                  setQuickOpen(null);
+                  setQc({ firstName: "", lastName: "", email: "", phone: "" });
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                size="xs"
+                type="button"
+                onClick={handleQuickAdd}
+                disabled={creating || !qc.firstName.trim()}
+              >
+                Create and select
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {quickOpen === "org" && !link && (
+          <div className="mt-3 rounded-md border border-hairline bg-surface/70 p-3 space-y-2 text-xs">
+            <div className="font-medium text-sm">Quick Add Organization</div>
+            <div className="grid grid-cols-2 gap-2">
+              <label className="grid gap-1">
+                <span className="text-[11px] text-muted-foreground">Name</span>
+                <input
+                  className="h-7 rounded border border-hairline bg-background px-2 text-xs"
+                  value={qo.name}
+                  onChange={(e) => setQo({ ...qo, name: e.target.value })}
+                />
+              </label>
+              <label className="grid gap-1">
+                <span className="text-[11px] text-muted-foreground">Website</span>
+                <input
+                  className="h-7 rounded border border-hairline bg-background px-2 text-xs"
+                  value={qo.website}
+                  onChange={(e) => setQo({ ...qo, website: e.target.value })}
+                />
+              </label>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <label className="grid gap-1">
+                <span className="text-[11px] text-muted-foreground">Email</span>
+                <input
+                  className="h-7 rounded border border-hairline bg-background px-2 text-xs"
+                  value={qo.email}
+                  onChange={(e) => setQo({ ...qo, email: e.target.value })}
+                />
+              </label>
+              <label className="grid gap-1">
+                <span className="text-[11px] text-muted-foreground">Phone</span>
+                <input
+                  className="h-7 rounded border border-hairline bg-background px-2 text-xs"
+                  value={qo.phone}
+                  onChange={(e) => setQo({ ...qo, phone: e.target.value })}
+                />
+              </label>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button
+                size="xs"
+                type="button"
+                variant="ghost"
+                onClick={() => {
+                  setQuickOpen(null);
+                  setQo({ name: "", website: "", email: "", phone: "" });
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                size="xs"
+                type="button"
+                onClick={handleQuickAdd}
+                disabled={creating || !qo.name.trim()}
+              >
+                Create and select
+              </Button>
+            </div>
+          </div>
+        )}
+
+
+        <div className="mt-2 flex items-center gap-3">
+          <Button size="xs" variant="outline" onClick={() => setQuickOpen("contact")}>
+            + Quick Add Contact
+          </Button>
+          <Button size="xs" variant="outline" onClick={() => setQuickOpen("org")}>
+            + Quick Add Organization
+          </Button>
+        </div>
+
+        {searchBusy && (
+          <div className="text-xs text-secondary">Searching…</div>
+        )}
+
+        {!searchBusy && hits.length > 0 && (
+          <div className="rounded-md border border-hairline bg-surface/80 text-xs">
+            <div className="border-b border-hairline px-2 py-1 text-[11px] uppercase tracking-wide text-secondary">
+              Search results
+            </div>
+            <div className="divide-y divide-white/5">
+              {hits.map((h) => (
+                <button
+                  key={`${h.kind}-${h.id}`}
+                  type="button"
+                  className={clsx(
+                    "flex w-full items-center justify-between px-2 py-1.5 text-left hover:bg-white/5",
+                    link && link.kind === h.kind && link.id === h.id
+                      ? "bg-white/10"
+                      : "",
+                  )}
+                  onClick={() =>
+                    setLink({
+                      kind: h.kind,
+                      id: h.id,
+                      label: h.label,
+                      subtitle: h.subtitle,
+                    })
+                  }
+                >
+                  <div>
+                    <div className="font-medium">{h.label}</div>
+                    {h.subtitle && (
+                      <div className="text-[11px] text-secondary">
+                        {h.subtitle}
+                      </div>
+                    )}
+                  </div>
+                  <span className="text-[11px] text-secondary">
+                    {h.kind === "contact" ? "Contact" : "Organization"}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {createErr && (
+          <div className="text-xs text-red-500">{createErr}</div>
+        )}
+
+        <div className="mt-2 flex items-center justify-between">
+          <Button
+            size="xs"
+            type="button"
+            onClick={handleInlineSubmit}
+            disabled={!link || creating || !api}
+          >
+            Add buyer
+          </Button>
+        </div>
+      </div>
+
+      {/* Linked buyers table, directly under the Add buyer controls */}
+      <div>
+        <SectionChipHeading
+          icon={
+            <span
+              className="i-lucide-users h-3.5 w-3.5"
+              aria-hidden="true"
+            />
+          }
+          text="Linked buyers"
+        />
+        {Array.isArray(group.buyers) && group.buyers.length > 0 ? (
+          <table className="mt-2 w-full border-separate border-spacing-y-1 text-xs">
+            <thead className="text-[11px] uppercase tracking-wide text-secondary">
+              <tr>
+                <th className="text-left font-medium">Buyer</th>
+                <th className="text-left font-medium">Kind</th>
+                <th className="text-left font-medium">From waitlist</th>
               </tr>
             </thead>
             <tbody>
-              {cands.map((c) => (
-                <tr key={c.id} className="border-t border-white/10">
-                  <td className="py-1 pr-2">{c.contactLabel || c.orgLabel || `Waitlist #${c.id}`}</td>
-                  <td className="py-1 pr-2">{fmtDate(c.depositPaidAt) || "-"}</td>
-                  <td className="py-1 pr-2">{c.priority ?? "-"}</td>
-                  <td className="py-1 pr-2">{c.skipCount ?? 0}</td>
-                  <td className="py-1 pr-2">{c.notes || ""}</td>
-                  <td className="py-1 pl-2 text-right">
-                    <div className="inline-flex gap-2">
-                      <Button size="xs" onClick={() => addToGroup(c.id)}>Add</Button>
-                      <Button size="xs" variant="outline" onClick={() => skipOnce(c.id)}>Skip once</Button>
-                    </div>
+              {group.buyers.map((b) => (
+                <tr key={b.id}>
+                  <td className="py-1 pr-2">
+                    {b.contactLabel || b.orgLabel || `Buyer #${b.id}`}
+                  </td>
+                  <td className="py-1 pr-2">
+                    {b.contactId
+                      ? "Contact"
+                      : b.organizationId
+                        ? "Organization"
+                        : "-"}
+                  </td>
+                  <td className="py-1 pr-2">
+                    {b.waitlistEntryId ? "Yes" : ""}
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
+        ) : (
+          <p className="mt-2 text-xs text-secondary">
+            No buyers linked yet.
+          </p>
+        )}
+      </div>
+
+      {/* optional: keep candidate list below */}
+      {loading && (
+        <div className="mt-3 text-sm text-secondary">
+          Looking for matching waitlist candidates…
         </div>
       )}
+
+      {error && (
+        <div className="mt-3 mb-2 text-sm text-red-600">
+          Error: {error}
+        </div>
+      )}
+
+      {/* keep your existing candidate cards below here if you want them */}
     </SectionCard>
   );
 }
@@ -1861,6 +3400,9 @@ function OffspringGroupsTab({ api, tenantId, readOnlyGlobal }: { api: ReturnType
   const [raw, setRaw] = React.useState<OffspringRow[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
+  const [buyerModalOpen, setBuyerModalOpen] = React.useState(false);
+  const [buyerModalGroup, setBuyerModalGroup] = React.useState<OffspringRow | null>(null);
+
 
   const [createOpen, setCreateOpen] = React.useState(false);
   React.useEffect(() => {
@@ -2003,6 +3545,16 @@ function OffspringGroupsTab({ api, tenantId, readOnlyGlobal }: { api: ReturnType
                   setRaw(next);
                   setRows(next.map(mapDetailToTableRow));
                   toast?.({ title: "Saved" });
+
+                  try {
+                    window.dispatchEvent(
+                      new CustomEvent("bhq:group:updated", {
+                        detail: { groupId: row.id },
+                      })
+                    );
+                  } catch {
+                    // ignore event failures
+                  }
                 }
               } catch (e: any) {
                 toast?.({ title: "Save failed", description: String(e?.message || e), variant: "destructive" });
@@ -2015,16 +3567,29 @@ function OffspringGroupsTab({ api, tenantId, readOnlyGlobal }: { api: ReturnType
             }),
             tabs: [
               { key: "overview", label: "Overview" },
-              { key: "metrics", label: "Metrics" },
+              { key: "buyers", label: "Buyers" },
+              { key: "linkedOffspring", label: "Offspring" },
               { key: "media", label: "Media" },
               { key: "documents", label: "Documents" },
-              { key: "linkedOffspring", label: "Linked Offspring" },
-              { key: "buyers", label: "Buyers" },
               { key: "analytics", label: "Analytics" },
             ],
             customChrome: true,
             render: ({ row, mode, setMode, activeTab, setActiveTab, requestSave }: any) => {
               const tblRow = mapDetailToTableRow(row);
+              const openOffspringFromGroup = (offspringId: number) => {
+                try {
+                  const url = new URL(window.location.href);
+                  // Clear other ids so offspring is authoritative
+                  url.searchParams.delete("groupId");
+                  url.searchParams.delete("waitlistId");
+                  url.searchParams.set("offspringId", String(offspringId));
+                  window.history.replaceState({}, "", url.toString());
+                  window.dispatchEvent(new Event("popstate"));
+                } catch {
+                  // ignore URL issues in embedded shells
+                }
+              };
+
 
               return (
                 <DetailsScaffold
@@ -2036,11 +3601,10 @@ function OffspringGroupsTab({ api, tenantId, readOnlyGlobal }: { api: ReturnType
                   onSave={requestSave}
                   tabs={[
                     { key: "overview", label: "Overview" },
-                    { key: "metrics", label: "Metrics" },
+                    { key: "buyers", label: "Buyers" },
+                    { key: "linkedOffspring", label: "Offspring" },
                     { key: "media", label: "Media" },
                     { key: "documents", label: "Documents" },
-                    { key: "linkedOffspring", label: "Linked Offspring" },
-                    { key: "buyers", label: "Buyers" },
                     { key: "analytics", label: "Analytics" },
                   ]}
                   activeTab={activeTab}
@@ -2062,13 +3626,238 @@ function OffspringGroupsTab({ api, tenantId, readOnlyGlobal }: { api: ReturnType
                     </div>
                   }
                 >
+                  {activeTab === "analytics" && (
+                    <>
+                      {tblRow && <GroupSummaryBand row={tblRow} />}
+
+                      <div className="mt-4 grid gap-4 lg:grid-cols-[2fr,1.5fr]">
+                        <SectionCard>
+                          <div className="mb-3 flex items-center justify-between">
+                            <h3 className="text-sm font-semibold">Headcount and breakdown</h3>
+                            <span className="text-xs text-muted-foreground">
+                              Live, weaned, placed
+                            </span>
+                          </div>
+                          <div className="grid gap-2 sm:grid-cols-3">
+                            <div className="rounded-md border p-3">
+                              <div className="text-xs text-muted-foreground">Live</div>
+                              <div className="text-lg font-semibold">
+                                {row.counts?.live ?? "-"}
+                              </div>
+                            </div>
+                            <div className="rounded-md border p-3">
+                              <div className="text-xs text-muted-foreground">Weaned</div>
+                              <div className="text-lg font-semibold">
+                                {row.counts?.weaned ?? "-"}
+                              </div>
+                            </div>
+                            <div className="rounded-md border p-3">
+                              <div className="text-xs text-muted-foreground">Placed</div>
+                              <div className="text-lg font-semibold">
+                                {(row.counts as any)?.placed ?? "-"}
+                              </div>
+                            </div>
+                          </div>
+                        </SectionCard>
+
+                        <SectionCard>
+                          <div className="mb-3 flex items-center justify-between">
+                            <h3 className="text-sm font-semibold">Placement timeline</h3>
+                            <span className="text-xs text-muted-foreground">
+                              Expected and actual
+                            </span>
+                          </div>
+                          <div className="space-y-1 text-xs">
+                            <div>
+                              <span className="font-medium">Breeding</span>
+                              <span className="mx-1">·</span>
+                              <span>{fmtDate(row.dates?.breedingDateExpected)}</span>
+                              {row.dates?.breedingDateActual && (
+                                <span className="ml-2 text-muted-foreground">
+                                  (actual {fmtDate(row.dates.breedingDateActual)})
+                                </span>
+                              )}
+                            </div>
+                            <div>
+                              <span className="font-medium">Birth</span>
+                              <span className="mx-1">·</span>
+                              <span>
+                                {fmtRange(
+                                  row.dates?.birthedStartAt,
+                                  row.dates?.birthedEndAt
+                                )}
+                              </span>
+                            </div>
+                            <div>
+                              <span className="font-medium">Weaning</span>
+                              <span className="mx-1">·</span>
+                              <span>{fmtDate(row.dates?.weanedAt)}</span>
+                            </div>
+                            <div>
+                              <span className="font-medium">Placement</span>
+                              <span className="mx-1">·</span>
+                              <span>
+                                {fmtRange(
+                                  row.expectedPlacementStart ??
+                                  row.dates?.placementStartDateExpected,
+                                  row.expectedPlacementCompleted ??
+                                  row.dates?.placementCompletedDateExpected
+                                )}
+                              </span>
+                            </div>
+                          </div>
+
+                          <MiniTimeline row={row} />
+                        </SectionCard>
+
+                        <SectionCard>
+                          <div className="mb-3 flex items-center justify-between">
+                            <h3 className="text-sm font-semibold">Coverage and velocity</h3>
+                            <span className="text-xs text-muted-foreground">Auto calculated</span>
+                          </div>
+                          {(() => {
+                            const coverage = computeCoverage(row);
+                            const placementDays = computePlacementVelocity(row);
+                            const reserved = row.counts?.reserved ?? 0;
+                            const placed = (row.counts as any)?.placed ?? 0;
+                            const coveragePct =
+                              coverage == null ? "N/A" : `${Math.round(coverage * 100)}%`;
+
+                            return (
+                              <div className="grid gap-2 sm:grid-cols-2">
+                                <div className="rounded-md border p-3 text-xs">
+                                  <div className="mb-1 font-medium">Coverage</div>
+                                  <div>Reserved: {reserved}</div>
+                                  <div>Placed: {placed}</div>
+                                  <div className="mt-1 text-muted-foreground">
+                                    Overall: {coveragePct}
+                                  </div>
+                                </div>
+                                <div className="rounded-md border p-3 text-xs">
+                                  <div className="mb-1 font-medium">Velocity</div>
+                                  <div>
+                                    {placementDays == null
+                                      ? "N/A"
+                                      : `${placementDays} days`}
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })()}
+                        </SectionCard>
+
+                        <SectionCard>
+                          <div className="mb-3 flex items-center justify-between">
+                            <h3 className="text-sm font-semibold">Waitlist overlap</h3>
+                            <span className="text-xs text-muted-foreground">
+                              Same tenant
+                            </span>
+                          </div>
+                          <div className="text-sm">
+                            {Array.isArray(row.Waitlist) && row.Waitlist.length > 0 ? (
+                              <div>
+                                <p className="mb-2">
+                                  {row.Waitlist.length} linked waitlist records.
+                                </p>
+                                <ul className="space-y-1 text-xs">
+                                  {row.Waitlist.slice(0, 5).map((w: any) => (
+                                    <li key={w.id} className="flex gap-2">
+                                      <span className="truncate">
+                                        {w.contact?.displayName ||
+                                          w.org?.displayName ||
+                                          `Waitlist #${w.id}`}
+                                      </span>
+                                      {w.status && (
+                                        <span className="text-muted-foreground">
+                                          · {w.status}
+                                        </span>
+                                      )}
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            ) : (
+                              <p className="text-xs text-muted-foreground">
+                                No overlapping waitlist entries yet.
+                              </p>
+                            )}
+                          </div>
+                        </SectionCard>
+                      </div>
+                    </>
+                  )}
+
                   {activeTab === "overview" && (
-                    <DetailsSpecRenderer<GroupTableRow>
-                      row={tblRow}
-                      mode={readOnlyGlobal ? "view" : mode}
-                      setDraft={() => { }}
-                      sections={groupSections(readOnlyGlobal ? "view" : mode)}
-                    />
+                    <>
+                      <SectionCard title="Identity">
+                        <div className="grid gap-x-12 gap-y-4 md:grid-cols-2">
+                          <div className="space-y-2">
+                            <IdentityField label="Group Name">
+                              {tblRow.groupName || "-"}
+                            </IdentityField>
+
+                            <IdentityField label="Species">
+                              {tblRow.species || "-"}
+                            </IdentityField>
+
+                            <IdentityField label="Dam">
+                              {tblRow.damName && tblRow.damId ? (
+                                <a
+                                  href={`/animals/${tblRow.damId}`}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="text-primary underline"
+                                >
+                                  {tblRow.damName}
+                                </a>
+                              ) : (
+                                tblRow.damName || "-"
+                              )}
+                            </IdentityField>
+
+                            <IdentityField label="Season">
+                              {tblRow.seasonLabel || "-"}
+                            </IdentityField>
+                          </div>
+
+                          <div className="space-y-2">
+                            <IdentityField label="Plan Code">
+                              {tblRow.planCode || "-"}
+                            </IdentityField>
+
+                            <IdentityField label="Breed">
+                              {tblRow.breed || "-"}
+                            </IdentityField>
+
+                            <IdentityField label="Sire">
+                              {tblRow.sireName && tblRow.sireId ? (
+                                <a
+                                  href={`/animals/${tblRow.sireId}`}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="text-primary underline"
+                                >
+                                  {tblRow.sireName}
+                                </a>
+                              ) : (
+                                tblRow.sireName || "-"
+                              )}
+                            </IdentityField>
+
+                            <IdentityField label="Status (computed)">
+                              {tblRow.status || "-"}
+                            </IdentityField>
+                          </div>
+                        </div>
+                      </SectionCard>
+
+                      <DetailsSpecRenderer<GroupTableRow>
+                        row={tblRow}
+                        mode={readOnlyGlobal ? "view" : mode}
+                        setDraft={() => { }}
+                        sections={groupSections(readOnlyGlobal ? "view" : mode)}
+                      />
+                    </>
                   )}
 
                   {activeTab === "buyers" && (
@@ -2076,172 +3865,10 @@ function OffspringGroupsTab({ api, tenantId, readOnlyGlobal }: { api: ReturnType
                       api={api}
                       group={row}
                       onGroupUpdate={(updated) => {
-                        const idx = raw.findIndex((r) => r.id === updated.id);
-                        if (idx >= 0) {
-                          const next = [...raw];
-                          next[idx] = updated as any;
-                          setRaw(next);
-                          setRows(next.map(mapDetailToTableRow));
-                        }
                       }}
                     />
                   )}
-
-                  {activeTab === "metrics" && (
-                    <div className="grid gap-4 lg:grid-cols-[2fr,1.5fr]">
-                      <SectionCard>
-                        <div className="mb-3 flex items-center justify-between">
-                          <h3 className="text-sm font-semibold">Headcount and breakdown</h3>
-                          <span className="text-xs text-muted-foreground">
-                            Live, weaned, placed
-                          </span>
-                        </div>
-                        <div className="grid gap-2 sm:grid-cols-3">
-                          <div className="rounded-md border p-3">
-                            <div className="text-xs text-muted-foreground">Live</div>
-                            <div className="text-lg font-semibold">
-                              {row.counts?.live ?? "-"}
-                            </div>
-                          </div>
-                          <div className="rounded-md border p-3">
-                            <div className="text-xs text-muted-foreground">Weaned</div>
-                            <div className="text-lg font-semibold">
-                              {row.counts?.weaned ?? "-"}
-                            </div>
-                          </div>
-                          <div className="rounded-md border p-3">
-                            <div className="text-xs text-muted-foreground">Placed</div>
-                            <div className="text-lg font-semibold">
-                              {(row.counts as any)?.placed ?? "-"}
-                            </div>
-                          </div>
-                        </div>
-                      </SectionCard>
-
-                      <SectionCard>
-                        <div className="mb-3 flex items-center justify-between">
-                          <h3 className="text-sm font-semibold">Placement timeline</h3>
-                          <span className="text-xs text-muted-foreground">
-                            Expected and actual
-                          </span>
-                        </div>
-                        <div className="space-y-1 text-xs">
-                          <div>
-                            <span className="font-medium">Breeding</span>
-                            <span className="mx-1">·</span>
-                            <span>{fmtDate(row.dates?.breedingDateExpected)}</span>
-                            {row.dates?.breedingDateActual && (
-                              <span className="ml-2 text-muted-foreground">
-                                (actual {fmtDate(row.dates.breedingDateActual)})
-                              </span>
-                            )}
-                          </div>
-                          <div>
-                            <span className="font-medium">Birth</span>
-                            <span className="mx-1">·</span>
-                            <span>
-                              {fmtRange(
-                                row.dates?.birthedStartAt,
-                                row.dates?.birthedEndAt
-                              )}
-                            </span>
-                          </div>
-                          <div>
-                            <span className="font-medium">Weaning</span>
-                            <span className="mx-1">·</span>
-                            <span>{fmtDate(row.dates?.weanedAt)}</span>
-                          </div>
-                          <div>
-                            <span className="font-medium">Placement</span>
-                            <span className="mx-1">·</span>
-                            <span>
-                              {fmtRange(
-                                row.expectedPlacementStart ??
-                                row.dates?.placementStartDateExpected,
-                                row.expectedPlacementCompleted ??
-                                row.dates?.placementCompletedDateExpected
-                              )}
-                            </span>
-                          </div>
-                        </div>
-                      </SectionCard>
-
-                      <SectionCard>
-                        <div className="mb-3 flex items-center justify-between">
-                          <h3 className="text-sm font-semibold">Coverage and velocity</h3>
-                          <span className="text-xs text-muted-foreground">Auto calculated</span>
-                        </div>
-                        {(() => {
-                          const coverage = computeCoverage(row);
-                          const placementDays = computePlacementVelocity(row);
-                          const reserved = row.counts?.reserved ?? 0;
-                          const placed = (row.counts as any)?.placed ?? 0;
-                          const coveragePct =
-                            coverage == null ? "N/A" : `${Math.round(coverage * 100)}%`;
-
-                          return (
-                            <div className="grid gap-2 sm:grid-cols-2">
-                              <div className="rounded-md border p-3 text-xs">
-                                <div className="mb-1 font-medium">Coverage</div>
-                                <div>Reserved: {reserved}</div>
-                                <div>Placed: {placed}</div>
-                                <div className="mt-1 text-muted-foreground">
-                                  Overall: {coveragePct}
-                                </div>
-                              </div>
-                              <div className="rounded-md border p-3 text-xs">
-                                <div className="mb-1 font-medium">Velocity</div>
-                                <div>
-                                  {placementDays == null
-                                    ? "N/A"
-                                    : `${placementDays} days`}
-                                </div>
-                              </div>
-                            </div>
-                          );
-                        })()}
-                      </SectionCard>
-
-                      <SectionCard>
-                        <div className="mb-3 flex items-center justify-between">
-                          <h3 className="text-sm font-semibold">Waitlist overlap</h3>
-                          <span className="text-xs text-muted-foreground">
-                            Same tenant
-                          </span>
-                        </div>
-                        <div className="text-sm">
-                          {Array.isArray(row.Waitlist) && row.Waitlist.length > 0 ? (
-                            <div>
-                              <p className="mb-2">
-                                {row.Waitlist.length} linked waitlist records.
-                              </p>
-                              <ul className="space-y-1 text-xs">
-                                {row.Waitlist.slice(0, 5).map((w: any) => (
-                                  <li key={w.id} className="flex gap-2">
-                                    <span className="truncate">
-                                      {w.contact?.displayName ||
-                                        w.org?.displayName ||
-                                        `Waitlist #${w.id}`}
-                                    </span>
-                                    {w.status && (
-                                      <span className="text-muted-foreground">
-                                        · {w.status}
-                                      </span>
-                                    )}
-                                  </li>
-                                ))}
-                              </ul>
-                            </div>
-                          ) : (
-                            <p className="text-xs text-muted-foreground">
-                              No overlapping waitlist entries yet.
-                            </p>
-                          )}
-                        </div>
-                      </SectionCard>
-                    </div>
-                  )}
-
+                  
                   {activeTab === "media" && (
                     <SectionCard>
                       <div className="mb-3 flex items-center justify-between">
@@ -2290,29 +3917,29 @@ function OffspringGroupsTab({ api, tenantId, readOnlyGlobal }: { api: ReturnType
                           <Button
                             size="xs"
                             variant="outline"
-                            onClick={() =>
-                              api.animals.createForGroup(row.id).then(onRefreshRow)
-                            }
+                            onClick={async () => {
+                              if (!api) return;
+                              try {
+                                const created = await api.animals.createForGroup(row.id);
+                                await onRefreshRow();
+                                try {
+                                  window.dispatchEvent(
+                                    new CustomEvent("bhq:offspring:created", {
+                                      detail: {
+                                        groupId: row.id,
+                                        offspringId: (created as any)?.id ?? null,
+                                      },
+                                    })
+                                  );
+                                } catch {
+                                  // ignore event failures
+                                }
+                              } catch (e) {
+                                console.error("Add offspring failed", e);
+                              }
+                            }}
                           >
                             Add offspring
-                          </Button>
-                          <Button
-                            size="xs"
-                            variant="outline"
-                            onClick={() =>
-                              api.offspring.syncWaitlist(row.id).then(onRefreshRow)
-                            }
-                          >
-                            Sync waitlist
-                          </Button>
-                          <Button
-                            size="xs"
-                            variant="outline"
-                            onClick={() =>
-                              api.offspring.exportLitterSheet(row.id)
-                            }
-                          >
-                            Export litter sheet
                           </Button>
                         </div>
                       </div>
@@ -2339,7 +3966,11 @@ function OffspringGroupsTab({ api, tenantId, readOnlyGlobal }: { api: ReturnType
                           </thead>
                           <tbody>
                             {row.Animals.map((a: any) => (
-                              <tr key={a.id} className="text-xs">
+                              <tr
+                                key={a.id}
+                                className="cursor-pointer text-xs hover:bg-accent/40"
+                                onClick={() => openOffspringFromGroup(a.id)}
+                              >
                                 <td className="py-1 pr-2">
                                   {a.name || `Offspring #${a.id}`}
                                 </td>
@@ -2469,6 +4100,7 @@ function OffspringGroupsTab({ api, tenantId, readOnlyGlobal }: { api: ReturnType
                     >
                       {visibleSafe.map((c) => {
                         let v: any = (r as any)[c.key];
+
                         if (
                           c.key === "expectedBirth" ||
                           c.key === "expectedPlacementStart" ||
@@ -2477,6 +4109,39 @@ function OffspringGroupsTab({ api, tenantId, readOnlyGlobal }: { api: ReturnType
                         ) {
                           v = fmtDate(v);
                         }
+
+                        if (c.key === "damName" && r.damName && r.damId) {
+                          v = (
+                            <a
+                              href={`/animals/${r.damId}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-primary underline"
+                              onClick={(evt) => {
+                                evt.stopPropagation();
+                              }}
+                            >
+                              {r.damName}
+                            </a>
+                          );
+                        }
+
+                        if (c.key === "sireName" && r.sireName && r.sireId) {
+                          v = (
+                            <a
+                              href={`/animals/${r.sireId}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-primary underline"
+                              onClick={(evt) => {
+                                evt.stopPropagation();
+                              }}
+                            >
+                              {r.sireName}
+                            </a>
+                          );
+                        }
+
                         return <TableCell key={c.key}>{v ?? ""}</TableCell>;
                       })}
                     </TableRow>
@@ -2504,20 +4169,90 @@ function OffspringGroupsTab({ api, tenantId, readOnlyGlobal }: { api: ReturnType
         </DetailsHost>
       </div>
 
+      <AddBuyerToGroupModal
+        api={api}
+        group={buyerModalGroup}
+        open={buyerModalOpen}
+        onClose={() => setBuyerModalOpen(false)}
+        onAdded={load}
+      />
+
       {/* Create Group Modal */}
-      <Overlay open={createOpen} ariaLabel="Create Offspring Group" closeOnEscape closeOnOutsideClick>
+      <Overlay
+        open={createOpen}
+        onOpenChange={(next) => {
+          if (!next) setCreateOpen(false);
+        }}
+        ariaLabel="Create Offspring Group"
+        closeOnEscape
+        closeOnOutsideClick
+      >
         {(() => {
           const panelRef = React.useRef<HTMLDivElement>(null);
           const handleOutsideMouseDown: React.MouseEventHandler<HTMLDivElement> = (e) => {
             const p = panelRef.current;
             if (!p) return;
-            if (!p.contains(e.target as Node)) setCreateOpen(false);
+            if (!p.contains(e.target as Node)) {
+              setCreateOpen(false);
+            }
           };
+
           return (
-            <div className="fixed inset-0" style={{ zIndex: MODAL_Z, isolation: "isolate" }} onMouseDown={handleOutsideMouseDown}>
+            <div className="fixed inset-0" onMouseDown={handleOutsideMouseDown}>
               <div className="absolute inset-0 bg-black/50" />
               <div className="absolute inset-0 flex items-center justify-center">
                 <div ref={panelRef} className="pointer-events-auto">
+                  <CreateGroupForm
+                    api={api}
+                    tenantId={tenantId}
+                    onCreated={async () => {
+                      setCreateOpen(false);
+                      await load();
+                    }}
+                    onCancel={() => setCreateOpen(false)}
+                  />
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+      </Overlay>
+
+
+      {/* Create Group Modal */}
+      <Overlay
+        open={createOpen}
+        onOpenChange={(next) => {
+          if (!next) setCreateOpen(false);
+        }}
+        ariaLabel="Create Offspring Group"
+        closeOnEscape
+        closeOnOutsideClick
+      >
+        {(() => {
+          const panelRef = React.useRef<HTMLDivElement>(null);
+
+          const handleOutsideMouseDown: React.MouseEventHandler<HTMLDivElement> = (e) => {
+            const p = panelRef.current;
+            if (!p) return;
+            if (!p.contains(e.target as Node)) {
+              setCreateOpen(false);
+            }
+          };
+
+          return (
+            <div className="fixed inset-0" onMouseDown={handleOutsideMouseDown}>
+              {/* Backdrop */}
+              <div className="absolute inset-0 bg-black/50" />
+
+              {/* Centered panel */}
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div
+                  ref={panelRef}
+                  role="dialog"
+                  aria-modal="true"
+                  className="pointer-events-auto"
+                >
                   <CreateGroupForm
                     api={api}
                     tenantId={tenantId}
@@ -2856,28 +4591,29 @@ function OffspringGroupsTab({ api, tenantId, readOnlyGlobal }: { api: ReturnType
 // }
 
 /* ───────────────────────── Module shell ───────────────────────── */
-export default function OffspringModule() {
-  React.useEffect(() => {
-    window.dispatchEvent(new CustomEvent("bhq:module", { detail: { key: "offspring", label: "Offspring" } }));
-  }, []);
 
-  React.useEffect(() => {
-    if (!getOverlayRoot()) {
-      console.warn("ColumnsPopover needs an overlay root. Add <div id='bhq-overlay-root'></div> to the shell.");
-    }
-  }, []);
+/* ───────────────────────── Module shell ───────────────────────── */
 
+export default function AppOffspringModule() {
   // Resolve tenant once, memo client
-  const [tenantId, setTenantId] = React.useState<number | null>(() => readTenantIdFast() ?? null);
+  const [tenantId, setTenantId] = React.useState<number | null>(
+    () => readTenantIdFast() ?? null,
+  );
+
   React.useEffect(() => {
     if (tenantId != null) return;
+
     let cancelled = false;
+
     (async () => {
       try {
         const t = await resolveTenantId();
         if (!cancelled) setTenantId(t);
-      } catch { }
+      } catch {
+        // swallow tenant resolution errors, page will stay inert
+      }
     })();
+
     return () => {
       cancelled = true;
     };
@@ -2885,58 +4621,105 @@ export default function OffspringModule() {
 
   const api = React.useMemo(() => makeOffspringApi("/api/v1"), []);
 
-  const [allowedSpecies, setAllowedSpecies] = React.useState<SpeciesUi[]>(["Dog", "Cat", "Horse"]);
+  const [allowedSpecies, setAllowedSpecies] = React.useState<SpeciesUi[]>([
+    "Dog",
+    "Cat",
+    "Horse",
+  ]);
+
   React.useEffect(() => {
     let alive = true;
+
     (async () => {
       try {
         // Optional tenant settings endpoint, tolerate absence
-        // Expect shape like { allowedSpecies: ["Dog","Cat"] }
+        // Expect shape like { allowedSpecies: ["Dog","Cat"] } or offspringAllowedSpecies
         const res = await (api as any)?.tenants?.settings?.get?.();
-        const arr: string[] = res?.allowedSpecies ?? res?.offspringAllowedSpecies ?? null;
+        const arr: string[] =
+          res?.allowedSpecies ?? res?.offspringAllowedSpecies ?? null;
+
         if (alive && Array.isArray(arr) && arr.length) {
           const cleaned = arr
             .map((s) => String(s).trim())
             .filter((s) => ["Dog", "Cat", "Horse"].includes(s)) as SpeciesUi[];
-          if (cleaned.length) setAllowedSpecies(cleaned);
+
+          if (cleaned.length) {
+            setAllowedSpecies(cleaned);
+          }
         }
-      } catch { }
+      } catch {
+        // ignore settings failures
+      }
     })();
+
     return () => {
       alive = false;
     };
   }, [api]);
 
   // Permissions, gate editing
-  const readOnlyGlobal = !((window as any).bhqPerms?.offspring?.canEdit ?? true);
+  const readOnlyGlobal =
+    !((window as any).bhqPerms?.offspring?.canEdit ?? true);
 
   const [activeTab, setActiveTab] =
     React.useState<"offspring" | "groups" | "waitlist">("groups");
 
-  // URL-driven tab routing and auto-open
+  // URL driven tab routing and auto open
   React.useEffect(() => {
     const apply = () => {
-      const url = new URL(window.location.href);
-      const directTab = (url.searchParams.get("tab") || url.hash.replace("#", "")) as "offspring" | "groups" | "waitlist" | null;
-      if (directTab && (directTab === "offspring" || directTab === "groups" || directTab === "waitlist")) {
+      let url: URL;
+
+      try {
+        url = new URL(window.location.href);
+      } catch {
+        // fall back to default when URL parsing fails
+        setActiveTab("groups");
+        return;
+      }
+
+      const rawTab =
+        url.searchParams.get("tab") || url.hash.replace("#", "");
+
+      const directTab =
+        rawTab === "offspring" ||
+          rawTab === "groups" ||
+          rawTab === "waitlist"
+          ? (rawTab as "offspring" | "groups" | "waitlist")
+          : null;
+
+      if (directTab) {
         setActiveTab(directTab);
         return;
       }
-      const gid = url.searchParams.get("groupId");
-      const wid = url.searchParams.get("waitlistId");
-      if (gid) setActiveTab("groups");
-      else if (wid) setActiveTab("waitlist");
-      else setActiveTab("groups"); // default when nothing in URL
+
+      const offspringId = url.searchParams.get("offspringId");
+      const groupId = url.searchParams.get("groupId");
+      const waitlistId = url.searchParams.get("waitlistId");
+
+      if (offspringId) {
+        setActiveTab("offspring");
+      } else if (groupId) {
+        setActiveTab("groups");
+      } else if (waitlistId) {
+        setActiveTab("waitlist");
+      } else {
+        // default when nothing in URL
+        setActiveTab("groups");
+      }
     };
+
     apply();
+
     const onPop = () => apply();
     window.addEventListener("popstate", onPop);
+
     return () => window.removeEventListener("popstate", onPop);
   }, []);
 
   const handleTabChange = React.useCallback(
     (next: "offspring" | "groups" | "waitlist") => {
       setActiveTab(next);
+
       try {
         const url = new URL(window.location.href);
         url.searchParams.set("tab", next);
@@ -2945,28 +4728,35 @@ export default function OffspringModule() {
         // ignore URL failures in embedded shells
       }
     },
-    []
+    [],
   );
 
   return (
     <div className="p-4 space-y-4">
-      {/* One global mount for overlays and drawers, same as other modules */}
-      <OverlayMount root={overlayRootSafe} />
-
       <PageHeader
-        title="Offspring"
+        title="Offspring | Buyers | Waitlist"
         subtitle={
           activeTab === "offspring"
             ? "Managed individual Offspring"
             : activeTab === "groups"
-              ? "Offspring Groups"
+              ? "Managing Your Offspring and Buyers"
               : "Global Waitlist"
         }
-        rightSlot={<UnderlineTabs value={activeTab} onChange={handleTabChange} />}
+        rightSlot={
+          <UnderlineTabs value={activeTab} onChange={handleTabChange} />
+        }
       />
 
       {activeTab === "offspring" && <OffspringPage embed />}
-      {activeTab === "groups" && <OffspringGroupsTab api={api} tenantId={tenantId} readOnlyGlobal={readOnlyGlobal} />}
+
+      {activeTab === "groups" && (
+        <OffspringGroupsTab
+          api={api}
+          tenantId={tenantId}
+          readOnlyGlobal={readOnlyGlobal}
+        />
+      )}
+
       {activeTab === "waitlist" && <WaitlistPage embed />}
     </div>
   );

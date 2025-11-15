@@ -19,6 +19,7 @@ import {
   Button,
   BreedCombo,
 } from "@bhq/ui";
+import { Plus } from "lucide-react";
 import { Overlay } from "@bhq/ui/overlay";
 import { getOverlayRoot } from "@bhq/ui/overlay";
 import "@bhq/ui/styles/table.css";
@@ -97,7 +98,7 @@ function InlineSearch({
     </div>
   );
 }
-  "w-full h-9 rounded-md border border-hairline bg-surface px-3 text-sm text-primary " +
+"w-full h-9 rounded-md border border-hairline bg-surface px-3 text-sm text-primary " +
   "placeholder:text-secondary/80 focus:outline-none focus:ring-1 focus:ring-[hsl(var(--brand-orange))] " +
   "focus:border-[hsl(var(--brand-orange))] shadow-[inset_0_0_0_9999px_rgba(255,255,255,0.02)]";
 
@@ -1166,7 +1167,8 @@ function AddToWaitlistModal({
                     Cancel
                   </Button>
                   <Button onClick={handleSubmit} disabled={!canSubmit || !api}>
-                    Add to waitlist
+                    <Plus className="h-4 w-4 mr-1" />
+                    Add to Waitlist
                   </Button>
                 </div>
               </div>
@@ -1178,576 +1180,576 @@ function AddToWaitlistModal({
   );
 }
 
-/* ───────────────────────── Buyers hook and tab ───────────────────────── */
+// /* ───────────────────────── Buyers hook and tab ───────────────────────── */
 
-type Candidate = {
-  id: number;
-  contactLabel?: string | null;
-  orgLabel?: string | null;
-  speciesPref?: string | null;
-  breedPrefText?: string | null;
-  depositPaidAt?: string | null;
-  priority?: number | null;
-  skipCount?: number | null;
-  notes?: string | null;
-  source: "waitlist";
-};
+// type Candidate = {
+//   id: number;
+//   contactLabel?: string | null;
+//   orgLabel?: string | null;
+//   speciesPref?: string | null;
+//   breedPrefText?: string | null;
+//   depositPaidAt?: string | null;
+//   priority?: number | null;
+//   skipCount?: number | null;
+//   notes?: string | null;
+//   source: "waitlist";
+// };
 
-function useGroupCandidates(api: ReturnType<typeof makeOffspringApi> | null, group: OffspringRow | null) {
-  const [cands, setCands] = React.useState<Candidate[]>([]);
-  const [loading, setLoading] = React.useState(false);
-  const [error, setError] = React.useState<string | null>(null);
+// function useGroupCandidates(api: ReturnType<typeof makeOffspringApi> | null, group: OffspringRow | null) {
+//   const [cands, setCands] = React.useState<Candidate[]>([]);
+//   const [loading, setLoading] = React.useState(false);
+//   const [error, setError] = React.useState<string | null>(null);
 
-  React.useEffect(() => {
-    let alive = true;
-    (async () => {
-      if (!api || !group) {
-        if (alive) {
-          setCands([]);
-          setLoading(false);
-          setError(null);
-        }
-        return;
-      }
-      setLoading(true);
-      setError(null);
-      try {
-        const species = group.plan?.species;
-        const breed = group.plan?.breedText;
-        const res = await api.waitlist.list({ limit: 200, species: species as any, q: breed || undefined });
-        const items: any[] = Array.isArray(res) ? res : res?.items ?? [];
-        const mapped: Candidate[] = items
-          .filter((w: any) => {
-            if (!species) return true;
-            if (String(w.speciesPref || "").toUpperCase() !== String(species || "").toUpperCase()) return false;
-            if (breed && w.breedPrefText) {
-              const hay = String(w.breedPrefText).toLowerCase();
-              return hay.includes(String(breed).toLowerCase());
-            }
-            return true;
-          })
-          .slice(0, 25)
-          .map((w: any) => {
-            const t = mapWaitlistToTableRow(w);
-            return {
-              id: t.id,
-              contactLabel: t.contactLabel,
-              orgLabel: t.orgLabel,
-              speciesPref: t.speciesPref,
-              breedPrefText: t.breedPrefText,
-              depositPaidAt: t.depositPaidAt,
-              priority: t.priority,
-              skipCount: t.skipCount,
-              notes: t.notes,
-              source: "waitlist",
-            } as Candidate;
-          });
-        if (alive) setCands(mapped);
-      } catch (e: any) {
-        if (alive) setError(e?.message || "Failed to load candidates");
-      } finally {
-        if (alive) setLoading(false);
-      }
-    })();
-    return () => {
-      alive = false;
-    };
-  }, [api, group?.id, group?.plan?.species, group?.plan?.breedText]);
+//   React.useEffect(() => {
+//     let alive = true;
+//     (async () => {
+//       if (!api || !group) {
+//         if (alive) {
+//           setCands([]);
+//           setLoading(false);
+//           setError(null);
+//         }
+//         return;
+//       }
+//       setLoading(true);
+//       setError(null);
+//       try {
+//         const species = group.plan?.species;
+//         const breed = group.plan?.breedText;
+//         const res = await api.waitlist.list({ limit: 200, species: species as any, q: breed || undefined });
+//         const items: any[] = Array.isArray(res) ? res : res?.items ?? [];
+//         const mapped: Candidate[] = items
+//           .filter((w: any) => {
+//             if (!species) return true;
+//             if (String(w.speciesPref || "").toUpperCase() !== String(species || "").toUpperCase()) return false;
+//             if (breed && w.breedPrefText) {
+//               const hay = String(w.breedPrefText).toLowerCase();
+//               return hay.includes(String(breed).toLowerCase());
+//             }
+//             return true;
+//           })
+//           .slice(0, 25)
+//           .map((w: any) => {
+//             const t = mapWaitlistToTableRow(w);
+//             return {
+//               id: t.id,
+//               contactLabel: t.contactLabel,
+//               orgLabel: t.orgLabel,
+//               speciesPref: t.speciesPref,
+//               breedPrefText: t.breedPrefText,
+//               depositPaidAt: t.depositPaidAt,
+//               priority: t.priority,
+//               skipCount: t.skipCount,
+//               notes: t.notes,
+//               source: "waitlist",
+//             } as Candidate;
+//           });
+//         if (alive) setCands(mapped);
+//       } catch (e: any) {
+//         if (alive) setError(e?.message || "Failed to load candidates");
+//       } finally {
+//         if (alive) setLoading(false);
+//       }
+//     })();
+//     return () => {
+//       alive = false;
+//     };
+//   }, [api, group?.id, group?.plan?.species, group?.plan?.breedText]);
 
-  return { cands, loading, error, setCands };
-}
+//   return { cands, loading, error, setCands };
+// }
 
-function BuyersTab({
-  api,
-  group,
-  onGroupUpdate,
-}: {
-  api: ReturnType<typeof makeOffspringApi> | null;
-  group: OffspringRow;
-  onGroupUpdate: (updated: OffspringRow) => void;
-}) {
-  const { toast } = useToast();
-  const { cands, loading, error, setCands } = useGroupCandidates(api, group);
-  const [lastAction, setLastAction] = React.useState<null | { kind: "add" | "skip"; payload: any }>(null);
+// function BuyersTab({
+//   api,
+//   group,
+//   onGroupUpdate,
+// }: {
+//   api: ReturnType<typeof makeOffspringApi> | null;
+//   group: OffspringRow;
+//   onGroupUpdate: (updated: OffspringRow) => void;
+// }) {
+//   const { toast } = useToast();
+//   const { cands, loading, error, setCands } = useGroupCandidates(api, group);
+//   const [lastAction, setLastAction] = React.useState<null | { kind: "add" | "skip"; payload: any }>(null);
 
-  async function addToGroup(waitlistId: number) {
-    if (!api) return;
-    // optimistic remove from candidates
-    const prev = [...cands];
-    setCands(prev.filter((c) => c.id !== waitlistId));
-    setLastAction({ kind: "add", payload: { prev, waitlistId } });
-    try {
-      const updated = await api.offspring.buyers.add({ groupId: group.id, waitlistId });
-      onGroupUpdate(updated as any);
-      toast?.({ title: "Added buyer to group" });
-    } catch (e: any) {
-      // rollback
-      setCands(prev);
-      setLastAction(null);
-      toast?.({ title: "Add failed", description: String(e?.message || e), variant: "destructive" });
-    }
-  }
+//   async function addToGroup(waitlistId: number) {
+//     if (!api) return;
+//     // optimistic remove from candidates
+//     const prev = [...cands];
+//     setCands(prev.filter((c) => c.id !== waitlistId));
+//     setLastAction({ kind: "add", payload: { prev, waitlistId } });
+//     try {
+//       const updated = await api.offspring.buyers.add({ groupId: group.id, waitlistId });
+//       onGroupUpdate(updated as any);
+//       toast?.({ title: "Added buyer to group" });
+//     } catch (e: any) {
+//       // rollback
+//       setCands(prev);
+//       setLastAction(null);
+//       toast?.({ title: "Add failed", description: String(e?.message || e), variant: "destructive" });
+//     }
+//   }
 
-  async function skipOnce(waitlistId: number) {
-    if (!api) return;
-    const prev = [...cands];
-    const next = prev.map((c) => (c.id === waitlistId ? { ...c, skipCount: (c.skipCount ?? 0) + 1 } : c));
-    setCands(next);
-    setLastAction({ kind: "skip", payload: { prev } });
-    try {
-      await api.waitlist.skip(waitlistId);
-      toast?.({ title: "Marked skip" });
-    } catch (e: any) {
-      setCands(prev);
-      setLastAction(null);
-      toast?.({ title: "Skip failed", description: String(e?.message || e), variant: "destructive" });
-    }
-  }
+//   async function skipOnce(waitlistId: number) {
+//     if (!api) return;
+//     const prev = [...cands];
+//     const next = prev.map((c) => (c.id === waitlistId ? { ...c, skipCount: (c.skipCount ?? 0) + 1 } : c));
+//     setCands(next);
+//     setLastAction({ kind: "skip", payload: { prev } });
+//     try {
+//       await api.waitlist.skip(waitlistId);
+//       toast?.({ title: "Marked skip" });
+//     } catch (e: any) {
+//       setCands(prev);
+//       setLastAction(null);
+//       toast?.({ title: "Skip failed", description: String(e?.message || e), variant: "destructive" });
+//     }
+//   }
 
-  function undo() {
-    if (!lastAction) return;
-    if (lastAction.kind === "add") {
-      setCands(lastAction.payload.prev);
-    } else if (lastAction.kind === "skip") {
-      setCands(lastAction.payload.prev);
-    }
-    setLastAction(null);
-  }
+//   function undo() {
+//     if (!lastAction) return;
+//     if (lastAction.kind === "add") {
+//       setCands(lastAction.payload.prev);
+//     } else if (lastAction.kind === "skip") {
+//       setCands(lastAction.payload.prev);
+//     }
+//     setLastAction(null);
+//   }
 
-  return (
-    <SectionCard title="Buyers">
-      {error && <div className="text-sm text-red-600 mb-2">Error: {error}</div>}
-      {loading ? (
-        <div className="text-sm text-secondary">Loading candidates...</div>
-      ) : cands.length === 0 ? (
-        <div className="text-sm text-secondary">No matching candidates found.</div>
-      ) : (
-        <div className="space-y-2">
-          {lastAction && (
-            <div className="flex justify-end">
-              <Button size="xs" variant="outline" onClick={undo}>Undo</Button>
-            </div>
-          )}
-          <table className="min-w-full text-sm">
-            <thead>
-              <tr className="text-secondary">
-                <th className="text-left font-medium py-1 pr-2">Contact</th>
-                <th className="text-left font-medium py-1 pr-2">Deposit</th>
-                <th className="text-left font-medium py-1 pr-2">Priority</th>
-                <th className="text-left font-medium py-1 pr-2">Skips</th>
-                <th className="text-left font-medium py-1 pr-2">Notes</th>
-                <th className="text-right font-medium py-1 pl-2">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {cands.map((c) => (
-                <tr key={c.id} className="border-t border-white/10">
-                  <td className="py-1 pr-2">{c.contactLabel || c.orgLabel || `Waitlist #${c.id}`}</td>
-                  <td className="py-1 pr-2">{fmtDate(c.depositPaidAt) || "-"}</td>
-                  <td className="py-1 pr-2">{c.priority ?? "-"}</td>
-                  <td className="py-1 pr-2">{c.skipCount ?? 0}</td>
-                  <td className="py-1 pr-2">{c.notes || ""}</td>
-                  <td className="py-1 pl-2 text-right">
-                    <div className="inline-flex gap-2">
-                      <Button size="xs" onClick={() => addToGroup(c.id)}>Add</Button>
-                      <Button size="xs" variant="outline" onClick={() => skipOnce(c.id)}>Skip once</Button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </SectionCard>
-  );
-}
+//   return (
+//     <SectionCard title="Buyers">
+//       {error && <div className="text-sm text-red-600 mb-2">Error: {error}</div>}
+//       {loading ? (
+//         <div className="text-sm text-secondary">Loading candidates...</div>
+//       ) : cands.length === 0 ? (
+//         <div className="text-sm text-secondary">No matching candidates found.</div>
+//       ) : (
+//         <div className="space-y-2">
+//           {lastAction && (
+//             <div className="flex justify-end">
+//               <Button size="xs" variant="outline" onClick={undo}>Undo</Button>
+//             </div>
+//           )}
+//           <table className="min-w-full text-sm">
+//             <thead>
+//               <tr className="text-secondary">
+//                 <th className="text-left font-medium py-1 pr-2">Contact</th>
+//                 <th className="text-left font-medium py-1 pr-2">Deposit</th>
+//                 <th className="text-left font-medium py-1 pr-2">Priority</th>
+//                 <th className="text-left font-medium py-1 pr-2">Skips</th>
+//                 <th className="text-left font-medium py-1 pr-2">Notes</th>
+//                 <th className="text-right font-medium py-1 pl-2">Actions</th>
+//               </tr>
+//             </thead>
+//             <tbody>
+//               {cands.map((c) => (
+//                 <tr key={c.id} className="border-t border-white/10">
+//                   <td className="py-1 pr-2">{c.contactLabel || c.orgLabel || `Waitlist #${c.id}`}</td>
+//                   <td className="py-1 pr-2">{fmtDate(c.depositPaidAt) || "-"}</td>
+//                   <td className="py-1 pr-2">{c.priority ?? "-"}</td>
+//                   <td className="py-1 pr-2">{c.skipCount ?? 0}</td>
+//                   <td className="py-1 pr-2">{c.notes || ""}</td>
+//                   <td className="py-1 pl-2 text-right">
+//                     <div className="inline-flex gap-2">
+//                       <Button size="xs" onClick={() => addToGroup(c.id)}>Add</Button>
+//                       <Button size="xs" variant="outline" onClick={() => skipOnce(c.id)}>Skip once</Button>
+//                     </div>
+//                   </td>
+//                 </tr>
+//               ))}
+//             </tbody>
+//           </table>
+//         </div>
+//       )}
+//     </SectionCard>
+//   );
+// }
 
-/* ───────────────────────── Analytics helpers ───────────────────────── */
+// /* ───────────────────────── Analytics helpers ───────────────────────── */
 
-function computeCoverage(g: OffspringRow): number | null {
-  const reserved = g.counts?.reserved ?? 0;
-  const placed = (g.counts as any)?.placed ?? 0;
-  const sold = Math.max(reserved, placed);
-  const denom = g.counts?.live ?? (g.counts as any)?.weaned ?? g.counts?.animals ?? 0;
-  if (!denom) return null;
-  return Math.min(1, Math.max(0, sold / denom));
-}
+// function computeCoverage(g: OffspringRow): number | null {
+//   const reserved = g.counts?.reserved ?? 0;
+//   const placed = (g.counts as any)?.placed ?? 0;
+//   const sold = Math.max(reserved, placed);
+//   const denom = g.counts?.live ?? (g.counts as any)?.weaned ?? g.counts?.animals ?? 0;
+//   if (!denom) return null;
+//   return Math.min(1, Math.max(0, sold / denom));
+// }
 
-function computePlacementVelocity(g: OffspringRow): number | null {
-  const start = g.dates?.placementStartAt ? Date.parse(g.dates.placementStartAt) : NaN;
-  const end = g.dates?.placementCompletedAt ? Date.parse(g.dates.placementCompletedAt) : NaN;
-  if (!Number.isFinite(start)) return null;
-  if (!Number.isFinite(end)) return null;
-  const days = Math.round((end - start) / (1000 * 60 * 60 * 24));
-  return days >= 0 ? days : null;
-}
+// function computePlacementVelocity(g: OffspringRow): number | null {
+//   const start = g.dates?.placementStartAt ? Date.parse(g.dates.placementStartAt) : NaN;
+//   const end = g.dates?.placementCompletedAt ? Date.parse(g.dates.placementCompletedAt) : NaN;
+//   if (!Number.isFinite(start)) return null;
+//   if (!Number.isFinite(end)) return null;
+//   const days = Math.round((end - start) / (1000 * 60 * 60 * 24));
+//   return days >= 0 ? days : null;
+// }
 
-/* ───────────────────────── URL param helper re-export for tabs ───────────────────────── */
-const openDetails = setParamAndNotify;
+// /* ───────────────────────── URL param helper re-export for tabs ───────────────────────── */
+// const openDetails = setParamAndNotify;
 
-/* ───────────────────────── Tabs ───────────────────────── */
-function OffspringGroupsTab({ api, tenantId, readOnlyGlobal }: { api: ReturnType<typeof makeOffspringApi> | null; tenantId: number | null, readOnlyGlobal: boolean }) {
-  const { toast } = useToast();
-  const [q, setQ] = React.useState("");
-  const [rows, setRows] = React.useState<GroupTableRow[]>([]);
-  const [raw, setRaw] = React.useState<OffspringRow[]>([]);
-  const [loading, setLoading] = React.useState(true);
-  const [error, setError] = React.useState<string | null>(null);
+// /* ───────────────────────── Tabs ───────────────────────── */
+// function OffspringGroupsTab({ api, tenantId, readOnlyGlobal }: { api: ReturnType<typeof makeOffspringApi> | null; tenantId: number | null, readOnlyGlobal: boolean }) {
+//   const { toast } = useToast();
+//   const [q, setQ] = React.useState("");
+//   const [rows, setRows] = React.useState<GroupTableRow[]>([]);
+//   const [raw, setRaw] = React.useState<OffspringRow[]>([]);
+//   const [loading, setLoading] = React.useState(true);
+//   const [error, setError] = React.useState<string | null>(null);
 
-  const [createOpen, setCreateOpen] = React.useState(false);
-  React.useEffect(() => {
-    window.dispatchEvent(new Event("popstate"));
-  }, []);
+//   const [createOpen, setCreateOpen] = React.useState(false);
+//   React.useEffect(() => {
+//     window.dispatchEvent(new Event("popstate"));
+//   }, []);
 
-  React.useEffect(() => {
-    const prev = document.body.style.overflow;
-    if (createOpen) document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = prev || "";
-    };
-  }, [createOpen]);
+//   React.useEffect(() => {
+//     const prev = document.body.style.overflow;
+//     if (createOpen) document.body.style.overflow = "hidden";
+//     return () => {
+//       document.body.style.overflow = prev || "";
+//     };
+//   }, [createOpen]);
 
-  const load = React.useCallback(async () => {
-    if (!api) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await api.offspring.list({ q: q || undefined, limit: 100 });
-      setRaw(res.items);
-      setRows(res.items.map(mapDetailToTableRow));
-    } catch (e: any) {
-      setError(e?.message || "Failed to load groups");
-    } finally {
-      setLoading(false);
-    }
-  }, [api, q]);
+//   const load = React.useCallback(async () => {
+//     if (!api) return;
+//     setLoading(true);
+//     setError(null);
+//     try {
+//       const res = await api.offspring.list({ q: q || undefined, limit: 100 });
+//       setRaw(res.items);
+//       setRows(res.items.map(mapDetailToTableRow));
+//     } catch (e: any) {
+//       setError(e?.message || "Failed to load groups");
+//     } finally {
+//       setLoading(false);
+//     }
+//   }, [api, q]);
 
-  React.useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      if (cancelled) return;
-      await load();
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [q, load]);
+//   React.useEffect(() => {
+//     let cancelled = false;
+//     (async () => {
+//       if (cancelled) return;
+//       await load();
+//     })();
+//     return () => {
+//       cancelled = true;
+//     };
+//   }, [q, load]);
 
-  const cols = hooks.useColumns(GROUP_COLS, GROUP_STORAGE_KEY);
-  const visibleSafe = cols.visible?.length ? cols.visible : GROUP_COLS;
+//   const cols = hooks.useColumns(GROUP_COLS, GROUP_STORAGE_KEY);
+//   const visibleSafe = cols.visible?.length ? cols.visible : GROUP_COLS;
 
-  const [sorts, setSorts] = React.useState<Array<{ key: string; dir: "asc" | "desc" }>>([]);
-  const onToggleSort = (key: string) => {
-    setSorts((prev) => {
-      const f = prev.find((s) => s.key === key);
-      if (!f) return [{ key, dir: "asc" }];
-      if (f.dir === "asc") return prev.map((s) => (s.key === key ? { ...s, dir: "desc" } : s));
-      return prev.filter((s) => s.key !== key);
-    });
-  };
+//   const [sorts, setSorts] = React.useState<Array<{ key: string; dir: "asc" | "desc" }>>([]);
+//   const onToggleSort = (key: string) => {
+//     setSorts((prev) => {
+//       const f = prev.find((s) => s.key === key);
+//       if (!f) return [{ key, dir: "asc" }];
+//       if (f.dir === "asc") return prev.map((s) => (s.key === key ? { ...s, dir: "desc" } : s));
+//       return prev.filter((s) => s.key !== key);
+//     });
+//   };
 
-  function cmp(a: any, b: any) {
-    const na = Number(a), nb = Number(b);
-    if (!Number.isNaN(na) && !Number.isNaN(nb)) return na - nb;
-    const da = Date.parse(a), db = Date.parse(b);
-    if (!Number.isNaN(da) && !Number.isNaN(db)) return da - db;
-    return String(a ?? "").localeCompare(String(b ?? ""), undefined, { numeric: true, sensitivity: "base" });
-  }
+//   function cmp(a: any, b: any) {
+//     const na = Number(a), nb = Number(b);
+//     if (!Number.isNaN(na) && !Number.isNaN(nb)) return na - nb;
+//     const da = Date.parse(a), db = Date.parse(b);
+//     if (!Number.isNaN(da) && !Number.isNaN(db)) return da - db;
+//     return String(a ?? "").localeCompare(String(b ?? ""), undefined, { numeric: true, sensitivity: "base" });
+//   }
 
-  const [pageSize, setPageSize] = React.useState(25);
-  const [page, setPage] = React.useState(1);
+//   const [pageSize, setPageSize] = React.useState(25);
+//   const [page, setPage] = React.useState(1);
 
-  const sorted = React.useMemo(() => {
-    const list = [...rows];
-    if (!sorts.length) return list;
-    list.sort((a, b) => {
-      for (const s of sorts) {
-        const av = (a as any)[s.key];
-        const bv = (b as any)[s.key];
-        const c = cmp(av, bv);
-        if (c !== 0) return s.dir === "asc" ? c : -c;
-      }
-      return 0;
-    });
-    return list;
-  }, [rows, sorts]);
+//   const sorted = React.useMemo(() => {
+//     const list = [...rows];
+//     if (!sorts.length) return list;
+//     list.sort((a, b) => {
+//       for (const s of sorts) {
+//         const av = (a as any)[s.key];
+//         const bv = (b as any)[s.key];
+//         const c = cmp(av, bv);
+//         if (c !== 0) return s.dir === "asc" ? c : -c;
+//       }
+//       return 0;
+//     });
+//     return list;
+//   }, [rows, sorts]);
 
-  const pageCount = Math.max(1, Math.ceil(sorted.length / pageSize));
-  const clampedPage = Math.min(page, pageCount);
+//   const pageCount = Math.max(1, Math.ceil(sorted.length / pageSize));
+//   const clampedPage = Math.min(page, pageCount);
 
-  const pageRows = React.useMemo(() => {
-    const from = (clampedPage - 1) * pageSize;
-    const to = from + pageSize;
-    return sorted.slice(from, to);
-  }, [sorted, clampedPage, pageSize]);
+//   const pageRows = React.useMemo(() => {
+//     const from = (clampedPage - 1) * pageSize;
+//     const to = from + pageSize;
+//     return sorted.slice(from, to);
+//   }, [sorted, clampedPage, pageSize]);
 
-  return (
-    <Card>
-      <div className="relative"><DetailsHost key="groups"
-          rows={raw}
-          config={{
-            idParam: "groupId",
-            getRowId: (r: OffspringRow) => String(r.id),
-            width: 960,
-            placement: "center",
-            align: "top",
-            fetchRow: async (id: string | number) => raw.find((r) => String(r.id) === String(id))!,
-            onSave: async (row: OffspringRow, draft: any) => {
-              if (!api || readOnlyGlobal) return;
-              const body: any = {};
-              if (draft.identifier !== undefined) body.identifier = draft.identifier;
-              if (draft.statusOverride !== undefined) body.statusOverride = draft.statusOverride ?? null;
-              if (draft.statusOverrideReason !== undefined) body.statusOverrideReason = draft.statusOverrideReason ?? null;
+//   return (
+//     <Card>
+//       <div className="relative"><DetailsHost key="groups"
+//           rows={raw}
+//           config={{
+//             idParam: "groupId",
+//             getRowId: (r: OffspringRow) => String(r.id),
+//             width: 960,
+//             placement: "center",
+//             align: "top",
+//             fetchRow: async (id: string | number) => raw.find((r) => String(r.id) === String(id))!,
+//             onSave: async (row: OffspringRow, draft: any) => {
+//               if (!api || readOnlyGlobal) return;
+//               const body: any = {};
+//               if (draft.identifier !== undefined) body.identifier = draft.identifier;
+//               if (draft.statusOverride !== undefined) body.statusOverride = draft.statusOverride ?? null;
+//               if (draft.statusOverrideReason !== undefined) body.statusOverrideReason = draft.statusOverrideReason ?? null;
 
-              if (draft.counts || draft.countLive !== undefined || draft.countWeaned !== undefined || draft.countPlaced !== undefined) {
-                body.counts = {
-                  countBorn: draft.counts?.countBorn ?? draft.countBorn ?? undefined,
-                  countLive: draft.counts?.countLive ?? draft.countLive ?? undefined,
-                  countStillborn: draft.counts?.countStillborn ?? draft.countStillborn ?? undefined,
-                  countMale: draft.counts?.countMale ?? draft.countMale ?? undefined,
-                  countFemale: draft.counts?.countFemale ?? draft.countFemale ?? undefined,
-                  /** NEW */
-                  countWeaned: draft.counts?.countWeaned ?? draft.countWeaned ?? undefined,
-                  /** NEW */
-                  countPlaced: draft.counts?.countPlaced ?? draft.countPlaced ?? undefined,
-                };
-              }
-              if (draft.dates) {
-                body.dates = {
-                  birthedStartAt: draft.dates.birthedStartAt ?? null,
-                  birthedEndAt: draft.dates.birthedEndAt ?? null,
-                  weanedAt: draft.dates.weanedAt ?? null,
-                  placementStartAt: draft.dates.placementStartAt ?? null,
-                  placementCompletedAt: draft.dates.placementCompletedAt ?? null,
-                };
-              }
-              try {
-                const updated = await api.offspring.patch(row.id, body);
-                const idx = raw.findIndex((r) => r.id === row.id);
-                if (idx >= 0) {
-                  const next = [...raw];
-                  next[idx] = updated as any;
-                  setRaw(next);
-                  setRows(next.map(mapDetailToTableRow));
-                  toast?.({ title: "Saved" });
-                }
-              } catch (e: any) {
-                toast?.({ title: "Save failed", description: String(e?.message || e), variant: "destructive" });
-                throw e;
-              }
-            },
-            header: (r: OffspringRow) => ({
-              title: r.identifier || r.plan?.code || `Group #${r.id}`,
-              subtitle: (r as any).statusOverride ? `Override: ${(r as any).statusOverride}` : "",
-            }),
-            tabs: [
-              { key: "overview", label: "Overview" },
-              { key: "buyers", label: "Buyers" },
-              { key: "analytics", label: "Analytics" },
-            ],
-            customChrome: true,
-            render: ({ row, mode, setMode, activeTab, setActiveTab, requestSave }: any) => {
-              const tblRow = mapDetailToTableRow(row);
+//               if (draft.counts || draft.countLive !== undefined || draft.countWeaned !== undefined || draft.countPlaced !== undefined) {
+//                 body.counts = {
+//                   countBorn: draft.counts?.countBorn ?? draft.countBorn ?? undefined,
+//                   countLive: draft.counts?.countLive ?? draft.countLive ?? undefined,
+//                   countStillborn: draft.counts?.countStillborn ?? draft.countStillborn ?? undefined,
+//                   countMale: draft.counts?.countMale ?? draft.countMale ?? undefined,
+//                   countFemale: draft.counts?.countFemale ?? draft.countFemale ?? undefined,
+//                   /** NEW */
+//                   countWeaned: draft.counts?.countWeaned ?? draft.countWeaned ?? undefined,
+//                   /** NEW */
+//                   countPlaced: draft.counts?.countPlaced ?? draft.countPlaced ?? undefined,
+//                 };
+//               }
+//               if (draft.dates) {
+//                 body.dates = {
+//                   birthedStartAt: draft.dates.birthedStartAt ?? null,
+//                   birthedEndAt: draft.dates.birthedEndAt ?? null,
+//                   weanedAt: draft.dates.weanedAt ?? null,
+//                   placementStartAt: draft.dates.placementStartAt ?? null,
+//                   placementCompletedAt: draft.dates.placementCompletedAt ?? null,
+//                 };
+//               }
+//               try {
+//                 const updated = await api.offspring.patch(row.id, body);
+//                 const idx = raw.findIndex((r) => r.id === row.id);
+//                 if (idx >= 0) {
+//                   const next = [...raw];
+//                   next[idx] = updated as any;
+//                   setRaw(next);
+//                   setRows(next.map(mapDetailToTableRow));
+//                   toast?.({ title: "Saved" });
+//                 }
+//               } catch (e: any) {
+//                 toast?.({ title: "Save failed", description: String(e?.message || e), variant: "destructive" });
+//                 throw e;
+//               }
+//             },
+//             header: (r: OffspringRow) => ({
+//               title: r.identifier || r.plan?.code || `Group #${r.id}`,
+//               subtitle: (r as any).statusOverride ? `Override: ${(r as any).statusOverride}` : "",
+//             }),
+//             tabs: [
+//               { key: "overview", label: "Overview" },
+//               { key: "buyers", label: "Buyers" },
+//               { key: "analytics", label: "Analytics" },
+//             ],
+//             customChrome: true,
+//             render: ({ row, mode, setMode, activeTab, setActiveTab, requestSave }: any) => {
+//               const tblRow = mapDetailToTableRow(row);
 
-              return (
-                <DetailsScaffold
-                  title={tblRow.groupName || tblRow.planCode || `Group #${tblRow.id}`}
-                  subtitle={tblRow.breed || tblRow.species || ""}
-                  mode={mode}
-                  onEdit={() => !readOnlyGlobal && setMode("edit")}
-                  onCancel={() => setMode("view")}
-                  onSave={requestSave}
-                  tabs={[
-                    { key: "overview", label: "Overview" },
-                    { key: "buyers", label: "Buyers" },
-                    { key: "analytics", label: "Analytics" },
-                  ]}
-                  activeTab={activeTab}
-                  onTabChange={setActiveTab}
-                  rightActions={
-                    <div className="flex gap-2">
-                      <Button size="sm" variant="outline" onClick={() => window.open(`/breeding/plan/${row.plan?.id}`, "_blank")}>
-                        Open plan
-                      </Button>
-                      {readOnlyGlobal && <span className="text-xs text-secondary self-center">View only</span>}
-                    </div>
-                  }
-                >
-                  {activeTab === "overview" && (
-                    <DetailsSpecRenderer<GroupTableRow>
-                      row={tblRow}
-                      mode={readOnlyGlobal ? "view" : mode}
-                      setDraft={() => { }}
-                      sections={groupSections(readOnlyGlobal ? "view" : mode)}
-                    />
-                  )}
-                  {activeTab === "buyers" && (
-                    <BuyersTab
-                      api={api}
-                      group={row}
-                      onGroupUpdate={(updated) => {
-                        const idx = raw.findIndex((r) => r.id === updated.id);
-                        if (idx >= 0) {
-                          const next = [...raw];
-                          next[idx] = updated as any;
-                          setRaw(next);
-                          setRows(next.map(mapDetailToTableRow));
-                        }
-                      }}
-                    />
-                  )}
-                  {activeTab === "analytics" && (
-                    <SectionCard title="Analytics">
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 p-2">
-                        <Card>
-                          <div className="p-3">
-                            <div className="text-xs text-secondary">Coverage</div>
-                            <div className="text-2xl font-semibold">
-                              {(() => {
-                                const pct = computeCoverage(row);
-                                return pct == null ? "-" : `${Math.round(pct * 100)}%`;
-                              })()}
-                            </div>
-                            <div className="text-xs text-secondary mt-1">Reserved or placed divided by live, weaned, or planned headcount.</div>
-                          </div>
-                        </Card>
-                        <Card>
-                          <div className="p-3">
-                            <div className="text-xs text-secondary">Placement velocity</div>
-                            <div className="text-2xl font-semibold">
-                              {(() => {
-                                const days = computePlacementVelocity(row);
-                                return days == null ? "-" : `${days} days`;
-                              })()}
-                            </div>
-                            <div className="text-xs text-secondary mt-1">Days from placement start to placement completed.</div>
-                          </div>
-                        </Card>
-                      </div>
-                    </SectionCard>
-                  )}
-                </DetailsScaffold>
-              );
-            },
-          }}
-        >
-          <Table
-            columns={GROUP_COLS}
-            columnState={cols.map}
-            onColumnStateChange={cols.setAll}
-            getRowId={(r: GroupTableRow) => r.id}
-            pageSize={25}
-            renderStickyRight={() => <ColumnsPopover columns={cols.map} onToggle={cols.toggle} onSet={cols.setAll} allColumns={GROUP_COLS} triggerClassName="bhq-columns-trigger" />}
-            stickyRightWidthPx={40}
-          >
-            <div className="bhq-table__toolbar px-2 pt-2 pb-3 relative z-30 flex items-center justify-between">
-              <SearchBar value={q} onChange={(v) => { setQ(v); setPage(1); }} placeholder="Search groups..." widthPx={520} />
-              <div />
-            </div>
+//               return (
+//                 <DetailsScaffold
+//                   title={tblRow.groupName || tblRow.planCode || `Group #${tblRow.id}`}
+//                   subtitle={tblRow.breed || tblRow.species || ""}
+//                   mode={mode}
+//                   onEdit={() => !readOnlyGlobal && setMode("edit")}
+//                   onCancel={() => setMode("view")}
+//                   onSave={requestSave}
+//                   tabs={[
+//                     { key: "overview", label: "Overview" },
+//                     { key: "buyers", label: "Buyers" },
+//                     { key: "analytics", label: "Analytics" },
+//                   ]}
+//                   activeTab={activeTab}
+//                   onTabChange={setActiveTab}
+//                   rightActions={
+//                     <div className="flex gap-2">
+//                       <Button size="sm" variant="outline" onClick={() => window.open(`/breeding/plan/${row.plan?.id}`, "_blank")}>
+//                         Open plan
+//                       </Button>
+//                       {readOnlyGlobal && <span className="text-xs text-secondary self-center">View only</span>}
+//                     </div>
+//                   }
+//                 >
+//                   {activeTab === "overview" && (
+//                     <DetailsSpecRenderer<GroupTableRow>
+//                       row={tblRow}
+//                       mode={readOnlyGlobal ? "view" : mode}
+//                       setDraft={() => { }}
+//                       sections={groupSections(readOnlyGlobal ? "view" : mode)}
+//                     />
+//                   )}
+//                   {activeTab === "buyers" && (
+//                     <BuyersTab
+//                       api={api}
+//                       group={row}
+//                       onGroupUpdate={(updated) => {
+//                         const idx = raw.findIndex((r) => r.id === updated.id);
+//                         if (idx >= 0) {
+//                           const next = [...raw];
+//                           next[idx] = updated as any;
+//                           setRaw(next);
+//                           setRows(next.map(mapDetailToTableRow));
+//                         }
+//                       }}
+//                     />
+//                   )}
+//                   {activeTab === "analytics" && (
+//                     <SectionCard title="Analytics">
+//                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3 p-2">
+//                         <Card>
+//                           <div className="p-3">
+//                             <div className="text-xs text-secondary">Coverage</div>
+//                             <div className="text-2xl font-semibold">
+//                               {(() => {
+//                                 const pct = computeCoverage(row);
+//                                 return pct == null ? "-" : `${Math.round(pct * 100)}%`;
+//                               })()}
+//                             </div>
+//                             <div className="text-xs text-secondary mt-1">Reserved or placed divided by live, weaned, or planned headcount.</div>
+//                           </div>
+//                         </Card>
+//                         <Card>
+//                           <div className="p-3">
+//                             <div className="text-xs text-secondary">Placement velocity</div>
+//                             <div className="text-2xl font-semibold">
+//                               {(() => {
+//                                 const days = computePlacementVelocity(row);
+//                                 return days == null ? "-" : `${days} days`;
+//                               })()}
+//                             </div>
+//                             <div className="text-xs text-secondary mt-1">Days from placement start to placement completed.</div>
+//                           </div>
+//                         </Card>
+//                       </div>
+//                     </SectionCard>
+//                   )}
+//                 </DetailsScaffold>
+//               );
+//             },
+//           }}
+//         >
+//           <Table
+//             columns={GROUP_COLS}
+//             columnState={cols.map}
+//             onColumnStateChange={cols.setAll}
+//             getRowId={(r: GroupTableRow) => r.id}
+//             pageSize={25}
+//             renderStickyRight={() => <ColumnsPopover columns={cols.map} onToggle={cols.toggle} onSet={cols.setAll} allColumns={GROUP_COLS} triggerClassName="bhq-columns-trigger" />}
+//             stickyRightWidthPx={40}
+//           >
+//             <div className="bhq-table__toolbar px-2 pt-2 pb-3 relative z-30 flex items-center justify-between">
+//               <SearchBar value={q} onChange={(v) => { setQ(v); setPage(1); }} placeholder="Search groups..." widthPx={520} />
+//               <div />
+//             </div>
 
-            <table className="min-w-max w-full text-sm">
-              <TableHeader columns={visibleSafe} sorts={sorts} onToggleSort={onToggleSort} />
-              <tbody>
-                {loading && (
-                  <TableRow>
-                    <TableCell colSpan={visibleSafe.length}>
-                      <div className="py-8 text-center text-sm text-secondary">Loading groups...</div>
-                    </TableCell>
-                  </TableRow>
-                )}
-                {!loading && error && (
-                  <TableRow>
-                    <TableCell colSpan={visibleSafe.length}>
-                      <div className="py-8 text-center text-sm text-red-600">Error: {error}</div>
-                    </TableCell>
-                  </TableRow>
-                )}
-                {!loading && !error && pageRows.length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={visibleSafe.length}>
-                      <div className="py-8 text-center text-sm text-secondary">No groups.</div>
-                    </TableCell>
-                  </TableRow>
-                )}
-                {!loading &&
-                  !error &&
-                  pageRows.map((r) => (
-                    <TableRow
-                      key={r.id}
-                      detailsRow={raw.find((x) => x.id === r.id)!}
-                      className="cursor-pointer"
-                      onClick={() => openDetails("groupId", r.id)}
-                    >
-                      {visibleSafe.map((c) => {
-                        let v: any = (r as any)[c.key];
-                        if (
-                          c.key === "expectedBirth" ||
-                          c.key === "expectedPlacementStart" ||
-                          c.key === "expectedPlacementCompleted" ||
-                          c.key === "updatedAt"
-                        ) {
-                          v = fmtDate(v);
-                        }
-                        return <TableCell key={c.key}>{v ?? ""}</TableCell>;
-                      })}
-                    </TableRow>
-                  ))}
-              </tbody>
-            </table>
+//             <table className="min-w-max w-full text-sm">
+//               <TableHeader columns={visibleSafe} sorts={sorts} onToggleSort={onToggleSort} />
+//               <tbody>
+//                 {loading && (
+//                   <TableRow>
+//                     <TableCell colSpan={visibleSafe.length}>
+//                       <div className="py-8 text-center text-sm text-secondary">Loading groups...</div>
+//                     </TableCell>
+//                   </TableRow>
+//                 )}
+//                 {!loading && error && (
+//                   <TableRow>
+//                     <TableCell colSpan={visibleSafe.length}>
+//                       <div className="py-8 text-center text-sm text-red-600">Error: {error}</div>
+//                     </TableCell>
+//                   </TableRow>
+//                 )}
+//                 {!loading && !error && pageRows.length === 0 && (
+//                   <TableRow>
+//                     <TableCell colSpan={visibleSafe.length}>
+//                       <div className="py-8 text-center text-sm text-secondary">No groups.</div>
+//                     </TableCell>
+//                   </TableRow>
+//                 )}
+//                 {!loading &&
+//                   !error &&
+//                   pageRows.map((r) => (
+//                     <TableRow
+//                       key={r.id}
+//                       detailsRow={raw.find((x) => x.id === r.id)!}
+//                       className="cursor-pointer"
+//                       onClick={() => openDetails("groupId", r.id)}
+//                     >
+//                       {visibleSafe.map((c) => {
+//                         let v: any = (r as any)[c.key];
+//                         if (
+//                           c.key === "expectedBirth" ||
+//                           c.key === "expectedPlacementStart" ||
+//                           c.key === "expectedPlacementCompleted" ||
+//                           c.key === "updatedAt"
+//                         ) {
+//                           v = fmtDate(v);
+//                         }
+//                         return <TableCell key={c.key}>{v ?? ""}</TableCell>;
+//                       })}
+//                     </TableRow>
+//                   ))}
+//               </tbody>
+//             </table>
 
-            <TableFooter
-              entityLabel="groups"
-              page={Math.min(page, Math.max(1, Math.ceil(sorted.length / pageSize)))}
-              pageCount={Math.max(1, Math.ceil(sorted.length / pageSize))}
-              pageSize={pageSize}
-              pageSizeOptions={[10, 25, 50, 100]}
-              onPageChange={(p) => setPage(p)}
-              onPageSizeChange={(n) => {
-                setPageSize(n);
-                setPage(1);
-              }}
-              start={sorted.length === 0 ? 0 : (page - 1) * pageSize + 1}
-              end={sorted.length === 0 ? 0 : Math.min(sorted.length, (page - 1) * pageSize + pageSize)}
-              filteredTotal={sorted.length}
-              total={rows.length}
-            />
-          </Table>
-        </DetailsHost>
-      </div>
+//             <TableFooter
+//               entityLabel="groups"
+//               page={Math.min(page, Math.max(1, Math.ceil(sorted.length / pageSize)))}
+//               pageCount={Math.max(1, Math.ceil(sorted.length / pageSize))}
+//               pageSize={pageSize}
+//               pageSizeOptions={[10, 25, 50, 100]}
+//               onPageChange={(p) => setPage(p)}
+//               onPageSizeChange={(n) => {
+//                 setPageSize(n);
+//                 setPage(1);
+//               }}
+//               start={sorted.length === 0 ? 0 : (page - 1) * pageSize + 1}
+//               end={sorted.length === 0 ? 0 : Math.min(sorted.length, (page - 1) * pageSize + pageSize)}
+//               filteredTotal={sorted.length}
+//               total={rows.length}
+//             />
+//           </Table>
+//         </DetailsHost>
+//       </div>
 
-      {/* Create Group Modal */}
-      <Overlay open={createOpen} ariaLabel="Create Offspring Group" closeOnEscape closeOnOutsideClick>
-        {(() => {
-          const panelRef = React.useRef<HTMLDivElement>(null);
-          const handleOutsideMouseDown: React.MouseEventHandler<HTMLDivElement> = (e) => {
-            const p = panelRef.current;
-            if (!p) return;
-            if (!p.contains(e.target as Node)) setCreateOpen(false);
-          };
-          return (
-            <div className="fixed inset-0" style={{ zIndex: MODAL_Z, isolation: "isolate" }} onMouseDown={handleOutsideMouseDown}>
-              <div className="absolute inset-0 bg-black/50" />
-              <div className="absolute inset-0 flex items-center justify-center">
-                <div ref={panelRef} className="pointer-events-auto">
-                  <CreateGroupForm
-                    api={api}
-                    tenantId={tenantId}
-                    onCreated={async () => {
-                      setCreateOpen(false);
-                      await load();
-                    }}
-                    onCancel={() => setCreateOpen(false)}
-                  />
-                </div>
-              </div>
-            </div>
-          );
-        })()}
-      </Overlay>
-    </Card>
-  );
-}
+//       {/* Create Group Modal */}
+//       <Overlay open={createOpen} ariaLabel="Create Offspring Group" closeOnEscape closeOnOutsideClick>
+//         {(() => {
+//           const panelRef = React.useRef<HTMLDivElement>(null);
+//           const handleOutsideMouseDown: React.MouseEventHandler<HTMLDivElement> = (e) => {
+//             const p = panelRef.current;
+//             if (!p) return;
+//             if (!p.contains(e.target as Node)) setCreateOpen(false);
+//           };
+//           return (
+//             <div className="fixed inset-0" style={{ zIndex: MODAL_Z, isolation: "isolate" }} onMouseDown={handleOutsideMouseDown}>
+//               <div className="absolute inset-0 bg-black/50" />
+//               <div className="absolute inset-0 flex items-center justify-center">
+//                 <div ref={panelRef} className="pointer-events-auto">
+//                   <CreateGroupForm
+//                     api={api}
+//                     tenantId={tenantId}
+//                     onCreated={async () => {
+//                       setCreateOpen(false);
+//                       await load();
+//                     }}
+//                     onCancel={() => setCreateOpen(false)}
+//                   />
+//                 </div>
+//               </div>
+//             </div>
+//           );
+//         })()}
+//       </Overlay>
+//     </Card>
+//   );
+// }
 
 function PortalPopover({ anchorRef, open, children }: { anchorRef: React.RefObject<HTMLElement>, open: boolean, children: React.ReactNode }) {
   const [style, setStyle] = React.useState<React.CSSProperties>({});
@@ -2124,7 +2126,11 @@ function WaitlistTab({ api, tenantId, readOnlyGlobal }: { api: ReturnType<typeof
       <div className="relative">
         <div className="absolute right-0 top-0 h-10 flex items-center gap-2 pr-2" style={{ zIndex: 50, pointerEvents: "auto" }}>
           {!readOnlyGlobal && (
-            <Button size="sm" onClick={() => window.dispatchEvent(new CustomEvent("bhq:offspring:add-waitlist"))}>
+            <Button
+              size="sm"
+              onClick={() => window.dispatchEvent(new CustomEvent("bhq:offspring:add-waitlist"))}
+            >
+              <Plus className="h-4 w-4 mr-1" />
               Add to Waitlist
             </Button>
           )}

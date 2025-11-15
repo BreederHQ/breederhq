@@ -5,7 +5,10 @@ import { createPortal } from "react-dom";
 type OverlaySize = "sm" | "md" | "lg" | "xl";
 type OverlayProps = {
   open: boolean;
-  onOpenChange: (v: boolean) => void; // call with false to close
+  /** Controlled open state. Called with false when the overlay wants to close. */
+  onOpenChange?: (v: boolean) => void;
+  /** Optional close side effect. Called whenever the overlay closes itself. */
+  onClose?: () => void;
   size?: OverlaySize;
   ariaLabel?: string;
   children: React.ReactNode;
@@ -77,12 +80,22 @@ function useHostInteractivity(open: boolean, host: HTMLElement | null) {
 export const Overlay: React.FC<OverlayProps> = ({
   open,
   onOpenChange,
+  onClose,
   size = "md",
   ariaLabel = "Dialog",
   children,
   disableOutsideClose = false,
   disableEscClose = false,
 }) => {
+  const requestClose = React.useCallback(() => {
+    if (onOpenChange) {
+      onOpenChange(false);
+    }
+    if (onClose) {
+      onClose();
+    }
+  }, [onOpenChange, onClose]);
+
   // Prefer the shared host; otherwise fallback to body (standalone/local mode).
   const host = getHost() ?? (typeof document !== "undefined" ? document.body : null);
   const panelRef = React.useRef<HTMLDivElement | null>(null);
@@ -104,12 +117,12 @@ export const Overlay: React.FC<OverlayProps> = ({
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         e.stopPropagation();
-        onOpenChange(false);
+        requestClose();
       }
     };
     document.addEventListener("keydown", onKey, true);
     return () => document.removeEventListener("keydown", onKey, true);
-  }, [open, disableEscClose, onOpenChange]);
+  }, [open, disableEscClose, requestClose]);
 
   // Basic focus trap when opened
   React.useEffect(() => {
@@ -144,7 +157,9 @@ export const Overlay: React.FC<OverlayProps> = ({
         onMouseDown={() => (mouseDownOnBackdrop.current = true)}
         onMouseUp={(e) => {
           if (mouseDownOnBackdrop.current && !disableOutsideClose) {
-            if (e.target === e.currentTarget) onOpenChange(false);
+            if (e.target === e.currentTarget) {
+              requestClose();
+            }
           }
           mouseDownOnBackdrop.current = false;
         }}

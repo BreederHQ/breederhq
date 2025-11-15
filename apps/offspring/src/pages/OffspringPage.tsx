@@ -41,19 +41,19 @@ import {
 } from "../api";
 import { readTenantIdFast } from "@bhq/ui/utils/tenant";
 
+// Shared input styling
+const inputClass =
+  "w-full h-9 rounded-md border border-hairline bg-surface px-3 text-sm text-primary " +
+  "placeholder:text-secondary/80 focus:outline-none focus:ring-1 focus:ring-[hsl(var(--brand-orange))] " +
+  "focus:border-[hsl(var(--brand-orange))] shadow-[inset_0_0_0_9999px_rgba(255,255,255,0.02)]";
 
+function cx(parts: Array<string | false | null | undefined>) {
+  return parts.filter(Boolean).join(" ");
+}
 
-/** Guarded overlay root resolver to avoid runtime errors in embed mode */
-const overlayRootSafe = (() => {
-  try {
-    return typeof getOverlayRoot === "function" ? getOverlayRoot() : undefined;
-  } catch {
-    return undefined;
-  }
-})();
+const labelClass = "text-xs text-secondary";
 
 /** ---------- Types for this page ---------- */
-
 type ID = string | number;
 type Sex = "MALE" | "FEMALE" | "UNKNOWN";
 type Status = "AVAILABLE" | "RESERVED" | "PLACED" | "HOLDBACK" | "DECEASED";
@@ -714,159 +714,231 @@ function prettyStatus(s: Status): string {
 
 /** ---------- Create Offspring overlay ---------- */
 
-function CreateOffspringOverlayContent(props: {
+function CreateOffspringOverlayContent({
+  open,
+  onClose,
+  onCreate,
+}: {
   open: boolean;
   onClose: () => void;
-  onCreate: (v: Partial<OffspringRow>) => void;
+  onCreate: (input: Partial<OffspringRow>) => Promise<void> | void;
 }) {
-  const { open, onClose, onCreate } = props;
-
   const [form, setForm] = React.useState<Partial<OffspringRow>>({
-    sex: "UNKNOWN",
-    species: "DOG",
-    dob: new Date().toISOString().slice(0, 10),
-    status: "AVAILABLE",
+    name: "",
+    sex: "UNKNOWN" as Sex,
+    species: "DOG" as Species,
+    status: "AVAILABLE" as Status,
+    birthDate: null,
+    birthWeightOz: null,
+    price: null,
+    notes: "",
   });
 
+  const panelRef = React.useRef<HTMLDivElement | null>(null);
+
+  const handleOutsideMouseDown = React.useCallback<
+    React.MouseEventHandler<HTMLDivElement>
+  >(
+    (e) => {
+      const p = panelRef.current;
+      if (!p) return;
+      if (!p.contains(e.target as Node)) onClose();
+    },
+    [onClose],
+  );
+
+  const handleChange = <K extends keyof OffspringRow>(
+    key: K,
+    value: OffspringRow[K] | null,
+  ) => {
+    setForm((prev) => ({ ...prev, [key]: value }));
+  };
+
+  const handleSubmit = async () => {
+    await onCreate(form);
+  };
+
   return (
-    <Overlay open={open} onClose={onClose} title="Create Offspring">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 p-2">
-        <label className="grid gap-1 text-sm">
-          <span className="text-xs text-muted-foreground">Name</span>
-          <input
-            className="bhq-input"
-            value={form.name ?? ""}
-            onChange={(e) => setForm((f) => ({ ...f, name: e.currentTarget.value }))}
-          />
-        </label>
+    <Overlay
+      open={open}
+      ariaLabel="Create offspring"
+      closeOnEscape
+      closeOnOutsideClick
+      onOpenChange={(next) => {
+        if (!next) onClose();
+      }}
+    >
+      <div className="fixed inset-0" onMouseDown={handleOutsideMouseDown}>
+        {/* Backdrop */}
+        <div className="absolute inset-0 bg-black/50" />
 
-        <label className="grid gap-1 text-sm">
-          <span className="text-xs text-muted-foreground">Sex</span>
-          <select
-            className="bhq-input"
-            value={form.sex ?? "UNKNOWN"}
-            onChange={(e) =>
-              setForm((f) => ({
-                ...f,
-                sex: e.currentTarget.value as Sex,
-              }))
-            }
+        {/* Centered panel, same pattern as Create Group and Add to Waitlist */}
+        <div className="absolute inset-0 flex items-center justify-center">
+          <div
+            ref={panelRef}
+            className="pointer-events-auto w-[820px] max-w-[95vw] max-h-[82vh] overflow-hidden rounded-xl border border-hairline bg-surface shadow-xl"
           >
-            <option value="UNKNOWN">Unknown</option>
-            <option value="FEMALE">Female</option>
-            <option value="MALE">Male</option>
-          </select>
-        </label>
+            {/* Header */}
+            <div className="flex items-center justify-between px-4 py-3 border-b border-hairline">
+              <div className="text-lg font-semibold flex items-center gap-2">
+                <FilePlus2 className="h-4 w-4" />
+                <span>Create offspring</span>
+              </div>
+            </div>
 
-        <label className="grid gap-1 text-sm">
-          <span className="text-xs text-muted-foreground">Species</span>
-          <select
-            className="bhq-input"
-            value={form.species ?? "DOG"}
-            onChange={(e) =>
-              setForm((f) => ({
-                ...f,
-                species: e.currentTarget.value as Species,
-              }))
-            }
-          >
-            <option value="DOG">Dog</option>
-            <option value="CAT">Cat</option>
-            <option value="HORSE">Horse</option>
-          </select>
-        </label>
+            {/* Body */}
+            <div className="p-4 space-y-4 overflow-y-auto">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <label className="grid gap-1 text-sm">
+                  <span className="text-xs text-secondary">Name</span>
+                  <input
+                    className={inputClass}
+                    value={form.name ?? ""}
+                    onChange={(e) => handleChange("name", e.target.value)}
+                    placeholder="Puppy name or placeholder"
+                  />
+                </label>
 
-        <label className="grid gap-1 text-sm">
-          <span className="text-xs text-muted-foreground">Birth date</span>
-          <input
-            type="date"
-            className="bhq-input"
-            value={form.dob ?? ""}
-            onChange={(e) =>
-              setForm((f) => ({
-                ...f,
-                dob: e.currentTarget.value,
-              }))
-            }
-          />
-        </label>
+                <label className="grid gap-1 text-sm">
+                  <span className="text-xs text-secondary">Sex</span>
+                  <select
+                    className={inputClass}
+                    value={form.sex ?? "UNKNOWN"}
+                    onChange={(e) =>
+                      handleChange("sex", e.target.value as Sex)
+                    }
+                  >
+                    <option value="MALE">Male</option>
+                    <option value="FEMALE">Female</option>
+                    <option value="UNKNOWN">Unknown</option>
+                  </select>
+                </label>
 
-        <label className="grid gap-1 text-sm">
-          <span className="text-xs text-muted-foreground">Status</span>
-          <select
-            className="bhq-input"
-            value={form.status ?? "AVAILABLE"}
-            onChange={(e) =>
-              setForm((f) => ({
-                ...f,
-                status: e.currentTarget.value as Status,
-              }))
-            }
-          >
-            <option value="AVAILABLE">Available</option>
-            <option value="RESERVED">Reserved</option>
-            <option value="PLACED">Placed</option>
-            <option value="HOLDBACK">Holdback</option>
-            <option value="DECEASED">Deceased</option>
-          </select>
-        </label>
+                <label className="grid gap-1 text-sm">
+                  <span className="text-xs text-secondary">Species</span>
+                  <select
+                    className={inputClass}
+                    value={form.species ?? "DOG"}
+                    onChange={(e) =>
+                      handleChange("species", e.target.value as Species)
+                    }
+                  >
+                    <option value="DOG">Dog</option>
+                    <option value="CAT">Cat</option>
+                    <option value="HORSE">Horse</option>
+                  </select>
+                </label>
 
-        <label className="grid gap-1 text-sm">
-          <span className="text-xs text-muted-foreground">Price</span>
-          <input
-            type="number"
-            className="bhq-input"
-            value={form.price ?? ""}
-            onChange={(e) =>
-              setForm((f) => ({
-                ...f,
-                price: e.currentTarget.value ? Number(e.currentTarget.value) : null,
-              }))
-            }
-          />
-        </label>
+                <label className="grid gap-1 text-sm">
+                  <span className="text-xs text-secondary">Status</span>
+                  <select
+                    className={inputClass}
+                    value={form.status ?? "AVAILABLE"}
+                    onChange={(e) =>
+                      handleChange("status", e.target.value as Status)
+                    }
+                  >
+                    <option value="AVAILABLE">Available</option>
+                    <option value="RESERVED">Reserved</option>
+                    <option value="PLACED">Placed</option>
+                    <option value="HOLDBACK">Holdback</option>
+                    <option value="DECEASED">Deceased</option>
+                  </select>
+                </label>
 
-        <label className="grid gap-1 text-sm">
-          <span className="text-xs text-muted-foreground">Birth weight (oz)</span>
-          <input
-            type="number"
-            className="bhq-input"
-            value={form.birthWeightOz ?? ""}
-            onChange={(e) =>
-              setForm((f) => ({
-                ...f,
-                birthWeightOz: e.currentTarget.value ? Number(e.currentTarget.value) : null,
-              }))
-            }
-          />
-        </label>
+                <label className="grid gap-1 text-sm">
+                  <span className="text-xs text-secondary">Birth date</span>
+                  <input
+                    type="date"
+                    className={inputClass}
+                    value={form.birthDate ?? ""}
+                    onChange={(e) =>
+                      handleChange(
+                        "birthDate",
+                        e.target.value || null,
+                      )
+                    }
+                  />
+                </label>
 
-        <label className="grid gap-1 text-sm md:col-span-2">
-          <span className="text-xs text-muted-foreground">Notes</span>
-          <textarea
-            className="bhq-input min-h-[80px]"
-            value={form.notes ?? ""}
-            onChange={(e) =>
-              setForm((f) => ({
-                ...f,
-                notes: e.currentTarget.value,
-              }))
-            }
-          />
-        </label>
-      </div>
+                <label className="grid gap-1 text-sm">
+                  <span className="text-xs text-secondary">
+                    Birth weight (oz)
+                  </span>
+                  <input
+                    type="number"
+                    className={inputClass}
+                    value={
+                      form.birthWeightOz !== null &&
+                      form.birthWeightOz !== undefined
+                        ? String(form.birthWeightOz)
+                        : ""
+                    }
+                    onChange={(e) =>
+                      handleChange(
+                        "birthWeightOz",
+                        e.target.value
+                          ? Number(e.target.value)
+                          : null,
+                      )
+                    }
+                    placeholder="Optional"
+                  />
+                </label>
 
-      <div className="flex justify-end gap-2 px-4 pb-4 pt-2">
-        <Button variant="outline" onClick={onClose}>
-          Cancel
-        </Button>
-        <Button
-          onClick={() => {
-            onCreate(form);
-          }}
-        >
-          <Plus className="h-4 w-4" /> Create
-        </Button>
+                <label className="grid gap-1 text-sm">
+                  <span className="text-xs text-secondary">
+                    Price (whole number)
+                  </span>
+                  <div className="relative">
+                    <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-secondary">
+                      $
+                    </span>
+                    <input
+                      type="number"
+                      className={inputClass + " pl-6"}
+                      value={
+                        form.price !== null && form.price !== undefined
+                          ? String(form.price)
+                          : ""
+                      }
+                      onChange={(e) =>
+                        handleChange(
+                          "price",
+                          e.target.value
+                            ? Number(e.target.value)
+                            : null,
+                        )
+                      }
+                      placeholder="Optional"
+                    />
+                  </div>
+                </label>
+              </div>
+
+              <label className="grid gap-1 text-sm">
+                <span className="text-xs text-secondary">Notes</span>
+                <textarea
+                  className={inputClass + " min-h-[80px] resize-y"}
+                  value={form.notes ?? ""}
+                  onChange={(e) => handleChange("notes", e.target.value)}
+                  placeholder="Optional notes about this offspring"
+                />
+              </label>
+            </div>
+
+            {/* Footer */}
+            <div className="flex justify-end gap-2 px-4 py-3 border-t border-hairline">
+              <Button variant="outline" type="button" onClick={onClose}>
+                Cancel
+              </Button>
+              <Button type="button" onClick={handleSubmit}>
+                <Plus className="h-4 w-4 mr-1" />
+                Create offspring
+              </Button>
+            </div>
+          </div>
+        </div>
       </div>
     </Overlay>
   );
@@ -1129,7 +1201,7 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
   };
 
   const refresh = React.useCallback(async () => {
-    const res = await api.list({ q, page, pageSize, sorts });
+    const res = await api.list({ q, page, pageSize });
     setRows(Array.isArray(res.rows) ? res.rows : []);
     setTotal(typeof res.total === "number" ? res.total : 0);
   }, [api, q, page, pageSize, sorts]);
@@ -1200,6 +1272,18 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
     });
   }, [drawer]);
 
+  const [overlayRoot, setOverlayRoot] = React.useState<HTMLElement | null>(null);
+
+  React.useEffect(() => {
+    try {
+      const root = getOverlayRoot();
+      setOverlayRoot(root ?? null);
+    } catch {
+      setOverlayRoot(null);
+    }
+  }, []);
+
+
   const [linkingInvoice, setLinkingInvoice] = React.useState(false);
   const [healthSaving, setHealthSaving] = React.useState(false);
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
@@ -1215,6 +1299,11 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
     } catch {
       // ignore
     }
+  }
+
+  function closeDrawer() {
+    setDrawer(null);
+    writeUrlParam(null);
   }
 
   function navigateToGroup(groupId: ID) {
@@ -1244,6 +1333,8 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
     try {
       const row = await api.getById(id);
       setDrawer(row);
+      writeUrlParam(row.id);
+      setDrawerTab("core");
     } catch (err) {
       console.error(err);
       alert("Failed to load sibling record");
@@ -1373,7 +1464,7 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
           columnState={cols.map}
           onColumnStateChange={cols.setAll}
           getRowId={(r: OffspringRow) => r.id}
-          pageSize={pageSize}
+          pageSize={25}
           renderStickyRight={() => (
             <ColumnsPopover
               columns={cols.map}
@@ -1395,71 +1486,19 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
               placeholder="Search name, buyer, group, microchip"
               widthPx={520}
             />
-            <div />
+            <Button
+              size="sm"
+              variant="primary"
+              onClick={() => setShowCreate(true)}
+            >
+              <Plus className="h-4 w-4 mr-1" />
+              Add Offspring
+            </Button>
           </div>
-
           <table className="min-w-max w-full text-sm">
             <TableHeader columns={visibleSafe as any} sorts={sorts} onToggleSort={onToggleSort} />
             <tbody>
-              {rows.map((r) => (
-                <TableRow
-                  key={r.id}
-                  detailsRow={r}
-                  className="cursor-pointer"
-                  onClick={async () => {
-                    const full = await api.getById(r.id);
-                    if (full) {
-                      setDrawer(full);
-                      writeUrlParam(full.id);
-                      setDrawerTab("core");
-                    }
-                  }}
-                >
-                  {visibleSafe.map((col) => {
-                    const k = col.key as ColumnKey;
-                    let val: React.ReactNode = (r as any)[k];
-
-                    if (k === "name") {
-                      val = r.name || r.placeholderLabel || "Unnamed";
-                    }
-                    if (k === "buyer") {
-                      val = r.buyer ? r.buyer.name : "-";
-                    }
-                    if (k === "group") {
-                      val = r.group ? r.group.name || r.group.code || `Group #${r.group.id}` : "-";
-                    }
-                    if (k === "sex") {
-                      val = r.sex ?? "-";
-                    }
-                    if (k === "color") {
-                      val = r.color ?? "-";
-                    }
-                    if (k === "status") {
-                      val = r.status ?? "undefined";
-                    }
-                    if (k === "dob") {
-                      val = formatDate(r.dob);
-                    }
-                    if (k === "placementDate") {
-                      val = formatDate(r.placementDate);
-                    }
-                    if (k === "price") {
-                      val = moneyFmt(r.price);
-                    }
-                    if (k === "birthWeightOz") {
-                      val = r.birthWeightOz != null ? r.birthWeightOz.toFixed(1) : "-";
-                    }
-
-                    return (
-                      <TableCell key={col.key} align={CENTER_KEYS.has(col.key as ColumnKey) ? "center" : "left"}>
-                        {val}
-                      </TableCell>
-                    );
-                  })}
-                </TableRow>
-              ))}
-
-              {rows.length === 0 && (
+              {rows.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={visibleSafe.length}>
                     <div className="py-6 text-center text-sm text-muted-foreground">
@@ -1467,6 +1506,96 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
                     </div>
                   </TableCell>
                 </TableRow>
+              ) : (
+                rows.map((r) => (
+                  <TableRow
+                    key={r.id}
+                    detailsRow={r}
+                    className="cursor-pointer"
+                    onClick={async () => {
+                      const full = await api.getById(r.id);
+                      if (full) {
+                        setDrawer(full);
+                        writeUrlParam(full.id);
+                        setDrawerTab("core");
+                      }
+                    }}
+                  >
+                    {visibleSafe.map((col) => {
+                      const k = col.key as ColumnKey;
+                      let val: React.ReactNode = (r as any)[k];
+
+                      if (k === "name") {
+                        val = r.name || r.placeholderLabel || "Unnamed";
+                      }
+
+                      if (k === "buyer") {
+                        val = r.buyer ? r.buyer.name : "-";
+                      }
+
+                      if (k === "group") {
+                        if (r.groupId) {
+                          const label =
+                            r.groupName ||
+                            r.groupCode ||
+                            `Group #${r.groupId}`;
+
+                          val = (
+                            <button
+                              type="button"
+                              className="text-xs text-primary underline-offset-2 hover:underline"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                navigateToGroup(r.groupId!);
+                              }}
+                            >
+                              {label}
+                            </button>
+                          );
+                        } else {
+                          val = "-";
+                        }
+                      }
+
+                      if (k === "sex") {
+                        val = r.sex ?? "-";
+                      }
+
+                      if (k === "color") {
+                        val = r.color ?? "-";
+                      }
+
+                      if (k === "status") {
+                        val = prettyStatus(r.status as OffspringStatus);
+                      }
+
+                      if (k === "dob") {
+                        val = formatDate(r.dob);
+                      }
+
+                      if (k === "placementDate") {
+                        val = formatDate(r.placementDate);
+                      }
+
+                      if (k === "price") {
+                        val = moneyFmt(r.price);
+                      }
+
+                      if (k === "birthWeightOz") {
+                        val = r.birthWeightOz != null ? r.birthWeightOz.toFixed(1) : "-";
+                      }
+
+                      return (
+                        <TableCell
+                          key={col.key}
+                          align={CENTER_KEYS.has(col.key as ColumnKey) ? "center" : "left"}
+                        >
+                          {val}
+                        </TableCell>
+                      );
+                    })}
+                  </TableRow>
+                ))
               )}
             </tbody>
           </table>
@@ -1531,249 +1660,664 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
         </Table>
       </SectionCard>
 
-      {overlayRootSafe && (
-        <OverlayMount root={overlayRootSafe}>
-          <CreateOffspringOverlayContent
-            open={showCreate}
-            onClose={() => setShowCreate(false)}
-            onCreate={async (input) => {
-              try {
-                const created = await api.create(input);
-                setShowCreate(false);
-                await refresh();
-                const full = await api.getById(created.id);
-                if (full) {
-                  setDrawer(full);
-                  writeUrlParam(full.id);
-                  setDrawerTab("core");
-                }
-                window.dispatchEvent(new CustomEvent("bhq:offspring:created"));
-              } catch {
-                window.alert("Failed to create offspring");
+{overlayRoot ? (
+  <OverlayMount root={overlayRoot}>
+    <CreateOffspringOverlayContent
+      open={showCreate}
+      onClose={() => setShowCreate(false)}
+      onCreate={async (input) => {
+        try {
+          const created = await api.create(input);
+          setShowCreate(false);
+          await refresh();
+          const full = await api.getById(created.id);
+          if (full) {
+            setDrawer(full);
+            writeUrlParam(full.id);
+            setDrawerTab("core");
+          }
+          window.dispatchEvent(new CustomEvent("bhq:offspring:created"));
+        } catch {
+          window.alert("Failed to create offspring");
+        }
+      }}
+    />
+  </OverlayMount>
+) : (
+  <CreateOffspringOverlayContent
+    open={showCreate}
+    onClose={() => setShowCreate(false)}
+    onCreate={async (input) => {
+      try {
+        const created = await api.create(input);
+        setShowCreate(false);
+        await refresh();
+        const full = await api.getById(created.id);
+        if (full) {
+          setDrawer(full);
+          writeUrlParam(full.id);
+          setDrawerTab("core");
+        }
+        window.dispatchEvent(new CustomEvent("bhq:offspring:created"));
+      } catch {
+        window.alert("Failed to create offspring");
+      }
+    }}
+  />
+)}
+
+      {overlayRoot && (
+        <OverlayMount root={overlayRoot}>
+          <Overlay
+            open={!!drawer}
+            onOpenChange={(open) => {
+              if (!open) {
+                setDrawer(null);
+                writeUrlParam(null);
               }
             }}
-          />
-        </OverlayMount>
-      )}
-
-      {overlayRootSafe && (
-        <OverlayMount root={overlayRootSafe}>
-          <CreateOffspringOverlayContent
-            open={showCreate}
-            onClose={() => setShowCreate(false)}
-            onCreate={async (input) => {
-              try {
-                const created = await api.create(input);
-                setShowCreate(false);
-                await refresh();
-                const full = await api.getById(created.id);
-                if (full) {
-                  setDrawer(full);
-                  writeUrlParam(full.id);
-                  setDrawerTab("core");
-                }
-                window.dispatchEvent(new CustomEvent("bhq:offspring:created"));
-              } catch {
-                window.alert("Failed to create offspring");
-              }
-            }}
-          />
-        </OverlayMount>
-      )}
-
-      <Overlay
-        open={!!drawer}
-        onClose={() => {
-          setDrawer(null);
-          writeUrlParam(null);
-        }}
-        title="Offspring"
-      >
-        {drawer && (
-          <DetailsScaffold
-            title={drawer.name || drawer.placeholderLabel || "Unnamed offspring"}
-            subtitle={[drawer.species, drawer.breedText].filter(Boolean).join(" ")}
-            tab={drawerTab}
-            onTabChange={(t) =>
-              setDrawerTab(
-                t as "core" | "health" | "media" | "lineage" | "ownership" | "xrefs",
-              )
-            }
-            tabs={[
-              { key: "core", label: "Core" },
-              { key: "health", label: "Health" },
-              { key: "media", label: "Media" },
-              { key: "lineage", label: "Lineage" },
-              { key: "ownership", label: "Ownership" },
-              { key: "xrefs", label: "Cross refs" },
-            ]}
+            ariaLabel="Offspring details"
           >
-            {drawerTab === "core" && coreForm && (
-              <SectionCard
-                title="Core identity"
-                icon={<FileText className="h-4 w-4" />}
-                right={
-                  <div className="flex items-center gap-2">
-                    {drawer.groupId && (
-                      <button
-                        type="button"
-                        className="text-xs text-primary underline-offset-2 hover:underline"
-                        onClick={() => navigateToGroup(drawer.groupId!)}
-                      >
-                        Parent group:{" "}
-                        {drawer.groupName ||
-                          drawer.groupCode ||
-                          `Group #${drawer.groupId}`}
-                      </button>
-                    )}
-
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => setDrawerTab("core")}
-                    >
-                      <FileText className="h-4 w-4 mr-1" />
-                      Edit core
-                    </Button>
-
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      onClick={async () => {
-                        if (!drawer) return;
-                        if (!window.confirm("Delete this offspring record?")) return;
-                        await api.remove(drawer.id);
-                        setDrawer(null);
-                        writeUrlParam(null);
-                        await refresh();
-                        window.dispatchEvent(
-                          new CustomEvent("bhq:offspring:deleted"),
-                        );
-                      }}
-                    >
-                      <Trash2 className="h-4 w-4 text-destructive" />
-                    </Button>
-
-                    <Button size="sm" variant="outline" onClick={saveCoreSection}>
-                      <DollarSign className="h-4 w-4 mr-1" />
-                      Save core
-                    </Button>
-                  </div>
+            {drawer && (
+              <DetailsScaffold
+                title={drawer.name || drawer.placeholderLabel || "Unnamed offspring"}
+                subtitle={[drawer.species, drawer.breedText].filter(Boolean).join(" ")}
+                tab={drawerTab}
+                onTabChange={(t) =>
+                  setDrawerTab(
+                    t as "core" | "health" | "media" | "lineage" | "ownership" | "xrefs",
+                  )
                 }
+                tabs={[
+                  { key: "core", label: "Core" },
+                  { key: "health", label: "Health" },
+                  { key: "media", label: "Media" },
+                  { key: "lineage", label: "Lineage" },
+                  { key: "ownership", label: "Ownership" },
+                  { key: "xrefs", label: "Cross refs" },
+                ]}
+                onCancel={() => {
+                  setDrawer(null);
+                  writeUrlParam(null);
+                }}
               >
-                {/* existing core form body stays exactly as in your file */}
-              </SectionCard>
-            )}
+                {drawerTab === "core" && coreForm && (
+                  <SectionCard
+                    title="Core identity"
+                    icon={<FileText className="h-4 w-4" />}
+                    right={
+                      <div className="flex items-center gap-2">
+                        {drawer.groupId && (
+                          <button
+                            type="button"
+                            className="text-xs text-primary underline-offset-2 hover:underline"
+                            onClick={() => navigateToGroup(drawer.groupId!)}
+                          >
+                            Parent group:{" "}
+                            {drawer.groupName ||
+                              drawer.groupCode ||
+                              `Group #${drawer.groupId}`}
+                          </button>
+                        )}
 
-            {/* Health tab */}
-            {drawerTab === "health" && (
-              <SectionCard
-                title="Health and development"
-                icon={<Stethoscope className="h-4 w-4" />}
-                right={
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={handleAddHealthEvent}
-                    disabled={healthSaving}
-                  >
-                    <FilePlus2 className="h-4 w-4 mr-1" />
-                    {healthSaving ? "Saving..." : "Add Health Event"}
-                  </Button>
-                }
-              >
-                {/* existing health section body */}
-              </SectionCard>
-            )}
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setDrawerTab("core")}
+                        >
+                          <FileText className="h-4 w-4 mr-1" />
+                          Edit core
+                        </Button>
 
-            {/* Media tab */}
-            {drawerTab === "media" && (
-              <SectionCard
-                title="Photos and documents"
-                icon={<ImageIcon className="h-4 w-4" />}
-                right={
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() =>
-                      window.alert("Add Media or Document not wired yet")
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          onClick={async () => {
+                            if (!drawer) return;
+                            if (!window.confirm("Delete this offspring record?")) return;
+                            await api.remove(drawer.id);
+                            setDrawer(null);
+                            writeUrlParam(null);
+                            await refresh();
+                            window.dispatchEvent(new CustomEvent("bhq:offspring:deleted"));
+                          }}
+                        >
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={handleAssignBuyer}
+                        >
+                          Assign buyer
+                        </Button>
+
+                        <Button size="sm" variant="outline" onClick={saveCoreSection}>
+                          <DollarSign className="h-4 w-4 mr-1" />
+                          Save core
+                        </Button>
+                      </div>
                     }
                   >
-                    <FilePlus2 className="h-4 w-4 mr-1" />
-                    Add Media or Document
-                  </Button>
-                }
-              >
-                {/* existing media section body */}
-              </SectionCard>
-            )}
+                    <div className="grid gap-4 md:grid-cols-2">
+                      {/* Name */}
+                      <label className="grid gap-1 text-sm">
+                        <span className="text-xs text-muted-foreground">Name</span>
+                        <input
+                          className="h-8 rounded-md border bg-background px-2 text-sm"
+                          value={coreForm.name ?? ""}
+                          onChange={(e) =>
+                            setCoreForm((f) => ({
+                              ...(f || {}),
+                              name: e.target.value || null,
+                            }))
+                          }
+                          placeholder="Optional registered or call name"
+                        />
+                      </label>
 
-            {/* Lineage tab */}
-            {drawerTab === "lineage" && (
-              <SectionCard
-                title="Pedigree and lineage"
-                icon={<Users className="h-4 w-4" />}
-              >
-                {/* existing lineage section body */}
-              </SectionCard>
-            )}
+                      {/* Placeholder label */}
+                      <label className="grid gap-1 text-sm">
+                        <span className="text-xs text-muted-foreground">Placeholder label</span>
+                        <input
+                          className="h-8 rounded-md border bg-background px-2 text-sm"
+                          value={coreForm.placeholderLabel ?? ""}
+                          onChange={(e) =>
+                            setCoreForm((f) => ({
+                              ...(f || {}),
+                              placeholderLabel: e.target.value || null,
+                            }))
+                          }
+                          placeholder="For example Male #3"
+                        />
+                      </label>
 
-            {/* Ownership tab */}
-            {drawerTab === "ownership" && (
-              <SectionCard
-                title="Ownership and placement"
-                icon={<User className="h-4 w-4" />}
-                right={
-                  <div className="flex gap-2">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() =>
-                        window.alert("Add Contract not wired yet")
-                      }
-                    >
-                      <FilePlus2 className="h-4 w-4 mr-1" />
-                      Add Contract
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() =>
-                        window.alert("Add Task not wired yet")
-                      }
-                    >
-                      <FilePlus2 className="h-4 w-4 mr-1" />
-                      Add Task
-                    </Button>
-                  </div>
-                }
-              >
-                {/* existing ownership section body */}
-              </SectionCard>
-            )}
+                      {/* Sex */}
+                      <label className="grid gap-1 text-sm">
+                        <span className="text-xs text-muted-foreground">Sex</span>
+                        <select
+                          className="h-8 rounded-md border bg-background px-2 text-sm"
+                          value={coreForm.sex ?? ""}
+                          onChange={(e) =>
+                            setCoreForm((f) => ({
+                              ...(f || {}),
+                              sex: (e.target.value || null) as Sex | null,
+                            }))
+                          }
+                        >
+                          <option value="">Unknown</option>
+                          <option value="MALE">Male</option>
+                          <option value="FEMALE">Female</option>
+                        </select>
+                      </label>
 
-            {/* Cross refs tab */}
-            {drawerTab === "xrefs" && (
-              <SectionCard
-                title="Cross references"
-                icon={<LinkIcon className="h-4 w-4" />}
-                right={
-                  <Button
-                    size="xs"
-                    variant="outline"
-                    onClick={handleLinkInvoice}
-                    disabled={linkingInvoice}
+                      {/* Color */}
+                      <label className="grid gap-1 text-sm">
+                        <span className="text-xs text-muted-foreground">Color</span>
+                        <input
+                          className="h-8 rounded-md border bg-background px-2 text-sm"
+                          value={coreForm.color ?? ""}
+                          onChange={(e) =>
+                            setCoreForm((f) => ({
+                              ...(f || {}),
+                              color: e.target.value || null,
+                            }))
+                          }
+                          placeholder="Color or pattern"
+                        />
+                      </label>
+
+                      {/* Birth weight (oz) */}
+                      <label className="grid gap-1 text-sm">
+                        <span className="text-xs text-muted-foreground">Birth weight (oz)</span>
+                        <input
+                          type="number"
+                          step="0.1"
+                          className="h-8 rounded-md border bg-background px-2 text-sm"
+                          value={
+                            coreForm.birthWeightOz != null ? String(coreForm.birthWeightOz) : ""
+                          }
+                          onChange={(e) => {
+                            const v = e.target.value;
+                            const num = v === "" ? null : Number(v);
+                            setCoreForm((f) => ({
+                              ...(f || {}),
+                              birthWeightOz: Number.isNaN(num) ? null : num,
+                            }));
+                          }}
+                        />
+                      </label>
+
+                      {/* Date of birth */}
+                      <label className="grid gap-1 text-sm">
+                        <span className="text-xs text-muted-foreground">Date of birth</span>
+                        <input
+                          type="date"
+                          className="h-8 rounded-md border bg-background px-2 text-sm"
+                          value={coreForm.dob ? coreForm.dob.slice(0, 10) : ""}
+                          onChange={(e) =>
+                            setCoreForm((f) => ({
+                              ...(f || {}),
+                              dob: e.target.value || null,
+                            }))
+                          }
+                        />
+                      </label>
+
+                      {/* Microchip */}
+                      <label className="grid gap-1 text-sm">
+                        <span className="text-xs text-muted-foreground">Microchip ID</span>
+                        <input
+                          className="h-8 rounded-md border bg-background px-2 text-sm"
+                          value={coreForm.microchip ?? ""}
+                          onChange={(e) =>
+                            setCoreForm((f) => ({
+                              ...(f || {}),
+                              microchip: e.target.value || null,
+                            }))
+                          }
+                        />
+                      </label>
+
+                      {/* Registration ID */}
+                      <label className="grid gap-1 text-sm">
+                        <span className="text-xs text-muted-foreground">Registration ID</span>
+                        <input
+                          className="h-8 rounded-md border bg-background px-2 text-sm"
+                          value={coreForm.registrationId ?? ""}
+                          onChange={(e) =>
+                            setCoreForm((f) => ({
+                              ...(f || {}),
+                              registrationId: e.target.value || null,
+                            }))
+                          }
+                        />
+                      </label>
+
+                      {/* Status */}
+                      <label className="grid gap-1 text-sm">
+                        <span className="text-xs text-muted-foreground">Status</span>
+                        <select
+                          className="h-8 rounded-md border bg-background px-2 text-sm"
+                          value={coreForm.status ?? ""}
+                          onChange={(e) =>
+                            setCoreForm((f) => ({
+                              ...(f || {}),
+                              status: (e.target.value || drawer.status) as Status,
+                            }))
+                          }
+                        >
+                          <option value="">Select status</option>
+                          <option value="AVAILABLE">Available</option>
+                          <option value="RESERVED">Reserved</option>
+                          <option value="PLACED">Placed</option>
+                          <option value="HOLDBACK">Holdback</option>
+                          <option value="DECEASED">Deceased</option>
+                        </select>
+                      </label>
+
+                      {/* Placement date */}
+                      <label className="grid gap-1 text-sm">
+                        <span className="text-xs text-muted-foreground">Placement date</span>
+                        <input
+                          type="date"
+                          className="h-8 rounded-md border bg-background px-2 text-sm"
+                          value={
+                            coreForm.placementDate ? coreForm.placementDate.slice(0, 10) : ""
+                          }
+                          onChange={(e) =>
+                            setCoreForm((f) => ({
+                              ...(f || {}),
+                              placementDate: e.target.value || null,
+                            }))
+                          }
+                        />
+                      </label>
+
+                      {/* Price */}
+                      <label className="grid gap-1 text-sm">
+                        <span className="text-xs text-muted-foreground">Price</span>
+                        <input
+                          type="number"
+                          step="0.01"
+                          className="h-8 rounded-md border bg-background px-2 text-sm"
+                          value={coreForm.price != null ? String(coreForm.price) : ""}
+                          onChange={(e) => {
+                            const v = e.target.value;
+                            const num = v === "" ? null : Number(v);
+                            setCoreForm((f) => ({
+                              ...(f || {}),
+                              price: Number.isNaN(num) ? null : num,
+                            }));
+                          }}
+                        />
+                      </label>
+
+                      {/* Notes / markings */}
+                      <label className="grid gap-1 text-sm md:col-span-2">
+                        <span className="text-xs text-muted-foreground">
+                          Notes and markings
+                        </span>
+                        <textarea
+                          className="min-h-[72px] rounded-md border bg-background px-2 py-1 text-sm"
+                          value={coreForm.notes ?? ""}
+                          onChange={(e) =>
+                            setCoreForm((f) => ({
+                              ...(f || {}),
+                              notes: e.target.value || null,
+                            }))
+                          }
+                          placeholder="Markings, temperament notes, or internal comments"
+                        />
+                      </label>
+                    </div>
+                  </SectionCard>
+                )}
+
+                {/* Health tab */}
+                {drawerTab === "health" && (
+                  <SectionCard
+                    title="Health and development"
+                    icon={<Stethoscope className="h-4 w-4" />}
+                    right={
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={handleAddHealthEvent}
+                        disabled={healthSaving}
+                      >
+                        <FilePlus2 className="h-4 w-4 mr-1" />
+                        {healthSaving ? "Saving..." : "Add Health Event"}
+                      </Button>
+                    }
                   >
-                    Link invoice
-                  </Button>
-                }
-              >
-                {/* existing xrefs section body, including CrossRefsSection */}
-              </SectionCard>
+                    <div className="space-y-4">
+                      <div>
+                        <div className="text-xs font-medium text-muted-foreground mb-1">
+                          Growth over time
+                        </div>
+                        <GrowthSparkline events={drawer.healthEvents ?? []} />
+                      </div>
+
+                      <div>
+                        <div className="text-xs font-medium text-muted-foreground mb-1">
+                          Health events
+                        </div>
+
+                        {drawer.healthEvents && drawer.healthEvents.length > 0 ? (
+                          <ul className="space-y-2">
+                            {drawer.healthEvents.map((ev) => (
+                              <li
+                                key={ev.id}
+                                className="border rounded-md px-3 py-2 text-xs flex justify-between gap-2"
+                              >
+                                <div>
+                                  <div className="font-medium">
+                                    {formatDate(ev.occurredAt)} · {ev.kind}
+                                  </div>
+                                  {ev.notes && (
+                                    <div className="text-muted-foreground mt-0.5">
+                                      {ev.notes}
+                                    </div>
+                                  )}
+                                </div>
+                                {ev.weightOz != null && (
+                                  <div className="shrink-0 text-right">
+                                    <div className="font-medium">
+                                      {ev.weightOz.toFixed(1)} oz
+                                    </div>
+                                  </div>
+                                )}
+                              </li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <div className="text-xs text-muted-foreground">
+                            No health events recorded yet.
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </SectionCard>
+                )}
+
+                {/* Media tab */}
+                {drawerTab === "media" && (
+                  <SectionCard
+                    title="Photos and documents"
+                    icon={<ImageIcon className="h-4 w-4" />}
+                    right={
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() =>
+                          window.alert("Add Media or Document not wired yet")
+                        }
+                      >
+                        <FilePlus2 className="h-4 w-4 mr-1" />
+                        Add Media or Document
+                      </Button>
+                    }
+                  >
+                    <div className="space-y-3">
+                      {drawer.media && drawer.media.length > 0 ? (
+                        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                          {drawer.media.map((m) => (
+                            <button
+                              key={m.id}
+                              type="button"
+                              className="border rounded-md overflow-hidden text-left text-xs hover:bg-muted"
+                              onClick={() => {
+                                if (m.url) {
+                                  window.open(m.url, "_blank", "noopener,noreferrer");
+                                }
+                              }}
+                            >
+                              <div className="aspect-video bg-muted flex items-center justify-center text-[10px]">
+                                {m.kind === "photo" && "Photo"}
+                                {m.kind === "video" && "Video"}
+                                {m.kind === "doc" && "Document"}
+                              </div>
+                              <div className="px-2 py-1">
+                                <div className="font-medium truncate">
+                                  {m.label || `Attachment #${m.id}`}
+                                </div>
+                                {m.mimeType && (
+                                  <div className="text-[10px] text-muted-foreground truncate">
+                                    {m.mimeType}
+                                  </div>
+                                )}
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="text-xs text-muted-foreground">
+                          No media or documents added yet.
+                        </div>
+                      )}
+                    </div>
+                  </SectionCard>
+                )}
+
+                {/* Lineage tab */}
+                {drawerTab === "lineage" && (
+                  <SectionCard
+                    title="Pedigree and lineage"
+                    icon={<Users className="h-4 w-4" />}
+                  >
+                    <div className="space-y-4 text-xs">
+                      <div>
+                        <div className="text-xs font-medium text-muted-foreground mb-1">
+                          Dam and sire
+                        </div>
+                        {drawer.lineage && drawer.lineage.length > 0 ? (
+                          <ul className="space-y-1">
+                            {drawer.lineage.map((entry) => (
+                              <li
+                                key={entry.id}
+                                className="flex justify-between gap-2"
+                              >
+                                <div>
+                                  <div className="font-medium">{entry.name}</div>
+                                  <div className="text-[10px] text-muted-foreground">
+                                    Role: {entry.role}
+                                    {entry.registrationId
+                                      ? ` · Reg: ${entry.registrationId}`
+                                      : ""}
+                                  </div>
+                                </div>
+                              </li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <div className="text-xs text-muted-foreground">
+                            Lineage information is not available yet.
+                          </div>
+                        )}
+                      </div>
+
+                      <div>
+                        <div className="text-xs font-medium text-muted-foreground mb-1">
+                          Genetic tests
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          Genetic test summary will appear here once wired to backend data.
+                        </div>
+                      </div>
+                    </div>
+                  </SectionCard>
+                )}
+
+                {/* Ownership tab */}
+                {drawerTab === "ownership" && (
+                  <SectionCard
+                    title="Ownership and placement"
+                    icon={<User className="h-4 w-4" />}
+                    right={
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => window.alert("Add Contract not wired yet")}
+                        >
+                          <FilePlus2 className="h-4 w-4 mr-1" />
+                          Add Contract
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => window.alert("Add Task not wired yet")}
+                        >
+                          <FilePlus2 className="h-4 w-4 mr-1" />
+                          Add Task
+                        </Button>
+                      </div>
+                    }
+                  >
+                    <div className="space-y-4 text-xs">
+                      <div>
+                        <div className="text-xs font-medium text-muted-foreground mb-1">
+                          Buyer
+                        </div>
+                        {drawer.buyer ? (
+                          <div className="border rounded-md p-3 flex items-start justify-between gap-3">
+                            <div>
+                              <div className="font-medium">{drawer.buyer.name}</div>
+                              {drawer.buyer.email && (
+                                <div className="text-[10px] text-muted-foreground">
+                                  {drawer.buyer.email}
+                                </div>
+                              )}
+                              {drawer.buyer.phone && (
+                                <div className="text-[10px] text-muted-foreground">
+                                  {drawer.buyer.phone}
+                                </div>
+                              )}
+                            </div>
+                            <Button
+                              size="xs"
+                              variant="ghost"
+                              onClick={() => {
+                                window.alert("View Buyer not wired yet");
+                              }}
+                            >
+                              View buyer
+                            </Button>
+                          </div>
+                        ) : (
+                          <div className="text-xs text-muted-foreground">
+                            No buyer assigned yet.
+                          </div>
+                        )}
+                      </div>
+
+                      <div>
+                        <div className="text-xs font-medium text-muted-foreground mb-1">
+                          Invoices
+                        </div>
+                        {drawer.invoices && drawer.invoices.length > 0 ? (
+                          <ul className="space-y-1">
+                            {drawer.invoices.map((inv) => (
+                              <li
+                                key={inv.id}
+                                className="border rounded-md px-3 py-2 flex justify-between gap-2"
+                              >
+                                <div>
+                                  <div className="font-medium text-xs">
+                                    Invoice {inv.invoiceNumber}
+                                  </div>
+                                  <div className="text-[10px] text-muted-foreground">
+                                    Status: {inv.status}
+                                  </div>
+                                </div>
+                                <div className="text-right text-xs font-medium">
+                                  {moneyFmt(inv.amount)}
+                                </div>
+                              </li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <div className="text-xs text-muted-foreground">
+                            No invoices linked yet.
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </SectionCard>
+                )}
+
+                {/* Cross refs tab */}
+                {drawerTab === "xrefs" && (
+                  <SectionCard
+                    title="Cross references"
+                    icon={<LinkIcon className="h-4 w-4" />}
+                    right={
+                      <Button
+                        size="xs"
+                        variant="outline"
+                        onClick={handleLinkInvoice}
+                        disabled={linkingInvoice}
+                      >
+                        Link invoice
+                      </Button>
+                    }
+                  >
+                    <CrossRefsSection
+                      row={drawer}
+                      onNavigateGroup={(id) => navigateToGroup(id)}
+                      onNavigateOffspring={navigateToOffspringSibling}
+                      onNavigateWaitlist={navigateToWaitlist}
+                    />
+                  </SectionCard>
+                )}
+
+              </DetailsScaffold>
             )}
-          </DetailsScaffold>
-        )}
-      </Overlay>
+          </Overlay>
+        </OverlayMount>
+      )}
     </div>
   );
 }
