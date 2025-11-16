@@ -230,6 +230,71 @@ function fmtRange(start?: string | null, end?: string | null): string {
   return a || b || "";
 }
 
+function MiniTimeline({ row }: { row: OffspringRow }) {
+  const dates = row.dates ?? {};
+
+  const breedingExpected = dates.breedingDateExpected ?? null;
+  const breedingActual = dates.breedingDateActual ?? null;
+
+  const birthStart = dates.birthedStartAt ?? null;
+  const birthEnd = dates.birthedEndAt ?? null;
+
+  const weanDate = dates.weanedAt ?? null;
+
+  const placementStart =
+    row.expectedPlacementStart ?? dates.placementStartDateExpected ?? null;
+  const placementEnd =
+    row.expectedPlacementCompleted ?? dates.placementCompletedDateExpected ?? null;
+
+  return (
+    <div className="mt-3 space-y-1 text-[10px]">
+      <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+        Lifecycle bands
+      </div>
+
+      <div className="flex h-3 overflow-hidden rounded-full bg-muted">
+        <div
+          className="flex-1 bg-[color:var(--avail-risky-fill,#3b3b3b)]"
+          title={
+            breedingExpected
+              ? `Breeding · ${fmtDate(breedingExpected)}${breedingActual ? ` (actual ${fmtDate(breedingActual)})` : ""
+              }`
+              : "Breeding"
+          }
+        />
+        <div
+          className="flex-1 bg-[color:var(--brand-orange,#f97316)]"
+          title={
+            birthStart || birthEnd
+              ? `Birth · ${fmtRange(birthStart, birthEnd)}`
+              : "Birth"
+          }
+        />
+        <div
+          className="flex-1 bg-[color:var(--avail-unlikely-fill,#555555)]"
+          title={weanDate ? `Weaning · ${fmtDate(weanDate)}` : "Weaning"}
+        />
+        <div
+          className="flex-1 bg-[color:var(--avail-normal-fill,#777777)]"
+          title={
+            placementStart || placementEnd
+              ? `Placement · ${fmtRange(placementStart, placementEnd)}`
+              : "Placement"
+          }
+        />
+      </div>
+
+      <div className="flex justify-between text-[10px] text-muted-foreground">
+        <span>Breeding</span>
+        <span>Birth</span>
+        <span>Weaning</span>
+        <span>Placement</span>
+      </div>
+    </div>
+  );
+}
+
+
 function AttachmentsSection({
   group,
   api,
@@ -608,8 +673,23 @@ function toWireSpeciesLite(s: any): string | undefined {
   return v;
 }
 
-function computeExpectedForPlanLite(plan: { species?: string | null; lockedCycleStart?: string | null }) {
-  const speciesWire = toWireSpeciesLite(plan.species) ?? "DOG";
+type PlannerSpecies = "Dog" | "Cat" | "Horse";
+
+type ExpectedLite = {
+  expectedCycleStart: string | null;
+  expectedHormoneTestingStart: string | null;
+  expectedBreedDate: string | null;
+  expectedBirthDate: string | null;
+  expectedWeanedDate: string | null;
+  expectedPlacementStartDate: string | null;
+  expectedPlacementCompletedDate: string | null;
+};
+
+function computeExpectedForPlanLite(plan: {
+  species?: string;
+  lockedCycleStart?: string | null;
+}): ExpectedLite {
+  const speciesWire = toWireSpeciesLite(plan.species as any) ?? "DOG";
   const locked = (plan.lockedCycleStart || "").slice(0, 10) || null;
 
   if (!locked) {
@@ -624,33 +704,49 @@ function computeExpectedForPlanLite(plan: { species?: string | null; lockedCycle
     };
   }
 
-  const preview = expectedMilestonesFromLocked(locked, speciesWire) || {};
+  // date only, no local time drift
+  const onlyDay = (v: any): string | null => {
+    if (!v) return null;
+    const s = String(v);
+    if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+    const iso = s.includes("T") ? s.slice(0, 10) : null;
+    return /^\d{4}-\d{2}-\d{2}$/.test(iso || "") ? iso : null;
+  };
+
+  // Core projections from breeding math
+  const m = expectedMilestonesFromLocked(locked, speciesWire) || {};
+
+  // Match the Breeding Dates tab preference order
 
   const expectedCycleStart = locked;
-  const expectedHormoneTestingStart = pickExpectedTestingStart(preview, locked);
-  const expectedBreedDate = onlyDay(preview.ovulation ?? preview.breeding_expected) || null;
-  const expectedBirthDate = onlyDay(preview.birth_expected) || null;
+
+  // Testing start, same logic as Dates tab
+  const expectedHormoneTestingStart = pickExpectedTestingStart(m, locked);
+
+  // Breeding (ovulation)
+  const expectedBreedDate = onlyDay(m.ovulation ?? m.breeding_expected) || null;
+
+  // Birth
+  const expectedBirthDate = onlyDay(m.birth_expected) || null;
+
+  // Weaned date
   const expectedWeanedDate =
-    onlyDay(
-      preview.weaning_expected ??
-        preview.weaned_expected ??
-        preview.puppy_care_likely?.[0],
-    ) || null;
+    onlyDay(m.weaning_expected ?? m.weaned_expected ?? m.puppy_care_likely?.[0]) ||
+    null;
 
+  // Placement start
   const expectedPlacementStartDate =
-    onlyDay(
-      preview.placement_expected ??
-        preview.placement_start_expected ??
-        preview.placement_start,
-    ) || null;
+    onlyDay(m.placement_expected ?? m.placement_start_expected ?? m.placement_start) ||
+    null;
 
+  // Placement completed
   const expectedPlacementCompletedDate =
     onlyDay(
-      preview.placement_extended_end ??
-        preview.placement_extended_end_expected ??
-        preview.placement_expected_end ??
-        preview.placement_completed_expected ??
-        preview.placement_extended_full?.[1],
+      m.placement_extended_end ??
+      m.placement_extended_end_expected ??
+      m.placement_expected_end ??
+      m.placement_completed_expected ??
+      m.placement_extended_full?.[1],
     ) || null;
 
   return {
@@ -664,48 +760,76 @@ function computeExpectedForPlanLite(plan: { species?: string | null; lockedCycle
   };
 }
 
-type PlannerSpecies = "Dog" | "Cat" | "Horse";
-
-type ExpectedLite = {
-  expectedCycleStart: string | null;
-  expectedHormoneTestingStart: string | null;
-  expectedBreedDate: string | null;
-  expectedBirthDate: string | null;
-  expectedWeanedDate: string | null;
-  expectedPlacementStartDate: string | null;
-  expectedPlacementCompletedDate: string | null;
-};
 
 function mapDetailToTableRow(d: OffspringRow): GroupTableRow {
   const plan = d.plan;
   const planAny: any = plan;
   const counts = d.counts ?? {};
+  const detailAny: any = d;
   const dates = d.dates ?? {};
 
-  // Compute expected date preview from the breeding plan, if we have a locked cycle
-  let expected: ExpectedLite = {
-    expectedCycleStart: null,
-    expectedHormoneTestingStart: null,
-    expectedBreedDate: null,
-    expectedBirthDate: null,
-    expectedWeanedDate: null,
-    expectedPlacementStartDate: null,
-    expectedPlacementCompletedDate: null,
-  };
+  const lockedCycleStart =
+    (planAny.lockedCycleStart as string | null) ??
+    (planAny.expectedCycleStart as string | null) ??
+    null;
 
-  if (plan?.lockedCycleStart) {
-    expected = computeExpectedForPlanLite({
-      species: plan.species ?? null,
-      lockedCycleStart: plan.lockedCycleStart ?? null,
-    });
+  const expectedFromPlan = plan
+    ? computeExpectedForPlanLite({
+      species: plan.species as any,
+      lockedCycleStart,
+    })
+    : null;
+
+  // Map backend plan statuses into user friendly group statuses
+  const rawPlanStatus: string | undefined = planAny?.status;
+  let derivedStatus: string | null = null;
+  switch (rawPlanStatus) {
+    case "PLANNING":
+    case "COMMITTED":
+    case "ACTIVE":
+    case "BRED":
+    case "PREGNANT":
+      derivedStatus = "Planned";
+      break;
+    case "BIRTHED":
+      derivedStatus = "Born";
+      break;
+    case "WEANED":
+      derivedStatus = "Weaned";
+      break;
+    case "PLACEMENT":
+    case "HOMING":
+    case "HOMING_STARTED":
+      derivedStatus = "Homing";
+      break;
+    case "COMPLETE":
+      derivedStatus = "Complete";
+      break;
+    case "CANCELED":
+      derivedStatus = "Canceled";
+      break;
+    default:
+      derivedStatus = null;
   }
 
   const baseStatus =
-    planAny?.status === "COMMITTED" || planAny?.status === "ACTIVE"
+    derivedStatus ??
+    (planAny?.status === "COMMITTED" || planAny?.status === "ACTIVE"
       ? "Committed"
-      : "Planning";
+      : "Planning");
 
-  const status = d.statusOverride || (d as any).status || baseStatus;
+  const status = d.statusOverride || baseStatus;
+
+  // Season label from earliest birth expectation we can see
+  const seasonSourceIso =
+    (d.dates && (d.dates.birthedStartAt || d.dates.birthedEndAt)) ||
+    expectedFromPlan?.expectedBirthDate ||
+    planAny?.expectedBirthDate ||
+    expectedFromPlan?.expectedPlacementStartDate ||
+    planAny?.expectedPlacementStart ||
+    null;
+
+  const seasonLabel = safeSeasonLabelFromISO(seasonSourceIso);
 
   // Aggregate metrics for summary chips
   const metrics = computeGroupMetrics(d as any);
@@ -723,52 +847,80 @@ function mapDetailToTableRow(d: OffspringRow): GroupTableRow {
     sireName: plan?.sire?.name ?? null,
     sireId: plan?.sire?.id ?? null,
 
-    expectedCycleStart: expected.expectedCycleStart,
-    expectedHormoneTestingStart: expected.expectedHormoneTestingStart,
-    expectedBreedDate: expected.expectedBreedDate,
-    expectedBirth: expected.expectedBirthDate,
-    expectedWeanedDate: expected.expectedWeanedDate,
-    expectedPlacementStart: expected.expectedPlacementStartDate,
-    expectedPlacementCompleted: expected.expectedPlacementCompletedDate,
+    // Timeline values powering the Overview card
+    expectedCycleStart:
+      expectedFromPlan?.expectedCycleStart ??
+      (planAny.expectedCycleStart as string | null) ??
+      (planAny.lockedCycleStart as string | null) ??
+      null,
 
-    seasonLabel: (planAny as any)?.seasonLabel ?? null,
+    expectedHormoneTestingStart:
+      expectedFromPlan?.expectedHormoneTestingStart ??
+      (planAny.expectedHormoneTestingStart as string | null) ??
+      null,
 
-    tags: Array.isArray((d as any).tags) ? (d as any).tags : null,
+    expectedBreedDate:
+      expectedFromPlan?.expectedBreedDate ??
+      (planAny.expectedBreedDate as string | null) ??
+      (planAny.lockedOvulationDate as string | null) ??
+      (dates.breedingDateExpected as string | null) ??
+      null,
 
-    countLive:
-      typeof counts.live === "number"
-        ? counts.live
-        : (counts as any).animals ?? null,
-    countReserved:
-      typeof counts.reserved === "number" ? counts.reserved : null,
+    expectedBirth:
+      expectedFromPlan?.expectedBirthDate ??
+      (planAny.expectedBirthDate as string | null) ??
+      (planAny.lockedDueDate as string | null) ??
+      (dates.birthedStartAt as string | null) ??
+      null,
+
+    expectedWeanedDate:
+      expectedFromPlan?.expectedWeanedDate ??
+      (planAny.expectedWeanedDate as string | null) ??
+      (dates.weanedAt as string | null) ??
+      null,
+
+    expectedPlacementStart:
+      expectedFromPlan?.expectedPlacementStartDate ??
+      (planAny.expectedPlacementStartDate as string | null) ??
+      (planAny.lockedPlacementStartDate as string | null) ??
+      (d.expectedPlacementStart as string | null) ??
+      (dates.placementStartDateExpected as string | null) ??
+      null,
+
+    expectedPlacementCompleted:
+      expectedFromPlan?.expectedPlacementCompletedDate ??
+      (planAny.expectedPlacementCompletedDate as string | null) ??
+      (d.expectedPlacementCompleted as string | null) ??
+      (dates.placementCompletedDateExpected as string | null) ??
+      null,
+    seasonLabel,
+
+    // Tags from backend if present
+    tags: detailAny.tags ?? null,
+
+    // Counts
+    countLive: counts.live ?? null,
+    countReserved: counts.reserved ?? null,
     countSold: deriveCountSold(d),
-    countWeaned:
-      typeof (counts as any).weaned === "number"
-        ? (counts as any).weaned
-        : null,
-    countPlaced:
-      typeof (counts as any).placed === "number"
-        ? (counts as any).placed
-        : null,
+    countWeaned: counts.weaned ?? null,
+    countPlaced: counts.placed ?? null,
 
+    // Status
     statusOverride: d.statusOverride ?? null,
     statusOverrideReason: d.statusOverrideReason ?? null,
     status,
 
+    // Metrics
     totalOffspring: metrics.totalOffspring,
     maleCount: metrics.maleCount,
     femaleCount: metrics.femaleCount,
     unknownSexCount: metrics.unknownSexCount,
     mortalityCount: metrics.mortalityCount,
     mortalityRate: metrics.mortalityRate,
-    waitlistOverlapCount: metrics.waitlistOverlapCount,
-    avgPlacementPriceCents: metrics.avgPlacementPriceCents,
+    waitlistOverlapCount: null,
+    avgPlacementPriceCents: metrics.avgPlacementPriceCents ?? null,
 
-    updatedAt:
-      (d as any).updatedAt ??
-      (d as any).updated_at ??
-      (d as any).updated ??
-      null,
+    updatedAt: d.updatedAt ?? null,
   };
 
   return row;
@@ -862,11 +1014,24 @@ function IdentityField(props: { label: string; children: React.ReactNode }) {
 
 const groupSections = (mode: "view" | "edit") => [
   {
-    title: "Tags & Metadata",
+    title: "Status & Metadata",
     fields: [
+      {
+        label: "Status Override",
+        key: "statusOverride",
+        editor: "text",
+        view: (r: GroupTableRow) => r.statusOverride || "-",
+      },
+      {
+        label: "Override Reason",
+        key: "statusOverrideReason",
+        editor: "text",
+        view: (r: GroupTableRow) => r.statusOverrideReason || "-",
+      },
       {
         label: "Tags",
         key: "tags",
+        editor: mode === "edit" ? "text" : undefined,
         view: (r: GroupTableRow) =>
           r.tags && r.tags.length > 0 ? r.tags.join(", ") : "-",
       },
@@ -880,36 +1045,6 @@ const groupSections = (mode: "view" | "edit") => [
         key: "updatedAt",
         view: (r: GroupTableRow) => fmtDate(r.updatedAt) || "-",
       },
-    ],
-  },
-
-  {
-    title: "Counts",
-    fields: [
-      {
-        label: "Live",
-        key: "countLive",
-        editor: "number",
-        view: (r: GroupTableRow) => String(r.countLive ?? 0),
-      },
-      {
-        label: "Weaned",
-        key: "countWeaned",
-        editor: "number",
-        view: (r: GroupTableRow) => String(r.countWeaned ?? 0),
-      },
-      {
-        label: "Placed",
-        key: "countPlaced",
-        editor: "number",
-        view: (r: GroupTableRow) => String(r.countPlaced ?? 0),
-      },
-      {
-        label: "Reserved",
-        key: "countReserved",
-        editor: "number",
-        view: (r: GroupTableRow) => String(r.countReserved ?? 0),
-      },
       {
         label: "Sold",
         key: "countSold",
@@ -920,108 +1055,151 @@ const groupSections = (mode: "view" | "edit") => [
   },
 ];
 
-// /* ───────────────────────── Waitlist table ───────────────────────── */
-
-// type WaitlistRowWire = WaitlistEntry;
-
-// type WaitlistTableRow = {
-//   id: number;
-//   contactLabel?: string | null;
-//   orgLabel?: string | null;
-//   speciesPref?: string | null;
-//   breedPrefText?: string | null;
-//   damPrefName?: string | null;
-//   sirePrefName?: string | null;
-//   depositPaidAt?: string | null;
-//   status?: string | null;
-//   priority?: number | null;
-//   skipCount?: number | null;
-//   lastActivityAt?: string | null;
-//   notes?: string | null;
-// };
-
-// const WAITLIST_COLS: Array<{ key: keyof WaitlistTableRow & string; label: string; default?: boolean }> = [
-//   { key: "contactLabel", label: "Contact", default: true },
-//   { key: "orgLabel", label: "Org", default: true },
-//   { key: "speciesPref", label: "Species", default: true },
-//   { key: "breedPrefText", label: "Breeds", default: true },
-//   { key: "damPrefName", label: "Dam", default: true },
-//   { key: "sirePrefName", label: "Sire", default: true },
-//   { key: "depositPaidAt", label: "Deposit Paid On", default: true },
-//   { key: "status", label: "Status", default: false },
-//   { key: "priority", label: "Priority", default: false },
-//   { key: "skipCount", label: "Skips", default: false },
-//   { key: "lastActivityAt", label: "Activity", default: false },
-// ];
-
-// const WAITLIST_STORAGE_KEY = "bhq_waitlist_cols_v2";
-
-// function mapWaitlistToTableRow(w: any): WaitlistTableRow {
-//   const contact =
-//     w.contact ||
-//     (w.contactId != null
-//       ? { id: w.contactId, display_name: w.contactName, first_name: w.firstName, last_name: w.lastName }
-//       : null);
-//   const org = w.organization || (w.organizationId != null ? { id: w.organizationId, name: w.organizationName } : null);
-//   const dam = w.damPref || (w.damPrefId != null ? { id: w.damPrefId, name: w.damPrefName } : null);
-//   const sire = w.sirePref || (w.sirePrefId != null ? { id: w.sirePrefId, name: w.sirePrefName } : null);
-
-//   const contactLabel =
-//     contact?.display_name ||
-//     `${(contact?.first_name ?? "").trim()} ${(contact?.last_name ?? "").trim()}`.trim() ||
-//     (contact ? `#${contact.id}` : null);
-
-//   const orgLabel = org?.name ?? (org ? `#${org.id}` : null);
-
-//   const breedPrefText =
-//     w.breedPrefText ||
-//     (Array.isArray(w.breedPrefs) ? w.breedPrefs.filter(Boolean).join(", ") : null) ||
-//     null;
-
-//   return {
-//     id: Number(w.id),
-//     contactLabel: contactLabel ?? null,
-//     orgLabel: orgLabel ?? null,
-//     speciesPref: w.speciesPref ?? null,
-//     breedPrefText,
-//     damPrefName: dam?.name ?? null,
-//     sirePrefName: sire?.name ?? null,
-//     depositPaidAt: w.depositPaidAt ?? null,
-//     status: w.status ?? null,
-//     priority: w.priority ?? null,
-//     skipCount: w.skipCount ?? null,
-//     lastActivityAt: w.lastActivityAt ?? w.updatedAt ?? w.createdAt ?? null,
-//     notes: w.notes ?? null,
-//   };
-// }
-
-// const waitlistSections = (mode: "view" | "edit") => [
-//   {
-//     title: "Overview",
-//     fields: [
-//       { label: "Contact", key: "contactLabel", view: (r: WaitlistTableRow) => r.contactLabel || "-" },
-//       { label: "Organization", key: "orgLabel", view: (r: WaitlistTableRow) => r.orgLabel || "-" },
-//       { label: "Species", key: "speciesPref", view: (r: WaitlistTableRow) => r.speciesPref || "-" },
-//       { label: "Breeds", key: "breedPrefText", view: (r: WaitlistTableRow) => r.breedPrefText || "-" },
-//       { label: "Dam Pref", key: "damPrefName", view: (r: WaitlistTableRow) => r.damPrefName || "-" },
-//       { label: "Sire Pref", key: "sirePrefName", view: (r: WaitlistTableRow) => r.sirePrefName || "-" },
-//       { label: "Deposit Paid", key: "depositPaidAt", editor: "date", view: (r: WaitlistTableRow) => fmtDate(r.depositPaidAt) || "-" },
-//       { label: "Status", key: "status", editor: "text", view: (r: WaitlistTableRow) => r.status || "-" },
-//       { label: "Priority", key: "priority", editor: "number", view: (r: WaitlistTableRow) => String(r.priority ?? "") || "-" },
-//       { label: "Skips", key: "skipCount", view: (r: WaitlistTableRow) => String(r.skipCount ?? 0) },
-//       { label: "Activity", key: "lastActivityAt", view: (r: WaitlistTableRow) => fmtDate(r.lastActivityAt) || "-" },
-//     ],
-//   },
-//   {
-//     title: "Notes",
-//     fields: [{ label: "Notes", key: "notes", editor: "textarea", view: (r: WaitlistTableRow) => r.notes || "-" }],
-//   },
-// ];
 
 /* ───────────────────────── Directory/Animals helpers ───────────────────────── */
 type SpeciesWire = "DOG" | "CAT" | "HORSE";
 type SpeciesUi = "Dog" | "Cat" | "Horse";
 const SPECIES_UI_ALL: SpeciesUi[] = ["Dog", "Cat", "Horse"];
+
+// Shared date display + inputs, copied from Breeding Dates tab
+
+const dateFieldW = "w-full";
+const dateInputCls = "h-8 py-0 px-2 text-sm bg-transparent border-hairline";
+
+function fmt(d?: string | null) {
+  if (!d) return "";
+  const s = String(d);
+  // If it's date only, parse as UTC midnight to avoid TZ drift
+  const dt = /^\d{4}-\d{2}-\d{2}$/.test(s) ? new Date(`${s}T00:00:00Z`) : new Date(s);
+  return Number.isFinite(dt.getTime()) ? dt.toLocaleDateString() : "";
+}
+
+type CalendarInputProps = Omit<React.ComponentProps<typeof Input>, "className" | "onChange"> & {
+  showIcon?: boolean;
+  className?: string;      // wrapper width
+  inputClassName?: string; // visible input styling
+  onChange?: (e: { currentTarget: { value: string } }) => void; // emits ISO
+};
+
+function CalendarInput({
+  readOnly,
+  className,
+  inputClassName,
+  onChange,
+  value,
+  defaultValue,
+  placeholder = "mm/dd/yyyy",
+  ...rest
+}: CalendarInputProps) {
+  // convert ISO yyyy mm dd to display
+  const toDisplay = (v: string | null | undefined): string => {
+    if (!v) return "";
+    const s = String(v);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+      const [y, m, d] = s.split("-");
+      return `${m}/${d}/${y}`;
+    }
+    return s;
+  };
+
+  const toIso = (v: string): string => {
+    if (!v) return "";
+    const parts = v.split(/[/-]/).map((x) => x.trim());
+    if (parts.length === 3) {
+      let [mm, dd, yyyy] = parts;
+      // support yyyy mm dd or mm dd yyyy
+      if (yyyy.length === 2) yyyy = `20${yyyy}`;
+      if (yyyy.length === 4 && Number(yyyy) > 1900) {
+        const m = mm.padStart(2, "0");
+        const d = dd.padStart(2, "0");
+        return `${yyyy}-${m}-${d}`;
+      }
+    }
+    // last resort, try Date
+    const dt = new Date(v);
+    if (Number.isFinite(dt.getTime())) {
+      const yyyy = dt.getFullYear();
+      const mm = String(dt.getMonth() + 1).padStart(2, "0");
+      const dd = String(dt.getDate()).padStart(2, "0");
+      return `${yyyy}-${mm}-${dd}`;
+    }
+    return "";
+  };
+
+  const [internal, setInternal] = React.useState<string>(
+    () => (value !== undefined ? toDisplay(String(value)) : toDisplay(String(defaultValue ?? "")))
+  );
+
+  React.useEffect(() => {
+    if (value !== undefined) setInternal(toDisplay(String(value ?? "")));
+  }, [value]);
+
+  const pushChange = React.useCallback(
+    (display: string) => {
+      setInternal(display);
+      const iso = toIso(display);
+      if (onChange) {
+        onChange({ currentTarget: { value: iso } });
+      }
+    },
+    [onChange]
+  );
+
+  return (
+    <div className={className}>
+      <div className="relative">
+        <Input
+          {...rest}
+          type="text"
+          value={internal}
+          readOnly={readOnly}
+          placeholder={placeholder}
+          className={inputClassName}
+          onChange={(e) => pushChange(e.currentTarget.value)}
+          onBlur={(e) => pushChange(e.currentTarget.value)}
+        />
+      </div>
+    </div>
+  );
+}
+
+type BHQDateFieldProps = {
+  label: string;
+  value?: string | null;
+  defaultValue?: string | null;
+  readOnly?: boolean;
+  onChange?: (value: string) => void;
+};
+
+function DateField({ label, value, defaultValue, readOnly, onChange }: BHQDateFieldProps) {
+  const isReadOnly = !!readOnly;
+  const current = value ?? defaultValue ?? "";
+
+  return (
+    <div>
+      <div className="text-xs text-secondary mb-1">{label}</div>
+
+      {isReadOnly ? (
+        <div className={dateFieldW}>
+          <div className="h-8 flex items-center text-sm select-none pointer-events-none">
+            {fmt(current) ? <span className="font-medium">{fmt(current)}</span> : <span className="text-secondary">—</span>}
+          </div>
+        </div>
+      ) : (
+        <CalendarInput
+          value={current}
+          readOnly={false}
+          onChange={(e) => onChange?.(e.currentTarget.value)}
+          className={dateFieldW}
+          inputClassName={dateInputCls}
+          placeholder="mm/dd/yyyy"
+        />
+      )}
+    </div>
+  );
+}
+
+
 const toWireSpecies = (s: SpeciesUi | ""): SpeciesWire | undefined =>
   s === "Dog" ? "DOG" : s === "Cat" ? "CAT" : s === "Horse" ? "HORSE" : undefined;
 
@@ -1241,9 +1419,7 @@ function CreateGroupForm({
   const [submitting, setSubmitting] = React.useState(false);
   const [submitErr, setSubmitErr] = React.useState<string | null>(null);
 
-  const { toast } = useToast();
-
-  const handleSubmit = async () => {
+   const handleSubmit = async () => {
     if (!api) return;
     if (planId === "" || !Number(planId)) {
       setSubmitErr("Please choose a committed plan.");
@@ -2249,78 +2425,78 @@ function AddBuyerToGroupModal({
 
   const panelRef = React.useRef<HTMLDivElement | null>(null);
 
-React.useEffect(() => {
-  let cancelled = false;
-  const t = q.trim();
+  React.useEffect(() => {
+    let cancelled = false;
+    const t = q.trim();
 
-  if (!api || !group || !t) {
-    setHits([]);
-    return;
-  }
-
-  setBusy(true);
-
-  (async () => {
-    try {
-      const [contactsRes, orgsRes] = await Promise.all([
-        api.contacts.list({ q: t, limit: 25 }),
-        api.organizations.list({ q: t, limit: 25 }),
-      ]);
-
-      if (cancelled) return;
-
-      const contactsArr: any[] = Array.isArray(contactsRes)
-        ? contactsRes
-        : contactsRes?.items ?? [];
-
-      const orgsArr: any[] = Array.isArray(orgsRes)
-        ? orgsRes
-        : orgsRes?.items ?? [];
-
-      const nextHits: Array<{
-        kind: "contact" | "org";
-        id: number;
-        label: string;
-        subtitle?: string;
-      }> = [];
-
-      for (const c of contactsArr) {
-        nextHits.push({
-          kind: "contact",
-          id: Number(c.id),
-          label:
-            c.display_name ||
-            `${c.first_name ?? ""} ${c.last_name ?? ""}`.trim() ||
-            "(Contact)",
-          subtitle: c.email || c.phone || "",
-        });
-      }
-
-      for (const o of orgsArr) {
-        nextHits.push({
-          kind: "org",
-          id: Number(o.id),
-          label: o.name || "(Organization)",
-          subtitle: o.website || o.email || o.phone || "",
-        });
-      }
-
-      setHits(nextHits);
-    } catch (e: any) {
-      if (!cancelled) {
-        setCreateErr(e?.message || "Search failed.");
-      }
-    } finally {
-      if (!cancelled) {
-        setBusy(false);
-      }
+    if (!api || !group || !t) {
+      setHits([]);
+      return;
     }
-  })();
 
-  return () => {
-    cancelled = true;
-  };
-}, [q, api, group]);
+    setBusy(true);
+
+    (async () => {
+      try {
+        const [contactsRes, orgsRes] = await Promise.all([
+          api.contacts.list({ q: t, limit: 25 }),
+          api.organizations.list({ q: t, limit: 25 }),
+        ]);
+
+        if (cancelled) return;
+
+        const contactsArr: any[] = Array.isArray(contactsRes)
+          ? contactsRes
+          : contactsRes?.items ?? [];
+
+        const orgsArr: any[] = Array.isArray(orgsRes)
+          ? orgsRes
+          : orgsRes?.items ?? [];
+
+        const nextHits: Array<{
+          kind: "contact" | "org";
+          id: number;
+          label: string;
+          subtitle?: string;
+        }> = [];
+
+        for (const c of contactsArr) {
+          nextHits.push({
+            kind: "contact",
+            id: Number(c.id),
+            label:
+              c.display_name ||
+              `${c.first_name ?? ""} ${c.last_name ?? ""}`.trim() ||
+              "(Contact)",
+            subtitle: c.email || c.phone || "",
+          });
+        }
+
+        for (const o of orgsArr) {
+          nextHits.push({
+            kind: "org",
+            id: Number(o.id),
+            label: o.name || "(Organization)",
+            subtitle: o.website || o.email || o.phone || "",
+          });
+        }
+
+        setHits(nextHits);
+      } catch (e: any) {
+        if (!cancelled) {
+          setCreateErr(e?.message || "Search failed.");
+        }
+      } finally {
+        if (!cancelled) {
+          setBusy(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [q, api, group]);
 
   const clearLinkAndSearch = React.useCallback(() => {
     setLink(null);
@@ -3166,6 +3342,26 @@ const openDetails = setParamAndNotify;
 /* ───────────────────────── Tabs ───────────────────────── */
 function OffspringGroupsTab({ api, tenantId, readOnlyGlobal }: { api: ReturnType<typeof makeOffspringApi> | null; tenantId: number | null, readOnlyGlobal: boolean }) {
   const { toast } = useToast();
+   const patchPlanDates = React.useCallback(
+    async (planId: number | undefined | null, patch: Partial<any>) => {
+      if (!api || !planId) return;
+      try {
+        try {
+          await api.raw.patch(`/breeding/plans/${planId}`, patch);
+        } catch {
+          await api.raw.patch(`/plans/${planId}`, patch);
+        }
+      } catch (e) {
+        console.error("Failed to update plan dates from group", e);
+        toast?.({
+          variant: "destructive",
+          title: "Failed to update dates",
+          description: "Try editing dates on the Breeding plan instead.",
+        });
+      }
+    },
+    [api, toast]
+  );
   const [q, setQ] = React.useState("");
   const [rows, setRows] = React.useState<GroupTableRow[]>([]);
   const [raw, setRaw] = React.useState<OffspringRow[]>([]);
@@ -3347,6 +3543,53 @@ function OffspringGroupsTab({ api, tenantId, readOnlyGlobal }: { api: ReturnType
             customChrome: true,
             render: ({ row, mode, setMode, activeTab, setActiveTab, requestSave }: any) => {
               const tblRow = mapDetailToTableRow(row);
+              const plan = row.plan;
+
+              // Expected dates, copied from the Dates tab semantics
+              const expectedCycleStart = tblRow.expectedCycleStart ?? null;
+              const expectedTestingStart = tblRow.expectedHormoneTestingStart ?? null;
+              const expectedBreed = tblRow.expectedBreedDate ?? null;
+              const expectedBirth = tblRow.expectedBirth ?? null;
+              const expectedWeaned = tblRow.expectedWeaned ?? null;
+              const expectedPlacementStart = tblRow.expectedPlacementStart ?? null;
+              const expectedGoHomeExtended = tblRow.expectedPlacementCompleted ?? null;
+
+              // Can we edit actuals here
+              const statusU = String(plan?.status || "").toUpperCase();
+              const committedOrLater = [
+                "COMMITTED",
+                "BRED",
+                "BIRTHED",
+                "WEANED",
+                "HOMING_STARTED",
+                "COMPLETE",
+              ].includes(statusU);
+              const canEditDates = mode === "edit" && committedOrLater;
+
+              const { toast } = useToast();
+
+              const patchPlanDates = React.useCallback(
+                async (patch: Partial<any>) => {
+                  if (!api || !plan?.id) return;
+                  try {
+                    try {
+                      await api.raw.patch(`/breeding/plans/${plan.id}`, patch);
+                    } catch {
+                      await api.raw.patch(`/plans/${plan.id}`, patch);
+                    }
+                  } catch (e) {
+                    console.error("Failed to update plan dates from group", e);
+                    toast?.({
+                      variant: "destructive",
+                      title: "Failed to update dates",
+                      description: "Try editing dates on the Breeding plan instead.",
+                    });
+                  }
+                },
+                [api, plan?.id, toast]
+              );
+
+              // ... existing code (openOffspringFromGroup etc) follows
               const openOffspringFromGroup = (offspringId: number) => {
                 try {
                   const url = new URL(window.location.href);
@@ -3429,6 +3672,56 @@ function OffspringGroupsTab({ api, tenantId, readOnlyGlobal }: { api: ReturnType
                               </div>
                             </div>
                           </div>
+                        </SectionCard>
+
+                        <SectionCard>
+                          <div className="mb-3 flex items-center justify-between">
+                            <h3 className="text-sm font-semibold">Placement timeline</h3>
+                            <span className="text-xs text-muted-foreground">
+                              Expected and actual
+                            </span>
+                          </div>
+                          <div className="space-y-1 text-xs">
+                            <div>
+                              <span className="font-medium">Breeding</span>
+                              <span className="mx-1">·</span>
+                              <span>{fmtDate(row.dates?.breedingDateExpected)}</span>
+                              {row.dates?.breedingDateActual && (
+                                <span className="ml-2 text-muted-foreground">
+                                  (actual {fmtDate(row.dates.breedingDateActual)})
+                                </span>
+                              )}
+                            </div>
+                            <div>
+                              <span className="font-medium">Birth</span>
+                              <span className="mx-1">·</span>
+                              <span>
+                                {fmtRange(
+                                  row.dates?.birthedStartAt,
+                                  row.dates?.birthedEndAt
+                                )}
+                              </span>
+                            </div>
+                            <div>
+                              <span className="font-medium">Weaning</span>
+                              <span className="mx-1">·</span>
+                              <span>{fmtDate(row.dates?.weanedAt)}</span>
+                            </div>
+                            <div>
+                              <span className="font-medium">Placement</span>
+                              <span className="mx-1">·</span>
+                              <span>
+                                {fmtRange(
+                                  row.expectedPlacementStart ??
+                                  row.dates?.placementStartDateExpected,
+                                  row.expectedPlacementCompleted ??
+                                  row.dates?.placementCompletedDateExpected
+                                )}
+                              </span>
+                            </div>
+                          </div>
+
+                          <MiniTimeline row={row} />
                         </SectionCard>
 
                         <SectionCard>
@@ -3578,6 +3871,181 @@ function OffspringGroupsTab({ api, tenantId, readOnlyGlobal }: { api: ReturnType
                         setDraft={() => { }}
                         sections={groupSections(readOnlyGlobal ? "view" : mode)}
                       />
+                      {/* Cloned Dates tab from Breeding Plan, now living on Group Overview */}
+                      {plan && (
+                        <div className="relative overflow-x-hidden mt-4">
+                          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                            {/* EXPECTED DATES */}
+                            <div className="min-w-0">
+                              <SectionCard title="EXPECTED DATES (SYSTEM CALCULATED)">
+                                {mode === "edit" && !committedOrLater && (
+                                  <div className="text-xs text-[hsl(var(--brand-orange))] mb-2">
+                                    Select a <b>Female</b>, select a <b>Male</b>, and <b>lock the cycle</b> to enable Expected Dates.
+                                  </div>
+                                )}
+
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                  <DateField
+                                    label="CYCLE START (EXPECTED)"
+                                    value={expectedCycleStart}
+                                    readOnly
+                                  />
+                                  <DateField
+                                    label="HORMONE TESTING START (EXPECTED)"
+                                    value={expectedTestingStart}
+                                    readOnly
+                                  />
+                                  <DateField
+                                    label="BREEDING DATE (EXPECTED)"
+                                    value={expectedBreed}
+                                    readOnly
+                                  />
+                                  <DateField
+                                    label="BIRTH DATE (EXPECTED)"
+                                    value={expectedBirth}
+                                    readOnly
+                                  />
+                                  <DateField
+                                    label="WEANED DATE (EXPECTED)"
+                                    value={expectedWeaned}
+                                    readOnly
+                                  />
+                                  <DateField
+                                    label="PLACEMENT START (EXPECTED)"
+                                    value={expectedPlacementStart}
+                                    readOnly
+                                  />
+                                  <DateField
+                                    label="PLACEMENT COMPLETED (EXPECTED)"
+                                    value={expectedGoHomeExtended}
+                                    readOnly
+                                  />
+                                </div>
+                              </SectionCard>
+                            </div>
+
+                            {/* ACTUAL DATES */}
+                            <div className="min-w-0">
+                              <SectionCard title="ACTUAL DATES">
+                                <div data-bhq-details-exempt className="bhq-details-exempt">
+                                  {mode === "edit" && !committedOrLater && (
+                                    <div className="text-xs text-[hsl(var(--brand-orange))] mb-2">
+                                      Commit the plan to enable Actual Dates.
+                                    </div>
+                                  )}
+
+                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
+                                    <div>
+                                      <div className="text-xs text-secondary mb-1">CYCLE START (ACTUAL)</div>
+                                      <CalendarInput
+                                        defaultValue={plan.cycleStartDateActual ?? ""}
+                                        readOnly={!canEditDates}
+                                        onChange={(e) =>
+                                          canEditDates &&
+                                          patchPlanDates(plan?.id, { cycleStartDateActual: e.currentTarget.value })
+                                        }
+                                        className={dateFieldW}
+                                        inputClassName={dateInputCls}
+                                        placeholder="mm/dd/yyyy"
+                                      />
+                                    </div>
+
+                                    <div>
+                                      <div className="text-xs text-secondary mb-1">HORMONE TESTING START (ACTUAL)</div>
+                                      <CalendarInput
+                                        defaultValue={plan.hormoneTestingStartDateActual ?? ""}
+                                        readOnly={!canEditDates}
+                                        onChange={(e) =>
+                                          canEditDates &&
+                                           patchPlanDates(plan?.id, { hormoneTestingStartDateActual: e.currentTarget.value })
+                                        }
+                                        className={dateFieldW}
+                                        inputClassName={dateInputCls}
+                                        placeholder="mm/dd/yyyy"
+                                      />
+                                    </div>
+
+                                    <div>
+                                      <div className="text-xs text-secondary mb-1">BREEDING DATE (ACTUAL)</div>
+                                      <CalendarInput
+                                        defaultValue={plan.breedDateActual ?? ""}
+                                        readOnly={!canEditDates}
+                                        onChange={(e) =>
+                                          canEditDates &&
+                                           patchPlanDates(plan?.id, { breedDateActual: e.currentTarget.value })
+                                        }
+                                        className={dateFieldW}
+                                        inputClassName={dateInputCls}
+                                        placeholder="mm/dd/yyyy"
+                                      />
+                                    </div>
+
+                                    <div>
+                                      <div className="text-xs text-secondary mb-1">BIRTH DATE (ACTUAL)</div>
+                                      <CalendarInput
+                                        defaultValue={plan.birthDateActual ?? ""}
+                                        readOnly={!canEditDates}
+                                        onChange={(e) =>
+                                          canEditDates &&
+                                           patchPlanDates(plan?.id, { birthDateActual: e.currentTarget.value })
+                                        }
+                                        className={dateFieldW}
+                                        inputClassName={dateInputCls}
+                                        placeholder="mm/dd/yyyy"
+                                      />
+                                    </div>
+
+                                    <div>
+                                      <div className="text-xs text-secondary mb-1">WEANED DATE (ACTUAL)</div>
+                                      <CalendarInput
+                                        defaultValue={plan.weanedDateActual ?? ""}
+                                        readOnly={!canEditDates}
+                                        onChange={(e) =>
+                                          canEditDates &&
+                                           patchPlanDates(plan?.id, { weanedDateActual: e.currentTarget.value })
+                                        }
+                                        className={dateFieldW}
+                                        inputClassName={dateInputCls}
+                                        placeholder="mm/dd/yyyy"
+                                      />
+                                    </div>
+
+                                    <div>
+                                      <div className="text-xs text-secondary mb-1">PLACEMENT START (ACTUAL)</div>
+                                      <CalendarInput
+                                        defaultValue={plan.placementStartDateActual ?? ""}
+                                        readOnly={!canEditDates}
+                                        onChange={(e) =>
+                                          canEditDates &&
+                                           patchPlanDates(plan?.id, { placementStartDateActual: e.currentTarget.value })
+                                        }
+                                        className={dateFieldW}
+                                        inputClassName={dateInputCls}
+                                        placeholder="mm/dd/yyyy"
+                                      />
+                                    </div>
+
+                                    <div>
+                                      <div className="text-xs text-secondary mb-1">PLACEMENT COMPLETED (ACTUAL)</div>
+                                      <CalendarInput
+                                        defaultValue={plan.placementCompletedDateActual ?? ""}
+                                        readOnly={!canEditDates}
+                                        onChange={(e) =>
+                                          canEditDates &&
+                                           patchPlanDates(plan?.id, { placementCompletedDateActual: e.currentTarget.value })
+                                        }
+                                        className={dateFieldW}
+                                        inputClassName={dateInputCls}
+                                        placeholder="mm/dd/yyyy"
+                                      />
+                                    </div>
+                                  </div>
+                                </div>
+                              </SectionCard>
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </>
                   )}
 
@@ -3589,7 +4057,7 @@ function OffspringGroupsTab({ api, tenantId, readOnlyGlobal }: { api: ReturnType
                       }}
                     />
                   )}
-                  
+
                   {activeTab === "media" && (
                     <SectionCard>
                       <div className="mb-3 flex items-center justify-between">
@@ -3731,42 +4199,6 @@ function OffspringGroupsTab({ api, tenantId, readOnlyGlobal }: { api: ReturnType
                       )}
                     </SectionCard>
                   )}
-
-                  {activeTab === "analytics" && (
-                    <SectionCard title="Analytics">
-                      <div className="grid grid-cols-1 gap-3 p-2 md:grid-cols-2">
-                        <Card>
-                          <div className="p-3">
-                            <div className="text-xs text-secondary">Coverage</div>
-                            <div className="text-2xl font-semibold">
-                              {(() => {
-                                const pct = computeCoverage(row);
-                                return pct == null ? "-" : `${Math.round(pct * 100)}%`;
-                              })()}
-                            </div>
-                            <div className="mt-1 text-xs text-secondary">
-                              Reserved or placed divided by live, weaned, or planned
-                              headcount.
-                            </div>
-                          </div>
-                        </Card>
-                        <Card>
-                          <div className="p-3">
-                            <div className="text-xs text-secondary">Placement velocity</div>
-                            <div className="text-2xl font-semibold">
-                              {(() => {
-                                const days = computePlacementVelocity(row);
-                                return days == null ? "-" : `${days} days`;
-                              })()}
-                            </div>
-                            <div className="mt-1 text-xs text-secondary">
-                              Days from placement start to placement completed.
-                            </div>
-                          </div>
-                        </Card>
-                      </div>
-                    </SectionCard>
-                  )}
                 </DetailsScaffold>
               );
             },
@@ -3888,7 +4320,7 @@ function OffspringGroupsTab({ api, tenantId, readOnlyGlobal }: { api: ReturnType
             />
           </Table>
         </DetailsHost>
-      </div>
+      </div >
 
       <AddBuyerToGroupModal
         api={api}
@@ -3989,329 +4421,9 @@ function OffspringGroupsTab({ api, tenantId, readOnlyGlobal }: { api: ReturnType
           );
         })()}
       </Overlay>
-    </Card>
+    </Card >
   );
 }
-
-// function PortalPopover({ anchorRef, open, children }: { anchorRef: React.RefObject<HTMLElement>, open: boolean, children: React.ReactNode }) {
-//   const [style, setStyle] = React.useState<React.CSSProperties>({});
-//   React.useLayoutEffect(() => {
-//     if (!open || !anchorRef.current) return;
-//     const r = anchorRef.current.getBoundingClientRect();
-//     setStyle({
-//       position: "fixed",
-//       left: r.left,
-//       top: r.bottom + 6,
-//       width: r.width,
-//       maxHeight: 160,
-//       overflowY: "auto",
-//       zIndex: 2147483646,
-//     });
-//   }, [open, anchorRef]);
-//   if (!open) return null;
-//   const root = getOverlayRoot?.() || document.body;
-//   return ReactDOM.createPortal(
-//     <div className="rounded-md border border-hairline bg-surface" style={style}>{children}</div>,
-//     root
-//   );
-// }
-
-// function WaitlistDrawerBody({
-//   api,
-//   row,
-//   mode,
-//   onChange,
-// }: {
-//   api: ReturnType<typeof makeOffspringApi> | null;
-//   row: any;
-//   mode: "view" | "edit";
-//   onChange: (patch: any) => void;
-// }) {
-//   const onChangeRef = React.useRef(onChange);
-//   React.useEffect(() => { onChangeRef.current = onChange; }, [onChange]);
-//   const readOnly = mode !== "edit";
-//   // derive UI state from row
-//   const initSpeciesUi = (() => {
-//     const w = String(row?.speciesPref || "").toUpperCase();
-//     return w === "DOG" ? "Dog" : w === "CAT" ? "Cat" : w === "HORSE" ? "Horse" : "";
-//   })() as SpeciesUi | "";
-
-//   const [speciesUi, setSpeciesUi] = React.useState<SpeciesUi | "">(initSpeciesUi);
-//   const speciesWire = toWireSpecies(speciesUi);
-//   const damBoxRef = React.useRef<HTMLDivElement>(null);
-//   const sireBoxRef = React.useRef<HTMLDivElement>(null);
-
-//   // Breed (BreedCombo wants an object {name})
-//   const [breed, setBreed] = React.useState<any>(() => {
-//     const name =
-//       row?.breedPrefText ??
-//       (Array.isArray(row?.breedPrefs) ? row.breedPrefs.find(Boolean) : null);
-//     return name ? { name } : null;
-//   });
-//   const [breedNonce, setBreedNonce] = React.useState(0);
-//   const onBreedPick = React.useCallback((hit: any) => {
-//     setBreed(hit ? { ...hit } : null);
-//     setBreedNonce((n) => n + 1);
-//   }, []);
-
-//   // Parents (support both raw and mapped shapes)
-//   const [damId, setDamId] = React.useState<number | null>(row?.damPrefId ?? row?.damPref?.id ?? null);
-//   const [sireId, setSireId] = React.useState<number | null>(row?.sirePrefId ?? row?.sirePref?.id ?? null);
-//   const [damQ, setDamQ] = React.useState<string>(row?.damPref?.name ?? row?.damPrefName ?? "");
-//   const [sireQ, setSireQ] = React.useState<string>(row?.sirePref?.name ?? row?.sirePrefName ?? "");
-//   const [damOpen, setDamOpen] = React.useState(false);
-//   const [sireOpen, setSireOpen] = React.useState(false);
-
-//   // Admin fields mirrored from your overview section
-//   const [status, setStatus] = React.useState<string>(row?.status ?? "");
-//   const [priority, setPriority] = React.useState<number | "">(row?.priority ?? "");
-//   const [depositPaidAt, setDepositPaidAt] = React.useState<string>(row?.depositPaidAt ?? "");
-//   const [notes, setNotes] = React.useState<string>(row?.notes ?? "");
-
-//   // RE-SEED LOCAL STATE WHEN THE ROW SHOWN CHANGES
-//   React.useEffect(() => {
-//     const nextSpeciesUi = (() => {
-//       const w = String(row?.speciesPref || "").toUpperCase();
-//       return w === "DOG" ? "Dog" : w === "CAT" ? "Cat" : w === "HORSE" ? "Horse" : "";
-//     })() as SpeciesUi | "";
-//     setSpeciesUi(nextSpeciesUi);
-
-//     const nextBreedName =
-//       row?.breedPrefText ??
-//       (Array.isArray(row?.breedPrefs) ? row.breedPrefs.find(Boolean) : null) ??
-//       null;
-//     setBreed(nextBreedName ? { name: nextBreedName } : null);
-//     setBreedNonce((n) => n + 1);
-
-//     setDamId(row?.damPrefId ?? row?.damPref?.id ?? null);
-//     setSireId(row?.sirePrefId ?? row?.sirePref?.id ?? null);
-//     setDamQ(row?.damPref?.name ?? row?.damPrefName ?? "");
-//     setSireQ(row?.sirePref?.name ?? row?.sirePrefName ?? "");
-//     setDamOpen(false);
-//     setSireOpen(false);
-
-//     setStatus(row?.status ?? "");
-//     setPriority(row?.priority ?? "");
-//     setDepositPaidAt(row?.depositPaidAt ?? "");
-//     setNotes(row?.notes ?? "");
-//   }, [row?.id, row?.updatedAt]);
-
-//   // keep DetailsScaffold draft in sync so Save can pick it up
-//   React.useEffect(() => {
-//     if (mode !== "edit") return;
-//     onChangeRef.current({
-//       speciesPref: speciesWire ?? null,
-//       breedPrefs: (breed?.name ?? "").trim() ? [breed.name.trim()] : null,
-//       damPrefId: damId ?? null,
-//       sirePrefId: sireId ?? null,
-//       status: status || null,
-//       priority: priority === "" ? null : Number(priority),
-//       depositPaidAt: depositPaidAt || null,
-//       notes: notes || null,
-//     });
-//   }, [mode, speciesWire, breed, damId, sireId, status, priority, depositPaidAt, notes]);
-
-//   // live animal search lists
-//   const dams = useAnimalSearch(api, damQ, speciesWire, "FEMALE");
-//   const sires = useAnimalSearch(api, sireQ, speciesWire, "MALE");
-
-//   return (
-//     <div className="space-y-4">
-//       <SectionCard title="Preferences (required)">
-//         <div className={"p-2 grid grid-cols-1 md:grid-cols-3 gap-3 " + (readOnly ? "opacity-70" : "")}>
-//           {/* Species */}
-//           <label className="flex flex-col gap-1">
-//             <span className={labelClass}>Species</span>
-//             <select
-//               className={inputClass}
-//               value={speciesUi}
-//               onChange={(e) => {
-//                 setSpeciesUi(e.currentTarget.value as SpeciesUi);
-//                 setDamId(null);
-//                 setSireId(null);
-//                 setDamQ("");
-//                 setSireQ("");
-//                 setDamOpen(false);
-//                 setSireOpen(false);
-//                 setBreed(null);
-//                 setBreedNonce((n) => n + 1);
-//               }}
-//               disabled={readOnly}
-//             >
-//               <option value="">-</option>
-//               {SPECIES_UI_ALL.map((s) => (
-//                 <option key={s} value={s}>
-//                   {s}
-//                 </option>
-//               ))}
-//             </select>
-//           </label>
-
-//           {/* Breed */}
-//           <div className="md:col-span-2">
-//             <div className={labelClass + " mb-1"}>Breed</div>
-//             {speciesUi ? (
-//               readOnly ? (
-//                 // READ-ONLY: show the current value, no interaction
-//                 <div className="h-9 px-3 flex items-center rounded-md border border-hairline bg-surface/60 text-sm">
-//                   {breed?.name || "-"}
-//                 </div>
-//               ) : (
-//                 // EDIT: interactive picker
-//                 <BreedCombo
-//                   key={`breed-${speciesUi}-${breedNonce}`}
-//                   species={speciesUi}
-//                   value={breed}
-//                   onChange={onBreedPick}
-//                   api={{ breeds: { listCanonical: api!.breeds.listCanonical } }}
-//                 />
-//               )
-//             ) : (
-//               <div className="h-9 px-3 flex items-center rounded-md border border-hairline bg-surface/60 text-sm text-secondary">
-//                 Select Species
-//               </div>
-//             )}
-//           </div>
-//         </div>
-//       </SectionCard>
-
-//       <SectionCard title="Preferred Parents (optional)">
-//         <div className="p-2 grid grid-cols-1 md:grid-cols-2 gap-3">
-//           {/* Dam */}
-//           <label className="flex flex-col gap-1">
-//             <span className={labelClass}>Dam (Female)</span>
-//             {!speciesWire ? (
-//               <div className="h-9 px-3 flex items-center rounded-md border border-hairline bg-surface/60 text-sm text-secondary">Select Species</div>
-//             ) : (
-//               <>
-//                 <div ref={damBoxRef} className="relative" style={{ maxWidth: 420 }}>
-//                   <InlineSearch
-//                     value={damQ}
-//                     onChange={(val) => { setDamQ(val); setDamOpen(!!val.trim()); }}
-//                     onFocus={() => setDamOpen(!!damQ.trim())}
-//                     onBlur={() => setTimeout(() => setDamOpen(false), 100)}
-//                     placeholder="Search females..."
-//                     widthPx={400}
-//                     disabled={mode !== "edit"}
-//                   />
-//                 </div>
-//                 <PortalPopover anchorRef={damBoxRef} open={!readOnly && !!(damOpen && damQ.trim())}>
-//                   {dams.length === 0 ? (
-//                     <div className="px-2 py-2 text-sm text-secondary">No females found</div>
-//                   ) : (
-//                     dams.map((a) => (
-//                       <button key={a.id} type="button" onClick={() => { setDamId(a.id); setDamQ(a.name); setDamOpen(false); }} className="w-full text-left px-2 py-1 hover:bg-white/5">
-//                         {a.name}
-//                       </button>
-//                     ))
-//                   )}
-//                 </PortalPopover>
-//               </>
-//             )}
-//           </label>
-
-//           {/* Sire */}
-//           <label className="flex flex-col gap-1">
-//             <span className={labelClass}>Sire (Male)</span>
-//             {!speciesWire ? (
-//               <div className="h-9 px-3 flex items-center rounded-md border border-hairline bg-surface/60 text-sm text-secondary">
-//                 Select Species
-//               </div>
-//             ) : (
-//               <>
-//                 <div ref={sireBoxRef} className="relative" style={{ maxWidth: 420 }}>
-//                   <InlineSearch
-//                     value={sireQ}
-//                     onChange={(val) => { setSireQ(val); setSireOpen(!!val.trim()); }}
-//                     onFocus={() => setSireOpen(!!sireQ.trim())}
-//                     onBlur={() => setTimeout(() => setSireOpen(false), 100)}
-//                     placeholder="Search males..."
-//                     widthPx={400}
-//                     disabled={mode !== "edit"}
-//                   />
-//                 </div>
-//                 <PortalPopover anchorRef={sireBoxRef} open={!readOnly && !!(sireOpen && sireQ.trim())}>
-//                   {sires.length === 0 ? (
-//                     <div className="px-2 py-2 text-sm text-secondary">No males found</div>
-//                   ) : (
-//                     sires.map((a) => (
-//                       <button
-//                         key={a.id}
-//                         type="button"
-//                         onClick={() => { setSireId(a.id); setSireQ(a.name); setSireOpen(false); }}
-//                         className="w-full text-left px-2 py-1 hover:bg-white/5"
-//                       >
-//                         {a.name}
-//                       </button>
-//                     ))
-//                   )}
-//                 </PortalPopover>
-//               </>
-//             )}
-//           </label>
-//         </div>
-//       </SectionCard>
-
-//       <SectionCard title="Admin">
-//         <div className={"p-2 grid grid-cols-1 md:grid-cols-3 gap-3 " + (readOnly ? "opacity-70" : "")}>
-//           <label className="flex flex-col gap-1">
-//             <span className={labelClass}>Status</span>
-//             <input className={inputClass} value={status} onChange={(e) => setStatus(e.target.value)} disabled={readOnly} />
-//           </label>
-//           <label className="flex flex-col gap-1">
-//             <span className={labelClass}>Priority</span>
-//             <input
-//               className={inputClass}
-//               type="number"
-//               value={priority}
-//               onChange={(e) => setPriority(e.target.value === "" ? "" : Number(e.target.value))} disabled={readOnly}
-//             />
-//           </label>
-//           <label className="flex flex-col gap-1">
-//             <span className={labelClass}>Deposit Paid</span>
-//             <input
-//               className={inputClass}
-//               type="date"
-//               value={depositPaidAt || ""}
-//               onChange={(e) => setDepositPaidAt(e.target.value)} disabled={readOnly}
-//             />
-//           </label>
-//           <label className="flex flex-col gap-1 md:col-span-3">
-//             <span className={labelClass}>Notes</span>
-//             <textarea
-//               className={inputClass + " h-24 resize-vertical"}
-//               value={notes}
-//               onChange={(e) => setNotes(e.target.value)} disabled={readOnly}
-//             />
-//           </label>
-//         </div>
-//       </SectionCard>
-//     </div>
-//   );
-// }
-
-// function WaitlistTab() { return null as any; }
-// /** Small bridge to open AddToWaitlistModal from the toolbar button without custom row hacks */
-// function WaitlistAddBridge({ api, tenantId, onCreated }: { api: ReturnType<typeof makeOffspringApi> | null; tenantId: number | null; onCreated: () => Promise<void> | void }) {
-//   const [open, setOpen] = React.useState(false);
-//   React.useEffect(() => {
-//     const h = () => setOpen(true);
-//     window.addEventListener("bhq:offspring:add-waitlist", h as any);
-//     return () => window.removeEventListener("bhq:offspring:add-waitlist", h as any);
-//   }, []);
-//   return (
-//     <AddToWaitlistModal
-//       api={api}
-//       tenantId={tenantId}
-//       open={open}
-//       onClose={() => setOpen(false)}
-//       onCreated={onCreated}
-//       allowedSpecies={["Dog", "Cat", "Horse"]}
-//     />
-//   );
-// }
-
-/* ───────────────────────── Module shell ───────────────────────── */
 
 /* ───────────────────────── Module shell ───────────────────────── */
 

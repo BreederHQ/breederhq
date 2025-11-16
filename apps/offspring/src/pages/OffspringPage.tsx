@@ -13,10 +13,12 @@ import {
   DetailsScaffold,
   SectionCard,
   Button,
+  Card,
+  Tabs,
 } from "@bhq/ui";
+
+
 import { Overlay } from "@bhq/ui/overlay";
-import { OverlayMount } from "@bhq/ui/overlay/OverlayMount";
-import { getOverlayRoot } from "@bhq/ui/overlay";
 import {
   ChevronDown,
   ChevronUp,
@@ -41,6 +43,277 @@ import {
 } from "../api";
 import { readTenantIdFast } from "@bhq/ui/utils/tenant";
 
+type DirectoryHit =
+  | { kind: "contact"; id: number; label: string; sub?: string }
+  | { kind: "org"; id: number; label: string; sub?: string };
+
+type DirectoryLink = {
+  kind: "contact" | "org";
+  id: number;
+  label: string;
+  sub?: string;
+};
+
+async function searchDirectoryRaw(
+  q: string,
+): Promise<DirectoryHit[]> {
+  if (!q.trim()) return [];
+
+  let root: ReturnType<typeof makeOffspringApiClient> | null = null;
+  try {
+    root = makeOffspringApiClient();
+  } catch {
+    root = null;
+  }
+  if (!root) return [];
+
+  const [cRes, oRes] = await Promise.allSettled([
+    root.contacts?.list({ q, limit: 25 }) as any,
+    root.organizations?.list({ q, limit: 25 }) as any,
+  ]);
+
+  const hits: DirectoryHit[] = [];
+
+  if (cRes.status === "fulfilled" && cRes.value) {
+    const items: any[] = Array.isArray(cRes.value)
+      ? cRes.value
+      : cRes.value.items ?? [];
+    for (const c of items) {
+      const name =
+        c.display_name ||
+        `${c.first_name ?? ""} ${c.last_name ?? ""}`.trim() ||
+        "(No name)";
+      hits.push({
+        kind: "contact",
+        id: Number(c.id),
+        label: name,
+        sub: c.email || c.phoneE164 || "",
+      });
+    }
+  }
+
+  if (oRes.status === "fulfilled" && oRes.value) {
+    const items: any[] = Array.isArray(oRes.value)
+      ? oRes.value
+      : oRes.value.items ?? [];
+    for (const o of items) {
+      hits.push({
+        kind: "org",
+        id: Number(o.id),
+        label: o.name,
+        sub: o.website || o.email || "",
+      });
+    }
+  }
+
+  return hits;
+}
+
+function normalizeStr(s?: string | null) {
+  return (s ?? "").trim().toLowerCase();
+}
+
+async function findBestContactMatch(
+  probe: { email?: string; phone?: string; firstName?: string; lastName?: string },
+): Promise<any | null> {
+  let root: ReturnType<typeof makeOffspringApiClient> | null = null;
+  try {
+    root = makeOffspringApiClient();
+  } catch {
+    root = null;
+  }
+  if (!root) return null;
+
+  const tries: string[] = [];
+  if (probe.email) tries.push(probe.email);
+  if (probe.phone) tries.push(probe.phone);
+  const name = `${probe.firstName ?? ""} ${probe.lastName ?? ""}`.trim();
+  if (name) tries.push(name);
+
+  for (const q of tries) {
+    const res = await root.contacts.list({ q, limit: 10 });
+    const items: any[] = Array.isArray(res) ? res : res?.items ?? [];
+    if (!items.length) continue;
+
+    if (probe.email) {
+      const e = normalizeStr(probe.email);
+      const hit = items.find(
+        (c) => normalizeStr(c.email) === e,
+      );
+      if (hit) return hit;
+    }
+
+    if (probe.phone) {
+      const p = normalizeStr(probe.phone);
+      const hit = items.find(
+        (c) =>
+          normalizeStr(c.phoneE164) === p ||
+          normalizeStr(c.phone_e164) === p,
+      );
+      if (hit) return hit;
+    }
+
+    if (name) {
+      const nNorm = normalizeStr(name);
+      const hit = items.find(
+        (c) =>
+          normalizeStr(
+            c.display_name ||
+            `${c.first_name ?? ""} ${c.last_name ?? ""}`,
+          ) === nNorm,
+      );
+      if (hit) return hit;
+    }
+  }
+
+  return null;
+}
+
+async function exactContactLookup(
+  body: { email?: string; phone?: string; firstName?: string; lastName?: string },
+): Promise<any | null> {
+  if (!body.email && !body.phone) return null;
+
+  let root: ReturnType<typeof makeOffspringApiClient> | null = null;
+  try {
+    root = makeOffspringApiClient();
+  } catch {
+    root = null;
+  }
+  if (!root) return null;
+
+  const res = await root.contacts.list({
+    q:
+      body.email?.trim() ||
+      body.phone?.trim() ||
+      `${body.firstName ?? ""} ${body.lastName ?? ""}`.trim(),
+    limit: 10,
+  });
+  const items: any[] = Array.isArray(res) ? res : res?.items ?? [];
+  if (!items.length) return null;
+
+  if (body.email) {
+    const e = normalizeStr(body.email);
+    const hit = items.find(
+      (c) => normalizeStr(c.email) === e,
+    );
+    if (hit) return hit;
+  }
+
+  if (body.phone) {
+    const p = normalizeStr(body.phone);
+    const hit = items.find(
+      (c) =>
+        normalizeStr(c.phoneE164) === p ||
+        normalizeStr(c.phone_e164) === p,
+    );
+    if (hit) return hit;
+  }
+
+  return null;
+}
+
+function stripEmpty(obj: Record<string, any>) {
+  const out: Record<string, any> = {};
+  for (const [k, v] of Object.entries(obj)) {
+    if (v === null || v === undefined) continue;
+    if (typeof v === "string" && !v.trim()) continue;
+    out[k] = v;
+  }
+  return out;
+}
+
+function conflictExistingIdFromError(e: any): number | null {
+  const raw = e?.response?.data ?? e?.data ?? null;
+  if (!raw) return null;
+  const id =
+    raw.conflictId ??
+    raw.existingId ??
+    raw.id ??
+    null;
+  if (!id) return null;
+  const n = Number(id);
+  return Number.isFinite(n) ? n : null;
+}
+
+async function quickCreateContact(body: {
+  firstName?: string;
+  lastName?: string;
+  email?: string;
+  phone?: string;
+}): Promise<any> {
+  const probe = {
+    email: body.email,
+    phone: body.phone,
+    firstName: body.firstName,
+    lastName: body.lastName,
+  };
+
+  let root: ReturnType<typeof makeOffspringApiClient> | null = null;
+  try {
+    root = makeOffspringApiClient();
+  } catch {
+    root = null;
+  }
+  if (!root) throw new Error("Contact API not available");
+
+  const existing = await findBestContactMatch(probe);
+  if (existing) return existing;
+
+  const payload = stripEmpty({
+    display_name:
+      `${(body.firstName ?? "").trim()} ${(body.lastName ?? "").trim()}`.trim() ||
+      undefined,
+    first_name: body.firstName,
+    last_name: body.lastName,
+    email: body.email,
+    phoneE164: body.phone,
+    phone_e164: body.phone,
+  });
+
+  try {
+    return await root.contacts.create(payload);
+  } catch (e: any) {
+    const status = e?.status ?? e?.code ?? e?.response?.status;
+    if (status === 409) {
+      const id = conflictExistingIdFromError(e);
+      if (id && root.contacts.get) {
+        const contact = await root.contacts.get(id);
+        if (contact) return contact;
+      }
+      const post = await exactContactLookup(body);
+      if (post) return post;
+    }
+    throw e;
+  }
+}
+
+async function quickCreateOrg(body: {
+  name: string;
+  website?: string;
+  email?: string;
+  phone?: string;
+}): Promise<any> {
+  let root: ReturnType<typeof makeOffspringApiClient> | null = null;
+  try {
+    root = makeOffspringApiClient();
+  } catch {
+    root = null;
+  }
+  if (!root) throw new Error("Org API not available");
+
+  const payload = stripEmpty({
+    name: body.name,
+    website: body.website,
+    email: body.email,
+    phone: body.phone,
+  });
+
+  const created = await root.organizations.create(payload);
+  return created;
+}
+
+
 // Shared input styling
 const inputClass =
   "w-full h-9 rounded-md border border-hairline bg-surface px-3 text-sm text-primary " +
@@ -52,6 +325,8 @@ function cx(parts: Array<string | false | null | undefined>) {
 }
 
 const labelClass = "text-xs text-secondary";
+
+const MODAL_Z = 2147485000;
 
 /** ---------- Types for this page ---------- */
 type ID = string | number;
@@ -84,6 +359,439 @@ type LineageLink = {
   name: string;
   registrationId?: string | null;
 };
+
+type AssignBuyerEventDetail = {
+  offspringId: number;
+  currentBuyer: OffspringBuyerLite | null;
+  onSelect: (payload: { kind: OffspringBuyerKind; id: number }) => Promise<void> | void;
+};
+
+type AssignBuyerModalProps = {
+  open: boolean;
+  onClose: () => void;
+  detail: AssignBuyerEventDetail;
+};
+
+function AssignBuyerModal({ open, onClose, detail }: AssignBuyerModalProps) {
+  const [link, setLink] = React.useState<DirectoryLink | null>(() => {
+    if (!detail.currentBuyer) return null;
+    return {
+      kind: detail.currentBuyer.kind === "contact" ? "contact" : "org",
+      id: detail.currentBuyer.id,
+      label: detail.currentBuyer.name,
+      sub: detail.currentBuyer.email ?? detail.currentBuyer.phone ?? "",
+    };
+  });
+
+  const [q, setQ] = React.useState("");
+  const [hits, setHits] = React.useState<DirectoryHit[]>([]);
+  const [busy, setBusy] = React.useState(false);
+
+  const [quickOpen, setQuickOpen] = React.useState<null | "contact" | "org">(null);
+  const [qc, setQc] = React.useState({
+    firstName: "",
+    lastName: "",
+    email: "",
+    phone: "",
+  });
+  const [qo, setQo] = React.useState({
+    name: "",
+    website: "",
+  });
+  const [creating, setCreating] = React.useState(false);
+  const [createErr, setCreateErr] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    let alive = true;
+    (async () => {
+      const query = q.trim();
+      if (!query) {
+        if (alive) {
+          setHits([]);
+          setBusy(false);
+        }
+        return;
+      }
+      setBusy(true);
+      try {
+        const res = await searchDirectoryRaw(query);
+        if (!alive) return;
+        setHits(res);
+      } catch (e) {
+        console.error("Directory search failed", e);
+        if (!alive) return;
+        setHits([]);
+      } finally {
+        if (!alive) return;
+        setBusy(false);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [q]);
+
+  React.useEffect(() => {
+    const prev = document.body.style.overflow;
+    if (open) document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev || "";
+    };
+  }, [open]);
+
+  const canSubmit = !!link;
+
+  function handleUseHit(h: DirectoryHit) {
+    setLink({
+      kind: h.kind,
+      id: h.id,
+      label: h.label,
+      sub: h.sub,
+    });
+  }
+
+  async function doQuickAdd() {
+    setCreateErr(null);
+    setCreating(true);
+    try {
+      if (quickOpen === "contact") {
+        const c = await quickCreateContact({
+          firstName: qc.firstName,
+          lastName: qc.lastName,
+          email: qc.email,
+          phone: qc.phone,
+        });
+        setLink({
+          kind: "contact",
+          id: Number(c.id),
+          label:
+            c.display_name ||
+            `${c.first_name ?? ""} ${c.last_name ?? ""}`.trim() ||
+            "(No name)",
+          sub: c.email || c.phoneE164 || "",
+        });
+      } else if (quickOpen === "org") {
+        const o = await quickCreateOrg({
+          name: qo.name,
+          website: qo.website,
+        });
+        setLink({
+          kind: "org",
+          id: Number(o.id),
+          label: o.name || "(No name)",
+          sub: o.website || o.email || "",
+        });
+      }
+      setQuickOpen(null);
+    } catch (e: any) {
+      console.error("Quick add failed", e);
+      setCreateErr(e?.message || "Failed to create record");
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  async function handleSubmit() {
+    if (!link) return;
+    const payload: { kind: OffspringBuyerKind; id: number } =
+      link.kind === "contact"
+        ? { kind: "contact", id: link.id }
+        : { kind: "organization", id: link.id };
+    await detail.onSelect(payload);
+    onClose();
+  }
+
+  if (!open) return null;
+
+  return (
+    <Overlay
+      open={open}
+      ariaLabel="Assign buyer"
+      onOpenChange={(next) => {
+        if (!next) onClose();
+      }}
+    >
+      <div
+        className="fixed inset-0 flex items-center justify-center"
+        style={{ zIndex: MODAL_Z }}
+      >
+        <div className="absolute inset-0 bg-black/50" />
+        <div className="relative w-full max-w-3xl max-h-[90vh] overflow-hidden rounded-xl border border-hairline bg-surface shadow-xl">
+          <div className="flex flex-col h-full">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-hairline">
+              <h2 className="text-sm font-medium text-primary">
+                Assign buyer
+              </h2>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
+              {/* Directory search */}
+              <SectionCard
+                title="Directory"
+                description="Search contacts and organizations, or add new records."
+              >
+                <div className="flex items-center gap-2">
+                  <SearchBar
+                    value={q}
+                    onChange={setQ}
+                    placeholder="Search contacts and organizations"
+                    widthPx={320}
+                  />
+                  {busy && (
+                    <span className="text-xs text-secondary">
+                      Searching...
+                    </span>
+                  )}
+                  <div className="ml-auto flex items-center gap-2">
+                    <Button
+                      size="xs"
+                      variant="outline"
+                      onClick={() => setQuickOpen("contact")}
+                    >
+                      + Quick Add Contact
+                    </Button>
+                    <Button
+                      size="xs"
+                      variant="outline"
+                      onClick={() => setQuickOpen("org")}
+                    >
+                      + Quick Add Organization
+                    </Button>
+                  </div>
+                </div>
+
+                {!link && q.trim() && (
+                  <div className="mt-3 rounded-md border border-hairline max-h-56 overflow-auto p-2">
+                    {busy ? (
+                      <div className="px-2 py-2 text-sm text-secondary">
+                        Searching...
+                      </div>
+                    ) : hits.length === 0 ? (
+                      <div className="px-2 py-2 text-sm text-secondary">
+                        No results. Try adjusting your search or use Quick Add.
+                      </div>
+                    ) : (
+                      hits.map((h) => (
+                        <button
+                          key={`${h.kind}-${h.id}`}
+                          type="button"
+                          className={cx(
+                            "w-full text-left px-2 py-1 hover:bg-white/5",
+                            link &&
+                            link.kind === h.kind &&
+                            link.id === h.id &&
+                            "bg-white/10",
+                          )}
+                          onClick={() => handleUseHit(h)}
+                        >
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] uppercase tracking-wide text-secondary border px-1 rounded">
+                              {h.kind === "contact" ? "Contact" : "Org"}
+                            </span>
+                            <span>{h.label}</span>
+                            {h.sub ? (
+                              <span className="text-xs text-secondary">
+                                • {h.sub}
+                              </span>
+                            ) : null}
+                          </div>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                )}
+
+                <div className="mt-3 text-xs text-secondary">
+                  {link ? (
+                    <>
+                      Selected buyer:{" "}
+                      <span className="text-primary font-medium">
+                        {link.label}
+                      </span>
+                      {link.sub ? (
+                        <span className="text-secondary">
+                          {" "}
+                          ({link.sub})
+                        </span>
+                      ) : null}
+                    </>
+                  ) : (
+                    "No buyer selected yet."
+                  )}
+                </div>
+
+                {!link && quickOpen && (
+                  <div className="mt-3 rounded-lg border border-hairline p-3 bg-surface/60">
+                    <div className="flex items-center justify-between">
+                      <div className="text-sm font-medium">
+                        {quickOpen === "contact"
+                          ? "Quick Add Contact"
+                          : "Quick Add Organization"}
+                      </div>
+                      <button
+                        className="text-xs text-secondary hover:underline"
+                        onClick={() => setQuickOpen(null)}
+                      >
+                        Close
+                      </button>
+                    </div>
+
+                    {quickOpen === "contact" ? (
+                      <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2">
+                        <input
+                          className={cx(inputClass)}
+                          placeholder="First name"
+                          value={qc.firstName}
+                          onChange={(e) =>
+                            setQc({ ...qc, firstName: e.target.value })
+                          }
+                        />
+                        <input
+                          className={cx(inputClass)}
+                          placeholder="Last name"
+                          value={qc.lastName}
+                          onChange={(e) =>
+                            setQc({ ...qc, lastName: e.target.value })
+                          }
+                        />
+                        <input
+                          className={cx(inputClass)}
+                          placeholder="Email"
+                          value={qc.email}
+                          onChange={(e) =>
+                            setQc({ ...qc, email: e.target.value })
+                          }
+                        />
+                        <input
+                          className={cx(inputClass)}
+                          placeholder="Phone"
+                          value={qc.phone}
+                          onChange={(e) =>
+                            setQc({ ...qc, phone: e.target.value })
+                          }
+                        />
+                        {createErr && (
+                          <div className="md:col-span-2 text-sm text-red-600">
+                            {createErr}
+                          </div>
+                        )}
+                        <div className="md:col-span-2 flex justify-end gap-2">
+                          <Button
+                            variant="outline"
+                            onClick={() =>
+                              setQc({
+                                firstName: "",
+                                lastName: "",
+                                email: "",
+                                phone: "",
+                              })
+                            }
+                          >
+                            Clear
+                          </Button>
+                          <Button
+                            onClick={doQuickAdd}
+                            disabled={creating}
+                          >
+                            {creating ? "Creating..." : "Create / Link"}
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="mt-2 grid grid-cols-1 gap-2">
+                        <input
+                          className={cx(inputClass)}
+                          placeholder="Organization name"
+                          value={qo.name}
+                          onChange={(e) =>
+                            setQo({ ...qo, name: e.target.value })
+                          }
+                        />
+                        <input
+                          className={cx(inputClass)}
+                          placeholder="Website"
+                          value={qo.website}
+                          onChange={(e) =>
+                            setQo({ ...qo, website: e.target.value })
+                          }
+                        />
+                        {createErr && (
+                          <div className="text-sm text-red-600">
+                            {createErr}
+                          </div>
+                        )}
+                        <div className="flex justify-end gap-2">
+                          <Button
+                            variant="outline"
+                            onClick={() =>
+                              setQo({
+                                name: "",
+                                website: "",
+                              })
+                            }
+                          >
+                            Clear
+                          </Button>
+                          <Button
+                            onClick={doQuickAdd}
+                            disabled={creating}
+                          >
+                            {creating ? "Creating..." : "Create / Link"}
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </SectionCard>
+            </div>
+
+            <div className="flex justify-end gap-2 px-4 py-3 border-t border-hairline">
+              <Button variant="outline" onClick={onClose}>
+                Cancel
+              </Button>
+              <Button
+                onClick={handleSubmit}
+                disabled={!canSubmit}
+              >
+                <Plus className="h-4 w-4 mr-1" />
+                Assign buyer
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </Overlay>
+  );
+}
+
+function OffspringAssignBuyerBridge() {
+  const [detail, setDetail] = React.useState<AssignBuyerEventDetail | null>(null);
+
+  React.useEffect(() => {
+    function handler(ev: Event) {
+      const e = ev as CustomEvent<AssignBuyerEventDetail>;
+      setDetail(e.detail);
+    }
+
+    window.addEventListener("bhq:offspring:assign-buyer", handler as any);
+    return () => {
+      window.removeEventListener("bhq:offspring:assign-buyer", handler as any);
+    };
+  }, []);
+
+  const open = !!detail;
+
+  if (!open || !detail) return null;
+
+  return (
+    <AssignBuyerModal
+      open={open}
+      onClose={() => setDetail(null)}
+      detail={detail}
+    />
+  );
+}
 
 export type OffspringStatus =
   | "PLANNED"
@@ -563,7 +1271,7 @@ function makeBackendOffspringApi(): OffspringApi | null {
         },
       } as any);
 
-      const dto = await root!.offspring.get({ tenantId, id });
+      const dto = await root!.offspring.get(id, { tenantId });
       return mapOffspringDtoToRow(dto);
     },
 
@@ -586,7 +1294,7 @@ function makeBackendOffspringApi(): OffspringApi | null {
         throw new Error(`Failed to link invoice, status ${resp.status}`);
       }
 
-      const dto = await root!.offspring.get({ tenantId, id });
+      const dto = await root!.offspring.get(id, { tenantId });
       return mapOffspringDtoToRow(dto);
     },
   };
@@ -728,7 +1436,6 @@ function CreateOffspringOverlayContent({
     sex: "UNKNOWN" as Sex,
     species: "DOG" as Species,
     status: "AVAILABLE" as Status,
-    birthDate: null,
     birthWeightOz: null,
     price: null,
     notes: "",
@@ -746,6 +1453,14 @@ function CreateOffspringOverlayContent({
     },
     [onClose],
   );
+
+  React.useEffect(() => {
+    const prev = document.body.style.overflow;
+    if (open) document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev || "";
+    };
+  }, [open]);
 
   const handleChange = <K extends keyof OffspringRow>(
     key: K,
@@ -768,7 +1483,11 @@ function CreateOffspringOverlayContent({
         if (!next) onClose();
       }}
     >
-      <div className="fixed inset-0" onMouseDown={handleOutsideMouseDown}>
+      <div
+        className="fixed inset-0"
+        style={{ zIndex: MODAL_Z, isolation: "isolate" }}
+        onMouseDown={handleOutsideMouseDown}
+      >
         {/* Backdrop */}
         <div className="absolute inset-0 bg-black/50" />
 
@@ -847,16 +1566,18 @@ function CreateOffspringOverlayContent({
                 </label>
 
                 <label className="grid gap-1 text-sm">
-                  <span className="text-xs text-secondary">Birth date</span>
+                  <span className="text-xs text-secondary">
+                    Birth date
+                  </span>
                   <input
                     type="date"
                     className={inputClass}
-                    value={form.birthDate ?? ""}
+                    value={(form as any).birthDate ?? ""}
                     onChange={(e) =>
-                      handleChange(
-                        "birthDate",
-                        e.target.value || null,
-                      )
+                      setForm((prev) => ({
+                        ...prev,
+                        birthDate: e.target.value || null,
+                      }))
                     }
                   />
                 </label>
@@ -869,8 +1590,7 @@ function CreateOffspringOverlayContent({
                     type="number"
                     className={inputClass}
                     value={
-                      form.birthWeightOz !== null &&
-                      form.birthWeightOz !== undefined
+                      form.birthWeightOz != null
                         ? String(form.birthWeightOz)
                         : ""
                     }
@@ -898,9 +1618,7 @@ function CreateOffspringOverlayContent({
                       type="number"
                       className={inputClass + " pl-6"}
                       value={
-                        form.price !== null && form.price !== undefined
-                          ? String(form.price)
-                          : ""
+                        form.price != null ? String(form.price) : ""
                       }
                       onChange={(e) =>
                         handleChange(
@@ -1141,8 +1859,9 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
 
   const [drawer, setDrawer] = React.useState<OffspringRow | null>(null);
   const [drawerTab, setDrawerTab] = React.useState<
-    "core" | "health" | "media" | "lineage" | "ownership" | "xrefs"
-  >("core");
+    "overview" | "buyer" | "health" | "media" | "invoices" | "records" | "notes"
+  >("overview");
+
   const [coreForm, setCoreForm] = React.useState<Partial<OffspringRow> | null>(null);
 
   const [showCreate, setShowCreate] = React.useState(false);
@@ -1218,10 +1937,10 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
           setDrawer(null);
           return;
         }
-        const rec = await api.getById(id);
+        const rec = await api.getById(Number(id));
         if (rec) {
           setDrawer(rec);
-          setDrawerTab("core");
+          setDrawerTab("overview");
         } else {
           setDrawer(null);
         }
@@ -1272,18 +1991,6 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
     });
   }, [drawer]);
 
-  const [overlayRoot, setOverlayRoot] = React.useState<HTMLElement | null>(null);
-
-  React.useEffect(() => {
-    try {
-      const root = getOverlayRoot();
-      setOverlayRoot(root ?? null);
-    } catch {
-      setOverlayRoot(null);
-    }
-  }, []);
-
-
   const [linkingInvoice, setLinkingInvoice] = React.useState(false);
   const [healthSaving, setHealthSaving] = React.useState(false);
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
@@ -1305,6 +2012,8 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
     setDrawer(null);
     writeUrlParam(null);
   }
+
+  const detailsPanelRef = React.useRef<HTMLDivElement | null>(null);
 
   function navigateToGroup(groupId: ID) {
     try {
@@ -1334,7 +2043,7 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
       const row = await api.getById(id);
       setDrawer(row);
       writeUrlParam(row.id);
-      setDrawerTab("core");
+      setDrawerTab("overview");
     } catch (err) {
       console.error(err);
       alert("Failed to load sibling record");
@@ -1513,11 +2222,15 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
                     detailsRow={r}
                     className="cursor-pointer"
                     onClick={async () => {
-                      const full = await api.getById(r.id);
-                      if (full) {
-                        setDrawer(full);
-                        writeUrlParam(full.id);
-                        setDrawerTab("core");
+                      try {
+                        const full = await api.getById(r.id);
+                        if (full) {
+                          setDrawer(full);
+                          writeUrlParam(full.id);
+                          setDrawerTab("overview");
+                        }
+                      } catch (err) {
+                        console.error("[Offspring] Failed to load row", r.id, err);
                       }
                     }}
                   >
@@ -1660,664 +2373,474 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
         </Table>
       </SectionCard>
 
-{overlayRoot ? (
-  <OverlayMount root={overlayRoot}>
-    <CreateOffspringOverlayContent
-      open={showCreate}
-      onClose={() => setShowCreate(false)}
-      onCreate={async (input) => {
-        try {
-          const created = await api.create(input);
-          setShowCreate(false);
-          await refresh();
-          const full = await api.getById(created.id);
-          if (full) {
-            setDrawer(full);
-            writeUrlParam(full.id);
-            setDrawerTab("core");
+      <CreateOffspringOverlayContent
+        open={showCreate}
+        onClose={() => setShowCreate(false)}
+        onCreate={async (input) => {
+          try {
+            const created = await api.create(input);
+            setShowCreate(false);
+            await refresh();
+            const full = await api.getById(created.id);
+            if (full) {
+              setDrawer(full);
+              writeUrlParam(full.id);
+              setDrawerTab("overview");
+            }
+            window.dispatchEvent(new CustomEvent("bhq:offspring:created"));
+          } catch {
+            window.alert("Failed to create offspring");
           }
-          window.dispatchEvent(new CustomEvent("bhq:offspring:created"));
-        } catch {
-          window.alert("Failed to create offspring");
-        }
-      }}
-    />
-  </OverlayMount>
-) : (
-  <CreateOffspringOverlayContent
-    open={showCreate}
-    onClose={() => setShowCreate(false)}
-    onCreate={async (input) => {
-      try {
-        const created = await api.create(input);
-        setShowCreate(false);
-        await refresh();
-        const full = await api.getById(created.id);
-        if (full) {
-          setDrawer(full);
-          writeUrlParam(full.id);
-          setDrawerTab("core");
-        }
-        window.dispatchEvent(new CustomEvent("bhq:offspring:created"));
-      } catch {
-        window.alert("Failed to create offspring");
-      }
-    }}
-  />
-)}
+        }}
+      />
 
-      {overlayRoot && (
-        <OverlayMount root={overlayRoot}>
-          <Overlay
-            open={!!drawer}
-            onOpenChange={(open) => {
-              if (!open) {
-                setDrawer(null);
-                writeUrlParam(null);
+      <Overlay
+        open={!!drawer}
+        ariaLabel="Offspring details"
+        closeOnEscape
+        closeOnOutsideClick
+        onOpenChange={(open) => {
+          if (!open) {
+            closeDrawer();
+          }
+        }}
+      >
+        {drawer && (
+          <div
+            className="fixed inset-0"
+            style={{ zIndex: MODAL_Z, isolation: "isolate" }}
+            onMouseDown={(e) => {
+              const p = detailsPanelRef.current;
+              if (!p) return;
+              if (!p.contains(e.target as Node)) {
+                closeDrawer();
               }
             }}
-            ariaLabel="Offspring details"
           >
-            {drawer && (
-              <DetailsScaffold
-                title={drawer.name || drawer.placeholderLabel || "Unnamed offspring"}
-                subtitle={[drawer.species, drawer.breedText].filter(Boolean).join(" ")}
-                tab={drawerTab}
-                onTabChange={(t) =>
-                  setDrawerTab(
-                    t as "core" | "health" | "media" | "lineage" | "ownership" | "xrefs",
-                  )
-                }
-                tabs={[
-                  { key: "core", label: "Core" },
-                  { key: "health", label: "Health" },
-                  { key: "media", label: "Media" },
-                  { key: "lineage", label: "Lineage" },
-                  { key: "ownership", label: "Ownership" },
-                  { key: "xrefs", label: "Cross refs" },
-                ]}
-                onCancel={() => {
-                  setDrawer(null);
-                  writeUrlParam(null);
+            {/* Backdrop */}
+            <div className="absolute inset-0 bg-black/40" />
+
+            {/* Anchored panel (align top, scroll if needed) */}
+            <div className="absolute inset-0 flex items-start justify-center overflow-y-auto">
+              <div
+                ref={detailsPanelRef}
+                className="pointer-events-auto mt-10 mb-10 flex flex-col overflow-hidden rounded-xl border border-hairline bg-surface shadow-xl"
+                style={{ width: 960, maxWidth: "calc(100vw - 80px)" }}
+                onMouseDown={(e) => {
+                  // keep clicks inside the panel from bubbling to the outer close handler
+                  e.stopPropagation();
                 }}
               >
-                {drawerTab === "core" && coreForm && (
-                  <SectionCard
-                    title="Core identity"
-                    icon={<FileText className="h-4 w-4" />}
-                    right={
-                      <div className="flex items-center gap-2">
-                        {drawer.groupId && (
-                          <button
-                            type="button"
-                            className="text-xs text-primary underline-offset-2 hover:underline"
-                            onClick={() => navigateToGroup(drawer.groupId!)}
+                <DetailsScaffold
+                  title={
+                    drawer.name ||
+                    drawer.placeholderLabel ||
+                    drawer.identifier ||
+                    "Unnamed offspring"
+                  }
+                  subtitle={
+                    drawer.status
+                      ? `Status ${prettyStatus(drawer.status as OffspringStatus)}`
+                      : "Status not set"
+                  }
+                  mode="view"
+                  tabs={[
+                    { key: "overview", label: "Overview" },
+                    { key: "buyer", label: "Buyer" },
+                    { key: "health", label: "Health" },
+                    { key: "media", label: "Media" },
+                    { key: "invoices", label: "Invoices" },
+                    { key: "records", label: "Records" },
+                    { key: "notes", label: "Notes" },
+                  ]}
+                  activeTab={drawerTab}
+                  onTabChange={(key) => setDrawerTab(key as any)}
+                  rightActions={
+                    <div className="flex items-center gap-2">
+                      <Button size="sm" variant="outline" onClick={closeDrawer}>
+                        Close
+                      </Button>
+                    </div>
+                  }
+                />
+
+                {/* Body */}
+                <div className="px-5 py-4 space-y-6">
+                  {(() => {
+                    const row = drawer as any;
+                    if (!row) return null;
+
+                    const group = row.group;
+                    const buyer = row.buyer;
+                    const health = row.healthSummary || {};
+                    const media = row.mediaSummary || {};
+                    const invoices = row.invoiceSummary || {};
+                    const crossRefs = row.crossRefs || {};
+                    const notes: string = row.notes || "";
+
+                    const name =
+                      row.name || row.identifier || "Unnamed offspring";
+                    const statusLabel =
+                      row.statusLabel || row.status || "Status not set";
+
+                    const sexLabel =
+                      row.sexLabel || row.sex || "Unknown";
+                    const colorLabel =
+                      row.colorLabel || row.color || "Unknown";
+                    const speciesLabel =
+                      row.speciesLabel || row.species || "Unknown";
+                    const dobLabel =
+                      row.birthDateLabel || row.birthDate || "Unknown";
+                    const birthWeightLabel =
+                      row.birthWeightLabel || row.birthWeight || "Unknown";
+                    const microchipLabel =
+                      row.microchip || "None";
+                    const registrationLabel =
+                      row.registration || "None";
+
+                    const groupName =
+                      group?.identifier || group?.name || "Not linked to group";
+                    const groupCode =
+                      group?.code || "n/a";
+                    const placementLabel =
+                      row.placementStatusLabel || row.placementStatus || "Not set";
+                    const placementDateLabel =
+                      row.placementDateLabel || row.placementDate || "Not placed";
+                    const priceLabel =
+                      row.priceLabel || row.price || "Not set";
+
+                    const buyerName =
+                      buyer?.displayName || buyer?.name || "No buyer assigned";
+                    const buyerContact =
+                      buyer?.contactName || buyer?.primaryContactName || "No contact info";
+
+                    const healthWeightSummary =
+                      health.weightSummaryLabel || "No weight log recorded yet.";
+                    const healthEventSummary =
+                      health.eventsSummaryLabel || "No health events recorded yet.";
+
+                    const mediaSummary =
+                      media.summaryLabel || "No media files linked yet.";
+
+                    const invoiceSummary =
+                      invoices.summaryLabel || "No invoices linked yet.";
+
+                    return (
+                      <>
+                        {/* OVERVIEW TAB */}
+                        {drawerTab === "overview" && (
+                          <>
+                            <SectionCard title="Identity">
+                              <dl className="grid grid-cols-2 gap-x-6 gap-y-2 text-xs md:text-sm">
+                                <div>
+                                  <dt className="text-xs text-muted-foreground">
+                                    Name
+                                  </dt>
+                                  <dd className="text-sm">{name}</dd>
+                                </div>
+                                <div>
+                                  <dt className="text-xs text-muted-foreground">
+                                    Status
+                                  </dt>
+                                  <dd className="text-sm">{statusLabel}</dd>
+                                </div>
+                                <div>
+                                  <dt className="text-xs text-muted-foreground">
+                                    Species
+                                  </dt>
+                                  <dd className="text-sm">{speciesLabel}</dd>
+                                </div>
+                                <div>
+                                  <dt className="text-xs text-muted-foreground">
+                                    Sex
+                                  </dt>
+                                  <dd className="text-sm">{sexLabel}</dd>
+                                </div>
+                                <div>
+                                  <dt className="text-xs text-muted-foreground">
+                                    Color
+                                  </dt>
+                                  <dd className="text-sm">{colorLabel}</dd>
+                                </div>
+                                <div>
+                                  <dt className="text-xs text-muted-foreground">
+                                    Date of birth
+                                  </dt>
+                                  <dd className="text-sm">{dobLabel}</dd>
+                                </div>
+                                <div>
+                                  <dt className="text-xs text-muted-foreground">
+                                    Birth weight
+                                  </dt>
+                                  <dd className="text-sm">{birthWeightLabel}</dd>
+                                </div>
+                                <div>
+                                  <dt className="text-xs text-muted-foreground">
+                                    Microchip
+                                  </dt>
+                                  <dd className="text-sm">{microchipLabel}</dd>
+                                </div>
+                                <div>
+                                  <dt className="text-xs text-muted-foreground">
+                                    Registration
+                                  </dt>
+                                  <dd className="text-sm">{registrationLabel}</dd>
+                                </div>
+                              </dl>
+                            </SectionCard>
+
+                            <SectionCard title="Group and placement">
+                              <dl className="grid grid-cols-2 gap-x-6 gap-y-2 text-xs md:text-sm">
+                                <div>
+                                  <dt className="text-xs text-muted-foreground">
+                                    Group
+                                  </dt>
+                                  <dd className="text-sm">
+                                    {group ? (
+                                      <Button
+                                        variant="link"
+                                        className="h-auto p-0 text-sm"
+                                        onClick={() =>
+                                          navigateToGroup(group.id)
+                                        }
+                                      >
+                                        {groupName}
+                                      </Button>
+                                    ) : (
+                                      groupName
+                                    )}
+                                  </dd>
+                                </div>
+                                <div>
+                                  <dt className="text-xs text-muted-foreground">
+                                    Group code
+                                  </dt>
+                                  <dd className="text-sm">{groupCode}</dd>
+                                </div>
+                                <div>
+                                  <dt className="text-xs text-muted-foreground">
+                                    Identifier
+                                  </dt>
+                                  <dd className="text-sm">
+                                    {row.identifier || "Not set"}
+                                  </dd>
+                                </div>
+                                <div>
+                                  <dt className="text-xs text-muted-foreground">
+                                    Price
+                                  </dt>
+                                  <dd className="text-sm">{priceLabel}</dd>
+                                </div>
+                                <div>
+                                  <dt className="text-xs text-muted-foreground">
+                                    Placement date
+                                  </dt>
+                                  <dd className="text-sm">
+                                    {placementDateLabel}
+                                  </dd>
+                                </div>
+                                <div>
+                                  <dt className="text-xs text-muted-foreground">
+                                    Placement status
+                                  </dt>
+                                  <dd className="text-sm">
+                                    {placementLabel}
+                                  </dd>
+                                </div>
+                              </dl>
+                            </SectionCard>
+
+                            <SectionCard title="At a glance">
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs md:text-sm">
+                                <div>
+                                  <div className="text-xs text-muted-foreground">
+                                    Buyer
+                                  </div>
+                                  <div className="text-sm">{buyerName}</div>
+                                </div>
+                                <div>
+                                  <div className="text-xs text-muted-foreground">
+                                    Health
+                                  </div>
+                                  <div className="text-sm">
+                                    {healthEventSummary}
+                                  </div>
+                                </div>
+                                <div>
+                                  <div className="text-xs text-muted-foreground">
+                                    Invoices
+                                  </div>
+                                  <div className="text-sm">
+                                    {invoiceSummary}
+                                  </div>
+                                </div>
+                                <div>
+                                  <div className="text-xs text-muted-foreground">
+                                    Media
+                                  </div>
+                                  <div className="text-sm">{mediaSummary}</div>
+                                </div>
+                              </div>
+                            </SectionCard>
+                          </>
+                        )}
+
+                        {/* BUYER TAB */}
+                        {drawerTab === "buyer" && (
+                          <SectionCard
+                            title="Buyer"
+                            description="Link a buyer and see basic contact details."
                           >
-                            Parent group:{" "}
-                            {drawer.groupName ||
-                              drawer.groupCode ||
-                              `Group #${drawer.groupId}`}
-                          </button>
-                        )}
-
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => setDrawerTab("core")}
-                        >
-                          <FileText className="h-4 w-4 mr-1" />
-                          Edit core
-                        </Button>
-
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          onClick={async () => {
-                            if (!drawer) return;
-                            if (!window.confirm("Delete this offspring record?")) return;
-                            await api.remove(drawer.id);
-                            setDrawer(null);
-                            writeUrlParam(null);
-                            await refresh();
-                            window.dispatchEvent(new CustomEvent("bhq:offspring:deleted"));
-                          }}
-                        >
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
-
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={handleAssignBuyer}
-                        >
-                          Assign buyer
-                        </Button>
-
-                        <Button size="sm" variant="outline" onClick={saveCoreSection}>
-                          <DollarSign className="h-4 w-4 mr-1" />
-                          Save core
-                        </Button>
-                      </div>
-                    }
-                  >
-                    <div className="grid gap-4 md:grid-cols-2">
-                      {/* Name */}
-                      <label className="grid gap-1 text-sm">
-                        <span className="text-xs text-muted-foreground">Name</span>
-                        <input
-                          className="h-8 rounded-md border bg-background px-2 text-sm"
-                          value={coreForm.name ?? ""}
-                          onChange={(e) =>
-                            setCoreForm((f) => ({
-                              ...(f || {}),
-                              name: e.target.value || null,
-                            }))
-                          }
-                          placeholder="Optional registered or call name"
-                        />
-                      </label>
-
-                      {/* Placeholder label */}
-                      <label className="grid gap-1 text-sm">
-                        <span className="text-xs text-muted-foreground">Placeholder label</span>
-                        <input
-                          className="h-8 rounded-md border bg-background px-2 text-sm"
-                          value={coreForm.placeholderLabel ?? ""}
-                          onChange={(e) =>
-                            setCoreForm((f) => ({
-                              ...(f || {}),
-                              placeholderLabel: e.target.value || null,
-                            }))
-                          }
-                          placeholder="For example Male #3"
-                        />
-                      </label>
-
-                      {/* Sex */}
-                      <label className="grid gap-1 text-sm">
-                        <span className="text-xs text-muted-foreground">Sex</span>
-                        <select
-                          className="h-8 rounded-md border bg-background px-2 text-sm"
-                          value={coreForm.sex ?? ""}
-                          onChange={(e) =>
-                            setCoreForm((f) => ({
-                              ...(f || {}),
-                              sex: (e.target.value || null) as Sex | null,
-                            }))
-                          }
-                        >
-                          <option value="">Unknown</option>
-                          <option value="MALE">Male</option>
-                          <option value="FEMALE">Female</option>
-                        </select>
-                      </label>
-
-                      {/* Color */}
-                      <label className="grid gap-1 text-sm">
-                        <span className="text-xs text-muted-foreground">Color</span>
-                        <input
-                          className="h-8 rounded-md border bg-background px-2 text-sm"
-                          value={coreForm.color ?? ""}
-                          onChange={(e) =>
-                            setCoreForm((f) => ({
-                              ...(f || {}),
-                              color: e.target.value || null,
-                            }))
-                          }
-                          placeholder="Color or pattern"
-                        />
-                      </label>
-
-                      {/* Birth weight (oz) */}
-                      <label className="grid gap-1 text-sm">
-                        <span className="text-xs text-muted-foreground">Birth weight (oz)</span>
-                        <input
-                          type="number"
-                          step="0.1"
-                          className="h-8 rounded-md border bg-background px-2 text-sm"
-                          value={
-                            coreForm.birthWeightOz != null ? String(coreForm.birthWeightOz) : ""
-                          }
-                          onChange={(e) => {
-                            const v = e.target.value;
-                            const num = v === "" ? null : Number(v);
-                            setCoreForm((f) => ({
-                              ...(f || {}),
-                              birthWeightOz: Number.isNaN(num) ? null : num,
-                            }));
-                          }}
-                        />
-                      </label>
-
-                      {/* Date of birth */}
-                      <label className="grid gap-1 text-sm">
-                        <span className="text-xs text-muted-foreground">Date of birth</span>
-                        <input
-                          type="date"
-                          className="h-8 rounded-md border bg-background px-2 text-sm"
-                          value={coreForm.dob ? coreForm.dob.slice(0, 10) : ""}
-                          onChange={(e) =>
-                            setCoreForm((f) => ({
-                              ...(f || {}),
-                              dob: e.target.value || null,
-                            }))
-                          }
-                        />
-                      </label>
-
-                      {/* Microchip */}
-                      <label className="grid gap-1 text-sm">
-                        <span className="text-xs text-muted-foreground">Microchip ID</span>
-                        <input
-                          className="h-8 rounded-md border bg-background px-2 text-sm"
-                          value={coreForm.microchip ?? ""}
-                          onChange={(e) =>
-                            setCoreForm((f) => ({
-                              ...(f || {}),
-                              microchip: e.target.value || null,
-                            }))
-                          }
-                        />
-                      </label>
-
-                      {/* Registration ID */}
-                      <label className="grid gap-1 text-sm">
-                        <span className="text-xs text-muted-foreground">Registration ID</span>
-                        <input
-                          className="h-8 rounded-md border bg-background px-2 text-sm"
-                          value={coreForm.registrationId ?? ""}
-                          onChange={(e) =>
-                            setCoreForm((f) => ({
-                              ...(f || {}),
-                              registrationId: e.target.value || null,
-                            }))
-                          }
-                        />
-                      </label>
-
-                      {/* Status */}
-                      <label className="grid gap-1 text-sm">
-                        <span className="text-xs text-muted-foreground">Status</span>
-                        <select
-                          className="h-8 rounded-md border bg-background px-2 text-sm"
-                          value={coreForm.status ?? ""}
-                          onChange={(e) =>
-                            setCoreForm((f) => ({
-                              ...(f || {}),
-                              status: (e.target.value || drawer.status) as Status,
-                            }))
-                          }
-                        >
-                          <option value="">Select status</option>
-                          <option value="AVAILABLE">Available</option>
-                          <option value="RESERVED">Reserved</option>
-                          <option value="PLACED">Placed</option>
-                          <option value="HOLDBACK">Holdback</option>
-                          <option value="DECEASED">Deceased</option>
-                        </select>
-                      </label>
-
-                      {/* Placement date */}
-                      <label className="grid gap-1 text-sm">
-                        <span className="text-xs text-muted-foreground">Placement date</span>
-                        <input
-                          type="date"
-                          className="h-8 rounded-md border bg-background px-2 text-sm"
-                          value={
-                            coreForm.placementDate ? coreForm.placementDate.slice(0, 10) : ""
-                          }
-                          onChange={(e) =>
-                            setCoreForm((f) => ({
-                              ...(f || {}),
-                              placementDate: e.target.value || null,
-                            }))
-                          }
-                        />
-                      </label>
-
-                      {/* Price */}
-                      <label className="grid gap-1 text-sm">
-                        <span className="text-xs text-muted-foreground">Price</span>
-                        <input
-                          type="number"
-                          step="0.01"
-                          className="h-8 rounded-md border bg-background px-2 text-sm"
-                          value={coreForm.price != null ? String(coreForm.price) : ""}
-                          onChange={(e) => {
-                            const v = e.target.value;
-                            const num = v === "" ? null : Number(v);
-                            setCoreForm((f) => ({
-                              ...(f || {}),
-                              price: Number.isNaN(num) ? null : num,
-                            }));
-                          }}
-                        />
-                      </label>
-
-                      {/* Notes / markings */}
-                      <label className="grid gap-1 text-sm md:col-span-2">
-                        <span className="text-xs text-muted-foreground">
-                          Notes and markings
-                        </span>
-                        <textarea
-                          className="min-h-[72px] rounded-md border bg-background px-2 py-1 text-sm"
-                          value={coreForm.notes ?? ""}
-                          onChange={(e) =>
-                            setCoreForm((f) => ({
-                              ...(f || {}),
-                              notes: e.target.value || null,
-                            }))
-                          }
-                          placeholder="Markings, temperament notes, or internal comments"
-                        />
-                      </label>
-                    </div>
-                  </SectionCard>
-                )}
-
-                {/* Health tab */}
-                {drawerTab === "health" && (
-                  <SectionCard
-                    title="Health and development"
-                    icon={<Stethoscope className="h-4 w-4" />}
-                    right={
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={handleAddHealthEvent}
-                        disabled={healthSaving}
-                      >
-                        <FilePlus2 className="h-4 w-4 mr-1" />
-                        {healthSaving ? "Saving..." : "Add Health Event"}
-                      </Button>
-                    }
-                  >
-                    <div className="space-y-4">
-                      <div>
-                        <div className="text-xs font-medium text-muted-foreground mb-1">
-                          Growth over time
-                        </div>
-                        <GrowthSparkline events={drawer.healthEvents ?? []} />
-                      </div>
-
-                      <div>
-                        <div className="text-xs font-medium text-muted-foreground mb-1">
-                          Health events
-                        </div>
-
-                        {drawer.healthEvents && drawer.healthEvents.length > 0 ? (
-                          <ul className="space-y-2">
-                            {drawer.healthEvents.map((ev) => (
-                              <li
-                                key={ev.id}
-                                className="border rounded-md px-3 py-2 text-xs flex justify-between gap-2"
-                              >
+                            <div className="flex flex-col gap-3">
+                              <div className="flex items-center justify-between gap-2">
                                 <div>
-                                  <div className="font-medium">
-                                    {formatDate(ev.occurredAt)} · {ev.kind}
+                                  <div className="text-xs text-muted-foreground">
+                                    Buyer
                                   </div>
-                                  {ev.notes && (
-                                    <div className="text-muted-foreground mt-0.5">
-                                      {ev.notes}
-                                    </div>
-                                  )}
+                                  <div className="text-sm">{buyerName}</div>
+                                  <div className="text-xs text-muted-foreground">
+                                    Contact
+                                  </div>
+                                  <div className="text-sm">{buyerContact}</div>
                                 </div>
-                                {ev.weightOz != null && (
-                                  <div className="shrink-0 text-right">
-                                    <div className="font-medium">
-                                      {ev.weightOz.toFixed(1)} oz
-                                    </div>
-                                  </div>
-                                )}
-                              </li>
-                            ))}
-                          </ul>
-                        ) : (
-                          <div className="text-xs text-muted-foreground">
-                            No health events recorded yet.
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </SectionCard>
-                )}
-
-                {/* Media tab */}
-                {drawerTab === "media" && (
-                  <SectionCard
-                    title="Photos and documents"
-                    icon={<ImageIcon className="h-4 w-4" />}
-                    right={
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() =>
-                          window.alert("Add Media or Document not wired yet")
-                        }
-                      >
-                        <FilePlus2 className="h-4 w-4 mr-1" />
-                        Add Media or Document
-                      </Button>
-                    }
-                  >
-                    <div className="space-y-3">
-                      {drawer.media && drawer.media.length > 0 ? (
-                        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                          {drawer.media.map((m) => (
-                            <button
-                              key={m.id}
-                              type="button"
-                              className="border rounded-md overflow-hidden text-left text-xs hover:bg-muted"
-                              onClick={() => {
-                                if (m.url) {
-                                  window.open(m.url, "_blank", "noopener,noreferrer");
-                                }
-                              }}
-                            >
-                              <div className="aspect-video bg-muted flex items-center justify-center text-[10px]">
-                                {m.kind === "photo" && "Photo"}
-                                {m.kind === "video" && "Video"}
-                                {m.kind === "doc" && "Document"}
-                              </div>
-                              <div className="px-2 py-1">
-                                <div className="font-medium truncate">
-                                  {m.label || `Attachment #${m.id}`}
-                                </div>
-                                {m.mimeType && (
-                                  <div className="text-[10px] text-muted-foreground truncate">
-                                    {m.mimeType}
-                                  </div>
-                                )}
-                              </div>
-                            </button>
-                          ))}
-                        </div>
-                      ) : (
-                        <div className="text-xs text-muted-foreground">
-                          No media or documents added yet.
-                        </div>
-                      )}
-                    </div>
-                  </SectionCard>
-                )}
-
-                {/* Lineage tab */}
-                {drawerTab === "lineage" && (
-                  <SectionCard
-                    title="Pedigree and lineage"
-                    icon={<Users className="h-4 w-4" />}
-                  >
-                    <div className="space-y-4 text-xs">
-                      <div>
-                        <div className="text-xs font-medium text-muted-foreground mb-1">
-                          Dam and sire
-                        </div>
-                        {drawer.lineage && drawer.lineage.length > 0 ? (
-                          <ul className="space-y-1">
-                            {drawer.lineage.map((entry) => (
-                              <li
-                                key={entry.id}
-                                className="flex justify-between gap-2"
-                              >
                                 <div>
-                                  <div className="font-medium">{entry.name}</div>
-                                  <div className="text-[10px] text-muted-foreground">
-                                    Role: {entry.role}
-                                    {entry.registrationId
-                                      ? ` · Reg: ${entry.registrationId}`
-                                      : ""}
-                                  </div>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={handleAssignBuyer}
+                                  >
+                                    Assign buyer
+                                  </Button>
                                 </div>
-                              </li>
-                            ))}
-                          </ul>
-                        ) : (
-                          <div className="text-xs text-muted-foreground">
-                            Lineage information is not available yet.
-                          </div>
-                        )}
-                      </div>
-
-                      <div>
-                        <div className="text-xs font-medium text-muted-foreground mb-1">
-                          Genetic tests
-                        </div>
-                        <div className="text-xs text-muted-foreground">
-                          Genetic test summary will appear here once wired to backend data.
-                        </div>
-                      </div>
-                    </div>
-                  </SectionCard>
-                )}
-
-                {/* Ownership tab */}
-                {drawerTab === "ownership" && (
-                  <SectionCard
-                    title="Ownership and placement"
-                    icon={<User className="h-4 w-4" />}
-                    right={
-                      <div className="flex gap-2">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => window.alert("Add Contract not wired yet")}
-                        >
-                          <FilePlus2 className="h-4 w-4 mr-1" />
-                          Add Contract
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => window.alert("Add Task not wired yet")}
-                        >
-                          <FilePlus2 className="h-4 w-4 mr-1" />
-                          Add Task
-                        </Button>
-                      </div>
-                    }
-                  >
-                    <div className="space-y-4 text-xs">
-                      <div>
-                        <div className="text-xs font-medium text-muted-foreground mb-1">
-                          Buyer
-                        </div>
-                        {drawer.buyer ? (
-                          <div className="border rounded-md p-3 flex items-start justify-between gap-3">
-                            <div>
-                              <div className="font-medium">{drawer.buyer.name}</div>
-                              {drawer.buyer.email && (
-                                <div className="text-[10px] text-muted-foreground">
-                                  {drawer.buyer.email}
-                                </div>
-                              )}
-                              {drawer.buyer.phone && (
-                                <div className="text-[10px] text-muted-foreground">
-                                  {drawer.buyer.phone}
-                                </div>
-                              )}
+                              </div>
                             </div>
-                            <Button
-                              size="xs"
-                              variant="ghost"
-                              onClick={() => {
-                                window.alert("View Buyer not wired yet");
-                              }}
-                            >
-                              View buyer
-                            </Button>
-                          </div>
-                        ) : (
-                          <div className="text-xs text-muted-foreground">
-                            No buyer assigned yet.
-                          </div>
+                          </SectionCard>
                         )}
-                      </div>
 
-                      <div>
-                        <div className="text-xs font-medium text-muted-foreground mb-1">
-                          Invoices
-                        </div>
-                        {drawer.invoices && drawer.invoices.length > 0 ? (
-                          <ul className="space-y-1">
-                            {drawer.invoices.map((inv) => (
-                              <li
-                                key={inv.id}
-                                className="border rounded-md px-3 py-2 flex justify-between gap-2"
-                              >
-                                <div>
-                                  <div className="font-medium text-xs">
-                                    Invoice {inv.invoiceNumber}
-                                  </div>
-                                  <div className="text-[10px] text-muted-foreground">
-                                    Status: {inv.status}
+                        {/* HEALTH TAB */}
+                        {drawerTab === "health" && (
+                          <SectionCard
+                            title="Health and growth"
+                            description="Review growth trend and recorded health events."
+                          >
+                            <div className="space-y-4">
+                              <div>
+                                <div className="mb-2 flex items-center justify-between">
+                                  <div className="text-xs text-muted-foreground">
+                                    Growth trend
                                   </div>
                                 </div>
-                                <div className="text-right text-xs font-medium">
-                                  {moneyFmt(inv.amount)}
+                                {health.weightSeries && health.weightSeries.length ? (
+                                  <GrowthSparkline
+                                    series={health.weightSeries}
+                                  />
+                                ) : (
+                                  <div className="text-xs text-muted-foreground">
+                                    {healthWeightSummary}
+                                  </div>
+                                )}
+                              </div>
+
+                              <div className="flex items-center justify-between gap-2">
+                                <div className="text-xs text-muted-foreground">
+                                  Health events
                                 </div>
-                              </li>
-                            ))}
-                          </ul>
-                        ) : (
-                          <div className="text-xs text-muted-foreground">
-                            No invoices linked yet.
-                          </div>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={handleAddHealthEvent}
+                                  disabled={healthSaving}
+                                >
+                                  Add health event
+                                </Button>
+                              </div>
+
+                              <div className="text-xs text-muted-foreground">
+                                {healthEventSummary}
+                              </div>
+                            </div>
+                          </SectionCard>
                         )}
-                      </div>
-                    </div>
-                  </SectionCard>
-                )}
 
-                {/* Cross refs tab */}
-                {drawerTab === "xrefs" && (
-                  <SectionCard
-                    title="Cross references"
-                    icon={<LinkIcon className="h-4 w-4" />}
-                    right={
-                      <Button
-                        size="xs"
-                        variant="outline"
-                        onClick={handleLinkInvoice}
-                        disabled={linkingInvoice}
-                      >
-                        Link invoice
-                      </Button>
-                    }
-                  >
-                    <CrossRefsSection
-                      row={drawer}
-                      onNavigateGroup={(id) => navigateToGroup(id)}
-                      onNavigateOffspring={navigateToOffspringSibling}
-                      onNavigateWaitlist={navigateToWaitlist}
-                    />
-                  </SectionCard>
-                )}
+                        {/* MEDIA TAB */}
+                        {drawerTab === "media" && (
+                          <SectionCard
+                            title="Media"
+                            description="Media files linked to this offspring."
+                          >
+                            <div className="text-xs text-muted-foreground">
+                              {mediaSummary}
+                            </div>
+                          </SectionCard>
+                        )}
 
-              </DetailsScaffold>
-            )}
-          </Overlay>
-        </OverlayMount>
-      )}
+                        {/* INVOICES TAB */}
+                        {drawerTab === "invoices" && (
+                          <SectionCard
+                            title="Invoices"
+                            description="Invoices linked to this offspring."
+                          >
+                            <div className="space-y-3">
+                              <div className="flex items-center justify-between gap-2">
+                                <div className="text-xs text-muted-foreground">
+                                  Linked invoices
+                                </div>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  disabled={linkingInvoice}
+                                  onClick={handleLinkInvoice}
+                                >
+                                  Link invoice
+                                </Button>
+                              </div>
+                              <div className="text-xs text-muted-foreground">
+                                {invoiceSummary}
+                              </div>
+                            </div>
+                          </SectionCard>
+                        )}
+
+                        {/* RECORDS TAB */}
+                        {drawerTab === "records" && (
+                          <SectionCard
+                            title="Related records"
+                            description="Navigate between related groups, siblings, and waitlist entries."
+                          >
+                            <CrossRefsSection
+                              crossRefs={crossRefs}
+                              onOpenGroup={(id) => navigateToGroup(id)}
+                              onOpenSibling={(id) =>
+                                navigateToOffspringSibling(id)
+                              }
+                              onOpenWaitlistEntry={(id) =>
+                                navigateToWaitlist(id)
+                              }
+                            />
+                          </SectionCard>
+                        )}
+
+                        {/* NOTES TAB */}
+                        {drawerTab === "notes" && (
+                          <SectionCard
+                            title="Notes"
+                            description="Internal notes for this offspring."
+                          >
+                            <div className="text-xs md:text-sm whitespace-pre-wrap">
+                              {notes || "No notes recorded yet."}
+                            </div>
+                          </SectionCard>
+                        )}
+                      </>
+                    );
+                  })()}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </Overlay>
+      <OffspringAssignBuyerBridge />
     </div>
   );
 }
