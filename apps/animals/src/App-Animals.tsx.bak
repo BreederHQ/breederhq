@@ -1,1518 +1,1871 @@
-// apps/animals/src/App-Animals.tsx
-import React, { useEffect, useMemo, useState } from "react";
-import { Card, Button, Input, EmptyState, hooks, ColumnsPopover, TableFooter } from "@bhq/ui";
-import { makeApi } from "./api";
-import { BreedFormControl } from "./components/BreedEditor";
+import * as React from "react";
 import { createPortal } from "react-dom";
-import OwnershipEditor, { OwnerRow as OwnershipRow } from "./components/OwnershipEditor";
-import { OwnershipChips } from "./components/OwnershipChips";
-import { getOverlayRoot } from "@bhq/ui/overlay";
+import {
+  PageHeader,
+  Card,
+  Table,
+  TableHeader,
+  TableRow,
+  TableCell,
+  TableFooter,
+  ColumnsPopover,
+  hooks,
+  SearchBar,
+  FilterChips,
+  FiltersRow,
+  DetailsHost,
+  DetailsScaffold,
+  // DetailsSpecRenderer, // not used here
+  SectionCard,
+  Button,
+  Input,
+  buildRangeAwareSchema,
+  inDateRange,
+  OwnershipChips,
+  OwnershipEditor,
+  CustomBreedDialog,
+  BreedCombo,
+} from "@bhq/ui";
+import { Overlay, getOverlayRoot } from "@bhq/ui/overlay";
+import "@bhq/ui/styles/table.css";
+import { makeApi } from "./api";
+import {
+  resolveCycleLengthDays,
+  projectUpcomingCycles,
+  fromPlan,
+  windowsToCalendarEvents,
+  DEFAULT_STAGE_LABELS,
+  type Species as MathSpecies,
+} from "@bhq/ui/utils/breedingMath";
 
+/** ────────────────────────────────────────────────────────────────────────
+ * Types & utils
+ * ─────────────────────────────────────────────────────────────────────── */
+type OwnershipRow = {
+  partyType: "Organization" | "Contact";
+  organizationId?: number | null;
+  contactId?: number | null;
+  display_name?: string | null;
+  is_primary?: boolean;
+  percent?: number;
+};
 
-/* Local Badge */
-function Badge(props: { children: React.ReactNode }) {
-  return (
-    <span className="inline-flex items-center rounded-full border border-hairline bg-surface-strong px-2 py-0.5 text-xs">
-      {props.children}
-    </span>
-  );
-}
-
-/* Types */
-type ID = string | number;
-type SortDir = "asc" | "desc";
-type Species = "Dog" | "Cat" | "Horse";
-type Sex = "Male" | "Female";
-type Status = "Active" | "Breeding" | "Unavailable" | "Retired" | "Deceased" | "Prospect";
-
-type AnimalDTO = {
-  id: ID;
+type AnimalRow = {
+  id: number;
   name: string;
-  species: Species;
+  nickname?: string | null;
+  species?: string | null;
   breed?: string | null;
-  sex: Sex;
-  dob?: string | null;
-  age?: string | null;
-  status: Status;
-  microchip?: string | null;
-  ownerId?: ID | null;
+  sex?: string | null;
+  status?: string | null;
   ownerName?: string | null;
-  tags?: string[] | null;
+  microchip?: string | null;
+  tags: string[];
+  notes?: string | null;
+
+  dob?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+
   lastCycle?: string | null;
-  updatedAt?: string | null;
-  createdAt?: string | null;
-  archived?: boolean | null;
+
+  cycleStartDates?: string[]; // persisted via API
 };
 
-type AnimalRow = AnimalDTO;
-type SortRule = { key: keyof AnimalRow; dir: SortDir };
-
-const { useDebounced } = hooks;
-
-/* Pref keys */
-const COL_STORAGE_KEY = "bhq_animals_cols_v1";
-const SORT_STORAGE_KEY = "bhq_animals_sorts_v1";
-const Q_STORAGE_KEY = "bhq_animals_q_v1";
-const PAGE_SIZE_STORAGE_KEY = "bhq_animals_page_size_v1";
-const FILTERS_STORAGE_KEY = "bhq_animals_filters_v1";
-const SHOW_FILTERS_STORAGE_KEY = "bhq_animals_show_filters_v1";
-
-/* Columns */
-type ColumnDef = {
-  key: keyof AnimalRow;
-  label: string;
-  type?: "text" | "date" | "status" | "tags";
-  center?: boolean;
-  render?: (r: AnimalRow) => React.ReactNode;
+type ProgramFlags = {
+  holdUntil?: string | null;            // ISO date the animal is on hold until for program reasons
+  embargoReason?: string | null;        // short text like health clearance pending
+  allowExternalStud?: boolean | null;   // for males
+  disqualifiers?: string[] | null;      // genetic or structural disqualifiers
+  notes?: string | null;                // program notes that are not offspring related
 };
 
-const DEFAULT_COLUMNS: ColumnDef[] = [
-  { key: "name", label: "Name", type: "text" },
-  { key: "species", label: "Species", type: "text" },
-  { key: "breed", label: "Breed", type: "text" },
-  { key: "sex", label: "Sex", type: "text" },
-  { key: "dob", label: "Date of Birth", type: "date" },
-  { key: "age", label: "Age", type: "text" },
-  { key: "status", label: "Status", type: "status", render: (r) => <Badge>{r.status}</Badge> },
-  { key: "ownerName", label: "Owner", type: "text" },
-  {
-    key: "tags", label: "Tags", type: "tags",
-    render: (r) => (
-      <span className="flex gap-1 flex-wrap">
-        {(r.tags || []).map((t) => (
-          <span key={t} className="inline-flex items-center rounded-full border border-hairline bg-surface-strong px-2 py-0.5 text-xs">
-            {t}
-          </span>
-        ))}
-      </span>
-    ),
-  },
-  { key: "lastCycle", label: "Last Cycle", type: "date" },
-  { key: "updatedAt", label: "Last Updated", type: "date" },
+type PreferredPartner = { id: number; name: string; sex?: string | null };
+
+const COLUMNS: Array<{ key: keyof AnimalRow & string; label: string; default?: boolean }> = [
+  { key: "name", label: "Name", default: true },
+  { key: "species", label: "Species", default: true },
+  { key: "breed", label: "Breed", default: true },
+  { key: "sex", label: "Sex", default: true },
+  { key: "status", label: "Status", default: true },
+  { key: "ownerName", label: "Owner", default: false },
+  { key: "microchip", label: "Microchip #", default: false },
+  { key: "tags", label: "Tags", default: true },
+  { key: "dob", label: "DOB", default: false },
+  { key: "created_at", label: "Created", default: false },
+  { key: "updated_at", label: "Updated", default: false },
 ];
 
-const MORE_COLUMNS: ColumnDef[] = [
-  { key: "createdAt", label: "Created", type: "date" },
-  { key: "microchip", label: "Microchip #", type: "text" },
-];
-
-// Keep a single ALL_COLUMNS list for the table definition
-const ALL_COLUMNS: ColumnDef[] = [...DEFAULT_COLUMNS, ...MORE_COLUMNS];
-
-const defaultKeys = new Set(DEFAULT_COLUMNS.map(c => String(c.key)));
-const COLUMNS_META = ALL_COLUMNS.map(c => ({
-  key: String(c.key),
-  label: c.label,
-  default: defaultKeys.has(String(c.key)), // drives the two sections in the shared popover
-}));
-
-
-/* Utils */
-function formatDate(iso?: string | null) {
-  if (!iso) return "";
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime())
-    ? ""
-    : new Intl.DateTimeFormat(undefined, { year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
+const SPECIES_LABEL: Record<string, string> = { DOG: "Dog", CAT: "Cat", HORSE: "Horse" };
+const SEX_LABEL: Record<string, string> = { FEMALE: "Female", MALE: "Male" };
+const STATUS_LABEL: Record<string, string> = {
+  ACTIVE: "Active",
+  BREEDING: "Breeding",
+  UNAVAILABLE: "Unavailable",
+  RETIRED: "Retired",
+  DECEASED: "Deceased",
+  PROSPECT: "Prospect",
+};
+function asLabel(map: Record<string, string>, v?: string | null) {
+  if (!v) return null;
+  const key = String(v).toUpperCase();
+  return map[key] ?? v; // fall back if API sends a new value
 }
 
-function isInteractive(el: Element | null) {
-  if (!el) return false;
-  const target = (el as HTMLElement).closest?.(
-    "[data-stop-row-open],a,button,input,select,textarea,[role='button']"
-  );
-  return !!target;
+const STORAGE_KEY = "bhq_animals_cols_v1";
+const DATE_KEYS = new Set(["dob", "created_at", "updated_at"] as const);
+
+function fmt(d?: string | null) {
+  if (!d) return "";
+  const dt = new Date(d);
+  if (!Number.isFinite(dt.getTime())) return String(d).slice(0, 10) || "";
+  return dt.toLocaleDateString();
+}
+function ageInMonths(d?: string | null): number | null {
+  if (!d) return null;
+  const dob = new Date(d);
+  if (!Number.isFinite(dob.getTime())) return null;
+  const now = new Date();
+  const months = (now.getFullYear() - dob.getFullYear()) * 12 + (now.getMonth() - dob.getMonth());
+  return Math.max(0, months);
 }
 
-function toEnum(v?: string | null) {
-  const s = String(v || "").trim().toUpperCase();
-  return s || undefined;
-}
-function toTitle(v?: string | null) {
-  const s = String(v || "").trim().toLowerCase();
-  if (!s) return null;
-  return s.slice(0, 1).toUpperCase() + s.slice(1);
-}
-
-function normalize(dto: AnimalDTO): AnimalRow {
+function animalToRow(p: any): AnimalRow {
   return {
-    ...dto,
-    // enums from API (UPPERCASE) → UI (Title Case)
-    species: (toTitle(dto.species) || "Dog") as Species, // or keep as string if you prefer
-    sex: (toTitle(dto.sex) || "Female") as Sex,
-    status: (toTitle(dto.status) || "Active") as Status,
-
-    // server sends birthDate; UI uses dob
-    dob: (dto as any).dob ?? (dto as any).birthDate ?? dto.dob ?? null,
-
-    breed: dto.breed ?? null,
-    age: dto.age ?? null,
-    microchip: dto.microchip ?? null,
-    ownerId: dto.ownerId ?? null,
-    ownerName: dto.ownerName ?? (dto as any)?.owner?.name ?? null,
-    tags: Array.from(new Set((dto.tags || []).filter(Boolean))),
-    lastCycle: dto.lastCycle ?? null,
-    updatedAt: dto.updatedAt ?? null,
-    createdAt: dto.createdAt ?? null,
-    archived: dto.archived ?? null,
+    id: Number(p.id),
+    name: p.name,
+    nickname: p.nickname ?? null,
+    species: asLabel(SPECIES_LABEL, p.species) ?? null,
+    breed: p.breed ?? null,
+    sex: asLabel(SEX_LABEL, p.sex) ?? null,
+    status: asLabel(STATUS_LABEL, p.status) ?? "Active",
+    ownerName: p.ownerName ?? p.owner?.name ?? null,
+    microchip: p.microchip ?? null,
+    tags: Array.isArray(p.tags) ? p.tags : [],
+    notes: p.notes ?? null,
+    dob: p.dob ?? p.birthDate ?? null,
+    created_at: p.created_at ?? p.createdAt ?? null,
+    updated_at: p.updated_at ?? p.updatedAt ?? null,
+    lastCycle: p.lastCycle ?? null,
+    cycleStartDates: Array.isArray(p.cycleStartDates) ? p.cycleStartDates : [],
   };
 }
 
-/** Auth headers (X-Org-Id via localStorage) */
-function getAuthHeaders(): Record<string, string> {
-  const headers: Record<string, string> = {};
+async function safeGetCreatingOrg(api: any) {
   try {
-    const org = localStorage.getItem("BHQ_ORG_ID");
-    if (org) headers["X-Org-Id"] = org;
-  } catch { }
-  return headers;
-}
-
-/** JSON fetch with cookies + org header */
-async function fetchJson(url: string, init: RequestInit = {}) {
-  const res = await fetch(url, {
-    credentials: "include",
-    ...init,
-    headers: { "Content-Type": "application/json", ...getAuthHeaders(), ...(init.headers || {}) },
-  });
-  const body = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(body?.message || `HTTP ${res.status}`);
-  return body;
-}
-
-
-// Lightweight cycle summary util (local replacement for @bhq/biology)
-function computeCycleSummary(dates: string[]) {
-  const ds = dates
-    .map((d) => new Date(d))
-    .filter((d) => !Number.isNaN(d.getTime()))
-    .sort((a, b) => a.getTime() - b.getTime());
-
-  if (ds.length === 0) return {};
-
-  const gaps: number[] = [];
-  for (let i = 1; i < ds.length; i++) {
-    const deltaDays = Math.round((ds[i].getTime() - ds[i - 1].getTime()) / 86400000);
-    if (Number.isFinite(deltaDays) && deltaDays > 0) gaps.push(deltaDays);
-  }
-
-  const avg = (arr: number[]) =>
-    arr.length ? Math.round(arr.reduce((a, b) => a + b, 0) / arr.length) : undefined;
-
-  const lastCycle = ds[ds.length - 1].toISOString();
-  const avgAll = avg(gaps);
-  const avg3 = avg(gaps.slice(-3));
-  const nextEst =
-    (avg3 ?? avgAll) !== undefined
-      ? new Date(ds[ds.length - 1].getTime() + (avg3 ?? avgAll!) * 86400000).toISOString()
-      : undefined;
-
-  return { lastCycle, avgAll, avg3, nextEst };
-}
-
-function SpeciesIcon({ species }: { species?: "Dog" | "Cat" | "Horse" | string | null }) {
-  const s = String(species || "").toLowerCase();
-  const cls = "h-5 w-5 opacity-80";
-
-  // Dog — paw
-  if (s === "dog") {
-    return (
-      <svg viewBox="0 0 24 24" className={cls} fill="currentColor" aria-hidden>
-        <path d="M12.3 13.6c-1.3 0-2.7.7-3.5 1.7-.7.9-.8 2-.2 2.7.7.8 2.3 1.4 3.7 1.4s3-.6 3.7-1.4c.6-.7.5-1.8-.2-2.7-.8-1-2.1-1.7-3.5-1.7Z" />
-        <circle cx="7.9" cy="9.1" r="2.0" />
-        <circle cx="11.9" cy="7.7" r="2.0" />
-        <circle cx="16.1" cy="9.1" r="2.0" />
-        <circle cx="10.0" cy="11.0" r="1.6" />
-      </svg>
-    );
-  }
-
-  // Cat — cat head
-  if (s === "cat") {
-    return (
-      <svg viewBox="0 0 24 24" className={cls} fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden>
-        <path d="M5 9V5l4 2 3-2 3 2 4-2v4c0 5-3.5 9-8.5 9S5 14 5 9Z" />
-        <circle cx="10" cy="12" r="0.9" fill="currentColor" />
-        <circle cx="14" cy="12" r="0.9" fill="currentColor" />
-        <path d="M9.5 14.5c1.2.8 3.8.8 5 0" />
-      </svg>
-    );
-  }
-
-  // Horse — horse head
-  if (s === "horse") {
-    return (
-      <svg viewBox="0 0 24 24" className={cls} fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden>
-        <path d="M6 10l5-4 6 2-1 3 2 3-2 4H9l-3-3V10Z" />
-        <circle cx="14.5" cy="11" r="0.8" fill="currentColor" />
-      </svg>
-    );
-  }
-
+    const org = await api?.lookups?.getCreatingOrganization?.();
+    if (org && org.id != null) return org;
+  } catch {}
+  try {
+    const id = localStorage.getItem("BHQ_ORG_ID");
+    if (id) return { id, display_name: localStorage.getItem("BHQ_ORG_NAME") || "My Organization" };
+  } catch {}
   return null;
 }
 
+const TrashIcon = (props: React.SVGProps<SVGSVGElement>) => (
+  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" {...props}>
+    <polyline points="3 6 5 6 21 6" />
+    <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+    <path d="M10 11v6M14 11v6" />
+    <path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2" />
+  </svg>
+);
 
-/* =================== App =================== */
-export default function AppAnimals() {
-  useEffect(() => {
-    window.dispatchEvent(
-      new CustomEvent("bhq:module", {
-        detail: { key: "animals", label: "Animals" },
-      })
-    );
-  }, []);
-  const api = useMemo(() => {
-    return makeApi(undefined, () => {
-      const headers: Record<string, string> = {};
-      try {
-        const org = localStorage.getItem("BHQ_ORG_ID");
-        if (org) headers["X-Org-Id"] = org;
-      } catch { }
-      return headers;
-    });
-  }, []);
+/** ────────────────────────────────────────────────────────────────────────
+ * Cycle Tab (calendar edit, icon delete + confirm, persisted) — breeders only
+ * ─────────────────────────────────────────────────────────────────────── */
+function CycleTab({
+  animal,
+  api,
+  onSaved,
+}: {
+  animal: AnimalRow;
+  api: any;
+  onSaved: (dates: string[]) => void;
+}) {
+  const [dates, setDates] = React.useState<string[]>(() => [...(animal.cycleStartDates || [])].sort());
+  const [editing, setEditing] = React.useState<Record<string, boolean>>({});
 
-  const safeGetCreatingOrg = React.useCallback(async () => {
-    try {
-      const org = await (api as any)?.lookups?.getCreatingOrganization?.();
-      if (org && org.id != null) return org;
-    } catch {
-      // fall through to local fallback
-    }
-
-    // Local fallback (dev)
-    try {
-      const id = localStorage.getItem("BHQ_ORG_ID");
-      if (id) {
-        return {
-          id,
-          display_name: localStorage.getItem("BHQ_ORG_NAME") || "My Organization",
-        };
-      }
-    } catch {
-      /* ignore */
-    }
-    return null;
-  }, [api]);
-
-
-  function Field({ label, value }: { label: string; value: React.ReactNode }) {
-    return (
-      <div className="rounded-md border border-hairline p-3">
-        <div className="text-[11px] font-semibold uppercase text-secondary">{label}</div>
-        <div className="text-sm">{value}</div>
-      </div>
-    );
-  }
-
-  function CycleTab({ animal }: { animal: AnimalRow }) {
-    const [dates, setDates] = React.useState<string[]>(
-      () => (animal as any).cycleStartDates || []
-    );
-    const [newDate, setNewDate] = React.useState<string>("");
-    const [note, setNote] = React.useState<string>("");
-
-    React.useEffect(() => {
-      (animal as any).cycleStartDates = dates;
-    }, [dates, animal]);
-
-    // KPI summary (biology helper with safe fallback)
-    let last = "—", avgAll = "—", avg3 = "—", nextEst = "—";
-    try {
-      const s: any = computeCycleSummary?.(dates) || {};
-      if (s.lastCycle) last = new Date(s.lastCycle).toLocaleDateString();
-      if (s.avgAll) avgAll = `${s.avgAll} d`;
-      if (s.avg3) avg3 = `${s.avg3} d`;
-      if (s.nextEst) nextEst = new Date(s.nextEst).toLocaleDateString();
-    } catch {
-      if (dates.length) {
-        last = new Date(dates[dates.length - 1]).toLocaleDateString();
-        nextEst = new Date(
-          new Date(dates[dates.length - 1]).getTime() + 180 * 24 * 3600 * 1000
-        ).toLocaleDateString();
-      }
-    }
-
-    return (
-      <div>
-        <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 mb-3">
-          <Field label="Last Cycle" value={last} />
-          <Field label="Avg Cycle (All)" value={avgAll} />
-          <Field label="Avg (Last 3)" value={avg3} />
-          <Field label="Next Cycle (Est.)" value={nextEst} />
-        </div>
-
-        <div className="rounded-md border border-hairline">
-          <div className="flex items-center justify-between p-2 text-sm border-b border-hairline">
-            <div className="font-medium">Cycle Start Dates</div>
-            <Button
-              type="button"
-              onClick={() => {
-                if (!newDate) return;
-                setDates(arr => [...arr, newDate].sort());
-                setNewDate("");
-                setNote("");
-              }}
-            >
-              + Add Cycle Start Date
-            </Button>
-          </div>
-
-          <div className="p-2 flex gap-2">
-            <Input type="date" value={newDate} onChange={(e) => setNewDate(e.target.value)} />
-            <Input placeholder="Note" value={note} onChange={(e) => setNote(e.target.value)} />
-          </div>
-
-          {dates.map((d) => (
-            <div key={d} className="flex items-center justify-between px-2 py-1 border-t border-hairline text-sm">
-              <div className="flex-1">{new Date(d).toLocaleDateString()}</div>
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    const next = window.prompt("Edit date (yyyy-mm-dd)", d);
-                    if (next) setDates((arr) => arr.map((x) => (x === d ? next : x)).sort());
-                  }}
-                >
-                  Edit
-                </Button>
-                <Button variant="ghost" onClick={() => setDates((arr) => arr.filter((x) => x !== d))}>
-                  Delete
-                </Button>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    );
-  }
-
-
-  /* Prefs */
-  const [columns, setColumns] = useState<Record<string, boolean>>(() => {
-    const saved = localStorage.getItem(COL_STORAGE_KEY);
-    if (saved) return JSON.parse(saved);
-    // defaults = on for default section, off for “more”
-    const next: Record<string, boolean> = {};
-    for (const c of ALL_COLUMNS) {
-      next[String(c.key)] = defaultKeys.has(String(c.key));
-    }
-    return next;
-  });
-  useEffect(() => {
-    const valid = new Set(ALL_COLUMNS.map((c) => String(c.key)));
-    const hasStale = Object.keys(columns).some((k) => !valid.has(k));
-    if (hasStale) {
-      const next: Record<string, boolean> = {};
-      ALL_COLUMNS.forEach((c) => { next[String(c.key)] = !!columns[String(c.key)]; });
-      setColumns(next);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // one-time clean
-  const [sorts, setSorts] = useState<SortRule[]>(() => {
-    const saved = localStorage.getItem(SORT_STORAGE_KEY);
-    return saved ? JSON.parse(saved) : [];
-  });
-  const [q, setQ] = useState<string>(() => localStorage.getItem(Q_STORAGE_KEY) || "");
-  const dq = useDebounced(q, 300);
-
-  const [pageSize, setPageSize] = useState<number>(() => Number(localStorage.getItem(PAGE_SIZE_STORAGE_KEY) || 25));
-  const [page, setPage] = useState<number>(1);
-
-  const [showFilters, setShowFilters] = useState<boolean>(() => localStorage.getItem(SHOW_FILTERS_STORAGE_KEY) === "1");
-  const [filters, setFilters] = useState<Record<string, string>>(() => {
-    const saved = localStorage.getItem(FILTERS_STORAGE_KEY);
-    return saved ? JSON.parse(saved) : {};
-  });
-  const [includeArchived, setIncludeArchived] = useState(false);
-
-  useEffect(() => { localStorage.setItem(COL_STORAGE_KEY, JSON.stringify(columns)); }, [columns]);
-  useEffect(() => { localStorage.setItem(SORT_STORAGE_KEY, JSON.stringify(sorts)); }, [sorts]);
-  useEffect(() => { localStorage.setItem(Q_STORAGE_KEY, q); }, [q]);
-  useEffect(() => { localStorage.setItem(PAGE_SIZE_STORAGE_KEY, String(pageSize)); }, [pageSize]);
-  useEffect(() => { localStorage.setItem(FILTERS_STORAGE_KEY, JSON.stringify(filters)); }, [filters]);
-  useEffect(() => { localStorage.setItem(SHOW_FILTERS_STORAGE_KEY, showFilters ? "1" : "0"); }, [showFilters]);
-
-  /* Create/Edit */
-  type AnimalStatus =
-    | "Active" | "Breeding" | "Unavailable" | "Retired" | "Deceased" | "Prospect";
-
-  const EMPTY_FORM: Partial<AnimalRow> = {
-    name: "",
-    species: "Dog",
-    breed: "",
-    _canonicalBreedId: undefined as string | undefined,
-    _customBreedId: undefined as number | undefined,
-    _breedSnapshot: undefined as any,
-    sex: "Female",
-    dob: "",
-    status: "Active" as AnimalStatus,
-    ownerId: null,
-    ownerName: "",
-    owners: [] as OwnershipRow[],
-    microchip: "",
-    tags: [],
-    notes: "",
+  const add = (v: string) => {
+    if (!v) return;
+    const next = Array.from(new Set([...dates, v])).sort();
+    setDates(next);
   };
 
-  const [formOpen, setFormOpen] = useState(false);
-  const [editingId, setEditingId] = useState<ID | null>(null);
-  const [form, setForm] = useState<Partial<AnimalRow>>(EMPTY_FORM);
-  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
+  const remove = async (d: string) => {
+    if (!confirm("Delete this cycle start date?")) return;
+    const next = dates.filter((x) => x !== d);
+    setDates(next);
+  };
 
-  /* Drawer (declare BEFORE any effect that references it) */
-  const [drawer, setDrawer] = useState<AnimalRow | null>(null);
+  const persist = async () => {
+    try {
+      await api?.animals?.putCycleStartDates?.(animal.id, dates);
+    } catch {}
+    onSaved(dates);
+  };
 
-  const [drawerTab, setDrawerTab] = useState<
-    "overview" | "cycle" | "offspring" | "health" | "documents" | "audit"
-  >(() => (localStorage.getItem("bhq_animals_drawertab_v1") as any) || "overview");
-  useEffect(() => localStorage.setItem("bhq_animals_drawertab_v1", drawerTab), [drawerTab]);
+  const species: MathSpecies =
+    (String(animal.species || "DOG").toUpperCase() as MathSpecies) || "DOG";
 
-  // Load ownership when a drawer is opened
-  useEffect(() => {
-    if (!drawer?.id) return;
-    let cancelled = false;
+  const heatHistory = React.useMemo(() => ({ heatStarts: dates }), [dates]);
+
+  const learned = React.useMemo(() => resolveCycleLengthDays(species, heatHistory, null), [species, heatHistory]);
+
+  const lastHeatIso = dates.length ? dates[dates.length - 1] : null;
+  const projected: string[] = React.useMemo(() => {
+    if (!lastHeatIso) return [];
+    return projectUpcomingCycles(lastHeatIso, learned.days, 2);
+  }, [lastHeatIso, learned.days]);
+
+  const preview = React.useMemo(() => {
+    if (!projected.length) return null;
+    const nextHeat = projected[0];
+    const w = fromPlan(
+      {
+        species,
+        earliestHeatStart: nextHeat,
+        latestHeatStart: nextHeat,
+        ovulationDate: null,
+      },
+      {}
+    );
+
+    const events = windowsToCalendarEvents(String(animal.id), DEFAULT_STAGE_LABELS, w);
+
+    const byType = (t: "full" | "likely") =>
+      events.filter((e) => (e.meta as any)?.type === t && (e.meta as any)?.stage !== "availability");
+
+    // availability detection resilient to label changes
+    const availability = events.filter((e) => {
+      const st = String((e.meta as any)?.stage || "").toLowerCase();
+      return st.startsWith("availability");
+    });
+
+    return { windows: w, full: byType("full"), likely: byType("likely"), availability };
+  }, [projected, species, animal.id]);
+
+  const pretty = (iso?: string | null) => (iso ? new Date(iso).toLocaleDateString() : "—");
+
+  return (
+    <div className="space-y-2">
+      <SectionCard title="Cycle Summary">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
+          <div>
+            <div className="text-xs text-secondary">Last Heat Start</div>
+            <div>{pretty(lastHeatIso)}</div>
+          </div>
+          <div>
+            <div className="text-xs text-secondary">Cycle Length (days)</div>
+            <div>
+              {learned.days} <span className="text-secondary text-xs">({learned.source})</span>
+            </div>
+          </div>
+          <div>
+            <div className="text-xs text-secondary">Next Projected Cycle Start</div>
+            <div>{projected.length ? projected.map(pretty).join(" • ") : "—"}</div>
+          </div>
+        </div>
+      </SectionCard>
+
+      {preview && (
+        <SectionCard title="Upcoming Windows (Preview)">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 text-sm">
+            <div>
+              <div className="text-xs text-secondary mb-1">Full Windows</div>
+              <ul className="space-y-1">
+                {preview.full.map((e) => (
+                  <li key={e.id}>
+                    <span className="text-primary">{e.title.replace(" (Full)", "")}:</span>{" "}
+                    {pretty(e.start.toISOString().slice(0, 10))} →{" "}
+                    {pretty(new Date(e.end.getTime() - 86400000).toISOString().slice(0, 10))}
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div>
+              <div className="text-xs text-secondary mb-1">Likely Windows</div>
+              <ul className="space-y-1">
+                {preview.likely.map((e) => (
+                  <li key={e.id}>
+                    <span className="text-primary">{e.title.replace(" (Likely)", "")}:</span>{" "}
+                    {pretty(e.start.toISOString().slice(0, 10))} →{" "}
+                    {pretty(new Date(e.end.getTime() - 86400000).toISOString().slice(0, 10))}
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div>
+              <div className="text-xs text-secondary mb-1">Availability</div>
+              <ul className="space-y-1">
+                {preview.availability.map((e) => (
+                  <li key={e.id}>
+                    {e.title}: {pretty(e.start.toISOString().slice(0, 10))} →{" "}
+                    {pretty(new Date(e.end.getTime() - 86400000).toISOString().slice(0, 10))}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+          <div className="text-xs text-secondary mt-2">
+            Names, ordering, and math come from BreedingMath (Placement terminology, inclusive end-dates).
+          </div>
+        </SectionCard>
+      )}
+
+      <SectionCard title="Cycle Start Dates">
+        <div className="flex items-center gap-2 mb-2">
+          <Input
+            type="date"
+            onChange={(e) => {
+              const v = (e.currentTarget as HTMLInputElement).value;
+              if (v) {
+                add(v);
+                (e.currentTarget as HTMLInputElement).value = "";
+              }
+            }}
+            placeholder="YYYY-MM-DD"
+          />
+          <Button variant="outline" onClick={persist}>
+            Save Dates
+          </Button>
+        </div>
+
+        <div className="rounded-md border border-hairline divide-y">
+          {dates.length === 0 && <div className="p-2 text-sm text-secondary">No dates yet.</div>}
+          {dates.map((d) => {
+            const isEditing = editing[d];
+            return (
+              <div key={d} className="p-2 flex items-center justify-between text-sm gap-3">
+                {!isEditing && <div className="min-w-[10rem]">{pretty(d)}</div>}
+                {isEditing && (
+                  <Input
+                    type="date"
+                    defaultValue={d}
+                    onChange={(e) => {
+                      const nextValue = (e.currentTarget as HTMLInputElement).value;
+                      if (!nextValue) return;
+                      setDates((arr) => {
+                        const copy = arr.filter((x) => x !== d);
+                        return Array.from(new Set([...copy, nextValue])).sort();
+                      });
+                    }}
+                    className="min-w-[12rem]"
+                  />
+                )}
+
+                <div className="flex items-center gap-2">
+                  {!isEditing ? (
+                    <Button size="sm" variant="outline" onClick={() => setEditing((m) => ({ ...m, [d]: true }))}>
+                      Edit
+                    </Button>
+                  ) : (
+                    <Button size="sm" variant="outline" onClick={() => setEditing((m) => ({ ...m, [d]: false }))}>
+                      Done
+                    </Button>
+                  )}
+                  <Button size="sm" variant="ghost" onClick={() => remove(d)} title="Delete date">
+                    <TrashIcon />
+                  </Button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </SectionCard>
+    </div>
+  );
+}
+
+/** ────────────────────────────────────────────────────────────────────────
+ * Program Tab — breeder readiness and program flags (no offspring)
+ * ─────────────────────────────────────────────────────────────────────── */
+function ProgramTab({
+  animal,
+  api,
+  onSaved,
+}: {
+  animal: AnimalRow;
+  api: any;
+  onSaved: (flags: ProgramFlags) => void;
+}) {
+  const [flags, setFlags] = React.useState<ProgramFlags>({
+    holdUntil: null,
+    embargoReason: null,
+    allowExternalStud: null,
+    disqualifiers: [],
+    notes: null,
+  });
+  const [loading, setLoading] = React.useState(true);
+
+  React.useEffect(() => {
+    let dead = false;
     (async () => {
       try {
-        const ownersRes = await (api as any)?.animals?.getOwners?.(drawer.id);
-        const ownersArr = Array.isArray(ownersRes) ? ownersRes : (ownersRes?.items ?? []);
-        if (!cancelled) {
-          setDrawer((d: any) =>
-            d && String(d.id) === String(drawer.id) ? { ...d, owners: ownersArr } : d
-          );
-        }
-      } catch { /* noop */ }
+        setLoading(true);
+        const server = await api?.animals?.getProgramFlags?.(animal.id);
+        if (!dead && server) setFlags(server);
+      } catch {}
+      setLoading(false);
     })();
-    return () => { cancelled = true; };
-  }, [drawer?.id, api]);
-
-
-  // Default ownership: on *create* only, if empty, seed to creating org (100%)
-  useEffect(() => {
-    if (!formOpen) return;
-    if (editingId != null) return;
-    if ((form.owners as OwnershipRow[] | undefined)?.length) return;
-
-    (async () => {
-      const org = await safeGetCreatingOrg();
-      if (org) {
-        setForm((f) => ({
-          ...f,
-          owners: [{
-            partyType: "Organization",
-            organizationId: org.id,
-            contactId: null,
-            display_name: org.display_name,
-            is_primary: true,
-            percent: 100,
-          }] as OwnershipRow[],
-        }));
-      }
-    })();
-  }, [formOpen, editingId, safeGetCreatingOrg, form.owners]);
-
-
-  /* Data */
-  const [loading, setLoading] = useState<boolean>(true);
-  const [rows, setRows] = useState<AnimalRow[]>([]);
-  const [total, setTotal] = useState<number>(0);
-  const [selected, setSelected] = useState<Set<ID>>(new Set());
-  const [menuOpen, setMenuOpen] = useState(false);
-
-  // Close kebab menu on outside click or Esc
-  useEffect(() => {
-    if (!menuOpen) return;
-    const onDown = () => setMenuOpen(false);
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setMenuOpen(false); };
-
-    document.addEventListener("mousedown", onDown);
-    document.addEventListener("keydown", onKey);
     return () => {
-      document.removeEventListener("mousedown", onDown);
-      document.removeEventListener("keydown", onKey);
+      dead = false;
     };
-  }, [menuOpen]);
+  }, [api, animal.id]);
 
-
-  useEffect(() => {
-    let ignore = false;
-    setLoading(true);
-    const sortParam = sorts.map((s) => `${s.dir === "desc" ? "-" : ""}${String(s.key)}`).join(",");
-    const query: any = {
-      q: dq || undefined,
-      limit: pageSize,
-      page,
-      includeArchived,
-      sort: sortParam || undefined,
-    };
-    (api as any)?.animals
-      ?.list?.(query)
-      ?.then((res: any) => {
-        if (ignore) return;
-        const items = Array.isArray(res?.items)
-          ? res.items
-          : Array.isArray(res?.data?.items)
-            ? res.data.items
-            : Array.isArray(res)
-              ? res
-              : [];
-        setRows(items.map(normalize));
-        setTotal(Number(res?.total ?? res?.data?.total ?? items.length ?? 0));
-      })
-      ?.catch(() => {
-        if (!ignore) {
-          setRows([]);
-          setTotal(0);
-        }
-      })
-      ?.finally(() => {
-        if (!ignore) setLoading(false);
-      });
-    return () => {
-      ignore = true;
-    };
-  }, [api, dq, pageSize, includeArchived, page, sorts]);
-
-  function clearFieldError(setErr: React.Dispatch<React.SetStateAction<Record<string, string>>>, key: string) {
-    setErr((prev) => {
-      if (!prev[key]) return prev;
-      const { [key]: _drop, ...rest } = prev;
-      return rest;
-    });
-  }
-
-
-  function validateAnimalForm(f: Partial<AnimalRow>, rows: AnimalRow[]) {
-    const e: Record<string, string> = {};
-
-    if (!f.name || String(f.name).trim().length < 2) e.name = "Name is required";
-    if (!f.species) e.species = "Species is required";
-    if (!f.sex) e.sex = "Sex is required";
-    if (!f.dob) e.dob = "Date of Birth is required";
-
-    // Breed must be a REAL selection:
-    //  - either Advanced saved a snapshot (_breedSnapshot),
-    //  - or user picked a pure breed (one of *_breedId set)
-    const hasMixed = !!(f as any)._breedSnapshot;
-    const hasPure = !!(f as any)._canonicalBreedId || !!(f as any)._customBreedId;
-
-    if (!hasMixed && !hasPure) {
-      e.breed = "Select a breed from the list or use Advanced for a mix.";
-    }
-
-    if (f.dob) {
-      const d = new Date(String(f.dob));
-      if (Number.isNaN(d.getTime()) || d.getTime() > Date.now()) {
-        e.dob = "DOB must be a valid date in the past";
-      }
-    }
-
-    if (f.microchip) {
-      const dup = rows.find(
-        r => r.microchip && r.microchip === f.microchip && r.id !== (editingId ?? -1)
-      );
-      if (dup) e.microchip = "Microchip must be unique";
-    }
-
-    return e;
-  }
-
-  async function saveAnimal() {
-    const errs = validateAnimalForm(form, rows);
-    setFormErrors(errs);
-    if (Object.keys(errs).length) return;
-
-    const payload: any = {
-      name: String(form.name ?? "").trim(),
-      species: toEnum(form.species),
-      sex: toEnum(form.sex),
-      status: toEnum(form.status),
-      birthDate: form.dob ? new Date(String(form.dob)).toISOString() : null,
-      microchip: (form.microchip ?? "").trim() || null,
-      notes: (form as any).notes ?? "",
-      ownerId: form.ownerId ?? null,
-      ...(form.ownerName ? { ownerName: String(form.ownerName).trim() } : {}),
-      tags: Array.isArray(form.tags) ? form.tags : [],
-      breed: form.breed || null,
-      canonicalBreedId: (form as any)._canonicalBreedId ?? null,
-      customBreedId: (form as any)._customBreedId ?? null,
-    };
-
+  const save = async () => {
     try {
-      // 1) create or update
-      // 1) create or update
-      let targetId: ID | null = null;
-      if (editingId == null) {
-        const created = await (api as any)?.animals?.create?.(payload);
-        const idLike = created?.id ?? created?.data?.id ?? created?.animalId ?? created;
-        targetId =
-          idLike !== undefined && idLike !== null
-            ? (typeof idLike === "number" ? idLike : String(idLike))
-            : null;
-      } else {
-        await (api as any)?.animals?.update?.(editingId as ID, payload);
-        targetId = editingId as ID;
+      await api?.animals?.putProgramFlags?.(animal.id, flags);
+    } catch {}
+    onSaved(flags);
+  };
+
+  const months = ageInMonths(animal.dob);
+  const sex = (animal.sex || "").toLowerCase();
+  const isFemale = sex.startsWith("f");
+  const isMale = sex.startsWith("m");
+
+  // very light, transparent readiness hints for breeders
+  const ageOkFemale = months != null ? months >= 18 : false;
+  const ageOkMale = months != null ? months >= 12 : false;
+
+  return (
+    <div className="space-y-3">
+      <SectionCard title="Readiness Summary">
+        <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 text-sm">
+          <div>
+            <div className="text-xs text-secondary">Age</div>
+            <div>{months != null ? `${months} mo` : "—"}</div>
+          </div>
+          <div>
+            <div className="text-xs text-secondary">Sex</div>
+            <div>{animal.sex || "—"}</div>
+          </div>
+          <div>
+            <div className="text-xs text-secondary">Program Status</div>
+            <div>{animal.status || "Active"}</div>
+          </div>
+          <div>
+            <div className="text-xs text-secondary">Eligibility Hint</div>
+            <div>
+              {isFemale ? (ageOkFemale ? "Age meets common female threshold" : "Age may be low for female breeding") : null}
+              {isMale ? (ageOkMale ? "Age meets common male threshold" : "Age may be low for male breeding") : null}
+              {!isFemale && !isMale ? "—" : ""}
+            </div>
+          </div>
+        </div>
+        <div className="mt-2 text-xs text-secondary">
+          Readiness hints are informational and are not rules. Configure your own constraints below.
+        </div>
+      </SectionCard>
+
+      <SectionCard title="Program Flags">
+        {loading ? (
+          <div className="text-sm text-secondary">Loading…</div>
+        ) : (
+          <div className="space-y-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div>
+                <div className="text-xs text-secondary mb-1">Hold Until</div>
+                <Input
+                  type="date"
+                  value={(flags.holdUntil || "").slice(0, 10)}
+                  onChange={(e) => setFlags((f) => ({ ...f, holdUntil: (e.currentTarget as HTMLInputElement).value || null }))}
+                />
+              </div>
+              <div className="sm:col-span-2">
+                <div className="text-xs text-secondary mb-1">Embargo Reason</div>
+                <Input
+                  placeholder="clearances pending, recovery, etc."
+                  value={flags.embargoReason || ""}
+                  onChange={(e) => setFlags((f) => ({ ...f, embargoReason: (e.currentTarget as HTMLInputElement).value || null }))}
+                />
+              </div>
+            </div>
+
+            {isMale && (
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <div className="text-xs text-secondary mb-1">Allow External Stud Requests</div>
+                  <select
+                    className="h-9 w-full rounded-md border border-hairline bg-surface px-2 text-sm text-primary"
+                    value={String(!!flags.allowExternalStud)}
+                    onChange={(e) => setFlags((f) => ({ ...f, allowExternalStud: e.currentTarget.value === "true" }))}
+                  >
+                    <option value="true">Yes</option>
+                    <option value="false">No</option>
+                  </select>
+                </div>
+              </div>
+            )}
+
+            <div>
+              <div className="text-xs text-secondary mb-1">Disqualifiers</div>
+              <Input
+                placeholder="comma separated, e.g. MDR1 carrier, patella grade, bite"
+                value={(flags.disqualifiers || []).join(", ")}
+                onChange={(e) =>
+                  setFlags((f) => ({
+                    ...f,
+                    disqualifiers: (e.currentTarget as HTMLInputElement)
+                      .value.split(",")
+                      .map((s) => s.trim())
+                      .filter(Boolean),
+                  }))
+                }
+              />
+            </div>
+
+            <div>
+              <div className="text-xs text-secondary mb-1">Program Notes</div>
+              <textarea
+                className="h-24 w-full rounded-md border border-hairline bg-surface px-3 text-sm text-primary outline-none"
+                value={flags.notes || ""}
+                onChange={(e) => setFlags((f) => ({ ...f, notes: (e.currentTarget as HTMLTextAreaElement).value || null }))}
+              />
+            </div>
+
+            <div className="flex items-center justify-end">
+              <Button variant="outline" onClick={save}>
+                Save Flags
+              </Button>
+            </div>
+          </div>
+        )}
+      </SectionCard>
+    </div>
+  );
+}
+
+/** ────────────────────────────────────────────────────────────────────────
+ * Pairing Tab — preferred partners for strategic planning (no offspring)
+ * ─────────────────────────────────────────────────────────────────────── */
+function PairingTab({
+  animal,
+  api,
+}: {
+  animal: AnimalRow;
+  api: any;
+}) {
+  const [preferred, setPreferred] = React.useState<PreferredPartner[]>([]);
+  const [avoid, setAvoid] = React.useState<PreferredPartner[]>([]);
+  const [loading, setLoading] = React.useState(true);
+
+  React.useEffect(() => {
+    let dead = false;
+    (async () => {
+      try {
+        setLoading(true);
+        const pr = (await api?.animals?.listPreferredPartners?.(animal.id)) || [];
+        const av = (await api?.animals?.listAvoidPartners?.(animal.id)) || [];
+        if (!dead) {
+          setPreferred(pr);
+          setAvoid(av);
+        }
+      } catch {}
+      setLoading(false);
+    })();
+    return () => {
+      dead = true;
+    };
+  }, [api, animal.id]);
+
+  const [q, setQ] = React.useState("");
+  const [hits, setHits] = React.useState<PreferredPartner[]>([]);
+  React.useEffect(() => {
+    const t = setTimeout(async () => {
+      if (!q.trim()) {
+        setHits([]);
+        return;
       }
+      try {
+        const res = (await api?.animals?.search?.({ q: q.trim(), limit: 8 })) || [];
+        const mapped: PreferredPartner[] = res
+          .filter((r: any) => Number(r.id) !== Number(animal.id))
+          .map((r: any) => ({ id: Number(r.id), name: r.name, sex: r.sex || null }));
+        setHits(mapped);
+      } catch {
+        setHits([]);
+      }
+    }, 250);
+    return () => clearTimeout(t);
+  }, [q, api, animal.id]);
 
-      // --- OWNERSHIP: persist after create/update ---
-      // ...
-      if (targetId != null) {
-        let owners: OwnershipRow[] = (form.owners as OwnershipRow[]) || [];
+  async function savePreferred(next: PreferredPartner[]) {
+    setPreferred(next);
+    try {
+      await api?.animals?.putPreferredPartners?.(animal.id, next);
+    } catch {}
+  }
+  async function saveAvoid(next: PreferredPartner[]) {
+    setAvoid(next);
+    try {
+      await api?.animals?.putAvoidPartners?.(animal.id, next);
+    } catch {}
+  }
 
-        if (editingId == null && owners.length === 0) {
-          const org = await safeGetCreatingOrg();
-          if (org) {
-            owners = [{
+  function pill(p: PreferredPartner, onRemove: () => void) {
+    return (
+      <span key={p.id} className="inline-flex items-center gap-2 rounded-full border border-hairline px-2 py-0.5 text-xs mr-2 mb-2">
+        <span className="truncate max-w-[14rem]">{p.name}{p.sex ? ` • ${p.sex}` : ""}</span>
+        <button className="opacity-70 hover:opacity-100" onClick={onRemove} title="Remove">✕</button>
+      </span>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      <SectionCard title="Find Partners">
+        <div className="flex items-end gap-2">
+          <div className="flex-1">
+            <div className="text-xs text-secondary mb-1">Search Animals</div>
+            <Input value={q} onChange={(e) => setQ((e.currentTarget as HTMLInputElement).value)} placeholder="name, tag, microchip…" />
+          </div>
+        </div>
+        {hits.length > 0 && (
+          <div className="mt-2 rounded-md border border-hairline p-2">
+            <div className="text-xs text-secondary mb-1">Results</div>
+            <div className="flex flex-wrap">
+              {hits.map((h) => (
+                <span key={h.id} className="inline-flex items-center gap-2 rounded-full border border-hairline px-2 py-0.5 text-xs mr-2 mb-2">
+                  <span className="truncate max-w-[14rem]">{h.name}{h.sex ? ` • ${h.sex}` : ""}</span>
+                  <Button size="sm" variant="outline" onClick={() => savePreferred(Array.from(new Set([...preferred, h]).values()))}>
+                    Prefer
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={() => saveAvoid(Array.from(new Set([...avoid, h]).values()))}>
+                    Avoid
+                  </Button>
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+      </SectionCard>
+
+      <SectionCard title="Preferred Partners">
+        {loading ? (
+          <div className="text-sm text-secondary">Loading…</div>
+        ) : (
+          <div className="flex flex-wrap">
+            {preferred.length === 0 && <div className="text-sm text-secondary">None yet.</div>}
+            {preferred.map((p) => pill(p, () => savePreferred(preferred.filter((x) => x.id !== p.id))))}
+          </div>
+        )}
+      </SectionCard>
+
+      <SectionCard title="Avoid List">
+        {loading ? (
+          <div className="text-sm text-secondary">Loading…</div>
+        ) : (
+          <div className="flex flex-wrap">
+            {avoid.length === 0 && <div className="text-sm text-secondary">None.</div>}
+            {avoid.map((p) => pill(p, () => saveAvoid(avoid.filter((x) => x.id !== p.id))))}
+          </div>
+        )}
+      </SectionCard>
+
+      <div className="text-xs text-secondary">
+        Pairing lists are program tools only. Offspring is managed in the Offspring module.
+      </div>
+    </div>
+  );
+}
+
+/** ────────────────────────────────────────────────────────────────────────
+ * Main
+ * ─────────────────────────────────────────────────────────────────────── */
+export default function AppAnimals() {
+  React.useEffect(() => {
+    window.dispatchEvent(new CustomEvent("bhq:module", { detail: { key: "animals", label: "Animals" } }));
+  }, []);
+
+  React.useEffect(() => {
+    if (!getOverlayRoot()) {
+      console.warn("ColumnsPopover needs an overlay root. Add <div id='bhq-overlay-root'></div> to the shell.");
+    }
+  }, []);
+
+  const api = React.useMemo(() => makeApi("/api/v1"), []);
+
+  const breedBrowseApi = React.useMemo(
+    () => ({
+      breeds: {
+        listCanonical: (opts: { species: string; orgId?: number; limit?: number }) =>
+          (api as any)?.breeds?.listCanonical?.(opts) ?? Promise.resolve([]),
+      },
+    }),
+    [api]
+  );
+
+  // Resolve orgId once for breed searches
+  const [orgIdForBreeds, setOrgIdForBreeds] = React.useState<number | null>(null);
+  React.useEffect(() => {
+    let alive = true;
+    (async () => {
+      const org = await safeGetCreatingOrg(api);
+      if (!alive) return;
+      if (org?.id != null) setOrgIdForBreeds(Number(org.id));
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [api]);
+
+  // Search/filters
+  const [q, setQ] = React.useState(() => {
+    try {
+      return localStorage.getItem("bhq_animals_q_v1") || "";
+    } catch {
+      return "";
+    }
+  });
+  const [filtersOpen, setFiltersOpen] = React.useState(false);
+  const [filters, setFilters] = React.useState<Record<string, string>>(() => {
+    try {
+      return JSON.parse(localStorage.getItem("bhq_animals_filters_v1") || "{}");
+    } catch {
+      return {};
+    }
+  });
+  React.useEffect(() => {
+    try {
+      localStorage.setItem("bhq_animals_q_v1", q);
+    } catch {}
+  }, [q]);
+  React.useEffect(() => {
+    try {
+      localStorage.setItem("bhq_animals_filters_v1", JSON.stringify(filters || {}));
+    } catch {}
+  }, [filters]);
+
+  const [qDebounced, setQDebounced] = React.useState(q);
+  React.useEffect(() => {
+    const t = setTimeout(() => setQDebounced(q.trim()), 300);
+    return () => clearTimeout(t);
+  }, [q]);
+
+  // Data
+  const [rows, setRows] = React.useState<AnimalRow[]>([]);
+  const [loading, setLoading] = React.useState<boolean>(true);
+  const [error, setError] = React.useState<string | null>(null);
+
+  // Pagination
+  const [pageSize, setPageSize] = React.useState<number>(25);
+  const [page, setPage] = React.useState<number>(1);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const res = await api.animals.list({ q: qDebounced || undefined, page: 1, limit: 50 });
+        const items = (res?.items || []).map(animalToRow);
+        if (!cancelled) setRows(items);
+      } catch (e: any) {
+        if (!cancelled) setError(e?.data?.error || e?.message || "Failed to load animals");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [api, qDebounced]);
+
+  // Columns
+  const { map, toggle, setAll, visible } = hooks.useColumns(COLUMNS, STORAGE_KEY);
+  const visibleSafe = Array.isArray(visible) && visible.length ? visible : COLUMNS;
+
+  // Filters schema
+  const filterSchemaForFiltersRow = React.useMemo(() => {
+    return buildRangeAwareSchema(
+      visibleSafe.map((c) => ({ key: c.key, label: c.label })),
+      ["dob", "created_at", "updated_at"]
+    );
+  }, [visibleSafe]);
+
+  // Client search + filters
+  const displayRows = React.useMemo(() => {
+    const active = Object.entries(filters || {}).filter(([, v]) => (v ?? "") !== "");
+    if (!active.length && !qDebounced) return rows;
+
+    const lc = (v: any) => String(v ?? "").toLowerCase();
+    let data = [...rows];
+
+    if (qDebounced) {
+      const ql = qDebounced.toLowerCase();
+      data = data.filter((r) => {
+        const hay = [
+          r.name,
+          r.nickname,
+          r.species,
+          r.breed,
+          r.sex,
+          r.status,
+          r.ownerName,
+          r.microchip,
+          ...(r.tags || []),
+          r.dob,
+          r.created_at,
+          r.updated_at,
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
+        return hay.includes(ql);
+      });
+    }
+
+    if (active.length) {
+      const dobFrom = filters["dob_from"];
+      const dobTo = filters["dob_to"];
+      const createdFrom = filters["created_at_from"];
+      const createdTo = filters["created_at_to"];
+      const updatedFrom = filters["updated_at_from"];
+      const updatedTo = filters["updated_at_to"];
+
+      data = data.filter((r) => {
+        const textOk = active.every(([key, val]) => {
+          if (key.endsWith("_from") || key.endsWith("_to")) return true;
+          if (key === "tags") {
+            const str = String(val).toLowerCase().trim();
+            return (r.tags || []).some((t) => String(t).toLowerCase().includes(str));
+          }
+          const raw = (r as any)[key];
+          const isDate = DATE_KEYS.has(key as any);
+          const hay = isDate && raw ? String(raw).slice(0, 10) : String(raw ?? "");
+          return lc(hay).includes(lc(val));
+        });
+        if (!textOk) return false;
+
+        const dobOk = dobFrom || dobTo ? inDateRange(r.dob, dobFrom, dobTo) : true;
+        const createdOk = createdFrom || createdTo ? inDateRange(r.created_at, createdFrom, createdTo) : true;
+        const updatedOk = updatedFrom || updatedTo ? inDateRange(r.updated_at, updatedFrom, updatedTo) : true;
+
+        return dobOk && createdOk && updatedOk;
+      });
+    }
+
+    return data;
+  }, [rows, filters, qDebounced]);
+
+  // Sorting
+  const [sorts, setSorts] = React.useState<Array<{ key: string; dir: "asc" | "desc" }>>([]);
+  const onToggleSort = (key: string) => {
+    setSorts((prev) => {
+      const found = prev.find((s) => s.key === key);
+      if (!found) return [{ key, dir: "asc" }];
+      if (found.dir === "asc") return prev.map((s) => (s.key === key ? { ...s, dir: "desc" } : s));
+      return prev.filter((s) => s.key !== key);
+    });
+  };
+  React.useEffect(() => {
+    setPage(1);
+  }, [qDebounced, filters, sorts]);
+
+  const sortedRows = React.useMemo(() => {
+    if (!sorts.length) return displayRows;
+    const out = [...displayRows];
+    out.sort((a, b) => {
+      for (const s of sorts) {
+        const av = (a as any)[s.key];
+        const bv = (b as any)[s.key];
+        const cmp = String(av ?? "").localeCompare(String(bv ?? ""), undefined, { numeric: true, sensitivity: "base" });
+        if (cmp !== 0) return s.dir === "asc" ? cmp : -cmp;
+      }
+      return 0;
+    });
+    return out;
+  }, [displayRows, sorts]);
+
+  // Paging
+  const pageCount = Math.max(1, Math.ceil(sortedRows.length / pageSize));
+  const clampedPage = Math.min(page, pageCount);
+  const start = sortedRows.length === 0 ? 0 : (clampedPage - 1) * pageSize + 1;
+  const end = sortedRows.length === 0 ? 0 : Math.min(sortedRows.length, (clampedPage - 1) * pageSize + pageSize);
+  const pageRows = React.useMemo(() => {
+    const from = (clampedPage - 1) * pageSize;
+    const to = from + pageSize;
+    return sortedRows.slice(from, to);
+  }, [sortedRows, clampedPage, pageSize]);
+
+  /** ────────── Custom Breed dialog state (before sections) ────────── */
+  const [customBreedOpen, setCustomBreedOpen] = React.useState(false);
+  const [customBreedSpecies, setCustomBreedSpecies] = React.useState<"DOG" | "CAT" | "HORSE">("DOG");
+  const [onCustomBreedCreated, setOnCustomBreedCreated] =
+    React.useState<((c: { id: number; name: string; species: "DOG" | "CAT" | "HORSE" }) => void) | null>(null);
+
+  /** ────────── Sections (Overview compact) ────────── */
+  const animalSections = (
+    mode: "view" | "edit",
+    row: AnimalRow,
+    setDraft: (p: Partial<AnimalRow>) => void
+  ) => [
+    {
+      title: "Identity",
+      fields: [
+        {
+          label: "Name",
+          view: (r) => r.name || "—",
+          edit: (_r, set) => <Input size="sm" defaultValue={row.name} onChange={(e) => set({ name: e.currentTarget.value })} />,
+        },
+        {
+          label: "Nickname",
+          view: (r) => r.nickname || "—",
+          edit: (_r, set) => (
+            <Input size="sm" defaultValue={row.nickname ?? ""} onChange={(e) => set({ nickname: e.currentTarget.value })} />
+          ),
+        },
+      ],
+      gridCols: 2 as any,
+    },
+    {
+      title: "Profile",
+      fields: [
+        {
+          label: "Species",
+          view: (r) => r.species ?? "—",
+          edit: (_r, set) => (
+            <select
+              className="h-8 w-full rounded-md bg-surface border border-hairline px-2 text-sm text-primary"
+              defaultValue={row.species || "Dog"}
+              onChange={(e) => {
+                const next = e.target.value as "Dog" | "Cat" | "Horse";
+                set({ species: next, breed: null });
+              }}
+            >
+              <option>Dog</option>
+              <option>Cat</option>
+              <option>Horse</option>
+            </select>
+          ),
+        },
+        {
+          label: "Breed",
+          view: (r) => r.breed ?? "—",
+          edit: (_r, set) => (
+            <div className="flex items-center gap-2">
+              <div className="flex-1">
+                <div>
+                  <CustomBreedCombo
+                    species={(row.species as "Dog" | "Cat" | "Horse") || "Dog"}
+                    value={row.breed || null}
+                    onChange={(name) => set({ breed: name ?? null })}
+                    api={breedBrowseApi}
+                    orgIdForBreeds={orgIdForBreeds ?? undefined}
+                    onOpenCustom={() => {
+                      const speciesEnum = (String(row.species || "Dog").toUpperCase() as "DOG" | "CAT" | "HORSE");
+                      setCustomBreedSpecies(speciesEnum);
+                      setOnCustomBreedCreated(() => (created) => {
+                        set({ breed: created.name });
+                        setCustomBreedOpen(false);
+                      });
+                      setCustomBreedOpen(true);
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
+          ),
+        },
+        {
+          label: "Sex",
+          view: (r) => r.sex ?? "—",
+          edit: (_r, set) => (
+            <select
+              className="h-8 w-full rounded-md bg-surface border border-hairline px-2 text-sm text-primary"
+              defaultValue={row.sex || "Female"}
+              onChange={(e) => set({ sex: e.target.value })}
+            >
+              <option>Female</option>
+              <option>Male</option>
+            </select>
+          ),
+        },
+        {
+          label: "Status",
+          view: (r) => r.status ?? "Active",
+          edit: (_r, set) => (
+            <select
+              className="h-8 w-full rounded-md bg-surface border border-hairline px-2 text-sm text-primary"
+              defaultValue={row.status || "Active"}
+              onChange={(e) => set({ status: e.target.value })}
+            >
+              {["Active", "Breeding", "Unavailable", "Retired", "Deceased", "Prospect"].map((s) => (
+                <option key={s}>{s}</option>
+              ))}
+            </select>
+          ),
+        },
+      ],
+      gridCols: 4 as any,
+    },
+    {
+      title: "Ownership",
+      fields: [
+        { label: "Owner", view: (r) => r.ownerName ?? "—" },
+        {
+          label: "Ownership",
+          view: (r) => <OwnershipChips owners={((r as any).owners || []) as any[]} />,
+          edit: (_r, _set) => (
+            <OwnershipEditor
+              api={{
+                searchContacts: (q) => api?.lookups?.searchContacts?.(q) ?? Promise.resolve([]),
+                searchOrganizations: (q) => api?.lookups?.searchOrganizations?.(q) ?? Promise.resolve([]),
+              }}
+              value={(((row as any).owners) || []) as any[]}
+              onChange={(rows) => (setDraft as any)({ ...(row as any), owners: rows })}
+            />
+          ),
+        },
+      ],
+      gridCols: 2 as any,
+    },
+    {
+      title: "Identifiers & Dates",
+      fields: [
+        {
+          label: "Microchip #",
+          view: (r) => r.microchip ?? "—",
+          edit: (_r, set) => (
+            <Input size="sm" defaultValue={row.microchip ?? ""} onChange={(e) => set({ microchip: e.currentTarget.value })} />
+          ),
+        },
+        {
+          label: "DOB",
+          view: (r) => fmt(r.dob) || "—",
+          edit: (_r, set) => (
+            <Input size="sm" type="date" defaultValue={(row.dob || "").slice(0, 10)} onChange={(e) => set({ dob: e.currentTarget.value })} />
+          ),
+        },
+      ],
+      gridCols: 2 as any,
+    },
+    {
+      title: "Notes & Tags",
+      fields: [
+        {
+          label: "Tags",
+          view: (r) => (r.tags || []).join(", ") || "—",
+          edit: (_r, set) => (
+            <Input
+              size="sm"
+              defaultValue={(row.tags || []).join(", ")}
+              onChange={(e) => {
+                const tags = (e.currentTarget.value || "")
+                  .split(",")
+                  .map((s) => s.trim())
+                  .filter(Boolean);
+                set({ tags });
+              }}
+            />
+          ),
+        },
+        {
+          label: "Notes",
+          view: (r) => r.notes || "—",
+          edit: (_r, set) => (
+            <textarea
+              className="h-24 w-full rounded-md bg-surface border border-hairline px-3 text-sm text-primary outline-none"
+              defaultValue={row.notes ?? ""}
+              onChange={(e) => set({ notes: (e.currentTarget as HTMLTextAreaElement).value })}
+            />
+          ),
+        },
+      ],
+    },
+  ];
+
+  function CustomBreedCombo({
+    species,
+    value,
+    onChange,
+    api,
+    orgIdForBreeds,
+    onOpenCustom,
+  }: {
+    species: "Dog" | "Cat" | "Horse";
+    value: string | null;
+    onChange: (name: string | null) => void;
+    api: any;
+    orgIdForBreeds?: number;
+    onOpenCustom: () => void;
+  }) {
+    const [local, setLocal] = React.useState<string | null>(value ?? null);
+    React.useEffect(() => {
+      setLocal(value ?? null);
+    }, [value]);
+
+    const speciesKey = `breed-${species}`;
+    const valueObj = local ? ({ id: "__current__", name: local, species, source: "canonical" } as any) : null;
+
+    return (
+      <div className="flex items-center gap-2">
+        <div className="flex-1">
+          <BreedCombo
+            key={speciesKey}
+            orgId={orgIdForBreeds}
+            species={species}
+            value={valueObj}
+            onChange={(hit: any) => {
+              const nextName = hit?.name ?? null;
+              setLocal(nextName);
+              onChange(nextName);
+            }}
+            api={{ breeds: { listCanonical: api.breeds.listCanonical } }}
+          />
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => {
+            setLocal(null);
+            onChange(null);
+          }}
+          title="Clear breed"
+        >
+          Clear
+        </Button>
+        <Button variant="outline" size="sm" onClick={onOpenCustom}>
+          New custom
+        </Button>
+      </div>
+    );
+  }
+
+  function LV({ label, children }: { label: string; children: React.ReactNode }) {
+    return (
+      <div className="min-w-0">
+        <div className="text-[11px] leading-4 text-secondary mb-0.5">{label}</div>
+        <div className="text-sm leading-5 text-primary break-words">{children || "—"}</div>
+      </div>
+    );
+  }
+
+  function Chip({ children }: { children: React.ReactNode }) {
+    return (
+      <span className="inline-flex items-center rounded-full border border-hairline px-2 py-0.5 text-xs text-primary">{children}</span>
+    );
+  }
+
+  function HeaderBadges({ row }: { row: AnimalRow }) {
+    return (
+      <div className="flex items-center gap-2 flex-wrap">
+        {row.species && <Chip>{row.species}{row.breed ? ` • ${row.breed}` : ""}</Chip>}
+        {row.sex && <Chip>{row.sex}</Chip>}
+        <Chip>{row.status || "Active"}</Chip>
+      </div>
+    );
+  }
+
+  const detailsConfig = React.useMemo(
+    () => ({
+      idParam: "animalId",
+      getRowId: (r: AnimalRow) => r.id,
+      width: 720,
+      placement: "center" as const,
+      align: "top" as const,
+      fetchRow: async (id: number) => animalToRow(await api.animals.get(id)),
+      onSave: async (id: number, draft: Partial<AnimalRow>) => {
+        const toWire = (d: Partial<AnimalRow>) => {
+          const out: any = { ...d };
+          if (out.species) out.species = String(out.species).toUpperCase();
+          if (out.sex) out.sex = String(out.sex).toUpperCase();
+          if (out.status) out.status = String(out.status).toUpperCase();
+          return out;
+        };
+
+        const updated = await api.animals.update(id, toWire(draft));
+
+        const owners: OwnershipRow[] | undefined = (draft as any)?.owners;
+        if (owners) {
+          try {
+            await api.animals.putOwners?.(id, owners);
+          } catch {}
+        }
+        setRows((prev) => prev.map((r) => (r.id === id ? { ...r, ...animalToRow(updated) } : r)));
+      },
+
+      header: (r: AnimalRow) => ({
+        title: r.name,
+        subtitle: r.nickname || r.ownerName || "",
+        extra: <HeaderBadges row={r} />,
+      }),
+
+      tabs: (r: AnimalRow) => {
+        const tabs = [{ key: "overview", label: "Overview" } as const];
+        if ((r.sex || "").toLowerCase().startsWith("f")) tabs.push({ key: "cycle", label: "Cycle Info" } as any);
+        tabs.push({ key: "program", label: "Program" } as any);
+        tabs.push({ key: "pairing", label: "Pairing" } as any);
+        tabs.push({ key: "audit", label: "Audit" } as any);
+        return tabs;
+      },
+
+      customChrome: true,
+      render: ({ row, mode, setMode, setDraft, activeTab, setActiveTab, requestSave }: any) => (
+        <DetailsScaffold
+          title={row.name}
+          subtitle={row.nickname || row.ownerName || ""}
+          mode={mode}
+          onEdit={() => setMode("edit")}
+          onCancel={() => setMode("view")}
+          onSave={requestSave}
+          tabs={detailsConfig.tabs(row)}
+          activeTab={activeTab}
+          onTabChange={setActiveTab}
+          rightActions={
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={async () => {
+                if (!confirm("Archive this animal?")) return;
+                await api.animals.archive(row.id);
+                setRows((prev) => prev.filter((r) => r.id !== row.id));
+              }}
+            >
+              Archive
+            </Button>
+          }
+        >
+          {activeTab === "overview" && (
+            <div className="space-y-3">
+              {/* Compact header badges already applied */}
+              {/* Identity, Profile, Ownership, Dates, Notes */}
+              <SectionCard title="Identity">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                  <LV label="Name">
+                    {mode === "view" ? (
+                      row.name || "—"
+                    ) : (
+                      <Input size="sm" defaultValue={row.name} onChange={(e) => setDraft({ name: e.currentTarget.value })} />
+                    )}
+                  </LV>
+                  <LV label="Nickname">
+                    {mode === "view" ? (
+                      row.nickname || "—"
+                    ) : (
+                      <Input
+                        size="sm"
+                        defaultValue={row.nickname ?? ""}
+                        onChange={(e) => setDraft({ nickname: e.currentTarget.value })}
+                      />
+                    )}
+                  </LV>
+                  <LV label="Microchip #">
+                    {mode === "view" ? (
+                      row.microchip || "—"
+                    ) : (
+                      <Input
+                        size="sm"
+                        defaultValue={row.microchip ?? ""}
+                        onChange={(e) => setDraft({ microchip: e.currentTarget.value })}
+                      />
+                    )}
+                  </LV>
+                  <LV label="DOB">
+                    {mode === "view" ? (
+                      fmt(row.dob) || "—"
+                    ) : (
+                      <Input
+                        size="sm"
+                        type="date"
+                        defaultValue={(row.dob || "").slice(0, 10)}
+                        onChange={(e) => setDraft({ dob: e.currentTarget.value })}
+                      />
+                    )}
+                  </LV>
+                </div>
+              </SectionCard>
+
+              <SectionCard title="Profile">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                  <LV label="Species">
+                    {mode === "view" ? (
+                      row.species || "—"
+                    ) : (
+                      <select
+                        className="h-8 w-full rounded-md bg-surface border border-hairline px-2 text-sm text-primary"
+                        defaultValue={row.species || "Dog"}
+                        onChange={(e) => {
+                          const next = e.target.value as "Dog" | "Cat" | "Horse";
+                          setDraft({ species: next, breed: null });
+                        }}
+                      >
+                        <option>Dog</option>
+                        <option>Cat</option>
+                        <option>Horse</option>
+                      </select>
+                    )}
+                  </LV>
+
+                  <LV label="Sex">
+                    {mode === "view" ? (
+                      row.sex || "—"
+                    ) : (
+                      <select
+                        className="h-8 w-full rounded-md bg-surface border border-hairline px-2 text-sm text-primary"
+                        defaultValue={row.sex || "Female"}
+                        onChange={(e) => setDraft({ sex: e.target.value })}
+                      >
+                        <option>Female</option>
+                        <option>Male</option>
+                      </select>
+                    )}
+                  </LV>
+
+                  <LV label="Status">
+                    {mode === "view" ? (
+                      row.status || "Active"
+                    ) : (
+                      <select
+                        className="h-8 w-full rounded-md bg-surface border border-hairline px-2 text-sm text-primary"
+                        defaultValue={row.status || "Active"}
+                        onChange={(e) => setDraft({ status: e.target.value })}
+                      >
+                        {["Active", "Breeding", "Unavailable", "Retired", "Deceased", "Prospect"].map((s) => (
+                          <option key={s}>{s}</option>
+                        ))}
+                      </select>
+                    )}
+                  </LV>
+                </div>
+
+                <div className="mt-3 grid grid-cols-1 gap-3">
+                  <LV label="Breed">
+                    {mode === "view" ? (
+                      row.breed || "—"
+                    ) : (
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <div className="flex-1 min-w-[320px]">
+                          <BreedCombo
+                            key={`breed-${row.species || "Dog"}`}
+                            orgId={orgIdForBreeds ?? undefined}
+                            species={(row.species as any) || "Dog"}
+                            value={
+                              row.breed
+                                ? ({ id: "__current__", name: row.breed, species: row.species, source: "canonical" } as any)
+                                : null
+                            }
+                            onChange={(hit: any) => setDraft({ breed: hit?.name ?? null })}
+                            api={breedBrowseApi}
+                          />
+                        </div>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            const speciesEnum = (String(row.species || "Dog").toUpperCase() as "DOG" | "CAT" | "HORSE");
+                            setCustomBreedSpecies(speciesEnum);
+                            setOnCustomBreedCreated(() => (created: any) => {
+                              setDraft({ breed: created.name });
+                              setCustomBreedOpen(false);
+                            });
+                            setCustomBreedOpen(true);
+                          }}
+                        >
+                          New custom
+                        </Button>
+                        <Button variant="outline" size="sm" onClick={() => setDraft({ breed: null })}>
+                          Clear
+                        </Button>
+                      </div>
+                    )}
+                  </LV>
+                </div>
+              </SectionCard>
+
+              <SectionCard title="Ownership">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <LV label="Primary Owner">{row.ownerName || "—"}</LV>
+                  <LV label="Additional Owners">
+                    {mode === "view" ? (
+                      <OwnershipChips owners={((row as any).owners || []) as any[]} />
+                    ) : (
+                      <OwnershipEditor
+                        api={{
+                          searchContacts: (q) => api?.lookups?.searchContacts?.(q) ?? Promise.resolve([]),
+                          searchOrganizations: (q) => api?.lookups?.searchOrganizations?.(q) ?? Promise.resolve([]),
+                        }}
+                        value={(((row as any).owners) || []) as any[]}
+                        onChange={(rows) => (setDraft as any)({ ...(row as any), owners: rows })}
+                      />
+                    )}
+                  </LV>
+                </div>
+              </SectionCard>
+
+              <SectionCard title="Notes & Tags">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <LV label="Tags">
+                    {mode === "view" ? (
+                      (row.tags || []).join(", ") || "—"
+                    ) : (
+                      <Input
+                        size="sm"
+                        defaultValue={(row.tags || []).join(", ")}
+                        onChange={(e) => {
+                          const tags = (e.currentTarget.value || "")
+                            .split(",")
+                            .map((s) => s.trim())
+                            .filter(Boolean);
+                          setDraft({ tags });
+                        }}
+                      />
+                    )}
+                  </LV>
+
+                  <LV label="Notes">
+                    {mode === "view" ? (
+                      row.notes || "—"
+                    ) : (
+                      <textarea
+                        className="h-24 w-full rounded-md bg-surface border border-hairline px-3 text-sm text-primary outline-none"
+                        defaultValue={row.notes ?? ""}
+                        onChange={(e) => setDraft({ notes: (e.currentTarget as HTMLTextAreaElement).value })}
+                      />
+                    )}
+                  </LV>
+                </div>
+              </SectionCard>
+            </div>
+          )}
+
+          {activeTab === "cycle" && (
+            <CycleTab animal={row} api={api} onSaved={(dates) => setDraft({ cycleStartDates: dates })} />
+          )}
+
+          {activeTab === "program" && (
+            <ProgramTab animal={row} api={api} onSaved={() => { /* no-op: flags are separate from core row */ }} />
+          )}
+
+          {activeTab === "pairing" && <PairingTab animal={row} api={api} />}
+
+          {activeTab === "audit" && (
+            <div className="space-y-2">
+              <SectionCard title="Audit">
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <div>
+                    <div className="text-xs text-secondary">Created</div>
+                    <div>{fmt(row.created_at) || "—"}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-secondary">Last Updated</div>
+                    <div>{fmt(row.updated_at) || "—"}</div>
+                  </div>
+                </div>
+              </SectionCard>
+              <SectionCard title="Events">
+                <div className="text-sm text-secondary">Events will appear here.</div>
+              </SectionCard>
+            </div>
+          )}
+        </DetailsScaffold>
+      ),
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [api, orgIdForBreeds]
+  );
+
+  /** ───────────── Create Animal modal ───────────── */
+  const [createOpen, setCreateOpen] = React.useState(false);
+  const [createWorking, setCreateWorking] = React.useState(false);
+  const [createErr, setCreateErr] = React.useState<string | null>(null);
+
+  const [newName, setNewName] = React.useState("");
+  const [newSpecies, setNewSpecies] = React.useState<"Dog" | "Cat" | "Horse">("Dog");
+  const [newSex, setNewSex] = React.useState<"Female" | "Male">("Female");
+  const [newStatus, setNewStatus] = React.useState<"Active" | "Breeding" | "Unavailable" | "Retired" | "Deceased" | "Prospect">("Active");
+  const [newDob, setNewDob] = React.useState("");
+  const [newMicrochip, setNewMicrochip] = React.useState("");
+  const [newBreed, setNewBreed] = React.useState<any>(null);
+  const [owners, setOwners] = React.useState<OwnershipRow[]>([]);
+  const [tagsStr, setTagsStr] = React.useState("");
+  const [notes, setNotes] = React.useState("");
+  const [nickname, setNickname] = React.useState("");
+
+  const resetCreateForm = () => {
+    setNewName("");
+    setNickname("");
+    setNewSpecies("Dog");
+    setNewSex("Female");
+    setNewStatus("Active");
+    setNewDob("");
+    setNewMicrochip("");
+    setNewBreed(null);
+    setOwners([]);
+    setTagsStr("");
+    setNotes("");
+    setCreateErr(null);
+  };
+
+  const canCreate = newName.trim().length > 1 && !!newDob && !!newSex && !!newSpecies;
+
+  const doCreateAnimal = async () => {
+    if (!canCreate) {
+      setCreateErr("Please complete required fields.");
+      return;
+    }
+    try {
+      setCreateWorking(true);
+      setCreateErr(null);
+
+      const payload: any = {
+        name: newName.trim(),
+        nickname: nickname.trim() || null,
+        species: newSpecies.toUpperCase(),
+        sex: newSex.toUpperCase(),
+        status: newStatus.toUpperCase(),
+        birthDate: newDob ? new Date(newDob).toISOString() : null,
+        microchip: newMicrochip.trim() || null,
+        breed: newBreed?.name ?? null,
+        tags: tagsStr.split(",").map((s) => s.trim()).filter(Boolean),
+        notes: notes || null,
+      };
+
+      const created = await (api.animals as any).create?.(payload);
+      const row = animalToRow(created);
+
+      let toSaveOwners = owners;
+      if (toSaveOwners.length === 0) {
+        const org = await safeGetCreatingOrg(api);
+        if (org) {
+          toSaveOwners = [
+            {
               partyType: "Organization",
               organizationId: org.id,
               contactId: null,
               display_name: org.display_name,
               is_primary: true,
               percent: 100,
-            }];
-          }
-        }
-
-        if (owners && owners.length >= 0) {
-          const saved = await (api as any)?.animals?.putOwners?.(targetId as ID, owners);
-          const ownersEcho = Array.isArray(saved) ? saved : owners;
-          setRows((prev) =>
-            prev.map((r) =>
-              String(r.id) === String(targetId) ? { ...(r as any), owners: ownersEcho } : r
-            )
-          );
-          setDrawer((prev: any) =>
-            prev && String(prev.id) === String(targetId) ? { ...prev, owners: ownersEcho } : prev
-          );
+            },
+          ];
         }
       }
-      // ...
+      try {
+        await (api.animals as any).putOwners?.(row.id, toSaveOwners);
+        (row as any).owners = toSaveOwners;
+      } catch {}
 
-      // 2) breeds
-      const speciesApi = toEnum(form.species) as "DOG" | "CAT" | "HORSE" | undefined;
-      const pendingSnap = (form as any)._breedSnapshot as any | undefined;
-      const canonicalId = (form as any)._canonicalBreedId ?? null;
-      const customId = (form as any)._customBreedId ?? null;
-
-      if (targetId != null && speciesApi) {
-        let body: any | null = null;
-
-        if (pendingSnap) {
-          const c = Array.isArray(pendingSnap.canonicalMix) ? pendingSnap.canonicalMix : [];
-          const u = Array.isArray(pendingSnap.customMix) ? pendingSnap.customMix : [];
-          const total = c.length + u.length;
-
-          body = {
-            species: speciesApi,
-            primaryBreedId:
-              total > 1
-                ? null
-                : (pendingSnap.primaryBreedId ??
-                  (c[0]?.breedId ? String(c[0].breedId) : null)),
-            canonical: c.map((r: any) => ({ breedId: String(r.breedId), percentage: Number(r.percentage) || 0 })),
-            custom: u.map((r: any) => ({ id: String(r.id), percentage: Number(r.percentage) || 0 })),
-          };
-        } else if (canonicalId || customId) {
-          body = canonicalId
-            ? {
-              species: speciesApi,
-              primaryBreedId: canonicalId,
-              canonical: [{ breedId: String(canonicalId), percentage: 100 }],
-              custom: [],
-            }
-            : {
-              species: speciesApi,
-              primaryBreedId: null,
-              canonical: [],
-              custom: [{ id: String(customId), percentage: 100 }],
-            };
-        }
-
-        if (body) {
-          const snap = await (api as any)?.animals?.putBreeds?.(targetId as ID, body);
-
-          const nextBreed =
-            (snap?.primaryBreedName && String(snap.primaryBreedName)) ||
-            (Array.isArray(snap?.canonicalMix) && snap.canonicalMix[0]?.name) ||
-            null;
-
-          setRows((prev) =>
-            prev.map((r) => (String(r.id) === String(targetId) ? { ...r, breed: nextBreed } : r))
-          );
-          setDrawer((prev: any) =>
-            prev && String(prev.id) === String(targetId) ? { ...prev, breed: nextBreed } : prev
-          );
-
-          setForm((s: any) => ({ ...s, _breedSnapshot: undefined }));
-        }
-      }
-
-      // 3) refresh list
-      const sortParam = sorts.map((s) => `${s.dir === "desc" ? "-" : ""}${String(s.key)}`).join(",");
-      const query: any = {
-        q: dq || undefined,
-        limit: pageSize,
-        page,
-        includeArchived,
-        sort: sortParam || undefined,
-      };
-      const res: any = await (api as any)?.animals?.list?.(query);
-      const items = Array.isArray(res?.items)
-        ? res.items
-        : Array.isArray(res?.data?.items)
-          ? res.data.items
-          : Array.isArray(res)
-            ? res
-            : [];
-      setRows(items.map(normalize));
-      setTotal(Number(res?.total ?? items.length ?? 0));
-
-      // Close modal + open saved row
-      setFormOpen(false);
-      if (editingId == null) {
-        const match =
-          (payload.microchip
-            ? items.find((r: any) => r.microchip === payload.microchip)
-            : null) ||
-          items.find((r: any) => r.name === payload.name && r.dob === payload.dob) ||
-          null;
-        setDrawer(match);
-      } else {
-        const match = items.find((r: any) => String(r.id) === String(editingId)) || null;
-        setDrawer(match);
-      }
+      setRows((prev) => [row, ...prev]);
+      resetCreateForm();
+      setCreateOpen(false);
     } catch (e: any) {
-      const msg = (e && (e.message || e.error || e.statusText)) || "Failed to save. Please check required fields.";
-      setFormErrors((prev) => ({ ...prev, __server: String(msg) }));
+      setCreateErr(e?.message || "Failed to create animal");
+    } finally {
+      setCreateWorking(false);
     }
-  }
-
-
-  /* Filtering, sorting, paging */
-  const dFilters = useDebounced(filters, 250);
-  const filteredRows = useMemo(() => {
-    const text = (dFilters.__text || "").trim().toLowerCase();
-    const f = (k: string) => (dFilters[k] || "").trim().toLowerCase();
-    const includes = (hay?: string | null, needle?: string) => !needle || !!hay?.toLowerCase().includes(needle);
-
-    function matchAnyExact(value: string | null | undefined, qv: string | undefined) {
-      const tokens = String(qv || "")
-        .split(",")
-        .map((s) => s.trim().toLowerCase())
-        .filter(Boolean);
-      if (!tokens.length) return true;
-      const v = String(value || "").toLowerCase();
-      return tokens.some((t) => v === t);
-    }
-    function matchesTags(rowTags: string[] | null | undefined, qv: string) {
-      if (!qv) return true;
-      const tokens = String(qv)
-        .split(",")
-        .map((s) => s.trim().toLowerCase())
-        .filter(Boolean);
-      if (!tokens.length) return true;
-      const have = (rowTags || []).map((t) => String(t).toLowerCase());
-      return tokens.some((tok) => have.some((h) => h.includes(tok)));
-    }
-
-    return rows.filter((r) => {
-      if (!includeArchived && !!r.archived) return false;
-      if (text) {
-        const hay = [r.name, r.species, r.breed, r.ownerName, ...(r.tags || [])].map((x) =>
-          String(x || "").toLowerCase()
-        );
-        if (!hay.some((h) => h.includes(text))) return false;
-      }
-      if (!matchAnyExact(r.species, dFilters.species)) return false;
-      if (!matchAnyExact(r.status, dFilters.status)) return false;
-      if (!includes(r.breed || "", f("breed"))) return false;
-      if (!includes(r.ownerName || "", f("ownerName"))) return false;
-      if (!matchesTags(r.tags, f("tags"))) return false;
-      return true;
-    });
-  }, [rows, dFilters, includeArchived]);
-
-  const sortedRows = useMemo(() => {
-    if (sorts.length === 0) return filteredRows;
-    const copy = [...filteredRows];
-    const comps = sorts.map((s) => {
-      const key = s.key;
-      const dir = s.dir === "asc" ? 1 : -1;
-      return (a: AnimalRow, b: AnimalRow) => {
-        const va = (a as any)[key],
-          vb = (b as any)[key];
-        if (va == null && vb == null) return 0;
-        if (va == null) return -1 * dir;
-        if (vb == null) return 1 * dir;
-        if (["dob", "lastCycle", "updatedAt", "createdAt"].includes(String(key))) {
-          return (new Date(va).getTime() - new Date(vb).getTime()) * dir;
-        }
-        return String(va).localeCompare(String(vb)) * dir;
-      };
-    });
-    copy.sort((a, b) => {
-      for (const cmp of comps) {
-        const r = cmp(a, b);
-        if (r !== 0) return r;
-      }
-      return 0;
-    });
-    return copy;
-  }, [filteredRows, sorts]);
-
-  const pageCount = Math.max(1, Math.ceil(sortedRows.length / pageSize));
-  const clampedPage = Math.min(pageCount, Math.max(1, page));
-  const totalFiltered = sortedRows.length;
-  const pageRows = useMemo(() => {
-    const start = (clampedPage - 1) * pageSize;
-    return sortedRows.slice(start, start + pageSize);
-  }, [sortedRows, clampedPage, pageSize]);
-
-  /* Handlers */
-  const cycleSort = (key: keyof AnimalRow, withShift: boolean) => {
-    setSorts((prev) => {
-      const idx = prev.findIndex((s) => s.key === key);
-      if (!withShift) {
-        if (idx === -1) return [{ key, dir: "asc" }];
-        if (prev[idx].dir === "asc") return [{ key, dir: "desc" }];
-        return [];
-      }
-      if (idx === -1) return [...prev, { key, dir: "asc" }];
-      const cur = prev[idx];
-      if (cur.dir === "asc") {
-        const copy = prev.slice();
-        copy[idx] = { key, dir: "desc" };
-        return copy;
-      }
-      const copy = prev.slice();
-      copy.splice(idx, 1);
-      return copy;
-    });
-    setPage(1);
-  };
-  const toggleSelectAll = () =>
-    setSelected((prev) => (prev.size === pageRows.length ? new Set() : new Set(pageRows.map((r) => r.id))));
-  const toggleSelect = (id: ID) =>
-    setSelected((prev) => {
-      const n = new Set(prev);
-      n.has(id) ? n.delete(id) : n.add(id);
-      return n;
-    });
-
-  /* Export */
-  const visibleCols = useMemo(() => ALL_COLUMNS.filter(c => columns[String(c.key)]), [columns]);
-  const exportCSV = (selectedOnly = false) => {
-    const header = ["id", ...visibleCols.map((c) => c.label)];
-    const src = selectedOnly ? sortedRows.filter((r) => selected.has(r.id)) : sortedRows;
-    const lines: string[] = [header.join(",")];
-    src.forEach((r) => {
-      const vals = [String(r.id)];
-      visibleCols.forEach((c) => {
-        const raw = (r as any)[c.key];
-        let value = "";
-        if (c.type === "date") value = formatDate(String(raw || ""));
-        else if (c.type === "tags") value = (r.tags || []).join("; ");
-        else value = String(raw ?? "");
-        vals.push('"' + String(value).replace(/"/g, '""') + '"');
-      });
-      lines.push(vals.join(","));
-    });
-    const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" });
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = selectedOnly ? "animals-selected.csv" : "animals.csv";
-    a.click();
   };
 
-  /* Render */
+  /** ─────────────────────────────────────────────────────────────────── */
   return (
-    <div className="space-y-3">
-      <Card className="bhq-card bg-surface/80 bg-gradient-to-b from-[hsl(var(--glass))/65] to-[hsl(var(--glass-strong))/85] backdrop-blur-sm border border-hairline transition-shadow">
-        {/* Toolbar */}
-        <div className="bhq-section-fixed px-3 py-4 sm:px-4 sm:py-5 bg-surface bg-gradient-to-b from-[hsl(var(--glass))/35] to-[hsl(var(--glass-strong))/55] rounded-t-xl">
-          <div className="flex items-center gap-3 justify-between min-w-0">
-            {/* LEFT: Search + Filters */}
-            <div className="pr-2 flex-none w-full sm:w-[480px] md:w-[560px] lg:w-[640px] max-w-full">
-              <div className="relative w-full">
-                <svg className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-secondary" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                  <path d="M21 21l-4.3-4.3M10.5 18a7.5 7.5 0 1 1 0-15 7.5 7.5 0 0 1 0 15Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                </svg>
-                <Input
-                  value={q}
-                  onChange={(e) => { const v = (e.currentTarget?.value ?? ""); setQ(v); setPage(1); }}
-                  placeholder="Search any field..."
-                  aria-label="Search animals"
-                  className="pl-9 pr-20 w-full h-10 rounded-full shadow-sm bg-surface border border-hairline focus:shadow-[0_0_0_2px_hsl(var(--brand-orange))] focus:outline-none"
-                />
-                {q && (
-                  <button
-                    type="button"
-                    aria-label="Clear search"
-                    onClick={() => setQ("")}
-                    className="absolute right-12 top-1/2 -translate-y-1/2 p-1 rounded hover:bg-[hsl(var(--brand-orange))]/12"
-                  >
-                    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                      <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                    </svg>
-                  </button>
-                )}
-                <span aria-hidden className="absolute right-9 top-1/2 -translate-y-1/2 h-5 w-px bg-hairline" />
-                <button
-                  type="button"
-                  aria-label="Toggle filters"
-                  aria-pressed={showFilters ? "true" : "false"}
-                  onClick={(e) => { setShowFilters((v) => !v); (e.currentTarget as HTMLButtonElement).blur(); }}
-                  className={[
-                    "absolute right-2 top-1/2 -translate-y-1/2",
-                    "inline-grid place-items-center h-7 w-7 rounded-full",
-                    showFilters ? "bg-[hsl(var(--brand-orange))] text-black" : "text-secondary hover:bg-white/10 focus:bg-white/10",
-                  ].join(" ")}
-                >
-                  <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                    <line x1="4" y1="7" x2="14" y2="7" />
-                    <circle cx="18" cy="7" r="1.5" fill="currentColor" />
-                    <line x1="4" y1="12" x2="11" y2="12" />
-                    <circle cx="15" cy="12" r="1.5" fill="currentColor" />
-                    <line x1="4" y1="17" x2="12" y2="17" />
-                    <circle cx="16" cy="17" r="1.5" fill="currentColor" />
-                  </svg>
-                </button>
-              </div>
-            </div>
-
-            {/* RIGHT: New + kebab */}
-            <div className="flex justify-end gap-2 shrink-0">
-              <Button
-                className="whitespace-nowrap"
-                onClick={() => {
-                  setEditingId(null);
-                  setForm({ ...EMPTY_FORM });
-                  setFormOpen(true);
-                }}
-              >
-                New&nbsp;Animal
-              </Button>
-
-              {/* Kebab menu */}
-              <div className="relative">
-                <button
-                  type="button"
-                  className="h-10 w-10 rounded-md border border-hairline bg-surface hover:bg-surface-strong text-lg leading-none"
-                  aria-haspopup="menu"
-                  aria-expanded={menuOpen ? "true" : "false"}
-                  onClick={(e) => { e.stopPropagation(); setMenuOpen((v) => !v); }}
-                  onKeyDown={(e) => { if (e.key === "Escape") setMenuOpen(false); }}
-                >
-                  …
-                </button>
-
-                {menuOpen && (
-                  <div
-                    role="menu"
-                    className="absolute right-0 z-[999] mt-2 w-48 rounded-xl border border-hairline bg-surface p-2 shadow-lg"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <button
-                      role="menuitem"
-                      className="w-full text-left rounded px-2 py-1.5 text-sm hover:bg-surface-strong"
-                      onClick={() => { setMenuOpen(false); exportCSV(false); }}
-                      type="button"
-                    >
-                      Export all (CSV)
-                    </button>
-                    <button
-                      role="menuitem"
-                      disabled={selected.size === 0}
-                      className={`w-full text-left rounded px-2 py-1.5 text-sm hover:bg-surface-strong ${selected.size === 0 ? "opacity-50 cursor-not-allowed" : ""
-                        }`}
-                      onClick={() => { if (selected.size) { setMenuOpen(false); exportCSV(true); } }}
-                      type="button"
-                    >
-                      Export selected (CSV)
-                    </button>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
+    <div className="p-4 space-y-4">
+      <div className="relative">
+        <PageHeader title="Animals" subtitle="Manage your breeding males and females" />
+        <div className="absolute right-0 top-0 h-full flex items-center gap-2 pr-1" style={{ zIndex: 5, pointerEvents: "auto" }}>
+          <Button size="sm" onClick={() => setCreateOpen(true)}>
+            New Animal
+          </Button>
+          <Button size="sm" variant="outline">
+            ...
+          </Button>
         </div>
+      </div>
 
-        {/* Filters */}
-        {showFilters && (
-          <div className="bhq-section-fixed px-4 pb-2 sm:px-5">
-            <div className="rounded-xl border border-hairline bg-card p-4">
-              <div className="grid grid-cols-12 gap-3">
-                <div className="col-span-12 md:col-span-3">
-                  <div className="text-xs text-secondary mb-1">Species</div>
-                  <Input placeholder="Dog, Cat, Horse" value={filters.species || ""} onChange={(e: any) => setFilters((f) => ({ ...f, species: e.target.value }))} className="h-9" />
-                </div>
-                <div className="col-span-12 md:col-span-3">
-                  <div className="text-xs text-secondary mb-1">Status</div>
-                  <Input placeholder="Active, Retired, Prospect" value={filters.status || ""} onChange={(e: any) => setFilters((f) => ({ ...f, status: e.target.value }))} className="h-9" />
-                </div>
-                <div className="col-span-12 md:col-span-3">
-                  <div className="text-xs text-secondary mb-1">Breed</div>
-                  <Input placeholder="Breed" value={filters.breed || ""} onChange={(e: any) => setFilters((f) => ({ ...f, breed: e.target.value }))} className="h-9" />
-                </div>
-                <div className="col-span-12 md:col-span-3">
-                  <div className="text-xs text-secondary mb-1">Owner</div>
-                  <Input placeholder="Owner name" value={filters.ownerName || ""} onChange={(e: any) => setFilters((f) => ({ ...f, ownerName: e.target.value }))} className="h-9" />
-                </div>
-                <div className="col-span-12 md:col-span-6">
-                  <div className="text-xs text-secondary mb-1">Tags</div>
-                  <Input placeholder="tag1, tag2" value={filters.tags || ""} onChange={(e: any) => setFilters((f) => ({ ...f, tags: e.target.value }))} className="h-9" />
-                </div>
-                <div className="col-span-12 md:col-span-6 flex items-end justify-end gap-2">
-                  <Button variant="ghost" onClick={() => setFilters({})}>Clear</Button>
-                </div>
-              </div>
-            </div>
-          </div>
+      {getOverlayRoot() &&
+        createPortal(
+          <CustomBreedDialog
+            open={customBreedOpen}
+            onClose={() => setCustomBreedOpen(false)}
+            api={{
+              breeds: {
+                customCreate: api.breeds.customCreate,
+                putRecipe: (api as any)?.breeds?.putRecipe,
+              },
+            }}
+            species={customBreedSpecies}
+            onCreated={(c) => onCustomBreedCreated?.(c)}
+          />,
+          getOverlayRoot()!
         )}
 
-        {/* Table */}
-        <div className="bhq-table overflow-hidden">
-          <div className="overflow-x-auto overscroll-contain">
+      <Card>
+        <DetailsHost rows={rows} config={detailsConfig}>
+          <Table
+            columns={COLUMNS}
+            columnState={map}
+            onColumnStateChange={setAll}
+            getRowId={(r: AnimalRow) => r.id}
+            pageSize={25}
+            renderStickyRight={() => (
+              <ColumnsPopover
+                columns={map}
+                onToggle={toggle}
+                onSet={setAll}
+                allColumns={COLUMNS}
+                triggerClassName="bhq-columns-trigger"
+              />
+            )}
+            stickyRightWidthPx={40}
+          >
+            <div className="bhq-table__toolbar px-2 pt-2 pb-3 relative z-30">
+              <SearchBar
+                value={q}
+                onChange={setQ}
+                placeholder="Search any field…"
+                widthPx={520}
+                rightSlot={
+                  <button
+                    type="button"
+                    onClick={() => setFiltersOpen((v) => !v)}
+                    aria-expanded={filtersOpen}
+                    title="Filters"
+                    className="h-7 w-7 rounded-md flex items-center justify-center hover:bg-white/5 focus:outline-none"
+                  >
+                    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                      <path d="M3 5h18M7 12h10M10 19h4" strokeLinecap="round" />
+                    </svg>
+                  </button>
+                }
+              />
+            </div>
+
+            {filtersOpen && <FiltersRow filters={filters} onChange={(next) => setFilters(next)} schema={filterSchemaForFiltersRow} />}
+
+            <FilterChips
+              filters={filters}
+              onChange={setFilters}
+              prettyLabel={(k) => {
+                if (k === "dob_from") return "DOB ≥";
+                if (k === "dob_to") return "DOB ≤";
+                if (k === "created_at_from") return "Created ≥";
+                if (k === "created_at_to") return "Created ≤";
+                if (k === "updated_at_from") return "Updated ≥";
+                if (k === "updated_at_to") return "Updated ≤";
+                return k;
+              }}
+            />
+
             <table className="min-w-max w-full text-sm">
-              <thead className="select-none">
-                <tr>
-                  {/* selection header */}
-                  <th className="select">
-                    <input
-                      type="checkbox"
-                      aria-label="Select all"
-                      checked={pageRows.length > 0 && pageRows.every((r) => selected.has(r.id))}
-                      onChange={toggleSelectAll}
-                    />
-                  </th>
-
-                  {/* data headers */}
-                  {ALL_COLUMNS.filter((c) => columns[String(c.key)]).map((c) => {
-                    const active = sorts.find((s) => s.key === c.key);
-                    const aria = active ? (active.dir === "asc" ? "ascending" : "descending") : "none";
-                    return (
-                      <th key={String(c.key)} aria-sort={aria}>
-                        <button
-                          type="button"
-                          onClick={(e) => cycleSort(c.key, (e as any).shiftKey)}
-                          className="inline-flex items-center gap-1 w-full justify-center"
-                        >
-                          {c.label}
-                          {active ? (
-                            <svg viewBox="0 0 16 16" className="h-3.5 w-3.5 opacity-70">
-                              <path
-                                fill="currentColor"
-                                d={active.dir === "asc" ? "M3 10l5-5 5 5H3z" : "M3 6l5 5 5-5H3z"}
-                              />
-                            </svg>
-                          ) : null}
-                        </button>
-                      </th>
-                    );
-                  })}
-
-                  {/* sticky right utility header with ColumnsPopover */}
-                  <th className="sticky right-0 util">
-                    <div className="px-2 py-2 w-[var(--util-col-width)] min-w-[var(--util-col-width)]">
-                      <ColumnsPopover
-                        columns={columns}
-                        onToggle={(key) => setColumns((prev) => ({ ...prev, [key]: !prev[key] }))}
-                        onSet={(next) => setColumns(next)}
-                        allColumns={COLUMNS_META}                 // <-- use your defined metadata
-                        defaultKeys={Array.from(defaultKeys)}     // <-- use your default key set
-                      />
-                    </div>
-                  </th>
-                </tr>
-              </thead>
-
+              <TableHeader columns={visibleSafe} sorts={sorts} onToggleSort={onToggleSort} />
               <tbody>
-                {/* loading */}
                 {loading && (
-                  <tr>
-                    <td colSpan={visibleCols.length + 2} className="text-center text-secondary">
-                      <div className="py-8">Loading…</div>
-                    </td>
-                  </tr>
+                  <TableRow>
+                    <TableCell colSpan={visibleSafe.length}>
+                      <div className="py-8 text-center text-sm text-secondary">Loading animals…</div>
+                    </TableCell>
+                  </TableRow>
                 )}
 
-                {/* empty */}
-                {!loading && pageRows.length === 0 && (
-                  <tr>
-                    <td colSpan={visibleCols.length + 2} className="text-center">
-                      <div className="py-8">
-                        <EmptyState title="No results" description="Try adjusting filters or adding a new record." />
-                      </div>
-                    </td>
-                  </tr>
+                {!loading && error && (
+                  <TableRow>
+                    <TableCell colSpan={visibleSafe.length}>
+                      <div className="py-8 text-center text-sm text-red-600">Error: {error}</div>
+                    </TableCell>
+                  </TableRow>
                 )}
 
-                {/* rows */}
+                {!loading && !error && pageRows.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={visibleSafe.length}>
+                      <div className="py-8 text-center text-sm text-secondary">No animals to display yet.</div>
+                    </TableCell>
+                  </TableRow>
+                )}
+
                 {!loading &&
+                  !error &&
+                  pageRows.length > 0 &&
                   pageRows.map((r) => (
-                    <tr
-                      key={String(r.id)}
-                      className="cursor-pointer"
-                      tabIndex={0}
-                      onClick={(e) => { if (!isInteractive(e.target as Element)) setDrawer(r); }}
-                      onKeyDown={(e) => { if (e.key === "Enter" && !isInteractive(e.target as Element)) setDrawer(r); }}
-                    >
-                      {/* selection cell */}
-                      <td className="select">
-                        <input
-                          data-stop-row-open
-                          type="checkbox"
-                          checked={selected.has(r.id)}
-                          onChange={() => toggleSelect(r.id)}
-                          aria-label={`Select ${r.name ?? r.id}`}
-                        />
-                      </td>
-
-                      {/* data cells */}
-                      {ALL_COLUMNS.filter((c) => columns[String(c.key)]).map((c) => {
-                        const value = (r as any)[c.key];
-                        const content = c.render
-                          ? c.render(r)
-                          : c.type === "date"
-                            ? (formatDate(value) || <span className="text-secondary" aria-hidden>{"\u2014"}</span>)
-                            : c.type === "tags"
-                              ? ((r.tags || []).length ? (r.tags || []).join(", ") : <span className="text-secondary" aria-hidden>{"\u2014"}</span>)
-                              : (value ?? <span className="text-secondary" aria-hidden>{"\u2014"}</span>);
-
-                        return (
-                          <td key={String(c.key)}>
-                            <div className="inline-flex w-full justify-center">{content}</div>
-                          </td>
-                        );
+                    <TableRow key={r.id} detailsRow={r}>
+                      {visibleSafe.map((c) => {
+                        let v = (r as any)[c.key] as any;
+                        if (DATE_KEYS.has(c.key as any)) v = fmt(v);
+                        if (Array.isArray(v)) v = v.join(", ");
+                        return <TableCell key={c.key}>{v ?? ""}</TableCell>;
                       })}
-
-                      {/* sticky right utility body cell */}
-                      <td className="sticky right-0 util" />
-                    </tr>
+                    </TableRow>
                   ))}
               </tbody>
             </table>
-          </div>
-        </div>
 
-        <TableFooter
-          page={clampedPage}
-          pageCount={pageCount}
-          pageSize={pageSize}
-          total={totalFiltered}
-          includeArchived={includeArchived}
-          onToggleArchived={(v) => { setIncludeArchived(v); setPage(1); }}
-          onChangePageSize={(n) => { setPageSize(n); setPage(1); }}
-          onPrev={() => setPage((p) => Math.max(1, p - 1))}
-          onNext={() => setPage((p) => Math.min(pageCount, p + 1))}
-        />
+            <TableFooter
+              entityLabel="animals"
+              page={clampedPage}
+              pageCount={pageCount}
+              pageSize={pageSize}
+              pageSizeOptions={[10, 25, 50, 100]}
+              onPageChange={(p) => setPage(p)}
+              onPageSizeChange={(n) => {
+                setPageSize(n);
+                setPage(1);
+              }}
+              start={start}
+              end={end}
+              filteredTotal={sortedRows.length}
+              total={rows.length}
+            />
+          </Table>
+        </DetailsHost>
+      </Card>
 
-        {/* Create / Edit Animal */}
-        {
-          formOpen &&
-          createPortal(
-            <div className="fixed inset-0 z-[1000]">
-              {/* Single backdrop */}
-              <div
-                className="absolute inset-0 bg-black/40 backdrop-blur-sm"
-                onClick={(e) => { if (e.target === e.currentTarget) setFormOpen(false); }}
-              />
+      {createOpen && (
+        <Overlay
+          open={createOpen}
+          onOpenChange={(v) => {
+            if (!createWorking) setCreateOpen(v);
+          }}
+          ariaLabel="Create Animal"
+          size="lg"
+          overlayId="create-animal"
+        >
+          <div className="relative w-full">
+            <div className="mb-2 flex items-center justify-between">
+              <div className="text-lg font-semibold">Create Animal</div>
+              <Button variant="ghost" onClick={() => setCreateOpen(false)}>
+                ✕
+              </Button>
+            </div>
 
-              {/* Positioner: place modal slightly higher, like Contacts */}
-              <div className="absolute inset-0 pointer-events-none flex items-start justify-center">
-                <div className="pointer-events-auto w-[min(720px,calc(100vw-2rem))] rounded-2xl border border-hairline bg-surface p-4 shadow-xl text-primary" style={{ marginTop: "12vh" }}>
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="text-lg font-semibold">
-                      {editingId == null ? "Create Animal" : "Edit Animal"}
-                    </div>
-                    <Button variant="ghost" onClick={() => setFormOpen(false)}>✕</Button>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-xs mb-1 text-secondary">Name *</label>
-                      <Input className="text-primary" value={form.name || ""} onChange={(e) => setForm(s => ({ ...s, name: e.target.value }))} />
-                      {formErrors.name && <div className="text-xs text-red-500 mt-1">{formErrors.name}</div>}
-                    </div>
-                    <div>
-                      <label className="block text-xs mb-1 text-secondary">Species *</label>
-                      <select
-                        className="h-10 w-full rounded-md bg-surface border border-hairline px-3 text-sm text-primary outline-none"
-                        value={(form.species as any) || "Dog"}
-                        onChange={(e) =>
-                          setForm((s: any) => ({
-                            ...s,
-                            species: e.target.value as any,
-                            // reset breed selection when SPECIES changes
-                            breed: "",
-                            _canonicalBreedId: null,
-                            _customBreedId: null,
-                            _breedSnapshot: undefined,
-                          }))
-                        }
-                      >
-                        <option>Dog</option><option>Cat</option><option>Horse</option>
-                      </select>
-                    </div>
-
-                    <div>
-                      <BreedFormControl
-                        api={api}
-                        speciesUi={(form.species as any) || "Dog"}
-                        animalId={editingId ?? null}
-                        valueName={form.breed || ""}
-                        onPureSelected={(sel) => {
-                          setForm((s: any) => ({
-                            ...s,
-                            breed: sel.name,
-                            _canonicalBreedId: sel.canonicalBreedId ?? null,
-                            _customBreedId: sel.customBreedId ?? null,
-                            _breedSnapshot: undefined,
-                          }));
-                          clearFieldError(setFormErrors, "breed");
-                        }}
-                        onMixedSaved={(snap) => {
-                          const nextName =
-                            (snap.primaryBreedName && String(snap.primaryBreedName)) ||
-                            (Array.isArray(snap.canonicalMix) && snap.canonicalMix[0]?.name) ||
-                            "";
-                          setForm((s: any) => ({
-                            ...s,
-                            breed: nextName,
-                            _canonicalBreedId: null,
-                            _customBreedId: null,
-                            _breedSnapshot: snap,
-                          }));
-                          clearFieldError(setFormErrors, "breed");
-                        }}
-                      />
-
-                      {formErrors.breed && (
-                        <div className="text-xs text-red-500 mt-1">{formErrors.breed}</div>
-                      )}
-                    </div>
-                    <div>
-                      <label className="block text-xs mb-1 text-secondary">Sex *</label>
-                      <select
-                        className="h-10 w-full rounded-md bg-surface border border-hairline px-3 text-sm text-primary outline-none"
-                        value={(form.sex as any) || "Female"}
-                        onChange={(e) => {
-                          setForm((s: any) => ({ ...s, sex: e.target.value as any }));
-                          clearFieldError(setFormErrors, "sex");
-                        }}
-                      >
-                        <option>Female</option><option>Male</option>
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="block text-xs mb-1 text-secondary">Date of Birth *</label>
-                      <Input className="text-primary" type="date" value={form.dob || ""} onChange={(e) => setForm(s => ({ ...s, dob: e.target.value }))} />
-                      {formErrors.dob && <div className="text-xs text-red-500 mt-1">{formErrors.dob}</div>}
-                    </div>
-                    <div>
-                      <label className="block text-xs mb-1 text-secondary">Status</label>
-                      <select
-                        className="h-10 w-full rounded-md bg-surface border border-hairline px-3 text-sm text-primary outline-none"
-                        value={(form.status as any) || "Active"}
-                        onChange={(e) => setForm(s => ({ ...s, status: e.target.value as any }))}
-                      >
-                        {["Active", "Breeding", "Unavailable", "Retired", "Deceased", "Prospect"].map(s => <option key={s}>{s}</option>)}
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="block text-xs mb-1 text-secondary">Microchip #</label>
-                      <Input className="text-primary" value={form.microchip || ""} onChange={(e) => setForm(s => ({ ...s, microchip: e.target.value }))} />
-                      {formErrors.microchip && <div className="text-xs text-red-500 mt-1">{formErrors.microchip}</div>}
-                    </div>
-                    <div className="sm:col-span-2">
-                      <OwnershipEditor
-                        api={{
-                          searchContacts: (q) => (api as any)?.lookups?.searchContacts?.(q) ?? Promise.resolve([]),
-                          searchOrganizations: (q) => (api as any)?.lookups?.searchOrganizations?.(q) ?? Promise.resolve([]),
-                        }}
-                        value={(form.owners as OwnershipRow[]) || []}
-                        onChange={(rows) => setForm((s) => ({ ...s, owners: rows }))}
-                      />
-                    </div>
-
-                    <div className="sm:col-span-2">
-                      <label className="block text-xs mb-1 text-secondary">Tags</label>
-                      <Input
-                        className="text-primary"
-                        placeholder="tag1, tag2"
-                        value={(form.tags as string[] | undefined)?.join(", ") || ""}
-                        onChange={(e) => {
-                          const tags = e.target.value.split(",").map(s => s.trim()).filter(Boolean);
-                          setForm(s => ({ ...s, tags }));
-                        }}
-                      />
-                    </div>
-
-                    <div className="sm:col-span-2">
-                      <label className="block text-xs mb-1 text-secondary">Notes</label>
-                      <textarea
-                        className="h-28 w-full rounded-md bg-surface border border-hairline px-3 text-sm text-primary placeholder:text-secondary outline-none"
-                        value={(form.notes as any) || ""}
-                        onChange={(e) => setForm(s => ({ ...s, notes: e.target.value }))}
-                        placeholder="Temperament, observations, etc."
-                      />
-                    </div>
-                  </div>
-
-                  {formErrors.__server && (
-                    <div className="mt-3 text-sm text-red-500">{formErrors.__server}</div>
-                  )}
-                  <div className="mt-4 flex justify-end gap-2">
-                    <Button variant="ghost" onClick={() => setFormOpen(false)}>Cancel</Button>
-                    <Button onClick={saveAnimal}>Save</Button>
-                  </div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div>
+                <div className="mb-1 text-xs text-secondary">
+                  Name <span className="text-[hsl(var(--brand-orange))]">*</span>
                 </div>
+                <Input value={newName} onChange={(e) => setNewName((e.currentTarget as HTMLInputElement).value)} />
               </div>
-            </div>,
-            getOverlayRoot()
-          )
-        }
-        {/* Drawer (Contacts-style centered panel) */}
-        {
-          drawer &&
-          createPortal(
-            <div className="fixed inset-0 z-[1000]">
-              {/* single backdrop */}
-              <div
-                className="absolute inset-0 bg-black/30 backdrop-blur-sm"
-                onClick={(e) => { if (e.target === e.currentTarget) setDrawer(null); }}
-              />
-              {/* same centering + pointer event trick as Create/Edit */}
-              <div className="absolute inset-0 pointer-events-none flex items-start justify-center">
-                <div
-                  className="pointer-events-auto w-[min(720px,calc(100vw-2rem))] max-h-[min(90vh,800px)]
-                     overflow-auto rounded-2xl border border-hairline bg-surface p-4 shadow-xl text-primary"
-                  style={{ marginTop: "8vh" }}
+
+              <div>
+                <div className="mb-1 text-xs text-secondary">Nickname</div>
+                <Input value={nickname} onChange={(e) => setNickname((e.currentTarget as HTMLInputElement).value)} />
+              </div>
+
+              <div>
+                <div className="mb-1 text-xs text-secondary">Species *</div>
+                <select
+                  className="h-9 w-full rounded-md border border-hairline bg-surface px-2 text-sm text-primary"
+                  value={newSpecies}
+                  onChange={(e) => setNewSpecies(e.currentTarget.value as any)}
                 >
-                  {/* Header */}
-                  <div className="flex items-center gap-2 mb-3">
-                    <SpeciesIcon species={drawer.species as any} />
-                    <div className="text-xl font-semibold text-primary">{drawer.name}</div>
-                    <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-xs border bg-surface-strong">
-                      {drawer.status}
-                    </span>
-                    <div className="ml-auto flex items-center gap-2">
-                      <Button
-                        variant="outline"
-                        onClick={() => {
-                          setEditingId(drawer.id as ID);
-                          const safeOwners: OwnershipRow[] = Array.isArray((drawer as any).owners)
-                            ? (drawer as any).owners
-                            : [];
-                          setForm({
-                            ...drawer,
-                            owners: safeOwners,
-                          } as any);
-                          setFormOpen(true);
-                        }}
-                      >
-                        Edit
-                      </Button>
-                      <Button variant="ghost" onClick={() => setDrawer(null)}>✕</Button>
-                    </div>
+                  <option>Dog</option>
+                  <option>Cat</option>
+                  <option>Horse</option>
+                </select>
+              </div>
+
+              <div className="sm:col-span-2">
+                <div className="mb-1 text-xs text-secondary">Breed</div>
+                <div className="flex items-center gap-2">
+                  <div className="flex-1">
+                    <BreedCombo
+                      orgId={orgIdForBreeds ?? undefined}
+                      species={newSpecies}
+                      value={newBreed}
+                      onChange={setNewBreed}
+                      api={breedBrowseApi}
+                    />
                   </div>
-
-                  {/* Possible duplicate banner */}
-                  {(() => {
-                    const sameChip = drawer.microchip
-                      ? rows.some(r => String(r.id) !== String(drawer.id) && r.microchip && r.microchip === drawer.microchip)
-                      : false;
-                    const sameNameDob = drawer.name && drawer.dob
-                      ? rows.some(r => String(r.id) !== String(drawer.id) && r.name === drawer.name && r.dob === drawer.dob)
-                      : false;
-                    if (sameChip || sameNameDob) {
-                      return (
-                        <div className="mb-3 rounded-md border border-red-300 bg-red-500/10 p-2 text-sm">
-                          Possible duplicate detected (same microchip or same name + DOB).
-                        </div>
-                      );
-                    }
-                    return null;
-                  })()}
-
-                  {/* Tabs */}
-                  <div className="mb-3 flex flex-wrap items-center gap-2">
-                    {[
-                      ["overview", "Overview"],
-                      ["cycle", "Cycle Info"],
-                      ["offspring", "Offspring"],
-                      ["health", "Health & Compliance"],
-                      ["documents", "Documents"],
-                      ["audit", "Audit Log"],
-                    ].map(([k, label]) => (
-                      <button
-                        key={k}
-                        onClick={() => setDrawerTab(k as any)}
-                        className={`px-3 py-1.5 rounded-md border text-sm ${drawerTab === k ? "bg-primary/10 border-primary" : "bg-surface border-hairline"
-                          }`}
-                      >
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-
-                  {/* Tab bodies (unchanged) */}
-                  {drawerTab === "overview" && (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <Field label="Species" value={drawer.species} />
-                      <Field label="Breed" value={drawer.breed || "Unset"} />
-                      <Field label="Sex" value={drawer.sex} />
-                      <Field label="DOB" value={drawer.dob ? new Date(drawer.dob).toLocaleDateString() : "None"} />
-                      <Field label="Age" value={drawer.age || "None"} />
-                      <Field
-                        label="Ownership"
-                        value={
-                          ((drawer as any)?.owners || []).length ? (
-                            <OwnershipChips owners={(drawer as any)?.owners || []} />
-                          ) : (
-                            <span className="text-secondary">None</span>
-                          )
-                        }
-                      />
-                      <Field label="Microchip" value={drawer.microchip || "None"} />
-                      <div className="sm:col-span-2">
-                        <div className="text-[11px] font-semibold uppercase text-secondary mb-1">Tags</div>
-                        {(drawer.tags && drawer.tags.length)
-                          ? drawer.tags.map(t => (
-                            <span key={t} className="mr-1 mb-1 inline-flex items-center rounded-full border px-2 py-0.5 text-xs">
-                              {t}
-                            </span>
-                          ))
-                          : <div className="text-sm text-secondary">None</div>}
-                      </div>
-                      <div className="sm:col-span-2">
-                        <div className="text-[11px] font-semibold uppercase text-secondary mb-1">Notes</div>
-                        <div className="text-sm">{(drawer as any).notes || "None"}</div>
-                      </div>
-                    </div>
-                  )}
-
-                  {drawerTab === "cycle" && <CycleTab animal={drawer as any} />}
-                  {drawerTab === "offspring" && <div className="text-sm text-secondary">No recorded offspring for this animal in the mock.</div>}
-                  {drawerTab === "health" && (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <Field label="Last Vet Visit" value={(drawer as any).lastVetVisit ? new Date((drawer as any).lastVetVisit).toLocaleDateString() : "None"} />
-                      <Field label="Vaccinations" value={((drawer as any).vaccinations || []).length ? ((drawer as any).vaccinations || []).join(", ") : "None"} />
-                      <div className="sm:col-span-2 text-xs text-secondary mt-2">Compliance info is informational in this mock.</div>
-                    </div>
-                  )}
-                  {drawerTab === "documents" && <div className="text-sm text-secondary">No documents</div>}
-                  {drawerTab === "audit" && <div className="text-sm text-secondary">No audit entries</div>}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      const speciesEnum = (String(newSpecies).toUpperCase() as "DOG" | "CAT" | "HORSE");
+                      setCustomBreedSpecies(speciesEnum);
+                      setOnCustomBreedCreated(() => (created) => {
+                        setNewBreed({ id: created.id, name: created.name, species: newSpecies, source: "custom" } as any);
+                        setCustomBreedOpen(false);
+                      });
+                      setCustomBreedOpen(true);
+                    }}
+                  >
+                    New custom
+                  </Button>
                 </div>
               </div>
-            </div>,
-            getOverlayRoot()
-          )
-        }
-      </Card >
-    </div >
+
+              <div>
+                <div className="mb-1 text-xs text-secondary">Sex *</div>
+                <select
+                  className="h-9 w-full rounded-md border border-hairline bg-surface px-2 text-sm text-primary"
+                  value={newSex}
+                  onChange={(e) => setNewSex(e.currentTarget.value as any)}
+                >
+                  <option>Female</option>
+                  <option>Male</option>
+                </select>
+              </div>
+
+              <div>
+                <div className="mb-1 text-xs text-secondary">Date of Birth *</div>
+                <Input type="date" value={newDob} onChange={(e) => setNewDob((e.currentTarget as HTMLInputElement).value)} />
+              </div>
+
+              <div>
+                <div className="mb-1 text-xs text-secondary">Status</div>
+                <select
+                  className="h-9 w-full rounded-md border border-hairline bg-surface px-2 text-sm text-primary"
+                  value={newStatus}
+                  onChange={(e) => setNewStatus(e.currentTarget.value as any)}
+                >
+                  {["Active", "Breeding", "Unavailable", "Retired", "Deceased", "Prospect"].map((s) => (
+                    <option key={s}>{s}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="sm:col-span-2">
+                <div className="mb-1 text-xs text-secondary">Microchip #</div>
+                <Input value={newMicrochip} onChange={(e) => setNewMicrochip((e.currentTarget as HTMLInputElement).value)} />
+              </div>
+
+              <div className="sm:col-span-2">
+                <OwnershipEditor
+                  api={{
+                    searchContacts: (q) => (api as any)?.lookups?.searchContacts?.(q) ?? Promise.resolve([]),
+                    searchOrganizations: (q) => (api as any)?.lookups?.searchOrganizations?.(q) ?? Promise.resolve([]),
+                  }}
+                  value={owners}
+                  onChange={(rows) => setOwners(rows)}
+                />
+              </div>
+
+              <div className="sm:col-span-2">
+                <div className="mb-1 text-xs text-secondary">Tags</div>
+                <Input placeholder="tag1, tag2" value={tagsStr} onChange={(e) => setTagsStr((e.currentTarget as HTMLInputElement).value)} />
+              </div>
+
+              <div className="sm:col-span-2">
+                <div className="mb-1 text-xs text-secondary">Notes</div>
+                <textarea
+                  className="h-24 w-full rounded-md border border-hairline bg-surface px-3 text-sm text-primary placeholder:text-secondary outline-none"
+                  value={notes}
+                  onChange={(e) => setNotes((e.currentTarget as HTMLTextAreaElement).value)}
+                  placeholder="Temperament, program notes, constraints"
+                />
+              </div>
+
+              {createErr && <div className="sm:col-span-2 text-sm text-red-600">{createErr}</div>}
+
+              <div className="mt-2 flex items-center justify-end gap-2 sm:col-span-2">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    resetCreateForm();
+                    setCreateOpen(false);
+                  }}
+                  disabled={createWorking}
+                >
+                  Cancel
+                </Button>
+                <Button onClick={doCreateAnimal} disabled={!canCreate || createWorking}>
+                  {createWorking ? "Saving…" : "Save"}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </Overlay>
+      )}
+    </div>
   );
 }

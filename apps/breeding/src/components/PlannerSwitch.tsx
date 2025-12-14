@@ -1,6 +1,5 @@
 // apps/breeding/src/components/PlannerSwitch.tsx
 import * as React from "react";
-// import { Button } from "@bhq/ui"; // ⟵ remove (unused)
 
 export type PlannerMode = "per-plan" | "rollup";
 
@@ -8,51 +7,81 @@ type Props = {
   mode: PlannerMode;
   onChange: (m: PlannerMode) => void;
   className?: string;
-  rollupEnabled?: boolean; 
+  rollupEnabled?: boolean;
 };
 
-function PlannerSwitch({ mode, onChange, className, rollupEnabled = true }: Props) {
-  const setPerPlan = React.useCallback(() => onChange("per-plan"), [onChange]);
-  const setMaster = React.useCallback(() => onChange("rollup"), [onChange]);
+export default function PlannerSwitch({
+  mode,
+  onChange,
+  className,
+  rollupEnabled = true,
+}: Props) {
+  const containerClasses = [
+    "inline-flex items-end gap-6", // no borders here
+    className || "",
+  ].join(" ");
+
+  const baseTab =
+    "pb-1 text-sm font-medium transition-colors select-none";
+
+  const inactiveText =
+    "text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-100";
+  const activeText = "text-neutral-900 dark:text-neutral-50";
+
+  const disabledText =
+    "opacity-50 cursor-not-allowed text-neutral-400 dark:text-neutral-500";
 
   return (
     <div
-      className={["inline-flex items-center rounded-md border border-hairline bg-surface p-1", className || ""].join(" ")}
+      className={containerClasses}
       role="tablist"
       aria-label="Planner view mode"
     >
+      {/* Per Plan */}
       <button
         type="button"
         role="tab"
         aria-selected={mode === "per-plan"}
-        onClick={setPerPlan}
+        onClick={() => onChange("per-plan")}
         className={[
-          "px-3 h-8 rounded-md text-sm font-medium transition",
-          mode === "per-plan" ? "bg-white/10 text-primary" : "text-secondary hover:text-primary",
+          baseTab,
+          mode === "per-plan" ? activeText : inactiveText,
         ].join(" ")}
+        style={{
+          borderBottom:
+            mode === "per-plan"
+              ? "2px solid #f97316" // orange underline
+              : "2px solid transparent",
+        }}
       >
-        Per plan
+        Per Plan
       </button>
 
+      {/* Rollup */}
       <button
         type="button"
         role="tab"
         aria-selected={mode === "rollup"}
         aria-disabled={!rollupEnabled}
         disabled={!rollupEnabled}
-        onClick={rollupEnabled ? setMaster : undefined}
+        onClick={rollupEnabled ? () => onChange("rollup") : undefined}
         className={[
-          "ml-1 px-3 h-8 rounded-md text-sm font-medium transition",
-          mode === "rollup" ? "bg-white/10 text-primary" : "text-secondary hover:text-primary",
-          !rollupEnabled ? "opacity-50 cursor-not-allowed hover:text-secondary" : "",
+          baseTab,
+          !rollupEnabled
+            ? disabledText
+            : mode === "rollup"
+            ? activeText
+            : inactiveText,
         ].join(" ")}
-        title={rollupEnabled ? "Rollup" : "Coming soon"}
+        style={{
+          borderBottom:
+            mode === "rollup"
+              ? "2px solid #f97316"
+              : "2px solid transparent",
+        }}
       >
         Rollup
       </button>
     </div>
   );
 }
-
-export const PlannerModeSwitch = PlannerSwitch;
-export default PlannerSwitch;

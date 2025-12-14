@@ -43,12 +43,12 @@ export function windowsFromPlan(plan: BreedingPlanLike): StageWindows[] {
 /** Visual config and order (canonical stage keys, Placement naming) */
 export function defaultStageVisuals() {
   return [
-    { key: "preBreeding",       label: "Pre-breeding Heat",   baseColor: "hsl(var(--brand-cyan, 186 100% 40%))",  hatchLikely: true },
-    { key: "hormoneTesting",    label: "Hormone Testing",     baseColor: "hsl(var(--brand-orange, 36 100% 50%))",  hatchLikely: true },
-    { key: "breeding",          label: "Breeding",            baseColor: "hsl(var(--brand-green, 140 70% 45%))" },
-    { key: "birth",             label: "Birth",               baseColor: "hsl(var(--brand-pink, 345 80% 55%))" },
-    { key: "puppyCare",         label: "Puppy Care",          baseColor: "hsl(var(--brand-purple, 270 90% 60%))" },
-    { key: "PlacementNormal",   label: "Placement",           baseColor: "hsl(var(--brand-gray, 220 10% 60%))" },
-    { key: "PlacementExtended", label: "Placement (Extended)",baseColor: "hsl(var(--brand-gray, 220 10% 60%))" },
+    { key: "preBreeding", label: "Pre-breeding Heat", baseColor: "hsl(var(--brand-cyan, 186 100% 40%))", hatchLikely: true },
+    { key: "hormoneTesting", label: "Hormone Testing", baseColor: "hsl(var(--brand-orange, 36 100% 50%))", hatchLikely: true },
+    { key: "breeding", label: "Breeding", baseColor: "hsl(var(--brand-green, 140 70% 45%))" },
+    { key: "birth", label: "Birth", baseColor: "hsl(var(--brand-pink, 345 80% 55%))" },
+    { key: "postBirthCare", label: "Post Birth Care", baseColor: "hsl(var(--brand-purple, 270 90% 60%))" },
+    { key: "PlacementNormal", label: "Placement", baseColor: "hsl(var(--brand-gray, 220 10% 60%))" },
+    { key: "PlacementExtended", label: "Placement (Extended)", baseColor: "hsl(var(--brand-gray, 220 10% 60%))" },
   ] as const;
 }

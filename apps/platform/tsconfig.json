@@ -24,6 +24,9 @@
       "@bhq/offspring": ["../offspring/src/index.ts"],
       "@bhq/offspring/*": ["../offspring/src/*"],
 
+      "@bhq/finance": ["../finance/src/index.ts"],
+      "@bhq/finance/*": ["../finance/src/*"],
+
       "@bhq/admin": ["../admin/src/index.ts"],
       "@bhq/admin/*": ["../admin/src/*"],
 

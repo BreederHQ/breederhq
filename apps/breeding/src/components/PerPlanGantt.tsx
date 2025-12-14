@@ -152,7 +152,7 @@ function normalizeBands(
   }
 
   const out = { rf: -rfMag, rt: +rtMag, uf: -ufMag, ut: +utMag };
-return out;
+  return out;
 }
 function nonNullMin(a: Date | null, b: Date | null) { if (!a) return b; if (!b) return a; return a < b ? a : b; }
 function nonNullMax(a: Date | null, b: Date | null) { if (!a) return b; if (!b) return a; return a > b ? a : b; }
@@ -234,9 +234,7 @@ function resolveExpected(plan: PlanLike, computeExpected?: ComputeExpectedFn): P
     placementCompleted: planExp.placementCompleted ?? computed?.placementCompleted ?? null,
   };
 
-  if (!merged.placementStart && merged.birth) merged.placementStart = addDays(merged.birth, 56);
-  if (!merged.placementCompleted && merged.placementStart) merged.placementCompleted = addDays(merged.placementStart, 21);
-return merged;
+  return merged;
 }
 
 /* ---------- phase rows (respects showBands; always adds center fill like Rollup) ---------- */
@@ -335,27 +333,41 @@ type ExactRowSpec = {
 
 function buildExactRows(exp: PlanExpected, prefs: AvailabilityPrefs, showBands: boolean) {
   const specs: ExactRowSpec[] = [
-    { id: "exact-cycle", label: "Cycle Start", anchor: exp.cycle,
+    {
+      id: "exact-cycle", label: "Cycle Start", anchor: exp.cycle,
       risky_from: prefs.date_cycle_risky_from, risky_to: prefs.date_cycle_risky_to,
-      unlikely_from: prefs.date_cycle_unlikely_from, unlikely_to: prefs.date_cycle_unlikely_to },
-    { id: "exact-testing", label: "Hormone Testing", anchor: exp.testing,
+      unlikely_from: prefs.date_cycle_unlikely_from, unlikely_to: prefs.date_cycle_unlikely_to
+    },
+    {
+      id: "exact-testing", label: "Hormone Testing", anchor: exp.testing,
       risky_from: prefs.date_testing_risky_from, risky_to: prefs.date_testing_risky_to,
-      unlikely_from: prefs.date_testing_unlikely_from, unlikely_to: prefs.date_testing_unlikely_to },
-    { id: "exact-breeding", label: "Breeding", anchor: exp.breeding,
+      unlikely_from: prefs.date_testing_unlikely_from, unlikely_to: prefs.date_testing_unlikely_to
+    },
+    {
+      id: "exact-breeding", label: "Breeding", anchor: exp.breeding,
       risky_from: prefs.date_breeding_risky_from, risky_to: prefs.date_breeding_risky_to,
-      unlikely_from: prefs.date_breeding_unlikely_from, unlikely_to: prefs.date_breeding_unlikely_to },
-    { id: "exact-birth", label: "Birth", anchor: exp.birth,
+      unlikely_from: prefs.date_breeding_unlikely_from, unlikely_to: prefs.date_breeding_unlikely_to
+    },
+    {
+      id: "exact-birth", label: "Birth", anchor: exp.birth,
       risky_from: prefs.date_birth_risky_from, risky_to: prefs.date_birth_risky_to,
-      unlikely_from: prefs.date_birth_unlikely_from, unlikely_to: prefs.date_birth_unlikely_to },
-    { id: "exact-weaning", label: "Weaning", anchor: exp.weaned,
+      unlikely_from: prefs.date_birth_unlikely_from, unlikely_to: prefs.date_birth_unlikely_to
+    },
+    {
+      id: "exact-weaning", label: "Weaning", anchor: exp.weaned,
       risky_from: prefs.date_weaned_risky_from, risky_to: prefs.date_weaned_risky_to,
-      unlikely_from: prefs.date_weaned_unlikely_from, unlikely_to: prefs.date_weaned_unlikely_to },
-    { id: "exact-placement-start", label: "Placement Start", anchor: exp.placementStart,
+      unlikely_from: prefs.date_weaned_unlikely_from, unlikely_to: prefs.date_weaned_unlikely_to
+    },
+    {
+      id: "exact-placement-start", label: "Placement Start", anchor: exp.placementStart,
       risky_from: prefs.date_placement_start_risky_from, risky_to: prefs.date_placement_start_risky_to,
-      unlikely_from: prefs.date_placement_start_unlikely_from, unlikely_to: prefs.date_placement_start_unlikely_to },
-    { id: "exact-placement-completed", label: "Placement Completed", anchor: exp.placementCompleted,
+      unlikely_from: prefs.date_placement_start_unlikely_from, unlikely_to: prefs.date_placement_start_unlikely_to
+    },
+    {
+      id: "exact-placement-completed", label: "Placement Completed", anchor: exp.placementCompleted,
       risky_from: prefs.date_placement_completed_risky_from, risky_to: prefs.date_placement_completed_risky_to,
-      unlikely_from: prefs.date_placement_completed_unlikely_from, unlikely_to: prefs.date_placement_completed_unlikely_to },
+      unlikely_from: prefs.date_placement_completed_unlikely_from, unlikely_to: prefs.date_placement_completed_unlikely_to
+    },
   ];
 
   const colorOf = (id: string) => {
@@ -425,11 +437,11 @@ function usePlanToggles(planId: string | number, defaultExactBandsVisible: boole
     try {
       const raw = localStorage.getItem(key);
       if (raw) return JSON.parse(raw);
-    } catch {}
+    } catch { }
     return { showPhases: true, showExact: true, showExactBands: !!defaultExactBandsVisible };
   });
   React.useEffect(() => {
-    try { localStorage.setItem(key, JSON.stringify(state)); } catch {}
+    try { localStorage.setItem(key, JSON.stringify(state)); } catch { }
   }, [key, state]);
   return [state, set] as const;
 }
@@ -549,7 +561,7 @@ function PlanBlock({ plan, prefs, computeExpected }: { plan: PlanLike; prefs: Av
 
   // Availability Bands toggle affects BOTH sections
   const phases = React.useMemo(() => buildPhaseRows(exp, prefs, toggles.showExactBands), [exp, prefs, toggles.showExactBands]);
-  const exact  = React.useMemo(() => buildExactRows(exp, prefs, toggles.showExactBands),  [exp, prefs, toggles.showExactBands]);
+  const exact = React.useMemo(() => buildExactRows(exp, prefs, toggles.showExactBands), [exp, prefs, toggles.showExactBands]);
 
   const rawMin = [phases.spanMin, exact.spanMin].reduce(nonNullMin, null);
   const rawMax = [phases.spanMax, exact.spanMax].reduce(nonNullMax, null);

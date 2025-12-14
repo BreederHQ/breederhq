@@ -1654,128 +1654,134 @@ export default function AppContacts() {
       </div>
 
       <Card>
-        <div className="bhq-details-drawer">
-          <DetailsHost rows={rows} config={detailsConfig}>
-            <Table
-              columns={COLUMNS}
-              columnState={map}
-              onColumnStateChange={setAll}
-              getRowId={(r: ContactRow) => r.id}
-              pageSize={25}
-              renderStickyRight={() => (
-                <ColumnsPopover
-                  columns={map}
-                  onToggle={toggle}
-                  onSet={setAll}
-                  allColumns={COLUMNS}
-                  triggerClassName="bhq-columns-trigger"
-                />
-              )}
-              stickyRightWidthPx={40}
-            >
-              {/* Toolbar */}
-              <div className="bhq-table__toolbar px-2 pt-2 pb-3 relative z-30">
-                <SearchBar
-                  value={q}
-                  onChange={setQ}
-                  placeholder="Search any field…"
-                  widthPx={520}
-                  rightSlot={
-                    <button
-                      type="button"
-                      onClick={() => setFiltersOpen((v) => !v)}
-                      aria-expanded={filtersOpen}
-                      title="Filters"
-                      className="h-7 w-7 rounded-md flex items-center justify-center hover:bg-white/5 focus:outline-none"
-                    >
-                      <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-                        <path d="M3 5h18M7 12h10M10 19h4" strokeLinecap="round" />
-                      </svg>
-                    </button>
-                  }
-                />
-              </div>
+        <DetailsHost rows={rows} config={detailsConfig}>
+          <Table
+            columns={COLUMNS}
+            columnState={map}
+            onColumnStateChange={setAll}
+            getRowId={(r: ContactRow) => r.id}
+            pageSize={pageSize}
+            renderStickyRight={() => (
+              <ColumnsPopover
+                columns={map}
+                onToggle={toggle}
+                onSet={setAll}
+                allColumns={COLUMNS}
+                triggerClassName="bhq-columns-trigger"
+              />
+            )}
+            stickyRightWidthPx={40}
+          >
+            {/* Toolbar */}
+            <div className="bhq-table__toolbar px-2 pt-2 pb-3 relative z-30">
+              <SearchBar
+                value={q}
+                onChange={setQ}
+                placeholder="Search any field…"
+                widthPx={520}
+                rightSlot={
+                  <button
+                    type="button"
+                    onClick={() => setFiltersOpen((v) => !v)}
+                    aria-expanded={filtersOpen}
+                    title="Filters"
+                    className="h-7 w-7 rounded-md flex items-center justify-center hover:bg-white/5 focus:outline-none"
+                  >
+                    {/* filter icon svg */}
+                  </button>
+                }
+              />
+            </div>
 
-              {/* Filters */}
-              {filtersOpen && (
-                <FiltersRow
-                  filters={filters}
-                  onChange={(next) => setFilters(next)}
-                  schema={filterSchemaForFiltersRow}
-                />
-              )}
-
-              {/* Chips */}
-              <FilterChips
+            {/* Filters */}
+            {filtersOpen && (
+              <FiltersRow
                 filters={filters}
-                onChange={setFilters}
-                prettyLabel={(k) => {
-                  if (k === "birthday_from") return "Birthday ≥";
-                  if (k === "birthday_to") return "Birthday ≤";
-                  if (k === "lastContacted_from") return "Last contacted ≥";
-                  if (k === "lastContacted_to") return "Last contacted ≤";
-                  if (k === "nextFollowUp_from") return "Next follow-up ≥";
-                  if (k === "nextFollowUp_to") return "Next follow-up ≤";
-                  if (k === "created_at_from") return "Created ≥";
-                  if (k === "created_at_to") return "Created ≤";
-                  if (k === "updated_at_from") return "Updated ≥";
-                  if (k === "updated_at_to") return "Updated ≤";
-                  return k;
-                }}
+                onChange={(next) => setFilters(next)}
+                schema={filterSchemaForFiltersRow}
               />
+            )}
 
-              {/* Table */}
-              <table className="min-w-max w-full text-sm">
-                <TableHeader columns={visibleSafe} sorts={sorts} onToggleSort={onToggleSort} />
-                <tbody>
-                  {loading && (
-                    <TableRow><TableCell colSpan={visibleSafe.length}>
+            <FilterChips
+              filters={filters}
+              onChange={setFilters}
+              prettyLabel={(k) => {
+                if (k === "birthday_from") return "Birthday ≥";
+                if (k === "birthday_to") return "Birthday ≤";
+                if (k === "lastContacted_from") return "Last contacted ≥";
+                if (k === "lastContacted_to") return "Last contacted ≤";
+                if (k === "nextFollowUp_from") return "Next follow-up ≥";
+                if (k === "nextFollowUp_to") return "Next follow-up ≤";
+                if (k === "created_at_from") return "Created ≥";
+                if (k === "created_at_to") return "Created ≤";
+                if (k === "updated_at_from") return "Updated ≥";
+                if (k === "updated_at_to") return "Updated ≤";
+                return k;
+              }}
+            />
+
+            {/* Table */}
+            <table className="min-w-max w-full text-sm">
+              <TableHeader columns={visibleSafe} sorts={sorts} onToggleSort={onToggleSort} />
+              <tbody>
+                {loading && (
+                  <TableRow>
+                    <TableCell colSpan={visibleSafe.length}>
                       <div className="py-8 text-center text-sm text-secondary">Loading contacts…</div>
-                    </TableCell></TableRow>
-                  )}
+                    </TableCell>
+                  </TableRow>
+                )}
 
-                  {!loading && error && (
-                    <TableRow><TableCell colSpan={visibleSafe.length}>
+                {!loading && error && (
+                  <TableRow>
+                    <TableCell colSpan={visibleSafe.length}>
                       <div className="py-8 text-center text-sm text-red-600">Error: {error}</div>
-                    </TableCell></TableRow>
-                  )}
+                    </TableCell>
+                  </TableRow>
+                )}
 
-                  {!loading && !error && pageRows.length === 0 && (
-                    <TableRow><TableCell colSpan={visibleSafe.length}>
-                      <div className="py-8 text-center text-sm text-secondary">No contacts to display yet.</div>
-                    </TableCell></TableRow>
-                  )}
+                {!loading && !error && pageRows.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={visibleSafe.length}>
+                      <div className="py-8 text-center text-sm text-secondary">
+                        No contacts to display yet.
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                )}
 
-                  {!loading && !error && pageRows.length > 0 &&
-                    pageRows.map((r) => (
-                      <TableRow key={String(r.id)} detailsRow={r}>
-                        {visibleSafe.map((c) => {
-                          let v = (r as any)[c.key] as any;
-                          if (DATE_KEYS.has(c.key as any)) v = fmt(v);
-                          if (Array.isArray(v)) v = v.join(", ");
-                          return <TableCell key={c.key}>{v ?? ""}</TableCell>;
-                        })}
-                      </TableRow>
-                    ))}
-                </tbody>
-              </table>
+                {!loading && !error && pageRows.length > 0 &&
+                  pageRows.map((r) => (
+                    <TableRow key={String(r.id)} detailsRow={r}>
+                      {visibleSafe.map((c) => {
+                        let v = (r as any)[c.key] as any;
+                        if (DATE_KEYS.has(c.key as any)) v = fmt(v);
+                        if (Array.isArray(v)) v = v.join(", ");
+                        return <TableCell key={c.key}>{v ?? ""}</TableCell>;
+                      })}
+                    </TableRow>
+                  ))}
+              </tbody>
+            </table>
 
-              <TableFooter
-                entityLabel="contacts"
-                page={Math.min(page, Math.max(1, Math.ceil(sortedRows.length / pageSize)))}
-                pageCount={Math.max(1, Math.ceil(sortedRows.length / pageSize))}
-                pageSize={pageSize}
-                pageSizeOptions={[10, 25, 50, 100]}
-                onPageChange={(p) => setPage(p)}
-                onPageSizeChange={(n) => { setPageSize(n); setPage(1); }}
-                start={sortedRows.length === 0 ? 0 : (page - 1) * pageSize + 1}
-                end={sortedRows.length === 0 ? 0 : Math.min(sortedRows.length, (page - 1) * pageSize + pageSize)}
-                filteredTotal={sortedRows.length}
-                total={rows.length}
-              />
-            </Table>
-          </DetailsHost>
-        </div>
+            <TableFooter
+              entityLabel="contacts"
+              page={clampedPage}
+              pageCount={pageCount}
+              pageSize={pageSize}
+              pageSizeOptions={[10, 25, 50, 100]}
+              onPageChange={(p) => setPage(p)}
+              onPageSizeChange={(n) => {
+                setPageSize(n);
+                setPage(1);
+              }}
+              start={start}
+              end={end}
+              filteredTotal={sortedRows.length}
+              total={rows.length}
+            />
+          </Table>
+        </DetailsHost>
       </Card>
 
       {/* Create Contact Modal (Overlay) */}

@@ -11,7 +11,7 @@ import {
 } from "../adapters/planToGantt";
 import { eventsForItems } from "../adapters/planToEvents";
 
-/* ───────────────────────── helpers ───────────────────────── */
+/* helpers */
 
 function toFcEvent(ev: {
   id: string;
@@ -23,16 +23,20 @@ function toFcEvent(ev: {
 }) {
   return {
     id: ev.id,
-    title: ev.planName ? `${ev.kind.replace(/_/g, " ").toLowerCase()}` : ev.kind,
+    title: ev.planName ? ev.kind.replace(/_/g, " ").toLowerCase() : ev.kind,
     start: new Date(ev.date),
     allDay: true,
     calendarId: `plan:${ev.planId}`,
     color: ev.color,
-    extendedProps: { planId: String(ev.planId), variant: "expected" as const, kind: ev.kind },
+    extendedProps: {
+      planId: String(ev.planId),
+      variant: "expected" as const,
+      kind: ev.kind,
+    },
   };
 }
 
-/* ───────────────────────── component ───────────────────────── */
+/* component */
 
 export default function BreedingCalendar({
   items = [],
@@ -49,7 +53,9 @@ export default function BreedingCalendar({
 }) {
   const selectedSet: Set<string | number> | null = React.useMemo(() => {
     if (!selectedPlanIds) return null;
-    return selectedPlanIds instanceof Set ? selectedPlanIds : new Set(selectedPlanIds);
+    return selectedPlanIds instanceof Set
+      ? selectedPlanIds
+      : new Set(selectedPlanIds);
   }, [selectedPlanIds]);
 
   // Left rail groups
@@ -60,36 +66,79 @@ export default function BreedingCalendar({
       color: colorFromId(p.id),
       defaultOn: selectedSet ? selectedSet.has(p.id as any) : true,
     }));
-    return { id: "breeding:plans", label: "Breeding Plans", items: groupItems };
+    return {
+      id: "breeding:plans",
+      label: "Breeding Plans",
+      items: groupItems,
+    };
   }, [items, selectedSet]);
 
   const overlayGroup = React.useMemo(
     () => ({
       id: "overlays",
       label: "Overlays",
-      items: [{ id: "overlay:availability", label: "Availability Bands", color: "#F59E0B", defaultOn: false }],
+      items: [
+        {
+          id: "overlay:availability",
+          label: "Availability Bands",
+          color: "#F59E0B",
+          defaultOn: false,
+        },
+      ],
     }),
     []
   );
 
-  const groups = React.useMemo(() => [planGroup, overlayGroup], [planGroup, overlayGroup]);
+  const groups = React.useMemo(
+    () => [planGroup, overlayGroup],
+    [planGroup, overlayGroup]
+  );
 
-  // Calendar events: anchor points from adapter + availability overlay derived from stage windows
+  // Calendar events
   const events = React.useMemo(() => {
-    const pointEvents = eventsForItems(items, {
-      horizon: horizon ?? undefined,
-      planIds: selectedSet ?? undefined,
-    }).map(toFcEvent);
+    if (!Array.isArray(items) || items.length === 0) {
+      return [] as any[];
+    }
 
-    const overlayEvents = items
-      .filter((p) => !selectedSet || selectedSet.has(p.id as any))
-      .flatMap((p) => {
-        const stages = windowsFromPlan(p);
-        const bands = computeAvailabilityBands(stages);
-        const planId = String(p.id);
-        const baseColor = colorFromId(p.id);
+    // Anchor points from adapter
+    let pointEvents: any[] = [];
+    try {
+      pointEvents = eventsForItems(items, {
+        horizon: horizon ?? undefined,
+        planIds: selectedSet ?? undefined,
+      }).map(toFcEvent);
+    } catch {
+      pointEvents = [];
+    }
 
-        return bands.map((b, i) => ({
+    // Availability overlays from stage windows
+    const overlayEvents: any[] = [];
+    for (const p of items) {
+      if (selectedSet && !selectedSet.has(p.id as any)) continue;
+
+      let stages: any[] = [];
+      try {
+        stages = windowsFromPlan(p) || [];
+      } catch {
+        stages = [];
+      }
+      if (!stages.length) continue;
+
+      let bands: any[] = [];
+      try {
+        bands = computeAvailabilityBands(stages) || [];
+      } catch {
+        bands = [];
+      }
+      if (!bands.length) continue;
+
+      const planId = String(p.id);
+      const baseColor = colorFromId(p.id);
+
+      bands.forEach((b, i) => {
+        if (!b?.range?.start || !b?.range?.end) return;
+
+        overlayEvents.push({
           id: `plan:${planId}:avail:${b.kind}:${i}`,
           title: b.label,
           start: b.range.start,
@@ -97,20 +146,28 @@ export default function BreedingCalendar({
           allDay: true,
           calendarId: "overlay:availability",
           color: b.kind === "risky" ? "#EF4444" : baseColor,
-          extendedProps: { planId, variant: "availability" as const, availabilityKind: b.kind },
-        }));
+          extendedProps: {
+            planId,
+            variant: "availability" as const,
+            availabilityKind: b.kind,
+          },
+        });
       });
+    }
 
     // Optional horizon clamp for overlay spans too
-    const clamped = horizon
-      ? overlayEvents.filter((e) => {
-          const s = new Date(e.start as any).getTime();
-          const en = new Date(e.end as any).getTime();
-          return en >= horizon.start.getTime() && s <= horizon.end.getTime();
-        })
-      : overlayEvents;
+    const clampedOverlays =
+      horizon && overlayEvents.length
+        ? overlayEvents.filter((e) => {
+            const s = new Date(e.start as any).getTime();
+            const en = new Date(e.end as any).getTime();
+            return (
+              en >= horizon.start.getTime() && s <= horizon.end.getTime()
+            );
+          })
+        : overlayEvents;
 
-    return [...pointEvents, ...clamped];
+    return [...pointEvents, ...clampedOverlays];
   }, [items, selectedSet, horizon]);
 
   return (
@@ -122,7 +179,9 @@ export default function BreedingCalendar({
       storageKey="bhq_calendar_breeding_v2"
       onEventClick={(ev) => {
         const planId = String((ev as any)?.extendedProps?.planId ?? "");
-        if (planId) navigateToPlan?.(planId);
+        if (planId) {
+          navigateToPlan?.(planId);
+        }
       }}
     />
   );

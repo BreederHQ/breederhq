@@ -263,7 +263,7 @@ export default function BHQGantt(props: BHQGanttProps) {
   const hatchBaseId = React.useId();
 
   // centerlines
-  type Centerline = { x: number; y1: number; y2: number; title?: string };
+  type Centerline = { x: number; y1: number; y2: number; title?: string; color?: string };
   const centerlines: Centerline[] = [];
   const CENTERLINE_OVERSHOOT = 10;
   const ANCHOR_HIT_W = 28;
@@ -490,6 +490,7 @@ export default function BHQGantt(props: BHQGanttProps) {
                         y1: y - CENTERLINE_OVERSHOOT,
                         y2: y + h + CENTERLINE_OVERSHOOT,
                         title: p.tooltip,
+                        color: p.color,
                       });
                     }
 
@@ -508,20 +509,21 @@ export default function BHQGantt(props: BHQGanttProps) {
           {/* top layer centerlines with hit area */}
           <g>
             {centerlines.map((c, i) => {
-              const hx = c.x - ANCHOR_HIT_W / 2;
+              const hx = Math.max(contentStartX, c.x - ANCHOR_HIT_W / 2);
               const y1 = c.y1 - HIT_Y_PAD;
               const y2 = c.y2 + HIT_Y_PAD;
               return (
                 <g key={`ctr-${i}`}>
-                  <line
-                    className="bhq-gantt__centerline"
-                    x1={c.x}
-                    x2={c.x}
-                    y1={c.y1}
-                    y2={c.y2}
-                    strokeLinecap="round"
-                    vectorEffect="non-scaling-stroke"
-                  />
+        <line
+          className="bhq-gantt__centerline"
+          x1={c.x}
+          x2={c.x}
+          y1={c.y1}
+          y2={c.y2}
+          strokeLinecap="round"
+          vectorEffect="non-scaling-stroke"
+          style={c.color ? { stroke: c.color } : undefined}
+        />
                   <rect
                     x={hx}
                     y={y1}

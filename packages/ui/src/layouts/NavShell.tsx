@@ -1,6 +1,6 @@
 // packages/ui/src/layouts/NavShell.tsx
 import * as React from "react";
-import logoUrl from "../../assets/logo.png";
+import logoUrl from "../assets/logo.png";
 
 export type NavItem = {
   key: string;
@@ -78,6 +78,7 @@ function emojiFor(label: string) {
   if (k.includes("animal")) return "🐾";
   if (k.includes("admin")) return "🛠️";
   if (k.includes("offspring")) return "🍼";
+  if (k.includes("finance")) return "💰";
   if (k.includes("breed")) return "🧬";
   if (k.includes("calendar")) return "📅";
   if (k.includes("plan")) return "🗂️";
@@ -141,6 +142,7 @@ export const NavShell: React.FC<NavShellProps> = ({
     { key: "animals", label: "Animals", href: "/animals/" },
     { key: "breeding", label: "Breeding", href: "/breeding/" },
     { key: "offspring", label: "Offspring", href: "/offspring/" },
+    { key: "finance", label: "Finance", href: "/finance/" },
     { key: "admin", label: "Admin", href: "/admin/" },
   ];
   const navItems = items && items.length ? items : defaultItems;

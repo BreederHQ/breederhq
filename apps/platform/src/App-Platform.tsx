@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import InviteSignupPage from "./pages/InviteSignupPage";
 import VerifyPage from "./pages/VerifyPage";
 import NavShell from "@bhq/ui/layouts/NavShell";
+import { ToastViewport } from "@bhq/ui/atoms";
 import { resolveTenantId } from "@bhq/ui/utils/tenant";
 import { UiScaleProvider } from "@bhq/ui/settings/UiScaleProvider";
 import "@bhq/ui/styles/global.css";
@@ -17,6 +18,7 @@ import AppOrganizations from "@bhq/organizations/App-Organizations";
 import AppAnimals from "@bhq/animals/App-Animals";
 import AppBreeding from "@bhq/breeding/App-Breeding";
 import AppOffspring from "@bhq/offspring/App-Offspring";
+import AppFinance from "@bhq/finance/App-Finance";
 import AdminModule from "@bhq/admin/App-Admin";
 import DashboardPage from "./pages/Dashboard";
 
@@ -24,7 +26,7 @@ import DashboardPage from "./pages/Dashboard";
 import SettingsPanel from "./pages/SettingsPanel";
 
 // Lightweight “current module” state (key + label)
-type ActiveModule = { key: "dashboard" | "contacts" | "organizations" | "animals" | "breeding" | "offspring" | "admin"; label: string };
+type ActiveModule = { key: "dashboard" | "contacts" | "organizations" | "animals" | "breeding" | "offspring" | "finance" | "admin"; label: string };
 const DEFAULT_MODULE: ActiveModule = { key: "dashboard", label: "Dashboard" };
 
 type AuthState = {
@@ -144,6 +146,7 @@ function RouteView() {
   if (p === "/animals" || p.startsWith("/animals")) return <AppAnimals />;
   if (p === "/breeding" || p.startsWith("/breeding")) return <AppBreeding />;
   if (p === "/offspring" || p.startsWith("/offspring")) return <AppOffspring />;
+  if (p === "/finance" || p.startsWith("/finance")) return <AppFinance />;
   if (p === "/admin" || p.startsWith("/admin")) return <AdminModule />;
   return <DashboardPage />;
 }
@@ -320,6 +323,7 @@ export default function AppPlatform() {
               { key: "animals", label: "Animals", href: "/animals", icon: "animals" },
               { key: "breeding", label: "Breeding", href: "/breeding", icon: "breeding" },
               { key: "offspring", label: "Offspring", href: "/offspring", icon: "offspring" },
+              { key: "finance", label: "Finance", href: "/finance", icon: "finance" },
               { key: "admin", label: "Admin", href: "/admin", icon: "admin" },
             ]}
             orgName={orgName}
@@ -341,6 +345,9 @@ export default function AppPlatform() {
             onClose={() => setSettingsOpen(false)}
           />
           <div id="bhq-overlay-root" className="fixed inset-0 z-[2147483647] pointer-events-none" />
+
+          {/* Toast system renders here */}
+          <ToastViewport />
         </div>
       )}
     </UiScaleProvider>

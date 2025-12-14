@@ -1,0 +1,3430 @@
+// apps/offspring/src/pages/OffspringPage.tsx
+import * as React from "react";
+import {
+  PageHeader,
+  Table,
+  TableHeader,
+  TableRow,
+  TableCell,
+  TableFooter,
+  ColumnsPopover,
+  hooks,
+  SearchBar,
+  DetailsScaffold,
+  SectionCard,
+  Button,
+  BreedCombo,
+} from "@bhq/ui";
+
+
+import { Overlay } from "@bhq/ui/overlay";
+import {
+  ChevronDown,
+  ChevronUp,
+  FilePlus2,
+  Plus,
+} from "lucide-react";
+
+import {
+  makeOffspringApiClient,
+  type AnimalLite,
+  type OffspringGroupDTO,
+} from "../api";
+
+import { readTenantIdFast } from "@bhq/ui/utils/tenant";
+
+// Shared input styling
+const inputClass =
+  "w-full h-9 rounded-md border border-hairline bg-surface px-3 text-sm text-primary " +
+  "placeholder:text-secondary/80 focus:outline-none focus:ring-1 focus:ring-[hsl(var(--brand-orange))] " +
+  "focus:border-[hsl(var(--brand-orange))] shadow-[inset_0_0_0_9999px_rgba(255,255,255,0.02)]";
+
+function cx(...parts: Array<string | false | null | undefined>) {
+  return parts.filter(Boolean).join(" ");
+}
+
+const labelClass = "mt-3 text-xs text-secondary";
+
+const MODAL_Z = 2147485000;
+
+const WHELPING_COLLAR_SWATCHES = [
+  { label: "Red", value: "Red", hex: "#ef4444" },
+  { label: "Orange", value: "Orange", hex: "#f97316" },
+  { label: "Yellow", value: "Yellow", hex: "#eab308" },
+  { label: "Green", value: "Green", hex: "#22c55e" },
+  { label: "Blue", value: "Blue", hex: "#3b82f6" },
+  { label: "Purple", value: "Purple", hex: "#a855f7" },
+  { label: "Pink", value: "Pink", hex: "#ec4899" },
+  { label: "Black", value: "Black", hex: "#111827" },
+  { label: "White", value: "White", hex: "#f9fafb" },
+];
+
+const __og_COLLAR_COLOR_SWATCHES = [
+  { id: "red", name: "Red", hex: "#ef4444" },
+  { id: "orange", name: "Orange", hex: "#f97316" },
+  { id: "yellow", name: "Yellow", hex: "#eab308" },
+  { id: "green", name: "Green", hex: "#22c55e" },
+  { id: "blue", name: "Blue", hex: "#3b82f6" },
+  { id: "purple", name: "Purple", hex: "#a855f7" },
+  { id: "pink", name: "Pink", hex: "#ec4899" },
+  { id: "black", name: "Black", hex: "#111827" },
+  { id: "white", name: "White", hex: "#f9fafb" },
+];
+
+function __og_resolveCollarColor(input: any): {
+  id: string | null;
+  name: string | null;
+  hex: string | null;
+} {
+  if (typeof input !== "string") return { id: null, name: null, hex: null };
+  const trimmed = input.trim();
+  if (!trimmed) return { id: null, name: null, hex: null };
+
+  const lower = trimmed.toLowerCase();
+  const match = __og_COLLAR_COLOR_SWATCHES.find(
+    (c) =>
+      c.id.toLowerCase() === lower ||
+      c.name.toLowerCase() === lower,
+  );
+
+  if (!match) {
+    return { id: lower, name: trimmed, hex: null };
+  }
+
+  return { id: match.id, name: match.name, hex: match.hex };
+}
+
+
+
+/** ---------- Types for this page ---------- */
+type ID = string | number;
+type Sex = "MALE" | "FEMALE" | "UNKNOWN";
+type Status = "AVAILABLE" | "RESERVED" | "PLACED" | "HOLDBACK" | "DECEASED";
+type Species = "DOG" | "CAT" | "HORSE";
+type SpeciesUi = "Dog" | "Cat" | "Horse";
+type Money = number;
+
+type Buyer = { id: ID; name: string };
+type GroupLite = { id: ID; name: string };
+
+type GroupOption = {
+  id: number;
+  label: string;
+  species: SpeciesWire | null;
+  breed: string | null;
+};
+
+type MediaItem = {
+  id: ID;
+  url: string;
+  kind: "photo" | "video";
+  label?: string | null;
+};
+
+type OwnershipEvent = {
+  id: ID;
+  kind: "BREEDER" | "GUARDIAN" | "BUYER";
+  party: string;
+  fromDate: string | null;
+  thruDate: string | null;
+};
+
+type LineageLink = {
+  id: ID;
+  kind: "SIRE" | "DAM" | "SIBLING";
+  name: string;
+  registrationId?: string | null;
+};
+
+type GroupBuyerOption = {
+  key: string; // "contact:123"
+  kind: OffspringBuyerKind;
+  id: number;
+  label: string;
+  email?: string | null;
+  phone?: string | null;
+};
+
+function deriveGroupBuyerOptions(group: any | null | undefined): GroupBuyerOption[] {
+  if (!group) return [];
+
+  const raw: any[] =
+    (group.buyers as any[]) ??
+    (group.Buyers as any[]) ??
+    (group.buyerParties as any[]) ??
+    (group.buyerLinks as any[]) ??
+    [];
+
+  return raw
+    .map((b) => {
+      const partyType = String(
+        b.partyType ??
+        b.type ??
+        b.kind ??
+        (b.contactId ? "CONTACT" : b.organizationId ? "ORGANIZATION" : "UNKNOWN"),
+      ).toUpperCase();
+
+      const contact =
+        b.contact ??
+        b.buyerContact ??
+        b.partyContact ??
+        null;
+
+      const organization =
+        b.organization ??
+        b.org ??
+        b.buyerOrganization ??
+        null;
+
+      let kind: OffspringBuyerKind;
+      if (partyType === "CONTACT") {
+        kind = "contact";
+      } else if (partyType === "ORGANIZATION") {
+        kind = "organization";
+      } else {
+        kind = contact ? "contact" : "organization";
+      }
+
+      const id =
+        (kind === "contact"
+          ? b.contactId ?? b.buyerContactId ?? contact?.id
+          : b.organizationId ?? b.buyerOrganizationId ?? organization?.id) ?? null;
+
+      if (!id) return null;
+
+      const label =
+        contact?.displayName ??
+        contact?.name ??
+        (contact
+          ? `${contact.firstName ?? ""} ${contact.lastName ?? ""}`.trim()
+          : null) ??
+        organization?.name ??
+        `Buyer #${id}`;
+
+      return {
+        key: `${kind}:${id}`,
+        kind,
+        id: id as number,
+        label,
+        email: contact?.email ?? organization?.email ?? null,
+        phone: contact?.phone ?? organization?.phone ?? null,
+      } as GroupBuyerOption;
+    })
+    .filter((x): x is GroupBuyerOption => Boolean(x));
+}
+
+type SpeciesWire = "DOG" | "CAT" | "HORSE";
+
+type DirectoryHit =
+  | {
+    kind: "contact";
+    id: number;
+    label: string;
+    sub?: string;
+    email?: string;
+    phone?: string;
+  }
+  | {
+    kind: "org";
+    id: number;
+    label: string;
+    sub?: string;
+  };
+
+type OffspringRootApi = ReturnType<typeof makeOffspringApiClient>;
+
+async function searchDirectory(
+  api: OffspringRootApi | null,
+  q: string
+): Promise<DirectoryHit[]> {
+  const term = q.trim();
+  if (!api || !term) return [];
+
+  const anyApi: any = api;
+  const hits: DirectoryHit[] = [];
+
+  // Contacts
+  if (anyApi.contacts && typeof anyApi.contacts.list === "function") {
+    try {
+      const res = await anyApi.contacts.list({ q: term, limit: 25 });
+      const items: any[] = Array.isArray(res) ? res : res?.items ?? [];
+      for (const c of items) {
+        const label =
+          c.display_name ||
+          `${c.first_name ?? ""} ${c.last_name ?? ""}`.trim() ||
+          "(Contact)";
+        const email = c.email ?? "";
+        const phone = c.phoneE164 || c.phone || "";
+        hits.push({
+          kind: "contact",
+          id: Number(c.id),
+          label,
+          sub: email || phone || "",
+          email,
+          phone,
+        });
+      }
+    } catch (e) {
+      console.error("Directory contact search failed", e);
+    }
+  }
+
+  // Organizations
+  if (anyApi.organizations && typeof anyApi.organizations.list === "function") {
+    try {
+      const res = await anyApi.organizations.list({ q: term, limit: 25 });
+      const items: any[] = Array.isArray(res) ? res : res?.items ?? [];
+      for (const o of items) {
+        hits.push({
+          kind: "org",
+          id: Number(o.id),
+          label: o.name || "(Organization)",
+          sub: o.email || o.phone || "",
+        });
+      }
+    } catch (e) {
+      console.error("Directory organization search failed", e);
+    }
+  }
+
+  return hits;
+}
+
+type AnimalPickLite = {
+  id: number;
+  name: string;
+  species: SpeciesWire;
+  sex: "FEMALE" | "MALE";
+};
+
+async function fetchAnimals(
+  api: OffspringRootApi | null,
+  opts: { q?: string; species?: SpeciesWire; sex?: "FEMALE" | "MALE"; limit?: number }
+): Promise<AnimalPickLite[]> {
+  if (!api) return [];
+  const res = await api.animals.list({
+    q: opts.q,
+    species: opts.species,
+    sex: opts.sex,
+    limit: opts.limit ?? 25,
+  });
+  const raw: any[] = Array.isArray(res) ? res : res?.items ?? [];
+  return raw.map((a) => ({
+    id: Number(a.id),
+    name: String(a.name ?? "").trim(),
+    species: String(a.species ?? "DOG").toUpperCase() as SpeciesWire,
+    sex: String(a.sex ?? "FEMALE").toUpperCase() as "FEMALE" | "MALE",
+  }));
+}
+
+
+export type OffspringStatus =
+  | "PLANNED"
+  | "BORN"
+  | "AVAILABLE"
+  | "RESERVED"
+  | "PLACED"
+  | "HOLDBACK"
+  | "DECEASED";
+
+export type OffspringBuyerKind = "contact" | "organization";
+
+export type OffspringBuyerLite = {
+  kind: OffspringBuyerKind;
+  id: number;
+  name: string;
+  email?: string | null;
+  phone?: string | null;
+};
+
+export type HealthEvent = {
+  id: number;
+  kind: string;
+  occurredAt: string;
+  notes?: string | null;
+  weightOz?: number | null;
+};
+
+export type OffspringMediaKind = "photo" | "video" | "doc";
+
+export type OffspringMedia = {
+  id: number;
+  kind: OffspringMediaKind;
+  label: string;
+  url: string;
+  mimeType?: string | null;
+  bytes?: number | null;
+};
+
+export type OffspringLineageRow = {
+  id: number;
+  role: "dam" | "sire" | "self";
+  name: string;
+  registrationId?: string | null;
+};
+
+export type InvoiceLink = {
+  id: number;
+  invoiceId: number;
+  invoiceNumber: string;
+  status: string;
+  amount: number;
+};
+
+export type SiblingLite = {
+  id: number;
+  name: string | null;
+  sex: Sex | null;
+  status: OffspringStatus | null;
+};
+
+export type WaitlistRefLite = {
+  id: number;
+  label: string;
+  priority?: number | null;
+  status?: string | null;
+};
+
+export type OffspringRow = {
+  id: number;
+  name: string;
+  sex: string | null;
+  status: string | null;
+  species: string | null;
+  breed: string | null;
+  color: string | null;
+  birthWeightOz: number | null;
+  dob: string | null;
+  microchip: string | null;
+  registrationId: string | null;
+  placementDate: string | null;
+  placementStatus: string | null;
+  price: number | null;
+  buyerId: number | null;
+  buyerKind: "contact" | "organization" | null;
+  buyerName: string | null;
+  notes: string | null;
+  groupId: number | null;
+  groupLabel: string | null;
+
+  // new fields
+  whelpingCollarColor: string | null;
+  riskScore: string | null;
+};
+
+
+type OffspringListInput = {
+  page: number;
+  pageSize: number;
+  q?: string;
+  status?: OffspringStatus;
+  sex?: Sex;
+  groupId?: number;
+};
+
+type OffspringListResult = {
+  rows: OffspringRow[];
+  total: number;
+};
+
+export type OffspringUpdateInput = Partial<{
+  name: string | null;
+  sex: Sex | null;
+  color: string | null;
+  birthWeightOz: number | null;
+  status: OffspringStatus;
+  buyerContactId: number | null;
+  buyerOrganizationId: number | null;
+  placementDate: string | null;
+  price: number | null;
+  microchip: string | null;
+  registrationId: string | null;
+  notes: string | null;
+
+  species: Species | string | null;
+  breed: string | null;
+  dob: string | null;
+
+  groupId: number | null;
+  litterId: number | null;
+  unlinkedOverride: boolean | null;
+
+  whelpingCollarColor: string | null;
+  riskScore: string | null;
+}>;
+
+export type HealthEventInput = {
+  occurredAt: string;
+  kind: string;
+  notes?: string;
+  weightOz?: number | null;
+};
+
+export type InvoiceLinkInput = {
+  invoiceNumber: string;
+  amount: number;
+  status: string;
+};
+
+type OffspringApi = {
+  list(input: OffspringListInput): Promise<OffspringListResult>;
+  getById(id: number): Promise<OffspringRow>;
+  create(
+    input: OffspringUpdateInput & { groupId?: number | null },
+  ): Promise<OffspringRow>;
+  update(id: number, patch: OffspringUpdateInput): Promise<OffspringRow>;
+  remove(id: number): Promise<void>;
+
+  addHealthEvent(id: number, input: HealthEventInput): Promise<OffspringRow>;
+  linkInvoice(id: number, input: InvoiceLinkInput): Promise<OffspringRow>;
+};
+
+function centsToDollars(cents: number | null | undefined): number | null {
+  if (cents == null) return null;
+  return Math.round(cents) / 100;
+}
+
+function mapAnimalLiteToRow(dto: AnimalLite): OffspringRow {
+  const {
+    id,
+    name,
+    sex,
+    status,
+    species,
+    breed,
+    color,
+    dob,
+    microchip,
+    registration,
+    litterId,
+    litterCode,
+    litterName,
+    buyerName,
+    buyerId,
+    buyerOrgId,
+    price_cents,
+    sold_at,
+    notes,
+
+    // optional, coming from the API if present
+    birth_weight_oz,
+    placement_status,
+    whelping_collar_color,
+    risk_score,
+  } = dto as any;
+
+  return {
+    id: Number(id),
+
+    name: name ?? "",
+    sex: sex ?? null,
+    status: status ?? null,
+    species: species ?? null,
+    breed: typeof breed === "string" ? breed : null,
+    color: color ?? null,
+    birthWeightOz:
+      typeof birth_weight_oz === "number" ? birth_weight_oz : null,
+    dob: dob ?? null,
+    microchip: microchip ?? null,
+    registrationId: registration ?? null,
+
+    placementDate: sold_at ?? null,
+    placementStatus: placement_status ?? null,
+    price: centsToDollars(price_cents),
+
+    buyerId: buyerId ?? buyerOrgId ?? null,
+    buyerKind: buyerId
+      ? "contact"
+      : buyerOrgId
+        ? "organization"
+        : null,
+    buyerName: buyerName ?? null,
+
+    notes: notes ?? null,
+
+    groupId: litterId ?? null,
+    groupLabel:
+      litterName ??
+      litterCode ??
+      (litterId != null ? `Group #${litterId}` : null),
+
+    whelpingCollarColor:
+      whelping_collar_color ??
+      (dto as any).whelpingCollarColor ??
+      (dto as any).collarColorName ??
+      null,
+    riskScore:
+      risk_score ??
+      (dto as any).riskScore ??
+      null,
+  };
+}
+
+function makeBackendOffspringApi(): OffspringApi {
+  const client = makeOffspringApiClient() as any;
+
+  if (!client?.individuals) {
+    throw new Error(
+      "[OffspringPage] Offspring API client is misconfigured. Expected client.individuals to exist.",
+    );
+  }
+
+  const svc = client.individuals;
+  const tenantId = readTenantIdFast();
+
+  return {
+    async list(input) {
+      const pageSize = input?.pageSize ?? 50;
+
+      const res = await svc.list({
+        tenantId,
+        limit: pageSize,
+        q: input?.q ?? undefined,
+        status: input?.status ?? undefined,
+        sex: input?.sex ?? undefined,
+        groupId: input?.groupId ?? undefined,
+      });
+
+      const items: AnimalLite[] = Array.isArray((res as any)?.items)
+        ? (res as any).items
+        : Array.isArray(res as any)
+          ? (res as any)
+          : [];
+
+      const rows = items.map(mapAnimalLiteToRow);
+      const total = (res as any)?.total ?? rows.length;
+
+      return { rows, total };
+    },
+
+    async getById(id) {
+      const dto = await svc.get(id, { tenantId });
+      return mapAnimalLiteToRow(dto);
+    },
+
+    async create(input) {
+      // mirror the working App-Offspring Add Offspring call
+      const dto = await svc.create({
+        ...input,
+      });
+      return mapAnimalLiteToRow(dto);
+    },
+
+    async update(id, patch) {
+      // send a flat patch body, no "patch" wrapper
+      const dto = await svc.update(id, {
+        ...patch,
+      });
+      return mapAnimalLiteToRow(dto);
+    },
+
+    async remove(id) {
+      await svc.remove(id, { tenantId });
+    },
+
+    async addHealthEvent(id, input) {
+      const detail = await svc.addHealthEvent(id, input, { tenantId });
+      return mapDetailToRow(detail);
+    },
+
+    async linkInvoice(id, input) {
+      const detail = await svc.linkInvoice(id, input, { tenantId });
+      return mapDetailToRow(detail);
+    },
+  };
+}
+
+function makeLocalFallbackApi(): OffspringApi {
+  return {
+    async list() {
+      return { rows: [], total: 0 };
+    },
+    async getById() {
+      throw new Error("getById not available without backend API");
+    },
+    async create() {
+      throw new Error("create not available without backend API");
+    },
+    async update() {
+      throw new Error("update not available without backend API");
+    },
+    async remove() {
+      throw new Error("remove not available without backend API");
+    },
+  };
+}
+
+function useOffspringApi(): OffspringApi {
+  // Server side, only used for initial render, never to actually call the API.
+  if (typeof window === "undefined") {
+    return {
+      list: async () => ({ rows: [], total: 0 }),
+      getById: async () => {
+        throw new Error("Offspring API not available on server");
+      },
+      create: async () => {
+        throw new Error("Offspring API not available on server");
+      },
+      update: async () => {
+        throw new Error("Offspring API not available on server");
+      },
+      remove: async () => {
+        throw new Error("Offspring API not available on server");
+      },
+      addHealthEvent: async () => {
+        throw new Error("Offspring API not available on server");
+      },
+      linkInvoice: async () => {
+        throw new Error("Offspring API not available on server");
+      },
+    };
+  }
+
+  // Client side, use the real backend adapter.
+  const ref = React.useRef<OffspringApi | null>(null);
+  if (!ref.current) {
+    ref.current = makeBackendOffspringApi();
+  }
+  return ref.current;
+}
+
+function useOffspringGroupOptions(active: boolean): GroupOption[] {
+  const [groups, setGroups] = React.useState<GroupOption[]>([]);
+
+  React.useEffect(() => {
+    if (!active) return;
+    if (typeof window === "undefined") return;
+
+    let cancelled = false;
+
+    async function load() {
+      try {
+        const root = makeOffspringApiClient() as any;
+        const groupsClient = root?.groups;
+
+        if (!groupsClient || typeof groupsClient.list !== "function") {
+          console.warn("Offspring API client or groups.list not found");
+          return;
+        }
+
+        const res: any = await groupsClient.list({
+          limit: 500,
+          q: "",
+        });
+
+        const items: any[] =
+          Array.isArray(res?.items)
+            ? res.items
+            : Array.isArray(res?.rows)
+              ? res.rows
+              : Array.isArray(res)
+                ? res
+                : [];
+
+        const mapped: GroupOption[] = items
+          .map((g: OffspringGroupDTO | any) => {
+            if (!g || g.id == null) return null;
+
+            const idNum = Number(g.id);
+            if (!Number.isFinite(idNum)) return null;
+
+            const plan = g.plan ?? g.breedingPlan ?? null;
+
+            const planName =
+              typeof plan?.name === "string" && plan.name.trim()
+                ? plan.name.trim()
+                : null;
+
+            const identifier =
+              typeof g.identifier === "string" && g.identifier.trim()
+                ? g.identifier.trim()
+                : null;
+
+            const groupName =
+              planName ??
+              (typeof g.name === "string" && g.name.trim() ? g.name.trim() : null) ??
+              identifier ??
+              null;
+
+            const label = groupName && groupName.length > 0
+              ? groupName
+              : `Group #${idNum}`;
+
+            // Try to read species from the group or its plan
+            const rawSpecies =
+              (g as any).species ??
+              (plan as any)?.species ??
+              (g as any).breeding_plan_species ??
+              null;
+
+            let species: SpeciesWire | null = null;
+            if (rawSpecies) {
+              const s = String(rawSpecies).toUpperCase();
+              if (s === "DOG" || s === "CAT" || s === "HORSE") {
+                species = s as SpeciesWire;
+              }
+            }
+
+            // Try to read breed from the group or its plan
+            const rawBreed =
+              (g as any).breedName ??
+              (g as any).breed ??
+              (plan as any)?.breedName ??
+              (plan as any)?.breed ??
+              (g as any).breeding_plan_breed ??
+              null;
+
+            const breed =
+              typeof rawBreed === "string" && rawBreed.trim().length > 0
+                ? rawBreed.trim()
+                : null;
+
+            return { id: idNum, label, species, breed };
+          })
+          .filter(Boolean) as GroupOption[];
+
+        const sorted = mapped.slice().sort((a, b) => {
+          const la = a.label.toLowerCase();
+          const lb = b.label.toLowerCase();
+          if (la < lb) return -1;
+          if (la > lb) return 1;
+          return a.id - b.id;
+        });
+
+        if (!cancelled) {
+          setGroups(sorted);
+        }
+      } catch (err) {
+        console.error("[Offspring] Failed to load groups for parent select", err);
+      }
+    }
+
+    load();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [active]);
+
+  return groups;
+}
+
+
+/** ---------- Helpers ---------- */
+
+const CENTER_KEYS = new Set([
+  "sex",
+  "status",
+  "birthWeightOz",
+  "placementDate",
+  "price",
+  "whelpingCollarColor",
+]);
+
+const ALL_COLUMNS = [
+  { key: "name", label: "Name", default: true },
+  { key: "sex", label: "Sex", default: true },
+  { key: "breed", label: "Breed", default: true },
+  { key: "whelpingCollarColor", label: "Collar", default: true },
+  { key: "group", label: "Group", default: true },
+  { key: "color", label: "Color", default: false },
+  { key: "buyer", label: "Buyer", default: true },
+  { key: "status", label: "Status", default: true },
+  { key: "birthWeightOz", label: "Birth wt (oz)", default: false },
+  { key: "dob", label: "DOB", default: true },
+  { key: "placementDate", label: "Placement", default: true },
+  { key: "price", label: "Price", default: true },
+  { key: "microchip", label: "Microchip", default: false },
+  { key: "registrationId", label: "Registration", default: false },
+] as const;
+
+const OFFSPRING_STORAGE_KEY = "bhq_offspring_cols_v1";
+
+
+type ColumnKey = (typeof ALL_COLUMNS)[number]["key"];
+
+function formatDate(v?: string | null): string {
+  if (!v) return "-";
+  const d = new Date(v);
+  if (Number.isNaN(d.getTime())) return String(v);
+  return new Intl.DateTimeFormat(undefined, {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(d);
+}
+
+function moneyFmt(n?: number | null): string {
+  if (n == null) return "-";
+  try {
+    return new Intl.NumberFormat(undefined, { style: "currency", currency: "USD" }).format(n);
+  } catch {
+    return `$${Number(n).toFixed(2)}`;
+  }
+}
+
+function prettyStatus(s: Status): string {
+  switch (s) {
+    case "AVAILABLE":
+      return "Available";
+    case "RESERVED":
+      return "Reserved";
+    case "PLACED":
+      return "Placed";
+    case "HOLDBACK":
+      return "Holdback";
+    case "DECEASED":
+      return "Deceased";
+    default:
+      return String(s);
+  }
+}
+
+function prettySpecies(s?: Species | string | null): string {
+  if (!s) return "Not set";
+  const v = String(s).toUpperCase();
+  if (v === "DOG") return "Dog";
+  if (v === "CAT") return "Cat";
+  if (v === "HORSE") return "Horse";
+  return String(s);
+}
+
+function prettySex(s?: Sex | string | null): string {
+  if (!s) return "Not set";
+  const v = String(s).toUpperCase();
+  if (v === "MALE") return "Male";
+  if (v === "FEMALE") return "Female";
+  if (v === "UNKNOWN") return "Unknown";
+  return String(s);
+}
+
+/** ---------- Create Offspring overlay ---------- */
+
+function CreateOffspringOverlayContent({
+  open,
+  onClose,
+  onCreate,
+  rootApi,
+  groupOptions,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onCreate: (input: Partial<OffspringRow>) => Promise<void> | void;
+  rootApi: OffspringRootApi | null;
+  groupOptions: GroupOption[];
+}) {
+  const [form, setForm] = React.useState<Partial<OffspringRow>>({
+    name: "",
+    sex: "UNKNOWN" as Sex,
+    species: "DOG" as Species,
+    birthWeightOz: null,
+    price: null,
+    notes: "",
+    groupId: null,
+    breed: null,
+    whelpingCollarColor: null,
+  });
+
+  const [allowNoGroup, setAllowNoGroup] = React.useState(false);
+  const [showWhelpPalette, setShowWhelpPalette] = React.useState(false);
+
+  const whelpingCollarValue = form.whelpingCollarColor;
+
+  const whelpingCollarLabel =
+    whelpingCollarValue && String(whelpingCollarValue).trim().length
+      ? String(whelpingCollarValue)
+      : "Not set";
+
+  const whelpingCollarColorHex = (() => {
+    const v = (whelpingCollarValue ?? "")
+      .toString()
+      .toLowerCase();
+
+    const match = WHELPING_COLLAR_SWATCHES.find((opt) => {
+      const val = opt.value.toLowerCase();
+      const label = opt.label.toLowerCase();
+      return val === v || label === v;
+    });
+
+    return match?.hex ?? null;
+  })();
+
+  const panelRef = React.useRef<HTMLDivElement | null>(null);
+
+  // derive UI species string for BreedCombo
+  const speciesUi: SpeciesUi | "" =
+    form.species === "DOG"
+      ? "Dog"
+      : form.species === "CAT"
+        ? "Cat"
+        : form.species === "HORSE"
+          ? "Horse"
+          : "";
+
+  // local breed hit for BreedCombo
+  const [breedHit, setBreedHit] = React.useState<any>(null);
+  const [breedNonce, setBreedNonce] = React.useState(0);
+
+  const onBreedPick = React.useCallback(
+    (hit: any) => {
+      setBreedHit(hit ? { ...hit } : null);
+      setBreedNonce((n) => n + 1);
+      setForm((prev) => ({
+        ...prev,
+        breed:
+          hit && typeof hit.name === "string" && hit.name.trim()
+            ? hit.name
+            : null,
+      }));
+    },
+    [setForm],
+  );
+
+  // Filter parent group choices by current species
+  const currentSpecies = (form.species ?? "DOG") as Species;
+  const filteredGroupOptions = React.useMemo(
+    () =>
+      groupOptions.filter((g) => {
+        if (!g.species) return true;
+        return (
+          String(g.species).toUpperCase() ===
+          String(currentSpecies).toUpperCase()
+        );
+      }),
+    [groupOptions, currentSpecies],
+  );
+
+  const parentGroupRequired = !allowNoGroup;
+
+  // Dim whenever a parent group is required and no group is selected
+  const dimRest = parentGroupRequired && (form.groupId == null);
+
+  React.useEffect(() => {
+    const prev = document.body.style.overflow;
+    if (open) document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev || "";
+    };
+  }, [open]);
+
+  // Reset override when dialog closes
+  React.useEffect(() => {
+    if (!open) {
+      setAllowNoGroup(false);
+    }
+  }, [open]);
+
+  const handleChange = <K extends keyof OffspringRow>(
+    key: K,
+    value: OffspringRow[K] | null,
+  ) => {
+    setForm((prev) => ({ ...prev, [key]: value }));
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!onCreate) return;
+
+    const trimmedName = (form.name ?? "").toString().trim();
+    if (!trimmedName) {
+      return;
+    }
+
+    // Resolve group id from the form
+    const effectiveGroupId =
+      form.groupId !== undefined && form.groupId !== null
+        ? form.groupId
+        : null;
+
+    // Current backend schema requires a groupId on create
+    if (effectiveGroupId == null) {
+      window.alert(
+        "Parent group is required for offspring creation with the current schema. Select a parent group before saving.",
+      );
+      return;
+    }
+
+    // Start from form state (ignore status, backend will default as needed)
+    const { status, ...rest } = form;
+
+    const payload: any = {
+      ...rest,
+      name: trimmedName,
+      groupId: effectiveGroupId,
+      // keep DB happy and consistent with updates
+      litterId: effectiveGroupId,
+    };
+
+    // Do not send UNKNOWN sex
+    if (rest.sex === "UNKNOWN") {
+      delete payload.sex;
+    }
+
+    // Force species and breed from the selected parent group
+    const selectedGroup = groupOptions.find((g) => g.id === effectiveGroupId);
+    if (selectedGroup) {
+      if (selectedGroup.species) {
+        payload.species = selectedGroup.species;
+      }
+      if (selectedGroup.breed) {
+        payload.breed = selectedGroup.breed;
+      }
+    }
+
+    await onCreate(payload);
+  };
+
+  if (!open) return null;
+
+  return (
+    <Overlay
+      open={open}
+      ariaLabel="Create offspring"
+      closeOnEscape
+      closeOnOutsideClick
+      onOpenChange={(next) => {
+        if (!next) onClose();
+      }}
+    >
+      <div
+        className="fixed inset-0"
+        style={{ zIndex: MODAL_Z, isolation: "isolate" }}
+        onMouseDown={(e) => {
+          const panel = panelRef.current;
+          if (!panel) return;
+          if (!panel.contains(e.target as Node)) {
+            onClose();
+          }
+        }}
+      >
+        {/* Backdrop, same vibe as details drawer */}
+        <div className="absolute inset-0 bg-black/40" />
+
+        {/* Centered panel */}
+        <div className="absolute inset-0 flex items-center justify-center overflow-y-auto">
+          <div
+            ref={panelRef}
+            className="pointer-events-auto my-10 w-[820px] max-w-[95vw] max-h-[90vh] overflow-hidden rounded-xl border border-hairline bg-surface shadow-xl"
+            onMouseDown={(e) => {
+              // keep clicks inside the panel from bubbling to the outer close handler
+              e.stopPropagation();
+            }}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between px-4 py-3 border-b border-hairline">
+              <div className="text-lg font-semibold flex items-center gap-2">
+                <FilePlus2 className="h-4 w-4" />
+                <span>Add Offspring</span>
+              </div>
+            </div>
+
+            {/* Body */}
+            <div className="p-4 space-y-4 overflow-y-auto">
+              {/* Parent group selection */}
+              <div className="border border-hairline rounded-md p-3 space-y-2">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="text-xs font-semibold text-secondary uppercase tracking-wide">
+                      Parent group
+                    </div>
+                    <div className={labelClass}>
+                      Link this offspring to an existing group. Use the override only for
+                      intentional one off records.
+                    </div>
+                  </div>
+
+                  {groupOptions.length > 0 && (
+                    <label className="inline-flex items-center gap-2 text-xs text-secondary">
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4 rounded border-hairline bg-surface"
+                        checked={allowNoGroup}
+                        onChange={(e) => {
+                          const checked = e.currentTarget.checked;
+                          setAllowNoGroup(checked);
+                          if (checked) {
+                            // user explicitly allows no group, clear selection
+                            handleChange("groupId", null as any);
+                          }
+                          // if they uncheck, we do not guess a group for them
+                        }}
+                      />
+                      <span>Override - Create Orphan</span>
+                    </label>
+                  )}
+                </div>
+
+                {/* Identity fields that should stay active */}
+                <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {/* Name */}
+                  <label className="grid gap-1 text-sm">
+                    <span className="text-xs text-secondary">Name</span>
+                    <input
+                      className={inputClass}
+                      value={form.name ?? ""}
+                      onChange={(e) => handleChange("name", e.target.value)}
+                      placeholder="Puppy name or placeholder"
+                    />
+                  </label>
+
+                  {/* Species */}
+                  <label className="grid gap-1 text-sm">
+                    <span className="text-xs text-secondary">Species</span>
+                    <select
+                      className={inputClass}
+                      value={form.species ?? "DOG"}
+                      onChange={(e) => {
+                        const nextSpecies = e.target.value as Species;
+                        setForm((prev) => {
+                          const prevGroupId = prev.groupId ?? null;
+
+                          // If the currently selected group has a species and it does not match,
+                          // drop it when species changes.
+                          let nextGroupId = prevGroupId;
+                          if (prevGroupId != null) {
+                            const currentGroup = groupOptions.find(
+                              (g) => g.id === prevGroupId,
+                            );
+                            if (
+                              currentGroup &&
+                              currentGroup.species &&
+                              String(currentGroup.species).toUpperCase() !==
+                              String(nextSpecies).toUpperCase()
+                            ) {
+                              nextGroupId = null;
+                            }
+                          }
+
+                          return {
+                            ...prev,
+                            species: nextSpecies,
+                            groupId: nextGroupId,
+                          };
+                        });
+                      }}
+                    >
+                      <option value="DOG">Dog</option>
+                      <option value="CAT">Cat</option>
+                      <option value="HORSE">Horse</option>
+                    </select>
+                  </label>
+                </div>
+
+
+                {filteredGroupOptions.length === 0 ? (
+                  <div className="text-xs text-amber-300">
+                    No offspring groups found for the selected species. Enable the override if you intend to create an orphan.
+                  </div>
+                ) : (
+                  <label className="grid gap-1 text-sm mt-2">
+                    <span className="text-xs text-secondary">
+                      Parent group
+                      {!allowNoGroup && <span className="text-rose-400 ml-1">*</span>}
+                    </span>
+                    <select
+                      className={inputClass}
+                      disabled={allowNoGroup}
+                      value={form.groupId ?? ""}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        handleChange("groupId", v ? (Number(v) as any) : null);
+                      }}
+                    >
+                      <option value="">
+                        {allowNoGroup ? "None" : "Select the Species - Then Choose an Existing Offspring Group..."}
+                      </option>
+                      {filteredGroupOptions.map((g) => (
+                        <option key={g.id} value={g.id}>
+                          {g.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+              </div>
+
+              {/* Core fields */}
+              <div
+                className="transition-all"
+                style={
+                  dimRest
+                    ? {
+                      opacity: 0.25,
+                      pointerEvents: "none",
+                      filter: "blur(2px)",
+                    }
+                    : undefined
+                }
+              >
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+
+                  {/* Sex */}
+                  <label className="grid gap-1 text-sm">
+                    <span className="text-xs text-secondary">Sex</span>
+                    <select
+                      className={inputClass}
+                      value={form.sex ?? "UNKNOWN"}
+                      onChange={(e) =>
+                        handleChange("sex", e.target.value as any)
+                      }
+                    >
+                      <option value="MALE">Male</option>
+                      <option value="FEMALE">Female</option>
+                      <option value="UNKNOWN">Unknown</option>
+                    </select>
+                  </label>
+
+                  {/* Breed, only when no parent group is allowed */}
+                  {allowNoGroup && (
+                    <div className="grid gap-1 text-sm">
+                      <span className="text-xs text-secondary">Breed</span>
+                      {speciesUi ? (
+                        <div>
+                          <BreedCombo
+                            key={`create-breed-${speciesUi}-${breedNonce}`}
+                            species={speciesUi}
+                            value={breedHit}
+                            onChange={onBreedPick}
+                            api={
+                              rootApi
+                                ? { breeds: { listCanonical: rootApi.breeds.listCanonical } }
+                                : undefined
+                            }
+                          />
+                        </div>
+                      ) : (
+                        <div className="h-9 px-3 flex items-center rounded-md border border-hairline bg-surface/60 text-sm text-secondary">
+                          Select species
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Breed - only when no parent group is allowed */}
+                  {allowNoGroup && (
+                    <label className="grid gap-1 text-sm">
+                      <span className="text-xs text-secondary">Breed</span>
+                      <input
+                        className={inputClass}
+                        value={form.breed ?? ""}
+                        onChange={(e) =>
+                          handleChange("breed", e.target.value ? (e.target.value as any) : null)
+                        }
+                        placeholder="Enter breed when not linked to a group"
+                      />
+                    </label>
+                  )}
+
+
+                  {/* Birth date, only when no parent group is allowed */}
+                  {allowNoGroup && (
+                    <label className="grid gap-1 text-sm">
+                      <span className="text-xs text-secondary">Birth date</span>
+                      <input
+                        type="date"
+                        className={inputClass}
+                        value={form.dob ?? ""}
+                        onChange={(e) =>
+                          handleChange("dob", e.target.value as any)
+                        }
+                      />
+                    </label>
+                  )}
+
+                  {/* Birth weight */}
+                  <label className="grid gap-1 text-sm">
+                    <span className="text-xs text-secondary">
+                      Birth weight (oz)
+                    </span>
+                    <input
+                      type="number"
+                      className={inputClass}
+                      value={form.birthWeightOz ?? ""}
+                      onChange={(e) =>
+                        handleChange(
+                          "birthWeightOz",
+                          e.target.value
+                            ? Number(e.target.value)
+                            : null,
+                        )
+                      }
+                      placeholder="Optional"
+                    />
+                  </label>
+
+                  {/* Price */}
+                  <label className="grid gap-1 text-sm md:col-span-2">
+                    <span className="text-xs text-secondary">
+                      Price (whole number)
+                    </span>
+                    <input
+                      type="number"
+                      className={inputClass}
+                      value={form.price ?? ""}
+                      onChange={(e) =>
+                        handleChange(
+                          "price",
+                          e.target.value
+                            ? Number(e.target.value)
+                            : null,
+                        )
+                      }
+                      placeholder="$"
+                    />
+                  </label>
+
+                  {/* Whelping collar color */}
+                  <label className="grid gap-1 text-sm md:col-span-2">
+                    <span className="text-xs text-secondary">
+                      Whelping Collar Color
+                    </span>
+                    <div className="relative w-full max-w-xs">
+                      <button
+                        type="button"
+                        className={cx(
+                          inputClass,
+                          "flex items-center justify-between text-left cursor-pointer",
+                        )}
+                        onClick={() => setShowWhelpPalette((prev) => !prev)}
+                      >
+                        <span className="flex items-center gap-2">
+                          {whelpingCollarColorHex && (
+                            <span
+                              className="h-3 w-3 rounded-full border border-border"
+                              style={{ backgroundColor: whelpingCollarColorHex }}
+                            />
+                          )}
+                          <span>
+                            {whelpingCollarLabel === "Not set"
+                              ? "Select collar color"
+                              : whelpingCollarLabel}
+                          </span>
+                        </span>
+                        <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+                      </button>
+
+                      {showWhelpPalette && (
+                        <div className="absolute z-20 mt-1 w-full rounded-md border border-border bg-surface shadow-lg">
+                          <ul className="max-h-48 overflow-y-auto py-1 text-xs">
+                            {WHELPING_COLLAR_SWATCHES.map((opt) => (
+                              <li key={opt.value}>
+                                <button
+                                  type="button"
+                                  className="flex w-full items-center gap-2 px-2 py-1.5 text-left hover:bg-muted"
+                                  onClick={() => {
+                                    setForm((prev) => ({
+                                      ...prev,
+                                      whelpingCollarColor: opt.label,
+                                    }));
+                                    setShowWhelpPalette(false);
+                                  }}
+                                >
+                                  <span
+                                    className="h-3 w-3 rounded-full border border-border"
+                                    style={{ backgroundColor: opt.hex }}
+                                  />
+                                  <span>{opt.label}</span>
+                                </button>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+                  </label>
+
+                  {/* Notes */}
+                  <label className="grid gap-1 text-sm md:col-span-2">
+                    <span className="text-xs text-secondary">
+                      Notes
+                    </span>
+                    <textarea
+                      className={inputClass + " min-h-[72px] resize-none"}
+                      value={form.notes ?? ""}
+                      onChange={(e) =>
+                        handleChange("notes", e.target.value as any)
+                      }
+                      placeholder="Optional notes about this offspring"
+                    />
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="flex items-center justify-end gap-2 px-4 py-3 border-t border-hairline">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={onClose}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={handleSubmit}
+                disabled={dimRest}
+              >
+                <Plus className="h-4 w-4 mr-1" />
+                Add
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </Overlay>
+  );
+
+}
+
+function CrossRefsSection({
+  row,
+  onNavigateGroup,
+  onNavigateOffspring,
+  onNavigateWaitlist,
+}: {
+  row: OffspringRow;
+  onNavigateGroup: (groupId: number) => void;
+  onNavigateOffspring: (id: number) => void;
+  onNavigateWaitlist: (id: number) => void;
+}) {
+  return (
+    <div className="grid gap-4">
+      {/* Parent group */}
+      <div className="border rounded-md p-3">
+        <div className="text-xs font-medium text-muted-foreground mb-1">
+          Parent group
+        </div>
+        {row.groupId ? (
+          <div className="flex items-center justify-between gap-3">
+            <div className="text-sm">
+              <div className="font-medium">
+                {row.groupName || row.groupCode || `Group #${row.groupId}`}
+              </div>
+              {row.groupSeasonLabel && (
+                <div className={labelClass}>
+                  {row.groupSeasonLabel}
+                </div>
+              )}
+            </div>
+            <Button
+              size="xs"
+              variant="outline"
+              onClick={() => onNavigateGroup(row.groupId!)}
+            >
+              View group
+            </Button>
+          </div>
+        ) : (
+          <div className={labelClass}>
+            No parent group linked.
+          </div>
+        )}
+      </div>
+
+      {/* Siblings */}
+      <div className="border rounded-md p-3">
+        <div className="text-xs font-medium text-muted-foreground mb-1">
+          Siblings
+        </div>
+        {row.siblings && row.siblings.length ? (
+          <ul className="space-y-1">
+            {row.siblings.map((s) => (
+              <li
+                key={s.id}
+                className="flex items-center justify-between gap-2 text-xs"
+              >
+                <div>
+                  <div className="font-medium">
+                    {s.name || `Offspring #${s.id}`}
+                  </div>
+                  <div className="text-muted-foreground">
+                    {[s.sex, s.status].filter(Boolean).join(" · ")}
+                  </div>
+                </div>
+                <Button
+                  size="xs"
+                  variant="ghost"
+                  onClick={() => onNavigateOffspring(s.id)}
+                >
+                  Open
+                </Button>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <div className={labelClass}>
+            No siblings found for this group.
+          </div>
+        )}
+      </div>
+
+      {/* Waitlist */}
+      <div className="border rounded-md p-3">
+        <div className="text-xs font-medium text-muted-foreground mb-1">
+          Waitlist
+        </div>
+        {row.waitlistEntry ? (
+          <div className="flex items-center justify-between gap-3">
+            <div className="text-sm">
+              <div className="font-medium">{row.waitlistEntry.label}</div>
+              <div className={labelClass}>
+                {[
+                  row.waitlistEntry.priority != null
+                    ? `Priority ${row.waitlistEntry.priority}`
+                    : null,
+                  row.waitlistEntry.status,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </div>
+            </div>
+            <Button
+              size="xs"
+              variant="outline"
+              onClick={() => onNavigateWaitlist(row.waitlistEntry!.id)}
+            >
+              View waitlist
+            </Button>
+          </div>
+        ) : (
+          <div className={labelClass}>
+            No waitlist entry linked to this offspring.
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+type GrowthSparklinePoint = {
+  occurredAt: string;
+  weightOz: number | null;
+};
+
+type GrowthSparklineProps = {
+  series?: GrowthSparklinePoint[];
+};
+
+function GrowthSparkline({ series }: GrowthSparklineProps) {
+  const points = React.useMemo(() => {
+    const events = series ?? [];
+    if (!events.length) return [];
+
+    const weightEvents = events
+      .filter((e) => e.weightOz != null)
+      .sort(
+        (a, b) =>
+          new Date(a.occurredAt).getTime() - new Date(b.occurredAt).getTime(),
+      );
+
+    if (!weightEvents.length) return [];
+
+    const xs = weightEvents.map((e) => new Date(e.occurredAt).getTime());
+    const ys = weightEvents.map((e) => e.weightOz as number);
+
+    const minX = Math.min(...xs);
+    const maxX = Math.max(...xs);
+    const minY = Math.min(...ys);
+    const maxY = Math.max(...ys);
+
+    const spanX = maxX - minX || 1;
+    const spanY = maxY - minY || 1;
+
+    const w = 220;
+    const h = 60;
+    const pad = 4;
+
+    return weightEvents.map((e) => {
+      const tx = (new Date(e.occurredAt).getTime() - minX) / spanX;
+      const ty = ((e.weightOz as number) - minY) / spanY;
+      const x = pad + tx * (w - pad * 2);
+      const y = h - pad - ty * (h - pad * 2);
+      return { x, y };
+    });
+  }, [series]);
+
+  if (!points.length) {
+    return (
+      <div className={labelClass}>
+        No weight log recorded yet.
+      </div>
+    );
+  }
+
+  const d = points
+    .map((p, idx) => `${idx === 0 ? "M" : "L"}${p.x.toFixed(1)},${p.y.toFixed(1)}`)
+    .join(" ");
+
+  return (
+    <svg viewBox="0 0 220 60" className="w-full h-16">
+      <path d={d} fill="none" stroke="currentColor" strokeWidth={1.5} />
+    </svg>
+  );
+}
+
+/** ---------- Main component ---------- */
+
+export default function OffspringPage(props: { embed?: boolean } = { embed: false }) {
+  const { embed } = props;
+  const api = useOffspringApi();
+  const rootApi = React.useMemo<OffspringRootApi | null>(() => {
+    try {
+      return makeOffspringApiClient();
+    } catch {
+      return null;
+    }
+  }, []);
+
+  // Buyer directory search state, you will hook this into your UI
+  const [buyerSearchQ, setBuyerSearchQ] = React.useState("");
+  const [buyerSearchBusy, setBuyerSearchBusy] = React.useState(false);
+  const [buyerHits, setBuyerHits] = React.useState<DirectoryHit[]>([]);
+
+  React.useEffect(() => {
+    if (!rootApi) return;
+
+    const term = buyerSearchQ.trim();
+    if (!term) {
+      setBuyerHits([]);
+      return;
+    }
+
+    let alive = true;
+
+    const run = async () => {
+      setBuyerSearchBusy(true);
+      try {
+        const hits = await searchDirectory(rootApi, term);
+        if (alive) setBuyerHits(hits);
+      } catch (e) {
+        console.error("[OffspringPage] Directory search failed", e);
+        if (alive) setBuyerHits([]);
+      } finally {
+        if (alive) setBuyerSearchBusy(false);
+      }
+    };
+
+    const t = window.setTimeout(run, 250);
+    return () => {
+      alive = false;
+      window.clearTimeout(t);
+    };
+  }, [buyerSearchQ, rootApi]);
+
+
+  const [q, setQ] = React.useState("");
+  const [pageSize, setPageSize] = React.useState(25);
+  const [page, setPage] = React.useState(1);
+  const [total, setTotal] = React.useState(0);
+  const [rows, setRows] = React.useState<OffspringRow[]>([]);
+  const [sorts, setSorts] = React.useState<{ key: ColumnKey; dir: "asc" | "desc" }[]>([]);
+  const cols = hooks.useColumns(ALL_COLUMNS as any, OFFSPRING_STORAGE_KEY);
+  const visibleSafe = cols.visible && cols.visible.length > 0 ? cols.visible : ALL_COLUMNS;
+  const [drawer, setDrawer] = React.useState<OffspringRow | null>(null);
+  const [drawerTab, setDrawerTab] = React.useState<
+    "overview" | "buyer" | "health" | "media" | "invoices" | "records" | "notes"
+  >("overview");
+
+  const [selectedGroupBuyerKey, setSelectedGroupBuyerKey] = React.useState<string>("");
+
+  const groupBuyerOptions = React.useMemo(
+    () => deriveGroupBuyerOptions((drawer as any)?.group ?? null),
+    [drawer],
+  );
+
+  React.useEffect(() => {
+    // reset selection when switching offspring
+    setSelectedGroupBuyerKey("");
+  }, [drawer?.id]);
+
+  const [coreForm, setCoreForm] = React.useState<Partial<OffspringRow> | null>(null);
+  const [drawerMode, setDrawerMode] = React.useState<"view" | "edit">("view");
+  const [drawerSaving, setDrawerSaving] = React.useState(false);
+
+  // edit state for parent group override in the drawer
+  const [allowWithoutParent, setAllowWithoutParent] = React.useState(false);
+  const groupOptions = useOffspringGroupOptions(true);
+
+  const [showCreate, setShowCreate] = React.useState(false);
+  const [showWhelpPalette, setShowWhelpPalette] = React.useState(false);
+
+  // Normalized species and breed for the offspring in the details drawer
+  const drawerSpeciesKey = React.useMemo(() => {
+    if (!drawer?.species) return null;
+    return String(drawer.species).toUpperCase();
+  }, [drawer]);
+
+  const drawerBreedKey = React.useMemo(() => {
+    if (!drawer) return null;
+
+    const rawBreed =
+      (drawer as any).breedName ??
+      (drawer as any).breed ??
+      (drawer.group as any)?.breedName ??
+      (drawer.group as any)?.breed ??
+      null;
+
+    if (!rawBreed) return null;
+    return String(rawBreed).trim().toUpperCase();
+  }, [drawer]);
+
+  const drawerGroupOptions = React.useMemo(() => {
+    // If no drawer is open, just return the full list
+    if (!drawer) return groupOptions;
+
+    return groupOptions.filter((g) => {
+      // Species check
+      if (drawerSpeciesKey && g.species) {
+        if (String(g.species).toUpperCase() !== drawerSpeciesKey) {
+          return false;
+        }
+      }
+
+      // Breed check
+      if (drawerBreedKey) {
+        const groupBreedKey = g.breed ? g.breed.trim().toUpperCase() : null;
+
+        // If the offspring has a breed, the group must also have a breed and it must match
+        if (!groupBreedKey) {
+          return false;
+        }
+        if (groupBreedKey !== drawerBreedKey) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+  }, [drawer, groupOptions, drawerSpeciesKey, drawerBreedKey]);
+
+
+  // Allow external callers to trigger the "Add Offspring" overlay by URL
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    try {
+      const url = new URL(window.location.href);
+      const raw = url.searchParams.get("createOffspring");
+      if (!raw) return;
+
+      const flag = raw.toLowerCase();
+      if (flag === "1" || flag === "true" || flag === "yes") {
+        setShowCreate(true);
+      }
+    } catch {
+      // ignore URL parsing issues
+    }
+  }, []);
+
+
+  function cycleSort(key: ColumnKey, withShift: boolean) {
+    const existing = sorts.find((s) => s.key === key);
+    let next = [...sorts];
+    if (!withShift) {
+      next = existing ? [{ key, dir: existing.dir === "asc" ? "desc" : "asc" }] : [{ key, dir: "asc" }];
+    } else if (!existing) {
+      next.push({ key, dir: "asc" });
+    } else if (existing.dir === "asc") {
+      next = next.map((s) => (s.key === key ? { ...s, dir: "desc" } : s));
+    } else {
+      next = next.filter((s) => s.key !== key);
+    }
+    setSorts(next);
+  }
+
+  const onToggleSort = (key: string) => {
+    cycleSort(key as ColumnKey, false);
+  };
+
+  const refresh = React.useCallback(async () => {
+    try {
+      const res = await api.list({ q, page, pageSize });
+      setRows(Array.isArray(res.rows) ? res.rows : []);
+      setTotal(typeof res.total === "number" ? res.total : 0);
+    } catch (err) {
+      console.error("[Offspring] list failed", err);
+      setRows([]);
+      setTotal(0);
+    }
+  }, [api, q, page, pageSize, sorts]);
+
+  React.useEffect(() => {
+    refresh();
+  }, [refresh]);
+
+  React.useEffect(() => {
+    const applyFromUrl = async () => {
+      try {
+        const id = new URLSearchParams(window.location.search).get("offspringId");
+        if (!id) {
+          setDrawer(null);
+          return;
+        }
+        const rec = await api.getById(Number(id));
+        if (rec) {
+          setDrawer(rec);
+          setDrawerTab("overview");
+        } else {
+          setDrawer(null);
+        }
+      } catch {
+        // ignore
+      }
+    };
+    applyFromUrl();
+    const onPop = () => applyFromUrl();
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, [api]);
+
+  React.useEffect(() => {
+    const tick = () => refresh();
+    const names = [
+      "bhq:offspring:created",
+      "bhq:offspring:updated",
+      "bhq:offspring:deleted",
+      "bhq:offspring:health:created",
+      "bhq:offspring:media:created",
+      "bhq:offspring:contract:created",
+      "bhq:offspring:task:created",
+      "bhq:offspring:invoice:linked",
+    ];
+    names.forEach((n) => window.addEventListener(n, tick as any));
+    return () => names.forEach((n) => window.removeEventListener(n, tick as any));
+  }, [refresh]);
+
+  React.useEffect(() => {
+    if (!drawer) {
+      setCoreForm(null);
+      setDrawerMode("view");
+      setAllowWithoutParent(false);
+      return;
+    }
+    setCoreForm({
+      name: drawer.name,
+      placeholderLabel: drawer.placeholderLabel,
+      sex: drawer.sex,
+      color: drawer.color,
+      birthWeightOz: drawer.birthWeightOz,
+      status: drawer.status,
+      dob: drawer.dob,
+      placementDate: drawer.placementDate,
+      price: drawer.price,
+      microchip: drawer.microchip,
+      registrationId: drawer.registrationId,
+      notes: drawer.notes,
+      groupId: drawer.groupId ?? null,
+      whelpingCollarColor: drawer.whelpingCollarColor ?? null,
+      riskScore: drawer.riskScore ?? null,
+    });
+    setAllowWithoutParent(drawer.groupId == null);
+    setDrawerMode("view");
+    setShowWhelpPalette(false);
+  }, [drawer]);
+
+
+  const [linkingInvoice, setLinkingInvoice] = React.useState(false);
+  const [healthSaving, setHealthSaving] = React.useState(false);
+  const pageCount = Math.max(1, Math.ceil(total / pageSize));
+  const startIdx = (page - 1) * pageSize;
+  const endIdx = Math.min(total, startIdx + pageSize);
+
+  function writeUrlParam(id: ID | null) {
+    try {
+      const url = new URL(window.location.href);
+      if (id == null) url.searchParams.delete("offspringId");
+      else url.searchParams.set("offspringId", String(id));
+      window.history.replaceState({}, "", url.toString());
+    } catch {
+      // ignore
+    }
+  }
+
+  function closeDrawer() {
+    setDrawer(null);
+    setDrawerMode("view");
+    writeUrlParam(null);
+  }
+
+
+  const detailsPanelRef = React.useRef<HTMLDivElement | null>(null);
+
+  function navigateToGroup(groupId: ID) {
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.set("tab", "groups");
+      url.searchParams.set("groupId", String(groupId));
+      window.history.pushState({}, "", url.toString());
+      window.dispatchEvent(
+        new CustomEvent("bhq:offspring:navigate", { detail: { tab: "groups", groupId } })
+      );
+    } catch {
+      // ignore
+    }
+  }
+
+
+  function navigateToWaitlist(waitlistId: number) {
+    window.dispatchEvent(
+      new CustomEvent("bhq:offspring:navigate:waitlist", {
+        detail: { waitlistId },
+      }),
+    );
+  }
+
+  async function navigateToOffspringSibling(id: number) {
+    try {
+      const row = await api.getById(id);
+      setDrawer(row);
+      writeUrlParam(row.id);
+      setDrawerTab("overview");
+    } catch (err) {
+      console.error(err);
+      alert("Failed to load sibling record");
+    }
+  }
+
+
+  async function handleAddHealthEvent() {
+    if (!drawer) return;
+
+    const occurredAt = new Date().toISOString().slice(0, 10);
+    const kind = "HEALTH_CHECK";
+
+    const notes = window.prompt("Notes for health event (optional):") ?? undefined;
+    const weightStr = window.prompt("Weight in ounces (optional):") ?? "";
+    const weightOz = weightStr.trim() ? Number(weightStr.trim()) : undefined;
+
+    setHealthSaving(true);
+    try {
+      const updated = await api.addHealthEvent(drawer.id, {
+        occurredAt,
+        kind,
+        notes,
+        weightOz: Number.isFinite(weightOz as number)
+          ? (weightOz as number)
+          : undefined,
+      });
+      setDrawer(updated);
+      window.dispatchEvent(
+        new CustomEvent("bhq:offspring:health:created", {
+          detail: { offspringId: drawer.id },
+        }),
+      );
+    } catch (err) {
+      console.error(err);
+      alert("Failed to add health event");
+    } finally {
+      setHealthSaving(false);
+    }
+  }
+
+  async function handleLinkInvoice() {
+    if (!drawer) return;
+
+    const invoiceNumber = window.prompt("Invoice number")?.trim();
+    if (!invoiceNumber) return;
+
+    const amountStr = window.prompt("Amount (dollars)")?.trim();
+    const amount = amountStr ? Number(amountStr) : NaN;
+    if (!Number.isFinite(amount)) {
+      alert("Invalid amount");
+      return;
+    }
+
+    const status =
+      window.prompt("Status (e.g., PAID, UNPAID)")?.trim() || "UNKNOWN";
+
+    setLinkingInvoice(true);
+    try {
+      const updated = await api.linkInvoice(drawer.id, {
+        invoiceNumber,
+        amount,
+        status,
+      });
+      setDrawer(updated);
+      window.dispatchEvent(
+        new CustomEvent("bhq:offspring:invoice:linked", {
+          detail: { offspringId: drawer.id },
+        }),
+      );
+    } catch (err) {
+      console.error(err);
+      alert("Failed to link invoice");
+    } finally {
+      setLinkingInvoice(false);
+    }
+  }
+
+  const handleAssignBuyerFromGroup = React.useCallback(async () => {
+    if (!drawer || !selectedGroupBuyerKey) return;
+
+    const [kindRaw, idRaw] = selectedGroupBuyerKey.split(":");
+    const kind: OffspringBuyerKind =
+      kindRaw === "organization" ? "organization" : "contact";
+    const id = Number(idRaw);
+    if (!Number.isFinite(id)) return;
+
+    const patch: OffspringUpdateInput = {
+      buyerContactId: kind === "contact" ? id : null,
+      buyerOrganizationId: kind === "organization" ? id : null,
+    };
+
+    try {
+      const updated = await api.update(drawer.id, patch);
+      setDrawer(updated);
+      setRows((prev) =>
+        prev.map((r) => (String(r.id) === String(updated.id) ? updated : r)),
+      );
+      window.dispatchEvent(
+        new CustomEvent("bhq:offspring:buyer:assigned", {
+          detail: { offspringId: drawer.id },
+        }),
+      );
+    } catch (err) {
+      console.error(err);
+      window.alert("Failed to assign buyer");
+    }
+  }, [api, drawer, selectedGroupBuyerKey, setRows]);
+
+  const handleAssignBuyerFromDirectory = React.useCallback(
+    async (hit: DirectoryHit | null) => {
+      if (!drawer || !hit) return;
+
+      const patch: OffspringUpdateInput = {
+        buyerContactId: hit.kind === "contact" ? hit.id : null,
+        buyerOrganizationId: hit.kind === "org" ? hit.id : null,
+      };
+
+      try {
+        const updated = await api.update(drawer.id, patch);
+        setDrawer(updated);
+        setRows((prev) =>
+          prev.map((r) => (String(r.id) === String(updated.id) ? updated : r)),
+        );
+        window.dispatchEvent(
+          new CustomEvent("bhq:offspring:buyer:assigned", {
+            detail: { offspringId: drawer.id },
+          }),
+        );
+        setSelectedGroupBuyerKey("");
+      } catch (err) {
+        console.error(err);
+        window.alert("Failed to assign buyer from directory");
+      }
+    },
+    [api, drawer, setRows],
+  );
+
+  const handleClearBuyer = React.useCallback(async () => {
+    if (!drawer) return;
+
+    const patch: OffspringUpdateInput = {
+      buyerContactId: null,
+      buyerOrganizationId: null,
+    };
+
+    try {
+      const updated = await api.update(drawer.id, patch);
+      setDrawer(updated);
+      setRows((prev) =>
+        prev.map((r) => (String(r.id) === String(updated.id) ? updated : r)),
+      );
+      window.dispatchEvent(
+        new CustomEvent("bhq:offspring:buyer:cleared", {
+          detail: { offspringId: drawer.id },
+        }),
+      );
+      setSelectedGroupBuyerKey("");
+    } catch (err) {
+      console.error(err);
+      window.alert("Failed to clear buyer");
+    }
+  }, [api, drawer, setRows]);
+
+
+  async function saveCoreSection() {
+    if (!drawer || !coreForm) return;
+
+    const resolvedGroupId =
+      allowWithoutParent ? null : (coreForm.groupId ?? null);
+
+    try {
+      const patch: OffspringUpdateInput = {
+        name: coreForm.name ?? null,
+        sex: (coreForm.sex as Sex) ?? drawer.sex,
+        color: coreForm.color ?? null,
+        birthWeightOz: coreForm.birthWeightOz ?? null,
+        status: (coreForm.status as OffspringStatus) ?? drawer.status,
+        placementDate: coreForm.placementDate ?? drawer.placementDate,
+        price: coreForm.price ?? drawer.price,
+        microchip: coreForm.microchip ?? drawer.microchip,
+        registrationId: coreForm.registrationId ?? drawer.registrationId,
+        notes: coreForm.notes ?? drawer.notes,
+
+        species: (drawer.species as any) ?? null,
+        dob: coreForm.dob ?? drawer.dob,
+
+        // critical part: send both names
+        groupId: resolvedGroupId,
+        litterId: resolvedGroupId,
+
+        unlinkedOverride:
+          allowWithoutParent && resolvedGroupId == null
+            ? true
+            : null,
+
+        whelpingCollarColor:
+          coreForm.whelpingCollarColor ??
+          drawer.whelpingCollarColor ??
+          null,
+        riskScore: coreForm.riskScore ?? drawer.riskScore ?? null,
+      };
+
+      const updated = await api.update(drawer.id, patch);
+      setDrawer(updated);
+      setRows((prev) =>
+        prev.map((r) => (String(r.id) === String(updated.id) ? updated : r)),
+      );
+      window.dispatchEvent(new CustomEvent("bhq:offspring:updated"));
+    } catch {
+      window.alert("Failed to save offspring core details");
+    }
+  }
+
+  return (
+    <div className="p-6 space-y-4">
+      {!embed && (
+        <PageHeader
+          title="Offspring"
+          subtitle="Manage individual offspring records"
+          right={
+            <div className="flex items-center gap-2">
+              <Button variant="outline" onClick={() => setShowCreate(true)}>
+                <Plus className="h-4 w-4" /> New
+              </Button>
+            </div>
+          }
+        />
+      )}
+
+      <SectionCard>
+        <Table
+          columns={ALL_COLUMNS as any}
+          columnState={cols.map}
+          onColumnStateChange={cols.setAll}
+          getRowId={(r: OffspringRow) => r.id}
+          pageSize={25}
+          renderStickyRight={() => (
+            <ColumnsPopover
+              columns={cols.map}
+              onToggle={cols.toggle}
+              onSet={cols.setAll}
+              allColumns={ALL_COLUMNS as any}
+              triggerClassName="bhq-columns-trigger"
+            />
+          )}
+          stickyRightWidthPx={40}
+        >
+          <div className="bhq-table__toolbar px-2 pt-2 pb-3 relative z-30 flex items-center justify-between">
+            <SearchBar
+              value={q}
+              onChange={(v) => {
+                setQ(v);
+                setPage(1);
+              }}
+              placeholder="Search name, buyer, group, microchip"
+              widthPx={520}
+            />
+            <Button
+              size="sm"
+              variant="primary"
+              onClick={() => setShowCreate(true)}
+            >
+              <Plus className="h-4 w-4 mr-1" />
+              Add Offspring
+            </Button>
+          </div>
+          <table className="min-w-max w-full text-sm">
+            <TableHeader columns={visibleSafe as any} sorts={sorts} onToggleSort={onToggleSort} />
+            <tbody>
+              {rows.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={visibleSafe.length}>
+                    <div className="py-6 text-center text-sm text-muted-foreground">
+                      No offspring found
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ) : (
+                rows.map((r) => (
+                  <TableRow
+                    key={r.id}
+                    detailsRow={r}
+                    className="cursor-pointer"
+                    onClick={async () => {
+                      try {
+                        const full = await api.getById(r.id);
+                        if (full) {
+                          setDrawer(full);
+                          writeUrlParam(full.id);
+                          setDrawerTab("overview");
+                        }
+                      } catch (err) {
+                        console.error("[Offspring] Failed to load row", r.id, err);
+                      }
+                    }}
+                  >
+                    {visibleSafe.map((col) => {
+                      const k = col.key as ColumnKey;
+                      let val: React.ReactNode = (r as any)[k];
+
+                      if (k === "name") {
+                        val = r.name || r.placeholderLabel || "Unnamed";
+                      }
+
+                      if (k === "buyer") {
+                        val = r.buyer ? r.buyer.name : "-";
+                      }
+
+                      if (k === "group") {
+                        if (r.groupId) {
+                          const groupFromOptions = groupOptions.find(
+                            (opt) => opt.id === r.groupId
+                          );
+
+                          const label =
+                            groupFromOptions?.label ||
+                            r.groupLabel ||
+                            (r as any).groupName ||
+                            (r as any).groupCode ||
+                            `Group #${r.groupId}`;
+
+                          val = (
+                            <button
+                              type="button"
+                              className="text-xs text-primary underline-offset-2 hover:underline"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                navigateToGroup(r.groupId!);
+                              }}
+                            >
+                              {label}
+                            </button>
+                          );
+                        } else {
+                          val = "-";
+                        }
+                      }
+
+                      if (k === "sex") {
+                        val = r.sex ?? "-";
+                      }
+
+                      if (k === "whelpingCollarColor") {
+                        const value = r.whelpingCollarColor;
+
+                        if (!value) {
+                          val = "-";
+                        } else {
+                          const lower = value.toString().toLowerCase();
+
+                          const match = WHELPING_COLLAR_SWATCHES.find((opt) => {
+                            const valLower = opt.value.toLowerCase();
+                            const labelLower = opt.label.toLowerCase();
+                            return valLower === lower || labelLower === lower;
+                          });
+
+                          const hex = match?.hex ?? null;
+
+                          val = (
+                            <span className="inline-flex items-center justify-center gap-1 text-xs">
+                              {hex && (
+                                <span
+                                  className="inline-block h-3 w-3 rounded-full border border-border"
+                                  style={{ backgroundColor: hex }}
+                                />
+                              )}
+                              <span>{value}</span>
+                            </span>
+                          );
+                        }
+                      }
+
+
+                      if (k === "color") {
+                        val = r.color ?? "-";
+                      }
+
+                      if (k === "breed") {
+                        val = r.breed ?? "-";
+                      }
+
+                      if (k === "status") {
+                        val = prettyStatus(r.status as OffspringStatus);
+                      }
+
+                      if (k === "dob") {
+                        val = formatDate(r.dob);
+                      }
+
+                      if (k === "placementDate") {
+                        val = formatDate(r.placementDate);
+                      }
+
+                      if (k === "price") {
+                        val = moneyFmt(r.price);
+                      }
+
+                      if (k === "birthWeightOz") {
+                        val = r.birthWeightOz != null ? r.birthWeightOz.toFixed(1) : "-";
+                      }
+
+                      return (
+                        <TableCell
+                          key={col.key}
+                          align={CENTER_KEYS.has(col.key as ColumnKey) ? "center" : "left"}
+                        >
+                          {val}
+                        </TableCell>
+                      );
+                    })}
+                  </TableRow>
+                ))
+              )}
+            </tbody>
+          </table>
+
+          <TableFooter colSpan={visibleSafe.length}>
+            <TableRow>
+              <TableCell colSpan={visibleSafe.length}>
+                <div className="flex items-center justify-between gap-3">
+                  <div className={labelClass}>
+                    {total === 0 ? (
+                      "No records"
+                    ) : (
+                      <>
+                        Showing {startIdx + 1} to {endIdx} of {total}
+                      </>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <label className="flex items-center gap-1 text-xs">
+                      <span>Rows per page</span>
+                      <select
+                        className="bhq-input h-7 w-16 px-1 text-xs"
+                        value={pageSize}
+                        onChange={(e) => {
+                          setPageSize(Number(e.currentTarget.value) || 25);
+                          setPage(1);
+                        }}
+                      >
+                        {[10, 25, 50, 100].map((n) => (
+                          <option key={n} value={n}>
+                            {n}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <div className="flex items-center gap-1 text-xs">
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        disabled={page <= 1}
+                        onClick={() => setPage((p) => Math.max(1, p - 1))}
+                      >
+                        <ChevronUp className="h-3 w-3 rotate-90" />
+                      </Button>
+                      <span>
+                        Page {page} of {pageCount}
+                      </span>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        disabled={page >= pageCount}
+                        onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
+                      >
+                        <ChevronDown className="h-3 w-3 rotate-90" />
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </TableCell>
+            </TableRow>
+          </TableFooter>
+        </Table>
+      </SectionCard>
+
+      <CreateOffspringOverlayContent
+        open={showCreate}
+        onClose={() => setShowCreate(false)}
+        onCreate={async (input) => {
+          try {
+            const payload: any = { ...input };
+
+            // If a groupId is on the URL and the form did not set one, attach it
+            if (typeof window !== "undefined") {
+              try {
+                const url = new URL(window.location.href);
+                const groupIdRaw = url.searchParams.get("groupId");
+                if (groupIdRaw && payload.groupId == null) {
+                  const groupIdNum = Number(groupIdRaw);
+                  if (Number.isFinite(groupIdNum)) {
+                    payload.groupId = groupIdNum;
+                  }
+                }
+              } catch {
+                // ignore URL issues
+              }
+            }
+
+            await api.create(payload);
+            setShowCreate(false);
+            await refresh();
+          } catch (err) {
+            console.error("Failed to create offspring", err);
+            window.alert("Failed to create offspring. Try again.");
+          }
+        }}
+        rootApi={rootApi}
+        groupOptions={groupOptions}
+      />
+      <Overlay
+        open={!!drawer}
+        ariaLabel="Offspring details"
+        closeOnEscape
+        closeOnOutsideClick
+        onOpenChange={(open) => {
+          if (!open) {
+            closeDrawer();
+          }
+        }}
+      >
+        {drawer && (
+          <div
+            className="fixed inset-0"
+            style={{ zIndex: MODAL_Z, isolation: "isolate" }}
+            onMouseDown={(e) => {
+              const p = detailsPanelRef.current;
+              if (!p) return;
+              if (!p.contains(e.target as Node)) {
+                closeDrawer();
+              }
+            }}
+          >
+            {/* Backdrop */}
+            <div className="absolute inset-0 bg-black/40" />
+
+            {/* Anchored panel (align top, scroll if needed) */}
+            <div className="absolute inset-0 flex items-start justify-center overflow-y-auto">
+              <div
+                ref={detailsPanelRef}
+                className="pointer-events-auto mt-10 mb-10 flex flex-col overflow-hidden rounded-xl border border-hairline bg-surface shadow-xl"
+                style={{ width: 760, maxWidth: "calc(100vw - 64px)" }}
+                onMouseDown={(e) => {
+                  // keep clicks inside the panel from bubbling to the outer close handler
+                  e.stopPropagation();
+                }}
+              >
+                <DetailsScaffold
+                  title={
+                    drawer.name ||
+                    drawer.placeholderLabel ||
+                    drawer.identifier ||
+                    "Unnamed offspring"
+                  }
+                  subtitle={
+                    drawer.status
+                      ? `Status ${prettyStatus(drawer.status as OffspringStatus)}`
+                      : "Status not set"
+                  }
+                  mode={drawerMode}
+                  onEdit={() => {
+                    // ensure form is in sync, then enter edit mode
+                    setCoreForm({
+                      name: drawer.name,
+                      placeholderLabel: drawer.placeholderLabel,
+                      sex: drawer.sex,
+                      color: drawer.color,
+                      birthWeightOz: drawer.birthWeightOz,
+                      status: drawer.status,
+                      dob: drawer.dob,
+                      placementDate: drawer.placementDate,
+                      price: drawer.price,
+                      microchip: drawer.microchip,
+                      registrationId: drawer.registrationId,
+                      notes: drawer.notes,
+                      groupId: drawer.groupId,
+                      whelpingCollarColor: drawer.whelpingCollarColor ?? null,
+                      riskScore: drawer.riskScore ?? null,
+                    });
+                    setAllowWithoutParent(drawer.groupId == null);
+                    setShowWhelpPalette(false);
+                    setDrawerMode("edit");
+                  }}
+                  onCancel={() => {
+                    // reset form from current drawer row, leave DB unchanged
+                    setCoreForm({
+                      name: drawer.name,
+                      placeholderLabel: drawer.placeholderLabel,
+                      sex: drawer.sex,
+                      color: drawer.color,
+                      birthWeightOz: drawer.birthWeightOz,
+                      status: drawer.status,
+                      dob: drawer.dob,
+                      placementDate: drawer.placementDate,
+                      price: drawer.price,
+                      microchip: drawer.microchip,
+                      registrationId: drawer.registrationId,
+                      notes: drawer.notes,
+                      groupId: drawer.groupId,
+                      whelpingCollarColor: drawer.whelpingCollarColor ?? null,
+                      riskScore: drawer.riskScore ?? null,
+                    });
+                    setAllowWithoutParent(drawer.groupId == null);
+                    setShowWhelpPalette(false);
+                    setDrawerMode("view");
+                  }}
+                  onSave={async () => {
+                    if (!drawer || !coreForm) return;
+                    setDrawerSaving(true);
+                    try {
+                      await saveCoreSection();
+                      setDrawerMode("view");
+                    } finally {
+                      setDrawerSaving(false);
+                    }
+                  }}
+                  saving={drawerSaving}
+                  tabs={[
+                    { key: "overview", label: "Overview" },
+                    { key: "buyer", label: "Buyer" },
+                    { key: "health", label: "Health" },
+                    { key: "media", label: "Media" },
+                    { key: "invoices", label: "Invoices" },
+                    { key: "records", label: "Records" },
+                    { key: "notes", label: "Notes" },
+                  ]}
+                  activeTab={drawerTab}
+                  onTabChange={(key) => setDrawerTab(key as any)}
+                  rightActions={
+                    <div className="flex items-center gap-2">
+                      <Button size="sm" variant="outline" onClick={closeDrawer}>
+                        Close
+                      </Button>
+                    </div>
+                  }
+                />
+
+                {/* Body */}
+                <div className="px-5 py-4 space-y-6">
+                  {(() => {
+                    const row = drawer as any;
+                    if (!row) return null;
+
+                    const group = row.group;
+                    const buyer = row.buyer;
+                    const health = row.healthSummary || {};
+                    const media = row.mediaSummary || {};
+                    const invoices = row.invoiceSummary || {};
+                    const crossRefs = row.crossRefs || {};
+                    const notes: string = row.notes || "";
+
+                    const name =
+                      row.name || row.identifier || "Unnamed offspring";
+
+                    const speciesLabel =
+                      row.species ? prettySpecies(row.species) : "Not set";
+
+                    const sexLabel = prettySex(row.sex);
+
+                    const damLabel =
+                      row.groupDamName || row.damName || "Not set";
+
+                    const sireLabel =
+                      row.groupSireName || row.sireName || "Not set";
+
+                    const statusLabel = row.status
+                      ? prettyStatus(row.status as Status)
+                      : "Status not set";
+
+                    const dobLabel = row.dob
+                      ? formatDate(row.dob)
+                      : "Not set";
+
+                    const birthWeightLabel =
+                      typeof row.birthWeightOz === "number"
+                        ? `${row.birthWeightOz} oz`
+                        : "Not recorded";
+
+                    const colorLabel = row.color || "Not set";
+
+                    const microchipLabel = row.microchip || "None";
+
+                    const registrationLabel = row.registrationId || "None";
+
+                    const whelpingCollarValue =
+                      drawerMode === "edit" && coreForm
+                        ? coreForm.whelpingCollarColor
+                        : row.whelpingCollarColor;
+
+                    const whelpingCollarLabel =
+                      whelpingCollarValue || "Not set";
+
+                    const whelpingCollarColorHex = (() => {
+                      const v = (whelpingCollarValue ?? "")
+                        .toString()
+                        .toLowerCase();
+
+                      const match = WHELPING_COLLAR_SWATCHES.find((opt) => {
+                        const val = opt.value.toLowerCase();
+                        const label = opt.label.toLowerCase();
+                        return val === v || label === v;
+                      });
+
+                      return match?.hex ?? null;
+                    })();
+
+                    const groupLabelFromOptions = groupOptions.find(
+                      (opt) => opt.id === row.groupId
+                    )?.label;
+
+                    const groupName =
+                      groupLabelFromOptions ||
+                      row.groupName ||
+                      row.group?.name ||
+                      (row.groupId ? `Group #${row.groupId}` : "Not linked to group");
+
+                    const groupCode =
+                      row.groupCode ||
+                      row.group?.code ||
+                      "n/a";
+
+                    const identifierLabel = row.identifier || "Not set";
+
+                    const placementLabel = (() => {
+                      const raw = row.placementStatus || row.status;
+                      if (!raw) return "Not placed";
+
+                      const s = String(raw).toUpperCase();
+
+                      if (s === "NOT_PLACED" || s === "PLANNED" || s === "BORN" || s === "AVAILABLE") {
+                        return "Not placed";
+                      }
+                      if (s === "DEPOSIT_ONLY" || s === "RESERVED") {
+                        return "Deposit only";
+                      }
+                      if (s === "PLACED") {
+                        return "Placed";
+                      }
+                      return String(raw);
+                    })();
+
+                    const priceLabel =
+                      typeof row.price === "number"
+                        ? moneyFmt(row.price)
+                        : "Not set";
+
+                    const placementDateLabel = row.placementDate
+                      ? formatDate(row.placementDate)
+                      : "Not set";
+
+                    const buyerLabel =
+                      row.buyer?.name ||
+                      row.buyerName ||
+                      (row.buyerId ? `Buyer #${row.buyerId}` : "No buyer on file");
+
+                    const buyerName = buyerLabel;
+                    const buyerEmail = buyer?.email ?? null;
+                    const buyerPhone = buyer?.phone ?? null;
+                    const hasBuyer = !!buyer;
+
+                    const healthWeightSummary =
+                      health.weightSummaryLabel || "No weight log recorded yet.";
+                    const healthEventSummary =
+                      health.eventsSummaryLabel || "No health events recorded yet.";
+
+                    const mediaSummary =
+                      media.summaryLabel || "No media files linked yet.";
+
+                    const invoiceSummary =
+                      invoices.summaryLabel || "No invoices linked yet.";
+
+                    return (
+                      <>
+                        {/* OVERVIEW TAB */}
+                        {drawerTab === "overview" && (
+                          <div className="space-y-8 max-w-4xl mx-auto">
+
+
+                            {/* Identity card */}
+                            <SectionCard title="Identity">
+                              <dl className="mt-2 grid grid-cols-2 gap-x-10 gap-y-10 text-xs md:text-sm">
+                                {/* Row 1: Name | Unique ID */}
+                                <div>
+                                  <dt className={labelClass}>Name</dt>
+                                  <dd className="mt-1 text-sm">
+                                    {drawerMode === "edit" && coreForm ? (
+                                      <input
+                                        className={inputClass}
+                                        value={coreForm.name ?? ""}
+                                        onChange={(e) =>
+                                          setCoreForm((prev) =>
+                                            prev ? { ...prev, name: e.target.value } : prev,
+                                          )
+                                        }
+                                      />
+                                    ) : (
+                                      name
+                                    )}
+                                  </dd>
+                                </div>
+
+                                <div>
+                                  <dt className={labelClass}>Unique ID</dt>
+                                  <dd className="mt-1 text-sm">
+                                    {drawerMode === "edit" && coreForm ? (
+                                      <input
+                                        className={inputClass}
+                                        value={coreForm.registrationId ?? drawer.registrationId ?? ""}
+                                        onChange={(e) =>
+                                          setCoreForm((prev) =>
+                                            prev ? { ...prev, registrationId: e.target.value } : prev,
+                                          )
+                                        }
+                                      />
+                                    ) : (
+                                      registrationLabel
+                                    )}
+                                  </dd>
+                                </div>
+
+                                {/* Row 2: DOB | Microchip */}
+                                <div>
+                                  <dt className={labelClass}>DOB</dt>
+                                  <dd className="mt-1 text-sm">
+                                    {drawerMode === "edit" && coreForm ? (
+                                      <input
+                                        type="date"
+                                        className={inputClass}
+                                        value={coreForm.dob ?? drawer.dob ?? ""}
+                                        onChange={(e) =>
+                                          setCoreForm((prev) =>
+                                            prev ? { ...prev, dob: e.target.value } : prev,
+                                          )
+                                        }
+                                      />
+                                    ) : (
+                                      dobLabel
+                                    )}
+                                  </dd>
+                                </div>
+
+                                <div>
+                                  <dt className={labelClass}>Microchip</dt>
+                                  <dd className="mt-1 text-sm">
+                                    {drawerMode === "edit" && coreForm ? (
+                                      <input
+                                        className={inputClass}
+                                        value={coreForm.microchip ?? drawer.microchip ?? ""}
+                                        onChange={(e) =>
+                                          setCoreForm((prev) =>
+                                            prev ? { ...prev, microchip: e.target.value } : prev,
+                                          )
+                                        }
+                                      />
+                                    ) : (
+                                      microchipLabel
+                                    )}
+                                  </dd>
+                                </div>
+
+                                {/* Row 3: Whelping collar, full width */}
+                                <div className="col-span-2">
+                                  <dt className={labelClass}>Whelping Collar Color</dt>
+                                  <dd className="mt-1 text-sm">
+                                    {drawerMode === "edit" && coreForm ? (
+                                      <div className="relative w-full max-w-xs">
+                                        <button
+                                          type="button"
+                                          className={cx(
+                                            inputClass,
+                                            "flex items-center justify-between text-left cursor-pointer",
+                                          )}
+                                          onClick={() =>
+                                            setShowWhelpPalette((prev) => !prev)
+                                          }
+                                        >
+                                          <span className="flex items-center gap-2">
+                                            {whelpingCollarColorHex && (
+                                              <span
+                                                className="h-3 w-3 rounded-full border border-border"
+                                                style={{ backgroundColor: whelpingCollarColorHex }}
+                                              />
+                                            )}
+                                            <span>
+                                              {whelpingCollarLabel === "Not set"
+                                                ? "Select collar color"
+                                                : whelpingCollarLabel}
+                                            </span>
+                                          </span>
+                                          <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+                                        </button>
+
+                                        {showWhelpPalette && (
+                                          <div className="absolute z-20 mt-1 w-full rounded-md border border-border bg-surface shadow-lg">
+                                            <ul className="max-h-48 overflow-y-auto py-1 text-xs">
+                                              {WHELPING_COLLAR_SWATCHES.map((opt) => (
+                                                <li key={opt.value}>
+                                                  <button
+                                                    type="button"
+                                                    className="flex w-full items-center gap-2 px-2 py-1.5 text-left hover:bg-muted"
+                                                    onClick={() => {
+                                                      setCoreForm((prev) =>
+                                                        prev
+                                                          ? {
+                                                            ...prev,
+                                                            whelpingCollarColor: opt.label,
+                                                          }
+                                                          : prev,
+                                                      );
+                                                      setShowWhelpPalette(false);
+                                                    }}
+                                                  >
+                                                    <span
+                                                      className="h-3 w-3 rounded-full border border-border"
+                                                      style={{ backgroundColor: opt.hex }}
+                                                    />
+                                                    <span>{opt.label}</span>
+                                                  </button>
+                                                </li>
+                                              ))}
+                                            </ul>
+                                          </div>
+                                        )}
+                                      </div>
+                                    ) : (
+                                      <div className="inline-flex items-center gap-2">
+                                        {whelpingCollarColorHex && (
+                                          <span
+                                            className="h-3 w-3 rounded-full border border-border"
+                                            style={{ backgroundColor: whelpingCollarColorHex }}
+                                          />
+                                        )}
+                                        <span>{whelpingCollarLabel}</span>
+                                      </div>
+                                    )}
+                                  </dd>
+                                </div>
+                              </dl>
+                            </SectionCard>
+
+                            {/* Profile card */}
+                            <SectionCard title="Profile">
+                              <dl className="mt-2 grid grid-cols-3 gap-x-10 gap-y-10 text-xs md:text-sm">
+                                {/* Row 1: Parent group, full width */}
+                                <div className="col-span-3">
+                                  <dt className={labelClass}>Parent group</dt>
+                                  <dd className="mt-1 text-sm">
+                                    {drawerMode === "edit" && coreForm ? (
+                                      <div className="space-y-2">
+                                        <select
+                                          className={inputClass}
+                                          value={
+                                            coreForm.groupId != null
+                                              ? String(coreForm.groupId)
+                                              : ""
+                                          }
+                                          onChange={(e) => {
+                                            const value = e.target.value;
+                                            const nextGroupId = value ? Number(value) : null;
+                                            setCoreForm((prev) => {
+                                              if (!prev) return prev;
+                                              return { ...prev, groupId: nextGroupId };
+                                            });
+                                          }}
+                                        >
+                                          <option value="">Select parent group</option>
+                                          {drawerGroupOptions.map((opt) => (
+                                            <option key={opt.id} value={String(opt.id)}>
+                                              {opt.label}
+                                            </option>
+                                          ))}
+                                        </select>
+
+                                        <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                                          <input
+                                            type="checkbox"
+                                            checked={allowWithoutParent}
+                                            onChange={(e) =>
+                                              setAllowWithoutParent(e.target.checked)
+                                            }
+                                          />
+                                          <span>Override - Create Orphan</span>
+                                        </label>
+                                      </div>
+                                    ) : group ? (
+                                      <Button
+                                        variant="link"
+                                        className="h-auto p-0 text-sm"
+                                        onClick={() => navigateToGroup(group.id)}
+                                      >
+                                        {groupName}
+                                      </Button>
+                                    ) : (
+                                      groupName
+                                    )}
+                                  </dd>
+                                </div>
+
+                                {/* Row 2: Species | Breed | Sex */}
+                                <div>
+                                  <dt className={labelClass}>Species</dt>
+                                  <dd className="mt-1 text-sm">{speciesLabel}</dd>
+                                </div>
+
+                                <div>
+                                  <dt className={labelClass}>Breed</dt>
+                                  <dd className="mt-1 text-sm">
+                                    {row.group?.breedName ||
+                                      row.group?.breed ||
+                                      row.breedName ||
+                                      row.breed ||
+                                      "Not set"}
+                                  </dd>
+                                </div>
+
+                                <div>
+                                  <dt className={labelClass}>Sex</dt>
+                                  <dd className="mt-1 text-sm">
+                                    {drawerMode === "edit" && coreForm ? (
+                                      <select
+                                        className={inputClass}
+                                        value={coreForm.sex ?? ""}
+                                        onChange={(e) => {
+                                          const value = e.target.value || "";
+                                          setCoreForm((prev) =>
+                                            prev
+                                              ? { ...prev, sex: (value || null) as any }
+                                              : prev,
+                                          );
+                                        }}
+                                      >
+                                        <option value="">Select sex</option>
+                                        <option value="FEMALE">Female</option>
+                                        <option value="MALE">Male</option>
+                                        <option value="UNKNOWN">Unknown</option>
+                                      </select>
+                                    ) : (
+                                      <span>
+                                        {row.sex === "FEMALE"
+                                          ? "Female"
+                                          : row.sex === "MALE"
+                                            ? "Male"
+                                            : "Unknown"}
+                                      </span>
+                                    )}
+                                  </dd>
+                                </div>
+
+                                {/* Row 3: Dam | Sire | Color */}
+                                <div>
+                                  <dt className={labelClass}>Dam</dt>
+                                  <dd className="mt-1 text-sm">
+                                    {row.dam ? (
+                                      <button
+                                        type="button"
+                                        className="text-brand-600 hover:underline"
+                                        onClick={() => {
+                                          onClose();
+                                          onNavigateToAnimal?.(row.dam!.id);
+                                        }}
+                                      >
+                                        {row.dam.name ?? "View dam"}
+                                      </button>
+                                    ) : (
+                                      "Not set"
+                                    )}
+                                  </dd>
+                                </div>
+
+                                <div>
+                                  <dt className={labelClass}>Sire</dt>
+                                  <dd className="mt-1 text-sm">
+                                    {row.sire ? (
+                                      <button
+                                        type="button"
+                                        className="text-brand-600 hover:underline"
+                                        onClick={() => {
+                                          onClose();
+                                          onNavigateToAnimal?.(row.sire!.id);
+                                        }}
+                                      >
+                                        {row.sire.name ?? "View sire"}
+                                      </button>
+                                    ) : (
+                                      "Not set"
+                                    )}
+                                  </dd>
+                                </div>
+
+                                <div>
+                                  <dt className={labelClass}>Color</dt>
+                                  <dd className="mt-1 text-sm">
+                                    {drawerMode === "edit" && coreForm ? (
+                                      <input
+                                        className={inputClass}
+                                        value={coreForm.color ?? drawer.color ?? ""}
+                                        onChange={(e) =>
+                                          setCoreForm((prev) =>
+                                            prev ? { ...prev, color: e.target.value } : prev,
+                                          )
+                                        }
+                                      />
+                                    ) : (
+                                      row.color ?? "Not set"
+                                    )}
+                                  </dd>
+                                </div>
+                              </dl>
+                            </SectionCard>
+
+                            {/* Buyer card */}
+                            <SectionCard title="Buyer">
+                              <dl className="mt-2 grid grid-cols-2 gap-x-10 gap-y-10 text-xs md:text-sm">
+                                {/* Row 1: Assigned Buyer | Buyer Risk Score */}
+                                <div>
+                                  <dt className={labelClass}>Assigned buyer</dt>
+                                  <dd className="mt-1 text-sm">{buyerName}</dd>
+                                </div>
+
+                                <div>
+                                  <dt className={labelClass}>Buyer risk score</dt>
+                                  <dd className="mt-1 text-sm">
+                                    {row.buyerRiskScore != null ? (
+                                      <RiskScorePill score={row.buyerRiskScore} />
+                                    ) : (
+                                      "Not set"
+                                    )}
+                                  </dd>
+                                </div>
+                              </dl>
+                            </SectionCard>
+                          </div>
+                        )}
+
+                        {/* BUYER TAB */}
+                        {drawerTab === "buyer" && (
+                          <SectionCard
+                            title="Buyer"
+                            description={
+                              group
+                                ? "Assign a buyer to this offspring using buyers already linked to the parent group, or search the global directory."
+                                : "This offspring is not linked to a group. You can still assign a buyer from the directory."
+                            }
+                          >
+                            {(() => {
+                              const hasGroup = !!group;
+                              const hasGroupOptions = groupBuyerOptions.length > 0;
+
+                              const currentBuyerName = hasBuyer ? buyerName : "No buyer assigned";
+
+                              return (
+                                <div className="space-y-6">
+
+                                  {/* Current buyer summary */}
+                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs md:text-sm">
+                                    <div>
+                                      <div className={labelClass}>
+                                        Current buyer
+                                      </div>
+                                      <div className="text-sm">{currentBuyerName}</div>
+
+                                      {hasBuyer && (
+                                        <div className="mt-4">
+                                          <div className={labelClass}>
+                                            Phone
+                                          </div>
+                                          <div className="text-sm">
+                                            {buyerPhone ? (
+                                              <a
+                                                href={`tel:${buyerPhone}`}
+                                                className="text-primary hover:underline"
+                                              >
+                                                {buyerPhone}
+                                              </a>
+                                            ) : (
+                                              "No phone on file"
+                                            )}
+                                          </div>
+                                        </div>
+                                      )}
+                                    </div>
+
+                                    {hasBuyer && (
+                                      <div>
+                                        <div className={labelClass}>
+                                          Email
+                                        </div>
+                                        <div className="text-sm">
+                                          {buyerEmail ? (
+                                            <a
+                                              href={`mailto:${buyerEmail}`}
+                                              className="text-primary hover:underline"
+                                            >
+                                              {buyerEmail}
+                                            </a>
+                                          ) : (
+                                            "No email on file"
+                                          )}
+                                        </div>
+
+                                        <div className="mt-4">
+                                          <Button
+                                            type="button"
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={handleClearBuyer}
+                                          >
+                                            Remove buyer
+                                          </Button>
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+
+                                  {/* Group buyer assignment (if group exists) */}
+                                  {hasGroup && (
+                                    <div className="space-y-3">
+                                      <div className="flex items-center justify-between gap-2">
+                                        <div className={labelClass}>
+                                          Choose a buyer from this group
+                                        </div>
+                                      </div>
+                                      {hasGroupOptions ? (
+                                        <>
+                                          <select
+                                            className={inputClass}
+                                            value={selectedGroupBuyerKey}
+                                            onChange={(e) =>
+                                              setSelectedGroupBuyerKey(e.target.value)
+                                            }
+                                          >
+                                            <option value="">
+                                              Select a group buyer
+                                            </option>
+                                            {groupBuyerOptions.map((opt) => (
+                                              <option key={opt.key} value={opt.key}>
+                                                {opt.label}
+                                                {opt.email ? ` (${opt.email})` : ""}
+                                              </option>
+                                            ))}
+                                          </select>
+
+                                          <div className="flex items-center justify-between gap-2">
+                                            <div className={labelClass}>
+                                              Assign the selected group buyer to this offspring.
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                              {hasBuyer && (
+                                                <Button
+                                                  size="sm"
+                                                  variant="outline"
+                                                  type="button"
+                                                  onClick={handleClearBuyer}
+                                                >
+                                                  Clear buyer
+                                                </Button>
+                                              )}
+                                              <Button
+                                                size="sm"
+                                                type="button"
+                                                onClick={handleAssignBuyerFromGroup}
+                                                disabled={!selectedGroupBuyerKey}
+                                              >
+                                                {hasBuyer ? "Update buyer" : "Assign buyer"}
+                                              </Button>
+                                            </div>
+                                          </div>
+                                        </>
+                                      ) : (
+                                        <div className={labelClass}>
+                                          This group has no buyers linked yet. Add buyers on the group first, then return here to assign one to this offspring.
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
+
+                                  {/* Directory search and assignment */}
+                                  {/* Directory search and assignment */}
+                                  {!hasBuyer && (
+                                    <div className="space-y-2 border-t border-hairline pt-4">
+                                      <div className="flex items-center justify-between gap-2">
+                                      </div>
+                                      <SearchBar
+                                        value={buyerSearchQ}
+                                        onChange={setBuyerSearchQ}
+                                        placeholder="To Add a Buyer - Search by name, email, or phone"
+                                        widthPx={560}
+                                        busy={buyerSearchBusy}
+                                      />
+                                      {buyerHits.length > 0 ? (
+                                        <div className="mt-2 max-h-56 overflow-y-auto rounded-md border border-hairline bg-surface-soft">
+                                          {buyerHits.map((hit) => (
+                                            <button
+                                              key={`${hit.kind}:${hit.id}`}
+                                              type="button"
+                                              className="flex w-full items-center justify-between gap-3 px-2 py-1.5 text-left text-xs hover:bg-surface/80"
+                                              onClick={() => handleAssignBuyerFromDirectory(hit)}
+                                            >
+                                              <div className="flex flex-col">
+                                                <span className="font-medium">{hit.label}</span>
+                                                {hit.sub && (
+                                                  <span className="text-[11px] text-muted-foreground">
+                                                    {hit.sub}
+                                                  </span>
+                                                )}
+                                              </div>
+                                              <span className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                                                {hit.kind === "contact" ? "Contact" : "Organization"}
+                                              </span>
+                                            </button>
+                                          ))}
+                                        </div>
+                                      ) : buyerSearchQ.trim() ? (
+                                        <div className="mt-2 text-[11px] text-muted-foreground">
+                                          No directory matches for this search.
+                                        </div>
+                                      ) : null}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })()}
+                          </SectionCard>
+                        )}
+
+                        {/* HEALTH TAB */}
+                        {drawerTab === "health" && (
+                          <SectionCard
+                            title="Health and growth"
+                            description="Review growth trend and recorded health events."
+                          >
+                            <div className="space-y-4">
+                              <div>
+                                <div className="mb-2 flex items-center justify-between">
+                                  <div className={labelClass}>
+                                    Growth trend
+                                  </div>
+                                </div>
+                                {health.weightSeries && health.weightSeries.length ? (
+                                  <GrowthSparkline
+                                    series={health.weightSeries}
+                                  />
+                                ) : (
+                                  <div className={labelClass}>
+                                    {healthWeightSummary}
+                                  </div>
+                                )}
+                              </div>
+
+                              <div className="flex items-center justify-between gap-2">
+                                <div className={labelClass}>
+                                  Health events
+                                </div>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={handleAddHealthEvent}
+                                  disabled={healthSaving}
+                                >
+                                  Add health event
+                                </Button>
+                              </div>
+
+                              <div className={labelClass}>
+                                {healthEventSummary}
+                              </div>
+                            </div>
+                          </SectionCard>
+                        )}
+
+                        {/* MEDIA TAB */}
+                        {drawerTab === "media" && (
+                          <SectionCard
+                            title="Media"
+                            description="Media files linked to this offspring."
+                          >
+                            <div className={labelClass}>
+                              {mediaSummary}
+                            </div>
+                          </SectionCard>
+                        )}
+
+                        {/* INVOICES TAB */}
+                        {drawerTab === "invoices" && (
+                          <SectionCard
+                            title="Invoices"
+                            description="Invoices linked to this offspring."
+                          >
+                            <div className="space-y-3">
+                              <div className="flex items-center justify-between gap-2">
+                                <div className={labelClass}>
+                                  Linked invoices
+                                </div>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  disabled={linkingInvoice}
+                                  onClick={handleLinkInvoice}
+                                >
+                                  Link invoice
+                                </Button>
+                              </div>
+                              <div className={labelClass}>
+                                {invoiceSummary}
+                              </div>
+                            </div>
+                          </SectionCard>
+                        )}
+
+                        {/* RECORDS TAB */}
+                        {drawerTab === "records" && (
+                          <SectionCard
+                            title="Related records"
+                            description="Navigate between related groups, siblings, and waitlist entries."
+                          >
+                            <CrossRefsSection
+                              row={row}
+                              onNavigateGroup={(id) => navigateToGroup(id)}
+                              onNavigateOffspring={(id) => navigateToOffspringSibling(id)}
+                              onNavigateWaitlist={(id) => navigateToWaitlist(id)}
+                            />
+                          </SectionCard>
+                        )}
+
+                        {/* NOTES TAB */}
+                        {drawerTab === "notes" && (
+                          <SectionCard
+                            title="Notes"
+                            description="Internal notes for this offspring."
+                          >
+                            <div className="text-xs md:text-sm whitespace-pre-wrap">
+                              {notes || "No notes recorded yet."}
+                            </div>
+                          </SectionCard>
+                        )}
+                      </>
+                    );
+                  })()}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </Overlay>
+    </div>
+  );
+}

@@ -15,7 +15,6 @@ import {
   FiltersRow,
   DetailsHost,
   DetailsScaffold,
-  // DetailsSpecRenderer, // not used here
   SectionCard,
   Button,
   Input,
@@ -25,8 +24,11 @@ import {
   OwnershipEditor,
   CustomBreedDialog,
   BreedCombo,
+  utils,
 } from "@bhq/ui";
+
 import { Overlay, getOverlayRoot } from "@bhq/ui/overlay";
+import { toast } from "@bhq/ui/atoms/Toast";
 import "@bhq/ui/styles/table.css";
 import { makeApi } from "./api";
 import {
@@ -37,6 +39,30 @@ import {
   DEFAULT_STAGE_LABELS,
   type Species as MathSpecies,
 } from "@bhq/ui/utils/breedingMath";
+
+import {
+  DogPlaceholder,
+  CatPlaceholder,
+  HorsePlaceholder,
+  RabbitPlaceholder,
+  GoatPlaceholder,
+} from "@bhq/ui/assets/placeholders";
+
+
+
+const SPECIES_PLACEHOLDERS: Record<string, string> = {
+  DOG: DogPlaceholder,
+  CAT: CatPlaceholder,
+  HORSE: HorsePlaceholder,
+  GOAT: GoatPlaceholder,
+  RABBIT: RabbitPlaceholder,
+};
+
+function getPlaceholderForSpecies(species?: string | null): string {
+  if (!species) return DogPlaceholder;
+  const key = species.toUpperCase();
+  return SPECIES_PLACEHOLDERS[key] || DogPlaceholder;
+}
 
 /** ────────────────────────────────────────────────────────────────────────
  * Types & utils
@@ -59,17 +85,16 @@ type AnimalRow = {
   sex?: string | null;
   status?: string | null;
   ownerName?: string | null;
+  owners?: OwnershipRow[];
   microchip?: string | null;
   tags: string[];
   notes?: string | null;
-
+  photoUrl?: string | null;
   dob?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
-
   lastCycle?: string | null;
-
-  cycleStartDates?: string[]; // persisted via API
+  cycleStartDates?: string[];
 };
 
 type ProgramFlags = {
@@ -112,6 +137,14 @@ function asLabel(map: Record<string, string>, v?: string | null) {
   return map[key] ?? v; // fall back if API sends a new value
 }
 
+function speciesEmoji(species?: string | null): string {
+  const s = (species || "").toLowerCase();
+  if (s === "dog") return "🐶";
+  if (s === "cat") return "🐱";
+  if (s === "horse") return "🐴";
+  return "🐾";
+}
+
 const STORAGE_KEY = "bhq_animals_cols_v1";
 const DATE_KEYS = new Set(["dob", "created_at", "updated_at"] as const);
 
@@ -131,6 +164,18 @@ function ageInMonths(d?: string | null): number | null {
 }
 
 function animalToRow(p: any): AnimalRow {
+  const owners: OwnershipRow[] = Array.isArray(p.owners) ? p.owners : [];
+
+  let ownerName: string | null =
+    p.ownerName ??
+    p.owner?.name ??
+    null;
+
+  if (!ownerName && owners.length) {
+    const primary = owners.find((o) => o.is_primary) ?? owners[0];
+    ownerName = primary?.display_name ?? null;
+  }
+
   return {
     id: Number(p.id),
     name: p.name,
@@ -139,10 +184,12 @@ function animalToRow(p: any): AnimalRow {
     breed: p.breed ?? null,
     sex: asLabel(SEX_LABEL, p.sex) ?? null,
     status: asLabel(STATUS_LABEL, p.status) ?? "Active",
-    ownerName: p.ownerName ?? p.owner?.name ?? null,
+    ownerName,
+    owners,
     microchip: p.microchip ?? null,
     tags: Array.isArray(p.tags) ? p.tags : [],
     notes: p.notes ?? null,
+    photoUrl: p.photoUrl ?? p.photo_url ?? null,
     dob: p.dob ?? p.birthDate ?? null,
     created_at: p.created_at ?? p.createdAt ?? null,
     updated_at: p.updated_at ?? p.updatedAt ?? null,
@@ -151,15 +198,382 @@ function animalToRow(p: any): AnimalRow {
   };
 }
 
+// ───────── Date-picker hoist helpers (copied from Breeding) ─────────
+
+const OVERLAY_ROOT_SELECTOR = "#bhq-overlay-root";
+
+function ensureOverlayRoot(): HTMLElement {
+  return (document.querySelector(OVERLAY_ROOT_SELECTOR) as HTMLElement) || document.body;
+}
+
+/** Find the outermost popup element we actually want to move. */
+function findDatePopup(): HTMLElement | null {
+  const candidates = [
+    // Radix Popper wrapper
+    ...Array.from(document.querySelectorAll<HTMLElement>('[data-radix-popper-content-wrapper]')),
+    // react-datepicker
+    ...Array.from(document.querySelectorAll<HTMLElement>(".react-datepicker")),
+    // react-day-picker
+    ...Array.from(document.querySelectorAll<HTMLElement>(".rdp,.rdp-root")),
+    // generic open dialogs/menus (fallback)
+    ...Array.from(
+      document.querySelectorAll<HTMLElement>('[role="dialog"][data-state="open"],[role="menu"][data-state="open"]')
+    ),
+  ];
+
+  const filtered = candidates.filter((el) => !el.closest("[data-bhq-details]"));
+
+  const list = filtered.length ? filtered : candidates;
+  if (!list.length) return null;
+
+  const isVisible = (el: HTMLElement) => {
+    const cs = getComputedStyle(el);
+    const r = el.getBoundingClientRect();
+    return cs.display !== "none" && cs.visibility !== "hidden" && r.width > 8 && r.height > 8;
+  };
+
+  list.sort((a, b) => {
+    const va = isVisible(a) ? 1 : 0;
+    const vb = isVisible(b) ? 1 : 0;
+    const ra = a.getBoundingClientRect();
+    const rb = b.getBoundingClientRect();
+    return vb - va || rb.width * rb.height - ra.width * ra.height;
+  });
+
+  return list[0] || null;
+}
+
+/** Wait up to ~300ms for a date popup to mount, then hoist and place it near the trigger. */
+function hoistAndPlaceDatePopup(triggerEl: HTMLElement) {
+  const root = ensureOverlayRoot();
+
+  let raf = 0;
+  let tries = 0;
+  const MAX_TRIES = 12; // ~200–300ms
+
+  const place = (pop: HTMLElement) => {
+    if (pop.parentNode !== root) root.appendChild(pop);
+
+    Object.assign(pop.style, {
+      position: "fixed",
+      transform: "none",
+      inset: "auto",
+      zIndex: "2147483647",
+      maxWidth: "none",
+      maxHeight: "none",
+      overflow: "visible",
+      contain: "paint",
+      isolation: "auto",
+      filter: "none",
+      perspective: "none",
+      willChange: "top,left",
+    } as CSSStyleDeclaration);
+
+    const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
+    const GAP = 8;
+
+    const doPosition = () => {
+      const r = triggerEl.getBoundingClientRect();
+      const pr = pop.getBoundingClientRect();
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+
+      let top = r.bottom + GAP;
+      let left = r.left;
+
+      left = clamp(left, GAP, vw - pr.width - GAP);
+
+      if (top + pr.height > vh - GAP) {
+        top = clamp(r.top - pr.height - GAP, GAP, vh - pr.height - GAP);
+      } else {
+        top = clamp(top, GAP, vh - pr.height - GAP);
+      }
+
+      pop.style.top = `${Math.round(top)}px`;
+      pop.style.left = `${Math.round(left)}px`;
+    };
+
+    doPosition();
+    setTimeout(doPosition, 30);
+
+    const onRelayout = () => {
+      if (!pop.isConnected) {
+        window.removeEventListener("resize", onRelayout);
+        window.removeEventListener("scroll", onRelayout, true);
+        return;
+      }
+      doPosition();
+    };
+    window.addEventListener("resize", onRelayout);
+    window.addEventListener("scroll", onRelayout, true);
+
+    const mo = new MutationObserver(() => {
+      if (!pop.isConnected) {
+        window.removeEventListener("resize", onRelayout);
+        window.removeEventListener("scroll", onRelayout, true);
+        mo.disconnect();
+      }
+    });
+    mo.observe(document.body, { childList: true, subtree: true });
+  };
+
+  const tick = () => {
+    const pop = findDatePopup();
+    if (pop) {
+      place(pop);
+      return;
+    }
+    if (tries++ < MAX_TRIES) {
+      raf = requestAnimationFrame(tick);
+    }
+  };
+
+  raf = requestAnimationFrame(tick);
+}
+
+/** Wire up native date picker to our overlay hoist helper. */
+type AttachDatePopupOpts = {
+  shell: HTMLElement;
+  button: HTMLButtonElement;
+  hiddenInput: HTMLInputElement;
+  onPopupOpen?: () => void;
+  onPopupClose?: () => void;
+};
+
+function attachDatePopupPositioning(opts: AttachDatePopupOpts) {
+  const { shell, button, hiddenInput, onPopupOpen, onPopupClose } = opts;
+
+  if (!shell || !button || !hiddenInput) {
+    return () => { };
+  }
+
+  let isOpen = false;
+
+  const openPicker = () => {
+    if (hiddenInput.disabled || hiddenInput.readOnly) return;
+
+    if (!isOpen) {
+      isOpen = true;
+      onPopupOpen?.();
+    }
+
+    try {
+      hiddenInput.focus();
+      const anyInput = hiddenInput as any;
+      if (typeof anyInput.showPicker === "function") {
+        anyInput.showPicker();
+      } else {
+        hiddenInput.click();
+      }
+    } catch {
+      // ignore
+    }
+
+    hoistAndPlaceDatePopup(button);
+  };
+
+  const handleButtonClick = (e: MouseEvent) => {
+    e.preventDefault();
+    openPicker();
+  };
+
+  const handleKeyDown = (e: KeyboardEvent) => {
+    if (e.key === "ArrowDown" && (e.altKey || e.metaKey)) {
+      e.preventDefault();
+      openPicker();
+    }
+  };
+
+  const handleBlur = () => {
+    if (!isOpen) return;
+    isOpen = false;
+    onPopupClose?.();
+  };
+
+  button.addEventListener("click", handleButtonClick);
+  shell.addEventListener("keydown", handleKeyDown);
+  hiddenInput.addEventListener("blur", handleBlur);
+
+  return () => {
+    button.removeEventListener("click", handleButtonClick);
+    shell.removeEventListener("keydown", handleKeyDown);
+    hiddenInput.removeEventListener("blur", handleBlur);
+  };
+}
+
+/* CalendarInput: same calendar field used in Breeding */
+
+type CalendarInputProps = {
+  value: string;
+  onChange: React.ChangeEventHandler<HTMLInputElement>;
+  placeholder?: string;
+  className?: string;
+  inputClassName?: string;
+  readOnly?: boolean;
+  showIcon?: boolean;
+};
+
+const dateInputCls = "h-8 py-0 px-2 text-sm bg-transparent border-hairline";
+
+/* CalendarInput: text field + native date picker, shared with Breeding */
+
+function CalendarInput(props: any) {
+  const readOnly = !!props.readOnly;
+  const className = props.className;
+  const inputClassName = props.inputClassName;
+  const onChange = props.onChange as
+    | React.ChangeEventHandler<HTMLInputElement>
+    | undefined;
+  const value = props.value as string | undefined;
+  const defaultValue = props.defaultValue as string | undefined;
+  const placeholder = props.placeholder ?? "mm/dd/yyyy";
+  const showIcon = props.showIcon ?? true;
+
+  // Any extra props intended for the visible input
+  const rest: any = { ...props };
+  delete rest.readOnly;
+  delete rest.className;
+  delete rest.inputClassName;
+  delete rest.onChange;
+  delete rest.value;
+  delete rest.defaultValue;
+  delete rest.placeholder;
+  delete rest.showIcon;
+
+  // ISO helpers
+  const onlyISO = (s: string) => (s || "").slice(0, 10);
+
+  const toDisplay = (s: string | undefined | null) => {
+    if (!s) return "";
+    const iso = onlyISO(s);
+    const [y, m, d] = iso.split("-");
+    if (!y || !m || !d) return "";
+    return `${m}/${d}/${y}`;
+  };
+
+  const toISO = (s: string) => {
+    const trimmed = s.trim();
+    if (!trimmed) return "";
+    const m = trimmed.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})$/);
+    if (m) {
+      const mm = m[1].padStart(2, "0");
+      const dd = m[2].padStart(2, "0");
+      let yyyy = m[3];
+      if (yyyy.length === 2) yyyy = `20${yyyy}`;
+      return `${yyyy}-${mm}-${dd}`;
+    }
+    return onlyISO(trimmed);
+  };
+
+  const [textValue, setTextValue] = React.useState(() =>
+    value != null ? toDisplay(value) : defaultValue != null ? toDisplay(defaultValue) : ""
+  );
+
+  React.useEffect(() => {
+    if (value != null) {
+      setTextValue(toDisplay(value));
+    }
+  }, [value]);
+
+  const shellRef = React.useRef<HTMLDivElement>(null);
+  const inputRef = React.useRef<HTMLInputElement>(null);
+  const buttonRef = React.useRef<HTMLButtonElement>(null);
+  const hiddenRef = React.useRef<HTMLInputElement>(null);
+
+  const [expanded, setExpanded] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!showIcon) return;
+
+    const shell = shellRef.current;
+    const btn = buttonRef.current;
+    const hidden = hiddenRef.current;
+    if (!shell || !btn || !hidden) return;
+
+    const cleanup = attachDatePopupPositioning({
+      shell,
+      button: btn,
+      hiddenInput: hidden,
+      onPopupOpen: () => setExpanded(true),
+      onPopupClose: () => setExpanded(false),
+    });
+
+    return cleanup;
+  }, [showIcon]);
+
+  const handleTextChange: React.ChangeEventHandler<HTMLInputElement> = (e) => {
+    const raw = e.currentTarget.value;
+    setTextValue(raw);
+
+    if (!onChange) return;
+
+    const iso = toISO(raw);
+    onChange({ currentTarget: { value: iso } } as any);
+  };
+
+  const handleHiddenChange: React.ChangeEventHandler<HTMLInputElement> = (e) => {
+    const iso = onlyISO(e.currentTarget.value || "");
+    const display = toDisplay(iso);
+    setTextValue(display);
+
+    if (!onChange) return;
+    onChange({ currentTarget: { value: iso } } as any);
+  };
+
+  return (
+    <div ref={shellRef} className={className}>
+      <div className="relative">
+        <Input
+          ref={inputRef}
+          className={inputClassName}
+          placeholder={placeholder}
+          value={textValue}
+          onChange={handleTextChange}
+          readOnly={readOnly}
+          {...rest}
+        />
+        {showIcon && (
+          <button
+            type="button"
+            ref={buttonRef}
+            className="absolute inset-y-0 right-2 flex items-center text-muted-foreground"
+            aria-label="Open date picker"
+          >
+            <span className="text-xs">📅</span>
+          </button>
+        )}
+
+        {/* Hidden native date input for mobile and popup control */}
+        <input
+          ref={hiddenRef}
+          type="date"
+          onChange={handleHiddenChange}
+          style={{
+            position: "absolute",
+            opacity: 0,
+            pointerEvents: "none",
+            width: 0,
+            height: 0,
+            margin: 0,
+            padding: 0,
+            border: "none",
+          }}
+        />
+      </div>
+    </div>
+  );
+}
+
+
 async function safeGetCreatingOrg(api: any) {
   try {
     const org = await api?.lookups?.getCreatingOrganization?.();
     if (org && org.id != null) return org;
-  } catch {}
+  } catch { }
   try {
     const id = localStorage.getItem("BHQ_ORG_ID");
     if (id) return { id, display_name: localStorage.getItem("BHQ_ORG_NAME") || "My Organization" };
-  } catch {}
+  } catch { }
   return null;
 }
 
@@ -171,6 +585,760 @@ const TrashIcon = (props: React.SVGProps<SVGSVGElement>) => (
     <path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2" />
   </svg>
 );
+
+const PencilIcon = (props: React.SVGProps<SVGSVGElement>) => (
+  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" {...props}>
+    <path d="M12 20h9" />
+    <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L8 18l-4 1 1-4Z" />
+  </svg>
+);
+
+function clamp(n: number, lo: number, hi: number) {
+  return Math.max(lo, Math.min(hi, n));
+}
+
+function loadImage(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => resolve(img);
+    img.onerror = (e) => reject(e);
+    img.src = src;
+  });
+}
+
+function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result || ""));
+    r.onerror = reject;
+    r.readAsDataURL(file);
+  });
+}
+
+type PhotoEditorResult = {
+  blob: Blob;
+  filename: string;
+};
+
+function PhotoEditorModal({
+  open,
+  title,
+  src,
+  onClose,
+  onPickFile,
+  onRemove,
+  onSave,
+  canRemove,
+}: {
+  open: boolean;
+  title: string;
+  src: string | null;
+  onClose: () => void;
+  onPickFile: () => void;
+  onRemove: () => void;
+  onSave: (r: PhotoEditorResult) => Promise<void> | void;
+  canRemove: boolean;
+}) {
+  const [zoom, setZoom] = React.useState(1);
+  const [offset, setOffset] = React.useState({ x: 0, y: 0 });
+  const [dragging, setDragging] = React.useState(false);
+  const [saving, setSaving] = React.useState(false);
+  const [imgEl, setImgEl] = React.useState<HTMLImageElement | null>(null);
+  const [err, setErr] = React.useState<string | null>(null);
+
+  const canvasRef = React.useRef<HTMLCanvasElement | null>(null);
+  const dragRef = React.useRef<{ x: number; y: number; ox: number; oy: number } | null>(null);
+
+  React.useEffect(() => {
+    if (!open) return;
+    setZoom(1);
+    setOffset({ x: 0, y: 0 });
+    setErr(null);
+    setImgEl(null);
+
+    if (!src) return;
+
+    let alive = true;
+    loadImage(src)
+      .then((img) => {
+        if (!alive) return;
+        setImgEl(img);
+      })
+      .catch(() => {
+        if (!alive) return;
+        setErr("Could not load image for editing. Upload the photo again and retry.");
+      });
+
+    return () => {
+      alive = false;
+    };
+  }, [open, src]);
+
+  const draw = React.useCallback(() => {
+    const c = canvasRef.current;
+    if (!c) return;
+    const ctx = c.getContext("2d");
+    if (!ctx) return;
+
+    const size = c.width;
+
+    // background
+    ctx.clearRect(0, 0, size, size);
+    ctx.fillStyle = "#111";
+    ctx.fillRect(0, 0, size, size);
+
+    if (!imgEl) {
+      // placeholder grid
+      ctx.strokeStyle = "rgba(255,255,255,0.12)";
+      for (let i = 1; i < 3; i++) {
+        const p = (size / 3) * i;
+        ctx.beginPath();
+        ctx.moveTo(p, 0);
+        ctx.lineTo(p, size);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(0, p);
+        ctx.lineTo(size, p);
+        ctx.stroke();
+      }
+      return;
+    }
+
+    const iw = imgEl.naturalWidth || imgEl.width;
+    const ih = imgEl.naturalHeight || imgEl.height;
+
+    // cover into square
+    const baseScale = Math.max(size / iw, size / ih);
+    const s = baseScale * zoom;
+
+    const dw = iw * s;
+    const dh = ih * s;
+
+    const cx = size / 2 + offset.x;
+    const cy = size / 2 + offset.y;
+
+    const dx = cx - dw / 2;
+    const dy = cy - dh / 2;
+
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(imgEl, dx, dy, dw, dh);
+
+    // grid overlay
+    ctx.strokeStyle = "rgba(255,255,255,0.18)";
+    for (let i = 1; i < 3; i++) {
+      const p = (size / 3) * i;
+      ctx.beginPath();
+      ctx.moveTo(p, 0);
+      ctx.lineTo(p, size);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(0, p);
+      ctx.lineTo(size, p);
+      ctx.stroke();
+    }
+  }, [imgEl, zoom, offset]);
+
+  React.useEffect(() => {
+    if (!open) return;
+    draw();
+  }, [open, draw]);
+
+  const onMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault();
+    if (!open) return;
+    setDragging(true);
+    dragRef.current = { x: e.clientX, y: e.clientY, ox: offset.x, oy: offset.y };
+  };
+
+  const onMouseMove = (e: React.MouseEvent) => {
+    if (!dragging || !dragRef.current) return;
+    e.preventDefault();
+    const dx = e.clientX - dragRef.current.x;
+    const dy = e.clientY - dragRef.current.y;
+    setOffset({ x: dragRef.current.ox + dx, y: dragRef.current.oy + dy });
+  };
+
+  const onMouseUp = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setDragging(false);
+    dragRef.current = null;
+  };
+
+  React.useEffect(() => {
+    if (!open) return;
+    draw();
+  }, [open, zoom, offset, draw]);
+
+  const doSave = async () => {
+    setErr(null);
+    if (!canvasRef.current) return;
+    if (!imgEl) {
+      setErr("No image loaded. Upload a photo first.");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const c = canvasRef.current;
+
+      const blob: Blob = await new Promise((resolve, reject) => {
+        c.toBlob((b) => (b ? resolve(b) : reject(new Error("toBlob failed"))), "image/jpeg", 0.9);
+      });
+
+      await onSave({ blob, filename: "photo.jpg" });
+      onClose();
+    } catch (e: any) {
+      setErr(e?.message || "Failed to save photo.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (!open || !getOverlayRoot()) return null;
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[2147483647] flex items-center justify-center bg-black/55 p-4"
+      onMouseUp={onMouseUp}
+      onClick={(e) => {
+        e.stopPropagation();
+        onClose();
+      }}
+    >
+      <div
+        className="w-full max-w-2xl rounded-lg border border-hairline bg-surface shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="px-4 py-3 border-b border-hairline flex items-center justify-between">
+          <div className="text-sm font-semibold">{title}</div>
+          <button className="text-secondary hover:text-primary" onClick={onClose} type="button">
+            ✕
+          </button>
+        </div>
+
+        <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="flex items-center justify-center">
+            <div className="rounded-md border border-hairline overflow-hidden">
+              <canvas
+                ref={canvasRef}
+                width={512}
+                height={512}
+                className="block w-[320px] h-[320px] bg-black cursor-grab active:cursor-grabbing"
+                onMouseDown={onMouseDown}
+                onMouseMove={onMouseMove}
+              />
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <div className="text-xs text-secondary">
+              Drag to reposition. Use Zoom to size.
+            </div>
+
+            <div>
+              <div className="text-xs text-secondary mb-1">Zoom</div>
+              <input
+                type="range"
+                min={1}
+                max={3}
+                step={0.01}
+                value={zoom}
+                onChange={(e) => setZoom(Number((e.currentTarget as HTMLInputElement).value))}
+                className="w-full"
+              />
+            </div>
+
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={onPickFile} disabled={saving}>
+                Upload new
+              </Button>
+
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setZoom(1);
+                  setOffset({ x: 0, y: 0 });
+                }}
+                disabled={saving}
+              >
+                Reset
+              </Button>
+
+              {canRemove && (
+                <Button variant="outline" size="sm" onClick={onRemove} disabled={saving}>
+                  Remove
+                </Button>
+              )}
+            </div>
+
+            {err && <div className="text-sm text-red-600">{err}</div>}
+
+            <div className="pt-2 flex justify-end gap-2">
+              <Button variant="outline" size="sm" onClick={onClose} disabled={saving}>
+                Cancel
+              </Button>
+              <Button size="sm" onClick={doSave} disabled={saving}>
+                {saving ? "Saving…" : "Save photo"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>,
+    getOverlayRoot()!
+  );
+}
+
+
+type Hit = { id: number; name: string; kind: "Organization" | "Contact" };
+
+function OwnershipDetailsEditor({
+  row,
+  setDraft,
+  ownershipLookups,
+}: {
+  row: AnimalRow;
+  setDraft: (p: Partial<AnimalRow>) => void;
+  ownershipLookups: any;
+}) {
+  type Hit = { id: number; name: string; kind: "Organization" | "Contact" };
+
+  const [owners, setOwners] = React.useState<OwnershipRow[]>(
+    () => (((row as any).owners) ?? []) as OwnershipRow[]
+  );
+  const [q, setQ] = React.useState("");
+  const [hits, setHits] = React.useState<Hit[]>([]);
+  const [loading, setLoading] = React.useState(false);
+  const [selectedKey, setSelectedKey] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    setOwners((((row as any).owners) ?? []) as OwnershipRow[]);
+    setSelectedKey(null);
+    setQ("");
+    setHits([]);
+  }, [row.id]);
+
+  // Lookup helper
+  function ownerKey(o: OwnershipRow, idx: number) {
+    const id = o.organizationId ?? o.contactId ?? idx;
+    return `${o.partyType}:${id}`;
+  }
+
+  function ownerDisplay(o: any): string {
+    return (
+      o.display_name ||
+      o.name ||
+      o.party_name ||
+      (o.contact && o.contact.display_name) ||
+      ""
+    );
+  }
+
+  function normalize(nextRows: OwnershipRow[]) {
+    let ensured = [...nextRows];
+
+    if (ensured.length && !ensured.some((r) => r.is_primary)) {
+      ensured = ensured.map((r, i) => ({ ...r, is_primary: i === 0 }));
+    }
+
+    const nums = ensured.map((r) =>
+      typeof r.percent === "number" ? r.percent : 0
+    );
+    const total = nums.reduce((a, b) => a + b, 0);
+    if (total > 100 && total > 0) {
+      const factor = 100 / total;
+      ensured = ensured.map((r) =>
+        typeof r.percent === "number"
+          ? {
+            ...r,
+            percent: Math.max(
+              0,
+              Math.min(100, Math.round(r.percent * factor))
+            ),
+          }
+          : r
+      );
+    }
+
+    setOwners(ensured);
+
+    const primary: any =
+      ensured.find((o) => o.is_primary) ?? ensured[0] ?? null;
+
+    const primaryName = primary ? ownerDisplay(primary) || null : null;
+
+    setDraft({
+      owners: ensured,
+      ownerName: primaryName,
+    });
+  }
+
+  function addHit(hit: Hit) {
+    const row: OwnershipRow =
+      hit.kind === "Organization"
+        ? {
+          partyType: "Organization",
+          organizationId: hit.id,
+          contactId: null,
+          display_name: hit.name,
+          is_primary: owners.length === 0,
+          percent: owners.length === 0 ? 100 : undefined,
+        }
+        : {
+          partyType: "Contact",
+          contactId: hit.id,
+          organizationId: null,
+          display_name: hit.name,
+          is_primary: owners.length === 0,
+          percent: owners.length === 0 ? 100 : undefined,
+        };
+
+    normalize([...owners, row]);
+    setQ("");
+    setHits([]);
+    setSelectedKey(null);
+  }
+
+  function removeOwner(idx: number) {
+    const next = owners.filter((_, i) => i !== idx);
+    normalize(next);
+    setSelectedKey(null);
+  }
+
+  function setPercent(idx: number, pct: number) {
+    const clamped = Math.max(0, Math.min(100, Math.round(pct || 0)));
+    const next = owners.map((r, i) =>
+      i === idx ? { ...r, percent: clamped } : r
+    );
+    normalize(next);
+  }
+
+  function setPrimary(idx: number) {
+    const next = owners.map((r, i) => ({ ...r, is_primary: i === idx }));
+    normalize(next);
+  }
+
+  // Selection and move logic
+  function findSelectedIndex(): number {
+    if (!selectedKey) return -1;
+    return owners.findIndex((o, i) => ownerKey(o, i) === selectedKey);
+  }
+
+  function moveSelectedLeft() {
+    const idx = findSelectedIndex();
+    if (idx < 0) return;
+    if (owners[idx].is_primary) return;
+    setPrimary(idx);
+  }
+
+  function moveSelectedRight() {
+    const idx = findSelectedIndex();
+    if (idx < 0) return;
+    if (!owners[idx].is_primary) return;
+    const others = owners
+      .map((o, i) => ({ o, i }))
+      .filter(({ i }) => i !== idx);
+    if (!others.length) return;
+    const newPrimaryIdx = others[0].i;
+
+    const next = owners.map((r, i) => {
+      if (i === idx) return { ...r, is_primary: false };
+      if (i === newPrimaryIdx) return { ...r, is_primary: true };
+      return r;
+    });
+    normalize(next);
+  }
+
+  const primaryIndex = owners.findIndex((o) => o.is_primary);
+  const primaryOwner =
+    primaryIndex >= 0 ? owners[primaryIndex] : owners[0] ?? null;
+  const additionalOwners =
+    primaryOwner == null
+      ? owners
+      : owners.filter((_, i) => i !== primaryIndex);
+
+  // Search effect
+  React.useEffect(() => {
+    let alive = true;
+    const needle = q.trim();
+    if (!needle) {
+      setHits([]);
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    Promise.all([
+      ownershipLookups
+        ?.searchOrganizations?.(needle)
+        .catch(() => [] as any),
+      ownershipLookups?.searchContacts?.(needle).catch(() => [] as any),
+    ])
+      .then(([orgs, contacts]) => {
+        if (!alive) return;
+        const rows: Hit[] = [
+          ...(orgs || []).map((o: any) => ({
+            id: Number(o.id),
+            name: String(o.name),
+            kind: "Organization" as const,
+          })),
+          ...(contacts || []).map((c: any) => ({
+            id: Number(c.id),
+            name: String(c.name),
+            kind: "Contact" as const,
+          })),
+        ];
+        setHits(rows);
+      })
+      .finally(() => {
+        if (alive) setLoading(false);
+      });
+
+    return () => {
+      alive = false;
+    };
+  }, [q, ownershipLookups]);
+
+  const canMoveLeft =
+    findSelectedIndex() >= 0 &&
+    !owners[findSelectedIndex()]?.is_primary &&
+    owners.length > 0;
+  const canMoveRight =
+    findSelectedIndex() >= 0 &&
+    owners[findSelectedIndex()]?.is_primary &&
+    owners.length > 1;
+
+  return (
+    <SectionCard title="Ownership">
+      {/* Search row, custom so text is never under the icon */}
+      <div className="px-2 pt-2 pb-2">
+        <div className="relative max-w-md">
+          {/* Left icon */}
+          <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-secondary">
+            <svg
+              viewBox="0 0 24 24"
+              className="h-4 w-4"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={2}
+              aria-hidden="true"
+            >
+              <circle cx="11" cy="11" r="6" />
+              <line x1="16" y1="16" x2="21" y2="21" />
+            </svg>
+          </span>
+
+          {/* Text input */}
+          <input
+            type="text"
+            value={q}
+            onChange={(e) => setQ((e.currentTarget as HTMLInputElement).value)}
+            placeholder="Search organizations or contacts"
+            className="h-9 w-full rounded-md border border-hairline bg-surface pr-8 text-sm text-primary placeholder:text-secondary outline-none focus:border-[hsl(var(--brand-orange))] focus:ring-1 focus:ring-[hsl(var(--brand-orange))]"
+            style={{ paddingLeft: "2.4rem" }} // inline so it wins over any global input styles
+          />
+
+          {/* Clear button */}
+          {q.trim() !== "" && (
+            <button
+              type="button"
+              className="absolute inset-y-0 right-2 flex items-center text-secondary hover:text-primary"
+              onClick={() => setQ("")}
+            >
+              ✕
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Search results dropdown */}
+      {q.trim() && (
+        <div className="mb-2 rounded-md border border-hairline max-h-40 overflow-auto">
+          {loading && (
+            <div className="px-3 py-2 text-xs text-secondary">Searching…</div>
+          )}
+          {!loading && hits.length === 0 && (
+            <div className="px-3 py-2 text-xs text-secondary">No matches</div>
+          )}
+          {!loading &&
+            hits.map((h, i) => (
+              <button
+                key={`${h.kind}:${h.id}:${i}`}
+                className="w-full text-left px-3 py-2 text-sm hover:bg-surface-strong"
+                onClick={() => addHit(h)}
+              >
+                <span className="text-primary">{h.name}</span>
+                <span className="ml-2 text-[10px] px-1 rounded border border-hairline text-secondary">
+                  {h.kind}
+                </span>
+              </button>
+            ))}
+        </div>
+      )}
+
+      <div className="flex gap-3 items-stretch">
+        {/* Primary column */}
+        <div className="flex-1 min-w-0">
+          <div className="text-xs text-secondary mb-1">Primary Owner</div>
+          {primaryOwner ? (
+            <div
+              className={[
+                "flex items-center gap-2 rounded-md border border-hairline px-3 py-2 text-sm cursor-pointer",
+                selectedKey ===
+                  ownerKey(primaryOwner, primaryIndex >= 0 ? primaryIndex : 0)
+                  ? "ring-1 ring-[hsl(var(--brand-orange))] border-[hsl(var(--brand-orange))]"
+                  : "",
+              ].join(" ")}
+              onClick={() =>
+                setSelectedKey(
+                  ownerKey(primaryOwner, primaryIndex >= 0 ? primaryIndex : 0)
+                )
+              }
+            >
+              <div className="flex-1 min-w-0">
+                <div className="font-medium truncate">
+                  {ownerDisplay(primaryOwner)}
+                </div>
+                <div className="mt-1 inline-flex items-center rounded border border-hairline px-2 text-[10px] text-secondary">
+                  {primaryOwner.partyType === "Organization"
+                    ? "Organization"
+                    : "Contact"}
+                </div>
+              </div>
+              <input
+                type="number"
+                className="h-8 w-20 rounded-md border border-hairline bg-surface px-2 text-sm"
+                value={
+                  typeof primaryOwner.percent === "number"
+                    ? primaryOwner.percent
+                    : 100
+                }
+                onChange={(e) =>
+                  setPercent(
+                    primaryIndex >= 0 ? primaryIndex : 0,
+                    Number((e.currentTarget as HTMLInputElement).value)
+                  )
+                }
+              />
+              <button
+                type="button"
+                className="p-1 rounded hover:bg-surface-strong"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (primaryIndex >= 0) {
+                    removeOwner(primaryIndex);
+                  } else if (owners.length) {
+                    removeOwner(0);
+                  }
+                }}
+              >
+                🗑
+              </button>
+            </div>
+          ) : (
+            <div className="rounded-md border border-dashed border-hairline px-3 py-2 text-sm text-secondary">
+              No primary owner. Use the search to add one.
+            </div>
+          )}
+        </div>
+
+        {/* Middle arrows */}
+        <div className="flex flex-col items-center justify-center gap-2 w-10 flex-none">
+          <Button
+            size="icon"
+            variant="outline"
+            className="h-8 w-8"
+            disabled={!canMoveLeft}
+            onClick={moveSelectedLeft}
+          >
+            {"\u2190"}
+          </Button>
+          <Button
+            size="icon"
+            variant="outline"
+            className="h-8 w-8"
+            disabled={!canMoveRight}
+            onClick={moveSelectedRight}
+          >
+            {"\u2192"}
+          </Button>
+        </div>
+
+        {/* Additional owners */}
+        <div className="flex-1 min-w-0">
+          <div className="mb-1 text-xs text-secondary">Additional Owners</div>
+
+          {additionalOwners.length === 0 ? (
+            <div className="rounded-md border border-dashed border-hairline px-3 py-2 text-sm text-secondary">
+              No additional owners.
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {additionalOwners.map((o) => {
+                const originalIndex = owners.findIndex(
+                  (r) =>
+                    r === o ||
+                    (r.partyType === o.partyType &&
+                      r.organizationId === o.organizationId &&
+                      r.contactId === o.contactId)
+                );
+                const key = ownerKey(o, originalIndex);
+
+                return (
+                  <div
+                    key={key}
+                    className={[
+                      "flex items-center gap-2 rounded-md border border-hairline px-3 py-2 text-sm cursor-pointer",
+                      selectedKey === key
+                        ? "ring-1 ring-[hsl(var(--brand-orange))] border-[hsl(var(--brand-orange))]"
+                        : "",
+                    ].join(" ")}
+                    onClick={() => setSelectedKey(key)}
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="font-medium truncate">
+                        {ownerDisplay(o)}
+                      </div>
+                      <div className="mt-1 inline-flex items-center rounded border border-hairline px-2 text-[10px] text-secondary">
+                        {o.partyType === "Organization" ? "Organization" : "Contact"}
+                      </div>
+                    </div>
+                    <input
+                      type="number"
+                      className="h-8 w-20 rounded-md border border-hairline bg-surface px-2 text-sm"
+                      value={
+                        typeof o.percent === "number" ? o.percent : 0
+                      }
+                      onChange={(e) =>
+                        setPercent(
+                          originalIndex,
+                          Number((e.currentTarget as HTMLInputElement).value)
+                        )
+                      }
+                    />
+                    <button
+                      type="button"
+                      className="p-1 rounded hover:bg-surface-strong"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        removeOwner(originalIndex);
+                      }}
+                    >
+                      🗑
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+    </SectionCard>
+  );
+}
+
 
 /** ────────────────────────────────────────────────────────────────────────
  * Cycle Tab (calendar edit, icon delete + confirm, persisted) — breeders only
@@ -184,36 +1352,84 @@ function CycleTab({
   api: any;
   onSaved: (dates: string[]) => void;
 }) {
-  const [dates, setDates] = React.useState<string[]>(() => [...(animal.cycleStartDates || [])].sort());
+  // Sorted copy of current dates from the server
+  const [dates, setDates] = React.useState<string[]>(() =>
+    [...(animal.cycleStartDates || [])].sort()
+  );
   const [editing, setEditing] = React.useState<Record<string, boolean>>({});
+  const [working, setWorking] = React.useState(false);
+  const [newDateIso, setNewDateIso] = React.useState<string>("");
 
-  const add = (v: string) => {
-    if (!v) return;
-    const next = Array.from(new Set([...dates, v])).sort();
-    setDates(next);
-  };
+  const [confirmDeleteIso, setConfirmDeleteIso] = React.useState<string | null>(null);
 
-  const remove = async (d: string) => {
-    if (!confirm("Delete this cycle start date?")) return;
-    const next = dates.filter((x) => x !== d);
-    setDates(next);
-  };
-
-  const persist = async () => {
-    try {
-      await api?.animals?.putCycleStartDates?.(animal.id, dates);
-    } catch {}
-    onSaved(dates);
-  };
 
   const species: MathSpecies =
     (String(animal.species || "DOG").toUpperCase() as MathSpecies) || "DOG";
 
-  const heatHistory = React.useMemo(() => ({ heatStarts: dates }), [dates]);
+  const persist = React.useCallback(
+    async (next: string[]) => {
+      const id = animal?.id;
+      if (!id) return;
 
-  const learned = React.useMemo(() => resolveCycleLengthDays(species, heatHistory, null), [species, heatHistory]);
+      const fn = api?.animals?.putCycleStartDates;
+      if (typeof fn !== "function") {
+        console.error("[Animals] api.animals.putCycleStartDates is not available");
+        // Fallback, at least keep UI state in sync
+        setDates(next);
+        onSaved(next);
+        return;
+      }
+
+      setWorking(true);
+      try {
+        await fn({ animalId: id, dates: next });
+        setDates(next);
+        toast.success("Cycle start dates saved.");
+        onSaved(next);
+      } catch (err) {
+        console.error("[Animals] save cycle start dates failed", err);
+        toast.error("Could not save cycle start dates. Please try again.");
+      } finally {
+        setWorking(false);
+      }
+    },
+    [api, animal?.id, onSaved]
+  );
+
+  const handleConfirmRemove = async () => {
+    if (!confirmDeleteIso) return;
+
+    const iso = confirmDeleteIso;
+
+    // Build the new dates array without this iso
+    const next = dates.filter((x) => x !== iso);
+
+    // Clear any edit state for this iso
+    setEditing((prev) => {
+      const copy = { ...prev };
+      delete copy[iso];
+      return copy;
+    });
+
+    // Persist to the server and update parent
+    await persist(next);
+
+    // Close the confirm UI
+    setConfirmDeleteIso(null);
+  };
+
+  const heatHistory = React.useMemo(
+    () => ({ heatStarts: dates }),
+    [dates]
+  );
+
+  const learned = React.useMemo(
+    () => resolveCycleLengthDays(species, heatHistory, null),
+    [species, heatHistory]
+  );
 
   const lastHeatIso = dates.length ? dates[dates.length - 1] : null;
+
   const projected: string[] = React.useMemo(() => {
     if (!lastHeatIso) return [];
     return projectUpcomingCycles(lastHeatIso, learned.days, 2);
@@ -222,6 +1438,7 @@ function CycleTab({
   const preview = React.useMemo(() => {
     if (!projected.length) return null;
     const nextHeat = projected[0];
+
     const w = fromPlan(
       {
         species,
@@ -232,21 +1449,63 @@ function CycleTab({
       {}
     );
 
-    const events = windowsToCalendarEvents(String(animal.id), DEFAULT_STAGE_LABELS, w);
+    const events = windowsToCalendarEvents(
+      String(animal.id),
+      DEFAULT_STAGE_LABELS,
+      w
+    );
 
     const byType = (t: "full" | "likely") =>
-      events.filter((e) => (e.meta as any)?.type === t && (e.meta as any)?.stage !== "availability");
+      events.filter(
+        (e) =>
+          (e.meta as any)?.type === t &&
+          (e.meta as any)?.stage !== "availability"
+      );
 
-    // availability detection resilient to label changes
     const availability = events.filter((e) => {
       const st = String((e.meta as any)?.stage || "").toLowerCase();
       return st.startsWith("availability");
     });
 
-    return { windows: w, full: byType("full"), likely: byType("likely"), availability };
+    return {
+      windows: w,
+      full: byType("full"),
+      likely: byType("likely"),
+      availability,
+    };
   }, [projected, species, animal.id]);
 
-  const pretty = (iso?: string | null) => (iso ? new Date(iso).toLocaleDateString() : "—");
+  const pretty = (iso?: string | null) =>
+    iso ? new Date(iso).toLocaleDateString() : "";
+
+  const formatRange = (e: any) => {
+    const startIso = e.start.toISOString().slice(0, 10);
+    const endIso = new Date(e.end.getTime() - 86400000)
+      .toISOString()
+      .slice(0, 10);
+    return `${pretty(startIso)} to ${pretty(endIso)}`;
+  };
+
+  const groupByTitle = (events: any[], stripSuffix?: string) => {
+    const map = new Map<string, { title: string; ranges: string[] }>();
+
+    for (const e of events || []) {
+      const rawTitle = String(e.title || "");
+      const title =
+        stripSuffix && rawTitle.endsWith(stripSuffix)
+          ? rawTitle.slice(0, rawTitle.length - stripSuffix.length)
+          : rawTitle;
+
+      const range = formatRange(e);
+      if (!map.has(title)) {
+        map.set(title, { title, ranges: [range] });
+      } else {
+        map.get(title)!.ranges.push(range);
+      }
+    }
+
+    return Array.from(map.values());
+  };
 
   return (
     <div className="space-y-2">
@@ -259,122 +1518,270 @@ function CycleTab({
           <div>
             <div className="text-xs text-secondary">Cycle Length (days)</div>
             <div>
-              {learned.days} <span className="text-secondary text-xs">({learned.source})</span>
+              {learned.days}{" "}
+              <span className="text-secondary text-xs">
+                ({learned.source})
+              </span>
             </div>
           </div>
           <div>
-            <div className="text-xs text-secondary">Next Projected Cycle Start</div>
-            <div>{projected.length ? projected.map(pretty).join(" • ") : "—"}</div>
+            <div className="text-xs text-secondary">
+              Upcoming Projected Cycle Start
+            </div>
+            <div>
+              {projected.length ? projected.map(pretty).join(" • ") : ""}
+            </div>
           </div>
         </div>
+
+        {preview && (
+          <div className="mt-4 grid grid-cols-1 lg:grid-cols-3 gap-3 text-xs">
+            {/* Full Windows */}
+            <div className="rounded-md border border-hairline bg-surface p-3">
+              <div className="text-[11px] text-secondary mb-2">Full Windows</div>
+              <div className="grid grid-cols-[minmax(0,1.2fr)_minmax(0,1.6fr)] gap-x-4 gap-y-0.5">
+                {groupByTitle(preview.full, " (Full)").map((g) => (
+                  <React.Fragment key={g.title}>
+                    <div className="font-medium truncate text-primary">
+                      {g.title}
+                    </div>
+                    <div className="text-right">
+                      {g.ranges.map((r, idx) => (
+                        <div key={idx}>{r}</div>
+                      ))}
+                    </div>
+                  </React.Fragment>
+                ))}
+              </div>
+            </div>
+
+            {/* Likely Windows */}
+            <div className="rounded-md border border-hairline bg-surface-strong/40 p-3">
+              <div className="text-[11px] text-secondary mb-2">Likely Windows</div>
+              <div className="grid grid-cols-[minmax(0,1.2fr)_minmax(0,1.6fr)] gap-x-4 gap-y-1">
+                {groupByTitle(preview.likely, " (Likely)").map((g) => (
+                  <React.Fragment key={g.title}>
+                    <div className="font-medium truncate text-primary">
+                      {g.title}
+                    </div>
+                    <div className="text-right">
+                      {g.ranges.map((r, idx) => (
+                        <div key={idx}>{r}</div>
+                      ))}
+                    </div>
+                  </React.Fragment>
+                ))}
+              </div>
+            </div>
+
+            {/* Availability */}
+            <div className="rounded-md border border-hairline bg-warning/10 p-3">
+              <div className="text-[11px] text-secondary mb-2">Availability</div>
+              <div className="grid grid-cols-[minmax(0,1.4fr)_minmax(0,1.6fr)] gap-x-4 gap-y-1">
+                {groupByTitle(preview.availability).map((g) => (
+                  <React.Fragment key={g.title}>
+                    <div className="font-medium truncate text-primary">
+                      {g.title}
+                    </div>
+                    <div className="text-right">
+                      {g.ranges.map((r, idx) => (
+                        <div key={idx}>{r}</div>
+                      ))}
+                    </div>
+                  </React.Fragment>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
       </SectionCard>
 
-      {preview && (
-        <SectionCard title="Upcoming Windows (Preview)">
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 text-sm">
-            <div>
-              <div className="text-xs text-secondary mb-1">Full Windows</div>
-              <ul className="space-y-1">
-                {preview.full.map((e) => (
-                  <li key={e.id}>
-                    <span className="text-primary">{e.title.replace(" (Full)", "")}:</span>{" "}
-                    {pretty(e.start.toISOString().slice(0, 10))} →{" "}
-                    {pretty(new Date(e.end.getTime() - 86400000).toISOString().slice(0, 10))}
-                  </li>
-                ))}
-              </ul>
-            </div>
-            <div>
-              <div className="text-xs text-secondary mb-1">Likely Windows</div>
-              <ul className="space-y-1">
-                {preview.likely.map((e) => (
-                  <li key={e.id}>
-                    <span className="text-primary">{e.title.replace(" (Likely)", "")}:</span>{" "}
-                    {pretty(e.start.toISOString().slice(0, 10))} →{" "}
-                    {pretty(new Date(e.end.getTime() - 86400000).toISOString().slice(0, 10))}
-                  </li>
-                ))}
-              </ul>
-            </div>
-            <div>
-              <div className="text-xs text-secondary mb-1">Availability</div>
-              <ul className="space-y-1">
-                {preview.availability.map((e) => (
-                  <li key={e.id}>
-                    {e.title}: {pretty(e.start.toISOString().slice(0, 10))} →{" "}
-                    {pretty(new Date(e.end.getTime() - 86400000).toISOString().slice(0, 10))}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </div>
-          <div className="text-xs text-secondary mt-2">
-            Names, ordering, and math come from BreedingMath (Placement terminology, inclusive end-dates).
-          </div>
-        </SectionCard>
-      )}
-
       <SectionCard title="Cycle Start Dates">
-        <div className="flex items-center gap-2 mb-2">
-          <Input
-            type="date"
-            onChange={(e) => {
-              const v = (e.currentTarget as HTMLInputElement).value;
-              if (v) {
-                add(v);
-                (e.currentTarget as HTMLInputElement).value = "";
-              }
-            }}
-            placeholder="YYYY-MM-DD"
-          />
-          <Button variant="outline" onClick={persist}>
-            Save Dates
-          </Button>
-        </div>
-
         <div className="rounded-md border border-hairline divide-y">
-          {dates.length === 0 && <div className="p-2 text-sm text-secondary">No dates yet.</div>}
+          {dates.length === 0 && (
+            <div className="p-2 text-sm text-secondary">
+              No dates yet. Add the first cycle start below.
+            </div>
+          )}
+
           {dates.map((d) => {
             const isEditing = editing[d];
             return (
-              <div key={d} className="p-2 flex items-center justify-between text-sm gap-3">
-                {!isEditing && <div className="min-w-[10rem]">{pretty(d)}</div>}
-                {isEditing && (
-                  <Input
-                    type="date"
-                    defaultValue={d}
-                    onChange={(e) => {
-                      const nextValue = (e.currentTarget as HTMLInputElement).value;
-                      if (!nextValue) return;
-                      setDates((arr) => {
-                        const copy = arr.filter((x) => x !== d);
-                        return Array.from(new Set([...copy, nextValue])).sort();
-                      });
-                    }}
-                    className="min-w-[12rem]"
-                  />
+              <div
+                key={d}
+                className="p-2 flex items-center justify-between gap-3 text-sm"
+              >
+                {!isEditing && (
+                  <>
+                    <div className="min-w-[10rem]">{pretty(d)}</div>
+                    <div className="flex items-center gap-2 ml-auto">
+                      <Button
+                        size="xs"
+                        variant="outline"
+                        onClick={() =>
+                          setEditing((prev) => ({
+                            ...prev,
+                            [d]: true,
+                          }))
+                        }
+                      >
+                        Edit
+                      </Button>
+                      <Button
+                        type="button"
+                        size="xs"
+                        variant="ghost"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setConfirmDeleteIso(d);
+                        }}
+                      >
+                        Delete
+                      </Button>
+                    </div>
+                  </>
                 )}
 
-                <div className="flex items-center gap-2">
-                  {!isEditing ? (
-                    <Button size="sm" variant="outline" onClick={() => setEditing((m) => ({ ...m, [d]: true }))}>
-                      Edit
-                    </Button>
-                  ) : (
-                    <Button size="sm" variant="outline" onClick={() => setEditing((m) => ({ ...m, [d]: false }))}>
+                {isEditing && (
+                  <div className="flex items-center gap-2 w-full">
+                    <CalendarInput
+                      value={d}
+                      onChange={(e) => {
+                        const v = (e.currentTarget as HTMLInputElement).value;
+                        if (!v) return;
+                        setDates((prev) => {
+                          const next = prev.filter((x) => x !== d);
+                          if (!next.includes(v)) next.push(v);
+                          return next.sort();
+                        });
+                      }}
+                      placeholder="mm/dd/yyyy"
+                      showIcon
+                    />
+                    <Button
+                      size="xs"
+                      variant="outline"
+                      onClick={() =>
+                        setEditing((prev) => {
+                          const next = { ...prev };
+                          delete next[d];
+                          return next;
+                        })
+                      }
+                    >
                       Done
                     </Button>
-                  )}
-                  <Button size="sm" variant="ghost" onClick={() => remove(d)} title="Delete date">
-                    <TrashIcon />
-                  </Button>
-                </div>
+                    <Button
+                      type="button"
+                      size="xs"
+                      variant="ghost"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setConfirmDeleteIso(d);
+                      }}
+                    >
+                      Delete
+                    </Button>
+                  </div>
+                )}
               </div>
             );
           })}
         </div>
+
+        <div className="mt-3 flex items-center justify-between gap-2">
+          <div className="w-64">
+            <CalendarInput
+              value={newDateIso}
+              onChange={(e) => {
+                const v = (e.currentTarget as HTMLInputElement).value;
+                setNewDateIso(v || "");
+              }}
+              placeholder="mm/dd/yyyy"
+              showIcon
+            />
+          </div>
+          <Button
+            size="sm"
+            onClick={() => {
+              let next = [...dates];
+              if (newDateIso) {
+                if (!next.includes(newDateIso)) {
+                  next.push(newDateIso);
+                }
+                next = next.sort();
+              }
+              persist(next);
+              setNewDateIso("");
+            }}
+            disabled={working || (!dates.length && !newDateIso)}
+          >
+            {working ? "Saving…" : "Save Dates"}
+          </Button>
+        </div>
       </SectionCard>
-    </div>
+
+      {confirmDeleteIso && getOverlayRoot() &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-[2147483647] flex items-center justify-center bg-black/40"
+            onClick={(e) => {
+              // Click on the backdrop closes if not working
+              e.stopPropagation();
+              if (!working) setConfirmDeleteIso(null);
+            }}
+          >
+            <div
+              className="w-full max-w-sm rounded-md border border-hairline bg-surface p-4 shadow-lg"
+              onClick={(e) => {
+                // Keep clicks inside the dialog from bubbling to the backdrop
+                e.stopPropagation();
+              }}
+            >
+              <div className="mb-2 text-lg font-semibold">
+                Remove cycle start date
+              </div>
+
+              <div className="mb-4 text-sm text-secondary">
+                Remove {pretty(confirmDeleteIso)} from this female&apos;s cycle history?
+                You can add it back later if needed.
+              </div>
+
+              <div className="flex justify-end gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setConfirmDeleteIso(null);
+                  }}
+                  disabled={working}
+                >
+                  Cancel
+                </Button>
+
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={async (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    await handleConfirmRemove();
+                  }}
+                  disabled={working}
+                >
+                  Remove date
+                </Button>
+              </div>
+            </div>
+          </div>,
+          getOverlayRoot()!
+        )}
+    </div >
   );
 }
 
@@ -406,7 +1813,7 @@ function ProgramTab({
         setLoading(true);
         const server = await api?.animals?.getProgramFlags?.(animal.id);
         if (!dead && server) setFlags(server);
-      } catch {}
+      } catch { }
       setLoading(false);
     })();
     return () => {
@@ -417,7 +1824,7 @@ function ProgramTab({
   const save = async () => {
     try {
       await api?.animals?.putProgramFlags?.(animal.id, flags);
-    } catch {}
+    } catch { }
     onSaved(flags);
   };
 
@@ -563,7 +1970,7 @@ function PairingTab({
           setPreferred(pr);
           setAvoid(av);
         }
-      } catch {}
+      } catch { }
       setLoading(false);
     })();
     return () => {
@@ -596,13 +2003,13 @@ function PairingTab({
     setPreferred(next);
     try {
       await api?.animals?.putPreferredPartners?.(animal.id, next);
-    } catch {}
+    } catch { }
   }
   async function saveAvoid(next: PreferredPartner[]) {
     setAvoid(next);
     try {
       await api?.animals?.putAvoidPartners?.(animal.id, next);
-    } catch {}
+    } catch { }
   }
 
   function pill(p: PreferredPartner, onRemove: () => void) {
@@ -677,29 +2084,256 @@ function PairingTab({
  * ─────────────────────────────────────────────────────────────────────── */
 export default function AppAnimals() {
   React.useEffect(() => {
-    window.dispatchEvent(new CustomEvent("bhq:module", { detail: { key: "animals", label: "Animals" } }));
+    window.dispatchEvent(
+      new CustomEvent("bhq:module", {
+        detail: { key: "animals", label: "Animals" },
+      })
+    );
   }, []);
 
   React.useEffect(() => {
     if (!getOverlayRoot()) {
-      console.warn("ColumnsPopover needs an overlay root. Add <div id='bhq-overlay-root'></div> to the shell.");
+      console.warn(
+        "ColumnsPopover needs an overlay root. Add <div id='bhq-overlay-root'></div> to the shell."
+      );
     }
   }, []);
 
   const api = React.useMemo(() => makeApi("/api/v1"), []);
 
-  const breedBrowseApi = React.useMemo(
+  const photoInputRef = React.useRef<HTMLInputElement | null>(null);
+
+  const syncOwners = React.useCallback(
+    async (animalId: number, desired: OwnershipRow[] | undefined | null) => {
+      const rows = Array.isArray(desired) ? desired : [];
+
+      if (!rows.length) {
+        try {
+          const current = await api.animals.owners.list(animalId);
+          const existing = Array.isArray((current as any)?.items)
+            ? (current as any).items
+            : [];
+          for (const e of existing as any[]) {
+            if (e?.id != null) {
+              await api.animals.owners.remove(animalId, e.id);
+            }
+          }
+        } catch {
+        }
+        return;
+      }
+
+      type NormalizedDesired = {
+        partyType: "Organization" | "Contact";
+        organizationId: number | null;
+        contactId: number | null;
+        percent: number;
+        isPrimary: boolean;
+      };
+
+      type ExistingOwner = {
+        id: number;
+        partyType: "Organization" | "Contact";
+        percent: number | null;
+        isPrimary: boolean;
+        organization: { id: number | null } | null;
+        contact: { id: number | null } | null;
+      };
+
+      const normalizeDesired = (r: OwnershipRow): NormalizedDesired => {
+        const isOrg = r.partyType === "Organization";
+
+        const orgIdRaw = isOrg
+          ? r.organizationId ?? (r as any).organization?.id ?? null
+          : null;
+        const contactIdRaw = !isOrg
+          ? r.contactId ?? (r as any).contact?.id ?? null
+          : null;
+
+        const orgId = orgIdRaw != null ? Number(orgIdRaw) : null;
+        const contactId = contactIdRaw != null ? Number(contactIdRaw) : null;
+
+        const pct = typeof r.percent === "number" ? r.percent : 0;
+        const isPrimary = !!r.is_primary;
+
+        return {
+          partyType: r.partyType,
+          organizationId: orgId,
+          contactId,
+          percent: pct,
+          isPrimary,
+        };
+      };
+
+      const keyExisting = (e: ExistingOwner): string => {
+        if (e.partyType === "Organization") {
+          const id = e.organization?.id;
+          return id != null ? `org:${id}` : "org:";
+        }
+        const id = e.contact?.id;
+        return id != null ? `ct:${id}` : "ct:";
+      };
+
+      const keyDesired = (d: NormalizedDesired): string => {
+        if (d.partyType === "Organization") {
+          return d.organizationId != null ? `org:${d.organizationId}` : "org:";
+        }
+        return d.contactId != null ? `ct:${d.contactId}` : "ct:";
+      };
+
+      let existing: ExistingOwner[] = [];
+      try {
+        const current = await api.animals.owners.list(animalId);
+        existing = Array.isArray((current as any)?.items)
+          ? (current as any).items
+          : [];
+      } catch {
+        existing = [];
+      }
+
+      const desiredNorm = rows.map(normalizeDesired);
+
+      const existingByKey = new Map<string, ExistingOwner>();
+      for (const e of existing) {
+        existingByKey.set(keyExisting(e), e);
+      }
+
+      const desiredByKey = new Map<string, NormalizedDesired>();
+      for (const d of desiredNorm) {
+        desiredByKey.set(keyDesired(d), d);
+      }
+
+      for (const e of existing) {
+        const key = keyExisting(e);
+        if (!desiredByKey.has(key) && e.id != null) {
+          try {
+            await api.animals.owners.remove(animalId, e.id);
+          } catch {
+          }
+        }
+      }
+
+      for (const d of desiredNorm) {
+        const key = keyDesired(d);
+        const e = existingByKey.get(key);
+
+        const payload: {
+          partyType: "Organization" | "Contact";
+          organizationId?: number | null;
+          contactId?: number | null;
+          percent: number;
+          isPrimary?: boolean;
+        } = {
+          partyType: d.partyType,
+          organizationId: d.organizationId,
+          contactId: d.contactId,
+          percent: d.percent,
+          isPrimary: d.isPrimary,
+        };
+
+        if (!e) {
+          try {
+            await api.animals.owners.add(animalId, payload as any);
+          } catch {
+          }
+        } else {
+          const patch: Partial<typeof payload> = {};
+          if ((e.percent ?? 0) !== d.percent) {
+            patch.percent = d.percent;
+          }
+          if (!!e.isPrimary !== d.isPrimary) {
+            patch.isPrimary = d.isPrimary;
+          }
+          if (Object.keys(patch).length) {
+            try {
+              await api.animals.owners.update(animalId, e.id, patch as any);
+            } catch {
+            }
+          }
+        }
+      }
+    },
+    [api]
+  );
+
+  const ownershipLookups = React.useMemo(
     () => ({
-      breeds: {
-        listCanonical: (opts: { species: string; orgId?: number; limit?: number }) =>
-          (api as any)?.breeds?.listCanonical?.(opts) ?? Promise.resolve([]),
+      async searchContacts(q: string) {
+        const raw = (await api?.lookups?.searchContacts?.(q)) ?? [];
+        const arr = Array.isArray(raw)
+          ? raw
+          : (raw as any)?.rows ?? (raw as any)?.items ?? [];
+
+        return (arr as any[]).map((c) => {
+          const nameFromNames = [c.first_name, c.last_name]
+            .filter(Boolean)
+            .join(" ");
+
+          const name =
+            c.display_name ??
+            c.displayName ??
+            (nameFromNames || undefined) ??
+            c.name ??
+            c.legal_name ??
+            c.email ??
+            "Unnamed contact";
+
+          return {
+            ...c,
+            display_name: name,
+            label: name,
+            name,
+            title: name,
+            text: name,
+          };
+        });
+      },
+
+      async searchOrganizations(q: string) {
+        const raw = (await api?.lookups?.searchOrganizations?.(q)) ?? [];
+        const arr = Array.isArray(raw)
+          ? raw
+          : (raw as any)?.rows ?? (raw as any)?.items ?? [];
+
+        return (arr as any[]).map((org) => {
+          const name =
+            org.display_name ??
+            org.displayName ??
+            org.legal_name ??
+            org.name ??
+            org.trade_name ??
+            "Unnamed organization";
+
+          return {
+            ...org,
+            display_name: name,
+            label: name,
+            name,
+            title: name,
+            text: name,
+          };
+        });
       },
     }),
     [api]
   );
 
-  // Resolve orgId once for breed searches
-  const [orgIdForBreeds, setOrgIdForBreeds] = React.useState<number | null>(null);
+  const breedBrowseApi = React.useMemo(
+    () => ({
+      breeds: {
+        listCanonical: (opts: {
+          species: string;
+          orgId?: number;
+          limit?: number;
+        }) => (api as any)?.breeds?.listCanonical?.(opts) ?? Promise.resolve([]),
+      },
+    }),
+    [api]
+  );
+
+  const [orgIdForBreeds, setOrgIdForBreeds] = React.useState<number | null>(
+    null
+  );
   React.useEffect(() => {
     let alive = true;
     (async () => {
@@ -712,7 +2346,6 @@ export default function AppAnimals() {
     };
   }, [api]);
 
-  // Search/filters
   const [q, setQ] = React.useState(() => {
     try {
       return localStorage.getItem("bhq_animals_q_v1") || "";
@@ -723,7 +2356,9 @@ export default function AppAnimals() {
   const [filtersOpen, setFiltersOpen] = React.useState(false);
   const [filters, setFilters] = React.useState<Record<string, string>>(() => {
     try {
-      return JSON.parse(localStorage.getItem("bhq_animals_filters_v1") || "{}");
+      return JSON.parse(
+        localStorage.getItem("bhq_animals_filters_v1") || "{}"
+      );
     } catch {
       return {};
     }
@@ -731,12 +2366,17 @@ export default function AppAnimals() {
   React.useEffect(() => {
     try {
       localStorage.setItem("bhq_animals_q_v1", q);
-    } catch {}
+    } catch {
+    }
   }, [q]);
   React.useEffect(() => {
     try {
-      localStorage.setItem("bhq_animals_filters_v1", JSON.stringify(filters || {}));
-    } catch {}
+      localStorage.setItem(
+        "bhq_animals_filters_v1",
+        JSON.stringify(filters || {})
+      );
+    } catch {
+    }
   }, [filters]);
 
   const [qDebounced, setQDebounced] = React.useState(q);
@@ -745,12 +2385,10 @@ export default function AppAnimals() {
     return () => clearTimeout(t);
   }, [q]);
 
-  // Data
   const [rows, setRows] = React.useState<AnimalRow[]>([]);
   const [loading, setLoading] = React.useState<boolean>(true);
   const [error, setError] = React.useState<string | null>(null);
 
-  // Pagination
   const [pageSize, setPageSize] = React.useState<number>(25);
   const [page, setPage] = React.useState<number>(1);
 
@@ -760,11 +2398,18 @@ export default function AppAnimals() {
       setLoading(true);
       setError(null);
       try {
-        const res = await api.animals.list({ q: qDebounced || undefined, page: 1, limit: 50 });
+        const res = await api.animals.list({
+          q: qDebounced || undefined,
+          page: 1,
+          limit: 50,
+        });
         const items = (res?.items || []).map(animalToRow);
         if (!cancelled) setRows(items);
       } catch (e: any) {
-        if (!cancelled) setError(e?.data?.error || e?.message || "Failed to load animals");
+        if (!cancelled)
+          setError(
+            e?.data?.error || e?.message || "Failed to load animals"
+          );
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -774,11 +2419,14 @@ export default function AppAnimals() {
     };
   }, [api, qDebounced]);
 
-  // Columns
-  const { map, toggle, setAll, visible } = hooks.useColumns(COLUMNS, STORAGE_KEY);
-  const visibleSafe = Array.isArray(visible) && visible.length ? visible : COLUMNS;
+  const { map, toggle, setAll, visible } = hooks.useColumns(
+    COLUMNS,
+    STORAGE_KEY
+  );
+  const visibleSafe = Array.isArray(visible) && visible.length
+    ? visible
+    : COLUMNS;
 
-  // Filters schema
   const filterSchemaForFiltersRow = React.useMemo(() => {
     return buildRangeAwareSchema(
       visibleSafe.map((c) => ({ key: c.key, label: c.label })),
@@ -786,9 +2434,10 @@ export default function AppAnimals() {
     );
   }, [visibleSafe]);
 
-  // Client search + filters
   const displayRows = React.useMemo(() => {
-    const active = Object.entries(filters || {}).filter(([, v]) => (v ?? "") !== "");
+    const active = Object.entries(filters || {}).filter(
+      ([, v]) => (v ?? "") !== ""
+    );
     if (!active.length && !qDebounced) return rows;
 
     const lc = (v: any) => String(v ?? "").toLowerCase();
@@ -831,18 +2480,29 @@ export default function AppAnimals() {
           if (key.endsWith("_from") || key.endsWith("_to")) return true;
           if (key === "tags") {
             const str = String(val).toLowerCase().trim();
-            return (r.tags || []).some((t) => String(t).toLowerCase().includes(str));
+            return (r.tags || []).some((t) =>
+              String(t).toLowerCase().includes(str)
+            );
           }
           const raw = (r as any)[key];
           const isDate = DATE_KEYS.has(key as any);
-          const hay = isDate && raw ? String(raw).slice(0, 10) : String(raw ?? "");
+          const hay = isDate && raw
+            ? String(raw).slice(0, 10)
+            : String(raw ?? "");
           return lc(hay).includes(lc(val));
         });
         if (!textOk) return false;
 
-        const dobOk = dobFrom || dobTo ? inDateRange(r.dob, dobFrom, dobTo) : true;
-        const createdOk = createdFrom || createdTo ? inDateRange(r.created_at, createdFrom, createdTo) : true;
-        const updatedOk = updatedFrom || updatedTo ? inDateRange(r.updated_at, updatedFrom, updatedTo) : true;
+        const dobOk =
+          dobFrom || dobTo ? inDateRange(r.dob, dobFrom, dobTo) : true;
+        const createdOk =
+          createdFrom || createdTo
+            ? inDateRange(r.created_at, createdFrom, createdTo)
+            : true;
+        const updatedOk =
+          updatedFrom || updatedTo
+            ? inDateRange(r.updated_at, updatedFrom, updatedTo)
+            : true;
 
         return dobOk && createdOk && updatedOk;
       });
@@ -851,13 +2511,17 @@ export default function AppAnimals() {
     return data;
   }, [rows, filters, qDebounced]);
 
-  // Sorting
-  const [sorts, setSorts] = React.useState<Array<{ key: string; dir: "asc" | "desc" }>>([]);
+  const [sorts, setSorts] = React.useState<
+    Array<{ key: string; dir: "asc" | "desc" }>
+  >([]);
   const onToggleSort = (key: string) => {
     setSorts((prev) => {
       const found = prev.find((s) => s.key === key);
       if (!found) return [{ key, dir: "asc" }];
-      if (found.dir === "asc") return prev.map((s) => (s.key === key ? { ...s, dir: "desc" } : s));
+      if (found.dir === "asc")
+        return prev.map((s) =>
+          s.key === key ? { ...s, dir: "desc" } : s
+        );
       return prev.filter((s) => s.key !== key);
     });
   };
@@ -872,7 +2536,11 @@ export default function AppAnimals() {
       for (const s of sorts) {
         const av = (a as any)[s.key];
         const bv = (b as any)[s.key];
-        const cmp = String(av ?? "").localeCompare(String(bv ?? ""), undefined, { numeric: true, sensitivity: "base" });
+        const cmp = String(av ?? "").localeCompare(
+          String(bv ?? ""),
+          undefined,
+          { numeric: true, sensitivity: "base" }
+        );
         if (cmp !== 0) return s.dir === "asc" ? cmp : -cmp;
       }
       return 0;
@@ -880,285 +2548,219 @@ export default function AppAnimals() {
     return out;
   }, [displayRows, sorts]);
 
-  // Paging
-  const pageCount = Math.max(1, Math.ceil(sortedRows.length / pageSize));
+  const pageCount = Math.max(
+    1,
+    Math.ceil(sortedRows.length / pageSize)
+  );
   const clampedPage = Math.min(page, pageCount);
-  const start = sortedRows.length === 0 ? 0 : (clampedPage - 1) * pageSize + 1;
-  const end = sortedRows.length === 0 ? 0 : Math.min(sortedRows.length, (clampedPage - 1) * pageSize + pageSize);
+  const start =
+    sortedRows.length === 0
+      ? 0
+      : (clampedPage - 1) * pageSize + 1;
+  const end =
+    sortedRows.length === 0
+      ? 0
+      : Math.min(
+        sortedRows.length,
+        (clampedPage - 1) * pageSize + pageSize
+      );
   const pageRows = React.useMemo(() => {
     const from = (clampedPage - 1) * pageSize;
     const to = from + pageSize;
     return sortedRows.slice(from, to);
   }, [sortedRows, clampedPage, pageSize]);
 
-  /** ────────── Custom Breed dialog state (before sections) ────────── */
   const [customBreedOpen, setCustomBreedOpen] = React.useState(false);
-  const [customBreedSpecies, setCustomBreedSpecies] = React.useState<"DOG" | "CAT" | "HORSE">("DOG");
+  const [customBreedSpecies, setCustomBreedSpecies] = React.useState<
+    "DOG" | "CAT" | "HORSE"
+  >("DOG");
   const [onCustomBreedCreated, setOnCustomBreedCreated] =
-    React.useState<((c: { id: number; name: string; species: "DOG" | "CAT" | "HORSE" }) => void) | null>(null);
+    React.useState<
+      | ((
+        c: {
+          id: number;
+          name: string;
+          species: "DOG" | "CAT" | "HORSE";
+        }
+      ) => void)
+      | null
+    >(null);
 
-  /** ────────── Sections (Overview compact) ────────── */
   const animalSections = (
     mode: "view" | "edit",
     row: AnimalRow,
     setDraft: (p: Partial<AnimalRow>) => void
   ) => [
-    {
-      title: "Identity",
-      fields: [
-        {
-          label: "Name",
-          view: (r) => r.name || "—",
-          edit: (_r, set) => <Input size="sm" defaultValue={row.name} onChange={(e) => set({ name: e.currentTarget.value })} />,
-        },
-        {
-          label: "Nickname",
-          view: (r) => r.nickname || "—",
-          edit: (_r, set) => (
-            <Input size="sm" defaultValue={row.nickname ?? ""} onChange={(e) => set({ nickname: e.currentTarget.value })} />
-          ),
-        },
-      ],
-      gridCols: 2 as any,
-    },
-    {
-      title: "Profile",
-      fields: [
-        {
-          label: "Species",
-          view: (r) => r.species ?? "—",
-          edit: (_r, set) => (
-            <select
-              className="h-8 w-full rounded-md bg-surface border border-hairline px-2 text-sm text-primary"
-              defaultValue={row.species || "Dog"}
-              onChange={(e) => {
-                const next = e.target.value as "Dog" | "Cat" | "Horse";
-                set({ species: next, breed: null });
-              }}
-            >
-              <option>Dog</option>
-              <option>Cat</option>
-              <option>Horse</option>
-            </select>
-          ),
-        },
-        {
-          label: "Breed",
-          view: (r) => r.breed ?? "—",
-          edit: (_r, set) => (
-            <div className="flex items-center gap-2">
-              <div className="flex-1">
-                <div>
-                  <CustomBreedCombo
-                    species={(row.species as "Dog" | "Cat" | "Horse") || "Dog"}
-                    value={row.breed || null}
-                    onChange={(name) => set({ breed: name ?? null })}
-                    api={breedBrowseApi}
-                    orgIdForBreeds={orgIdForBreeds ?? undefined}
-                    onOpenCustom={() => {
-                      const speciesEnum = (String(row.species || "Dog").toUpperCase() as "DOG" | "CAT" | "HORSE");
-                      setCustomBreedSpecies(speciesEnum);
-                      setOnCustomBreedCreated(() => (created) => {
-                        set({ breed: created.name });
-                        setCustomBreedOpen(false);
-                      });
-                      setCustomBreedOpen(true);
-                    }}
-                  />
-                </div>
-              </div>
-            </div>
-          ),
-        },
-        {
-          label: "Sex",
-          view: (r) => r.sex ?? "—",
-          edit: (_r, set) => (
-            <select
-              className="h-8 w-full rounded-md bg-surface border border-hairline px-2 text-sm text-primary"
-              defaultValue={row.sex || "Female"}
-              onChange={(e) => set({ sex: e.target.value })}
-            >
-              <option>Female</option>
-              <option>Male</option>
-            </select>
-          ),
-        },
-        {
-          label: "Status",
-          view: (r) => r.status ?? "Active",
-          edit: (_r, set) => (
-            <select
-              className="h-8 w-full rounded-md bg-surface border border-hairline px-2 text-sm text-primary"
-              defaultValue={row.status || "Active"}
-              onChange={(e) => set({ status: e.target.value })}
-            >
-              {["Active", "Breeding", "Unavailable", "Retired", "Deceased", "Prospect"].map((s) => (
-                <option key={s}>{s}</option>
-              ))}
-            </select>
-          ),
-        },
-      ],
-      gridCols: 4 as any,
-    },
-    {
-      title: "Ownership",
-      fields: [
-        { label: "Owner", view: (r) => r.ownerName ?? "—" },
-        {
-          label: "Ownership",
-          view: (r) => <OwnershipChips owners={((r as any).owners || []) as any[]} />,
-          edit: (_r, _set) => (
-            <OwnershipEditor
-              api={{
-                searchContacts: (q) => api?.lookups?.searchContacts?.(q) ?? Promise.resolve([]),
-                searchOrganizations: (q) => api?.lookups?.searchOrganizations?.(q) ?? Promise.resolve([]),
-              }}
-              value={(((row as any).owners) || []) as any[]}
-              onChange={(rows) => (setDraft as any)({ ...(row as any), owners: rows })}
-            />
-          ),
-        },
-      ],
-      gridCols: 2 as any,
-    },
-    {
-      title: "Identifiers & Dates",
-      fields: [
-        {
-          label: "Microchip #",
-          view: (r) => r.microchip ?? "—",
-          edit: (_r, set) => (
-            <Input size="sm" defaultValue={row.microchip ?? ""} onChange={(e) => set({ microchip: e.currentTarget.value })} />
-          ),
-        },
-        {
-          label: "DOB",
-          view: (r) => fmt(r.dob) || "—",
-          edit: (_r, set) => (
-            <Input size="sm" type="date" defaultValue={(row.dob || "").slice(0, 10)} onChange={(e) => set({ dob: e.currentTarget.value })} />
-          ),
-        },
-      ],
-      gridCols: 2 as any,
-    },
-    {
-      title: "Notes & Tags",
-      fields: [
-        {
-          label: "Tags",
-          view: (r) => (r.tags || []).join(", ") || "—",
-          edit: (_r, set) => (
-            <Input
-              size="sm"
-              defaultValue={(row.tags || []).join(", ")}
-              onChange={(e) => {
-                const tags = (e.currentTarget.value || "")
-                  .split(",")
-                  .map((s) => s.trim())
-                  .filter(Boolean);
-                set({ tags });
-              }}
-            />
-          ),
-        },
-        {
-          label: "Notes",
-          view: (r) => r.notes || "—",
-          edit: (_r, set) => (
-            <textarea
-              className="h-24 w-full rounded-md bg-surface border border-hairline px-3 text-sm text-primary outline-none"
-              defaultValue={row.notes ?? ""}
-              onChange={(e) => set({ notes: (e.currentTarget as HTMLTextAreaElement).value })}
-            />
-          ),
-        },
-      ],
-    },
-  ];
+      /* leaving this helper defined, not used in new overview layout */
+    ];
 
-  function CustomBreedCombo({
-    species,
-    value,
-    onChange,
-    api,
-    orgIdForBreeds,
-    onOpenCustom,
-  }: {
-    species: "Dog" | "Cat" | "Horse";
-    value: string | null;
-    onChange: (name: string | null) => void;
-    api: any;
-    orgIdForBreeds?: number;
-    onOpenCustom: () => void;
-  }) {
-    const [local, setLocal] = React.useState<string | null>(value ?? null);
-    React.useEffect(() => {
-      setLocal(value ?? null);
-    }, [value]);
-
-    const speciesKey = `breed-${species}`;
-    const valueObj = local ? ({ id: "__current__", name: local, species, source: "canonical" } as any) : null;
-
-    return (
-      <div className="flex items-center gap-2">
-        <div className="flex-1">
-          <BreedCombo
-            key={speciesKey}
-            orgId={orgIdForBreeds}
-            species={species}
-            value={valueObj}
-            onChange={(hit: any) => {
-              const nextName = hit?.name ?? null;
-              setLocal(nextName);
-              onChange(nextName);
-            }}
-            api={{ breeds: { listCanonical: api.breeds.listCanonical } }}
-          />
-        </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => {
-            setLocal(null);
-            onChange(null);
-          }}
-          title="Clear breed"
-        >
-          Clear
-        </Button>
-        <Button variant="outline" size="sm" onClick={onOpenCustom}>
-          New custom
-        </Button>
-      </div>
-    );
+  function CustomBreedCombo({ /* unused in new overview, left here because rest of file references it in create modal */ ..._props }: any) {
+    return null;
   }
 
-  function LV({ label, children }: { label: string; children: React.ReactNode }) {
+  function LV({
+    label,
+    children,
+  }: {
+    label: string;
+    children: React.ReactNode;
+  }) {
     return (
       <div className="min-w-0">
-        <div className="text-[11px] leading-4 text-secondary mb-0.5">{label}</div>
-        <div className="text-sm leading-5 text-primary break-words">{children || "—"}</div>
+        <div className="text-[11px] leading-4 text-secondary mb-0.5">
+          {label}
+        </div>
+        <div className="text-sm leading-5 text-primary break-words">
+          {children || "—"}
+        </div>
       </div>
     );
   }
 
   function Chip({ children }: { children: React.ReactNode }) {
     return (
-      <span className="inline-flex items-center rounded-full border border-hairline px-2 py-0.5 text-xs text-primary">{children}</span>
+      <span className="inline-flex items-center rounded-full border border-hairline px-2 py-0.5 text-xs text-primary">
+        {children}
+      </span>
     );
   }
 
   function HeaderBadges({ row }: { row: AnimalRow }) {
     return (
       <div className="flex items-center gap-2 flex-wrap">
-        {row.species && <Chip>{row.species}{row.breed ? ` • ${row.breed}` : ""}</Chip>}
+        {row.species && (
+          <Chip>
+            {row.species}
+            {row.breed ? ` • ${row.breed}` : ""}
+          </Chip>
+        )}
         {row.sex && <Chip>{row.sex}</Chip>}
         <Chip>{row.status || "Active"}</Chip>
       </div>
     );
   }
+
+  const [photoTargetId, setPhotoTargetId] = React.useState<number | null>(
+    null
+  );
+  const [photoWorking, setPhotoWorking] = React.useState(false);
+
+  const [photoEditorOpen, setPhotoEditorOpen] = React.useState(false);
+  const [photoEditorSrc, setPhotoEditorSrc] = React.useState<string | null>(null);
+  const [photoEditorForId, setPhotoEditorForId] = React.useState<number | null>(null);
+
+  const handleStartUploadPhoto = React.useCallback(
+    (animalId: number) => {
+      setPhotoEditorForId(animalId);
+      setPhotoTargetId(animalId);
+
+      // open file picker
+      const input = photoInputRef.current;
+      if (!input) return;
+
+      // reset so selecting the same file twice still triggers onChange
+      input.value = "";
+      input.click();
+    },
+    []
+  );
+
+
+  const handlePhotoFileChange = React.useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+
+      // If user picked a file without first choosing a target, bail safely
+      if (photoTargetId == null && photoEditorForId == null) {
+        e.target.value = "";
+        return;
+      }
+
+      try {
+        setPhotoWorking(true);
+
+        // Load into editor (no server upload yet)
+        const dataUrl = await fileToDataUrl(file);
+
+        // Make sure modal is open and showing the newly picked file
+        setPhotoEditorSrc(dataUrl);
+        setPhotoEditorOpen(true);
+      } catch (err) {
+        console.error("[Animals] fileToDataUrl failed", err);
+        toast.error("Could not load photo for editing. Please try again.");
+      } finally {
+        setPhotoWorking(false);
+        e.target.value = "";
+      }
+    },
+    [photoTargetId, photoEditorForId]
+  );
+
+  const handleRemovePhoto = React.useCallback(
+    async (animalId: number) => {
+      if (!api?.animals?.removePhoto) {
+        console.warn("api.animals.removePhoto is not implemented");
+        setRows((prev) =>
+          prev.map((r) =>
+            r.id === animalId ? { ...r, photoUrl: null } : r
+          )
+        );
+        toast.info(
+          "Photo cleared locally. Wire api.animals.removePhoto to persist on the server."
+        );
+        return;
+      }
+
+      try {
+        setPhotoWorking(true);
+        await api.animals.removePhoto(animalId);
+        setRows((prev) =>
+          prev.map((r) =>
+            r.id === animalId ? { ...r, photoUrl: null } : r
+          )
+        );
+        toast.success("Photo removed.");
+      } catch (err) {
+        console.error("[Animals] removePhoto failed", err);
+        toast.error("Could not remove photo. Please try again.");
+      } finally {
+        setPhotoWorking(false);
+      }
+    },
+    [api]
+  );
+
+  const uploadCroppedBlob = React.useCallback(
+    async (animalId: number, blob: Blob) => {
+      if (!api?.animals?.uploadPhoto) {
+        toast.error("Photo upload is not wired yet. Implement api.animals.uploadPhoto on the client api.");
+        return;
+      }
+
+      setPhotoWorking(true);
+      try {
+        const file = new File([blob], "photo.jpg", { type: "image/jpeg" });
+
+        const res = await api.animals.uploadPhoto(animalId, file);
+        const url = (res && (res.url || res.photoUrl || res.photo_url)) || null;
+
+        if (!url) {
+          toast.error("Upload returned no photo URL.");
+          return;
+        }
+
+        setRows((prev) => prev.map((r) => (r.id === animalId ? { ...r, photoUrl: url } : r)));
+        toast.success("Photo updated.");
+      } catch (err) {
+        console.error("[Animals] uploadPhoto failed", err);
+        toast.error("Could not upload photo. Please try again.");
+      } finally {
+        setPhotoWorking(false);
+      }
+    },
+    [api]
+  );
 
   const detailsConfig = React.useMemo(
     () => ({
@@ -1167,7 +2769,39 @@ export default function AppAnimals() {
       width: 720,
       placement: "center" as const,
       align: "top" as const,
-      fetchRow: async (id: number) => animalToRow(await api.animals.get(id)),
+      fetchRow: async (id: number) => {
+        const base = await api.animals.get(id);
+
+        let owners: OwnershipRow[] = [];
+        try {
+          const resp = await api.animals.owners.list(id);
+          const items = Array.isArray((resp as any)?.items)
+            ? (resp as any).items
+            : Array.isArray(resp)
+              ? (resp as any)
+              : [];
+
+          owners = items.map(
+            (o: any): OwnershipRow => ({
+              partyType:
+                o.partyType === "Organization"
+                  ? "Organization"
+                  : "Contact",
+              organizationId: o.organization?.id ?? null,
+              contactId: o.contact?.id ?? null,
+              display_name:
+                o.organization?.name ?? o.contact?.name ?? "",
+              is_primary: !!o.isPrimary,
+              percent:
+                typeof o.percent === "number" ? o.percent : undefined,
+            })
+          );
+        } catch {
+          owners = [];
+        }
+
+        return animalToRow({ ...base, owners });
+      },
       onSave: async (id: number, draft: Partial<AnimalRow>) => {
         const toWire = (d: Partial<AnimalRow>) => {
           const out: any = { ...d };
@@ -1180,12 +2814,30 @@ export default function AppAnimals() {
         const updated = await api.animals.update(id, toWire(draft));
 
         const owners: OwnershipRow[] | undefined = (draft as any)?.owners;
-        if (owners) {
+        let ownerNameOverride: string | undefined;
+        if (owners && owners.length) {
+          const primary = owners.find((o) => o.is_primary);
+          ownerNameOverride =
+            primary?.display_name ?? owners[0]?.display_name ?? undefined;
           try {
-            await api.animals.putOwners?.(id, owners);
-          } catch {}
+            await syncOwners(id, owners);
+          } catch {
+          }
         }
-        setRows((prev) => prev.map((r) => (r.id === id ? { ...r, ...animalToRow(updated) } : r)));
+
+        setRows((prev) =>
+          prev.map((r) => {
+            if (r.id !== id) return r;
+            const base: any = { ...r, ...animalToRow(updated) };
+            if (owners) {
+              (base as any).owners = owners;
+            }
+            if (ownerNameOverride) {
+              base.ownerName = ownerNameOverride;
+            }
+            return base as AnimalRow;
+          })
+        );
       },
 
       header: (r: AnimalRow) => ({
@@ -1196,7 +2848,8 @@ export default function AppAnimals() {
 
       tabs: (r: AnimalRow) => {
         const tabs = [{ key: "overview", label: "Overview" } as const];
-        if ((r.sex || "").toLowerCase().startsWith("f")) tabs.push({ key: "cycle", label: "Cycle Info" } as any);
+        if ((r.sex || "").toLowerCase().startsWith("f"))
+          tabs.push({ key: "cycle", label: "Cycle Info" } as any);
         tabs.push({ key: "program", label: "Program" } as any);
         tabs.push({ key: "pairing", label: "Pairing" } as any);
         tabs.push({ key: "audit", label: "Audit" } as any);
@@ -1204,7 +2857,15 @@ export default function AppAnimals() {
       },
 
       customChrome: true,
-      render: ({ row, mode, setMode, setDraft, activeTab, setActiveTab, requestSave }: any) => (
+      render: ({
+        row,
+        mode,
+        setMode,
+        setDraft,
+        activeTab,
+        setActiveTab,
+        requestSave,
+      }: any) => (
         <DetailsScaffold
           title={row.name}
           subtitle={row.nickname || row.ownerName || ""}
@@ -1231,52 +2892,144 @@ export default function AppAnimals() {
         >
           {activeTab === "overview" && (
             <div className="space-y-3">
-              {/* Compact header badges already applied */}
-              {/* Identity, Profile, Ownership, Dates, Notes */}
               <SectionCard title="Identity">
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                  <LV label="Name">
-                    {mode === "view" ? (
-                      row.name || "—"
-                    ) : (
-                      <Input size="sm" defaultValue={row.name} onChange={(e) => setDraft({ name: e.currentTarget.value })} />
-                    )}
-                  </LV>
-                  <LV label="Nickname">
-                    {mode === "view" ? (
-                      row.nickname || "—"
-                    ) : (
-                      <Input
-                        size="sm"
-                        defaultValue={row.nickname ?? ""}
-                        onChange={(e) => setDraft({ nickname: e.currentTarget.value })}
-                      />
-                    )}
-                  </LV>
-                  <LV label="Microchip #">
-                    {mode === "view" ? (
-                      row.microchip || "—"
-                    ) : (
-                      <Input
-                        size="sm"
-                        defaultValue={row.microchip ?? ""}
-                        onChange={(e) => setDraft({ microchip: e.currentTarget.value })}
-                      />
-                    )}
-                  </LV>
-                  <LV label="DOB">
-                    {mode === "view" ? (
-                      fmt(row.dob) || "—"
-                    ) : (
-                      <Input
-                        size="sm"
-                        type="date"
-                        defaultValue={(row.dob || "").slice(0, 10)}
-                        onChange={(e) => setDraft({ dob: e.currentTarget.value })}
-                      />
-                    )}
-                  </LV>
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+                  <div className="lg:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <LV label="Name">
+                      {mode === "view" ? (
+                        row.name || "-"
+                      ) : (
+                        <Input
+                          size="sm"
+                          defaultValue={row.name}
+                          onChange={(e) =>
+                            setDraft({ name: e.currentTarget.value })
+                          }
+                        />
+                      )}
+                    </LV>
+
+                    <LV label="Nickname">
+                      {mode === "view" ? (
+                        row.nickname || "-"
+                      ) : (
+                        <Input
+                          size="sm"
+                          defaultValue={row.nickname ?? ""}
+                          onChange={(e) =>
+                            setDraft({ nickname: e.currentTarget.value })
+                          }
+                        />
+                      )}
+                    </LV>
+
+                    <LV label="Microchip #">
+                      {mode === "view" ? (
+                        row.microchip || "-"
+                      ) : (
+                        <Input
+                          size="sm"
+                          defaultValue={row.microchip ?? ""}
+                          onChange={(e) =>
+                            setDraft({ microchip: e.currentTarget.value })
+                          }
+                        />
+                      )}
+                    </LV>
+
+                    <LV label="DOB">
+                      {mode === "view" ? (
+                        fmt(row.dob) || "-"
+                      ) : (
+                        <Input
+                          size="sm"
+                          type="date"
+                          defaultValue={(row.dob || "").slice(0, 10)}
+                          onChange={(e) =>
+                            setDraft({ dob: e.currentTarget.value })
+                          }
+                        />
+                      )}
+                    </LV>
+                  </div>
+
+                  <div className="lg:col-span-1 flex justify-center lg:justify-end">
+                    <div className="relative w-48 h-48 md:w-56 md:h-56 lg:w-64 lg:h-64 rounded-md bg-neutral-100 dark:bg-neutral-900 border border-hairline overflow-hidden flex items-center justify-center">
+                      {row.photoUrl ? (
+                        <img
+                          src={row.photoUrl}
+                          alt={row.name || "Animal photo"}
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <img
+                          src={getPlaceholderForSpecies(row.species)}
+                          alt={`${row.species || "Animal"} placeholder`}
+                          className="h-full w-full object-cover"
+                        />
+                      )}
+
+                      <button
+                        type="button"
+                        aria-label={row.photoUrl ? "Change photo" : "Upload photo"}
+                        className={[
+                          "absolute bottom-2 right-2 z-50",
+                          "h-10 w-10 rounded-full",
+                          "bg-black/80 text-white",
+                          "flex items-center justify-center",
+                          "shadow-lg ring-1 ring-white/30",
+                          "hover:bg-black focus:outline-none focus:ring-2 focus:ring-[hsl(var(--brand-orange))]",
+                          "pointer-events-auto",
+                        ].join(" ")}
+                        onClick={() => {
+                          setPhotoEditorForId(row.id);
+                          setPhotoEditorSrc(row.photoUrl ?? getPlaceholderForSpecies(row.species));
+                          setPhotoEditorOpen(true);
+                        }}
+                        disabled={photoWorking}
+                      >
+                        <svg
+                          viewBox="0 0 24 24"
+                          className="h-5 w-5"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth={2}
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          aria-hidden="true"
+                        >
+                          <path d="M12 20h9" />
+                          <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L8 18l-4 1 1-4Z" />
+                        </svg>
+                      </button>
+
+                      {row.photoUrl && (
+                        <button
+                          type="button"
+                          className="absolute top-2 right-2 rounded-full bg-black/70 text-white p-1 hover:bg-black/90"
+                          onClick={() => handleRemovePhoto(row.id)}
+                          title="Remove photo"
+                          disabled={photoWorking}
+                        >
+                          <TrashIcon className="h-3 w-3" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
                 </div>
+
+                <PhotoEditorModal
+                  open={photoEditorOpen}
+                  title="Edit photo"
+                  src={photoEditorSrc ?? row.photoUrl ?? null}
+                  canRemove={!!row.photoUrl}
+                  onClose={() => setPhotoEditorOpen(false)}
+                  onPickFile={() => handleStartUploadPhoto(photoEditorForId ?? row.id)}
+                  onSave={async ({ blob }) => {
+                    const id = photoEditorForId ?? row.id;
+                    await uploadCroppedBlob(id, blob);
+                  }}
+                />
               </SectionCard>
 
               <SectionCard title="Profile">
@@ -1289,7 +3042,8 @@ export default function AppAnimals() {
                         className="h-8 w-full rounded-md bg-surface border border-hairline px-2 text-sm text-primary"
                         defaultValue={row.species || "Dog"}
                         onChange={(e) => {
-                          const next = e.target.value as "Dog" | "Cat" | "Horse";
+                          const next = e.target
+                            .value as "Dog" | "Cat" | "Horse";
                           setDraft({ species: next, breed: null });
                         }}
                       >
@@ -1307,7 +3061,9 @@ export default function AppAnimals() {
                       <select
                         className="h-8 w-full rounded-md bg-surface border border-hairline px-2 text-sm text-primary"
                         defaultValue={row.sex || "Female"}
-                        onChange={(e) => setDraft({ sex: e.target.value })}
+                        onChange={(e) =>
+                          setDraft({ sex: e.target.value })
+                        }
                       >
                         <option>Female</option>
                         <option>Male</option>
@@ -1322,9 +3078,18 @@ export default function AppAnimals() {
                       <select
                         className="h-8 w-full rounded-md bg-surface border border-hairline px-2 text-sm text-primary"
                         defaultValue={row.status || "Active"}
-                        onChange={(e) => setDraft({ status: e.target.value })}
+                        onChange={(e) =>
+                          setDraft({ status: e.target.value })
+                        }
                       >
-                        {["Active", "Breeding", "Unavailable", "Retired", "Deceased", "Prospect"].map((s) => (
+                        {[
+                          "Active",
+                          "Breeding",
+                          "Unavailable",
+                          "Retired",
+                          "Deceased",
+                          "Prospect",
+                        ].map((s) => (
                           <option key={s}>{s}</option>
                         ))}
                       </select>
@@ -1345,10 +3110,17 @@ export default function AppAnimals() {
                             species={(row.species as any) || "Dog"}
                             value={
                               row.breed
-                                ? ({ id: "__current__", name: row.breed, species: row.species, source: "canonical" } as any)
+                                ? ({
+                                  id: "__current__",
+                                  name: row.breed,
+                                  species: row.species,
+                                  source: "canonical",
+                                } as any)
                                 : null
                             }
-                            onChange={(hit: any) => setDraft({ breed: hit?.name ?? null })}
+                            onChange={(hit: any) =>
+                              setDraft({ breed: hit?.name ?? null })
+                            }
                             api={breedBrowseApi}
                           />
                         </div>
@@ -1356,18 +3128,26 @@ export default function AppAnimals() {
                           variant="outline"
                           size="sm"
                           onClick={() => {
-                            const speciesEnum = (String(row.species || "Dog").toUpperCase() as "DOG" | "CAT" | "HORSE");
+                            const speciesEnum = String(
+                              row.species || "Dog"
+                            ).toUpperCase() as "DOG" | "CAT" | "HORSE";
                             setCustomBreedSpecies(speciesEnum);
-                            setOnCustomBreedCreated(() => (created: any) => {
-                              setDraft({ breed: created.name });
-                              setCustomBreedOpen(false);
-                            });
+                            setOnCustomBreedCreated(
+                              () => (created: any) => {
+                                setDraft({ breed: created.name });
+                                setCustomBreedOpen(false);
+                              }
+                            );
                             setCustomBreedOpen(true);
                           }}
                         >
                           New custom
                         </Button>
-                        <Button variant="outline" size="sm" onClick={() => setDraft({ breed: null })}>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setDraft({ breed: null })}
+                        >
                           Clear
                         </Button>
                       </div>
@@ -1376,25 +3156,55 @@ export default function AppAnimals() {
                 </div>
               </SectionCard>
 
-              <SectionCard title="Ownership">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <LV label="Primary Owner">{row.ownerName || "—"}</LV>
-                  <LV label="Additional Owners">
-                    {mode === "view" ? (
-                      <OwnershipChips owners={((row as any).owners || []) as any[]} />
-                    ) : (
-                      <OwnershipEditor
-                        api={{
-                          searchContacts: (q) => api?.lookups?.searchContacts?.(q) ?? Promise.resolve([]),
-                          searchOrganizations: (q) => api?.lookups?.searchOrganizations?.(q) ?? Promise.resolve([]),
-                        }}
-                        value={(((row as any).owners) || []) as any[]}
-                        onChange={(rows) => (setDraft as any)({ ...(row as any), owners: rows })}
+              {mode === "view" ? (
+                <SectionCard title="Ownership">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <LV label="Primary Owner">
+                      <OwnershipChips
+                        owners={(
+                          (((row as any).owners) ?? []) as any[]
+                        ).filter((o: any, idx: number, arr: any[]) => {
+                          const isPrimary =
+                            o.is_primary || o.primary;
+                          if (
+                            arr.some(
+                              (x: any) =>
+                                x.is_primary || x.primary
+                            )
+                          ) {
+                            return !!isPrimary;
+                          }
+                          return idx === 0;
+                        })}
                       />
-                    )}
-                  </LV>
-                </div>
-              </SectionCard>
+                    </LV>
+
+                    <LV label="Additional Owners">
+                      <OwnershipChips
+                        owners={(
+                          (((row as any).owners) ?? []) as any[]
+                        ).filter((o: any, idx: number, arr: any[]) => {
+                          const anyPrimary = arr.some(
+                            (x: any) =>
+                              x.is_primary || x.primary
+                          );
+                          const isPrimary =
+                            o.is_primary ||
+                            o.primary ||
+                            (!anyPrimary && idx === 0);
+                          return !isPrimary;
+                        })}
+                      />
+                    </LV>
+                  </div>
+                </SectionCard>
+              ) : (
+                <OwnershipDetailsEditor
+                  row={row}
+                  setDraft={setDraft}
+                  ownershipLookups={ownershipLookups}
+                />
+              )}
 
               <SectionCard title="Notes & Tags">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -1423,7 +3233,12 @@ export default function AppAnimals() {
                       <textarea
                         className="h-24 w-full rounded-md bg-surface border border-hairline px-3 text-sm text-primary outline-none"
                         defaultValue={row.notes ?? ""}
-                        onChange={(e) => setDraft({ notes: (e.currentTarget as HTMLTextAreaElement).value })}
+                        onChange={(e) =>
+                          setDraft({
+                            notes: (e.currentTarget as HTMLTextAreaElement)
+                              .value,
+                          })
+                        }
                       />
                     )}
                   </LV>
@@ -1433,50 +3248,68 @@ export default function AppAnimals() {
           )}
 
           {activeTab === "cycle" && (
-            <CycleTab animal={row} api={api} onSaved={(dates) => setDraft({ cycleStartDates: dates })} />
+            <CycleTab
+              animal={row}
+              api={api}
+              onSaved={(dates) => setDraft({ cycleStartDates: dates })}
+            />
           )}
 
           {activeTab === "program" && (
-            <ProgramTab animal={row} api={api} onSaved={() => { /* no-op: flags are separate from core row */ }} />
+            <ProgramTab
+              animal={row}
+              api={api}
+              onSaved={() => { }}
+            />
           )}
 
-          {activeTab === "pairing" && <PairingTab animal={row} api={api} />}
+          {activeTab === "pairing" && (
+            <PairingTab animal={row} api={api} />
+          )}
 
           {activeTab === "audit" && (
             <div className="space-y-2">
               <SectionCard title="Audit">
                 <div className="grid grid-cols-2 gap-3 text-sm">
                   <div>
-                    <div className="text-xs text-secondary">Created</div>
+                    <div className="text-xs text-secondary">
+                      Created
+                    </div>
                     <div>{fmt(row.created_at) || "—"}</div>
                   </div>
                   <div>
-                    <div className="text-xs text-secondary">Last Updated</div>
+                    <div className="text-xs text-secondary">
+                      Last Updated
+                    </div>
                     <div>{fmt(row.updated_at) || "—"}</div>
                   </div>
                 </div>
               </SectionCard>
               <SectionCard title="Events">
-                <div className="text-sm text-secondary">Events will appear here.</div>
+                <div className="text-sm text-secondary">
+                  Events will appear here.
+                </div>
               </SectionCard>
             </div>
           )}
         </DetailsScaffold>
       ),
     }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [api, orgIdForBreeds]
+    [api, orgIdForBreeds, ownershipLookups, breedBrowseApi, syncOwners, photoWorking]
   );
 
-  /** ───────────── Create Animal modal ───────────── */
   const [createOpen, setCreateOpen] = React.useState(false);
   const [createWorking, setCreateWorking] = React.useState(false);
   const [createErr, setCreateErr] = React.useState<string | null>(null);
 
   const [newName, setNewName] = React.useState("");
-  const [newSpecies, setNewSpecies] = React.useState<"Dog" | "Cat" | "Horse">("Dog");
+  const [newSpecies, setNewSpecies] = React.useState<"Dog" | "Cat" | "Horse">(
+    "Dog"
+  );
   const [newSex, setNewSex] = React.useState<"Female" | "Male">("Female");
-  const [newStatus, setNewStatus] = React.useState<"Active" | "Breeding" | "Unavailable" | "Retired" | "Deceased" | "Prospect">("Active");
+  const [newStatus, setNewStatus] = React.useState<
+    "Active" | "Breeding" | "Unavailable" | "Retired" | "Deceased" | "Prospect"
+  >("Active");
   const [newDob, setNewDob] = React.useState("");
   const [newMicrochip, setNewMicrochip] = React.useState("");
   const [newBreed, setNewBreed] = React.useState<any>(null);
@@ -1500,7 +3333,8 @@ export default function AppAnimals() {
     setCreateErr(null);
   };
 
-  const canCreate = newName.trim().length > 1 && !!newDob && !!newSex && !!newSpecies;
+  const canCreate =
+    newName.trim().length > 1 && !!newDob && !!newSex && !!newSpecies;
 
   const doCreateAnimal = async () => {
     if (!canCreate) {
@@ -1520,12 +3354,14 @@ export default function AppAnimals() {
         birthDate: newDob ? new Date(newDob).toISOString() : null,
         microchip: newMicrochip.trim() || null,
         breed: newBreed?.name ?? null,
-        tags: tagsStr.split(",").map((s) => s.trim()).filter(Boolean),
+        tags: tagsStr
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean),
         notes: notes || null,
       };
 
       const created = await (api.animals as any).create?.(payload);
-      const row = animalToRow(created);
 
       let toSaveOwners = owners;
       if (toSaveOwners.length === 0) {
@@ -1534,19 +3370,40 @@ export default function AppAnimals() {
           toSaveOwners = [
             {
               partyType: "Organization",
-              organizationId: org.id,
+              organizationId: Number(org.id),
               contactId: null,
-              display_name: org.display_name,
+              display_name:
+                (org as any).display_name ||
+                (org as any).name ||
+                "My Organization",
               is_primary: true,
               percent: 100,
             },
           ];
         }
       }
-      try {
-        await (api.animals as any).putOwners?.(row.id, toSaveOwners);
-        (row as any).owners = toSaveOwners;
-      } catch {}
+
+      let ownerNameOverride: string | null = null;
+      if (toSaveOwners.length) {
+        const primary =
+          toSaveOwners.find((o) => o.is_primary) ?? toSaveOwners[0];
+        ownerNameOverride = primary?.display_name ?? null;
+      }
+
+      const animalId = Number((created as any).id);
+
+      if (toSaveOwners.length) {
+        try {
+          await syncOwners(animalId, toSaveOwners as OwnershipRow[]);
+        } catch {
+        }
+      }
+
+      const row = animalToRow({
+        ...created,
+        owners: toSaveOwners,
+        ownerName: ownerNameOverride ?? undefined,
+      });
 
       setRows((prev) => [row, ...prev]);
       resetCreateForm();
@@ -1558,12 +3415,26 @@ export default function AppAnimals() {
     }
   };
 
-  /** ─────────────────────────────────────────────────────────────────── */
   return (
     <div className="p-4 space-y-4">
+      {/* global hidden file input for photo uploads */}
+      <input
+        ref={photoInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={handlePhotoFileChange}
+      />
+
       <div className="relative">
-        <PageHeader title="Animals" subtitle="Manage your breeding males and females" />
-        <div className="absolute right-0 top-0 h-full flex items-center gap-2 pr-1" style={{ zIndex: 5, pointerEvents: "auto" }}>
+        <PageHeader
+          title="Animals"
+          subtitle="Manage your breeding males and females"
+        />
+        <div
+          className="absolute right-0 top-0 h-full flex items-center gap-2 pr-1"
+          style={{ zIndex: 5, pointerEvents: "auto" }}
+        >
           <Button size="sm" onClick={() => setCreateOpen(true)}>
             New Animal
           </Button>
@@ -1623,15 +3494,31 @@ export default function AppAnimals() {
                     title="Filters"
                     className="h-7 w-7 rounded-md flex items-center justify-center hover:bg-white/5 focus:outline-none"
                   >
-                    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-                      <path d="M3 5h18M7 12h10M10 19h4" strokeLinecap="round" />
+                    <svg
+                      viewBox="0 0 24 24"
+                      className="h-4 w-4"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      aria-hidden="true"
+                    >
+                      <path
+                        d="M3 5h18M7 12h10M10 19h4"
+                        strokeLinecap="round"
+                      />
                     </svg>
                   </button>
                 }
               />
             </div>
 
-            {filtersOpen && <FiltersRow filters={filters} onChange={(next) => setFilters(next)} schema={filterSchemaForFiltersRow} />}
+            {filtersOpen && (
+              <FiltersRow
+                filters={filters}
+                onChange={(next) => setFilters(next)}
+                schema={filterSchemaForFiltersRow}
+              />
+            )}
 
             <FilterChips
               filters={filters}
@@ -1648,12 +3535,18 @@ export default function AppAnimals() {
             />
 
             <table className="min-w-max w-full text-sm">
-              <TableHeader columns={visibleSafe} sorts={sorts} onToggleSort={onToggleSort} />
+              <TableHeader
+                columns={visibleSafe}
+                sorts={sorts}
+                onToggleSort={onToggleSort}
+              />
               <tbody>
                 {loading && (
                   <TableRow>
                     <TableCell colSpan={visibleSafe.length}>
-                      <div className="py-8 text-center text-sm text-secondary">Loading animals…</div>
+                      <div className="py-8 text-center text-sm text-secondary">
+                        Loading animals…
+                      </div>
                     </TableCell>
                   </TableRow>
                 )}
@@ -1661,7 +3554,9 @@ export default function AppAnimals() {
                 {!loading && error && (
                   <TableRow>
                     <TableCell colSpan={visibleSafe.length}>
-                      <div className="py-8 text-center text-sm text-red-600">Error: {error}</div>
+                      <div className="py-8 text-center text-sm text-red-600">
+                        Error: {error}
+                      </div>
                     </TableCell>
                   </TableRow>
                 )}
@@ -1669,7 +3564,9 @@ export default function AppAnimals() {
                 {!loading && !error && pageRows.length === 0 && (
                   <TableRow>
                     <TableCell colSpan={visibleSafe.length}>
-                      <div className="py-8 text-center text-sm text-secondary">No animals to display yet.</div>
+                      <div className="py-8 text-center text-sm text-secondary">
+                        No animals to display yet.
+                      </div>
                     </TableCell>
                   </TableRow>
                 )}
@@ -1723,7 +3620,10 @@ export default function AppAnimals() {
           <div className="relative w-full">
             <div className="mb-2 flex items-center justify-between">
               <div className="text-lg font-semibold">Create Animal</div>
-              <Button variant="ghost" onClick={() => setCreateOpen(false)}>
+              <Button
+                variant="ghost"
+                onClick={() => setCreateOpen(false)}
+              >
                 ✕
               </Button>
             </div>
@@ -1731,22 +3631,45 @@ export default function AppAnimals() {
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
                 <div className="mb-1 text-xs text-secondary">
-                  Name <span className="text-[hsl(var(--brand-orange))]">*</span>
+                  Name{" "}
+                  <span className="text-[hsl(var(--brand-orange))]">
+                    *
+                  </span>
                 </div>
-                <Input value={newName} onChange={(e) => setNewName((e.currentTarget as HTMLInputElement).value)} />
+                <Input
+                  value={newName}
+                  onChange={(e) =>
+                    setNewName(
+                      (e.currentTarget as HTMLInputElement).value
+                    )
+                  }
+                />
               </div>
 
               <div>
-                <div className="mb-1 text-xs text-secondary">Nickname</div>
-                <Input value={nickname} onChange={(e) => setNickname((e.currentTarget as HTMLInputElement).value)} />
+                <div className="mb-1 text-xs text-secondary">
+                  Nickname
+                </div>
+                <Input
+                  value={nickname}
+                  onChange={(e) =>
+                    setNickname(
+                      (e.currentTarget as HTMLInputElement).value
+                    )
+                  }
+                />
               </div>
 
               <div>
-                <div className="mb-1 text-xs text-secondary">Species *</div>
+                <div className="mb-1 text-xs text-secondary">
+                  Species *
+                </div>
                 <select
                   className="h-9 w-full rounded-md border border-hairline bg-surface px-2 text-sm text-primary"
                   value={newSpecies}
-                  onChange={(e) => setNewSpecies(e.currentTarget.value as any)}
+                  onChange={(e) =>
+                    setNewSpecies(e.currentTarget.value as any)
+                  }
                 >
                   <option>Dog</option>
                   <option>Cat</option>
@@ -1755,7 +3678,9 @@ export default function AppAnimals() {
               </div>
 
               <div className="sm:col-span-2">
-                <div className="mb-1 text-xs text-secondary">Breed</div>
+                <div className="mb-1 text-xs text-secondary">
+                  Breed
+                </div>
                 <div className="flex items-center gap-2">
                   <div className="flex-1">
                     <BreedCombo
@@ -1770,12 +3695,21 @@ export default function AppAnimals() {
                     variant="outline"
                     size="sm"
                     onClick={() => {
-                      const speciesEnum = (String(newSpecies).toUpperCase() as "DOG" | "CAT" | "HORSE");
+                      const speciesEnum = String(
+                        newSpecies
+                      ).toUpperCase() as "DOG" | "CAT" | "HORSE";
                       setCustomBreedSpecies(speciesEnum);
-                      setOnCustomBreedCreated(() => (created) => {
-                        setNewBreed({ id: created.id, name: created.name, species: newSpecies, source: "custom" } as any);
-                        setCustomBreedOpen(false);
-                      });
+                      setOnCustomBreedCreated(
+                        () => (created) => {
+                          setNewBreed({
+                            id: created.id,
+                            name: created.name,
+                            species: newSpecies,
+                            source: "custom",
+                          } as any);
+                          setCustomBreedOpen(false);
+                        }
+                      );
                       setCustomBreedOpen(true);
                     }}
                   >
@@ -1785,11 +3719,15 @@ export default function AppAnimals() {
               </div>
 
               <div>
-                <div className="mb-1 text-xs text-secondary">Sex *</div>
+                <div className="mb-1 text-xs text-secondary">
+                  Sex *
+                </div>
                 <select
                   className="h-9 w-full rounded-md border border-hairline bg-surface px-2 text-sm text-primary"
                   value={newSex}
-                  onChange={(e) => setNewSex(e.currentTarget.value as any)}
+                  onChange={(e) =>
+                    setNewSex(e.currentTarget.value as any)
+                  }
                 >
                   <option>Female</option>
                   <option>Male</option>
@@ -1797,55 +3735,100 @@ export default function AppAnimals() {
               </div>
 
               <div>
-                <div className="mb-1 text-xs text-secondary">Date of Birth *</div>
-                <Input type="date" value={newDob} onChange={(e) => setNewDob((e.currentTarget as HTMLInputElement).value)} />
+                <div className="mb-1 text-xs text-secondary">
+                  Date of Birth *
+                </div>
+                <Input
+                  type="date"
+                  value={newDob}
+                  onChange={(e) =>
+                    setNewDob(
+                      (e.currentTarget as HTMLInputElement).value
+                    )
+                  }
+                />
               </div>
 
               <div>
-                <div className="mb-1 text-xs text-secondary">Status</div>
+                <div className="mb-1 text-xs text-secondary">
+                  Status
+                </div>
                 <select
                   className="h-9 w-full rounded-md border border-hairline bg-surface px-2 text-sm text-primary"
                   value={newStatus}
-                  onChange={(e) => setNewStatus(e.currentTarget.value as any)}
+                  onChange={(e) =>
+                    setNewStatus(e.currentTarget.value as any)
+                  }
                 >
-                  {["Active", "Breeding", "Unavailable", "Retired", "Deceased", "Prospect"].map((s) => (
+                  {[
+                    "Active",
+                    "Breeding",
+                    "Unavailable",
+                    "Retired",
+                    "Deceased",
+                    "Prospect",
+                  ].map((s) => (
                     <option key={s}>{s}</option>
                   ))}
                 </select>
               </div>
 
               <div className="sm:col-span-2">
-                <div className="mb-1 text-xs text-secondary">Microchip #</div>
-                <Input value={newMicrochip} onChange={(e) => setNewMicrochip((e.currentTarget as HTMLInputElement).value)} />
+                <div className="mb-1 text-xs text-secondary">
+                  Microchip #
+                </div>
+                <Input
+                  value={newMicrochip}
+                  onChange={(e) =>
+                    setNewMicrochip(
+                      (e.currentTarget as HTMLInputElement).value
+                    )
+                  }
+                />
               </div>
 
               <div className="sm:col-span-2">
                 <OwnershipEditor
-                  api={{
-                    searchContacts: (q) => (api as any)?.lookups?.searchContacts?.(q) ?? Promise.resolve([]),
-                    searchOrganizations: (q) => (api as any)?.lookups?.searchOrganizations?.(q) ?? Promise.resolve([]),
-                  }}
+                  api={ownershipLookups}
                   value={owners}
-                  onChange={(rows) => setOwners(rows)}
+                  onChange={setOwners}
                 />
               </div>
 
               <div className="sm:col-span-2">
                 <div className="mb-1 text-xs text-secondary">Tags</div>
-                <Input placeholder="tag1, tag2" value={tagsStr} onChange={(e) => setTagsStr((e.currentTarget as HTMLInputElement).value)} />
+                <Input
+                  placeholder="tag1, tag2"
+                  value={tagsStr}
+                  onChange={(e) =>
+                    setTagsStr(
+                      (e.currentTarget as HTMLInputElement).value
+                    )
+                  }
+                />
               </div>
 
               <div className="sm:col-span-2">
-                <div className="mb-1 text-xs text-secondary">Notes</div>
+                <div className="mb-1 text-xs text-secondary">
+                  Notes
+                </div>
                 <textarea
                   className="h-24 w-full rounded-md border border-hairline bg-surface px-3 text-sm text-primary placeholder:text-secondary outline-none"
                   value={notes}
-                  onChange={(e) => setNotes((e.currentTarget as HTMLTextAreaElement).value)}
+                  onChange={(e) =>
+                    setNotes(
+                      (e.currentTarget as HTMLTextAreaElement).value
+                    )
+                  }
                   placeholder="Temperament, program notes, constraints"
                 />
               </div>
 
-              {createErr && <div className="sm:col-span-2 text-sm text-red-600">{createErr}</div>}
+              {createErr && (
+                <div className="sm:col-span-2 text-sm text-red-600">
+                  {createErr}
+                </div>
+              )}
 
               <div className="mt-2 flex items-center justify-end gap-2 sm:col-span-2">
                 <Button
@@ -1858,7 +3841,10 @@ export default function AppAnimals() {
                 >
                   Cancel
                 </Button>
-                <Button onClick={doCreateAnimal} disabled={!canCreate || createWorking}>
+                <Button
+                  onClick={doCreateAnimal}
+                  disabled={!canCreate || createWorking}
+                >
                   {createWorking ? "Saving…" : "Save"}
                 </Button>
               </div>

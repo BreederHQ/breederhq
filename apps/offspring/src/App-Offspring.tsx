@@ -2,9 +2,9 @@
 
 import WaitlistPage from "./pages/WaitlistPage";
 import OffspringPage from "./pages/OffspringPage";
-// App-Offspring.tsx (drop-in, compile-ready, aligned with shared DetailsHost/Table pattern)
 import * as React from "react";
 import ReactDOM from "react-dom";
+import { Trash2, Plus, X, ChevronDown } from "lucide-react";
 import {
   PageHeader,
   Card,
@@ -27,7 +27,13 @@ import {
 import { Overlay } from "@bhq/ui/overlay";
 import "@bhq/ui/styles/table.css";
 import { readTenantIdFast, resolveTenantId } from "@bhq/ui/utils/tenant";
-import { makeOffspringApi, OffspringRow, WaitlistEntry } from "./api";
+import {
+  makeOffspringApiClient,
+  OffspringApi,
+  OffspringRow,
+  WaitlistEntry,
+  AnimalLite,
+} from "./api";
 import { expectedMilestonesFromLocked } from "@bhq/ui/utils";
 import clsx from "clsx";
 
@@ -100,6 +106,19 @@ function cx(...p: Array<string | false | null | undefined>) {
 
 const labelClass = "text-xs text-secondary";
 
+const WHELPING_COLLAR_SWATCHES = [
+  { label: "Red", value: "Red", hex: "#ef4444" },
+  { label: "Orange", value: "Orange", hex: "#f97316" },
+  { label: "Yellow", value: "Yellow", hex: "#eab308" },
+  { label: "Green", value: "Green", hex: "#22c55e" },
+  { label: "Blue", value: "Blue", hex: "#3b82f6" },
+  { label: "Purple", value: "Purple", hex: "#a855f7" },
+  { label: "Pink", value: "Pink", hex: "#ec4899" },
+  { label: "Black", value: "Black", hex: "#111827" },
+  { label: "White", value: "White", hex: "#f9fafb" },
+];
+
+
 function SectionChipHeading({ icon, text }: { icon: React.ReactNode; text: string }) {
   return (
     <div className="sticky top-0 z-10 px-2 py-1.5 bg-black/40 backdrop-blur border-b border-white/10">
@@ -112,51 +131,70 @@ function SectionChipHeading({ icon, text }: { icon: React.ReactNode; text: strin
   );
 }
 
-type DetailsFieldSpec<T> = {
-  label: string;
-  key: keyof T | string;
-  view?: (row: T) => React.ReactNode;
-  editor?: string;
-};
-
-type DetailsSectionSpec<T> = {
-  title: string;
-  fields: DetailsFieldSpec<T>[];
-};
-
-type DetailsSpecRendererProps<T> = {
-  row: T;
-  mode: "view" | "edit";
-  setDraft: (draft: Partial<T>) => void;
-  sections: DetailsSectionSpec<T>[];
-};
-
 function DetailsSpecRenderer<T extends Record<string, any>>({
   row,
+  mode,
+  setDraft,
   sections,
 }: DetailsSpecRendererProps<T>) {
+  const isEdit = mode === "edit";
+
   return (
     <div className="space-y-4">
       {sections.map((section) => (
         <SectionCard key={section.title} title={section.title}>
           <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
             {section.fields.map((field) => {
+              const key = String(field.key);
               const raw =
                 typeof field.view === "function"
                   ? field.view(row)
-                  : (row as any)[field.key as keyof T];
+                  : (row as any)[key];
 
+              // Number editor, used for group counts
+              if (isEdit && field.editor === "number") {
+                const defaultVal =
+                  raw === null || raw === undefined || raw === "" || raw === "-"
+                    ? ""
+                    : String(raw);
+
+                return (
+                  <div key={key} className="flex flex-col gap-0.5">
+                    <div className="text-xs font-medium text-secondary">
+                      {field.label}
+                    </div>
+                    <Input
+                      type="number"
+                      defaultValue={defaultVal}
+                      onBlur={(e) => {
+                        const v = e.currentTarget.value;
+                        if (v === "") {
+                          setDraft({ [key]: null } as any);
+                          return;
+                        }
+                        const n = Number(v);
+                        setDraft({
+                          [key]: Number.isFinite(n) ? n : null,
+                        } as any);
+                      }}
+                      className="h-8 w-full bg-background text-sm"
+                    />
+                  </div>
+                );
+              }
+
+              // Default read only rendering
               const value =
                 raw === null || raw === undefined || raw === ""
                   ? "-"
                   : raw;
 
               return (
-                <div key={String(field.key)} className="flex flex-col gap-0.5">
+                <div key={key} className="flex flex-col gap-0.5">
                   <div className="text-xs font-medium text-secondary">
                     {field.label}
                   </div>
-                  <div>{value}</div>
+                  <div className="text-sm text-foreground/90">{value}</div>
                 </div>
               );
             })}
@@ -236,7 +274,7 @@ function AttachmentsSection({
   mode,
 }: {
   group: OffspringRow;
-  api: ReturnType<typeof makeOffspringApi> | null;
+  OffspringApi
   mode: "media" | "health" | "registration";
 }) {
   const [items, setItems] = React.useState<any[]>([]);
@@ -476,6 +514,17 @@ function setParamAndNotify(idParam: "groupId" | "waitlistId", id: number) {
   }
 }
 
+
+type BuyerLink = {
+  id: number;
+  contactId: number | null;
+  organizationId: number | null;
+  waitlistEntryId: number | null;
+  contactLabel: string | null;
+  orgLabel: string | null;
+};
+
+
 /* ───────────────────────── Groups table ───────────────────────── */
 type GroupTableRow = {
   id: number;
@@ -502,6 +551,7 @@ type GroupTableRow = {
 
   // Optional group level tags, from backend if present
   tags?: string[] | null;
+  buyers?: BuyerLink[];
 
   // Counts
   countLive?: number | null;
@@ -633,24 +683,24 @@ function computeExpectedForPlanLite(plan: { species?: string | null; lockedCycle
   const expectedWeanedDate =
     onlyDay(
       preview.weaning_expected ??
-        preview.weaned_expected ??
-        preview.puppy_care_likely?.[0],
+      preview.weaned_expected ??
+      preview.puppy_care_likely?.[0],
     ) || null;
 
   const expectedPlacementStartDate =
     onlyDay(
       preview.placement_expected ??
-        preview.placement_start_expected ??
-        preview.placement_start,
+      preview.placement_start_expected ??
+      preview.placement_start,
     ) || null;
 
   const expectedPlacementCompletedDate =
     onlyDay(
       preview.placement_extended_end ??
-        preview.placement_extended_end_expected ??
-        preview.placement_expected_end ??
-        preview.placement_completed_expected ??
-        preview.placement_extended_full?.[1],
+      preview.placement_extended_end_expected ??
+      preview.placement_expected_end ??
+      preview.placement_completed_expected ??
+      preview.placement_extended_full?.[1],
     ) || null;
 
   return {
@@ -709,6 +759,32 @@ function mapDetailToTableRow(d: OffspringRow): GroupTableRow {
 
   // Aggregate metrics for summary chips
   const metrics = computeGroupMetrics(d as any);
+
+  // Normalize buyers coming from the API
+  const buyersWire = (d as any).BuyerLinks || (d as any).buyers || [];
+
+  const buyers: BuyerLink[] = (Array.isArray(buyersWire) ? buyersWire : []).map((b: any): BuyerLink => ({
+    id: b.id,
+    contactId: b.contactId ?? null,
+    organizationId: b.organizationId ?? null,
+    waitlistEntryId: b.waitlistEntryId ?? null,
+    contactLabel:
+      b.contactLabel ??
+      b.contact?.displayName ??
+      b.contact?.display_name ??
+      b.contact?.name ??
+      b.contact?.email ??
+      b.contact?.phone ??
+      null,
+    orgLabel:
+      b.orgLabel ??
+      b.organization?.name ??
+      b.organization?.displayName ??
+      b.organization?.email ??
+      b.organization?.phone ??
+      null,
+  }));
+
 
   const row: GroupTableRow = {
     id: d.id,
@@ -769,9 +845,45 @@ function mapDetailToTableRow(d: OffspringRow): GroupTableRow {
       (d as any).updated_at ??
       (d as any).updated ??
       null,
+    buyers,
   };
 
   return row;
+}
+
+function normalizeGroupRowFromDetail(input: any): OffspringRow {
+  if (!input) return input as OffspringRow;
+
+  const row: any = { ...input };
+
+  const rawLinks: any[] =
+    Array.isArray(row.BuyerLinks)
+      ? row.BuyerLinks
+      : Array.isArray(row.buyerLinks)
+        ? row.buyerLinks
+        : Array.isArray(row.buyers)
+          ? row.buyers
+          : [];
+
+  const buyers = rawLinks.map((b: any) => ({
+    id: b.id,
+    groupId: b.groupId ?? row.id,
+    contactId: b.contactId ?? b.contact?.id ?? null,
+    organizationId: b.organizationId ?? b.organization?.id ?? null,
+    waitlistEntryId: b.waitlistEntryId ?? b.waitlistEntry?.id ?? null,
+    contactLabel:
+      b.contactLabel ??
+      b.contact?.display_name ??
+      null,
+    orgLabel:
+      b.orgLabel ??
+      b.organization?.name ??
+      null,
+  }));
+
+  row.buyers = buyers;
+
+  return row as OffspringRow;
 }
 
 function GroupSummaryBand({ row }: { row: GroupTableRow }) {
@@ -920,104 +1032,6 @@ const groupSections = (mode: "view" | "edit") => [
   },
 ];
 
-// /* ───────────────────────── Waitlist table ───────────────────────── */
-
-// type WaitlistRowWire = WaitlistEntry;
-
-// type WaitlistTableRow = {
-//   id: number;
-//   contactLabel?: string | null;
-//   orgLabel?: string | null;
-//   speciesPref?: string | null;
-//   breedPrefText?: string | null;
-//   damPrefName?: string | null;
-//   sirePrefName?: string | null;
-//   depositPaidAt?: string | null;
-//   status?: string | null;
-//   priority?: number | null;
-//   skipCount?: number | null;
-//   lastActivityAt?: string | null;
-//   notes?: string | null;
-// };
-
-// const WAITLIST_COLS: Array<{ key: keyof WaitlistTableRow & string; label: string; default?: boolean }> = [
-//   { key: "contactLabel", label: "Contact", default: true },
-//   { key: "orgLabel", label: "Org", default: true },
-//   { key: "speciesPref", label: "Species", default: true },
-//   { key: "breedPrefText", label: "Breeds", default: true },
-//   { key: "damPrefName", label: "Dam", default: true },
-//   { key: "sirePrefName", label: "Sire", default: true },
-//   { key: "depositPaidAt", label: "Deposit Paid On", default: true },
-//   { key: "status", label: "Status", default: false },
-//   { key: "priority", label: "Priority", default: false },
-//   { key: "skipCount", label: "Skips", default: false },
-//   { key: "lastActivityAt", label: "Activity", default: false },
-// ];
-
-// const WAITLIST_STORAGE_KEY = "bhq_waitlist_cols_v2";
-
-// function mapWaitlistToTableRow(w: any): WaitlistTableRow {
-//   const contact =
-//     w.contact ||
-//     (w.contactId != null
-//       ? { id: w.contactId, display_name: w.contactName, first_name: w.firstName, last_name: w.lastName }
-//       : null);
-//   const org = w.organization || (w.organizationId != null ? { id: w.organizationId, name: w.organizationName } : null);
-//   const dam = w.damPref || (w.damPrefId != null ? { id: w.damPrefId, name: w.damPrefName } : null);
-//   const sire = w.sirePref || (w.sirePrefId != null ? { id: w.sirePrefId, name: w.sirePrefName } : null);
-
-//   const contactLabel =
-//     contact?.display_name ||
-//     `${(contact?.first_name ?? "").trim()} ${(contact?.last_name ?? "").trim()}`.trim() ||
-//     (contact ? `#${contact.id}` : null);
-
-//   const orgLabel = org?.name ?? (org ? `#${org.id}` : null);
-
-//   const breedPrefText =
-//     w.breedPrefText ||
-//     (Array.isArray(w.breedPrefs) ? w.breedPrefs.filter(Boolean).join(", ") : null) ||
-//     null;
-
-//   return {
-//     id: Number(w.id),
-//     contactLabel: contactLabel ?? null,
-//     orgLabel: orgLabel ?? null,
-//     speciesPref: w.speciesPref ?? null,
-//     breedPrefText,
-//     damPrefName: dam?.name ?? null,
-//     sirePrefName: sire?.name ?? null,
-//     depositPaidAt: w.depositPaidAt ?? null,
-//     status: w.status ?? null,
-//     priority: w.priority ?? null,
-//     skipCount: w.skipCount ?? null,
-//     lastActivityAt: w.lastActivityAt ?? w.updatedAt ?? w.createdAt ?? null,
-//     notes: w.notes ?? null,
-//   };
-// }
-
-// const waitlistSections = (mode: "view" | "edit") => [
-//   {
-//     title: "Overview",
-//     fields: [
-//       { label: "Contact", key: "contactLabel", view: (r: WaitlistTableRow) => r.contactLabel || "-" },
-//       { label: "Organization", key: "orgLabel", view: (r: WaitlistTableRow) => r.orgLabel || "-" },
-//       { label: "Species", key: "speciesPref", view: (r: WaitlistTableRow) => r.speciesPref || "-" },
-//       { label: "Breeds", key: "breedPrefText", view: (r: WaitlistTableRow) => r.breedPrefText || "-" },
-//       { label: "Dam Pref", key: "damPrefName", view: (r: WaitlistTableRow) => r.damPrefName || "-" },
-//       { label: "Sire Pref", key: "sirePrefName", view: (r: WaitlistTableRow) => r.sirePrefName || "-" },
-//       { label: "Deposit Paid", key: "depositPaidAt", editor: "date", view: (r: WaitlistTableRow) => fmtDate(r.depositPaidAt) || "-" },
-//       { label: "Status", key: "status", editor: "text", view: (r: WaitlistTableRow) => r.status || "-" },
-//       { label: "Priority", key: "priority", editor: "number", view: (r: WaitlistTableRow) => String(r.priority ?? "") || "-" },
-//       { label: "Skips", key: "skipCount", view: (r: WaitlistTableRow) => String(r.skipCount ?? 0) },
-//       { label: "Activity", key: "lastActivityAt", view: (r: WaitlistTableRow) => fmtDate(r.lastActivityAt) || "-" },
-//     ],
-//   },
-//   {
-//     title: "Notes",
-//     fields: [{ label: "Notes", key: "notes", editor: "textarea", view: (r: WaitlistTableRow) => r.notes || "-" }],
-//   },
-// ];
-
 /* ───────────────────────── Directory/Animals helpers ───────────────────────── */
 type SpeciesWire = "DOG" | "CAT" | "HORSE";
 type SpeciesUi = "Dog" | "Cat" | "Horse";
@@ -1025,26 +1039,111 @@ const SPECIES_UI_ALL: SpeciesUi[] = ["Dog", "Cat", "Horse"];
 const toWireSpecies = (s: SpeciesUi | ""): SpeciesWire | undefined =>
   s === "Dog" ? "DOG" : s === "Cat" ? "CAT" : s === "Horse" ? "HORSE" : undefined;
 
-type DirectoryHit =
-  | { kind: "contact"; id: number; label: string; sub?: string }
-  | { kind: "org"; id: number; label: string; sub?: string };
+async function searchDirectory(
+  api: OffspringApi | null,
+  q: string,
+): Promise<DirectoryHit[]> {
+  const term = q.trim();
+  if (!api || !term) return [];
 
-async function searchDirectory(api: ReturnType<typeof makeOffspringApi> | null, q: string): Promise<DirectoryHit[]> {
-  if (!api || !q.trim()) return [];
-  const [cRes, oRes] = await Promise.allSettled([api.contacts.list({ q, limit: 25 }), api.organizations.list({ q, limit: 25 })]);
-
+  const termLower = term.toLowerCase();
+  const anyApi: any = api;
   const hits: DirectoryHit[] = [];
-  if (cRes.status === "fulfilled" && cRes.value) {
-    const items: any[] = Array.isArray(cRes.value) ? cRes.value : cRes.value.items ?? [];
-    for (const c of items) {
-      const name = c.display_name || `${c.first_name ?? ""} ${c.last_name ?? ""}`.trim() || "(No name)";
-      hits.push({ kind: "contact", id: Number(c.id), label: name, sub: c.email || c.phoneE164 || "" });
+
+  // Contacts
+  try {
+    let contactsRes: any;
+
+    if (anyApi.contacts && typeof anyApi.contacts.list === "function") {
+      // Use typed client if present
+      contactsRes = await anyApi.contacts.list({ q: term, limit: 50 });
+    } else {
+      // Fallback to platform contacts endpoint
+      contactsRes = await api.raw.get<any>("/contacts", {
+        params: { q: term, limit: 50 },
+      });
     }
+
+    const items: any[] = Array.isArray(contactsRes)
+      ? contactsRes
+      : contactsRes?.items ?? [];
+
+    for (const c of items) {
+      const label =
+        c.display_name ||
+        `${c.first_name ?? ""} ${c.last_name ?? ""}`.trim() ||
+        "(Contact)";
+      const email = c.email ?? "";
+      const phone = c.phoneE164 || c.phone || "";
+      const haystack = `${label} ${email} ${phone}`.toLowerCase();
+
+      // Client side filter so results actually match what you typed
+      if (!haystack.includes(termLower)) continue;
+
+      hits.push({
+        kind: "contact",
+        id: Number(c.id),
+        label,
+        sub: email || phone || "",
+        email,
+        phone,
+      });
+    }
+  } catch (e) {
+    console.error("Directory contact search failed", e);
   }
-  if (oRes.status === "fulfilled" && oRes.value) {
-    const items: any[] = Array.isArray(oRes.value) ? oRes.value : oRes.value.items ?? [];
-    for (const o of items) hits.push({ kind: "org", id: Number(o.id), label: o.name, sub: o.website || o.email || "" });
+
+  // Organizations
+  try {
+    let orgsRes: any;
+
+    if (anyApi.organizations && typeof anyApi.organizations.list === "function") {
+      orgsRes = await anyApi.organizations.list({ q: term, limit: 50 });
+    } else {
+      orgsRes = await api.raw.get<any>("/organizations", {
+        params: { q: term, limit: 50 },
+      });
+    }
+
+    const items: any[] = Array.isArray(orgsRes)
+      ? orgsRes
+      : orgsRes?.items ?? [];
+
+    for (const o of items) {
+      const label = o.name || "(Organization)";
+      const email = o.email ?? "";
+      const phone = o.phone ?? "";
+      const haystack = `${label} ${email} ${phone}`.toLowerCase();
+
+      if (!haystack.includes(termLower)) continue;
+
+      hits.push({
+        kind: "org",
+        id: Number(o.id),
+        label,
+        sub: email || phone || "",
+      });
+    }
+  } catch (e) {
+    console.error("Directory organization search failed", e);
   }
+
+  // Optional: keep results with better matches first
+  hits.sort((a, b) => {
+    const aLabel = a.label.toLowerCase();
+    const bLabel = b.label.toLowerCase();
+    const aIndex = aLabel.indexOf(termLower);
+    const bIndex = bLabel.indexOf(termLower);
+
+    if (aIndex !== bIndex) {
+      if (aIndex === -1) return 1;
+      if (bIndex === -1) return -1;
+      return aIndex - bIndex;
+    }
+
+    return aLabel.localeCompare(bLabel);
+  });
+
   return hits;
 }
 
@@ -1079,9 +1178,21 @@ async function fetchCommittedPlans(api: ReturnType<typeof makeOffspringApi> | nu
   return items.map((p: any) => ({ id: p.id, code: p.code ?? null, name: p.name, species: p.species, breedText: p.breedText ?? null }));
 }
 
-/* ───────────────────────── Dam/Sire search hooks ───────────────────────── */
-function useAnimalSearch(api: ReturnType<typeof makeOffspringApi> | null, query: string, species: SpeciesWire | undefined, sex: "FEMALE" | "MALE") {
+type ParentResultsProps = {
+  api: OffspringApi | null;
+  query: string;
+  species?: SpeciesWire;
+  onPick: (a: AnimalLite) => void;
+};
+
+function useAnimalSearch(
+  api: OffspringApi | null,
+  query: string,
+  species: SpeciesWire | undefined,
+  sex: "FEMALE" | "MALE",
+) {
   const [hits, setHits] = React.useState<AnimalLite[]>([]);
+
   React.useEffect(() => {
     let alive = true;
     (async () => {
@@ -1097,26 +1208,33 @@ function useAnimalSearch(api: ReturnType<typeof makeOffspringApi> | null, query:
         species: String(a.species ?? "DOG").toUpperCase() as SpeciesWire,
         sex: String(a.sex ?? "FEMALE").toUpperCase() as "FEMALE" | "MALE",
       }));
+
       const strict = mapped.filter((a) => a.sex === sex);
-      strict.sort(
-        (a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" }) || a.id - b.id
-      );
       if (alive) setHits(strict);
     })();
+
     return () => {
       alive = false;
     };
   }, [api, query, species, sex]);
+
   return hits;
 }
 
-function DamResults({ api, query, species, onPick }: { api: ReturnType<typeof makeOffspringApi> | null; query: string; species?: SpeciesWire; onPick: (a: AnimalLite) => void }) {
+function DamResults({ api, query, species, onPick }: ParentResultsProps) {
   const hits = useAnimalSearch(api, query, species, "FEMALE");
-  if (!hits.length) return <div className="px-2 py-2 text-sm text-secondary">No females found</div>;
+  if (!hits.length) {
+    return <div className="px-2 py-2 text-sm text-secondary">No females found</div>;
+  }
   return (
     <>
       {hits.map((a) => (
-        <button key={a.id} type="button" onClick={() => onPick(a)} className="w-full text-left px-2 py-1 hover:bg-white/5">
+        <button
+          key={a.id}
+          type="button"
+          onClick={() => onPick(a)}
+          className="w-full text-left px-2 py-1 hover:bg-white/5"
+        >
           {a.name}
         </button>
       ))}
@@ -1124,13 +1242,20 @@ function DamResults({ api, query, species, onPick }: { api: ReturnType<typeof ma
   );
 }
 
-function SireResults({ api, query, species, onPick }: { api: ReturnType<typeof makeOffspringApi> | null; query: string; species?: SpeciesWire; onPick: (a: AnimalLite) => void }) {
+function SireResults({ api, query, species, onPick }: ParentResultsProps) {
   const hits = useAnimalSearch(api, query, species, "MALE");
-  if (!hits.length) return <div className="px-2 py-2 text-sm text-secondary">No males found</div>;
+  if (!hits.length) {
+    return <div className="px-2 py-2 text-sm text-secondary">No males found</div>;
+  }
   return (
     <>
       {hits.map((a) => (
-        <button key={a.id} type="button" onClick={() => onPick(a)} className="w-full text-left px-2 py-1 hover:bg-white/5">
+        <button
+          key={a.id}
+          type="button"
+          onClick={() => onPick(a)}
+          className="w-full text-left px-2 py-1 hover:bg-white/5"
+        >
           {a.name}
         </button>
       ))}
@@ -1189,8 +1314,18 @@ function conflictExistingIdFromError(e: any): number | null {
   return null;
 }
 
+function prettyStatus(value: string | null | undefined): string {
+  if (!value) return "-";
+  // Normalize enum-style codes and plain strings
+  const normalized = String(value)
+    .replace(/_/g, " ")
+    .toLowerCase()
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+  return normalized;
+}
+
 /* ───────────────────────── Create Group form ───────────────────────── */
-const MODAL_Z = 2147485000;
+const MODAL_Z = 9007199254740000;
 
 function CreateGroupForm({
   api,
@@ -1198,7 +1333,7 @@ function CreateGroupForm({
   onCreated,
   onCancel,
 }: {
-  api: ReturnType<typeof makeOffspringApi> | null;
+  OffspringApi
   tenantId: number | null;
   onCreated: () => void;
   onCancel: () => void;
@@ -1389,7 +1524,7 @@ function AddToWaitlistModal({
   onCreated,
   allowedSpecies = SPECIES_UI_ALL,
 }: {
-  api: ReturnType<typeof makeOffspringApi> | null;
+  OffspringApi
   tenantId: number | null;
   open: boolean;
   onClose: () => void;
@@ -1438,6 +1573,133 @@ function AddToWaitlistModal({
   }, [q, link, tenantId, api]);
 
   const [quickOpen, setQuickOpen] = React.useState<null | "contact" | "org">(null);
+  // Offspring in this group, prefer Offspring from offspring table
+  const animalsInGroup = React.useMemo(
+    () => {
+      const g: any = group as any;
+      if (!g) return [];
+
+      if (Array.isArray(g.Offspring) && g.Offspring.length > 0) {
+        return g.Offspring as any[];
+      }
+
+      if (Array.isArray(g.Animals)) {
+        return g.Animals as any[];
+      }
+
+      return [];
+    },
+    [group],
+  );
+
+  const [assigningOffspringId, setAssigningOffspringId] =
+    React.useState<number | null>(null);
+
+  // Find the currently assigned offspring for this buyer
+  const findCurrentAssignmentForBuyer = React.useCallback(
+    (b: any) => {
+      return animalsInGroup.find((a: any) => {
+        const contactMatch =
+          b.contactId &&
+          a.buyerContact &&
+          a.buyerContact.id === b.contactId;
+
+        const orgMatch =
+          b.organizationId &&
+          a.buyerOrg &&
+          a.buyerOrg.id === b.organizationId;
+
+        const waitlistMatch =
+          b.waitlistEntryId &&
+          a.waitlistEntry &&
+          a.waitlistEntry.id === b.waitlistEntryId;
+
+        return contactMatch || orgMatch || waitlistMatch;
+      });
+    },
+    [animalsInGroup],
+  );
+
+  // Only show unassigned offspring plus the one currently assigned
+  const getAssignableOffspringForBuyer = React.useCallback(
+    (b: any) => {
+      const current = findCurrentAssignmentForBuyer(b);
+
+      return animalsInGroup.filter((a: any) => {
+        const assigned =
+          a.buyerContact || a.buyerOrg || a.waitlistEntry;
+
+        if (current && a.id === current.id) {
+          return true;
+        }
+
+        return !assigned;
+      });
+    },
+    [animalsInGroup, findCurrentAssignmentForBuyer],
+  );
+
+  const handleAssignOffspring = React.useCallback(
+    async (buyer: any, value: string) => {
+      if (!group) return;
+
+      const offspringId = value ? Number(value) : null;
+      setAssigningOffspringId(offspringId);
+
+      try {
+        const nextAnimals = animalsInGroup.map((a: any) => {
+          const belongsToBuyer =
+            (buyer.contactId &&
+              a.buyerContact &&
+              a.buyerContact.id === buyer.contactId) ||
+            (buyer.organizationId &&
+              a.buyerOrg &&
+              a.buyerOrg.id === buyer.organizationId) ||
+            (buyer.waitlistEntryId &&
+              a.waitlistEntry &&
+              a.waitlistEntry.id === buyer.waitlistEntryId);
+
+          if (belongsToBuyer && offspringId && a.id !== offspringId) {
+            return {
+              ...a,
+              buyerContact: null,
+              buyerOrg: null,
+              waitlistEntry: null,
+            };
+          }
+
+          if (offspringId && a.id === offspringId) {
+            return {
+              ...a,
+              buyerContact: buyer.contactId
+                ? { id: buyer.contactId }
+                : null,
+              buyerOrg: buyer.organizationId
+                ? { id: buyer.organizationId }
+                : null,
+              waitlistEntry: buyer.waitlistEntryId
+                ? { id: buyer.waitlistEntryId }
+                : null,
+            };
+          }
+
+          return a;
+        });
+
+        const nextGroup = {
+          ...group,
+          Animals: nextAnimals,
+          Offspring: nextAnimals,
+        };
+
+        onGroupUpdate(nextGroup);
+      } finally {
+        setAssigningOffspringId(null);
+      }
+    },
+    [animalsInGroup, group, onGroupUpdate],
+  );
+
   const [qc, setQc] = React.useState({ firstName: "", lastName: "", email: "", phone: "" });
   const [qo, setQo] = React.useState({ name: "", website: "" });
   const [creating, setCreating] = React.useState(false);
@@ -1691,15 +1953,21 @@ function AddToWaitlistModal({
       <div
         className="fixed inset-0"
         style={{ zIndex: MODAL_Z + 1, isolation: "isolate" }}
-        onMouseDown={handleOutsideMouseDown}
+        onMouseDownCapture={(e) => {
+          e.stopPropagation();
+        }}
+        onPointerDownCapture={(e) => {
+          e.stopPropagation();
+        }}
+        onClickCapture={(e) => {
+          e.stopPropagation();
+        }}
       >
         <div className="absolute inset-0 bg-black/50" />
         <div className="absolute inset-0 flex items-center justify-center">
           <div
-            ref={panelRef}
             className="pointer-events-auto overflow-hidden"
-            style={{ width: 820, maxWidth: "95vw", height: 520, maxHeight: "82vh" }}
-            data-buyer
+            style={{ width: 820, maxWidth: "95vw", maxHeight: "82vh" }}
           >
             <Card className="h-full">
               <div className="h-full p-4 space-y-4 overflow-y-auto">
@@ -1725,11 +1993,12 @@ function AddToWaitlistModal({
                         if (link) {
                           clearLinkAndSearch();
                           setQ(val);
-                        } else setQ(val);
+                        } else {
+                          setQ(val);
+                        }
                       }}
-                      placeholder="Type a name, email, phone, or organization..."
+                      placeholder="Type a name, email, phone, or organization."
                       widthPx={720}
-                      autoFocus={!link}
                     />
                   </div>
 
@@ -2007,132 +2276,681 @@ function AddToWaitlistModal({
   );
 }
 
+type AddOffspringForGroupOverlayProps = {
+  api: OffspringApi | null;
+  tenantId: number | null;
+  group: OffspringRow | null;
+  open: boolean;
+  onClose: () => void;
+  onCreated?: () => void;
+};
+
+function AddOffspringForGroupOverlay(props: AddOffspringForGroupOverlayProps) {
+  const { api, tenantId, group, open, onClose, onCreated } = props;
+
+  const [name, setName] = React.useState("");
+  const [sex, setSex] = React.useState<"MALE" | "FEMALE" | "UNKNOWN">("UNKNOWN");
+  const [status, setStatus] = React.useState<"NEWBORN" | "WEANED" | "PLACED" | "DECEASED">("NEWBORN");
+  const [birthWeightOz, setBirthWeightOz] = React.useState<string>("");
+  const [price, setPrice] = React.useState<string>("");
+  const [notes, setNotes] = React.useState("");
+
+  // new: whelping collar color
+  const [whelpingCollarColor, setWhelpingCollarColor] = React.useState<string | null>(null);
+  const [showWhelpPalette, setShowWhelpPalette] = React.useState(false);
+
+  const [submitting, setSubmitting] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+
+  const labelClass = "block text-xs font-medium text-muted-foreground mb-1";
+  const inputClass =
+    "h-8 w-full rounded border border-[var(--hairline,#222)] bg-[var(--surface-subtle,#050505)] px-2 text-xs text-foreground";
+
+  const paletteRef = React.useRef<HTMLDivElement | null>(null);
+
+  const reset = React.useCallback(() => {
+    setName("");
+    setSex("UNKNOWN");
+    setStatus("NEWBORN");
+    setBirthWeightOz("");
+    setPrice("");
+    setNotes("");
+    setWhelpingCollarColor(null);
+    setShowWhelpPalette(false);
+    setSubmitting(false);
+    setError(null);
+  }, []);
+
+  // Reset fields whenever the overlay closes
+  React.useEffect(() => {
+    if (!open) {
+      reset();
+    }
+  }, [open, reset]);
+
+  // Escape key closes overlay, body scroll lock while open
+  React.useEffect(() => {
+    if (!open) return;
+
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    const handleKeyDown = (evt: KeyboardEvent) => {
+      if (evt.key === "Escape") {
+        evt.preventDefault();
+        if (!submitting) {
+          onClose();
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [open, onClose, submitting]);
+
+  // Click outside the palette closes it
+  React.useEffect(() => {
+    if (!showWhelpPalette) return;
+
+    const handler = (evt: MouseEvent) => {
+      const node = paletteRef.current;
+      if (!node) return;
+      if (!node.contains(evt.target as Node)) {
+        setShowWhelpPalette(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [showWhelpPalette]);
+
+  const whelpingCollarLabel =
+    whelpingCollarColor && String(whelpingCollarColor).trim().length
+      ? String(whelpingCollarColor)
+      : "Not set";
+
+  const whelpingCollarColorHex = (() => {
+    const v = (whelpingCollarColor ?? "").toString().toLowerCase();
+    const match = WHELPING_COLLAR_SWATCHES.find((opt) => {
+      const val = opt.value.toLowerCase();
+      const label = opt.label.toLowerCase();
+      return val === v || label === v;
+    });
+    return match?.hex ?? null;
+  })();
+
+  const handleSubmit = async (evt: React.FormEvent) => {
+    evt.preventDefault();
+    if (!api || !group) return;
+
+    const effectiveTenantId = tenantId ?? readTenantIdFast();
+    if (!effectiveTenantId) {
+      setError("Missing tenant id.");
+      return;
+    }
+
+    const anyApi: any = api;
+    const individuals = anyApi?.individuals;
+    if (!individuals || typeof individuals.create !== "function") {
+      setError("Offspring individuals API is not available.");
+      return;
+    }
+
+    const trimmedName = name.trim();
+    if (!trimmedName) {
+      setError("Name is required.");
+      return;
+    }
+
+    const parsedBirthWeight =
+      birthWeightOz.trim() === ""
+        ? null
+        : Number.isNaN(Number(birthWeightOz))
+          ? null
+          : Number(birthWeightOz);
+
+    const parsedPrice =
+      price.trim() === ""
+        ? null
+        : Number.isNaN(Number(price))
+          ? null
+          : Number(price);
+
+    const sexWire: "MALE" | "FEMALE" | "UNKNOWN" =
+      sex === "MALE" || sex === "FEMALE" ? sex : "UNKNOWN";
+
+    const statusWire = status ?? "NEWBORN";
+
+    const speciesFromGroup = (group as any)?.species ?? null;
+    const breedFromGroup =
+      (group as any)?.breed ??
+      (group as any)?.breedText ??
+      null;
+
+    const groupId =
+      (group as any)?.id ??
+      (group as any)?.groupId ??
+      null;
+
+    if (groupId == null) {
+      setError("Group id is missing for this offspring.");
+      return;
+    }
+
+    const collarValue =
+      whelpingCollarColor && whelpingCollarColor.trim().length
+        ? whelpingCollarColor.trim()
+        : null;
+
+    const payload: any = {
+      name: trimmedName,
+      sex: sexWire,
+      status: statusWire,
+      groupId,
+      species: speciesFromGroup,
+      breed: breedFromGroup,
+      birthWeightOz: parsedBirthWeight,
+      price: parsedPrice,
+      notes: notes.trim() || null,
+      whelpingCollarColor: collarValue,
+    };
+
+    try {
+      setSubmitting(true);
+      setError(null);
+
+      await individuals.create(payload);
+
+      if (onCreated) {
+        onCreated();
+      }
+
+      reset();
+      onClose();
+    } catch (e: any) {
+      console.error("[Offspring] failed to create individual from group", e);
+      setError(String(e?.message || e) || "Create failed");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // Closed or no group, render nothing
+  if (!open || !group) return null;
+
+  // Modal content
+  const modal = (
+    <div
+      className="fixed inset-0"
+      style={{ zIndex: MODAL_Z + 10, isolation: "isolate" }}
+      onClick={() => {
+        if (!submitting) {
+          onClose();
+        }
+      }}
+    >
+      {/* Backdrop */}
+      <div className="absolute inset-0 bg-black/50" />
+
+      {/* Centered card */}
+      <div className="absolute inset-0 flex items-center justify-center">
+        <div
+          className="w-full max-w-xl px-4 sm:px-0 pointer-events-auto"
+          onClick={(e) => {
+            // keep clicks inside the card from bubbling up and closing the overlay
+            e.stopPropagation();
+          }}
+        >
+          <Card className="h-full">
+            <form className="flex h-full flex-col" onSubmit={handleSubmit}>
+              <div className="border-b border-[var(--hairline,#222)] px-4 py-2">
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      Add offspring
+                    </div>
+                    <div className="text-sm text-muted-foreground">
+                      Parent group: {(group as any).identifier || `Group #${(group as any).id}`}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      size="xs"
+                      variant="ghost"
+                      onClick={() => {
+                        if (!submitting) {
+                          onClose();
+                        }
+                      }}
+                      disabled={submitting}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      type="submit"
+                      size="xs"
+                      disabled={submitting}
+                    >
+                      {submitting ? "Saving…" : "Save offspring"}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex-1 overflow-y-auto px-4 py-3 space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {/* Name */}
+                  <div>
+                    <span className={labelClass}>Name</span>
+                    <input
+                      className={inputClass}
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      autoFocus
+                    />
+                  </div>
+
+                  {/* Sex */}
+                  <div>
+                    <span className={labelClass}>Sex</span>
+                    <select
+                      className={inputClass}
+                      value={sex}
+                      onChange={(e) =>
+                        setSex(e.target.value as "MALE" | "FEMALE" | "UNKNOWN")
+                      }
+                    >
+                      <option value="UNKNOWN">Unknown</option>
+                      <option value="MALE">Male</option>
+                      <option value="FEMALE">Female</option>
+                    </select>
+                  </div>
+
+                  {/* Status */}
+                  <div>
+                    <span className={labelClass}>Status</span>
+                    <select
+                      className={inputClass}
+                      value={status}
+                      onChange={(e) =>
+                        setStatus(
+                          e.target.value as "NEWBORN" | "WEANED" | "PLACED" | "DECEASED",
+                        )
+                      }
+                    >
+                      <option value="NEWBORN">Newborn</option>
+                      <option value="WEANED">Weaned</option>
+                      <option value="PLACED">Placed</option>
+                      <option value="DECEASED">Deceased</option>
+                    </select>
+                  </div>
+
+                  {/* Whelping collar color */}
+                  <div>
+                    <span className={labelClass}>Collar Color</span>
+                    <div className="relative">
+                      <button
+                        type="button"
+                        className={cx(
+                          inputClass,
+                          "flex items-center justify-between text-left cursor-pointer",
+                        )}
+                        onClick={() => setShowWhelpPalette((prev) => !prev)}
+                      >
+                        <span className="flex items-center gap-2">
+                          {whelpingCollarColorHex && (
+                            <span
+                              className="h-3 w-3 rounded-full border border-border"
+                              style={{ backgroundColor: whelpingCollarColorHex }}
+                            />
+                          )}
+                          <span>
+                            {whelpingCollarLabel === "Not set"
+                              ? "Select Color"
+                              : whelpingCollarLabel}
+                          </span>
+                        </span>
+                        <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+                      </button>
+
+                      {showWhelpPalette && (
+                        <div
+                          ref={paletteRef}
+                          className="absolute z-20 mt-1 w-full rounded-md border border-border bg-surface shadow-lg"
+                        >
+                          <ul className="max-h-48 overflow-y-auto py-1 text-xs">
+                            {WHELPING_COLLAR_SWATCHES.map((opt) => (
+                              <li key={opt.value}>
+                                <button
+                                  type="button"
+                                  className="flex w-full items-center gap-2 px-2 py-1.5 text-left hover:bg-muted"
+                                  onClick={() => {
+                                    setWhelpingCollarColor(opt.value);
+                                    setShowWhelpPalette(false);
+                                  }}
+                                >
+                                  <span
+                                    className="h-3 w-3 rounded-full border border-border"
+                                    style={{ backgroundColor: opt.hex }}
+                                  />
+                                  <span>{opt.label}</span>
+                                </button>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Birth weight */}
+                  <div>
+                    <span className={labelClass}>Birth weight (oz)</span>
+                    <input
+                      className={inputClass}
+                      inputMode="decimal"
+                      value={birthWeightOz}
+                      onChange={(e) => setBirthWeightOz(e.target.value)}
+                    />
+                  </div>
+
+                  {/* Price */}
+                  <div>
+                    <span className={labelClass}>Price</span>
+                    <input
+                      className={inputClass}
+                      inputMode="decimal"
+                      value={price}
+                      onChange={(e) => setPrice(e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                {/* Notes */}
+                <div>
+                  <span className={labelClass}>Notes</span>
+                  <textarea
+                    className="w-full rounded border border-[var(--hairline,#222)] bg-[var(--surface-subtle,#050505)] px-2 py-1.5 text-xs text-foreground min-h-[72px]"
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                    placeholder="Notes about this puppy..."
+                  />
+                </div>
+
+                {error && (
+                  <div className="text-xs text-red-400">
+                    {error}
+                  </div>
+                )}
+              </div>
+            </form>
+          </Card>
+        </div>
+      </div>
+    </div>
+  );
+
+  return ReactDOM.createPortal(modal, document.body);
+}
+
 /* ───────────────────────── Buyers hook and tab ───────────────────────── */
 
 type Candidate = {
   id: number;
+
+  contactId?: number | null;
+  orgId?: number | null;
+
   contactLabel?: string | null;
   orgLabel?: string | null;
-  speciesPref?: string | null;
+  /** Primary display label for UI */
+  label?: string | null;
+
   breedPrefText?: string | null;
+  damPrefId?: number | null;
+  sirePrefId?: number | null;
+
   depositPaidAt?: string | null;
   priority?: number | null;
   skipCount?: number | null;
   notes?: string | null;
+
   source: "waitlist";
+
   /** Higher score means better match for this group */
   matchScore?: number;
-  /** Human readable explanation of the match, for future UI use */
+  /** What the match is based on, for text in the banner */
   matchTags?: string[];
 };
 
-function scoreMatch(
+function computeMatch(
   c: Candidate,
-  group: OffspringRow & { plan?: { species?: string | null; breedText?: string | null; damName?: string | null; sireName?: string | null } }
-) {
+  group: OffspringRow & {
+    plan?: {
+      breedText?: string | null;
+      dam?: { id: number; name: string } | null;
+      sire?: { id: number; name: string } | null;
+    };
+  },
+): { score: number; tags: string[] } {
   let score = 0;
-  const species = group.plan?.species?.toLowerCase();
-  const breed = group.plan?.breedText?.toLowerCase() ?? "";
-  const prefSpecies = c.speciesPref?.toLowerCase();
-  const prefBreed = c.breedPrefText?.toLowerCase() ?? "";
+  const tags: string[] = [];
 
-  if (prefSpecies && species && prefSpecies === species) score += 50;
-  if (prefBreed && breed && prefBreed && breed.includes(prefBreed)) score += 30;
+  const groupBreed = group.plan?.breedText?.toLowerCase().trim() ?? "";
+  const prefBreed = c.breedPrefText?.toLowerCase().trim() ?? "";
 
-  // later you can extend with parent matching when the waitlist payload exposes preferred dam and sire
-  return score;
+  // Breed is required to match
+  if (groupBreed && prefBreed && (groupBreed.includes(prefBreed) || prefBreed.includes(groupBreed))) {
+    score += 60;
+    tags.push("Breed");
+  }
+
+  const damId = group.plan?.dam?.id ?? null;
+  const sireId = group.plan?.sire?.id ?? null;
+
+  if (damId && c.damPrefId && c.damPrefId === damId) {
+    score += 30;
+    tags.push("Dam");
+  }
+
+  if (sireId && c.sirePrefId && c.sirePrefId === sireId) {
+    score += 30;
+    tags.push("Sire");
+  }
+
+  return { score, tags };
 }
 
-function useGroupCandidates(api: ReturnType<typeof makeOffspringApi> | null, group: OffspringRow | null) {
+function useGroupCandidates(
+  api: OffspringApi | null,
+  group: OffspringRow | null,
+) {
   const [cands, setCands] = React.useState<Candidate[]>([]);
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
-    let alive = true;
-    (async () => {
-      if (!api || !group) {
-        if (alive) {
+    let cancelled = false;
+
+    async function run() {
+      // No group or no plan - nothing to match against
+      if (!api || !group || !group.plan) {
+        if (!cancelled) {
           setCands([]);
           setLoading(false);
           setError(null);
         }
         return;
       }
+
+      if (!api.waitlist || typeof api.waitlist.list !== "function") {
+        console.warn("[Offspring] waitlist API missing on client", api);
+        if (!cancelled) {
+          setCands([]);
+          setLoading(false);
+          setError(null);
+        }
+        return;
+      }
+
       setLoading(true);
       setError(null);
+
       try {
-        const species = group.plan?.species;
-        const breed = group.plan?.breedText;
-        const res = await api.waitlist.list({ limit: 200, species: species as any, q: breed || undefined });
+        const res = await api.waitlist.list({
+          tenantId: group.tenantId ?? undefined,
+          limit: 200,
+        });
+
         const items: any[] = Array.isArray(res) ? res : res?.items ?? [];
-        const mapped: Candidate[] = items
-          .filter((w: any) => {
-            // keep the same basic filter you already had
-            if (!species) return true;
-            if (String(w.speciesPref || "").toUpperCase() !== String(species || "").toUpperCase()) return false;
-            if (breed && w.breedPrefText) {
-              const hay = String(w.breedPrefText).toLowerCase();
-              return hay.includes(String(breed).toLowerCase());
+
+        // Build sets of already linked buyers so we do not suggest them again
+        const existingContactIds = new Set<number>();
+        const existingOrgIds = new Set<number>();
+
+        const buyersAny = (group as any).buyers;
+        if (Array.isArray(buyersAny)) {
+          for (const b of buyersAny) {
+            if (!b || typeof b !== "object") continue;
+
+            const contactId =
+              (b as any).contactId ??
+              (b as any).contact?.id ??
+              null;
+
+            const orgId =
+              (b as any).organizationId ??
+              (b as any).orgId ??
+              (b as any).organization?.id ??
+              null;
+
+            if (typeof contactId === "number") {
+              existingContactIds.add(contactId);
+            }
+            if (typeof orgId === "number") {
+              existingOrgIds.add(orgId);
+            }
+          }
+        }
+
+        const mapped: Candidate[] = items.map((w: any) => {
+          const contact =
+            w.contact ||
+            (w.contactId != null
+              ? {
+                id: w.contactId,
+                display_name: w.contactName,
+                first_name: w.firstName,
+                last_name: w.lastName,
+              }
+              : null);
+
+          const org =
+            w.organization ||
+            (w.organizationId != null
+              ? { id: w.organizationId, name: w.organizationName }
+              : null);
+
+          const contactLabel =
+            contact?.display_name ||
+            `${(contact?.first_name ?? "").trim()} ${(contact?.last_name ?? "").trim()}`.trim() ||
+            (contact ? `#${contact.id}` : null);
+
+          const orgLabel = org?.name ?? (org ? `#${org.id}` : null);
+
+          const breedPrefText =
+            w.breedPrefText ??
+            (Array.isArray(w.breedPrefs)
+              ? w.breedPrefs.filter((s: string) => s && s.trim()).join(", ")
+              : null);
+
+          const notes = w.notes ?? w.internalNotes ?? null;
+
+          const label =
+            contactLabel ??
+            orgLabel ??
+            w.name ??
+            w.displayName ??
+            null;
+
+          return {
+            id: w.id,
+            contactId: contact?.id ?? w.contactId ?? null,
+            orgId: org?.id ?? w.organizationId ?? null,
+            source: "waitlist",
+            contactLabel: contactLabel ?? null,
+            orgLabel: orgLabel ?? null,
+            label,
+            breedPrefText: breedPrefText ?? null,
+            damPrefId: w.damPrefId ?? null,
+            sirePrefId: w.sirePrefId ?? null,
+            depositPaidAt: w.depositPaidAt ?? null,
+            priority: w.priority ?? null,
+            skipCount: w.skipCount ?? null,
+            notes,
+          } as Candidate;
+        });
+
+        const scored = mapped
+          .map((c) => {
+            const { score, tags } = computeMatch(c, group as any);
+            return { ...c, matchScore: score, matchTags: tags };
+          })
+          // only keep actual matches
+          .filter((c) => (c.matchScore ?? 0) > 0)
+          // drop any waitlist entry that is already a linked buyer
+          .filter((c) => {
+            const contactId = c.contactId ?? null;
+            const orgId = c.orgId ?? null;
+
+            if (contactId != null && existingContactIds.has(contactId)) {
+              return false;
+            }
+            if (orgId != null && existingOrgIds.has(orgId)) {
+              return false;
             }
             return true;
           })
-          .slice(0, 25)
-          .map((w: any) => {
-            const t = mapWaitlistToTableRow(w);
-
-            const groupSpecies = String(species || "").toUpperCase();
-            const groupBreed = String(breed || "").toLowerCase();
-            const candSpecies = String(t.speciesPref || "").toUpperCase();
-            const candBreed = String(t.breedPrefText || "").toLowerCase();
-
-            let matchScore = 0;
-            const matchTags: string[] = [];
-
-            // species match is the baseline requirement
-            if (groupSpecies && candSpecies && candSpecies === groupSpecies) {
-              matchScore += 10;
-              matchTags.push("species");
-            }
-
-            // breed text match is a bonus on top of species
-            if (groupBreed && candBreed && candBreed.includes(groupBreed)) {
-              matchScore += 5;
-              matchTags.push("breed");
-            }
-
-            return {
-              id: t.id,
-              contactLabel: t.contactLabel,
-              orgLabel: t.orgLabel,
-              speciesPref: t.speciesPref,
-              breedPrefText: t.breedPrefText,
-              depositPaidAt: t.depositPaidAt,
-              priority: t.priority,
-              skipCount: t.skipCount,
-              notes: t.notes,
-              source: "waitlist",
-              matchScore,
-              matchTags,
-            } as Candidate;
-          })
-          // highest score first
           .sort((a, b) => (b.matchScore ?? 0) - (a.matchScore ?? 0));
 
-        if (alive) setCands(mapped);
+        if (!cancelled) {
+          setCands(scored);
+        }
       } catch (e: any) {
-        if (alive) setError(e?.message || "Failed to load candidates");
+        console.error("[Offspring] failed to load waitlist candidates", e);
+        if (!cancelled) {
+          setError(e?.message || "Failed to load waitlist candidates");
+          setCands([]);
+        }
       } finally {
-        if (alive) setLoading(false);
+        if (!cancelled) {
+          setLoading(false);
+        }
       }
-    })();
+    }
+
+    void run();
+
     return () => {
-      alive = false;
+      cancelled = true;
     };
-  }, [api, group?.id, group?.plan?.species, group?.plan?.breedText]);
+  }, [
+    api,
+    group?.id,
+    group?.tenantId,
+    group?.plan?.breedText,
+    (group as any)?.plan?.dam?.id,
+    (group as any)?.plan?.sire?.id,
+  ]);
 
   return { cands, loading, error, setCands };
 }
+
 function AddBuyerToGroupModal({
   api,
   group,
@@ -2140,7 +2958,7 @@ function AddBuyerToGroupModal({
   onAdded,
   onClose,
 }: {
-  api: ReturnType<typeof makeOffspringApi> | null;
+  OffspringApi
   group: OffspringRow | null;
   open: boolean;
   onAdded: () => void;
@@ -2152,11 +2970,17 @@ function AddBuyerToGroupModal({
   );
   const [busy, setBusy] = React.useState(false);
   const [hits, setHits] = React.useState<
-    Array<{ kind: "contact" | "org"; id: number; label: string; subtitle?: string }>
+    {
+      kind: "contact" | "org";
+      id: number;
+      label: string;
+      subtitle?: string;
+    }[]
   >([]);
-  const [quickOpen, setQuickOpen] = React.useState<null | "contact" | "org">(null);
-  const [createErr, setCreateErr] = React.useState<string | null>(null);
   const [creating, setCreating] = React.useState(false);
+  const [createErr, setCreateErr] = React.useState<string | null>(null);
+  const [quickOpen, setQuickOpen] = React.useState<null | "contact" | "org">(null);
+
   const [qc, setQc] = React.useState({
     firstName: "",
     lastName: "",
@@ -2169,6 +2993,225 @@ function AddBuyerToGroupModal({
     email: "",
     phone: "",
   });
+
+  // When user clicks a search result, lock it in as the selected buyer
+  const handleSelectHit = React.useCallback(
+    (hit: { kind: "contact" | "org"; id: number; label: string }) => {
+      setLink(hit);
+      // Leave q as is so we can show the selection nicely in the search input
+    },
+    [],
+  );
+
+  // When the modal opens or group changes, clear everything
+  React.useEffect(() => {
+    if (!open) return;
+
+    setQ("");
+    setLink(null);
+    setHits([]);
+    setBusy(false);
+    setCreating(false);
+    setCreateErr(null);
+    setQuickOpen(null);
+    setQc({ firstName: "", lastName: "", email: "", phone: "" });
+    setQo({ name: "", website: "", email: "", phone: "" });
+  }, [open, group]);
+
+  // Search contacts and orgs by q, skipping anything already linked to this group
+  React.useEffect(() => {
+    if (!open) return;
+
+    let cancelled = false;
+
+    const term = q.trim();
+
+    const existing = Array.isArray(group?.buyers) ? group!.buyers : [];
+
+    const existingContactIds = new Set<number>(
+      existing
+        .filter((b: any) => b.contactId != null)
+        .map((b: any) => Number(b.contactId)),
+    );
+    const existingOrgIds = new Set<number>(
+      existing
+        .filter((b: any) => b.organizationId != null)
+        .map((b: any) => Number(b.organizationId)),
+    );
+
+    if (!api || !term) {
+      setHits([]);
+      setBusy(false);
+      return;
+    }
+
+    setBusy(true);
+    setCreateErr(null);
+
+    const run = async () => {
+      try {
+        const res = await searchDirectory(api, term);
+        if (cancelled) return;
+
+        const nextHits: {
+          kind: "contact" | "org";
+          id: number;
+          label: string;
+          subtitle?: string;
+        }[] = [];
+
+        const contactsArr: any[] = Array.isArray(res.contacts)
+          ? res.contacts
+          : res.contacts?.items ?? [];
+        const orgsArr: any[] = Array.isArray(res.organizations)
+          ? res.organizations
+          : res.organizations?.items ?? [];
+
+        // contacts, skip anything already linked
+        for (const c of contactsArr) {
+          const id = Number(c.id);
+          if (existingContactIds.has(id)) continue;
+
+          nextHits.push({
+            kind: "contact",
+            id,
+            label:
+              c.display_name ||
+              [c.first_name, c.last_name].filter(Boolean).join(" ") ||
+              "(Contact)",
+            subtitle: c.email || c.phone || "",
+          });
+        }
+
+        // organizations, skip anything already linked
+        for (const o of orgsArr) {
+          const id = Number(o.id);
+          if (existingOrgIds.has(id)) continue;
+
+          nextHits.push({
+            kind: "org",
+            id,
+            label: o.name || "(Organization)",
+            subtitle: o.website || o.email || o.phone || "",
+          });
+        }
+
+        setHits(nextHits);
+      } catch (e: any) {
+        console.error("Failed directory search for AddBuyerToGroupModal", e);
+        if (!cancelled) {
+          setCreateErr(e?.message || "Search failed.");
+          setHits([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setBusy(false);
+        }
+      }
+    };
+
+    const t = window.setTimeout(run, 250);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(t);
+    };
+  }, [q, api, group, open]);
+
+  const clearLinkAndSearch = React.useCallback(() => {
+    setLink(null);
+    setQ("");
+    setHits([]);
+  }, []);
+
+  const createBuyerLink = React.useCallback(async () => {
+    if (!api || !group || !link) return null;
+
+    const contactId = link.kind === "contact" ? link.id : null;
+    const organizationId = link.kind === "org" ? link.id : null;
+
+    // Check if this buyer is already linked to the group
+    const existing: any[] =
+      Array.isArray((group as any).buyers)
+        ? (group as any).buyers
+        : Array.isArray((group as any).BuyerLinks)
+          ? (group as any).BuyerLinks
+          : [];
+
+    const alreadyLinked = existing.some((b: any) => {
+      const bContactId = b.contactId ?? b.contact?.id ?? null;
+      const bOrgId = b.organizationId ?? b.organization?.id ?? null;
+
+      if (contactId && bContactId && contactId === bContactId) return true;
+      if (organizationId && bOrgId && organizationId === bOrgId) return true;
+      return false;
+    });
+
+    if (alreadyLinked) {
+      throw new Error("That buyer is already linked to this group.");
+    }
+
+    const body = {
+      contactId,
+      organizationId,
+      waitlistEntryId: null,
+      actorId: null,
+    };
+
+    try {
+      // Preferred, typed client: api.offspring.groups.buyers.add
+      const offspringAny = api as any;
+      const buyersClient = offspringAny.offspring?.groups?.buyers;
+
+      if (buyersClient?.add) {
+        const result = await buyersClient.add(group.id, body);
+        return result ?? null;
+      }
+
+      // Fallback, raw HTTP with the correct URL
+      const res = await api.raw.post(
+        `/offspring/groups/${group.id}/buyers`,
+        body
+      );
+
+      return (res as any)?.data ?? res ?? null;
+    } catch (e) {
+      console.error("Failed to create buyer link", e);
+      throw e;
+    }
+  }, [api, group, link]);
+
+  const handleSubmit = React.useCallback(async () => {
+    if (!api || !group || !link) return;
+    setCreating(true);
+    setCreateErr(null);
+    try {
+      await createBuyerLink();
+      onAdded();
+      onClose();
+    } catch (e: any) {
+      setCreateErr(e?.message || "Failed to Add Buyer.");
+    } finally {
+      setCreating(false);
+    }
+  }, [api, group, link, onAdded, onClose, createBuyerLink]);
+
+  const handleOutsideMouseDown = React.useCallback<
+    React.MouseEventHandler<HTMLDivElement>
+  >(
+    (e) => {
+      const panel = (e.currentTarget as HTMLDivElement).querySelector(
+        "[data-buyer]",
+      ) as HTMLDivElement | null;
+      if (panel && !panel.contains(e.target as Node)) {
+        onClose();
+      }
+    },
+    [onClose],
+  );
+
+  const searchValue = link
+    ? `${link.kind === "contact" ? "Contact" : "Organization"} · ${link.label}`
+    : q;
 
   const quickCreateContact = React.useCallback(async () => {
     if (!api) throw new Error("API not ready");
@@ -2186,11 +3229,13 @@ function AddBuyerToGroupModal({
       first_name: qc.firstName || undefined,
       last_name: qc.lastName || undefined,
       email: qc.email || undefined,
-      phoneE164: qc.phone || undefined,
-      phone_e164: qc.phone || undefined,
+      phoneE164:
+        qc.phone && qc.phone.trim().length > 0
+          ? qc.phone
+          : undefined,
     });
 
-    return api.contacts.create(payload);
+    return await api.contacts.create(payload as any);
   }, [api, qc]);
 
   const quickCreateOrg = React.useCallback(async () => {
@@ -2200,351 +3245,240 @@ function AddBuyerToGroupModal({
       name: qo.name || undefined,
       website: qo.website || undefined,
       email: qo.email || undefined,
-      phone: qo.phone || undefined,
+      phoneE164:
+        qo.phone && qo.phone.trim().length > 0
+          ? qo.phone
+          : undefined,
     });
 
-    return api.organizations.create(payload);
+    return await api.organizations.create(payload as any);
   }, [api, qo]);
 
-  const handleQuickAdd = React.useCallback(async () => {
-    if (!api || !group || !quickOpen) return;
+  const handleQuickAdd = React.useCallback(
+    async (kind: "contact" | "org") => {
+      if (!api) return;
+      setCreating(true);
+      setCreateErr(null);
+      try {
+        if (kind === "contact") {
+          const c = await quickCreateContact();
+          if (!c) throw new Error("Failed to create contact");
+          setLink({
+            kind: "contact",
+            id: Number(c.id),
+            label:
+              c.display_name ||
+              [c.first_name, c.last_name].filter(Boolean).join(" ") ||
+              "(Contact)",
+          });
+        } else {
+          const o = await quickCreateOrg();
+          if (!o) throw new Error("Failed to create organization");
+          setLink({
+            kind: "org",
+            id: Number(o.id),
+            label: o.name || "(Organization)",
+          });
+        }
 
-    setCreating(true);
-    setCreateErr(null);
-
-    try {
-      if (quickOpen === "contact") {
-        const c: any = await quickCreateContact();
-        setLink({
-          kind: "contact",
-          id: Number(c.id),
-          label:
-            c.display_name ||
-            `${(c.first_name ?? "").trim()} ${(c.last_name ?? "").trim()}`.trim() ||
-            "(Contact)",
-          subtitle: c.email || c.phoneE164 || c.phone || "",
-        });
-      } else {
-        const o: any = await quickCreateOrg();
-        setLink({
-          kind: "org",
-          id: Number(o.id),
-          label: o.name || "(Organization)",
-          subtitle: o.website || o.email || o.phone || "",
-        });
+        // After quick add, close the quick-add block so the user is clearly in "link existing buyer" mode
+        setQuickOpen(null);
+        // Keep the raw query string as is, hits list will stay visible until Add buyer
+      } catch (e: any) {
+        console.error("Quick add failed", e);
+        setCreateErr(e?.message || "Quick add failed.");
+      } finally {
+        setCreating(false);
       }
-
-      setQuickOpen(null);
-      setQ("");
-      setHits([]);
-    } catch (e: any) {
-      setCreateErr(e?.message || "Quick add failed.");
-    } finally {
-      setCreating(false);
-    }
-  }, [api, group, quickOpen, quickCreateContact, quickCreateOrg, setLink, setQ, setHits]);
-
-
-  const searchValue = link ? link.label : q;
-
-  const panelRef = React.useRef<HTMLDivElement | null>(null);
-
-React.useEffect(() => {
-  let cancelled = false;
-  const t = q.trim();
-
-  if (!api || !group || !t) {
-    setHits([]);
-    return;
-  }
-
-  setBusy(true);
-
-  (async () => {
-    try {
-      const [contactsRes, orgsRes] = await Promise.all([
-        api.contacts.list({ q: t, limit: 25 }),
-        api.organizations.list({ q: t, limit: 25 }),
-      ]);
-
-      if (cancelled) return;
-
-      const contactsArr: any[] = Array.isArray(contactsRes)
-        ? contactsRes
-        : contactsRes?.items ?? [];
-
-      const orgsArr: any[] = Array.isArray(orgsRes)
-        ? orgsRes
-        : orgsRes?.items ?? [];
-
-      const nextHits: Array<{
-        kind: "contact" | "org";
-        id: number;
-        label: string;
-        subtitle?: string;
-      }> = [];
-
-      for (const c of contactsArr) {
-        nextHits.push({
-          kind: "contact",
-          id: Number(c.id),
-          label:
-            c.display_name ||
-            `${c.first_name ?? ""} ${c.last_name ?? ""}`.trim() ||
-            "(Contact)",
-          subtitle: c.email || c.phone || "",
-        });
-      }
-
-      for (const o of orgsArr) {
-        nextHits.push({
-          kind: "org",
-          id: Number(o.id),
-          label: o.name || "(Organization)",
-          subtitle: o.website || o.email || o.phone || "",
-        });
-      }
-
-      setHits(nextHits);
-    } catch (e: any) {
-      if (!cancelled) {
-        setCreateErr(e?.message || "Search failed.");
-      }
-    } finally {
-      if (!cancelled) {
-        setBusy(false);
-      }
-    }
-  })();
-
-  return () => {
-    cancelled = true;
-  };
-}, [q, api, group]);
-
-  const clearLinkAndSearch = React.useCallback(() => {
-    setLink(null);
-    setQ("");
-    setHits([]);
-  }, []);
-
-  const handleSubmit = React.useCallback(async () => {
-    if (!api || !group || !link) return;
-    setCreating(true);
-    setCreateErr(null);
-    try {
-      await api.offspring.buyers.create({
-        groupId: group.id,
-        contactId: link.kind === "contact" ? link.id : null,
-        organizationId: link.kind === "org" ? link.id : null,
-      });
-      onAdded();
-      onClose();
-    } catch (e: any) {
-      setCreateErr(e?.message || "Failed to Add Buyer.");
-    } finally {
-      setCreating(false);
-    }
-  }, [api, group, link, onAdded, onClose]);
-
-  const handleOutsideMouseDown = React.useCallback<
-    React.MouseEventHandler<HTMLDivElement>
-  >(
-    (e) => {
-      const p = panelRef.current;
-      if (!p) return;
-      if (!p.contains(e.target as Node)) onClose();
     },
-    [onClose],
+    [api, quickCreateContact, quickCreateOrg],
   );
 
-  if (!open || !group) return null;
-
-  const modal = (
+  const modal = !open ? null : (
     <div
-      className="fixed inset-0 flex items-center justify-center"
-      style={{ zIndex: MODAL_Z + 1, isolation: "isolate" }}
+      className="fixed inset-0 z-[150] flex items-center justify-center bg-black/50"
       onMouseDown={handleOutsideMouseDown}
     >
-      <div className="absolute inset-0 bg-black/50" />
-      <div className="absolute inset-0 flex items-center justify-center">
-        <div
-          ref={panelRef}
-          className="pointer-events-auto overflow-hidden"
-          style={{ width: 820, maxWidth: "95vw", height: 520, maxHeight: "82vh" }}
-          data-buyer
-        >
-          <Card className="h-full">
-            <div className="h-full p-4 space-y-4 overflow-y-auto">
-              <div className="flex items-center gap-2">
-                <div className="text-lg font-semibold">Add Buyer</div>
-                {link && (
-                  <button
-                    className="ml-auto text-xs underline text-secondary hover:text-primary"
-                    onClick={clearLinkAndSearch}
-                  >
-                    Clear selection
-                  </button>
-                )}
-              </div>
-
-              {/* Search Contacts/Orgs */}
-              <div className="relative">
-                <div className={cx(labelClass + " mb-1")}>Search Contacts or Organizations</div>
-                <div className="relative">
-                  <SearchBar
-                    value={searchValue}
-                    onChange={(val) => {
-                      if (link) {
-                        clearLinkAndSearch();
-                        setQ(val);
-                      } else {
-                        setQ(val);
-                      }
-                    }}
-                    placeholder="Type a name, email, phone, or organization."
-                    widthPx={720}
-                    autoFocus={!link}
-                  />
-                </div>
-
-                <div className="mt-2 flex items-center gap-3">
-                  <Button size="xs" variant="outline" onClick={() => setQuickOpen("contact")}>
-                    + Quick Add Contact
-                  </Button>
-                  <Button size="xs" variant="outline" onClick={() => setQuickOpen("org")}>
-                    + Quick Add Organization
-                  </Button>
-                </div>
-              </div>
-
-              {/* Results list */}
-              {!link && q.trim() && (
-                <div className="rounded-md border border-hairline max-h-56 overflow-auto p-2">
-                  {busy ? (
-                    <div className="px-2 py-2 text-sm text-secondary">Searching.</div>
-                  ) : (
-                    (() => {
-                      const contacts = hits.filter((h) => h.kind === "contact");
-                      const orgs = hits.filter((h) => h.kind === "org");
-                      const sectionClass = "rounded-md bg-white/5";
-                      const pill = (t: string) => (
-                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/10">{t}</span>
-                      );
-
-                      if (!contacts.length && !orgs.length) {
-                        return (
-                          <div className="px-2 py-2 text-sm text-secondary">
-                            No matching candidates found.
-                          </div>
-                        );
-                      }
-
-                      return (
-                        <div className="space-y-2">
-                          {contacts.length > 0 && (
-                            <div className={sectionClass}>
-                              <div className="px-2 py-1.5 flex items-center justify-between border-b border-white/10">
-                                <div className="text-[11px] uppercase tracking-wide text-secondary">
-                                  Contacts
-                                </div>
-                                <div className="flex gap-1 items-center">
-                                  {pill(
-                                    `${contacts.length} result${contacts.length === 1 ? "" : "s"
-                                    }`,
-                                  )}
-                                </div>
-                              </div>
-                              <div className="divide-y divide-white/10">
-                                {contacts.map((c) => (
-                                  <button
-                                    key={`contact-${c.id}`}
-                                    className="w-full px-2 py-1.5 text-left text-sm hover:bg-white/5"
-                                    onClick={() =>
-                                      setLink({
-                                        kind: "contact",
-                                        id: c.id,
-                                        label: c.label,
-                                      })
-                                    }
-                                  >
-                                    <div className="font-medium">{c.label}</div>
-                                    {c.subtitle && (
-                                      <div className="text-[11px] text-secondary">
-                                        {c.subtitle}
-                                      </div>
-                                    )}
-                                  </button>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-
-                          {orgs.length > 0 && (
-                            <div className={sectionClass}>
-                              <div className="px-2 py-1.5 flex items-center justify-between border-b border-white/10">
-                                <div className="text-[11px] uppercase tracking-wide text-secondary">
-                                  Organizations
-                                </div>
-                                <div className="flex gap-1 items-center">
-                                  {pill(
-                                    `${orgs.length} result${orgs.length === 1 ? "" : "s"}`,
-                                  )}
-                                </div>
-                              </div>
-                              <div className="divide-y divide-white/10">
-                                {orgs.map((o) => (
-                                  <button
-                                    key={`org-${o.id}`}
-                                    className="w-full px-2 py-1.5 text-left text-sm hover:bg-white/5"
-                                    onClick={() =>
-                                      setLink({
-                                        kind: "org",
-                                        id: o.id,
-                                        label: o.label,
-                                      })
-                                    }
-                                  >
-                                    <div className="font-medium">{o.label}</div>
-                                    {o.subtitle && (
-                                      <div className="text-[11px] text-secondary">
-                                        {o.subtitle}
-                                      </div>
-                                    )}
-                                  </button>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })()
-                  )}
-                </div>
+      <div
+        className="relative rounded-lg border border-hairline bg-surface shadow-xl overflow-hidden"
+        style={{ width: 820, maxWidth: "95vw", height: 520, maxHeight: "82vh" }}
+        data-buyer
+      >
+        <Card className="h-full">
+          <div className="h-full p-4 space-y-4 overflow-y-auto">
+            <div className="flex items-center gap-2">
+              <div className="text-lg font-semibold">Add Buyer</div>
+              {link && (
+                <button
+                  className="ml-auto text-xs underline text-secondary hover:text-primary"
+                  onClick={clearLinkAndSearch}
+                >
+                  Clear selection
+                </button>
               )}
+            </div>
 
-              {createErr && <div className="text-xs text-red-500">{createErr}</div>}
-
-              <div className="flex justify-end gap-2 pt-2">
-                <Button
-                  variant="outline"
-                  type="button"
-                  onClick={onClose}
-                  disabled={creating}
-                >
-                  Cancel
+            {/* Search Contacts/Orgs */}
+            <div className="relative">
+              <div className={cx(labelClass + " mb-1")}>Search Contacts or Organizations</div>
+              <div className="relative">
+                <SearchBar
+                  value={searchValue}
+                  onChange={(val) => {
+                    if (link) {
+                      clearLinkAndSearch();
+                      setQ(val);
+                    } else {
+                      setQ(val);
+                    }
+                  }}
+                  placeholder="Type a name, email, phone, or organization."
+                  widthPx={720}
+                />
+                <div className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-secondary">
+                  {busy ? "Searching" : hits.length ? `${hits.length} candidate(s)` : ""}
+                </div>
+              </div>
+              <div className="mt-2 flex items-center gap-3">
+                <Button size="xs" variant="outline" onClick={() => setQuickOpen("contact")}>
+                  + Quick Add Contact
                 </Button>
-                <Button
-                  type="button"
-                  onClick={handleSubmit}
-                  disabled={!link || creating}
-                >
-                  Add Buyer
+                <Button size="xs" variant="outline" onClick={() => setQuickOpen("org")}>
+                  + Quick Add Organization
                 </Button>
               </div>
             </div>
-          </Card>
-        </div>
+
+            {/* Results list */}
+            {!link && q.trim() && (
+              <div className="rounded-md border border-hairline max-h-56 overflow-auto p-2">
+                {busy ? (
+                  <div className="px-2 py-2 text-sm text-secondary">Searching.</div>
+                ) : (
+                  (() => {
+                    const contacts = hits.filter((h) => h.kind === "contact");
+                    const orgs = hits.filter((h) => h.kind === "org");
+                    const sectionClass = "rounded-md bg-white/5";
+                    const pill = (t: string) => (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/10">{t}</span>
+                    );
+
+                    if (!contacts.length && !orgs.length) {
+                      return (
+                        <div className="px-2 py-2 text-sm text-secondary">
+                          No matching candidates found.
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <div className="space-y-2">
+                        {contacts.length > 0 && (
+                          <div className={sectionClass}>
+                            <div className="px-2 py-1.5 flex items-center justify-between border-b border-white/10">
+                              <div className="text-[11px] uppercase tracking-wide text-secondary">
+                                Contacts
+                              </div>
+                              <div className="flex gap-1 items-center">
+                                {pill(
+                                  `${contacts.length} result${contacts.length === 1 ? "" : "s"}`,
+                                )}
+                              </div>
+                            </div>
+                            <div className="divide-y divide-white/10">
+                              {contacts.map((c) => (
+                                <button
+                                  key={`contact-${c.id}`}
+                                  className="w-full px-2 py-1.5 text-left text-sm hover:bg-white/5"
+                                  onClick={() =>
+                                    setLink({
+                                      kind: "contact",
+                                      id: c.id,
+                                      label: c.label,
+                                    })
+                                  }
+                                >
+                                  <div className="flex items-center justify-between gap-2">
+                                    <div>
+                                      <div className="font-medium">{c.label}</div>
+                                      {c.subtitle && (
+                                        <div className="text-xs text-secondary">{c.subtitle}</div>
+                                      )}
+                                    </div>
+                                    <span className="text-[10px] rounded bg-white/10 px-1.5 py-0.5">
+                                      Contact
+                                    </span>
+                                  </div>
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {orgs.length > 0 && (
+                          <div className={sectionClass}>
+                            <div className="px-2 py-1.5 flex items-center justify-between border-b border-white/10">
+                              <div className="text-[11px] uppercase tracking-wide text-secondary">
+                                Organizations
+                              </div>
+                              <div className="flex gap-1 items-center">
+                                {pill(
+                                  `${orgs.length} result${orgs.length === 1 ? "" : "s"}`,
+                                )}
+                              </div>
+                            </div>
+                            <div className="divide-y divide-white/10">
+                              {orgs.map((o) => (
+                                <button
+                                  key={`org-${o.id}`}
+                                  className="w-full px-2 py-1.5 text-left text-sm hover:bg-white/5"
+                                  onClick={() =>
+                                    setLink({
+                                      kind: "org",
+                                      id: o.id,
+                                      label: o.label,
+                                    })
+                                  }
+                                >
+                                  <div className="flex items-center justify-between gap-2">
+                                    <div>
+                                      <div className="font-medium">{o.label}</div>
+                                      {o.subtitle && (
+                                        <div className="text-xs text-secondary">{o.subtitle}</div>
+                                      )}
+                                    </div>
+                                    <span className="text-[10px] rounded bg-white/10 px-1.5 py-0.5">
+                                      Organization
+                                    </span>
+                                  </div>
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()
+                )}
+              </div>
+            )}
+
+            {createErr && <div className="text-xs text-red-500">{createErr}</div>}
+
+            <div className="flex items-center justify-end gap-2">
+              <Button type="button" variant="ghost" onClick={onClose} disabled={creating}>
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                onClick={handleSubmit}
+                disabled={!link || creating}
+              >
+                Add Buyer
+              </Button>
+            </div>
+          </div>
+        </Card>
       </div>
     </div>
   );
@@ -2553,15 +3487,17 @@ React.useEffect(() => {
 }
 
 
-function BuyersTab({
-  api,
-  group,
-  onGroupUpdate,
-}: {
-  api: ReturnType<typeof makeOffspringApi> | null;
-  group: OffspringRow;
-  onGroupUpdate: (updated: OffspringRow) => void;
-}) {
+function BuyersTab(
+  {
+    api,
+    group,
+    onGroupUpdate,
+  }: {
+    api: OffspringApi | null;
+    group: OffspringRow;
+    onGroupUpdate: (updated: OffspringRow) => void;
+  },
+) {
   const { toast } = useToast();
   const { cands, loading, error, setCands } = useGroupCandidates(api, group);
   const [lastAction, setLastAction] =
@@ -2571,28 +3507,264 @@ function BuyersTab({
 
   // inline Add Buyer state
   const [q, setQ] = React.useState("");
-  const [link, setLink] = React.useState<
-    | null
-    | {
-      kind: "contact" | "org";
-      id: number;
-      label: string;
-      subtitle?: string;
-    }
-  >(null);
-  const [hits, setHits] = React.useState<
-    Array<{ kind: "contact" | "org"; id: number; label: string; subtitle?: string }>
-  >([]);
+  const [link, setLink] = React.useState<DirectoryHit | null>(null);
+  const [hits, setHits] = React.useState<DirectoryHit[]>([]);
   const [searchBusy, setSearchBusy] = React.useState(false);
   const [createErr, setCreateErr] = React.useState<string | null>(null);
   const [creating, setCreating] = React.useState(false);
   const [quickOpen, setQuickOpen] = React.useState<null | "contact" | "org">(null);
+  const [addingFromSuggestion, setAddingFromSuggestion] = React.useState(false);
+
+  // Offspring in this group, prefer Offspring from offspring table
+  const animalsInGroup = React.useMemo(
+    () => {
+      const g: any = group as any;
+      if (!g) return [];
+
+      if (Array.isArray(g.Offspring) && g.Offspring.length > 0) {
+        return g.Offspring as any[];
+      }
+
+      if (Array.isArray(g.Animals)) {
+        return g.Animals as any[];
+      }
+
+      return [];
+    },
+    [group],
+  );
+
+  const [assigningOffspringId, setAssigningOffspringId] =
+    React.useState<number | null>(null);
+
+  // Find the currently assigned offspring for this buyer
+  const findCurrentAssignmentForBuyer = React.useCallback(
+    (b: any) => {
+      return animalsInGroup.find((a: any) => {
+        const contactMatch =
+          b.contactId &&
+          a.buyerContact &&
+          a.buyerContact.id === b.contactId;
+
+        const orgMatch =
+          b.organizationId &&
+          a.buyerOrg &&
+          a.buyerOrg.id === b.organizationId;
+
+        const waitlistMatch =
+          b.waitlistEntryId &&
+          a.waitlistEntry &&
+          a.waitlistEntry.id === b.waitlistEntryId;
+
+        return contactMatch || orgMatch || waitlistMatch;
+      });
+    },
+    [animalsInGroup],
+  );
+
+  // Only show unassigned offspring plus the one currently assigned
+  const getAssignableOffspringForBuyer = React.useCallback(
+    (b: any) => {
+      const current = findCurrentAssignmentForBuyer(b);
+
+      return animalsInGroup.filter((a: any) => {
+        const assigned =
+          a.buyerContact || a.buyerOrg || a.waitlistEntry;
+
+        if (current && a.id === current.id) {
+          return true;
+        }
+
+        return !assigned;
+      });
+    },
+    [animalsInGroup, findCurrentAssignmentForBuyer],
+  );
+
+  const handleAssignOffspring = React.useCallback(
+    async (buyer: any, value: string) => {
+      if (!group) return;
+
+      const offspringId = value ? Number(value) : null;
+      setAssigningOffspringId(offspringId);
+
+      try {
+        const nextAnimals = animalsInGroup.map((a: any) => {
+          const belongsToBuyer =
+            (buyer.contactId &&
+              a.buyerContact &&
+              a.buyerContact.id === buyer.contactId) ||
+            (buyer.organizationId &&
+              a.buyerOrg &&
+              a.buyerOrg.id === buyer.organizationId) ||
+            (buyer.waitlistEntryId &&
+              a.waitlistEntry &&
+              a.waitlistEntry.id === buyer.waitlistEntryId);
+
+          if (belongsToBuyer && offspringId && a.id !== offspringId) {
+            return {
+              ...a,
+              buyerContact: null,
+              buyerOrg: null,
+              waitlistEntry: null,
+            };
+          }
+
+          if (offspringId && a.id === offspringId) {
+            return {
+              ...a,
+              buyerContact: buyer.contactId
+                ? { id: buyer.contactId }
+                : null,
+              buyerOrg: buyer.organizationId
+                ? { id: buyer.organizationId }
+                : null,
+              waitlistEntry: buyer.waitlistEntryId
+                ? { id: buyer.waitlistEntryId }
+                : null,
+            };
+          }
+
+          return a;
+        });
+
+        const nextGroup = {
+          ...group,
+          Animals: nextAnimals,
+          Offspring: nextAnimals,
+        };
+
+        onGroupUpdate(nextGroup);
+      } finally {
+        setAssigningOffspringId(null);
+      }
+    },
+    [animalsInGroup, group, onGroupUpdate],
+  );
+
+  const handleRemoveBuyer = React.useCallback(
+    async (buyer: any) => {
+      if (!api || !group) return;
+
+      try {
+        // Prefer the typed client if it exists
+        const offspringAny = api as any;
+        const buyersClient = offspringAny.offspring?.groups?.buyers;
+
+        if (buyersClient?.remove) {
+          // Typed client route: /offspring/:groupId/buyers/:buyerLinkId
+          await buyersClient.remove(group.id, buyer.id);
+        } else {
+          // Fallback route, matches api.ts definition
+          await api.raw.del(`/offspring/groups/${group.id}/buyers/${buyer.id}`, {
+            body: JSON.stringify({}),
+          });
+        }
+
+        // Update buyers list locally
+        const nextBuyers = Array.isArray(group.buyers)
+          ? (group.buyers as any[]).filter((b) => b.id !== buyer.id)
+          : [];
+
+        const nextGroup: OffspringRow = {
+          ...group,
+          buyers: nextBuyers as any,
+        };
+
+        onGroupUpdate(nextGroup);
+      } catch (err) {
+        console.error("[Offspring] failed to remove buyer", err);
+        toast({
+          title: "Failed to remove buyer",
+          description: "Please try again.",
+          variant: "destructive",
+        });
+      }
+    },
+    [api, group, onGroupUpdate, toast],
+  );
+
+
+  const [qc, setQc] = React.useState({
+    firstName: "",
+    lastName: "",
+    email: "",
+    phone: "",
+  });
+
+  const [qo, setQo] = React.useState({
+    name: "",
+    website: "",
+    email: "",
+    phone: "",
+  });
+
+  // search contacts and orgs for inline Add Buyer
+  React.useEffect(() => {
+    let alive = true;
+
+    const term = q.trim();
+
+    // Build sets of already linked contact and org ids
+    const existing = Array.isArray((group as any)?.buyers)
+      ? (group as any).buyers
+      : [];
+
+    const linkedContactIds = new Set<number>(
+      existing
+        .filter((b: any) => b.contactId != null)
+        .map((b: any) => Number(b.contactId))
+    );
+
+    const linkedOrgIds = new Set<number>(
+      existing
+        .filter((b: any) => b.organizationId != null)
+        .map((b: any) => Number(b.organizationId))
+    );
+
+    if (!api || !term) {
+      setHits([]);
+      setSearchBusy(false);
+      return;
+    }
+
+    setSearchBusy(true);
+    setCreateErr(null);
+
+    const run = async () => {
+      try {
+        const res = await searchDirectory(api, term);
+        if (!alive) return;
+
+        const filtered = res.filter((h) =>
+          h.kind === "contact"
+            ? !linkedContactIds.has(Number(h.id))
+            : !linkedOrgIds.has(Number(h.id))
+        );
+
+        setHits(filtered);
+      } catch (e: any) {
+        if (!alive) return;
+        console.error("Directory search failed", e);
+        setCreateErr(e?.message || "Search failed.");
+        setHits([]);
+      } finally {
+        if (!alive) return;
+        setSearchBusy(false);
+      }
+    };
+
+    const t = window.setTimeout(run, 250);
+    return () => {
+      alive = false;
+      window.clearTimeout(t);
+    };
+  }, [api, q, group]);
 
   // auto prompt logic stays the same
   React.useEffect(() => {
     if (!group || !group.id) return;
     if (!cands || cands.length === 0) return;
-
     if (autoPromptedForGroupId === group.id) return;
 
     const [top] = cands;
@@ -2623,97 +3795,294 @@ function BuyersTab({
     setLastAction(null);
   }, [lastAction, setCands]);
 
+  const handleAcceptSuggestion = React.useCallback(
+    async (cand: Candidate) => {
+      if (!api || !group) return;
+
+      setAddingFromSuggestion(true);
+
+      try {
+        const body = {
+          contactId: cand.contactId ?? null,
+          organizationId: cand.orgId ?? null,
+          waitlistEntryId: cand.id,
+          actorId: null,
+        };
+
+        const offspringAny = api as any;
+        const buyersClient = offspringAny.offspring?.groups?.buyers;
+
+        let updatedGroup: any = null;
+
+        if (buyersClient?.add) {
+          updatedGroup = await buyersClient.add(group.id, body);
+        } else {
+          const res = await api.raw.post(
+            `/offspring/groups/${group.id}/buyers`,
+            body,
+          );
+          updatedGroup = (res as any)?.data ?? res ?? null;
+        }
+
+        if (updatedGroup && (updatedGroup as any).id) {
+          onGroupUpdate(updatedGroup as OffspringRow);
+        }
+
+        // remove this candidate from the suggestion list
+        setCands((prev) => prev.filter((c) => c.id !== cand.id));
+
+        setLastAction({ kind: "add", payload: cand });
+
+        toast({
+          title: "Buyer added from waitlist",
+          description: `${cand.label || "Waitlist buyer"} was added to this plan.`,
+        });
+      } catch (err: any) {
+        console.error("Failed to add buyer from waitlist", err);
+        toast({
+          title: "Failed to add buyer from waitlist",
+          description: err?.message || "Something went wrong.",
+          variant: "destructive",
+        });
+      } finally {
+        setAddingFromSuggestion(false);
+      }
+    },
+    [api, group, onGroupUpdate, setCands, toast],
+  );
+
   // search contacts and orgs for inline Add Buyer
   React.useEffect(() => {
     let alive = true;
 
-    (async () => {
-      if (!api || !group) return;
+    const term = q.trim();
 
-      const term = q.trim();
-      if (!term) {
-        if (alive) setHits([]);
-        return;
-      }
+    // Build sets of already linked contact and org ids
+    const existing = Array.isArray((group as any)?.buyers)
+      ? (group as any).buyers
+      : [];
 
-      setSearchBusy(true);
-      setCreateErr(null);
+    const linkedContactIds = new Set<number>(
+      existing
+        .filter((b: any) => b.contactId != null)
+        .map((b: any) => Number(b.contactId))
+    );
 
+    const linkedOrgIds = new Set<number>(
+      existing
+        .filter((b: any) => b.organizationId != null)
+        .map((b: any) => Number(b.organizationId))
+    );
+
+    if (!api || !term) {
+      setHits([]);
+      setSearchBusy(false);
+      return;
+    }
+
+    setSearchBusy(true);
+    setCreateErr(null);
+
+    const run = async () => {
       try {
-        const [contacts, orgs] = await Promise.all([
-          api.directory.searchContacts({ q: term, limit: 25 }),
-          api.directory.searchOrgs({ q: term, limit: 25 }),
-        ]);
-
+        const res = await searchDirectory(api, term);
         if (!alive) return;
 
-        const contactHits =
-          (contacts || []).map((c: any) => ({
-            kind: "contact" as const,
-            id: c.id,
-            label: c.displayName || c.email || `Contact #${c.id}`,
-            subtitle: c.email || c.phone || "",
-          })) ?? [];
+        const filtered = res.filter((h) =>
+          h.kind === "contact"
+            ? !linkedContactIds.has(Number(h.id))
+            : !linkedOrgIds.has(Number(h.id))
+        );
 
-        const orgHits =
-          (orgs || []).map((o: any) => ({
-            kind: "org" as const,
-            id: o.id,
-            label: o.name || `Organization #${o.id}`,
-            subtitle: o.email || o.phone || "",
-          })) ?? [];
-
-        setHits([...contactHits, ...orgHits]);
+        setHits(filtered);
       } catch (e: any) {
-        if (alive) {
-          setCreateErr(e?.message || "Search failed.");
-          setHits([]);
-        }
+        if (!alive) return;
+        console.error("Directory search failed", e);
+        setCreateErr(e?.message || "Search failed.");
+        setHits([]);
       } finally {
-        if (alive) setSearchBusy(false);
+        if (!alive) return;
+        setSearchBusy(false);
       }
-    })();
+    };
 
+    const t = window.setTimeout(run, 250);
     return () => {
       alive = false;
+      window.clearTimeout(t);
     };
-  }, [api, group, q]);
+  }, [api, q, group]);
 
-  const handleInlineSubmit = React.useCallback(async () => {
-    if (!api || !group || !link) return;
+  const searchValue = link
+    ? `${link.kind === "contact" ? "Contact" : "Organization"} · ${link.label}`
+    : q;
+
+  const handleHitClick = (h: any) => {
+    setQuickOpen(null);
+    setCreateErr(null);
+    setLink(h);
+  };
+
+
+  const handleQuickAdd = React.useCallback(async () => {
+    if (!api || !quickOpen) return;
 
     setCreating(true);
     setCreateErr(null);
 
     try {
-      await api.offspring.buyers.create({
-        groupId: group.id,
-        contactId: link.kind === "contact" ? link.id : null,
-        organizationId: link.kind === "org" ? link.id : null,
-      });
+      if (quickOpen === "contact") {
+        const pre = await exactContactLookup(api, {
+          email: qc.email || undefined,
+          phone: qc.phone || undefined,
+          firstName: qc.firstName || undefined,
+          lastName: qc.lastName || undefined,
+        });
+        let c: any;
 
-      const updated = await api.offspring.groups.getById(group.id);
+        if (pre) {
+          c = pre;
+        } else {
+          const payload = stripEmpty({
+            display_name:
+              `${(qc.firstName || "").trim()} ${(qc.lastName || "").trim()}`.trim() ||
+              undefined,
+            first_name: qc.firstName || undefined,
+            last_name: qc.lastName || undefined,
+            email: qc.email || undefined,
+            phoneE164: qc.phone || undefined,
+            phone_e164: qc.phone || undefined,
+          });
 
-      if (updated) {
-        onGroupUpdate(updated);
-      } else {
-        // non fatal, group will at least be updated server side
+          try {
+            c = await api.contacts.create(payload);
+          } catch (e: any) {
+            // Allow 409 "already exists" case
+            const status = (e as any)?.response?.status;
+            if (status === 409) {
+              const id = conflictExistingIdFromError(e);
+              if (id) {
+                const found = await api.organizations.get(id);
+                if (found) o = found;
+              }
+            }
+            if (!o) throw e;
+          }
+        }
+
+        setLink({
+          kind: "contact",
+          id: Number(c.id),
+          label:
+            c.display_name ||
+            `${(c.first_name ?? "").trim()} ${(c.last_name ?? "").trim()}`.trim() ||
+            "(Contact)",
+          sub: c.email || c.phoneE164 || c.phone || "",
+        });
+      } else if (quickOpen === "org") {
+        const payload = stripEmpty({
+          name: qo.name || undefined,
+          website: qo.website || undefined,
+          email: qo.email || undefined,
+          phone: qo.phone || undefined,
+        });
+
+        let o: any;
+        try {
+          o = await api.organizations.create(payload);
+        } catch (e: any) {
+          const status = e?.status ?? e?.code ?? e?.response?.status;
+          if (status === 409) {
+            const id = conflictExistingIdFromError(e);
+            if (id) {
+              const found = await api.organizations.getById(id);
+              if (found) o = found;
+            }
+          }
+          if (!o) throw e;
+        }
+
+        setLink({
+          kind: "org",
+          id: Number(o.id),
+          label: o.name || "(Organization)",
+          sub: o.website || o.email || o.phone || "",
+        });
       }
 
-      toast({
-        title: "Buyer added",
-        description: `${link.label} has been linked as a buyer for this group.`,
-      });
-
+      // close quick add and clear search
+      setQuickOpen(null);
       setQ("");
-      setLink(null);
       setHits([]);
     } catch (e: any) {
-      setCreateErr(e?.message || "Failed to Add Duyer.");
+      console.error("Quick add failed", e);
+      setCreateErr(e?.message || "Quick add failed.");
     } finally {
       setCreating(false);
     }
-  }, [api, group, link, onGroupUpdate, toast]);
+  }, [api, quickOpen, qc, qo]);
+
+  const createBuyerLink = React.useCallback(async () => {
+    if (!api || !group || !link) return null;
+
+    const body = {
+      contactId: link.kind === "contact" ? link.id : null,
+      organizationId: link.kind === "org" ? link.id : null,
+      waitlistEntryId: null,
+      actorId: null,
+    };
+
+    try {
+      // Preferred, typed client: api.offspring.groups.buyers.add
+      const offspringAny = api as any;
+      const buyersClient = offspringAny.offspring?.groups?.buyers;
+
+      if (buyersClient?.add) {
+        const result = await buyersClient.add(group.id, body);
+        return result ?? null;
+      }
+
+      // Fallback, raw HTTP with the correct URL
+      const res = await api.raw.post(
+        `/offspring/groups/${group.id}/buyers`,
+        body
+      );
+
+      return (res as any)?.data ?? res ?? null;
+    } catch (e) {
+      console.error("Failed to create buyer link", e);
+      throw e;
+    }
+  }, [api, group, link]);
+
+
+  const handleInlineSubmit = React.useCallback(
+    async () => {
+      if (!api || !group || !link) return;
+
+      setCreating(true);
+      setCreateErr(null);
+
+      try {
+        const updatedGroup = await createBuyerLink();
+
+        if (updatedGroup && (updatedGroup as any).id) {
+          onGroupUpdate(updatedGroup as OffspringRow);
+        }
+
+        // Reset local UI state
+        setLink(null);
+        setHits([]);
+        setQ("");
+      } catch (err: any) {
+        console.error("Failed to add buyer inline", err);
+        setCreateErr(err?.message || "Failed to add buyer.");
+      } finally {
+        setCreating(false);
+      }
+    },
+    [api, group, link, onGroupUpdate, createBuyerLink],
+  );
 
   return (
     <SectionCard title="Buyers">
@@ -2723,6 +4092,143 @@ function BuyersTab({
           <Button size="xs" variant="outline" onClick={handleUndo}>
             Undo last action
           </Button>
+        )}
+      </div>
+
+      {/* Waitlist matches */}
+      {cands &&
+        cands.length > 0 &&
+        autoPromptedForGroupId === group.id && (
+          <div className="mb-3 rounded-md bg-orange-500/5 px-3 py-2 text-xs bhq-waitlist-pulse">
+            <div className="mb-2 text-sm font-semibold">
+              Potential Waitlist Matches Found!
+            </div>
+            <div className="space-y-1">
+              {cands.map((cand) => (
+                <div
+                  key={cand.id}
+                  className="flex items-center justify-between gap-3 rounded px-2 py-1 hover:bg-orange-500/10"
+                >
+                  <div className="flex-1">
+                    <div className="text-xs font-semibold">
+                      {cand.label ||
+                        cand.contactLabel ||
+                        cand.orgLabel ||
+                        `Waitlist entry #${cand.id}`}
+                    </div>
+                    <div className="text-[11px] text-secondary">
+                      Matches:{" "}
+                      {cand.matchTags && cand.matchTags.length
+                        ? cand.matchTags.join(", ")
+                        : "breed preferences"}
+                      .
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      size="xs"
+                      onClick={() => handleAcceptSuggestion(cand)}
+                      disabled={addingFromSuggestion}
+                    >
+                      Add
+                    </Button>
+                    <Button
+                      size="xs"
+                      variant="outline"
+                      onClick={() => handleSkip(cand)}
+                    >
+                      Skip
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+      {/* Linked buyers table, directly under the Add buyer controls */}
+      <div className="mt-2 rounded-md border border-hairline bg-surface/60 p-3">
+        <div className="flex items-center justify-between gap-2">
+          <div className="text-sm font-semibold">Assigned Buyers</div>
+        </div>
+
+        {Array.isArray(group.buyers) && group.buyers.length > 0 ? (
+          <table className="mt-2 w-full border-separate border-spacing-y-1 text-xs">
+            <thead className="text-[11px] uppercase tracking-wide text-secondary">
+              <tr>
+                <th className="text-left font-medium">Buyer</th>
+                <th className="text-left font-medium">Paired Offspring</th>
+                <th className="text-right font-medium w-8">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {group.buyers.map((b) => {
+                const current = findCurrentAssignmentForBuyer(b);
+                const options = getAssignableOffspringForBuyer(b);
+
+                return (
+                  <tr key={b.id}>
+                    <td className="py-1 pr-2 align-top">
+                      <div className="flex flex-col">
+                        <span>
+                          {b.contactLabel ||
+                            b.orgLabel ||
+                            `Buyer #${b.id}`}
+                        </span>
+                        <span className="text-[11px] text-secondary">
+                          {b.contactId
+                            ? "Contact"
+                            : b.organizationId
+                              ? "Organization"
+                              : b.waitlistEntryId
+                                ? "From waitlist"
+                                : "Unknown type"}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="py-1 pr-2 align-top">
+                      <select
+                        className="h-8 w-full rounded border border-hairline bg-background px-2 text-xs"
+                        value={current?.id ?? ""}
+                        onChange={(e) =>
+                          handleAssignOffspring(b, e.target.value)
+                        }
+                        disabled={
+                          assigningOffspringId !== null ||
+                          animalsInGroup.length === 0
+                        }
+                      >
+                        <option value="">
+                          {animalsInGroup.length === 0
+                            ? "No offspring in this group"
+                            : "No offspring assigned"}
+                        </option>
+                        {options.map((a: any) => (
+                          <option key={a.id} value={a.id}>
+                            {a.name || `Offspring #${a.id}`}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                    <td className="py-1 pl-2 pr-0 align-top text-right">
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveBuyer(b)}
+                        className="inline-flex h-7 w-7 items-center justify-center rounded-md hover:bg-red-500/10 hover:text-red-400"
+                        aria-label="Remove buyer"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        ) : (
+          <p className="mt-2 text-xs text-secondary">
+            No buyers linked yet.
+          </p>
         )}
       </div>
 
@@ -2744,18 +4250,17 @@ function BuyersTab({
         </div>
 
         <label className="grid gap-1 text-sm">
-          <span className="text-xs text-muted-foreground">
-            Search contacts or organizations
-          </span>
           <div className="relative">
             <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-secondary">
               <span className="i-lucide-search h-3.5 w-3.5" aria-hidden="true" />
             </span>
             <Input
-              value={q}
+              value={searchValue}
               className="pl-9 text-sm"
               onChange={(e) => {
                 const val = e.target.value;
+                // As soon as the user types, drop any existing selection
+                setLink(null);
                 setQ(val);
                 setCreateErr(null);
               }}
@@ -2793,6 +4298,8 @@ function BuyersTab({
                   className="h-7 rounded border border-hairline bg-background px-2 text-xs"
                   value={qc.email}
                   onChange={(e) => setQc({ ...qc, email: e.target.value })}
+                  placeholder="Email"
+                  autoComplete="off"
                 />
               </label>
               <label className="grid gap-1">
@@ -2801,6 +4308,8 @@ function BuyersTab({
                   className="h-7 rounded border border-hairline bg-background px-2 text-xs"
                   value={qc.phone}
                   onChange={(e) => setQc({ ...qc, phone: e.target.value })}
+                  placeholder="Phone"
+                  autoComplete="off"
                 />
               </label>
             </div>
@@ -2864,6 +4373,8 @@ function BuyersTab({
                   className="h-7 rounded border border-hairline bg-background px-2 text-xs"
                   value={qo.phone}
                   onChange={(e) => setQo({ ...qo, phone: e.target.value })}
+                  placeholder="Phone"
+                  autoComplete="off"
                 />
               </label>
             </div>
@@ -2910,45 +4421,40 @@ function BuyersTab({
             <div className="border-b border-hairline px-2 py-1 text-[11px] uppercase tracking-wide text-secondary">
               Search results
             </div>
-            <div className="divide-y divide-white/5">
-              {hits.map((h) => (
-                <button
-                  key={`${h.kind}-${h.id}`}
-                  type="button"
-                  className={clsx(
-                    "flex w-full items-center justify-between px-2 py-1.5 text-left hover:bg-white/5",
-                    link && link.kind === h.kind && link.id === h.id
-                      ? "bg-white/10"
-                      : "",
-                  )}
-                  onClick={() =>
-                    setLink({
-                      kind: h.kind,
-                      id: h.id,
-                      label: h.label,
-                      subtitle: h.subtitle,
-                    })
-                  }
-                >
-                  <div>
-                    <div className="font-medium">{h.label}</div>
-                    {h.subtitle && (
-                      <div className="text-[11px] text-secondary">
-                        {h.subtitle}
-                      </div>
-                    )}
-                  </div>
-                  <span className="text-[11px] text-secondary">
-                    {h.kind === "contact" ? "Contact" : "Organization"}
-                  </span>
-                </button>
-              ))}
+            <div className="max-h-48 overflow-auto divide-y divide-hairline">
+              {hits.map((h) => {
+                const isSelected =
+                  link && link.kind === h.kind && link.id === h.id;
+
+                return (
+                  <button
+                    key={`${h.kind}-${h.id}`}
+                    type="button"
+                    className={[
+                      "flex w-full items-center justify-between px-2 py-1 text-left",
+                      "hover:bg-white/10",
+                      isSelected
+                        ? "bg-brand/20 border-l-2 border-brand font-semibold"
+                        : "bg-transparent",
+                    ].join(" ")}
+                    onClick={() => handleHitClick(h)}
+                  >
+                    <div className="flex flex-col">
+                      <span className="text-xs">{h.label}</span>
+                      {h.sub && (
+                        <span className="text-[11px] text-secondary">
+                          {h.sub}
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-[11px] text-secondary">
+                      {h.kind === "contact" ? "Contact" : "Organization"}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
           </div>
-        )}
-
-        {createErr && (
-          <div className="text-xs text-red-500">{createErr}</div>
         )}
 
         <div className="mt-2 flex items-center justify-between">
@@ -2963,52 +4469,6 @@ function BuyersTab({
         </div>
       </div>
 
-      {/* Linked buyers table, directly under the Add buyer controls */}
-      <div>
-        <SectionChipHeading
-          icon={
-            <span
-              className="i-lucide-users h-3.5 w-3.5"
-              aria-hidden="true"
-            />
-          }
-          text="Linked buyers"
-        />
-        {Array.isArray(group.buyers) && group.buyers.length > 0 ? (
-          <table className="mt-2 w-full border-separate border-spacing-y-1 text-xs">
-            <thead className="text-[11px] uppercase tracking-wide text-secondary">
-              <tr>
-                <th className="text-left font-medium">Buyer</th>
-                <th className="text-left font-medium">Kind</th>
-                <th className="text-left font-medium">From waitlist</th>
-              </tr>
-            </thead>
-            <tbody>
-              {group.buyers.map((b) => (
-                <tr key={b.id}>
-                  <td className="py-1 pr-2">
-                    {b.contactLabel || b.orgLabel || `Buyer #${b.id}`}
-                  </td>
-                  <td className="py-1 pr-2">
-                    {b.contactId
-                      ? "Contact"
-                      : b.organizationId
-                        ? "Organization"
-                        : "-"}
-                  </td>
-                  <td className="py-1 pr-2">
-                    {b.waitlistEntryId ? "Yes" : ""}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        ) : (
-          <p className="mt-2 text-xs text-secondary">
-            No buyers linked yet.
-          </p>
-        )}
-      </div>
 
       {/* optional: keep candidate list below */}
       {loading && (
@@ -3163,22 +4623,36 @@ function computePlacementVelocity(g: OffspringRow): number | null {
 /* ───────────────────────── URL param helper re-export for tabs ───────────────────────── */
 const openDetails = setParamAndNotify;
 
+
 /* ───────────────────────── Tabs ───────────────────────── */
-function OffspringGroupsTab({ api, tenantId, readOnlyGlobal }: { api: ReturnType<typeof makeOffspringApi> | null; tenantId: number | null, readOnlyGlobal: boolean }) {
+function OffspringGroupsTab(
+  {
+    api,
+    tenantId,
+    readOnlyGlobal,
+  }: {
+    api: OffspringApi | null;
+    tenantId: number | null;
+    readOnlyGlobal: boolean;
+  },
+) {
   const { toast } = useToast();
   const [q, setQ] = React.useState("");
   const [rows, setRows] = React.useState<GroupTableRow[]>([]);
   const [raw, setRaw] = React.useState<OffspringRow[]>([]);
   const [loading, setLoading] = React.useState(true);
+
   const [error, setError] = React.useState<string | null>(null);
   const [buyerModalOpen, setBuyerModalOpen] = React.useState(false);
+  const [createOffspringGroup, setCreateOffspringGroup] = React.useState<OffspringRow | null>(null);
   const [buyerModalGroup, setBuyerModalGroup] = React.useState<OffspringRow | null>(null);
+  const [addOffspringOpen, setAddOffspringOpen] = React.useState(false);
+  const [addOffspringGroup, setAddOffspringGroup] =
+    React.useState<OffspringRow | null>(null);
 
-
+  const activeTabRef = React.useRef<string | null>(null);
+  const setActiveTabRef = React.useRef<((tab: string) => void) | null>(null);
   const [createOpen, setCreateOpen] = React.useState(false);
-  React.useEffect(() => {
-    window.dispatchEvent(new Event("popstate"));
-  }, []);
 
   React.useEffect(() => {
     const prev = document.body.style.overflow;
@@ -3194,8 +4668,13 @@ function OffspringGroupsTab({ api, tenantId, readOnlyGlobal }: { api: ReturnType
     setError(null);
     try {
       const res = await api.offspring.list({ q: q || undefined, limit: 100 });
-      setRaw(res.items);
-      setRows(res.items.map(mapDetailToTableRow));
+
+      const items = res.items.map((it) =>
+        normalizeGroupRowFromDetail(it),
+      );
+
+      setRaw(items);
+      setRows(items.map(mapDetailToTableRow));
     } catch (e: any) {
       setError(e?.message || "Failed to load groups");
     } finally {
@@ -3277,7 +4756,39 @@ function OffspringGroupsTab({ api, tenantId, readOnlyGlobal }: { api: ReturnType
             width: 960,
             placement: "center",
             align: "top",
-            fetchRow: async (id: string | number) => raw.find((r) => String(r.id) === String(id))!,
+            fetchRow: async (id: string | number) => {
+              const numericId = Number(id);
+              const fallback = raw.find((r) => r.id === numericId) as OffspringRow | undefined;
+
+              if (!api) {
+                return fallback as OffspringRow;
+              }
+
+              try {
+                const detail: any = await api.offspring.get(numericId);
+
+                // Keep all base fields from the detail payload
+                const normalized: any = normalizeGroupRowFromDetail(detail) ?? {};
+
+                // Make sure the drawer row actually carries the individuals
+                if (Array.isArray(detail.Offspring)) {
+                  normalized.Offspring = detail.Offspring;
+                }
+
+                // Optional, but keeps old Animal based litters working
+                if (Array.isArray(detail.Animals)) {
+                  normalized.Animals = detail.Animals;
+                }
+
+                if (fallback) {
+                  return { ...fallback, ...normalized } as OffspringRow;
+                }
+                return normalized as OffspringRow;
+              } catch (err) {
+                console.error("[Offspring] failed to fetch group detail", err);
+                return fallback as OffspringRow;
+              }
+            },
             onSave: async (row: OffspringRow, draft: any) => {
               if (!api || readOnlyGlobal) return;
               const body: any = {};
@@ -3345,29 +4856,49 @@ function OffspringGroupsTab({ api, tenantId, readOnlyGlobal }: { api: ReturnType
               { key: "analytics", label: "Analytics" },
             ],
             customChrome: true,
-            render: ({ row, mode, setMode, activeTab, setActiveTab, requestSave }: any) => {
+            render: ({
+              row,
+              mode,
+              setMode,
+              activeTab,
+              setActiveTab,
+              requestSave,
+            }: any) => {
               const tblRow = mapDetailToTableRow(row);
+              const effectiveTab = addOffspringOpen ? "linkedOffspring" : activeTab;
+              const isEdit = mode === "edit" && !readOnlyGlobal;
+              const groupId = (row as any)?.id as number | undefined;
               const openOffspringFromGroup = (offspringId: number) => {
                 try {
-                  const url = new URL(window.location.href);
-                  // Clear other ids so offspring is authoritative
-                  url.searchParams.delete("groupId");
-                  url.searchParams.delete("waitlistId");
+                  const url = new URL("/offspring", window.location.origin);
                   url.searchParams.set("offspringId", String(offspringId));
-                  window.history.replaceState({}, "", url.toString());
-                  window.dispatchEvent(new Event("popstate"));
+                  window.open(url.toString(), "_blank", "noreferrer");
                 } catch {
-                  // ignore URL issues in embedded shells
+                  const url = new URL(window.location.href);
+                  url.pathname = "/offspring";
+                  url.searchParams.set("offspringId", String(offspringId));
+                  window.location.href = url.toString();
                 }
               };
 
+              activeTabRef.current = activeTab;
+              setActiveTabRef.current = setActiveTab;
+
+              const fromRow: any[] =
+                Array.isArray((row as any)?.Offspring) && (row as any).Offspring.length > 0
+                  ? (row as any).Offspring
+                  : Array.isArray((row as any)?.Animals)
+                    ? (row as any).Animals
+                    : [];
+
+              const animals: any[] = fromRow;
 
               return (
                 <DetailsScaffold
                   title={tblRow.groupName || tblRow.planCode || `Group #${tblRow.id}`}
                   subtitle={tblRow.breed || tblRow.species || ""}
                   mode={mode}
-                  onEdit={() => !readOnlyGlobal && setMode("edit")}
+                  onEdit={() => setMode("edit")}
                   onCancel={() => setMode("view")}
                   onSave={requestSave}
                   tabs={[
@@ -3378,26 +4909,33 @@ function OffspringGroupsTab({ api, tenantId, readOnlyGlobal }: { api: ReturnType
                     { key: "documents", label: "Documents" },
                     { key: "analytics", label: "Analytics" },
                   ]}
-                  activeTab={activeTab}
-                  onTabChange={setActiveTab}
-                  rightActions={
+                  activeTab={effectiveTab}
+                  onTabChange={(next) => {
+                    if (addOffspringOpen) return;
+                    setActiveTab(next);
+                  }} rightActions={
                     <div className="flex gap-2">
-                      {row.plan?.id && (
+                      {row?.plan?.id && (
                         <Button
                           size="sm"
                           variant="outline"
-                          onClick={() => window.open(`/breeding/plan/${row.plan?.id}`, "_blank")}
+                          onClick={() =>
+                            window.open(`/breeding/plan/${row.plan!.id}`, "_blank")
+                          }
                         >
                           Open plan
                         </Button>
                       )}
                       {readOnlyGlobal && (
-                        <span className="self-center text-xs text-secondary">View only</span>
+                        <span className="self-center text-xs text-secondary">
+                          View only
+                        </span>
                       )}
                     </div>
                   }
                 >
-                  {activeTab === "analytics" && (
+
+                  {effectiveTab === "analytics" && (
                     <>
                       {tblRow && <GroupSummaryBand row={tblRow} />}
 
@@ -3508,10 +5046,10 @@ function OffspringGroupsTab({ api, tenantId, readOnlyGlobal }: { api: ReturnType
                     </>
                   )}
 
-                  {activeTab === "overview" && (
+                  {effectiveTab === "overview" && (
                     <>
                       <SectionCard title="Identity">
-                        <div className="grid gap-x-12 gap-y-4 md:grid-cols-2">
+                        <dl className="mt-2 grid grid-cols-2 gap-x-10 gap-y-10 text-xs md:text-sm">
                           <div className="space-y-2">
                             <IdentityField label="Group Name">
                               {tblRow.groupName || "-"}
@@ -3565,32 +5103,50 @@ function OffspringGroupsTab({ api, tenantId, readOnlyGlobal }: { api: ReturnType
                               )}
                             </IdentityField>
 
-                            <IdentityField label="Status (computed)">
+                            <IdentityField label="Status (Auto-Updates)">
                               {tblRow.status || "-"}
                             </IdentityField>
                           </div>
-                        </div>
+                        </dl>
                       </SectionCard>
 
                       <DetailsSpecRenderer<GroupTableRow>
                         row={tblRow}
-                        mode={readOnlyGlobal ? "view" : mode}
-                        setDraft={() => { }}
-                        sections={groupSections(readOnlyGlobal ? "view" : mode)}
+                        mode={isEdit ? "edit" : "view"}
+                        setDraft={setDraft}
+                        sections={groupSections(isEdit ? "edit" : "view")}
                       />
                     </>
                   )}
 
-                  {activeTab === "buyers" && (
+                  {effectiveTab === "buyers" && (
                     <BuyersTab
                       api={api}
                       group={row}
                       onGroupUpdate={(updated) => {
+                        const normalized = normalizeGroupRowFromDetail(updated as any);
+                        const idx = raw.findIndex((r) => r.id === normalized.id);
+
+                        const next = [...raw];
+                        if (idx >= 0) {
+                          next[idx] = { ...next[idx], ...normalized } as any;
+                        } else {
+                          next.push(normalized as any);
+                        }
+
+                        setRaw(next);
+                        setRows(next.map(mapDetailToTableRow));
+
+                        // Keep Buyers tab active even when DetailsHost reruns
+                        setActiveTab("buyers");
+                        if (typeof window !== "undefined" && window.requestAnimationFrame) {
+                          window.requestAnimationFrame(() => setActiveTab("buyers"));
+                        }
                       }}
                     />
                   )}
-                  
-                  {activeTab === "media" && (
+
+                  {effectiveTab === "media" && (
                     <SectionCard>
                       <div className="mb-3 flex items-center justify-between">
                         <h3 className="text-sm font-semibold">Group photos</h3>
@@ -3602,7 +5158,7 @@ function OffspringGroupsTab({ api, tenantId, readOnlyGlobal }: { api: ReturnType
                     </SectionCard>
                   )}
 
-                  {activeTab === "documents" && (
+                  {effectiveTab === "documents" && (
                     <div className="grid gap-4 lg:grid-cols-2">
                       <SectionCard>
                         <div className="mb-3 flex items-center justify-between">
@@ -3630,141 +5186,136 @@ function OffspringGroupsTab({ api, tenantId, readOnlyGlobal }: { api: ReturnType
                     </div>
                   )}
 
-                  {activeTab === "linkedOffspring" && (
+                  {effectiveTab === "linkedOffspring" && (
                     <SectionCard>
                       <div className="mb-3 flex items-center justify-between">
-                        <h3 className="text-sm font-semibold">Linked offspring</h3>
+                        <h3 className="text-sm font-semibold">Offspring</h3>
                         <div className="flex gap-2">
                           <Button
                             size="xs"
                             variant="outline"
-                            onClick={async () => {
-                              if (!api) return;
-                              try {
-                                const created = await api.animals.createForGroup(row.id);
-                                await onRefreshRow();
-                                try {
-                                  window.dispatchEvent(
-                                    new CustomEvent("bhq:offspring:created", {
-                                      detail: {
-                                        groupId: row.id,
-                                        offspringId: (created as any)?.id ?? null,
-                                      },
-                                    })
-                                  );
-                                } catch {
-                                  // ignore event failures
-                                }
-                              } catch (e) {
-                                console.error("Add offspring failed", e);
-                              }
+                            type="button"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              setActiveTab("linkedOffspring");
+                              setAddOffspringGroup(row);
+                              setAddOffspringOpen(true);
                             }}
                           >
-                            Add offspring
+                            <Plus className="h-3 w-3 mr-1" />
+                            Add Offspring
                           </Button>
                         </div>
                       </div>
-                      {Array.isArray(row.Animals) && row.Animals.length > 0 ? (
-                        <Table dense>
-                          <thead>
-                            <tr>
-                              <th className="text-left text-xs font-medium text-muted-foreground">
-                                Name
-                              </th>
-                              <th className="text-left text-xs font-medium text-muted-foreground">
-                                Sex
-                              </th>
-                              <th className="text-left text-xs font-medium text-muted-foreground">
-                                Status
-                              </th>
-                              <th className="text-left text-xs font-medium text-muted-foreground">
-                                Buyer / waitlist
-                              </th>
-                              <th className="text-right text-xs font-medium text-muted-foreground">
-                                Price
-                              </th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {row.Animals.map((a: any) => (
-                              <tr
-                                key={a.id}
-                                className="cursor-pointer text-xs hover:bg-accent/40"
-                                onClick={() => openOffspringFromGroup(a.id)}
-                              >
-                                <td className="py-1 pr-2">
-                                  {a.name || `Offspring #${a.id}`}
-                                </td>
-                                <td className="py-1 pr-2">
-                                  {a.sex === "MALE"
-                                    ? "M"
-                                    : a.sex === "FEMALE"
-                                      ? "F"
-                                      : "U"}
-                                </td>
-                                <td className="py-1 pr-2">
-                                  {a.status || "-"}
-                                </td>
-                                <td className="py-1 pr-2">
-                                  {a.buyerContact?.displayName ||
-                                    a.buyerOrg?.displayName ||
-                                    a.waitlistEntry?.contact?.displayName ||
-                                    a.waitlistEntry?.org?.displayName ||
-                                    "-"}
-                                </td>
-                                <td className="py-1 pl-2 text-right">
-                                  {formatMoneyFromCents(
-                                    a.salePriceCents ??
-                                    a.priceCents ??
-                                    a.listedPriceCents ??
-                                    null
-                                  )}
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </Table>
-                      ) : (
-                        <p className="text-xs text-muted-foreground">
-                          No individual offspring recorded yet.
-                        </p>
-                      )}
-                    </SectionCard>
-                  )}
+                      {(() => {
+                        const animals =
+                          Array.isArray((row as any).Offspring) && (row as any).Offspring.length > 0
+                            ? (row as any).Offspring
+                            : Array.isArray(row.Animals)
+                              ? row.Animals
+                              : [];
 
-                  {activeTab === "analytics" && (
-                    <SectionCard title="Analytics">
-                      <div className="grid grid-cols-1 gap-3 p-2 md:grid-cols-2">
-                        <Card>
-                          <div className="p-3">
-                            <div className="text-xs text-secondary">Coverage</div>
-                            <div className="text-2xl font-semibold">
-                              {(() => {
-                                const pct = computeCoverage(row);
-                                return pct == null ? "-" : `${Math.round(pct * 100)}%`;
-                              })()}
-                            </div>
-                            <div className="mt-1 text-xs text-secondary">
-                              Reserved or placed divided by live, weaned, or planned
-                              headcount.
-                            </div>
+                        if (animals.length === 0) {
+                          return (
+                            <p className="text-xs text-muted-foreground">
+                              No individual offspring recorded yet.
+                            </p>
+                          );
+                        }
+
+                        return (
+                          <div className="bhq-table overflow-x-auto">
+                            <table className="min-w-max w-full text-xs">
+                              <thead>
+                                <tr>
+                                  <th className="text-left text-xs font-medium text-muted-foreground px-2 py-1.5">
+                                    Name
+                                  </th>
+                                  <th className="text-left text-xs font-medium text-muted-foreground px-2 py-1.5">
+                                    Sex
+                                  </th>
+                                  <th className="text-left text-xs font-medium text-muted-foreground px-2 py-1.5">
+                                    Collar
+                                  </th>
+                                  <th className="text-left text-xs font-medium text-muted-foreground px-2 py-1.5">
+                                    Status
+                                  </th>
+                                  <th className="text-left text-xs font-medium text-muted-foreground px-2 py-1.5">
+                                    Buyer
+                                  </th>
+                                  <th className="text-right text-xs font-medium text-muted-foreground px-2 py-1.5">
+                                    Price
+                                  </th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {animals.map((a: any) => (
+                                  <tr
+                                    key={a.id}
+                                    className="cursor-pointer hover:bg-muted/40"
+                                    onClick={() => openOffspringFromGroup(a.id)}
+                                  >
+                                    <td className="px-2 py-1.5">
+                                      {a.name || a.placeholderLabel || "Unnamed"}
+                                    </td>
+
+                                    <td className="px-2 py-1.5">{a.sex ?? "-"}</td>
+
+                                    {/* Whelping collar color */}
+                                    <td className="px-2 py-1.5">
+                                      {(() => {
+                                        const value = a.whelpingCollarColor;
+
+                                        if (!value) return "-";
+
+                                        const lower = value.toString().toLowerCase();
+                                        const match = WHELPING_COLLAR_SWATCHES.find((opt) => {
+                                          const valLower = opt.value.toLowerCase();
+                                          const labelLower = opt.label.toLowerCase();
+                                          return valLower === lower || labelLower === lower;
+                                        });
+
+                                        const hex = match?.hex ?? null;
+
+                                        return (
+                                          <span className="inline-flex items-center justify-center gap-1 text-xs">
+                                            {hex && (
+                                              <span
+                                                className="inline-block h-3 w-3 rounded-full border border-border"
+                                                style={{ backgroundColor: hex }}
+                                              />
+                                            )}
+                                            <span>{value}</span>
+                                          </span>
+                                        );
+                                      })()}
+                                    </td>
+
+                                    <td className="px-2 py-1.5">
+                                      {a.status ? prettyStatus(a.status as any) : "-"}
+                                    </td>
+
+                                    <td className="px-2 py-1.5">
+                                      {a.buyerContact
+                                        ? a.buyerContact.name
+                                        : a.buyerOrg
+                                          ? a.buyerOrg.name
+                                          : a.waitlistEntry
+                                            ? "Waitlist"
+                                            : "-"}
+                                    </td>
+
+                                    <td className="px-2 py-1.5">
+                                      {typeof a.price === "number" ? moneyFmt(a.price) : "-"}
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
                           </div>
-                        </Card>
-                        <Card>
-                          <div className="p-3">
-                            <div className="text-xs text-secondary">Placement velocity</div>
-                            <div className="text-2xl font-semibold">
-                              {(() => {
-                                const days = computePlacementVelocity(row);
-                                return days == null ? "-" : `${days} days`;
-                              })()}
-                            </div>
-                            <div className="mt-1 text-xs text-secondary">
-                              Days from placement start to placement completed.
-                            </div>
-                          </div>
-                        </Card>
-                      </div>
+                        );
+                      })()}
                     </SectionCard>
                   )}
                 </DetailsScaffold>
@@ -3888,16 +5439,62 @@ function OffspringGroupsTab({ api, tenantId, readOnlyGlobal }: { api: ReturnType
             />
           </Table>
         </DetailsHost>
-      </div>
+      </div >
 
       <AddBuyerToGroupModal
         api={api}
         group={buyerModalGroup}
-        open={buyerModalOpen}
-        onClose={() => setBuyerModalOpen(false)}
-        onAdded={load}
+        open={!!buyerModalGroup}
+        onClose={() => setBuyerModalGroup(null)}
+        onUpdated={async () => {
+          setBuyerModalGroup(null);
+          await load();
+        }}
       />
 
+      {
+        addOffspringGroup && (
+          <AddOffspringForGroupOverlay
+            api={api}
+            tenantId={tenantId}
+            group={addOffspringGroup}
+            open={addOffspringOpen}
+            onClose={() => {
+              setAddOffspringOpen(false);
+              setAddOffspringGroup(null);
+              if (setActiveTabRef.current) {
+                setActiveTabRef.current("linkedOffspring");
+                if (typeof window !== "undefined" && window.requestAnimationFrame) {
+                  window.requestAnimationFrame(() => {
+                    if (setActiveTabRef.current) {
+                      setActiveTabRef.current("linkedOffspring");
+                    }
+                  });
+                }
+              }
+            }}
+            onCreated={async () => {
+              setAddOffspringOpen(false);
+              setAddOffspringGroup(null);
+              if (setActiveTabRef.current) {
+                setActiveTabRef.current("linkedOffspring");
+              }
+              await load();
+              if (setActiveTabRef.current) {
+                setActiveTabRef.current("linkedOffspring");
+                if (typeof window !== "undefined" && window.requestAnimationFrame) {
+                  window.requestAnimationFrame(() => {
+                    if (setActiveTabRef.current) {
+                      setActiveTabRef.current("linkedOffspring");
+                    }
+                  });
+                }
+              }
+            }}
+          />
+        )
+      }
+
       {/* Create Group Modal */}
       <Overlay
         open={createOpen}
@@ -3909,67 +5506,35 @@ function OffspringGroupsTab({ api, tenantId, readOnlyGlobal }: { api: ReturnType
         closeOnOutsideClick
       >
         {(() => {
-          const panelRef = React.useRef<HTMLDivElement>(null);
-          const handleOutsideMouseDown: React.MouseEventHandler<HTMLDivElement> = (e) => {
-            const p = panelRef.current;
-            if (!p) return;
-            if (!p.contains(e.target as Node)) {
-              setCreateOpen(false);
-            }
+          const handleRootMouseDownCapture: React.MouseEventHandler<HTMLDivElement> = (e) => {
+            e.stopPropagation();
+          };
+
+          const handleRootClickCapture: React.MouseEventHandler<HTMLDivElement> = (e) => {
+            e.stopPropagation();
+          };
+
+          const handleBackdropClick: React.MouseEventHandler<HTMLDivElement> = (e) => {
+            e.stopPropagation();
+            setCreateOpen(false);
           };
 
           return (
-            <div className="fixed inset-0" onMouseDown={handleOutsideMouseDown}>
-              <div className="absolute inset-0 bg-black/50" />
-              <div className="absolute inset-0 flex items-center justify-center">
-                <div ref={panelRef} className="pointer-events-auto">
-                  <CreateGroupForm
-                    api={api}
-                    tenantId={tenantId}
-                    onCreated={async () => {
-                      setCreateOpen(false);
-                      await load();
-                    }}
-                    onCancel={() => setCreateOpen(false)}
-                  />
-                </div>
-              </div>
-            </div>
-          );
-        })()}
-      </Overlay>
-
-
-      {/* Create Group Modal */}
-      <Overlay
-        open={createOpen}
-        onOpenChange={(next) => {
-          if (!next) setCreateOpen(false);
-        }}
-        ariaLabel="Create Offspring Group"
-        closeOnEscape
-        closeOnOutsideClick
-      >
-        {(() => {
-          const panelRef = React.useRef<HTMLDivElement>(null);
-
-          const handleOutsideMouseDown: React.MouseEventHandler<HTMLDivElement> = (e) => {
-            const p = panelRef.current;
-            if (!p) return;
-            if (!p.contains(e.target as Node)) {
-              setCreateOpen(false);
-            }
-          };
-
-          return (
-            <div className="fixed inset-0" onMouseDown={handleOutsideMouseDown}>
+            <div
+              className="fixed inset-0"
+              style={{ zIndex: MODAL_Z + 1, isolation: "isolate" }}
+              onMouseDownCapture={handleRootMouseDownCapture}
+              onClickCapture={handleRootClickCapture}
+            >
               {/* Backdrop */}
-              <div className="absolute inset-0 bg-black/50" />
+              <div
+                className="absolute inset-0 bg-black/50"
+                onClick={handleBackdropClick}
+              />
 
               {/* Centered panel */}
               <div className="absolute inset-0 flex items-center justify-center">
                 <div
-                  ref={panelRef}
                   role="dialog"
                   aria-modal="true"
                   className="pointer-events-auto"
@@ -3989,332 +5554,11 @@ function OffspringGroupsTab({ api, tenantId, readOnlyGlobal }: { api: ReturnType
           );
         })()}
       </Overlay>
-    </Card>
+    </Card >
   );
 }
 
-// function PortalPopover({ anchorRef, open, children }: { anchorRef: React.RefObject<HTMLElement>, open: boolean, children: React.ReactNode }) {
-//   const [style, setStyle] = React.useState<React.CSSProperties>({});
-//   React.useLayoutEffect(() => {
-//     if (!open || !anchorRef.current) return;
-//     const r = anchorRef.current.getBoundingClientRect();
-//     setStyle({
-//       position: "fixed",
-//       left: r.left,
-//       top: r.bottom + 6,
-//       width: r.width,
-//       maxHeight: 160,
-//       overflowY: "auto",
-//       zIndex: 2147483646,
-//     });
-//   }, [open, anchorRef]);
-//   if (!open) return null;
-//   const root = getOverlayRoot?.() || document.body;
-//   return ReactDOM.createPortal(
-//     <div className="rounded-md border border-hairline bg-surface" style={style}>{children}</div>,
-//     root
-//   );
-// }
-
-// function WaitlistDrawerBody({
-//   api,
-//   row,
-//   mode,
-//   onChange,
-// }: {
-//   api: ReturnType<typeof makeOffspringApi> | null;
-//   row: any;
-//   mode: "view" | "edit";
-//   onChange: (patch: any) => void;
-// }) {
-//   const onChangeRef = React.useRef(onChange);
-//   React.useEffect(() => { onChangeRef.current = onChange; }, [onChange]);
-//   const readOnly = mode !== "edit";
-//   // derive UI state from row
-//   const initSpeciesUi = (() => {
-//     const w = String(row?.speciesPref || "").toUpperCase();
-//     return w === "DOG" ? "Dog" : w === "CAT" ? "Cat" : w === "HORSE" ? "Horse" : "";
-//   })() as SpeciesUi | "";
-
-//   const [speciesUi, setSpeciesUi] = React.useState<SpeciesUi | "">(initSpeciesUi);
-//   const speciesWire = toWireSpecies(speciesUi);
-//   const damBoxRef = React.useRef<HTMLDivElement>(null);
-//   const sireBoxRef = React.useRef<HTMLDivElement>(null);
-
-//   // Breed (BreedCombo wants an object {name})
-//   const [breed, setBreed] = React.useState<any>(() => {
-//     const name =
-//       row?.breedPrefText ??
-//       (Array.isArray(row?.breedPrefs) ? row.breedPrefs.find(Boolean) : null);
-//     return name ? { name } : null;
-//   });
-//   const [breedNonce, setBreedNonce] = React.useState(0);
-//   const onBreedPick = React.useCallback((hit: any) => {
-//     setBreed(hit ? { ...hit } : null);
-//     setBreedNonce((n) => n + 1);
-//   }, []);
-
-//   // Parents (support both raw and mapped shapes)
-//   const [damId, setDamId] = React.useState<number | null>(row?.damPrefId ?? row?.damPref?.id ?? null);
-//   const [sireId, setSireId] = React.useState<number | null>(row?.sirePrefId ?? row?.sirePref?.id ?? null);
-//   const [damQ, setDamQ] = React.useState<string>(row?.damPref?.name ?? row?.damPrefName ?? "");
-//   const [sireQ, setSireQ] = React.useState<string>(row?.sirePref?.name ?? row?.sirePrefName ?? "");
-//   const [damOpen, setDamOpen] = React.useState(false);
-//   const [sireOpen, setSireOpen] = React.useState(false);
-
-//   // Admin fields mirrored from your overview section
-//   const [status, setStatus] = React.useState<string>(row?.status ?? "");
-//   const [priority, setPriority] = React.useState<number | "">(row?.priority ?? "");
-//   const [depositPaidAt, setDepositPaidAt] = React.useState<string>(row?.depositPaidAt ?? "");
-//   const [notes, setNotes] = React.useState<string>(row?.notes ?? "");
-
-//   // RE-SEED LOCAL STATE WHEN THE ROW SHOWN CHANGES
-//   React.useEffect(() => {
-//     const nextSpeciesUi = (() => {
-//       const w = String(row?.speciesPref || "").toUpperCase();
-//       return w === "DOG" ? "Dog" : w === "CAT" ? "Cat" : w === "HORSE" ? "Horse" : "";
-//     })() as SpeciesUi | "";
-//     setSpeciesUi(nextSpeciesUi);
-
-//     const nextBreedName =
-//       row?.breedPrefText ??
-//       (Array.isArray(row?.breedPrefs) ? row.breedPrefs.find(Boolean) : null) ??
-//       null;
-//     setBreed(nextBreedName ? { name: nextBreedName } : null);
-//     setBreedNonce((n) => n + 1);
-
-//     setDamId(row?.damPrefId ?? row?.damPref?.id ?? null);
-//     setSireId(row?.sirePrefId ?? row?.sirePref?.id ?? null);
-//     setDamQ(row?.damPref?.name ?? row?.damPrefName ?? "");
-//     setSireQ(row?.sirePref?.name ?? row?.sirePrefName ?? "");
-//     setDamOpen(false);
-//     setSireOpen(false);
-
-//     setStatus(row?.status ?? "");
-//     setPriority(row?.priority ?? "");
-//     setDepositPaidAt(row?.depositPaidAt ?? "");
-//     setNotes(row?.notes ?? "");
-//   }, [row?.id, row?.updatedAt]);
-
-//   // keep DetailsScaffold draft in sync so Save can pick it up
-//   React.useEffect(() => {
-//     if (mode !== "edit") return;
-//     onChangeRef.current({
-//       speciesPref: speciesWire ?? null,
-//       breedPrefs: (breed?.name ?? "").trim() ? [breed.name.trim()] : null,
-//       damPrefId: damId ?? null,
-//       sirePrefId: sireId ?? null,
-//       status: status || null,
-//       priority: priority === "" ? null : Number(priority),
-//       depositPaidAt: depositPaidAt || null,
-//       notes: notes || null,
-//     });
-//   }, [mode, speciesWire, breed, damId, sireId, status, priority, depositPaidAt, notes]);
-
-//   // live animal search lists
-//   const dams = useAnimalSearch(api, damQ, speciesWire, "FEMALE");
-//   const sires = useAnimalSearch(api, sireQ, speciesWire, "MALE");
-
-//   return (
-//     <div className="space-y-4">
-//       <SectionCard title="Preferences (required)">
-//         <div className={"p-2 grid grid-cols-1 md:grid-cols-3 gap-3 " + (readOnly ? "opacity-70" : "")}>
-//           {/* Species */}
-//           <label className="flex flex-col gap-1">
-//             <span className={labelClass}>Species</span>
-//             <select
-//               className={inputClass}
-//               value={speciesUi}
-//               onChange={(e) => {
-//                 setSpeciesUi(e.currentTarget.value as SpeciesUi);
-//                 setDamId(null);
-//                 setSireId(null);
-//                 setDamQ("");
-//                 setSireQ("");
-//                 setDamOpen(false);
-//                 setSireOpen(false);
-//                 setBreed(null);
-//                 setBreedNonce((n) => n + 1);
-//               }}
-//               disabled={readOnly}
-//             >
-//               <option value="">-</option>
-//               {SPECIES_UI_ALL.map((s) => (
-//                 <option key={s} value={s}>
-//                   {s}
-//                 </option>
-//               ))}
-//             </select>
-//           </label>
-
-//           {/* Breed */}
-//           <div className="md:col-span-2">
-//             <div className={labelClass + " mb-1"}>Breed</div>
-//             {speciesUi ? (
-//               readOnly ? (
-//                 // READ-ONLY: show the current value, no interaction
-//                 <div className="h-9 px-3 flex items-center rounded-md border border-hairline bg-surface/60 text-sm">
-//                   {breed?.name || "-"}
-//                 </div>
-//               ) : (
-//                 // EDIT: interactive picker
-//                 <BreedCombo
-//                   key={`breed-${speciesUi}-${breedNonce}`}
-//                   species={speciesUi}
-//                   value={breed}
-//                   onChange={onBreedPick}
-//                   api={{ breeds: { listCanonical: api!.breeds.listCanonical } }}
-//                 />
-//               )
-//             ) : (
-//               <div className="h-9 px-3 flex items-center rounded-md border border-hairline bg-surface/60 text-sm text-secondary">
-//                 Select Species
-//               </div>
-//             )}
-//           </div>
-//         </div>
-//       </SectionCard>
-
-//       <SectionCard title="Preferred Parents (optional)">
-//         <div className="p-2 grid grid-cols-1 md:grid-cols-2 gap-3">
-//           {/* Dam */}
-//           <label className="flex flex-col gap-1">
-//             <span className={labelClass}>Dam (Female)</span>
-//             {!speciesWire ? (
-//               <div className="h-9 px-3 flex items-center rounded-md border border-hairline bg-surface/60 text-sm text-secondary">Select Species</div>
-//             ) : (
-//               <>
-//                 <div ref={damBoxRef} className="relative" style={{ maxWidth: 420 }}>
-//                   <InlineSearch
-//                     value={damQ}
-//                     onChange={(val) => { setDamQ(val); setDamOpen(!!val.trim()); }}
-//                     onFocus={() => setDamOpen(!!damQ.trim())}
-//                     onBlur={() => setTimeout(() => setDamOpen(false), 100)}
-//                     placeholder="Search females..."
-//                     widthPx={400}
-//                     disabled={mode !== "edit"}
-//                   />
-//                 </div>
-//                 <PortalPopover anchorRef={damBoxRef} open={!readOnly && !!(damOpen && damQ.trim())}>
-//                   {dams.length === 0 ? (
-//                     <div className="px-2 py-2 text-sm text-secondary">No females found</div>
-//                   ) : (
-//                     dams.map((a) => (
-//                       <button key={a.id} type="button" onClick={() => { setDamId(a.id); setDamQ(a.name); setDamOpen(false); }} className="w-full text-left px-2 py-1 hover:bg-white/5">
-//                         {a.name}
-//                       </button>
-//                     ))
-//                   )}
-//                 </PortalPopover>
-//               </>
-//             )}
-//           </label>
-
-//           {/* Sire */}
-//           <label className="flex flex-col gap-1">
-//             <span className={labelClass}>Sire (Male)</span>
-//             {!speciesWire ? (
-//               <div className="h-9 px-3 flex items-center rounded-md border border-hairline bg-surface/60 text-sm text-secondary">
-//                 Select Species
-//               </div>
-//             ) : (
-//               <>
-//                 <div ref={sireBoxRef} className="relative" style={{ maxWidth: 420 }}>
-//                   <InlineSearch
-//                     value={sireQ}
-//                     onChange={(val) => { setSireQ(val); setSireOpen(!!val.trim()); }}
-//                     onFocus={() => setSireOpen(!!sireQ.trim())}
-//                     onBlur={() => setTimeout(() => setSireOpen(false), 100)}
-//                     placeholder="Search males..."
-//                     widthPx={400}
-//                     disabled={mode !== "edit"}
-//                   />
-//                 </div>
-//                 <PortalPopover anchorRef={sireBoxRef} open={!readOnly && !!(sireOpen && sireQ.trim())}>
-//                   {sires.length === 0 ? (
-//                     <div className="px-2 py-2 text-sm text-secondary">No males found</div>
-//                   ) : (
-//                     sires.map((a) => (
-//                       <button
-//                         key={a.id}
-//                         type="button"
-//                         onClick={() => { setSireId(a.id); setSireQ(a.name); setSireOpen(false); }}
-//                         className="w-full text-left px-2 py-1 hover:bg-white/5"
-//                       >
-//                         {a.name}
-//                       </button>
-//                     ))
-//                   )}
-//                 </PortalPopover>
-//               </>
-//             )}
-//           </label>
-//         </div>
-//       </SectionCard>
-
-//       <SectionCard title="Admin">
-//         <div className={"p-2 grid grid-cols-1 md:grid-cols-3 gap-3 " + (readOnly ? "opacity-70" : "")}>
-//           <label className="flex flex-col gap-1">
-//             <span className={labelClass}>Status</span>
-//             <input className={inputClass} value={status} onChange={(e) => setStatus(e.target.value)} disabled={readOnly} />
-//           </label>
-//           <label className="flex flex-col gap-1">
-//             <span className={labelClass}>Priority</span>
-//             <input
-//               className={inputClass}
-//               type="number"
-//               value={priority}
-//               onChange={(e) => setPriority(e.target.value === "" ? "" : Number(e.target.value))} disabled={readOnly}
-//             />
-//           </label>
-//           <label className="flex flex-col gap-1">
-//             <span className={labelClass}>Deposit Paid</span>
-//             <input
-//               className={inputClass}
-//               type="date"
-//               value={depositPaidAt || ""}
-//               onChange={(e) => setDepositPaidAt(e.target.value)} disabled={readOnly}
-//             />
-//           </label>
-//           <label className="flex flex-col gap-1 md:col-span-3">
-//             <span className={labelClass}>Notes</span>
-//             <textarea
-//               className={inputClass + " h-24 resize-vertical"}
-//               value={notes}
-//               onChange={(e) => setNotes(e.target.value)} disabled={readOnly}
-//             />
-//           </label>
-//         </div>
-//       </SectionCard>
-//     </div>
-//   );
-// }
-
-// function WaitlistTab() { return null as any; }
-// /** Small bridge to open AddToWaitlistModal from the toolbar button without custom row hacks */
-// function WaitlistAddBridge({ api, tenantId, onCreated }: { api: ReturnType<typeof makeOffspringApi> | null; tenantId: number | null; onCreated: () => Promise<void> | void }) {
-//   const [open, setOpen] = React.useState(false);
-//   React.useEffect(() => {
-//     const h = () => setOpen(true);
-//     window.addEventListener("bhq:offspring:add-waitlist", h as any);
-//     return () => window.removeEventListener("bhq:offspring:add-waitlist", h as any);
-//   }, []);
-//   return (
-//     <AddToWaitlistModal
-//       api={api}
-//       tenantId={tenantId}
-//       open={open}
-//       onClose={() => setOpen(false)}
-//       onCreated={onCreated}
-//       allowedSpecies={["Dog", "Cat", "Horse"]}
-//     />
-//   );
-// }
-
 /* ───────────────────────── Module shell ───────────────────────── */
-
-/* ───────────────────────── Module shell ───────────────────────── */
-
 export default function AppOffspringModule() {
   // Resolve tenant once, memo client
   const [tenantId, setTenantId] = React.useState<number | null>(
@@ -4340,7 +5584,11 @@ export default function AppOffspringModule() {
     };
   }, [tenantId]);
 
-  const api = React.useMemo(() => makeOffspringApi("/api/v1"), []);
+  const api = React.useMemo<OffspringApi | null>(
+    () => makeOffspringApiClient(),
+    [],
+  );
+
 
   const [allowedSpecies, setAllowedSpecies] = React.useState<SpeciesUi[]>([
     "Dog",
@@ -4385,69 +5633,9 @@ export default function AppOffspringModule() {
   const [activeTab, setActiveTab] =
     React.useState<"offspring" | "groups" | "waitlist">("groups");
 
-  // URL driven tab routing and auto open
-  React.useEffect(() => {
-    const apply = () => {
-      let url: URL;
-
-      try {
-        url = new URL(window.location.href);
-      } catch {
-        // fall back to default when URL parsing fails
-        setActiveTab("groups");
-        return;
-      }
-
-      const rawTab =
-        url.searchParams.get("tab") || url.hash.replace("#", "");
-
-      const directTab =
-        rawTab === "offspring" ||
-          rawTab === "groups" ||
-          rawTab === "waitlist"
-          ? (rawTab as "offspring" | "groups" | "waitlist")
-          : null;
-
-      if (directTab) {
-        setActiveTab(directTab);
-        return;
-      }
-
-      const offspringId = url.searchParams.get("offspringId");
-      const groupId = url.searchParams.get("groupId");
-      const waitlistId = url.searchParams.get("waitlistId");
-
-      if (offspringId) {
-        setActiveTab("offspring");
-      } else if (groupId) {
-        setActiveTab("groups");
-      } else if (waitlistId) {
-        setActiveTab("waitlist");
-      } else {
-        // default when nothing in URL
-        setActiveTab("groups");
-      }
-    };
-
-    apply();
-
-    const onPop = () => apply();
-    window.addEventListener("popstate", onPop);
-
-    return () => window.removeEventListener("popstate", onPop);
-  }, []);
-
   const handleTabChange = React.useCallback(
     (next: "offspring" | "groups" | "waitlist") => {
       setActiveTab(next);
-
-      try {
-        const url = new URL(window.location.href);
-        url.searchParams.set("tab", next);
-        window.history.replaceState({}, "", url.toString());
-      } catch {
-        // ignore URL failures in embedded shells
-      }
     },
     [],
   );
@@ -4468,8 +5656,6 @@ export default function AppOffspringModule() {
         }
       />
 
-      {activeTab === "offspring" && <OffspringPage embed />}
-
       {activeTab === "groups" && (
         <OffspringGroupsTab
           api={api}
@@ -4477,7 +5663,7 @@ export default function AppOffspringModule() {
           readOnlyGlobal={readOnlyGlobal}
         />
       )}
-
+      {activeTab === "offspring" && <OffspringPage />}
       {activeTab === "waitlist" && <WaitlistPage embed />}
     </div>
   );

@@ -11,7 +11,7 @@ export type StageKey =
   | "hormoneTesting"
   | "breeding"
   | "birth"
-  | "puppyCare"
+  | "postBirthCare"
   | "PlacementNormal"    // internal key retained for compatibility
   | "PlacementExtended"; // internal key retained for compatibility
 
@@ -77,8 +77,8 @@ export interface Biology {
   breedingPreOvulationDays: number; // full start is ovulationOffset - this
   breedingPostOvulationDays: number; // full end is ovulationOffset + this
 
-  /** Puppy/kit care duration after birth that drives placement timing (weeks) */
-  puppyCareWeeks: number;
+  /** Offspring care duration after birth that drives placement timing (weeks) */
+  careWeeks: number;
 
   /** Weaning default in days after birth */
   weanFromBirthDays: number;
@@ -98,7 +98,7 @@ export const BIO: Biology = {
   preBreedingLikelyHalfWidthDays: 5,
   breedingPreOvulationDays: 1,
   breedingPostOvulationDays: 2,
-  puppyCareWeeks: 8,
+  careWeeks: 8,
   weanFromBirthDays: 42,
   placementExtendedWeeks: 3,
 };
@@ -106,32 +106,32 @@ export const BIO: Biology = {
 /** Species overrides (authoritative) */
 export const BIO_BY_SPECIES: Partial<Record<Species, Partial<Biology>>> = {
   CAT: {
-    cycleLenDays: 60,               // queens cycle more frequently
-    ovulationOffsetDays: 3,         // induced ovulators, breeding near heat onset
-    whelpingDaysFromOvulation: 63,  // practical planning assumption
+    cycleLenDays: 60,
+    ovulationOffsetDays: 3,
+    whelpingDaysFromOvulation: 63,
     weanFromBirthDays: 56,          // 8 weeks
-    puppyCareWeeks: 8,              // homing about 8 to 10 weeks
+    careWeeks: 8,                   // homing about 8 to 10 weeks
   },
   HORSE: {
-    cycleLenDays: 21,               // estrous cycle
+    cycleLenDays: 21,
     ovulationOffsetDays: 5,
     whelpingDaysFromOvulation: 340, // about 11 months
     weanFromBirthDays: 150,         // about 5 months
-    puppyCareWeeks: 30,             // placement analogue later for foals
+    careWeeks: 36,                  // about 8+ months after birth
   },
   GOAT: {
-    cycleLenDays: 21,               // does are polyestrous
-    ovulationOffsetDays: 1,         // near end of short heat
-    whelpingDaysFromOvulation: 150, // about 150 days
+    cycleLenDays: 21,
+    ovulationOffsetDays: 1,
+    whelpingDaysFromOvulation: 150,
     weanFromBirthDays: 70,          // about 10 weeks
-    puppyCareWeeks: 10,
+    careWeeks: 10,
   },
   RABBIT: {
-    cycleLenDays: 14,               // planning cadence, rabbits are induced ovulators
-    ovulationOffsetDays: 0,         // at or just after breeding
-    whelpingDaysFromOvulation: 31,  // kits in about 31 days
+    cycleLenDays: 14,
+    ovulationOffsetDays: 0,
+    whelpingDaysFromOvulation: 31,
     weanFromBirthDays: 42,          // around 6 weeks
-    puppyCareWeeks: 8,
+    careWeeks: 8,
   },
 };
 
@@ -244,7 +244,7 @@ export const DEFAULT_STAGE_LABELS: StageLabels = {
   hormoneTesting: "Hormone Testing",
   breeding: "Breeding",
   birth: "Birth",
-  puppyCare: "Puppy Care",
+  postBirthCare: "Post birth care",
   PlacementNormal: "Placement",
   PlacementExtended: "Placement (Extended)",
 };
@@ -255,7 +255,7 @@ export const DEFAULT_STAGE_ORDER: StageKey[] = [
   "hormoneTesting",
   "breeding",
   "birth",
-  "puppyCare",
+  "postBirthCare",
   "PlacementNormal",
   "PlacementExtended",
 ];
@@ -319,18 +319,24 @@ export function computeWindows(
     addDays(ovulationCenter, b.whelpingDaysFromOvulation + b.whelpingJitterLikelyDays)
   );
 
-  // Puppy Care
-  const puppyCareFull = makeRange(birthFull.start, addDays(birthFull.end, b.puppyCareWeeks * 7));
-  const puppyCareLikely = makeRange(birthLikely.start, addDays(birthLikely.end, b.puppyCareWeeks * 7));
+  // Post birth care
+  const postBirthCareFull = makeRange(
+    birthFull.start,
+    addDays(birthFull.end, b.careWeeks * 7)
+  );
+  const postBirthCareLikely = makeRange(
+    birthLikely.start,
+    addDays(birthLikely.end, b.careWeeks * 7)
+  );
 
   // Placement
   const PlacementNormalFull = makeRange(
-    addDays(birthFull.start, b.puppyCareWeeks * 7),
-    addDays(birthFull.end, b.puppyCareWeeks * 7)
+    addDays(birthFull.start, b.careWeeks * 7),
+    addDays(birthFull.end, b.careWeeks * 7)
   );
   const PlacementNormalLikely = makeRange(
-    addDays(birthLikely.start, b.puppyCareWeeks * 7 - 1),
-    addDays(birthLikely.end, b.puppyCareWeeks * 7 + 1)
+    addDays(birthLikely.start, b.careWeeks * 7 - 1),
+    addDays(birthLikely.end, b.careWeeks * 7 + 1)
   );
 
   const PlacementExtendedFull = makeRange(
@@ -344,10 +350,10 @@ export function computeWindows(
 
   // Availability bands
   const availability: AvailabilityBand[] = [
-    { kind: "risky",     range: makeRange(hormoneFull.start, breedingFull.end),              label: "Availability: Risky" },
-    { kind: "risky",     range: makeRange(birthFull.start, PlacementExtendedFull.end),       label: "Availability: Risky" },
-    { kind: "unlikely",  range: makeRange(hormoneLikely.start, breedingLikely.end),          label: "Availability: Unlikely" },
-    { kind: "unlikely",  range: makeRange(puppyCareLikely.start, PlacementNormalLikely.end), label: "Availability: Unlikely" },
+    { kind: "risky",     range: makeRange(hormoneFull.start, breedingFull.end),                label: "Availability: Risky" },
+    { kind: "risky",     range: makeRange(birthFull.start, PlacementExtendedFull.end),         label: "Availability: Risky" },
+    { kind: "unlikely",  range: makeRange(hormoneLikely.start, breedingLikely.end),            label: "Availability: Unlikely" },
+    { kind: "unlikely",  range: makeRange(postBirthCareLikely.start, PlacementNormalLikely.end), label: "Availability: Unlikely" },
   ];
 
   // Horizon: 18 months from first stage start
@@ -355,12 +361,12 @@ export function computeWindows(
   const horizon = makeRange(minStart, addDays(minStart, 18 * 30 + 8)); // nominal 548 days
 
   const stages: StageWindows[] = [
-    { key: "preBreeding", full: preBreedingFull, likely: preBreedingLikely },
-    { key: "hormoneTesting", full: hormoneFull, likely: hormoneLikely },
-    { key: "breeding", full: breedingFull, likely: breedingLikely },
-    { key: "birth", full: birthFull, likely: birthLikely },
-    { key: "puppyCare", full: puppyCareFull, likely: puppyCareLikely },
-    { key: "PlacementNormal", full: PlacementNormalFull, likely: PlacementNormalLikely },
+    { key: "preBreeding",    full: preBreedingFull,    likely: preBreedingLikely },
+    { key: "hormoneTesting", full: hormoneFull,        likely: hormoneLikely },
+    { key: "breeding",       full: breedingFull,       likely: breedingLikely },
+    { key: "birth",          full: birthFull,          likely: birthLikely },
+    { key: "postBirthCare",  full: postBirthCareFull,  likely: postBirthCareLikely },
+    { key: "PlacementNormal",  full: PlacementNormalFull,  likely: PlacementNormalLikely },
     { key: "PlacementExtended", full: PlacementExtendedFull },
   ];
 
@@ -460,7 +466,7 @@ function rulesFor(species: Species): SpeciesRules {
     ovulationFromHeatStartDays: b.ovulationOffsetDays,
     gestationDays: b.whelpingDaysFromOvulation,
     weanFromBirthDays: b.weanFromBirthDays,
-    PlacementFromBirthDays: b.puppyCareWeeks * 7,
+    PlacementFromBirthDays: b.careWeeks * 7,
   };
 }
 
@@ -540,16 +546,63 @@ export type ProgramDefaultsLike = Partial<{
 export function expectedPlacementStartFromBirth(
   birthDate: Date,
   prefs?: ProgramDefaultsLike
+): Date;
+export function expectedPlacementStartFromBirth(
+  birthDate: Date,
+  species: Species,
+  prefs?: ProgramDefaultsLike
+): Date;
+export function expectedPlacementStartFromBirth(
+  birthDate: Date,
+  speciesOrPrefs?: Species | ProgramDefaultsLike,
+  maybePrefs?: ProgramDefaultsLike
 ): Date {
-  const weeks = Number(prefs?.placement_start_from_birth_weeks ?? bioFor("DOG").puppyCareWeeks);
+  let species: Species | undefined;
+  let prefs: ProgramDefaultsLike | undefined;
+
+  if (typeof speciesOrPrefs === "string") {
+    species = speciesOrPrefs;
+    prefs = maybePrefs;
+  } else {
+    prefs = speciesOrPrefs;
+  }
+
+  const b = bioFor(species);
+  const weeks = Number(
+    prefs?.placement_start_from_birth_weeks ?? b.careWeeks
+  );
   return addDays(birthDate, weeks * 7);
 }
+
 
 export function expectedWeanedFromBirth(
   birthDate: Date,
   prefs?: ProgramDefaultsLike
+): Date;
+export function expectedWeanedFromBirth(
+  birthDate: Date,
+  species: Species,
+  prefs?: ProgramDefaultsLike
+): Date;
+export function expectedWeanedFromBirth(
+  birthDate: Date,
+  speciesOrPrefs?: Species | ProgramDefaultsLike,
+  maybePrefs?: ProgramDefaultsLike
 ): Date {
-  const days = Number(prefs?.weaned_from_birth_days ?? BIO.weanFromBirthDays);
+  let species: Species | undefined;
+  let prefs: ProgramDefaultsLike | undefined;
+
+  if (typeof speciesOrPrefs === "string") {
+    species = speciesOrPrefs;
+    prefs = maybePrefs;
+  } else {
+    prefs = speciesOrPrefs;
+  }
+
+  const b = bioFor(species);
+  const days = Number(
+    prefs?.weaned_from_birth_days ?? b.weanFromBirthDays
+  );
   return addDays(birthDate, days);
 }
 
@@ -588,14 +641,22 @@ export function expectedMilestonesFromLocked(
   const birth = addDays(ovulation, rules.gestationDays);
 
   const weaned = programDefaults
-    ? expectedWeanedFromBirth(birth, programDefaults)
+    ? expectedWeanedFromBirth(birth, species, programDefaults)
     : addDays(birth, rules.weanFromBirthDays);
 
   const placementStart = programDefaults
-    ? expectedPlacementStartFromBirth(birth, programDefaults)
+    ? expectedPlacementStartFromBirth(birth, species, programDefaults)
     : addDays(birth, rules.PlacementFromBirthDays);
 
-  const placementCompleted: string | null = null; // learned from history later
+  const bio = bioFor(species);
+  const placementExtendedEnd = addDays(
+    placementStart,
+    bio.placementExtendedWeeks * 7
+  );
+
+  // placementCompleted stays null for now, it is intended to be learned
+  // from actual placement history rather than pure biology
+  const placementCompleted: string | null = null;
 
   return {
     ovulation: isoDay(ovulation),
@@ -606,6 +667,6 @@ export function expectedMilestonesFromLocked(
     placement_completed_expected: placementCompleted,
     // legacy aliases for consumers not yet migrated
     Placement_expected: isoDay(placementStart),
-    Placement_extended_end_expected: placementCompleted,
+    Placement_extended_end_expected: isoDay(placementExtendedEnd),
   };
 }

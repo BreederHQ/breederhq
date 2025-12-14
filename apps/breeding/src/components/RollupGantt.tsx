@@ -42,6 +42,8 @@ type PlanLike = {
 
   expectedPlacementCompleted?: string | Date | null;
   placementCompletedDateExpected?: string | Date | null;
+
+  isSynthetic?: boolean;
 };
 
 type ComputeExpectedFn = (plan: PlanLike) => {
@@ -111,6 +113,10 @@ type Horizon = { start: Date; end: Date };
 
 const PHASES_COLORS = { cycleToBreeding: "#3B82F6", birthToPlacement: "#10B981" };
 const EXACT_COLORS = ["#06B6D4", "#A78BFA", "#F59E0B", "#14B8A6", "#F97316", "#8B5CF6", "#EF4444"];
+const WHATIF_PHASE_COLOR = "#A8FF00"; // bright pink for What If bands and anchors
+const WHATIF_EXACT_COLOR = "#76FF57"; // same pink for Expected Dates lines
+const WHATIF_PHASE_RISKY_COLOR = "#8EC700"; // darker pink for What If risky edges
+
 
 /* ---------- date utils ---------- */
 
@@ -364,6 +370,9 @@ export default function RollupGantt({
   for (const p of activePlans) {
     const exp = resolveExpected(p, computeExpected);
 
+    const isSynthetic = (p as any).isSynthetic === true;
+    const whatIfTag = isSynthetic ? " (What If)" : "";
+
     // Cycle → Breeding
     if (exp.cycle && exp.breeding) {
       if (toggles.showBands) {
@@ -383,16 +392,20 @@ export default function RollupGantt({
         phaseData.push({
           key: "cycle_to_breeding",
           likelyRange: { start: uStart, end: uEnd },
-          __tooltip: `[${p.name}] Cycle → Breeding, Unlikely: ${fmtNice.format(uStart)} → ${fmtNice.format(uEnd)}`,
+          __tooltip: `[${p.name}] Cycle → Breeding${whatIfTag}, Unlikely: ${fmtNice.format(uStart)} → ${fmtNice.format(uEnd)}`,
           __z: 1,
+          // make What If bands a unique color, real plans use default stage color
+          color: isSynthetic ? WHATIF_PHASE_COLOR : undefined,
         });
 
-        // Risky (distinct tint + subtle fade)
-        const riskyColor = shade(PHASES_COLORS.cycleToBreeding, -28);
+        // Risky (distinct tint)
+        const riskyBase = shade(PHASES_COLORS.cycleToBreeding, -28);
+        const riskyColor = isSynthetic ? WHATIF_PHASE_RISKY_COLOR : riskyBase;
+
         phaseData.push({
           key: "cycle_to_breeding",
           fullRange: { start: rLeftS, end: rLeftE },
-          __tooltip: `[${p.name}] Cycle → Breeding, Risky (Left): ${fmtNice.format(rLeftS)} → ${fmtNice.format(rLeftE)}`,
+          __tooltip: `[${p.name}] Cycle → Breeding${whatIfTag}, Risky (Left): ${fmtNice.format(rLeftS)} → ${fmtNice.format(rLeftE)}`,
           __z: 2,
           opacity: 0.85,
           color: riskyColor,
@@ -400,18 +413,19 @@ export default function RollupGantt({
         phaseData.push({
           key: "cycle_to_breeding",
           fullRange: { start: rRightS, end: rRightE },
-          __tooltip: `[${p.name}] Cycle → Breeding, Risky (Right): ${fmtNice.format(rRightS)} → ${fmtNice.format(rRightE)}`,
+          __tooltip: `[${p.name}] Cycle → Breeding${whatIfTag}, Risky (Right): ${fmtNice.format(rRightS)} → ${fmtNice.format(rRightE)}`,
           __z: 2,
           opacity: 0.85,
           color: riskyColor,
         });
 
-        // Center fill strictly between anchors (uses baseColor)
+        // Center fill strictly between anchors
         phaseData.push({
           key: "cycle_to_breeding",
           fullRange: { start: exp.cycle, end: exp.breeding },
-          __tooltip: `[${p.name}] Cycle → Breeding: ${fmtNice.format(exp.cycle)} → ${fmtNice.format(exp.breeding)}`,
+          __tooltip: `[${p.name}] Cycle → Breeding${whatIfTag}: ${fmtNice.format(exp.cycle)} → ${fmtNice.format(exp.breeding)}`,
           __z: 3,
+          color: isSynthetic ? WHATIF_PHASE_COLOR : undefined,
         });
 
         minAll = nonNullMin(minAll, uStart);
@@ -423,16 +437,29 @@ export default function RollupGantt({
         phaseData.push({
           key: "cycle_to_breeding",
           fullRange: { start: exp.cycle, end: exp.breeding },
-          __tooltip: `[${p.name}] Cycle → Breeding: ${fmtNice.format(exp.cycle)} → ${fmtNice.format(exp.breeding)}`,
+          __tooltip: `[${p.name}] Cycle → Breeding${whatIfTag}: ${fmtNice.format(exp.cycle)} → ${fmtNice.format(exp.breeding)}`,
           __z: 2,
+          color: isSynthetic ? WHATIF_PHASE_COLOR : undefined,
         });
         minAll = nonNullMin(minAll, addDays(exp.cycle, -1));
         maxAll = nonNullMax(maxAll, addDays(exp.breeding, +1));
       }
 
       // Anchors
-      phaseData.push({ key: "cycle_to_breeding", point: exp.cycle, __tooltip: `[${p.name}] Cycle Start: ${fmtNice.format(exp.cycle)}`, __z: 4 });
-      phaseData.push({ key: "cycle_to_breeding", point: exp.breeding, __tooltip: `[${p.name}] Breeding: ${fmtNice.format(exp.breeding)}`, __z: 4 });
+      phaseData.push({
+        key: "cycle_to_breeding",
+        point: exp.cycle,
+        __tooltip: `[${p.name}] Cycle Start${whatIfTag}: ${fmtNice.format(exp.cycle)}`,
+        __z: 4,
+        color: isSynthetic ? WHATIF_PHASE_COLOR : undefined,
+      });
+      phaseData.push({
+        key: "cycle_to_breeding",
+        point: exp.breeding,
+        __tooltip: `[${p.name}] Breeding${whatIfTag}: ${fmtNice.format(exp.breeding)}`,
+        __z: 4,
+        color: isSynthetic ? WHATIF_PHASE_COLOR : undefined,
+      });
     }
 
     // Birth → Placement
@@ -454,16 +481,19 @@ export default function RollupGantt({
         phaseData.push({
           key: "birth_to_placement",
           likelyRange: { start: uStart, end: uEnd },
-          __tooltip: `[${p.name}] Birth → Placement, Unlikely: ${fmtNice.format(uStart)} → ${fmtNice.format(uEnd)}`,
+          __tooltip: `[${p.name}] Birth → Placement${whatIfTag}, Unlikely: ${fmtNice.format(uStart)} → ${fmtNice.format(uEnd)}`,
           __z: 1,
+          color: isSynthetic ? WHATIF_PHASE_COLOR : undefined,
         });
 
         // Risky (distinct tint)
-        const riskyColor = shade(PHASES_COLORS.birthToPlacement, -28);
+        const riskyBase = shade(PHASES_COLORS.birthToPlacement, -28);
+        const riskyColor = isSynthetic ? WHATIF_PHASE_RISKY_COLOR : riskyBase;
+
         phaseData.push({
           key: "birth_to_placement",
           fullRange: { start: rLeftS, end: rLeftE },
-          __tooltip: `[${p.name}] Birth → Placement, Risky (Left): ${fmtNice.format(rLeftS)} → ${fmtNice.format(rLeftE)}`,
+          __tooltip: `[${p.name}] Birth → Placement${whatIfTag}, Risky (Left): ${fmtNice.format(rLeftS)} → ${fmtNice.format(rLeftE)}`,
           __z: 2,
           opacity: 0.85,
           color: riskyColor,
@@ -471,7 +501,7 @@ export default function RollupGantt({
         phaseData.push({
           key: "birth_to_placement",
           fullRange: { start: rRightS, end: rRightE },
-          __tooltip: `[${p.name}] Birth → Placement, Risky (Right): ${fmtNice.format(rRightS)} → ${fmtNice.format(rRightE)}`,
+          __tooltip: `[${p.name}] Birth → Placement${whatIfTag}, Risky (Right): ${fmtNice.format(rRightS)} → ${fmtNice.format(rRightE)}`,
           __z: 2,
           opacity: 0.85,
           color: riskyColor,
@@ -481,8 +511,9 @@ export default function RollupGantt({
         phaseData.push({
           key: "birth_to_placement",
           fullRange: { start: exp.birth, end: exp.placementCompleted },
-          __tooltip: `[${p.name}] Birth → Placement: ${fmtNice.format(exp.birth)} → ${fmtNice.format(exp.placementCompleted)}`,
+          __tooltip: `[${p.name}] Birth → Placement${whatIfTag}: ${fmtNice.format(exp.birth)} → ${fmtNice.format(exp.placementCompleted)}`,
           __z: 3,
+          color: isSynthetic ? WHATIF_PHASE_COLOR : undefined,
         });
 
         minAll = nonNullMin(minAll, uStart);
@@ -494,25 +525,48 @@ export default function RollupGantt({
         phaseData.push({
           key: "birth_to_placement",
           fullRange: { start: exp.birth, end: exp.placementCompleted },
-          __tooltip: `[${p.name}] Birth → Placement: ${fmtNice.format(exp.birth)} → ${fmtNice.format(exp.placementCompleted)}`,
+          __tooltip: `[${p.name}] Birth → Placement${whatIfTag}: ${fmtNice.format(exp.birth)} → ${fmtNice.format(exp.placementCompleted)}`,
           __z: 2,
+          color: isSynthetic ? WHATIF_PHASE_COLOR : undefined,
         });
         minAll = nonNullMin(minAll, addDays(exp.birth, -1));
         maxAll = nonNullMax(maxAll, addDays(exp.placementCompleted, +1));
       }
 
       // Anchors
-      phaseData.push({ key: "birth_to_placement", point: exp.birth, __tooltip: `[${p.name}] Birth: ${fmtNice.format(exp.birth)}`, __z: 4 });
-      phaseData.push({ key: "birth_to_placement", point: exp.placementCompleted, __tooltip: `[${p.name}] Placement Completed: ${fmtNice.format(exp.placementCompleted)}`, __z: 4 });
+      phaseData.push({
+        key: "birth_to_placement",
+        point: exp.birth,
+        __tooltip: `[${p.name}] Birth${whatIfTag}: ${fmtNice.format(exp.birth)}`,
+        __z: 4,
+        color: isSynthetic ? WHATIF_PHASE_COLOR : undefined,
+      });
+      phaseData.push({
+        key: "birth_to_placement",
+        point: exp.placementCompleted,
+        __tooltip: `[${p.name}] Placement Completed${whatIfTag}: ${fmtNice.format(exp.placementCompleted)}`,
+        __z: 4,
+        color: isSynthetic ? WHATIF_PHASE_COLOR : undefined,
+      });
     }
 
     // Exact rows
     const tweak = (a: Date, b: Date) => (a.getTime() === b.getTime() ? addDays(b, 1) : b);
     const pushExact = (
-      key: string, anchor?: Date | null,
-      rf?: number, rt?: number, uf?: number, ut?: number, label?: string
+      key: string,
+      anchor?: Date | null,
+      rf?: number,
+      rt?: number,
+      uf?: number,
+      ut?: number,
+      label?: string
     ) => {
       if (!anchor) return;
+
+      // Separate colors for What If bands vs exact line
+      const bandLikelyColor = isSynthetic ? WHATIF_PHASE_COLOR : undefined;
+      const bandRiskyColor = isSynthetic ? WHATIF_PHASE_RISKY_COLOR : undefined;
+      const lineColor = isSynthetic ? WHATIF_EXACT_COLOR : undefined;
 
       if (toggles.showBands) {
         const b = normalizeBands(rf, rt, uf, ut, !!prefs.autoWidenUnlikely);
@@ -521,25 +575,31 @@ export default function RollupGantt({
         const rStart = addDays(anchor, b.rf);
         const rEnd = tweak(rStart, addDays(anchor, b.rt));
 
+        // Unlikely band
         exactData.push({
           key,
           likelyRange: { start: uStart, end: uEnd },
-          __tooltip: `[${p.name}] ${label || ""} (Unlikely): ${fmtNice.format(uStart)} → ${fmtNice.format(uEnd)}`,
+          __tooltip: `[${p.name}] ${label || ""}${whatIfTag} (Unlikely): ${fmtNice.format(uStart)} → ${fmtNice.format(uEnd)}`,
           __z: 1,
+          color: bandLikelyColor,
         });
 
+        // Risky band
         exactData.push({
           key,
           fullRange: { start: rStart, end: rEnd },
-          __tooltip: `[${p.name}] ${label || ""} (Risky): ${fmtNice.format(rStart)} → ${fmtNice.format(rEnd)}`,
+          __tooltip: `[${p.name}] ${label || ""}${whatIfTag} (Risky): ${fmtNice.format(rStart)} → ${fmtNice.format(rEnd)}`,
           __z: 2,
+          color: bandRiskyColor,
         });
 
+        // Exact vertical line
         exactData.push({
           key,
           point: anchor,
-          __tooltip: `[${p.name}] ${label || ""}: ${fmtNice.format(anchor)}`,
+          __tooltip: `[${p.name}] ${label || ""}${whatIfTag}: ${fmtNice.format(anchor)}`,
           __z: 3,
+          color: lineColor,
         });
 
         minAll = nonNullMin(minAll, uStart);
@@ -547,11 +607,13 @@ export default function RollupGantt({
         maxAll = nonNullMax(maxAll, uEnd);
         maxAll = nonNullMax(maxAll, rEnd);
       } else {
+        // No bands, only the exact line
         exactData.push({
           key,
           point: anchor,
-          __tooltip: `[${p.name}] ${label || ""}: ${fmtNice.format(anchor)}`,
+          __tooltip: `[${p.name}] ${label || ""}${whatIfTag}: ${fmtNice.format(anchor)}`,
           __z: 3,
+          color: lineColor,
         });
         minAll = nonNullMin(minAll, addDays(anchor, -1));
         maxAll = nonNullMax(maxAll, addDays(anchor, +1));
@@ -572,7 +634,8 @@ export default function RollupGantt({
   /* horizon rules */
   const today = new Date();
   const emptyStart = startOfMonth(today);
-  const emptyEnd = endOfMonth(addMonths(emptyStart, 5));
+  // 18 month default horizon: 0 through 17 gives 18 months inclusive
+  const emptyEnd = endOfMonth(addMonths(emptyStart, 17));
   const computed = ((): { start: Date; end: Date } | null => {
     const mins: Date[] = [];
     const maxs: Date[] = [];
@@ -598,7 +661,6 @@ export default function RollupGantt({
     heightPerRow: 32,
     showToday: true,
     showAvailability: false,
-    showTravel: false,
     className: "bhq-gantt planner",
     style: {} as React.CSSProperties,
     trimEdgeMonths: false,

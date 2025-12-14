@@ -1,10 +1,10 @@
 {
   "name": "@bhq/ui",
   "version": "0.1.0",
-  "files": [
-    "dist",
-    "styles"
-  ],
+"files": [
+  "dist",
+  "styles" 
+],
   "exports": {
     ".": "./dist/index.js",
     "./overlay": "./dist/overlay.js",

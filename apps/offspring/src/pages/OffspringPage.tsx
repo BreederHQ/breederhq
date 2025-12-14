@@ -13,8 +13,7 @@ import {
   DetailsScaffold,
   SectionCard,
   Button,
-  Card,
-  Tabs,
+  BreedCombo,
 } from "@bhq/ui";
 
 
@@ -24,295 +23,15 @@ import {
   ChevronUp,
   FilePlus2,
   Plus,
-  FileText,
-  DollarSign,
-  Stethoscope,
-  Image as ImageIcon,
-  Users,
-  User,
-  Trash2,
-  Link2 as LinkIcon,
-  Wand2,
 } from "lucide-react";
+
 import {
   makeOffspringApiClient,
-  type OffspringDTO,
+  type AnimalLite,
   type OffspringGroupDTO,
-  type OffspringInvoiceLinkDTO,
-  type WaitlistEntryDTO,
 } from "../api";
+
 import { readTenantIdFast } from "@bhq/ui/utils/tenant";
-
-type DirectoryHit =
-  | { kind: "contact"; id: number; label: string; sub?: string }
-  | { kind: "org"; id: number; label: string; sub?: string };
-
-type DirectoryLink = {
-  kind: "contact" | "org";
-  id: number;
-  label: string;
-  sub?: string;
-};
-
-async function searchDirectoryRaw(
-  q: string,
-): Promise<DirectoryHit[]> {
-  if (!q.trim()) return [];
-
-  let root: ReturnType<typeof makeOffspringApiClient> | null = null;
-  try {
-    root = makeOffspringApiClient();
-  } catch {
-    root = null;
-  }
-  if (!root) return [];
-
-  const [cRes, oRes] = await Promise.allSettled([
-    root.contacts?.list({ q, limit: 25 }) as any,
-    root.organizations?.list({ q, limit: 25 }) as any,
-  ]);
-
-  const hits: DirectoryHit[] = [];
-
-  if (cRes.status === "fulfilled" && cRes.value) {
-    const items: any[] = Array.isArray(cRes.value)
-      ? cRes.value
-      : cRes.value.items ?? [];
-    for (const c of items) {
-      const name =
-        c.display_name ||
-        `${c.first_name ?? ""} ${c.last_name ?? ""}`.trim() ||
-        "(No name)";
-      hits.push({
-        kind: "contact",
-        id: Number(c.id),
-        label: name,
-        sub: c.email || c.phoneE164 || "",
-      });
-    }
-  }
-
-  if (oRes.status === "fulfilled" && oRes.value) {
-    const items: any[] = Array.isArray(oRes.value)
-      ? oRes.value
-      : oRes.value.items ?? [];
-    for (const o of items) {
-      hits.push({
-        kind: "org",
-        id: Number(o.id),
-        label: o.name,
-        sub: o.website || o.email || "",
-      });
-    }
-  }
-
-  return hits;
-}
-
-function normalizeStr(s?: string | null) {
-  return (s ?? "").trim().toLowerCase();
-}
-
-async function findBestContactMatch(
-  probe: { email?: string; phone?: string; firstName?: string; lastName?: string },
-): Promise<any | null> {
-  let root: ReturnType<typeof makeOffspringApiClient> | null = null;
-  try {
-    root = makeOffspringApiClient();
-  } catch {
-    root = null;
-  }
-  if (!root) return null;
-
-  const tries: string[] = [];
-  if (probe.email) tries.push(probe.email);
-  if (probe.phone) tries.push(probe.phone);
-  const name = `${probe.firstName ?? ""} ${probe.lastName ?? ""}`.trim();
-  if (name) tries.push(name);
-
-  for (const q of tries) {
-    const res = await root.contacts.list({ q, limit: 10 });
-    const items: any[] = Array.isArray(res) ? res : res?.items ?? [];
-    if (!items.length) continue;
-
-    if (probe.email) {
-      const e = normalizeStr(probe.email);
-      const hit = items.find(
-        (c) => normalizeStr(c.email) === e,
-      );
-      if (hit) return hit;
-    }
-
-    if (probe.phone) {
-      const p = normalizeStr(probe.phone);
-      const hit = items.find(
-        (c) =>
-          normalizeStr(c.phoneE164) === p ||
-          normalizeStr(c.phone_e164) === p,
-      );
-      if (hit) return hit;
-    }
-
-    if (name) {
-      const nNorm = normalizeStr(name);
-      const hit = items.find(
-        (c) =>
-          normalizeStr(
-            c.display_name ||
-            `${c.first_name ?? ""} ${c.last_name ?? ""}`,
-          ) === nNorm,
-      );
-      if (hit) return hit;
-    }
-  }
-
-  return null;
-}
-
-async function exactContactLookup(
-  body: { email?: string; phone?: string; firstName?: string; lastName?: string },
-): Promise<any | null> {
-  if (!body.email && !body.phone) return null;
-
-  let root: ReturnType<typeof makeOffspringApiClient> | null = null;
-  try {
-    root = makeOffspringApiClient();
-  } catch {
-    root = null;
-  }
-  if (!root) return null;
-
-  const res = await root.contacts.list({
-    q:
-      body.email?.trim() ||
-      body.phone?.trim() ||
-      `${body.firstName ?? ""} ${body.lastName ?? ""}`.trim(),
-    limit: 10,
-  });
-  const items: any[] = Array.isArray(res) ? res : res?.items ?? [];
-  if (!items.length) return null;
-
-  if (body.email) {
-    const e = normalizeStr(body.email);
-    const hit = items.find(
-      (c) => normalizeStr(c.email) === e,
-    );
-    if (hit) return hit;
-  }
-
-  if (body.phone) {
-    const p = normalizeStr(body.phone);
-    const hit = items.find(
-      (c) =>
-        normalizeStr(c.phoneE164) === p ||
-        normalizeStr(c.phone_e164) === p,
-    );
-    if (hit) return hit;
-  }
-
-  return null;
-}
-
-function stripEmpty(obj: Record<string, any>) {
-  const out: Record<string, any> = {};
-  for (const [k, v] of Object.entries(obj)) {
-    if (v === null || v === undefined) continue;
-    if (typeof v === "string" && !v.trim()) continue;
-    out[k] = v;
-  }
-  return out;
-}
-
-function conflictExistingIdFromError(e: any): number | null {
-  const raw = e?.response?.data ?? e?.data ?? null;
-  if (!raw) return null;
-  const id =
-    raw.conflictId ??
-    raw.existingId ??
-    raw.id ??
-    null;
-  if (!id) return null;
-  const n = Number(id);
-  return Number.isFinite(n) ? n : null;
-}
-
-async function quickCreateContact(body: {
-  firstName?: string;
-  lastName?: string;
-  email?: string;
-  phone?: string;
-}): Promise<any> {
-  const probe = {
-    email: body.email,
-    phone: body.phone,
-    firstName: body.firstName,
-    lastName: body.lastName,
-  };
-
-  let root: ReturnType<typeof makeOffspringApiClient> | null = null;
-  try {
-    root = makeOffspringApiClient();
-  } catch {
-    root = null;
-  }
-  if (!root) throw new Error("Contact API not available");
-
-  const existing = await findBestContactMatch(probe);
-  if (existing) return existing;
-
-  const payload = stripEmpty({
-    display_name:
-      `${(body.firstName ?? "").trim()} ${(body.lastName ?? "").trim()}`.trim() ||
-      undefined,
-    first_name: body.firstName,
-    last_name: body.lastName,
-    email: body.email,
-    phoneE164: body.phone,
-    phone_e164: body.phone,
-  });
-
-  try {
-    return await root.contacts.create(payload);
-  } catch (e: any) {
-    const status = e?.status ?? e?.code ?? e?.response?.status;
-    if (status === 409) {
-      const id = conflictExistingIdFromError(e);
-      if (id && root.contacts.get) {
-        const contact = await root.contacts.get(id);
-        if (contact) return contact;
-      }
-      const post = await exactContactLookup(body);
-      if (post) return post;
-    }
-    throw e;
-  }
-}
-
-async function quickCreateOrg(body: {
-  name: string;
-  website?: string;
-  email?: string;
-  phone?: string;
-}): Promise<any> {
-  let root: ReturnType<typeof makeOffspringApiClient> | null = null;
-  try {
-    root = makeOffspringApiClient();
-  } catch {
-    root = null;
-  }
-  if (!root) throw new Error("Org API not available");
-
-  const payload = stripEmpty({
-    name: body.name,
-    website: body.website,
-    email: body.email,
-    phone: body.phone,
-  });
-
-  const created = await root.organizations.create(payload);
-  return created;
-}
-
 
 // Shared input styling
 const inputClass =
@@ -320,23 +39,80 @@ const inputClass =
   "placeholder:text-secondary/80 focus:outline-none focus:ring-1 focus:ring-[hsl(var(--brand-orange))] " +
   "focus:border-[hsl(var(--brand-orange))] shadow-[inset_0_0_0_9999px_rgba(255,255,255,0.02)]";
 
-function cx(parts: Array<string | false | null | undefined>) {
+function cx(...parts: Array<string | false | null | undefined>) {
   return parts.filter(Boolean).join(" ");
 }
 
-const labelClass = "text-xs text-secondary";
+const labelClass = "mt-3 text-xs text-secondary";
 
 const MODAL_Z = 2147485000;
+
+const WHELPING_COLLAR_SWATCHES = [
+  { label: "Red", value: "Red", hex: "#ef4444" },
+  { label: "Orange", value: "Orange", hex: "#f97316" },
+  { label: "Yellow", value: "Yellow", hex: "#eab308" },
+  { label: "Green", value: "Green", hex: "#22c55e" },
+  { label: "Blue", value: "Blue", hex: "#3b82f6" },
+  { label: "Purple", value: "Purple", hex: "#a855f7" },
+  { label: "Pink", value: "Pink", hex: "#ec4899" },
+  { label: "Black", value: "Black", hex: "#111827" },
+  { label: "White", value: "White", hex: "#f9fafb" },
+];
+
+const __og_COLLAR_COLOR_SWATCHES = [
+  { id: "red", name: "Red", hex: "#ef4444" },
+  { id: "orange", name: "Orange", hex: "#f97316" },
+  { id: "yellow", name: "Yellow", hex: "#eab308" },
+  { id: "green", name: "Green", hex: "#22c55e" },
+  { id: "blue", name: "Blue", hex: "#3b82f6" },
+  { id: "purple", name: "Purple", hex: "#a855f7" },
+  { id: "pink", name: "Pink", hex: "#ec4899" },
+  { id: "black", name: "Black", hex: "#111827" },
+  { id: "white", name: "White", hex: "#f9fafb" },
+];
+
+function __og_resolveCollarColor(input: any): {
+  id: string | null;
+  name: string | null;
+  hex: string | null;
+} {
+  if (typeof input !== "string") return { id: null, name: null, hex: null };
+  const trimmed = input.trim();
+  if (!trimmed) return { id: null, name: null, hex: null };
+
+  const lower = trimmed.toLowerCase();
+  const match = __og_COLLAR_COLOR_SWATCHES.find(
+    (c) =>
+      c.id.toLowerCase() === lower ||
+      c.name.toLowerCase() === lower,
+  );
+
+  if (!match) {
+    return { id: lower, name: trimmed, hex: null };
+  }
+
+  return { id: match.id, name: match.name, hex: match.hex };
+}
+
+
 
 /** ---------- Types for this page ---------- */
 type ID = string | number;
 type Sex = "MALE" | "FEMALE" | "UNKNOWN";
 type Status = "AVAILABLE" | "RESERVED" | "PLACED" | "HOLDBACK" | "DECEASED";
 type Species = "DOG" | "CAT" | "HORSE";
+type SpeciesUi = "Dog" | "Cat" | "Horse";
 type Money = number;
 
 type Buyer = { id: ID; name: string };
 type GroupLite = { id: ID; name: string };
+
+type GroupOption = {
+  id: number;
+  label: string;
+  species: SpeciesWire | null;
+  breed: string | null;
+};
 
 type MediaItem = {
   id: ID;
@@ -360,438 +136,187 @@ type LineageLink = {
   registrationId?: string | null;
 };
 
-type AssignBuyerEventDetail = {
-  offspringId: number;
-  currentBuyer: OffspringBuyerLite | null;
-  onSelect: (payload: { kind: OffspringBuyerKind; id: number }) => Promise<void> | void;
+type GroupBuyerOption = {
+  key: string; // "contact:123"
+  kind: OffspringBuyerKind;
+  id: number;
+  label: string;
+  email?: string | null;
+  phone?: string | null;
 };
 
-type AssignBuyerModalProps = {
-  open: boolean;
-  onClose: () => void;
-  detail: AssignBuyerEventDetail;
-};
+function deriveGroupBuyerOptions(group: any | null | undefined): GroupBuyerOption[] {
+  if (!group) return [];
 
-function AssignBuyerModal({ open, onClose, detail }: AssignBuyerModalProps) {
-  const [link, setLink] = React.useState<DirectoryLink | null>(() => {
-    if (!detail.currentBuyer) return null;
-    return {
-      kind: detail.currentBuyer.kind === "contact" ? "contact" : "org",
-      id: detail.currentBuyer.id,
-      label: detail.currentBuyer.name,
-      sub: detail.currentBuyer.email ?? detail.currentBuyer.phone ?? "",
-    };
-  });
+  const raw: any[] =
+    (group.buyers as any[]) ??
+    (group.Buyers as any[]) ??
+    (group.buyerParties as any[]) ??
+    (group.buyerLinks as any[]) ??
+    [];
 
-  const [q, setQ] = React.useState("");
-  const [hits, setHits] = React.useState<DirectoryHit[]>([]);
-  const [busy, setBusy] = React.useState(false);
+  return raw
+    .map((b) => {
+      const partyType = String(
+        b.partyType ??
+        b.type ??
+        b.kind ??
+        (b.contactId ? "CONTACT" : b.organizationId ? "ORGANIZATION" : "UNKNOWN"),
+      ).toUpperCase();
 
-  const [quickOpen, setQuickOpen] = React.useState<null | "contact" | "org">(null);
-  const [qc, setQc] = React.useState({
-    firstName: "",
-    lastName: "",
-    email: "",
-    phone: "",
-  });
-  const [qo, setQo] = React.useState({
-    name: "",
-    website: "",
-  });
-  const [creating, setCreating] = React.useState(false);
-  const [createErr, setCreateErr] = React.useState<string | null>(null);
+      const contact =
+        b.contact ??
+        b.buyerContact ??
+        b.partyContact ??
+        null;
 
-  React.useEffect(() => {
-    let alive = true;
-    (async () => {
-      const query = q.trim();
-      if (!query) {
-        if (alive) {
-          setHits([]);
-          setBusy(false);
-        }
-        return;
+      const organization =
+        b.organization ??
+        b.org ??
+        b.buyerOrganization ??
+        null;
+
+      let kind: OffspringBuyerKind;
+      if (partyType === "CONTACT") {
+        kind = "contact";
+      } else if (partyType === "ORGANIZATION") {
+        kind = "organization";
+      } else {
+        kind = contact ? "contact" : "organization";
       }
-      setBusy(true);
-      try {
-        const res = await searchDirectoryRaw(query);
-        if (!alive) return;
-        setHits(res);
-      } catch (e) {
-        console.error("Directory search failed", e);
-        if (!alive) return;
-        setHits([]);
-      } finally {
-        if (!alive) return;
-        setBusy(false);
-      }
-    })();
-    return () => {
-      alive = false;
-    };
-  }, [q]);
 
-  React.useEffect(() => {
-    const prev = document.body.style.overflow;
-    if (open) document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = prev || "";
-    };
-  }, [open]);
+      const id =
+        (kind === "contact"
+          ? b.contactId ?? b.buyerContactId ?? contact?.id
+          : b.organizationId ?? b.buyerOrganizationId ?? organization?.id) ?? null;
 
-  const canSubmit = !!link;
+      if (!id) return null;
 
-  function handleUseHit(h: DirectoryHit) {
-    setLink({
-      kind: h.kind,
-      id: h.id,
-      label: h.label,
-      sub: h.sub,
-    });
+      const label =
+        contact?.displayName ??
+        contact?.name ??
+        (contact
+          ? `${contact.firstName ?? ""} ${contact.lastName ?? ""}`.trim()
+          : null) ??
+        organization?.name ??
+        `Buyer #${id}`;
+
+      return {
+        key: `${kind}:${id}`,
+        kind,
+        id: id as number,
+        label,
+        email: contact?.email ?? organization?.email ?? null,
+        phone: contact?.phone ?? organization?.phone ?? null,
+      } as GroupBuyerOption;
+    })
+    .filter((x): x is GroupBuyerOption => Boolean(x));
+}
+
+type SpeciesWire = "DOG" | "CAT" | "HORSE";
+
+type DirectoryHit =
+  | {
+    kind: "contact";
+    id: number;
+    label: string;
+    sub?: string;
+    email?: string;
+    phone?: string;
   }
+  | {
+    kind: "org";
+    id: number;
+    label: string;
+    sub?: string;
+  };
 
-  async function doQuickAdd() {
-    setCreateErr(null);
-    setCreating(true);
+type OffspringRootApi = ReturnType<typeof makeOffspringApiClient>;
+
+async function searchDirectory(
+  api: OffspringRootApi | null,
+  q: string
+): Promise<DirectoryHit[]> {
+  const term = q.trim();
+  if (!api || !term) return [];
+
+  const anyApi: any = api;
+  const hits: DirectoryHit[] = [];
+
+  // Contacts
+  if (anyApi.contacts && typeof anyApi.contacts.list === "function") {
     try {
-      if (quickOpen === "contact") {
-        const c = await quickCreateContact({
-          firstName: qc.firstName,
-          lastName: qc.lastName,
-          email: qc.email,
-          phone: qc.phone,
-        });
-        setLink({
+      const res = await anyApi.contacts.list({ q: term, limit: 25 });
+      const items: any[] = Array.isArray(res) ? res : res?.items ?? [];
+      for (const c of items) {
+        const label =
+          c.display_name ||
+          `${c.first_name ?? ""} ${c.last_name ?? ""}`.trim() ||
+          "(Contact)";
+        const email = c.email ?? "";
+        const phone = c.phoneE164 || c.phone || "";
+        hits.push({
           kind: "contact",
           id: Number(c.id),
-          label:
-            c.display_name ||
-            `${c.first_name ?? ""} ${c.last_name ?? ""}`.trim() ||
-            "(No name)",
-          sub: c.email || c.phoneE164 || "",
-        });
-      } else if (quickOpen === "org") {
-        const o = await quickCreateOrg({
-          name: qo.name,
-          website: qo.website,
-        });
-        setLink({
-          kind: "org",
-          id: Number(o.id),
-          label: o.name || "(No name)",
-          sub: o.website || o.email || "",
+          label,
+          sub: email || phone || "",
+          email,
+          phone,
         });
       }
-      setQuickOpen(null);
-    } catch (e: any) {
-      console.error("Quick add failed", e);
-      setCreateErr(e?.message || "Failed to create record");
-    } finally {
-      setCreating(false);
+    } catch (e) {
+      console.error("Directory contact search failed", e);
     }
   }
 
-  async function handleSubmit() {
-    if (!link) return;
-    const payload: { kind: OffspringBuyerKind; id: number } =
-      link.kind === "contact"
-        ? { kind: "contact", id: link.id }
-        : { kind: "organization", id: link.id };
-    await detail.onSelect(payload);
-    onClose();
+  // Organizations
+  if (anyApi.organizations && typeof anyApi.organizations.list === "function") {
+    try {
+      const res = await anyApi.organizations.list({ q: term, limit: 25 });
+      const items: any[] = Array.isArray(res) ? res : res?.items ?? [];
+      for (const o of items) {
+        hits.push({
+          kind: "org",
+          id: Number(o.id),
+          label: o.name || "(Organization)",
+          sub: o.email || o.phone || "",
+        });
+      }
+    } catch (e) {
+      console.error("Directory organization search failed", e);
+    }
   }
 
-  if (!open) return null;
-
-  return (
-    <Overlay
-      open={open}
-      ariaLabel="Assign buyer"
-      onOpenChange={(next) => {
-        if (!next) onClose();
-      }}
-    >
-      <div
-        className="fixed inset-0 flex items-center justify-center"
-        style={{ zIndex: MODAL_Z }}
-      >
-        <div className="absolute inset-0 bg-black/50" />
-        <div className="relative w-full max-w-3xl max-h-[90vh] overflow-hidden rounded-xl border border-hairline bg-surface shadow-xl">
-          <div className="flex flex-col h-full">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-hairline">
-              <h2 className="text-sm font-medium text-primary">
-                Assign buyer
-              </h2>
-            </div>
-
-            <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
-              {/* Directory search */}
-              <SectionCard
-                title="Directory"
-                description="Search contacts and organizations, or add new records."
-              >
-                <div className="flex items-center gap-2">
-                  <SearchBar
-                    value={q}
-                    onChange={setQ}
-                    placeholder="Search contacts and organizations"
-                    widthPx={320}
-                  />
-                  {busy && (
-                    <span className="text-xs text-secondary">
-                      Searching...
-                    </span>
-                  )}
-                  <div className="ml-auto flex items-center gap-2">
-                    <Button
-                      size="xs"
-                      variant="outline"
-                      onClick={() => setQuickOpen("contact")}
-                    >
-                      + Quick Add Contact
-                    </Button>
-                    <Button
-                      size="xs"
-                      variant="outline"
-                      onClick={() => setQuickOpen("org")}
-                    >
-                      + Quick Add Organization
-                    </Button>
-                  </div>
-                </div>
-
-                {!link && q.trim() && (
-                  <div className="mt-3 rounded-md border border-hairline max-h-56 overflow-auto p-2">
-                    {busy ? (
-                      <div className="px-2 py-2 text-sm text-secondary">
-                        Searching...
-                      </div>
-                    ) : hits.length === 0 ? (
-                      <div className="px-2 py-2 text-sm text-secondary">
-                        No results. Try adjusting your search or use Quick Add.
-                      </div>
-                    ) : (
-                      hits.map((h) => (
-                        <button
-                          key={`${h.kind}-${h.id}`}
-                          type="button"
-                          className={cx(
-                            "w-full text-left px-2 py-1 hover:bg-white/5",
-                            link &&
-                            link.kind === h.kind &&
-                            link.id === h.id &&
-                            "bg-white/10",
-                          )}
-                          onClick={() => handleUseHit(h)}
-                        >
-                          <div className="flex items-center gap-2">
-                            <span className="text-[10px] uppercase tracking-wide text-secondary border px-1 rounded">
-                              {h.kind === "contact" ? "Contact" : "Org"}
-                            </span>
-                            <span>{h.label}</span>
-                            {h.sub ? (
-                              <span className="text-xs text-secondary">
-                                • {h.sub}
-                              </span>
-                            ) : null}
-                          </div>
-                        </button>
-                      ))
-                    )}
-                  </div>
-                )}
-
-                <div className="mt-3 text-xs text-secondary">
-                  {link ? (
-                    <>
-                      Selected buyer:{" "}
-                      <span className="text-primary font-medium">
-                        {link.label}
-                      </span>
-                      {link.sub ? (
-                        <span className="text-secondary">
-                          {" "}
-                          ({link.sub})
-                        </span>
-                      ) : null}
-                    </>
-                  ) : (
-                    "No buyer selected yet."
-                  )}
-                </div>
-
-                {!link && quickOpen && (
-                  <div className="mt-3 rounded-lg border border-hairline p-3 bg-surface/60">
-                    <div className="flex items-center justify-between">
-                      <div className="text-sm font-medium">
-                        {quickOpen === "contact"
-                          ? "Quick Add Contact"
-                          : "Quick Add Organization"}
-                      </div>
-                      <button
-                        className="text-xs text-secondary hover:underline"
-                        onClick={() => setQuickOpen(null)}
-                      >
-                        Close
-                      </button>
-                    </div>
-
-                    {quickOpen === "contact" ? (
-                      <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2">
-                        <input
-                          className={cx(inputClass)}
-                          placeholder="First name"
-                          value={qc.firstName}
-                          onChange={(e) =>
-                            setQc({ ...qc, firstName: e.target.value })
-                          }
-                        />
-                        <input
-                          className={cx(inputClass)}
-                          placeholder="Last name"
-                          value={qc.lastName}
-                          onChange={(e) =>
-                            setQc({ ...qc, lastName: e.target.value })
-                          }
-                        />
-                        <input
-                          className={cx(inputClass)}
-                          placeholder="Email"
-                          value={qc.email}
-                          onChange={(e) =>
-                            setQc({ ...qc, email: e.target.value })
-                          }
-                        />
-                        <input
-                          className={cx(inputClass)}
-                          placeholder="Phone"
-                          value={qc.phone}
-                          onChange={(e) =>
-                            setQc({ ...qc, phone: e.target.value })
-                          }
-                        />
-                        {createErr && (
-                          <div className="md:col-span-2 text-sm text-red-600">
-                            {createErr}
-                          </div>
-                        )}
-                        <div className="md:col-span-2 flex justify-end gap-2">
-                          <Button
-                            variant="outline"
-                            onClick={() =>
-                              setQc({
-                                firstName: "",
-                                lastName: "",
-                                email: "",
-                                phone: "",
-                              })
-                            }
-                          >
-                            Clear
-                          </Button>
-                          <Button
-                            onClick={doQuickAdd}
-                            disabled={creating}
-                          >
-                            {creating ? "Creating..." : "Create / Link"}
-                          </Button>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="mt-2 grid grid-cols-1 gap-2">
-                        <input
-                          className={cx(inputClass)}
-                          placeholder="Organization name"
-                          value={qo.name}
-                          onChange={(e) =>
-                            setQo({ ...qo, name: e.target.value })
-                          }
-                        />
-                        <input
-                          className={cx(inputClass)}
-                          placeholder="Website"
-                          value={qo.website}
-                          onChange={(e) =>
-                            setQo({ ...qo, website: e.target.value })
-                          }
-                        />
-                        {createErr && (
-                          <div className="text-sm text-red-600">
-                            {createErr}
-                          </div>
-                        )}
-                        <div className="flex justify-end gap-2">
-                          <Button
-                            variant="outline"
-                            onClick={() =>
-                              setQo({
-                                name: "",
-                                website: "",
-                              })
-                            }
-                          >
-                            Clear
-                          </Button>
-                          <Button
-                            onClick={doQuickAdd}
-                            disabled={creating}
-                          >
-                            {creating ? "Creating..." : "Create / Link"}
-                          </Button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </SectionCard>
-            </div>
-
-            <div className="flex justify-end gap-2 px-4 py-3 border-t border-hairline">
-              <Button variant="outline" onClick={onClose}>
-                Cancel
-              </Button>
-              <Button
-                onClick={handleSubmit}
-                disabled={!canSubmit}
-              >
-                <Plus className="h-4 w-4 mr-1" />
-                Assign buyer
-              </Button>
-            </div>
-          </div>
-        </div>
-      </div>
-    </Overlay>
-  );
+  return hits;
 }
 
-function OffspringAssignBuyerBridge() {
-  const [detail, setDetail] = React.useState<AssignBuyerEventDetail | null>(null);
+type AnimalPickLite = {
+  id: number;
+  name: string;
+  species: SpeciesWire;
+  sex: "FEMALE" | "MALE";
+};
 
-  React.useEffect(() => {
-    function handler(ev: Event) {
-      const e = ev as CustomEvent<AssignBuyerEventDetail>;
-      setDetail(e.detail);
-    }
-
-    window.addEventListener("bhq:offspring:assign-buyer", handler as any);
-    return () => {
-      window.removeEventListener("bhq:offspring:assign-buyer", handler as any);
-    };
-  }, []);
-
-  const open = !!detail;
-
-  if (!open || !detail) return null;
-
-  return (
-    <AssignBuyerModal
-      open={open}
-      onClose={() => setDetail(null)}
-      detail={detail}
-    />
-  );
+async function fetchAnimals(
+  api: OffspringRootApi | null,
+  opts: { q?: string; species?: SpeciesWire; sex?: "FEMALE" | "MALE"; limit?: number }
+): Promise<AnimalPickLite[]> {
+  if (!api) return [];
+  const res = await api.animals.list({
+    q: opts.q,
+    species: opts.species,
+    sex: opts.sex,
+    limit: opts.limit ?? 25,
+  });
+  const raw: any[] = Array.isArray(res) ? res : res?.items ?? [];
+  return raw.map((a) => ({
+    id: Number(a.id),
+    name: String(a.name ?? "").trim(),
+    species: String(a.species ?? "DOG").toUpperCase() as SpeciesWire,
+    sex: String(a.sex ?? "FEMALE").toUpperCase() as "FEMALE" | "MALE",
+  }));
 }
+
 
 export type OffspringStatus =
   | "PLANNED"
@@ -862,59 +387,39 @@ export type WaitlistRefLite = {
 
 export type OffspringRow = {
   id: number;
-  tenantId: number;
-  identifier: string | null;
-  createdAt: string;
-  updatedAt: string;
-
-  // Table-level fields
-  name: string | null;
-  placeholderLabel: string | null;
-  sex: Sex | null;
+  name: string;
+  sex: string | null;
+  status: string | null;
+  species: string | null;
+  breed: string | null;
   color: string | null;
   birthWeightOz: number | null;
-  status: OffspringStatus;
-  buyer: OffspringBuyerLite | null;
-  placementDate: string | null;
-  price: number | null; // dollars
-
-  // Identity
-  species: string;
-  breedText: string | null;
   dob: string | null;
   microchip: string | null;
   registrationId: string | null;
-
-  // Group / hierarchy
+  placementDate: string | null;
+  placementStatus: string | null;
+  price: number | null;
+  buyerId: number | null;
+  buyerKind: "contact" | "organization" | null;
+  buyerName: string | null;
+  notes: string | null;
   groupId: number | null;
-  groupCode: string | null;
-  groupName: string | null;
-  groupSeasonLabel: string | null;
+  groupLabel: string | null;
 
-  // Cross-refs
-  buyerContactId: number | null;
-  buyerOrganizationId: number | null;
-  contractId: number | null;
-
-  siblings?: SiblingLite[];
-  waitlistEntry?: WaitlistRefLite | null;
-
-  // Detail tabs
-  healthEvents?: HealthEvent[];
-  media?: OffspringMedia[];
-  lineage?: OffspringLineageRow[];
-  invoices?: InvoiceLink[];
-
-  // Raw notes / blob
-  notes?: string | null;
-  data?: unknown;
+  // new fields
+  whelpingCollarColor: string | null;
+  riskScore: string | null;
 };
 
-/** Normalized API surface used by this page */
+
 type OffspringListInput = {
   page: number;
   pageSize: number;
   q?: string;
+  status?: OffspringStatus;
+  sex?: Sex;
+  groupId?: number;
 };
 
 type OffspringListResult = {
@@ -935,6 +440,17 @@ export type OffspringUpdateInput = Partial<{
   microchip: string | null;
   registrationId: string | null;
   notes: string | null;
+
+  species: Species | string | null;
+  breed: string | null;
+  dob: string | null;
+
+  groupId: number | null;
+  litterId: number | null;
+  unlinkedOverride: boolean | null;
+
+  whelpingCollarColor: string | null;
+  riskScore: string | null;
 }>;
 
 export type HealthEventInput = {
@@ -953,7 +469,9 @@ export type InvoiceLinkInput = {
 type OffspringApi = {
   list(input: OffspringListInput): Promise<OffspringListResult>;
   getById(id: number): Promise<OffspringRow>;
-  create(input: OffspringUpdateInput & { groupId: number }): Promise<OffspringRow>;
+  create(
+    input: OffspringUpdateInput & { groupId?: number | null },
+  ): Promise<OffspringRow>;
   update(id: number, patch: OffspringUpdateInput): Promise<OffspringRow>;
   remove(id: number): Promise<void>;
 
@@ -966,341 +484,153 @@ function centsToDollars(cents: number | null | undefined): number | null {
   return Math.round(cents) / 100;
 }
 
-function mapOffspringDtoToRow(dto: OffspringDTO): OffspringRow {
+function mapAnimalLiteToRow(dto: AnimalLite): OffspringRow {
   const {
     id,
-    tenantId,
-    identifier,
-    createdAt,
-    updatedAt,
     name,
-    placeholderLabel,
     sex,
     status,
-    bornAt,
     species,
-    group,
-    buyerPartyType,
-    buyerContact,
-    buyerContactId,
-    buyerOrganization,
-    buyerOrganizationId,
-    priceCents,
-    placedAt,
-    data,
+    breed,
+    color,
+    birthDate,
+    microchip,
+    registryNumber,
+    litterId,
+    litterCode,
+    litterName,
+    buyerName,
+    buyerId,
+    buyerOrgId,
+    price_cents,
+    sold_at,
     notes,
-    HealthLogs,
-    Attachments,
-    InvoiceLinks,
-    WaitlistAllocations,
-  } = dto;
 
-  const color =
-    (data && (data as any).color) ??
-    (data && (data as any).coatColor) ??
-    null;
-
-  const birthWeightOz =
-    (data && (data as any).birthWeightOz) ??
-    (data && (data as any).birthWeight) ??
-    null;
-
-  const microchip =
-    (data && (data as any).microchip) ??
-    (data && (data as any).microchipId) ??
-    null;
-
-  const registrationId =
-    (data && (data as any).registrationId) ??
-    (data && (data as any).regNumber) ??
-    null;
-
-  const buyer: OffspringBuyerLite | null = (() => {
-    if (buyerPartyType === "CONTACT" && buyerContact && buyerContactId != null) {
-      return {
-        kind: "contact",
-        id: buyerContactId,
-        name: buyerContact.displayName ?? buyerContact.name ?? "(Unnamed contact)",
-        email: buyerContact.email ?? null,
-        phone: buyerContact.phone ?? null,
-      };
-    }
-    if (buyerPartyType === "ORGANIZATION" && buyerOrganization && buyerOrganizationId != null) {
-      return {
-        kind: "organization",
-        id: buyerOrganizationId,
-        name: buyerOrganization.name ?? "(Unnamed organization)",
-        email: buyerOrganization.email ?? null,
-        phone: buyerOrganization.phone ?? null,
-      };
-    }
-    return null;
-  })();
-
-  const breedText =
-    (group?.plan as any)?.breedText ??
-    (group?.plan as any)?.breed ??
-    null;
-
-  const groupCode =
-    group?.code ??
-    (group?.plan as any)?.code ??
-    null;
-
-  const groupSeasonLabel =
-    (group as any)?.seasonLabel ??
-    (group as any)?.season ??
-    null;
-
-  const siblings: SiblingLite[] =
-    (group as any)?.offspring?.map((s: any) => ({
-      id: s.id,
-      name: s.name ?? s.placeholderLabel ?? null,
-      sex: s.sex ?? null,
-      status: s.status ?? null,
-    })) ?? [];
-
-  const waitlistEntry: WaitlistRefLite | null =
-    WaitlistAllocations && WaitlistAllocations.length
-      ? {
-        id: WaitlistAllocations[0].id,
-        label:
-          WaitlistAllocations[0].label ??
-          WaitlistAllocations[0].code ??
-          `Waitlist #${WaitlistAllocations[0].id}`,
-        priority: (WaitlistAllocations[0] as any).priority ?? null,
-        status: (WaitlistAllocations[0] as any).status ?? null,
-      }
-      : null;
-
-  const healthEvents: HealthEvent[] =
-    HealthLogs?.map((h: any) => ({
-      id: h.id,
-      kind: h.kind ?? h.type ?? "HEALTH",
-      occurredAt: h.occurredAt ?? h.date ?? h.createdAt,
-      notes: h.notes ?? null,
-      weightOz:
-        h.weightOz ??
-        (h.data && (h.data as any).weightOz) ??
-        null,
-    })) ?? [];
-
-  const media: OffspringMedia[] =
-    Attachments?.map((att: any) => {
-      const mime = att.mimeType ?? att.contentType ?? null;
-      const kind: OffspringMediaKind =
-        mime && typeof mime === "string" && mime.startsWith("image/")
-          ? "photo"
-          : mime && mime.startsWith("video/")
-            ? "video"
-            : "doc";
-
-      return {
-        id: att.id,
-        kind,
-        label: att.label ?? att.filename ?? `Attachment #${att.id}`,
-        url: att.publicUrl ?? att.url ?? "",
-        mimeType: mime,
-        bytes: att.size ?? null,
-      };
-    }) ?? [];
-
-  const invoices: InvoiceLink[] =
-    InvoiceLinks?.map((link: OffspringInvoiceLinkDTO) => ({
-      id: link.id,
-      invoiceId: link.invoiceId,
-      invoiceNumber:
-        (link.invoice && (link.invoice as any).number) ??
-        (link.invoice && (link.invoice as any).invoiceNumber) ??
-        String(link.invoiceId),
-      status:
-        (link.invoice && (link.invoice as any).status) ??
-        link.status ??
-        "UNKNOWN",
-      amount:
-        link.amount != null
-          ? link.amount
-          : centsToDollars(
-            (link.invoice && (link.invoice as any).totalCents) ?? null,
-          ) ?? 0,
-    })) ?? [];
-
-  const lineage: OffspringLineageRow[] = [];
-  if (group?.dam) {
-    lineage.push({
-      id: group.dam.id,
-      role: "dam",
-      name: group.dam.name ?? "(Unnamed dam)",
-      registrationId: (group.dam as any).registrationId ?? null,
-    });
-  }
-  if (group?.sire) {
-    lineage.push({
-      id: group.sire.id,
-      role: "sire",
-      name: group.sire.name ?? "(Unnamed sire)",
-      registrationId: (group.sire as any).registrationId ?? null,
-    });
-  }
-  if ((dto as any).promotedAnimal) {
-    const pa = (dto as any).promotedAnimal;
-    lineage.push({
-      id: pa.id,
-      role: "self",
-      name: pa.name ?? "(Promoted animal)",
-      registrationId: pa.registrationId ?? null,
-    });
-  }
+    // optional, coming from the API if present
+    birth_weight_oz,
+    placement_status,
+    whelping_collar_color,
+    risk_score,
+  } = dto as any;
 
   return {
-    id,
-    tenantId,
-    identifier: identifier ?? null,
-    createdAt,
-    updatedAt,
-
-    name: name ?? null,
-    placeholderLabel: placeholderLabel ?? null,
+    id: Number(id),
+    name: name ?? "",
     sex: sex ?? null,
-    color,
-    birthWeightOz: birthWeightOz ?? null,
-    status,
-    buyer,
-    placementDate: placedAt ?? null,
-    price: centsToDollars(priceCents),
+    status: status ?? null,
+    species: species ?? null,
+    breed: typeof breed === "string" ? breed : null,
+    color: color ?? null,
+    birthWeightOz:
+      typeof birth_weight_oz === "number" ? birth_weight_oz : null,
+    dob: birthDate ?? null,
+    microchip: microchip ?? null,
+    registrationId: registryNumber ?? null,
+    placementDate: sold_at ?? null,
+    placementStatus: placement_status ?? null,
+    price: centsToDollars(price_cents),
 
-    species,
-    breedText,
-    dob: bornAt ?? null,
-    microchip,
-    registrationId,
-
-    groupId: group?.id ?? null,
-    groupCode,
-    groupName: (group as any)?.name ?? groupCode,
-    groupSeasonLabel,
-
-    buyerContactId: buyerContactId ?? null,
-    buyerOrganizationId: buyerOrganizationId ?? null,
-    contractId: (dto as any).contractId ?? null,
-
-    siblings,
-    waitlistEntry,
-
-    healthEvents,
-    media,
-    lineage,
-    invoices,
+    buyerId: buyerId ?? buyerOrgId ?? null,
+    buyerKind: buyerId
+      ? "contact"
+      : buyerOrgId
+        ? "organization"
+        : null,
+    buyerName: buyerName ?? null,
 
     notes: notes ?? null,
-    data,
+
+    groupId: litterId ?? null,
+    groupLabel:
+      litterName ??
+      litterCode ??
+      (litterId != null ? `Group #${litterId}` : null),
+
+    whelpingCollarColor:
+      whelping_collar_color ??
+      (dto as any).whelpingCollarColor ??
+      (dto as any).collarColorName ??
+      null,
+    riskScore:
+      risk_score ??
+      (dto as any).riskScore ??
+      null,
   };
 }
 
-function makeBackendOffspringApi(): OffspringApi | null {
-  let root: ReturnType<typeof makeOffspringApiClient> | null = null;
-  try {
-    root = makeOffspringApiClient();
-  } catch {
-    root = null;
-  }
-  if (!root || !root.offspring) return null;
+function makeBackendOffspringApi(): OffspringApi {
+  const client = makeOffspringApiClient() as any;
 
+  if (!client?.individuals) {
+    throw new Error(
+      "[OffspringPage] Offspring API client is misconfigured. Expected client.individuals to exist.",
+    );
+  }
+
+  const svc = client.individuals;
   const tenantId = readTenantIdFast();
 
   return {
     async list(input) {
-      const res: any = await root!.offspring.list({
+      const pageSize = input?.pageSize ?? 50;
+
+      const res = await svc.list({
         tenantId,
-        // backend expects limit / cursor, not page / pageSize
-        limit: input.pageSize,
-        q: input.q ?? "",
+        limit: pageSize,
+        q: input?.q ?? undefined,
+        status: input?.status ?? undefined,
+        sex: input?.sex ?? undefined,
+        groupId: input?.groupId ?? undefined,
       });
 
-      const items: any[] = res && Array.isArray(res.items)
-        ? res.items
-        : Array.isArray((res as any).rows)
-          ? (res as any).rows
+      const items: AnimalLite[] = Array.isArray((res as any)?.items)
+        ? (res as any).items
+        : Array.isArray(res as any)
+          ? (res as any)
           : [];
 
-      const rows = items.map((dto: any) => mapOffspringDtoToRow(dto as OffspringDTO));
-      const total = typeof (res as any).total === "number" ? (res as any).total : items.length;
+      const rows = items.map(mapAnimalLiteToRow);
+      const total = (res as any)?.total ?? rows.length;
 
       return { rows, total };
     },
 
     async getById(id) {
-      const dto = await root!.offspring.get(id, { tenantId });
-      return mapOffspringDtoToRow(dto);
+      const dto = await svc.get(id, { tenantId });
+      return mapAnimalLiteToRow(dto);
     },
 
     async create(input) {
-      const dto = await root!.offspring.create({
-        tenantId,
-        groupId: input.groupId,
-        payload: input,
-      } as any);
-      return mapOffspringDtoToRow(dto);
+      // mirror the working App-Offspring Add Offspring call
+      const dto = await svc.create({
+        ...input,
+      });
+      return mapAnimalLiteToRow(dto);
     },
 
     async update(id, patch) {
-      const dto = await root!.offspring.update({
-        tenantId,
-        id,
-        payload: patch,
-      } as any);
-      return mapOffspringDtoToRow(dto);
+      // send a flat patch body, no "patch" wrapper
+      const dto = await svc.update(id, {
+        ...patch,
+      });
+      return mapAnimalLiteToRow(dto);
     },
 
     async remove(id) {
-      await root!.offspring.remove({ tenantId, id });
+      await svc.remove(id, { tenantId });
     },
 
     async addHealthEvent(id, input) {
-      if (!root!.offspring.events?.add) {
-        throw new Error("Health events API is not available");
-      }
-      await root!.offspring.events.add({
-        tenantId,
-        offspringId: id,
-        payload: {
-          occurredAt: input.occurredAt,
-          kind: input.kind,
-          notes: input.notes,
-          data: input.weightOz != null ? { weightOz: input.weightOz } : undefined,
-        },
-      } as any);
-
-      const dto = await root!.offspring.get(id, { tenantId });
-      return mapOffspringDtoToRow(dto);
+      const detail = await svc.addHealthEvent(id, input, { tenantId });
+      return mapDetailToRow(detail);
     },
 
     async linkInvoice(id, input) {
-      const resp = await fetch(
-        `/api/v1/offspring/${id}/invoice-links?tenantId=${encodeURIComponent(
-          String(tenantId),
-        )}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            invoiceNumber: input.invoiceNumber,
-            amount: input.amount,
-            status: input.status,
-          }),
-        },
-      );
-      if (!resp.ok) {
-        throw new Error(`Failed to link invoice, status ${resp.status}`);
-      }
-
-      const dto = await root!.offspring.get(id, { tenantId });
-      return mapOffspringDtoToRow(dto);
+      const detail = await svc.linkInvoice(id, input, { tenantId });
+      return mapDetailToRow(detail);
     },
   };
 }
-
-/** ---------- Local fallback API for dev / storybook ---------- */
 
 function makeLocalFallbackApi(): OffspringApi {
   return {
@@ -1319,59 +649,187 @@ function makeLocalFallbackApi(): OffspringApi {
     async remove() {
       throw new Error("remove not available without backend API");
     },
-    async addHealthEvent() {
-      throw new Error("addHealthEvent not available without backend API");
-    },
-    async linkInvoice() {
-      throw new Error("linkInvoice not available without backend API");
-    },
   };
 }
 
-/** ---------- Backend API adapter around makeOffspringApi() ---------- */
-
 function useOffspringApi(): OffspringApi {
+  // Server side, only used for initial render, never to actually call the API.
   if (typeof window === "undefined") {
     return {
       list: async () => ({ rows: [], total: 0 }),
       getById: async () => {
-        throw new Error("getById not available on server");
+        throw new Error("Offspring API not available on server");
       },
       create: async () => {
-        throw new Error("create not available on server");
+        throw new Error("Offspring API not available on server");
       },
       update: async () => {
-        throw new Error("update not available on server");
+        throw new Error("Offspring API not available on server");
       },
       remove: async () => {
-        throw new Error("remove not available on server");
+        throw new Error("Offspring API not available on server");
       },
       addHealthEvent: async () => {
-        throw new Error("addHealthEvent not available on server");
+        throw new Error("Offspring API not available on server");
       },
       linkInvoice: async () => {
-        throw new Error("linkInvoice not available on server");
+        throw new Error("Offspring API not available on server");
       },
     };
   }
-  const backend = makeBackendOffspringApi();
-  if (backend) return backend;
-  return makeLocalFallbackApi();
+
+  // Client side, use the real backend adapter.
+  const ref = React.useRef<OffspringApi | null>(null);
+  if (!ref.current) {
+    ref.current = makeBackendOffspringApi();
+  }
+  return ref.current;
 }
+
+function useOffspringGroupOptions(active: boolean): GroupOption[] {
+  const [groups, setGroups] = React.useState<GroupOption[]>([]);
+
+  React.useEffect(() => {
+    if (!active) return;
+    if (typeof window === "undefined") return;
+
+    let cancelled = false;
+
+    async function load() {
+      try {
+        const root = makeOffspringApiClient() as any;
+        const groupsClient = root?.groups;
+
+        if (!groupsClient || typeof groupsClient.list !== "function") {
+          console.warn("Offspring API client or groups.list not found");
+          return;
+        }
+
+        const res: any = await groupsClient.list({
+          limit: 500,
+          q: "",
+        });
+
+        const items: any[] =
+          Array.isArray(res?.items)
+            ? res.items
+            : Array.isArray(res?.rows)
+              ? res.rows
+              : Array.isArray(res)
+                ? res
+                : [];
+
+        const mapped: GroupOption[] = items
+          .map((g: OffspringGroupDTO | any) => {
+            if (!g || g.id == null) return null;
+
+            const idNum = Number(g.id);
+            if (!Number.isFinite(idNum)) return null;
+
+            const plan = g.plan ?? g.breedingPlan ?? null;
+
+            const planName =
+              typeof plan?.name === "string" && plan.name.trim()
+                ? plan.name.trim()
+                : null;
+
+            const identifier =
+              typeof g.identifier === "string" && g.identifier.trim()
+                ? g.identifier.trim()
+                : null;
+
+            const groupName =
+              planName ??
+              (typeof g.name === "string" && g.name.trim() ? g.name.trim() : null) ??
+              identifier ??
+              null;
+
+            const label = groupName && groupName.length > 0
+              ? groupName
+              : `Group #${idNum}`;
+
+            // Try to read species from the group or its plan
+            const rawSpecies =
+              (g as any).species ??
+              (plan as any)?.species ??
+              (g as any).breeding_plan_species ??
+              null;
+
+            let species: SpeciesWire | null = null;
+            if (rawSpecies) {
+              const s = String(rawSpecies).toUpperCase();
+              if (s === "DOG" || s === "CAT" || s === "HORSE") {
+                species = s as SpeciesWire;
+              }
+            }
+
+            // Try to read breed from the group or its plan
+            const rawBreed =
+              (g as any).breedName ??
+              (g as any).breed ??
+              (plan as any)?.breedName ??
+              (plan as any)?.breed ??
+              (g as any).breeding_plan_breed ??
+              null;
+
+            const breed =
+              typeof rawBreed === "string" && rawBreed.trim().length > 0
+                ? rawBreed.trim()
+                : null;
+
+            return { id: idNum, label, species, breed };
+          })
+          .filter(Boolean) as GroupOption[];
+
+        const sorted = mapped.slice().sort((a, b) => {
+          const la = a.label.toLowerCase();
+          const lb = b.label.toLowerCase();
+          if (la < lb) return -1;
+          if (la > lb) return 1;
+          return a.id - b.id;
+        });
+
+        if (!cancelled) {
+          setGroups(sorted);
+        }
+      } catch (err) {
+        console.error("[Offspring] Failed to load groups for parent select", err);
+      }
+    }
+
+    load();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [active]);
+
+  return groups;
+}
+
 
 /** ---------- Helpers ---------- */
 
-const CENTER_KEYS = new Set(["sex", "status", "birthWeightOz", "placementDate", "price"]);
+const CENTER_KEYS = new Set([
+  "sex",
+  "status",
+  "birthWeightOz",
+  "placementDate",
+  "price",
+  "whelpingCollarColor",
+]);
 
 const ALL_COLUMNS = [
   { key: "name", label: "Name", default: true },
   { key: "sex", label: "Sex", default: true },
-  { key: "color", label: "Color", default: true },
-  { key: "birthWeightOz", label: "Birth wt (oz)", default: false },
-  { key: "status", label: "Status", default: true },
-  { key: "buyer", label: "Buyer", default: true },
+  { key: "breed", label: "Breed", default: true },
+  { key: "whelpingCollarColor", label: "Collar", default: true },
   { key: "group", label: "Group", default: true },
-  { key: "dob", label: "Birth", default: true },
+  { key: "color", label: "Color", default: false },
+  { key: "buyer", label: "Buyer", default: true },
+  { key: "status", label: "Status", default: true },
+  { key: "birthWeightOz", label: "Birth wt (oz)", default: false },
+  { key: "dob", label: "DOB", default: true },
   { key: "placementDate", label: "Placement", default: true },
   { key: "price", label: "Price", default: true },
   { key: "microchip", label: "Microchip", default: false },
@@ -1420,39 +878,124 @@ function prettyStatus(s: Status): string {
   }
 }
 
+function prettySpecies(s?: Species | string | null): string {
+  if (!s) return "Not set";
+  const v = String(s).toUpperCase();
+  if (v === "DOG") return "Dog";
+  if (v === "CAT") return "Cat";
+  if (v === "HORSE") return "Horse";
+  return String(s);
+}
+
+function prettySex(s?: Sex | string | null): string {
+  if (!s) return "Not set";
+  const v = String(s).toUpperCase();
+  if (v === "MALE") return "Male";
+  if (v === "FEMALE") return "Female";
+  if (v === "UNKNOWN") return "Unknown";
+  return String(s);
+}
+
 /** ---------- Create Offspring overlay ---------- */
 
 function CreateOffspringOverlayContent({
   open,
   onClose,
   onCreate,
+  rootApi,
+  groupOptions,
 }: {
   open: boolean;
   onClose: () => void;
   onCreate: (input: Partial<OffspringRow>) => Promise<void> | void;
+  rootApi: OffspringRootApi | null;
+  groupOptions: GroupOption[];
 }) {
   const [form, setForm] = React.useState<Partial<OffspringRow>>({
     name: "",
     sex: "UNKNOWN" as Sex,
     species: "DOG" as Species,
-    status: "AVAILABLE" as Status,
     birthWeightOz: null,
     price: null,
     notes: "",
+    groupId: null,
+    breed: null,
+    whelpingCollarColor: null,
   });
+
+  const [allowNoGroup, setAllowNoGroup] = React.useState(false);
+  const [showWhelpPalette, setShowWhelpPalette] = React.useState(false);
+
+  const whelpingCollarValue = form.whelpingCollarColor;
+
+  const whelpingCollarLabel =
+    whelpingCollarValue && String(whelpingCollarValue).trim().length
+      ? String(whelpingCollarValue)
+      : "Not set";
+
+  const whelpingCollarColorHex = (() => {
+    const v = (whelpingCollarValue ?? "")
+      .toString()
+      .toLowerCase();
+
+    const match = WHELPING_COLLAR_SWATCHES.find((opt) => {
+      const val = opt.value.toLowerCase();
+      const label = opt.label.toLowerCase();
+      return val === v || label === v;
+    });
+
+    return match?.hex ?? null;
+  })();
 
   const panelRef = React.useRef<HTMLDivElement | null>(null);
 
-  const handleOutsideMouseDown = React.useCallback<
-    React.MouseEventHandler<HTMLDivElement>
-  >(
-    (e) => {
-      const p = panelRef.current;
-      if (!p) return;
-      if (!p.contains(e.target as Node)) onClose();
+  // derive UI species string for BreedCombo
+  const speciesUi: SpeciesUi | "" =
+    form.species === "DOG"
+      ? "Dog"
+      : form.species === "CAT"
+        ? "Cat"
+        : form.species === "HORSE"
+          ? "Horse"
+          : "";
+
+  // local breed hit for BreedCombo
+  const [breedHit, setBreedHit] = React.useState<any>(null);
+  const [breedNonce, setBreedNonce] = React.useState(0);
+
+  const onBreedPick = React.useCallback(
+    (hit: any) => {
+      setBreedHit(hit ? { ...hit } : null);
+      setBreedNonce((n) => n + 1);
+      setForm((prev) => ({
+        ...prev,
+        breed:
+          hit && typeof hit.name === "string" && hit.name.trim()
+            ? hit.name
+            : null,
+      }));
     },
-    [onClose],
+    [setForm],
   );
+
+  // Filter parent group choices by current species
+  const currentSpecies = (form.species ?? "DOG") as Species;
+  const filteredGroupOptions = React.useMemo(
+    () =>
+      groupOptions.filter((g) => {
+        if (!g.species) return true;
+        return (
+          String(g.species).toUpperCase() ===
+          String(currentSpecies).toUpperCase()
+        );
+      }),
+    [groupOptions, currentSpecies],
+  );
+
+  const parentGroupRequired = !allowNoGroup;
+
+  // Dim whenever a parent group is required and no group is selected
+  const dimRest = parentGroupRequired && (form.groupId == null);
 
   React.useEffect(() => {
     const prev = document.body.style.overflow;
@@ -1462,6 +1005,13 @@ function CreateOffspringOverlayContent({
     };
   }, [open]);
 
+  // Reset override when dialog closes
+  React.useEffect(() => {
+    if (!open) {
+      setAllowNoGroup(false);
+    }
+  }, [open]);
+
   const handleChange = <K extends keyof OffspringRow>(
     key: K,
     value: OffspringRow[K] | null,
@@ -1469,9 +1019,64 @@ function CreateOffspringOverlayContent({
     setForm((prev) => ({ ...prev, [key]: value }));
   };
 
-  const handleSubmit = async () => {
-    await onCreate(form);
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!onCreate) return;
+
+    const trimmedName = (form.name ?? "").toString().trim();
+    if (!trimmedName) {
+      return;
+    }
+
+    // Resolve group id from the form
+    const effectiveGroupId =
+      form.groupId !== undefined && form.groupId !== null
+        ? form.groupId
+        : null;
+
+    // Current backend schema requires a groupId on create
+    if (effectiveGroupId == null) {
+      window.alert(
+        "Parent group is required for offspring creation with the current schema. Select a parent group before saving.",
+      );
+      return;
+    }
+
+    // Start from form state (ignore status, backend will default as needed)
+    const { status, ...rest } = form;
+
+    const payload: any = {
+      ...rest,
+      name: trimmedName,
+      groupId: effectiveGroupId,
+      litterId: effectiveGroupId,
+    };
+
+    if (rest.dob) {
+      payload.birthDate = rest.dob;
+      delete payload.dob;
+    }
+
+    // Do not send UNKNOWN sex
+    if (rest.sex === "UNKNOWN") {
+      delete payload.sex;
+    }
+
+    // Force species and breed from the selected parent group
+    const selectedGroup = groupOptions.find((g) => g.id === effectiveGroupId);
+    if (selectedGroup) {
+      if (selectedGroup.species) {
+        payload.species = selectedGroup.species;
+      }
+      if (selectedGroup.breed) {
+        payload.breed = selectedGroup.breed;
+      }
+    }
+
+    await onCreate(payload);
   };
+
+  if (!open) return null;
 
   return (
     <Overlay
@@ -1486,140 +1091,278 @@ function CreateOffspringOverlayContent({
       <div
         className="fixed inset-0"
         style={{ zIndex: MODAL_Z, isolation: "isolate" }}
-        onMouseDown={handleOutsideMouseDown}
+        onMouseDown={(e) => {
+          const panel = panelRef.current;
+          if (!panel) return;
+          if (!panel.contains(e.target as Node)) {
+            onClose();
+          }
+        }}
       >
-        {/* Backdrop */}
-        <div className="absolute inset-0 bg-black/50" />
+        {/* Backdrop, same vibe as details drawer */}
+        <div className="absolute inset-0 bg-black/40" />
 
-        {/* Centered panel, same pattern as Create Group and Add to Waitlist */}
-        <div className="absolute inset-0 flex items-center justify-center">
+        {/* Centered panel */}
+        <div className="absolute inset-0 flex items-center justify-center overflow-y-auto">
           <div
             ref={panelRef}
-            className="pointer-events-auto w-[820px] max-w-[95vw] max-h-[82vh] overflow-hidden rounded-xl border border-hairline bg-surface shadow-xl"
+            className="pointer-events-auto my-10 w-[820px] max-w-[95vw] max-h-[90vh] overflow-hidden rounded-xl border border-hairline bg-surface shadow-xl"
+            onMouseDown={(e) => {
+              // keep clicks inside the panel from bubbling to the outer close handler
+              e.stopPropagation();
+            }}
           >
             {/* Header */}
             <div className="flex items-center justify-between px-4 py-3 border-b border-hairline">
               <div className="text-lg font-semibold flex items-center gap-2">
                 <FilePlus2 className="h-4 w-4" />
-                <span>Create offspring</span>
+                <span>Add Offspring</span>
               </div>
             </div>
 
             {/* Body */}
             <div className="p-4 space-y-4 overflow-y-auto">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <label className="grid gap-1 text-sm">
-                  <span className="text-xs text-secondary">Name</span>
-                  <input
-                    className={inputClass}
-                    value={form.name ?? ""}
-                    onChange={(e) => handleChange("name", e.target.value)}
-                    placeholder="Puppy name or placeholder"
-                  />
-                </label>
+              {/* Parent group selection */}
+              <div className="border border-hairline rounded-md p-3 space-y-2">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="text-xs font-semibold text-secondary uppercase tracking-wide">
+                      Parent group
+                    </div>
+                    <div className={labelClass}>
+                      Link this offspring to an existing group. Use the override only for
+                      intentional one off records.
+                    </div>
+                  </div>
 
-                <label className="grid gap-1 text-sm">
-                  <span className="text-xs text-secondary">Sex</span>
-                  <select
-                    className={inputClass}
-                    value={form.sex ?? "UNKNOWN"}
-                    onChange={(e) =>
-                      handleChange("sex", e.target.value as Sex)
-                    }
-                  >
-                    <option value="MALE">Male</option>
-                    <option value="FEMALE">Female</option>
-                    <option value="UNKNOWN">Unknown</option>
-                  </select>
-                </label>
+                  {groupOptions.length > 0 && (
+                    <label className="inline-flex items-center gap-2 text-xs text-secondary">
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4 rounded border-hairline bg-surface"
+                        checked={allowNoGroup}
+                        onChange={(e) => {
+                          const checked = e.currentTarget.checked;
+                          setAllowNoGroup(checked);
+                          if (checked) {
+                            // user explicitly allows no group, clear selection
+                            handleChange("groupId", null as any);
+                          }
+                          // if they uncheck, we do not guess a group for them
+                        }}
+                      />
+                      <span>Override - Create Orphan</span>
+                    </label>
+                  )}
+                </div>
 
-                <label className="grid gap-1 text-sm">
-                  <span className="text-xs text-secondary">Species</span>
-                  <select
-                    className={inputClass}
-                    value={form.species ?? "DOG"}
-                    onChange={(e) =>
-                      handleChange("species", e.target.value as Species)
-                    }
-                  >
-                    <option value="DOG">Dog</option>
-                    <option value="CAT">Cat</option>
-                    <option value="HORSE">Horse</option>
-                  </select>
-                </label>
+                {/* Identity fields that should stay active */}
+                <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {/* Name */}
+                  <label className="grid gap-1 text-sm">
+                    <span className="text-xs text-secondary">Name</span>
+                    <input
+                      className={inputClass}
+                      value={form.name ?? ""}
+                      onChange={(e) => handleChange("name", e.target.value)}
+                      placeholder="Enter the Offspring Name or a Placeholder"
+                    />
+                  </label>
 
-                <label className="grid gap-1 text-sm">
-                  <span className="text-xs text-secondary">Status</span>
-                  <select
-                    className={inputClass}
-                    value={form.status ?? "AVAILABLE"}
-                    onChange={(e) =>
-                      handleChange("status", e.target.value as Status)
-                    }
-                  >
-                    <option value="AVAILABLE">Available</option>
-                    <option value="RESERVED">Reserved</option>
-                    <option value="PLACED">Placed</option>
-                    <option value="HOLDBACK">Holdback</option>
-                    <option value="DECEASED">Deceased</option>
-                  </select>
-                </label>
+                  {/* Species */}
+                  <label className="grid gap-1 text-sm">
+                    <span className="text-xs text-secondary">Species</span>
+                    <select
+                      className={inputClass}
+                      value={form.species ?? "DOG"}
+                      onChange={(e) => {
+                        const nextSpecies = e.target.value as Species;
+                        setForm((prev) => {
+                          const prevGroupId = prev.groupId ?? null;
 
-                <label className="grid gap-1 text-sm">
-                  <span className="text-xs text-secondary">
-                    Birth date
-                  </span>
-                  <input
-                    type="date"
-                    className={inputClass}
-                    value={(form as any).birthDate ?? ""}
-                    onChange={(e) =>
-                      setForm((prev) => ({
-                        ...prev,
-                        birthDate: e.target.value || null,
-                      }))
-                    }
-                  />
-                </label>
+                          // If the currently selected group has a species and it does not match,
+                          // drop it when species changes.
+                          let nextGroupId = prevGroupId;
+                          if (prevGroupId != null) {
+                            const currentGroup = groupOptions.find(
+                              (g) => g.id === prevGroupId,
+                            );
+                            if (
+                              currentGroup &&
+                              currentGroup.species &&
+                              String(currentGroup.species).toUpperCase() !==
+                              String(nextSpecies).toUpperCase()
+                            ) {
+                              nextGroupId = null;
+                            }
+                          }
 
-                <label className="grid gap-1 text-sm">
-                  <span className="text-xs text-secondary">
-                    Birth weight (oz)
-                  </span>
-                  <input
-                    type="number"
-                    className={inputClass}
-                    value={
-                      form.birthWeightOz != null
-                        ? String(form.birthWeightOz)
-                        : ""
-                    }
-                    onChange={(e) =>
-                      handleChange(
-                        "birthWeightOz",
-                        e.target.value
-                          ? Number(e.target.value)
-                          : null,
-                      )
-                    }
-                    placeholder="Optional"
-                  />
-                </label>
+                          return {
+                            ...prev,
+                            species: nextSpecies,
+                            groupId: nextGroupId,
+                          };
+                        });
+                      }}
+                    >
+                      <option value="DOG">Dog</option>
+                      <option value="CAT">Cat</option>
+                      <option value="HORSE">Horse</option>
+                    </select>
+                  </label>
+                </div>
 
-                <label className="grid gap-1 text-sm">
-                  <span className="text-xs text-secondary">
-                    Price (whole number)
-                  </span>
-                  <div className="relative">
-                    <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-secondary">
-                      $
+
+                {filteredGroupOptions.length === 0 ? (
+                  <div className="text-xs text-amber-300">
+                    No offspring groups found for the selected species. Enable the override if you intend to create an orphan.
+                  </div>
+                ) : (
+                  <label className="grid gap-1 text-sm mt-2">
+                    <span className="text-xs text-secondary">
+                      Parent group
+                      {!allowNoGroup && <span className="text-rose-400 ml-1">*</span>}
+                    </span>
+                    <select
+                      className={inputClass}
+                      disabled={allowNoGroup}
+                      value={form.groupId ?? ""}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        handleChange("groupId", v ? (Number(v) as any) : null);
+                      }}
+                    >
+                      <option value="">
+                        {allowNoGroup ? "None" : "Select the Species - Then Choose an Existing Offspring Group..."}
+                      </option>
+                      {filteredGroupOptions.map((g) => (
+                        <option key={g.id} value={g.id}>
+                          {g.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+              </div>
+
+              {/* Core fields */}
+              <div
+                className="transition-all"
+                style={
+                  dimRest
+                    ? {
+                      opacity: 0.25,
+                      pointerEvents: "none",
+                      filter: "blur(2px)",
+                    }
+                    : undefined
+                }
+              >
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+
+                  {/* Sex */}
+                  <label className="grid gap-1 text-sm">
+                    <span className="text-xs text-secondary">Sex</span>
+                    <select
+                      className={inputClass}
+                      value={form.sex ?? "UNKNOWN"}
+                      onChange={(e) =>
+                        handleChange("sex", e.target.value as any)
+                      }
+                    >
+                      <option value="MALE">Male</option>
+                      <option value="FEMALE">Female</option>
+                      <option value="UNKNOWN">Unknown</option>
+                    </select>
+                  </label>
+
+                  {/* Breed, only when no parent group is allowed */}
+                  {allowNoGroup && (
+                    <div className="grid gap-1 text-sm">
+                      <span className="text-xs text-secondary">Breed</span>
+                      {speciesUi ? (
+                        <div>
+                          <BreedCombo
+                            key={`create-breed-${speciesUi}-${breedNonce}`}
+                            species={speciesUi}
+                            value={breedHit}
+                            onChange={onBreedPick}
+                            api={
+                              rootApi
+                                ? { breeds: { listCanonical: rootApi.breeds.listCanonical } }
+                                : undefined
+                            }
+                          />
+                        </div>
+                      ) : (
+                        <div className="h-9 px-3 flex items-center rounded-md border border-hairline bg-surface/60 text-sm text-secondary">
+                          Select species
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Breed - only when no parent group is allowed */}
+                  {allowNoGroup && (
+                    <label className="grid gap-1 text-sm">
+                      <span className="text-xs text-secondary">Breed</span>
+                      <input
+                        className={inputClass}
+                        value={form.breed ?? ""}
+                        onChange={(e) =>
+                          handleChange("breed", e.target.value ? (e.target.value as any) : null)
+                        }
+                        placeholder="Enter breed when not linked to a group"
+                      />
+                    </label>
+                  )}
+
+
+                  {/* Birth date, only when no parent group is allowed */}
+                  {allowNoGroup && (
+                    <label className="grid gap-1 text-sm">
+                      <span className="text-xs text-secondary">Birth date</span>
+                      <input
+                        type="date"
+                        className={inputClass}
+                        value={form.dob ?? ""}
+                        onChange={(e) =>
+                          handleChange("dob", e.target.value as any)
+                        }
+                      />
+                    </label>
+                  )}
+
+                  {/* Birth weight */}
+                  <label className="grid gap-1 text-sm">
+                    <span className="text-xs text-secondary">
+                      Birth weight (oz)
                     </span>
                     <input
                       type="number"
-                      className={inputClass + " pl-6"}
-                      value={
-                        form.price != null ? String(form.price) : ""
+                      className={inputClass}
+                      value={form.birthWeightOz ?? ""}
+                      onChange={(e) =>
+                        handleChange(
+                          "birthWeightOz",
+                          e.target.value
+                            ? Number(e.target.value)
+                            : null,
+                        )
                       }
+                      placeholder="Optional"
+                    />
+                  </label>
+
+                  {/* Price */}
+                  <label className="grid gap-1 text-sm md:col-span-2">
+                    <span className="text-xs text-secondary">
+                      Price (whole number)
+                    </span>
+                    <input
+                      type="number"
+                      className={inputClass}
+                      value={form.price ?? ""}
                       onChange={(e) =>
                         handleChange(
                           "price",
@@ -1628,31 +1371,105 @@ function CreateOffspringOverlayContent({
                             : null,
                         )
                       }
-                      placeholder="Optional"
+                      placeholder="$"
                     />
-                  </div>
-                </label>
-              </div>
+                  </label>
 
-              <label className="grid gap-1 text-sm">
-                <span className="text-xs text-secondary">Notes</span>
-                <textarea
-                  className={inputClass + " min-h-[80px] resize-y"}
-                  value={form.notes ?? ""}
-                  onChange={(e) => handleChange("notes", e.target.value)}
-                  placeholder="Optional notes about this offspring"
-                />
-              </label>
+                  {/* Whelping collar color */}
+                  <label className="grid gap-1 text-sm md:col-span-2">
+                    <span className="text-xs text-secondary">
+                      Whelping Collar Color
+                    </span>
+                    <div className="relative w-full max-w-xs">
+                      <button
+                        type="button"
+                        className={cx(
+                          inputClass,
+                          "flex items-center justify-between text-left cursor-pointer",
+                        )}
+                        onClick={() => setShowWhelpPalette((prev) => !prev)}
+                      >
+                        <span className="flex items-center gap-2">
+                          {whelpingCollarColorHex && (
+                            <span
+                              className="h-3 w-3 rounded-full border border-border"
+                              style={{ backgroundColor: whelpingCollarColorHex }}
+                            />
+                          )}
+                          <span>
+                            {whelpingCollarLabel === "Not set"
+                              ? "Select collar color"
+                              : whelpingCollarLabel}
+                          </span>
+                        </span>
+                        <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+                      </button>
+
+                      {showWhelpPalette && (
+                        <div className="absolute z-20 mt-1 w-full rounded-md border border-border bg-surface shadow-lg">
+                          <ul className="max-h-48 overflow-y-auto py-1 text-xs">
+                            {WHELPING_COLLAR_SWATCHES.map((opt) => (
+                              <li key={opt.value}>
+                                <button
+                                  type="button"
+                                  className="flex w-full items-center gap-2 px-2 py-1.5 text-left hover:bg-muted"
+                                  onClick={() => {
+                                    setForm((prev) => ({
+                                      ...prev,
+                                      whelpingCollarColor: opt.label,
+                                    }));
+                                    setShowWhelpPalette(false);
+                                  }}
+                                >
+                                  <span
+                                    className="h-3 w-3 rounded-full border border-border"
+                                    style={{ backgroundColor: opt.hex }}
+                                  />
+                                  <span>{opt.label}</span>
+                                </button>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+                  </label>
+
+                  {/* Notes */}
+                  <label className="grid gap-1 text-sm md:col-span-2">
+                    <span className="text-xs text-secondary">
+                      Notes
+                    </span>
+                    <textarea
+                      className={inputClass + " min-h-[72px] resize-none"}
+                      value={form.notes ?? ""}
+                      onChange={(e) =>
+                        handleChange("notes", e.target.value as any)
+                      }
+                      placeholder="Optional notes about this offspring"
+                    />
+                  </label>
+                </div>
+              </div>
             </div>
 
             {/* Footer */}
-            <div className="flex justify-end gap-2 px-4 py-3 border-t border-hairline">
-              <Button variant="outline" type="button" onClick={onClose}>
+            <div className="flex items-center justify-end gap-2 px-4 py-3 border-t border-hairline">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={onClose}
+              >
                 Cancel
               </Button>
-              <Button type="button" onClick={handleSubmit}>
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={handleSubmit}
+                disabled={dimRest}
+              >
                 <Plus className="h-4 w-4 mr-1" />
-                Create offspring
+                Add
               </Button>
             </div>
           </div>
@@ -1660,6 +1477,7 @@ function CreateOffspringOverlayContent({
       </div>
     </Overlay>
   );
+
 }
 
 function CrossRefsSection({
@@ -1687,7 +1505,7 @@ function CrossRefsSection({
                 {row.groupName || row.groupCode || `Group #${row.groupId}`}
               </div>
               {row.groupSeasonLabel && (
-                <div className="text-xs text-muted-foreground">
+                <div className={labelClass}>
                   {row.groupSeasonLabel}
                 </div>
               )}
@@ -1701,7 +1519,7 @@ function CrossRefsSection({
             </Button>
           </div>
         ) : (
-          <div className="text-xs text-muted-foreground">
+          <div className={labelClass}>
             No parent group linked.
           </div>
         )}
@@ -1738,7 +1556,7 @@ function CrossRefsSection({
             ))}
           </ul>
         ) : (
-          <div className="text-xs text-muted-foreground">
+          <div className={labelClass}>
             No siblings found for this group.
           </div>
         )}
@@ -1753,7 +1571,7 @@ function CrossRefsSection({
           <div className="flex items-center justify-between gap-3">
             <div className="text-sm">
               <div className="font-medium">{row.waitlistEntry.label}</div>
-              <div className="text-xs text-muted-foreground">
+              <div className={labelClass}>
                 {[
                   row.waitlistEntry.priority != null
                     ? `Priority ${row.waitlistEntry.priority}`
@@ -1773,7 +1591,7 @@ function CrossRefsSection({
             </Button>
           </div>
         ) : (
-          <div className="text-xs text-muted-foreground">
+          <div className={labelClass}>
             No waitlist entry linked to this offspring.
           </div>
         )}
@@ -1782,13 +1600,19 @@ function CrossRefsSection({
   );
 }
 
-type GrowthSparklineProps = {
-  events?: HealthEvent[];
+type GrowthSparklinePoint = {
+  occurredAt: string;
+  weightOz: number | null;
 };
 
-function GrowthSparkline({ events }: GrowthSparklineProps) {
+type GrowthSparklineProps = {
+  series?: GrowthSparklinePoint[];
+};
+
+function GrowthSparkline({ series }: GrowthSparklineProps) {
   const points = React.useMemo(() => {
-    if (!events || !events.length) return [];
+    const events = series ?? [];
+    if (!events.length) return [];
 
     const weightEvents = events
       .filter((e) => e.weightOz != null)
@@ -1821,11 +1645,11 @@ function GrowthSparkline({ events }: GrowthSparklineProps) {
       const y = h - pad - ty * (h - pad * 2);
       return { x, y };
     });
-  }, [events]);
+  }, [series]);
 
   if (!points.length) {
     return (
-      <div className="text-xs text-muted-foreground">
+      <div className={labelClass}>
         No weight log recorded yet.
       </div>
     );
@@ -1846,7 +1670,51 @@ function GrowthSparkline({ events }: GrowthSparklineProps) {
 
 export default function OffspringPage(props: { embed?: boolean } = { embed: false }) {
   const { embed } = props;
-  const api = React.useMemo(() => useOffspringApi(), []);
+  const api = useOffspringApi();
+  const rootApi = React.useMemo<OffspringRootApi | null>(() => {
+    try {
+      return makeOffspringApiClient();
+    } catch {
+      return null;
+    }
+  }, []);
+
+  // Buyer directory search state, you will hook this into your UI
+  const [buyerSearchQ, setBuyerSearchQ] = React.useState("");
+  const [buyerSearchBusy, setBuyerSearchBusy] = React.useState(false);
+  const [buyerHits, setBuyerHits] = React.useState<DirectoryHit[]>([]);
+
+  React.useEffect(() => {
+    if (!rootApi) return;
+
+    const term = buyerSearchQ.trim();
+    if (!term) {
+      setBuyerHits([]);
+      return;
+    }
+
+    let alive = true;
+
+    const run = async () => {
+      setBuyerSearchBusy(true);
+      try {
+        const hits = await searchDirectory(rootApi, term);
+        if (alive) setBuyerHits(hits);
+      } catch (e) {
+        console.error("[OffspringPage] Directory search failed", e);
+        if (alive) setBuyerHits([]);
+      } finally {
+        if (alive) setBuyerSearchBusy(false);
+      }
+    };
+
+    const t = window.setTimeout(run, 250);
+    return () => {
+      alive = false;
+      window.clearTimeout(t);
+    };
+  }, [buyerSearchQ, rootApi]);
+
 
   const [q, setQ] = React.useState("");
   const [pageSize, setPageSize] = React.useState(25);
@@ -1856,48 +1724,101 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
   const [sorts, setSorts] = React.useState<{ key: ColumnKey; dir: "asc" | "desc" }[]>([]);
   const cols = hooks.useColumns(ALL_COLUMNS as any, OFFSPRING_STORAGE_KEY);
   const visibleSafe = cols.visible && cols.visible.length > 0 ? cols.visible : ALL_COLUMNS;
-
   const [drawer, setDrawer] = React.useState<OffspringRow | null>(null);
   const [drawerTab, setDrawerTab] = React.useState<
     "overview" | "buyer" | "health" | "media" | "invoices" | "records" | "notes"
   >("overview");
 
+  const [selectedGroupBuyerKey, setSelectedGroupBuyerKey] = React.useState<string>("");
+
+  const groupBuyerOptions = React.useMemo(
+    () => deriveGroupBuyerOptions((drawer as any)?.group ?? null),
+    [drawer],
+  );
+
+  React.useEffect(() => {
+    // reset selection when switching offspring
+    setSelectedGroupBuyerKey("");
+  }, [drawer?.id]);
+
   const [coreForm, setCoreForm] = React.useState<Partial<OffspringRow> | null>(null);
+  const [drawerMode, setDrawerMode] = React.useState<"view" | "edit">("view");
+  const [drawerSaving, setDrawerSaving] = React.useState(false);
+
+  // edit state for parent group override in the drawer
+  const [allowWithoutParent, setAllowWithoutParent] = React.useState(false);
+  const groupOptions = useOffspringGroupOptions(true);
 
   const [showCreate, setShowCreate] = React.useState(false);
+  const [showWhelpPalette, setShowWhelpPalette] = React.useState(false);
 
-  function handleAssignBuyer() {
-    if (!drawer) return;
+  // Normalized species and breed for the offspring in the details drawer
+  const drawerSpeciesKey = React.useMemo(() => {
+    if (!drawer?.species) return null;
+    return String(drawer.species).toUpperCase();
+  }, [drawer]);
 
-    window.dispatchEvent(
-      new CustomEvent("bhq:offspring:assign-buyer", {
-        detail: {
-          offspringId: drawer.id,
-          currentBuyer: drawer.buyer,
-          async onSelect(payload: { kind: OffspringBuyerKind; id: number }) {
-            try {
-              const patch: OffspringUpdateInput = {
-                buyerContactId:
-                  payload.kind === "contact" ? payload.id : null,
-                buyerOrganizationId:
-                  payload.kind === "organization" ? payload.id : null,
-              };
-              const updated = await api.update(drawer.id, patch);
-              setDrawer(updated);
-              window.dispatchEvent(
-                new CustomEvent("bhq:offspring:buyer:assigned", {
-                  detail: { offspringId: drawer.id },
-                }),
-              );
-            } catch (err) {
-              console.error(err);
-              alert("Failed to assign buyer");
-            }
-          },
-        },
-      }),
-    );
-  }
+  const drawerBreedKey = React.useMemo(() => {
+    if (!drawer) return null;
+
+    const rawBreed =
+      (drawer as any).breedName ??
+      (drawer as any).breed ??
+      (drawer.group as any)?.breedName ??
+      (drawer.group as any)?.breed ??
+      null;
+
+    if (!rawBreed) return null;
+    return String(rawBreed).trim().toUpperCase();
+  }, [drawer]);
+
+  const drawerGroupOptions = React.useMemo(() => {
+    // If no drawer is open, just return the full list
+    if (!drawer) return groupOptions;
+
+    return groupOptions.filter((g) => {
+      // Species check
+      if (drawerSpeciesKey && g.species) {
+        if (String(g.species).toUpperCase() !== drawerSpeciesKey) {
+          return false;
+        }
+      }
+
+      // Breed check
+      if (drawerBreedKey) {
+        const groupBreedKey = g.breed ? g.breed.trim().toUpperCase() : null;
+
+        // If the offspring has a breed, the group must also have a breed and it must match
+        if (!groupBreedKey) {
+          return false;
+        }
+        if (groupBreedKey !== drawerBreedKey) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+  }, [drawer, groupOptions, drawerSpeciesKey, drawerBreedKey]);
+
+
+  // Allow external callers to trigger the "Add Offspring" overlay by URL
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    try {
+      const url = new URL(window.location.href);
+      const raw = url.searchParams.get("createOffspring");
+      if (!raw) return;
+
+      const flag = raw.toLowerCase();
+      if (flag === "1" || flag === "true" || flag === "yes") {
+        setShowCreate(true);
+      }
+    } catch {
+      // ignore URL parsing issues
+    }
+  }, []);
 
 
   function cycleSort(key: ColumnKey, withShift: boolean) {
@@ -1920,9 +1841,15 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
   };
 
   const refresh = React.useCallback(async () => {
-    const res = await api.list({ q, page, pageSize });
-    setRows(Array.isArray(res.rows) ? res.rows : []);
-    setTotal(typeof res.total === "number" ? res.total : 0);
+    try {
+      const res = await api.list({ q, page, pageSize });
+      setRows(Array.isArray(res.rows) ? res.rows : []);
+      setTotal(typeof res.total === "number" ? res.total : 0);
+    } catch (err) {
+      console.error("[Offspring] list failed", err);
+      setRows([]);
+      setTotal(0);
+    }
   }, [api, q, page, pageSize, sorts]);
 
   React.useEffect(() => {
@@ -1973,6 +1900,8 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
   React.useEffect(() => {
     if (!drawer) {
       setCoreForm(null);
+      setDrawerMode("view");
+      setAllowWithoutParent(false);
       return;
     }
     setCoreForm({
@@ -1988,8 +1917,15 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
       microchip: drawer.microchip,
       registrationId: drawer.registrationId,
       notes: drawer.notes,
+      groupId: drawer.groupId ?? null,
+      whelpingCollarColor: drawer.whelpingCollarColor ?? null,
+      riskScore: drawer.riskScore ?? null,
     });
+    setAllowWithoutParent(drawer.groupId == null);
+    setDrawerMode("view");
+    setShowWhelpPalette(false);
   }, [drawer]);
+
 
   const [linkingInvoice, setLinkingInvoice] = React.useState(false);
   const [healthSaving, setHealthSaving] = React.useState(false);
@@ -2010,20 +1946,27 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
 
   function closeDrawer() {
     setDrawer(null);
+    setDrawerMode("view");
     writeUrlParam(null);
   }
+
 
   const detailsPanelRef = React.useRef<HTMLDivElement | null>(null);
 
   function navigateToGroup(groupId: ID) {
     try {
       const url = new URL(window.location.href);
+
+      // Force the groups tab and target group
       url.searchParams.set("tab", "groups");
       url.searchParams.set("groupId", String(groupId));
-      window.history.pushState({}, "", url.toString());
-      window.dispatchEvent(
-        new CustomEvent("bhq:offspring:navigate", { detail: { tab: "groups", groupId } })
-      );
+
+      // Clear offspring specific flags that would interfere
+      url.searchParams.delete("offspringId");
+      url.searchParams.delete("createOffspring");
+
+      // Open App-Offspring plus the group drawer in a new tab
+      window.open(url.toString(), "_blank", "noopener,noreferrer");
     } catch {
       // ignore
     }
@@ -2122,28 +2065,145 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
     }
   }
 
+  const handleAssignBuyerFromGroup = React.useCallback(async () => {
+    if (!drawer || !selectedGroupBuyerKey) return;
+
+    const [kindRaw, idRaw] = selectedGroupBuyerKey.split(":");
+    const kind: OffspringBuyerKind =
+      kindRaw === "organization" ? "organization" : "contact";
+    const id = Number(idRaw);
+    if (!Number.isFinite(id)) return;
+
+    const patch: OffspringUpdateInput = {
+      buyerContactId: kind === "contact" ? id : null,
+      buyerOrganizationId: kind === "organization" ? id : null,
+    };
+
+    try {
+      const updated = await api.update(drawer.id, patch);
+      setDrawer(updated);
+      setRows((prev) =>
+        prev.map((r) => (String(r.id) === String(updated.id) ? updated : r)),
+      );
+      window.dispatchEvent(
+        new CustomEvent("bhq:offspring:buyer:assigned", {
+          detail: { offspringId: drawer.id },
+        }),
+      );
+    } catch (err) {
+      console.error(err);
+      window.alert("Failed to assign buyer");
+    }
+  }, [api, drawer, selectedGroupBuyerKey, setRows]);
+
+  const handleAssignBuyerFromDirectory = React.useCallback(
+    async (hit: DirectoryHit | null) => {
+      if (!drawer || !hit) return;
+
+      const patch: OffspringUpdateInput = {
+        buyerContactId: hit.kind === "contact" ? hit.id : null,
+        buyerOrganizationId: hit.kind === "org" ? hit.id : null,
+      };
+
+      try {
+        const updated = await api.update(drawer.id, patch);
+        setDrawer(updated);
+        setRows((prev) =>
+          prev.map((r) => (String(r.id) === String(updated.id) ? updated : r)),
+        );
+        window.dispatchEvent(
+          new CustomEvent("bhq:offspring:buyer:assigned", {
+            detail: { offspringId: drawer.id },
+          }),
+        );
+        setSelectedGroupBuyerKey("");
+      } catch (err) {
+        console.error(err);
+        window.alert("Failed to assign buyer from directory");
+      }
+    },
+    [api, drawer, setRows],
+  );
+
+  const handleClearBuyer = React.useCallback(async () => {
+    if (!drawer) return;
+
+    const patch: OffspringUpdateInput = {
+      buyerContactId: null,
+      buyerOrganizationId: null,
+    };
+
+    try {
+      const updated = await api.update(drawer.id, patch);
+      setDrawer(updated);
+      setRows((prev) =>
+        prev.map((r) => (String(r.id) === String(updated.id) ? updated : r)),
+      );
+      window.dispatchEvent(
+        new CustomEvent("bhq:offspring:buyer:cleared", {
+          detail: { offspringId: drawer.id },
+        }),
+      );
+      setSelectedGroupBuyerKey("");
+    } catch (err) {
+      console.error(err);
+      window.alert("Failed to clear buyer");
+    }
+  }, [api, drawer, setRows]);
+
 
   async function saveCoreSection() {
     if (!drawer || !coreForm) return;
+
+    const resolvedGroupId =
+      allowWithoutParent ? null : (coreForm.groupId ?? null);
+
+    const isLinkedToParent = !allowWithoutParent && resolvedGroupId != null;
+
     try {
-      const patch: Partial<OffspringRow> = {
+      const patch: OffspringUpdateInput = {
         name: coreForm.name ?? null,
-        placeholderLabel: coreForm.placeholderLabel ?? null,
-        sex: (coreForm.sex as Sex) ?? drawer.sex,
+        sex:
+          coreForm.sex === "UNKNOWN"
+            ? null
+            : ((coreForm.sex as Sex) ?? drawer.sex ?? null),
         color: coreForm.color ?? null,
         birthWeightOz: coreForm.birthWeightOz ?? null,
-        status: (coreForm.status as Status) ?? drawer.status,
-        dob: coreForm.dob ?? drawer.dob,
+        status: (coreForm.status as OffspringStatus) ?? drawer.status,
         placementDate: coreForm.placementDate ?? drawer.placementDate,
         price: coreForm.price ?? drawer.price,
         microchip: coreForm.microchip ?? drawer.microchip,
         registrationId: coreForm.registrationId ?? drawer.registrationId,
         notes: coreForm.notes ?? drawer.notes,
+
+        species: (drawer.species as any) ?? null,
+
+        // For offspring linked to a parent group, do not change DOB here.
+        // They inherit DOB from the group.
+        birthDate: isLinkedToParent
+          ? drawer.dob
+          : (coreForm.dob ?? drawer.dob),
+
+        // critical part: send both names
+        groupId: resolvedGroupId,
+        litterId: resolvedGroupId,
+
+        unlinkedOverride:
+          allowWithoutParent && resolvedGroupId == null
+            ? true
+            : null,
+
+        whelpingCollarColor:
+          coreForm.whelpingCollarColor ??
+          drawer.whelpingCollarColor ??
+          null,
+        riskScore: coreForm.riskScore ?? drawer.riskScore ?? null,
       };
+
       const updated = await api.update(drawer.id, patch);
       setDrawer(updated);
       setRows((prev) =>
-        prev.map((r) => (String(r.id) === String(updated.id) ? updated : r))
+        prev.map((r) => (String(r.id) === String(updated.id) ? updated : r)),
       );
       window.dispatchEvent(new CustomEvent("bhq:offspring:updated"));
     } catch {
@@ -2243,14 +2303,26 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
                       }
 
                       if (k === "buyer") {
-                        val = r.buyer ? r.buyer.name : "-";
+                        if (r.buyerName) {
+                          val = r.buyerName;
+                        } else if (r.buyerId != null) {
+                          val = `Buyer #${r.buyerId}`;
+                        } else {
+                          val = "-";
+                        }
                       }
 
                       if (k === "group") {
                         if (r.groupId) {
+                          const groupFromOptions = groupOptions.find(
+                            (opt) => opt.id === r.groupId
+                          );
+
                           const label =
-                            r.groupName ||
-                            r.groupCode ||
+                            groupFromOptions?.label ||
+                            r.groupLabel ||
+                            (r as any).groupName ||
+                            (r as any).groupCode ||
                             `Group #${r.groupId}`;
 
                           val = (
@@ -2274,8 +2346,43 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
                         val = r.sex ?? "-";
                       }
 
+                      if (k === "whelpingCollarColor") {
+                        const value = r.whelpingCollarColor;
+
+                        if (!value) {
+                          val = "-";
+                        } else {
+                          const lower = value.toString().toLowerCase();
+
+                          const match = WHELPING_COLLAR_SWATCHES.find((opt) => {
+                            const valLower = opt.value.toLowerCase();
+                            const labelLower = opt.label.toLowerCase();
+                            return valLower === lower || labelLower === lower;
+                          });
+
+                          const hex = match?.hex ?? null;
+
+                          val = (
+                            <span className="inline-flex items-center justify-center gap-1 text-xs">
+                              {hex && (
+                                <span
+                                  className="inline-block h-3 w-3 rounded-full border border-border"
+                                  style={{ backgroundColor: hex }}
+                                />
+                              )}
+                              <span>{value}</span>
+                            </span>
+                          );
+                        }
+                      }
+
+
                       if (k === "color") {
                         val = r.color ?? "-";
+                      }
+
+                      if (k === "breed") {
+                        val = r.breed ?? "-";
                       }
 
                       if (k === "status") {
@@ -2317,7 +2424,7 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
             <TableRow>
               <TableCell colSpan={visibleSafe.length}>
                 <div className="flex items-center justify-between gap-3">
-                  <div className="text-xs text-muted-foreground">
+                  <div className={labelClass}>
                     {total === 0 ? (
                       "No records"
                     ) : (
@@ -2378,22 +2485,35 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
         onClose={() => setShowCreate(false)}
         onCreate={async (input) => {
           try {
-            const created = await api.create(input);
+            const payload: any = { ...input };
+
+            // If a groupId is on the URL and the form did not set one, attach it
+            if (typeof window !== "undefined") {
+              try {
+                const url = new URL(window.location.href);
+                const groupIdRaw = url.searchParams.get("groupId");
+                if (groupIdRaw && payload.groupId == null) {
+                  const groupIdNum = Number(groupIdRaw);
+                  if (Number.isFinite(groupIdNum)) {
+                    payload.groupId = groupIdNum;
+                  }
+                }
+              } catch {
+                // ignore URL issues
+              }
+            }
+
+            await api.create(payload);
             setShowCreate(false);
             await refresh();
-            const full = await api.getById(created.id);
-            if (full) {
-              setDrawer(full);
-              writeUrlParam(full.id);
-              setDrawerTab("overview");
-            }
-            window.dispatchEvent(new CustomEvent("bhq:offspring:created"));
-          } catch {
-            window.alert("Failed to create offspring");
+          } catch (err) {
+            console.error("Failed to create offspring", err);
+            window.alert("Failed to create offspring. Try again.");
           }
         }}
+        rootApi={rootApi}
+        groupOptions={groupOptions}
       />
-
       <Overlay
         open={!!drawer}
         ariaLabel="Offspring details"
@@ -2425,7 +2545,7 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
               <div
                 ref={detailsPanelRef}
                 className="pointer-events-auto mt-10 mb-10 flex flex-col overflow-hidden rounded-xl border border-hairline bg-surface shadow-xl"
-                style={{ width: 960, maxWidth: "calc(100vw - 80px)" }}
+                style={{ width: 760, maxWidth: "calc(100vw - 64px)" }}
                 onMouseDown={(e) => {
                   // keep clicks inside the panel from bubbling to the outer close handler
                   e.stopPropagation();
@@ -2443,7 +2563,64 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
                       ? `Status ${prettyStatus(drawer.status as OffspringStatus)}`
                       : "Status not set"
                   }
-                  mode="view"
+                  mode={drawerMode}
+                  onEdit={() => {
+                    // ensure form is in sync, then enter edit mode
+                    setCoreForm({
+                      name: drawer.name,
+                      placeholderLabel: drawer.placeholderLabel,
+                      sex: drawer.sex,
+                      color: drawer.color,
+                      birthWeightOz: drawer.birthWeightOz,
+                      status: drawer.status,
+                      dob: drawer.dob,
+                      placementDate: drawer.placementDate,
+                      price: drawer.price,
+                      microchip: drawer.microchip,
+                      registrationId: drawer.registrationId,
+                      notes: drawer.notes,
+                      groupId: drawer.groupId,
+                      whelpingCollarColor: drawer.whelpingCollarColor ?? null,
+                      riskScore: drawer.riskScore ?? null,
+                    });
+                    setAllowWithoutParent(drawer.groupId == null);
+                    setShowWhelpPalette(false);
+                    setDrawerMode("edit");
+                  }}
+                  onCancel={() => {
+                    // reset form from current drawer row, leave DB unchanged
+                    setCoreForm({
+                      name: drawer.name,
+                      placeholderLabel: drawer.placeholderLabel,
+                      sex: drawer.sex,
+                      color: drawer.color,
+                      birthWeightOz: drawer.birthWeightOz,
+                      status: drawer.status,
+                      dob: drawer.dob,
+                      placementDate: drawer.placementDate,
+                      price: drawer.price,
+                      microchip: drawer.microchip,
+                      registrationId: drawer.registrationId,
+                      notes: drawer.notes,
+                      groupId: drawer.groupId,
+                      whelpingCollarColor: drawer.whelpingCollarColor ?? null,
+                      riskScore: drawer.riskScore ?? null,
+                    });
+                    setAllowWithoutParent(drawer.groupId == null);
+                    setShowWhelpPalette(false);
+                    setDrawerMode("view");
+                  }}
+                  onSave={async () => {
+                    if (!drawer || !coreForm) return;
+                    setDrawerSaving(true);
+                    try {
+                      await saveCoreSection();
+                      setDrawerMode("view");
+                    } finally {
+                      setDrawerSaving(false);
+                    }
+                  }}
+                  saving={drawerSaving}
                   tabs={[
                     { key: "overview", label: "Overview" },
                     { key: "buyer", label: "Buyer" },
@@ -2471,6 +2648,7 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
                     if (!row) return null;
 
                     const group = row.group;
+                    const isLinkedToParent = !allowWithoutParent && row.groupId != null;
                     const buyer = row.buyer;
                     const health = row.healthSummary || {};
                     const media = row.mediaSummary || {};
@@ -2480,39 +2658,120 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
 
                     const name =
                       row.name || row.identifier || "Unnamed offspring";
-                    const statusLabel =
-                      row.statusLabel || row.status || "Status not set";
 
-                    const sexLabel =
-                      row.sexLabel || row.sex || "Unknown";
-                    const colorLabel =
-                      row.colorLabel || row.color || "Unknown";
                     const speciesLabel =
-                      row.speciesLabel || row.species || "Unknown";
-                    const dobLabel =
-                      row.birthDateLabel || row.birthDate || "Unknown";
+                      row.species ? prettySpecies(row.species) : "Not set";
+
+                    const sexLabel = prettySex(row.sex);
+
+                    const damLabel =
+                      row.groupDamName || row.damName || "Not set";
+
+                    const sireLabel =
+                      row.groupSireName || row.sireName || "Not set";
+
+                    const statusLabel = row.status
+                      ? prettyStatus(row.status as Status)
+                      : "Status not set";
+
+                    const dobLabel = row.dob
+                      ? formatDate(row.dob)
+                      : "Not set";
+
                     const birthWeightLabel =
-                      row.birthWeightLabel || row.birthWeight || "Unknown";
-                    const microchipLabel =
-                      row.microchip || "None";
-                    const registrationLabel =
-                      row.registration || "None";
+                      typeof row.birthWeightOz === "number"
+                        ? `${row.birthWeightOz} oz`
+                        : "Not recorded";
+
+                    const colorLabel = row.color || "Not set";
+
+                    const microchipLabel = row.microchip || "None";
+
+                    const registrationLabel = row.registrationId || "None";
+
+                    const whelpingCollarValue =
+                      drawerMode === "edit" && coreForm
+                        ? coreForm.whelpingCollarColor
+                        : row.whelpingCollarColor;
+
+                    const whelpingCollarLabel =
+                      whelpingCollarValue || "Not set";
+
+                    const whelpingCollarColorHex = (() => {
+                      const v = (whelpingCollarValue ?? "")
+                        .toString()
+                        .toLowerCase();
+
+                      const match = WHELPING_COLLAR_SWATCHES.find((opt) => {
+                        const val = opt.value.toLowerCase();
+                        const label = opt.label.toLowerCase();
+                        return val === v || label === v;
+                      });
+
+                      return match?.hex ?? null;
+                    })();
+
+                    const groupLabelFromOptions = groupOptions.find(
+                      (opt) => opt.id === row.groupId
+                    )?.label;
 
                     const groupName =
-                      group?.identifier || group?.name || "Not linked to group";
+                      groupLabelFromOptions ||
+                      row.groupName ||
+                      row.group?.name ||
+                      (row.groupId ? `Group #${row.groupId}` : "Not linked to group");
+
                     const groupCode =
-                      group?.code || "n/a";
-                    const placementLabel =
-                      row.placementStatusLabel || row.placementStatus || "Not set";
-                    const placementDateLabel =
-                      row.placementDateLabel || row.placementDate || "Not placed";
+                      row.groupCode ||
+                      row.group?.code ||
+                      "n/a";
+
+                    const identifierLabel = row.identifier || "Not set";
+
+                    const placementLabel = (() => {
+                      const raw = row.placementStatus || row.status;
+                      if (!raw) return "Not placed";
+
+                      const s = String(raw).toUpperCase();
+
+                      if (s === "NOT_PLACED" || s === "PLANNED" || s === "BORN" || s === "AVAILABLE") {
+                        return "Not placed";
+                      }
+                      if (s === "DEPOSIT_ONLY" || s === "RESERVED") {
+                        return "Deposit only";
+                      }
+                      if (s === "PLACED") {
+                        return "Placed";
+                      }
+                      return String(raw);
+                    })();
+
                     const priceLabel =
-                      row.priceLabel || row.price || "Not set";
+                      typeof row.price === "number"
+                        ? moneyFmt(row.price)
+                        : "Not set";
+
+                    const placementDateLabel = row.placementDate
+                      ? formatDate(row.placementDate)
+                      : "Not set";
 
                     const buyerName =
-                      buyer?.displayName || buyer?.name || "No buyer assigned";
-                    const buyerContact =
-                      buyer?.contactName || buyer?.primaryContactName || "No contact info";
+                      row.buyerName ||
+                      (row.buyerId ? `Buyer #${row.buyerId}` : "No buyer on file");
+
+                    // Treat these as optional extras if the API ever sends them
+                    const buyerEmail =
+                      (row as any).buyerEmail ??
+                      (row as any).buyer_email ??
+                      null;
+
+                    const buyerPhone =
+                      (row as any).buyerPhone ??
+                      (row as any).buyer_phone ??
+                      null;
+
+                    // This drives all the Buyer tab conditional UI
+                    const hasBuyer = Boolean(row.buyerId || row.buyerName);
 
                     const healthWeightSummary =
                       health.weightSummaryLabel || "No weight log recorded yet.";
@@ -2529,80 +2788,209 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
                       <>
                         {/* OVERVIEW TAB */}
                         {drawerTab === "overview" && (
-                          <>
+                          <div className="space-y-8 max-w-4xl mx-auto">
+
+
+                            {/* Identity card */}
                             <SectionCard title="Identity">
-                              <dl className="grid grid-cols-2 gap-x-6 gap-y-2 text-xs md:text-sm">
+                              <dl className="mt-2 grid grid-cols-2 gap-x-10 gap-y-10 text-xs md:text-sm">
+
+                                {/* Row 1: Name | Offspring ID */}
                                 <div>
-                                  <dt className="text-xs text-muted-foreground">
-                                    Name
-                                  </dt>
-                                  <dd className="text-sm">{name}</dd>
+                                  <dt className={labelClass}>Name</dt>
+                                  <dd className="mt-1 text-sm">
+                                    {drawerMode === "edit" && coreForm ? (
+                                      <input
+                                        className={inputClass}
+                                        value={coreForm.name ?? ""}
+                                        onChange={(e) =>
+                                          setCoreForm((prev) =>
+                                            prev ? { ...prev, name: e.target.value } : prev,
+                                          )
+                                        }
+                                      />
+                                    ) : (
+                                      name
+                                    )}
+                                  </dd>
                                 </div>
+
                                 <div>
-                                  <dt className="text-xs text-muted-foreground">
-                                    Status
-                                  </dt>
-                                  <dd className="text-sm">{statusLabel}</dd>
+                                  <dt className={labelClass}>Offspring ID</dt>
+                                  <dd className="mt-1 text-sm">
+                                    {drawer.id != null ? String(drawer.id) : ""}
+                                  </dd>
                                 </div>
+
+                                {/* Row 2: DOB | Microchip */}
                                 <div>
-                                  <dt className="text-xs text-muted-foreground">
-                                    Species
-                                  </dt>
-                                  <dd className="text-sm">{speciesLabel}</dd>
+                                  <dt className={labelClass}>DOB</dt>
+                                  <dd className="mt-1 text-sm">
+                                    {drawerMode === "edit" && coreForm && !isLinkedToParent ? (
+                                      <input
+                                        type="date"
+                                        className={inputClass}
+                                        value={coreForm.dob ?? drawer.dob ?? ""}
+                                        onChange={(e) =>
+                                          setCoreForm((prev) =>
+                                            prev ? { ...prev, dob: e.target.value } : prev,
+                                          )
+                                        }
+                                      />
+                                    ) : (
+                                      dobLabel
+                                    )}
+                                  </dd>
                                 </div>
+
                                 <div>
-                                  <dt className="text-xs text-muted-foreground">
-                                    Sex
-                                  </dt>
-                                  <dd className="text-sm">{sexLabel}</dd>
+                                  <dt className={labelClass}>Microchip</dt>
+                                  <dd className="mt-1 text-sm">
+                                    {drawerMode === "edit" && coreForm ? (
+                                      <input
+                                        className={inputClass}
+                                        value={coreForm.microchip ?? drawer.microchip ?? ""}
+                                        onChange={(e) =>
+                                          setCoreForm((prev) =>
+                                            prev ? { ...prev, microchip: e.target.value } : prev,
+                                          )
+                                        }
+                                      />
+                                    ) : (
+                                      microchipLabel
+                                    )}
+                                  </dd>
                                 </div>
-                                <div>
-                                  <dt className="text-xs text-muted-foreground">
-                                    Color
-                                  </dt>
-                                  <dd className="text-sm">{colorLabel}</dd>
-                                </div>
-                                <div>
-                                  <dt className="text-xs text-muted-foreground">
-                                    Date of birth
-                                  </dt>
-                                  <dd className="text-sm">{dobLabel}</dd>
-                                </div>
-                                <div>
-                                  <dt className="text-xs text-muted-foreground">
-                                    Birth weight
-                                  </dt>
-                                  <dd className="text-sm">{birthWeightLabel}</dd>
-                                </div>
-                                <div>
-                                  <dt className="text-xs text-muted-foreground">
-                                    Microchip
-                                  </dt>
-                                  <dd className="text-sm">{microchipLabel}</dd>
-                                </div>
-                                <div>
-                                  <dt className="text-xs text-muted-foreground">
-                                    Registration
-                                  </dt>
-                                  <dd className="text-sm">{registrationLabel}</dd>
+
+                                {/* Row 3: Whelping collar, full width */}
+                                <div className="col-span-2">
+                                  <dt className={labelClass}>Whelping Collar Color</dt>
+                                  <dd className="mt-1 text-sm">
+                                    {drawerMode === "edit" && coreForm ? (
+                                      <div className="relative w-full max-w-xs">
+                                        <button
+                                          type="button"
+                                          className={cx(
+                                            inputClass,
+                                            "flex items-center justify-between text-left cursor-pointer",
+                                          )}
+                                          onClick={() =>
+                                            setShowWhelpPalette((prev) => !prev)
+                                          }
+                                        >
+                                          <span className="flex items-center gap-2">
+                                            {whelpingCollarColorHex && (
+                                              <span
+                                                className="h-3 w-3 rounded-full border border-border"
+                                                style={{ backgroundColor: whelpingCollarColorHex }}
+                                              />
+                                            )}
+                                            <span>
+                                              {whelpingCollarLabel === "Not set"
+                                                ? "Select collar color"
+                                                : whelpingCollarLabel}
+                                            </span>
+                                          </span>
+                                          <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+                                        </button>
+
+                                        {showWhelpPalette && (
+                                          <div className="absolute z-20 mt-1 w-full rounded-md border border-border bg-surface shadow-lg">
+                                            <ul className="max-h-48 overflow-y-auto py-1 text-xs">
+                                              {WHELPING_COLLAR_SWATCHES.map((opt) => (
+                                                <li key={opt.value}>
+                                                  <button
+                                                    type="button"
+                                                    className="flex w-full items-center gap-2 px-2 py-1.5 text-left hover:bg-muted"
+                                                    onClick={() => {
+                                                      setCoreForm((prev) =>
+                                                        prev
+                                                          ? {
+                                                            ...prev,
+                                                            whelpingCollarColor: opt.label,
+                                                          }
+                                                          : prev,
+                                                      );
+                                                      setShowWhelpPalette(false);
+                                                    }}
+                                                  >
+                                                    <span
+                                                      className="h-3 w-3 rounded-full border border-border"
+                                                      style={{ backgroundColor: opt.hex }}
+                                                    />
+                                                    <span>{opt.label}</span>
+                                                  </button>
+                                                </li>
+                                              ))}
+                                            </ul>
+                                          </div>
+                                        )}
+                                      </div>
+                                    ) : (
+                                      <div className="inline-flex items-center gap-2">
+                                        {whelpingCollarColorHex && (
+                                          <span
+                                            className="h-3 w-3 rounded-full border border-border"
+                                            style={{ backgroundColor: whelpingCollarColorHex }}
+                                          />
+                                        )}
+                                        <span>{whelpingCollarLabel}</span>
+                                      </div>
+                                    )}
+                                  </dd>
                                 </div>
                               </dl>
                             </SectionCard>
 
-                            <SectionCard title="Group and placement">
-                              <dl className="grid grid-cols-2 gap-x-6 gap-y-2 text-xs md:text-sm">
-                                <div>
-                                  <dt className="text-xs text-muted-foreground">
-                                    Group
-                                  </dt>
-                                  <dd className="text-sm">
-                                    {group ? (
+                            {/* Profile card */}
+                            <SectionCard title="Profile">
+                              <dl className="mt-2 grid grid-cols-3 gap-x-10 gap-y-10 text-xs md:text-sm">
+                                {/* Row 1: Parent group, full width */}
+                                <div className="col-span-3">
+                                  <dt className={labelClass}>Parent group</dt>
+                                  <dd className="mt-1 text-sm">
+                                    {drawerMode === "edit" && coreForm ? (
+                                      <div className="space-y-2">
+                                        <select
+                                          className={inputClass}
+                                          value={
+                                            coreForm.groupId != null
+                                              ? String(coreForm.groupId)
+                                              : ""
+                                          }
+                                          onChange={(e) => {
+                                            const value = e.target.value;
+                                            const nextGroupId = value ? Number(value) : null;
+                                            setCoreForm((prev) => {
+                                              if (!prev) return prev;
+                                              return { ...prev, groupId: nextGroupId };
+                                            });
+                                          }}
+                                        >
+                                          <option value="">Select parent group</option>
+                                          {drawerGroupOptions.map((opt) => (
+                                            <option key={opt.id} value={String(opt.id)}>
+                                              {opt.label}
+                                            </option>
+                                          ))}
+                                        </select>
+
+                                        <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                                          <input
+                                            type="checkbox"
+                                            checked={allowWithoutParent}
+                                            onChange={(e) =>
+                                              setAllowWithoutParent(e.target.checked)
+                                            }
+                                          />
+                                          <span>Override - Create Orphan</span>
+                                        </label>
+                                      </div>
+                                    ) : group ? (
                                       <Button
                                         variant="link"
                                         className="h-auto p-0 text-sm"
-                                        onClick={() =>
-                                          navigateToGroup(group.id)
-                                        }
+                                        onClick={() => navigateToGroup(group.id)}
                                       >
                                         {groupName}
                                       </Button>
@@ -2611,109 +2999,331 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
                                     )}
                                   </dd>
                                 </div>
+
+                                {/* Row 2: Species | Breed | Sex */}
                                 <div>
-                                  <dt className="text-xs text-muted-foreground">
-                                    Group code
-                                  </dt>
-                                  <dd className="text-sm">{groupCode}</dd>
+                                  <dt className={labelClass}>Species</dt>
+                                  <dd className="mt-1 text-sm">{speciesLabel}</dd>
                                 </div>
+
                                 <div>
-                                  <dt className="text-xs text-muted-foreground">
-                                    Identifier
-                                  </dt>
-                                  <dd className="text-sm">
-                                    {row.identifier || "Not set"}
+                                  <dt className={labelClass}>Breed</dt>
+                                  <dd className="mt-1 text-sm">
+                                    {row.group?.breedName ||
+                                      row.group?.breed ||
+                                      row.breedName ||
+                                      row.breed ||
+                                      "Not set"}
                                   </dd>
                                 </div>
+
                                 <div>
-                                  <dt className="text-xs text-muted-foreground">
-                                    Price
-                                  </dt>
-                                  <dd className="text-sm">{priceLabel}</dd>
-                                </div>
-                                <div>
-                                  <dt className="text-xs text-muted-foreground">
-                                    Placement date
-                                  </dt>
-                                  <dd className="text-sm">
-                                    {placementDateLabel}
+                                  <dt className={labelClass}>Sex</dt>
+                                  <dd className="mt-1 text-sm">
+                                    {drawerMode === "edit" && coreForm ? (
+                                      <select
+                                        className={inputClass}
+                                        value={coreForm.sex ?? ""}
+                                        onChange={(e) => {
+                                          const value = e.target.value || "";
+                                          setCoreForm((prev) =>
+                                            prev
+                                              ? { ...prev, sex: (value || null) as any }
+                                              : prev,
+                                          );
+                                        }}
+                                      >
+                                        <option value="">Select sex</option>
+                                        <option value="FEMALE">Female</option>
+                                        <option value="MALE">Male</option>
+                                        <option value="UNKNOWN">Unknown</option>
+                                      </select>
+                                    ) : (
+                                      <span>
+                                        {row.sex === "FEMALE"
+                                          ? "Female"
+                                          : row.sex === "MALE"
+                                            ? "Male"
+                                            : "Unknown"}
+                                      </span>
+                                    )}
                                   </dd>
                                 </div>
+
+                                {/* Row 3: Dam | Sire | Color */}
                                 <div>
-                                  <dt className="text-xs text-muted-foreground">
-                                    Placement status
-                                  </dt>
-                                  <dd className="text-sm">
-                                    {placementLabel}
+                                  <dt className={labelClass}>Dam</dt>
+                                  <dd className="mt-1 text-sm">
+                                    {row.dam ? (
+                                      <button
+                                        type="button"
+                                        className="text-brand-600 hover:underline"
+                                        onClick={() => {
+                                          onClose();
+                                          onNavigateToAnimal?.(row.dam!.id);
+                                        }}
+                                      >
+                                        {row.dam.name ?? "View dam"}
+                                      </button>
+                                    ) : (
+                                      "Not set"
+                                    )}
+                                  </dd>
+                                </div>
+
+                                <div>
+                                  <dt className={labelClass}>Sire</dt>
+                                  <dd className="mt-1 text-sm">
+                                    {row.sire ? (
+                                      <button
+                                        type="button"
+                                        className="text-brand-600 hover:underline"
+                                        onClick={() => {
+                                          onClose();
+                                          onNavigateToAnimal?.(row.sire!.id);
+                                        }}
+                                      >
+                                        {row.sire.name ?? "View sire"}
+                                      </button>
+                                    ) : (
+                                      "Not set"
+                                    )}
+                                  </dd>
+                                </div>
+
+                                <div>
+                                  <dt className={labelClass}>Color</dt>
+                                  <dd className="mt-1 text-sm">
+                                    {drawerMode === "edit" && coreForm ? (
+                                      <input
+                                        className={inputClass}
+                                        value={coreForm.color ?? drawer.color ?? ""}
+                                        onChange={(e) =>
+                                          setCoreForm((prev) =>
+                                            prev ? { ...prev, color: e.target.value } : prev,
+                                          )
+                                        }
+                                      />
+                                    ) : (
+                                      row.color ?? "Not set"
+                                    )}
                                   </dd>
                                 </div>
                               </dl>
                             </SectionCard>
 
-                            <SectionCard title="At a glance">
-                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs md:text-sm">
+                            {/* Buyer card */}
+                            <SectionCard title="Buyer">
+                              <dl className="mt-2 grid grid-cols-2 gap-x-10 gap-y-10 text-xs md:text-sm">
+                                {/* Row 1: Assigned Buyer | Buyer Risk Score */}
                                 <div>
-                                  <div className="text-xs text-muted-foreground">
-                                    Buyer
-                                  </div>
-                                  <div className="text-sm">{buyerName}</div>
+                                  <dt className={labelClass}>Assigned buyer</dt>
+                                  <dd className="mt-1 text-sm">{buyerName}</dd>
                                 </div>
+
                                 <div>
-                                  <div className="text-xs text-muted-foreground">
-                                    Health
-                                  </div>
-                                  <div className="text-sm">
-                                    {healthEventSummary}
-                                  </div>
+                                  <dt className={labelClass}>Buyer risk score</dt>
+                                  <dd className="mt-1 text-sm">
+                                    {row.buyerRiskScore != null ? (
+                                      <RiskScorePill score={row.buyerRiskScore} />
+                                    ) : (
+                                      "Not set"
+                                    )}
+                                  </dd>
                                 </div>
-                                <div>
-                                  <div className="text-xs text-muted-foreground">
-                                    Invoices
-                                  </div>
-                                  <div className="text-sm">
-                                    {invoiceSummary}
-                                  </div>
-                                </div>
-                                <div>
-                                  <div className="text-xs text-muted-foreground">
-                                    Media
-                                  </div>
-                                  <div className="text-sm">{mediaSummary}</div>
-                                </div>
-                              </div>
+                              </dl>
                             </SectionCard>
-                          </>
+                          </div>
                         )}
 
                         {/* BUYER TAB */}
                         {drawerTab === "buyer" && (
                           <SectionCard
                             title="Buyer"
-                            description="Link a buyer and see basic contact details."
+                            description={
+                              group
+                                ? "Assign a buyer to this offspring using buyers already linked to the parent group, or search the global directory."
+                                : "This offspring is not linked to a group. You can still assign a buyer from the directory."
+                            }
                           >
-                            <div className="flex flex-col gap-3">
-                              <div className="flex items-center justify-between gap-2">
-                                <div>
-                                  <div className="text-xs text-muted-foreground">
-                                    Buyer
+                            {(() => {
+                              const hasGroup = !!group;
+                              const hasGroupOptions = groupBuyerOptions.length > 0;
+
+                              const currentBuyerName = hasBuyer ? buyerName : "** No Buyer Currently Assigned **";
+
+                              return (
+                                <div className="space-y-6">
+
+                                  {/* Current buyer summary */}
+                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs md:text-sm">
+                                    <div>
+                                      <div className={labelClass}>
+                                        Assigned Buyer
+                                      </div>
+                                      <div className="text-sm">{currentBuyerName}</div>
+
+                                      {hasBuyer && (
+                                        <div className="mt-4">
+                                          <div className={labelClass}>
+                                            Phone
+                                          </div>
+                                          <div className="text-sm">
+                                            {buyerPhone ? (
+                                              <a
+                                                href={`tel:${buyerPhone}`}
+                                                className="text-primary hover:underline"
+                                              >
+                                                {buyerPhone}
+                                              </a>
+                                            ) : (
+                                              "No phone on file"
+                                            )}
+                                          </div>
+                                        </div>
+                                      )}
+                                    </div>
+
+                                    {hasBuyer && (
+                                      <div>
+                                        <div className={labelClass}>
+                                          Email
+                                        </div>
+                                        <div className="text-sm">
+                                          {buyerEmail ? (
+                                            <a
+                                              href={`mailto:${buyerEmail}`}
+                                              className="text-primary hover:underline"
+                                            >
+                                              {buyerEmail}
+                                            </a>
+                                          ) : (
+                                            "No email on file"
+                                          )}
+                                        </div>
+
+                                        <div className="mt-4">
+                                          <Button
+                                            type="button"
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={handleClearBuyer}
+                                          >
+                                            Unassign This Buyer
+                                          </Button>
+                                        </div>
+                                      </div>
+                                    )}
                                   </div>
-                                  <div className="text-sm">{buyerName}</div>
-                                  <div className="text-xs text-muted-foreground">
-                                    Contact
-                                  </div>
-                                  <div className="text-sm">{buyerContact}</div>
+
+                                  {/* Group buyer assignment (if group exists) */}
+                                  {hasGroup && (
+                                    <div className="space-y-3">
+                                      <div className="flex items-center justify-between gap-2">
+                                        <div className={labelClass}>
+                                          Choose a buyer from this group
+                                        </div>
+                                      </div>
+                                      {hasGroupOptions ? (
+                                        <>
+                                          <select
+                                            className={inputClass}
+                                            value={selectedGroupBuyerKey}
+                                            onChange={(e) =>
+                                              setSelectedGroupBuyerKey(e.target.value)
+                                            }
+                                          >
+                                            <option value="">
+                                              Select a group buyer
+                                            </option>
+                                            {groupBuyerOptions.map((opt) => (
+                                              <option key={opt.key} value={opt.key}>
+                                                {opt.label}
+                                                {opt.email ? ` (${opt.email})` : ""}
+                                              </option>
+                                            ))}
+                                          </select>
+
+                                          <div className="flex items-center justify-between gap-2">
+                                            <div className={labelClass}>
+                                              Assign the selected group buyer to this offspring.
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                              {hasBuyer && (
+                                                <Button
+                                                  size="sm"
+                                                  variant="outline"
+                                                  type="button"
+                                                  onClick={handleClearBuyer}
+                                                >
+                                                  Clear buyer
+                                                </Button>
+                                              )}
+                                              <Button
+                                                size="sm"
+                                                type="button"
+                                                onClick={handleAssignBuyerFromGroup}
+                                                disabled={!selectedGroupBuyerKey}
+                                              >
+                                                {hasBuyer ? "Update buyer" : "Assign buyer"}
+                                              </Button>
+                                            </div>
+                                          </div>
+                                        </>
+                                      ) : (
+                                        <div className={labelClass}>
+                                          This group has no buyers linked yet. Add buyers on the group first, then return here to assign one to this offspring.
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
+
+                                  {/* Directory search and assignment */}
+                                  {/* Directory search and assignment */}
+                                  {!hasBuyer && (
+                                    <div className="space-y-2 border-t border-hairline pt-4">
+                                      <div className="flex items-center justify-between gap-2">
+                                      </div>
+                                      <SearchBar
+                                        value={buyerSearchQ}
+                                        onChange={setBuyerSearchQ}
+                                        placeholder="To Add a Buyer - Search by name, email, or phone"
+                                        widthPx={560}
+                                        busy={buyerSearchBusy}
+                                      />
+                                      {buyerHits.length > 0 ? (
+                                        <div className="mt-2 max-h-56 overflow-y-auto rounded-md border border-hairline bg-surface-soft">
+                                          {buyerHits.map((hit) => (
+                                            <button
+                                              key={`${hit.kind}:${hit.id}`}
+                                              type="button"
+                                              className="flex w-full items-center justify-between gap-3 px-2 py-1.5 text-left text-xs hover:bg-surface/80"
+                                              onClick={() => handleAssignBuyerFromDirectory(hit)}
+                                            >
+                                              <div className="flex flex-col">
+                                                <span className="font-medium">{hit.label}</span>
+                                                {hit.sub && (
+                                                  <span className="text-[11px] text-muted-foreground">
+                                                    {hit.sub}
+                                                  </span>
+                                                )}
+                                              </div>
+                                              <span className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                                                {hit.kind === "contact" ? "Contact" : "Organization"}
+                                              </span>
+                                            </button>
+                                          ))}
+                                        </div>
+                                      ) : buyerSearchQ.trim() ? (
+                                        <div className="mt-2 text-[11px] text-muted-foreground">
+                                          No directory matches for this search.
+                                        </div>
+                                      ) : null}
+                                    </div>
+                                  )}
                                 </div>
-                                <div>
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={handleAssignBuyer}
-                                  >
-                                    Assign buyer
-                                  </Button>
-                                </div>
-                              </div>
-                            </div>
+                              );
+                            })()}
                           </SectionCard>
                         )}
 
@@ -2726,7 +3336,7 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
                             <div className="space-y-4">
                               <div>
                                 <div className="mb-2 flex items-center justify-between">
-                                  <div className="text-xs text-muted-foreground">
+                                  <div className={labelClass}>
                                     Growth trend
                                   </div>
                                 </div>
@@ -2735,14 +3345,14 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
                                     series={health.weightSeries}
                                   />
                                 ) : (
-                                  <div className="text-xs text-muted-foreground">
+                                  <div className={labelClass}>
                                     {healthWeightSummary}
                                   </div>
                                 )}
                               </div>
 
                               <div className="flex items-center justify-between gap-2">
-                                <div className="text-xs text-muted-foreground">
+                                <div className={labelClass}>
                                   Health events
                                 </div>
                                 <Button
@@ -2755,7 +3365,7 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
                                 </Button>
                               </div>
 
-                              <div className="text-xs text-muted-foreground">
+                              <div className={labelClass}>
                                 {healthEventSummary}
                               </div>
                             </div>
@@ -2768,7 +3378,7 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
                             title="Media"
                             description="Media files linked to this offspring."
                           >
-                            <div className="text-xs text-muted-foreground">
+                            <div className={labelClass}>
                               {mediaSummary}
                             </div>
                           </SectionCard>
@@ -2782,7 +3392,7 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
                           >
                             <div className="space-y-3">
                               <div className="flex items-center justify-between gap-2">
-                                <div className="text-xs text-muted-foreground">
+                                <div className={labelClass}>
                                   Linked invoices
                                 </div>
                                 <Button
@@ -2794,7 +3404,7 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
                                   Link invoice
                                 </Button>
                               </div>
-                              <div className="text-xs text-muted-foreground">
+                              <div className={labelClass}>
                                 {invoiceSummary}
                               </div>
                             </div>
@@ -2808,14 +3418,10 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
                             description="Navigate between related groups, siblings, and waitlist entries."
                           >
                             <CrossRefsSection
-                              crossRefs={crossRefs}
-                              onOpenGroup={(id) => navigateToGroup(id)}
-                              onOpenSibling={(id) =>
-                                navigateToOffspringSibling(id)
-                              }
-                              onOpenWaitlistEntry={(id) =>
-                                navigateToWaitlist(id)
-                              }
+                              row={row}
+                              onNavigateGroup={(id) => navigateToGroup(id)}
+                              onNavigateOffspring={(id) => navigateToOffspringSibling(id)}
+                              onNavigateWaitlist={(id) => navigateToWaitlist(id)}
                             />
                           </SectionCard>
                         )}
@@ -2840,7 +3446,6 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
           </div>
         )}
       </Overlay>
-      <OffspringAssignBuyerBridge />
     </div>
   );
 }

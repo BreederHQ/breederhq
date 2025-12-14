@@ -37,13 +37,13 @@ async function ensureTenantId(baseUrl: string): Promise<number> {
       Number.isInteger(runtimeTenant) && runtimeTenant > 0
         ? runtimeTenant
         : Number.isInteger(lsTenant) && lsTenant > 0
-        ? lsTenant
-        : NaN;
+          ? lsTenant
+          : NaN;
     if (Number.isInteger(cached) && cached > 0) {
       __tenantResolved = cached;
       return cached;
     }
-  } catch {}
+  } catch { }
 
   if (!__tenantResolving) {
     __tenantResolving = resolveTenantId({ baseUrl }).then(t => {
@@ -51,7 +51,7 @@ async function ensureTenantId(baseUrl: string): Promise<number> {
       try {
         (window as any).__BHQ_TENANT_ID__ = t;
         localStorage.setItem("BHQ_TENANT_ID", String(t));
-      } catch {}
+      } catch { }
       return t;
     });
   }
@@ -66,8 +66,13 @@ function buildHeaders(tenantId: number, init?: RequestInit): Headers {
   h.set("x-tenant-id", String(tenantId));
 
   const method = String(init?.method || "GET").toUpperCase();
+  const isFormData =
+    typeof FormData !== "undefined" && init?.body instanceof FormData;
+
   if (method !== "GET" && method !== "HEAD" && method !== "OPTIONS") {
-    if (!h.has("content-type")) h.set("content-type", "application/json");
+    if (!isFormData && !h.has("content-type")) {
+      h.set("content-type", "application/json");
+    }
     if (!h.has("x-csrf-token")) {
       const xsrf = readCookie("XSRF-TOKEN");
       if (xsrf) h.set("x-csrf-token", xsrf);
@@ -118,7 +123,7 @@ export function makeApi(base?: string, extraHeadersFn?: () => Record<string, str
     try {
       const extra = extraHeadersFn?.() || {};
       Object.entries(extra).forEach(([k, v]) => h.set(k, v));
-    } catch {}
+    } catch { }
 
     const res = await fetch(url, { ...init, headers: h, credentials: "include", body });
     return parse<T>(res);
@@ -134,14 +139,14 @@ export function makeApi(base?: string, extraHeadersFn?: () => Record<string, str
           const display_name = localStorage.getItem("BHQ_ORG_NAME") || "My Organization";
           return { id: String(id), display_name: String(display_name) };
         }
-      } catch {}
+      } catch { }
       try {
         const data = await reqWithExtra<any>("/session");
         const org = data?.creatingOrganization || data?.organization || data?.org;
         if (org?.id != null) {
           return { id: String(org.id), display_name: String(org.display_name || org.name || "Organization") };
         }
-      } catch {}
+      } catch { }
       return null;
     },
 
@@ -220,6 +225,56 @@ export function makeApi(base?: string, extraHeadersFn?: () => Record<string, str
     async remove(id: string | number) {
       return reqWithExtra<any>(`/animals/${encodeURIComponent(String(id))}`, { method: "DELETE" });
     },
+
+    photo: {
+      async upload(id: string | number, file: File) {
+        const form = new FormData();
+        form.append("file", file);
+
+        return reqWithExtra<any>(`/animals/${encodeURIComponent(String(id))}/photo`, {
+          method: "POST",
+          body: form,
+        });
+      },
+
+      async remove(id: string | number) {
+        return reqWithExtra<any>(`/animals/${encodeURIComponent(String(id))}/photo`, {
+          method: "DELETE",
+        });
+      },
+    },
+
+    // Persist breeder entered cycle start dates
+    async putCycleStartDates(payload: { animalId: number | string; dates: string[] }) {
+      const { animalId, dates } = payload;
+      return reqWithExtra<any>(
+        `/animals/${encodeURIComponent(String(animalId))}/cycle-start-dates`,
+        {
+          method: "PUT",
+          json: { dates },
+        }
+      );
+    },
+
+    /* profile photo upload and delete */
+    photo: {
+      async upload(id: string | number, file: File): Promise<{ photoUrl: string }> {
+        const form = new FormData();
+        form.append("file", file);
+
+        return reqWithExtra<any>(`/animals/${encodeURIComponent(String(id))}/photo`, {
+          method: "POST",
+          body: form,
+        });
+      },
+
+      async remove(id: string | number): Promise<{ photoUrl: string | null }> {
+        return reqWithExtra<any>(`/animals/${encodeURIComponent(String(id))}/photo`, {
+          method: "DELETE",
+        });
+      },
+    },
+
 
     /* owners: GET list, POST add, PATCH update, DELETE remove */
     owners: {
@@ -310,8 +365,8 @@ export function makeApi(base?: string, extraHeadersFn?: () => Record<string, str
       const items: any[] = Array.isArray((data as any)?.items)
         ? (data as any).items
         : Array.isArray(data)
-        ? (data as any)
-        : [];
+          ? (data as any)
+          : [];
       return items.map(it => ({
         id: it.id,
         name: it.name,

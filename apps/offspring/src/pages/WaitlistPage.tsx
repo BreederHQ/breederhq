@@ -2,29 +2,27 @@
 import * as React from "react";
 import ReactDOM from "react-dom";
 import {
-  PageHeader,
   Card,
   Table,
   TableHeader,
   TableRow,
   TableCell,
-  TableFooter,
   ColumnsPopover,
   hooks,
   SearchBar,
   DetailsHost,
   DetailsScaffold,
-  DetailsSpecRenderer,
   SectionCard,
   Button,
   BreedCombo,
+  useToast
 } from "@bhq/ui";
 import { Plus } from "lucide-react";
 import { Overlay } from "@bhq/ui/overlay";
 import { getOverlayRoot } from "@bhq/ui/overlay";
 import "@bhq/ui/styles/table.css";
 import { readTenantIdFast, resolveTenantId } from "@bhq/ui/utils/tenant";
-import { makeOffspringApi, WaitlistEntry } from "../api";
+import { makeOffspringApiClient, OffspringApi, WaitlistEntry } from "../api";
 
 
 /* URL param helper used by row clicks to open drawers */
@@ -42,13 +40,15 @@ function setParamAndNotify(name: string, value: string | number | null | undefin
 
 // local UI tokens
 const labelClass = "text-xs text-secondary";
+
+function cx(...p: Array<string | false | null | undefined>) {
+  return p.filter(Boolean).join(" ");
+}
+
 const inputClass =
   "w-full h-9 rounded-md border border-hairline bg-surface px-3 text-sm text-primary " +
   "placeholder:text-secondary/80 focus:outline-none focus:ring-1 focus:ring-[hsl(var(--brand-orange))] " +
   "focus:border-[hsl(var(--brand-orange))] shadow-[inset_0_0_0_9999px_rgba(255,255,255,0.02)]";
-function cx(...p: Array<string | false | null | undefined>) {
-  return p.filter(Boolean).join(" ");
-}
 
 function SectionChipHeading({ icon, text }: { icon: React.ReactNode; text: string }) {
   return (
@@ -98,9 +98,6 @@ function InlineSearch({
     </div>
   );
 }
-"w-full h-9 rounded-md border border-hairline bg-surface px-3 text-sm text-primary " +
-  "placeholder:text-secondary/80 focus:outline-none focus:ring-1 focus:ring-[hsl(var(--brand-orange))] " +
-  "focus:border-[hsl(var(--brand-orange))] shadow-[inset_0_0_0_9999px_rgba(255,255,255,0.02)]";
 
 // Types and mapping
 type WaitlistRowWire = WaitlistEntry;
@@ -207,31 +204,81 @@ const toWireSpecies = (s: SpeciesUi | ""): SpeciesWire | undefined =>
   s === "Dog" ? "DOG" : s === "Cat" ? "CAT" : s === "Horse" ? "HORSE" : undefined;
 
 type DirectoryHit =
-  | { kind: "contact"; id: number; label: string; sub?: string }
-  | { kind: "org"; id: number; label: string; sub?: string };
+  | {
+    kind: "contact";
+    id: number;
+    label: string;
+    sub?: string;
+    email?: string;
+    phone?: string;
+  }
+  | {
+    kind: "org";
+    id: number;
+    label: string;
+    sub?: string;
+  };
 
-async function searchDirectory(api: ReturnType<typeof makeOffspringApi> | null, q: string): Promise<DirectoryHit[]> {
-  if (!api || !q.trim()) return [];
-  const [cRes, oRes] = await Promise.allSettled([api.contacts.list({ q, limit: 25 }), api.organizations.list({ q, limit: 25 })]);
+async function searchDirectory(
+  api: OffspringApi | null,
+  q: string
+): Promise<DirectoryHit[]> {
+  const term = q.trim();
+  if (!api || !term) return [];
 
+  const anyApi: any = api;
   const hits: DirectoryHit[] = [];
-  if (cRes.status === "fulfilled" && cRes.value) {
-    const items: any[] = Array.isArray(cRes.value) ? cRes.value : cRes.value.items ?? [];
-    for (const c of items) {
-      const name = c.display_name || `${c.first_name ?? ""} ${c.last_name ?? ""}`.trim() || "(No name)";
-      hits.push({ kind: "contact", id: Number(c.id), label: name, sub: c.email || c.phoneE164 || "" });
+
+  // Contacts
+  if (anyApi.contacts && typeof anyApi.contacts.list === "function") {
+    try {
+      const res = await anyApi.contacts.list({ q: term, limit: 25 });
+      const items: any[] = Array.isArray(res) ? res : res?.items ?? [];
+      for (const c of items) {
+        const label =
+          c.display_name ||
+          `${c.first_name ?? ""} ${c.last_name ?? ""}`.trim() ||
+          "(Contact)";
+        const email = c.email ?? "";
+        const phone = c.phoneE164 || c.phone || "";
+        hits.push({
+          kind: "contact",
+          id: Number(c.id),
+          label,
+          sub: email || phone || "",
+          email,
+          phone,
+        });
+      }
+    } catch (e) {
+      console.error("Directory contact search failed", e);
     }
   }
-  if (oRes.status === "fulfilled" && oRes.value) {
-    const items: any[] = Array.isArray(oRes.value) ? oRes.value : oRes.value.items ?? [];
-    for (const o of items) hits.push({ kind: "org", id: Number(o.id), label: o.name, sub: o.website || o.email || "" });
+
+  // Organizations
+  if (anyApi.organizations && typeof anyApi.organizations.list === "function") {
+    try {
+      const res = await anyApi.organizations.list({ q: term, limit: 25 });
+      const items: any[] = Array.isArray(res) ? res : res?.items ?? [];
+      for (const o of items) {
+        hits.push({
+          kind: "org",
+          id: Number(o.id),
+          label: o.name || "(Organization)",
+          sub: o.email || o.phone || "",
+        });
+      }
+    } catch (e) {
+      console.error("Directory organization search failed", e);
+    }
   }
+
   return hits;
 }
 
 type AnimalLite = { id: number; name: string; species: SpeciesWire; sex: "FEMALE" | "MALE" };
 async function fetchAnimals(
-  api: ReturnType<typeof makeOffspringApi> | null,
+  api: OffspringApi | null,
   opts: { q?: string; species?: SpeciesWire; sex?: "FEMALE" | "MALE"; limit?: number }
 ) {
   if (!api) return [];
@@ -247,7 +294,7 @@ async function fetchAnimals(
 
 /* ───────────────────────── Plan fetch (COMMITTED only; GET) ───────────────────────── */
 type PlanOption = { id: number; code: string | null; name: string; species: string; breedText: string | null };
-async function fetchCommittedPlans(api: ReturnType<typeof makeOffspringApi> | null): Promise<PlanOption[]> {
+async function fetchCommittedPlans(api: OffspringApi | null): Promise<PlanOption[]> {
   if (!api) return [];
   const qs = new URLSearchParams({ status: "COMMITTED", include: "parents", limit: "100" }).toString();
   let res: any;
@@ -261,7 +308,7 @@ async function fetchCommittedPlans(api: ReturnType<typeof makeOffspringApi> | nu
 }
 
 /* ───────────────────────── Dam/Sire search hooks ───────────────────────── */
-function useAnimalSearch(api: ReturnType<typeof makeOffspringApi> | null, query: string, species: SpeciesWire | undefined, sex: "FEMALE" | "MALE") {
+function useAnimalSearch(api: OffspringApi | null, query: string, species: SpeciesWire | undefined, sex: "FEMALE" | "MALE") {
   const [hits, setHits] = React.useState<AnimalLite[]>([]);
   React.useEffect(() => {
     let alive = true;
@@ -270,19 +317,35 @@ function useAnimalSearch(api: ReturnType<typeof makeOffspringApi> | null, query:
         if (alive) setHits([]);
         return;
       }
-      const res = await api.animals.list({ q: query.trim(), species, sex, limit: 25 });
-      const items = Array.isArray(res) ? res : res?.items ?? [];
-      const mapped: AnimalLite[] = items.map((a: any) => ({
-        id: Number(a.id),
-        name: String(a.name ?? "").trim(),
-        species: String(a.species ?? "DOG").toUpperCase() as SpeciesWire,
-        sex: String(a.sex ?? "FEMALE").toUpperCase() as "FEMALE" | "MALE",
-      }));
-      const strict = mapped.filter((a) => a.sex === sex);
-      strict.sort(
-        (a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" }) || a.id - b.id
-      );
-      if (alive) setHits(strict);
+      try {
+        const anyApi: any = api as any;
+        let res: any;
+        if (anyApi.animals && typeof anyApi.animals.list === "function") {
+          res = await anyApi.animals.list({ q: query.trim(), species, sex, limit: 25 });
+        } else {
+          const qs = new URLSearchParams();
+          qs.set("q", query.trim());
+          qs.set("species", species);
+          qs.set("sex", sex);
+          qs.set("limit", "25");
+          res = await api.raw.get(`/animals?${qs.toString()}`);
+        }
+        const items = Array.isArray(res) ? res : res?.items ?? [];
+        const mapped: AnimalLite[] = items.map((a: any) => ({
+          id: Number(a.id),
+          name: String(a.name ?? "").trim(),
+          species: String(a.species ?? "DOG").toUpperCase() as SpeciesWire,
+          sex: String(a.sex ?? "FEMALE").toUpperCase() as "FEMALE" | "MALE",
+        }));
+        const strict = mapped.filter((a) => a.sex === sex);
+        strict.sort(
+          (a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" }) || a.id - b.id
+        );
+        if (alive) setHits(strict);
+      } catch (e) {
+        console.error("Failed to fetch animals in useAnimalSearch", e);
+        if (alive) setHits([]);
+      }
     })();
     return () => {
       alive = false;
@@ -291,7 +354,7 @@ function useAnimalSearch(api: ReturnType<typeof makeOffspringApi> | null, query:
   return hits;
 }
 
-function DamResults({ api, query, species, onPick }: { api: ReturnType<typeof makeOffspringApi> | null; query: string; species?: SpeciesWire; onPick: (a: AnimalLite) => void }) {
+function DamResults({ api, query, species, onPick }: { api: OffspringApi | null; query: string; species?: SpeciesWire; onPick: (a: AnimalLite) => void }) {
   const hits = useAnimalSearch(api, query, species, "FEMALE");
   if (!hits.length) return <div className="px-2 py-2 text-sm text-secondary">No females found</div>;
   return (
@@ -305,7 +368,7 @@ function DamResults({ api, query, species, onPick }: { api: ReturnType<typeof ma
   );
 }
 
-function SireResults({ api, query, species, onPick }: { api: ReturnType<typeof makeOffspringApi> | null; query: string; species?: SpeciesWire; onPick: (a: AnimalLite) => void }) {
+function SireResults({ api, query, species, onPick }: { api: OffspringApi | null; query: string; species?: SpeciesWire; onPick: (a: AnimalLite) => void }) {
   const hits = useAnimalSearch(api, query, species, "MALE");
   if (!hits.length) return <div className="px-2 py-2 text-sm text-secondary">No males found</div>;
   return (
@@ -326,7 +389,7 @@ const stripEmpty = (o: Record<string, any>) => {
   return out;
 };
 
-async function exactContactLookup(api: ReturnType<typeof makeOffspringApi>, probe: {
+async function exactContactLookup(api: OffspringApi, probe: {
   email?: string; phone?: string; firstName?: string; lastName?: string
 }) {
   const tries: string[] = [];
@@ -387,7 +450,7 @@ function CreateGroupForm({
   onCreated,
   onCancel,
 }: {
-  api: ReturnType<typeof makeOffspringApi> | null;
+  api: OffspringApi | null;
   tenantId: number | null;
   onCreated: () => void;
   onCancel: () => void;
@@ -565,16 +628,22 @@ function AddToWaitlistModal({
   onCreated,
   allowedSpecies = SPECIES_UI_ALL,
 }: {
-  api: ReturnType<typeof makeOffspringApi> | null;
+  api: OffspringApi | null;
   tenantId: number | null;
   open: boolean;
   onClose: () => void;
   onCreated: () => Promise<void> | void;
   allowedSpecies?: SpeciesUi[];
 }) {
-  // Modal is always editable; defining this prevents ReferenceError from reads below.
   const readOnly = false;
   const panelRef = React.useRef<HTMLDivElement>(null);
+  const breedsApi = React.useMemo(() => {
+    if (api && api.breeds && typeof api.breeds.listCanonical === "function") {
+      return api.breeds;
+    }
+    return null;
+  }, [api]);
+
 
   React.useEffect(() => {
     const prev = document.body.style.overflow;
@@ -589,6 +658,19 @@ function AddToWaitlistModal({
   const [q, setQ] = React.useState("");
   const [hits, setHits] = React.useState<DirectoryHit[]>([]);
   const [busy, setBusy] = React.useState(false);
+
+  const contactsHits = React.useMemo(
+    () => hits.filter((h) => h.kind === "contact"),
+    [hits]
+  );
+  const orgHits = React.useMemo(
+    () => hits.filter((h) => h.kind === "org"),
+    [hits]
+  );
+  const resultSectionClass = "rounded-md bg-white/5";
+  const renderPill = (t: string) => (
+    <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/10">{t}</span>
+  );
 
   React.useEffect(() => {
     let alive = true;
@@ -624,7 +706,7 @@ function AddToWaitlistModal({
   }
 
   async function findBestContactMatch(
-    api: ReturnType<typeof makeOffspringApi>,
+    api: OffspringApi,
     probe: { email?: string; phone?: string; firstName?: string; lastName?: string }
   ) {
     const q =
@@ -762,16 +844,28 @@ function AddToWaitlistModal({
 
   async function handleSubmit() {
     if (!api || !canSubmit) return;
-    await api.waitlist.create({
+
+    const body = {
       contactId: link?.kind === "contact" ? link.id : null,
       organizationId: link?.kind === "org" ? link.id : null,
       speciesPref: speciesWire!,
       breedPrefs: (breed?.name ?? "").trim() ? [(breed?.name ?? "").trim()] : null,
       damPrefId: damId ?? null,
       sirePrefId: sireId ?? null,
-    });
-    await onCreated();
-    onClose();
+    };
+
+    try {
+      const anyApi: any = api as any;
+      if (anyApi.waitlist && typeof anyApi.waitlist.create === "function") {
+        await anyApi.waitlist.create(body);
+      } else {
+        await api.raw.post(`/waitlist`, body, { tenantId: tenantId ?? undefined });
+      }
+      await onCreated();
+      onClose();
+    } catch (e) {
+      console.error("Failed to create waitlist entry", e);
+    }
   }
 
   function resetAll() {
@@ -922,99 +1016,121 @@ function AddToWaitlistModal({
                     {busy ? (
                       <div className="px-2 py-2 text-sm text-secondary">Searching...</div>
                     ) : (
-                      (() => {
-                        const contacts = filteredHits.filter((h) => h.kind === "contact");
-                        const orgs = filteredHits.filter((h) => h.kind === "org");
-                        const sectionClass = "rounded-md bg-white/5";
-                        const pill = (t: string) => <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/10">{t}</span>;
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        {/* Contacts */}
+                        <div className={cx(resultSectionClass)}>
+                          <SectionChipHeading
+                            icon={<span className="i-lucide-user-2 h-3.5 w-3.5" aria-hidden="true" />}
+                            text="Contacts"
+                          />
+                          {contactsHits.length === 0 ? (
+                            <div className="px-2 py-2 text-sm text-secondary">No contacts</div>
+                          ) : (
+                            contactsHits.map((h) => (
+                              <button
+                                key={`contact:${h.id}`}
+                                type="button"
+                                onClick={() => {
+                                  setLink({ kind: "contact", id: h.id, label: h.label });
+                                  setQ("");
+                                  setHits([]);
+                                }}
+                                className="w-full text-left px-2 py-1 hover:bg-white/5"
+                              >
+                                <div className="flex items-center gap-2">
+                                  {renderPill("Contact")}
+                                  <span>{h.label}</span>
+                                  {h.sub ? <span className="text-xs text-secondary">• {h.sub}</span> : null}
+                                </div>
+                              </button>
+                            ))
+                          )}
+                        </div>
 
-                        return (
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                            {/* Contacts */}
-                            <div className={cx(sectionClass)}>
-                              <SectionChipHeading
-                                icon={<span className="i-lucide-user-2 h-3.5 w-3.5" aria-hidden="true" />}
-                                text="Contacts"
-                              />
-                              {contacts.length === 0 ? (
-                                <div className="px-2 py-2 text-sm text-secondary">No contacts</div>
-                              ) : (
-                                contacts.map((h) => (
-                                  <button
-                                    key={`contact:${h.id}`}
-                                    type="button"
-                                    onClick={() => {
-                                      setLink({ kind: "contact", id: h.id, label: h.label });
-                                      setQ("");
-                                      setHits([]);
-                                    }}
-                                    className="w-full text-left px-2 py-1 hover:bg-white/5"
-                                  >
-                                    <div className="flex items-center gap-2">
-                                      {pill("Contact")}
-                                      <span>{h.label}</span>
-                                      {h.sub ? <span className="text-xs text-secondary">• {h.sub}</span> : null}
-                                    </div>
-                                  </button>
-                                ))
-                              )}
-                            </div>
-
-                            {/* Orgs */}
-                            <div className={cx(sectionClass)}>
-                              <SectionChipHeading
-                                icon={<span className="i-lucide-building-2 h-3.5 w-3.5" aria-hidden="true" />}
-                                text="Organizations"
-                              />
-                              {orgs.length === 0 ? (
-                                <div className="px-2 py-2 text-sm text-secondary">No organizations</div>
-                              ) : (
-                                orgs.map((h) => (
-                                  <button
-                                    key={`org:${h.id}`}
-                                    type="button"
-                                    onClick={() => {
-                                      setLink({ kind: "org", id: h.id, label: h.label });
-                                      setQ("");
-                                      setHits([]);
-                                    }}
-                                    className="w-full text-left px-2 py-1 hover:bg-white/5"
-                                  >
-                                    <div className="flex items-center gap-2">
-                                      {pill("Org")}
-                                      <span>{h.label}</span>
-                                      {h.sub ? <span className="text-xs text-secondary">• {h.sub}</span> : null}
-                                    </div>
-                                  </button>
-                                ))
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })()
+                        {/* Orgs */}
+                        <div className={cx(resultSectionClass)}>
+                          <SectionChipHeading
+                            icon={<span className="i-lucide-building-2 h-3.5 w-3.5" aria-hidden="true" />}
+                            text="Organizations"
+                          />
+                          {orgHits.length === 0 ? (
+                            <div className="px-2 py-2 text-sm text-secondary">No organizations</div>
+                          ) : (
+                            orgHits.map((h) => (
+                              <button
+                                key={`org:${h.id}`}
+                                type="button"
+                                onClick={() => {
+                                  setLink({ kind: "org", id: h.id, label: h.label });
+                                  setQ("");
+                                  setHits([]);
+                                }}
+                                className="w-full text-left px-2 py-1 hover:bg-white/5"
+                              >
+                                <div className="flex items-center gap-2">
+                                  {renderPill("Org")}
+                                  <span>{h.label}</span>
+                                  {h.sub ? <span className="text-xs text-secondary">• {h.sub}</span> : null}
+                                </div>
+                              </button>
+                            ))
+                          )}
+                        </div>
+                      </div>
                     )}
                   </div>
                 )}
 
-                {/* Quick add drawers */}
-                {!link && quickOpen && (
+                {quickOpen && (
                   <div className="rounded-lg border border-hairline p-3 bg-surface/60">
                     <div className="flex items-center justify-between">
-                      <div className="text-sm font-medium">{quickOpen === "contact" ? "Quick Add Contact" : "Quick Add Organization"}</div>
-                      <button className="text-xs text-secondary hover:underline" onClick={() => setQuickOpen(null)}>
+                      <div className="text-sm font-medium">
+                        {quickOpen === "contact" ? "Quick Add Contact" : "Quick Add Organization"}
+                      </div>
+                      <button
+                        className="text-xs text-secondary hover:underline"
+                        onClick={() => setQuickOpen(null)}
+                      >
                         Close
                       </button>
                     </div>
 
                     {quickOpen === "contact" ? (
                       <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2">
-                        <input className={cx(inputClass)} placeholder="First name" value={qc.firstName} onChange={(e) => setQc({ ...qc, firstName: e.target.value })} />
-                        <input className={cx(inputClass)} placeholder="Last name" value={qc.lastName} onChange={(e) => setQc({ ...qc, lastName: e.target.value })} />
-                        <input className={cx(inputClass)} placeholder="Email" value={qc.email} onChange={(e) => setQc({ ...qc, email: e.target.value })} />
-                        <input className={cx(inputClass)} placeholder="Phone (E.164)" value={qc.phone} onChange={(e) => setQc({ ...qc, phone: e.target.value })} />
-                        {createErr && <div className="md:col-span-2 text-sm text-red-600">{createErr}</div>}
+                        <input
+                          className={cx(inputClass)}
+                          placeholder="First name"
+                          value={qc.firstName}
+                          onChange={(e) => setQc({ ...qc, firstName: e.target.value })}
+                        />
+                        <input
+                          className={cx(inputClass)}
+                          placeholder="Last name"
+                          value={qc.lastName}
+                          onChange={(e) => setQc({ ...qc, lastName: e.target.value })}
+                        />
+                        <input
+                          className={cx(inputClass)}
+                          placeholder="Email"
+                          value={qc.email}
+                          onChange={(e) => setQc({ ...qc, email: e.target.value })}
+                        />
+                        <input
+                          className={cx(inputClass)}
+                          placeholder="Phone (E.164)"
+                          value={qc.phone}
+                          onChange={(e) => setQc({ ...qc, phone: e.target.value })}
+                        />
+                        {createErr && (
+                          <div className="md:col-span-2 text-sm text-red-600">{createErr}</div>
+                        )}
                         <div className="md:col-span-2 flex justify-end gap-2">
-                          <Button variant="outline" onClick={() => setQc({ firstName: "", lastName: "", email: "", phone: "" })}>
+                          <Button
+                            variant="outline"
+                            onClick={() =>
+                              setQc({ firstName: "", lastName: "", email: "", phone: "" })
+                            }
+                          >
                             Clear
                           </Button>
                           <Button onClick={doQuickAdd} disabled={creating || !api}>
@@ -1024,12 +1140,31 @@ function AddToWaitlistModal({
                       </div>
                     ) : (
                       <div className="mt-2 grid grid-cols-1 gap-2">
-                        <input className={cx(inputClass)} placeholder="Organization name" value={qo.name} onChange={(e) => setQo({ ...qo, name: e.target.value })} />
-                        <input className={cx(inputClass)} placeholder="Website (optional)" value={qo.website} onChange={(e) => setQo({ ...qo, website: e.target.value })} />
-                        {createErr && <div className="text-sm text-red-600">{createErr}</div>}
+                        <input
+                          className={cx(inputClass)}
+                          placeholder="Organization name"
+                          value={qo.name}
+                          onChange={(e) => setQo({ ...qo, name: e.target.value })}
+                        />
+                        <input
+                          className={cx(inputClass)}
+                          placeholder="Website (optional)"
+                          value={qo.website}
+                          onChange={(e) => setQo({ ...qo, website: e.target.value })}
+                        />
+                        {createErr && (
+                          <div className="text-sm text-red-600">{createErr}</div>
+                        )}
                         <div className="flex justify-end gap-2">
-                          <Button variant="outline" onClick={() => setQo({ name: "", website: "" })}>Clear</Button>
-                          <Button onClick={doQuickAdd} disabled={creating || !qo.name.trim() || !api}>{creating ? "Creating..." : "Create / Link"}</Button>
+                          <Button
+                            variant="outline"
+                            onClick={() => setQo({ name: "", website: "" })}
+                          >
+                            Clear
+                          </Button>
+                          <Button onClick={doQuickAdd} disabled={creating || !api}>
+                            {creating ? "Creating..." : "Create / Link"}
+                          </Button>
                         </div>
                       </div>
                     )}
@@ -1058,7 +1193,7 @@ function AddToWaitlistModal({
                         disabled={readOnly}
                       >
                         <option value="">-</option>
-                        {allowedSpecies.map((s) => (
+                        {SPECIES_UI_ALL.map((s) => (
                           <option key={s} value={s}>
                             {s}
                           </option>
@@ -1069,17 +1204,25 @@ function AddToWaitlistModal({
                     <div className="md:col-span-2 relative">
                       <div className={cx(labelClass + " mb-1")}>Breed</div>
                       {speciesUi ? (
-                        <div className={cx(readOnly ? "pointer-events-none opacity-60" : "")}>
-                          <BreedCombo
-                            key={`breed-${speciesUi}-${breedNonce}`}
-                            species={speciesUi}
-                            value={breed}
-                            onChange={onBreedPick}
-                            api={{ breeds: { listCanonical: api!.breeds.listCanonical } }}
-                          />
-                        </div>
+                        breedsApi ? (
+                          <div className={cx(readOnly ? "pointer-events-none opacity-60" : "")}>
+                            <BreedCombo
+                              key={`breed-${speciesUi}-${breedNonce}`}
+                              species={speciesUi}
+                              value={breed}
+                              onChange={onBreedPick}
+                              api={{ breeds: breedsApi }}
+                            />
+                          </div>
+                        ) : (
+                          <div className="h-9 px-3 flex items-center rounded-md border border-hairline bg-surface/60 text-sm text-secondary">
+                            Breeds API not available
+                          </div>
+                        )
                       ) : (
-                        <div className="h-9 px-3 flex items-center rounded-md border border-hairline bg-surface/60 text-sm text-secondary">Select Species</div>
+                        <div className="h-9 px-3 flex items-center rounded-md border border-hairline bg-surface/60 text-sm text-secondary">
+                          Select Species
+                        </div>
                       )}
                     </div>
                   </div>
@@ -1180,577 +1323,6 @@ function AddToWaitlistModal({
   );
 }
 
-// /* ───────────────────────── Buyers hook and tab ───────────────────────── */
-
-// type Candidate = {
-//   id: number;
-//   contactLabel?: string | null;
-//   orgLabel?: string | null;
-//   speciesPref?: string | null;
-//   breedPrefText?: string | null;
-//   depositPaidAt?: string | null;
-//   priority?: number | null;
-//   skipCount?: number | null;
-//   notes?: string | null;
-//   source: "waitlist";
-// };
-
-// function useGroupCandidates(api: ReturnType<typeof makeOffspringApi> | null, group: OffspringRow | null) {
-//   const [cands, setCands] = React.useState<Candidate[]>([]);
-//   const [loading, setLoading] = React.useState(false);
-//   const [error, setError] = React.useState<string | null>(null);
-
-//   React.useEffect(() => {
-//     let alive = true;
-//     (async () => {
-//       if (!api || !group) {
-//         if (alive) {
-//           setCands([]);
-//           setLoading(false);
-//           setError(null);
-//         }
-//         return;
-//       }
-//       setLoading(true);
-//       setError(null);
-//       try {
-//         const species = group.plan?.species;
-//         const breed = group.plan?.breedText;
-//         const res = await api.waitlist.list({ limit: 200, species: species as any, q: breed || undefined });
-//         const items: any[] = Array.isArray(res) ? res : res?.items ?? [];
-//         const mapped: Candidate[] = items
-//           .filter((w: any) => {
-//             if (!species) return true;
-//             if (String(w.speciesPref || "").toUpperCase() !== String(species || "").toUpperCase()) return false;
-//             if (breed && w.breedPrefText) {
-//               const hay = String(w.breedPrefText).toLowerCase();
-//               return hay.includes(String(breed).toLowerCase());
-//             }
-//             return true;
-//           })
-//           .slice(0, 25)
-//           .map((w: any) => {
-//             const t = mapWaitlistToTableRow(w);
-//             return {
-//               id: t.id,
-//               contactLabel: t.contactLabel,
-//               orgLabel: t.orgLabel,
-//               speciesPref: t.speciesPref,
-//               breedPrefText: t.breedPrefText,
-//               depositPaidAt: t.depositPaidAt,
-//               priority: t.priority,
-//               skipCount: t.skipCount,
-//               notes: t.notes,
-//               source: "waitlist",
-//             } as Candidate;
-//           });
-//         if (alive) setCands(mapped);
-//       } catch (e: any) {
-//         if (alive) setError(e?.message || "Failed to load candidates");
-//       } finally {
-//         if (alive) setLoading(false);
-//       }
-//     })();
-//     return () => {
-//       alive = false;
-//     };
-//   }, [api, group?.id, group?.plan?.species, group?.plan?.breedText]);
-
-//   return { cands, loading, error, setCands };
-// }
-
-// function BuyersTab({
-//   api,
-//   group,
-//   onGroupUpdate,
-// }: {
-//   api: ReturnType<typeof makeOffspringApi> | null;
-//   group: OffspringRow;
-//   onGroupUpdate: (updated: OffspringRow) => void;
-// }) {
-//   const { toast } = useToast();
-//   const { cands, loading, error, setCands } = useGroupCandidates(api, group);
-//   const [lastAction, setLastAction] = React.useState<null | { kind: "add" | "skip"; payload: any }>(null);
-
-//   async function addToGroup(waitlistId: number) {
-//     if (!api) return;
-//     // optimistic remove from candidates
-//     const prev = [...cands];
-//     setCands(prev.filter((c) => c.id !== waitlistId));
-//     setLastAction({ kind: "add", payload: { prev, waitlistId } });
-//     try {
-//       const updated = await api.offspring.buyers.add({ groupId: group.id, waitlistId });
-//       onGroupUpdate(updated as any);
-//       toast?.({ title: "Added buyer to group" });
-//     } catch (e: any) {
-//       // rollback
-//       setCands(prev);
-//       setLastAction(null);
-//       toast?.({ title: "Add failed", description: String(e?.message || e), variant: "destructive" });
-//     }
-//   }
-
-//   async function skipOnce(waitlistId: number) {
-//     if (!api) return;
-//     const prev = [...cands];
-//     const next = prev.map((c) => (c.id === waitlistId ? { ...c, skipCount: (c.skipCount ?? 0) + 1 } : c));
-//     setCands(next);
-//     setLastAction({ kind: "skip", payload: { prev } });
-//     try {
-//       await api.waitlist.skip(waitlistId);
-//       toast?.({ title: "Marked skip" });
-//     } catch (e: any) {
-//       setCands(prev);
-//       setLastAction(null);
-//       toast?.({ title: "Skip failed", description: String(e?.message || e), variant: "destructive" });
-//     }
-//   }
-
-//   function undo() {
-//     if (!lastAction) return;
-//     if (lastAction.kind === "add") {
-//       setCands(lastAction.payload.prev);
-//     } else if (lastAction.kind === "skip") {
-//       setCands(lastAction.payload.prev);
-//     }
-//     setLastAction(null);
-//   }
-
-//   return (
-//     <SectionCard title="Buyers">
-//       {error && <div className="text-sm text-red-600 mb-2">Error: {error}</div>}
-//       {loading ? (
-//         <div className="text-sm text-secondary">Loading candidates...</div>
-//       ) : cands.length === 0 ? (
-//         <div className="text-sm text-secondary">No matching candidates found.</div>
-//       ) : (
-//         <div className="space-y-2">
-//           {lastAction && (
-//             <div className="flex justify-end">
-//               <Button size="xs" variant="outline" onClick={undo}>Undo</Button>
-//             </div>
-//           )}
-//           <table className="min-w-full text-sm">
-//             <thead>
-//               <tr className="text-secondary">
-//                 <th className="text-left font-medium py-1 pr-2">Contact</th>
-//                 <th className="text-left font-medium py-1 pr-2">Deposit</th>
-//                 <th className="text-left font-medium py-1 pr-2">Priority</th>
-//                 <th className="text-left font-medium py-1 pr-2">Skips</th>
-//                 <th className="text-left font-medium py-1 pr-2">Notes</th>
-//                 <th className="text-right font-medium py-1 pl-2">Actions</th>
-//               </tr>
-//             </thead>
-//             <tbody>
-//               {cands.map((c) => (
-//                 <tr key={c.id} className="border-t border-white/10">
-//                   <td className="py-1 pr-2">{c.contactLabel || c.orgLabel || `Waitlist #${c.id}`}</td>
-//                   <td className="py-1 pr-2">{fmtDate(c.depositPaidAt) || "-"}</td>
-//                   <td className="py-1 pr-2">{c.priority ?? "-"}</td>
-//                   <td className="py-1 pr-2">{c.skipCount ?? 0}</td>
-//                   <td className="py-1 pr-2">{c.notes || ""}</td>
-//                   <td className="py-1 pl-2 text-right">
-//                     <div className="inline-flex gap-2">
-//                       <Button size="xs" onClick={() => addToGroup(c.id)}>Add</Button>
-//                       <Button size="xs" variant="outline" onClick={() => skipOnce(c.id)}>Skip once</Button>
-//                     </div>
-//                   </td>
-//                 </tr>
-//               ))}
-//             </tbody>
-//           </table>
-//         </div>
-//       )}
-//     </SectionCard>
-//   );
-// }
-
-// /* ───────────────────────── Analytics helpers ───────────────────────── */
-
-// function computeCoverage(g: OffspringRow): number | null {
-//   const reserved = g.counts?.reserved ?? 0;
-//   const placed = (g.counts as any)?.placed ?? 0;
-//   const sold = Math.max(reserved, placed);
-//   const denom = g.counts?.live ?? (g.counts as any)?.weaned ?? g.counts?.animals ?? 0;
-//   if (!denom) return null;
-//   return Math.min(1, Math.max(0, sold / denom));
-// }
-
-// function computePlacementVelocity(g: OffspringRow): number | null {
-//   const start = g.dates?.placementStartAt ? Date.parse(g.dates.placementStartAt) : NaN;
-//   const end = g.dates?.placementCompletedAt ? Date.parse(g.dates.placementCompletedAt) : NaN;
-//   if (!Number.isFinite(start)) return null;
-//   if (!Number.isFinite(end)) return null;
-//   const days = Math.round((end - start) / (1000 * 60 * 60 * 24));
-//   return days >= 0 ? days : null;
-// }
-
-// /* ───────────────────────── URL param helper re-export for tabs ───────────────────────── */
-// const openDetails = setParamAndNotify;
-
-// /* ───────────────────────── Tabs ───────────────────────── */
-// function OffspringGroupsTab({ api, tenantId, readOnlyGlobal }: { api: ReturnType<typeof makeOffspringApi> | null; tenantId: number | null, readOnlyGlobal: boolean }) {
-//   const { toast } = useToast();
-//   const [q, setQ] = React.useState("");
-//   const [rows, setRows] = React.useState<GroupTableRow[]>([]);
-//   const [raw, setRaw] = React.useState<OffspringRow[]>([]);
-//   const [loading, setLoading] = React.useState(true);
-//   const [error, setError] = React.useState<string | null>(null);
-
-//   const [createOpen, setCreateOpen] = React.useState(false);
-//   React.useEffect(() => {
-//     window.dispatchEvent(new Event("popstate"));
-//   }, []);
-
-//   React.useEffect(() => {
-//     const prev = document.body.style.overflow;
-//     if (createOpen) document.body.style.overflow = "hidden";
-//     return () => {
-//       document.body.style.overflow = prev || "";
-//     };
-//   }, [createOpen]);
-
-//   const load = React.useCallback(async () => {
-//     if (!api) return;
-//     setLoading(true);
-//     setError(null);
-//     try {
-//       const res = await api.offspring.list({ q: q || undefined, limit: 100 });
-//       setRaw(res.items);
-//       setRows(res.items.map(mapDetailToTableRow));
-//     } catch (e: any) {
-//       setError(e?.message || "Failed to load groups");
-//     } finally {
-//       setLoading(false);
-//     }
-//   }, [api, q]);
-
-//   React.useEffect(() => {
-//     let cancelled = false;
-//     (async () => {
-//       if (cancelled) return;
-//       await load();
-//     })();
-//     return () => {
-//       cancelled = true;
-//     };
-//   }, [q, load]);
-
-//   const cols = hooks.useColumns(GROUP_COLS, GROUP_STORAGE_KEY);
-//   const visibleSafe = cols.visible?.length ? cols.visible : GROUP_COLS;
-
-//   const [sorts, setSorts] = React.useState<Array<{ key: string; dir: "asc" | "desc" }>>([]);
-//   const onToggleSort = (key: string) => {
-//     setSorts((prev) => {
-//       const f = prev.find((s) => s.key === key);
-//       if (!f) return [{ key, dir: "asc" }];
-//       if (f.dir === "asc") return prev.map((s) => (s.key === key ? { ...s, dir: "desc" } : s));
-//       return prev.filter((s) => s.key !== key);
-//     });
-//   };
-
-//   function cmp(a: any, b: any) {
-//     const na = Number(a), nb = Number(b);
-//     if (!Number.isNaN(na) && !Number.isNaN(nb)) return na - nb;
-//     const da = Date.parse(a), db = Date.parse(b);
-//     if (!Number.isNaN(da) && !Number.isNaN(db)) return da - db;
-//     return String(a ?? "").localeCompare(String(b ?? ""), undefined, { numeric: true, sensitivity: "base" });
-//   }
-
-//   const [pageSize, setPageSize] = React.useState(25);
-//   const [page, setPage] = React.useState(1);
-
-//   const sorted = React.useMemo(() => {
-//     const list = [...rows];
-//     if (!sorts.length) return list;
-//     list.sort((a, b) => {
-//       for (const s of sorts) {
-//         const av = (a as any)[s.key];
-//         const bv = (b as any)[s.key];
-//         const c = cmp(av, bv);
-//         if (c !== 0) return s.dir === "asc" ? c : -c;
-//       }
-//       return 0;
-//     });
-//     return list;
-//   }, [rows, sorts]);
-
-//   const pageCount = Math.max(1, Math.ceil(sorted.length / pageSize));
-//   const clampedPage = Math.min(page, pageCount);
-
-//   const pageRows = React.useMemo(() => {
-//     const from = (clampedPage - 1) * pageSize;
-//     const to = from + pageSize;
-//     return sorted.slice(from, to);
-//   }, [sorted, clampedPage, pageSize]);
-
-//   return (
-//     <Card>
-//       <div className="relative"><DetailsHost key="groups"
-//           rows={raw}
-//           config={{
-//             idParam: "groupId",
-//             getRowId: (r: OffspringRow) => String(r.id),
-//             width: 960,
-//             placement: "center",
-//             align: "top",
-//             fetchRow: async (id: string | number) => raw.find((r) => String(r.id) === String(id))!,
-//             onSave: async (row: OffspringRow, draft: any) => {
-//               if (!api || readOnlyGlobal) return;
-//               const body: any = {};
-//               if (draft.identifier !== undefined) body.identifier = draft.identifier;
-//               if (draft.statusOverride !== undefined) body.statusOverride = draft.statusOverride ?? null;
-//               if (draft.statusOverrideReason !== undefined) body.statusOverrideReason = draft.statusOverrideReason ?? null;
-
-//               if (draft.counts || draft.countLive !== undefined || draft.countWeaned !== undefined || draft.countPlaced !== undefined) {
-//                 body.counts = {
-//                   countBorn: draft.counts?.countBorn ?? draft.countBorn ?? undefined,
-//                   countLive: draft.counts?.countLive ?? draft.countLive ?? undefined,
-//                   countStillborn: draft.counts?.countStillborn ?? draft.countStillborn ?? undefined,
-//                   countMale: draft.counts?.countMale ?? draft.countMale ?? undefined,
-//                   countFemale: draft.counts?.countFemale ?? draft.countFemale ?? undefined,
-//                   /** NEW */
-//                   countWeaned: draft.counts?.countWeaned ?? draft.countWeaned ?? undefined,
-//                   /** NEW */
-//                   countPlaced: draft.counts?.countPlaced ?? draft.countPlaced ?? undefined,
-//                 };
-//               }
-//               if (draft.dates) {
-//                 body.dates = {
-//                   birthedStartAt: draft.dates.birthedStartAt ?? null,
-//                   birthedEndAt: draft.dates.birthedEndAt ?? null,
-//                   weanedAt: draft.dates.weanedAt ?? null,
-//                   placementStartAt: draft.dates.placementStartAt ?? null,
-//                   placementCompletedAt: draft.dates.placementCompletedAt ?? null,
-//                 };
-//               }
-//               try {
-//                 const updated = await api.offspring.patch(row.id, body);
-//                 const idx = raw.findIndex((r) => r.id === row.id);
-//                 if (idx >= 0) {
-//                   const next = [...raw];
-//                   next[idx] = updated as any;
-//                   setRaw(next);
-//                   setRows(next.map(mapDetailToTableRow));
-//                   toast?.({ title: "Saved" });
-//                 }
-//               } catch (e: any) {
-//                 toast?.({ title: "Save failed", description: String(e?.message || e), variant: "destructive" });
-//                 throw e;
-//               }
-//             },
-//             header: (r: OffspringRow) => ({
-//               title: r.identifier || r.plan?.code || `Group #${r.id}`,
-//               subtitle: (r as any).statusOverride ? `Override: ${(r as any).statusOverride}` : "",
-//             }),
-//             tabs: [
-//               { key: "overview", label: "Overview" },
-//               { key: "buyers", label: "Buyers" },
-//               { key: "analytics", label: "Analytics" },
-//             ],
-//             customChrome: true,
-//             render: ({ row, mode, setMode, activeTab, setActiveTab, requestSave }: any) => {
-//               const tblRow = mapDetailToTableRow(row);
-
-//               return (
-//                 <DetailsScaffold
-//                   title={tblRow.groupName || tblRow.planCode || `Group #${tblRow.id}`}
-//                   subtitle={tblRow.breed || tblRow.species || ""}
-//                   mode={mode}
-//                   onEdit={() => !readOnlyGlobal && setMode("edit")}
-//                   onCancel={() => setMode("view")}
-//                   onSave={requestSave}
-//                   tabs={[
-//                     { key: "overview", label: "Overview" },
-//                     { key: "buyers", label: "Buyers" },
-//                     { key: "analytics", label: "Analytics" },
-//                   ]}
-//                   activeTab={activeTab}
-//                   onTabChange={setActiveTab}
-//                   rightActions={
-//                     <div className="flex gap-2">
-//                       <Button size="sm" variant="outline" onClick={() => window.open(`/breeding/plan/${row.plan?.id}`, "_blank")}>
-//                         Open plan
-//                       </Button>
-//                       {readOnlyGlobal && <span className="text-xs text-secondary self-center">View only</span>}
-//                     </div>
-//                   }
-//                 >
-//                   {activeTab === "overview" && (
-//                     <DetailsSpecRenderer<GroupTableRow>
-//                       row={tblRow}
-//                       mode={readOnlyGlobal ? "view" : mode}
-//                       setDraft={() => { }}
-//                       sections={groupSections(readOnlyGlobal ? "view" : mode)}
-//                     />
-//                   )}
-//                   {activeTab === "buyers" && (
-//                     <BuyersTab
-//                       api={api}
-//                       group={row}
-//                       onGroupUpdate={(updated) => {
-//                         const idx = raw.findIndex((r) => r.id === updated.id);
-//                         if (idx >= 0) {
-//                           const next = [...raw];
-//                           next[idx] = updated as any;
-//                           setRaw(next);
-//                           setRows(next.map(mapDetailToTableRow));
-//                         }
-//                       }}
-//                     />
-//                   )}
-//                   {activeTab === "analytics" && (
-//                     <SectionCard title="Analytics">
-//                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3 p-2">
-//                         <Card>
-//                           <div className="p-3">
-//                             <div className="text-xs text-secondary">Coverage</div>
-//                             <div className="text-2xl font-semibold">
-//                               {(() => {
-//                                 const pct = computeCoverage(row);
-//                                 return pct == null ? "-" : `${Math.round(pct * 100)}%`;
-//                               })()}
-//                             </div>
-//                             <div className="text-xs text-secondary mt-1">Reserved or placed divided by live, weaned, or planned headcount.</div>
-//                           </div>
-//                         </Card>
-//                         <Card>
-//                           <div className="p-3">
-//                             <div className="text-xs text-secondary">Placement velocity</div>
-//                             <div className="text-2xl font-semibold">
-//                               {(() => {
-//                                 const days = computePlacementVelocity(row);
-//                                 return days == null ? "-" : `${days} days`;
-//                               })()}
-//                             </div>
-//                             <div className="text-xs text-secondary mt-1">Days from placement start to placement completed.</div>
-//                           </div>
-//                         </Card>
-//                       </div>
-//                     </SectionCard>
-//                   )}
-//                 </DetailsScaffold>
-//               );
-//             },
-//           }}
-//         >
-//           <Table
-//             columns={GROUP_COLS}
-//             columnState={cols.map}
-//             onColumnStateChange={cols.setAll}
-//             getRowId={(r: GroupTableRow) => r.id}
-//             pageSize={25}
-//             renderStickyRight={() => <ColumnsPopover columns={cols.map} onToggle={cols.toggle} onSet={cols.setAll} allColumns={GROUP_COLS} triggerClassName="bhq-columns-trigger" />}
-//             stickyRightWidthPx={40}
-//           >
-//             <div className="bhq-table__toolbar px-2 pt-2 pb-3 relative z-30 flex items-center justify-between">
-//               <SearchBar value={q} onChange={(v) => { setQ(v); setPage(1); }} placeholder="Search groups..." widthPx={520} />
-//               <div />
-//             </div>
-
-//             <table className="min-w-max w-full text-sm">
-//               <TableHeader columns={visibleSafe} sorts={sorts} onToggleSort={onToggleSort} />
-//               <tbody>
-//                 {loading && (
-//                   <TableRow>
-//                     <TableCell colSpan={visibleSafe.length}>
-//                       <div className="py-8 text-center text-sm text-secondary">Loading groups...</div>
-//                     </TableCell>
-//                   </TableRow>
-//                 )}
-//                 {!loading && error && (
-//                   <TableRow>
-//                     <TableCell colSpan={visibleSafe.length}>
-//                       <div className="py-8 text-center text-sm text-red-600">Error: {error}</div>
-//                     </TableCell>
-//                   </TableRow>
-//                 )}
-//                 {!loading && !error && pageRows.length === 0 && (
-//                   <TableRow>
-//                     <TableCell colSpan={visibleSafe.length}>
-//                       <div className="py-8 text-center text-sm text-secondary">No groups.</div>
-//                     </TableCell>
-//                   </TableRow>
-//                 )}
-//                 {!loading &&
-//                   !error &&
-//                   pageRows.map((r) => (
-//                     <TableRow
-//                       key={r.id}
-//                       detailsRow={raw.find((x) => x.id === r.id)!}
-//                       className="cursor-pointer"
-//                       onClick={() => openDetails("groupId", r.id)}
-//                     >
-//                       {visibleSafe.map((c) => {
-//                         let v: any = (r as any)[c.key];
-//                         if (
-//                           c.key === "expectedBirth" ||
-//                           c.key === "expectedPlacementStart" ||
-//                           c.key === "expectedPlacementCompleted" ||
-//                           c.key === "updatedAt"
-//                         ) {
-//                           v = fmtDate(v);
-//                         }
-//                         return <TableCell key={c.key}>{v ?? ""}</TableCell>;
-//                       })}
-//                     </TableRow>
-//                   ))}
-//               </tbody>
-//             </table>
-
-//             <TableFooter
-//               entityLabel="groups"
-//               page={Math.min(page, Math.max(1, Math.ceil(sorted.length / pageSize)))}
-//               pageCount={Math.max(1, Math.ceil(sorted.length / pageSize))}
-//               pageSize={pageSize}
-//               pageSizeOptions={[10, 25, 50, 100]}
-//               onPageChange={(p) => setPage(p)}
-//               onPageSizeChange={(n) => {
-//                 setPageSize(n);
-//                 setPage(1);
-//               }}
-//               start={sorted.length === 0 ? 0 : (page - 1) * pageSize + 1}
-//               end={sorted.length === 0 ? 0 : Math.min(sorted.length, (page - 1) * pageSize + pageSize)}
-//               filteredTotal={sorted.length}
-//               total={rows.length}
-//             />
-//           </Table>
-//         </DetailsHost>
-//       </div>
-
-//       {/* Create Group Modal */}
-//       <Overlay open={createOpen} ariaLabel="Create Offspring Group" closeOnEscape closeOnOutsideClick>
-//         {(() => {
-//           const panelRef = React.useRef<HTMLDivElement>(null);
-//           const handleOutsideMouseDown: React.MouseEventHandler<HTMLDivElement> = (e) => {
-//             const p = panelRef.current;
-//             if (!p) return;
-//             if (!p.contains(e.target as Node)) setCreateOpen(false);
-//           };
-//           return (
-//             <div className="fixed inset-0" style={{ zIndex: MODAL_Z, isolation: "isolate" }} onMouseDown={handleOutsideMouseDown}>
-//               <div className="absolute inset-0 bg-black/50" />
-//               <div className="absolute inset-0 flex items-center justify-center">
-//                 <div ref={panelRef} className="pointer-events-auto">
-//                   <CreateGroupForm
-//                     api={api}
-//                     tenantId={tenantId}
-//                     onCreated={async () => {
-//                       setCreateOpen(false);
-//                       await load();
-//                     }}
-//                     onCancel={() => setCreateOpen(false)}
-//                   />
-//                 </div>
-//               </div>
-//             </div>
-//           );
-//         })()}
-//       </Overlay>
-//     </Card>
-//   );
-// }
-
 function PortalPopover({ anchorRef, open, children }: { anchorRef: React.RefObject<HTMLElement>, open: boolean, children: React.ReactNode }) {
   const [style, setStyle] = React.useState<React.CSSProperties>({});
   React.useLayoutEffect(() => {
@@ -1780,7 +1352,7 @@ function WaitlistDrawerBody({
   mode,
   onChange,
 }: {
-  api: ReturnType<typeof makeOffspringApi> | null;
+  api: OffspringApi | null;
   row: any;
   mode: "view" | "edit";
   onChange: (patch: any) => void;
@@ -1788,7 +1360,13 @@ function WaitlistDrawerBody({
   const onChangeRef = React.useRef(onChange);
   React.useEffect(() => { onChangeRef.current = onChange; }, [onChange]);
   const readOnly = mode !== "edit";
-  // derive UI state from row
+  const breedsApi = React.useMemo(() => {
+    const anyApi: any = api;
+    if (anyApi && anyApi.breeds && typeof anyApi.breeds.listCanonical === "function") {
+      return anyApi.breeds;
+    }
+    return null;
+  }, [api]);
   const initSpeciesUi = (() => {
     const w = String(row?.speciesPref || "").toUpperCase();
     return w === "DOG" ? "Dog" : w === "CAT" ? "Cat" : w === "HORSE" ? "Horse" : "";
@@ -1877,7 +1455,6 @@ function WaitlistDrawerBody({
     <div className="space-y-4">
       <SectionCard title="Preferences (required)">
         <div className={"p-2 grid grid-cols-1 md:grid-cols-3 gap-3 " + (readOnly ? "opacity-70" : "")}>
-          {/* Species */}
           <label className="flex flex-col gap-1">
             <span className={cx(labelClass)}>Species</span>
             <select
@@ -1905,24 +1482,23 @@ function WaitlistDrawerBody({
             </select>
           </label>
 
-          {/* Breed */}
-          <div className="md:col-span-2">
+          <div className="md:col-span-2 relative">
             <div className={cx(labelClass + " mb-1")}>Breed</div>
             {speciesUi ? (
-              readOnly ? (
-                // READ-ONLY: show the current value, no interaction
-                <div className="h-9 px-3 flex items-center rounded-md border border-hairline bg-surface/60 text-sm">
-                  {breed?.name || "-"}
+              breedsApi ? (
+                <div className={cx(readOnly ? "pointer-events-none opacity-60" : "")}>
+                  <BreedCombo
+                    key={`breed-${speciesUi}-${breedNonce}`}
+                    species={speciesUi}
+                    value={breed}
+                    onChange={onBreedPick}
+                    api={{ breeds: breedsApi }}
+                  />
                 </div>
               ) : (
-                // EDIT: interactive picker
-                <BreedCombo
-                  key={`breed-${speciesUi}-${breedNonce}`}
-                  species={speciesUi}
-                  value={breed}
-                  onChange={onBreedPick}
-                  api={{ breeds: { listCanonical: api!.breeds.listCanonical } }}
-                />
+                <div className="h-9 px-3 flex items-center rounded-md border border-hairline bg-surface/60 text-sm text-secondary">
+                  Breeds API not available
+                </div>
               )
             ) : (
               <div className="h-9 px-3 flex items-center rounded-md border border-hairline bg-surface/60 text-sm text-secondary">
@@ -2048,7 +1624,7 @@ function WaitlistDrawerBody({
   );
 }
 
-function WaitlistTab({ api, tenantId, readOnlyGlobal }: { api: ReturnType<typeof makeOffspringApi> | null; tenantId: number | null, readOnlyGlobal: boolean }) {
+function WaitlistTab({ api, tenantId, readOnlyGlobal }: { api: OffspringApi | null; tenantId: number | null, readOnlyGlobal: boolean }) {
   const [q, setQ] = React.useState("");
   const [rows, setRows] = React.useState<WaitlistTableRow[]>([]);
   const [raw, setRaw] = React.useState<WaitlistRowWire[]>([]);
@@ -2080,19 +1656,28 @@ function WaitlistTab({ api, tenantId, readOnlyGlobal }: { api: ReturnType<typeof
 
   const load = React.useCallback(async () => {
     if (!api) return;
+    if (!api.waitlist || typeof api.waitlist.list !== "function") {
+      console.warn("[Waitlist] waitlist API missing on client", api);
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
-      const res = await api.waitlist.list({ q: q || undefined, limit: 200 });
-      const items: any[] = res.items ?? [];
+      const res = await api.waitlist.list({
+        q: q || undefined,
+        limit: 200,
+        tenantId: tenantId ?? undefined,
+      });
+      const items: any[] = Array.isArray(res) ? res : res?.items ?? [];
       setRaw(items as WaitlistRowWire[]);
       setRows(items.map(mapWaitlistToTableRow));
+      setLoading(false);
     } catch (e: any) {
+      console.error(e);
       setError(e?.message || "Failed to load waitlist");
-    } finally {
       setLoading(false);
     }
-  }, [api, q]);
+  }, [api, q, tenantId]);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -2146,7 +1731,7 @@ function WaitlistTab({ api, tenantId, readOnlyGlobal }: { api: ReturnType<typeof
             placement: "center",
             align: "top",
             fetchRow: async (id: string | number) => raw.find((r) => String(r.id) === String(id))!,
-            onSave: async (row: WaitlistRowWire, draft: any) => {
+            onSave: async (rowId: string | number, draft: any) => {
               if (!api || readOnlyGlobal) return;
               const body: any = {};
 
@@ -2162,9 +1747,27 @@ function WaitlistTab({ api, tenantId, readOnlyGlobal }: { api: ReturnType<typeof
               if (draft.damPrefId !== undefined) body.damPrefId = draft.damPrefId ?? null;
               if (draft.sirePrefId !== undefined) body.sirePrefId = draft.sirePrefId ?? null;
 
-              const updated = await api.waitlist.patch(row.id, body);
+              const anyApi: any = api as any;
 
-              const idx = raw.findIndex((r) => r.id === row.id);
+              const id = typeof rowId === "number" ? rowId : Number(rowId);
+              if (!Number.isFinite(id)) {
+                console.error("[Waitlist] invalid id for patch", { rowId, draft });
+                return;
+              }
+
+              let updated: any;
+              if (anyApi.waitlist && typeof anyApi.waitlist.patch === "function") {
+                updated = await anyApi.waitlist.patch(id, body);
+              } else if ((api as any).raw && typeof (api as any).raw.patch === "function") {
+                updated = await (api as any).raw.patch(`/waitlist/${id}`, body, {
+                  tenantId: tenantId ?? undefined,
+                });
+              } else {
+                console.error("[Waitlist] no waitlist.patch or raw.patch available on client", api);
+                return;
+              }
+
+              const idx = raw.findIndex((r) => String(r.id) === String(id));
               if (idx >= 0) {
                 const nextRaw = [...raw];
                 nextRaw[idx] = updated as any;
@@ -2262,7 +1865,7 @@ function WaitlistTab({ api, tenantId, readOnlyGlobal }: { api: ReturnType<typeof
                       key={r.id}
                       detailsRow={raw.find((x) => x.id === r.id)!}
                       className="cursor-pointer"
-                      onClick={() => openDetails("waitlistId", r.id)}
+                      onClick={() => setParamAndNotify("waitlistId", r.id)}
                     >
                       {visibleSafe.map((c) => {
                         let v: any = (r as any)[c.key];
@@ -2284,7 +1887,7 @@ function WaitlistTab({ api, tenantId, readOnlyGlobal }: { api: ReturnType<typeof
 }
 
 /** Small bridge to open AddToWaitlistModal from the toolbar button without custom row hacks */
-function WaitlistAddBridge({ api, tenantId, onCreated }: { api: ReturnType<typeof makeOffspringApi> | null; tenantId: number | null; onCreated: () => Promise<void> | void }) {
+function WaitlistAddBridge({ api, tenantId, onCreated }: { api: OffspringApi | null; tenantId: number | null; onCreated: () => Promise<void> | void }) {
   const [open, setOpen] = React.useState(false);
   React.useEffect(() => {
     const h = () => setOpen(true);
@@ -2305,7 +1908,7 @@ function WaitlistAddBridge({ api, tenantId, onCreated }: { api: ReturnType<typeo
 
 export default function WaitlistPage({ embed = false }: { embed?: boolean } = {}) {
   const [tenantId, setTenantId] = React.useState<number | null>(() => readTenantIdFast() ?? null);
-  const [api, setApi] = React.useState<ReturnType<typeof makeOffspringApi> | null>(null);
+  const [api, setApi] = React.useState<OffspringApi | null>(null);
   const [readOnlyGlobal] = React.useState<boolean>(() => {
     try {
       const raw = localStorage.getItem("bhq_read_only");
@@ -2321,7 +1924,7 @@ export default function WaitlistPage({ embed = false }: { embed?: boolean } = {}
       const t = tenantId ?? (await resolveTenantId());
       if (!alive) return;
       setTenantId(t ?? null);
-      if (t) setApi(makeOffspringApi({ tenantId: t }));
+      if (t) setApi(makeOffspringApiClient());
     })();
     return () => {
       alive = false;

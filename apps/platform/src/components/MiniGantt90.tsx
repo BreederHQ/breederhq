@@ -14,7 +14,7 @@ const STAGES: BHQGanttStage[] = [
   { key: "hormoneTesting", label: "Hormone" },
   { key: "breeding", label: "Breeding" },
   { key: "birth", label: "Birth" },
-  { key: "puppyCare", label: "Puppy care" },
+  { key: "postBirthCare", label: "Post Birth Care" },
   { key: "PlacementNormal", label: "Placement" },
   { key: "PlacementExtended", label: "Placement ext" },
 ];
