@@ -14,7 +14,9 @@ import {
   SectionCard,
   Button,
   BreedCombo,
+  Badge,
 } from "@bhq/ui";
+import type { BadgeProps } from "@bhq/ui";
 
 
 import { Overlay } from "@bhq/ui/overlay";
@@ -23,6 +25,7 @@ import {
   ChevronUp,
   FilePlus2,
   Plus,
+  Trash2,
 } from "lucide-react";
 
 import {
@@ -103,6 +106,30 @@ type Status = "AVAILABLE" | "RESERVED" | "PLACED" | "HOLDBACK" | "DECEASED";
 type Species = "DOG" | "CAT" | "HORSE";
 type SpeciesUi = "Dog" | "Cat" | "Horse";
 type Money = number;
+
+type LifeState = "ALIVE" | "DECEASED" | string;
+type PlacementState =
+  | "UNASSIGNED"
+  | "OPTION_HOLD"
+  | "RESERVED"
+  | "PLACED"
+  | "RETURNED"
+  | "TRANSFERRED"
+  | string;
+type KeeperIntent = "KEEP" | "WITHHELD" | "UNDER_EVALUATION" | string;
+type FinancialState =
+  | "NONE"
+  | "DEPOSIT_PENDING"
+  | "DEPOSIT_PAID"
+  | "PAID_IN_FULL"
+  | "REFUNDED"
+  | "CHARGEBACK"
+  | string;
+type PaperworkState = "NONE" | "SENT" | "SIGNED" | "COMPLETE" | string;
+
+type BadgeVariant = BadgeProps["variant"];
+type StatusChip = { label: string; variant?: BadgeVariant; title?: string };
+type StatusBadge = { label: string; variant?: BadgeVariant; title?: string };
 
 type Buyer = { id: ID; name: string };
 type GroupLite = { id: ID; name: string };
@@ -399,10 +426,22 @@ export type OffspringRow = {
   registrationId: string | null;
   placementDate: string | null;
   placementStatus: string | null;
+  placementState: PlacementState | null;
+  lifeState: LifeState | null;
+  keeperIntent: KeeperIntent | null;
+  financialState: FinancialState | null;
+  paperworkState: PaperworkState | null;
+  diedAt: string | null;
+  placedAt: string | null;
+  paidInFullAt: string | null;
+  contractId: string | null;
+  contractSignedAt: string | null;
   price: number | null;
   buyerId: number | null;
   buyerKind: "contact" | "organization" | null;
   buyerName: string | null;
+  buyerContactId?: number | null;
+  buyerOrganizationId?: number | null;
   notes: string | null;
   groupId: number | null;
   groupLabel: string | null;
@@ -410,6 +449,7 @@ export type OffspringRow = {
   // new fields
   whelpingCollarColor: string | null;
   riskScore: string | null;
+  promotedAnimalId?: number | null;
 };
 
 
@@ -440,6 +480,17 @@ export type OffspringUpdateInput = Partial<{
   microchip: string | null;
   registrationId: string | null;
   notes: string | null;
+  lifeState: LifeState | null;
+  placementState: PlacementState | null;
+  keeperIntent: KeeperIntent | null;
+  financialState: FinancialState | null;
+  paperworkState: PaperworkState | null;
+  diedAt: string | null;
+  placedAt: string | null;
+  paidInFullAt: string | null;
+  contractId: string | null;
+  contractSignedAt: string | null;
+  promotedAnimalId: number | null;
 
   species: Species | string | null;
   breed: string | null;
@@ -513,6 +564,70 @@ function mapAnimalLiteToRow(dto: AnimalLite): OffspringRow {
     risk_score,
   } = dto as any;
 
+  const placementStateRaw =
+    (dto as any).placementState ??
+    (dto as any).placement_state ??
+    placement_status ??
+    null;
+  const lifeStateRaw =
+    (dto as any).lifeState ??
+    (dto as any).life_state ??
+    null;
+  const keeperIntentRaw =
+    (dto as any).keeperIntent ??
+    (dto as any).keeper_intent ??
+    null;
+  const financialStateRaw =
+    (dto as any).financialState ??
+    (dto as any).financial_state ??
+    null;
+  const paperworkStateRaw =
+    (dto as any).paperworkState ??
+    (dto as any).paperwork_state ??
+    null;
+  const diedAt = isoDateString(
+    (dto as any).diedAt ??
+    (dto as any).died_at ??
+    null,
+  );
+  const placedAt = isoDateString(
+    (dto as any).placedAt ??
+    (dto as any).placed_at ??
+    null,
+  );
+  const paidInFullAt = isoDateString(
+    (dto as any).paidInFullAt ??
+    (dto as any).paid_in_full_at ??
+    null,
+  );
+  const contractSignedAt = isoDateString(
+    (dto as any).contractSignedAt ??
+    (dto as any).contract_signed_at ??
+    null,
+  );
+  const contractId =
+    (dto as any).contractId ??
+    (dto as any).contract_id ??
+    null;
+  const promotedAnimalId =
+    (dto as any).promotedAnimalId ??
+    (dto as any).promoted_animal_id ??
+    null;
+  const buyerContactId =
+    (dto as any).buyerContactId ??
+    (dto as any).buyer_contact_id ??
+    null;
+  const buyerOrganizationId =
+    (dto as any).buyerOrganizationId ??
+    (dto as any).buyer_organization_id ??
+    null;
+
+  const placementState = normalizeState(placementStateRaw);
+  const lifeState = normalizeState(lifeStateRaw);
+  const keeperIntent = normalizeState(keeperIntentRaw);
+  const financialState = normalizeState(financialStateRaw);
+  const paperworkState = normalizeState(paperworkStateRaw);
+
   return {
     id: Number(id),
     name: name ?? "",
@@ -528,9 +643,21 @@ function mapAnimalLiteToRow(dto: AnimalLite): OffspringRow {
     registrationId: registryNumber ?? null,
     placementDate: sold_at ?? null,
     placementStatus: placement_status ?? null,
+    placementState,
+    lifeState,
+    keeperIntent,
+    financialState,
+    paperworkState,
+    diedAt,
+    placedAt,
+    paidInFullAt,
+    contractId,
+    contractSignedAt,
     price: centsToDollars(price_cents),
 
     buyerId: buyerId ?? buyerOrgId ?? null,
+    buyerContactId: buyerContactId ?? buyerId ?? null,
+    buyerOrganizationId: buyerOrganizationId ?? buyerOrgId ?? null,
     buyerKind: buyerId
       ? "contact"
       : buyerOrgId
@@ -555,7 +682,38 @@ function mapAnimalLiteToRow(dto: AnimalLite): OffspringRow {
       risk_score ??
       (dto as any).riskScore ??
       null,
+    promotedAnimalId:
+      promotedAnimalId != null ? Number(promotedAnimalId) : null,
   };
+}
+
+function mapDetailToRow(detail: any): OffspringRow {
+  const base = mapAnimalLiteToRow(detail as any);
+  return {
+    ...base,
+    buyer: (detail as any).buyer ?? null,
+    buyerRiskScore:
+      (detail as any).buyerRiskScore ??
+      (detail as any).buyer_risk_score ??
+      null,
+    group: (detail as any).group ?? null,
+    healthSummary:
+      (detail as any).healthSummary ??
+      (detail as any).health_summary ??
+      null,
+    mediaSummary:
+      (detail as any).mediaSummary ??
+      (detail as any).media_summary ??
+      null,
+    invoiceSummary:
+      (detail as any).invoiceSummary ??
+      (detail as any).invoice_summary ??
+      null,
+    crossRefs:
+      (detail as any).crossRefs ??
+      (detail as any).cross_refs ??
+      null,
+  } as OffspringRow;
 }
 
 function makeBackendOffspringApi(): OffspringApi {
@@ -597,7 +755,7 @@ function makeBackendOffspringApi(): OffspringApi {
 
     async getById(id) {
       const dto = await svc.get(id, { tenantId });
-      return mapAnimalLiteToRow(dto);
+      return mapDetailToRow(dto);
     },
 
     async create(input) {
@@ -819,6 +977,43 @@ const CENTER_KEYS = new Set([
   "whelpingCollarColor",
 ]);
 
+const placementStateOptions: Array<{ value: PlacementState; label: string }> = [
+  { value: "UNASSIGNED", label: "Available" },
+  { value: "OPTION_HOLD", label: "On Hold" },
+  { value: "RESERVED", label: "Reserved" },
+  { value: "PLACED", label: "Placed" },
+  { value: "RETURNED", label: "Returned" },
+  { value: "TRANSFERRED", label: "Transferred" },
+];
+
+const financialStateOptions: Array<{ value: FinancialState; label: string }> = [
+  { value: "NONE", label: "None" },
+  { value: "DEPOSIT_PENDING", label: "Deposit pending" },
+  { value: "DEPOSIT_PAID", label: "Deposit paid" },
+  { value: "PAID_IN_FULL", label: "Paid in full" },
+  { value: "REFUNDED", label: "Refunded" },
+  { value: "CHARGEBACK", label: "Chargeback" },
+];
+
+const paperworkStateOptions: Array<{ value: PaperworkState; label: string }> = [
+  { value: "NONE", label: "None" },
+  { value: "SENT", label: "Contract sent" },
+  { value: "SIGNED", label: "Contract signed" },
+  { value: "COMPLETE", label: "Complete" },
+];
+
+const lifeStateOptions: Array<{ value: LifeState; label: string }> = [
+  { value: "ALIVE", label: "Alive" },
+  { value: "DECEASED", label: "Deceased" },
+];
+
+const keeperIntentOptions: Array<{ value: KeeperIntent; label: string }> = [
+  { value: "AVAILABLE", label: "Available" },
+  { value: "UNDER_EVALUATION", label: "Under evaluation" },
+  { value: "WITHHELD", label: "Withheld" },
+  { value: "KEEP", label: "Keeper" },
+];
+
 const ALL_COLUMNS = [
   { key: "name", label: "Name", default: true },
   { key: "sex", label: "Sex", default: true },
@@ -828,6 +1023,15 @@ const ALL_COLUMNS = [
   { key: "color", label: "Color", default: false },
   { key: "buyer", label: "Buyer", default: true },
   { key: "status", label: "Status", default: true },
+  { key: "lifeState", label: "Life", default: true },
+  { key: "placementState", label: "Placement", default: true },
+  { key: "keeperIntent", label: "Keeper", default: true },
+  { key: "financialState", label: "Financial", default: false },
+  { key: "paperworkState", label: "Paperwork", default: false },
+  { key: "diedAt", label: "Died", default: false },
+  { key: "placedAt", label: "Placed date", default: false },
+  { key: "paidInFullAt", label: "Paid date", default: false },
+  { key: "contractSignedAt", label: "Contract date", default: false },
   { key: "birthWeightOz", label: "Birth wt (oz)", default: false },
   { key: "dob", label: "DOB", default: true },
   { key: "placementDate", label: "Placement", default: true },
@@ -836,7 +1040,7 @@ const ALL_COLUMNS = [
   { key: "registrationId", label: "Registration", default: false },
 ] as const;
 
-const OFFSPRING_STORAGE_KEY = "bhq_offspring_cols_v1";
+const OFFSPRING_STORAGE_KEY = "bhq_offspring_cols_v2";
 
 
 type ColumnKey = (typeof ALL_COLUMNS)[number]["key"];
@@ -861,6 +1065,26 @@ function moneyFmt(n?: number | null): string {
   }
 }
 
+function isoDateString(value: any): string | null {
+  if (value == null) return null;
+  const d = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(d.getTime())) {
+    return typeof value === "string" ? value : null;
+  }
+  return d.toISOString();
+}
+
+function toDateInputValue(value?: string | null): string {
+  if (!value) return "";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return value;
+  return d.toISOString().slice(0, 10);
+}
+
+function todayInputValue(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
 function prettyStatus(s: Status): string {
   switch (s) {
     case "AVAILABLE":
@@ -876,6 +1100,36 @@ function prettyStatus(s: Status): string {
     default:
       return String(s);
   }
+}
+
+function prettyLifeState(s?: LifeState | null): string {
+  if (!s) return "-";
+  const found = lifeStateOptions.find((opt) => opt.value === s);
+  return found?.label ?? String(s);
+}
+
+function prettyPlacementState(s?: PlacementState | null): string {
+  if (!s) return "-";
+  const found = placementStateOptions.find((opt) => opt.value === s);
+  return found?.label ?? String(s);
+}
+
+function prettyKeeperIntent(s?: KeeperIntent | null): string {
+  if (!s) return "-";
+  const found = keeperIntentOptions.find((opt) => opt.value === s);
+  return found?.label ?? String(s);
+}
+
+function prettyFinancialState(s?: FinancialState | null): string {
+  if (!s) return "-";
+  const found = financialStateOptions.find((opt) => opt.value === s);
+  return found?.label ?? String(s);
+}
+
+function prettyPaperworkState(s?: PaperworkState | null): string {
+  if (!s) return "-";
+  const found = paperworkStateOptions.find((opt) => opt.value === s);
+  return found?.label ?? String(s);
 }
 
 function prettySpecies(s?: Species | string | null): string {
@@ -894,6 +1148,222 @@ function prettySex(s?: Sex | string | null): string {
   if (v === "FEMALE") return "Female";
   if (v === "UNKNOWN") return "Unknown";
   return String(s);
+}
+
+function normalizeState(value?: string | null): string | null {
+  if (value == null) return null;
+  return String(value).toUpperCase();
+}
+
+function titleize(value?: string | null): string {
+  if (!value) return "";
+  return value
+    .toString()
+    .split(/[_\s]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join(" ");
+}
+
+function getPlacementLabel(state?: PlacementState | null): string | null {
+  const normalized = normalizeState(state);
+  switch (normalized) {
+    case "UNASSIGNED":
+      return "Available";
+    case "OPTION_HOLD":
+      return "On Hold";
+    case "RESERVED":
+      return "Reserved";
+    case "PLACED":
+      return "Placed";
+    case "RETURNED":
+      return "Returned";
+    case "TRANSFERRED":
+      return "Transferred";
+    case "DEPOSIT_ONLY":
+      return "Reserved";
+    case "NOT_PLACED":
+    case "PLANNED":
+    case "BORN":
+    case "AVAILABLE":
+      return "Available";
+    default:
+      return normalized ? titleize(normalized) : null;
+  }
+}
+
+function getPlacementVariant(state?: PlacementState | null): BadgeVariant {
+  const normalized = normalizeState(state);
+  if (normalized === "PLACED") return "green";
+  if (normalized === "RESERVED" || normalized === "OPTION_HOLD") return "amber";
+  if (normalized === "RETURNED" || normalized === "TRANSFERRED") return "blue";
+  return "neutral";
+}
+
+function getLifeChip(lifeState?: LifeState | null, diedAt?: string | null): StatusChip | null {
+  const normalized = normalizeState(lifeState);
+  if (normalized === "DECEASED") {
+    const diedAtLabel = diedAt ? formatDate(diedAt) : null;
+    return {
+      label: "Deceased",
+      variant: "red",
+      title: diedAtLabel ? `Died ${diedAtLabel}` : undefined,
+    };
+  }
+  return null;
+}
+
+function getKeeperChip(keeperIntent?: KeeperIntent | null): StatusChip | null {
+  const normalized = normalizeState(keeperIntent);
+  if (normalized === "KEEP") {
+    return { label: "Keeper", variant: "blue" };
+  }
+  if (normalized === "WITHHELD" || normalized === "UNDER_EVALUATION") {
+    return { label: "Withheld", variant: "amber" };
+  }
+  return null;
+}
+
+function getFinancialChip(financialState?: FinancialState | null): StatusChip | null {
+  const normalized = normalizeState(financialState);
+  switch (normalized) {
+    case "DEPOSIT_PENDING":
+      return { label: "Deposit Pending", variant: "amber" };
+    case "DEPOSIT_PAID":
+      return { label: "Deposit Paid", variant: "blue" };
+    case "PAID_IN_FULL":
+      return { label: "Paid", variant: "green" };
+    default:
+      return null;
+  }
+}
+
+function getPaperworkChip(paperworkState?: PaperworkState | null): StatusChip | null {
+  const normalized = normalizeState(paperworkState);
+  switch (normalized) {
+    case "SENT":
+      return { label: "Contract Sent", variant: "amber" };
+    case "SIGNED":
+      return { label: "Contract Signed", variant: "blue" };
+    case "COMPLETE":
+      return { label: "Complete", variant: "green" };
+    default:
+      return null;
+  }
+}
+
+function buildOffspringStatusPresentation(offspring: Partial<OffspringRow>): {
+  primaryBadge: StatusBadge | null;
+  chips: StatusChip[];
+} {
+  const placementState =
+    normalizeState((offspring as any)?.placementState ?? (offspring as any)?.placement_state) ??
+    normalizeState((offspring as any)?.placementStatus ?? (offspring as any)?.placement_status);
+  const lifeState =
+    normalizeState((offspring as any)?.lifeState ?? (offspring as any)?.life_state);
+  const keeperIntent =
+    normalizeState((offspring as any)?.keeperIntent ?? (offspring as any)?.keeper_intent);
+  const financialState =
+    normalizeState((offspring as any)?.financialState ?? (offspring as any)?.financial_state);
+  const paperworkState =
+    normalizeState((offspring as any)?.paperworkState ?? (offspring as any)?.paperwork_state);
+  const diedAt = (offspring as any)?.diedAt ?? (offspring as any)?.died_at ?? null;
+
+  const primaryBadge: StatusBadge | null =
+    lifeState === "DECEASED"
+      ? null
+      : {
+          label: getPlacementLabel(placementState) ?? "Placement not set",
+          variant: getPlacementVariant(placementState),
+        };
+
+  const chips: StatusChip[] = [];
+
+  const lifeChip = getLifeChip(lifeState, diedAt);
+  if (lifeChip) chips.push(lifeChip);
+
+  const keeperChip = getKeeperChip(keeperIntent);
+  if (keeperChip) chips.push(keeperChip);
+
+  const financialChip = getFinancialChip(financialState);
+  if (financialChip) chips.push(financialChip);
+
+  const paperworkChip = getPaperworkChip(paperworkState);
+  if (paperworkChip) chips.push(paperworkChip);
+
+  return { primaryBadge, chips };
+}
+
+const primaryBadgeClass =
+  "min-h-[24px] px-3 py-1.5 text-[13px] leading-5 font-semibold border border-primary/60 bg-primary/15 shadow-sm";
+const chipBadgeClass = "text-[11px] px-2 py-0.5 leading-4";
+
+function formatFinancialStateLabel(financialState?: FinancialState | null): string {
+  const normalized = normalizeState(financialState);
+  switch (normalized) {
+    case "DEPOSIT_PENDING":
+      return "Pending";
+    case "DEPOSIT_PAID":
+      return "Paid";
+    case "PAID_IN_FULL":
+      return "Paid in full";
+    case "REFUNDED":
+      return "Refunded";
+    case "CHARGEBACK":
+      return "Chargeback";
+    case "NONE":
+    case null:
+      return "None";
+    default:
+      return titleize(financialState) || "None";
+  }
+}
+
+function formatPaperworkStateLabel(paperworkState?: PaperworkState | null): string {
+  const normalized = normalizeState(paperworkState);
+  switch (normalized) {
+    case "SENT":
+      return "Sent";
+    case "SIGNED":
+      return "Signed";
+    case "COMPLETE":
+      return "Complete";
+    case "NONE":
+    case null:
+      return "None";
+    default:
+      return titleize(paperworkState) || "None";
+  }
+}
+
+function getBuyerSectionTitle(placementState?: PlacementState | null): string {
+  const normalized = normalizeState(placementState);
+  if (normalized === "PLACED") return "Buyer (Placed)";
+  if (normalized === "RETURNED") return "Buyer (Returned)";
+  if (normalized === "TRANSFERRED") return "Buyer (Transferred)";
+  if (normalized === "RESERVED" || normalized === "OPTION_HOLD") return "Buyer (Reserved)";
+  return "Buyer (Unassigned)";
+}
+
+const isDevRuntime =
+  typeof window !== "undefined" &&
+  (typeof process === "undefined" || process.env?.NODE_ENV !== "production");
+
+if (isDevRuntime) {
+  const deceased = buildOffspringStatusPresentation({
+    lifeState: "DECEASED",
+    placementState: "UNASSIGNED",
+  } as Partial<OffspringRow>);
+  if (
+    !deceased.chips.some((c) => c.label === "Deceased") ||
+    (deceased.primaryBadge && deceased.primaryBadge.label === "Available")
+  ) {
+    console.warn("[Offspring] Deceased status presentation is missing required dominance.");
+  }
+  const placed = buildOffspringStatusPresentation({ placementState: "PLACED" } as Partial<OffspringRow>);
+  if (placed.primaryBadge?.label !== "Placed") {
+    console.warn("[Offspring] Placement badge regression detected for PLACED state.");
+  }
 }
 
 /** ---------- Create Offspring overlay ---------- */
@@ -1726,7 +2196,7 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
   const visibleSafe = cols.visible && cols.visible.length > 0 ? cols.visible : ALL_COLUMNS;
   const [drawer, setDrawer] = React.useState<OffspringRow | null>(null);
   const [drawerTab, setDrawerTab] = React.useState<
-    "overview" | "buyer" | "health" | "media" | "invoices" | "records" | "notes"
+    "overview" | "health" | "media" | "invoices" | "records" | "notes"
   >("overview");
 
   const [selectedGroupBuyerKey, setSelectedGroupBuyerKey] = React.useState<string>("");
@@ -1744,6 +2214,9 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
   const [coreForm, setCoreForm] = React.useState<Partial<OffspringRow> | null>(null);
   const [drawerMode, setDrawerMode] = React.useState<"view" | "edit">("view");
   const [drawerSaving, setDrawerSaving] = React.useState(false);
+  const updateCoreForm = React.useCallback((fields: Partial<OffspringRow>) => {
+    setCoreForm((prev) => (prev ? { ...prev, ...fields } : prev));
+  }, []);
 
   // edit state for parent group override in the drawer
   const [allowWithoutParent, setAllowWithoutParent] = React.useState(false);
@@ -2159,6 +2632,54 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
       allowWithoutParent ? null : (coreForm.groupId ?? null);
 
     const isLinkedToParent = !allowWithoutParent && resolvedGroupId != null;
+    const promotedAnimalId =
+      coreForm.promotedAnimalId ?? (drawer as any).promotedAnimalId ?? null;
+
+    const lifeState =
+      (coreForm.lifeState ?? (drawer as any).lifeState ?? null) as LifeState | null;
+    const placementStateDraft =
+      (coreForm.placementState ?? (drawer as any).placementState ?? null) as PlacementState | null;
+    const resolvedPlacementState: PlacementState | null =
+      lifeState === "DECEASED" ? "UNASSIGNED" : placementStateDraft;
+
+    let placedAt =
+      coreForm.placedAt ?? (drawer as any).placedAt ?? null;
+    if (resolvedPlacementState === "PLACED") {
+      placedAt = placedAt || todayInputValue();
+    } else {
+      placedAt = null;
+    }
+
+    const keeperIntent =
+      (coreForm.keeperIntent ?? (drawer as any).keeperIntent ?? null) as KeeperIntent | null;
+    const keeperIntentResolved =
+      promotedAnimalId != null ? "KEEP" : keeperIntent;
+
+    const financialState =
+      (coreForm.financialState ?? (drawer as any).financialState ?? null) as FinancialState | null;
+    let paidInFullAt =
+      coreForm.paidInFullAt ?? (drawer as any).paidInFullAt ?? null;
+    if (financialState === "PAID_IN_FULL") {
+      paidInFullAt = paidInFullAt || todayInputValue();
+    } else {
+      paidInFullAt = null;
+    }
+
+    const paperworkState =
+      (coreForm.paperworkState ?? (drawer as any).paperworkState ?? null) as PaperworkState | null;
+    let contractSignedAt =
+      coreForm.contractSignedAt ?? (drawer as any).contractSignedAt ?? null;
+    if (paperworkState === "SIGNED" || paperworkState === "COMPLETE") {
+      contractSignedAt = contractSignedAt || todayInputValue();
+    } else {
+      contractSignedAt = null;
+    }
+
+    const contractId = coreForm.contractId ?? (drawer as any).contractId ?? null;
+    const diedAt =
+      lifeState === "DECEASED"
+        ? (coreForm.diedAt ?? (drawer as any).diedAt ?? todayInputValue())
+        : null;
 
     try {
       const patch: OffspringUpdateInput = {
@@ -2175,6 +2696,17 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
         microchip: coreForm.microchip ?? drawer.microchip,
         registrationId: coreForm.registrationId ?? drawer.registrationId,
         notes: coreForm.notes ?? drawer.notes,
+        lifeState,
+        placementState: resolvedPlacementState,
+        keeperIntent: keeperIntentResolved,
+        financialState,
+        paperworkState,
+        diedAt,
+        placedAt,
+        paidInFullAt,
+        contractId,
+        contractSignedAt,
+        promotedAnimalId: promotedAnimalId ?? null,
 
         species: (drawer.species as any) ?? null,
 
@@ -2389,6 +2921,42 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
                         val = prettyStatus(r.status as OffspringStatus);
                       }
 
+                      if (k === "lifeState") {
+                        val = prettyLifeState(r.lifeState);
+                      }
+
+                      if (k === "placementState") {
+                        val = prettyPlacementState(r.placementState);
+                      }
+
+                      if (k === "keeperIntent") {
+                        val = prettyKeeperIntent(r.keeperIntent);
+                      }
+
+                      if (k === "financialState") {
+                        val = prettyFinancialState(r.financialState);
+                      }
+
+                      if (k === "paperworkState") {
+                        val = prettyPaperworkState(r.paperworkState);
+                      }
+
+                      if (k === "diedAt") {
+                        val = formatDate(r.diedAt);
+                      }
+
+                      if (k === "placedAt") {
+                        val = formatDate(r.placedAt);
+                      }
+
+                      if (k === "paidInFullAt") {
+                        val = formatDate(r.paidInFullAt);
+                      }
+
+                      if (k === "contractSignedAt") {
+                        val = formatDate(r.contractSignedAt);
+                      }
+
                       if (k === "dob") {
                         val = formatDate(r.dob);
                       }
@@ -2553,15 +3121,47 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
               >
                 <DetailsScaffold
                   title={
-                    drawer.name ||
-                    drawer.placeholderLabel ||
-                    drawer.identifier ||
-                    "Unnamed offspring"
+                    (() => {
+                      const statusPresentation = buildOffspringStatusPresentation(drawer);
+                      return (
+                        <div className="flex items-center gap-3">
+                          <span className="truncate">
+                            {drawer.name ||
+                              drawer.placeholderLabel ||
+                              drawer.identifier ||
+                              "Unnamed offspring"}
+                          </span>
+                          {statusPresentation.primaryBadge ? (
+                            <Badge
+                              variant={statusPresentation.primaryBadge.variant ?? "neutral"}
+                              title={statusPresentation.primaryBadge.title}
+                              className={primaryBadgeClass}
+                            >
+                              {statusPresentation.primaryBadge.label}
+                            </Badge>
+                          ) : null}
+                        </div>
+                      );
+                    })()
                   }
                   subtitle={
-                    drawer.status
-                      ? `Status ${prettyStatus(drawer.status as OffspringStatus)}`
-                      : "Status not set"
+                    (() => {
+                      const statusPresentation = buildOffspringStatusPresentation(drawer);
+                      return (
+                        <div className="flex flex-wrap items-center gap-2 whitespace-normal">
+                          {statusPresentation.chips.map((chip, idx) => (
+                            <Badge
+                              key={`${chip.label}-${idx}`}
+                              variant={chip.variant ?? "neutral"}
+                              title={chip.title}
+                              className={chipBadgeClass}
+                            >
+                              {chip.label}
+                            </Badge>
+                          ))}
+                        </div>
+                      );
+                    })()
                   }
                   mode={drawerMode}
                   onEdit={() => {
@@ -2575,6 +3175,16 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
                       status: drawer.status,
                       dob: drawer.dob,
                       placementDate: drawer.placementDate,
+                      placementState: drawer.placementState ?? null,
+                      lifeState: drawer.lifeState ?? null,
+                      keeperIntent: drawer.keeperIntent ?? null,
+                      financialState: drawer.financialState ?? null,
+                      paperworkState: drawer.paperworkState ?? null,
+                      diedAt: drawer.diedAt ?? null,
+                      placedAt: drawer.placedAt ?? null,
+                      paidInFullAt: drawer.paidInFullAt ?? null,
+                      contractId: drawer.contractId ?? null,
+                      contractSignedAt: drawer.contractSignedAt ?? null,
                       price: drawer.price,
                       microchip: drawer.microchip,
                       registrationId: drawer.registrationId,
@@ -2582,6 +3192,7 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
                       groupId: drawer.groupId,
                       whelpingCollarColor: drawer.whelpingCollarColor ?? null,
                       riskScore: drawer.riskScore ?? null,
+                      promotedAnimalId: drawer.promotedAnimalId ?? null,
                     });
                     setAllowWithoutParent(drawer.groupId == null);
                     setShowWhelpPalette(false);
@@ -2598,6 +3209,16 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
                       status: drawer.status,
                       dob: drawer.dob,
                       placementDate: drawer.placementDate,
+                      placementState: drawer.placementState ?? null,
+                      lifeState: drawer.lifeState ?? null,
+                      keeperIntent: drawer.keeperIntent ?? null,
+                      financialState: drawer.financialState ?? null,
+                      paperworkState: drawer.paperworkState ?? null,
+                      diedAt: drawer.diedAt ?? null,
+                      placedAt: drawer.placedAt ?? null,
+                      paidInFullAt: drawer.paidInFullAt ?? null,
+                      contractId: drawer.contractId ?? null,
+                      contractSignedAt: drawer.contractSignedAt ?? null,
                       price: drawer.price,
                       microchip: drawer.microchip,
                       registrationId: drawer.registrationId,
@@ -2605,6 +3226,7 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
                       groupId: drawer.groupId,
                       whelpingCollarColor: drawer.whelpingCollarColor ?? null,
                       riskScore: drawer.riskScore ?? null,
+                      promotedAnimalId: drawer.promotedAnimalId ?? null,
                     });
                     setAllowWithoutParent(drawer.groupId == null);
                     setShowWhelpPalette(false);
@@ -2623,7 +3245,6 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
                   saving={drawerSaving}
                   tabs={[
                     { key: "overview", label: "Overview" },
-                    { key: "buyer", label: "Buyer" },
                     { key: "health", label: "Health" },
                     { key: "media", label: "Media" },
                     { key: "invoices", label: "Invoices" },
@@ -2642,7 +3263,7 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
                 />
 
                 {/* Body */}
-                <div className="px-5 py-4 space-y-6">
+                <div className="px-5 py-3 space-y-6">
                   {(() => {
                     const row = drawer as any;
                     if (!row) return null;
@@ -2670,13 +3291,21 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
                     const sireLabel =
                       row.groupSireName || row.sireName || "Not set";
 
-                    const statusLabel = row.status
-                      ? prettyStatus(row.status as Status)
-                      : "Status not set";
-
                     const dobLabel = row.dob
                       ? formatDate(row.dob)
                       : "Not set";
+                    const lifeState =
+                      normalizeState(
+                        (coreForm as any)?.lifeState ??
+                        row.lifeState ??
+                        (row as any).life_state ??
+                        null,
+                      );
+                    const diedAtValue =
+                      (coreForm as any)?.diedAt ??
+                      row.diedAt ??
+                      (row as any).died_at ??
+                      null;
 
                     const birthWeightLabel =
                       typeof row.birthWeightOz === "number"
@@ -2728,23 +3357,68 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
 
                     const identifierLabel = row.identifier || "Not set";
 
-                    const placementLabel = (() => {
-                      const raw = row.placementStatus || row.status;
-                      if (!raw) return "Not placed";
+                    const placementState =
+                      normalizeState(
+                        (coreForm as any)?.placementState ??
+                        row.placementState ??
+                        (row as any).placement_state ??
+                        row.placementStatus ??
+                        null,
+                      );
+                    const keeperIntentState =
+                      normalizeState(
+                        (coreForm as any)?.keeperIntent ??
+                        row.keeperIntent ??
+                        (row as any).keeper_intent ??
+                        null,
+                      );
+                    const financialState =
+                      normalizeState(
+                        (coreForm as any)?.financialState ??
+                        row.financialState ??
+                        (row as any).financial_state ??
+                        null,
+                      );
+                    const paperworkState =
+                      normalizeState(
+                        (coreForm as any)?.paperworkState ??
+                        row.paperworkState ??
+                        (row as any).paperwork_state ??
+                        null,
+                      );
+                    const placedAtValue =
+                      (coreForm as any)?.placedAt ??
+                      row.placedAt ??
+                      (row as any).placed_at ??
+                      null;
+                    const paidInFullAtValue =
+                      (coreForm as any)?.paidInFullAt ??
+                      row.paidInFullAt ??
+                      (row as any).paid_in_full_at ??
+                      null;
+                    const contractSignedAtValue =
+                      (coreForm as any)?.contractSignedAt ??
+                      row.contractSignedAt ??
+                      (row as any).contract_signed_at ??
+                      null;
+                    const contractIdValue =
+                      (coreForm as any)?.contractId ??
+                      row.contractId ??
+                      (row as any).contract_id ??
+                      null;
+                    const promotedAnimalId =
+                      (coreForm as any)?.promotedAnimalId ??
+                      row.promotedAnimalId ??
+                      (row as any).promoted_animal_id ??
+                      null;
 
-                      const s = String(raw).toUpperCase();
-
-                      if (s === "NOT_PLACED" || s === "PLANNED" || s === "BORN" || s === "AVAILABLE") {
-                        return "Not placed";
-                      }
-                      if (s === "DEPOSIT_ONLY" || s === "RESERVED") {
-                        return "Deposit only";
-                      }
-                      if (s === "PLACED") {
-                        return "Placed";
-                      }
-                      return String(raw);
-                    })();
+                    const buyerHeaderLabel = getBuyerSectionTitle(placementState);
+                    const depositLabel = formatFinancialStateLabel(financialState);
+                    const contractLabel = formatPaperworkStateLabel(paperworkState);
+                    const diedAtLabel =
+                      lifeState === "DECEASED"
+                        ? (diedAtValue ? formatDate(diedAtValue) : "Yes")
+                        : null;
 
                     const priceLabel =
                       typeof row.price === "number"
@@ -2842,6 +3516,67 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
                                     )}
                                   </dd>
                                 </div>
+
+                                <div>
+                                  <dt className={labelClass}>Life</dt>
+                                  <dd className="mt-1 text-sm">
+                                    {drawerMode === "edit" && coreForm ? (
+                                      <select
+                                        className={inputClass}
+                                        value={lifeState ?? ""}
+                                        onChange={(e) => {
+                                          const next = e.target.value as LifeState | "";
+                                          const nextLife = next || null;
+                                          updateCoreForm({
+                                            lifeState: nextLife,
+                                            diedAt:
+                                              nextLife === "DECEASED"
+                                                ? (coreForm.diedAt ?? diedAtValue ?? todayInputValue())
+                                                : null,
+                                            placementState:
+                                              nextLife === "DECEASED"
+                                                ? "UNASSIGNED"
+                                                : (coreForm.placementState ?? placementState ?? null),
+                                            placedAt: nextLife === "DECEASED" ? null : coreForm.placedAt ?? placedAtValue ?? null,
+                                          });
+                                        }}
+                                      >
+                                        <option value="">Select life state</option>
+                                        {lifeStateOptions.map((opt) => (
+                                          <option key={opt.value} value={opt.value}>
+                                            {opt.label}
+                                          </option>
+                                        ))}
+                                      </select>
+                                    ) : lifeState === "DECEASED" ? (
+                                      "Deceased"
+                                    ) : (
+                                      "Alive"
+                                    )}
+                                  </dd>
+                                </div>
+
+                                {lifeState === "DECEASED" && (
+                                  <div className="col-span-2">
+                                    <dt className={labelClass}>Deceased</dt>
+                                    <dd className="mt-1 text-sm">
+                                      {drawerMode === "edit" && coreForm ? (
+                                        <input
+                                          type="date"
+                                          className={inputClass}
+                                          value={toDateInputValue(coreForm.diedAt ?? diedAtValue)}
+                                          onChange={(e) =>
+                                            updateCoreForm({
+                                              diedAt: e.target.value ? e.target.value : null,
+                                            })
+                                          }
+                                        />
+                                      ) : (
+                                        diedAtLabel ?? "Yes"
+                                      )}
+                                    </dd>
+                                  </div>
+                                )}
 
                                 <div>
                                   <dt className={labelClass}>Microchip</dt>
@@ -3044,7 +3779,46 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
                                           ? "Female"
                                           : row.sex === "MALE"
                                             ? "Male"
-                                            : "Unknown"}
+                                        : "Unknown"}
+                                      </span>
+                                    )}
+                                  </dd>
+                                </div>
+
+                                <div>
+                                  <dt className={labelClass}>Keeper intent</dt>
+                                  <dd className="mt-1 text-sm">
+                                    {drawerMode === "edit" && coreForm ? (
+                                      <div className="space-y-1">
+                                        <select
+                                          className={inputClass}
+                                          value={keeperIntentState ?? ""}
+                                          disabled={promotedAnimalId != null}
+                                          onChange={(e) => {
+                                            const next = e.target.value as KeeperIntent | "";
+                                            updateCoreForm({
+                                              keeperIntent: next || null,
+                                            });
+                                          }}
+                                        >
+                                          <option value="">Select keeper intent</option>
+                                          {keeperIntentOptions.map((opt) => (
+                                            <option key={opt.value} value={opt.value}>
+                                              {opt.label}
+                                            </option>
+                                          ))}
+                                        </select>
+                                        {promotedAnimalId != null && (
+                                          <div className="text-[11px] text-secondary">
+                                            Promoted; keeper locked
+                                          </div>
+                                        )}
+                                      </div>
+                                    ) : (
+                                      <span>
+                                        {keeperIntentState
+                                          ? titleize(keeperIntentState)
+                                          : "Not set"}
                                       </span>
                                     )}
                                   </dd>
@@ -3112,219 +3886,353 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
                               </dl>
                             </SectionCard>
 
-                            {/* Buyer card */}
-                            <SectionCard title="Buyer">
-                              <dl className="mt-2 grid grid-cols-2 gap-x-10 gap-y-10 text-xs md:text-sm">
-                                {/* Row 1: Assigned Buyer | Buyer Risk Score */}
-                                <div>
-                                  <dt className={labelClass}>Assigned buyer</dt>
-                                  <dd className="mt-1 text-sm">{buyerName}</dd>
-                                </div>
+                            {/* Buyer card - CONSOLIDATED */}
+                            <SectionCard
+                              title={buyerHeaderLabel}
+                              description={
+                                group
+                                  ? "Assign a buyer to this offspring using buyers already linked to the parent group, or search the global directory."
+                                  : "This offspring is not linked to a group. You can still assign a buyer from the directory."
+                              }
+                            >
+                              {(() => {
+                                const hasGroup = !!group;
+                                const hasGroupOptions = groupBuyerOptions.length > 0;
+                                const currentBuyerName = hasBuyer ? buyerName : "** No Buyer Currently Assigned **";
 
-                                <div>
-                                  <dt className={labelClass}>Buyer risk score</dt>
-                                  <dd className="mt-1 text-sm">
-                                    {row.buyerRiskScore != null ? (
-                                      <RiskScorePill score={row.buyerRiskScore} />
-                                    ) : (
-                                      "Not set"
-                                    )}
-                                  </dd>
-                                </div>
-                              </dl>
-                            </SectionCard>
-                          </div>
-                        )}
+                                return (
+                                  <div className="space-y-6">
+                                    {/* Edit mode: Placement, Financial, Paperwork controls */}
+                                    {drawerMode === "edit" && (
+                                      <div className="space-y-4 rounded-md border border-hairline bg-surface/60 p-3">
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs md:text-sm">
+                                          <div>
+                                            <div className={labelClass}>Placement</div>
+                                            <select
+                                              className={inputClass}
+                                              value={placementState ?? ""}
+                                              disabled={lifeState === "DECEASED"}
+                                              onChange={(e) => {
+                                                const next = e.target.value as PlacementState | "";
+                                                const resolved = next || null;
+                                                updateCoreForm({
+                                                  placementState: lifeState === "DECEASED" ? "UNASSIGNED" : resolved,
+                                                  placedAt:
+                                                    resolved === "PLACED" && lifeState !== "DECEASED"
+                                                      ? (coreForm?.placedAt ?? placedAtValue ?? todayInputValue())
+                                                      : null,
+                                                });
+                                              }}
+                                            >
+                                              <option value="">Select placement</option>
+                                              {placementStateOptions.map((opt) => (
+                                                <option key={opt.value} value={opt.value}>
+                                                  {opt.label}
+                                                </option>
+                                              ))}
+                                            </select>
+                                            {lifeState === "DECEASED" && (
+                                              <div className="mt-1 text-[11px] text-secondary">
+                                                Placement locked for deceased offspring
+                                              </div>
+                                            )}
+                                          </div>
 
-                        {/* BUYER TAB */}
-                        {drawerTab === "buyer" && (
-                          <SectionCard
-                            title="Buyer"
-                            description={
-                              group
-                                ? "Assign a buyer to this offspring using buyers already linked to the parent group, or search the global directory."
-                                : "This offspring is not linked to a group. You can still assign a buyer from the directory."
-                            }
-                          >
-                            {(() => {
-                              const hasGroup = !!group;
-                              const hasGroupOptions = groupBuyerOptions.length > 0;
+                                          {placementState === "PLACED" && (
+                                            <div>
+                                              <div className={labelClass}>Placed at</div>
+                                              <input
+                                                type="date"
+                                                className={inputClass}
+                                                value={toDateInputValue(coreForm?.placedAt ?? placedAtValue)}
+                                                onChange={(e) =>
+                                                  updateCoreForm({
+                                                    placedAt: e.target.value ? e.target.value : null,
+                                                  })
+                                                }
+                                              />
+                                            </div>
+                                          )}
+                                        </div>
 
-                              const currentBuyerName = hasBuyer ? buyerName : "** No Buyer Currently Assigned **";
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs md:text-sm">
+                                          <div>
+                                            <div className={labelClass}>Financial</div>
+                                            <select
+                                              className={inputClass}
+                                              value={financialState ?? ""}
+                                              onChange={(e) => {
+                                                const next = e.target.value as FinancialState | "";
+                                                updateCoreForm({
+                                                  financialState: next || null,
+                                                  paidInFullAt:
+                                                    next === "PAID_IN_FULL"
+                                                      ? (coreForm?.paidInFullAt ?? paidInFullAtValue ?? todayInputValue())
+                                                      : null,
+                                                });
+                                              }}
+                                            >
+                                              <option value="">Select financial state</option>
+                                              {financialStateOptions.map((opt) => (
+                                                <option key={opt.value} value={opt.value}>
+                                                  {opt.label}
+                                                </option>
+                                              ))}
+                                            </select>
+                                          </div>
 
-                              return (
-                                <div className="space-y-6">
+                                          {financialState === "PAID_IN_FULL" && (
+                                            <div>
+                                              <div className={labelClass}>Paid in full at</div>
+                                              <input
+                                                type="date"
+                                                className={inputClass}
+                                                value={toDateInputValue(coreForm?.paidInFullAt ?? paidInFullAtValue)}
+                                                onChange={(e) =>
+                                                  updateCoreForm({
+                                                    paidInFullAt: e.target.value ? e.target.value : null,
+                                                  })
+                                                }
+                                              />
+                                            </div>
+                                          )}
+                                        </div>
 
-                                  {/* Current buyer summary */}
-                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs md:text-sm">
-                                    <div>
-                                      <div className={labelClass}>
-                                        Assigned Buyer
+                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs md:text-sm">
+                                          <div>
+                                            <div className={labelClass}>Paperwork</div>
+                                            <select
+                                              className={inputClass}
+                                              value={paperworkState ?? ""}
+                                              onChange={(e) => {
+                                                const next = e.target.value as PaperworkState | "";
+                                                updateCoreForm({
+                                                  paperworkState: next || null,
+                                                  contractSignedAt:
+                                                    next === "SIGNED" || next === "COMPLETE"
+                                                      ? (coreForm?.contractSignedAt ?? contractSignedAtValue ?? todayInputValue())
+                                                      : null,
+                                                });
+                                              }}
+                                            >
+                                              <option value="">Select paperwork state</option>
+                                              {paperworkStateOptions.map((opt) => (
+                                                <option key={opt.value} value={opt.value}>
+                                                  {opt.label}
+                                                </option>
+                                              ))}
+                                            </select>
+                                          </div>
+
+                                          {(paperworkState === "SIGNED" || paperworkState === "COMPLETE") && (
+                                            <div>
+                                              <div className={labelClass}>Contract signed at</div>
+                                              <input
+                                                type="date"
+                                                className={inputClass}
+                                                value={toDateInputValue(coreForm?.contractSignedAt ?? contractSignedAtValue)}
+                                                onChange={(e) =>
+                                                  updateCoreForm({
+                                                    contractSignedAt: e.target.value ? e.target.value : null,
+                                                  })
+                                                }
+                                              />
+                                            </div>
+                                          )}
+
+                                          <div>
+                                            <div className={labelClass}>Contract ID</div>
+                                            <input
+                                              className={inputClass}
+                                              value={coreForm?.contractId ?? contractIdValue ?? ""}
+                                              onChange={(e) =>
+                                                updateCoreForm({
+                                                  contractId: e.target.value ? e.target.value : null,
+                                                })
+                                              }
+                                            />
+                                          </div>
+                                        </div>
                                       </div>
-                                      <div className="text-sm">{currentBuyerName}</div>
+                                    )}
+
+                                    {/* Current buyer summary with contact info */}
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs md:text-sm">
+                                      <div>
+                                        <div className={labelClass}>Assigned Buyer</div>
+                                        <div className="flex items-center gap-2">
+                                          <span className="text-sm">{currentBuyerName}</span>
+                                          {hasBuyer && (
+                                            <button
+                                              type="button"
+                                              onClick={handleClearBuyer}
+                                              className="text-muted-foreground hover:text-destructive transition-colors"
+                                              title="Unassign this buyer"
+                                            >
+                                              <Trash2 className="h-3.5 w-3.5" />
+                                            </button>
+                                          )}
+                                        </div>
+
+                                        {hasBuyer && (
+                                          <div className="mt-4">
+                                            <div className={labelClass}>Phone</div>
+                                            <div className="text-sm">
+                                              {buyerPhone ? (
+                                                <a
+                                                  href={`tel:${buyerPhone}`}
+                                                  className="text-primary hover:underline"
+                                                >
+                                                  {buyerPhone}
+                                                </a>
+                                              ) : (
+                                                "No phone on file"
+                                              )}
+                                            </div>
+                                          </div>
+                                        )}
+                                      </div>
 
                                       {hasBuyer && (
-                                        <div className="mt-4">
-                                          <div className={labelClass}>
-                                            Phone
-                                          </div>
+                                        <div>
+                                          <div className={labelClass}>Email</div>
                                           <div className="text-sm">
-                                            {buyerPhone ? (
+                                            {buyerEmail ? (
                                               <a
-                                                href={`tel:${buyerPhone}`}
+                                                href={`mailto:${buyerEmail}`}
                                                 className="text-primary hover:underline"
                                               >
-                                                {buyerPhone}
+                                                {buyerEmail}
                                               </a>
                                             ) : (
-                                              "No phone on file"
+                                              "No email on file"
                                             )}
                                           </div>
                                         </div>
                                       )}
                                     </div>
 
-                                    {hasBuyer && (
+                                    {/* Deposit and Contract summaries */}
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs md:text-sm">
                                       <div>
-                                        <div className={labelClass}>
-                                          Email
-                                        </div>
-                                        <div className="text-sm">
-                                          {buyerEmail ? (
-                                            <a
-                                              href={`mailto:${buyerEmail}`}
-                                              className="text-primary hover:underline"
-                                            >
-                                              {buyerEmail}
-                                            </a>
-                                          ) : (
-                                            "No email on file"
-                                          )}
-                                        </div>
+                                        <div className={labelClass}>Deposit</div>
+                                        <div className="text-sm">{depositLabel}</div>
+                                      </div>
+                                      <div>
+                                        <div className={labelClass}>Contract</div>
+                                        <div className="text-sm">{contractLabel}</div>
+                                      </div>
+                                    </div>
 
-                                        <div className="mt-4">
-                                          <Button
-                                            type="button"
-                                            variant="outline"
-                                            size="sm"
-                                            onClick={handleClearBuyer}
-                                          >
-                                            Unassign This Buyer
-                                          </Button>
+                                    {/* Group buyer assignment (if group exists) */}
+                                    {hasGroup && (
+                                      <div className="space-y-3">
+                                        <div className="flex items-center justify-between gap-2">
+                                          <div className={labelClass}>
+                                            Choose a buyer from this group
+                                          </div>
                                         </div>
+                                        {hasGroupOptions ? (
+                                          <>
+                                            <select
+                                              className={inputClass}
+                                              value={selectedGroupBuyerKey}
+                                              onChange={(e) =>
+                                                setSelectedGroupBuyerKey(e.target.value)
+                                              }
+                                            >
+                                              <option value="">
+                                                Select a group buyer
+                                              </option>
+                                              {groupBuyerOptions.map((opt) => (
+                                                <option key={opt.key} value={opt.key}>
+                                                  {opt.label}
+                                                  {opt.email ? ` (${opt.email})` : ""}
+                                                </option>
+                                              ))}
+                                            </select>
+
+                                            <div className="flex items-center justify-between gap-2">
+                                              <div className={labelClass}>
+                                                Assign the selected group buyer to this offspring.
+                                              </div>
+                                              <div className="flex items-center gap-2">
+                                                {hasBuyer && (
+                                                  <Button
+                                                    size="sm"
+                                                    variant="outline"
+                                                    type="button"
+                                                    onClick={handleClearBuyer}
+                                                  >
+                                                    Clear buyer
+                                                  </Button>
+                                                )}
+                                                <Button
+                                                  size="sm"
+                                                  type="button"
+                                                  onClick={handleAssignBuyerFromGroup}
+                                                  disabled={!selectedGroupBuyerKey}
+                                                >
+                                                  {hasBuyer ? "Update buyer" : "Assign buyer"}
+                                                </Button>
+                                              </div>
+                                            </div>
+                                          </>
+                                        ) : (
+                                          <div className={labelClass}>
+                                            This group has no buyers linked yet. Add buyers on the group first, then return here to assign one to this offspring.
+                                          </div>
+                                        )}
+                                      </div>
+                                    )}
+
+                                    {/* Directory search and assignment */}
+                                    {!hasBuyer && (
+                                      <div className="space-y-2 border-t border-hairline pt-4">
+                                        <div className="flex items-center justify-between gap-2">
+                                        </div>
+                                        <SearchBar
+                                          value={buyerSearchQ}
+                                          onChange={setBuyerSearchQ}
+                                          placeholder="To Add a Buyer - Search by name, email, or phone"
+                                          widthPx={560}
+                                          busy={buyerSearchBusy}
+                                        />
+                                        {buyerHits.length > 0 ? (
+                                          <div className="mt-2 max-h-56 overflow-y-auto rounded-md border border-hairline bg-surface-soft">
+                                            {buyerHits.map((hit) => (
+                                              <button
+                                                key={`${hit.kind}:${hit.id}`}
+                                                type="button"
+                                                className="flex w-full items-center justify-between gap-3 px-2 py-1.5 text-left text-xs hover:bg-surface/80"
+                                                onClick={() => handleAssignBuyerFromDirectory(hit)}
+                                              >
+                                                <div className="flex flex-col">
+                                                  <span className="font-medium">{hit.label}</span>
+                                                  {hit.sub && (
+                                                    <span className="text-[11px] text-muted-foreground">
+                                                      {hit.sub}
+                                                    </span>
+                                                  )}
+                                                </div>
+                                                <span className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                                                  {hit.kind === "contact" ? "Contact" : "Organization"}
+                                                </span>
+                                              </button>
+                                            ))}
+                                          </div>
+                                        ) : buyerSearchQ.trim() ? (
+                                          <div className="mt-2 text-[11px] text-muted-foreground">
+                                            No directory matches for this search.
+                                          </div>
+                                        ) : null}
                                       </div>
                                     )}
                                   </div>
-
-                                  {/* Group buyer assignment (if group exists) */}
-                                  {hasGroup && (
-                                    <div className="space-y-3">
-                                      <div className="flex items-center justify-between gap-2">
-                                        <div className={labelClass}>
-                                          Choose a buyer from this group
-                                        </div>
-                                      </div>
-                                      {hasGroupOptions ? (
-                                        <>
-                                          <select
-                                            className={inputClass}
-                                            value={selectedGroupBuyerKey}
-                                            onChange={(e) =>
-                                              setSelectedGroupBuyerKey(e.target.value)
-                                            }
-                                          >
-                                            <option value="">
-                                              Select a group buyer
-                                            </option>
-                                            {groupBuyerOptions.map((opt) => (
-                                              <option key={opt.key} value={opt.key}>
-                                                {opt.label}
-                                                {opt.email ? ` (${opt.email})` : ""}
-                                              </option>
-                                            ))}
-                                          </select>
-
-                                          <div className="flex items-center justify-between gap-2">
-                                            <div className={labelClass}>
-                                              Assign the selected group buyer to this offspring.
-                                            </div>
-                                            <div className="flex items-center gap-2">
-                                              {hasBuyer && (
-                                                <Button
-                                                  size="sm"
-                                                  variant="outline"
-                                                  type="button"
-                                                  onClick={handleClearBuyer}
-                                                >
-                                                  Clear buyer
-                                                </Button>
-                                              )}
-                                              <Button
-                                                size="sm"
-                                                type="button"
-                                                onClick={handleAssignBuyerFromGroup}
-                                                disabled={!selectedGroupBuyerKey}
-                                              >
-                                                {hasBuyer ? "Update buyer" : "Assign buyer"}
-                                              </Button>
-                                            </div>
-                                          </div>
-                                        </>
-                                      ) : (
-                                        <div className={labelClass}>
-                                          This group has no buyers linked yet. Add buyers on the group first, then return here to assign one to this offspring.
-                                        </div>
-                                      )}
-                                    </div>
-                                  )}
-
-                                  {/* Directory search and assignment */}
-                                  {/* Directory search and assignment */}
-                                  {!hasBuyer && (
-                                    <div className="space-y-2 border-t border-hairline pt-4">
-                                      <div className="flex items-center justify-between gap-2">
-                                      </div>
-                                      <SearchBar
-                                        value={buyerSearchQ}
-                                        onChange={setBuyerSearchQ}
-                                        placeholder="To Add a Buyer - Search by name, email, or phone"
-                                        widthPx={560}
-                                        busy={buyerSearchBusy}
-                                      />
-                                      {buyerHits.length > 0 ? (
-                                        <div className="mt-2 max-h-56 overflow-y-auto rounded-md border border-hairline bg-surface-soft">
-                                          {buyerHits.map((hit) => (
-                                            <button
-                                              key={`${hit.kind}:${hit.id}`}
-                                              type="button"
-                                              className="flex w-full items-center justify-between gap-3 px-2 py-1.5 text-left text-xs hover:bg-surface/80"
-                                              onClick={() => handleAssignBuyerFromDirectory(hit)}
-                                            >
-                                              <div className="flex flex-col">
-                                                <span className="font-medium">{hit.label}</span>
-                                                {hit.sub && (
-                                                  <span className="text-[11px] text-muted-foreground">
-                                                    {hit.sub}
-                                                  </span>
-                                                )}
-                                              </div>
-                                              <span className="text-[11px] uppercase tracking-wide text-muted-foreground">
-                                                {hit.kind === "contact" ? "Contact" : "Organization"}
-                                              </span>
-                                            </button>
-                                          ))}
-                                        </div>
-                                      ) : buyerSearchQ.trim() ? (
-                                        <div className="mt-2 text-[11px] text-muted-foreground">
-                                          No directory matches for this search.
-                                        </div>
-                                      ) : null}
-                                    </div>
-                                  )}
-                                </div>
-                              );
-                            })()}
-                          </SectionCard>
+                                );
+                              })()}
+                            </SectionCard>
+                          </div>
                         )}
 
                         {/* HEALTH TAB */}

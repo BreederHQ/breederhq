@@ -29,6 +29,17 @@ export type OffspringRow = {
   identifier: string | null;
   createdAt: string;
   updatedAt: string;
+  placementState?: string | null;
+  lifeState?: string | null;
+  keeperIntent?: string | null;
+  financialState?: string | null;
+  paperworkState?: string | null;
+  diedAt?: string | null;
+  placedAt?: string | null;
+  paidInFullAt?: string | null;
+  contractId?: string | null;
+  contractSignedAt?: string | null;
+  promotedAnimalId?: number | null;
 
   counts?: {
     animals: number;
@@ -78,6 +89,19 @@ export type AnimalLite = {
   registryNumber?: string | null;
   microchip?: string | null;
   birthDate?: string | null;
+  placementState?: string | null;
+  lifeState?: string | null;
+  keeperIntent?: string | null;
+  financialState?: string | null;
+  paperworkState?: string | null;
+  diedAt?: string | null;
+  placedAt?: string | null;
+  paidInFullAt?: string | null;
+  contractId?: string | null;
+  contractSignedAt?: string | null;
+  promotedAnimalId?: number | null;
+  buyerContactId?: number | null;
+  buyerOrganizationId?: number | null;
   status?: string | null;
   notes?: string | null;
   [key: string]: any;
@@ -166,6 +190,19 @@ export type CreateOffspringIndividualBody = {
   color?: string | null;
   birthDate?: string | null;
   notes?: string | null;
+  placementState?: string | null;
+  lifeState?: string | null;
+  keeperIntent?: string | null;
+  financialState?: string | null;
+  paperworkState?: string | null;
+  diedAt?: string | null;
+  placedAt?: string | null;
+  paidInFullAt?: string | null;
+  contractId?: string | null;
+  contractSignedAt?: string | null;
+  promotedAnimalId?: number | null;
+  buyerContactId?: number | null;
+  buyerOrganizationId?: number | null;
   [key: string]: any;
 };
 

@@ -1,12 +1,15 @@
 {
 	"folders": [
 		{
+			"name": "breederhq",
 			"path": "."
 		},
 		{
+			"name": "breederhq-api",
 			"path": "../breederhq-api"
 		},
 		{
+			"name": "bhq-mock",
 			"path": "../Archive/BreederHQ-Archive/Node.js/bhq-mock"
 		}
 	],
