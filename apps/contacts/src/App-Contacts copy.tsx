@@ -609,10 +609,7 @@ function isLinkedToContact(animal: any, contactId: ID): boolean {
   // Common direct fields
   const directOwner =
     animal?.ownerId ?? animal?.owner_id ?? animal?.contactId ?? animal?.contact_id ?? null;
-  if (directOwner != null && String(directOwner) === cid) {
-    console.log("[isLinkedToContact] Match via direct owner field");
-    return true;
-  }
+  if (directOwner != null && String(directOwner) === cid) return true;
 
   // Primary owner object shapes
   const primaryOwner =
@@ -621,7 +618,6 @@ function isLinkedToContact(animal: any, contactId: ID): boolean {
     animal?.primary_owner ??
     null;
   if (primaryOwner && String(primaryOwner.id ?? primaryOwner.contactId ?? primaryOwner.contact_id) === cid) {
-    console.log("[isLinkedToContact] Match via primary owner object");
     return true;
   }
 
@@ -637,13 +633,7 @@ function isLinkedToContact(animal: any, contactId: ID): boolean {
 
   for (const arr of linkArrays) {
     const list = Array.isArray(arr) ? arr : Array.isArray(arr?.items) ? arr.items : [];
-    if (list.some((o: any) => {
-      const match = String(o?.contactId ?? o?.contact_id ?? o?.id) === cid;
-      if (match) {
-        console.log("[isLinkedToContact] Match found in array, owner:", o);
-      }
-      return match;
-    })) {
+    if (list.some((o: any) => String(o?.contactId ?? o?.contact_id ?? o?.id) === cid)) {
       return true;
     }
   }
@@ -651,13 +641,7 @@ function isLinkedToContact(animal: any, contactId: ID): boolean {
   // Some APIs return { owners: [{ contact: { id } }]}
   for (const arr of linkArrays) {
     const list = Array.isArray(arr) ? arr : Array.isArray(arr?.items) ? arr.items : [];
-    if (list.some((o: any) => {
-      const match = String(o?.contact?.id) === cid;
-      if (match) {
-        console.log("[isLinkedToContact] Match found via nested contact.id");
-      }
-      return match;
-    })) {
+    if (list.some((o: any) => String(o?.contact?.id) === cid)) {
       return true;
     }
   }
@@ -735,81 +719,74 @@ const ContactDetailsView: React.FC<ContactDetailsViewProps> = ({
 
   const [animals, setAnimals] = React.useState<AnimalRow[] | null>(null);
   const [animalsErr, setAnimalsErr] = React.useState<string | null>(null);
-
-  // Reset animals when switching away from the tab to force refresh on return
   React.useEffect(() => {
-    if (activeTab !== "animals") {
-      setAnimals(null);
-    }
-  }, [activeTab]);
+    let cancelled = false;
+    if (activeTab !== "animals" || animals !== null) return;
 
-  // Load animals data
-  const loadAnimals = React.useCallback(async () => {
-    try {
-      setAnimalsErr(null);
+    (async () => {
+      try {
+        setAnimalsErr(null);
 
-      console.log("[Contacts] Loading animals for contact:", row.id);
+        // Try the most specific things first.
+        const attempts: Array<() => Promise<any>> = [
+          // 1) Contacts → Animals (ideal)
+          () => (api as any).contacts?.getAnimals?.(row.id),
+          // 2) Animals service variants that accept a contact id
+          () => (api as any).animals?.listByContact?.(row.id),
+          () => (api as any).animals?.list?.({ contactId: row.id }),
+          () => (api as any).animals?.list?.({ ownerId: row.id }),
+          // 3) Very broad fallbacks (must client-filter)
+          () => (api as any).animals?.list?.(),
+          () => (api as any).animals?.all?.(),
+        ].filter(Boolean);
 
-      // Call the backend API endpoint GET /contacts/:id/animals
-      const res: any = await api.contactsExtras.animalsForContact(row.id);
-      const scoped = Array.isArray(res) ? res : Array.isArray(res?.items) ? res.items : [];
+        let raw: any[] = [];
+        for (const tryFn of attempts) {
+          try {
+            const res = await tryFn();
+            const arr =
+              Array.isArray(res) ? res :
+                Array.isArray(res?.items) ? res.items :
+                  Array.isArray(res?.data) ? res.data :
+                    null;
+            if (arr) { raw = arr; break; }
+          } catch {
+            // ignore and try next
+          }
+        }
 
-      console.log("[Contacts] Received", scoped.length, "animals from backend for contact", row.id);
+        // Always filter to ONLY animals linked to this contact.
+        const scoped = (raw || []).filter((a: any) => isLinkedToContact(a, row.id));
 
-      const mapped: AnimalRow[] = scoped.map((a: any) => {
-        // Extract role and sharePct from owners array if they exist
-        const ownersList = Array.isArray(a.owners) ? a.owners : [];
-        const contactOwnership = ownersList.find((o: any) =>
-          String(o.contactId ?? o.contact_id) === String(row.id)
-        );
-
-        return {
+        const mapped: AnimalRow[] = scoped.map((a: any) => ({
           id: a.id,
           name: a.name ?? a.displayName ?? a.callName ?? null,
           species: a.species ?? null,
           sex: a.sex ?? null,
           status: a.status ?? null,
           role:
-            contactOwnership?.role ??
             a.ownershipRole ??
             a.role ??
+            // sometimes link lives under a nested primary owner for display:
             a?.owner?.role ??
             a?.primaryOwner?.role ??
-            (contactOwnership?.is_primary || contactOwnership?.isPrimary ? "Owner" : "Co-owner"),
+            null,
           sharePct:
-            contactOwnership?.percent ??
-            contactOwnership?.sharePct ??
             a.ownershipSharePct ??
             a.sharePct ??
             a?.owner?.sharePct ??
             a?.primaryOwner?.sharePct ??
             null,
-        };
-      });
+        }));
 
-      setAnimals(mapped);
-    } catch (e: any) {
-      setAnimalsErr(e?.message || "Failed to load animals");
-    }
-  }, [api, row.id]);
+        if (!cancelled) setAnimals(mapped);
+      } catch (e: any) {
+        if (!cancelled) setAnimalsErr(e?.message || "Failed to load animals");
+      }
+    })();
 
-  React.useEffect(() => {
-    if (activeTab !== "animals" || animals !== null) return;
-    loadAnimals();
-  }, [activeTab, animals, loadAnimals]);
-
-  // Listen for animal updates from other modules
-  React.useEffect(() => {
-    if (activeTab !== "animals") return;
-
-    const handleAnimalsUpdate = () => {
-      console.log("[Contacts] Received animals update event, refreshing...");
-      setAnimals(null); // Force refresh
-    };
-
-    window.addEventListener("bhq:animals:updated", handleAnimalsUpdate);
-    return () => window.removeEventListener("bhq:animals:updated", handleAnimalsUpdate);
-  }, [activeTab]);
+    return () => { cancelled = true; };
+  }, [activeTab, animals, api, row?.id]);
 
   const overlayRoot = typeof document !== "undefined" ? document.getElementById("bhq-overlay-root") : null;
 

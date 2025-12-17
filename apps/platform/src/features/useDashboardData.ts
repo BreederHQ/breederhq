@@ -8,7 +8,6 @@ import {
   type DashboardCounts as Counts,
 } from "../api";
 import type { StageWindows } from "@bhq/ui/utils";
-import { fromPlan as buildStageWindows } from "@bhq/ui/utils/breedingMath";
 
 export type WindowsMap = Record<string, StageWindows[]>;
 

@@ -36,15 +36,9 @@ import "@bhq/ui/styles/table.css";
 import "@bhq/ui/styles/details.css";
 import "@bhq/ui/styles/datefield.css";
 import { makeBreedingApi } from "./api";
-import { normalizeCycleStartsAsc } from "@bhq/ui/utils/reproEngine/normalize";
-import { projectUpcomingCycleStarts } from "@bhq/ui/utils/reproEngine/projectUpcomingCycles";
 
-import {
-  windowsFromPlan,
-  expectedMilestonesFromLocked,
-  expectedTestingFromCycleStart,
-  pickPlacementCompletedAny,
-} from "@bhq/ui/utils";
+import { windowsFromPlan, expectedTestingFromCycleStart, pickPlacementCompletedAny } from "@bhq/ui/utils";
+import { reproEngine } from "@bhq/ui/utils";
 
 // ── Calendar / Planning wiring ─────────────────────────────
 import BreedingCalendar from "./components/BreedingCalendar";
@@ -76,8 +70,8 @@ const PLAN_TABS = [
 /* ───────────────────────── Types ───────────────────────── */
 type ID = number | string;
 
-type SpeciesWire = "DOG" | "CAT" | "HORSE";
-type SpeciesUi = "Dog" | "Cat" | "Horse";
+type SpeciesWire = "DOG" | "CAT" | "HORSE" | "GOAT" | "RABBIT" | (string & {});
+type SpeciesUi = "Dog" | "Cat" | "Horse" | "Goat" | "Rabbit";
 
 type WhatIfRow = {
   id: string;
@@ -115,9 +109,103 @@ function asISODateOnly(v: unknown): string | null {
       return d.toISOString().slice(0, 10);
     }
   }
-
   return null;
 }
+
+// Normalize a wire species code. Returns an uppercase string or null.
+function normalizeSpeciesWire(v: unknown): SpeciesWire | null {
+  if (typeof v !== "string") return null;
+  const s = v.trim().toUpperCase();
+  return s ? (s as SpeciesWire) : null;
+}
+
+type ExpectedDatesNormalized = {
+  cycleStart: string | null;
+  hormoneTestingStart: string | null;
+  breedDate: string | null;
+  birthDate: string | null;
+  weanedDate: string | null;
+  placementStart: string | null;
+  placementCompleted: string | null;
+};
+
+// Normalize reproEngine milestones into one stable shape for the Dates tab and lock payload.
+function normalizeExpectedMilestones(
+  milestones: any,
+  cycleStart: string | null
+): ExpectedDatesNormalized {
+  const day = (x: any) => asISODateOnly(x);
+
+  const cycle = day(cycleStart) ?? null;
+
+  const hormoneTestingStart =
+    day(milestones?.expectedHormoneTestingStart) ??
+    day(milestones?.hormone_testing_full?.start) ?? // reproEngine format: { start, end }
+    day(milestones?.hormone_testing_full?.[0]) ?? // legacy array format
+    day(milestones?.hormoneTesting_full?.[0]) ??
+    day(milestones?.testing_expected) ??
+    day(milestones?.testing_start) ??
+    day(milestones?.hormone_testing_start) ??
+    null;
+
+  const breedDate =
+    day(milestones?.expectedBreedDate) ??
+    day(milestones?.breeding_full?.start) ?? // reproEngine format: { start, end }
+    day(milestones?.breeding_likely?.start) ?? // reproEngine format: { start, end }
+    day(milestones?.breeding_full?.[0]) ?? // legacy array format
+    day(milestones?.breeding_likely?.[0]) ?? // legacy array format
+    day(milestones?.breeding_expected) ??
+    day(milestones?.ovulation_center) ?? // reproEngine milestone
+    day(milestones?.ovulation) ??
+    null;
+
+  const birthDate =
+    day(milestones?.expectedBirthDate) ??
+    day(milestones?.whelping_full?.start) ?? // reproEngine format: { start, end }
+    day(milestones?.whelping_likely?.start) ?? // reproEngine format: { start, end }
+    day(milestones?.whelping_full?.[0]) ?? // legacy array format
+    day(milestones?.whelping_likely?.[0]) ?? // legacy array format
+    day(milestones?.birth_expected) ??
+    null;
+
+  const weanedDate =
+    day(milestones?.expectedWeanedDate) ??
+    day(milestones?.puppy_care_full?.end) ?? // reproEngine format: end of puppy care
+    day(milestones?.go_home_normal_full?.start) ?? // reproEngine format: { start, end }
+    day(milestones?.go_home_normal_likely?.start) ?? // reproEngine format: { start, end }
+    day(milestones?.go_home_normal_full?.[0]) ?? // legacy array format
+    day(milestones?.go_home_normal_likely?.[0]) ?? // legacy array format
+    day(milestones?.weaning_expected) ??
+    day(milestones?.weaned_expected) ??
+    day(milestones?.post_birth_care_likely?.[0]) ??
+    null;
+
+  const placementStart =
+    day(milestones?.expectedPlacementStartDate) ??
+    day(milestones?.go_home_normal_full?.start) ?? // reproEngine format: { start, end }
+    day(milestones?.placement_expected) ??
+    day(milestones?.placement_start_expected) ??
+    null;
+
+  const placementCompleted =
+    day(milestones?.expectedPlacementCompletedDate) ??
+    day(milestones?.go_home_extended_full?.end) ?? // reproEngine format: end of extended window
+    day(milestones?.placement_extended_end) ??
+    day(milestones?.placement_expected_end) ??
+    day(milestones?.placement_extended_full?.[1]) ?? // legacy array format
+    null;
+
+  return {
+    cycleStart: cycle,
+    hormoneTestingStart,
+    breedDate,
+    birthDate,
+    weanedDate,
+    placementStart,
+    placementCompleted,
+  };
+}
+
 
 
 // ── Canonical “Testing Start” picker: prefer full-window[0] → expected → start; else +7d from locked ──
@@ -148,83 +236,18 @@ function pickExpectedTestingStart(preview: any, lockedCycleStart?: string | null
 }
 
 
-function computeExpectedForPlan(plan: { species?: string; lockedCycleStart?: string | null }) {
-  const speciesWire = toWireSpecies(plan.species as any) ?? "DOG";
+function computeExpectedForPlan(plan: { species?: string; lockedCycleStart?: string | null }): PlannerExpected | null {
   const locked = (plan.lockedCycleStart || "").slice(0, 10) || null;
+  const speciesWire = typeof plan.species === "string" ? plan.species : "";
 
-  if (!locked) {
-    return {
-      expectedCycleStart: null,
-      expectedHormoneTestingStart: null,
-      expectedBreedDate: null,
-      expectedBirthDate: null,
-      expectedWeanedDate: null,
-      expectedPlacementStartDate: null,
-      expectedPlacementCompletedDate: null,
-    };
+  if (!locked || !speciesWire) return null;
+
+  try {
+    return (reproEngine.expectedMilestonesFromLocked(locked, speciesWire) as any) ?? null;
+  } catch (e) {
+    console.error("[Breeding] expectedMilestonesFromLocked failed", { locked, speciesWire, e });
+    return null;
   }
-
-  // ---- helpers: keep everything date-only in UTC, no local Date() drift ----
-  const onlyDay = (v: any): string | null => {
-    if (!v) return null;
-    const s = String(v);
-    if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
-    // If it's ISO with time, slice the day; otherwise bail out.
-    const iso = s.includes("T") ? s.slice(0, 10) : null;
-    return /^\d{4}-\d{2}-\d{2}$/.test(iso || "") ? iso : null;
-  };
-
-  const addDays = (yyyyMmDd: string, n: number): string => {
-    const [y, m, d] = yyyyMmDd.split("-").map(Number);
-    const t = Date.UTC(y, m - 1, d);
-    const dt = new Date(t + n * 86400000);
-    const yy = dt.getUTCFullYear();
-    const mm = String(dt.getUTCMonth() + 1).padStart(2, "0");
-    const dd = String(dt.getUTCDate()).padStart(2, "0");
-    return `${yy}-${mm}-${dd}`;
-  };
-
-  // Core projections from breeding math
-  const m = expectedMilestonesFromLocked(locked, speciesWire) || {};
-
-  // Match the Dates tab’s preference order for each field
-  const expectedCycleStart = locked;
-
-  // Testing start: mirror pickExpectedTestingStart() logic used in Dates tab
-  const expectedHormoneTestingStart = pickExpectedTestingStart(m, locked);
-
-  // Breed/ovulation (Dates tab shows ovulation as “Breeding (Expected)”)
-  const expectedBreedDate = onlyDay(m.ovulation ?? m.breeding_expected) || null;
-
-  const expectedBirthDate = onlyDay(m.birth_expected) || null;
-
-  // Weaned date: Dates tab prefers weaning_expected, then weaned_expected, then puppy_care_likely[0]
-  const expectedWeanedDate =
-    onlyDay(m.weaning_expected ?? m.weaned_expected ?? m.post_birth_care_likely?.[0]) || null;
-
-  // Placement start: Dates tab uses placement_expected primarily
-  const expectedPlacementStartDate =
-    onlyDay(m.placement_expected ?? m.placement_start_expected ?? m.placement_start) || null;
-
-  // Placement completed: Dates tab prefers extended end, then expected end, then “full” window end
-  const expectedPlacementCompletedDate =
-    onlyDay(
-      m.placement_extended_end ??
-      m.placement_extended_end_expected ??
-      m.placement_expected_end ??
-      m.placement_completed_expected ??
-      m.placement_extended_full?.[1]
-    ) || null;
-
-  return {
-    expectedCycleStart,
-    expectedHormoneTestingStart,
-    expectedBreedDate,
-    expectedBirthDate,
-    expectedWeanedDate,
-    expectedPlacementStartDate,
-    expectedPlacementCompletedDate,
-  };
 }
 
 function DateField({ label, value, defaultValue, readOnly, onChange }: BHQDateFieldProps) {
@@ -258,14 +281,22 @@ function DateField({ label, value, defaultValue, readOnly, onChange }: BHQDateFi
 
 
 const toUiSpecies = (s?: string | null): SpeciesUi | "" =>
-  s === "DOG" ? "Dog" : s === "CAT" ? "Cat" : s === "HORSE" ? "Horse" : "";
+  s === "DOG"
+    ? "Dog"
+    : s === "CAT"
+      ? "Cat"
+      : s === "HORSE"
+        ? "Horse"
+        : s === "GOAT"
+          ? "Goat"
+          : s === "RABBIT"
+            ? "Rabbit"
+            : "";
 
 const toWireSpecies = (s: SpeciesUi | SpeciesWire | ""): SpeciesWire | undefined => {
-  const v = String(s || "").toUpperCase();
-  if (v === "DOG" || v === "CAT" || v === "HORSE") return v as SpeciesWire; // pass-through if already wire
-  if (v === "DOG") return "DOG";
-  if (v === "CAT") return "CAT";
-  if (v === "HORSE") return "HORSE";
+  const v = String(s || "").trim().toUpperCase();
+  if (!v) return undefined;
+  if (v === "DOG" || v === "CAT" || v === "HORSE" || v === "GOAT" || v === "RABBIT") return v as SpeciesWire;
   return undefined;
 };
 
@@ -647,7 +678,7 @@ function planToRow(p: any): PlanRow {
     code: p.code ?? null,
 
     /* Canonical expected timeline (strict, breedingMath-driven) */
-    expectedCycleStart: p.lockedCycleStart ?? null,
+    expectedCycleStart: (p.expectedCycleStart ?? p.expected_cycle_start ?? p.lockedCycleStart) ?? null,
     expectedHormoneTestingStart: p.expectedHormoneTestingStart ?? null,
     expectedBreedDate: p.lockedOvulationDate ?? null,
     expectedBirthDate: p.lockedDueDate ?? null,
@@ -756,7 +787,21 @@ function normalizeSpecies(x: any): SpeciesWire | undefined {
   if (s === "DOG" || s === "CANINE") return "DOG";
   if (s === "CAT" || s === "FELINE") return "CAT";
   if (s === "HORSE" || s === "EQUINE") return "HORSE";
+  if (s === "GOAT" || s === "CAPRINE") return "GOAT";
+  if (s === "RABBIT" || s === "LAPINE") return "RABBIT";
   return undefined;
+}
+
+
+function toPlannerSpecies(x: any): PlannerSpecies | null {
+  const w = normalizeSpecies(x);
+  if (!w) return null;
+  if (w === "DOG") return "Dog";
+  if (w === "CAT") return "Cat";
+  if (w === "HORSE") return "Horse";
+  if (w === "GOAT") return "Goat";
+  if (w === "RABBIT") return "Rabbit";
+  return null;
 }
 
 async function fetchAnimals(opts: {
@@ -937,63 +982,6 @@ function WhatIfRowEditor(props: WhatIfRowEditorProps) {
   const [damRepro, setDamRepro] = React.useState<WhatIfDamReproData | null>(null);
   const [damLoadError, setDamLoadError] = React.useState<string | null>(null);
 
-  const species = row.species as any;
-
-  const cycleStartsAsc = React.useMemo<string[]>(() => {
-    if (!damRepro) return [];
-
-    const dates: string[] = [];
-
-    const cycleStartDates = damRepro.cycleStartDates as string[] | undefined;
-    const lastCycle = damRepro.lastCycle as string | null | undefined;
-    const lastHeat = damRepro.last_heat as string | null | undefined;
-
-    // Primary source: explicit cycle start dates saved on the animal
-    if (cycleStartDates && cycleStartDates.length) {
-      dates.push(...cycleStartDates);
-    } else if (lastCycle) {
-      // Fallback: last learned cycle start
-      dates.push(lastCycle);
-    } else if (lastHeat) {
-      // Last resort: last heat start if nothing else exists
-      dates.push(lastHeat);
-    }
-
-    return normalizeCycleStartsAsc(dates);
-  }, [damRepro]);
-
-  const projectedCycles = React.useMemo<string[]>(() => {
-    if (!species) return [];
-
-    const todayIso = asISODateOnly(new Date());
-
-    const summary = {
-      species,
-      cycleStartsAsc,
-      dob: null,
-      today: todayIso,
-    };
-
-    const { projected } = projectUpcomingCycleStarts(summary as any, {
-      horizonMonths: 36,
-      maxCount: 8,
-    });
-
-    return projected.map((p) => p.date);
-  }, [species, cycleStartsAsc]);
-
-  React.useEffect(() => {
-    if (!row.damId) return;
-
-    console.warn("[BHQ reproEngine][whatif projected cycles]", {
-      damId: row.damId,
-      species,
-      cycleStartsAscLen: cycleStartsAsc.length,
-      projectedCycles,
-    });
-  }, [row.damId, species, cycleStartsAsc, projectedCycles]);
-
-
   React.useEffect(() => {
     console.log("[whatif] dam repro effect run", { damId: row.damId });
 
@@ -1130,18 +1118,25 @@ function WhatIfRowEditor(props: WhatIfRowEditorProps) {
     onChange({ ...row, cycleStartIso: v ? v : null });
   };
 
-  const plannerSpecies: PlannerSpecies | null =
-    row.species === "DOG"
-      ? "Dog"
-      : row.species === "CAT"
-        ? "Cat"
-        : row.species === "HORSE"
-          ? "Horse"
-          : row.species === "GOAT"
-            ? "Goat"
-            : row.species === "RABBIT"
-              ? "Rabbit"
-              : null;
+
+
+  const speciesWire = typeof row.species === "string" ? row.species : "";
+
+  const cycleStartsAsc = React.useMemo(() => {
+    const raw = (damRepro?.cycleStartDates ?? []) as any[];
+    const normalized = (reproEngine as any).normalizeCycleStartsAsc
+      ? (reproEngine as any).normalizeCycleStartsAsc(raw)
+      : raw.filter(Boolean).map(String).sort();
+    return normalized as string[];
+  }, [damRepro?.cycleStartDates]);
+
+  const projectedCycles = React.useMemo(() => {
+    if (!speciesWire) return [] as string[];
+    const today = new Date().toISOString().slice(0, 10);
+    const summary: any = { species: speciesWire, cycleStartsAsc, dob: null, today };
+    const { projected } = reproEngine.projectUpcomingCycleStarts(summary, { horizonMonths: 36, maxCount: 36 } as any) as any;
+    return Array.isArray(projected) ? projected.map((p: any) => p.date).filter(Boolean) : [];
+  }, [speciesWire, cycleStartsAsc]);
 
   return (
     <div className="rounded-lg border border-hairline bg-surface p-2">
@@ -1441,27 +1436,53 @@ export default function AppBreeding() {
       )
       .map((r): NormalizedPlan => {
         const id = `whatif-${r.id}`;
-        const speciesUi: SpeciesUi =
-          r.species === "DOG"
-            ? "Dog"
-            : r.species === "CAT"
-              ? "Cat"
-              : "Horse";
+        const speciesUi: SpeciesUi = toUiSpecies(r.species);
+
+        // Compute expected dates from the locked cycle start using reproEngine
+        const expectedDates = computeExpectedForPlan({
+          species: speciesUi,
+          lockedCycleStart: r.cycleStartIso,
+        });
+
+        // Normalize the expected dates for RollupGantt
+        const normalized = normalizeExpectedMilestones(expectedDates, r.cycleStartIso);
+
         return {
-          // Minimal NormalizedPlan shape for RollupGantt.
-          // We let computeExpectedForPlan fill the expected dates from lockedCycleStart.
           id,
           name: r.damName
             ? `${r.damName} - What If`
             : `What If - ${String(r.damId)}`,
           species: speciesUi,
           lockedCycleStart: r.cycleStartIso,
+          // Include all expected dates so RollupGantt can plot them
+          expectedCycleStart: normalized.cycleStart,
+          expectedHormoneTestingStart: normalized.hormoneTestingStart,
+          expectedBreedDate: normalized.breedDate,
+          expectedBirthDate: normalized.birthDate,
+          expectedWeanedDate: normalized.weanedDate,
+          expectedPlacementStartDate: normalized.placementStart,
+          expectedPlacementCompleted: normalized.placementCompleted,
+          placementCompletedDateExpected: normalized.placementCompleted,
           isSynthetic: true,
         } as any as NormalizedPlan;
       });
 
     return [...base, ...extras];
   }, [normalized, whatIfRows]);
+
+  // RollupGantt only renders items included in selectedKeys.
+  // What If rows should plot immediately when showOnChart is enabled,
+  // without requiring a separate selection in the rollup list.
+  const selectedKeysWithWhatIf = React.useMemo(() => {
+    const s = new Set<string>(Array.from(selectedKeys ?? []).map(String));
+    for (const r of whatIfRows ?? []) {
+      if (r?.showOnChart && r?.damId != null && r?.cycleStartIso) {
+        s.add(`whatif-${r.id}`);
+      }
+    }
+    return s;
+  }, [selectedKeys, whatIfRows]);
+
 
   React.useEffect(() => {
     try {
@@ -2448,18 +2469,17 @@ export default function AppBreeding() {
                 {plannerMode === "per-plan" ? (
                   <PerPlanGantt
                     plans={normalized}
-                    computeExpected={computeExpectedForPlan}
                     className="w-full"
                   />
                 ) : (
                   <RollupGantt
                     items={rollupItemsWithWhatIf}
-                    computeExpected={computeExpectedForPlan}
                     prefsOverride={{ defaultExactBandsVisible: availabilityOn }}
-                    selected={selectedKeys ?? new Set<ID>()}
+                    selected={selectedKeysWithWhatIf as any}
                     onSelectedChange={(next) => {
                       setSelectionTouched(true);
-                      setSelectedKeys(next);
+                      const baseOnly = Array.from(next ?? []).map(String).filter((k) => !k.startsWith("whatif-"));
+                      setSelectedKeys(new Set(baseOnly) as any);
                     }}
                   />
                 )}
@@ -3321,6 +3341,12 @@ function PlanDetailsView(props: {
           signal: controller.signal,
         });
 
+        const bodyText = await res.text();
+
+        if (!res.ok) {
+          throw new Error(`Dam repro fetch failed: ${res.status} ${bodyText.slice(0, 200)}`);
+        }
+
         const body = bodyText ? JSON.parse(bodyText) : null;
         const data =
           (body as any)?.data?.data ??
@@ -3408,14 +3434,7 @@ function PlanDetailsView(props: {
   }, [row.damId, tenantId]);
 
   // ===== Cycle math + projections =====
-  const species: PlannerSpecies =
-    row.species === "DOG"
-      ? "Dog"
-      : row.species === "CAT"
-        ? "Cat"
-        : row.species === "HORSE"
-          ? "Horse"
-          : "Dog";
+  const speciesWire = normalizeSpeciesWire(row.species);
 
   const cycleStartsAsc = React.useMemo(() => {
     const dates: string[] = [];
@@ -3442,94 +3461,78 @@ function PlanDetailsView(props: {
       }
     }
 
-    return normalizeCycleStartsAsc(dates);
+    return reproEngine.normalizeCycleStartsAsc(dates);
   }, [damRepro]);
 
   const projectedCycles = React.useMemo<string[]>(() => {
-    if (!species) return [];
-    if (cycleStartsAsc.length === 0) return [];
+    const today =
+      asISODateOnly(new Date()) ?? new Date().toISOString().slice(0, 10);
 
-    const todayIso = asISODateOnly(new Date());
-    if (!todayIso) return [];
+    if (!speciesWire) return [];
 
-    const dobIso =
-      asISODateOnly((damRepro as any)?.dob ?? (damRepro as any)?.birthDate ?? (damRepro as any)?.birth_date ?? null);
-
-
-    const summary = {
-      species,
+    const summary: ReproSummary = {
+      species: speciesWire,
       cycleStartsAsc,
-      dob: dobIso,
-      today: todayIso,
+      dob: null,
+      today,
     };
 
-    const { projected } = projectUpcomingCycleStarts({
-      species: plannerSpecies,
-      seedCycleStarts,
+    const { projected } = reproEngine.projectUpcomingCycleStarts(summary, {
       horizonMonths: 36,
-      maxResults: 8,
+      maxCount: 12,
     });
 
-    return projected.map((p) => p.date);
-  }, [species, cycleStartsAsc]);
+    return projected
+      .map((p: any) => asISODateOnly(p?.date) ?? String(p?.date ?? "").slice(0, 10))
+      .filter((d: any) => !!d);
+  }, [speciesWire, cycleStartsAsc]);
 
-  // TEMP DEBUG: always log when inputs change (remove after validation)
-  React.useEffect(() => {
-    if (!row.damId) return;
-
-    console.warn("[BHQ reproEngine][whatif projected cycles]", {
-      damId: row.damId,
-      species: row.species,
-      damLoadError,
-      damReproKeys: damRepro ? Object.keys(damRepro as any) : [],
-      cycleStartsAsc,
-      projected: projectedCycles,
-    });
-  }, [row.damId, row.species, damLoadError, damRepro, cycleStartsAsc, projectedCycles]);
-
-  const [pendingCycle, setPendingCycle] = React.useState<string | null>(row.lockedCycleStart ?? null);
-  const [lockedPreview, setLockedPreview] = React.useState<boolean>(Boolean(row.lockedCycleStart));
+  const initialCycle = (row.lockedCycleStart ?? row.expectedCycleStart ?? row.cycleStartDateActual ?? null) as string | null;
+  const [pendingCycle, setPendingCycle] = React.useState<string | null>(initialCycle);
+  const [lockedPreview, setLockedPreview] = React.useState<boolean>(Boolean(row.lockedCycleStart ?? row.cycleStartDateActual));
   const [expectedPreview, setExpectedPreview] = React.useState<PlannerExpected | null>(() =>
-    row.lockedCycleStart ? computeFromLocked(row.lockedCycleStart) : null
+    initialCycle ? computeExpectedForPlan({ species: row.species as any, lockedCycleStart: initialCycle }) : null
   );
 
   React.useEffect(() => {
-    setPendingCycle(row.lockedCycleStart ?? null);
-    const e = row.lockedCycleStart
-      ? computeFromLocked(row.lockedCycleStart)
+    const nextCycle = (row.lockedCycleStart ?? row.cycleStartDateActual ?? null) as string | null;
+    setPendingCycle(nextCycle);
+    const e = nextCycle
+      ? computeExpectedForPlan({ species: row.species as any, lockedCycleStart: nextCycle })
       : null;
 
     setExpectedPreview(e);
-    setLockedPreview(Boolean(row.lockedCycleStart));
-  }, [row.lockedCycleStart]);
-
+    setLockedPreview(Boolean(row.lockedCycleStart ?? row.cycleStartDateActual));
+  }, [row.lockedCycleStart, row.cycleStartDateActual, row.species]);
   async function lockCycle() {
     if (!pendingCycle || !String(pendingCycle).trim()) return;
     if (!api) return;
 
-    const expected = computeFromLocked(pendingCycle);
-    const testingStart = pickExpectedTestingStart(expected, pendingCycle);
+    const expectedRaw = computeExpectedForPlan({
+      species: row.species as any,
+      lockedCycleStart: pendingCycle,
+    });
+    const expected = normalizeExpectedMilestones(expectedRaw, pendingCycle);
+    const testingStart =
+      expected.hormoneTestingStart ?? pickExpectedTestingStart(expectedRaw, pendingCycle);
 
     const payload = {
-      lockedCycleStart: pendingCycle,
-      lockedOvulationDate: expected.ovulation,
-      lockedDueDate: expected.birth_expected,
-      lockedPlacementStartDate: expected.placement_expected,
+      lockedCycleStart: expected.cycleStart,
 
-      expectedCycleStart: pendingCycle,
+      lockedOvulationDate: expected.breedDate,
+      lockedDueDate: expected.birthDate,
+      lockedPlacementStartDate: expected.placementStart,
+
+      expectedCycleStart: expected.cycleStart,
       expectedHormoneTestingStart: testingStart ?? null,
-      expectedBreedDate: expected.ovulation ?? null,
-      expectedBirthDate: expected.birth_expected ?? null,
-
-      expectedPlacementStartDate: expected.placement_expected ?? null,
-      expectedPlacementCompletedDate:
-        expected.placement_extended_end ??
-        expected.placement_expected_end ??
-        expected.placement_extended_full?.[1] ??
-        null,
+      expectedBreedDate: expected.breedDate,
+      expectedBirthDate: expected.birthDate,
+      expectedWeanedDate: expected.weanedDate,
+      expectedPlacementStartDate: expected.placementStart,
+      expectedPlacementCompletedDate: expected.placementCompleted,
     };
 
-    setExpectedPreview(expected);
+    setExpectedPreview(expectedRaw as any);
     setLockedPreview(true);
     setDraftLive(payload);
 
@@ -3542,33 +3545,36 @@ function PlanDetailsView(props: {
         label: "Cycle locked",
         data: {
           cycleStart: pendingCycle,
-          ovulation: expected.ovulation,
-          due: expected.birth_expected,
-          placementStart: expected.placement_expected,
+          ovulation: expected.breedDate,
+          due: expected.birthDate,
+          placementStart: expected.placementStart,
           testingStart,
           expectedCycleStart: pendingCycle,
           expectedHormoneTestingStart: testingStart,
-          expectedBreedDate: expected.ovulation ?? null,
-          expectedBirthDate: expected.birth_expected ?? null,
+          expectedBreedDate: expected.breedDate,
+          expectedBirthDate: expected.birthDate,
         },
       });
 
-      const fresh = await api.getPlan(Number(row.id), "parents,org");
-      onPlanUpdated?.(row.id, fresh);
+      // Don't call onPlanUpdated here - stay in edit mode
+      // The changes are already persisted and local state is updated via setDraftLive
     } catch (e) {
       console.error("[Breeding] lockCycle persist or audit failed", e);
       setExpectedPreview(null);
       setLockedPreview(false);
       setDraftLive({
         lockedCycleStart: pendingCycle,
-        lockedOvulationDate: expected.ovulation,
-        lockedDueDate: expected.birth_expected,
-        lockedPlacementStartDate: expected.placement_expected,
+        lockedOvulationDate: expected.breedDate,
+        lockedDueDate: expected.birthDate,
+        lockedPlacementStartDate: expected.placementStart,
 
         expectedCycleStart: pendingCycle,
         expectedHormoneTestingStart: testingStart ?? null,
-        expectedBreedDate: expected.ovulation ?? null,
-        expectedBirthDate: expected.birth_expected ?? null,
+        expectedBreedDate: expected.breedDate,
+        expectedBirthDate: expected.birthDate,
+        expectedWeanedDate: expected.weanedDate,
+        expectedPlacementStartDate: expected.placementStart,
+        expectedPlacementCompletedDate: expected.placementCompleted,
       });
       utils.toast?.error?.("Failed to lock cycle. Please try again.");
     }
@@ -3590,6 +3596,7 @@ function PlanDetailsView(props: {
       expectedHormoneTestingStart: null,
       expectedBreedDate: null,
       expectedBirthDate: null,
+      expectedWeanedDate: null,
 
       expectedPlacementStartDate: null,
       expectedPlacementCompletedDate: null,
@@ -3606,51 +3613,46 @@ function PlanDetailsView(props: {
         data: {},
       });
 
-      const fresh = await api.getPlan(Number(row.id), "parents,org");
-      onPlanUpdated?.(row.id, fresh);
+      // Don't call onPlanUpdated here - stay in edit mode
+      // The changes are already persisted and local state is updated via setDraftLive
     } catch (e) {
       console.error("[Breeding] unlockCycle persist or audit failed", e);
-      const expected = pendingCycle ? computeFromLocked(pendingCycle) : null;
+      const expected = pendingCycle ? computeExpectedForPlan({ species: row.species as any, lockedCycleStart: pendingCycle }) : null;
       setExpectedPreview(expected);
       setLockedPreview(Boolean(pendingCycle));
       utils.toast?.error?.("Failed to unlock cycle. Please try again.");
     }
   }
 
-  const isLocked = Boolean(((row.lockedCycleStart ?? draftRef.current.lockedCycleStart) ?? "").toString().trim());
+  const isLocked = Boolean((effective.lockedCycleStart ?? "").toString().trim());
 
-  // Always treat cycle start as the locked value once locked
-  const expectedCycleStart = isLocked ? (row.lockedCycleStart || pendingCycle || "") : "";
 
-  // Strict: use breedingMath output only for Expected fields (no persisted fallbacks)
-  const expectedBreed = isLocked ? (expectedPreview?.ovulation ?? "") : "";
-  const expectedBirth = isLocked ? (expectedPreview?.birth_expected ?? "") : "";
-  const expectedWeaned =
-    isLocked
-      ? (
-        (expectedPreview as any)?.weaning_expected ??
-        (expectedPreview as any)?.weaned_expected ??
-        (expectedPreview as any)?.post_birth_care_likely?.[0] ??
-        ""
-      )
-      : "";
-  const expectedPlacementStart = isLocked ? (expectedPreview?.placement_expected ?? "") : "";
-  const expectedGoHomeExtended =
-    isLocked
-      ? (
-        (expectedPreview as any)?.placement_extended_end ??
-        (expectedPreview as any)?.placement_extended_end_expected ??
-        (expectedPreview as any)?.placement_extended_full?.[1] ??
-        ""
-      )
-      : "";
+  const canShowExpected = Boolean(expectedPreview);
+  const cycleForExpected = asISODateOnly(
+    pendingCycle ??
+      row.lockedCycleStart ??
+      (draftRef.current as any).lockedCycleStart ??
+      ""
+  );
 
-  // Treat extended placement end as both placement completion and overall plan completion
+  const expectedNorm = React.useMemo(
+    () =>
+      canShowExpected
+        ? normalizeExpectedMilestones(expectedPreview, cycleForExpected)
+        : null,
+    [canShowExpected, expectedPreview, cycleForExpected]
+  );
+
+  const expectedCycleStart = expectedNorm?.cycleStart ?? "";
+  const expectedTestingStart = expectedNorm?.hormoneTestingStart ?? "";
+  const expectedBreed = expectedNorm?.breedDate ?? "";
+  const expectedBirth = expectedNorm?.birthDate ?? "";
+  const expectedWeaned = expectedNorm?.weanedDate ?? "";
+  const expectedPlacementStart = expectedNorm?.placementStart ?? "";
+  const expectedGoHomeExtended = expectedNorm?.placementCompleted ?? "";
+
   const expectedPlacementCompleted = expectedGoHomeExtended;
   const expectedCompleted = expectedPlacementCompleted;
-
-  // New: expected Testing Start with aliases + 7d fallback
-  const expectedTestingStart = isLocked ? (pickExpectedTestingStart(expectedPreview, row.lockedCycleStart) ?? "") : "";
 
 
   const [editDamQuery, setEditDamQuery] = React.useState<string>("");
@@ -3720,9 +3722,31 @@ function PlanDetailsView(props: {
     ((row.lockedCycleStart ?? draftRef.current.lockedCycleStart) ?? "") &&
     !["COMMITTED", "BRED", "BIRTHED", "WEANED", "HOMING_STARTED", "COMPLETE", "CANCELED"].includes(effective.status)
   );
-  const expectedsEnabled = Boolean(
-    effective.damId != null && effective.sireId != null && ((row.lockedCycleStart ?? draftRef.current.lockedCycleStart) ?? "")
-  );
+  const expectedsEnabled = Boolean(cycleForExpected && speciesWire);
+
+  // Build tooltip showing missing conditions for commit
+  const commitTooltip = React.useMemo(() => {
+    if (canCommit) return "Ready to commit this plan";
+
+    const missing: string[] = [];
+    if (!effective.damId) missing.push("• Please Select a Female");
+    if (!effective.sireId) missing.push("• Please Select a Sire");
+    if (!hasBreed) missing.push("• Please Select a Breed");
+
+    const hasLockedCycle = !!(effective.lockedCycleStart ?? "").toString().trim();
+    if (!hasLockedCycle) {
+      // Check if there's a pending cycle selection that hasn't been locked yet
+      if (pendingCycle) {
+        missing.push("• Please Lock the Selected Cycle");
+      } else {
+        missing.push("• Please Select and Lock the Cycle");
+      }
+    }
+
+    if (missing.length === 0) return "Cannot commit at this time";
+
+    return "Missing requirements:\n" + missing.join("\n");
+  }, [canCommit, effective.damId, effective.sireId, effective.lockedCycleStart, hasBreed, pendingCycle]);
 
   const breedComboKey = `${effective.species || "Dog"}|${hasBreed}`;
 
@@ -3757,57 +3781,59 @@ function PlanDetailsView(props: {
               Committed
             </Button>
           ) : (
-            <Button
-              size="sm"
-              onClick={async () => {
-                if (!api || !canCommit) return;
+            <span title={commitTooltip} style={{ display: 'inline-block' }}>
+              <Button
+                size="sm"
+                onClick={async () => {
+                  if (!api || !canCommit) return;
 
-                // If we have a locked cycle in draft but not persisted yet, persist it first
-                if (!row.lockedCycleStart && draftRef.current.lockedCycleStart) {
-                  const locked = String(draftRef.current.lockedCycleStart);
-                  const expected = (computeFromLocked as any)(locked);
-                  const testingStart = pickExpectedTestingStart(expected, locked);
+                  // If we have a locked cycle in draft but not persisted yet, persist it first
+                  if (!row.lockedCycleStart && draftRef.current.lockedCycleStart) {
+                    const locked = String(draftRef.current.lockedCycleStart);
+                    const expected = computeExpectedForPlan({ species: row.species as any, lockedCycleStart: locked });
+                    const testingStart = pickExpectedTestingStart(expected, locked);
 
-                  const payload = {
-                    lockedCycleStart: locked,
-                    lockedOvulationDate: expected.ovulation,
-                    lockedDueDate: expected.birth_expected,
-                    lockedPlacementStartDate: expected.placement_expected,
+                    const payload = {
+                      lockedCycleStart: locked,
+                      lockedOvulationDate: expected.ovulation,
+                      lockedDueDate: expected.birth_expected,
+                      lockedPlacementStartDate: expected.placement_expected,
 
-                    // Canonical expected (system-derived)
-                    expectedCycleStart: locked,
-                    expectedHormoneTestingStart: testingStart ?? null,
-                    expectedBreedDate: expected.ovulation ?? null,
-                    expectedBirthDate: expected.birth_expected ?? null,
-                  };
+                      // Canonical expected (system-derived)
+                      expectedCycleStart: locked,
+                      expectedHormoneTestingStart: testingStart ?? null,
+                      expectedBreedDate: expected.ovulation ?? null,
+                      expectedBirthDate: expected.birth_expected ?? null,
+                    };
 
-                  try {
-                    await api.updatePlan(Number(row.id), payload as any);
-                  } catch (err) {
-                    console.error("[Breeding] commit pre-persist (lock) failed", err);
-                    return;
+                    try {
+                      await api.updatePlan(Number(row.id), payload as any);
+                    } catch (err) {
+                      console.error("[Breeding] commit pre-persist (lock) failed", err);
+                      return;
+                    }
                   }
-                }
 
-                // Ensure parents are persisted before commit
-                const parentPatch: any = {};
-                if (effective.damId !== row.damId) parentPatch.damId = effective.damId;
-                if (effective.sireId !== row.sireId) parentPatch.sireId = effective.sireId;
-                if (Object.keys(parentPatch).length) {
-                  try {
-                    await api.updatePlan(Number(row.id), parentPatch);
-                  } catch (err) {
-                    console.error("[Breeding] commit pre-persist (parents) failed", err);
-                    return;
+                  // Ensure parents are persisted before commit
+                  const parentPatch: any = {};
+                  if (effective.damId !== row.damId) parentPatch.damId = effective.damId;
+                  if (effective.sireId !== row.sireId) parentPatch.sireId = effective.sireId;
+                  if (Object.keys(parentPatch).length) {
+                    try {
+                      await api.updatePlan(Number(row.id), parentPatch);
+                    } catch (err) {
+                      console.error("[Breeding] commit pre-persist (parents) failed", err);
+                      return;
+                    }
                   }
-                }
 
-                await onCommitted?.(effective.id);
-              }}
-              disabled={!canCommit || !api}
-            >
-              Commit Plan
-            </Button>
+                  await onCommitted?.(effective.id);
+                }}
+                disabled={!canCommit || !api}
+              >
+                Commit Plan
+              </Button>
+            </span>
           )}
           {(() => {
             const isArchived = !!row.archived;
@@ -3991,20 +4017,37 @@ function PlanDetailsView(props: {
                     <div className="text-sm">{row.damName || "—"}</div>
                   ) : (
                     <>
-                      <Input
-                        value={editDamQuery}
-                        onChange={(e) => setEditDamQuery(e.currentTarget.value)}
-                        onFocus={() => {
-                          setEditDamFocus(true);
-                          if (
-                            editDamQuery.trim() === (row.damName || "").trim()
-                          ) {
-                            setEditDamQuery("");
-                          }
-                        }}
-                        onBlur={() => setEditDamFocus(false)}
-                        placeholder="Search Dam…"
-                      />
+                      <div className="relative">
+                        <Input
+                          value={editDamQuery}
+                          onChange={(e) => setEditDamQuery(e.currentTarget.value)}
+                          onFocus={() => {
+                            setEditDamFocus(true);
+                            if (
+                              editDamQuery.trim() === (row.damName || "").trim()
+                            ) {
+                              setEditDamQuery("");
+                            }
+                          }}
+                          onBlur={() => setEditDamFocus(false)}
+                          placeholder="Search Dam…"
+                        />
+                        {effective.damId && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setDraftLive({ damId: null, damName: "" });
+                              setEditDamQuery("");
+                            }}
+                            className="absolute right-2 top-1/2 -translate-y-1/2 text-secondary hover:text-primary transition-colors"
+                            title="Clear Dam"
+                          >
+                            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                          </button>
+                        )}
+                      </div>
                       {editDamFocus && (
                         <div className="mt-2 max-h-56 overflow-auto rounded-md border border-hairline bg-surface">
                           {editDamOptions.length > 0 ? (
@@ -4050,22 +4093,39 @@ function PlanDetailsView(props: {
                     <div className="text-sm">{row.sireName || "—"}</div>
                   ) : (
                     <>
-                      <Input
-                        value={editSireQuery}
-                        onChange={(e) => setEditSireQuery(e.currentTarget.value)}
-                        onFocus={() => {
-                          setEditSireFocus(true);
-                          if (
-                            editSireQuery.trim &&
-                            editSireQuery.trim() ===
-                            (row.sireName || "").trim()
-                          ) {
-                            setEditSireQuery("");
-                          }
-                        }}
-                        onBlur={() => setEditSireFocus(false)}
-                        placeholder="Search Sire…"
-                      />
+                      <div className="relative">
+                        <Input
+                          value={editSireQuery}
+                          onChange={(e) => setEditSireQuery(e.currentTarget.value)}
+                          onFocus={() => {
+                            setEditSireFocus(true);
+                            if (
+                              editSireQuery.trim &&
+                              editSireQuery.trim() ===
+                              (row.sireName || "").trim()
+                            ) {
+                              setEditSireQuery("");
+                            }
+                          }}
+                          onBlur={() => setEditSireFocus(false)}
+                          placeholder="Search Sire…"
+                        />
+                        {effective.sireId && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setDraftLive({ sireId: null, sireName: "" });
+                              setEditSireQuery("");
+                            }}
+                            className="absolute right-2 top-1/2 -translate-y-1/2 text-secondary hover:text-primary transition-colors"
+                            title="Clear Sire"
+                          >
+                            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                          </button>
+                        )}
+                      </div>
                       {editSireFocus && (
                         <div className="mt-2 max-h-56 overflow-auto rounded-md border border-hairline bg-surface">
                           {editSireOptions.length > 0 ? (
@@ -4119,17 +4179,12 @@ function PlanDetailsView(props: {
 
                   {isLocked ? (
                     <DisplayValue value={fmt(effective.lockedCycleStart)} />
-                  ) : (
+                  ) : isEdit ? (
                     (() => {
                       const hasSelection = !!pendingCycle;
-                      const parentsSet =
-                        effective.damId != null && effective.sireId != null;
-                      const ringColor =
-                        hasSelection && parentsSet
-                          ? "hsl(var(--green-600))"
-                          : "hsl(var(--hairline))";
-
-                      const options = [...projectedCycles];
+                      const options = [...projectedCycles]
+                        .map((d) => asISODateOnly(d) ?? String(d).slice(0, 10))
+                        .filter(Boolean) as string[];
                       if (pendingCycle && !options.includes(pendingCycle)) {
                         options.unshift(pendingCycle);
                       }
@@ -4137,14 +4192,30 @@ function PlanDetailsView(props: {
                       const hasDam = !!row.damId;
                       const hasOptions = options.length > 0;
 
+                      const ringColor = !hasDam
+                        ? "hsl(var(--hairline))"
+                        : hasSelection
+                          ? "hsl(var(--green-600))"
+                          : "hsl(var(--hairline))";
+
                       return (
                         <div className="relative">
                           <select
-                            className="relative z-10 w-full h-9 rounded-md px-2 text-sm text-primary bg-surface border border-hairline"
+                            className="relative z-10 w-full...-md px-2 text-sm text-primary bg-surface border border-hairline"
                             value={pendingCycle ?? ""}
-                            onChange={(e) =>
-                              setPendingCycle(e.currentTarget.value || null)
-                            }
+                            onChange={(e) => {
+                              if (!isEdit) return;
+                              const v = e.currentTarget.value || "";
+                              const next = v ? (asISODateOnly(v) ?? v.slice(0, 10)) : null;
+                              setPendingCycle(next);
+                              setExpectedPreview(
+                                next
+                                  ? computeExpectedForPlan({ species: row.species as any, lockedCycleStart: next })
+                                  : null
+                              );
+                              // Persist selection as the plan’s expected cycle start while in edit mode
+                              setDraft({ expectedCycleStart: next });
+                            }}
                             disabled={!hasDam}
                           >
                             <option value="">
@@ -4156,7 +4227,7 @@ function PlanDetailsView(props: {
                             </option>
                             {options.map((d) => (
                               <option key={d} value={d}>
-                                {d}
+                                {fmt(d)}
                               </option>
                             ))}
                           </select>
@@ -4169,6 +4240,14 @@ function PlanDetailsView(props: {
                         </div>
                       );
                     })()
+                  ) : (
+                    <DisplayValue
+                      value={
+                        effective.expectedCycleStart
+                          ? fmt(effective.expectedCycleStart)
+                          : "Cycle Not Yet Selected"
+                      }
+                    />
                   )}
 
                   {!!damLoadError && (
@@ -4179,20 +4258,24 @@ function PlanDetailsView(props: {
                 </div>
 
                 {/* Right column: Lock / Unlock button */}
-                <div>
+                {isEdit && (
+                  <div className="pt-5">
                   {isLocked ? (
                     <div
                       className="rounded-md"
                       style={{
                         padding: 2,
-                        background: "var(--green-600,#166534)",
+                        background: "#10b981", // neon green border
                       }}
                     >
                       <button
                         type="button"
                         onClick={unlockCycle}
-                        className="h-9 px-3 rounded-[6px] text-sm font-medium bg-transparent flex items-center gap-2"
-                        style={{ color: "var(--green-200,#bbf7d0)" }}
+                        className="h-9 px-3 rounded-[6px] text-sm font-medium flex items-center gap-2"
+                        style={{
+                          backgroundColor: "#16a34a", // GREEN background
+                          color: "#ffffff"
+                        }}
                         title="Unlock cycle"
                       >
                         <svg
@@ -4203,7 +4286,7 @@ function PlanDetailsView(props: {
                           strokeWidth="2"
                           aria-hidden="true"
                         >
-                          <path d="M7 10V7a5 5 0 0 1 10 0v3" />
+                          {/* CLOSED padlock icon */}
                           <rect
                             x="5"
                             y="10"
@@ -4211,33 +4294,40 @@ function PlanDetailsView(props: {
                             height="10"
                             rx="2"
                           />
+                          <path d="M7 10V7a5 5 0 0 1 10 0v3" />
                         </svg>
-                        Cycle LOCKED
+                        Cycle Locked
                       </button>
                     </div>
                   ) : (
                     (() => {
-                      const lockEnabled = !!(
-                        pendingCycle && (row.damId ?? null) != null
-                      );
+                      const lockEnabled = !!(pendingCycle && (row.damId ?? null) != null);
                       return (
-                        <div className="rounded-md" style={{ padding: 2 }}>
+                        <div
+                          className="rounded-md"
+                          style={{
+                            padding: 2,
+                            background: lockEnabled ? "#16a34a" : "#ffffff" // green border when enabled, white when disabled
+                          }}
+                        >
                           <button
                             type="button"
                             onClick={lockCycle}
                             disabled={!lockEnabled}
                             className={[
                               "h-9 px-3 rounded-[6px] text-sm font-medium flex items-center gap-2",
-                              "border-2",
                               lockEnabled
-                                ? "border-[hsl(var(--green-600))] text-[hsl(var(--green-200))]"
-                                : "border-hairline text-secondary",
-                              "bg-transparent disabled:opacity-60",
+                                ? "text-white"
+                                : "", // Remove text-secondary, use style instead
                             ].join(" ")}
+                            style={{
+                              backgroundColor: lockEnabled ? "#dc2626" : "transparent", // RED when enabled, transparent when disabled
+                              color: lockEnabled ? undefined : "#9ca3af", // Better readable gray when disabled
+                            }}
                             title={
                               lockEnabled
                                 ? "Lock cycle"
-                                : "Select a cycle and both parents first"
+                                : "Select a dam and cycle first"
                             }
                           >
                             <svg
@@ -4248,7 +4338,7 @@ function PlanDetailsView(props: {
                               strokeWidth="2"
                               aria-hidden="true"
                             >
-                              <path d="M12 5a5 5 0 0 1 5 5" />
+                              {/* OPEN padlock icon */}
                               <rect
                                 x="5"
                                 y="10"
@@ -4256,14 +4346,16 @@ function PlanDetailsView(props: {
                                 height="10"
                                 rx="2"
                               />
+                              <path d="M7 10V7a5 5 0 0 1 9.9-1" />
                             </svg>
-                            Select Cycle &amp; Dam to Lock
+                            {lockEnabled ? "Lock Cycle" : "Select Dam & Cycle"}
                           </button>
                         </div>
                       );
                     })()
                   )}
                 </div>
+                )}
               </div>
             </SectionCard>
 
@@ -4309,8 +4401,7 @@ function PlanDetailsView(props: {
                 <SectionCard title="EXPECTED DATES (SYSTEM CALCULATED)">
                   {isEdit && !expectedsEnabled && (
                     <div className="text-xs text-[hsl(var(--brand-orange))] mb-2">
-                      Select a <b>Female</b>, select a <b>Male</b>, and{" "}
-                      <b>lock the cycle</b> to enable Expected Dates.
+                      Select a cycle start date to see Expected Dates.
                     </div>
                   )}
 
@@ -4332,7 +4423,7 @@ function PlanDetailsView(props: {
                     />
                     <DateField
                       label="BIRTH DATE (EXPECTED)"
-                      value={fmt(expectedBirth)}
+                      value={expectedBirth}
                       readOnly
                     />
                     <DateField

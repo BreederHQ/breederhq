@@ -4,7 +4,6 @@ export * from "./atoms";
 export * as hooks from "./hooks";
 export * as utils from "./utils";
 
-export * as breedingMath from "./utils/breedingMath";
 export type { BreedHit, SpeciesUI, SpeciesAPI } from "./utils/types";
 export { SPECIES_UI, toApiSpecies, toUiSpecies } from "./utils/species";
 

@@ -31,14 +31,13 @@ import { Overlay, getOverlayRoot } from "@bhq/ui/overlay";
 import { toast } from "@bhq/ui/atoms/Toast";
 import "@bhq/ui/styles/table.css";
 import { makeApi } from "./api";
+
 import {
-  resolveCycleLengthDays,
-  projectUpcomingCycles,
-  fromPlan,
-  windowsToCalendarEvents,
-  DEFAULT_STAGE_LABELS,
-  type Species as MathSpecies,
-} from "@bhq/ui/utils/breedingMath";
+  normalizeCycleStartsAsc,
+  asISODateOnly as asISODateOnlyEngine,
+} from "@bhq/ui/utils/reproEngine/normalize";
+
+import { projectUpcomingCycleStarts } from "@bhq/ui/utils/reproEngine/projectUpcomingCycles";
 
 import {
   DogPlaceholder,
@@ -1363,8 +1362,7 @@ function CycleTab({
   const [confirmDeleteIso, setConfirmDeleteIso] = React.useState<string | null>(null);
 
 
-  const species: MathSpecies =
-    (String(animal.species || "DOG").toUpperCase() as MathSpecies) || "DOG";
+  const species = (String(animal.species || "DOG").toUpperCase() || "DOG") as string;
 
   const persist = React.useCallback(
     async (next: string[]) => {
@@ -1418,96 +1416,56 @@ function CycleTab({
     setConfirmDeleteIso(null);
   };
 
-  const heatHistory = React.useMemo(
-    () => ({ heatStarts: dates }),
-    [dates]
+  const cycleStartsAsc = React.useMemo(() => {
+    const seeds = (dates || [])
+      .map((d) => asISODateOnlyEngine(d) ?? null)
+      .filter(Boolean) as string[];
+    return normalizeCycleStartsAsc(seeds);
+  }, [dates]);
+
+  const lastHeatIso = cycleStartsAsc.length ? cycleStartsAsc[cycleStartsAsc.length - 1] : null;
+
+  const todayIso = React.useMemo(() => new Date().toISOString().slice(0, 10), []);
+
+  const pretty = React.useCallback((iso?: string | null) => {
+    if (!iso) return "—";
+    const s = String(iso);
+    const t = Date.parse(s.length === 10 ? `${s}T00:00:00Z` : s);
+    if (Number.isNaN(t)) return "—";
+    return new Date(t).toLocaleDateString();
+  }, []);
+
+  const dobIso = React.useMemo(
+    () => asISODateOnlyEngine((animal as any)?.dob ?? (animal as any)?.birthDate ?? null),
+    [animal]
   );
+
+  const proj = React.useMemo(() => {
+    return projectUpcomingCycleStarts(
+      {
+        species: species as any,
+        cycleStartsAsc,
+        dob: dobIso ?? null,
+        today: todayIso,
+      },
+      { horizonMonths: 36, maxCount: 12 }
+    );
+  }, [species, cycleStartsAsc, dobIso, todayIso]);
 
   const learned = React.useMemo(
-    () => resolveCycleLengthDays(species, heatHistory, null),
-    [species, heatHistory]
+    () => ({
+      days: Number((proj as any)?.effective?.effectiveCycleLenDays ?? 0),
+      source: String((proj as any)?.effective?.source ?? "BIOLOGY"),
+    }),
+    [proj]
   );
 
-  const lastHeatIso = dates.length ? dates[dates.length - 1] : null;
+  const projected: string[] = React.useMemo(
+    () => ((proj as any)?.projected ?? []).map((p: any) => p.date).filter(Boolean),
+    [proj]
+  );
 
-  const projected: string[] = React.useMemo(() => {
-    if (!lastHeatIso) return [];
-    return projectUpcomingCycles(lastHeatIso, learned.days, 2);
-  }, [lastHeatIso, learned.days]);
-
-  const preview = React.useMemo(() => {
-    if (!projected.length) return null;
-    const nextHeat = projected[0];
-
-    const w = fromPlan(
-      {
-        species,
-        earliestHeatStart: nextHeat,
-        latestHeatStart: nextHeat,
-        ovulationDate: null,
-      },
-      {}
-    );
-
-    const events = windowsToCalendarEvents(
-      String(animal.id),
-      DEFAULT_STAGE_LABELS,
-      w
-    );
-
-    const byType = (t: "full" | "likely") =>
-      events.filter(
-        (e) =>
-          (e.meta as any)?.type === t &&
-          (e.meta as any)?.stage !== "availability"
-      );
-
-    const availability = events.filter((e) => {
-      const st = String((e.meta as any)?.stage || "").toLowerCase();
-      return st.startsWith("availability");
-    });
-
-    return {
-      windows: w,
-      full: byType("full"),
-      likely: byType("likely"),
-      availability,
-    };
-  }, [projected, species, animal.id]);
-
-  const pretty = (iso?: string | null) =>
-    iso ? new Date(iso).toLocaleDateString() : "";
-
-  const formatRange = (e: any) => {
-    const startIso = e.start.toISOString().slice(0, 10);
-    const endIso = new Date(e.end.getTime() - 86400000)
-      .toISOString()
-      .slice(0, 10);
-    return `${pretty(startIso)} to ${pretty(endIso)}`;
-  };
-
-  const groupByTitle = (events: any[], stripSuffix?: string) => {
-    const map = new Map<string, { title: string; ranges: string[] }>();
-
-    for (const e of events || []) {
-      const rawTitle = String(e.title || "");
-      const title =
-        stripSuffix && rawTitle.endsWith(stripSuffix)
-          ? rawTitle.slice(0, rawTitle.length - stripSuffix.length)
-          : rawTitle;
-
-      const range = formatRange(e);
-      if (!map.has(title)) {
-        map.set(title, { title, ranges: [range] });
-      } else {
-        map.get(title)!.ranges.push(range);
-      }
-    }
-
-    return Array.from(map.values());
-  };
-
-  return (
+return (
     <div className="space-y-2">
       <SectionCard title="Cycle Summary">
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
@@ -1534,66 +1492,7 @@ function CycleTab({
           </div>
         </div>
 
-        {preview && (
-          <div className="mt-4 grid grid-cols-1 lg:grid-cols-3 gap-3 text-xs">
-            {/* Full Windows */}
-            <div className="rounded-md border border-hairline bg-surface p-3">
-              <div className="text-[11px] text-secondary mb-2">Full Windows</div>
-              <div className="grid grid-cols-[minmax(0,1.2fr)_minmax(0,1.6fr)] gap-x-4 gap-y-0.5">
-                {groupByTitle(preview.full, " (Full)").map((g) => (
-                  <React.Fragment key={g.title}>
-                    <div className="font-medium truncate text-primary">
-                      {g.title}
-                    </div>
-                    <div className="text-right">
-                      {g.ranges.map((r, idx) => (
-                        <div key={idx}>{r}</div>
-                      ))}
-                    </div>
-                  </React.Fragment>
-                ))}
-              </div>
-            </div>
-
-            {/* Likely Windows */}
-            <div className="rounded-md border border-hairline bg-surface-strong/40 p-3">
-              <div className="text-[11px] text-secondary mb-2">Likely Windows</div>
-              <div className="grid grid-cols-[minmax(0,1.2fr)_minmax(0,1.6fr)] gap-x-4 gap-y-1">
-                {groupByTitle(preview.likely, " (Likely)").map((g) => (
-                  <React.Fragment key={g.title}>
-                    <div className="font-medium truncate text-primary">
-                      {g.title}
-                    </div>
-                    <div className="text-right">
-                      {g.ranges.map((r, idx) => (
-                        <div key={idx}>{r}</div>
-                      ))}
-                    </div>
-                  </React.Fragment>
-                ))}
-              </div>
-            </div>
-
-            {/* Availability */}
-            <div className="rounded-md border border-hairline bg-warning/10 p-3">
-              <div className="text-[11px] text-secondary mb-2">Availability</div>
-              <div className="grid grid-cols-[minmax(0,1.4fr)_minmax(0,1.6fr)] gap-x-4 gap-y-1">
-                {groupByTitle(preview.availability).map((g) => (
-                  <React.Fragment key={g.title}>
-                    <div className="font-medium truncate text-primary">
-                      {g.title}
-                    </div>
-                    <div className="text-right">
-                      {g.ranges.map((r, idx) => (
-                        <div key={idx}>{r}</div>
-                      ))}
-                    </div>
-                  </React.Fragment>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
+        
       </SectionCard>
 
       <SectionCard title="Cycle Start Dates">
@@ -2403,9 +2302,46 @@ export default function AppAnimals() {
           page: 1,
           limit: 50,
         });
-        const items = (res?.items || []).map(animalToRow);
+        const baseItems = res?.items || [];
+
+        // Enrich each animal with owners data for cross-module sharing
+        const enriched = await Promise.all(
+          baseItems.map(async (animal: any) => {
+            let owners: OwnershipRow[] = [];
+            try {
+              const resp = await api.animals.owners.list(animal.id);
+              const items = Array.isArray((resp as any)?.items)
+                ? (resp as any).items
+                : Array.isArray(resp)
+                  ? (resp as any)
+                  : [];
+
+              owners = items.map(
+                (o: any): OwnershipRow => ({
+                  partyType:
+                    o.partyType === "Organization"
+                      ? "Organization"
+                      : "Contact",
+                  organizationId: o.organization?.id ?? null,
+                  contactId: o.contact?.id ?? null,
+                  display_name:
+                    o.organization?.name ?? o.contact?.name ?? "",
+                  is_primary: !!o.isPrimary,
+                  percent:
+                    typeof o.percent === "number" ? o.percent : undefined,
+                })
+              );
+            } catch (err) {
+              console.error("[Animals] Failed to fetch owners for animal", animal.id, err);
+            }
+            return { ...animal, owners };
+          })
+        );
+
+        const items = enriched.map(animalToRow);
         if (!cancelled) setRows(items);
       } catch (e: any) {
+        console.error("[Animals] Error loading animals:", e);
         if (!cancelled)
           setError(
             e?.data?.error || e?.message || "Failed to load animals"
@@ -2418,6 +2354,17 @@ export default function AppAnimals() {
       cancelled = true;
     };
   }, [api, qDebounced]);
+
+  // Sync animals to localStorage for cross-module data sharing (e.g., Contacts module)
+  React.useEffect(() => {
+    try {
+      localStorage.setItem("bhq_animals", JSON.stringify(rows));
+      // Dispatch event for cross-module reactivity
+      window.dispatchEvent(new Event("bhq:animals:updated"));
+    } catch (e) {
+      console.error("[Animals] localStorage sync failed:", e);
+    }
+  }, [rows]);
 
   const { map, toggle, setAll, visible } = hooks.useColumns(
     COLUMNS,

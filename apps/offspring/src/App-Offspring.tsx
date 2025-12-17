@@ -153,17 +153,18 @@ function DetailsSpecRenderer<T extends Record<string, any>>({
           gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
         };
 
+        const isCounts = section.title === "Counts";
+        const fieldContainer =
+          "flex flex-col " + (isCounts ? "gap-3 pb-2" : "gap-2");
+        const valueClass =
+          (isCounts ? "pb-3 md:pb-4" : "pb-1") +
+          " text-xs text-foreground/80 md:text-sm";
+        const labelClass =
+          "text-sm font-semibold text-secondary uppercase";
+        const gapY = isCounts ? "gap-y-16" : "gap-y-8";
+
         return (
           <SectionCard key={section.title} title={section.title}>
-            {(() => {
-              const isCounts = section.title === "Counts";
-              const fieldContainer =
-                "flex flex-col " + (isCounts ? "gap-3 pb-2" : "gap-2");
-              const valueClass =
-                (isCounts ? "pb-3 md:pb-4" : "pb-1") +
-                " text-xs text-foreground/80 md:text-sm";
-              const labelClass = "text-sm font-semibold text-secondary uppercase";
-
             <div
               className={`grid ${
                 section.columns === 3
@@ -171,9 +172,7 @@ function DetailsSpecRenderer<T extends Record<string, any>>({
                   : section.columns === 1
                     ? "grid-cols-1"
                     : "grid-cols-2"
-              } gap-x-6 ${
-                section.title === "Counts" ? "gap-y-16" : "gap-y-8"
-              } text-sm`}
+              } gap-x-6 ${gapY} text-sm`}
               style={gridStyle}
             >
               {section.fields.map((field) => {
@@ -233,7 +232,6 @@ function DetailsSpecRenderer<T extends Record<string, any>>({
                 );
               })}
             </div>
-            })()}
           </SectionCard>
         );
       })}

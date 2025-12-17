@@ -96,21 +96,9 @@ type AvailabilityPrefs = {
   defaultExactBandsVisible?: boolean;
 };
 
-type ComputeExpectedFn = (plan: PlanLike) => {
-  expectedCycleStart: string | Date;
-  expectedHormoneTestingStart?: string | Date | null;
-  expectedBreedDate?: string | Date | null;
-  expectedBreedingDate?: string | Date | null;
-  expectedBirthDate?: string | Date | null;
-  expectedWeanedDate?: string | Date | null;
-  expectedPlacementStartDate?: string | Date | null;
-  expectedPlacementCompleted?: string | Date | null;
-};
-
 type Props = {
   plans: PlanLike[];
   prefsOverride?: Partial<AvailabilityPrefs>;
-  computeExpected?: ComputeExpectedFn;
   className?: string;
 };
 
@@ -179,7 +167,7 @@ type PlanExpected = {
   placementCompleted?: Date | null;
 };
 
-function resolveExpected(plan: PlanLike, computeExpected?: ComputeExpectedFn): PlanExpected {
+function resolveExpected(plan: PlanLike): PlanExpected {
   const placementCompletedAny = pickPlacementCompletedAny(plan);
   const placementStartAny =
     plan.expectedPlacementStartDate ??
@@ -200,41 +188,7 @@ function resolveExpected(plan: PlanLike, computeExpected?: ComputeExpectedFn): P
     placementCompleted: parseAnyDate(placementCompletedAny),
   };
 
-  const hasAnyMissing =
-    !(planExp.cycle && planExp.breeding && planExp.birth && planExp.placementCompleted);
-
-  let computed: PlanExpected | null = null;
-
-  if (hasAnyMissing && computeExpected && plan.lockedCycleStart) {
-    const r = computeExpected(plan) as any;
-
-    const computedPlacementStartAny =
-      r?.expectedPlacementStartDate ??
-      r?.placementStartDateExpected ??
-      null;
-
-    computed = {
-      cycle: parseAnyDate(r?.expectedCycleStart),
-      testing: parseAnyDate(r?.expectedHormoneTestingStart ?? null),
-      breeding: parseAnyDate(r?.expectedBreedDate ?? r?.expectedBreedingDate ?? null),
-      birth: parseAnyDate(r?.expectedBirthDate ?? null),
-      weaned: parseAnyDate(r?.expectedWeanedDate ?? null),
-      placementStart: parseAnyDate(computedPlacementStartAny),
-      placementCompleted: parseAnyDate(pickPlacementCompletedAny(r)),
-    };
-  }
-
-  const merged: PlanExpected = {
-    cycle: planExp.cycle ?? computed?.cycle ?? null,
-    testing: planExp.testing ?? computed?.testing ?? null,
-    breeding: planExp.breeding ?? computed?.breeding ?? null,
-    birth: planExp.birth ?? computed?.birth ?? null,
-    weaned: planExp.weaned ?? computed?.weaned ?? null,
-    placementStart: planExp.placementStart ?? computed?.placementStart ?? null,
-    placementCompleted: planExp.placementCompleted ?? computed?.placementCompleted ?? null,
-  };
-
-  return merged;
+  return planExp;
 }
 
 /* ---------- phase rows (respects showBands; always adds center fill like Rollup) ---------- */
@@ -521,7 +475,7 @@ function toStageData(rows: GanttRow[]): StageDatum[] {
 }
 
 /* ---------- main ---------- */
-export default function PerPlanGantt({ plans, prefsOverride, computeExpected, className = "" }: Props) {
+export default function PerPlanGantt({ plans, prefsOverride, className = "" }: Props) {
   const hook = useAvailabilityPrefs
     ? useAvailabilityPrefs({ tenantId: readTenantIdFast?.() })
     : undefined;
@@ -548,15 +502,15 @@ export default function PerPlanGantt({ plans, prefsOverride, computeExpected, cl
   return (
     <div className={className}>
       {lockedPlans.map(plan => (
-        <PlanBlock key={plan.id} plan={plan} prefs={prefs} computeExpected={computeExpected} />
+        <PlanBlock key={plan.id} plan={plan} prefs={prefs} />
       ))}
     </div>
   );
 }
 
 /* ---------- per plan block (no lock scroll) ---------- */
-function PlanBlock({ plan, prefs, computeExpected }: { plan: PlanLike; prefs: AvailabilityPrefs; computeExpected?: ComputeExpectedFn }) {
-  const exp = React.useMemo(() => resolveExpected(plan, computeExpected), [plan, computeExpected]);
+function PlanBlock({ plan, prefs }: { plan: PlanLike; prefs: AvailabilityPrefs }) {
+  const exp = React.useMemo(() => resolveExpected(plan), [plan]);
   const [toggles, setToggles] = usePlanToggles(plan.id, !!prefs.defaultExactBandsVisible);
 
   // Availability Bands toggle affects BOTH sections

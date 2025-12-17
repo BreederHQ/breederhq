@@ -3,8 +3,8 @@ import Gantt from "@bhq/ui/components/Gantt";
 import { readTenantIdFast } from "@bhq/ui/utils/tenant";
 import { useAvailabilityPrefs } from "@bhq/ui/hooks";
 import { mapTenantPrefs, hasAnyExactValues } from "@bhq/ui/utils/availability";
-import { computeExpected } from "@/path/to/breedingMath";
-import { pickPlacementCompletedAny } from "@bhq/ui/utils";
+
+
 
 /* ---------- debug ---------- */
 const fmtNice = new Intl.DateTimeFormat(undefined, { month: "short", day: "2-digit", year: "numeric" });
@@ -44,17 +44,6 @@ type PlanLike = {
   placementCompletedDateExpected?: string | Date | null;
 
   isSynthetic?: boolean;
-};
-
-type ComputeExpectedFn = (plan: PlanLike) => {
-  expectedCycleStart: string | Date;
-  expectedHormoneTestingStart?: string | Date | null;
-  expectedBreedDate?: string | Date | null;
-  expectedBreedingDate?: string | Date | null;
-  expectedBirthDate?: string | Date | null;
-  expectedWeanedDate?: string | Date | null;
-  expectedPlacementStartDate?: string | Date | null;
-  expectedPlacementCompleted?: string | Date | null;
 };
 
 type AvailabilityPrefs = {
@@ -141,6 +130,20 @@ function monthsInclusive(a: Date, b: Date) {
   return (b.getFullYear() - a.getFullYear()) * 12 + (b.getMonth() - a.getMonth()) + 1;
 }
 
+function pickPlacementCompletedAny(plan: any): string | null {
+  return (
+    (plan?.placementCompletedDateActual ?? null) ||
+    (plan?.placementCompleted ?? null) ||
+    (plan?.expectedPlacementCompletedDate ?? null) ||
+    (plan?.placementCompletedDateExpected ?? null) ||
+    (plan?.placement_completed_expected ?? null) ||
+    (plan?.placement_extended_end ?? null) ||
+    (plan?.placementExtendedEnd ?? null) ||
+    null
+  );
+}
+
+
 /* ---------- math ---------- */
 
 type Bands = { rf: number; rt: number; uf: number; ut: number };
@@ -173,7 +176,7 @@ type PlanExpected = {
   placementCompleted?: Date | null;
 };
 
-function resolveExpected(plan: PlanLike, computeExpected?: ComputeExpectedFn): PlanExpected {
+function resolveExpected(plan: PlanLike): PlanExpected {
   const placementCompletedAny = pickPlacementCompletedAny(plan);
 
   const placementStartAny =
@@ -202,46 +205,10 @@ function resolveExpected(plan: PlanLike, computeExpected?: ComputeExpectedFn): P
     placementCompleted: parseAnyDate(placementCompletedAny),
   };
 
-  const needsCompute = !(planExp.cycle && planExp.breeding && planExp.birth && planExp.placementCompleted);
+  if (!planExp.placementStart && planExp.birth) planExp.placementStart = addDays(planExp.birth, 56);
+  if (!planExp.placementCompleted && planExp.placementStart) planExp.placementCompleted = addDays(planExp.placementStart, 21);
 
-  let computed: PlanExpected | null = null;
-
-  if (needsCompute && computeExpected && plan.lockedCycleStart) {
-    const r = computeExpected(plan) as any;
-    const computedPlacementStartAny =
-      r?.expectedPlacementStartDate ?? r?.placementStartDateExpected ?? null;
-
-    computed = {
-      cycle: parseAnyDate(r?.expectedCycleStart),
-      testing: parseAnyDate(r?.expectedHormoneTestingStart ?? null),
-      breeding: parseAnyDate(r?.expectedBreedDate ?? r?.expectedBreedingDate ?? null),
-      birth: parseAnyDate(r?.expectedBirthDate ?? null),
-      weaned: parseAnyDate(
-        r?.expectedWeanedDate ??
-        r?.expectedWeaningDate ??
-        r?.expectedWeaned ??
-        r?.weanedDateExpected ??
-        null
-      ),
-      placementStart: parseAnyDate(computedPlacementStartAny),
-      placementCompleted: parseAnyDate(pickPlacementCompletedAny(r)),
-    };
-  }
-
-  const merged: PlanExpected = {
-    cycle: planExp.cycle ?? computed?.cycle ?? null,
-    testing: planExp.testing ?? computed?.testing ?? null,
-    breeding: planExp.breeding ?? computed?.breeding ?? null,
-    birth: planExp.birth ?? computed?.birth ?? null,
-    weaned: planExp.weaned ?? computed?.weaned ?? null,
-    placementStart: planExp.placementStart ?? computed?.placementStart ?? null,
-    placementCompleted: planExp.placementCompleted ?? computed?.placementCompleted ?? null,
-  };
-
-  if (!merged.placementStart && merged.birth) merged.placementStart = addDays(merged.birth, 56);
-  if (!merged.placementCompleted && merged.placementStart) merged.placementCompleted = addDays(merged.placementStart, 21);
-
-  return merged;
+  return planExp;
 }
 
 /* ---------- BHQ Gantt adapter ---------- */
@@ -277,7 +244,6 @@ const idKey = (x: ID) => String(x);
 type Props = {
   plans?: PlanLike[] | null;
   items?: PlanLike[] | null;
-  computeExpected?: ComputeExpectedFn;
   prefsOverride?: Partial<AvailabilityPrefs>;
   className?: string;
   selected?: Set<ID> | ID[];
@@ -287,7 +253,6 @@ type Props = {
 export default function RollupGantt({
   plans,
   items,
-  computeExpected,
   prefsOverride,
   className = "",
   selected: selectedProp,
@@ -352,11 +317,27 @@ export default function RollupGantt({
     next.has(id) ? next.delete(id) : next.add(id);
     setSelected(next);
   };
-  const setAll = (v: boolean) => setSelected(v ? new Set(safePlans.map(p => p.id)) : new Set<ID>());
+  const setAll = (v: boolean) => {
+    // Only affect non-synthetic (real) plans; What If plans are controlled separately
+    const realPlans = safePlans.filter(p => !(p as any).isSynthetic);
+    setSelected(v ? new Set(realPlans.map(p => p.id)) : new Set<ID>());
+  };
 
   const activePlans = React.useMemo(
     () => safePlans.filter(p => selectedKeys.has(idKey(p.id))),
     [safePlans, selectedKeys]
+  );
+
+  // Exclude synthetic (What If) plans from the checkbox list - they're controlled via "Show on chart"
+  // Also exclude plans without a cycle date - no seed date means no timeline to plot
+  const selectablePlans = React.useMemo(
+    () => safePlans.filter(p => {
+      if ((p as any).isSynthetic) return false;
+      // Must have at least one cycle date to be plottable
+      const hasCycleDate = !!(p.lockedCycleStart || p.expectedCycleStart || (p as any).cycleStartDateActual);
+      return hasCycleDate;
+    }),
+    [safePlans]
   );
 
   /* build data */
@@ -368,7 +349,7 @@ export default function RollupGantt({
   let maxAll: Date | null = null;
 
   for (const p of activePlans) {
-    const exp = resolveExpected(p, computeExpected);
+    const exp = resolveExpected(p);
 
     const isSynthetic = (p as any).isSynthetic === true;
     const whatIfTag = isSynthetic ? " (What If)" : "";
@@ -766,21 +747,17 @@ export default function RollupGantt({
             </label>
           </div>
           <div className="grid grid-cols-1 gap-2 text-xs">
-            {safePlans.map(p => (
+            {selectablePlans.map(p => (
               <label key={String(p.id)} className="inline-flex items-center gap-2 cursor-pointer">
                 <input
                   type="checkbox"
                   checked={selectedKeys.has(idKey(p.id))}
-                  onChange={() => {
-                    const next = new Set(selected);
-                    next.has(p.id) ? next.delete(p.id) : next.add(p.id);
-                    setSelected(next);
-                  }}
+                  onChange={() => toggleOne(p.id)}
                 />
                 <span className="truncate">{p.name || String(p.id)}</span>
               </label>
             ))}
-            {safePlans.length === 0 && (
+            {selectablePlans.length === 0 && (
               <div className="text-xs text-secondary">No plans available.</div>
             )}
           </div>

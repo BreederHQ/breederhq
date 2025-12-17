@@ -622,7 +622,7 @@ export function makeApi(baseOrigin: string = "", authHeaderFn?: () => Record<str
   };
 
   const contactsExtras = {
-    /** returns [] until backend route exists */
+    /** Get all animals owned by a contact */
     async animalsForContact(contactId: ID): Promise<any[]> {
       const url = joinUrl(v1, "contacts", String(contactId), "animals");
       try {

@@ -2,9 +2,7 @@
 
 import * as React from "react";
 import { Calendar as BHQCalendar } from "@bhq/ui/components/Calendar";
-import { readTenantIdFast } from "@bhq/ui/utils/tenant";
-import { useAvailabilityPrefs } from "@bhq/ui/hooks";
-import { mapTenantPrefs } from "@bhq/ui/utils/availability";
+import { computeAvailabilityBands } from "@bhq/ui/utils/availability";
 
 import {
   windowsFromPlan,
@@ -101,30 +99,13 @@ export default function BreedingCalendar({
   navigateToPlan?: (id: string | number) => void;
   className?: string;
 }) {
-  // Get tenant availability preferences
-  const tenantId = readTenantIdFast?.();
-  const hook = useAvailabilityPrefs ? useAvailabilityPrefs({ tenantId }) : undefined;
-  const prefs = React.useMemo(() => mapTenantPrefs(hook?.prefs || {}), [hook?.prefs]);
-
   const selectedSet: Set<string | number> | null = React.useMemo(() => {
     if (!selectedPlanIds) return null;
     return selectedPlanIds instanceof Set ? selectedPlanIds : new Set(selectedPlanIds);
   }, [selectedPlanIds]);
 
   const planGroup = React.useMemo(() => {
-    // Only show plans with a cycle date - no seed date means no timeline to plot
-    const plottablePlans = (items || []).filter((p) => {
-      const hasCycleDate = !!(
-        p.lockedCycleStart ||
-        (p as any).expectedCycleStart ||
-        (p as any).cycleStartDateActual ||
-        (p as any).earliestCycleStart ||
-        (p as any).latestCycleStart
-      );
-      return hasCycleDate;
-    });
-
-    const groupItems = plottablePlans.map((p) => {
+    const groupItems = (items || []).map((p) => {
       const id = String(p.id);
       return {
         id: `plan:${id}`,
@@ -171,13 +152,10 @@ export default function BreedingCalendar({
       let w: PlanStageWindows | null = null;
       try {
         // windowsFromPlan expects a small shape. NormalizedPlan already carries fields it needs.
-        // Use lockedCycleStart if available, otherwise fall back to expectedCycleStart as the seed
-        const cycleStart = (p as any).lockedCycleStart ?? (p as any).expectedCycleStart ?? (p as any).cycleStartDateActual ?? null;
-
         w = windowsFromPlan({
           species: (p as any).species ?? (p as any).damSpecies ?? null,
           dob: (p as any).dob ?? (p as any).birthDate ?? null,
-          lockedCycleStart: cycleStart,
+          lockedCycleStart: (p as any).lockedCycleStart ?? null,
           earliestCycleStart: (p as any).earliestCycleStart ?? null,
           latestCycleStart: (p as any).latestCycleStart ?? null,
         } as any);
@@ -214,125 +192,34 @@ export default function BreedingCalendar({
         });
       }
 
-      // 2) Availability overlays - build phase bands similar to Gantt components
-      // Find key stages for phase band calculations
-      const cycleStage = stages.find(s => s.id === "pre_breeding");
-      const breedingStage = stages.find(s => s.id === "breeding");
-      const birthStage = stages.find(s => s.id === "birth");
-      const placementStage = stages.find(s => s.id === "placement_normal");
-
-      const addDays = (isoDate: string, days: number): string => {
-        const dt = isoToDate(isoDate);
-        dt.setUTCDate(dt.getUTCDate() + days);
-        return dt.toISOString().slice(0, 10);
-      };
-
-      // Cycle → Breeding phase bands
-      if (cycleStage && breedingStage) {
-        const cycleStart = asIsoDay(cycleStage.full?.start);
-        const breedingEnd = asIsoDay(breedingStage.full?.end);
-
-        if (cycleStart && breedingEnd) {
-          // Unlikely band
-          const uf = Math.abs(prefs.cycle_breeding_unlikely_from || 0);
-          const ut = Math.abs(prefs.cycle_breeding_unlikely_to || 0);
-          if (uf > 0 || ut > 0) {
-            const uStart = addDays(cycleStart, -uf);
-            const uEnd = addDays(breedingEnd, ut);
-            overlayEvents.push({
-              id: `plan:${planId}:avail:cycle-breeding:unlikely`,
-              title: `${planName} - Travel Unlikely`,
-              start: isoToDate(uStart),
-              end: isoToDate(uEnd),
-              allDay: true,
-              calendarId: "overlay:availability",
-              color: "#F59E0B",
-              extendedProps: {
-                planId,
-                variant: "availability",
-                availabilityKind: "unlikely",
-                phase: "cycle_breeding",
-              },
-            });
-          }
-
-          // Risky band
-          const rf = Math.abs(prefs.cycle_breeding_risky_from || 0);
-          const rt = Math.abs(prefs.cycle_breeding_risky_to || 0);
-          if (rf > 0 || rt > 0) {
-            const rStart = addDays(cycleStart, -rf);
-            const rEnd = addDays(breedingEnd, rt);
-            overlayEvents.push({
-              id: `plan:${planId}:avail:cycle-breeding:risky`,
-              title: `${planName} - Travel Risky`,
-              start: isoToDate(rStart),
-              end: isoToDate(rEnd),
-              allDay: true,
-              calendarId: "overlay:availability",
-              color: "#EF4444",
-              extendedProps: {
-                planId,
-                variant: "availability",
-                availabilityKind: "risky",
-                phase: "cycle_breeding",
-              },
-            });
-          }
-        }
+      // 2) Availability overlays (uses stage windows)
+      let bands: any[] = [];
+      try {
+        bands = computeAvailabilityBands(stages as any) || [];
+      } catch (err) {
+        console.error("[BreedingCalendar] computeAvailabilityBands failed", { planId, err });
+        bands = [];
       }
 
-      // Birth → Placement phase bands
-      if (birthStage && placementStage) {
-        const birthStart = asIsoDay(birthStage.full?.start);
-        const placementEnd = asIsoDay(placementStage.full?.end);
+      for (const [i, b] of bands.entries()) {
+        const s = asIsoDay(b?.range?.start);
+        const e = asIsoDay(b?.range?.end);
+        if (!s || !e) continue;
 
-        if (birthStart && placementEnd) {
-          // Unlikely band
-          const uf = Math.abs(prefs.post_unlikely_from_likely_start || 0);
-          const ut = Math.abs(prefs.post_unlikely_to_likely_end || 0);
-          if (uf > 0 || ut > 0) {
-            const uStart = addDays(birthStart, -uf);
-            const uEnd = addDays(placementEnd, ut);
-            overlayEvents.push({
-              id: `plan:${planId}:avail:birth-placement:unlikely`,
-              title: `${planName} - Travel Unlikely`,
-              start: isoToDate(uStart),
-              end: isoToDate(uEnd),
-              allDay: true,
-              calendarId: "overlay:availability",
-              color: "#F59E0B",
-              extendedProps: {
-                planId,
-                variant: "availability",
-                availabilityKind: "unlikely",
-                phase: "birth_placement",
-              },
-            });
-          }
-
-          // Risky band
-          const rf = Math.abs(prefs.post_risky_from_full_start || 0);
-          const rt = Math.abs(prefs.post_risky_to_full_end || 0);
-          if (rf > 0 || rt > 0) {
-            const rStart = addDays(birthStart, -rf);
-            const rEnd = addDays(placementEnd, rt);
-            overlayEvents.push({
-              id: `plan:${planId}:avail:birth-placement:risky`,
-              title: `${planName} - Travel Risky`,
-              start: isoToDate(rStart),
-              end: isoToDate(rEnd),
-              allDay: true,
-              calendarId: "overlay:availability",
-              color: "#EF4444",
-              extendedProps: {
-                planId,
-                variant: "availability",
-                availabilityKind: "risky",
-                phase: "birth_placement",
-              },
-            });
-          }
-        }
+        overlayEvents.push({
+          id: `plan:${planId}:avail:${b.kind}:${i}`,
+          title: b.label,
+          start: isoToDate(s),
+          end: isoToDate(e),
+          allDay: true,
+          calendarId: "overlay:availability",
+          color: b.kind === "risky" ? "#EF4444" : baseColor,
+          extendedProps: {
+            planId,
+            variant: "availability",
+            availabilityKind: b.kind,
+          },
+        });
       }
     }
 
@@ -348,7 +235,7 @@ export default function BreedingCalendar({
       const en = (e.end ? (e.end instanceof Date ? e.end : new Date(e.end)) : e.start).getTime();
       return en >= hs && s <= he;
     });
-  }, [items, selectedSet, horizon, prefs]);
+  }, [items, selectedSet, horizon]);
 
   return (
     <BHQCalendar

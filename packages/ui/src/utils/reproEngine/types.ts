@@ -8,6 +8,7 @@ export type ReproSummary = {
   animalId: string;
   species: SpeciesCode;
   dob?: ISODate | null;
+  lastBirthIso?: string | null;
 
   // Canonical cycle history. Sorted asc, date-only.
   cycleStartsAsc: ISODate[];

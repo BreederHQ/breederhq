@@ -4,7 +4,7 @@ import WaitlistPage from "./pages/WaitlistPage";
 import OffspringPage from "./pages/OffspringPage";
 import * as React from "react";
 import ReactDOM from "react-dom";
-import { Trash2, Plus, X } from "lucide-react";
+import { Trash2, Plus, X, ChevronDown } from "lucide-react";
 import {
   PageHeader,
   Card,
@@ -34,8 +34,9 @@ import {
   WaitlistEntry,
   AnimalLite,
 } from "./api";
-import { expectedMilestonesFromLocked } from "@bhq/ui/utils";
 import clsx from "clsx";
+
+import { reproEngine } from "@bhq/ui/utils"
 
 /* Optional toast, fallback to alert if not present */
 let useToast: any;
@@ -131,51 +132,70 @@ function SectionChipHeading({ icon, text }: { icon: React.ReactNode; text: strin
   );
 }
 
-type DetailsFieldSpec<T> = {
-  label: string;
-  key: keyof T | string;
-  view?: (row: T) => React.ReactNode;
-  editor?: string;
-};
-
-type DetailsSectionSpec<T> = {
-  title: string;
-  fields: DetailsFieldSpec<T>[];
-};
-
-type DetailsSpecRendererProps<T> = {
-  row: T;
-  mode: "view" | "edit";
-  setDraft: (draft: Partial<T>) => void;
-  sections: DetailsSectionSpec<T>[];
-};
-
 function DetailsSpecRenderer<T extends Record<string, any>>({
   row,
+  mode,
+  setDraft,
   sections,
 }: DetailsSpecRendererProps<T>) {
+  const isEdit = mode === "edit";
+
   return (
     <div className="space-y-4">
       {sections.map((section) => (
         <SectionCard key={section.title} title={section.title}>
           <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
             {section.fields.map((field) => {
+              const key = String(field.key);
               const raw =
                 typeof field.view === "function"
                   ? field.view(row)
-                  : (row as any)[field.key as keyof T];
+                  : (row as any)[key];
 
+              // Number editor, used for group counts
+              if (isEdit && field.editor === "number") {
+                const defaultVal =
+                  raw === null || raw === undefined || raw === "" || raw === "-"
+                    ? ""
+                    : String(raw);
+
+                return (
+                  <div key={key} className="flex flex-col gap-0.5">
+                    <div className="text-xs font-medium text-secondary">
+                      {field.label}
+                    </div>
+                    <Input
+                      type="number"
+                      defaultValue={defaultVal}
+                      onBlur={(e) => {
+                        const v = e.currentTarget.value;
+                        if (v === "") {
+                          setDraft({ [key]: null } as any);
+                          return;
+                        }
+                        const n = Number(v);
+                        setDraft({
+                          [key]: Number.isFinite(n) ? n : null,
+                        } as any);
+                      }}
+                      className="h-8 w-full bg-background text-sm"
+                    />
+                  </div>
+                );
+              }
+
+              // Default read only rendering
               const value =
                 raw === null || raw === undefined || raw === ""
                   ? "-"
                   : raw;
 
               return (
-                <div key={String(field.key)} className="flex flex-col gap-0.5">
+                <div key={key} className="flex flex-col gap-0.5">
                   <div className="text-xs font-medium text-secondary">
                     {field.label}
                   </div>
-                  <div>{value}</div>
+                  <div className="text-sm text-foreground/90">{value}</div>
                 </div>
               );
             })}
@@ -655,7 +675,37 @@ function computeExpectedForPlanLite(plan: { species?: string | null; lockedCycle
     };
   }
 
-  const preview = expectedMilestonesFromLocked(locked, speciesWire) || {};
+const computeFromLocked = React.useCallback(
+  (lockedCycleStart: string): any => {
+    const speciesWire = toWireSpecies(row.species as any) ?? "DOG";
+    const locked = String(lockedCycleStart || "").slice(0, 10);
+    if (!locked) return {};
+
+    const todayIso = new Date().toISOString().slice(0, 10);
+    const summary = {
+      species: speciesWire,
+      cycleStartsAsc: [], // not needed for windows-from-seed
+      dob: null,
+      today: todayIso,
+    };
+
+    const t = reproEngine.buildTimelineFromSeed(summary as any, locked as any);
+
+    // Map to the legacy “expected” shape your UI already uses.
+    // Keep keys aligned to your existing usage in lockCycle payload.
+    return {
+      ovulation: t.milestones?.ovulation_center ?? null,
+      birth_expected: t.windows?.whelping_likely?.start ?? null,
+      placement_expected: t.windows?.go_home_normal_likely?.start ?? null,
+      placement_expected_end: t.windows?.go_home_normal_likely?.end ?? null,
+      placement_extended_end: t.windows?.go_home_extended_full?.end ?? null,
+      placement_extended_full: t.windows?.go_home_extended_full
+        ? [t.windows.go_home_extended_full.start, t.windows.go_home_extended_full.end]
+        : null,
+    };
+  },
+  [row.species],
+);
 
   const expectedCycleStart = locked;
   const expectedHormoneTestingStart = pickExpectedTestingStart(preview, locked);
@@ -2276,12 +2326,18 @@ function AddOffspringForGroupOverlay(props: AddOffspringForGroupOverlayProps) {
   const [price, setPrice] = React.useState<string>("");
   const [notes, setNotes] = React.useState("");
 
+  // new: whelping collar color
+  const [whelpingCollarColor, setWhelpingCollarColor] = React.useState<string | null>(null);
+  const [showWhelpPalette, setShowWhelpPalette] = React.useState(false);
+
   const [submitting, setSubmitting] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
   const labelClass = "block text-xs font-medium text-muted-foreground mb-1";
   const inputClass =
     "h-8 w-full rounded border border-[var(--hairline,#222)] bg-[var(--surface-subtle,#050505)] px-2 text-xs text-foreground";
+
+  const paletteRef = React.useRef<HTMLDivElement | null>(null);
 
   const reset = React.useCallback(() => {
     setName("");
@@ -2290,15 +2346,73 @@ function AddOffspringForGroupOverlay(props: AddOffspringForGroupOverlayProps) {
     setBirthWeightOz("");
     setPrice("");
     setNotes("");
+    setWhelpingCollarColor(null);
+    setShowWhelpPalette(false);
     setSubmitting(false);
     setError(null);
   }, []);
 
+  // Reset fields whenever the overlay closes
   React.useEffect(() => {
     if (!open) {
       reset();
     }
   }, [open, reset]);
+
+  // Escape key closes overlay, body scroll lock while open
+  React.useEffect(() => {
+    if (!open) return;
+
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    const handleKeyDown = (evt: KeyboardEvent) => {
+      if (evt.key === "Escape") {
+        evt.preventDefault();
+        if (!submitting) {
+          onClose();
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [open, onClose, submitting]);
+
+  // Click outside the palette closes it
+  React.useEffect(() => {
+    if (!showWhelpPalette) return;
+
+    const handler = (evt: MouseEvent) => {
+      const node = paletteRef.current;
+      if (!node) return;
+      if (!node.contains(evt.target as Node)) {
+        setShowWhelpPalette(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [showWhelpPalette]);
+
+  const whelpingCollarLabel =
+    whelpingCollarColor && String(whelpingCollarColor).trim().length
+      ? String(whelpingCollarColor)
+      : "Not set";
+
+  const whelpingCollarColorHex = (() => {
+    const v = (whelpingCollarColor ?? "").toString().toLowerCase();
+    const match = WHELPING_COLLAR_SWATCHES.find((opt) => {
+      const val = opt.value.toLowerCase();
+      const label = opt.label.toLowerCase();
+      return val === v || label === v;
+    });
+    return match?.hex ?? null;
+  })();
 
   const handleSubmit = async (evt: React.FormEvent) => {
     evt.preventDefault();
@@ -2358,6 +2472,11 @@ function AddOffspringForGroupOverlay(props: AddOffspringForGroupOverlayProps) {
       return;
     }
 
+    const collarValue =
+      whelpingCollarColor && whelpingCollarColor.trim().length
+        ? whelpingCollarColor.trim()
+        : null;
+
     const payload: any = {
       name: trimmedName,
       sex: sexWire,
@@ -2368,13 +2487,13 @@ function AddOffspringForGroupOverlay(props: AddOffspringForGroupOverlayProps) {
       birthWeightOz: parsedBirthWeight,
       price: parsedPrice,
       notes: notes.trim() || null,
+      whelpingCollarColor: collarValue,
     };
 
     try {
       setSubmitting(true);
       setError(null);
 
-      // Key change is here
       await individuals.create(payload);
 
       if (onCreated) {
@@ -2399,14 +2518,10 @@ function AddOffspringForGroupOverlay(props: AddOffspringForGroupOverlayProps) {
     <div
       className="fixed inset-0"
       style={{ zIndex: MODAL_Z + 10, isolation: "isolate" }}
-      onMouseDownCapture={(e) => {
-        e.stopPropagation();
-      }}
-      onMouseUpCapture={(e) => {
-        e.stopPropagation();
-      }}
-      onClickCapture={(e) => {
-        e.stopPropagation();
+      onClick={() => {
+        if (!submitting) {
+          onClose();
+        }
       }}
     >
       {/* Backdrop */}
@@ -2415,8 +2530,11 @@ function AddOffspringForGroupOverlay(props: AddOffspringForGroupOverlayProps) {
       {/* Centered card */}
       <div className="absolute inset-0 flex items-center justify-center">
         <div
-          className="pointer-events-auto overflow-hidden"
-          style={{ width: 820, maxWidth: "95vw", maxHeight: "82vh" }}
+          className="w-full max-w-xl px-4 sm:px-0 pointer-events-auto"
+          onClick={(e) => {
+            // keep clicks inside the card from bubbling up and closing the overlay
+            e.stopPropagation();
+          }}
         >
           <Card className="h-full">
             <form className="flex h-full flex-col" onSubmit={handleSubmit}>
@@ -2435,7 +2553,11 @@ function AddOffspringForGroupOverlay(props: AddOffspringForGroupOverlayProps) {
                       type="button"
                       size="xs"
                       variant="ghost"
-                      onClick={onClose}
+                      onClick={() => {
+                        if (!submitting) {
+                          onClose();
+                        }
+                      }}
                       disabled={submitting}
                     >
                       Cancel
@@ -2488,7 +2610,7 @@ function AddOffspringForGroupOverlay(props: AddOffspringForGroupOverlayProps) {
                       value={status}
                       onChange={(e) =>
                         setStatus(
-                          e.target.value as "NEWBORN" | "WEANED" | "PLACED" | "DECEASED"
+                          e.target.value as "NEWBORN" | "WEANED" | "PLACED" | "DECEASED",
                         )
                       }
                     >
@@ -2497,6 +2619,64 @@ function AddOffspringForGroupOverlay(props: AddOffspringForGroupOverlayProps) {
                       <option value="PLACED">Placed</option>
                       <option value="DECEASED">Deceased</option>
                     </select>
+                  </div>
+
+                  {/* Whelping collar color */}
+                  <div>
+                    <span className={labelClass}>Collar Color</span>
+                    <div className="relative">
+                      <button
+                        type="button"
+                        className={cx(
+                          inputClass,
+                          "flex items-center justify-between text-left cursor-pointer",
+                        )}
+                        onClick={() => setShowWhelpPalette((prev) => !prev)}
+                      >
+                        <span className="flex items-center gap-2">
+                          {whelpingCollarColorHex && (
+                            <span
+                              className="h-3 w-3 rounded-full border border-border"
+                              style={{ backgroundColor: whelpingCollarColorHex }}
+                            />
+                          )}
+                          <span>
+                            {whelpingCollarLabel === "Not set"
+                              ? "Select Color"
+                              : whelpingCollarLabel}
+                          </span>
+                        </span>
+                        <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+                      </button>
+
+                      {showWhelpPalette && (
+                        <div
+                          ref={paletteRef}
+                          className="absolute z-20 mt-1 w-full rounded-md border border-border bg-surface shadow-lg"
+                        >
+                          <ul className="max-h-48 overflow-y-auto py-1 text-xs">
+                            {WHELPING_COLLAR_SWATCHES.map((opt) => (
+                              <li key={opt.value}>
+                                <button
+                                  type="button"
+                                  className="flex w-full items-center gap-2 px-2 py-1.5 text-left hover:bg-muted"
+                                  onClick={() => {
+                                    setWhelpingCollarColor(opt.value);
+                                    setShowWhelpPalette(false);
+                                  }}
+                                >
+                                  <span
+                                    className="h-3 w-3 rounded-full border border-border"
+                                    style={{ backgroundColor: opt.hex }}
+                                  />
+                                  <span>{opt.label}</span>
+                                </button>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
                   </div>
 
                   {/* Birth weight */}
@@ -2534,7 +2714,9 @@ function AddOffspringForGroupOverlay(props: AddOffspringForGroupOverlayProps) {
                 </div>
 
                 {error && (
-                  <div className="mt-3 text-xs text-destructive">{error}</div>
+                  <div className="text-xs text-red-400">
+                    {error}
+                  </div>
                 )}
               </div>
             </form>
@@ -4714,8 +4896,9 @@ function OffspringGroupsTab(
               requestSave,
             }: any) => {
               const tblRow = mapDetailToTableRow(row);
+              const effectiveTab = addOffspringOpen ? "linkedOffspring" : activeTab;
+              const isEdit = mode === "edit" && !readOnlyGlobal;
               const groupId = (row as any)?.id as number | undefined;
-
               const openOffspringFromGroup = (offspringId: number) => {
                 try {
                   const url = new URL("/offspring", window.location.origin);
@@ -4731,7 +4914,6 @@ function OffspringGroupsTab(
 
               activeTabRef.current = activeTab;
               setActiveTabRef.current = setActiveTab;
-              const effectiveTab = addOffspringOpen ? "linkedOffspring" : activeTab;
 
               const fromRow: any[] =
                 Array.isArray((row as any)?.Offspring) && (row as any).Offspring.length > 0
@@ -4747,7 +4929,7 @@ function OffspringGroupsTab(
                   title={tblRow.groupName || tblRow.planCode || `Group #${tblRow.id}`}
                   subtitle={tblRow.breed || tblRow.species || ""}
                   mode={mode}
-                  onEdit={() => !readOnlyGlobal && setMode("edit")}
+                  onEdit={() => setMode("edit")}
                   onCancel={() => setMode("view")}
                   onSave={requestSave}
                   tabs={[
@@ -4961,9 +5143,9 @@ function OffspringGroupsTab(
 
                       <DetailsSpecRenderer<GroupTableRow>
                         row={tblRow}
-                        mode={readOnlyGlobal ? "view" : mode}
-                        setDraft={() => { }}
-                        sections={groupSections(readOnlyGlobal ? "view" : mode)}
+                        mode={isEdit ? "edit" : "view"}
+                        setDraft={setDraft}
+                        sections={groupSections(isEdit ? "edit" : "view")}
                       />
                     </>
                   )}
