@@ -34,8 +34,9 @@ import {
   WaitlistEntry,
   AnimalLite,
 } from "./api";
-import { expectedMilestonesFromLocked } from "@bhq/ui/utils";
 import clsx from "clsx";
+
+import { reproEngine } from "@bhq/ui/utils"
 
 /* Optional toast, fallback to alert if not present */
 let useToast: any;
@@ -141,66 +142,101 @@ function DetailsSpecRenderer<T extends Record<string, any>>({
 
   return (
     <div className="space-y-4">
-      {sections.map((section) => (
-        <SectionCard key={section.title} title={section.title}>
-          <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
-            {section.fields.map((field) => {
-              const key = String(field.key);
-              const raw =
-                typeof field.view === "function"
-                  ? field.view(row)
-                  : (row as any)[key];
+      {sections.map((section) => {
+        const columns =
+          section.columns === 3
+            ? 3
+            : section.columns === 1
+              ? 1
+              : 2;
+        const gridStyle = {
+          gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
+        };
 
-              // Number editor, used for group counts
-              if (isEdit && field.editor === "number") {
-                const defaultVal =
-                  raw === null || raw === undefined || raw === "" || raw === "-"
-                    ? ""
-                    : String(raw);
+        return (
+          <SectionCard key={section.title} title={section.title}>
+            {(() => {
+              const isCounts = section.title === "Counts";
+              const fieldContainer =
+                "flex flex-col " + (isCounts ? "gap-3 pb-2" : "gap-2");
+              const valueClass =
+                (isCounts ? "pb-3 md:pb-4" : "pb-1") +
+                " text-xs text-foreground/80 md:text-sm";
+              const labelClass = "text-sm font-semibold text-secondary uppercase";
+
+            <div
+              className={`grid ${
+                section.columns === 3
+                  ? "grid-cols-3"
+                  : section.columns === 1
+                    ? "grid-cols-1"
+                    : "grid-cols-2"
+              } gap-x-6 ${
+                section.title === "Counts" ? "gap-y-16" : "gap-y-8"
+              } text-sm`}
+              style={gridStyle}
+            >
+              {section.fields.map((field) => {
+                const key = String(field.key);
+                const raw =
+                  typeof field.view === "function"
+                    ? field.view(row)
+                    : (row as any)[key];
+
+                // Number editor, used for group counts
+                if (isEdit && field.editor === "number") {
+                  const defaultVal =
+                    raw === null || raw === undefined || raw === "" || raw === "-"
+                      ? ""
+                      : String(raw);
+
+                  return (
+                    <div key={key} className={fieldContainer}>
+                      <div className={labelClass}>
+                        {field.label}
+                      </div>
+                      <Input
+                        type="number"
+                        defaultValue={defaultVal}
+                        onBlur={(e) => {
+                          const v = e.currentTarget.value;
+                          if (v === "") {
+                            setDraft({ [key]: null } as any);
+                            return;
+                          }
+                          const n = Number(v);
+                            setDraft({
+                              [key]: Number.isFinite(n) ? n : null,
+                            } as any);
+                          }}
+                        className="h-8 w-full bg-background text-sm"
+                      />
+                    </div>
+                  );
+                }
+
+                // Default read only rendering
+                const value =
+                  raw === null || raw === undefined || raw === ""
+                    ? "-"
+                    : raw;
 
                 return (
-                  <div key={key} className="flex flex-col gap-0.5">
-                    <div className="text-xs font-medium text-secondary">
+                  <div key={key} className={fieldContainer}>
+                    <div className={labelClass}>
                       {field.label}
                     </div>
-                    <Input
-                      type="number"
-                      defaultValue={defaultVal}
-                      onBlur={(e) => {
-                        const v = e.currentTarget.value;
-                        if (v === "") {
-                          setDraft({ [key]: null } as any);
-                          return;
-                        }
-                        const n = Number(v);
-                        setDraft({
-                          [key]: Number.isFinite(n) ? n : null,
-                        } as any);
-                      }}
-                      className="h-8 w-full bg-background text-sm"
-                    />
+                    <div className={valueClass}>
+                      {value}
+                    </div>
                   </div>
                 );
-              }
-
-              // Default read only rendering
-              const value =
-                raw === null || raw === undefined || raw === ""
-                  ? "-"
-                  : raw;
-
-              return (
-                <div key={key} className="flex flex-col gap-0.5">
-                  <div className="text-xs font-medium text-secondary">
-                    {field.label}
-                  </div>
-                  <div className="text-sm text-foreground/90">{value}</div>
-                </div>
-              );
-            })}
-          </div>
-        </SectionCard>
-      ))}
+              })}
+            </div>
+            })()}
+          </SectionCard>
+        );
+      })}
     </div>
   );
 }
@@ -529,6 +565,8 @@ type BuyerLink = {
 type GroupTableRow = {
   id: number;
   planCode?: string | null;
+  planName?: string | null;
+  planId?: number | null;
   groupName?: string | null;
   species?: string | null;
   breed?: string | null;
@@ -555,10 +593,13 @@ type GroupTableRow = {
 
   // Counts
   countLive?: number | null;
+  countStillborn?: number | null;
   countReserved?: number | null;
   countSold?: number | null;
   countWeaned?: number | null;
   countPlaced?: number | null;
+  depositCollected?: number | null;
+  fullPaymentReceived?: number | null;
 
   // Status and overrides
   statusOverride?: string | null;
@@ -674,7 +715,37 @@ function computeExpectedForPlanLite(plan: { species?: string | null; lockedCycle
     };
   }
 
-  const preview = expectedMilestonesFromLocked(locked, speciesWire) || {};
+const computeFromLocked = React.useCallback(
+  (lockedCycleStart: string): any => {
+    const speciesWire = toWireSpecies(row.species as any) ?? "DOG";
+    const locked = String(lockedCycleStart || "").slice(0, 10);
+    if (!locked) return {};
+
+    const todayIso = new Date().toISOString().slice(0, 10);
+    const summary = {
+      species: speciesWire,
+      cycleStartsAsc: [], // not needed for windows-from-seed
+      dob: null,
+      today: todayIso,
+    };
+
+    const t = reproEngine.buildTimelineFromSeed(summary as any, locked as any);
+
+    // Map to the legacy “expected” shape your UI already uses.
+    // Keep keys aligned to your existing usage in lockCycle payload.
+    return {
+      ovulation: t.milestones?.ovulation_center ?? null,
+      birth_expected: t.windows?.whelping_likely?.start ?? null,
+      placement_expected: t.windows?.go_home_normal_likely?.start ?? null,
+      placement_expected_end: t.windows?.go_home_normal_likely?.end ?? null,
+      placement_extended_end: t.windows?.go_home_extended_full?.end ?? null,
+      placement_extended_full: t.windows?.go_home_extended_full
+        ? [t.windows.go_home_extended_full.start, t.windows.go_home_extended_full.end]
+        : null,
+    };
+  },
+  [row.species],
+);
 
   const expectedCycleStart = locked;
   const expectedHormoneTestingStart = pickExpectedTestingStart(preview, locked);
@@ -789,7 +860,9 @@ function mapDetailToTableRow(d: OffspringRow): GroupTableRow {
   const row: GroupTableRow = {
     id: d.id,
     planCode: plan?.code ?? null,
-    groupName: plan?.name ?? d.identifier ?? `Group #${d.id}`,
+    planName: plan?.name ?? null,
+    planId: plan?.id ?? null,
+    groupName: d.identifier ?? plan?.name ?? `Group #${d.id}`,
     species: plan?.species ?? d.species ?? null,
     breed: plan?.breedText ?? null,
 
@@ -815,6 +888,10 @@ function mapDetailToTableRow(d: OffspringRow): GroupTableRow {
       typeof counts.live === "number"
         ? counts.live
         : (counts as any).animals ?? null,
+    countStillborn:
+      typeof (counts as any).stillborn === "number"
+        ? (counts as any).stillborn
+        : null,
     countReserved:
       typeof counts.reserved === "number" ? counts.reserved : null,
     countSold: deriveCountSold(d),
@@ -826,6 +903,16 @@ function mapDetailToTableRow(d: OffspringRow): GroupTableRow {
       typeof (counts as any).placed === "number"
         ? (counts as any).placed
         : null,
+    depositCollected:
+      typeof (counts as any).depositCollected === "number"
+        ? (counts as any).depositCollected
+        : null,
+    fullPaymentReceived:
+      typeof (counts as any).fullPaymentReceived === "number"
+        ? (counts as any).fullPaymentReceived
+        : typeof (counts as any).paymentReceived === "number"
+          ? (counts as any).paymentReceived
+          : null,
 
     statusOverride: d.statusOverride ?? null,
     statusOverrideReason: d.statusOverrideReason ?? null,
@@ -962,11 +1049,11 @@ function GroupSummaryBand({ row }: { row: GroupTableRow }) {
 
 function IdentityField(props: { label: string; children: React.ReactNode }) {
   return (
-    <div className="space-y-0.5">
-      <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+    <div style={{ paddingBottom: 24 }}>
+      <div className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
         {props.label}
       </div>
-      <div className="text-sm">{props.children ?? "-"}</div>
+      <div style={{ marginTop: 4 }} className="text-xs text-foreground/80 md:text-sm">{props.children ?? "-"}</div>
     </div>
   );
 }
@@ -974,7 +1061,7 @@ function IdentityField(props: { label: string; children: React.ReactNode }) {
 
 const groupSections = (mode: "view" | "edit") => [
   {
-    title: "Tags & Metadata",
+    title: "Tags",
     fields: [
       {
         label: "Tags",
@@ -982,21 +1069,12 @@ const groupSections = (mode: "view" | "edit") => [
         view: (r: GroupTableRow) =>
           r.tags && r.tags.length > 0 ? r.tags.join(", ") : "-",
       },
-      {
-        label: "Status",
-        key: "status",
-        view: (r: GroupTableRow) => r.status || "-",
-      },
-      {
-        label: "Updated",
-        key: "updatedAt",
-        view: (r: GroupTableRow) => fmtDate(r.updatedAt) || "-",
-      },
     ],
   },
 
   {
     title: "Counts",
+    columns: 3,
     fields: [
       {
         label: "Live",
@@ -1005,28 +1083,29 @@ const groupSections = (mode: "view" | "edit") => [
         view: (r: GroupTableRow) => String(r.countLive ?? 0),
       },
       {
-        label: "Weaned",
-        key: "countWeaned",
+        label: "Deceased",
+        key: "countStillborn",
         editor: "number",
-        view: (r: GroupTableRow) => String(r.countWeaned ?? 0),
+        view: (r: GroupTableRow) =>
+          r.countStillborn != null ? String(r.countStillborn) : "-",
       },
       {
-        label: "Placed",
-        key: "countPlaced",
-        editor: "number",
-        view: (r: GroupTableRow) => String(r.countPlaced ?? 0),
+        label: "Unknown",
+        key: "unknownSexCount",
+        view: (r: GroupTableRow) =>
+          r.unknownSexCount != null ? String(r.unknownSexCount) : "-",
       },
       {
-        label: "Reserved",
-        key: "countReserved",
-        editor: "number",
-        view: (r: GroupTableRow) => String(r.countReserved ?? 0),
+        label: "Deposit Collected",
+        key: "depositCollected",
+        view: (r: GroupTableRow) =>
+          r.depositCollected != null ? String(r.depositCollected) : "-",
       },
       {
-        label: "Sold",
-        key: "countSold",
-        editor: "number",
-        view: (r: GroupTableRow) => String(r.countSold ?? 0),
+        label: "Full Payment Received",
+        key: "fullPaymentReceived",
+        view: (r: GroupTableRow) =>
+          r.fullPaymentReceived != null ? String(r.fullPaymentReceived) : "-",
       },
     ],
   },
@@ -4789,8 +4868,25 @@ function OffspringGroupsTab(
                 return fallback as OffspringRow;
               }
             },
-            onSave: async (row: OffspringRow, draft: any) => {
+            onSave: async (rowId: string | number, draft: any) => {
               if (!api || readOnlyGlobal) return;
+
+              // DetailsHost passes the row ID, not the row object
+              const id = typeof rowId === 'string' ? parseInt(rowId, 10) : rowId;
+
+              // Find the actual row from our raw data
+              const row = raw.find((r) => r.id === id);
+
+              if (!row || !id) {
+                console.error('[Offspring onSave] Row not found!', { rowId, id, draft });
+                toast?.({
+                  title: "Save failed",
+                  description: "Group not found. Please refresh and try again.",
+                  variant: "destructive"
+                });
+                return;
+              }
+
               const body: any = {};
               if (draft.identifier !== undefined) body.identifier = draft.identifier;
               if (draft.statusOverride !== undefined) body.statusOverride = draft.statusOverride ?? null;
@@ -4819,14 +4915,13 @@ function OffspringGroupsTab(
                 };
               }
               try {
-                const updated = await api.offspring.patch(row.id, body);
+                const updated = await api.offspring.update(row.id, body);
                 const idx = raw.findIndex((r) => r.id === row.id);
                 if (idx >= 0) {
                   const next = [...raw];
                   next[idx] = updated as any;
                   setRaw(next);
                   setRows(next.map(mapDetailToTableRow));
-                  toast?.({ title: "Saved" });
 
                   try {
                     window.dispatchEvent(
@@ -4860,6 +4955,7 @@ function OffspringGroupsTab(
               row,
               mode,
               setMode,
+              setDraft,
               activeTab,
               setActiveTab,
               requestSave,
@@ -5049,71 +5145,89 @@ function OffspringGroupsTab(
                   {effectiveTab === "overview" && (
                     <>
                       <SectionCard title="Identity">
-                        <dl className="mt-2 grid grid-cols-2 gap-x-10 gap-y-10 text-xs md:text-sm">
-                          <div className="space-y-2">
-                            <IdentityField label="Group Name">
-                              {tblRow.groupName || "-"}
-                            </IdentityField>
+                        <div className="mt-2 grid grid-cols-1 gap-y-16 text-xs md:text-sm md:grid-cols-2 md:gap-x-10">
+                          <IdentityField label="Offspring Group Name">
+                            {isEdit ? (
+                              <Input
+                                type="text"
+                                defaultValue={row.identifier ?? ""}
+                                onBlur={(e) => {
+                                  const v = e.currentTarget.value.trim();
+                                  setDraft({ identifier: v || null });
+                                }}
+                                className="h-8 w-full bg-background text-sm"
+                                placeholder="Enter group name..."
+                              />
+                            ) : (
+                              tblRow.groupName || "-"
+                            )}
+                          </IdentityField>
 
-                            <IdentityField label="Species">
-                              {tblRow.species || "-"}
-                            </IdentityField>
+                          <IdentityField label="Linked Breeding Plan">
+                            {tblRow.planName && tblRow.planId ? (
+                              <a
+                                href={`/breeding?planId=${tblRow.planId}`}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-primary underline"
+                              >
+                                {tblRow.planName}
+                              </a>
+                            ) : (
+                              tblRow.planName || "-"
+                            )}
+                          </IdentityField>
 
-                            <IdentityField label="Dam">
-                              {tblRow.damName && tblRow.damId ? (
-                                <a
-                                  href={`/animals/${tblRow.damId}`}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="text-primary underline"
-                                >
-                                  {tblRow.damName}
-                                </a>
-                              ) : (
-                                tblRow.damName || "-"
-                              )}
-                            </IdentityField>
+                          <IdentityField label="Species">
+                            {tblRow.species || "-"}
+                          </IdentityField>
 
-                            <IdentityField label="Season">
-                              {tblRow.seasonLabel || "-"}
-                            </IdentityField>
-                          </div>
+                          <IdentityField label="Breed">
+                            {tblRow.breed || "-"}
+                          </IdentityField>
 
-                          <div className="space-y-2">
-                            <IdentityField label="Plan Code">
-                              {tblRow.planCode || "-"}
-                            </IdentityField>
+                          <IdentityField label="Dam">
+                            {tblRow.damName && tblRow.damId ? (
+                              <a
+                                href={`/animals/${tblRow.damId}`}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-primary underline"
+                              >
+                                {tblRow.damName}
+                              </a>
+                            ) : (
+                              tblRow.damName || "-"
+                            )}
+                          </IdentityField>
 
-                            <IdentityField label="Breed">
-                              {tblRow.breed || "-"}
-                            </IdentityField>
+                          <IdentityField label="Sire">
+                            {tblRow.sireName && tblRow.sireId ? (
+                              <a
+                                href={`/animals/${tblRow.sireId}`}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-primary underline"
+                              >
+                                {tblRow.sireName}
+                              </a>
+                            ) : (
+                              tblRow.sireName || "-"
+                            )}
+                          </IdentityField>
 
-                            <IdentityField label="Sire">
-                              {tblRow.sireName && tblRow.sireId ? (
-                                <a
-                                  href={`/animals/${tblRow.sireId}`}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="text-primary underline"
-                                >
-                                  {tblRow.sireName}
-                                </a>
-                              ) : (
-                                tblRow.sireName || "-"
-                              )}
-                            </IdentityField>
-
-                            <IdentityField label="Status (Auto-Updates)">
+                          <div className="md:col-span-2">
+                            <IdentityField label="Status">
                               {tblRow.status || "-"}
                             </IdentityField>
                           </div>
-                        </dl>
+                        </div>
                       </SectionCard>
 
                       <DetailsSpecRenderer<GroupTableRow>
                         row={tblRow}
                         mode={isEdit ? "edit" : "view"}
-                        setDraft={setDraft}
+                        setDraft={(p) => setDraft((d: any) => ({ ...d, ...p }))}
                         sections={groupSections(isEdit ? "edit" : "view")}
                       />
                     </>
