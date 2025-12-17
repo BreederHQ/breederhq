@@ -22,10 +22,10 @@ export default defineConfig({
     port: 6170,
     strictPort: true,
     proxy: {
-      "/api": { target: "http://localhost:6001", changeOrigin: true, rewrite: p => p },
-      "/health": { target: "http://localhost:6001", changeOrigin: true },
-      "/healthz": { target: "http://localhost:6001", changeOrigin: true },
-      "/__diag": { target: "http://localhost:6001", changeOrigin: true },
+      "/api": { target: "http://127.0.0.1:6000", changeOrigin: true },
+      "/health": { target: "http://127.0.0.1:6000", changeOrigin: true },
+      "/healthz": { target: "http://127.0.0.1:6000", changeOrigin: true },
+      "/__diag": { target: "http://127.0.0.1:6000", changeOrigin: true },
     },
   },
 });
