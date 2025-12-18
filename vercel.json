@@ -1,6 +1,9 @@
 {
   "rewrites": [
-    { "source": "/api/v1/(.*)", "destination": "/api/v1/$1" },
+    {
+      "source": "/api/v1/(.*)",
+      "destination": "https://breederhq-api.onrender.com/api/v1/$1"
+    },
     { "source": "/(.*)", "destination": "/index.html" }
   ]
 }
