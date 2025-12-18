@@ -4,6 +4,7 @@ import { fileURLToPath, URL } from "node:url";
 
 export default defineConfig({
   plugins: [react()],
+
   resolve: {
     alias: {
       "@bhq/ui": fileURLToPath(new URL("../../packages/ui/src", import.meta.url)),
@@ -16,8 +17,12 @@ export default defineConfig({
       "@bhq/organizations": fileURLToPath(new URL("../organizations/src", import.meta.url)),
       "@bhq/admin": fileURLToPath(new URL("../admin/src", import.meta.url)),
     },
-    dedupe: ["react", "react-dom"],
+
+    dedupe: ["react", "react-dom", "lucide-react"],
+
+    preserveSymlinks: true,
   },
+
   server: {
     port: 6170,
     strictPort: true,
