@@ -1,8 +1,5 @@
 {
   "rewrites": [
-    {
-      "source": "/api/:path*",
-      "destination": "https://breederhq-api.onrender.com/api/:path*"
-    }
+    { "source": "/(.*)", "destination": "/index.html" }
   ]
 }
