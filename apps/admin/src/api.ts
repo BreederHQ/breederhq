@@ -256,7 +256,14 @@ export const adminApi = {
   /** Provisioning (UNSCOPED: super admin only) */
   adminProvisionTenant(body: {
     tenant: { name: string; primaryEmail?: string | null };
-    owner: { email: string; name?: string | null; verify?: boolean; makeDefault?: boolean };
+    owner: {
+      email: string;
+      name?: string | null;
+      verify?: boolean;
+      makeDefault?: boolean;
+      tempPassword?: string;
+      generateTempPassword?: boolean;
+    };
     billing?: Partial<TenantDTO["billing"]> | undefined;
   }) {
     // keep endpoint name you already wired on the server
@@ -264,7 +271,20 @@ export const adminApi = {
       tenant: { id: ID; name: string; primaryEmail: string | null; createdAt: string; updatedAt: string };
       owner: { id: string; email: string; name: string | null; verified: boolean; isSuperAdmin: boolean; createdAt: string };
       billing: TenantDTO["billing"];
+      tempPassword: string;
     }>(`/tenants/admin-provision`, { method: "POST", body, tenantScoped: false });
+  },
+
+  /** Admin reset owner password (UNSCOPED: super admin only) */
+  adminResetOwnerPassword(tenantId: ID, body: { tempPassword?: string; generateTempPassword?: boolean }) {
+    return request<{
+      ok: boolean;
+      tempPassword: string;
+    }>(`/admin/tenants/${encodeURIComponent(String(tenantId))}/owner/reset-password`, {
+      method: "POST",
+      body,
+      tenantScoped: false,
+    });
   },
 };
 
