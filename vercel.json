@@ -1,14 +1,9 @@
 {
-  "buildCommand": "npm run build",
-  "outputDirectory": "apps/platform/dist",
   "rewrites": [
     {
-      "source": "/api/:path*",
-      "destination": "https://breederhq-api.onrender.com/api/:path*"
+      "source": "/api/v1/(.*)",
+      "destination": "https://breederhq-api.onrender.com/api/v1/$1"
     },
-    {
-      "source": "/(.*)",
-      "destination": "/index.html"
-    }
+    { "source": "/(.*)", "destination": "/index.html" }
   ]
 }
