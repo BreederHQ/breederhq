@@ -68,6 +68,11 @@ function TenantDetailsView({
   const [billingDirty, setBillingDirty] = React.useState(false);
   const { confirm } = hooks.useDirtyConfirm(usersDirty || billingDirty);
 
+  // Password reset state
+  const [resetWorking, setResetWorking] = React.useState(false);
+  const [resetPassword, setResetPassword] = React.useState<string | null>(null);
+  const [resetErr, setResetErr] = React.useState<string | null>(null);
+
   // register child "save" callbacks (e.g., UsersTab role batch)
   const childSaversRef = React.useRef(new Set<() => Promise<void>>());
   const registerChildSave = React.useCallback((cb: () => Promise<void>) => {
@@ -84,6 +89,19 @@ function TenantDetailsView({
   const guardedSetActiveTab = (next: string) => { if (next !== activeTab && confirm()) setActiveTab(next); };
   const guardedCancel = () => { if (confirm()) setMode("view"); };
   const onTopSave = async () => { await runChildSaves(); await requestSave(); setUsersDirty(false); setBillingDirty(false); };
+
+  const handleResetPassword = async () => {
+    try {
+      setResetWorking(true);
+      setResetErr(null);
+      const res = await adminApi.adminResetOwnerPassword(row.id, { generateTempPassword: true });
+      setResetPassword(res.tempPassword);
+    } catch (e: any) {
+      setResetErr(e?.message || "Failed to reset password");
+    } finally {
+      setResetWorking(false);
+    }
+  };
 
   return (
     <DetailsScaffold
@@ -113,12 +131,71 @@ function TenantDetailsView({
       }
     >
       {activeTab === "overview" && (
-        <DetailsSpecRenderer<TenantRow>
-          row={row}
-          mode={mode}
-          setDraft={(p) => setDraft((d: any) => ({ ...d, ...p }))}
-          sections={tenantSections(mode)}
-        />
+        <>
+          <DetailsSpecRenderer<TenantRow>
+            row={row}
+            mode={mode}
+            setDraft={(p) => setDraft((d: any) => ({ ...d, ...p }))}
+            sections={tenantSections(mode)}
+          />
+
+          {/* Owner Password Reset Section */}
+          <SectionCard title="Owner Password Reset" className="mt-4">
+            <div className="space-y-3">
+              {!resetPassword ? (
+                <>
+                  <p className="text-sm text-secondary">
+                    Generate a new temporary password for the tenant owner. The owner will be required to change it on next login.
+                  </p>
+                  {resetErr && <div className="text-sm text-red-600">{resetErr}</div>}
+                  <div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={handleResetPassword}
+                      disabled={resetWorking}
+                    >
+                      {resetWorking ? "Generating..." : "Reset Owner Password"}
+                    </Button>
+                  </div>
+                </>
+              ) : (
+                <div className="space-y-3">
+                  <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-3">
+                    <div className="text-xs text-secondary mb-1 flex items-center justify-between">
+                      <span>New Temporary Password</span>
+                      <button
+                        onClick={() => {
+                          navigator.clipboard.writeText(resetPassword);
+                        }}
+                        className="text-xs px-2 py-1 bg-white dark:bg-gray-800 border border-hairline rounded hover:bg-gray-50 dark:hover:bg-gray-700"
+                      >
+                        Copy
+                      </button>
+                    </div>
+                    <div className="font-mono text-sm font-semibold break-all">{resetPassword}</div>
+                  </div>
+                  <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3 text-xs">
+                    <div className="font-medium mb-1">Important:</div>
+                    <ul className="list-disc list-inside pl-2 space-y-1 text-secondary">
+                      <li>This password will not be shown again</li>
+                      <li>The owner must change this password on first login</li>
+                    </ul>
+                  </div>
+                  <div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setResetPassword(null)}
+                    >
+                      Done
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </SectionCard>
+        </>
       )}
 
       {activeTab === "users" && (
@@ -245,19 +322,23 @@ export default function AppAdmin() {
   const [createOpen, setCreateOpen] = React.useState(false);
   const [createWorking, setCreateWorking] = React.useState(false);
   const [createErr, setCreateErr] = React.useState<string | null>(null);
+  const [createdPassword, setCreatedPassword] = React.useState<string | null>(null);
 
   // form fields
   const [newName, setNewName] = React.useState("");
   const [newEmail, setNewEmail] = React.useState("");
+  const [newOwnerName, setNewOwnerName] = React.useState("");
+  const [newTempPassword, setNewTempPassword] = React.useState("");
+  const [generatePassword, setGeneratePassword] = React.useState(true);
 
   // simple email check
   const isEmail = (s: string) => /\S+@\S+\.\S+/.test(s);
-  const canCreate = newName.trim().length > 0 && isEmail(newEmail.trim());
+  const canCreate = newName.trim().length > 0 && isEmail(newEmail.trim()) && (generatePassword || newTempPassword.trim().length >= 8);
 
   // create action
   const doCreateTenant = async () => {
     if (!canCreate) {
-      setCreateErr("Please enter a tenant name and valid email.");
+      setCreateErr("Please enter a tenant name, valid email, and password (or enable generate).");
       return;
     }
     try {
@@ -266,7 +347,14 @@ export default function AppAdmin() {
 
       const res = await adminApi.adminProvisionTenant({
         tenant: { name: newName.trim(), primaryEmail: newEmail.trim() },
-        owner: { email: newEmail.trim(), name: null, verify: true, makeDefault: false },
+        owner: {
+          email: newEmail.trim(),
+          name: newOwnerName.trim() || null,
+          verify: true,
+          makeDefault: false,
+          tempPassword: generatePassword ? undefined : newTempPassword.trim(),
+          generateTempPassword: generatePassword,
+        },
       });
 
       // Immediately reflect in the table
@@ -275,13 +363,25 @@ export default function AppAdmin() {
         return me?.isSuperAdmin ? [row, ...prev] : [row];
       });
 
-      setNewName(""); setNewEmail("");
-      setCreateOpen(false);
+      // Show the password
+      setCreatedPassword(res.tempPassword);
+      setNewName(""); setNewEmail(""); setNewOwnerName(""); setNewTempPassword("");
     } catch (e: any) {
       setCreateErr(e?.message || "Failed to create tenant");
     } finally {
       setCreateWorking(false);
     }
+  };
+
+  const resetCreateModal = () => {
+    setCreateOpen(false);
+    setCreatedPassword(null);
+    setCreateErr(null);
+    setNewName("");
+    setNewEmail("");
+    setNewOwnerName("");
+    setNewTempPassword("");
+    setGeneratePassword(true);
   };
 
   /* ── sorting (state + server sort param) — MUST be declared before any effect that uses sortParam ── */
@@ -731,54 +831,144 @@ export default function AppAdmin() {
       {createOpen && (
         <div role="dialog" aria-modal="true" className="fixed inset-0 z-[100] flex items-center justify-center">
           {/* backdrop */}
-          <div className="absolute inset-0 bg-black/50" onClick={() => !createWorking && setCreateOpen(false)} />
+          <div className="absolute inset-0 bg-black/50" onClick={() => !createWorking && !createdPassword && resetCreateModal()} />
 
           {/* card */}
-          <div className="relative w-[520px] max-w-[92vw] rounded-xl border border-hairline bg-surface shadow-xl p-4">
-            <div className="text-lg font-semibold mb-1">Provision Tenant</div>
-            <div className="text-sm text-secondary mb-4">
-              Create a new tenant and set the primary email for the account owner.
-            </div>
-
-            <div className="space-y-3">
-              <div>
-                <div className="text-xs text-secondary mb-1">
-                  Tenant name <span className="text-[hsl(var(--brand-orange))]">*</span>
+          <div className="relative w-[540px] max-w-[92vw] rounded-xl border border-hairline bg-surface shadow-xl p-4">
+            {!createdPassword ? (
+              <>
+                <div className="text-lg font-semibold mb-1">Provision Tenant</div>
+                <div className="text-sm text-secondary mb-4">
+                  Create a new tenant and set up the owner account.
                 </div>
-                <Input
-                  value={newName}
-                  onChange={(e) => setNewName(e.currentTarget.value)}
-                  placeholder="Acme Ranch LLC"
-                />
-              </div>
 
-              <div>
-                <div className="text-xs text-secondary mb-1">
-                  Owner email <span className="text-[hsl(var(--brand-orange))]">*</span>
-                </div>
-                <Input
-                  value={newEmail}
-                  onChange={(e) => setNewEmail(e.currentTarget.value)}
-                  placeholder="owner@acme-ranch.test"
-                />
-              </div>
+                <div className="space-y-3">
+                  <div>
+                    <div className="text-xs text-secondary mb-1">
+                      Tenant name <span className="text-[hsl(var(--brand-orange))]">*</span>
+                    </div>
+                    <Input
+                      value={newName}
+                      onChange={(e) => setNewName(e.currentTarget.value)}
+                      placeholder="Acme Ranch LLC"
+                    />
+                  </div>
 
-              {createErr && <div className="text-sm text-red-600">{createErr}</div>}
+                  <div>
+                    <div className="text-xs text-secondary mb-1">
+                      Owner email <span className="text-[hsl(var(--brand-orange))]">*</span>
+                    </div>
+                    <Input
+                      value={newEmail}
+                      onChange={(e) => setNewEmail(e.currentTarget.value)}
+                      placeholder="owner@acme-ranch.test"
+                      type="email"
+                    />
+                  </div>
 
-              <div className="flex items-center justify-between pt-2">
-                <div className="text-xs text-secondary">
-                  <span className="text-[hsl(var(--brand-orange))]">*</span> Required
+                  <div>
+                    <div className="text-xs text-secondary mb-1">
+                      Owner name <span className="text-muted-foreground">(optional)</span>
+                    </div>
+                    <Input
+                      value={newOwnerName}
+                      onChange={(e) => setNewOwnerName(e.currentTarget.value)}
+                      placeholder="Jane Smith"
+                    />
+                  </div>
+
+                  <div className="border-t border-hairline pt-3 mt-3">
+                    <div className="text-xs font-medium mb-2">Temporary Password</div>
+                    <div className="flex items-center gap-2 mb-2">
+                      <input
+                        type="checkbox"
+                        id="gen-pwd"
+                        checked={generatePassword}
+                        onChange={(e) => setGeneratePassword(e.currentTarget.checked)}
+                        className="rounded"
+                      />
+                      <label htmlFor="gen-pwd" className="text-sm cursor-pointer">
+                        Generate strong password
+                      </label>
+                    </div>
+
+                    {!generatePassword && (
+                      <div>
+                        <div className="text-xs text-secondary mb-1">
+                          Enter password (min 8 chars) <span className="text-[hsl(var(--brand-orange))]">*</span>
+                        </div>
+                        <Input
+                          type="password"
+                          value={newTempPassword}
+                          onChange={(e) => setNewTempPassword(e.currentTarget.value)}
+                          placeholder="Temporary password"
+                        />
+                      </div>
+                    )}
+                  </div>
+
+                  {createErr && <div className="text-sm text-red-600">{createErr}</div>}
+
+                  <div className="flex items-center justify-between pt-2">
+                    <div className="text-xs text-secondary">
+                      <span className="text-[hsl(var(--brand-orange))]">*</span> Required
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button variant="outline" onClick={resetCreateModal} disabled={createWorking}>
+                        Cancel
+                      </Button>
+                      <Button onClick={doCreateTenant} disabled={!canCreate || createWorking}>
+                        {createWorking ? "Creating…" : "Create tenant"}
+                      </Button>
+                    </div>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <Button variant="outline" onClick={() => setCreateOpen(false)} disabled={createWorking}>
-                    Cancel
-                  </Button>
-                  <Button onClick={doCreateTenant} disabled={!canCreate || createWorking}>
-                    {createWorking ? "Creating…" : "Create tenant"}
-                  </Button>
+              </>
+            ) : (
+              <>
+                <div className="text-lg font-semibold mb-1 text-green-600">✓ Tenant Created</div>
+                <div className="text-sm text-secondary mb-4">
+                  Copy the temporary password now. It will not be shown again.
                 </div>
-              </div>
-            </div>
+
+                <div className="space-y-3">
+                  <div className="bg-muted rounded-lg p-3">
+                    <div className="text-xs text-secondary mb-1">Owner Email</div>
+                    <div className="font-mono text-sm">{newEmail}</div>
+                  </div>
+
+                  <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-3">
+                    <div className="text-xs text-secondary mb-1 flex items-center justify-between">
+                      <span>Temporary Password</span>
+                      <button
+                        onClick={() => {
+                          navigator.clipboard.writeText(createdPassword);
+                        }}
+                        className="text-xs px-2 py-1 bg-white dark:bg-gray-800 border border-hairline rounded hover:bg-gray-50 dark:hover:bg-gray-700"
+                      >
+                        Copy
+                      </button>
+                    </div>
+                    <div className="font-mono text-sm font-semibold break-all">{createdPassword}</div>
+                  </div>
+
+                  <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3 text-xs">
+                    <div className="font-medium mb-1">Important:</div>
+                    <ul className="list-disc list-inside pl-2 space-y-1 text-secondary">
+                      <li>The owner must change this password on first login</li>
+                      <li>This password will not be shown again</li>
+                      <li>You can reset the password later from the Admin UI</li>
+                    </ul>
+                  </div>
+
+                  <div className="flex justify-end pt-2">
+                    <Button onClick={resetCreateModal}>
+                      Done
+                    </Button>
+                  </div>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}
