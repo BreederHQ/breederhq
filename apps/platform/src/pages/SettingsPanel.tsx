@@ -864,38 +864,8 @@ const ProfileTab = React.forwardRef<ProfileHandle, {
   );
 });
 
-/** ───────── Security (unchanged core) ───────── */
-async function getSessionEmail(): Promise<string> {
-  const res = await fetch("/api/v1/session", { credentials: "include", headers: { Accept: "application/json" } });
-  if (!res.ok) throw new Error("Unable to load session.");
-  const j = await res.json().catch(() => ({}));
-  const email = (j?.user?.email ?? "").toString();
-  if (!email) throw new Error("Missing email in session.");
-  return email;
-}
-async function verifyViaLogin(email: string, pw: string): Promise<{ ok: boolean; msg?: string }> {
-  const res = await fetch("/api/v1/auth/login", {
-    method: "POST", credentials: "include",
-    headers: { "Content-Type": "application/json", ...(await tenantHeaders()) },
-    body: JSON.stringify({ email, password: pw }),
-  });
-  if (res.ok) return { ok: true };
-  let msg = `HTTP ${res.status}`;
-  try {
-    const j = await res.json();
-    if (j?.message && typeof j.message === "string") msg = j.message;
-    if (Array.isArray(j) && j.length) {
-      const pwErr = j.find((e: any) => Array.isArray(e?.path) && e.path[0] === "password");
-      if (pwErr?.code === "too_small" && pwErr?.minimum) msg = `Password must be at least ${pwErr.minimum} characters.`;
-      else if (pwErr?.message) msg = pwErr.message;
-      else msg = "Invalid password.";
-    }
-  } catch { }
-  return { ok: false, msg };
-}
+/** ───────── Security ───────── */
 function SecurityTab({ onDirty }: { dirty: boolean; onDirty: (v: boolean) => void }) {
-  const [step, setStep] = React.useState<"idle" | "verifying" | "ready">("idle");
-  const [verified, setVerified] = React.useState(false);
   const [currentPw, setCurrentPw] = React.useState(""); const [showCurrentPw, setShowCurrentPw] = React.useState(false);
   const [newPw, setNewPw] = React.useState(""); const [showNewPw, setShowNewPw] = React.useState(false);
   const [confirmPw, setConfirmPw] = React.useState(""); const [showConfirmPw, setShowConfirmPw] = React.useState(false);
@@ -903,28 +873,24 @@ function SecurityTab({ onDirty }: { dirty: boolean; onDirty: (v: boolean) => voi
   const [error, setError] = React.useState<string>(""); const [notice, setNotice] = React.useState<string>("");
   React.useEffect(() => { onDirty(false); }, [onDirty]);
 
-  async function verifyCurrentPassword(pw: string): Promise<{ ok: boolean; msg?: string }> {
-    setError(""); setNotice(""); setVerified(false); setStep("verifying");
-    try {
-      const email = await getSessionEmail();
-      const result = await verifyViaLogin(email, pw);
-      if (result.ok) { setVerified(true); setStep("ready"); setNotice(""); return { ok: true }; }
-      setError(result.msg || "Current password is incorrect."); setStep("idle"); return { ok: false, msg: result.msg };
-    } catch (e: any) { setError(e?.message || "Unable to verify current password."); setStep("idle"); return { ok: false, msg: e?.message }; }
-  }
   async function submitPasswordChange() {
     try {
       setSubmitting(true); setError("");
+      if (!currentPw) { setError("Please enter your current password."); return; }
       if (!newPw || !confirmPw) { setError("Please enter and confirm your new password."); return; }
       if (newPw !== confirmPw) { setError("New password and confirmation do not match."); return; }
+      if (newPw.length < 8) { setError("New password must be at least 8 characters."); return; }
       const res = await fetch("/api/v1/auth/password", {
         method: "POST", headers: { "Content-Type": "application/json", ...(await tenantHeaders()) }, credentials: "include",
         body: JSON.stringify({ currentPassword: currentPw, newPassword: newPw }),
       });
-      if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error(j?.message || "Password change failed"); }
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error(j?.message || "Password change failed");
+      }
       setNotice("Password changed. You will be logged out to reauthenticate…");
       await fetch("/api/v1/auth/logout", { method: "POST", credentials: "include" }).catch(() => { });
-      window.location.assign("/login");
+      setTimeout(() => { window.location.assign("/login"); }, 1500);
     } catch (e: any) { setError(e?.message || "Password change failed"); } finally { setSubmitting(false); }
   }
   const Eye = (
@@ -943,77 +909,46 @@ function SecurityTab({ onDirty }: { dirty: boolean; onDirty: (v: boolean) => voi
   return (
     <div className="space-y-6">
       <Card className="p-4 space-y-4">
-        <h4 className="font-medium">Password</h4>
+        <h4 className="font-medium">Change Password</h4>
         {error && <div className="rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">{error}</div>}
         {notice && <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-300">{notice}</div>}
-        {!verified && (
+        <form onSubmit={(e) => { e.preventDefault(); submitPasswordChange(); }} className="space-y-3">
           <label className="space-y-1 max-w-sm">
             <div className="text-xs text-secondary">Current password</div>
             <div className="relative w-80">
               <input className={`bhq-input ${INPUT_CLS} pr-10`} type={showCurrentPw ? "text" : "password"} autoComplete="current-password"
-                value={currentPw} onChange={(e) => setCurrentPw(e.target.value)}
-                onKeyDown={async (e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    if (!currentPw) { setError("Please enter your current password."); return; }
-                    const r = await verifyCurrentPassword(currentPw);
-                    if (r.ok) (document.getElementById("new-password-input") as HTMLInputElement | null)?.focus();
-                  }
-                }}
+                value={currentPw} onChange={(e) => setCurrentPw(e.target.value)} disabled={submitting}
               />
               <button type="button" onClick={() => setShowCurrentPw((v) => !v)} className="absolute inset-y-0 right-2 my-auto p-1 text-tertiary hover:text-primary" aria-label={showCurrentPw ? "Hide password" : "Show password"}>
                 {showCurrentPw ? EyeOff : Eye}
               </button>
             </div>
-            <p className="text-xs text-tertiary">We verify your current password before allowing a change.</p>
           </label>
-        )}
-        {!verified && (
-          <div className="flex items-center gap-2">
-            <Button size="sm" onClick={async () => {
-              if (!currentPw) { setError("Please enter your current password."); return; }
-              const res = await verifyCurrentPassword(currentPw);
-              if (res.ok) (document.getElementById("new-password-input") as HTMLInputElement | null)?.focus();
-            }} disabled={step === "verifying"}>
-              {step === "verifying" ? "Verifying…" : "Change password"}
-            </Button>
-          </div>
-        )}
-        {verified && (
-          <div className="space-y-3">
-            <label className="space-y-1 max-w-sm">
-              <div className="text-xs text-secondary">New password</div>
-              <div className="relative w-80">
-                <input id="new-password-input" className={`bhq-input ${INPUT_CLS} pr-10`} type={showNewPw ? "text" : "password"} autoComplete="new-password"
-                  value={newPw} onChange={(e) => setNewPw(e.target.value)} onKeyDown={async (e) => {
-                    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); if (!newPw) { setError("Please enter your new password."); return; } await submitPasswordChange(); }
-                  }} />
-                <button type="button" onClick={() => setShowNewPw((v) => !v)} className="absolute inset-y-0 right-2 my-auto p-1 text-tertiary hover:text-primary" aria-label={showNewPw ? "Hide password" : "Show password"}>
-                  {showNewPw ? EyeOff : Eye}
-                </button>
-              </div>
-            </label>
-            <label className="space-y-1 max-w-sm">
-              <div className="text-xs text-secondary">Confirm new password</div>
-              <div className="relative w-80">
-                <input className={`bhq-input ${INPUT_CLS} pr-10`} type={showConfirmPw ? "text" : "password"} autoComplete="new-password"
-                  value={confirmPw} onChange={(e) => setConfirmPw(e.target.value)} onKeyDown={async (e) => {
-                    if (e.key === "Enter" && !e.shiftKey) {
-                      e.preventDefault();
-                      if (!newPw || !confirmPw) { setError("Please enter and confirm your new password."); return; }
-                      if (newPw !== confirmPw) { setError("New password and confirmation do not match."); return; }
-                      await submitPasswordChange();
-                    }
-                  }} />
-                <button type="button" onClick={() => setShowConfirmPw((v) => !v)} className="absolute inset-y-0 right-2 my-auto p-1 text-tertiary hover:text-primary" aria-label={showConfirmPw ? "Hide password" : "Show password"}>
-                  {showConfirmPw ? EyeOff : Eye}
-                </button>
-              </div>
-            </label>
-            <p className="text-xs text-tertiary">After you change your password, you will be signed out to reauthenticate.</p>
-            <div><Button size="sm" onClick={submitPasswordChange} disabled={submitting}>{submitting ? "Submitting…" : "Submit"}</Button></div>
-          </div>
-        )}
+          <label className="space-y-1 max-w-sm">
+            <div className="text-xs text-secondary">New password</div>
+            <div className="relative w-80">
+              <input className={`bhq-input ${INPUT_CLS} pr-10`} type={showNewPw ? "text" : "password"} autoComplete="new-password"
+                value={newPw} onChange={(e) => setNewPw(e.target.value)} disabled={submitting}
+              />
+              <button type="button" onClick={() => setShowNewPw((v) => !v)} className="absolute inset-y-0 right-2 my-auto p-1 text-tertiary hover:text-primary" aria-label={showNewPw ? "Hide password" : "Show password"}>
+                {showNewPw ? EyeOff : Eye}
+              </button>
+            </div>
+          </label>
+          <label className="space-y-1 max-w-sm">
+            <div className="text-xs text-secondary">Confirm new password</div>
+            <div className="relative w-80">
+              <input className={`bhq-input ${INPUT_CLS} pr-10`} type={showConfirmPw ? "text" : "password"} autoComplete="new-password"
+                value={confirmPw} onChange={(e) => setConfirmPw(e.target.value)} disabled={submitting}
+              />
+              <button type="button" onClick={() => setShowConfirmPw((v) => !v)} className="absolute inset-y-0 right-2 my-auto p-1 text-tertiary hover:text-primary" aria-label={showConfirmPw ? "Hide password" : "Show password"}>
+                {showConfirmPw ? EyeOff : Eye}
+              </button>
+            </div>
+          </label>
+          <p className="text-xs text-tertiary">After changing your password, you will be signed out to reauthenticate.</p>
+          <div><Button type="submit" size="sm" disabled={submitting}>{submitting ? "Changing…" : "Change Password"}</Button></div>
+        </form>
       </Card>
 
       <Card className="p-4 space-y-3">
