@@ -48,3 +48,7 @@ Thumbs.db
 /.claude
 repo-structure-output.txt
 breederhq-repo-structure.txt
+CLAUDE.md
+.claudeignore
+.claude/
+.eslintcache

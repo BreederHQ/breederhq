@@ -226,36 +226,6 @@ export function makeApi(base?: string, extraHeadersFn?: () => Record<string, str
       return reqWithExtra<any>(`/animals/${encodeURIComponent(String(id))}`, { method: "DELETE" });
     },
 
-    photo: {
-      async upload(id: string | number, file: File) {
-        const form = new FormData();
-        form.append("file", file);
-
-        return reqWithExtra<any>(`/animals/${encodeURIComponent(String(id))}/photo`, {
-          method: "POST",
-          body: form,
-        });
-      },
-
-      async remove(id: string | number) {
-        return reqWithExtra<any>(`/animals/${encodeURIComponent(String(id))}/photo`, {
-          method: "DELETE",
-        });
-      },
-    },
-
-    // Persist breeder entered cycle start dates
-    async putCycleStartDates(payload: { animalId: number | string; dates: string[] }) {
-      const { animalId, dates } = payload;
-      return reqWithExtra<any>(
-        `/animals/${encodeURIComponent(String(animalId))}/cycle-start-dates`,
-        {
-          method: "PUT",
-          json: { dates },
-        }
-      );
-    },
-
     /* profile photo upload and delete */
     photo: {
       async upload(id: string | number, file: File): Promise<{ photoUrl: string }> {
@@ -273,6 +243,18 @@ export function makeApi(base?: string, extraHeadersFn?: () => Record<string, str
           method: "DELETE",
         });
       },
+    },
+
+    // Persist breeder entered cycle start dates
+    async putCycleStartDates(payload: { animalId: number | string; dates: string[] }) {
+      const { animalId, dates } = payload;
+      return reqWithExtra<any>(
+        `/animals/${encodeURIComponent(String(animalId))}/cycle-start-dates`,
+        {
+          method: "PUT",
+          json: { dates },
+        }
+      );
     },
 
 

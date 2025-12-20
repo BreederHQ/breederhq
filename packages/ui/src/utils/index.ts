@@ -4,6 +4,14 @@
 export * as reproEngine from "./reproEngine";
 export { expectedMilestonesFromLocked } from "./reproEngine/timelineFromSeed";
 
+// Re-export toast for backward compatibility
+export { toast } from "../atoms/Toast";
+
+// Stub exports for legacy code compatibility (used in breeding module)
+// These are accessed defensively with optional chaining and fallbacks
+export const session = undefined;
+export const currentUser = undefined;
+
 // Settings
 export type { BreederSettings } from "./breederSettings";
 export { loadSettings, saveSettings } from "./breederSettings";

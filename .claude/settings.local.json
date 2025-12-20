@@ -5,7 +5,9 @@
       "Bash(awk:*)",
       "Bash(npm run build:*)",
       "Bash(npx prisma migrate dev:*)",
-      "Bash(npx prisma db push)"
+      "Bash(npx prisma db push)",
+      "Bash(npm -C ./apps/platform run build)",
+      "Bash(echo:*)"
     ]
   }
 }
