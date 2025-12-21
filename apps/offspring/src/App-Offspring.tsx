@@ -4,7 +4,7 @@ import WaitlistPage from "./pages/WaitlistPage";
 import OffspringPage from "./pages/OffspringPage";
 import * as React from "react";
 import ReactDOM from "react-dom";
-import { Trash2, Plus, X, ChevronDown } from "lucide-react";
+import { Trash2, Plus, X, ChevronDown, MoreHorizontal, Download } from "lucide-react";
 import {
   PageHeader,
   Card,
@@ -22,6 +22,8 @@ import {
   Button,
   BreedCombo,
   Input,
+  exportToCsv,
+  Popover,
 } from "@bhq/ui";
 
 import { Overlay } from "@bhq/ui/overlay";
@@ -4731,6 +4733,31 @@ function OffspringGroupsTab(
   const setActiveTabRef = React.useRef<((tab: string) => void) | null>(null);
   const [createOpen, setCreateOpen] = React.useState(false);
 
+  /* More actions menu state */
+  const [menuOpen, setMenuOpen] = React.useState(false);
+
+  /* CSV export function for Groups tab */
+  const handleExportCsv = React.useCallback(() => {
+    exportToCsv({
+      columns: GROUP_COLS,
+      rows: sorted,
+      filename: "offspring-groups",
+      formatValue: (value, key) => {
+        if (GROUP_DATE_COLS.has(key as any)) {
+          if (!value) return "";
+          const dt = new Date(value);
+          if (!Number.isFinite(dt.getTime())) return String(value).slice(0, 10) || "";
+          return dt.toISOString().slice(0, 10);
+        }
+        if (Array.isArray(value)) {
+          return value.join(" | ");
+        }
+        return value;
+      },
+    });
+    setMenuOpen(false);
+  }, [sorted]);
+
   React.useEffect(() => {
     const prev = document.body.style.overflow;
     if (createOpen) document.body.style.overflow = "hidden";
@@ -4823,6 +4850,22 @@ function OffspringGroupsTab(
       <div className="relative">
         <div className="absolute right-0 top-0 h-10 flex items-center gap-2 pr-2" style={{ zIndex: 50, pointerEvents: "auto" }}>
           {!readOnlyGlobal && <Button size="sm" onClick={() => setCreateOpen(true)}>Create Group</Button>}
+          <Popover open={menuOpen} onOpenChange={setMenuOpen}>
+            <Popover.Trigger asChild>
+              <Button size="sm" variant="outline" aria-label="More actions">
+                <MoreHorizontal className="h-4 w-4" />
+              </Button>
+            </Popover.Trigger>
+            <Popover.Content align="end" className="w-48">
+              <button
+                className="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-white/5 rounded"
+                onClick={handleExportCsv}
+              >
+                <Download className="h-4 w-4" />
+                Export CSV
+              </button>
+            </Popover.Content>
+          </Popover>
         </div>
 
         <DetailsHost key="groups"

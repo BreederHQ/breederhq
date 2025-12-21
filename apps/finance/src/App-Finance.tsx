@@ -15,10 +15,11 @@ import {
   Input,
   FiltersRow,
   SectionCard,
+  Popover,
 } from "@bhq/ui";
 import "@bhq/ui/styles/details.css";
 import { OverlayMount } from "@bhq/ui/overlay/OverlayMount";
-import { Plus, MoreHorizontal, X, DollarSign } from "lucide-react";
+import { Plus, MoreHorizontal, X, DollarSign, Download } from "lucide-react";
 
 const MODAL_Z = 2147483000;
 const DATE_LOCALE = "en-US";
@@ -487,6 +488,7 @@ export default function AppFinance() {
   const [drawer, setDrawer] = React.useState<InvoiceRow | null>(null);
 
   const [createOpen, setCreateOpen] = React.useState(false);
+  const [menuOpen, setMenuOpen] = React.useState(false);
   const [editingId, setEditingId] = React.useState<number | null>(null);
   const emptyForm: Partial<InvoiceRow> = {
     number: "",
@@ -651,6 +653,7 @@ export default function AppFinance() {
     a.download = "invoices.csv";
     a.click();
     URL.revokeObjectURL(a.href);
+    setMenuOpen(false);
   }
 
   function validateForm(f: Partial<InvoiceRow>) {
@@ -833,15 +836,6 @@ export default function AppFinance() {
 
                 <Button
                   size="sm"
-                  variant="ghost"
-                  onClick={exportCsv}
-                  className="ml-auto shrink-0"
-                >
-                  <DollarSign className="h-3 w-3 mr-1" />
-                  Export CSV
-                </Button>
-                <Button
-                  size="sm"
                   onClick={() => {
                     setDrawer(null);
                     setEditingId(null);
@@ -849,10 +843,27 @@ export default function AppFinance() {
                     setErrors({});
                     setCreateOpen(true);
                   }}
+                  className="ml-auto shrink-0"
                 >
                   <Plus className="h-3 w-3 mr-1" />
                   New Invoice
                 </Button>
+                <Popover open={menuOpen} onOpenChange={setMenuOpen}>
+                  <Popover.Trigger asChild>
+                    <Button size="sm" variant="outline" aria-label="More actions">
+                      <MoreHorizontal className="h-4 w-4" />
+                    </Button>
+                  </Popover.Trigger>
+                  <Popover.Content align="end" className="w-48">
+                    <button
+                      className="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-white/5 rounded"
+                      onClick={exportCsv}
+                    >
+                      <Download className="h-4 w-4" />
+                      Export CSV
+                    </button>
+                  </Popover.Content>
+                </Popover>
               </div>
 
               {filtersOpen && (

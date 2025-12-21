@@ -29,6 +29,7 @@ export * from "./repro";
 export * from "./sort";
 export * from "./tenant";
 export * from "./weights";
+export * from "./csvExport";
 
 
 // Temporary helper until all expected-date shapes are unified across apps.
