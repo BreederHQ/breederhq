@@ -4736,28 +4736,6 @@ function OffspringGroupsTab(
   /* More actions menu state */
   const [menuOpen, setMenuOpen] = React.useState(false);
 
-  /* CSV export function for Groups tab */
-  const handleExportCsv = React.useCallback(() => {
-    exportToCsv({
-      columns: GROUP_COLS,
-      rows: sorted,
-      filename: "offspring-groups",
-      formatValue: (value, key) => {
-        if (GROUP_DATE_COLS.has(key as any)) {
-          if (!value) return "";
-          const dt = new Date(value);
-          if (!Number.isFinite(dt.getTime())) return String(value).slice(0, 10) || "";
-          return dt.toISOString().slice(0, 10);
-        }
-        if (Array.isArray(value)) {
-          return value.join(" | ");
-        }
-        return value;
-      },
-    });
-    setMenuOpen(false);
-  }, [sorted]);
-
   React.useEffect(() => {
     const prev = document.body.style.overflow;
     if (createOpen) document.body.style.overflow = "hidden";
@@ -4835,6 +4813,28 @@ function OffspringGroupsTab(
     });
     return list;
   }, [rows, sorts]);
+
+  /* CSV export function for Groups tab */
+  const handleExportCsv = React.useCallback(() => {
+    exportToCsv({
+      columns: GROUP_COLS,
+      rows: sorted,
+      filename: "offspring-groups",
+      formatValue: (value, key) => {
+        if (GROUP_DATE_COLS.has(key as any)) {
+          if (!value) return "";
+          const dt = new Date(value);
+          if (!Number.isFinite(dt.getTime())) return String(value).slice(0, 10) || "";
+          return dt.toISOString().slice(0, 10);
+        }
+        if (Array.isArray(value)) {
+          return value.join(" | ");
+        }
+        return value;
+      },
+    });
+    setMenuOpen(false);
+  }, [sorted]);
 
   const pageCount = Math.max(1, Math.ceil(sorted.length / pageSize));
   const clampedPage = Math.min(page, pageCount);

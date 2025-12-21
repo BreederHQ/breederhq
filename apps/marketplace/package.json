@@ -1,0 +1,25 @@
+{
+  "name": "@bhq/marketplace",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/App-Marketplace.tsx",
+    "./App-Marketplace": "./src/App-Marketplace.tsx"
+  },
+  "peerDependencies": {
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "4.3.2",
+    "concurrently": "^9.2.1",
+    "typescript": "5.6.3",
+    "vite": "5.4.8"
+  },
+  "scripts": {
+    "dev": "vite --port 6178 --strictPort",
+    "build": "vite build",
+    "preview": "vite preview --port 5178"
+  }
+}

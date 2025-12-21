@@ -18,6 +18,7 @@ import AppOrganizations from "@bhq/organizations/App-Organizations";
 import AppAnimals from "@bhq/animals/App-Animals";
 import AppBreeding from "@bhq/breeding/App-Breeding";
 import AppOffspring from "@bhq/offspring/App-Offspring";
+import AppMarketplace from "@bhq/marketplace/App-Marketplace";
 import AppFinance from "@bhq/finance/App-Finance";
 import AdminModule from "@bhq/admin/App-Admin";
 import DashboardPage from "./pages/Dashboard";
@@ -25,8 +26,8 @@ import DashboardPage from "./pages/Dashboard";
 // Support Pages
 import SettingsPanel from "./pages/SettingsPanel";
 
-// Lightweight “current module” state (key + label)
-type ActiveModule = { key: "dashboard" | "contacts" | "organizations" | "animals" | "breeding" | "offspring" | "finance" | "admin"; label: string };
+// Lightweight "current module" state (key + label)
+type ActiveModule = { key: "dashboard" | "contacts" | "organizations" | "animals" | "breeding" | "offspring" | "marketplace" | "finance" | "admin"; label: string };
 const DEFAULT_MODULE: ActiveModule = { key: "dashboard", label: "Dashboard" };
 
 type AuthState = {
@@ -146,6 +147,7 @@ function RouteView() {
   if (p === "/animals" || p.startsWith("/animals")) return <AppAnimals />;
   if (p === "/breeding" || p.startsWith("/breeding")) return <AppBreeding />;
   if (p === "/offspring" || p.startsWith("/offspring")) return <AppOffspring />;
+  if (p === "/marketplace" || p.startsWith("/marketplace")) return <AppMarketplace />;
   if (p === "/finance" || p.startsWith("/finance")) return <AppFinance />;
   if (p === "/admin" || p.startsWith("/admin")) return <AdminModule />;
   return <DashboardPage />;
