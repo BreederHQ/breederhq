@@ -2,7 +2,7 @@
 import * as React from "react";
 import { createRoot } from "react-dom/client";
 import { createPortal } from "react-dom";
-import { Trash2, Plus } from "lucide-react";
+import { Trash2, Plus, MoreHorizontal, Download } from "lucide-react";
 import { ToastViewport } from "@bhq/ui/atoms/Toast";
 import {
   PageHeader,
@@ -24,6 +24,8 @@ import {
   utils,
   BreedCombo,
   CustomBreedDialog,
+  exportToCsv,
+  Popover,
 } from "@bhq/ui";
 import { Overlay } from "@bhq/ui/overlay";
 import { OverlayMount } from "@bhq/ui/overlay/OverlayMount";
@@ -1814,6 +1816,32 @@ export default function AppBreeding() {
   const [createErr, setCreateErr] = React.useState<string | null>(null);
   const [customBreedOpen, setCustomBreedOpen] = React.useState(false);
   const [customBreedSpecies, setCustomBreedSpecies] = React.useState<"DOG" | "CAT" | "HORSE">("DOG");
+
+  /* More actions menu state */
+  const [menuOpen, setMenuOpen] = React.useState(false);
+
+  /* CSV export function */
+  const handleExportCsv = React.useCallback(() => {
+    exportToCsv({
+      columns: COLUMNS,
+      rows: displayRows,
+      filename: "breeding",
+      formatValue: (value, key) => {
+        if (DATE_COLS.has(key as any)) {
+          if (!value) return "";
+          const dt = new Date(value);
+          if (!Number.isFinite(dt.getTime())) return String(value).slice(0, 10) || "";
+          return dt.toISOString().slice(0, 10);
+        }
+        if (Array.isArray(value)) {
+          return value.join(" | ");
+        }
+        return value;
+      },
+    });
+    setMenuOpen(false);
+  }, [displayRows]);
+
   const [onCustomBreedCreated, setOnCustomBreedCreated] =
     React.useState<((c: { id: number; name: string; species: "DOG" | "CAT" | "HORSE" }) => void) | null>(null);
 
@@ -2331,6 +2359,22 @@ export default function AppBreeding() {
                     >
                       New Breeding Plan
                     </Button>
+                    <Popover open={menuOpen} onOpenChange={setMenuOpen}>
+                      <Popover.Trigger asChild>
+                        <Button size="sm" variant="outline" aria-label="More actions">
+                          <MoreHorizontal className="h-4 w-4" />
+                        </Button>
+                      </Popover.Trigger>
+                      <Popover.Content align="end" className="w-48">
+                        <button
+                          className="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-white/5 rounded"
+                          onClick={handleExportCsv}
+                        >
+                          <Download className="h-4 w-4" />
+                          Export CSV
+                        </button>
+                      </Popover.Content>
+                    </Popover>
                   </div>
 
                   {/* Filters */}

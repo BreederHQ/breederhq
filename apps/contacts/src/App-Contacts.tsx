@@ -24,10 +24,13 @@ import {
   inDateRange,
   PillToggle,
   Badge,
+  exportToCsv,
+  Popover,
 } from "@bhq/ui";
 import { Overlay, getOverlayRoot } from "@bhq/ui/overlay";
 import "@bhq/ui/styles/table.css";
 import { makeApi } from "./api";
+import { MoreHorizontal, Download } from "lucide-react";
 
 /* ────────────────────────────────────────────────────────────────────────────
  * Types & small utils
@@ -1565,6 +1568,28 @@ export default function AppContacts() {
   const [createWorking, setCreateWorking] = React.useState(false);
   const [createErr, setCreateErr] = React.useState<string | null>(null);
 
+  /* More actions menu state */
+  const [menuOpen, setMenuOpen] = React.useState(false);
+
+  /* CSV export function */
+  const handleExportCsv = React.useCallback(() => {
+    exportToCsv({
+      columns: COLUMNS,
+      rows: sortedRows,
+      filename: "contacts",
+      formatValue: (value, key) => {
+        if (DATE_KEYS.has(key as any)) {
+          return fmt(value);
+        }
+        if (Array.isArray(value)) {
+          return value.join(" | ");
+        }
+        return value;
+      },
+    });
+    setMenuOpen(false);
+  }, [sortedRows]);
+
   // form state
   const [firstName, setFirstName] = React.useState("");
   const [lastName, setLastName] = React.useState("");
@@ -1672,7 +1697,22 @@ export default function AppContacts() {
           style={{ zIndex: 5, pointerEvents: "auto" }}
         >
           <Button size="sm" onClick={() => setCreateOpen(true)}>New Contact</Button>
-          <Button size="sm" variant="outline">...</Button>
+          <Popover open={menuOpen} onOpenChange={setMenuOpen}>
+            <Popover.Trigger asChild>
+              <Button size="sm" variant="outline" aria-label="More actions">
+                <MoreHorizontal className="h-4 w-4" />
+              </Button>
+            </Popover.Trigger>
+            <Popover.Content align="end" className="w-48">
+              <button
+                className="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-white/5 rounded"
+                onClick={handleExportCsv}
+              >
+                <Download className="h-4 w-4" />
+                Export CSV
+              </button>
+            </Popover.Content>
+          </Popover>
         </div>
       </div>
 

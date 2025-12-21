@@ -6,6 +6,8 @@ export * as utils from "./utils";
 
 export type { BreedHit, SpeciesUI, SpeciesAPI } from "./utils/types";
 export { SPECIES_UI, toApiSpecies, toUiSpecies } from "./utils/species";
+export { exportToCsv } from "./utils/csvExport";
+export type { CsvColumn, CsvExportOptions } from "./utils/csvExport";
 
 // atoms
 export { Spinner } from "./atoms/Spinner";
