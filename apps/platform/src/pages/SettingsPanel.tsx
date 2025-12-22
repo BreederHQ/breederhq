@@ -342,14 +342,26 @@ export function useCountries(): CountryDef[] {
   return list;
 }
 export function asCountryCode(country: string, countries: CountryDef[]): string {
-  const code = normalizeCountryCode(country);
-  if (!code) return "";
-  return countries.some((c) => c.code === code) ? code : "";
+  try {
+    const code = normalizeCountryCode(country);
+    if (!code) return "";
+    if (!Array.isArray(countries) || countries.length === 0) return "";
+    return countries.some((c) => c.code === code) ? code : "";
+  } catch (e) {
+    console.error("[SettingsPanel] asCountryCode error:", e);
+    return "";
+  }
 }
 export function countryNameFromValue(country: string, countries: CountryDef[]): string {
-  const code = normalizeCountryCode(country);
-  const found = countries.find((c) => c.code === code);
-  return found ? found.name : "";
+  try {
+    if (!Array.isArray(countries) || countries.length === 0) return "";
+    const code = normalizeCountryCode(country);
+    const found = countries.find((c) => c.code === code);
+    return found ? found.name : "";
+  } catch (e) {
+    console.error("[SettingsPanel] countryNameFromValue error:", e);
+    return "";
+  }
 }
 function dialForCode(code: string, countries: CountryDef[]): string {
   const found = countries.find((c) => c.code === normalizeCountryCode(code));
@@ -521,6 +533,19 @@ export default function SettingsPanel({ open, dirty, onDirtyChange, onClose }: P
   const [profileTitle, setProfileTitle] = React.useState<string>("");
 
   React.useEffect(() => { onDirtyChange(!!dirtyMap[active]); }, [active, dirtyMap, onDirtyChange]);
+
+  // Close on Escape key
+  React.useEffect(() => {
+    if (!open) return;
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !dirty) {
+        onClose();
+      }
+    };
+    document.addEventListener("keydown", handleEsc);
+    return () => document.removeEventListener("keydown", handleEsc);
+  }, [open, dirty, onClose]);
+
   if (!open) return null;
 
   function jumpToProgramProfile() {
@@ -555,10 +580,14 @@ export default function SettingsPanel({ open, dirty, onDirtyChange, onClose }: P
 
   const panel = (
     <div className="fixed inset-0 z-[60] pointer-events-none">
-      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm pointer-events-none" />
+      {/* Backdrop - clickable when not dirty */}
+      <div
+        className="absolute inset-0 bg-black/50 backdrop-blur-sm pointer-events-auto"
+        onClick={() => { if (!dirty) onClose(); }}
+      />
       <div className="absolute inset-0 pointer-events-none flex items-center justify-center p-4">
         <div className="pointer-events-auto w-[min(1200px,100%)] h-[min(90vh,100%)]">
-          <div className="flex h-full bg-surface border border-hairline shadow-2xl rounded-xl overflow-hidden">
+          <div className="flex h-full bg-surface border border-hairline shadow-2xl rounded-xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
             {/* left nav */}
             <aside className="w-64 shrink-0 border-r border-hairline bg-card/60 p-3">
               <h2 className="text-sm font-semibold text-secondary mb-2">Settings</h2>
@@ -698,6 +727,7 @@ const ProfileTab = React.forwardRef<ProfileHandle, {
 }>(function ProfileTabImpl({ onDirty, onTitle }, ref) {
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string>("");
+  const [phoneError, setPhoneError] = React.useState<string>("");
   const countries = useCountries();
 
   const empty: ProfileForm = { firstName: "", lastName: "", nickname: "", userEmail: "", phoneE164: "", whatsappE164: "", street: "", street2: "", city: "", state: "", postalCode: "", country: "" };
@@ -705,6 +735,18 @@ const ProfileTab = React.forwardRef<ProfileHandle, {
   const [form, setForm] = React.useState<ProfileForm>(empty);
   const isDirty = React.useMemo(() => JSON.stringify(form) !== JSON.stringify(initial), [form, initial]);
   React.useEffect(() => onDirty(isDirty), [isDirty, onDirty]);
+
+  // Validate phone vs WhatsApp in real-time
+  React.useEffect(() => {
+    const normalizedPhone = e164FromDisplay(displayFromE164(form.phoneE164, countries) || form.phoneE164) || "";
+    const normalizedWhatsapp = e164FromDisplay(displayFromE164(form.whatsappE164, countries) || form.whatsappE164) || "";
+
+    if (normalizedPhone && normalizedWhatsapp && normalizedPhone === normalizedWhatsapp) {
+      setPhoneError("Phone and WhatsApp cannot be the same number");
+    } else {
+      setPhoneError("");
+    }
+  }, [form.phoneE164, form.whatsappE164, countries]);
 
   function deriveDisplayName(f: ProfileForm): string {
     const emailLocal = (f.userEmail || "").split("@")[0] || "";
@@ -760,11 +802,22 @@ const ProfileTab = React.forwardRef<ProfileHandle, {
         const ok = await guardEmailChange(initial.userEmail);
         if (!ok) return;
       }
+
+      // Normalize phone numbers for validation
+      const normalizedPhone = e164FromDisplay(displayFromE164(form.phoneE164, countries) || form.phoneE164) || null;
+      const normalizedWhatsapp = e164FromDisplay(displayFromE164(form.whatsappE164, countries) || form.whatsappE164) || null;
+
+      // Validate that phone and WhatsApp are not the same
+      if (normalizedPhone && normalizedWhatsapp && normalizedPhone === normalizedWhatsapp) {
+        setError("Phone and WhatsApp numbers cannot be the same. Please use different numbers.");
+        return;
+      }
+
       const bodyAll: any = {
         firstName: form.firstName || null, lastName: form.lastName || null, nickname: form.nickname || null,
         email: form.userEmail.trim().toLowerCase(),
-        phoneE164: e164FromDisplay(displayFromE164(form.phoneE164, countries) || form.phoneE164) || null,
-        whatsappE164: e164FromDisplay(displayFromE164(form.whatsappE164, countries) || form.whatsappE164) || null,
+        phoneE164: normalizedPhone,
+        whatsappE164: normalizedWhatsapp,
         street: form.street || null, street2: form.street2 || null, city: form.city || null, state: form.state || null,
         postalCode: form.postalCode || null, country: asCountryCode((form.country || "").toUpperCase(), countries) || null,
       };
@@ -777,22 +830,29 @@ const ProfileTab = React.forwardRef<ProfileHandle, {
       const changed = Object.fromEntries(Object.entries(bodyAll).filter(([k, v]) => v !== mapInit[k]));
       if (Object.keys(changed).length === 0) return;
 
-      const res = await fetch(`/api/v1/users/${encodeURIComponent(id)}`, {
-        method: "PATCH", credentials: "include",
-        headers: { "Content-Type": "application/json", ...(await tenantHeaders()) },
-        body: JSON.stringify(changed),
-      });
-      if (!res.ok) {
-        const j = await res.json().catch(() => ({}));
-        throw new Error(j?.message || j?.error || "User save failed");
+      try {
+        const res = await fetch(`/api/v1/users/${encodeURIComponent(id)}`, {
+          method: "PATCH", credentials: "include",
+          headers: { "Content-Type": "application/json", ...(await tenantHeaders()) },
+          body: JSON.stringify(changed),
+        });
+        if (!res.ok) {
+          const j = await res.json().catch(() => ({}));
+          const errorMsg = j?.message || j?.error || `HTTP ${res.status}: Failed to save profile`;
+          throw new Error(errorMsg);
+        }
+        if (changed.email) {
+          await fetch("/api/v1/auth/logout", { method: "POST", credentials: "include" }).catch(() => { });
+          window.location.assign("/login"); return;
+        }
+        const saved = await res.json().catch(() => ({}));
+        const next = mapUserToProfileForm(saved, countries);
+        setInitial(next); setForm(next); onTitle(deriveDisplayName(next)); onDirty(false);
+      } catch (e: any) {
+        setError(e?.message || "Failed to save profile. Please try again.");
+        console.error("[SettingsPanel] Profile save error:", e);
+        throw e;
       }
-      if (changed.email) {
-        await fetch("/api/v1/auth/logout", { method: "POST", credentials: "include" }).catch(() => { });
-        window.location.assign("/login"); return;
-      }
-      const saved = await res.json().catch(() => ({}));
-      const next = mapUserToProfileForm(saved, countries);
-      setInitial(next); setForm(next); onTitle(deriveDisplayName(next)); onDirty(false);
     },
   }));
 
@@ -833,6 +893,7 @@ const ProfileTab = React.forwardRef<ProfileHandle, {
               onChange={(nextDisplay) => setForm((f) => ({ ...f, phoneE164: e164FromDisplay(nextDisplay) }))}
               inferredCountryName={countryNameFromValue(form.country, countries)} countries={countries} className="w-full"
             />
+            {phoneError && <div className="text-xs text-red-400 mt-1">{phoneError}</div>}
           </label>
 
           <label className="space-y-1 md:col-span-2">
@@ -842,6 +903,7 @@ const ProfileTab = React.forwardRef<ProfileHandle, {
               onChange={(nextDisplay) => setForm((f) => ({ ...f, whatsappE164: e164FromDisplay(nextDisplay) }))}
               inferredCountryName={countryNameFromValue(form.country, countries)} countries={countries} className="w-full"
             />
+            {phoneError && <div className="text-xs text-red-400 mt-1">{phoneError}</div>}
           </label>
 
           <div className="rounded-xl border border-hairline bg-surface p-3">
@@ -852,9 +914,20 @@ const ProfileTab = React.forwardRef<ProfileHandle, {
               <input className={`bhq-input ${INPUT_CLS}`} placeholder="City" value={form.city} onChange={(e) => setForm((f) => ({ ...f, city: e.target.value }))} />
               <input className={`bhq-input ${INPUT_CLS}`} placeholder="State / Region" value={form.state} onChange={(e) => setForm((f) => ({ ...f, state: e.target.value }))} />
               <input className={`bhq-input ${INPUT_CLS}`} placeholder="Postal Code" value={form.postalCode} onChange={(e) => setForm((f) => ({ ...f, postalCode: e.target.value }))} />
-              <select className={["bhq-input", INPUT_CLS].join(" ")} value={asCountryCode(form.country, countries)} onChange={(e) => setForm((f) => ({ ...f, country: e.currentTarget.value || "" }))}>
+              <select
+                className={["bhq-input", INPUT_CLS].join(" ")}
+                value={asCountryCode(form.country || "", countries)}
+                onChange={(e) => {
+                  const newValue = e.currentTarget.value || "";
+                  setForm((f) => ({ ...f, country: newValue }));
+                }}
+              >
                 <option value="">Country</option>
-                {countries.map((c) => <option key={c.code} value={c.code}>{c.name}</option>)}
+                {countries && countries.length > 0 ? (
+                  countries.map((c) => <option key={c.code} value={c.code}>{c.name}</option>)
+                ) : (
+                  <option value="" disabled>Loading countries...</option>
+                )}
               </select>
             </div>
           </div>
