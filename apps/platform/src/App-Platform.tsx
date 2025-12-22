@@ -19,6 +19,7 @@ import AppAnimals from "@bhq/animals/App-Animals";
 import AppBreeding from "@bhq/breeding/App-Breeding";
 import AppOffspring from "@bhq/offspring/App-Offspring";
 import AppMarketplace from "@bhq/marketplace/App-Marketplace";
+import AppMarketing from "@bhq/marketing/App-Marketing";
 import AppFinance from "@bhq/finance/App-Finance";
 import AdminModule from "@bhq/admin/App-Admin";
 import DashboardPage from "./pages/Dashboard";
@@ -27,7 +28,7 @@ import DashboardPage from "./pages/Dashboard";
 import SettingsPanel from "./pages/SettingsPanel";
 
 // Lightweight "current module" state (key + label)
-type ActiveModule = { key: "dashboard" | "contacts" | "organizations" | "animals" | "breeding" | "offspring" | "marketplace" | "finance" | "admin"; label: string };
+type ActiveModule = { key: "dashboard" | "contacts" | "organizations" | "animals" | "breeding" | "offspring" | "marketplace" | "marketing" | "finance" | "admin"; label: string };
 const DEFAULT_MODULE: ActiveModule = { key: "dashboard", label: "Dashboard" };
 
 type AuthState = {
@@ -148,6 +149,7 @@ function RouteView() {
   if (p === "/breeding" || p.startsWith("/breeding")) return <AppBreeding />;
   if (p === "/offspring" || p.startsWith("/offspring")) return <AppOffspring />;
   if (p === "/marketplace" || p.startsWith("/marketplace")) return <AppMarketplace />;
+  if (p === "/marketing" || p.startsWith("/marketing")) return <AppMarketing />;
   if (p === "/finance" || p.startsWith("/finance")) return <AppFinance />;
   if (p === "/admin" || p.startsWith("/admin")) return <AdminModule />;
   return <DashboardPage />;
@@ -325,6 +327,7 @@ export default function AppPlatform() {
               { key: "animals", label: "Animals", href: "/animals", icon: "animals" },
               { key: "breeding", label: "Breeding", href: "/breeding", icon: "breeding" },
               { key: "offspring", label: "Offspring", href: "/offspring", icon: "offspring" },
+              { key: "marketing", label: "Marketing", href: "/marketing" },
               { key: "finance", label: "Finance", href: "/finance", icon: "finance" },
               { key: "admin", label: "Admin", href: "/admin", icon: "admin" },
             ]}

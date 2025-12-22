@@ -30,6 +30,9 @@
       "@bhq/marketplace": ["../marketplace/src/index.ts"],
       "@bhq/marketplace/*": ["../marketplace/src/*"],
 
+      "@bhq/marketing": ["../marketing/src/index.ts"],
+      "@bhq/marketing/*": ["../marketing/src/*"],
+
       "@bhq/admin": ["../admin/src/index.ts"],
       "@bhq/admin/*": ["../admin/src/*"],
 
