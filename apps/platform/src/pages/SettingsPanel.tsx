@@ -755,44 +755,48 @@ const ProfileTab = React.forwardRef<ProfileHandle, {
   React.useImperativeHandle(ref, () => ({
     async save() {
       setError("");
-      const { id } = await getSessionUserId();
-      if (form.userEmail !== initial.userEmail) {
-        const ok = await guardEmailChange(initial.userEmail);
-        if (!ok) return;
-      }
-      const bodyAll: any = {
-        firstName: form.firstName || null, lastName: form.lastName || null, nickname: form.nickname || null,
-        email: form.userEmail.trim().toLowerCase(),
-        phoneE164: e164FromDisplay(displayFromE164(form.phoneE164, countries) || form.phoneE164) || null,
-        whatsappE164: e164FromDisplay(displayFromE164(form.whatsappE164, countries) || form.whatsappE164) || null,
-        street: form.street || null, street2: form.street2 || null, city: form.city || null, state: form.state || null,
-        postalCode: form.postalCode || null, country: asCountryCode((form.country || "").toUpperCase(), countries) || null,
-      };
-      const mapInit: any = {
-        firstName: initial.firstName || null, lastName: initial.lastName || null, nickname: initial.nickname || null,
-        email: initial.userEmail, phoneE164: initial.phoneE164 || null, whatsappE164: initial.whatsappE164 || null,
-        street: initial.street || null, street2: initial.street2 || null, city: initial.city || null, state: initial.state || null,
-        postalCode: initial.postalCode || null, country: initial.country || null,
-      };
-      const changed = Object.fromEntries(Object.entries(bodyAll).filter(([k, v]) => v !== mapInit[k]));
-      if (Object.keys(changed).length === 0) return;
+      try {
+        const { id } = await getSessionUserId();
+        if (form.userEmail !== initial.userEmail) {
+          const ok = await guardEmailChange(initial.userEmail);
+          if (!ok) return;
+        }
+        const bodyAll: any = {
+          firstName: form.firstName || null, lastName: form.lastName || null, nickname: form.nickname || null,
+          email: form.userEmail.trim().toLowerCase(),
+          phoneE164: e164FromDisplay(displayFromE164(form.phoneE164, countries) || form.phoneE164) || null,
+          whatsappE164: e164FromDisplay(displayFromE164(form.whatsappE164, countries) || form.whatsappE164) || null,
+          street: form.street || null, street2: form.street2 || null, city: form.city || null, state: form.state || null,
+          postalCode: form.postalCode || null, country: asCountryCode((form.country || "").toUpperCase(), countries) || null,
+        };
+        const mapInit: any = {
+          firstName: initial.firstName || null, lastName: initial.lastName || null, nickname: initial.nickname || null,
+          email: initial.userEmail, phoneE164: initial.phoneE164 || null, whatsappE164: initial.whatsappE164 || null,
+          street: initial.street || null, street2: initial.street2 || null, city: initial.city || null, state: initial.state || null,
+          postalCode: initial.postalCode || null, country: initial.country || null,
+        };
+        const changed = Object.fromEntries(Object.entries(bodyAll).filter(([k, v]) => v !== mapInit[k]));
+        if (Object.keys(changed).length === 0) return;
 
-      const res = await fetch(`/api/v1/users/${encodeURIComponent(id)}`, {
-        method: "PATCH", credentials: "include",
-        headers: { "Content-Type": "application/json", ...(await tenantHeaders()) },
-        body: JSON.stringify(changed),
-      });
-      if (!res.ok) {
-        const j = await res.json().catch(() => ({}));
-        throw new Error(j?.message || j?.error || "User save failed");
+        const saved = await fetchJson(`/api/v1/users/${encodeURIComponent(id)}`, {
+          method: "PATCH",
+          body: JSON.stringify(changed),
+        });
+        if (changed.email) {
+          await fetch("/api/v1/auth/logout", { method: "POST", credentials: "include" }).catch(() => { });
+          window.location.assign("/login"); return;
+        }
+        const next = mapUserToProfileForm(saved, countries);
+        setInitial(next); setForm(next); onTitle(deriveDisplayName(next)); onDirty(false);
+      } catch (e: any) {
+        if (e?.status === 403) {
+          setError("You do not have permission to update this profile.");
+        } else if (e?.message?.includes("email_already_exists") || e?.message?.includes("Unique constraint failed")) {
+          setError("This email address is already in use by another account.");
+        } else {
+          setError(e?.message || "Failed to save profile. Please try again.");
+        }
       }
-      if (changed.email) {
-        await fetch("/api/v1/auth/logout", { method: "POST", credentials: "include" }).catch(() => { });
-        window.location.assign("/login"); return;
-      }
-      const saved = await res.json().catch(() => ({}));
-      const next = mapUserToProfileForm(saved, countries);
-      setInitial(next); setForm(next); onTitle(deriveDisplayName(next)); onDirty(false);
     },
   }));
 
