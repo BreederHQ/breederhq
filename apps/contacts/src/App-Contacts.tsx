@@ -237,6 +237,7 @@ const OrganizationSelect: React.FC<{
   const [query, setQuery] = React.useState(value?.name ?? "");
   const [open, setOpen] = React.useState(false);
   const [loading, setLoading] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
   const [items, setItems] = React.useState<OrgOption[]>([]);
   const [highlight, setHighlight] = React.useState<number>(-1);
   const rootRef = React.useRef<HTMLDivElement | null>(null);
@@ -245,6 +246,7 @@ const OrganizationSelect: React.FC<{
     () =>
       tinyDebounce(async (q: string) => {
         setLoading(true);
+        setError(null);
         try {
           const list = await api.lookups.searchOrganizations(q);
           const mapped = (list || []).map((o: any) => ({
@@ -253,6 +255,9 @@ const OrganizationSelect: React.FC<{
           }));
           setItems(mapped);
           setHighlight(mapped.length ? 0 : -1);
+        } catch (e: any) {
+          setError(e?.message || "Unable to load organizations");
+          setItems([]);
         } finally {
           setLoading(false);
         }
@@ -316,8 +321,42 @@ const OrganizationSelect: React.FC<{
         >
           {loading ? (
             <div className="px-3 py-2 text-sm text-secondary">Searching…</div>
+          ) : error ? (
+            <div className="px-3 py-2">
+              <div className="text-sm text-red-400">{error}</div>
+              <button
+                type="button"
+                className="mt-2 text-xs text-secondary hover:text-primary underline"
+                onClick={() => doSearch(query)}
+              >
+                Retry
+              </button>
+            </div>
           ) : items.length === 0 ? (
-            <div className="px-3 py-2 text-sm text-secondary">No organizations</div>
+            <div className="px-3 py-2">
+              <div className="text-sm text-secondary mb-2">No organizations found</div>
+              {query.trim() && (
+                <button
+                  type="button"
+                  className="w-full text-left px-2 py-1.5 text-sm text-primary bg-white/5 rounded hover:bg-white/10"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={async () => {
+                    try {
+                      setLoading(true);
+                      const created = await api.organizations.create({ name: query.trim() });
+                      const newOrg = { id: Number(created.id), name: String(created.name || query.trim()) };
+                      choose(newOrg);
+                    } catch (e: any) {
+                      setError(e?.payload?.error || e?.message || "Failed to create organization");
+                    } finally {
+                      setLoading(false);
+                    }
+                  }}
+                >
+                  + Create "{query.trim()}"
+                </button>
+              )}
+            </div>
           ) : (
             items.map((opt, i) => (
               <button
@@ -334,7 +373,7 @@ const OrganizationSelect: React.FC<{
               </button>
             ))
           )}
-          {value && (
+          {value && !error && (
             <div className="border-t border-hairline">
               <button
                 type="button"
@@ -1615,7 +1654,7 @@ export default function AppContacts() {
   const [city, setCity] = React.useState("");
   const [stateRegion, setStateRegion] = React.useState("");
   const [postalCode, setPostalCode] = React.useState("");
-  const [country, setCountry] = React.useState("Argentina");
+  const [country, setCountry] = React.useState("United States");
 
   // Tags/Notes
   const [tagsStr, setTagsStr] = React.useState("");
@@ -1640,7 +1679,7 @@ export default function AppContacts() {
     setWhatsapp({ countryCode: "US", callingCode: "+1", national: "", e164: null });
     setOrg(null);
     setStatus("Active"); setLeadStatus(""); setBirthday(""); setNextFollowUp("");
-    setStreet(""); setStreet2(""); setCity(""); setStateRegion(""); setPostalCode(""); setCountry("Argentina");
+    setStreet(""); setStreet2(""); setCity(""); setStateRegion(""); setPostalCode(""); setCountry("United States");
     setTagsStr(""); setNotes(""); setCreateErr(null);
   };
 
@@ -1656,10 +1695,14 @@ export default function AppContacts() {
       const landE164 = landline?.e164 || null;
       const waE164 = whatsapp?.e164 || null;
 
+      // Compute displayName from nickname or name parts
+      const displayName = nickname.trim() || `${firstName.trim()} ${lastName.trim()}`.trim();
+
       const payload: any = {
         firstName: firstName.trim(),
         lastName: lastName.trim(),
         nickname: nickname.trim() || null,
+        displayName,
         email: email.trim() || null,
         phone: cellE164 || waE164 || null,
         phoneMobileE164: cellE164,
@@ -1681,7 +1724,9 @@ export default function AppContacts() {
       resetCreateForm();
       setCreateOpen(false);
     } catch (e: any) {
-      setCreateErr(e?.message || "Failed to create contact");
+      const errorMsg = e?.payload?.error || e?.payload?.message || e?.message || "Failed to create contact";
+      setCreateErr(errorMsg);
+      console.error("[Contacts] Create failed:", e);
     } finally {
       setCreateWorking(false);
     }
@@ -1852,37 +1897,18 @@ export default function AppContacts() {
         open={createOpen}
         onOpenChange={(v) => { if (!createWorking) setCreateOpen(v); }}
         ariaLabel="Create Contact"
-        closeOnEscape
-        closeOnOutsideClick
+        disableEscClose={createWorking}
+        disableOutsideClose={createWorking}
       >
-        {(() => {
-          const panelRef = React.useRef<HTMLDivElement>(null);
+        <div className="w-full max-w-[760px] max-h-[90vh] flex flex-col">
+          {/* Fixed header */}
+          <div className="flex items-center justify-between mb-3 shrink-0">
+            <div className="text-lg font-semibold">Create Contact</div>
+            <Button variant="ghost" onClick={() => setCreateOpen(false)}>✕</Button>
+          </div>
 
-          const handleOutsideMouseDown: React.MouseEventHandler<HTMLDivElement> = (e) => {
-            const p = panelRef.current;
-            if (!p) return;
-            if (!p.contains(e.target as Node)) {
-              if (!createWorking) setCreateOpen(false);
-            }
-          };
-
-          return (
-            <div className="fixed inset-0" onMouseDown={handleOutsideMouseDown}>
-              {/* Backdrop */}
-              <div className="absolute inset-0 bg-black/50" />
-
-              {/* Centered panel */}
-              <div className="absolute inset-0 flex items-center justify-center">
-                <div
-                  ref={panelRef}
-                  role="dialog"
-                  aria-modal="true"
-                  className="pointer-events-auto relative w-[760px] max-w-[95vw] rounded-xl border border-hairline bg-surface shadow-xl p-4"
-                >
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="text-lg font-semibold">Create Contact</div>
-                    <Button variant="ghost" onClick={() => setCreateOpen(false)}>✕</Button>
-                  </div>
+          {/* Scrollable content */}
+          <div className="flex-1 overflow-y-auto pr-2" style={{ minHeight: 0 }}>
 
                   {createDups.length > 0 && (
                     <div className="mb-3 rounded-md border border-[color:var(--brand-orange)]/40 bg-[color:var(--brand-orange)]/10 p-2">
@@ -2002,26 +2028,24 @@ export default function AppContacts() {
                       />
                     </div>
 
-                    {createErr && <div className="sm:col-span-2 text-sm text-red-600">{createErr}</div>}
+            {createErr && <div className="sm:col-span-2 text-sm text-red-600">{createErr}</div>}
+          </div>
+          </div>
 
-                    <div className="sm:col-span-2 flex items-center justify-end gap-2 mt-2">
-                      <Button
-                        variant="outline"
-                        onClick={() => { resetCreateForm(); setCreateOpen(false); }}
-                        disabled={createWorking}
-                      >
-                        Cancel
-                      </Button>
-                      <Button onClick={doCreate} disabled={!canCreate || createWorking}>
-                        {createWorking ? "Saving…" : "Save"}
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          );
-        })()}
+          {/* Fixed footer with action buttons */}
+          <div className="flex items-center justify-end gap-2 pt-3 mt-3 border-t border-hairline shrink-0">
+            <Button
+              variant="outline"
+              onClick={() => { resetCreateForm(); setCreateOpen(false); }}
+              disabled={createWorking}
+            >
+              Cancel
+            </Button>
+            <Button onClick={doCreate} disabled={!canCreate || createWorking}>
+              {createWorking ? "Saving…" : "Save"}
+            </Button>
+          </div>
+        </div>
       </Overlay>
     </div>
   );
