@@ -1,7 +1,8 @@
 import * as React from "react";
 import { createPortal } from "react-dom";
 import { getOverlayRoot } from "../../overlay";
-import { Button } from "../Button/Button"; // or "../Button" if that’s your pattern
+import { Button } from "../Button/Button"; // or "../Button" if that's your pattern
+import "../../styles/dialog.css";
 
 export type DialogSize = "sm" | "md" | "lg" | "xl";
 
