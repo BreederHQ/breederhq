@@ -223,11 +223,11 @@ export function makeApi(base?: string, extraHeadersFn?: () => Record<string, str
     },
 
     async archive(id: string | number) {
-      return reqWithExtra<any>(`/animals/${encodeURIComponent(String(id))}/archive`, { method: "POST" });
+      return reqWithExtra<any>(`/animals/${encodeURIComponent(String(id))}/archive`, { method: "POST", json: {} });
     },
 
     async restore(id: string | number) {
-      return reqWithExtra<any>(`/animals/${encodeURIComponent(String(id))}/restore`, { method: "POST" });
+      return reqWithExtra<any>(`/animals/${encodeURIComponent(String(id))}/restore`, { method: "POST", json: {} });
     },
 
     async remove(id: string | number) {
