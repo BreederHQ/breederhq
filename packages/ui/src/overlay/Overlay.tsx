@@ -12,10 +12,18 @@ type OverlayProps = {
   size?: OverlaySize;
   ariaLabel?: string;
   children: React.ReactNode;
+  /** Optional host override for the portal. */
+  root?: HTMLElement | null;
+  /** Optional identifier for debugging/tests. */
+  overlayId?: string;
   /** If true, clicking on backdrop does NOT close. Defaults to false. */
   disableOutsideClose?: boolean;
   /** If true, pressing Escape does NOT close. Defaults to false. */
   disableEscClose?: boolean;
+  /** Legacy alias: if false, clicking on backdrop does NOT close. */
+  closeOnOutsideClick?: boolean;
+  /** Legacy alias: if false, pressing Escape does NOT close. */
+  closeOnEscape?: boolean;
 };
 
 const SIZES: Record<OverlaySize, string> = {
@@ -77,6 +85,36 @@ function useHostInteractivity(open: boolean, host: HTMLElement | null) {
   }, [open, host]);
 }
 
+type OverlaySlot = "header" | "body" | "footer";
+
+function splitSlots(children: React.ReactNode) {
+  const items = React.Children.toArray(children);
+  const slots: Record<OverlaySlot, React.ReactNode[]> = {
+    header: [],
+    body: [],
+    footer: [],
+  };
+  let hasSlots = false;
+
+  items.forEach((child) => {
+    if (React.isValidElement(child)) {
+      const slot = child.props?.["data-bhq-overlay-slot"] as OverlaySlot | undefined;
+      if (slot === "header" || slot === "body" || slot === "footer") {
+        slots[slot].push(child);
+        hasSlots = true;
+        return;
+      }
+    }
+    slots.body.push(child);
+  });
+
+  if (!hasSlots) {
+    slots.body = items;
+  }
+
+  return { ...slots, hasSlots };
+}
+
 export const Overlay: React.FC<OverlayProps> = ({
   open,
   onOpenChange,
@@ -84,9 +122,22 @@ export const Overlay: React.FC<OverlayProps> = ({
   size = "md",
   ariaLabel = "Dialog",
   children,
+  root,
+  overlayId,
   disableOutsideClose = false,
   disableEscClose = false,
+  closeOnOutsideClick,
+  closeOnEscape,
 }) => {
+  const effectiveDisableOutsideClose =
+    typeof disableOutsideClose === "boolean"
+      ? disableOutsideClose
+      : closeOnOutsideClick === false;
+  const effectiveDisableEscClose =
+    typeof disableEscClose === "boolean"
+      ? disableEscClose
+      : closeOnEscape === false;
+
   const requestClose = React.useCallback(() => {
     if (onOpenChange) {
       onOpenChange(false);
@@ -96,10 +147,14 @@ export const Overlay: React.FC<OverlayProps> = ({
     }
   }, [onOpenChange, onClose]);
 
-  // Prefer the shared host; otherwise fallback to body (standalone/local mode).
-  const host = getHost() ?? (typeof document !== "undefined" ? document.body : null);
+  // Prefer the provided host or shared host; otherwise fallback to body (standalone/local mode).
+  const host = root ?? getHost() ?? (typeof document !== "undefined" ? document.body : null);
   const panelRef = React.useRef<HTMLDivElement | null>(null);
   const mouseDownOnBackdrop = React.useRef(false);
+  const { header, body, footer } = splitSlots(children);
+  const hasHeader = header.length > 0;
+  const hasFooter = footer.length > 0;
+  const bodyPaddingClass = hasHeader ? "px-4 pb-4" : "p-4";
 
   // Prevent background scroll while open
   React.useEffect(() => {
@@ -113,7 +168,7 @@ export const Overlay: React.FC<OverlayProps> = ({
 
   // Close on Escape
   React.useEffect(() => {
-    if (!open || disableEscClose) return;
+    if (!open || effectiveDisableEscClose) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         e.stopPropagation();
@@ -122,7 +177,7 @@ export const Overlay: React.FC<OverlayProps> = ({
     };
     document.addEventListener("keydown", onKey, true);
     return () => document.removeEventListener("keydown", onKey, true);
-  }, [open, disableEscClose, requestClose]);
+  }, [open, effectiveDisableEscClose, requestClose]);
 
   // Basic focus trap when opened
   React.useEffect(() => {
@@ -156,7 +211,7 @@ export const Overlay: React.FC<OverlayProps> = ({
         className="absolute inset-0 bg-black/50"
         onMouseDown={() => (mouseDownOnBackdrop.current = true)}
         onMouseUp={(e) => {
-          if (mouseDownOnBackdrop.current && !disableOutsideClose) {
+          if (mouseDownOnBackdrop.current && !effectiveDisableOutsideClose) {
             if (e.target === e.currentTarget) {
               requestClose();
             }
@@ -171,18 +226,39 @@ export const Overlay: React.FC<OverlayProps> = ({
           ref={panelRef}
           tabIndex={-1}
           data-scale-container
+          data-overlay-id={overlayId}
           className={[
             // fixed-size shell: height capped by viewport; content will scroll inside
-            "mt-10 max-w-[95vw] rounded-xl border border-hairline bg-surface shadow-xl outline-none",
-            "overflow-hidden",                    // children won't resize the shell
-            "max-h-[calc(100vh-5rem)]",          // keep margin around the panel
+            "my-4 max-w-[95vw] rounded-xl border border-hairline bg-surface shadow-xl outline-none",
+            "flex flex-col overflow-hidden",
+            "max-h-[calc(100dvh-32px)]",
             SIZES[size],
           ].join(" ")}
+          style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
         >
-          {/* Inner scroller: content may grow; the shell stays put */}
-          <div className="h-full overflow-auto p-4" data-bhq-overlay-body>
-            {children}
+          {hasHeader && (
+            <div className="shrink-0 px-4 pt-4" data-bhq-overlay-header>
+              {header}
+            </div>
+          )}
+          <div
+            className={[
+              "flex-1 min-h-0 overflow-y-auto",
+              bodyPaddingClass,
+            ].join(" ")}
+            style={{ overscrollBehavior: "contain" }}
+            data-bhq-overlay-body
+          >
+            {body}
           </div>
+          {hasFooter && (
+            <div
+              className="shrink-0 sticky bottom-0 z-[2] border-t border-hairline bg-surface px-4 py-3"
+              data-bhq-overlay-footer
+            >
+              {footer}
+            </div>
+          )}
         </div>
       </div>
     </div>,
