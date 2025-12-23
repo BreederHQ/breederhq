@@ -3270,7 +3270,7 @@ export default function AppAnimals() {
         </DetailsScaffold>
       ),
     }),
-    [api, orgIdForBreeds, ownershipLookups, breedBrowseApi, syncOwners, photoWorking]
+    [api, orgIdForBreeds, ownershipLookups, breedBrowseApi, syncOwners, photoWorking, photoEditorOpen, photoEditorSrc, photoEditorForId]
   );
 
   const [createOpen, setCreateOpen] = React.useState(false);
