@@ -30,7 +30,7 @@ import {
 import { Overlay, getOverlayRoot } from "@bhq/ui/overlay";
 import "@bhq/ui/styles/table.css";
 import { makeApi } from "./api";
-import { MoreHorizontal, Download, X } from "lucide-react";
+import { MoreHorizontal, Download, X, Copy } from "lucide-react";
 
 /* ────────────────────────────────────────────────────────────────────────────
  * Types & small utils
@@ -114,9 +114,9 @@ const COLUMNS: Array<{ key: keyof ContactRow & string; label: string; default?: 
   { key: "lastName", label: "Last", default: true },
   { key: "nickname", label: "Nickname", default: true },
   { key: "organizationName", label: "Organization", default: true },
-  { key: "email", label: "Email", default: true },
-  { key: "phone", label: "Phone", default: true },
-  { key: "tags", label: "Tags", default: true },
+  { key: "email", label: "Email", default: true, center: true },
+  { key: "phone", label: "Phone", default: true, center: true },
+  { key: "tags", label: "Tags", default: true, center: true },
   { key: "status", label: "Status", default: false },
   { key: "leadStatus", label: "Lead Status" },
   { key: "lastContacted", label: "Last Contacted" },
@@ -894,7 +894,7 @@ const ContactDetailsView: React.FC<ContactDetailsViewProps> = ({
       setPrefs((prev) => {
         const next = !prev[key];
         const camel = `prefers${key[0].toUpperCase()}${key.slice(1)}`;
-        setTimeout(() => setDraft((d: any) => ({ ...d, [camel]: next })), 0);
+        setDraft((d: any) => ({ ...d, [camel]: next }));
         return { ...prev, [key]: next };
       });
     },
@@ -1102,7 +1102,20 @@ const ContactDetailsView: React.FC<ContactDetailsViewProps> = ({
               <div className="flex items-center gap-3">
                 <div className="text-xs text-secondary min-w-[80px]">Email</div>
                 {mode === "view" ? (
-                  <div className="text-sm">{norm.email || "—"}</div>
+                  <div className="text-sm flex items-center gap-2">
+                    <span>{norm.email || "-"}</span>
+                    {norm.email ? (
+                      <button
+                        type="button"
+                        className="inline-flex h-6 w-6 items-center justify-center rounded text-secondary hover:text-primary hover:bg-white/5"
+                        onClick={() => navigator.clipboard.writeText(norm.email || "")}
+                        aria-label="Copy email address"
+                        title="Copy email address"
+                      >
+                        <Copy className="h-3.5 w-3.5" />
+                      </button>
+                    ) : null}
+                  </div>
                 ) : (
                   <div className="flex-1">
                     <Input
@@ -1554,6 +1567,11 @@ export default function AppContacts() {
         if (currentRow) {
           return {
             ...mapped,
+            prefersEmail: mapped.prefersEmail ?? (currentRow as any).prefersEmail ?? null,
+            prefersSms: mapped.prefersSms ?? (currentRow as any).prefersSms ?? null,
+            prefersPhone: mapped.prefersPhone ?? (currentRow as any).prefersPhone ?? null,
+            prefersMail: mapped.prefersMail ?? (currentRow as any).prefersMail ?? null,
+            prefersWhatsapp: mapped.prefersWhatsapp ?? (currentRow as any).prefersWhatsapp ?? null,
             phoneLandlineE164: mapped.phoneLandlineE164 ?? (currentRow as any).phoneLandlineE164 ?? null,
             phoneMobileE164: mapped.phoneMobileE164 ?? (currentRow as any).phoneMobileE164 ?? null,
             whatsappE164: mapped.whatsappE164 ?? (currentRow as any).whatsappE164 ?? null,
@@ -1658,12 +1676,22 @@ export default function AppContacts() {
             const safeLandline = mapped.phoneLandlineE164 ?? draft?.phoneLandlineE164 ?? (r as any).phoneLandlineE164 ?? null;
             const safeMobile = mapped.phoneMobileE164 ?? draft?.phoneMobileE164 ?? (r as any).phoneMobileE164 ?? null;
             const safeWhatsApp = mapped.whatsappE164 ?? draft?.whatsappE164 ?? (r as any).whatsappE164 ?? null;
+            const safePrefersEmail = mapped.prefersEmail ?? draft?.prefersEmail ?? (r as any).prefersEmail ?? null;
+            const safePrefersSms = mapped.prefersSms ?? draft?.prefersSms ?? (r as any).prefersSms ?? null;
+            const safePrefersPhone = mapped.prefersPhone ?? draft?.prefersPhone ?? (r as any).prefersPhone ?? null;
+            const safePrefersMail = mapped.prefersMail ?? draft?.prefersMail ?? (r as any).prefersMail ?? null;
+            const safePrefersWhatsapp = mapped.prefersWhatsapp ?? draft?.prefersWhatsapp ?? (r as any).prefersWhatsapp ?? null;
 
             return {
               ...r,
               ...mapped,
               organizationName: safeOrgName,
               organizationId: safeOrgId,
+              prefersEmail: safePrefersEmail,
+              prefersSms: safePrefersSms,
+              prefersPhone: safePrefersPhone,
+              prefersMail: safePrefersMail,
+              prefersWhatsapp: safePrefersWhatsapp,
               phoneLandlineE164: safeLandline,
               phoneMobileE164: safeMobile,
               whatsappE164: safeWhatsApp,
@@ -1972,6 +2000,9 @@ export default function AppContacts() {
                       {visibleSafe.map((c) => {
                         let v = (r as any)[c.key] as any;
                         if (DATE_KEYS.has(c.key as any)) v = fmt(v);
+                        if (c.key === "phone") {
+                          v = formatE164Phone((r as any).phoneMobileE164 || v);
+                        }
                         if (Array.isArray(v)) v = v.join(", ");
                         return <TableCell key={c.key}>{v ?? ""}</TableCell>;
                       })}
