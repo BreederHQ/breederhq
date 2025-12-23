@@ -1,4 +1,4 @@
-﻿// apps/contacts/src/App-Contacts.tsx
+// apps/contacts/src/App-Contacts.tsx
 import * as React from "react";
 import { createPortal } from "react-dom";
 import {
@@ -30,7 +30,7 @@ import {
 import { Overlay, getOverlayRoot } from "@bhq/ui/overlay";
 import "@bhq/ui/styles/table.css";
 import { makeApi } from "./api";
-import { MoreHorizontal, Download } from "lucide-react";
+import { MoreHorizontal, Download, X } from "lucide-react";
 
 /* ────────────────────────────────────────────────────────────────────────────
  * Types & small utils
@@ -151,9 +151,14 @@ function fmt(d?: string | null) {
 }
 
 function computeDisplayName(r: any) {
-  const nick = (r.nickname ?? r.displayName ?? "").trim();
-  const full = [r.firstName, r.lastName].filter(Boolean).join(" ").trim();
-  return nick || full || r.email || r.phone || `Contact ${r.id}`;
+  const display = String(r.displayName ?? r.display_name ?? "").trim();
+  if (display) return display;
+  const nick = String(r.nickname ?? "").trim();
+  const first = String(r.firstName ?? r.first_name ?? "").trim();
+  const last = String(r.lastName ?? r.last_name ?? "").trim();
+  const base = nick || first;
+  const full = [base, last].filter(Boolean).join(" ").trim();
+  return full || r.email || r.phone || `Contact ${r.id}`;
 }
 
 function contactToRow(p: any): ContactRow {
@@ -237,6 +242,7 @@ const OrganizationSelect: React.FC<{
   const [query, setQuery] = React.useState(value?.name ?? "");
   const [open, setOpen] = React.useState(false);
   const [loading, setLoading] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
   const [items, setItems] = React.useState<OrgOption[]>([]);
   const [highlight, setHighlight] = React.useState<number>(-1);
   const rootRef = React.useRef<HTMLDivElement | null>(null);
@@ -245,6 +251,7 @@ const OrganizationSelect: React.FC<{
     () =>
       tinyDebounce(async (q: string) => {
         setLoading(true);
+        setError(null);
         try {
           const list = await api.lookups.searchOrganizations(q);
           const mapped = (list || []).map((o: any) => ({
@@ -253,6 +260,9 @@ const OrganizationSelect: React.FC<{
           }));
           setItems(mapped);
           setHighlight(mapped.length ? 0 : -1);
+        } catch (e: any) {
+          setError(e?.message || "Unable to load organizations");
+          setItems([]);
         } finally {
           setLoading(false);
         }
@@ -316,8 +326,42 @@ const OrganizationSelect: React.FC<{
         >
           {loading ? (
             <div className="px-3 py-2 text-sm text-secondary">Searching…</div>
+          ) : error ? (
+            <div className="px-3 py-2">
+              <div className="text-sm text-red-400">{error}</div>
+              <button
+                type="button"
+                className="mt-2 text-xs text-secondary hover:text-primary underline"
+                onClick={() => doSearch(query)}
+              >
+                Retry
+              </button>
+            </div>
           ) : items.length === 0 ? (
-            <div className="px-3 py-2 text-sm text-secondary">No organizations</div>
+            <div className="px-3 py-2">
+              <div className="text-sm text-secondary mb-2">No organizations found</div>
+              {query.trim() && (
+                <button
+                  type="button"
+                  className="w-full text-left px-2 py-1.5 text-sm text-primary bg-white/5 rounded hover:bg-white/10"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={async () => {
+                    try {
+                      setLoading(true);
+                      const created = await api.organizations.create({ name: query.trim() });
+                      const newOrg = { id: Number(created.id), name: String(created.name || query.trim()) };
+                      choose(newOrg);
+                    } catch (e: any) {
+                      setError(e?.payload?.error || e?.message || "Failed to create organization");
+                    } finally {
+                      setLoading(false);
+                    }
+                  }}
+                >
+                  + Create "{query.trim()}"
+                </button>
+              )}
+            </div>
           ) : (
             items.map((opt, i) => (
               <button
@@ -334,7 +378,7 @@ const OrganizationSelect: React.FC<{
               </button>
             ))
           )}
-          {value && (
+          {value && !error && (
             <div className="border-t border-hairline">
               <button
                 type="button"
@@ -415,6 +459,20 @@ function formatNextFollowUpLabel(d?: string | null) {
   if (when === one) return "Follow-up tomorrow";
   if (when < 0) return `Follow-up overdue`;
   return `Follow-up ${dt.toLocaleDateString()}`;
+}
+
+function formatE164Phone(e164?: string | null) {
+  if (!e164) return null;
+  const digits = e164.replace(/\D/g, "");
+
+  // US/NANP format: +1 (XXX) XXX-XXXX
+  if (digits.startsWith("1") && digits.length === 11) {
+    const local = digits.slice(1);
+    return `+1 (${local.slice(0, 3)}) ${local.slice(3, 6)}-${local.slice(6, 10)}`;
+  }
+
+  // Other countries: just return as-is with + prefix
+  return `+${digits}`;
 }
 
 /* ───────────────── SnoozeMenu (viewport-clamped) ───────────────── */
@@ -683,6 +741,7 @@ type ContactDetailsViewProps = {
   requestSave: () => Promise<void>;
   allRows: ContactRow[]; // for duplicate checks
   api: ReturnType<typeof makeApi>;
+  setRows: React.Dispatch<React.SetStateAction<ContactRow[]>>;
 };
 
 const ContactDetailsView: React.FC<ContactDetailsViewProps> = ({
@@ -695,25 +754,24 @@ const ContactDetailsView: React.FC<ContactDetailsViewProps> = ({
   requestSave,
   allRows,
   api,
+  setRows,
 }) => {
-  const [cell, setCell] = React.useState<PhoneValue>({
-    countryCode: "US",
-    callingCode: "+1",
-    national: "",
-    e164: (row as any).phoneMobileE164 ?? null,
-  });
-  const [land, setLand] = React.useState<PhoneValue>({
-    countryCode: "US",
-    callingCode: "+1",
-    national: "",
-    e164: (row as any).phoneLandlineE164 ?? null,
-  });
-  const [wa, setWa] = React.useState<PhoneValue>({
-    countryCode: "US",
-    callingCode: "+1",
-    national: "",
-    e164: (row as any).whatsappE164 ?? null,
-  });
+  // Use string | PhoneValue for state to match IntlPhoneField's value prop
+  const [cell, setCell] = React.useState<string | PhoneValue>((row as any).phoneMobileE164 || row.phone || "");
+  const [land, setLand] = React.useState<string | PhoneValue>((row as any).phoneLandlineE164 ?? "");
+  const [wa, setWa] = React.useState<string | PhoneValue>((row as any).whatsappE164 ?? "");
+
+  // Sync phone fields when row changes
+  React.useEffect(() => {
+    // Use phoneMobileE164 if available, otherwise fall back to phone field (which might be the mobile number)
+    const cellValue = (row as any).phoneMobileE164 || row.phone || "";
+    const landValue = (row as any).phoneLandlineE164 ?? "";
+    const waValue = (row as any).whatsappE164 ?? "";
+
+    setCell(cellValue);
+    setLand(landValue);
+    setWa(waValue);
+  }, [row]);
 
   const [prefs, setPrefs] = React.useState(() => ({
     email: !!(row as any).prefersEmail,
@@ -848,17 +906,37 @@ const ContactDetailsView: React.FC<ContactDetailsViewProps> = ({
       size="sm"
       defaultValue={(row as any)[k] ?? ""}
       placeholder={placeholder}
-      onChange={(e) =>
+      onChange={(e) => {
+        const value = e.target.value;
         setDraft((d: any) => ({
           ...d,
-          [k]: (e.currentTarget as HTMLInputElement).value,
-        }))
-      }
+          [k]: value,
+        }));
+      }}
     />
   );
 
   /* Header actions: Next Follow-up chip + Archive */
   const [snoozing, setSnoozing] = React.useState(false);
+  const [archiving, setArchiving] = React.useState(false);
+
+  const handleArchive = async () => {
+    try {
+      setArchiving(true);
+      await api.contacts.update(row.id, { archived: true });
+      setDraft((d: any) => ({ ...d, archived: true }));
+      // Update the main rows state to reflect archived status
+      setRows((prev) =>
+        prev.map((r) => (String(r.id) === String(row.id) ? { ...r, archived: true } : r))
+      );
+      console.log("[Contacts] Archived contact");
+      setMode("view");
+    } catch (e) {
+      console.error("[Contacts] Archive failed", e);
+    } finally {
+      setArchiving(false);
+    }
+  };
 
   const headerRight = (
     <div className="flex items-center gap-2">
@@ -878,9 +956,11 @@ const ContactDetailsView: React.FC<ContactDetailsViewProps> = ({
           }
         }}
       />
-      <Button size="sm" variant="outline" disabled={snoozing}>
-        {snoozing ? "Saving…" : "Archive"}
-      </Button>
+      {mode === "edit" && !row.archived && (
+        <Button size="sm" variant="outline" onClick={handleArchive} disabled={archiving}>
+          {archiving ? "Archiving…" : "Archive"}
+        </Button>
+      )}
     </div>
   );
 
@@ -1019,36 +1099,39 @@ const ContactDetailsView: React.FC<ContactDetailsViewProps> = ({
               </div>
 
               {/* Email */}
-              <div>
-                <div className="text-xs text-secondary mb-1">Email</div>
+              <div className="flex items-center gap-3">
+                <div className="text-xs text-secondary min-w-[80px]">Email</div>
                 {mode === "view" ? (
                   <div className="text-sm">{norm.email || "—"}</div>
                 ) : (
-                  <Input
-                    size="sm"
-                    type="email"
-                    defaultValue={norm.email ?? ""}
-                    onChange={(e) => setDraft((d: any) => ({ ...d, email: (e.currentTarget as HTMLInputElement).value }))}
-                  />
+                  <div className="flex-1">
+                    <Input
+                      type="email"
+                      defaultValue={norm.email ?? ""}
+                      onChange={(e) => setDraft((d: any) => ({ ...d, email: (e.currentTarget as HTMLInputElement).value }))}
+                    />
+                  </div>
                 )}
               </div>
 
               {/* Phones */}
-              <div className="sm:col-span-2">
-                <div className="text-xs text-secondary mb-1">Cell Phone</div>
+              <div className="flex items-center gap-3">
+                <div className="text-xs text-secondary min-w-[80px]">Cell Phone</div>
                 {mode === "view" ? (
-                  <div className="text-sm">{(row as any).phoneMobileE164 || norm.phone || "—"}</div>
+                  <div className="text-sm">{formatE164Phone((row as any).phoneMobileE164 || norm.phone) || "—"}</div>
                 ) : (
-                  <div className="relative">
+                  <div className="flex-1">
                     {/* @ts-ignore */}
                     <IntlPhoneField
                       value={cell}
                       onChange={(v) => {
                         setCell(v);
+                        const e164 = typeof v === "string" ? v : v?.e164;
+                        const waE164 = typeof wa === "string" ? wa : wa?.e164;
                         setDraft((d: any) => ({
                           ...d,
-                          phoneMobileE164: v?.e164 ?? null,
-                          phone: (v?.e164 ?? null) || (wa?.e164 ?? null),
+                          phoneMobileE164: e164 || null,
+                          phone: e164 || waE164 || null,
                         }));
                       }}
                     />
@@ -1056,36 +1139,45 @@ const ContactDetailsView: React.FC<ContactDetailsViewProps> = ({
                 )}
               </div>
 
-              <div className="sm:col-span-2">
-                <div className="text-xs text-secondary mb-1">Landline</div>
+              <div className="flex items-center gap-3">
+                <div className="text-xs text-secondary min-w-[80px]">Landline</div>
                 {mode === "view" ? (
-                  <div className="text-sm">{(row as any).phoneLandlineE164 || "—"}</div>
+                  <div className="text-sm">{formatE164Phone((row as any).phoneLandlineE164) || "—"}</div>
                 ) : (
-                  <div className="relative">
+                  <div className="flex-1">
                     {/* @ts-ignore */}
                     <IntlPhoneField
                       value={land}
-                      onChange={(v) => setLand(v)}
+                      onChange={(v) => {
+                        setLand(v);
+                        const e164 = typeof v === "string" ? v : v?.e164;
+                        setDraft((d: any) => ({
+                          ...d,
+                          phoneLandlineE164: e164 || null,
+                        }));
+                      }}
                     />
                   </div>
                 )}
               </div>
 
-              <div className="sm:col-span-2">
-                <div className="text-xs text-secondary mb-1">WhatsApp</div>
+              <div className="flex items-center gap-3">
+                <div className="text-xs text-secondary min-w-[80px]">WhatsApp</div>
                 {mode === "view" ? (
-                  <div className="text-sm">{(row as any).whatsappE164 || "—"}</div>
+                  <div className="text-sm">{formatE164Phone((row as any).whatsappE164) || "—"}</div>
                 ) : (
-                  <div className="relative">
+                  <div className="flex-1">
                     {/* @ts-ignore */}
                     <IntlPhoneField
                       value={wa}
                       onChange={(v) => {
                         setWa(v);
+                        const e164 = typeof v === "string" ? v : v?.e164;
+                        const cellE164 = typeof cell === "string" ? cell : cell?.e164;
                         setDraft((d: any) => ({
                           ...d,
-                          whatsappE164: v?.e164 ?? null,
-                          phone: (cell?.e164 ?? null) || (v?.e164 ?? null),
+                          whatsappE164: e164 || null,
+                          phone: cellE164 || e164 || null,
                         }));
                       }}
                     />
@@ -1289,13 +1381,21 @@ export default function AppContacts() {
   const [pageSize, setPageSize] = React.useState<number>(25);
   const [page, setPage] = React.useState<number>(1);
 
+  // Archive toggle
+  const [includeArchived, setIncludeArchived] = React.useState<boolean>(false);
+
   React.useEffect(() => {
     let cancelled = false;
     (async () => {
       setLoading(true);
       setError(null);
       try {
-        const res = await api.contacts.list({ q: qDebounced || undefined, page: 1, limit: 100 });
+        const res = await api.contacts.list({
+          q: qDebounced || undefined,
+          page: 1,
+          limit: 100,
+          includeArchived
+        });
         const items = (res?.items || res?.data || []).map(contactToRow);
         if (!cancelled) setRows(items);
       } catch (e: any) {
@@ -1305,7 +1405,7 @@ export default function AppContacts() {
       }
     })();
     return () => { cancelled = true; };
-  }, [api, qDebounced]);
+  }, [api, qDebounced, includeArchived]);
 
   // Columns
   const { map, toggle, setAll, visible } = hooks.useColumns(COLUMNS, STORAGE_KEY);
@@ -1445,7 +1545,23 @@ export default function AppContacts() {
       width: 820,
       placement: "center" as const,
       align: "top" as const,
-      fetchRow: (id: ID) => api.contacts.get(id),
+      fetchRow: async (id: ID) => {
+        const raw = await api.contacts.get(id);
+        const mapped = contactToRow(raw);
+
+        // Preserve phone fields from current row if API doesn't return them
+        const currentRow = rows.find((r) => String(r.id) === String(id));
+        if (currentRow) {
+          return {
+            ...mapped,
+            phoneLandlineE164: mapped.phoneLandlineE164 ?? (currentRow as any).phoneLandlineE164 ?? null,
+            phoneMobileE164: mapped.phoneMobileE164 ?? (currentRow as any).phoneMobileE164 ?? null,
+            whatsappE164: mapped.whatsappE164 ?? (currentRow as any).whatsappE164 ?? null,
+          };
+        }
+
+        return mapped;
+      },
       onSave: async (id: ID, draft: any) => {
         const original = rows.find((r) => String(r.id) === String(id)) as any;
 
@@ -1484,8 +1600,8 @@ export default function AppContacts() {
 
         // Also apply nextFollowUp changes and phone precedence in the payload
         const resolvedOrgId =
-          (draft?.organizationId ?? null) !== undefined
-            ? draft?.organizationId ?? null
+          draft?.organizationId !== undefined
+            ? draft?.organizationId
             : original?.organizationId ?? null;
 
         const payload = {
@@ -1538,7 +1654,20 @@ export default function AppContacts() {
               (r as any).organizationId ??
               null;
 
-            return { ...r, ...mapped, organizationName: safeOrgName, organizationId: safeOrgId };
+            // Preserve phone fields from draft if API doesn't return them
+            const safeLandline = mapped.phoneLandlineE164 ?? draft?.phoneLandlineE164 ?? (r as any).phoneLandlineE164 ?? null;
+            const safeMobile = mapped.phoneMobileE164 ?? draft?.phoneMobileE164 ?? (r as any).phoneMobileE164 ?? null;
+            const safeWhatsApp = mapped.whatsappE164 ?? draft?.whatsappE164 ?? (r as any).whatsappE164 ?? null;
+
+            return {
+              ...r,
+              ...mapped,
+              organizationName: safeOrgName,
+              organizationId: safeOrgId,
+              phoneLandlineE164: safeLandline,
+              phoneMobileE164: safeMobile,
+              whatsappE164: safeWhatsApp,
+            };
           })
         );
       },
@@ -1557,10 +1686,11 @@ export default function AppContacts() {
           {...props}
           allRows={rows}
           api={api}
+          setRows={setRows}
         />
       ),
     }),
-    [api, rows]
+    [api, rows, setRows]
   );
 
   /** Create Contact modal state */
@@ -1615,7 +1745,7 @@ export default function AppContacts() {
   const [city, setCity] = React.useState("");
   const [stateRegion, setStateRegion] = React.useState("");
   const [postalCode, setPostalCode] = React.useState("");
-  const [country, setCountry] = React.useState("Argentina");
+  const [country, setCountry] = React.useState("United States");
 
   // Tags/Notes
   const [tagsStr, setTagsStr] = React.useState("");
@@ -1640,11 +1770,33 @@ export default function AppContacts() {
     setWhatsapp({ countryCode: "US", callingCode: "+1", national: "", e164: null });
     setOrg(null);
     setStatus("Active"); setLeadStatus(""); setBirthday(""); setNextFollowUp("");
-    setStreet(""); setStreet2(""); setCity(""); setStateRegion(""); setPostalCode(""); setCountry("Argentina");
+    setStreet(""); setStreet2(""); setCity(""); setStateRegion(""); setPostalCode(""); setCountry("United States");
     setTagsStr(""); setNotes(""); setCreateErr(null);
   };
 
   const canCreate = firstName.trim().length > 0 && lastName.trim().length > 0;
+
+  const CREATE_ERROR_MAP: Record<string, string> = {
+    display_name_required: "Display name is generated automatically. Please enter first and last name.",
+    organizationId_invalid: "Organization is invalid.",
+    organization_not_found: "Organization not found.",
+    organization_not_found_or_wrong_tenant: "Organization not found.",
+    missing_tenant: "Missing tenant context.",
+    conflict: "Email must be unique within this tenant.",
+  };
+
+  const formatCreateError = (e: any) => {
+    const payload = e?.payload || {};
+    if (payload?.fieldErrors && typeof payload.fieldErrors === "object") {
+      const messages = Object.values(payload.fieldErrors).filter(Boolean);
+      if (messages.length > 0) return String(messages.join(" "));
+    }
+    const raw = payload?.message || payload?.error || e?.message || "Failed to create contact";
+    const msg = typeof raw === "string" ? raw : "Failed to create contact";
+    if (CREATE_ERROR_MAP[msg]) return CREATE_ERROR_MAP[msg];
+    if (/^[a-z0-9_]+$/.test(msg)) return "Unable to create contact. Please check the form.";
+    return msg;
+  };
 
   const doCreate = async () => {
     if (!canCreate) { setCreateErr("Please enter First and Last name."); return; }
@@ -1681,7 +1833,8 @@ export default function AppContacts() {
       resetCreateForm();
       setCreateOpen(false);
     } catch (e: any) {
-      setCreateErr(e?.message || "Failed to create contact");
+      setCreateErr(formatCreateError(e));
+      console.error("[Contacts] Create failed:", e);
     } finally {
       setCreateWorking(false);
     }
@@ -1842,6 +1995,11 @@ export default function AppContacts() {
               end={end}
               filteredTotal={sortedRows.length}
               total={rows.length}
+              includeArchived={includeArchived}
+              onIncludeArchivedChange={(checked) => {
+                setIncludeArchived(checked);
+                setPage(1);
+              }}
             />
           </Table>
         </DetailsHost>
@@ -1852,176 +2010,158 @@ export default function AppContacts() {
         open={createOpen}
         onOpenChange={(v) => { if (!createWorking) setCreateOpen(v); }}
         ariaLabel="Create Contact"
-        closeOnEscape
-        closeOnOutsideClick
+        disableEscClose={createWorking}
+        disableOutsideClose={createWorking}
+        size="xl"
       >
-        {(() => {
-          const panelRef = React.useRef<HTMLDivElement>(null);
+        <div data-bhq-overlay-slot="header">
+          <div className="w-full max-w-[900px] mx-auto flex items-center justify-between mb-3">
+            <div className="text-lg font-semibold">Create Contact</div>
+            <Button variant="ghost" size="sm" onClick={() => setCreateOpen(false)}>
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
 
-          const handleOutsideMouseDown: React.MouseEventHandler<HTMLDivElement> = (e) => {
-            const p = panelRef.current;
-            if (!p) return;
-            if (!p.contains(e.target as Node)) {
-              if (!createWorking) setCreateOpen(false);
-            }
-          };
-
-          return (
-            <div className="fixed inset-0" onMouseDown={handleOutsideMouseDown}>
-              {/* Backdrop */}
-              <div className="absolute inset-0 bg-black/50" />
-
-              {/* Centered panel */}
-              <div className="absolute inset-0 flex items-center justify-center">
-                <div
-                  ref={panelRef}
-                  role="dialog"
-                  aria-modal="true"
-                  className="pointer-events-auto relative w-[760px] max-w-[95vw] rounded-xl border border-hairline bg-surface shadow-xl p-4"
-                >
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="text-lg font-semibold">Create Contact</div>
-                    <Button variant="ghost" onClick={() => setCreateOpen(false)}>✕</Button>
-                  </div>
-
-                  {createDups.length > 0 && (
-                    <div className="mb-3 rounded-md border border-[color:var(--brand-orange)]/40 bg-[color:var(--brand-orange)]/10 p-2">
-                      <div className="text-sm font-medium">Possible duplicates found</div>
-                      <div className="text-xs text-secondary">
-                        Another contact shares the same email or phone.
-                      </div>
-                      <div className="mt-1 flex flex-wrap gap-2">
-                        {createDups.slice(0, 3).map((d) => (
-                          <Badge key={String(d.id)}>{computeDisplayName(d)}</Badge>
-                        ))}
-                        {createDups.length > 3 && <span className="text-xs text-secondary">+{createDups.length - 3} more</span>}
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {/* Names */}
-                    <div>
-                      <div className="text-xs text-secondary mb-1">
-                        First name <span className="text-[hsl(var(--brand-orange))]">*</span>
-                      </div>
-                      <Input value={firstName} onChange={(e) => setFirstName((e.currentTarget as HTMLInputElement).value)} />
-                    </div>
-                    <div>
-                      <div className="text-xs text-secondary mb-1">
-                        Last name <span className="text-[hsl(var(--brand-orange))]">*</span>
-                      </div>
-                      <Input value={lastName} onChange={(e) => setLastName((e.currentTarget as HTMLInputElement).value)} />
-                    </div>
-
-                    {/* Nickname */}
-                    <div className="sm:col-span-2">
-                      <div className="text-xs text-secondary mb-1">Preferred / Nickname</div>
-                      <Input value={nickname} onChange={(e) => setNickname((e.currentTarget as HTMLInputElement).value)} />
-                    </div>
-
-                    {/* Organization */}
-                    <div className="sm:col-span-2">
-                      <div className="text-xs text-secondary mb-1">Organizational Association</div>
-                      <OrganizationSelect value={org} onChange={setOrg} />
-                    </div>
-
-                    {/* Email */}
-                    <div className="sm:col-span-2">
-                      <div className="text-xs text-secondary mb-1">Email</div>
-                      <Input type="email" value={email} onChange={(e) => setEmail((e.currentTarget as HTMLInputElement).value)} />
-                    </div>
-
-                    {/* Phones */}
-                    <div className="sm:col-span-2">
-                      <div className="text-xs text-secondary mb-1">Cell Phone</div>
-                      {/* @ts-ignore */}
-                      <IntlPhoneField value={cell} onChange={setCell} />
-                    </div>
-
-                    <div className="sm:col-span-2">
-                      <div className="text-xs text-secondary mb-1">Landline</div>
-                      {/* @ts-ignore */}
-                      <IntlPhoneField value={landline} onChange={setLandline} />
-                    </div>
-
-                    <div className="sm:col-span-2">
-                      <div className="text-xs text-secondary mb-1">WhatsApp</div>
-                      {/* @ts-ignore */}
-                      <IntlPhoneField value={whatsapp} onChange={setWhatsapp} />
-                      <div className="text-xs text-secondary mt-1">
-                        If Cell Phone is left empty, this will be used as the phone on save.
-                      </div>
-                    </div>
-
-                    {/* Address */}
-                    <div className="sm:col-span-2">
-                      <div className="text-xs text-secondary mb-1">Street</div>
-                      <Input value={street} onChange={(e) => setStreet((e.currentTarget as HTMLInputElement).value)} />
-                    </div>
-                    <div className="sm:col-span-2">
-                      <div className="text-xs text-secondary mb-1">Street 2</div>
-                      <Input value={street2} onChange={(e) => setStreet2((e.currentTarget as HTMLInputElement).value)} />
-                    </div>
-
-                    <div>
-                      <div className="text-xs text-secondary mb-1">City</div>
-                      <Input value={city} onChange={(e) => setCity((e.currentTarget as HTMLInputElement).value)} />
-                    </div>
-                    <div>
-                      <div className="text-xs text-secondary mb-1">State / Region</div>
-                      <Input value={stateRegion} onChange={(e) => setStateRegion((e.currentTarget as HTMLInputElement).value)} />
-                    </div>
-
-                    <div className="sm:col-span-2">
-                      <div className="text-xs text-secondary mb-1">Zip / Postal code</div>
-                      <Input value={postalCode} onChange={(e) => setPostalCode((e.currentTarget as HTMLInputElement).value)} />
-                    </div>
-
-                    <div className="sm:col-span-2">
-                      <div className="text-xs text-secondary mb-1">Country</div>
-                      <select
-                        className="w-full h-9 rounded-md border border-hairline bg-surface px-2 text-sm text-primary"
-                        value={country}
-                        onChange={(e) => setCountry((e.target as HTMLSelectElement).value)}
-                      >
-                        {COUNTRIES.filter((c) => c !== "— Select country").map((c) => (
-                          <option key={c} value={c}>{c}</option>
-                        ))}
-                      </select>
-                    </div>
-
-                    {/* Notes */}
-                    <div className="sm:col-span-2">
-                      <div className="text-xs text-secondary mb-1">Notes</div>
-                      <textarea
-                        className="h-24 w-full rounded-md bg-surface border border-hairline px-3 text-sm text-primary placeholder:text-secondary outline-none"
-                        value={notes}
-                        onChange={(e) => setNotes((e.currentTarget as HTMLTextAreaElement).value)}
-                        placeholder="Context, preferences, etc."
-                      />
-                    </div>
-
-                    {createErr && <div className="sm:col-span-2 text-sm text-red-600">{createErr}</div>}
-
-                    <div className="sm:col-span-2 flex items-center justify-end gap-2 mt-2">
-                      <Button
-                        variant="outline"
-                        onClick={() => { resetCreateForm(); setCreateOpen(false); }}
-                        disabled={createWorking}
-                      >
-                        Cancel
-                      </Button>
-                      <Button onClick={doCreate} disabled={!canCreate || createWorking}>
-                        {createWorking ? "Saving…" : "Save"}
-                      </Button>
-                    </div>
-                  </div>
+        <div data-bhq-overlay-slot="body">
+          <div className="w-full max-w-[900px] mx-auto">
+            {createDups.length > 0 && (
+              <div className="mb-3 rounded-md border border-[color:var(--brand-orange)]/40 bg-[color:var(--brand-orange)]/10 p-2">
+                <div className="text-sm font-medium">Possible duplicates found</div>
+                <div className="text-xs text-secondary">
+                  Another contact shares the same email or phone.
+                </div>
+                <div className="mt-1 flex flex-wrap gap-2">
+                  {createDups.slice(0, 3).map((d) => (
+                    <Badge key={String(d.id)}>{computeDisplayName(d)}</Badge>
+                  ))}
+                  {createDups.length > 3 && <span className="text-xs text-secondary">+{createDups.length - 3} more</span>}
                 </div>
               </div>
+            )}
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {/* Names */}
+              <div>
+                <div className="text-xs text-secondary mb-1">
+                  First name <span className="text-[hsl(var(--brand-orange))]">*</span>
+                </div>
+                <Input value={firstName} onChange={(e) => setFirstName((e.currentTarget as HTMLInputElement).value)} />
+              </div>
+              <div>
+                <div className="text-xs text-secondary mb-1">
+                  Last name <span className="text-[hsl(var(--brand-orange))]">*</span>
+                </div>
+                <Input value={lastName} onChange={(e) => setLastName((e.currentTarget as HTMLInputElement).value)} />
+              </div>
+
+              {/* Nickname */}
+              <div className="sm:col-span-2">
+                <div className="text-xs text-secondary mb-1">Preferred / Nickname</div>
+                <Input value={nickname} onChange={(e) => setNickname((e.currentTarget as HTMLInputElement).value)} />
+              </div>
+
+              {/* Organization */}
+              <div className="sm:col-span-2">
+                <div className="text-xs text-secondary mb-1">Organizational Association</div>
+                <OrganizationSelect value={org} onChange={setOrg} />
+              </div>
+
+              {/* Email */}
+              <div className="sm:col-span-2">
+                <div className="text-xs text-secondary mb-1">Email</div>
+                <Input type="email" value={email} onChange={(e) => setEmail((e.currentTarget as HTMLInputElement).value)} />
+              </div>
+
+              {/* Phones */}
+              <div className="sm:col-span-2">
+                <div className="text-xs text-secondary mb-1">Cell Phone</div>
+                {/* @ts-ignore */}
+                <IntlPhoneField value={cell} onChange={setCell} />
+              </div>
+
+              <div className="sm:col-span-2">
+                <div className="text-xs text-secondary mb-1">Landline</div>
+                {/* @ts-ignore */}
+                <IntlPhoneField value={landline} onChange={setLandline} />
+              </div>
+
+              <div className="sm:col-span-2">
+                <div className="text-xs text-secondary mb-1">WhatsApp</div>
+                {/* @ts-ignore */}
+                <IntlPhoneField value={whatsapp} onChange={setWhatsapp} />
+                <div className="text-xs text-secondary mt-1">
+                  If Cell Phone is left empty, this will be used as the phone on save.
+                </div>
+              </div>
+
+              {/* Address */}
+              <div className="sm:col-span-2">
+                <div className="text-xs text-secondary mb-1">Street</div>
+                <Input value={street} onChange={(e) => setStreet((e.currentTarget as HTMLInputElement).value)} />
+              </div>
+              <div className="sm:col-span-2">
+                <div className="text-xs text-secondary mb-1">Street 2</div>
+                <Input value={street2} onChange={(e) => setStreet2((e.currentTarget as HTMLInputElement).value)} />
+              </div>
+
+              <div>
+                <div className="text-xs text-secondary mb-1">City</div>
+                <Input value={city} onChange={(e) => setCity((e.currentTarget as HTMLInputElement).value)} />
+              </div>
+              <div>
+                <div className="text-xs text-secondary mb-1">State / Region</div>
+                <Input value={stateRegion} onChange={(e) => setStateRegion((e.currentTarget as HTMLInputElement).value)} />
+              </div>
+
+              <div className="sm:col-span-2">
+                <div className="text-xs text-secondary mb-1">Zip / Postal code</div>
+                <Input value={postalCode} onChange={(e) => setPostalCode((e.currentTarget as HTMLInputElement).value)} />
+              </div>
+
+              <div className="sm:col-span-2">
+                <div className="text-xs text-secondary mb-1">Country</div>
+                <select
+                  className="w-full h-9 rounded-md border border-hairline bg-surface px-2 text-sm text-primary"
+                  value={country}
+                  onChange={(e) => setCountry((e.target as HTMLSelectElement).value)}
+                >
+                  {COUNTRIES.filter((c) => c !== "- Select country").map((c) => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Notes */}
+              <div className="sm:col-span-2">
+                <div className="text-xs text-secondary mb-1">Notes</div>
+                <textarea
+                  className="h-24 w-full rounded-md bg-surface border border-hairline px-3 text-sm text-primary placeholder:text-secondary outline-none"
+                  value={notes}
+                  onChange={(e) => setNotes((e.currentTarget as HTMLTextAreaElement).value)}
+                  placeholder="Context, preferences, etc."
+                />
+              </div>
+
+              {createErr && <div className="sm:col-span-2 text-sm text-red-600">{createErr}</div>}
             </div>
-          );
-        })()}
+          </div>
+        </div>
+
+        <div data-bhq-overlay-slot="footer">
+          <div className="w-full max-w-[900px] mx-auto flex items-center justify-end gap-2">
+            <Button
+              variant="outline"
+              onClick={() => { resetCreateForm(); setCreateOpen(false); }}
+              disabled={createWorking}
+            >
+              Cancel
+            </Button>
+            <Button onClick={doCreate} disabled={!canCreate || createWorking}>
+              {createWorking ? "Saving." : "Save"}
+            </Button>
+          </div>
+        </div>
       </Overlay>
     </div>
   );
