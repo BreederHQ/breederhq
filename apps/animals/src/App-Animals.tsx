@@ -802,7 +802,8 @@ function PhotoEditorModal({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4"
+      className="fixed inset-0 flex items-center justify-center bg-black/55 p-4"
+      style={{ zIndex: 99999 }}
       onMouseUp={onMouseUp}
       onClick={(e) => {
         e.stopPropagation();
@@ -2985,9 +2986,15 @@ export default function AppAnimals() {
                   canRemove={!!row.photoUrl}
                   onClose={() => setPhotoEditorOpen(false)}
                   onPickFile={() => handleStartUploadPhoto(photoEditorForId ?? row.id)}
+                  onRemove={async () => {
+                    const id = photoEditorForId ?? row.id;
+                    await handleRemovePhoto(id);
+                    setPhotoEditorOpen(false);
+                  }}
                   onSave={async ({ blob }) => {
                     const id = photoEditorForId ?? row.id;
                     await uploadCroppedBlob(id, blob);
+                    setPhotoEditorOpen(false);
                   }}
                 />
               </SectionCard>
