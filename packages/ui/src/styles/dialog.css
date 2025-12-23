@@ -3,7 +3,7 @@
 .bhq-dialog__root {
   position: fixed;
   inset: 0;
-  z-index: 9999;
+  z-index: 2147483647;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -14,12 +14,12 @@
   inset: 0;
   background-color: rgba(0, 0, 0, 0.5);
   backdrop-filter: blur(2px);
-  z-index: 9998;
+  z-index: 2147483646;
 }
 
 .bhq-dialog {
   position: relative;
-  z-index: 9999;
+  z-index: 2147483647;
   background-color: hsl(var(--surface));
   border: 1px solid hsl(var(--hairline));
   border-radius: 0.5rem;
