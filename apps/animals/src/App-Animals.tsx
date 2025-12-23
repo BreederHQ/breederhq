@@ -798,18 +798,11 @@ function PhotoEditorModal({
     }
   };
 
-  console.log('[PhotoEditorModal] Render check:', { open, hasOverlayRoot: !!getOverlayRoot(), src });
-
-  if (!open || !getOverlayRoot()) {
-    console.log('[PhotoEditorModal] Not rendering because:', { open, hasOverlayRoot: !!getOverlayRoot() });
-    return null;
-  }
-
-  console.log('[PhotoEditorModal] Rendering modal with src:', src);
+  if (!open || !getOverlayRoot()) return null;
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[2147483647] flex items-center justify-center bg-black/55 p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4"
       onMouseUp={onMouseUp}
       onClick={(e) => {
         e.stopPropagation();
@@ -2943,14 +2936,9 @@ export default function AppAnimals() {
                         onClick={(e) => {
                           e.preventDefault();
                           e.stopPropagation();
-                          console.log('Edit photo button clicked!');
-                          console.log('Current photoEditorOpen state:', photoEditorOpen);
-                          console.log('Setting photoEditorForId to:', row.id);
-                          console.log('Setting photoEditorSrc to:', row.photoUrl ?? getPlaceholderForSpecies(row.species));
                           setPhotoEditorForId(row.id);
                           setPhotoEditorSrc(row.photoUrl ?? getPlaceholderForSpecies(row.species));
                           setPhotoEditorOpen(true);
-                          console.log('Called setPhotoEditorOpen(true)');
                         }}
                         disabled={photoWorking}
                       >
