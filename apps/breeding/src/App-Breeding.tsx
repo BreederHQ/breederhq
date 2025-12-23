@@ -3346,6 +3346,9 @@ function PlanDetailsView(props: {
     [effective]
   );
 
+  // Allow editing cycle start actual when in edit mode and committed
+  const canEditCycleStartActual = canEditDates;
+
   const canEditCompletedActual =
     canEditDates &&
     !!effective.cycleStartDateActual &&
