@@ -75,7 +75,7 @@ function spFrom(obj: Record<string, any>) {
   return q ? `?${q}` : "";
 }
 
-export type Species = "DOG" | "CAT" | "HORSE";
+export type Species = "DOG" | "CAT" | "HORSE" | "GOAT" | "SHEEP" | "RABBIT";
 
 export function makeBreedsApi(base?: string) {
   const root = normBase(base);

@@ -2,12 +2,18 @@ import * as React from "react";
 import type { BreedHit } from "../../utils";
 import { BreedSelect } from "../../index";
 
-type SpeciesApi = "DOG" | "CAT" | "HORSE";
-type SpeciesUI = "Dog" | "Cat" | "Horse";
+type SpeciesApi = "DOG" | "CAT" | "HORSE" | "GOAT" | "SHEEP" | "RABBIT";
+type SpeciesUI = "Dog" | "Cat" | "Horse" | "Goat" | "Sheep" | "Rabbit";
 
 function toUiSpecies(s: SpeciesApi | SpeciesUI): SpeciesUI {
   const up = String(s).toUpperCase();
-  return up === "CAT" ? "Cat" : up === "HORSE" ? "Horse" : up === "DOG" ? "Dog" : (s as SpeciesUI);
+  if (up === "DOG") return "Dog";
+  if (up === "CAT") return "Cat";
+  if (up === "HORSE") return "Horse";
+  if (up === "GOAT") return "Goat";
+  if (up === "SHEEP") return "Sheep";
+  if (up === "RABBIT") return "Rabbit";
+  return s as SpeciesUI;
 }
 
 export type BreedComboProps = {

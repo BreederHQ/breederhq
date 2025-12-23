@@ -35,9 +35,15 @@ async function ensureTenantId(baseUrl: string): Promise<number> {
   return t;
 }
 
-function toUiSpecies(s: string): "Dog" | "Cat" | "Horse" {
+function toUiSpecies(s: string): "Dog" | "Cat" | "Horse" | "Goat" | "Sheep" | "Rabbit" {
   const up = String(s || "").toUpperCase();
-  return up === "CAT" ? "Cat" : up === "HORSE" ? "Horse" : "Dog";
+  if (up === "DOG") return "Dog";
+  if (up === "CAT") return "Cat";
+  if (up === "HORSE") return "Horse";
+  if (up === "GOAT") return "Goat";
+  if (up === "SHEEP") return "Sheep";
+  if (up === "RABBIT") return "Rabbit";
+  return "Dog";
 }
 
 /** Normalize a name for matching (case/space/punct insensitive) */
@@ -66,7 +72,7 @@ function readLocalCustomNames(): string[] {
 }
 
 type UseBreedSearchArgs = {
-  species: "DOG" | "CAT" | "HORSE";
+  species: "DOG" | "CAT" | "HORSE" | "GOAT" | "SHEEP" | "RABBIT";
   q?: string;
   limit?: number;   // caller can increase (max 200)
   orgId?: number;

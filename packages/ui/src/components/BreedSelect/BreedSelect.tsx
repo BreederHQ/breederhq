@@ -4,7 +4,7 @@ import type { BreedHit, SpeciesUI } from "../../utils";
 
 export type BreedSelectProps = {
   orgId?: number | null;
-  species: SpeciesUI;     // "Dog" | "Cat" | "Horse"
+  species: SpeciesUI;     // "Dog" | "Cat" | "Horse" | "Goat" | "Sheep" | "Rabbit"
   value: BreedHit | null;
   onChange: (hit: BreedHit | null) => void;
   placeholder?: string;
@@ -38,7 +38,7 @@ export function BreedSelect({
 
   const boxRef = React.useRef<HTMLDivElement | null>(null);
 
-  const speciesParam = String(species).toUpperCase() as "DOG" | "CAT" | "HORSE";
+  const speciesParam = String(species).toUpperCase() as "DOG" | "CAT" | "HORSE" | "GOAT" | "SHEEP" | "RABBIT";
   const orgForSearch = Number.isFinite(orgId as any) ? (orgId as number) : undefined;
 
   const effectiveQ = value?.name ? "" : q;

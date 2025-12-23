@@ -171,9 +171,17 @@ export function makeApi(base?: string, extraHeadersFn?: () => Record<string, str
 
   /* ───────── Animals API (matches server routes) ───────── */
 
-  type Species = "DOG" | "CAT" | "HORSE";
-  type UiSpecies = "Dog" | "Cat" | "Horse";
-  const toUiSpecies = (s: Species): UiSpecies => (s === "DOG" ? "Dog" : s === "CAT" ? "Cat" : "Horse");
+  type Species = "DOG" | "CAT" | "HORSE" | "GOAT" | "SHEEP" | "RABBIT";
+  type UiSpecies = "Dog" | "Cat" | "Horse" | "Goat" | "Sheep" | "Rabbit";
+  const toUiSpecies = (s: Species): UiSpecies => {
+    if (s === "DOG") return "Dog";
+    if (s === "CAT") return "Cat";
+    if (s === "HORSE") return "Horse";
+    if (s === "GOAT") return "Goat";
+    if (s === "SHEEP") return "Sheep";
+    if (s === "RABBIT") return "Rabbit";
+    return "Horse";
+  };
 
   type OwnerPartyType = "Organization" | "Contact";
   type OwnerRow = {

@@ -123,7 +123,7 @@ const COLUMNS: Array<{ key: keyof AnimalRow & string; label: string; default?: b
   { key: "updated_at", label: "Updated", default: false },
 ];
 
-const SPECIES_LABEL: Record<string, string> = { DOG: "Dog", CAT: "Cat", HORSE: "Horse" };
+const SPECIES_LABEL: Record<string, string> = { DOG: "Dog", CAT: "Cat", HORSE: "Horse", GOAT: "Goat", SHEEP: "Sheep", RABBIT: "Rabbit" };
 const SEX_LABEL: Record<string, string> = { FEMALE: "Female", MALE: "Male" };
 const STATUS_LABEL: Record<string, string> = {
   ACTIVE: "Active",
@@ -2993,13 +2993,16 @@ export default function AppAnimals() {
                         defaultValue={row.species || "Dog"}
                         onChange={(e) => {
                           const next = e.target
-                            .value as "Dog" | "Cat" | "Horse";
+                            .value as "Dog" | "Cat" | "Horse" | "Goat" | "Sheep" | "Rabbit";
                           setDraft({ species: next, breed: null });
                         }}
                       >
                         <option>Dog</option>
                         <option>Cat</option>
                         <option>Horse</option>
+                        <option>Goat</option>
+                        <option>Sheep</option>
+                        <option>Rabbit</option>
                       </select>
                     )}
                   </LV>
@@ -3275,7 +3278,7 @@ export default function AppAnimals() {
   }, [sortedRows]);
 
   const [newName, setNewName] = React.useState("");
-  const [newSpecies, setNewSpecies] = React.useState<"Dog" | "Cat" | "Horse">(
+  const [newSpecies, setNewSpecies] = React.useState<"Dog" | "Cat" | "Horse" | "Goat" | "Sheep" | "Rabbit">(
     "Dog"
   );
   const [newSex, setNewSex] = React.useState<"Female" | "Male">("Female");
@@ -3659,6 +3662,9 @@ export default function AppAnimals() {
                   <option>Dog</option>
                   <option>Cat</option>
                   <option>Horse</option>
+                  <option>Goat</option>
+                  <option>Sheep</option>
+                  <option>Rabbit</option>
                 </select>
               </div>
 

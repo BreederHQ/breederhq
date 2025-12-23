@@ -1,5 +1,5 @@
-export type SpeciesUI = "Dog" | "Cat" | "Horse";
-export type SpeciesAPI = "DOG" | "CAT" | "HORSE";
+export type SpeciesUI = "Dog" | "Cat" | "Horse" | "Goat" | "Sheep" | "Rabbit";
+export type SpeciesAPI = "DOG" | "CAT" | "HORSE" | "GOAT" | "SHEEP" | "RABBIT";
 
 export type BreedHit = {
   id: number | string;        
