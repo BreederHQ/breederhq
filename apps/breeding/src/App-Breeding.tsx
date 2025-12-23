@@ -114,6 +114,12 @@ function asISODateOnly(v: unknown): string | null {
   return null;
 }
 
+// Normalize a date value to yyyy-mm-dd or empty string for safe use in date inputs
+function normalizeDateISO(value: unknown): string {
+  const iso = asISODateOnly(value);
+  return iso ?? "";
+}
+
 // Normalize a wire species code. Returns an uppercase string or null.
 function normalizeSpeciesWire(v: unknown): SpeciesWire | null {
   if (typeof v !== "string") return null;
@@ -254,7 +260,10 @@ function computeExpectedForPlan(plan: { species?: string; lockedCycleStart?: str
 
 function DateField({ label, value, defaultValue, readOnly, onChange }: BHQDateFieldProps) {
   const isReadOnly = !!readOnly;
-  const current = value ?? defaultValue ?? "";
+  // Normalize to ensure only valid yyyy-mm-dd or empty string
+  const normalizedValue = normalizeDateISO(value);
+  const normalizedDefault = normalizeDateISO(defaultValue);
+  const current = normalizedValue || normalizedDefault;
 
   return (
     <div>
@@ -2928,11 +2937,19 @@ function CalendarInput(props: any) {
   delete rest.showIcon;
 
   // ISO <-> display helpers
-  const onlyISO = (s: string) => (s || "").slice(0, 10);
+  const onlyISO = (s: string | undefined | null) => {
+    if (!s) return "";
+    const str = String(s).trim();
+    if (!str) return "";
+    // Ensure we only return yyyy-mm-dd format or empty string
+    const match = str.match(/^\d{4}-\d{2}-\d{2}/);
+    return match ? match[0] : "";
+  };
 
   const toDisplay = (s: string | undefined | null) => {
     if (!s) return "";
     const iso = onlyISO(s);
+    if (!iso) return "";
     const [y, m, d] = iso.split("-");
     if (!y || !m || !d) return "";
     return `${m}/${d}/${y}`;
@@ -3118,11 +3135,13 @@ function PlanDetailsView(props: {
   const committedOrLater = ["COMMITTED", "BRED", "BIRTHED", "WEANED", "HOMING_STARTED", "COMPLETE"].includes(statusU);
 
   const isCommitted = statusU === "COMMITTED";
+  const isArchived = Boolean(row.archivedAt);
+  const isReadOnly = isArchived;
 
   // Show Actual Dates once the plan is COMMITTED or later.
   // Allow editing while in Edit mode for COMMITTED and later statuses.
   const showActualDates = committedOrLater;
-  const canEditDates = isEdit && committedOrLater;
+  const canEditDates = isEdit && committedOrLater && !isReadOnly;
 
 
   // live draft overlay
@@ -3539,7 +3558,7 @@ function PlanDetailsView(props: {
   );
 
   React.useEffect(() => {
-    const nextCycle = (row.lockedCycleStart ?? row.cycleStartDateActual ?? null) as string | null;
+    const nextCycle = (row.lockedCycleStart ?? row.expectedCycleStart ?? row.cycleStartDateActual ?? null) as string | null;
     setPendingCycle(nextCycle);
     const e = nextCycle
       ? computeExpectedForPlan({ species: row.species as any, lockedCycleStart: nextCycle })
@@ -3547,7 +3566,7 @@ function PlanDetailsView(props: {
 
     setExpectedPreview(e);
     setLockedPreview(Boolean(row.lockedCycleStart ?? row.cycleStartDateActual));
-  }, [row.lockedCycleStart, row.cycleStartDateActual, row.species]);
+  }, [row.lockedCycleStart, row.expectedCycleStart, row.cycleStartDateActual, row.species]);
   async function lockCycle() {
     if (!pendingCycle || !String(pendingCycle).trim()) return;
     if (!api) return;
@@ -4448,6 +4467,11 @@ function PlanDetailsView(props: {
                       Select a cycle start date to see Expected Dates.
                     </div>
                   )}
+                  {!isEdit && committedOrLater && !expectedsEnabled && (
+                    <div className="text-xs text-secondary mb-2">
+                      Expected dates are not available for this plan.
+                    </div>
+                  )}
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <DateField
@@ -4521,7 +4545,7 @@ function PlanDetailsView(props: {
                             CYCLE START (ACTUAL)
                           </div>
                           <CalendarInput
-                            value={effective.cycleStartDateActual ?? ""}
+                            value={normalizeDateISO(effective.cycleStartDateActual)}
                             readOnly={!canEditCycleStartActual}
                             showIcon={canEditCycleStartActual}
                             onChange={(e) => {
@@ -4551,9 +4575,7 @@ function PlanDetailsView(props: {
                             HORMONE TESTING START (ACTUAL)
                           </div>
                           <CalendarInput
-                            value={
-                              effective.hormoneTestingStartDateActual ?? ""
-                            }
+                            value={normalizeDateISO(effective.hormoneTestingStartDateActual)}
                             readOnly={!canEditDates}
                             showIcon={canEditDates}
                             onChange={(e) => {
@@ -4587,7 +4609,7 @@ function PlanDetailsView(props: {
                             BREEDING DATE (ACTUAL)
                           </div>
                           <CalendarInput
-                            value={effective.breedDateActual ?? ""}
+                            value={normalizeDateISO(effective.breedDateActual)}
                             readOnly={!canEditDates}
                             showIcon={canEditDates}
                             onChange={(e) => {
@@ -4614,7 +4636,7 @@ function PlanDetailsView(props: {
                             BIRTH DATE (ACTUAL)
                           </div>
                           <CalendarInput
-                            value={effective.birthDateActual ?? ""}
+                            value={normalizeDateISO(effective.birthDateActual)}
                             readOnly={!canEditDates}
                             showIcon={canEditDates}
                             onChange={(e) => {
@@ -4641,7 +4663,7 @@ function PlanDetailsView(props: {
                             PLACEMENT START (ACTUAL)
                           </div>
                           <CalendarInput
-                            value={effective.placementStartDateActual ?? ""}
+                            value={normalizeDateISO(effective.placementStartDateActual)}
                             readOnly={!canEditDates}
                             showIcon={canEditDates}
                             onChange={(e) => {
@@ -4675,9 +4697,7 @@ function PlanDetailsView(props: {
                             PLACEMENT COMPLETED (ACTUAL)
                           </div>
                           <CalendarInput
-                            value={
-                              effective.placementCompletedDateActual ?? ""
-                            }
+                            value={normalizeDateISO(effective.placementCompletedDateActual)}
                             readOnly={!canEditDates}
                             showIcon={canEditDates}
                             onChange={(e) => {
@@ -4711,7 +4731,7 @@ function PlanDetailsView(props: {
                             PLAN COMPLETED (ACTUAL)
                           </div>
                           <CalendarInput
-                            value={effective.completedDateActual ?? ""}
+                            value={normalizeDateISO(effective.completedDateActual)}
                             readOnly={!canEditCompletedActual}
                             showIcon={canEditCompletedActual}
                             onChange={(e) => {
