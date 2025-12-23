@@ -1115,7 +1115,7 @@ function OwnershipDetailsEditor({
   return (
     <SectionCard title="Ownership">
       {/* Search row, custom so text is never under the icon */}
-      <div className="px-2 pt-2 pb-2">
+      <div className="mb-3">
         <div className="relative max-w-md">
           {/* Left icon */}
           <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-secondary">
@@ -1183,7 +1183,7 @@ function OwnershipDetailsEditor({
       <div className="flex gap-3 items-stretch">
         {/* Primary column */}
         <div className="flex-1 min-w-0">
-          <div className="text-xs text-secondary mb-1">Primary Owner</div>
+          <div className="text-[11px] leading-4 text-secondary mb-0.5">Primary Owner</div>
           {primaryOwner ? (
             <div
               className={[
@@ -1270,7 +1270,7 @@ function OwnershipDetailsEditor({
 
         {/* Additional owners */}
         <div className="flex-1 min-w-0">
-          <div className="mb-1 text-xs text-secondary">Additional Owners</div>
+          <div className="text-[11px] leading-4 text-secondary mb-0.5">Additional Owners</div>
 
           {additionalOwners.length === 0 ? (
             <div className="rounded-md border border-dashed border-hairline px-3 py-2 text-sm text-secondary">
@@ -3779,6 +3779,9 @@ export default function AppAnimals() {
               </div>
 
               <div className="sm:col-span-2">
+                <div className="mb-2 text-sm font-medium text-primary">
+                  Ownership
+                </div>
                 <OwnershipEditor
                   api={ownershipLookups}
                   value={owners}
