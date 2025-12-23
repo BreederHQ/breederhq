@@ -2619,6 +2619,11 @@ export default function AppAnimals() {
         setRows((prev) => prev.filter((r) => r.id !== id));
         toast.success("Animal archived successfully");
         setArchiveDialogOpen(false);
+
+        // Close the details drawer by removing the id parameter from URL
+        const url = new URL(window.location.href);
+        url.searchParams.delete("id");
+        window.history.replaceState({}, "", url.toString());
       } catch (error) {
         console.error("Failed to archive animal:", error);
         toast.error("Failed to archive animal. Please try again.");
