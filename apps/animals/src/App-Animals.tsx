@@ -27,6 +27,7 @@ import {
   utils,
   exportToCsv,
   Popover,
+  Dialog,
 } from "@bhq/ui";
 
 import { Overlay, getOverlayRoot } from "@bhq/ui/overlay";
@@ -2822,31 +2823,49 @@ export default function AppAnimals() {
         activeTab,
         setActiveTab,
         requestSave,
-      }: any) => (
-        <DetailsScaffold
-          title={row.name}
-          subtitle={row.nickname || row.ownerName || ""}
-          mode={mode}
-          onEdit={() => setMode("edit")}
-          onCancel={() => setMode("view")}
-          onSave={requestSave}
-          tabs={detailsConfig.tabs(row)}
-          activeTab={activeTab}
-          onTabChange={setActiveTab}
-          rightActions={
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={async () => {
-                if (!confirm("Archive this animal?")) return;
-                await api.animals.archive(row.id);
-                setRows((prev) => prev.filter((r) => r.id !== row.id));
-              }}
-            >
-              Archive
-            </Button>
+      }: any) => {
+        const [archiveDialogOpen, setArchiveDialogOpen] = React.useState(false);
+        const [isArchiving, setIsArchiving] = React.useState(false);
+
+        const handleArchive = async () => {
+          setIsArchiving(true);
+          try {
+            await api.animals.archive(row.id);
+            setRows((prev) => prev.filter((r) => r.id !== row.id));
+            toast.success("Animal archived successfully");
+            setArchiveDialogOpen(false);
+          } catch (error) {
+            console.error("Failed to archive animal:", error);
+            toast.error("Failed to archive animal. Please try again.");
+          } finally {
+            setIsArchiving(false);
           }
-        >
+        };
+
+        return (
+          <>
+            <DetailsScaffold
+              title={row.name}
+              subtitle={row.nickname || row.ownerName || ""}
+              mode={mode}
+              onEdit={() => setMode("edit")}
+              onCancel={() => setMode("view")}
+              onSave={requestSave}
+              tabs={detailsConfig.tabs(row)}
+              activeTab={activeTab}
+              onTabChange={setActiveTab}
+              rightActions={
+                mode === "edit" ? (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setArchiveDialogOpen(true)}
+                  >
+                    Archive
+                  </Button>
+                ) : null
+              }
+            >
           {activeTab === "overview" && (
             <div className="space-y-3">
               <SectionCard title="Identity">
@@ -3263,7 +3282,40 @@ export default function AppAnimals() {
             </div>
           )}
         </DetailsScaffold>
-      ),
+
+        <Dialog
+          open={archiveDialogOpen}
+          onClose={() => setArchiveDialogOpen(false)}
+          title="Archive Animal"
+          size="sm"
+        >
+          <div className="space-y-4">
+            <p className="text-sm text-secondary">
+              Are you sure you want to archive <strong>{row.name}</strong>? This animal will be removed from the active list.
+            </p>
+            <div className="flex justify-end gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setArchiveDialogOpen(false)}
+                disabled={isArchiving}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={handleArchive}
+                disabled={isArchiving}
+              >
+                {isArchiving ? "Archiving..." : "Archive"}
+              </Button>
+            </div>
+          </div>
+        </Dialog>
+      </>
+        );
+      },
     }),
     [api, orgIdForBreeds, ownershipLookups, breedBrowseApi, syncOwners, photoWorking, photoEditorOpen, photoEditorSrc, photoEditorForId]
   );
