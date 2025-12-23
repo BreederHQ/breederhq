@@ -2301,6 +2301,7 @@ export default function AppAnimals() {
 
   const [pageSize, setPageSize] = React.useState<number>(25);
   const [page, setPage] = React.useState<number>(1);
+  const [includeArchived, setIncludeArchived] = React.useState<boolean>(false);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -2312,6 +2313,7 @@ export default function AppAnimals() {
           q: qDebounced || undefined,
           page: 1,
           limit: 50,
+          includeArchived,
         });
         const baseItems = res?.items || [];
 
@@ -2364,7 +2366,7 @@ export default function AppAnimals() {
     return () => {
       cancelled = true;
     };
-  }, [api, qDebounced]);
+  }, [api, qDebounced, includeArchived]);
 
   // Sync animals to localStorage for cross-module data sharing (e.g., Contacts module)
   React.useEffect(() => {
@@ -3638,6 +3640,11 @@ export default function AppAnimals() {
               end={end}
               filteredTotal={sortedRows.length}
               total={rows.length}
+              includeArchived={includeArchived}
+              onIncludeArchivedChange={(checked) => {
+                setIncludeArchived(checked);
+                setPage(1);
+              }}
             />
           </Table>
         </DetailsHost>
