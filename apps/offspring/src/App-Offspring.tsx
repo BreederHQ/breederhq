@@ -631,17 +631,16 @@ const GROUP_COLS: Array<{ key: keyof GroupTableRow & string; label: string; defa
   { key: "expectedBirth", label: "Expected Birth", default: true },
   { key: "countSold", label: "Sold", default: true },
   { key: "status", label: "Status", default: true },
-  { key: "planCode", label: "Plan", default: false },
+  { key: "planCode", label: "Plan ID", default: false },
   { key: "expectedPlacementStart", label: "Placement Start", default: false },
   { key: "expectedPlacementCompleted", label: "Placement Done", default: false },
-  { key: "countLive", label: "Live", default: false },
+  { key: "countLive", label: "Count", default: false },
   { key: "countReserved", label: "Reserved", default: true },
 
   // New columns, off by default
   { key: "countWeaned", label: "Weaned", default: false },
   { key: "countPlaced", label: "Placed", default: false },
-  { key: "statusOverride", label: "Status Override", default: false },
-  { key: "updatedAt", label: "Updated", default: false },
+    { key: "updatedAt", label: "Updated", default: false },
 ];
 
 const GROUP_STORAGE_KEY = "bhq_offspring_groups_cols_v3";
