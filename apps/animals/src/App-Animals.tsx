@@ -2910,7 +2910,7 @@ export default function AppAnimals() {
                   </div>
 
                   <div className="lg:col-span-1 flex justify-center lg:justify-end lg:items-start">
-                    <div className="relative w-48 h-48 md:w-56 md:h-56 lg:w-64 lg:h-64 rounded-md bg-neutral-100 dark:bg-neutral-900 border border-hairline overflow-hidden flex items-center justify-center group">
+                    <div className="relative w-48 h-48 md:w-56 md:h-56 lg:w-64 lg:h-64 rounded-md bg-neutral-100 dark:bg-neutral-900 border border-hairline overflow-hidden flex items-center justify-center">
                       {row.photoUrl ? (
                         <img
                           src={row.photoUrl}
@@ -2925,22 +2925,18 @@ export default function AppAnimals() {
                         />
                       )}
 
-                      {/* Hover overlay */}
-                      <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors pointer-events-none" />
-
                       <button
                         type="button"
                         aria-label={row.photoUrl ? "Edit photo" : "Upload photo"}
                         className={[
                           "absolute bottom-2 right-2 z-50",
                           "h-10 w-10 rounded-full",
-                          "bg-black/70 text-white",
+                          "bg-black/80 text-white",
                           "flex items-center justify-center",
-                          "shadow-lg ring-1 ring-white/20",
-                          "hover:bg-black hover:ring-white/40 hover:scale-110",
+                          "shadow-lg ring-1 ring-white/30",
+                          "hover:bg-black hover:ring-white/50 hover:scale-110",
                           "focus:outline-none focus:ring-2 focus:ring-[hsl(var(--brand-orange))] focus:ring-offset-2 focus:ring-offset-black/50",
                           "transition-all duration-200",
-                          "opacity-60 group-hover:opacity-100",
                           "pointer-events-auto",
                         ].join(" ")}
                         onClick={() => {
@@ -2969,7 +2965,7 @@ export default function AppAnimals() {
                         <button
                           type="button"
                           aria-label="Remove photo"
-                          className="absolute top-2 right-2 rounded-full bg-black/70 text-white p-2 hover:bg-black/90 hover:scale-110 focus:outline-none focus:ring-2 focus:ring-red-500 transition-all duration-200 opacity-60 group-hover:opacity-100"
+                          className="absolute top-2 right-2 rounded-full bg-black/80 text-white p-2 hover:bg-black hover:scale-110 focus:outline-none focus:ring-2 focus:ring-red-500 transition-all duration-200"
                           onClick={() => handleRemovePhoto(row.id)}
                           disabled={photoWorking}
                         >
