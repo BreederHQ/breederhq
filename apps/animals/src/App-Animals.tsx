@@ -2910,35 +2910,28 @@ export default function AppAnimals() {
                   </div>
 
                   <div className="lg:col-span-1 flex justify-center lg:justify-end lg:items-start">
-                    <div className="relative w-48 h-48 md:w-56 md:h-56 lg:w-64 lg:h-64 rounded-md bg-neutral-100 dark:bg-neutral-900 border border-hairline overflow-hidden flex items-center justify-center">
-                      {row.photoUrl ? (
-                        <img
-                          src={row.photoUrl}
-                          alt={row.name || "Animal photo"}
-                          className="h-full w-full object-cover"
-                        />
-                      ) : (
-                        <img
-                          src={getPlaceholderForSpecies(row.species)}
-                          alt={`${row.species || "Animal"} placeholder`}
-                          className="h-full w-full object-cover"
-                        />
-                      )}
+                    <div className="relative w-48 h-48 md:w-56 md:h-56 lg:w-64 lg:h-64">
+                      <div className="w-full h-full rounded-md bg-neutral-100 dark:bg-neutral-900 border border-hairline overflow-hidden flex items-center justify-center">
+                        {row.photoUrl ? (
+                          <img
+                            src={row.photoUrl}
+                            alt={row.name || "Animal photo"}
+                            className="h-full w-full object-cover"
+                          />
+                        ) : (
+                          <img
+                            src={getPlaceholderForSpecies(row.species)}
+                            alt={`${row.species || "Animal"} placeholder`}
+                            className="h-full w-full object-cover"
+                          />
+                        )}
+                      </div>
 
+                      {/* Edit Photo Button - Bottom Right */}
                       <button
                         type="button"
                         aria-label={row.photoUrl ? "Edit photo" : "Upload photo"}
-                        className={[
-                          "absolute bottom-2 right-2 z-50",
-                          "h-10 w-10 rounded-full",
-                          "bg-black/80 text-white",
-                          "flex items-center justify-center",
-                          "shadow-lg ring-1 ring-white/30",
-                          "hover:bg-black hover:ring-white/50 hover:scale-110",
-                          "focus:outline-none focus:ring-2 focus:ring-[hsl(var(--brand-orange))] focus:ring-offset-2 focus:ring-offset-black/50",
-                          "transition-all duration-200",
-                          "pointer-events-auto",
-                        ].join(" ")}
+                        className="absolute bottom-3 right-3 h-12 w-12 rounded-full bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white flex items-center justify-center shadow-xl border-2 border-neutral-200 dark:border-neutral-700 hover:bg-neutral-50 dark:hover:bg-neutral-700 hover:scale-110 focus:outline-none focus:ring-4 focus:ring-[hsl(var(--brand-orange))] transition-all duration-200 cursor-pointer z-10"
                         onClick={() => {
                           setPhotoEditorForId(row.id);
                           setPhotoEditorSrc(row.photoUrl ?? getPlaceholderForSpecies(row.species));
@@ -2948,10 +2941,10 @@ export default function AppAnimals() {
                       >
                         <svg
                           viewBox="0 0 24 24"
-                          className="h-5 w-5"
+                          className="h-6 w-6"
                           fill="none"
                           stroke="currentColor"
-                          strokeWidth={2}
+                          strokeWidth={2.5}
                           strokeLinecap="round"
                           strokeLinejoin="round"
                           aria-hidden="true"
@@ -2961,15 +2954,16 @@ export default function AppAnimals() {
                         </svg>
                       </button>
 
+                      {/* Remove Photo Button - Top Right */}
                       {row.photoUrl && (
                         <button
                           type="button"
                           aria-label="Remove photo"
-                          className="absolute top-2 right-2 rounded-full bg-black/80 text-white p-2 hover:bg-black hover:scale-110 focus:outline-none focus:ring-2 focus:ring-red-500 transition-all duration-200"
+                          className="absolute top-3 right-3 h-10 w-10 rounded-full bg-red-600 text-white p-2 hover:bg-red-700 hover:scale-110 focus:outline-none focus:ring-4 focus:ring-red-500 transition-all duration-200 cursor-pointer z-10 shadow-lg"
                           onClick={() => handleRemovePhoto(row.id)}
                           disabled={photoWorking}
                         >
-                          <TrashIcon className="h-4 w-4" />
+                          <TrashIcon className="h-full w-full" />
                         </button>
                       )}
                     </div>
