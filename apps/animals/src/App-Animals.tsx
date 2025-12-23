@@ -803,7 +803,7 @@ function PhotoEditorModal({
   return createPortal(
     <div
       className="fixed inset-0 flex items-center justify-center bg-black/55 p-4"
-      style={{ zIndex: 99999 }}
+      style={{ zIndex: 2147483647 }}
       onMouseUp={onMouseUp}
       onClick={(e) => {
         e.stopPropagation();
