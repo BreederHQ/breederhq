@@ -942,7 +942,7 @@ function OwnershipDetailsEditor({
   function normalize(nextRows: OwnershipRow[]) {
     let ensured = [...nextRows];
 
-    if (ensured.length && !ensured.some((r) => r.is_primary)) {
+    if (ensured.length && !ensured.some((r) => r.is_primary || (r as any).primary)) {
       ensured = ensured.map((r, i) => ({ ...r, is_primary: i === 0 }));
     }
 
@@ -968,7 +968,7 @@ function OwnershipDetailsEditor({
     setOwners(ensured);
 
     const primary: any =
-      ensured.find((o) => o.is_primary) ?? ensured[0] ?? null;
+      ensured.find((o) => o.is_primary || (o as any).primary) ?? ensured[0] ?? null;
 
     const primaryName = primary ? ownerDisplay(primary) || null : null;
 
@@ -1032,14 +1032,14 @@ function OwnershipDetailsEditor({
   function moveSelectedLeft() {
     const idx = findSelectedIndex();
     if (idx < 0) return;
-    if (owners[idx].is_primary) return;
+    if (owners[idx].is_primary || (owners[idx] as any).primary) return;
     setPrimary(idx);
   }
 
   function moveSelectedRight() {
     const idx = findSelectedIndex();
     if (idx < 0) return;
-    if (!owners[idx].is_primary) return;
+    if (!(owners[idx].is_primary || (owners[idx] as any).primary)) return;
     const others = owners
       .map((o, i) => ({ o, i }))
       .filter(({ i }) => i !== idx);
@@ -1054,13 +1054,14 @@ function OwnershipDetailsEditor({
     normalize(next);
   }
 
-  const primaryIndex = owners.findIndex((o) => o.is_primary);
+  const primaryIndex = owners.findIndex((o) => o.is_primary || (o as any).primary);
   const primaryOwner =
     primaryIndex >= 0 ? owners[primaryIndex] : owners[0] ?? null;
+  const actualPrimaryIndex = primaryIndex >= 0 ? primaryIndex : (owners.length > 0 ? 0 : -1);
   const additionalOwners =
     primaryOwner == null
       ? owners
-      : owners.filter((_, i) => i !== primaryIndex);
+      : owners.filter((_, i) => i !== actualPrimaryIndex);
 
   // Search effect
   React.useEffect(() => {
@@ -1103,13 +1104,14 @@ function OwnershipDetailsEditor({
     };
   }, [q, ownershipLookups]);
 
+  const selectedIdx = findSelectedIndex();
   const canMoveLeft =
-    findSelectedIndex() >= 0 &&
-    !owners[findSelectedIndex()]?.is_primary &&
+    selectedIdx >= 0 &&
+    !(owners[selectedIdx]?.is_primary || (owners[selectedIdx] as any)?.primary) &&
     owners.length > 0;
   const canMoveRight =
-    findSelectedIndex() >= 0 &&
-    owners[findSelectedIndex()]?.is_primary &&
+    selectedIdx >= 0 &&
+    (owners[selectedIdx]?.is_primary || (owners[selectedIdx] as any)?.primary) &&
     owners.length > 1;
 
   return (
@@ -1211,7 +1213,9 @@ function OwnershipDetailsEditor({
               </div>
               <input
                 type="number"
-                className="h-8 w-20 rounded-md border border-hairline bg-surface px-2 text-sm"
+                min="0"
+                max="100"
+                className="h-8 w-16 rounded-md border border-hairline bg-surface px-2 text-sm text-right"
                 value={
                   typeof primaryOwner.percent === "number"
                     ? primaryOwner.percent
@@ -1219,7 +1223,7 @@ function OwnershipDetailsEditor({
                 }
                 onChange={(e) =>
                   setPercent(
-                    primaryIndex >= 0 ? primaryIndex : 0,
+                    actualPrimaryIndex,
                     Number((e.currentTarget as HTMLInputElement).value)
                   )
                 }
@@ -1309,7 +1313,9 @@ function OwnershipDetailsEditor({
                     </div>
                     <input
                       type="number"
-                      className="h-8 w-20 rounded-md border border-hairline bg-surface px-2 text-sm"
+                      min="0"
+                      max="100"
+                      className="h-8 w-16 rounded-md border border-hairline bg-surface px-2 text-sm text-right"
                       value={
                         typeof o.percent === "number" ? o.percent : 0
                       }
