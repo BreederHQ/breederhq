@@ -802,8 +802,8 @@ function PhotoEditorModal({
 
   return createPortal(
     <div
-      className="fixed inset-0 flex items-start justify-center bg-black/55 px-4"
-      style={{ zIndex: 2147483647 }}
+      className="fixed inset-0 flex justify-center bg-black/55 px-4"
+      style={{ zIndex: 2147483647, paddingTop: '200px' }}
       onMouseUp={onMouseUp}
       onClick={(e) => {
         e.stopPropagation();
@@ -811,8 +811,8 @@ function PhotoEditorModal({
       }}
     >
       <div
-        className="w-full max-w-md rounded-lg border border-hairline bg-surface shadow-xl"
-        style={{ marginTop: 'calc(200px - 50%)' }}
+        className="w-full max-w-md rounded-lg border border-hairline bg-surface shadow-xl self-start"
+        style={{ transform: 'translateY(-50%)' }}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="px-4 py-3 border-b border-hairline flex items-center justify-between">
