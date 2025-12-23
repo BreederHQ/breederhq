@@ -811,7 +811,7 @@ function PhotoEditorModal({
       }}
     >
       <div
-        className="w-full max-w-2xl rounded-lg border border-hairline bg-surface shadow-xl"
+        className="w-full max-w-lg rounded-lg border border-hairline bg-surface shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="px-4 py-3 border-b border-hairline flex items-center justify-between">
@@ -821,14 +821,14 @@ function PhotoEditorModal({
           </button>
         </div>
 
-        <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="p-4 space-y-4">
           <div className="flex items-center justify-center">
             <div className="rounded-md border border-hairline overflow-hidden">
               <canvas
                 ref={canvasRef}
                 width={512}
                 height={512}
-                className="block w-[320px] h-[320px] bg-black cursor-grab active:cursor-grabbing"
+                className="block w-[280px] h-[280px] bg-black cursor-grab active:cursor-grabbing"
                 onMouseDown={onMouseDown}
                 onMouseMove={onMouseMove}
               />
