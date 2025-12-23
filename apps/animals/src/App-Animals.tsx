@@ -2910,7 +2910,7 @@ export default function AppAnimals() {
                   </div>
 
                   <div className="lg:col-span-1 flex justify-center lg:justify-end lg:items-start">
-                    <div className="relative w-48 h-48 md:w-56 md:h-56 lg:w-64 lg:h-64">
+                    <div className="relative w-48 h-48 md:w-56 md:h-56 lg:w-64 lg:h-64" style={{ zIndex: 100 }}>
                       <div className="w-full h-full rounded-md bg-neutral-100 dark:bg-neutral-900 border border-hairline overflow-hidden flex items-center justify-center">
                         {row.photoUrl ? (
                           <img
@@ -2931,8 +2931,12 @@ export default function AppAnimals() {
                       <button
                         type="button"
                         aria-label={row.photoUrl ? "Edit photo" : "Upload photo"}
-                        className="absolute bottom-3 right-3 h-12 w-12 rounded-full bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white flex items-center justify-center shadow-xl border-2 border-neutral-200 dark:border-neutral-700 hover:bg-neutral-50 dark:hover:bg-neutral-700 hover:scale-110 focus:outline-none focus:ring-4 focus:ring-[hsl(var(--brand-orange))] transition-all duration-200 cursor-pointer z-10"
-                        onClick={() => {
+                        style={{ zIndex: 9999, position: 'absolute', bottom: '12px', right: '12px' }}
+                        className="h-12 w-12 rounded-full bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white flex items-center justify-center shadow-xl border-2 border-neutral-200 dark:border-neutral-700 hover:bg-neutral-50 dark:hover:bg-neutral-700 hover:scale-110 focus:outline-none focus:ring-4 focus:ring-[hsl(var(--brand-orange))] transition-all duration-200 cursor-pointer"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          console.log('Edit photo button clicked!');
                           setPhotoEditorForId(row.id);
                           setPhotoEditorSrc(row.photoUrl ?? getPlaceholderForSpecies(row.species));
                           setPhotoEditorOpen(true);
@@ -2941,7 +2945,7 @@ export default function AppAnimals() {
                       >
                         <svg
                           viewBox="0 0 24 24"
-                          className="h-6 w-6"
+                          className="h-6 w-6 pointer-events-none"
                           fill="none"
                           stroke="currentColor"
                           strokeWidth={2.5}
@@ -2959,11 +2963,16 @@ export default function AppAnimals() {
                         <button
                           type="button"
                           aria-label="Remove photo"
-                          className="absolute top-3 right-3 h-10 w-10 rounded-full bg-red-600 text-white p-2 hover:bg-red-700 hover:scale-110 focus:outline-none focus:ring-4 focus:ring-red-500 transition-all duration-200 cursor-pointer z-10 shadow-lg"
-                          onClick={() => handleRemovePhoto(row.id)}
+                          style={{ zIndex: 9999, position: 'absolute', top: '12px', right: '12px' }}
+                          className="h-10 w-10 rounded-full bg-red-600 text-white p-2 hover:bg-red-700 hover:scale-110 focus:outline-none focus:ring-4 focus:ring-red-500 transition-all duration-200 cursor-pointer shadow-lg"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            handleRemovePhoto(row.id);
+                          }}
                           disabled={photoWorking}
                         >
-                          <TrashIcon className="h-full w-full" />
+                          <TrashIcon className="h-full w-full pointer-events-none" />
                         </button>
                       )}
                     </div>
