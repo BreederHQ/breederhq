@@ -3127,7 +3127,7 @@ export default function AppAnimals() {
                           />
                         </div>
                         <Button
-                          variant="outline"
+                          variant="secondary"
                           size="sm"
                           onClick={() => {
                             const speciesEnum = String(
@@ -3146,7 +3146,7 @@ export default function AppAnimals() {
                           New custom
                         </Button>
                         <Button
-                          variant="outline"
+                          variant="secondary"
                           size="sm"
                           onClick={() => setDraft({ breed: null })}
                         >
@@ -3769,7 +3769,7 @@ export default function AppAnimals() {
                     />
                   </div>
                   <Button
-                    variant="outline"
+                    variant="secondary"
                     size="sm"
                     onClick={() => {
                       const speciesEnum = String(
