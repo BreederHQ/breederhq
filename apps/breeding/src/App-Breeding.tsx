@@ -3142,6 +3142,9 @@ function PlanDetailsView(props: {
   const isArchived = Boolean(row.archivedAt);
   const isReadOnly = isArchived;
 
+  // Editable gate: archived plans cannot be edited
+  const editable = !isArchived;
+
   // Show Actual Dates once the plan is COMMITTED or later.
   // Allow editing while in Edit mode for COMMITTED and later statuses.
   const showActualDates = committedOrLater;
@@ -3156,6 +3159,9 @@ function PlanDetailsView(props: {
 
   const setDraftLive = React.useCallback(
     (patch: Partial<PlanRow>) => {
+      // Prevent any mutations for archived plans
+      if (isArchived) return;
+
       // Check for impossible actual date sequences and warn, but do not block
       const ACTUAL_FIELD_ORDER: Array<keyof PlanRow> = [
         "cycleStartDateActual",
@@ -3575,6 +3581,7 @@ function PlanDetailsView(props: {
     setLockedPreview(Boolean(row.lockedCycleStart ?? row.cycleStartDateActual));
   }, [row.lockedCycleStart, row.expectedCycleStart, row.cycleStartDateActual, row.species]);
   async function lockCycle() {
+    if (isArchived) return; // Prevent cycle locking for archived plans
     if (!pendingCycle || !String(pendingCycle).trim()) return;
     if (!api) return;
 
@@ -3651,6 +3658,7 @@ function PlanDetailsView(props: {
   }
 
   async function unlockCycle() {
+    if (isArchived) return; // Prevent cycle unlocking for archived plans
     if (!api) return;
 
     setExpectedPreview(null);
@@ -3786,6 +3794,7 @@ function PlanDetailsView(props: {
 
   const hasBreed = typeof (effective.breedText ?? "") === "string" && (effective.breedText ?? "").trim().length > 0;
   const canCommit = Boolean(
+    editable &&
     effective.damId != null &&
     effective.sireId != null &&
     hasBreed &&
@@ -3796,6 +3805,7 @@ function PlanDetailsView(props: {
 
   // Build tooltip showing missing conditions for commit
   const commitTooltip = React.useMemo(() => {
+    if (isArchived) return "Archived plans cannot be committed";
     if (canCommit) return "Ready to commit this plan";
 
     const missing: string[] = [];
@@ -3816,7 +3826,7 @@ function PlanDetailsView(props: {
     if (missing.length === 0) return "Cannot commit at this time";
 
     return "Missing requirements:\n" + missing.join("\n");
-  }, [canCommit, effective.damId, effective.sireId, effective.lockedCycleStart, hasBreed, pendingCycle]);
+  }, [isArchived, canCommit, effective.damId, effective.sireId, effective.lockedCycleStart, hasBreed, pendingCycle]);
 
   const breedComboKey = `${effective.species || "Dog"}|${hasBreed}`;
 
@@ -3838,7 +3848,7 @@ function PlanDetailsView(props: {
       title={row.name}
       subtitle={row.status || ""}
       mode={mode}
-      onEdit={() => setMode("edit")}
+      onEdit={editable ? () => setMode("edit") : undefined}
       onCancel={handleCancel}
       onSave={requestSave}
       tabs={tabs}
@@ -3946,6 +3956,15 @@ function PlanDetailsView(props: {
       }
     >
       <div className="relative overflow-x-hidden" data-bhq-details>
+        {/* ARCHIVED READ-ONLY BANNER */}
+        {isArchived && (
+          <div className="mb-4 p-3 bg-secondary/10 border border-hairline rounded-md">
+            <div className="text-sm text-secondary">
+              This plan is archived and read-only.
+            </div>
+          </div>
+        )}
+
         {/* OVERVIEW TAB */}
         {activeTab === "overview" && (
           <div className="space-y-4 mt-2">
@@ -3958,6 +3977,7 @@ function PlanDetailsView(props: {
                     <Input
                       defaultValue={row.name}
                       onChange={(e) => setDraftLive({ name: e.currentTarget.value })}
+                      disabled={!editable}
                     />
                   ) : (
                     <DisplayValue value={row.name} />
@@ -3969,6 +3989,7 @@ function PlanDetailsView(props: {
                     <Input
                       defaultValue={row.nickname ?? ""}
                       onChange={(e) => setDraftLive({ nickname: e.currentTarget.value })}
+                      disabled={!editable}
                     />
                   ) : (
                     <DisplayValue value={row.nickname ?? ""} />
@@ -3988,6 +4009,7 @@ function PlanDetailsView(props: {
                     <select
                       className="w-full h-9 rounded-md border border-hairline bg-surface px-2 text-sm text-primary"
                       value={effective.species || ""}
+                      disabled={!editable}
                       onChange={async (e) => {
                         const next = e.currentTarget.value as SpeciesUi;
                         const willClear = Boolean(
@@ -4056,6 +4078,7 @@ function PlanDetailsView(props: {
                           variant="ghost"
                           size="sm"
                           onClick={() => setDraftLive({ breedText: "" })}
+                          disabled={!editable}
                         >
                           Clear
                         </Button>
@@ -4070,6 +4093,7 @@ function PlanDetailsView(props: {
                             (name) => setDraftLive({ breedText: name || "" })
                           )
                         }
+                        disabled={!editable}
                       >
                         New custom
                       </Button>
@@ -4103,6 +4127,7 @@ function PlanDetailsView(props: {
                           }}
                           onBlur={() => setEditDamFocus(false)}
                           placeholder="Search Dam…"
+                          disabled={!editable}
                         />
                         {effective.damId && (
                           <button
@@ -4113,6 +4138,7 @@ function PlanDetailsView(props: {
                             }}
                             className="absolute right-2 top-1/2 -translate-y-1/2 text-secondary hover:text-primary transition-colors"
                             title="Clear Dam"
+                            disabled={!editable}
                           >
                             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
@@ -4181,6 +4207,7 @@ function PlanDetailsView(props: {
                           }}
                           onBlur={() => setEditSireFocus(false)}
                           placeholder="Search Sire…"
+                          disabled={!editable}
                         />
                         {effective.sireId && (
                           <button
@@ -4191,6 +4218,7 @@ function PlanDetailsView(props: {
                             }}
                             className="absolute right-2 top-1/2 -translate-y-1/2 text-secondary hover:text-primary transition-colors"
                             title="Clear Sire"
+                            disabled={!editable}
                           >
                             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
@@ -4285,10 +4313,10 @@ function PlanDetailsView(props: {
                                   ? computeExpectedForPlan({ species: row.species as any, lockedCycleStart: next })
                                   : null
                               );
-                              // Persist selection as the plan’s expected cycle start while in edit mode
+                              // Persist selection as the plan's expected cycle start while in edit mode
                               setDraft({ expectedCycleStart: next });
                             }}
-                            disabled={!hasDam}
+                            disabled={!hasDam || !editable}
                           >
                             <option value="">
                               {!hasDam
@@ -4349,6 +4377,7 @@ function PlanDetailsView(props: {
                           color: "#ffffff"
                         }}
                         title="Unlock cycle"
+                        disabled={!editable}
                       >
                         <svg
                           viewBox="0 0 24 24"
@@ -4373,7 +4402,7 @@ function PlanDetailsView(props: {
                     </div>
                   ) : (
                     (() => {
-                      const lockEnabled = !!(pendingCycle && (row.damId ?? null) != null);
+                      const lockEnabled = !!(pendingCycle && (row.damId ?? null) != null && editable);
                       return (
                         <div
                           className="rounded-md"
