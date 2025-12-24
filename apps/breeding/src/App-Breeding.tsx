@@ -311,6 +311,108 @@ const toWireSpecies = (s: SpeciesUi | SpeciesWire | ""): SpeciesWire | undefined
   return undefined;
 };
 
+// ---- Unsaved Changes Helpers ----
+
+// All editable fields in a breeding plan
+const EDITABLE_PLAN_FIELDS: Array<keyof PlanRow> = [
+  "name",
+  "nickname",
+  "species",
+  "breedText",
+  "damId",
+  "sireId",
+  "expectedCycleStart",
+  "expectedHormoneTestingStart",
+  "expectedBreedDate",
+  "expectedBirthDate",
+  "expectedWeanedDate",
+  "expectedPlacementStartDate",
+  "expectedPlacementCompletedDate",
+  "cycleStartDateActual",
+  "hormoneTestingStartDateActual",
+  "breedDateActual",
+  "birthDateActual",
+  "weanedDateActual",
+  "placementStartDateActual",
+  "placementCompletedDateActual",
+  "completedDateActual",
+  "lockedCycleStart",
+  "lockedOvulationDate",
+  "lockedDueDate",
+  "lockedPlacementStartDate",
+  "notes",
+  "depositsCommitted",
+  "depositsPaid",
+  "depositRisk",
+  "femaleCycleLenOverrideDays",
+  "homingStartWeeksOverride",
+];
+
+// Date fields that need normalization
+const PLAN_DATE_FIELDS = new Set<keyof PlanRow>([
+  "expectedCycleStart",
+  "expectedHormoneTestingStart",
+  "expectedBreedDate",
+  "expectedBirthDate",
+  "expectedWeanedDate",
+  "expectedPlacementStartDate",
+  "expectedPlacementCompletedDate",
+  "cycleStartDateActual",
+  "hormoneTestingStartDateActual",
+  "breedDateActual",
+  "birthDateActual",
+  "weanedDateActual",
+  "placementStartDateActual",
+  "placementCompletedDateActual",
+  "completedDateActual",
+  "lockedCycleStart",
+  "lockedOvulationDate",
+  "lockedDueDate",
+  "lockedPlacementStartDate",
+]);
+
+// Normalize a value for comparison (handles dates, strings, nulls)
+function normalizeDraftValue(key: keyof PlanRow, value: any): any {
+  if (value === undefined) return null;
+  if (value === null) return null;
+
+  // Normalize dates to ISO format
+  if (PLAN_DATE_FIELDS.has(key)) {
+    return asISODateOnly(value);
+  }
+
+  // Trim strings
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed === "" ? null : trimmed;
+  }
+
+  return value;
+}
+
+// Build a normalized snapshot from a PlanRow for comparison
+function buildPlanSnapshot(source: PlanRow): Partial<PlanRow> {
+  const snapshot: Partial<PlanRow> = {};
+  for (const key of EDITABLE_PLAN_FIELDS) {
+    const value = (source as any)[key];
+    (snapshot as any)[key] = normalizeDraftValue(key, value);
+  }
+  return snapshot;
+}
+
+// Returns only the fields that differ from the snapshot
+function prunePlanDraft(draft: Partial<PlanRow>, snapshot: Partial<PlanRow>): Partial<PlanRow> {
+  const changed: Partial<PlanRow> = {};
+  for (const key of Object.keys(draft) as Array<keyof PlanRow>) {
+    const draftVal = normalizeDraftValue(key, (draft as any)[key]);
+    const snapshotVal = (snapshot as any)[key];
+    if (draftVal !== snapshotVal) {
+      (changed as any)[key] = (draft as any)[key];
+    }
+  }
+  return changed;
+}
+
 type PlanRow = {
   id: ID;
   name: string;
@@ -2140,6 +2242,7 @@ export default function AppBreeding() {
 
   /* === Drawer editing awareness for outside-click behavior === */
   const [drawerIsEditing, setDrawerIsEditing] = React.useState(false);
+  const [drawerHasPendingChanges, setDrawerHasPendingChanges] = React.useState(false);
 
   /* Details Drawer Config */
   const detailsConfig = React.useMemo(() => {
@@ -2255,6 +2358,7 @@ export default function AppBreeding() {
           }}
           closeDrawer={props.close}
           onModeChange={setDrawerIsEditing}
+          onPendingChangesChange={setDrawerHasPendingChanges}
         />
       ),
     };
@@ -2331,7 +2435,7 @@ export default function AppBreeding() {
               <DetailsHost
                 rows={rows}
                 config={detailsConfig}
-                closeOnOutsideClick={!drawerIsEditing}
+                closeOnOutsideClick={!drawerIsEditing && !drawerHasPendingChanges}
                 closeOnEscape={false}
               >
                 <Table
@@ -3122,6 +3226,7 @@ function PlanDetailsView(props: {
   onCommitted?: (id: ID) => Promise<void> | void;
   closeDrawer: () => void;
   onModeChange?: (editing: boolean) => void;
+  onPendingChangesChange?: (hasPending: boolean) => void;
   onArchive?: (id: ID, archived: boolean) => Promise<void> | void;
   onDelete?: (id: ID) => Promise<void> | void;
   onPlanUpdated?: (id: ID, fresh: any) => void;
@@ -3147,6 +3252,7 @@ function PlanDetailsView(props: {
     onDelete,
     closeDrawer,
     onModeChange,
+    onPendingChangesChange,
     onPlanUpdated,
     tabs,
     close,
@@ -3181,6 +3287,29 @@ function PlanDetailsView(props: {
   const [draftTick, setDraftTick] = React.useState(0);
   const [actualDatesWarning, setActualDatesWarning] = React.useState<string | null>(null);
 
+  // Unsaved changes tracking
+  const [persistedSnapshot, setPersistedSnapshot] = React.useState<Partial<PlanRow>>(() => buildPlanSnapshot(row));
+  const [pendingSave, setPendingSave] = React.useState(false);
+
+  // Reset persisted snapshot when row.id changes (switching to a different plan)
+  React.useEffect(() => {
+    setPersistedSnapshot(buildPlanSnapshot(row));
+    draftRef.current = {};
+    setPendingSave(false);
+  }, [row.id]);
+
+  // Calculate if there are unsaved changes
+  const isDirty = React.useMemo(() => {
+    const changedFields = prunePlanDraft(draftRef.current, persistedSnapshot);
+    return Object.keys(changedFields).length > 0;
+  }, [draftTick, persistedSnapshot]);
+
+  const hasPendingChangesLocal = isDirty || pendingSave;
+
+  // Notify parent when pending changes state changes
+  React.useEffect(() => {
+    onPendingChangesChange?.(hasPendingChangesLocal);
+  }, [hasPendingChangesLocal, onPendingChangesChange]);
 
   const setDraftLive = React.useCallback(
     (patch: Partial<PlanRow>) => {
@@ -3856,6 +3985,40 @@ function PlanDetailsView(props: {
 
   const breedComboKey = `${effective.species || "Dog"}|${hasBreed}`;
 
+  // Wrap requestSave to manage pendingSave state and update snapshot
+  const handleSave = React.useCallback(async () => {
+    setPendingSave(true);
+    try {
+      await requestSave();
+      // On successful save, update the persisted snapshot and clear pending state
+      setPersistedSnapshot(buildPlanSnapshot({ ...row, ...draftRef.current }));
+      setPendingSave(false);
+    } catch (error) {
+      // On error, clear pending but keep isDirty true
+      setPendingSave(false);
+      throw error;
+    }
+  }, [requestSave, row]);
+
+  // Wrap close to check for unsaved changes
+  const handleClose = React.useCallback(async () => {
+    if (hasPendingChangesLocal) {
+      const ok = await confirmModal({
+        title: "Unsaved Changes",
+        message: "You have unsaved changes. Discard and close?",
+        confirmText: "Discard",
+        cancelText: "Cancel",
+        tone: "danger",
+      });
+      if (!ok) return;
+
+      // User confirmed discard, reset draft
+      draftRef.current = {};
+      setPendingSave(false);
+    }
+    close();
+  }, [hasPendingChangesLocal, close]);
+
   const handleCancel = React.useCallback(() => {
     const undo: Partial<PlanRow> = {};
     for (const k of Object.keys(draftRef.current)) {
@@ -3876,12 +4039,12 @@ function PlanDetailsView(props: {
       mode={mode}
       onEdit={editable ? () => setMode("edit") : undefined}
       onCancel={handleCancel}
-      onSave={requestSave}
+      onSave={handleSave}
       tabs={tabs}
       activeTab={activeTab}
       onTabChange={setActiveTab}
-      onClose={close}
-      hasPendingChanges={hasPendingChanges}
+      onClose={handleClose}
+      hasPendingChanges={hasPendingChangesLocal}
       rightActions={
         <div className="flex gap-2 items-center" data-bhq-details>
           {row.status === "COMMITTED" ? (
