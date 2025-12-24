@@ -1256,6 +1256,14 @@ const BreedingTab = React.forwardRef<BreedingHandle, { dirty: boolean; onDirty: 
           localStorage.setItem("BHQ_ENFORCE_PLUSONE_DATES", enforcePlusOneDates ? "1" : "0");
           localStorage.setItem("BHQ_ENFORCE_PLUSONE_PHASES", enforcePlusOnePhases ? "1" : "0");
         } catch { /* ignore */ }
+
+        // Dispatch custom event to notify same-tab planner components
+        try {
+          window.dispatchEvent(new CustomEvent("bhq:breeding:planner:settings:updated", {
+            detail: { timestamp: Date.now() }
+          }));
+        } catch { /* ignore */ }
+
         onDirty(false);
       } catch (e: any) {
         setError(e?.message || "Failed to save breeding settings");
