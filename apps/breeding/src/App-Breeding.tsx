@@ -2241,43 +2241,16 @@ export default function AppBreeding() {
           onDelete={async (planId: ID) => {
             if (!api) return;
 
-            // Soft delete the plan
-            const deletedAt = new Date().toISOString();
-            const updated = await api.updatePlan(Number(planId), { deletedAt } as any);
+            // Call the delete endpoint (backend handles soft delete and offspring cascade)
+            await api.deletePlan(Number(planId));
 
-            // Find and soft delete linked offspring groups
-            try {
-              // Fetch offspring groups linked to this plan
-              const groups = await (api as any).offspringGroups?.byPlan?.(Number(planId));
+            // Refresh the plan to get updated deletedAt status
+            const updated = await api.getPlan(Number(planId), "parents,org");
 
-              if (groups && Array.isArray(groups)) {
-                for (const group of groups) {
-                  if (group.id) {
-                    try {
-                      // Soft delete each linked group
-                      await fetch(`/api/v1/offspring/groups/${group.id}`, {
-                        method: 'PATCH',
-                        credentials: 'include',
-                        headers: {
-                          'Content-Type': 'application/json',
-                          'X-Tenant-Id': String(tenantId),
-                        },
-                        body: JSON.stringify({ deletedAt }),
-                      });
-                    } catch (e) {
-                      console.error(`[Breeding] Failed to delete offspring group ${group.id}`, e);
-                    }
-                  }
-                }
-              }
-            } catch (e) {
-              console.error("[Breeding] Failed to fetch/delete offspring groups", e);
-            }
-
-            // Update the rows state to remove the deleted plan
+            // Update the rows state with the fresh plan data
             setRows((prev) => prev.map((r) => (r.id === Number(planId) ? planToRow(updated) : r)));
 
-            // Emit event for other modules
+            // Emit event for other modules to refresh
             window.dispatchEvent(new CustomEvent("bhq:breeding:plans:updated"));
           }}
           closeDrawer={props.close}
