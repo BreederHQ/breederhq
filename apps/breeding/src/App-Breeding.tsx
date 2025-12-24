@@ -357,6 +357,8 @@ type PlanRow = {
   depositRisk?: number | null;
 
   archived?: boolean;
+  archivedAt?: string | null;
+  deletedAt?: string | null;
 
   notes?: string | null;
 
@@ -721,6 +723,8 @@ function planToRow(p: any): PlanRow {
     depositRisk: p.depositRiskScore ?? null,
 
     archived: p.archived ?? false,
+    archivedAt: p.archivedAt ?? p.archived_at ?? null,
+    deletedAt: p.deletedAt ?? p.deleted_at ?? null,
 
     notes: p.notes ?? null,
 
@@ -1719,6 +1723,9 @@ export default function AppBreeding() {
       data = data.filter((r) => !r.archived);
     }
 
+    // Always exclude deleted plans from default view
+    data = data.filter((r) => !r.deletedAt);
+
     if (sorts.length) {
       data.sort((a, b) => {
         for (const s of sorts) {
@@ -2230,6 +2237,48 @@ export default function AppBreeding() {
             if (!api) return;
             const updated = await api.updatePlan(Number(planId), { archived } as any);
             setRows((prev) => prev.map((r) => (r.id === Number(planId) ? planToRow(updated) : r)));
+          }}
+          onDelete={async (planId: ID) => {
+            if (!api) return;
+
+            // Soft delete the plan
+            const deletedAt = new Date().toISOString();
+            const updated = await api.updatePlan(Number(planId), { deletedAt } as any);
+
+            // Find and soft delete linked offspring groups
+            try {
+              // Fetch offspring groups linked to this plan
+              const groups = await (api as any).offspringGroups?.byPlan?.(Number(planId));
+
+              if (groups && Array.isArray(groups)) {
+                for (const group of groups) {
+                  if (group.id) {
+                    try {
+                      // Soft delete each linked group
+                      await fetch(`/api/v1/offspring/groups/${group.id}`, {
+                        method: 'PATCH',
+                        credentials: 'include',
+                        headers: {
+                          'Content-Type': 'application/json',
+                          'X-Tenant-Id': String(tenantId),
+                        },
+                        body: JSON.stringify({ deletedAt }),
+                      });
+                    } catch (e) {
+                      console.error(`[Breeding] Failed to delete offspring group ${group.id}`, e);
+                    }
+                  }
+                }
+              }
+            } catch (e) {
+              console.error("[Breeding] Failed to fetch/delete offspring groups", e);
+            }
+
+            // Update the rows state to remove the deleted plan
+            setRows((prev) => prev.map((r) => (r.id === Number(planId) ? planToRow(updated) : r)));
+
+            // Emit event for other modules
+            window.dispatchEvent(new CustomEvent("bhq:breeding:plans:updated"));
           }}
           closeDrawer={props.close}
           onModeChange={setDrawerIsEditing}
@@ -3101,6 +3150,7 @@ function PlanDetailsView(props: {
   closeDrawer: () => void;
   onModeChange?: (editing: boolean) => void;
   onArchive?: (id: ID, archived: boolean) => Promise<void> | void;
+  onDelete?: (id: ID) => Promise<void> | void;
   onPlanUpdated?: (id: ID, fresh: any) => void;
   tabs: ReadonlyArray<{ key: string; label: string }>;
   close: () => void;
@@ -3121,6 +3171,7 @@ function PlanDetailsView(props: {
     openCustomBreed,
     onCommitted,
     onArchive,
+    onDelete,
     closeDrawer,
     onModeChange,
     onPlanUpdated,
@@ -3140,10 +3191,11 @@ function PlanDetailsView(props: {
 
   const isCommitted = statusU === "COMMITTED";
   const isArchived = Boolean(row.archivedAt);
-  const isReadOnly = isArchived;
+  const isDeleted = Boolean(row.deletedAt);
+  const isReadOnly = isArchived || isDeleted;
 
-  // Editable gate: archived plans cannot be edited
-  const editable = !isArchived;
+  // Editable gate: archived or deleted plans cannot be edited
+  const editable = !isArchived && !isDeleted;
 
   // Show Actual Dates once the plan is COMMITTED or later.
   // Allow editing while in Edit mode for COMMITTED and later statuses.
@@ -3159,8 +3211,8 @@ function PlanDetailsView(props: {
 
   const setDraftLive = React.useCallback(
     (patch: Partial<PlanRow>) => {
-      // Prevent any mutations for archived plans
-      if (isArchived) return;
+      // Prevent any mutations for archived or deleted plans
+      if (isArchived || isDeleted) return;
 
       // Check for impossible actual date sequences and warn, but do not block
       const ACTUAL_FIELD_ORDER: Array<keyof PlanRow> = [
@@ -3805,6 +3857,7 @@ function PlanDetailsView(props: {
 
   // Build tooltip showing missing conditions for commit
   const commitTooltip = React.useMemo(() => {
+    if (isDeleted) return "Deleted plans cannot be committed";
     if (isArchived) return "Archived plans cannot be committed";
     if (canCommit) return "Ready to commit this plan";
 
@@ -3952,12 +4005,49 @@ function PlanDetailsView(props: {
               </Button>
             );
           })()}
+          {!isDeleted && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={async () => {
+                if (!onDelete) return;
+                const ok = await confirmModal({
+                  title: "Delete this plan?",
+                  message: "This will soft delete the plan and any linked Offspring Group. This action can only be undone by an admin.",
+                  confirmText: "Delete",
+                  cancelText: "Cancel",
+                  tone: "danger",
+                });
+                if (!ok) return;
+
+                try {
+                  await onDelete(row.id);
+                  utils.toast?.success?.("Plan deleted.");
+                  closeDrawer();
+                } catch (e) {
+                  console.error("[Breeding] delete failed", e);
+                  utils.toast?.error?.("Failed to delete plan. Try again.");
+                }
+              }}
+              title="Delete Plan"
+            >
+              Delete
+            </Button>
+          )}
         </div>
       }
     >
       <div className="relative overflow-x-hidden" data-bhq-details>
+        {/* DELETED READ-ONLY BANNER */}
+        {isDeleted && (
+          <div className="mb-4 p-3 bg-red-500/10 border border-red-500/30 rounded-md">
+            <div className="text-sm text-red-400">
+              This plan is deleted and read-only. It can only be restored by an admin.
+            </div>
+          </div>
+        )}
         {/* ARCHIVED READ-ONLY BANNER */}
-        {isArchived && (
+        {isArchived && !isDeleted && (
           <div className="mb-4 p-3 bg-secondary/10 border border-hairline rounded-md">
             <div className="text-sm text-secondary">
               This plan is archived and read-only.
