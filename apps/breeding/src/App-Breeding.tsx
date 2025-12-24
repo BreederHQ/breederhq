@@ -3103,6 +3103,8 @@ function PlanDetailsView(props: {
   onArchive?: (id: ID, archived: boolean) => Promise<void> | void;
   onPlanUpdated?: (id: ID, fresh: any) => void;
   tabs: ReadonlyArray<{ key: string; label: string }>;
+  close: () => void;
+  hasPendingChanges: boolean;
 }) {
   const {
     row,
@@ -3123,6 +3125,8 @@ function PlanDetailsView(props: {
     onModeChange,
     onPlanUpdated,
     tabs,
+    close,
+    hasPendingChanges,
   } = props;
 
   const isEdit = mode === "edit";
@@ -3840,6 +3844,8 @@ function PlanDetailsView(props: {
       tabs={tabs}
       activeTab={activeTab}
       onTabChange={setActiveTab}
+      onClose={close}
+      hasPendingChanges={hasPendingChanges}
       rightActions={
         <div className="flex gap-2 items-center" data-bhq-details>
           {row.status === "COMMITTED" ? (

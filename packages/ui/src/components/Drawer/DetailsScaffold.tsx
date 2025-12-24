@@ -19,6 +19,8 @@ export function DetailsScaffold({
   onTabChange,
   rightActions,
   children,
+  onClose,
+  hasPendingChanges,
 }: {
   title: React.ReactNode;
   subtitle?: React.ReactNode;
@@ -32,12 +34,16 @@ export function DetailsScaffold({
   onTabChange: (key: string) => void;
   rightActions?: React.ReactNode;
   children: React.ReactNode;
+  onClose?: () => void;
+  hasPendingChanges?: boolean;
 }) {
   return (
     <>
       <DrawerHeader
         title={title}
         subtitle={subtitle}
+        onClose={onClose}
+        hasPendingChanges={hasPendingChanges}
         actions={
           <div className="flex items-center gap-2">
             {rightActions /* should render <Button size="sm" variant="outline">Archive</Button> */}
@@ -64,7 +70,7 @@ export function DetailsScaffold({
           <Tabs
             items={tabs.map(t => ({ value: t.key, label: t.label }))}
             value={activeTab}
-            onValueChange={onTabChange} 
+            onValueChange={onTabChange}
             variant="pills"
             size="xs"
             showActiveUnderline

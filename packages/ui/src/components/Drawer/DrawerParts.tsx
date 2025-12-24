@@ -5,21 +5,43 @@ import * as React from "react";
 const cx = (...s: Array<string | false | null | undefined>) => s.filter(Boolean).join(" ");
 
 export function DrawerHeader({
-  title, subtitle, actions, className,
+  title, subtitle, actions, className, onClose, hasPendingChanges,
 }: {
   title: React.ReactNode;
   subtitle?: React.ReactNode;
   actions?: React.ReactNode;
   className?: string;
+  onClose?: () => void;
+  hasPendingChanges?: boolean;
 }) {
   return (
     <header className={cx("sticky top-0 z-10 bg-surface/90 backdrop-blur border-b border-hairline px-4 py-3", className)}>
       <div className="flex items-start gap-3">
-        <div className="min-w-0">
-          <div className="text-lg font-semibold truncate">{title}</div>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <div className="text-lg font-semibold truncate">{title}</div>
+            {hasPendingChanges && (
+              <span className="px-2 py-0.5 text-xs font-medium bg-amber-500/10 text-amber-600 dark:text-amber-400 rounded-full border border-amber-500/20">
+                Unsaved changes
+              </span>
+            )}
+          </div>
           {subtitle ? <div className="text-xs text-secondary truncate">{subtitle}</div> : null}
         </div>
-        <div className="ml-auto flex items-center gap-2">{actions}</div>
+        <div className="flex items-center gap-2">
+          {actions}
+          {onClose && (
+            <button
+              onClick={onClose}
+              className="p-1 rounded hover:bg-white/5 text-secondary hover:text-primary transition-colors"
+              aria-label="Close"
+            >
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                <path d="M5 5L15 15M5 15L15 5" />
+              </svg>
+            </button>
+          )}
+        </div>
       </div>
     </header>
   );
@@ -93,10 +115,10 @@ export function DrawerActions({
   saving?: boolean;
 }) {
   return mode === "view" ? (
-    <button className="px-3 py-1.5 text-sm rounded-md border hover:bg-white/05" onClick={onEdit}>Edit</button>
+    <button className="px-3 py-1.5 text-sm rounded-md border hover:bg-white/5" onClick={onEdit}>Edit</button>
   ) : (
     <div className="flex items-center gap-2">
-      <button className="px-3 py-1.5 text-sm rounded-md border hover:bg-white/05" onClick={onCancel}>Cancel</button>
+      <button className="px-3 py-1.5 text-sm rounded-md border hover:bg-white/5" onClick={onCancel}>Cancel</button>
       <button className="px-3 py-1.5 text-sm rounded-md border bg-ink text-ink-contrast hover:bg-ink/90" onClick={onSave} disabled={saving}>
         {saving ? "Saving…" : "Save"}
       </button>

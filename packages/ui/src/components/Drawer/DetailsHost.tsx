@@ -2,6 +2,7 @@
 import * as React from "react";
 import { DetailsDrawer } from "./DetailsDrawer";
 import { DrawerHeader, DrawerTabs, DrawerActions, useDrawerState } from "./DrawerParts";
+import { confirmDialog } from "../Dialog";
 
 type ID = string | number;
 
@@ -27,6 +28,10 @@ export type DetailsConfig<T> = {
     /** Call this to trigger config.onSave with the current draft.
      * Host will switch back to "view" and clear draft on success. */
     requestSave: () => Promise<void> | void;
+    /** Close handler with pending changes protection */
+    close: () => void;
+    /** Whether there are unsaved changes */
+    hasPendingChanges: boolean;
   }) => React.ReactNode;
 };
 
@@ -38,10 +43,14 @@ export function DetailsHost<T>({
   rows,
   config,
   children,
+  closeOnOutsideClick = true,
+  closeOnEscape = true,
 }: {
   rows: T[];
   config: DetailsConfig<T>;
   children: React.ReactNode;
+  closeOnOutsideClick?: boolean;
+  closeOnEscape?: boolean;
 }) {
   const idParam = config.idParam ?? "id";
   const { openId, setOpenId } = useDrawerState(idParam);
@@ -52,6 +61,9 @@ export function DetailsHost<T>({
   const [draft, setDraft] = React.useState<Partial<T>>({});
   const draftRef = React.useRef<Partial<T>>({});
   React.useEffect(() => { draftRef.current = draft; }, [draft]);
+
+  // Track whether there are pending unsaved changes
+  const hasPendingChanges = Object.keys(draft).length > 0;
 
   const open = React.useCallback((row: T) => {
     const id = config.getRowId(row);
@@ -82,6 +94,22 @@ export function DetailsHost<T>({
     setDraft({});
   }, [config, openRow]);
 
+  const handleClose = React.useCallback(async () => {
+    // If there are pending changes, show confirmation dialog
+    if (hasPendingChanges) {
+      const confirmed = await confirmDialog({
+        title: "Unsaved changes",
+        message: "You have unsaved changes. Discard and close?",
+        confirmText: "Discard",
+        cancelText: "Cancel",
+        variant: "danger",
+      });
+      if (!confirmed) return; // User cancelled, keep drawer open
+    }
+    // Either no pending changes or user confirmed discard
+    setOpenId(null);
+  }, [hasPendingChanges, setOpenId]);
+
   const headerInfo = openRow ? config.header(openRow) : { title: "Details" };
 
   return (
@@ -91,10 +119,13 @@ export function DetailsHost<T>({
       {openRow && (
         <DetailsDrawer
           title={headerInfo.title}
-          onClose={() => setOpenId(null)}
+          onClose={handleClose}
+          onBackdropClick={closeOnOutsideClick && !hasPendingChanges ? handleClose : undefined}
+          onEscapeKey={closeOnEscape ? handleClose : undefined}
           width={config.width ?? 720}
           placement={config.placement ?? "right"}
           align={config.align ?? "center"}
+          hasPendingChanges={hasPendingChanges}
         >
           {/* Built-in chrome (default) */}
           {!config.customChrome && (
@@ -102,6 +133,8 @@ export function DetailsHost<T>({
               <DrawerHeader
                 title={headerInfo.title}
                 subtitle={headerInfo.subtitle}
+                onClose={handleClose}
+                hasPendingChanges={hasPendingChanges}
                 actions={config.onSave ? (
                   <DrawerActions
                     mode={mode}
@@ -127,6 +160,8 @@ export function DetailsHost<T>({
             setActiveTab,
             setDraft,
             requestSave,
+            close: handleClose,
+            hasPendingChanges,
           })}
         </DetailsDrawer>
       )}
