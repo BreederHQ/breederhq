@@ -2,7 +2,7 @@
 import * as React from "react";
 import { DetailsDrawer } from "./DetailsDrawer";
 import { DrawerHeader, DrawerTabs, DrawerActions, useDrawerState } from "./DrawerParts";
-import { confirmDialog } from "../Dialog";
+import { confirmDialog } from "../../utils/confirmDialog";
 
 type ID = string | number;
 
