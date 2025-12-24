@@ -2436,7 +2436,7 @@ export default function AppBreeding() {
                 rows={rows}
                 config={detailsConfig}
                 closeOnOutsideClick={!drawerIsEditing && !drawerHasPendingChanges}
-                closeOnEscape={false}
+                closeOnEscape={!drawerIsEditing && !drawerHasPendingChanges}
               >
                 <Table
                   columns={COLUMNS}
