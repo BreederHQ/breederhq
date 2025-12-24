@@ -33,6 +33,7 @@ export type BHQCalendarProps = {
   initialView?: "dayGridMonth" | "dayGridWeek";
   headerTitle?: string;
   onEventClick?: (ev: CalendarEvent) => void;
+  onEventCreate?: (ev: Partial<CalendarEvent>) => void;
   className?: string;
 };
 
@@ -45,6 +46,7 @@ export default function BHQCalendar({
   initialView = "dayGridMonth",
   headerTitle,
   onEventClick,
+  onEventCreate,
   className,
 }: BHQCalendarProps) {
   const allIds = React.useMemo(
@@ -64,6 +66,8 @@ export default function BHQCalendar({
     return new Set(defaults.length ? defaults : allIds);
   });
 
+  const [editingEvent, setEditingEvent] = React.useState<Partial<CalendarEvent> | null>(null);
+
   React.useEffect(() => {
     try {
       localStorage.setItem(storageKey, JSON.stringify(Array.from(enabled)));
@@ -77,6 +81,34 @@ export default function BHQCalendar({
       else next.add(id);
       return next;
     });
+  }
+
+  function handleNewEvent() {
+    const now = new Date();
+    now.setHours(9, 0, 0, 0);
+    setEditingEvent({
+      start: now,
+      allDay: false,
+      title: "",
+    });
+  }
+
+  function handleDateSelect(selectInfo: any) {
+    setEditingEvent({
+      start: selectInfo.start,
+      end: selectInfo.end,
+      allDay: selectInfo.allDay,
+      title: "",
+    });
+  }
+
+  function handleSaveEvent(event: CalendarEvent) {
+    onEventCreate?.(event);
+    setEditingEvent(null);
+  }
+
+  function handleCancelEvent() {
+    setEditingEvent(null);
   }
 
   const visibleEvents = React.useMemo(() => {
@@ -95,11 +127,86 @@ export default function BHQCalendar({
 
   const Dot: React.FC<{ color?: string }> = ({ color }) => (
     <span
-      className="inline-block h-2 w-2 rounded-full mr-2"
+      className="inline-block h-2.5 w-2.5 rounded-full"
       style={{ backgroundColor: color || "var(--fc-event-border-color, #888)" }}
       aria-hidden
     />
   );
+
+  function EventEditor({ event, onSave, onCancel }: { event: Partial<CalendarEvent>; onSave: (ev: CalendarEvent) => void; onCancel: () => void }) {
+    const [title, setTitle] = React.useState(event.title || "");
+    const [start, setStart] = React.useState(() => {
+      const d = event.start instanceof Date ? event.start : new Date(event.start || Date.now());
+      return d.toISOString().slice(0, 16);
+    });
+    const [allDay, setAllDay] = React.useState(event.allDay ?? true);
+
+    function handleSave() {
+      const startDate = new Date(start);
+      onSave({
+        id: event.id || `event-${Date.now()}`,
+        title: title || "Untitled Event",
+        start: startDate,
+        end: event.end,
+        allDay,
+      });
+    }
+
+    return (
+      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onCancel}>
+        <div className="bg-white dark:bg-neutral-800 rounded-lg p-4 w-96 max-w-[90vw]" onClick={(e) => e.stopPropagation()}>
+          <h3 className="text-lg font-semibold mb-4">New Event</h3>
+          <div className="space-y-3">
+            <div>
+              <label className="block text-sm font-medium mb-1">Title</label>
+              <input
+                type="text"
+                className="w-full px-3 py-2 border border-gray-300 dark:border-neutral-600 rounded-md bg-white dark:bg-neutral-700"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="Event title"
+                autoFocus
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Start</label>
+              <input
+                type="datetime-local"
+                className="w-full px-3 py-2 border border-gray-300 dark:border-neutral-600 rounded-md bg-white dark:bg-neutral-700"
+                value={start}
+                onChange={(e) => setStart(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={allDay}
+                  onChange={(e) => setAllDay(e.target.checked)}
+                  className="h-4 w-4"
+                />
+                All day
+              </label>
+            </div>
+          </div>
+          <div className="flex gap-2 mt-4 justify-end">
+            <button
+              onClick={onCancel}
+              className="px-4 py-2 text-sm rounded-md border border-gray-300 dark:border-neutral-600 hover:bg-gray-50 dark:hover:bg-neutral-700"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSave}
+              className="px-4 py-2 text-sm rounded-md bg-blue-600 text-white hover:bg-blue-700"
+            >
+              Save
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   function MiniMonth() {
     const [current, setCurrent] = React.useState(() => {
@@ -178,10 +285,18 @@ export default function BHQCalendar({
   }
 
   return (
-    <div className={cn("bhq-cal flex gap-3", className)}>
-      {/* Left rail */}
-      <aside
-        className="w-[220px] shrink-0 rounded-xl border border-gray-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-3 h-max"
+    <>
+      {editingEvent && (
+        <EventEditor
+          event={editingEvent}
+          onSave={handleSaveEvent}
+          onCancel={handleCancelEvent}
+        />
+      )}
+      <div className={cn("bhq-cal flex gap-3", className)}>
+        {/* Left rail */}
+        <aside
+        className="w-[270px] max-w-[270px] shrink-0 rounded-xl border border-gray-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-3 h-max"
         aria-label="Calendar filters"
       >
         <MiniMonth />
@@ -193,13 +308,13 @@ export default function BHQCalendar({
                 <label key={item.id} className="flex items-center gap-2 text-sm cursor-pointer">
                   <input
                     type="checkbox"
-                    className="h-3.5 w-3.5"
+                    className="h-3.5 w-3.5 shrink-0"
                     checked={enabled.has(item.id)}
                     onChange={() => toggle(item.id)}
                     aria-label={`Toggle ${item.label}`}
                   />
                   <Dot color={item.color} />
-                  <span className="truncate" title={item.label}>
+                  <span className="truncate flex-1" title={item.label}>
                     {item.label}
                   </span>
                 </label>
@@ -221,7 +336,17 @@ export default function BHQCalendar({
 
       {/* Main calendar */}
       <div className="flex-1">
-        {headerTitle ? <div className="mb-2 text-sm font-semibold" aria-live="polite">{headerTitle}</div> : null}
+        <div className="flex items-center justify-between mb-2">
+          {headerTitle ? <div className="text-sm font-semibold" aria-live="polite">{headerTitle}</div> : <div />}
+          {onEventCreate && (
+            <button
+              onClick={handleNewEvent}
+              className="px-3 py-1.5 text-sm rounded-md bg-blue-600 text-white hover:bg-blue-700 font-medium"
+            >
+              + New Event
+            </button>
+          )}
+        </div>
         <FullCalendar
           plugins={[dayGridPlugin, interactionPlugin]}
           initialView={initialView}
@@ -230,6 +355,8 @@ export default function BHQCalendar({
           buttonText={{ today: "today", month: "month", week: "week" }}
           dayMaxEvents={3}
           events={visibleEvents}
+          selectable={!!onEventCreate}
+          select={handleDateSelect}
           eventClick={(arg) => {
             const e = arg.event;
             onEventClick?.({
@@ -296,6 +423,7 @@ export default function BHQCalendar({
           }}
         />
       </div>
-    </div>
+      </div>
+    </>
   );
 }
