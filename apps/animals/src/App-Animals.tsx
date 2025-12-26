@@ -29,6 +29,7 @@ import {
   Popover,
   Dialog,
 } from "@bhq/ui";
+import type { OwnershipRow } from "@bhq/ui/utils/ownership";
 
 import { Overlay, getOverlayRoot } from "@bhq/ui/overlay";
 import { toast } from "@bhq/ui/atoms/Toast";
@@ -70,15 +71,7 @@ function getPlaceholderForSpecies(species?: string | null): string {
 /** ────────────────────────────────────────────────────────────────────────
  * Types & utils
  * ─────────────────────────────────────────────────────────────────────── */
-type OwnershipRow = {
-  partyId?: number | null;
-  partyType: "Organization" | "Contact";
-  organizationId?: number | null;
-  contactId?: number | null;
-  display_name?: string | null;
-  is_primary?: boolean;
-  percent?: number;
-};
+// NOTE: OwnershipRow is imported from @bhq/ui/utils/ownership at top of file
 
 function normalizeOwnerPartyType(raw: any, owner?: any): "Organization" | "Contact" {
   const kind = owner?.kind ?? owner?.partyType ?? owner?.type ?? raw;
@@ -3512,56 +3505,53 @@ export default function AppAnimals() {
       };
 
       const created = await (api.animals as any).create?.(payload);
-
-      let toSaveOwners = owners;
-      if (toSaveOwners.length === 0) {
-        const org = await safeGetCreatingOrg(api);
-        if (org) {
-          const orgPartyIdRaw =
-            (org as any).partyId ?? (org as any).party_id ?? null;
-          const orgPartyId = Number.isFinite(Number(orgPartyIdRaw))
-            ? Number(orgPartyIdRaw)
-            : null;
-          if (orgPartyId == null) {
-            toSaveOwners = [];
-          } else {
-            toSaveOwners = [
-              {
-                partyId: orgPartyId,
-                partyType: "Organization",
-                organizationId: Number(org.id),
-                contactId: null,
-                display_name:
-                  (org as any).display_name ||
-                  (org as any).name ||
-                  "My Organization",
-                is_primary: true,
-                percent: 100,
-              },
-            ];
-          }
-        }
-      }
-
-      let ownerNameOverride: string | null = null;
-      if (toSaveOwners.length) {
-        const primary =
-          toSaveOwners.find((o) => o.is_primary) ?? toSaveOwners[0];
-        ownerNameOverride = primary?.display_name ?? null;
-      }
-
       const animalId = Number((created as any).id);
 
-      if (toSaveOwners.length) {
+      // Sync owners if any were specified in the form
+      // Note: Backend automatically creates a default owner (tenant party) if none provided
+      if (owners.length > 0) {
         try {
-          await syncOwners(animalId, toSaveOwners as OwnershipRow[]);
+          await syncOwners(animalId, owners as OwnershipRow[]);
         } catch {
+          // Owner sync failed, but animal was created
         }
       }
+
+      // Fetch the actual owners from the backend (includes backend-created default owner)
+      let fetchedOwners: any[] = [];
+      try {
+        const ownersResp = await api.animals.owners.list(animalId);
+        fetchedOwners = Array.isArray((ownersResp as any)?.items)
+          ? (ownersResp as any).items
+          : [];
+      } catch {
+        // Failed to fetch owners, proceed with empty list
+      }
+
+      // Convert backend owner format to frontend OwnershipRow format
+      const normalizedOwners: OwnershipRow[] = fetchedOwners.map((o: any) => {
+        const partyType = o.kind === "ORGANIZATION" || o.kind === "PERSON"
+          ? (o.kind === "ORGANIZATION" ? "Organization" : "Contact")
+          : normalizeOwnerPartyType(o.kind);
+
+        return {
+          partyId: o.partyId,
+          partyType,
+          organizationId: o.kind === "ORGANIZATION" ? o.backing?.organizationId : null,
+          contactId: o.kind === "PERSON" ? o.backing?.contactId : null,
+          display_name: o.displayName,
+          is_primary: o.isPrimary,
+          percent: o.percent,
+        };
+      });
+
+      const ownerNameOverride = fetchedOwners.find((o: any) => o.isPrimary)?.displayName
+        ?? fetchedOwners[0]?.displayName
+        ?? null;
 
       const row = animalToRow({
         ...created,
-        owners: toSaveOwners,
+        owners: normalizedOwners,
         ownerName: ownerNameOverride ?? undefined,
       });
 
