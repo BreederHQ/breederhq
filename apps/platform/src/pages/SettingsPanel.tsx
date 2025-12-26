@@ -521,6 +521,17 @@ export default function SettingsPanel({ open, dirty, onDirtyChange, onClose }: P
   const [profileTitle, setProfileTitle] = React.useState<string>("");
 
   React.useEffect(() => { onDirtyChange(!!dirtyMap[active]); }, [active, dirtyMap, onDirtyChange]);
+
+  // Reload profile data when switching to profile tab or when panel opens
+  React.useEffect(() => {
+    if (open && active === "profile") {
+      // Use requestAnimationFrame to ensure the ProfileTab component is mounted
+      requestAnimationFrame(() => {
+        profileRef.current?.reload();
+      });
+    }
+  }, [open, active]);
+
   if (!open) return null;
 
   function jumpToProgramProfile() {
@@ -677,7 +688,7 @@ async function saveActive(_tab: Tab, markDirty: (tab: Tab, v: boolean) => void) 
 function Field(props: React.InputHTMLAttributes<HTMLInputElement>) {
   return <input {...props} className={["bhq-input", INPUT_CLS, props.className].filter(Boolean).join(" ")} />;
 }
-type ProfileHandle = { save: () => Promise<void> };
+type ProfileHandle = { save: () => Promise<void>; reload: () => Promise<void> };
 type ProfileForm = {
   firstName: string; lastName: string; nickname: string; userEmail: string;
   phoneE164: string; whatsappE164: string;
@@ -733,26 +744,32 @@ const ProfileTab = React.forwardRef<ProfileHandle, {
     if (!result.ok) { throw new Error(result.msg || "Could not verify current password."); }
     return true;
   }
+  const loadProfile = React.useCallback(async () => {
+    try {
+      setLoading(true); setError("");
+      const { id } = await getSessionUserId();
+      const u = await fetchJson(`/api/v1/users/${encodeURIComponent(id)}`, { method: "GET" });
+      const next = mapUserToProfileForm(u, countries);
+      setInitial(next); setForm(next); onTitle(deriveDisplayName(next));
+    } catch (e: any) {
+      setError(e?.message || "Unable to load profile");
+    } finally {
+      setLoading(false);
+    }
+  }, [countries, onTitle]);
+
   React.useEffect(() => {
     let ignore = false;
     (async () => {
-      try {
-        setLoading(true); setError("");
-        const { id } = await getSessionUserId();
-        const u = await fetchJson(`/api/v1/users/${encodeURIComponent(id)}`, { method: "GET" });
-        const next = mapUserToProfileForm(u, countries);
-        if (!ignore) { setInitial(next); setForm(next); onTitle(deriveDisplayName(next)); }
-      } catch (e: any) {
-        if (!ignore) setError(e?.message || "Unable to load profile");
-      } finally {
-        if (!ignore) setLoading(false);
-      }
+      if (!ignore) await loadProfile();
     })();
     return () => { ignore = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [countries]);
+  }, [loadProfile]);
 
   React.useImperativeHandle(ref, () => ({
+    async reload() {
+      await loadProfile();
+    },
     async save() {
       setError("");
       try {
