@@ -711,7 +711,7 @@ export default function AppContactsParty() {
             setCreatePersonOpen(true);
           }}
         >
-          New person
+          New Person
         </button>
         <button
           className="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-white/5 rounded"
@@ -720,7 +720,7 @@ export default function AppContactsParty() {
             setCreateBusinessOpen(true);
           }}
         >
-          New business
+          New Contact
         </button>
       </Popover>
 
