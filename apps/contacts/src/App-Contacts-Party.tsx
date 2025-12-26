@@ -19,11 +19,20 @@ import {
   exportToCsv,
   Popover,
   Button,
+  DetailsHost,
+  useTableDetails,
+  SectionCard,
+  DetailsScaffold,
+  Input,
+  IntlPhoneField,
+  PillToggle,
 } from "@bhq/ui";
-import { Download, MoreHorizontal } from "lucide-react";
+import { Download, MoreHorizontal, ChevronDown } from "lucide-react";
 import "@bhq/ui/styles/table.css";
 import { makeApi } from "./api";
 import { PartyKind } from "@bhq/api";
+import { CreatePersonOverlay, CreateBusinessOverlay } from "./CreateOverlays";
+import { PartyDetailsView } from "./PartyDetailsView";
 
 /* ────────────────────────────────────────────────────────────────────────────
  * Party Table Row (Unified Contacts + Organizations)
@@ -40,8 +49,33 @@ export type PartyTableRow = {
   displayName: string;
   email?: string | null;
   phone?: string | null;
+  phoneMobileE164?: string | null;
+  phoneLandlineE164?: string | null;
+  whatsappE164?: string | null;
   tags: string[];
   notes?: string | null;
+
+  // Contact-specific fields
+  firstName?: string | null;
+  lastName?: string | null;
+  nickname?: string | null;
+
+  // Address fields (shared)
+  street?: string | null;
+  street2?: string | null;
+  city?: string | null;
+  state?: string | null;
+  postalCode?: string | null;
+  country?: string | null;
+
+  // Organization-specific fields
+  website?: string | null;
+  organizationName?: string | null;
+  name?: string | null;
+
+  // Status fields
+  status?: string | null;
+  leadStatus?: string | null;
 
   // Legacy backing IDs (for drawer routing only)
   contactId?: number | null;
@@ -58,7 +92,20 @@ const PARTY_COLUMNS: Array<{ key: keyof PartyTableRow & string; label: string; d
   { key: "displayName", label: "Name", default: true },
   { key: "email", label: "Email", default: true },
   { key: "phone", label: "Phone", default: true },
+  { key: "firstName", label: "First Name", default: false },
+  { key: "lastName", label: "Last Name", default: false },
+  { key: "nickname", label: "Nickname", default: false },
+  { key: "website", label: "Website", default: false },
+  { key: "city", label: "City", default: false },
+  { key: "state", label: "State", default: false },
+  { key: "postalCode", label: "Postal Code", default: false },
+  { key: "country", label: "Country", default: false },
+  { key: "street", label: "Street", default: false },
+  { key: "street2", label: "Street 2", default: false },
+  { key: "status", label: "Status", default: false },
+  { key: "leadStatus", label: "Lead Status", default: false },
   { key: "tags", label: "Tags", default: true },
+  { key: "notes", label: "Notes", default: false },
   { key: "created_at", label: "Created", default: false },
   { key: "updated_at", label: "Updated", default: false },
 ];
@@ -77,23 +124,87 @@ function fmt(d?: string | null) {
   return dt.toLocaleDateString();
 }
 
+function coerceBoolean(value: any): boolean | null {
+  if (value === true || value === false) return value;
+  if (value == null) return null;
+  if (typeof value === "number") return value !== 0;
+  if (typeof value === "string") {
+    const v = value.trim().toLowerCase();
+    if (v === "true" || v === "1" || v === "yes" || v === "y") return true;
+    if (v === "false" || v === "0" || v === "no" || v === "n") return false;
+  }
+  return null;
+}
+
+function getArchivedFlag(payload: any): boolean | null {
+  const direct = coerceBoolean(payload?.archived ?? payload?.isArchived ?? payload?.is_archived);
+  if (direct !== null) return direct;
+  if (payload?.archivedAt || payload?.archived_at) return true;
+  const status = String(payload?.status ?? "").toLowerCase();
+  if (status.includes("archiv")) return true;
+  return null;
+}
+
+function isArchivedRow(row: PartyTableRow): boolean {
+  const direct = coerceBoolean((row as any).archived);
+  if (direct !== null) return direct;
+  const status = String(row.status ?? "").toLowerCase();
+  return status.includes("archiv");
+}
+
 /**
  * Convert Contact API response to PartyTableRow
  */
 function contactToPartyRow(c: any): PartyTableRow {
+  const firstName = c.firstName ?? c.first_name ?? null;
+  const lastName = c.lastName ?? c.last_name ?? null;
+  const nick = c.nickname ?? null;
+  const rawPartyId = c.partyId ?? c.party_id ?? c.id;
+  const partyId = Number.isFinite(Number(rawPartyId)) ? Number(rawPartyId) : Number(c.id);
+  const orgId =
+    c.organizationId ??
+    c.organization_id ??
+    c.organization?.id ??
+    null;
+  const orgName =
+    c.organizationName ??
+    c.organization_name ??
+    c.organization?.name ??
+    c.organization?.displayName ??
+    c.organization?.label ??
+    null;
+  const displayFromParts = [nick || firstName, lastName].filter(Boolean).join(" ").trim();
+  const archived = getArchivedFlag(c);
+  const status = c.status ?? (archived ? "Archived" : "Active");
+
   return {
-    partyId: c.partyId ?? c.party_id ?? c.id, // Prefer party fields, fallback to id
+    partyId, // Prefer party fields, fallback to id
     kind: "CONTACT",
-    displayName: c.displayName ?? c.display_name ?? `${c.firstName ?? ""} ${c.lastName ?? ""}`.trim() || `Contact ${c.id}`,
+    displayName: (c.displayName ?? c.display_name ?? displayFromParts) || c.email || c.phone || `Contact ${c.id}`,
     email: c.email ?? null,
-    phone: c.phone ?? c.phoneMobileE164 ?? null,
-    tags: Array.isArray(c.tags) ? c.tags : [],
+    phone: c.phone ?? c.phoneMobileE164 ?? c.whatsappE164 ?? c.phoneE164 ?? null,
+    phoneMobileE164: c.phoneMobileE164 ?? null,
+    phoneLandlineE164: c.phoneLandlineE164 ?? null,
+    whatsappE164: c.whatsappE164 ?? null,
+    firstName,
+    lastName,
+    nickname: nick,
+    street: c.street ?? null,
+    street2: c.street2 ?? null,
+    city: c.city ?? null,
+    state: c.state ?? null,
+    postalCode: c.postalCode ?? c.postal_code ?? null,
+    country: c.country ?? null,
+    status,
+    leadStatus: c.leadStatus ?? c.lead_status ?? null,
+    tags: Array.isArray(c.tags) ? c.tags.filter(Boolean) : [],
     notes: c.notes ?? null,
     contactId: c.id,
-    organizationId: null,
+    organizationId: orgId,
+    organizationName: orgName,
     created_at: c.created_at ?? c.createdAt ?? null,
     updated_at: c.updated_at ?? c.updatedAt ?? null,
-    archived: c.archived ?? null,
+    archived,
   };
 }
 
@@ -101,45 +212,133 @@ function contactToPartyRow(c: any): PartyTableRow {
  * Convert Organization API response to PartyTableRow
  */
 function organizationToPartyRow(o: any): PartyTableRow {
+  const name = o.name ?? o.displayName ?? o.display_name ?? null;
+  const rawPartyId = o.partyId ?? o.party_id ?? o.id;
+  const partyId = Number.isFinite(Number(rawPartyId)) ? Number(rawPartyId) : Number(o.id);
+  const archived = getArchivedFlag(o);
+  const status = o.status ?? (archived ? "Archived" : "Active");
+
   return {
-    partyId: o.partyId ?? o.party_id ?? o.id, // Prefer party fields, fallback to id
+    partyId, // Prefer party fields, fallback to id
     kind: "ORGANIZATION",
-    displayName: o.displayName ?? o.display_name ?? o.name ?? `Organization ${o.id}`,
+    displayName: o.displayName ?? o.display_name ?? name ?? `Organization ${o.id}`,
+    name,
     email: o.email ?? null,
     phone: o.phone ?? null,
+    phoneMobileE164: o.phoneMobileE164 ?? null,
+    phoneLandlineE164: o.phoneLandlineE164 ?? null,
+    whatsappE164: o.whatsappE164 ?? null,
+    website: o.website ?? null,
+    street: o.street ?? null,
+    street2: o.street2 ?? null,
+    city: o.city ?? null,
+    state: o.state ?? null,
+    postalCode: o.postalCode ?? o.postal_code ?? o.zip ?? null,
+    country: o.country ?? null,
+    status,
     tags: Array.isArray(o.tags) ? o.tags : [],
     notes: o.notes ?? null,
     contactId: null,
     organizationId: o.id,
     created_at: o.created_at ?? o.createdAt ?? null,
     updated_at: o.updated_at ?? o.updatedAt ?? null,
-    archived: o.archived ?? null,
+    archived,
   };
 }
 
-/**
- * Get drawer route param based on Party kind
- */
-function getDrawerParam(row: PartyTableRow): { param: string; value: number } {
-  if (row.kind === "CONTACT" && row.contactId) {
-    return { param: "contactId", value: row.contactId };
-  }
-  if (row.kind === "ORGANIZATION" && row.organizationId) {
-    return { param: "orgId", value: row.organizationId };
-  }
-  // Fallback: use partyId (for future Party-native drawers)
-  return { param: "partyId", value: row.partyId };
-}
+// Removed - we'll use DetailsHost's context API instead
 
-/**
- * Open drawer for a Party row
- */
-function openPartyDrawer(row: PartyTableRow) {
-  const { param, value } = getDrawerParam(row);
-  const url = new URL(window.location.href);
-  url.searchParams.set(param, String(value));
-  window.history.pushState({}, "", url);
-  window.dispatchEvent(new Event("popstate"));
+/* ────────────────────────────────────────────────────────────────────────────
+ * Table Body Component (uses DetailsHost context)
+ * ────────────────────────────────────────────────────────────────────────── */
+
+function PartyTableBody({
+  pageRows,
+  visibleSafe,
+  loading,
+  error
+}: {
+  pageRows: PartyTableRow[];
+  visibleSafe: any[];
+  loading: boolean;
+  error: string | null;
+}) {
+  const { open } = useTableDetails<PartyTableRow>();
+
+  if (loading) {
+    return (
+      <TableRow>
+        <TableCell colSpan={visibleSafe.length}>
+          <div className="py-8 text-center text-sm text-secondary">Loading...</div>
+        </TableCell>
+      </TableRow>
+    );
+  }
+
+  if (error) {
+    return (
+      <TableRow>
+        <TableCell colSpan={visibleSafe.length}>
+          <div className="py-8 text-center text-sm text-red-600">Error: {error}</div>
+        </TableCell>
+      </TableRow>
+    );
+  }
+
+  if (pageRows.length === 0) {
+    return (
+      <TableRow>
+        <TableCell colSpan={visibleSafe.length}>
+          <div className="py-8 text-center text-sm text-secondary">No entries found.</div>
+        </TableCell>
+      </TableRow>
+    );
+  }
+
+  return (
+    <>
+      {pageRows.map((r) => (
+        <TableRow
+          key={`${r.kind}-${r.partyId}`}
+          className={`cursor-pointer ${isArchivedRow(r) ? "bhq-row-archived" : ""}`}
+          onClick={() => open?.(r)}
+        >
+          {visibleSafe.map((c) => {
+            let v: any = (r as any)[c.key];
+
+            // Column width styling
+            let cellStyle: React.CSSProperties = {};
+            if (c.key === "kind") cellStyle = { width: "140px", maxWidth: "140px" };
+            else if (c.key === "displayName") cellStyle = { width: "280px", maxWidth: "280px" };
+            else if (c.key === "email") cellStyle = { minWidth: "200px" };
+            else if (c.key === "phone") cellStyle = { minWidth: "140px" };
+            else if (c.key === "tags") cellStyle = { minWidth: "120px" };
+
+            // Special rendering for kind
+            if (c.key === "kind") {
+              return (
+                <TableCell key={c.key} style={cellStyle}>
+                  {v === "CONTACT" ? "Contact" : "Organization"}
+                </TableCell>
+              );
+            }
+
+            // Date formatting
+            if (c.key === "created_at" || c.key === "updated_at") {
+              v = fmt(v);
+            }
+
+            // Array formatting
+            if (Array.isArray(v)) {
+              v = v.join(", ");
+            }
+
+            return <TableCell key={c.key} style={cellStyle}>{v ?? ""}</TableCell>;
+          })}
+        </TableRow>
+      ))}
+    </>
+  );
 }
 
 /* ────────────────────────────────────────────────────────────────────────────
@@ -209,8 +408,9 @@ export default function AppContactsParty() {
         const merged = [...contacts, ...orgs].sort((a, b) =>
           a.displayName.localeCompare(b.displayName, undefined, { sensitivity: "base" })
         );
+        const visible = includeArchived ? merged : merged.filter((r) => !isArchivedRow(r));
 
-        if (!cancelled) setRows(merged);
+        if (!cancelled) setRows(visible);
       } catch (e: any) {
         if (!cancelled) setError(e?.payload?.error || e?.message || "Failed to load parties");
       } finally {
@@ -293,52 +493,228 @@ export default function AppContactsParty() {
     setMenuOpen(false);
   }, [sortedRows]);
 
+  // Creation overlays state
+  const [createPersonOpen, setCreatePersonOpen] = React.useState(false);
+  const [createBusinessOpen, setCreateBusinessOpen] = React.useState(false);
+  const [newButtonOpen, setNewButtonOpen] = React.useState(false);
+
+  const newButtonRef = React.useRef<HTMLButtonElement>(null);
+  const menuButtonRef = React.useRef<HTMLButtonElement>(null);
+  const rowCacheRef = React.useRef<Map<string, PartyTableRow>>(new Map());
+
+  React.useEffect(() => {
+    rows.forEach((r) => rowCacheRef.current.set(String(r.partyId), r));
+  }, [rows]);
+
+  const applyRowUpdate = React.useCallback((updatedRow: PartyTableRow) => {
+    const updateKey = String(updatedRow.partyId);
+    rowCacheRef.current.set(updateKey, updatedRow);
+    setRows((prev) => {
+      const shouldHide = !includeArchived && isArchivedRow(updatedRow);
+      let replaced = false;
+      const next: PartyTableRow[] = [];
+      for (const r of prev) {
+        if (String(r.partyId) === updateKey) {
+          if (!replaced && !shouldHide) next.push(updatedRow);
+          replaced = true;
+          continue;
+        }
+        next.push(r);
+      }
+      if (!replaced && !shouldHide) next.unshift(updatedRow);
+      return next;
+    });
+  }, [includeArchived]);
+
+  // Handler for when a contact is created
+  const handleContactCreated = React.useCallback((created: any) => {
+    const newRow = contactToPartyRow(created);
+    setRows((prev) => {
+      // Add new row and re-sort by displayName (default sort)
+      const updated = [newRow, ...prev];
+      return updated.sort((a, b) =>
+        a.displayName.localeCompare(b.displayName, undefined, { sensitivity: "base" })
+      );
+    });
+  }, []);
+
+  // Handler for when an organization is created
+  const handleOrganizationCreated = React.useCallback((created: any) => {
+    const newRow = organizationToPartyRow(created);
+    setRows((prev) => {
+      // Add new row and re-sort by displayName (default sort)
+      const updated = [newRow, ...prev];
+      return updated.sort((a, b) =>
+        a.displayName.localeCompare(b.displayName, undefined, { sensitivity: "base" })
+      );
+    });
+  }, []);
+
+  // Unified details config that handles BOTH contacts and organizations
+  // Uses partyId as the canonical ID param
+  const detailsConfig = React.useMemo(
+    () => ({
+      idParam: "partyId",
+      getRowId: (r: PartyTableRow) => r.partyId,
+      width: 820,
+      placement: "center" as const,
+      align: "top" as const,
+      fetchRow: async (id: number | string) => {
+        // Find the row to determine if it's a contact or org
+        const row =
+          rows.find((r) => r.partyId === Number(id)) ??
+          rowCacheRef.current.get(String(id));
+        if (!row) {
+          return {
+            partyId: Number(id),
+            kind: "CONTACT",
+            displayName: `Party ${id}`,
+            tags: [],
+          } as PartyTableRow;
+        }
+
+        if (row.kind === "CONTACT" && row.contactId) {
+          const raw = await api.contacts.get(row.contactId);
+          return contactToPartyRow(raw);
+        } else if (row.kind === "ORGANIZATION" && row.organizationId) {
+          const raw = await api.organizations.get(row.organizationId);
+          return organizationToPartyRow(raw);
+        }
+        return row;
+      },
+      header: (r: PartyTableRow) => ({
+        title: r.kind === "ORGANIZATION" ? (r.name || r.displayName) : r.displayName,
+        subtitle: r.kind === "CONTACT"
+          ? (r.email || r.phone || "")
+          : (r.email || r.phone || r.website || ""),
+      }),
+      tabs: [
+        { key: "overview", label: "Overview" },
+        { key: "animals", label: "Animals" },
+        { key: "audit", label: "Audit" },
+      ],
+      customChrome: true, // Use custom chrome with DetailsScaffold
+      render: (props: any) => <PartyDetailsView {...props} />,
+      onSave: async (id: number | string, draft: any) => {
+        const row = rows.find((r) => r.partyId === Number(id));
+        if (!row) return;
+
+        if (row.kind === "CONTACT" && row.contactId) {
+          await api.contacts.update(row.contactId, draft);
+          const updated = await api.contacts.get(row.contactId);
+          const updatedRow = contactToPartyRow(updated);
+          // Preserve the original partyId to prevent key collision
+          updatedRow.partyId = row.partyId;
+          applyRowUpdate(updatedRow);
+        } else if (row.kind === "ORGANIZATION" && row.organizationId) {
+          await api.organizations.update(row.organizationId, draft);
+          const updated = await api.organizations.get(row.organizationId);
+          const updatedRow = organizationToPartyRow(updated);
+          // Preserve the original partyId to prevent key collision
+          updatedRow.partyId = row.partyId;
+          applyRowUpdate(updatedRow);
+        }
+      },
+    }),
+    [api, rows, applyRowUpdate]
+  );
+
   return (
     <div className="p-4 space-y-4">
       {/* Header */}
-      <div className="relative">
-        <PageHeader title="Contacts" subtitle="Unified contacts and organizations" />
-        <div
-          className="absolute right-0 top-0 h-full flex items-center gap-2 pr-1"
-          style={{ zIndex: 5, pointerEvents: "auto" }}
+      <PageHeader
+        title="Contacts"
+        subtitle="Unified contacts and organizations"
+        actions={
+          <>
+            {/* Unified New button with dropdown */}
+            <Button
+              ref={newButtonRef}
+              size="sm"
+              className="gap-1"
+              onClick={() => setNewButtonOpen(true)}
+            >
+              New
+              <ChevronDown className="h-3 w-3" />
+            </Button>
+
+            <Button
+              ref={menuButtonRef}
+              size="sm"
+              variant="outline"
+              aria-label="More actions"
+              onClick={() => setMenuOpen(true)}
+            >
+              <MoreHorizontal className="h-4 w-4" />
+            </Button>
+          </>
+        }
+      />
+
+      {/* New button popover */}
+      <Popover
+        anchorRef={newButtonRef}
+        open={newButtonOpen}
+        onClose={() => setNewButtonOpen(false)}
+        width={200}
+        estHeight={120}
+      >
+        <button
+          className="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-white/5 rounded"
+          onClick={() => {
+            setNewButtonOpen(false);
+            setCreatePersonOpen(true);
+          }}
         >
-          <Popover open={menuOpen} onOpenChange={setMenuOpen}>
-            <Popover.Trigger asChild>
-              <Button size="sm" variant="outline" aria-label="More actions">
-                <MoreHorizontal className="h-4 w-4" />
-              </Button>
-            </Popover.Trigger>
-            <Popover.Content align="end" className="w-48">
-              <button
-                className="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-white/5 rounded"
-                onClick={handleExportCsv}
-              >
-                <Download className="h-4 w-4" />
-                Export CSV
-              </button>
-            </Popover.Content>
-          </Popover>
-        </div>
-      </div>
+          New person
+        </button>
+        <button
+          className="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-white/5 rounded"
+          onClick={() => {
+            setNewButtonOpen(false);
+            setCreateBusinessOpen(true);
+          }}
+        >
+          New business
+        </button>
+      </Popover>
+
+      {/* Menu popover */}
+      <Popover
+        anchorRef={menuButtonRef}
+        open={menuOpen}
+        onClose={() => setMenuOpen(false)}
+        width={200}
+        estHeight={100}
+      >
+        <button
+          className="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-white/5 rounded"
+          onClick={handleExportCsv}
+        >
+          <Download className="h-4 w-4" />
+          Export CSV
+        </button>
+      </Popover>
 
       <Card>
-        <Table
-          columns={PARTY_COLUMNS}
-          columnState={map}
-          onColumnStateChange={setAll}
-          getRowId={(r: PartyTableRow) => r.partyId}
-          pageSize={pageSize}
-          renderStickyRight={() => (
-            <ColumnsPopover
-              columns={map}
-              onToggle={toggle}
-              onSet={setAll}
-              allColumns={PARTY_COLUMNS}
-              triggerClassName="bhq-columns-trigger"
-            />
-          )}
-          stickyRightWidthPx={40}
-        >
+        <DetailsHost rows={rows} config={detailsConfig}>
+          <Table
+            columns={PARTY_COLUMNS}
+            columnState={map}
+            onColumnStateChange={setAll}
+            getRowId={(r: PartyTableRow) => r.partyId}
+            pageSize={pageSize}
+            renderStickyRight={() => (
+              <ColumnsPopover
+                columns={map}
+                onToggle={toggle}
+                onSet={setAll}
+                allColumns={PARTY_COLUMNS}
+                triggerClassName="bhq-columns-trigger"
+              />
+            )}
+            stickyRightWidthPx={40}
+          >
           {/* Toolbar */}
           <div className="bhq-table__toolbar px-2 pt-2 pb-3 relative z-30">
             <SearchBar
@@ -353,69 +729,12 @@ export default function AppContactsParty() {
           <table className="min-w-max w-full text-sm">
             <TableHeader columns={visibleSafe} sorts={sorts} onToggleSort={onToggleSort} />
             <tbody>
-              {loading && (
-                <TableRow>
-                  <TableCell colSpan={visibleSafe.length}>
-                    <div className="py-8 text-center text-sm text-secondary">Loading...</div>
-                  </TableCell>
-                </TableRow>
-              )}
-
-              {!loading && error && (
-                <TableRow>
-                  <TableCell colSpan={visibleSafe.length}>
-                    <div className="py-8 text-center text-sm text-red-600">Error: {error}</div>
-                  </TableCell>
-                </TableRow>
-              )}
-
-              {!loading && !error && pageRows.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={visibleSafe.length}>
-                    <div className="py-8 text-center text-sm text-secondary">
-                      No entries found.
-                    </div>
-                  </TableCell>
-                </TableRow>
-              )}
-
-              {!loading &&
-                !error &&
-                pageRows.length > 0 &&
-                pageRows.map((r) => (
-                  <TableRow
-                    key={r.partyId}
-                    className="cursor-pointer hover:bg-white/5"
-                    onClick={() => openPartyDrawer(r)}
-                  >
-                    {visibleSafe.map((c) => {
-                      let v: any = (r as any)[c.key];
-
-                      // Special rendering for kind
-                      if (c.key === "kind") {
-                        return (
-                          <TableCell key={c.key}>
-                            <Badge variant={v === "CONTACT" ? "default" : "secondary"}>
-                              {v === "CONTACT" ? "Contact" : "Organization"}
-                            </Badge>
-                          </TableCell>
-                        );
-                      }
-
-                      // Date formatting
-                      if (c.key === "created_at" || c.key === "updated_at") {
-                        v = fmt(v);
-                      }
-
-                      // Array formatting
-                      if (Array.isArray(v)) {
-                        v = v.join(", ");
-                      }
-
-                      return <TableCell key={c.key}>{v ?? ""}</TableCell>;
-                    })}
-                  </TableRow>
-                ))}
+              <PartyTableBody
+                pageRows={pageRows}
+                visibleSafe={visibleSafe}
+                loading={loading}
+                error={error}
+              />
             </tbody>
           </table>
 
@@ -441,7 +760,22 @@ export default function AppContactsParty() {
             }}
           />
         </Table>
+        </DetailsHost>
       </Card>
+
+      {/* Creation overlays */}
+      <CreatePersonOverlay
+        open={createPersonOpen}
+        onOpenChange={setCreatePersonOpen}
+        onCreated={handleContactCreated}
+        existingContacts={rows.filter((r) => r.kind === "CONTACT") as any[]}
+      />
+
+      <CreateBusinessOverlay
+        open={createBusinessOpen}
+        onOpenChange={setCreateBusinessOpen}
+        onCreated={handleOrganizationCreated}
+      />
     </div>
   );
 }

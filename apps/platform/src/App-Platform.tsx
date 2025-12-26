@@ -13,8 +13,7 @@ import "@bhq/ui/styles/table.css";
 ; (window as any).__BHQ_OVERLAY_MODE = "global";
 
 // Modules
-import AppContacts from "@bhq/contacts/App-Contacts";
-import AppOrganizations from "@bhq/organizations/App-Organizations";
+import AppContactsParty from "@bhq/contacts/App-Contacts-Party";
 import AppAnimals from "@bhq/animals/App-Animals";
 import AppBreeding from "@bhq/breeding/App-Breeding";
 import AppOffspring from "@bhq/offspring/App-Offspring";
@@ -28,7 +27,7 @@ import DashboardPage from "./pages/Dashboard";
 import SettingsPanel from "./pages/SettingsPanel";
 
 // Lightweight "current module" state (key + label)
-type ActiveModule = { key: "dashboard" | "contacts" | "organizations" | "animals" | "breeding" | "offspring" | "marketplace" | "marketing" | "finance" | "admin"; label: string };
+type ActiveModule = { key: "dashboard" | "contacts" | "animals" | "breeding" | "offspring" | "marketplace" | "marketing" | "finance" | "admin"; label: string };
 const DEFAULT_MODULE: ActiveModule = { key: "dashboard", label: "Dashboard" };
 
 type AuthState = {
@@ -143,8 +142,8 @@ function RouteView() {
   const p = path.endsWith("/") ? path.slice(0, -1) : path;
 
   if (p === "" || p === "/") return <DashboardPage />;
-  if (p === "/contacts" || p.startsWith("/contacts")) return <AppContacts />;
-  if (p === "/organizations" || p.startsWith("/organizations")) return <AppOrganizations />;
+  if (p === "/contacts" || p.startsWith("/contacts")) return <AppContactsParty />;
+  if (p === "/organizations" || p.startsWith("/organizations")) return <AppContactsParty />;
   if (p === "/animals" || p.startsWith("/animals")) return <AppAnimals />;
   if (p === "/breeding" || p.startsWith("/breeding")) return <AppBreeding />;
   if (p === "/offspring" || p.startsWith("/offspring")) return <AppOffspring />;
@@ -323,7 +322,6 @@ export default function AppPlatform() {
             navItems={[
               { key: "dashboard", label: "Dashboard", href: "/", icon: "home" },
               { key: "contacts", label: "Contacts", href: "/contacts", icon: "contacts" },
-              { key: "organizations", label: "Organizations", href: "/organizations", icon: "organizations" },
               { key: "animals", label: "Animals", href: "/animals", icon: "animals" },
               { key: "breeding", label: "Breeding", href: "/breeding", icon: "breeding" },
               { key: "offspring", label: "Offspring", href: "/offspring", icon: "offspring" },

@@ -60,6 +60,16 @@ export function DetailsHost<T>({
   const [activeTab, setActiveTab] = React.useState(config.tabs?.[0]?.key ?? "overview");
   const [draft, setDraft] = React.useState<Partial<T>>({});
   const draftRef = React.useRef<Partial<T>>({});
+  const setDraftSafe = React.useCallback((next: React.SetStateAction<Partial<T>>) => {
+    if (typeof next === "function") {
+      const resolved = (next as (p: Partial<T>) => Partial<T>)(draftRef.current);
+      draftRef.current = resolved;
+      setDraft(resolved);
+      return;
+    }
+    draftRef.current = next;
+    setDraft(next);
+  }, []);
   React.useEffect(() => { draftRef.current = draft; }, [draft]);
 
   // Track whether there are pending unsaved changes
@@ -83,7 +93,7 @@ export function DetailsHost<T>({
       setOpenRow(local);
     }
     setMode("view");
-    setDraft({});
+    setDraftSafe({});
     setActiveTab(config.tabs?.[0]?.key ?? "overview");
   }, [openId, rows, config]);
 
@@ -91,7 +101,7 @@ export function DetailsHost<T>({
     if (!config.onSave || !openRow) return;
     await config.onSave(config.getRowId(openRow), draftRef.current);
     setMode("view");
-    setDraft({});
+    setDraftSafe({});
   }, [config, openRow]);
 
   const handleClose = React.useCallback(async () => {
@@ -139,7 +149,7 @@ export function DetailsHost<T>({
                   <DrawerActions
                     mode={mode}
                     onEdit={() => setMode("edit")}
-                    onCancel={() => { setMode("view"); setDraft({}); }}
+                    onCancel={() => { setMode("view"); setDraftSafe({}); }}
                     onSave={requestSave}
                   />
                 ) : undefined}
@@ -158,7 +168,7 @@ export function DetailsHost<T>({
             setMode,
             activeTab,
             setActiveTab,
-            setDraft,
+            setDraft: setDraftSafe,
             requestSave,
             close: handleClose,
             hasPendingChanges,

@@ -9,6 +9,9 @@ type Props = {
 
 type Hit = {
   id: number;
+  partyId?: number | null;
+  organizationId?: number | null;
+  contactId?: number | null;
   name: string;
   kind: "Organization" | "Contact";
 };
@@ -36,17 +39,35 @@ export function OwnershipEditor({ api, value, onChange }: Props) {
       .then(([orgs, contacts]) => {
         if (!alive) return;
 
-        const orgRows: Hit[] = (orgs || []).map((o: any) => ({
-          id: Number(o.id),
-          name: String(o.name ?? o.display_name ?? o.title ?? ""),
-          kind: "Organization",
-        }));
+        const orgRows: Hit[] = (orgs || []).map((o: any) => {
+          const partyIdRaw = o.partyId ?? o.party_id ?? o.id;
+          const partyId = Number.isFinite(Number(partyIdRaw))
+            ? Number(partyIdRaw)
+            : null;
+          const backing = o.backing ?? o.party?.backing ?? null;
+          return {
+            id: partyId ?? Number(o.id),
+            partyId,
+            organizationId:
+              backing?.organizationId ?? o.organizationId ?? null,
+            name: String(o.name ?? o.display_name ?? o.title ?? ""),
+            kind: "Organization",
+          };
+        });
 
         const contactRows: Hit[] = (contacts || []).map((c: any) => {
+          const partyIdRaw = c.partyId ?? c.party_id ?? c.id;
+          const partyId = Number.isFinite(Number(partyIdRaw))
+            ? Number(partyIdRaw)
+            : null;
+          const backing = c.backing ?? c.party?.backing ?? null;
           const fallback =
-            `${c.first_name ?? ""} ${c.last_name ?? ""}`.trim() || c.email;
+            `${c.first_name ?? c.firstName ?? ""} ${c.last_name ?? c.lastName ?? ""}`.trim() ||
+            c.email;
           return {
-            id: Number(c.id),
+            id: partyId ?? Number(c.id),
+            partyId,
+            contactId: backing?.contactId ?? c.contactId ?? null,
             name: String(c.name ?? c.display_name ?? fallback ?? ""),
             kind: "Contact",
           };
@@ -110,20 +131,25 @@ export function OwnershipEditor({ api, value, onChange }: Props) {
   // -------- CRUD helpers --------
   function add(hit: Hit) {
     const isFirst = value.length === 0;
+    const partyId = Number.isFinite(Number(hit.partyId ?? hit.id))
+      ? Number(hit.partyId ?? hit.id)
+      : null;
 
     const row: OwnershipRow =
       hit.kind === "Organization"
         ? {
+            partyId,
             partyType: "Organization",
-            organizationId: hit.id,
+            organizationId: hit.organizationId ?? null,
             contactId: null,
             display_name: hit.name,
             is_primary: isFirst,
             percent: isFirst ? 100 : undefined,
           }
         : {
+            partyId,
             partyType: "Contact",
-            contactId: hit.id,
+            contactId: hit.contactId ?? null,
             organizationId: null,
             display_name: hit.name,
             is_primary: isFirst,

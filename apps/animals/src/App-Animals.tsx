@@ -71,6 +71,7 @@ function getPlaceholderForSpecies(species?: string | null): string {
  * Types & utils
  * ─────────────────────────────────────────────────────────────────────── */
 type OwnershipRow = {
+  partyId?: number | null;
   partyType: "Organization" | "Contact";
   organizationId?: number | null;
   contactId?: number | null;
@@ -78,6 +79,26 @@ type OwnershipRow = {
   is_primary?: boolean;
   percent?: number;
 };
+
+function normalizeOwnerPartyType(raw: any, owner?: any): "Organization" | "Contact" {
+  const kind = owner?.kind ?? owner?.partyType ?? owner?.type ?? raw;
+  const orgId =
+    owner?.organizationId ??
+    owner?.organization?.id ??
+    owner?.party?.backing?.organizationId ??
+    null;
+  const contactId =
+    owner?.contactId ??
+    owner?.contact?.id ??
+    owner?.party?.backing?.contactId ??
+    null;
+  if (orgId != null) return "Organization";
+  if (contactId != null) return "Contact";
+  const v = String(kind ?? "").toLowerCase();
+  if (v.includes("org")) return "Organization";
+  if (v.includes("contact") || v.includes("person")) return "Contact";
+  return "Contact";
+}
 
 type AnimalRow = {
   id: number;
@@ -897,7 +918,14 @@ function PhotoEditorModal({
 }
 
 
-type Hit = { id: number; name: string; kind: "Organization" | "Contact" };
+type Hit = {
+  id: number;
+  partyId?: number | null;
+  organizationId?: number | null;
+  contactId?: number | null;
+  name: string;
+  kind: "Organization" | "Contact";
+};
 
 function OwnershipDetailsEditor({
   row,
@@ -908,7 +936,14 @@ function OwnershipDetailsEditor({
   setDraft: (p: Partial<AnimalRow>) => void;
   ownershipLookups: any;
 }) {
-  type Hit = { id: number; name: string; kind: "Organization" | "Contact" };
+  type Hit = {
+    id: number;
+    partyId?: number | null;
+    organizationId?: number | null;
+    contactId?: number | null;
+    name: string;
+    kind: "Organization" | "Contact";
+  };
 
   const [owners, setOwners] = React.useState<OwnershipRow[]>(
     () => (((row as any).owners) ?? []) as OwnershipRow[]
@@ -927,18 +962,30 @@ function OwnershipDetailsEditor({
 
   // Lookup helper
   function ownerKey(o: OwnershipRow, idx: number) {
-    const id = o.organizationId ?? o.contactId ?? idx;
+    const id = o.partyId ?? o.organizationId ?? o.contactId ?? idx;
     return `${o.partyType}:${id}`;
   }
 
   function ownerDisplay(o: any): string {
     return (
       o.display_name ||
+      o.displayName ||
       o.name ||
+      o.party?.displayName ||
+      o.party?.display_name ||
       o.party_name ||
       (o.contact && o.contact.display_name) ||
       ""
     );
+  }
+
+  function hasRealOwner(rows: OwnershipRow[]) {
+    return rows.some((o) => {
+      const partyId = o.partyId ?? (o as any).partyId ?? null;
+      const orgId = o.organizationId ?? (o as any).organization?.id ?? null;
+      const contactId = o.contactId ?? (o as any).contact?.id ?? null;
+      return partyId != null || orgId != null || contactId != null;
+    });
   }
 
   function normalize(nextRows: OwnershipRow[]) {
@@ -981,26 +1028,33 @@ function OwnershipDetailsEditor({
   }
 
   function addHit(hit: Hit) {
+    const isFirstReal = !hasRealOwner(owners);
+    const partyId = Number.isFinite(Number(hit.partyId ?? hit.id))
+      ? Number(hit.partyId ?? hit.id)
+      : null;
     const row: OwnershipRow =
       hit.kind === "Organization"
         ? {
+          partyId,
           partyType: "Organization",
-          organizationId: hit.id,
+          organizationId: hit.organizationId ?? null,
           contactId: null,
           display_name: hit.name,
-          is_primary: owners.length === 0,
-          percent: owners.length === 0 ? 100 : undefined,
+          is_primary: isFirstReal,
+          percent: isFirstReal ? 100 : undefined,
         }
         : {
+          partyId,
           partyType: "Contact",
-          contactId: hit.id,
+          contactId: hit.contactId ?? null,
           organizationId: null,
           display_name: hit.name,
-          is_primary: owners.length === 0,
-          percent: owners.length === 0 ? 100 : undefined,
+          is_primary: isFirstReal,
+          percent: isFirstReal ? 100 : undefined,
         };
 
-    normalize([...owners, row]);
+    const next = isFirstReal ? [row] : [...owners, row];
+    normalize(next);
     setQ("");
     setHits([]);
     setSelectedKey(null);
@@ -1084,16 +1138,37 @@ function OwnershipDetailsEditor({
       .then(([orgs, contacts]) => {
         if (!alive) return;
         const rows: Hit[] = [
-          ...(orgs || []).map((o: any) => ({
-            id: Number(o.id),
-            name: String(o.name),
-            kind: "Organization" as const,
-          })),
-          ...(contacts || []).map((c: any) => ({
-            id: Number(c.id),
-            name: String(c.name),
-            kind: "Contact" as const,
-          })),
+          ...(orgs || []).map((o: any) => {
+            const partyIdRaw = o.partyId ?? o.party_id ?? o.id;
+            const partyId = Number.isFinite(Number(partyIdRaw))
+              ? Number(partyIdRaw)
+              : null;
+            const backing = o.backing ?? o.party?.backing ?? null;
+            const name = String(o.name ?? o.display_name ?? o.displayName ?? "");
+            return {
+              id: partyId ?? Number(o.id),
+              partyId,
+              organizationId:
+                backing?.organizationId ?? o.organizationId ?? null,
+              name,
+              kind: "Organization" as const,
+            };
+          }),
+          ...(contacts || []).map((c: any) => {
+            const partyIdRaw = c.partyId ?? c.party_id ?? c.id;
+            const partyId = Number.isFinite(Number(partyIdRaw))
+              ? Number(partyIdRaw)
+              : null;
+            const backing = c.backing ?? c.party?.backing ?? null;
+            const name = String(c.name ?? c.display_name ?? c.displayName ?? "");
+            return {
+              id: partyId ?? Number(c.id),
+              partyId,
+              contactId: backing?.contactId ?? c.contactId ?? null,
+              name,
+              kind: "Contact" as const,
+            };
+          }),
         ];
         setHits(rows);
       })
@@ -1289,8 +1364,8 @@ function OwnershipDetailsEditor({
                   (r) =>
                     r === o ||
                     (r.partyType === o.partyType &&
-                      r.organizationId === o.organizationId &&
-                      r.contactId === o.contactId)
+                      (r.partyId ?? r.organizationId ?? r.contactId) ===
+                        (o.partyId ?? o.organizationId ?? o.contactId))
                 );
                 const key = ownerKey(o, originalIndex);
 
@@ -2034,62 +2109,45 @@ export default function AppAnimals() {
       }
 
       type NormalizedDesired = {
-        partyType: "Organization" | "Contact";
-        organizationId: number | null;
-        contactId: number | null;
+        partyId: number;
         percent: number;
         isPrimary: boolean;
       };
 
       type ExistingOwner = {
         id: number;
-        partyType: "Organization" | "Contact";
-        percent: number | null;
-        isPrimary: boolean;
-        organization: { id: number | null } | null;
-        contact: { id: number | null } | null;
+        partyId?: number | null;
+        percent?: number | null;
+        isPrimary?: boolean;
+        is_primary?: boolean;
+        primary?: boolean;
+        party?: { id?: number | null } | null;
       };
 
-      const normalizeDesired = (r: OwnershipRow): NormalizedDesired => {
-        const isOrg = r.partyType === "Organization";
-
-        const orgIdRaw = isOrg
-          ? r.organizationId ?? (r as any).organization?.id ?? null
+      const normalizeDesired = (r: OwnershipRow): NormalizedDesired | null => {
+        const partyIdRaw = r.partyId ?? (r as any).partyId ?? null;
+        const partyId = Number.isFinite(Number(partyIdRaw))
+          ? Number(partyIdRaw)
           : null;
-        const contactIdRaw = !isOrg
-          ? r.contactId ?? (r as any).contact?.id ?? null
-          : null;
-
-        const orgId = orgIdRaw != null ? Number(orgIdRaw) : null;
-        const contactId = contactIdRaw != null ? Number(contactIdRaw) : null;
-
+        if (partyId == null) return null;
         const pct = typeof r.percent === "number" ? r.percent : 0;
         const isPrimary = !!r.is_primary;
 
         return {
-          partyType: r.partyType,
-          organizationId: orgId,
-          contactId,
+          partyId,
           percent: pct,
           isPrimary,
         };
       };
 
       const keyExisting = (e: ExistingOwner): string => {
-        if (e.partyType === "Organization") {
-          const id = e.organization?.id;
-          return id != null ? `org:${id}` : "org:";
-        }
-        const id = e.contact?.id;
-        return id != null ? `ct:${id}` : "ct:";
+        const partyId =
+          e.partyId ?? (e as any).party_id ?? e.party?.id ?? null;
+        return partyId != null ? String(partyId) : "";
       };
 
-      const keyDesired = (d: NormalizedDesired): string => {
-        if (d.partyType === "Organization") {
-          return d.organizationId != null ? `org:${d.organizationId}` : "org:";
-        }
-        return d.contactId != null ? `ct:${d.contactId}` : "ct:";
-      };
+      const keyDesired = (d: NormalizedDesired): string =>
+        String(d.partyId);
 
       let existing: ExistingOwner[] = [];
       try {
@@ -2101,11 +2159,18 @@ export default function AppAnimals() {
         existing = [];
       }
 
-      const desiredNorm = rows.map(normalizeDesired);
+      const desiredNorm = rows
+        .map(normalizeDesired)
+        .filter((d): d is NormalizedDesired => !!d);
+
+      if (!desiredNorm.length) {
+        return;
+      }
 
       const existingByKey = new Map<string, ExistingOwner>();
       for (const e of existing) {
-        existingByKey.set(keyExisting(e), e);
+        const key = keyExisting(e);
+        if (key) existingByKey.set(key, e);
       }
 
       const desiredByKey = new Map<string, NormalizedDesired>();
@@ -2115,7 +2180,7 @@ export default function AppAnimals() {
 
       for (const e of existing) {
         const key = keyExisting(e);
-        if (!desiredByKey.has(key) && e.id != null) {
+        if (key && !desiredByKey.has(key) && e.id != null) {
           try {
             await api.animals.owners.remove(animalId, e.id);
           } catch {
@@ -2128,15 +2193,11 @@ export default function AppAnimals() {
         const e = existingByKey.get(key);
 
         const payload: {
-          partyType: "Organization" | "Contact";
-          organizationId?: number | null;
-          contactId?: number | null;
+          partyId: number;
           percent: number;
           isPrimary?: boolean;
         } = {
-          partyType: d.partyType,
-          organizationId: d.organizationId,
-          contactId: d.contactId,
+          partyId: d.partyId,
           percent: d.percent,
           isPrimary: d.isPrimary,
         };
@@ -2148,10 +2209,15 @@ export default function AppAnimals() {
           }
         } else {
           const patch: Partial<typeof payload> = {};
-          if ((e.percent ?? 0) !== d.percent) {
+          const existingPercent =
+            typeof e.percent === "number" ? e.percent : 0;
+          const existingPrimary = !!(
+            e.isPrimary ?? e.is_primary ?? e.primary
+          );
+          if (existingPercent !== d.percent) {
             patch.percent = d.percent;
           }
-          if (!!e.isPrimary !== d.isPrimary) {
+          if (existingPrimary !== d.isPrimary) {
             patch.isPrimary = d.isPrimary;
           }
           if (Object.keys(patch).length) {
@@ -2175,7 +2241,14 @@ export default function AppAnimals() {
           : (raw as any)?.rows ?? (raw as any)?.items ?? [];
 
         return (arr as any[]).map((c) => {
-          const nameFromNames = [c.first_name, c.last_name]
+          const partyIdRaw = c.partyId ?? c.party_id ?? c.id;
+          const partyId = Number.isFinite(Number(partyIdRaw))
+            ? Number(partyIdRaw)
+            : null;
+          const backing = c.backing ?? c.party?.backing ?? null;
+          const contactId =
+            backing?.contactId ?? c.contactId ?? c.contact_id ?? null;
+          const nameFromNames = [c.first_name ?? c.firstName, c.last_name ?? c.lastName]
             .filter(Boolean)
             .join(" ");
 
@@ -2190,6 +2263,9 @@ export default function AppAnimals() {
 
           return {
             ...c,
+            id: partyId ?? c.id,
+            partyId,
+            contactId,
             display_name: name,
             label: name,
             name,
@@ -2206,6 +2282,16 @@ export default function AppAnimals() {
           : (raw as any)?.rows ?? (raw as any)?.items ?? [];
 
         return (arr as any[]).map((org) => {
+          const partyIdRaw = org.partyId ?? org.party_id ?? org.id;
+          const partyId = Number.isFinite(Number(partyIdRaw))
+            ? Number(partyIdRaw)
+            : null;
+          const backing = org.backing ?? org.party?.backing ?? null;
+          const organizationId =
+            backing?.organizationId ??
+            org.organizationId ??
+            org.organization_id ??
+            null;
           const name =
             org.display_name ??
             org.displayName ??
@@ -2216,6 +2302,9 @@ export default function AppAnimals() {
 
           return {
             ...org,
+            id: partyId ?? org.id,
+            partyId,
+            organizationId,
             display_name: name,
             label: name,
             name,
@@ -2331,15 +2420,33 @@ export default function AppAnimals() {
 
               owners = items.map(
                 (o: any): OwnershipRow => ({
-                  partyType:
-                    o.partyType === "Organization"
-                      ? "Organization"
-                      : "Contact",
-                  organizationId: o.organization?.id ?? null,
-                  contactId: o.contact?.id ?? null,
+                  partyType: normalizeOwnerPartyType(
+                    o.kind ?? o.partyType ?? o.type,
+                    o
+                  ),
+                  partyId: Number.isFinite(Number(o.partyId ?? o.party_id ?? o.party?.id))
+                    ? Number(o.partyId ?? o.party_id ?? o.party?.id)
+                    : null,
+                  organizationId:
+                    o.organization?.id ??
+                    o.organizationId ??
+                    o.party?.backing?.organizationId ??
+                    null,
+                  contactId:
+                    o.contact?.id ??
+                    o.contactId ??
+                    o.party?.backing?.contactId ??
+                    null,
                   display_name:
-                    o.organization?.name ?? o.contact?.name ?? "",
-                  is_primary: !!o.isPrimary,
+                    o.displayName ??
+                    o.display_name ??
+                    o.party?.displayName ??
+                    o.party?.display_name ??
+                    o.organization?.name ??
+                    o.contact?.name ??
+                    o.name ??
+                    "",
+                  is_primary: !!(o.isPrimary ?? o.is_primary ?? o.primary),
                   percent:
                     typeof o.percent === "number" ? o.percent : undefined,
                 })
@@ -2770,15 +2877,33 @@ export default function AppAnimals() {
 
           owners = items.map(
             (o: any): OwnershipRow => ({
-              partyType:
-                o.partyType === "Organization"
-                  ? "Organization"
-                  : "Contact",
-              organizationId: o.organization?.id ?? null,
-              contactId: o.contact?.id ?? null,
+              partyType: normalizeOwnerPartyType(
+                o.kind ?? o.partyType ?? o.type,
+                o
+              ),
+              partyId: Number.isFinite(Number(o.partyId ?? o.party_id ?? o.party?.id))
+                ? Number(o.partyId ?? o.party_id ?? o.party?.id)
+                : null,
+              organizationId:
+                o.organization?.id ??
+                o.organizationId ??
+                o.party?.backing?.organizationId ??
+                null,
+              contactId:
+                o.contact?.id ??
+                o.contactId ??
+                o.party?.backing?.contactId ??
+                null,
               display_name:
-                o.organization?.name ?? o.contact?.name ?? "",
-              is_primary: !!o.isPrimary,
+                o.displayName ??
+                o.display_name ??
+                o.party?.displayName ??
+                o.party?.display_name ??
+                o.organization?.name ??
+                o.contact?.name ??
+                o.name ??
+                "",
+              is_primary: !!(o.isPrimary ?? o.is_primary ?? o.primary),
               percent:
                 typeof o.percent === "number" ? o.percent : undefined,
             })
@@ -3392,19 +3517,29 @@ export default function AppAnimals() {
       if (toSaveOwners.length === 0) {
         const org = await safeGetCreatingOrg(api);
         if (org) {
-          toSaveOwners = [
-            {
-              partyType: "Organization",
-              organizationId: Number(org.id),
-              contactId: null,
-              display_name:
-                (org as any).display_name ||
-                (org as any).name ||
-                "My Organization",
-              is_primary: true,
-              percent: 100,
-            },
-          ];
+          const orgPartyIdRaw =
+            (org as any).partyId ?? (org as any).party_id ?? null;
+          const orgPartyId = Number.isFinite(Number(orgPartyIdRaw))
+            ? Number(orgPartyIdRaw)
+            : null;
+          if (orgPartyId == null) {
+            toSaveOwners = [];
+          } else {
+            toSaveOwners = [
+              {
+                partyId: orgPartyId,
+                partyType: "Organization",
+                organizationId: Number(org.id),
+                contactId: null,
+                display_name:
+                  (org as any).display_name ||
+                  (org as any).name ||
+                  "My Organization",
+                is_primary: true,
+                percent: 100,
+              },
+            ];
+          }
         }
       }
 

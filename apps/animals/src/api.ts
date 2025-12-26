@@ -132,40 +132,60 @@ export function makeApi(base?: string, extraHeadersFn?: () => Record<string, str
   /* ───────── Lookups used by editor UIs ───────── */
 
   const lookups = {
-    async getCreatingOrganization(): Promise<{ id: string; display_name: string } | null> {
+    async getCreatingOrganization(): Promise<{ id: string; display_name: string; partyId?: number | null } | null> {
       try {
         const id = localStorage.getItem("BHQ_ORG_ID");
         if (id) {
           const display_name = localStorage.getItem("BHQ_ORG_NAME") || "My Organization";
-          return { id: String(id), display_name: String(display_name) };
+          return { id: String(id), display_name: String(display_name), partyId: null };
         }
       } catch { }
       try {
         const data = await reqWithExtra<any>("/session");
         const org = data?.creatingOrganization || data?.organization || data?.org;
         if (org?.id != null) {
-          return { id: String(org.id), display_name: String(org.display_name || org.name || "Organization") };
+          const partyIdRaw = org.partyId ?? org.party_id ?? org.party?.id ?? null;
+          const partyId = Number.isFinite(Number(partyIdRaw)) ? Number(partyIdRaw) : null;
+          return {
+            id: String(org.id),
+            display_name: String(org.display_name || org.name || "Organization"),
+            partyId,
+          };
         }
       } catch { }
       return null;
     },
 
-    async searchContacts(q: string): Promise<Array<{ id: string | number; display_name: string }>> {
-      const data = await reqWithExtra<any>(`/contacts${spFrom({ q })}`);
+    async searchContacts(
+      q: string
+    ): Promise<Array<{ id: string | number; display_name: string; partyId?: number | null }>> {
+      const data = await reqWithExtra<any>(
+        `/parties${spFrom({ q, type: "PERSON", dir: "asc", limit: 50 })}`
+      );
       const items: any[] = Array.isArray(data?.items) ? data.items : Array.isArray(data) ? data : [];
-      return items.map(c => ({ id: c.id, display_name: c.display_name || c.name || c.full_name || "Contact" }));
+      return items.map((c) => {
+        const partyIdRaw = c.partyId ?? c.party_id ?? c.id;
+        const partyId = Number.isFinite(Number(partyIdRaw)) ? Number(partyIdRaw) : null;
+        const display_name =
+          c.displayName ?? c.display_name ?? c.name ?? c.full_name ?? "Contact";
+        return { ...c, id: partyId ?? c.id, partyId, display_name };
+      });
     },
 
-    async searchOrganizations(q: string): Promise<Array<{ id: string | number; display_name: string }>> {
-      try {
-        const data = await reqWithExtra<any>(`/organizations${spFrom({ q })}`);
-        const items: any[] = Array.isArray(data?.items) ? data.items : Array.isArray(data) ? data : [];
-        return items.map(o => ({ id: o.id, display_name: o.display_name || o.name || "Organization" }));
-      } catch {
-        const data = await reqWithExtra<any>(`/orgs${spFrom({ q })}`);
-        const items: any[] = Array.isArray(data?.items) ? data.items : Array.isArray(data) ? data : [];
-        return items.map(o => ({ id: o.id, display_name: o.display_name || o.name || "Organization" }));
-      }
+    async searchOrganizations(
+      q: string
+    ): Promise<Array<{ id: string | number; display_name: string; partyId?: number | null }>> {
+      const data = await reqWithExtra<any>(
+        `/parties${spFrom({ q, type: "ORGANIZATION", dir: "asc", limit: 50 })}`
+      );
+      const items: any[] = Array.isArray(data?.items) ? data.items : Array.isArray(data) ? data : [];
+      return items.map((o) => {
+        const partyIdRaw = o.partyId ?? o.party_id ?? o.id;
+        const partyId = Number.isFinite(Number(partyIdRaw)) ? Number(partyIdRaw) : null;
+        const display_name =
+          o.displayName ?? o.display_name ?? o.name ?? "Organization";
+        return { ...o, id: partyId ?? o.id, partyId, display_name };
+      });
     },
   };
 
@@ -183,11 +203,8 @@ export function makeApi(base?: string, extraHeadersFn?: () => Record<string, str
     return "Horse";
   };
 
-  type OwnerPartyType = "Organization" | "Contact";
   type OwnerRow = {
-    partyType: OwnerPartyType;
-    organizationId?: number | null;
-    contactId?: number | null;
+    partyId: number;
     percent: number;
     isPrimary?: boolean;
   };
@@ -274,7 +291,11 @@ export function makeApi(base?: string, extraHeadersFn?: () => Record<string, str
       async add(id: string | number, row: OwnerRow) {
         return reqWithExtra<any>(`/animals/${encodeURIComponent(String(id))}/owners`, { method: "POST", json: row });
       },
-      async update(id: string | number, ownerId: string | number, patch: Partial<OwnerRow>) {
+      async update(
+        id: string | number,
+        ownerId: string | number,
+        patch: Partial<Pick<OwnerRow, "percent" | "isPrimary">>
+      ) {
         return reqWithExtra<any>(
           `/animals/${encodeURIComponent(String(id))}/owners/${encodeURIComponent(String(ownerId))}`,
           { method: "PATCH", json: patch }
