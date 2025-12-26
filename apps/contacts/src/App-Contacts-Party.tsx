@@ -153,6 +153,44 @@ function isArchivedRow(row: PartyTableRow): boolean {
 }
 
 /**
+ * Format E164 phone number to display format with country code
+ * Matches the standard used in IntlPhoneField and drawer views
+ */
+function formatE164Phone(e164?: string | null): string {
+  if (!e164) return "";
+  const digits = e164.replace(/\D/g, "");
+
+  // US/NANP format: +1 (XXX) XXX-XXXX
+  if (digits.startsWith("1") && digits.length === 11) {
+    const local = digits.slice(1);
+    return `+1 (${local.slice(0, 3)}) ${local.slice(3, 6)}-${local.slice(6, 10)}`;
+  }
+
+  // Other countries: +XX XXXX XXXX (space-separated groups)
+  if (digits.length > 0) {
+    // Find country code (1-3 digits)
+    let ccLength = 1;
+    if (digits.length >= 2 && !digits.startsWith("1")) {
+      ccLength = digits.length >= 11 ? 2 : (digits.length >= 10 ? 1 : 2);
+    }
+
+    const cc = digits.slice(0, ccLength);
+    const rest = digits.slice(ccLength);
+
+    // Format rest in groups of 3-4 digits
+    const groups: string[] = [];
+    for (let i = 0; i < rest.length; i += (i === 0 ? 3 : 4)) {
+      const take = i === 0 ? 3 : 4;
+      groups.push(rest.slice(i, i + take));
+    }
+
+    return `+${cc} ${groups.join(" ")}`.trim();
+  }
+
+  return "";
+}
+
+/**
  * Convert Contact API response to PartyTableRow
  */
 function contactToPartyRow(c: any): PartyTableRow {
@@ -311,7 +349,7 @@ function PartyTableBody({
             if (c.key === "kind") cellStyle = { width: "140px", maxWidth: "140px" };
             else if (c.key === "displayName") cellStyle = { width: "280px", maxWidth: "280px" };
             else if (c.key === "email") cellStyle = { minWidth: "200px" };
-            else if (c.key === "phone") cellStyle = { minWidth: "140px" };
+            else if (c.key === "phone") cellStyle = { minWidth: "180px" };
             else if (c.key === "tags") cellStyle = { minWidth: "120px" };
 
             // Special rendering for kind
@@ -321,6 +359,13 @@ function PartyTableBody({
                   {v === "CONTACT" ? "Contact" : "Organization"}
                 </TableCell>
               );
+            }
+
+            // Phone formatting - use E164 format with country code
+            if (c.key === "phone") {
+              // Prefer phoneMobileE164, fallback to phone field
+              const phoneValue = r.phoneMobileE164 || r.phone || r.whatsappE164;
+              v = formatE164Phone(phoneValue);
             }
 
             // Date formatting
