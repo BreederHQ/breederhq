@@ -7,7 +7,14 @@ type Props = {
   onChange: (rows: OwnershipRow[]) => void;
 };
 
-type Hit = { id: number; name: string; kind: "Organization" | "Contact" };
+type Hit = {
+  id: number;
+  partyId?: number | null;
+  organizationId?: number | null;
+  contactId?: number | null;
+  name: string;
+  kind: "Organization" | "Contact";
+};
 
 export function OwnershipEditor({ api, value, onChange }: Props) {
   const [q, setQ] = React.useState("");
@@ -25,8 +32,30 @@ export function OwnershipEditor({ api, value, onChange }: Props) {
     ]).then(([orgs, contacts]) => {
       if (!alive) return;
       const rows: Hit[] = [
-        ...(orgs || []).map((o: any) => ({ id: Number(o.id), name: String(o.name), kind: "Organization" as const })),
-        ...(contacts || []).map((c: any) => ({ id: Number(c.id), name: String(c.name), kind: "Contact" as const })),
+        ...(orgs || []).map((o: any) => {
+          const partyIdRaw = o.partyId ?? o.party_id ?? o.id;
+          const partyId = Number.isFinite(Number(partyIdRaw)) ? Number(partyIdRaw) : null;
+          const backing = o.backing ?? o.party?.backing ?? null;
+          return {
+            id: partyId ?? Number(o.id),
+            partyId,
+            organizationId: backing?.organizationId ?? o.organizationId ?? null,
+            name: String(o.name),
+            kind: "Organization" as const,
+          };
+        }),
+        ...(contacts || []).map((c: any) => {
+          const partyIdRaw = c.partyId ?? c.party_id ?? c.id;
+          const partyId = Number.isFinite(Number(partyIdRaw)) ? Number(partyIdRaw) : null;
+          const backing = c.backing ?? c.party?.backing ?? null;
+          return {
+            id: partyId ?? Number(c.id),
+            partyId,
+            contactId: backing?.contactId ?? c.contactId ?? null,
+            name: String(c.name),
+            kind: "Contact" as const,
+          };
+        }),
       ];
       setHits(rows);
     }).finally(() => alive && setLoading(false));
@@ -34,9 +63,10 @@ export function OwnershipEditor({ api, value, onChange }: Props) {
   }, [q, api]);
 
   function add(hit: Hit) {
+    const partyId = Number.isFinite(Number(hit.partyId ?? hit.id)) ? Number(hit.partyId ?? hit.id) : null;
     const row: OwnershipRow = hit.kind === "Organization"
-      ? { partyType: "Organization", organizationId: hit.id, contactId: null, display_name: hit.name, is_primary: value.length === 0, percent: value.length === 0 ? 100 : undefined }
-      : { partyType: "Contact", contactId: hit.id, organizationId: null, display_name: hit.name, is_primary: value.length === 0, percent: value.length === 0 ? 100 : undefined };
+      ? { partyId, partyType: "Organization", organizationId: hit.organizationId ?? null, contactId: null, display_name: hit.name, is_primary: value.length === 0, percent: value.length === 0 ? 100 : undefined }
+      : { partyId, partyType: "Contact", contactId: hit.contactId ?? null, organizationId: null, display_name: hit.name, is_primary: value.length === 0, percent: value.length === 0 ? 100 : undefined };
     const next = [...value, row];
     normalize(next);
   }

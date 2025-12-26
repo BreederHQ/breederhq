@@ -114,6 +114,12 @@ function asISODateOnly(v: unknown): string | null {
   return null;
 }
 
+// Normalize a date value to yyyy-mm-dd or empty string for safe use in date inputs
+function normalizeDateISO(value: unknown): string {
+  const iso = asISODateOnly(value);
+  return iso ?? "";
+}
+
 // Normalize a wire species code. Returns an uppercase string or null.
 function normalizeSpeciesWire(v: unknown): SpeciesWire | null {
   if (typeof v !== "string") return null;
@@ -254,7 +260,10 @@ function computeExpectedForPlan(plan: { species?: string; lockedCycleStart?: str
 
 function DateField({ label, value, defaultValue, readOnly, onChange }: BHQDateFieldProps) {
   const isReadOnly = !!readOnly;
-  const current = value ?? defaultValue ?? "";
+  // Normalize to ensure only valid yyyy-mm-dd or empty string
+  const normalizedValue = normalizeDateISO(value);
+  const normalizedDefault = normalizeDateISO(defaultValue);
+  const current = normalizedValue || normalizedDefault;
 
   return (
     <div>
@@ -302,6 +311,108 @@ const toWireSpecies = (s: SpeciesUi | SpeciesWire | ""): SpeciesWire | undefined
   return undefined;
 };
 
+// ---- Unsaved Changes Helpers ----
+
+// All editable fields in a breeding plan
+const EDITABLE_PLAN_FIELDS: Array<keyof PlanRow> = [
+  "name",
+  "nickname",
+  "species",
+  "breedText",
+  "damId",
+  "sireId",
+  "expectedCycleStart",
+  "expectedHormoneTestingStart",
+  "expectedBreedDate",
+  "expectedBirthDate",
+  "expectedWeanedDate",
+  "expectedPlacementStartDate",
+  "expectedPlacementCompletedDate",
+  "cycleStartDateActual",
+  "hormoneTestingStartDateActual",
+  "breedDateActual",
+  "birthDateActual",
+  "weanedDateActual",
+  "placementStartDateActual",
+  "placementCompletedDateActual",
+  "completedDateActual",
+  "lockedCycleStart",
+  "lockedOvulationDate",
+  "lockedDueDate",
+  "lockedPlacementStartDate",
+  "notes",
+  "depositsCommitted",
+  "depositsPaid",
+  "depositRisk",
+  "femaleCycleLenOverrideDays",
+  "homingStartWeeksOverride",
+];
+
+// Date fields that need normalization
+const PLAN_DATE_FIELDS = new Set<keyof PlanRow>([
+  "expectedCycleStart",
+  "expectedHormoneTestingStart",
+  "expectedBreedDate",
+  "expectedBirthDate",
+  "expectedWeanedDate",
+  "expectedPlacementStartDate",
+  "expectedPlacementCompletedDate",
+  "cycleStartDateActual",
+  "hormoneTestingStartDateActual",
+  "breedDateActual",
+  "birthDateActual",
+  "weanedDateActual",
+  "placementStartDateActual",
+  "placementCompletedDateActual",
+  "completedDateActual",
+  "lockedCycleStart",
+  "lockedOvulationDate",
+  "lockedDueDate",
+  "lockedPlacementStartDate",
+]);
+
+// Normalize a value for comparison (handles dates, strings, nulls)
+function normalizeDraftValue(key: keyof PlanRow, value: any): any {
+  if (value === undefined) return null;
+  if (value === null) return null;
+
+  // Normalize dates to ISO format
+  if (PLAN_DATE_FIELDS.has(key)) {
+    return asISODateOnly(value);
+  }
+
+  // Trim strings
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed === "" ? null : trimmed;
+  }
+
+  return value;
+}
+
+// Build a normalized snapshot from a PlanRow for comparison
+function buildPlanSnapshot(source: PlanRow): Partial<PlanRow> {
+  const snapshot: Partial<PlanRow> = {};
+  for (const key of EDITABLE_PLAN_FIELDS) {
+    const value = (source as any)[key];
+    (snapshot as any)[key] = normalizeDraftValue(key, value);
+  }
+  return snapshot;
+}
+
+// Returns only the fields that differ from the snapshot
+function prunePlanDraft(draft: Partial<PlanRow>, snapshot: Partial<PlanRow>): Partial<PlanRow> {
+  const changed: Partial<PlanRow> = {};
+  for (const key of Object.keys(draft) as Array<keyof PlanRow>) {
+    const draftVal = normalizeDraftValue(key, (draft as any)[key]);
+    const snapshotVal = (snapshot as any)[key];
+    if (draftVal !== snapshotVal) {
+      (changed as any)[key] = (draft as any)[key];
+    }
+  }
+  return changed;
+}
+
 type PlanRow = {
   id: ID;
   name: string;
@@ -348,6 +459,8 @@ type PlanRow = {
   depositRisk?: number | null;
 
   archived?: boolean;
+  archivedAt?: string | null;
+  deletedAt?: string | null;
 
   notes?: string | null;
 
@@ -712,6 +825,8 @@ function planToRow(p: any): PlanRow {
     depositRisk: p.depositRiskScore ?? null,
 
     archived: p.archived ?? false,
+    archivedAt: p.archivedAt ?? p.archived_at ?? null,
+    deletedAt: p.deletedAt ?? p.deleted_at ?? null,
 
     notes: p.notes ?? null,
 
@@ -1710,6 +1825,9 @@ export default function AppBreeding() {
       data = data.filter((r) => !r.archived);
     }
 
+    // Always exclude deleted plans from default view
+    data = data.filter((r) => !r.deletedAt);
+
     if (sorts.length) {
       data.sort((a, b) => {
         for (const s of sorts) {
@@ -2124,6 +2242,7 @@ export default function AppBreeding() {
 
   /* === Drawer editing awareness for outside-click behavior === */
   const [drawerIsEditing, setDrawerIsEditing] = React.useState(false);
+  const [drawerHasPendingChanges, setDrawerHasPendingChanges] = React.useState(false);
 
   /* Details Drawer Config */
   const detailsConfig = React.useMemo(() => {
@@ -2222,8 +2341,24 @@ export default function AppBreeding() {
             const updated = await api.updatePlan(Number(planId), { archived } as any);
             setRows((prev) => prev.map((r) => (r.id === Number(planId) ? planToRow(updated) : r)));
           }}
+          onDelete={async (planId: ID) => {
+            if (!api) return;
+
+            // Call the delete endpoint (backend handles soft delete and offspring cascade)
+            await api.deletePlan(Number(planId));
+
+            // Refresh the plan to get updated deletedAt status
+            const updated = await api.getPlan(Number(planId), "parents,org");
+
+            // Update the rows state with the fresh plan data
+            setRows((prev) => prev.map((r) => (r.id === Number(planId) ? planToRow(updated) : r)));
+
+            // Emit event for other modules to refresh
+            window.dispatchEvent(new CustomEvent("bhq:breeding:plans:updated"));
+          }}
           closeDrawer={props.close}
           onModeChange={setDrawerIsEditing}
+          onPendingChangesChange={setDrawerHasPendingChanges}
         />
       ),
     };
@@ -2300,8 +2435,8 @@ export default function AppBreeding() {
               <DetailsHost
                 rows={rows}
                 config={detailsConfig}
-                closeOnOutsideClick={!drawerIsEditing}
-                closeOnEscape={false}
+                closeOnOutsideClick={!drawerIsEditing && !drawerHasPendingChanges}
+                closeOnEscape={!drawerIsEditing && !drawerHasPendingChanges}
               >
                 <Table
                   columns={COLUMNS}
@@ -2928,11 +3063,19 @@ function CalendarInput(props: any) {
   delete rest.showIcon;
 
   // ISO <-> display helpers
-  const onlyISO = (s: string) => (s || "").slice(0, 10);
+  const onlyISO = (s: string | undefined | null) => {
+    if (!s) return "";
+    const str = String(s).trim();
+    if (!str) return "";
+    // Ensure we only return yyyy-mm-dd format or empty string
+    const match = str.match(/^\d{4}-\d{2}-\d{2}/);
+    return match ? match[0] : "";
+  };
 
   const toDisplay = (s: string | undefined | null) => {
     if (!s) return "";
     const iso = onlyISO(s);
+    if (!iso) return "";
     const [y, m, d] = iso.split("-");
     if (!y || !m || !d) return "";
     return `${m}/${d}/${y}`;
@@ -3083,9 +3226,13 @@ function PlanDetailsView(props: {
   onCommitted?: (id: ID) => Promise<void> | void;
   closeDrawer: () => void;
   onModeChange?: (editing: boolean) => void;
+  onPendingChangesChange?: (hasPending: boolean) => void;
   onArchive?: (id: ID, archived: boolean) => Promise<void> | void;
+  onDelete?: (id: ID) => Promise<void> | void;
   onPlanUpdated?: (id: ID, fresh: any) => void;
   tabs: ReadonlyArray<{ key: string; label: string }>;
+  close: () => void;
+  hasPendingChanges: boolean;
 }) {
   const {
     row,
@@ -3102,10 +3249,14 @@ function PlanDetailsView(props: {
     openCustomBreed,
     onCommitted,
     onArchive,
+    onDelete,
     closeDrawer,
     onModeChange,
+    onPendingChangesChange,
     onPlanUpdated,
     tabs,
+    close,
+    hasPendingChanges,
   } = props;
 
   const isEdit = mode === "edit";
@@ -3118,11 +3269,17 @@ function PlanDetailsView(props: {
   const committedOrLater = ["COMMITTED", "BRED", "BIRTHED", "WEANED", "HOMING_STARTED", "COMPLETE"].includes(statusU);
 
   const isCommitted = statusU === "COMMITTED";
+  const isArchived = Boolean(row.archivedAt);
+  const isDeleted = Boolean(row.deletedAt);
+  const isReadOnly = isArchived || isDeleted;
+
+  // Editable gate: archived or deleted plans cannot be edited
+  const editable = !isArchived && !isDeleted;
 
   // Show Actual Dates once the plan is COMMITTED or later.
   // Allow editing while in Edit mode for COMMITTED and later statuses.
   const showActualDates = committedOrLater;
-  const canEditDates = isEdit && committedOrLater;
+  const canEditDates = isEdit && committedOrLater && !isReadOnly;
 
 
   // live draft overlay
@@ -3130,9 +3287,35 @@ function PlanDetailsView(props: {
   const [draftTick, setDraftTick] = React.useState(0);
   const [actualDatesWarning, setActualDatesWarning] = React.useState<string | null>(null);
 
+  // Unsaved changes tracking
+  const [persistedSnapshot, setPersistedSnapshot] = React.useState<Partial<PlanRow>>(() => buildPlanSnapshot(row));
+  const [pendingSave, setPendingSave] = React.useState(false);
+
+  // Reset persisted snapshot when row.id changes (switching to a different plan)
+  React.useEffect(() => {
+    setPersistedSnapshot(buildPlanSnapshot(row));
+    draftRef.current = {};
+    setPendingSave(false);
+  }, [row.id]);
+
+  // Calculate if there are unsaved changes
+  const isDirty = React.useMemo(() => {
+    const changedFields = prunePlanDraft(draftRef.current, persistedSnapshot);
+    return Object.keys(changedFields).length > 0;
+  }, [draftTick, persistedSnapshot]);
+
+  const hasPendingChangesLocal = isDirty || pendingSave;
+
+  // Notify parent when pending changes state changes
+  React.useEffect(() => {
+    onPendingChangesChange?.(hasPendingChangesLocal);
+  }, [hasPendingChangesLocal, onPendingChangesChange]);
 
   const setDraftLive = React.useCallback(
     (patch: Partial<PlanRow>) => {
+      // Prevent any mutations for archived or deleted plans
+      if (isArchived || isDeleted) return;
+
       // Check for impossible actual date sequences and warn, but do not block
       const ACTUAL_FIELD_ORDER: Array<keyof PlanRow> = [
         "cycleStartDateActual",
@@ -3326,6 +3509,9 @@ function PlanDetailsView(props: {
     },
     [effective]
   );
+
+  // Allow editing cycle start actual when in edit mode and committed
+  const canEditCycleStartActual = canEditDates;
 
   const canEditCompletedActual =
     canEditDates &&
@@ -3539,7 +3725,7 @@ function PlanDetailsView(props: {
   );
 
   React.useEffect(() => {
-    const nextCycle = (row.lockedCycleStart ?? row.cycleStartDateActual ?? null) as string | null;
+    const nextCycle = (row.lockedCycleStart ?? row.expectedCycleStart ?? row.cycleStartDateActual ?? null) as string | null;
     setPendingCycle(nextCycle);
     const e = nextCycle
       ? computeExpectedForPlan({ species: row.species as any, lockedCycleStart: nextCycle })
@@ -3547,8 +3733,9 @@ function PlanDetailsView(props: {
 
     setExpectedPreview(e);
     setLockedPreview(Boolean(row.lockedCycleStart ?? row.cycleStartDateActual));
-  }, [row.lockedCycleStart, row.cycleStartDateActual, row.species]);
+  }, [row.lockedCycleStart, row.expectedCycleStart, row.cycleStartDateActual, row.species]);
   async function lockCycle() {
+    if (isArchived) return; // Prevent cycle locking for archived plans
     if (!pendingCycle || !String(pendingCycle).trim()) return;
     if (!api) return;
 
@@ -3625,6 +3812,7 @@ function PlanDetailsView(props: {
   }
 
   async function unlockCycle() {
+    if (isArchived) return; // Prevent cycle unlocking for archived plans
     if (!api) return;
 
     setExpectedPreview(null);
@@ -3760,6 +3948,7 @@ function PlanDetailsView(props: {
 
   const hasBreed = typeof (effective.breedText ?? "") === "string" && (effective.breedText ?? "").trim().length > 0;
   const canCommit = Boolean(
+    editable &&
     effective.damId != null &&
     effective.sireId != null &&
     hasBreed &&
@@ -3770,6 +3959,8 @@ function PlanDetailsView(props: {
 
   // Build tooltip showing missing conditions for commit
   const commitTooltip = React.useMemo(() => {
+    if (isDeleted) return "Deleted plans cannot be committed";
+    if (isArchived) return "Archived plans cannot be committed";
     if (canCommit) return "Ready to commit this plan";
 
     const missing: string[] = [];
@@ -3790,9 +3981,43 @@ function PlanDetailsView(props: {
     if (missing.length === 0) return "Cannot commit at this time";
 
     return "Missing requirements:\n" + missing.join("\n");
-  }, [canCommit, effective.damId, effective.sireId, effective.lockedCycleStart, hasBreed, pendingCycle]);
+  }, [isArchived, canCommit, effective.damId, effective.sireId, effective.lockedCycleStart, hasBreed, pendingCycle]);
 
   const breedComboKey = `${effective.species || "Dog"}|${hasBreed}`;
+
+  // Wrap requestSave to manage pendingSave state and update snapshot
+  const handleSave = React.useCallback(async () => {
+    setPendingSave(true);
+    try {
+      await requestSave();
+      // On successful save, update the persisted snapshot and clear pending state
+      setPersistedSnapshot(buildPlanSnapshot({ ...row, ...draftRef.current }));
+      setPendingSave(false);
+    } catch (error) {
+      // On error, clear pending but keep isDirty true
+      setPendingSave(false);
+      throw error;
+    }
+  }, [requestSave, row]);
+
+  // Wrap close to check for unsaved changes
+  const handleClose = React.useCallback(async () => {
+    if (hasPendingChangesLocal) {
+      const ok = await confirmModal({
+        title: "Unsaved Changes",
+        message: "You have unsaved changes. Discard and close?",
+        confirmText: "Discard",
+        cancelText: "Cancel",
+        tone: "danger",
+      });
+      if (!ok) return;
+
+      // User confirmed discard, reset draft
+      draftRef.current = {};
+      setPendingSave(false);
+    }
+    close();
+  }, [hasPendingChangesLocal, close]);
 
   const handleCancel = React.useCallback(() => {
     const undo: Partial<PlanRow> = {};
@@ -3812,12 +4037,14 @@ function PlanDetailsView(props: {
       title={row.name}
       subtitle={row.status || ""}
       mode={mode}
-      onEdit={() => setMode("edit")}
+      onEdit={editable ? () => setMode("edit") : undefined}
       onCancel={handleCancel}
-      onSave={requestSave}
+      onSave={handleSave}
       tabs={tabs}
       activeTab={activeTab}
       onTabChange={setActiveTab}
+      onClose={handleClose}
+      hasPendingChanges={hasPendingChangesLocal}
       rightActions={
         <div className="flex gap-2 items-center" data-bhq-details>
           {row.status === "COMMITTED" ? (
@@ -3914,10 +4141,56 @@ function PlanDetailsView(props: {
               </Button>
             );
           })()}
+          {!isDeleted && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={async () => {
+                if (!onDelete) return;
+                const ok = await confirmModal({
+                  title: "Delete this plan?",
+                  message: "This will soft delete the plan and any linked Offspring Group. This action can only be undone by an admin.",
+                  confirmText: "Delete",
+                  cancelText: "Cancel",
+                  tone: "danger",
+                });
+                if (!ok) return;
+
+                try {
+                  await onDelete(row.id);
+                  utils.toast?.success?.("Plan deleted.");
+                  closeDrawer();
+                } catch (e) {
+                  console.error("[Breeding] delete failed", e);
+                  utils.toast?.error?.("Failed to delete plan. Try again.");
+                }
+              }}
+              title="Delete Plan"
+            >
+              Delete
+            </Button>
+          )}
         </div>
       }
     >
       <div className="relative overflow-x-hidden" data-bhq-details>
+        {/* DELETED READ-ONLY BANNER */}
+        {isDeleted && (
+          <div className="mb-4 p-3 bg-red-500/10 border border-red-500/30 rounded-md">
+            <div className="text-sm text-red-400">
+              This plan is deleted and read-only. It can only be restored by an admin.
+            </div>
+          </div>
+        )}
+        {/* ARCHIVED READ-ONLY BANNER */}
+        {isArchived && !isDeleted && (
+          <div className="mb-4 p-3 bg-secondary/10 border border-hairline rounded-md">
+            <div className="text-sm text-secondary">
+              This plan is archived and read-only.
+            </div>
+          </div>
+        )}
+
         {/* OVERVIEW TAB */}
         {activeTab === "overview" && (
           <div className="space-y-4 mt-2">
@@ -3930,6 +4203,7 @@ function PlanDetailsView(props: {
                     <Input
                       defaultValue={row.name}
                       onChange={(e) => setDraftLive({ name: e.currentTarget.value })}
+                      disabled={!editable}
                     />
                   ) : (
                     <DisplayValue value={row.name} />
@@ -3941,6 +4215,7 @@ function PlanDetailsView(props: {
                     <Input
                       defaultValue={row.nickname ?? ""}
                       onChange={(e) => setDraftLive({ nickname: e.currentTarget.value })}
+                      disabled={!editable}
                     />
                   ) : (
                     <DisplayValue value={row.nickname ?? ""} />
@@ -3960,6 +4235,7 @@ function PlanDetailsView(props: {
                     <select
                       className="w-full h-9 rounded-md border border-hairline bg-surface px-2 text-sm text-primary"
                       value={effective.species || ""}
+                      disabled={!editable}
                       onChange={async (e) => {
                         const next = e.currentTarget.value as SpeciesUi;
                         const willClear = Boolean(
@@ -4028,6 +4304,7 @@ function PlanDetailsView(props: {
                           variant="ghost"
                           size="sm"
                           onClick={() => setDraftLive({ breedText: "" })}
+                          disabled={!editable}
                         >
                           Clear
                         </Button>
@@ -4042,6 +4319,7 @@ function PlanDetailsView(props: {
                             (name) => setDraftLive({ breedText: name || "" })
                           )
                         }
+                        disabled={!editable}
                       >
                         New custom
                       </Button>
@@ -4075,6 +4353,7 @@ function PlanDetailsView(props: {
                           }}
                           onBlur={() => setEditDamFocus(false)}
                           placeholder="Search Dam…"
+                          disabled={!editable}
                         />
                         {effective.damId && (
                           <button
@@ -4085,6 +4364,7 @@ function PlanDetailsView(props: {
                             }}
                             className="absolute right-2 top-1/2 -translate-y-1/2 text-secondary hover:text-primary transition-colors"
                             title="Clear Dam"
+                            disabled={!editable}
                           >
                             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
@@ -4153,6 +4433,7 @@ function PlanDetailsView(props: {
                           }}
                           onBlur={() => setEditSireFocus(false)}
                           placeholder="Search Sire…"
+                          disabled={!editable}
                         />
                         {effective.sireId && (
                           <button
@@ -4163,6 +4444,7 @@ function PlanDetailsView(props: {
                             }}
                             className="absolute right-2 top-1/2 -translate-y-1/2 text-secondary hover:text-primary transition-colors"
                             title="Clear Sire"
+                            disabled={!editable}
                           >
                             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
@@ -4257,10 +4539,10 @@ function PlanDetailsView(props: {
                                   ? computeExpectedForPlan({ species: row.species as any, lockedCycleStart: next })
                                   : null
                               );
-                              // Persist selection as the plan’s expected cycle start while in edit mode
+                              // Persist selection as the plan's expected cycle start while in edit mode
                               setDraft({ expectedCycleStart: next });
                             }}
-                            disabled={!hasDam}
+                            disabled={!hasDam || !editable}
                           >
                             <option value="">
                               {!hasDam
@@ -4321,6 +4603,7 @@ function PlanDetailsView(props: {
                           color: "#ffffff"
                         }}
                         title="Unlock cycle"
+                        disabled={!editable}
                       >
                         <svg
                           viewBox="0 0 24 24"
@@ -4345,7 +4628,7 @@ function PlanDetailsView(props: {
                     </div>
                   ) : (
                     (() => {
-                      const lockEnabled = !!(pendingCycle && (row.damId ?? null) != null);
+                      const lockEnabled = !!(pendingCycle && (row.damId ?? null) != null && editable);
                       return (
                         <div
                           className="rounded-md"
@@ -4448,6 +4731,11 @@ function PlanDetailsView(props: {
                       Select a cycle start date to see Expected Dates.
                     </div>
                   )}
+                  {!isEdit && committedOrLater && !expectedsEnabled && (
+                    <div className="text-xs text-secondary mb-2">
+                      Expected dates are not available for this plan.
+                    </div>
+                  )}
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <DateField
@@ -4521,7 +4809,7 @@ function PlanDetailsView(props: {
                             CYCLE START (ACTUAL)
                           </div>
                           <CalendarInput
-                            value={effective.cycleStartDateActual ?? ""}
+                            value={normalizeDateISO(effective.cycleStartDateActual)}
                             readOnly={!canEditCycleStartActual}
                             showIcon={canEditCycleStartActual}
                             onChange={(e) => {
@@ -4551,9 +4839,7 @@ function PlanDetailsView(props: {
                             HORMONE TESTING START (ACTUAL)
                           </div>
                           <CalendarInput
-                            value={
-                              effective.hormoneTestingStartDateActual ?? ""
-                            }
+                            value={normalizeDateISO(effective.hormoneTestingStartDateActual)}
                             readOnly={!canEditDates}
                             showIcon={canEditDates}
                             onChange={(e) => {
@@ -4587,7 +4873,7 @@ function PlanDetailsView(props: {
                             BREEDING DATE (ACTUAL)
                           </div>
                           <CalendarInput
-                            value={effective.breedDateActual ?? ""}
+                            value={normalizeDateISO(effective.breedDateActual)}
                             readOnly={!canEditDates}
                             showIcon={canEditDates}
                             onChange={(e) => {
@@ -4614,7 +4900,7 @@ function PlanDetailsView(props: {
                             BIRTH DATE (ACTUAL)
                           </div>
                           <CalendarInput
-                            value={effective.birthDateActual ?? ""}
+                            value={normalizeDateISO(effective.birthDateActual)}
                             readOnly={!canEditDates}
                             showIcon={canEditDates}
                             onChange={(e) => {
@@ -4641,7 +4927,7 @@ function PlanDetailsView(props: {
                             PLACEMENT START (ACTUAL)
                           </div>
                           <CalendarInput
-                            value={effective.placementStartDateActual ?? ""}
+                            value={normalizeDateISO(effective.placementStartDateActual)}
                             readOnly={!canEditDates}
                             showIcon={canEditDates}
                             onChange={(e) => {
@@ -4675,9 +4961,7 @@ function PlanDetailsView(props: {
                             PLACEMENT COMPLETED (ACTUAL)
                           </div>
                           <CalendarInput
-                            value={
-                              effective.placementCompletedDateActual ?? ""
-                            }
+                            value={normalizeDateISO(effective.placementCompletedDateActual)}
                             readOnly={!canEditDates}
                             showIcon={canEditDates}
                             onChange={(e) => {
@@ -4711,7 +4995,7 @@ function PlanDetailsView(props: {
                             PLAN COMPLETED (ACTUAL)
                           </div>
                           <CalendarInput
-                            value={effective.completedDateActual ?? ""}
+                            value={normalizeDateISO(effective.completedDateActual)}
                             readOnly={!canEditCompletedActual}
                             showIcon={canEditCompletedActual}
                             onChange={(e) => {

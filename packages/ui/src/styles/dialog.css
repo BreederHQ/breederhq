@@ -1,0 +1,71 @@
+/* Dialog Component Styles */
+
+.bhq-dialog__root {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483647;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.bhq-dialog__backdrop {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(2px);
+  z-index: 2147483646;
+}
+
+.bhq-dialog {
+  position: relative;
+  z-index: 2147483647;
+  background-color: hsl(var(--surface));
+  border: 1px solid hsl(var(--hairline));
+  border-radius: 0.5rem;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  max-height: 90vh;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.bhq-dialog--sm {
+  width: 90%;
+  max-width: 24rem;
+}
+
+.bhq-dialog--md {
+  width: 90%;
+  max-width: 32rem;
+}
+
+.bhq-dialog--lg {
+  width: 90%;
+  max-width: 48rem;
+}
+
+.bhq-dialog--xl {
+  width: 90%;
+  max-width: 64rem;
+}
+
+.bhq-dialog__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid hsl(var(--hairline));
+}
+
+.bhq-dialog__title {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: hsl(var(--primary));
+}
+
+.bhq-dialog__body {
+  padding: 1.5rem;
+  flex: 1;
+  overflow-y: auto;
+}

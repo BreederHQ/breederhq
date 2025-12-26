@@ -4,10 +4,12 @@ import { fetchAvailabilityPrefs, mapTenantPrefs, DEFAULT_AVAILABILITY_PREFS } fr
 import { readTenantIdFast } from "../utils/tenant";
 
 type Options = {
-  /** Explicit tenant id. If omitted we’ll try readTenantIdFast(). */
+  /** Explicit tenant id. If omitted we'll try readTenantIdFast(). */
   tenantId?: string | number | null;
   /** If true, returns the raw DB payload instead of sanitized UI prefs (defaults to false). */
   raw?: boolean;
+  /** External reload trigger. Increment to force refetch. */
+  reloadKey?: number;
 };
 
 export function useAvailabilityPrefs(opts: Options = {}) {
@@ -43,7 +45,7 @@ export function useAvailabilityPrefs(opts: Options = {}) {
     return () => {
       ignore = true;
     };
-  }, [wantedId, opts.raw]);
+  }, [wantedId, opts.raw, opts.reloadKey]);
 
   return { loading, error, prefs };
 }

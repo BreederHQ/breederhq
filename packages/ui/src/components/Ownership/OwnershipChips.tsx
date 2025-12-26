@@ -6,7 +6,18 @@ export function OwnershipChips({ owners }: { owners: OwnershipRow[] }) {
   return (
     <div className="flex flex-wrap gap-1">
       {owners.map((o, i) => {
-        const label = o.display_name || (o.partyType === "Organization" ? `Org #${o.organizationId}` : `Contact #${o.contactId}`);
+        const fallbackId =
+          o.partyId ??
+          (o.partyType === "Organization" ? o.organizationId : o.contactId);
+        const fallbackLabel =
+          fallbackId != null
+            ? o.partyType === "Organization"
+              ? `Org #${fallbackId}`
+              : `Contact #${fallbackId}`
+            : o.partyType === "Organization"
+            ? "Organization"
+            : "Contact";
+        const label = o.display_name || fallbackLabel;
         return (
           <span
             key={i}

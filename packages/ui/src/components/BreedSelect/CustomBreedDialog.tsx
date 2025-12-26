@@ -139,7 +139,7 @@ export function CustomBreedDialog({
 
   // Self-contained overlay (backdrop + centered card).
   return (
-    <div className="fixed inset-0 z-[1200] pointer-events-none" role="dialog" aria-modal="true">
+    <div className="fixed inset-0 z-[2147483610] pointer-events-none" role="dialog" aria-modal="true">
       {/* Backdrop */}
       <div
         className="absolute inset-0 bg-black/50 pointer-events-auto"

@@ -20,6 +20,7 @@ export * from "./types/contacts";
 export * from "./types/animals";
 export * from "./types/breeding";
 export * from "./types/offspring";
+export * from "./types/party";
 
 export function makeApi(baseURL: string, makeAuth?: MakeAuthHeader) {
   const http = createHttp(baseURL, makeAuth);

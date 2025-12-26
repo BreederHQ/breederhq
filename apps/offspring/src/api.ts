@@ -201,7 +201,10 @@ export type CreateOffspringIndividualBody = {
   contractId?: string | null;
   contractSignedAt?: string | null;
   promotedAnimalId?: number | null;
+  buyerPartyId?: number | null;
+  /** @deprecated Phase 3: Use buyerPartyId instead */
   buyerContactId?: number | null;
+  /** @deprecated Phase 3: Use buyerPartyId instead */
   buyerOrganizationId?: number | null;
   [key: string]: any;
 };

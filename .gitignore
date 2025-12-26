@@ -52,3 +52,5 @@ CLAUDE.md
 .claudeignore
 .claude/
 .eslintcache
+*.nul
+/nul

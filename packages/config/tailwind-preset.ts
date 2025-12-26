@@ -10,13 +10,18 @@ module.exports = {
         background: "hsl(var(--background))",
         foreground: "hsl(var(--foreground))",
 
+        primary: "hsl(var(--primary))",
+        secondary: "hsl(var(--secondary))",
+
         surface: "hsl(var(--surface))",
         "surface-2": "hsl(var(--surface-2))",
+        "surface-strong": "hsl(var(--surface-strong))",
 
         muted: "hsl(var(--muted))",
         "muted-foreground": "hsl(var(--muted-foreground))",
 
         border: "hsl(var(--border))",
+        hairline: "hsl(var(--hairline))",
 
         accent: "hsl(var(--accent))",
         "accent-foreground": "hsl(var(--accent-foreground))",

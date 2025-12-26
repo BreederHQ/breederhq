@@ -635,6 +635,18 @@ export function makeApi(baseOrigin: string = "", authHeaderFn?: () => Record<str
     },
   };
 
+  const audit = {
+    async log(body: {
+      entity: string;
+      entityId: ID;
+      event: string;
+      meta?: any;
+    }) {
+      const url = joinUrl(v1, "audit");
+      return fetchJson<{ ok: true }>(url, { method: "POST", body: JSON.stringify(body) }, withAuth());
+    },
+  };
+
   return {
     contacts,
     contactsExtras,
@@ -642,6 +654,7 @@ export function makeApi(baseOrigin: string = "", authHeaderFn?: () => Record<str
     organizations,
     animals,
     lookups,
+    audit,
   };
 }
 

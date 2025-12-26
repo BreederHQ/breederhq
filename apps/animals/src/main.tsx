@@ -6,7 +6,7 @@ import { createRoot } from "react-dom/client";
 import App from "./App-Animals"; 
 
 // One stylesheet to rule them all
-import "@bhq/ui/styles/bhq.css";
+import "@bhq/ui/bhq.css";
 
 function ensureOverlayRoot() {
   const mode = (window as any).__BHQ_OVERLAY_MODE as "local" | "global" | undefined;

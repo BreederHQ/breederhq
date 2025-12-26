@@ -140,7 +140,6 @@ export const NavShell: React.FC<NavShellProps> = ({
   const defaultItems: NavItem[] = [
     { key: "dashboard", label: "Dashboard", href: "/" },
     { key: "contacts", label: "Contacts", href: "/contacts/" },
-    { key: "organizations", label: "Organizations", href: "/organizations/" },
     { key: "animals", label: "Animals", href: "/animals/" },
     { key: "breeding", label: "Breeding", href: "/breeding/" },
     { key: "offspring", label: "Offspring", href: "/offspring/" },

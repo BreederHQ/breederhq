@@ -178,3 +178,11 @@
 .bhq-table th.bhq-util {
   padding-left: 6px;
 }
+
+/* archived row tint (overrides default hover) */
+.bhq-table tbody>tr.bhq-row-archived {
+  background: hsl(var(--brand-orange) / 0.08);
+}
+.bhq-table tbody>tr.bhq-row-archived:hover {
+  background: hsl(var(--brand-orange) / 0.12);
+}

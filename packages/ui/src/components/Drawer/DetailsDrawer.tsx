@@ -10,19 +10,25 @@ export function DetailsDrawer({
   title,
   open = true,
   onClose,
+  onBackdropClick,
+  onEscapeKey,
   width = 720,
   placement = "right",
   align = "center",
   backdrop = true,
+  hasPendingChanges = false,
   children,
 }: {
   title?: React.ReactNode;
   open?: boolean;
   onClose?: () => void;
+  onBackdropClick?: () => void;
+  onEscapeKey?: () => void;
   width?: number | string;
   placement?: Placement;
   align?: Align;
   backdrop?: boolean;
+  hasPendingChanges?: boolean;
   children: React.ReactNode;
 }) {
   const [mounted, setMounted] = React.useState(false);
@@ -39,10 +45,15 @@ export function DetailsDrawer({
   // ESC to close
   React.useEffect(() => {
     if (!open) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose?.(); };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        if (onEscapeKey) onEscapeKey();
+        else onClose?.();
+      }
+    };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
+  }, [open, onClose, onEscapeKey]);
 
   if (!open || !mounted) return null;
 
@@ -111,7 +122,9 @@ export function DetailsDrawer({
         isolation: "auto",
         overflow: "visible",
       }}
-      onClick={() => onClose?.()}
+      onClick={() => {
+        if (onBackdropClick) onBackdropClick();
+      }}
     >
       {backdrop && (
         <div

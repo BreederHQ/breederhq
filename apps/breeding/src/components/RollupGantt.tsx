@@ -267,7 +267,33 @@ export default function RollupGantt({
   );
 
   const tenantId = readTenantIdFast?.();
-  const hook = useAvailabilityPrefs ? useAvailabilityPrefs({ tenantId }) : undefined;
+
+  // Reload trigger: increment to force useAvailabilityPrefs to refetch
+  const [reloadKey, setReloadKey] = React.useState(0);
+  const hook = useAvailabilityPrefs ? useAvailabilityPrefs({ tenantId, reloadKey }) : undefined;
+
+  // Listen for settings changes (same-tab custom event + cross-tab storage event)
+  React.useEffect(() => {
+    const handleSettingsUpdate = () => {
+      setReloadKey(prev => prev + 1);
+    };
+
+    const handleStorageUpdate = (e: StorageEvent) => {
+      // Reload on availability-related localStorage changes
+      if (e.key === "BHQ_ENFORCE_PLUSONE_DATES" ||
+          e.key === "BHQ_ENFORCE_PLUSONE_PHASES") {
+        setReloadKey(prev => prev + 1);
+      }
+    };
+
+    window.addEventListener("bhq:breeding:planner:settings:updated", handleSettingsUpdate);
+    window.addEventListener("storage", handleStorageUpdate);
+
+    return () => {
+      window.removeEventListener("bhq:breeding:planner:settings:updated", handleSettingsUpdate);
+      window.removeEventListener("storage", handleStorageUpdate);
+    };
+  }, []);
 
   const prefs: AvailabilityPrefs = {
     ...mapTenantPrefs(hook?.prefs || {}),

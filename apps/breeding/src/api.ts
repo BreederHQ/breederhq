@@ -312,6 +312,10 @@ export function makeBreedingApi(opts: ApiOpts) {
       return post<{ ok: true }>(`/breeding/plans/${id}/restore`, {});
     },
 
+    deletePlan(id: number) {
+      return post<{ ok: true }>(`/breeding/plans/${id}/delete`, {});
+    },
+
     /* Events / Tests / Attempts / Pregnancy Checks */
     listEvents(planId: number) {
       return get<any[]>(`/breeding/plans/${planId}/events`);

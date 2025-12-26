@@ -106,6 +106,39 @@ export default function BreedingCalendar({
   const hook = useAvailabilityPrefs ? useAvailabilityPrefs({ tenantId }) : undefined;
   const prefs = React.useMemo(() => mapTenantPrefs(hook?.prefs || {}), [hook?.prefs]);
 
+  // User-created events stored in localStorage
+  const [userEvents, setUserEvents] = React.useState<any[]>(() => {
+    try {
+      const raw = localStorage.getItem("bhq_breeding_calendar_user_events");
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          return parsed.map((e) => ({
+            ...e,
+            start: new Date(e.start),
+            end: e.end ? new Date(e.end) : undefined,
+          }));
+        }
+      }
+    } catch {}
+    return [];
+  });
+
+  React.useEffect(() => {
+    try {
+      const serialized = userEvents.map((e) => ({
+        ...e,
+        start: e.start instanceof Date ? e.start.toISOString() : e.start,
+        end: e.end instanceof Date ? e.end.toISOString() : e.end,
+      }));
+      localStorage.setItem("bhq_breeding_calendar_user_events", JSON.stringify(serialized));
+    } catch {}
+  }, [userEvents]);
+
+  function handleEventCreate(event: any) {
+    setUserEvents((prev) => [...prev, event]);
+  }
+
   const selectedSet: Set<string | number> | null = React.useMemo(() => {
     if (!selectedPlanIds) return null;
     return selectedPlanIds instanceof Set ? selectedPlanIds : new Set(selectedPlanIds);
@@ -336,7 +369,7 @@ export default function BreedingCalendar({
       }
     }
 
-    const all = [...pointEvents, ...overlayEvents];
+    const all = [...pointEvents, ...overlayEvents, ...userEvents];
 
     if (!horizon) return all;
 
@@ -348,7 +381,7 @@ export default function BreedingCalendar({
       const en = (e.end ? (e.end instanceof Date ? e.end : new Date(e.end)) : e.start).getTime();
       return en >= hs && s <= he;
     });
-  }, [items, selectedSet, horizon, prefs]);
+  }, [items, selectedSet, horizon, prefs, userEvents]);
 
   return (
     <BHQCalendar
@@ -361,6 +394,7 @@ export default function BreedingCalendar({
         const planId = String((ev as any)?.extendedProps?.planId ?? "");
         if (planId) navigateToPlan?.(planId);
       }}
+      onEventCreate={handleEventCreate}
     />
   );
 }

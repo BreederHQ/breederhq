@@ -27,6 +27,7 @@ import {
   utils,
   exportToCsv,
   Popover,
+  Dialog,
 } from "@bhq/ui";
 
 import { Overlay, getOverlayRoot } from "@bhq/ui/overlay";
@@ -70,6 +71,7 @@ function getPlaceholderForSpecies(species?: string | null): string {
  * Types & utils
  * ─────────────────────────────────────────────────────────────────────── */
 type OwnershipRow = {
+  partyId?: number | null;
   partyType: "Organization" | "Contact";
   organizationId?: number | null;
   contactId?: number | null;
@@ -77,6 +79,26 @@ type OwnershipRow = {
   is_primary?: boolean;
   percent?: number;
 };
+
+function normalizeOwnerPartyType(raw: any, owner?: any): "Organization" | "Contact" {
+  const kind = owner?.kind ?? owner?.partyType ?? owner?.type ?? raw;
+  const orgId =
+    owner?.organizationId ??
+    owner?.organization?.id ??
+    owner?.party?.backing?.organizationId ??
+    null;
+  const contactId =
+    owner?.contactId ??
+    owner?.contact?.id ??
+    owner?.party?.backing?.contactId ??
+    null;
+  if (orgId != null) return "Organization";
+  if (contactId != null) return "Contact";
+  const v = String(kind ?? "").toLowerCase();
+  if (v.includes("org")) return "Organization";
+  if (v.includes("contact") || v.includes("person")) return "Contact";
+  return "Contact";
+}
 
 type AnimalRow = {
   id: number;
@@ -123,7 +145,7 @@ const COLUMNS: Array<{ key: keyof AnimalRow & string; label: string; default?: b
   { key: "updated_at", label: "Updated", default: false },
 ];
 
-const SPECIES_LABEL: Record<string, string> = { DOG: "Dog", CAT: "Cat", HORSE: "Horse" };
+const SPECIES_LABEL: Record<string, string> = { DOG: "Dog", CAT: "Cat", HORSE: "Horse", GOAT: "Goat", SHEEP: "Sheep", RABBIT: "Rabbit" };
 const SEX_LABEL: Record<string, string> = { FEMALE: "Female", MALE: "Male" };
 const STATUS_LABEL: Record<string, string> = {
   ACTIVE: "Active",
@@ -802,7 +824,8 @@ function PhotoEditorModal({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[2147483647] flex items-center justify-center bg-black/55 p-4"
+      className="fixed inset-0 flex items-start justify-center bg-black/55 px-4 pt-16"
+      style={{ zIndex: 2147483647 }}
       onMouseUp={onMouseUp}
       onClick={(e) => {
         e.stopPropagation();
@@ -810,7 +833,7 @@ function PhotoEditorModal({
       }}
     >
       <div
-        className="w-full max-w-2xl rounded-lg border border-hairline bg-surface shadow-xl"
+        className="w-full max-w-md rounded-lg border border-hairline bg-surface shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="px-4 py-3 border-b border-hairline flex items-center justify-between">
@@ -820,14 +843,14 @@ function PhotoEditorModal({
           </button>
         </div>
 
-        <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="p-4 space-y-3">
           <div className="flex items-center justify-center">
             <div className="rounded-md border border-hairline overflow-hidden">
               <canvas
                 ref={canvasRef}
-                width={512}
-                height={512}
-                className="block w-[320px] h-[320px] bg-black cursor-grab active:cursor-grabbing"
+                width={400}
+                height={400}
+                className="block w-[240px] h-[240px] bg-black cursor-grab active:cursor-grabbing"
                 onMouseDown={onMouseDown}
                 onMouseMove={onMouseMove}
               />
@@ -895,7 +918,14 @@ function PhotoEditorModal({
 }
 
 
-type Hit = { id: number; name: string; kind: "Organization" | "Contact" };
+type Hit = {
+  id: number;
+  partyId?: number | null;
+  organizationId?: number | null;
+  contactId?: number | null;
+  name: string;
+  kind: "Organization" | "Contact";
+};
 
 function OwnershipDetailsEditor({
   row,
@@ -906,7 +936,14 @@ function OwnershipDetailsEditor({
   setDraft: (p: Partial<AnimalRow>) => void;
   ownershipLookups: any;
 }) {
-  type Hit = { id: number; name: string; kind: "Organization" | "Contact" };
+  type Hit = {
+    id: number;
+    partyId?: number | null;
+    organizationId?: number | null;
+    contactId?: number | null;
+    name: string;
+    kind: "Organization" | "Contact";
+  };
 
   const [owners, setOwners] = React.useState<OwnershipRow[]>(
     () => (((row as any).owners) ?? []) as OwnershipRow[]
@@ -925,24 +962,36 @@ function OwnershipDetailsEditor({
 
   // Lookup helper
   function ownerKey(o: OwnershipRow, idx: number) {
-    const id = o.organizationId ?? o.contactId ?? idx;
+    const id = o.partyId ?? o.organizationId ?? o.contactId ?? idx;
     return `${o.partyType}:${id}`;
   }
 
   function ownerDisplay(o: any): string {
     return (
       o.display_name ||
+      o.displayName ||
       o.name ||
+      o.party?.displayName ||
+      o.party?.display_name ||
       o.party_name ||
       (o.contact && o.contact.display_name) ||
       ""
     );
   }
 
+  function hasRealOwner(rows: OwnershipRow[]) {
+    return rows.some((o) => {
+      const partyId = o.partyId ?? (o as any).partyId ?? null;
+      const orgId = o.organizationId ?? (o as any).organization?.id ?? null;
+      const contactId = o.contactId ?? (o as any).contact?.id ?? null;
+      return partyId != null || orgId != null || contactId != null;
+    });
+  }
+
   function normalize(nextRows: OwnershipRow[]) {
     let ensured = [...nextRows];
 
-    if (ensured.length && !ensured.some((r) => r.is_primary)) {
+    if (ensured.length && !ensured.some((r) => r.is_primary || (r as any).primary)) {
       ensured = ensured.map((r, i) => ({ ...r, is_primary: i === 0 }));
     }
 
@@ -968,7 +1017,7 @@ function OwnershipDetailsEditor({
     setOwners(ensured);
 
     const primary: any =
-      ensured.find((o) => o.is_primary) ?? ensured[0] ?? null;
+      ensured.find((o) => o.is_primary || (o as any).primary) ?? ensured[0] ?? null;
 
     const primaryName = primary ? ownerDisplay(primary) || null : null;
 
@@ -979,26 +1028,33 @@ function OwnershipDetailsEditor({
   }
 
   function addHit(hit: Hit) {
+    const isFirstReal = !hasRealOwner(owners);
+    const partyId = Number.isFinite(Number(hit.partyId ?? hit.id))
+      ? Number(hit.partyId ?? hit.id)
+      : null;
     const row: OwnershipRow =
       hit.kind === "Organization"
         ? {
+          partyId,
           partyType: "Organization",
-          organizationId: hit.id,
+          organizationId: hit.organizationId ?? null,
           contactId: null,
           display_name: hit.name,
-          is_primary: owners.length === 0,
-          percent: owners.length === 0 ? 100 : undefined,
+          is_primary: isFirstReal,
+          percent: isFirstReal ? 100 : undefined,
         }
         : {
+          partyId,
           partyType: "Contact",
-          contactId: hit.id,
+          contactId: hit.contactId ?? null,
           organizationId: null,
           display_name: hit.name,
-          is_primary: owners.length === 0,
-          percent: owners.length === 0 ? 100 : undefined,
+          is_primary: isFirstReal,
+          percent: isFirstReal ? 100 : undefined,
         };
 
-    normalize([...owners, row]);
+    const next = isFirstReal ? [row] : [...owners, row];
+    normalize(next);
     setQ("");
     setHits([]);
     setSelectedKey(null);
@@ -1032,14 +1088,14 @@ function OwnershipDetailsEditor({
   function moveSelectedLeft() {
     const idx = findSelectedIndex();
     if (idx < 0) return;
-    if (owners[idx].is_primary) return;
+    if (owners[idx].is_primary || (owners[idx] as any).primary) return;
     setPrimary(idx);
   }
 
   function moveSelectedRight() {
     const idx = findSelectedIndex();
     if (idx < 0) return;
-    if (!owners[idx].is_primary) return;
+    if (!(owners[idx].is_primary || (owners[idx] as any).primary)) return;
     const others = owners
       .map((o, i) => ({ o, i }))
       .filter(({ i }) => i !== idx);
@@ -1054,13 +1110,14 @@ function OwnershipDetailsEditor({
     normalize(next);
   }
 
-  const primaryIndex = owners.findIndex((o) => o.is_primary);
+  const primaryIndex = owners.findIndex((o) => o.is_primary || (o as any).primary);
   const primaryOwner =
     primaryIndex >= 0 ? owners[primaryIndex] : owners[0] ?? null;
+  const actualPrimaryIndex = primaryIndex >= 0 ? primaryIndex : (owners.length > 0 ? 0 : -1);
   const additionalOwners =
     primaryOwner == null
       ? owners
-      : owners.filter((_, i) => i !== primaryIndex);
+      : owners.filter((_, i) => i !== actualPrimaryIndex);
 
   // Search effect
   React.useEffect(() => {
@@ -1081,16 +1138,37 @@ function OwnershipDetailsEditor({
       .then(([orgs, contacts]) => {
         if (!alive) return;
         const rows: Hit[] = [
-          ...(orgs || []).map((o: any) => ({
-            id: Number(o.id),
-            name: String(o.name),
-            kind: "Organization" as const,
-          })),
-          ...(contacts || []).map((c: any) => ({
-            id: Number(c.id),
-            name: String(c.name),
-            kind: "Contact" as const,
-          })),
+          ...(orgs || []).map((o: any) => {
+            const partyIdRaw = o.partyId ?? o.party_id ?? o.id;
+            const partyId = Number.isFinite(Number(partyIdRaw))
+              ? Number(partyIdRaw)
+              : null;
+            const backing = o.backing ?? o.party?.backing ?? null;
+            const name = String(o.name ?? o.display_name ?? o.displayName ?? "");
+            return {
+              id: partyId ?? Number(o.id),
+              partyId,
+              organizationId:
+                backing?.organizationId ?? o.organizationId ?? null,
+              name,
+              kind: "Organization" as const,
+            };
+          }),
+          ...(contacts || []).map((c: any) => {
+            const partyIdRaw = c.partyId ?? c.party_id ?? c.id;
+            const partyId = Number.isFinite(Number(partyIdRaw))
+              ? Number(partyIdRaw)
+              : null;
+            const backing = c.backing ?? c.party?.backing ?? null;
+            const name = String(c.name ?? c.display_name ?? c.displayName ?? "");
+            return {
+              id: partyId ?? Number(c.id),
+              partyId,
+              contactId: backing?.contactId ?? c.contactId ?? null,
+              name,
+              kind: "Contact" as const,
+            };
+          }),
         ];
         setHits(rows);
       })
@@ -1103,19 +1181,20 @@ function OwnershipDetailsEditor({
     };
   }, [q, ownershipLookups]);
 
+  const selectedIdx = findSelectedIndex();
   const canMoveLeft =
-    findSelectedIndex() >= 0 &&
-    !owners[findSelectedIndex()]?.is_primary &&
+    selectedIdx >= 0 &&
+    !(owners[selectedIdx]?.is_primary || (owners[selectedIdx] as any)?.primary) &&
     owners.length > 0;
   const canMoveRight =
-    findSelectedIndex() >= 0 &&
-    owners[findSelectedIndex()]?.is_primary &&
+    selectedIdx >= 0 &&
+    (owners[selectedIdx]?.is_primary || (owners[selectedIdx] as any)?.primary) &&
     owners.length > 1;
 
   return (
     <SectionCard title="Ownership">
       {/* Search row, custom so text is never under the icon */}
-      <div className="px-2 pt-2 pb-2">
+      <div className="mb-3">
         <div className="relative max-w-md">
           {/* Left icon */}
           <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-secondary">
@@ -1183,7 +1262,7 @@ function OwnershipDetailsEditor({
       <div className="flex gap-3 items-stretch">
         {/* Primary column */}
         <div className="flex-1 min-w-0">
-          <div className="text-xs text-secondary mb-1">Primary Owner</div>
+          <div className="text-[11px] leading-4 text-secondary mb-0.5">Primary Owner</div>
           {primaryOwner ? (
             <div
               className={[
@@ -1211,7 +1290,9 @@ function OwnershipDetailsEditor({
               </div>
               <input
                 type="number"
-                className="h-8 w-20 rounded-md border border-hairline bg-surface px-2 text-sm"
+                min="0"
+                max="100"
+                className="h-8 w-16 rounded-md border border-hairline bg-surface px-2 text-sm text-right"
                 value={
                   typeof primaryOwner.percent === "number"
                     ? primaryOwner.percent
@@ -1219,7 +1300,7 @@ function OwnershipDetailsEditor({
                 }
                 onChange={(e) =>
                   setPercent(
-                    primaryIndex >= 0 ? primaryIndex : 0,
+                    actualPrimaryIndex,
                     Number((e.currentTarget as HTMLInputElement).value)
                   )
                 }
@@ -1270,7 +1351,7 @@ function OwnershipDetailsEditor({
 
         {/* Additional owners */}
         <div className="flex-1 min-w-0">
-          <div className="mb-1 text-xs text-secondary">Additional Owners</div>
+          <div className="text-[11px] leading-4 text-secondary mb-0.5">Additional Owners</div>
 
           {additionalOwners.length === 0 ? (
             <div className="rounded-md border border-dashed border-hairline px-3 py-2 text-sm text-secondary">
@@ -1283,8 +1364,8 @@ function OwnershipDetailsEditor({
                   (r) =>
                     r === o ||
                     (r.partyType === o.partyType &&
-                      r.organizationId === o.organizationId &&
-                      r.contactId === o.contactId)
+                      (r.partyId ?? r.organizationId ?? r.contactId) ===
+                        (o.partyId ?? o.organizationId ?? o.contactId))
                 );
                 const key = ownerKey(o, originalIndex);
 
@@ -1309,7 +1390,9 @@ function OwnershipDetailsEditor({
                     </div>
                     <input
                       type="number"
-                      className="h-8 w-20 rounded-md border border-hairline bg-surface px-2 text-sm"
+                      min="0"
+                      max="100"
+                      className="h-8 w-16 rounded-md border border-hairline bg-surface px-2 text-sm text-right"
                       value={
                         typeof o.percent === "number" ? o.percent : 0
                       }
@@ -2026,62 +2109,45 @@ export default function AppAnimals() {
       }
 
       type NormalizedDesired = {
-        partyType: "Organization" | "Contact";
-        organizationId: number | null;
-        contactId: number | null;
+        partyId: number;
         percent: number;
         isPrimary: boolean;
       };
 
       type ExistingOwner = {
         id: number;
-        partyType: "Organization" | "Contact";
-        percent: number | null;
-        isPrimary: boolean;
-        organization: { id: number | null } | null;
-        contact: { id: number | null } | null;
+        partyId?: number | null;
+        percent?: number | null;
+        isPrimary?: boolean;
+        is_primary?: boolean;
+        primary?: boolean;
+        party?: { id?: number | null } | null;
       };
 
-      const normalizeDesired = (r: OwnershipRow): NormalizedDesired => {
-        const isOrg = r.partyType === "Organization";
-
-        const orgIdRaw = isOrg
-          ? r.organizationId ?? (r as any).organization?.id ?? null
+      const normalizeDesired = (r: OwnershipRow): NormalizedDesired | null => {
+        const partyIdRaw = r.partyId ?? (r as any).partyId ?? null;
+        const partyId = Number.isFinite(Number(partyIdRaw))
+          ? Number(partyIdRaw)
           : null;
-        const contactIdRaw = !isOrg
-          ? r.contactId ?? (r as any).contact?.id ?? null
-          : null;
-
-        const orgId = orgIdRaw != null ? Number(orgIdRaw) : null;
-        const contactId = contactIdRaw != null ? Number(contactIdRaw) : null;
-
+        if (partyId == null) return null;
         const pct = typeof r.percent === "number" ? r.percent : 0;
         const isPrimary = !!r.is_primary;
 
         return {
-          partyType: r.partyType,
-          organizationId: orgId,
-          contactId,
+          partyId,
           percent: pct,
           isPrimary,
         };
       };
 
       const keyExisting = (e: ExistingOwner): string => {
-        if (e.partyType === "Organization") {
-          const id = e.organization?.id;
-          return id != null ? `org:${id}` : "org:";
-        }
-        const id = e.contact?.id;
-        return id != null ? `ct:${id}` : "ct:";
+        const partyId =
+          e.partyId ?? (e as any).party_id ?? e.party?.id ?? null;
+        return partyId != null ? String(partyId) : "";
       };
 
-      const keyDesired = (d: NormalizedDesired): string => {
-        if (d.partyType === "Organization") {
-          return d.organizationId != null ? `org:${d.organizationId}` : "org:";
-        }
-        return d.contactId != null ? `ct:${d.contactId}` : "ct:";
-      };
+      const keyDesired = (d: NormalizedDesired): string =>
+        String(d.partyId);
 
       let existing: ExistingOwner[] = [];
       try {
@@ -2093,11 +2159,18 @@ export default function AppAnimals() {
         existing = [];
       }
 
-      const desiredNorm = rows.map(normalizeDesired);
+      const desiredNorm = rows
+        .map(normalizeDesired)
+        .filter((d): d is NormalizedDesired => !!d);
+
+      if (!desiredNorm.length) {
+        return;
+      }
 
       const existingByKey = new Map<string, ExistingOwner>();
       for (const e of existing) {
-        existingByKey.set(keyExisting(e), e);
+        const key = keyExisting(e);
+        if (key) existingByKey.set(key, e);
       }
 
       const desiredByKey = new Map<string, NormalizedDesired>();
@@ -2107,7 +2180,7 @@ export default function AppAnimals() {
 
       for (const e of existing) {
         const key = keyExisting(e);
-        if (!desiredByKey.has(key) && e.id != null) {
+        if (key && !desiredByKey.has(key) && e.id != null) {
           try {
             await api.animals.owners.remove(animalId, e.id);
           } catch {
@@ -2120,15 +2193,11 @@ export default function AppAnimals() {
         const e = existingByKey.get(key);
 
         const payload: {
-          partyType: "Organization" | "Contact";
-          organizationId?: number | null;
-          contactId?: number | null;
+          partyId: number;
           percent: number;
           isPrimary?: boolean;
         } = {
-          partyType: d.partyType,
-          organizationId: d.organizationId,
-          contactId: d.contactId,
+          partyId: d.partyId,
           percent: d.percent,
           isPrimary: d.isPrimary,
         };
@@ -2140,10 +2209,15 @@ export default function AppAnimals() {
           }
         } else {
           const patch: Partial<typeof payload> = {};
-          if ((e.percent ?? 0) !== d.percent) {
+          const existingPercent =
+            typeof e.percent === "number" ? e.percent : 0;
+          const existingPrimary = !!(
+            e.isPrimary ?? e.is_primary ?? e.primary
+          );
+          if (existingPercent !== d.percent) {
             patch.percent = d.percent;
           }
-          if (!!e.isPrimary !== d.isPrimary) {
+          if (existingPrimary !== d.isPrimary) {
             patch.isPrimary = d.isPrimary;
           }
           if (Object.keys(patch).length) {
@@ -2167,7 +2241,14 @@ export default function AppAnimals() {
           : (raw as any)?.rows ?? (raw as any)?.items ?? [];
 
         return (arr as any[]).map((c) => {
-          const nameFromNames = [c.first_name, c.last_name]
+          const partyIdRaw = c.partyId ?? c.party_id ?? c.id;
+          const partyId = Number.isFinite(Number(partyIdRaw))
+            ? Number(partyIdRaw)
+            : null;
+          const backing = c.backing ?? c.party?.backing ?? null;
+          const contactId =
+            backing?.contactId ?? c.contactId ?? c.contact_id ?? null;
+          const nameFromNames = [c.first_name ?? c.firstName, c.last_name ?? c.lastName]
             .filter(Boolean)
             .join(" ");
 
@@ -2182,6 +2263,9 @@ export default function AppAnimals() {
 
           return {
             ...c,
+            id: partyId ?? c.id,
+            partyId,
+            contactId,
             display_name: name,
             label: name,
             name,
@@ -2198,6 +2282,16 @@ export default function AppAnimals() {
           : (raw as any)?.rows ?? (raw as any)?.items ?? [];
 
         return (arr as any[]).map((org) => {
+          const partyIdRaw = org.partyId ?? org.party_id ?? org.id;
+          const partyId = Number.isFinite(Number(partyIdRaw))
+            ? Number(partyIdRaw)
+            : null;
+          const backing = org.backing ?? org.party?.backing ?? null;
+          const organizationId =
+            backing?.organizationId ??
+            org.organizationId ??
+            org.organization_id ??
+            null;
           const name =
             org.display_name ??
             org.displayName ??
@@ -2208,6 +2302,9 @@ export default function AppAnimals() {
 
           return {
             ...org,
+            id: partyId ?? org.id,
+            partyId,
+            organizationId,
             display_name: name,
             label: name,
             name,
@@ -2293,6 +2390,7 @@ export default function AppAnimals() {
 
   const [pageSize, setPageSize] = React.useState<number>(25);
   const [page, setPage] = React.useState<number>(1);
+  const [includeArchived, setIncludeArchived] = React.useState<boolean>(false);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -2304,6 +2402,7 @@ export default function AppAnimals() {
           q: qDebounced || undefined,
           page: 1,
           limit: 50,
+          includeArchived,
         });
         const baseItems = res?.items || [];
 
@@ -2321,15 +2420,33 @@ export default function AppAnimals() {
 
               owners = items.map(
                 (o: any): OwnershipRow => ({
-                  partyType:
-                    o.partyType === "Organization"
-                      ? "Organization"
-                      : "Contact",
-                  organizationId: o.organization?.id ?? null,
-                  contactId: o.contact?.id ?? null,
+                  partyType: normalizeOwnerPartyType(
+                    o.kind ?? o.partyType ?? o.type,
+                    o
+                  ),
+                  partyId: Number.isFinite(Number(o.partyId ?? o.party_id ?? o.party?.id))
+                    ? Number(o.partyId ?? o.party_id ?? o.party?.id)
+                    : null,
+                  organizationId:
+                    o.organization?.id ??
+                    o.organizationId ??
+                    o.party?.backing?.organizationId ??
+                    null,
+                  contactId:
+                    o.contact?.id ??
+                    o.contactId ??
+                    o.party?.backing?.contactId ??
+                    null,
                   display_name:
-                    o.organization?.name ?? o.contact?.name ?? "",
-                  is_primary: !!o.isPrimary,
+                    o.displayName ??
+                    o.display_name ??
+                    o.party?.displayName ??
+                    o.party?.display_name ??
+                    o.organization?.name ??
+                    o.contact?.name ??
+                    o.name ??
+                    "",
+                  is_primary: !!(o.isPrimary ?? o.is_primary ?? o.primary),
                   percent:
                     typeof o.percent === "number" ? o.percent : undefined,
                 })
@@ -2356,7 +2473,7 @@ export default function AppAnimals() {
     return () => {
       cancelled = true;
     };
-  }, [api, qDebounced]);
+  }, [api, qDebounced, includeArchived]);
 
   // Sync animals to localStorage for cross-module data sharing (e.g., Contacts module)
   React.useEffect(() => {
@@ -2599,6 +2716,33 @@ export default function AppAnimals() {
   const [photoEditorSrc, setPhotoEditorSrc] = React.useState<string | null>(null);
   const [photoEditorForId, setPhotoEditorForId] = React.useState<number | null>(null);
 
+  const [archiveDialogOpen, setArchiveDialogOpen] = React.useState(false);
+  const [archiveTargetId, setArchiveTargetId] = React.useState<number | null>(null);
+  const [isArchiving, setIsArchiving] = React.useState(false);
+
+  const handleArchive = React.useCallback(
+    async (id: number) => {
+      setIsArchiving(true);
+      try {
+        await api.animals.archive(id);
+        setRows((prev) => prev.filter((r) => r.id !== id));
+        toast.success("Animal archived successfully");
+        setArchiveDialogOpen(false);
+
+        // Close the details drawer by removing the id parameter from URL
+        const url = new URL(window.location.href);
+        url.searchParams.delete("id");
+        window.history.replaceState({}, "", url.toString());
+      } catch (error) {
+        console.error("Failed to archive animal:", error);
+        toast.error("Failed to archive animal. Please try again.");
+      } finally {
+        setIsArchiving(false);
+      }
+    },
+    [api]
+  );
+
   const handleStartUploadPhoto = React.useCallback(
     (animalId: number) => {
       setPhotoEditorForId(animalId);
@@ -2733,15 +2877,33 @@ export default function AppAnimals() {
 
           owners = items.map(
             (o: any): OwnershipRow => ({
-              partyType:
-                o.partyType === "Organization"
-                  ? "Organization"
-                  : "Contact",
-              organizationId: o.organization?.id ?? null,
-              contactId: o.contact?.id ?? null,
+              partyType: normalizeOwnerPartyType(
+                o.kind ?? o.partyType ?? o.type,
+                o
+              ),
+              partyId: Number.isFinite(Number(o.partyId ?? o.party_id ?? o.party?.id))
+                ? Number(o.partyId ?? o.party_id ?? o.party?.id)
+                : null,
+              organizationId:
+                o.organization?.id ??
+                o.organizationId ??
+                o.party?.backing?.organizationId ??
+                null,
+              contactId:
+                o.contact?.id ??
+                o.contactId ??
+                o.party?.backing?.contactId ??
+                null,
               display_name:
-                o.organization?.name ?? o.contact?.name ?? "",
-              is_primary: !!o.isPrimary,
+                o.displayName ??
+                o.display_name ??
+                o.party?.displayName ??
+                o.party?.display_name ??
+                o.organization?.name ??
+                o.contact?.name ??
+                o.name ??
+                "",
+              is_primary: !!(o.isPrimary ?? o.is_primary ?? o.primary),
               percent:
                 typeof o.percent === "number" ? o.percent : undefined,
             })
@@ -2816,30 +2978,32 @@ export default function AppAnimals() {
         setActiveTab,
         requestSave,
       }: any) => (
-        <DetailsScaffold
-          title={row.name}
-          subtitle={row.nickname || row.ownerName || ""}
-          mode={mode}
-          onEdit={() => setMode("edit")}
-          onCancel={() => setMode("view")}
-          onSave={requestSave}
-          tabs={detailsConfig.tabs(row)}
-          activeTab={activeTab}
-          onTabChange={setActiveTab}
-          rightActions={
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={async () => {
-                if (!confirm("Archive this animal?")) return;
-                await api.animals.archive(row.id);
-                setRows((prev) => prev.filter((r) => r.id !== row.id));
-              }}
-            >
-              Archive
-            </Button>
-          }
-        >
+        <>
+          <DetailsScaffold
+            title={row.name}
+            subtitle={row.nickname || row.ownerName || ""}
+            mode={mode}
+            onEdit={() => setMode("edit")}
+            onCancel={() => setMode("view")}
+            onSave={requestSave}
+            tabs={detailsConfig.tabs(row)}
+            activeTab={activeTab}
+            onTabChange={setActiveTab}
+            rightActions={
+              mode === "edit" ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    setArchiveTargetId(row.id);
+                    setArchiveDialogOpen(true);
+                  }}
+                >
+                  Archive
+                </Button>
+              ) : null
+            }
+          >
           {activeTab === "overview" && (
             <div className="space-y-3">
               <SectionCard title="Identity">
@@ -2903,35 +3067,33 @@ export default function AppAnimals() {
                     </LV>
                   </div>
 
-                  <div className="lg:col-span-1 flex justify-center lg:justify-end">
-                    <div className="relative w-48 h-48 md:w-56 md:h-56 lg:w-64 lg:h-64 rounded-md bg-neutral-100 dark:bg-neutral-900 border border-hairline overflow-hidden flex items-center justify-center">
-                      {row.photoUrl ? (
-                        <img
-                          src={row.photoUrl}
-                          alt={row.name || "Animal photo"}
-                          className="h-full w-full object-cover"
-                        />
-                      ) : (
-                        <img
-                          src={getPlaceholderForSpecies(row.species)}
-                          alt={`${row.species || "Animal"} placeholder`}
-                          className="h-full w-full object-cover"
-                        />
-                      )}
+                  <div className="lg:col-span-1 flex justify-center lg:justify-end lg:items-start">
+                    <div className="relative w-48 h-48 md:w-56 md:h-56 lg:w-64 lg:h-64" style={{ zIndex: 100 }}>
+                      <div className="w-full h-full rounded-md bg-neutral-100 dark:bg-neutral-900 border border-hairline overflow-hidden flex items-center justify-center">
+                        {row.photoUrl ? (
+                          <img
+                            src={row.photoUrl}
+                            alt={row.name || "Animal photo"}
+                            className="h-full w-full object-cover"
+                          />
+                        ) : (
+                          <img
+                            src={getPlaceholderForSpecies(row.species)}
+                            alt={`${row.species || "Animal"} placeholder`}
+                            className="h-full w-full object-cover"
+                          />
+                        )}
+                      </div>
 
+                      {/* Edit Photo Button - Bottom Right */}
                       <button
                         type="button"
-                        aria-label={row.photoUrl ? "Change photo" : "Upload photo"}
-                        className={[
-                          "absolute bottom-2 right-2 z-50",
-                          "h-10 w-10 rounded-full",
-                          "bg-black/80 text-white",
-                          "flex items-center justify-center",
-                          "shadow-lg ring-1 ring-white/30",
-                          "hover:bg-black focus:outline-none focus:ring-2 focus:ring-[hsl(var(--brand-orange))]",
-                          "pointer-events-auto",
-                        ].join(" ")}
-                        onClick={() => {
+                        aria-label={row.photoUrl ? "Edit photo" : "Upload photo"}
+                        style={{ zIndex: 9999, position: 'absolute', bottom: '12px', right: '12px' }}
+                        className="h-12 w-12 rounded-full bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white flex items-center justify-center shadow-xl border-2 border-neutral-200 dark:border-neutral-700 hover:bg-neutral-50 dark:hover:bg-neutral-700 hover:scale-110 focus:outline-none focus:ring-4 focus:ring-[hsl(var(--brand-orange))] transition-all duration-200 cursor-pointer"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
                           setPhotoEditorForId(row.id);
                           setPhotoEditorSrc(row.photoUrl ?? getPlaceholderForSpecies(row.species));
                           setPhotoEditorOpen(true);
@@ -2940,10 +3102,10 @@ export default function AppAnimals() {
                       >
                         <svg
                           viewBox="0 0 24 24"
-                          className="h-5 w-5"
+                          className="h-6 w-6 pointer-events-none"
                           fill="none"
                           stroke="currentColor"
-                          strokeWidth={2}
+                          strokeWidth={2.5}
                           strokeLinecap="round"
                           strokeLinejoin="round"
                           aria-hidden="true"
@@ -2953,15 +3115,21 @@ export default function AppAnimals() {
                         </svg>
                       </button>
 
+                      {/* Remove Photo Button - Top Right */}
                       {row.photoUrl && (
                         <button
                           type="button"
-                          className="absolute top-2 right-2 rounded-full bg-black/70 text-white p-1 hover:bg-black/90"
-                          onClick={() => handleRemovePhoto(row.id)}
-                          title="Remove photo"
+                          aria-label="Remove photo"
+                          style={{ zIndex: 9999, position: 'absolute', top: '12px', right: '12px' }}
+                          className="h-10 w-10 rounded-full bg-red-600 text-white p-2 hover:bg-red-700 hover:scale-110 focus:outline-none focus:ring-4 focus:ring-red-500 transition-all duration-200 cursor-pointer shadow-lg"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            handleRemovePhoto(row.id);
+                          }}
                           disabled={photoWorking}
                         >
-                          <TrashIcon className="h-3 w-3" />
+                          <TrashIcon className="h-full w-full pointer-events-none" />
                         </button>
                       )}
                     </div>
@@ -2975,9 +3143,15 @@ export default function AppAnimals() {
                   canRemove={!!row.photoUrl}
                   onClose={() => setPhotoEditorOpen(false)}
                   onPickFile={() => handleStartUploadPhoto(photoEditorForId ?? row.id)}
+                  onRemove={async () => {
+                    const id = photoEditorForId ?? row.id;
+                    await handleRemovePhoto(id);
+                    setPhotoEditorOpen(false);
+                  }}
                   onSave={async ({ blob }) => {
                     const id = photoEditorForId ?? row.id;
                     await uploadCroppedBlob(id, blob);
+                    setPhotoEditorOpen(false);
                   }}
                 />
               </SectionCard>
@@ -2993,13 +3167,16 @@ export default function AppAnimals() {
                         defaultValue={row.species || "Dog"}
                         onChange={(e) => {
                           const next = e.target
-                            .value as "Dog" | "Cat" | "Horse";
+                            .value as "Dog" | "Cat" | "Horse" | "Goat" | "Sheep" | "Rabbit";
                           setDraft({ species: next, breed: null });
                         }}
                       >
                         <option>Dog</option>
                         <option>Cat</option>
                         <option>Horse</option>
+                        <option>Goat</option>
+                        <option>Sheep</option>
+                        <option>Rabbit</option>
                       </select>
                     )}
                   </LV>
@@ -3075,7 +3252,7 @@ export default function AppAnimals() {
                           />
                         </div>
                         <Button
-                          variant="outline"
+                          variant="secondary"
                           size="sm"
                           onClick={() => {
                             const speciesEnum = String(
@@ -3094,7 +3271,7 @@ export default function AppAnimals() {
                           New custom
                         </Button>
                         <Button
-                          variant="outline"
+                          variant="secondary"
                           size="sm"
                           onClick={() => setDraft({ breed: null })}
                         >
@@ -3243,9 +3420,10 @@ export default function AppAnimals() {
             </div>
           )}
         </DetailsScaffold>
+      </>
       ),
     }),
-    [api, orgIdForBreeds, ownershipLookups, breedBrowseApi, syncOwners, photoWorking]
+    [api, orgIdForBreeds, ownershipLookups, breedBrowseApi, syncOwners, photoWorking, photoEditorOpen, photoEditorSrc, photoEditorForId, setArchiveTargetId, setArchiveDialogOpen]
   );
 
   const [createOpen, setCreateOpen] = React.useState(false);
@@ -3275,7 +3453,7 @@ export default function AppAnimals() {
   }, [sortedRows]);
 
   const [newName, setNewName] = React.useState("");
-  const [newSpecies, setNewSpecies] = React.useState<"Dog" | "Cat" | "Horse">(
+  const [newSpecies, setNewSpecies] = React.useState<"Dog" | "Cat" | "Horse" | "Goat" | "Sheep" | "Rabbit">(
     "Dog"
   );
   const [newSex, setNewSex] = React.useState<"Female" | "Male">("Female");
@@ -3339,19 +3517,29 @@ export default function AppAnimals() {
       if (toSaveOwners.length === 0) {
         const org = await safeGetCreatingOrg(api);
         if (org) {
-          toSaveOwners = [
-            {
-              partyType: "Organization",
-              organizationId: Number(org.id),
-              contactId: null,
-              display_name:
-                (org as any).display_name ||
-                (org as any).name ||
-                "My Organization",
-              is_primary: true,
-              percent: 100,
-            },
-          ];
+          const orgPartyIdRaw =
+            (org as any).partyId ?? (org as any).party_id ?? null;
+          const orgPartyId = Number.isFinite(Number(orgPartyIdRaw))
+            ? Number(orgPartyIdRaw)
+            : null;
+          if (orgPartyId == null) {
+            toSaveOwners = [];
+          } else {
+            toSaveOwners = [
+              {
+                partyId: orgPartyId,
+                partyType: "Organization",
+                organizationId: Number(org.id),
+                contactId: null,
+                display_name:
+                  (org as any).display_name ||
+                  (org as any).name ||
+                  "My Organization",
+                is_primary: true,
+                percent: 100,
+              },
+            ];
+          }
         }
       }
 
@@ -3587,10 +3775,46 @@ export default function AppAnimals() {
               end={end}
               filteredTotal={sortedRows.length}
               total={rows.length}
+              includeArchived={includeArchived}
+              onIncludeArchivedChange={(checked) => {
+                setIncludeArchived(checked);
+                setPage(1);
+              }}
             />
           </Table>
         </DetailsHost>
       </Card>
+
+      <Dialog
+        open={archiveDialogOpen}
+        onClose={() => setArchiveDialogOpen(false)}
+        title="Archive Animal"
+        size="sm"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-secondary">
+            Are you sure you want to archive <strong>{rows.find(r => r.id === archiveTargetId)?.name || "this animal"}</strong>? This animal will be removed from the active list.
+          </p>
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setArchiveDialogOpen(false)}
+              disabled={isArchiving}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={() => archiveTargetId && handleArchive(archiveTargetId)}
+              disabled={isArchiving}
+            >
+              {isArchiving ? "Archiving..." : "Archive"}
+            </Button>
+          </div>
+        </div>
+      </Dialog>
 
       {createOpen && (
         <Overlay
@@ -3659,6 +3883,9 @@ export default function AppAnimals() {
                   <option>Dog</option>
                   <option>Cat</option>
                   <option>Horse</option>
+                  <option>Goat</option>
+                  <option>Sheep</option>
+                  <option>Rabbit</option>
                 </select>
               </div>
 
@@ -3677,7 +3904,7 @@ export default function AppAnimals() {
                     />
                   </div>
                   <Button
-                    variant="outline"
+                    variant="secondary"
                     size="sm"
                     onClick={() => {
                       const speciesEnum = String(
@@ -3773,6 +4000,9 @@ export default function AppAnimals() {
               </div>
 
               <div className="sm:col-span-2">
+                <div className="mb-2 text-sm font-medium text-primary">
+                  Ownership
+                </div>
                 <OwnershipEditor
                   api={ownershipLookups}
                   value={owners}
