@@ -473,8 +473,9 @@ export type OffspringUpdateInput = Partial<{
   color: string | null;
   birthWeightOz: number | null;
   status: OffspringStatus;
-  buyerContactId: number | null;
-  buyerOrganizationId: number | null;
+  buyerPartyId: number | null;
+  buyerContactId: number | null;  // @deprecated Phase 3: Use buyerPartyId
+  buyerOrganizationId: number | null;  // @deprecated Phase 3: Use buyerPartyId
   placementDate: string | null;
   price: number | null;
   microchip: string | null;
@@ -2547,9 +2548,9 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
     const id = Number(idRaw);
     if (!Number.isFinite(id)) return;
 
+    // Phase 3: Use Party-first payload with buyerPartyId
     const patch: OffspringUpdateInput = {
-      buyerContactId: kind === "contact" ? id : null,
-      buyerOrganizationId: kind === "organization" ? id : null,
+      buyerPartyId: id,
     };
 
     try {
@@ -2573,9 +2574,9 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
     async (hit: DirectoryHit | null) => {
       if (!drawer || !hit) return;
 
+      // Phase 3: Use Party-first payload with buyerPartyId
       const patch: OffspringUpdateInput = {
-        buyerContactId: hit.kind === "contact" ? hit.id : null,
-        buyerOrganizationId: hit.kind === "org" ? hit.id : null,
+        buyerPartyId: hit.id,
       };
 
       try {
@@ -2601,9 +2602,9 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
   const handleClearBuyer = React.useCallback(async () => {
     if (!drawer) return;
 
+    // Phase 3: Use Party-first payload with buyerPartyId
     const patch: OffspringUpdateInput = {
-      buyerContactId: null,
-      buyerOrganizationId: null,
+      buyerPartyId: null,
     };
 
     try {

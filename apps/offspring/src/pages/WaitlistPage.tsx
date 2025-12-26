@@ -845,9 +845,10 @@ function AddToWaitlistModal({
   async function handleSubmit() {
     if (!api || !canSubmit) return;
 
+    // Phase 3: Use Party-first payload with clientPartyId
+    // Backend (Phase 2+) expects clientPartyId as canonical identity field
     const body = {
-      contactId: link?.kind === "contact" ? link.id : null,
-      organizationId: link?.kind === "org" ? link.id : null,
+      clientPartyId: link?.id ?? null,
       speciesPref: speciesWire!,
       breedPrefs: (breed?.name ?? "").trim() ? [(breed?.name ?? "").trim()] : null,
       damPrefId: damId ?? null,
