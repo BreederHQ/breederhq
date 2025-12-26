@@ -720,7 +720,7 @@ export default function AppContactsParty() {
             setCreateBusinessOpen(true);
           }}
         >
-          New Contact
+          New Organization
         </button>
       </Popover>
 
