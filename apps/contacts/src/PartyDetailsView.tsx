@@ -671,6 +671,8 @@ export function PartyDetailsView({
         tabs={[
           { key: "overview", label: "Overview" },
           { key: "animals", label: "Animals" },
+          { key: "documents", label: "Documents" },
+          { key: "finances", label: "Finances" },
           { key: "audit", label: "Audit" },
         ]}
         activeTab={activeTab}
@@ -828,31 +830,31 @@ export function PartyDetailsView({
                     on={!!prefs.email}
                     label="Email"
                     onClick={() => togglePref("email")}
-                    className={mode === "view" ? "opacity-50 pointer-events-none" : ""}
+                    className={`inline-flex h-7 items-center justify-center whitespace-nowrap rounded-full px-3.5 text-[11px] leading-none border transition-colors select-none${mode === "view" ? " pointer-events-none" : ""}`}
                   />
                   <PillToggle
                     on={!!prefs.sms}
                     label="SMS"
                     onClick={() => togglePref("sms")}
-                    className={mode === "view" ? "opacity-50 pointer-events-none" : ""}
+                    className={`inline-flex h-7 items-center justify-center whitespace-nowrap rounded-full px-3.5 text-[11px] leading-none border transition-colors select-none${mode === "view" ? " pointer-events-none" : ""}`}
                   />
                   <PillToggle
                     on={!!prefs.phone}
                     label="Phone"
                     onClick={() => togglePref("phone")}
-                    className={mode === "view" ? "opacity-50 pointer-events-none" : ""}
+                    className={`inline-flex h-7 items-center justify-center whitespace-nowrap rounded-full px-3.5 text-[11px] leading-none border transition-colors select-none${mode === "view" ? " pointer-events-none" : ""}`}
                   />
                   <PillToggle
                     on={!!prefs.mail}
                     label="Mail"
                     onClick={() => togglePref("mail")}
-                    className={mode === "view" ? "opacity-50 pointer-events-none" : ""}
+                    className={`inline-flex h-7 items-center justify-center whitespace-nowrap rounded-full px-3.5 text-[11px] leading-none border transition-colors select-none${mode === "view" ? " pointer-events-none" : ""}`}
                   />
                   <PillToggle
                     on={!!prefs.whatsapp}
                     label="WhatsApp"
                     onClick={() => togglePref("whatsapp")}
-                    className={mode === "view" ? "opacity-50 pointer-events-none" : ""}
+                    className={`inline-flex h-7 items-center justify-center whitespace-nowrap rounded-full px-3.5 text-[11px] leading-none border transition-colors select-none${mode === "view" ? " pointer-events-none" : ""}`}
                   />
                 </div>
 
@@ -1072,31 +1074,31 @@ export function PartyDetailsView({
                     on={!!prefs.email}
                     label="Email"
                     onClick={() => togglePref("email")}
-                    className={mode === "view" ? "opacity-50 pointer-events-none" : ""}
+                    className={`inline-flex h-7 items-center justify-center whitespace-nowrap rounded-full px-3.5 text-[11px] leading-none border transition-colors select-none${mode === "view" ? " pointer-events-none" : ""}`}
                   />
                   <PillToggle
                     on={!!prefs.sms}
                     label="SMS"
                     onClick={() => togglePref("sms")}
-                    className={mode === "view" ? "opacity-50 pointer-events-none" : ""}
+                    className={`inline-flex h-7 items-center justify-center whitespace-nowrap rounded-full px-3.5 text-[11px] leading-none border transition-colors select-none${mode === "view" ? " pointer-events-none" : ""}`}
                   />
                   <PillToggle
                     on={!!prefs.phone}
                     label="Phone"
                     onClick={() => togglePref("phone")}
-                    className={mode === "view" ? "opacity-50 pointer-events-none" : ""}
+                    className={`inline-flex h-7 items-center justify-center whitespace-nowrap rounded-full px-3.5 text-[11px] leading-none border transition-colors select-none${mode === "view" ? " pointer-events-none" : ""}`}
                   />
                   <PillToggle
                     on={!!prefs.mail}
                     label="Mail"
                     onClick={() => togglePref("mail")}
-                    className={mode === "view" ? "opacity-50 pointer-events-none" : ""}
+                    className={`inline-flex h-7 items-center justify-center whitespace-nowrap rounded-full px-3.5 text-[11px] leading-none border transition-colors select-none${mode === "view" ? " pointer-events-none" : ""}`}
                   />
                   <PillToggle
                     on={!!prefs.whatsapp}
                     label="WhatsApp"
                     onClick={() => togglePref("whatsapp")}
-                    className={mode === "view" ? "opacity-50 pointer-events-none" : ""}
+                    className={`inline-flex h-7 items-center justify-center whitespace-nowrap rounded-full px-3.5 text-[11px] leading-none border transition-colors select-none${mode === "view" ? " pointer-events-none" : ""}`}
                   />
                 </div>
 
@@ -1373,6 +1375,22 @@ export function PartyDetailsView({
           <div className="space-y-3">
             <SectionCard title="Audit Events">
               <div className="text-sm text-secondary">Audit events will appear here once available.</div>
+            </SectionCard>
+          </div>
+        )}
+
+        {activeTab === "documents" && (
+          <div className="space-y-3">
+            <SectionCard title="Documents">
+              <div className="text-sm text-secondary">Coming Soon</div>
+            </SectionCard>
+          </div>
+        )}
+
+        {activeTab === "finances" && (
+          <div className="space-y-3">
+            <SectionCard title="Finances">
+              <div className="text-sm text-secondary">Coming Soon</div>
             </SectionCard>
           </div>
         )}

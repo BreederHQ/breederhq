@@ -9,6 +9,7 @@ export * from "./Card";
 export * from "./ChecklistFilter";
 export * from "./ColumnsPopover";
 export * from "./CountrySelect";
+export * from "./DatePicker";
 export * from "./Drawer";
 export * from "./Dialog";
 export * from "./EmptyState";

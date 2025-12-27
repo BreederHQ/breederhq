@@ -325,6 +325,8 @@ export default function AppOrganizations() {
     tabs: [
       { key: "overview", label: "Overview" },
       { key: "animals", label: "Animals" },
+      { key: "documents", label: "Documents" },
+      { key: "finances", label: "Finances" },
       { key: "audit", label: "Audit" },
     ],
     customChrome: true,
@@ -336,7 +338,13 @@ export default function AppOrganizations() {
         onEdit={() => setMode("edit")}
         onCancel={() => { setMode("view"); }}
         onSave={requestSave}
-        tabs={[{ key: "overview", label: "Overview" }, { key: "animals", label: "Animals" }, { key: "audit", label: "Audit" }]}
+        tabs={[
+          { key: "overview", label: "Overview" },
+          { key: "animals", label: "Animals" },
+          { key: "documents", label: "Documents" },
+          { key: "finances", label: "Finances" },
+          { key: "audit", label: "Audit" },
+        ]}
         activeTab={activeTab}
         onTabChange={setActiveTab}
         rightActions={<Button size="sm" variant="outline">Archive</Button>}
@@ -360,6 +368,21 @@ export default function AppOrganizations() {
           <div className="space-y-2">
             <SectionCard title="Audit">
               <div className="text-sm text-secondary">Events will appear here.</div>
+            </SectionCard>
+          </div>
+        )}
+        {activeTab === "documents" && (
+          <div className="space-y-2">
+            <SectionCard title="Documents">
+              <div className="text-sm text-secondary">Coming Soon</div>
+            </SectionCard>
+          </div>
+        )}
+
+        {activeTab === "finances" && (
+          <div className="space-y-2">
+            <SectionCard title="Finances">
+              <div className="text-sm text-secondary">Coming Soon</div>
             </SectionCard>
           </div>
         )}

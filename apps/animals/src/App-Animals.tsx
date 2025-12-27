@@ -124,18 +124,18 @@ type ProgramFlags = {
 
 type PreferredPartner = { id: number; name: string; sex?: string | null };
 
-const COLUMNS: Array<{ key: keyof AnimalRow & string; label: string; default?: boolean }> = [
+const COLUMNS: Array<{ key: keyof AnimalRow & string; label: string; default?: boolean; center?: boolean }> = [
   { key: "name", label: "Name", default: true },
-  { key: "species", label: "Species", default: true },
-  { key: "breed", label: "Breed", default: true },
-  { key: "sex", label: "Sex", default: true },
-  { key: "status", label: "Status", default: true },
+  { key: "species", label: "Species", default: true, center: true },
+  { key: "breed", label: "Breed", default: true, center: true },
+  { key: "sex", label: "Sex", default: true, center: true },
+  { key: "status", label: "Status", default: true, center: true },
   { key: "ownerName", label: "Owner", default: false },
   { key: "microchip", label: "Microchip #", default: false },
   { key: "tags", label: "Tags", default: true },
-  { key: "dob", label: "DOB", default: false },
-  { key: "created_at", label: "Created", default: false },
-  { key: "updated_at", label: "Updated", default: false },
+  { key: "dob", label: "DOB", default: false, center: true },
+  { key: "created_at", label: "Created", default: false, center: true },
+  { key: "updated_at", label: "Updated", default: false, center: true },
 ];
 
 const SPECIES_LABEL: Record<string, string> = { DOG: "Dog", CAT: "Cat", HORSE: "Horse", GOAT: "Goat", SHEEP: "Sheep", RABBIT: "Rabbit" };
@@ -215,210 +215,7 @@ function animalToRow(p: any): AnimalRow {
   };
 }
 
-// ───────── Date-picker hoist helpers (copied from Breeding) ─────────
-
-const OVERLAY_ROOT_SELECTOR = "#bhq-overlay-root";
-
-function ensureOverlayRoot(): HTMLElement {
-  return (document.querySelector(OVERLAY_ROOT_SELECTOR) as HTMLElement) || document.body;
-}
-
-/** Find the outermost popup element we actually want to move. */
-function findDatePopup(): HTMLElement | null {
-  const candidates = [
-    // Radix Popper wrapper
-    ...Array.from(document.querySelectorAll<HTMLElement>('[data-radix-popper-content-wrapper]')),
-    // react-datepicker
-    ...Array.from(document.querySelectorAll<HTMLElement>(".react-datepicker")),
-    // react-day-picker
-    ...Array.from(document.querySelectorAll<HTMLElement>(".rdp,.rdp-root")),
-    // generic open dialogs/menus (fallback)
-    ...Array.from(
-      document.querySelectorAll<HTMLElement>('[role="dialog"][data-state="open"],[role="menu"][data-state="open"]')
-    ),
-  ];
-
-  const filtered = candidates.filter((el) => !el.closest("[data-bhq-details]"));
-
-  const list = filtered.length ? filtered : candidates;
-  if (!list.length) return null;
-
-  const isVisible = (el: HTMLElement) => {
-    const cs = getComputedStyle(el);
-    const r = el.getBoundingClientRect();
-    return cs.display !== "none" && cs.visibility !== "hidden" && r.width > 8 && r.height > 8;
-  };
-
-  list.sort((a, b) => {
-    const va = isVisible(a) ? 1 : 0;
-    const vb = isVisible(b) ? 1 : 0;
-    const ra = a.getBoundingClientRect();
-    const rb = b.getBoundingClientRect();
-    return vb - va || rb.width * rb.height - ra.width * ra.height;
-  });
-
-  return list[0] || null;
-}
-
-/** Wait up to ~300ms for a date popup to mount, then hoist and place it near the trigger. */
-function hoistAndPlaceDatePopup(triggerEl: HTMLElement) {
-  const root = ensureOverlayRoot();
-
-  let raf = 0;
-  let tries = 0;
-  const MAX_TRIES = 12; // ~200–300ms
-
-  const place = (pop: HTMLElement) => {
-    if (pop.parentNode !== root) root.appendChild(pop);
-
-    Object.assign(pop.style, {
-      position: "fixed",
-      transform: "none",
-      inset: "auto",
-      zIndex: "2147483647",
-      maxWidth: "none",
-      maxHeight: "none",
-      overflow: "visible",
-      contain: "paint",
-      isolation: "auto",
-      filter: "none",
-      perspective: "none",
-      willChange: "top,left",
-    } as CSSStyleDeclaration);
-
-    const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
-    const GAP = 8;
-
-    const doPosition = () => {
-      const r = triggerEl.getBoundingClientRect();
-      const pr = pop.getBoundingClientRect();
-      const vw = window.innerWidth;
-      const vh = window.innerHeight;
-
-      let top = r.bottom + GAP;
-      let left = r.left;
-
-      left = clamp(left, GAP, vw - pr.width - GAP);
-
-      if (top + pr.height > vh - GAP) {
-        top = clamp(r.top - pr.height - GAP, GAP, vh - pr.height - GAP);
-      } else {
-        top = clamp(top, GAP, vh - pr.height - GAP);
-      }
-
-      pop.style.top = `${Math.round(top)}px`;
-      pop.style.left = `${Math.round(left)}px`;
-    };
-
-    doPosition();
-    setTimeout(doPosition, 30);
-
-    const onRelayout = () => {
-      if (!pop.isConnected) {
-        window.removeEventListener("resize", onRelayout);
-        window.removeEventListener("scroll", onRelayout, true);
-        return;
-      }
-      doPosition();
-    };
-    window.addEventListener("resize", onRelayout);
-    window.addEventListener("scroll", onRelayout, true);
-
-    const mo = new MutationObserver(() => {
-      if (!pop.isConnected) {
-        window.removeEventListener("resize", onRelayout);
-        window.removeEventListener("scroll", onRelayout, true);
-        mo.disconnect();
-      }
-    });
-    mo.observe(document.body, { childList: true, subtree: true });
-  };
-
-  const tick = () => {
-    const pop = findDatePopup();
-    if (pop) {
-      place(pop);
-      return;
-    }
-    if (tries++ < MAX_TRIES) {
-      raf = requestAnimationFrame(tick);
-    }
-  };
-
-  raf = requestAnimationFrame(tick);
-}
-
-/** Wire up native date picker to our overlay hoist helper. */
-type AttachDatePopupOpts = {
-  shell: HTMLElement;
-  button: HTMLButtonElement;
-  hiddenInput: HTMLInputElement;
-  onPopupOpen?: () => void;
-  onPopupClose?: () => void;
-};
-
-function attachDatePopupPositioning(opts: AttachDatePopupOpts) {
-  const { shell, button, hiddenInput, onPopupOpen, onPopupClose } = opts;
-
-  if (!shell || !button || !hiddenInput) {
-    return () => { };
-  }
-
-  let isOpen = false;
-
-  const openPicker = () => {
-    if (hiddenInput.disabled || hiddenInput.readOnly) return;
-
-    if (!isOpen) {
-      isOpen = true;
-      onPopupOpen?.();
-    }
-
-    try {
-      hiddenInput.focus();
-      const anyInput = hiddenInput as any;
-      if (typeof anyInput.showPicker === "function") {
-        anyInput.showPicker();
-      } else {
-        hiddenInput.click();
-      }
-    } catch {
-      // ignore
-    }
-
-    hoistAndPlaceDatePopup(button);
-  };
-
-  const handleButtonClick = (e: MouseEvent) => {
-    e.preventDefault();
-    openPicker();
-  };
-
-  const handleKeyDown = (e: KeyboardEvent) => {
-    if (e.key === "ArrowDown" && (e.altKey || e.metaKey)) {
-      e.preventDefault();
-      openPicker();
-    }
-  };
-
-  const handleBlur = () => {
-    if (!isOpen) return;
-    isOpen = false;
-    onPopupClose?.();
-  };
-
-  button.addEventListener("click", handleButtonClick);
-  shell.addEventListener("keydown", handleKeyDown);
-  hiddenInput.addEventListener("blur", handleBlur);
-
-  return () => {
-    button.removeEventListener("click", handleButtonClick);
-    shell.removeEventListener("keydown", handleKeyDown);
-    hiddenInput.removeEventListener("blur", handleBlur);
-  };
-}
-
-/* CalendarInput: same calendar field used in Breeding */
+/* CalendarInput: text field + native date picker */
 
 type CalendarInputProps = {
   value: string;
@@ -432,21 +229,16 @@ type CalendarInputProps = {
 
 const dateInputCls = "h-8 py-0 px-2 text-sm bg-transparent border-hairline";
 
-/* CalendarInput: text field + native date picker, shared with Breeding */
-
 function CalendarInput(props: any) {
   const readOnly = !!props.readOnly;
   const className = props.className;
   const inputClassName = props.inputClassName;
-  const onChange = props.onChange as
-    | React.ChangeEventHandler<HTMLInputElement>
-    | undefined;
+  const onChange = props.onChange as React.ChangeEventHandler<HTMLInputElement> | undefined;
   const value = props.value as string | undefined;
   const defaultValue = props.defaultValue as string | undefined;
   const placeholder = props.placeholder ?? "mm/dd/yyyy";
   const showIcon = props.showIcon ?? true;
 
-  // Any extra props intended for the visible input
   const rest: any = { ...props };
   delete rest.readOnly;
   delete rest.className;
@@ -457,7 +249,6 @@ function CalendarInput(props: any) {
   delete rest.placeholder;
   delete rest.showIcon;
 
-  // ISO helpers
   const onlyISO = (s: string) => (s || "").slice(0, 10);
 
   const toDisplay = (s: string | undefined | null) => {
@@ -492,38 +283,13 @@ function CalendarInput(props: any) {
     }
   }, [value]);
 
-  const shellRef = React.useRef<HTMLDivElement>(null);
   const inputRef = React.useRef<HTMLInputElement>(null);
-  const buttonRef = React.useRef<HTMLButtonElement>(null);
   const hiddenRef = React.useRef<HTMLInputElement>(null);
-
-  const [expanded, setExpanded] = React.useState(false);
-
-  React.useEffect(() => {
-    if (!showIcon) return;
-
-    const shell = shellRef.current;
-    const btn = buttonRef.current;
-    const hidden = hiddenRef.current;
-    if (!shell || !btn || !hidden) return;
-
-    const cleanup = attachDatePopupPositioning({
-      shell,
-      button: btn,
-      hiddenInput: hidden,
-      onPopupOpen: () => setExpanded(true),
-      onPopupClose: () => setExpanded(false),
-    });
-
-    return cleanup;
-  }, [showIcon]);
 
   const handleTextChange: React.ChangeEventHandler<HTMLInputElement> = (e) => {
     const raw = e.currentTarget.value;
     setTextValue(raw);
-
     if (!onChange) return;
-
     const iso = toISO(raw);
     onChange({ currentTarget: { value: iso } } as any);
   };
@@ -532,13 +298,17 @@ function CalendarInput(props: any) {
     const iso = onlyISO(e.currentTarget.value || "");
     const display = toDisplay(iso);
     setTextValue(display);
-
     if (!onChange) return;
     onChange({ currentTarget: { value: iso } } as any);
   };
 
+  const handleIconClick = () => {
+    if (readOnly) return;
+    hiddenRef.current?.showPicker?.();
+  };
+
   return (
-    <div ref={shellRef} className={className}>
+    <div className={className}>
       <div className="relative">
         <Input
           ref={inputRef}
@@ -552,18 +322,17 @@ function CalendarInput(props: any) {
         {showIcon && (
           <button
             type="button"
-            ref={buttonRef}
             className="absolute inset-y-0 right-2 flex items-center text-muted-foreground"
             aria-label="Open date picker"
+            onClick={handleIconClick}
           >
             <span className="text-xs">📅</span>
           </button>
         )}
-
-        {/* Hidden native date input for mobile and popup control */}
         <input
           ref={hiddenRef}
           type="date"
+          value={value ? onlyISO(value) : ""}
           onChange={handleHiddenChange}
           style={{
             position: "absolute",
@@ -1461,7 +1230,6 @@ function CycleTab({
       try {
         await fn({ animalId: id, dates: next });
         setDates(next);
-        toast.success("Cycle start dates saved.");
         onSaved(next);
       } catch (err) {
         console.error("[Animals] save cycle start dates failed", err);
@@ -1509,9 +1277,12 @@ function CycleTab({
   const pretty = React.useCallback((iso?: string | null) => {
     if (!iso) return "—";
     const s = String(iso);
-    const t = Date.parse(s.length === 10 ? `${s}T00:00:00Z` : s);
-    if (Number.isNaN(t)) return "—";
-    return new Date(t).toLocaleDateString();
+    // Parse as local date, not UTC, to avoid timezone shift
+    const [y, m, d] = s.slice(0, 10).split("-");
+    if (!y || !m || !d) return "—";
+    const date = new Date(Number(y), Number(m) - 1, Number(d));
+    if (isNaN(date.getTime())) return "—";
+    return date.toLocaleDateString();
   }, []);
 
   const dobIso = React.useMemo(
@@ -3743,7 +3514,7 @@ export default function AppAnimals() {
                         let v = (r as any)[c.key] as any;
                         if (DATE_KEYS.has(c.key as any)) v = fmt(v);
                         if (Array.isArray(v)) v = v.join(", ");
-                        return <TableCell key={c.key}>{v ?? ""}</TableCell>;
+                        return <TableCell key={c.key} align={c.center ? "center" : "left"}>{v ?? ""}</TableCell>;
                       })}
                     </TableRow>
                   ))}

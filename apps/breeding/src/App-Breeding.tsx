@@ -1887,7 +1887,7 @@ export default function AppBreeding() {
   }, []);
 
   // ── Planner view state ─────────────────────────────────────
-  const [plannerMode, setPlannerMode] = React.useState<"per-plan" | "master">("per-plan");
+  const [plannerMode, setPlannerMode] = React.useState<"per-plan" | "rollup">("per-plan");
 
   // Planner inner content sizing (scroll only inside the card body)
   const plannerContentRef = React.useRef<HTMLDivElement | null>(null);

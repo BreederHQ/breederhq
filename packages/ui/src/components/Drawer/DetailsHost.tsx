@@ -130,7 +130,7 @@ export function DetailsHost<T>({
         <DetailsDrawer
           title={headerInfo.title}
           onClose={handleClose}
-          onBackdropClick={closeOnOutsideClick && !hasPendingChanges ? handleClose : undefined}
+          onBackdropClick={closeOnOutsideClick ? handleClose : undefined}
           onEscapeKey={closeOnEscape ? handleClose : undefined}
           width={config.width ?? 720}
           placement={config.placement ?? "right"}

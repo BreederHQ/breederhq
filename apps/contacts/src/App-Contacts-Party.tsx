@@ -664,6 +664,8 @@ export default function AppContactsParty() {
       tabs: [
         { key: "overview", label: "Overview" },
         { key: "animals", label: "Animals" },
+        { key: "documents", label: "Documents" },
+        { key: "finances", label: "Finances" },
         { key: "audit", label: "Audit" },
       ],
       customChrome: true, // Use custom chrome with DetailsScaffold
