@@ -1697,6 +1697,21 @@ function ProgramTab({
 /** ────────────────────────────────────────────────────────────────────────
  * Health Tab — species-standardized trait fields with document linking
  * ─────────────────────────────────────────────────────────────────────── */
+type TraitDraft = {
+  value?: {
+    boolean?: boolean;
+    text?: string;
+    number?: number;
+    date?: string;
+    json?: any;
+  };
+  marketplaceVisible?: boolean | null;
+  verified?: boolean | null;
+  performedAt?: string | null;
+  source?: string | null;
+  jsonText?: string;
+};
+
 function HealthTab({
   animal,
   api,
@@ -1714,7 +1729,64 @@ function HealthTab({
   const [uploadModalOpen, setUploadModalOpen] = React.useState(false);
   const [uploadTraitKey, setUploadTraitKey] = React.useState<string | null>(null);
   const [expandedTraitKey, setExpandedTraitKey] = React.useState<string | null>(null);
+  const [traitDrafts, setTraitDrafts] = React.useState<Record<string, TraitDraft>>({});
   const [collapsedCategories, setCollapsedCategories] = React.useState<Set<string>>(new Set());
+
+  const getTraitDraftKey = React.useCallback((trait: any) => {
+    const raw = trait?.traitValueId ?? trait?.traitKey ?? "";
+    return String(raw);
+  }, []);
+
+  const ensureTraitDraft = React.useCallback((trait: any) => {
+    const key = getTraitDraftKey(trait);
+    setTraitDrafts((prev) => {
+      if (prev[key]) return prev;
+      const baseValue =
+        trait.value && typeof trait.value === "object" ? { ...trait.value } : undefined;
+      let clonedJson = baseValue?.json;
+      if (clonedJson && typeof clonedJson === "object") {
+        try {
+          clonedJson = JSON.parse(JSON.stringify(clonedJson));
+        } catch {
+        }
+      }
+      const nextValue = baseValue
+        ? { ...baseValue, ...(clonedJson !== baseValue?.json ? { json: clonedJson } : {}) }
+        : undefined;
+      const nextDraft: TraitDraft = {
+        value: nextValue,
+        marketplaceVisible: trait.marketplaceVisible,
+        verified: trait.verified,
+        performedAt: trait.performedAt,
+        source: trait.source,
+      };
+      if (trait.valueType === "JSON" && trait.traitKey !== "dog.hips.pennhip") {
+        nextDraft.jsonText =
+          trait.value?.json !== undefined
+            ? JSON.stringify(trait.value.json, null, 2)
+            : "";
+      }
+      return { ...prev, [key]: nextDraft };
+    });
+    return key;
+  }, [getTraitDraftKey]);
+
+  const updateTraitDraft = React.useCallback((key: string, updater: TraitDraft | ((d: TraitDraft) => TraitDraft)) => {
+    setTraitDrafts((prev) => {
+      const current = prev[key] ?? {};
+      const next = typeof updater === "function" ? (updater as (d: TraitDraft) => TraitDraft)(current) : updater;
+      if (next === current) return prev;
+      return { ...prev, [key]: next };
+    });
+  }, []);
+
+  const clearTraitDraft = React.useCallback((key: string) => {
+    setTraitDrafts((prev) => {
+      if (!(key in prev)) return prev;
+      const { [key]: _removed, ...rest } = prev;
+      return rest;
+    });
+  }, []);
 
   const fetchTraits = React.useCallback(async () => {
     try {
@@ -1755,13 +1827,15 @@ function HealthTab({
     // When switching to view mode, collapse any expanded row
     if (mode === "view") {
       setExpandedTraitKey(null);
+      setTraitDrafts({});
     }
   }, [fetchTraits, mode]);
 
-  const handleSaveTrait = async (traitKey: string, update: any) => {
+  const handleSaveTrait = async (traitKey: string, draftKey: string, update: any) => {
     try {
       await api?.animals?.traits?.update(animal.id, [{ traitKey, ...update }]);
       toast.success("Trait saved");
+      clearTraitDraft(draftKey);
       await fetchTraits();
     } catch (err: any) {
       console.error("[HealthTab] Save failed", err);
@@ -1918,22 +1992,29 @@ function HealthTab({
           >
             {!isCollapsed && (
               <div className="space-y-2">
-                {items.map((trait: any) => (
-                  <TraitRow
-                    key={trait.traitKey}
-                    trait={trait}
-                    isExpanded={expandedTraitKey === trait.traitKey}
-                    editMode={mode === "edit"}
-                    onExpand={() => {
-                      if (mode === "edit") {
-                        setExpandedTraitKey(trait.traitKey);
-                      }
-                    }}
-                    onCollapse={() => setExpandedTraitKey(null)}
-                    onSave={(update) => handleSaveTrait(trait.traitKey, update)}
-                    onUpload={() => handleUploadFromTrait(trait.traitKey)}
-                  />
-                ))}
+                {items.map((trait: any) => {
+                  const draftKey = getTraitDraftKey(trait);
+                  return (
+                    <TraitRow
+                      key={trait.traitKey}
+                      trait={trait}
+                      draft={traitDrafts[draftKey]}
+                      isExpanded={expandedTraitKey === draftKey}
+                      editMode={mode === "edit"}
+                      onExpand={() => {
+                        if (mode === "edit") {
+                          const nextKey = ensureTraitDraft(trait);
+                          setExpandedTraitKey(nextKey);
+                        }
+                      }}
+                      onCollapse={() => setExpandedTraitKey(null)}
+                      onDraftChange={(next) => updateTraitDraft(draftKey, next)}
+                      onDraftReset={() => clearTraitDraft(draftKey)}
+                      onSave={(update) => handleSaveTrait(trait.traitKey, draftKey, update)}
+                      onUpload={() => handleUploadFromTrait(trait.traitKey)}
+                    />
+                  );
+                })}
               </div>
             )}
           </SectionCard>
@@ -1956,47 +2037,69 @@ function HealthTab({
 
 function TraitRow({
   trait,
+  draft,
   isExpanded,
   editMode,
   onExpand,
   onCollapse,
   onSave,
   onUpload,
+  onDraftChange,
+  onDraftReset,
 }: {
   trait: any;
+  draft?: TraitDraft;
   isExpanded: boolean;
   editMode: boolean;
   onExpand: () => void;
   onCollapse: () => void;
   onSave: (update: any) => void;
   onUpload: () => void;
+  onDraftChange: (next: TraitDraft) => void;
+  onDraftReset: () => void;
 }) {
-  const [draft, setDraft] = React.useState<any>({});
   const [saving, setSaving] = React.useState(false);
+  const localDraft = draft ?? {};
 
-  // Reset draft when collapsing
   React.useEffect(() => {
-    if (!isExpanded) {
-      setDraft({});
+    if (!isExpanded && draft) {
+      onDraftReset();
     }
-  }, [isExpanded]);
+  }, [isExpanded, draft, onDraftReset]);
 
-  const currentValue = draft.value !== undefined ? draft.value : trait.value;
-  const currentMarketplace = draft.marketplaceVisible !== undefined
-    ? draft.marketplaceVisible
+  const currentValue = localDraft.value !== undefined ? localDraft.value : trait.value;
+  const currentMarketplace = localDraft.marketplaceVisible !== undefined
+    ? localDraft.marketplaceVisible
     : trait.marketplaceVisible;
-  const currentVerified = draft.verified !== undefined ? draft.verified : trait.verified;
-  const currentPerformedAt = draft.performedAt !== undefined
-    ? draft.performedAt
+  const currentVerified = localDraft.verified !== undefined ? localDraft.verified : trait.verified;
+  const currentPerformedAt = localDraft.performedAt !== undefined
+    ? localDraft.performedAt
     : trait.performedAt;
-  const currentSource = draft.source !== undefined ? draft.source : trait.source;
+  const currentSource = localDraft.source !== undefined ? localDraft.source : trait.source;
 
   const handleSave = async () => {
     setSaving(true);
     try {
       const update: any = {};
 
-      if (trait.valueType === "BOOLEAN" && currentValue?.boolean !== undefined) {
+      if (trait.valueType === "JSON" && trait.traitKey !== "dog.hips.pennhip") {
+        const hasJsonSource = localDraft.jsonText !== undefined || trait.value?.json !== undefined;
+        if (hasJsonSource) {
+          const jsonText =
+            localDraft.jsonText ??
+            (trait.value?.json !== undefined ? JSON.stringify(trait.value.json, null, 2) : "");
+          if (!jsonText.trim()) {
+            update.value = { json: null };
+          } else {
+            try {
+              update.value = { json: JSON.parse(jsonText) };
+            } catch {
+              toast.error("Invalid JSON format");
+              return;
+            }
+          }
+        }
+      } else if (trait.valueType === "BOOLEAN" && currentValue?.boolean !== undefined) {
         update.value = { boolean: currentValue.boolean };
       } else if (trait.valueType === "TEXT" && currentValue?.text !== undefined) {
         update.value = { text: currentValue.text };
@@ -2016,7 +2119,6 @@ function TraitRow({
       if (currentSource !== undefined) update.source = currentSource;
 
       await onSave(update);
-      setDraft({});
     } finally {
       setSaving(false);
     }
@@ -2028,13 +2130,16 @@ function TraitRow({
         <label className="flex items-center gap-2 cursor-pointer">
           <input
             type="checkbox"
-            checked={currentValue?.boolean || false}
+            checked={currentValue?.boolean === true}
             onChange={(e) =>
-              setDraft({ ...draft, value: { boolean: e.target.checked } })
+              onDraftChange({
+                ...localDraft,
+                value: { boolean: e.target.checked },
+              })
             }
             className="rounded border-hairline"
           />
-          <span className="text-sm">{currentValue?.boolean ? "Yes" : "No"}</span>
+          <span className="text-sm">Yes</span>
         </label>
       );
     }
@@ -2044,7 +2149,10 @@ function TraitRow({
         <select
           value={currentValue?.text || ""}
           onChange={(e) =>
-            setDraft({ ...draft, value: { text: e.target.value } })
+            onDraftChange({
+              ...localDraft,
+              value: { text: e.target.value },
+            })
           }
           className="text-sm border border-hairline rounded px-2 py-1 bg-card text-inherit"
         >
@@ -2065,8 +2173,8 @@ function TraitRow({
           size="sm"
           value={currentValue?.number ?? ""}
           onChange={(e) =>
-            setDraft({
-              ...draft,
+            onDraftChange({
+              ...localDraft,
               value: { number: parseFloat(e.target.value) || 0 },
             })
           }
@@ -2082,7 +2190,10 @@ function TraitRow({
           size="sm"
           value={currentValue?.date?.slice(0, 10) || ""}
           onChange={(e) =>
-            setDraft({ ...draft, value: { date: e.target.value } })
+            onDraftChange({
+              ...localDraft,
+              value: { date: e.target.value },
+            })
           }
           className="w-40"
         />
@@ -2100,8 +2211,8 @@ function TraitRow({
               size="sm"
               value={json.di ?? ""}
               onChange={(e) =>
-                setDraft({
-                  ...draft,
+                onDraftChange({
+                  ...localDraft,
                   value: {
                     json: { ...json, di: parseFloat(e.target.value) || 0 },
                   },
@@ -2116,8 +2227,8 @@ function TraitRow({
             <select
               value={json.side || ""}
               onChange={(e) =>
-                setDraft({
-                  ...draft,
+                onDraftChange({
+                  ...localDraft,
                   value: { json: { ...json, side: e.target.value } },
                 })
               }
@@ -2135,8 +2246,8 @@ function TraitRow({
               size="sm"
               value={json.notes || ""}
               onChange={(e) =>
-                setDraft({
-                  ...draft,
+                onDraftChange({
+                  ...localDraft,
                   value: { json: { ...json, notes: e.target.value } },
                 })
               }
@@ -2147,13 +2258,35 @@ function TraitRow({
       );
     }
 
+    if (trait.valueType === "JSON") {
+      const jsonText =
+        localDraft.jsonText ??
+        (trait.value?.json !== undefined ? JSON.stringify(trait.value.json, null, 2) : "");
+      return (
+        <textarea
+          className="w-full rounded border border-hairline bg-card px-2 py-2 text-sm text-inherit"
+          rows={5}
+          value={jsonText}
+          onChange={(e) =>
+            onDraftChange({
+              ...localDraft,
+              jsonText: (e.currentTarget as HTMLTextAreaElement).value,
+            })
+          }
+        />
+      );
+    }
+
     if (trait.valueType === "TEXT") {
       return (
         <Input
           size="sm"
           value={currentValue?.text || ""}
           onChange={(e) =>
-            setDraft({ ...draft, value: { text: e.target.value } })
+            onDraftChange({
+              ...localDraft,
+              value: { text: e.target.value },
+            })
           }
           className="w-full"
         />
@@ -2163,28 +2296,36 @@ function TraitRow({
     return <div className="text-xs text-secondary">Unsupported type</div>;
   };
 
+  const showValueLabel = trait.valueType !== "BOOLEAN";
+  const valueLabel =
+    trait.valueType === "JSON" && trait.traitKey !== "dog.hips.pennhip"
+      ? "Details"
+      : "Value";
+
   // Helper to format value for display
   const getDisplayValue = () => {
-    if (!trait.value) return "Not provided";
-
     if (trait.valueType === "BOOLEAN") {
+      if (trait.value?.boolean === undefined) return "Not provided";
       return trait.value.boolean ? "Yes" : "No";
     }
     if (trait.valueType === "TEXT" || trait.valueType === "ENUM") {
-      return trait.value.text || "Not provided";
+      return trait.value?.text || "Not provided";
     }
     if (trait.valueType === "NUMBER") {
-      return trait.value.number !== undefined ? String(trait.value.number) : "Not provided";
+      return trait.value?.number !== undefined ? String(trait.value.number) : "Not provided";
     }
     if (trait.valueType === "DATE") {
-      return trait.value.date ? new Date(trait.value.date).toLocaleDateString() : "Not provided";
+      return trait.value?.date ? new Date(trait.value.date).toLocaleDateString() : "Not provided";
     }
     if (trait.valueType === "JSON") {
-      if (trait.traitKey === "dog.hips.pennhip" && trait.value.json) {
-        const { di, side } = trait.value.json;
-        return di !== undefined ? `DI: ${di}${side ? ` (${side})` : ''}` : "Not provided";
+      if (trait.traitKey === "dog.hips.pennhip" && trait.value?.json) {
+        const { di, side, notes } = trait.value.json;
+        if (di === undefined) return "Not provided";
+        const sideLabel = side ? ` (${side})` : "";
+        const notesLabel = notes ? " (notes)" : "";
+        return `DI: ${di}${sideLabel}${notesLabel}`;
       }
-      return "Configured";
+      return trait.value?.json != null ? "Provided" : "Not provided";
     }
     return "Not provided";
   };
@@ -2239,27 +2380,18 @@ function TraitRow({
   // EXPANDED STATE (editing)
   return (
     <div className="border border-hairline rounded-lg p-4 bg-subtle">
-      <div className="flex items-center justify-between mb-4">
-        <div>
-          <div className="font-medium text-sm">{trait.displayName}</div>
-          <div className="text-xs text-secondary mt-0.5">{trait.traitKey}</div>
-        </div>
-        <Button
-          size="sm"
-          variant="ghost"
-          onClick={() => {
-            setDraft({});
-            onCollapse();
-          }}
-        >
-          Cancel
-        </Button>
+      <div className="mb-4">
+        <div className="font-medium text-sm">{trait.displayName}</div>
       </div>
 
       <div className="space-y-4">
         {/* Value Editor */}
         <div>
-          <label className="text-xs font-medium text-secondary block mb-2">Value</label>
+          {showValueLabel && (
+            <label className="text-xs font-medium text-secondary block mb-2">
+              {valueLabel}
+            </label>
+          )}
           {renderValueEditor()}
         </div>
 
@@ -2273,7 +2405,10 @@ function TraitRow({
                 type="checkbox"
                 checked={currentMarketplace || false}
                 onChange={(e) =>
-                  setDraft({ ...draft, marketplaceVisible: e.target.checked })
+                  onDraftChange({
+                    ...localDraft,
+                    marketplaceVisible: e.target.checked,
+                  })
                 }
                 className="rounded border-hairline"
               />
@@ -2284,7 +2419,10 @@ function TraitRow({
                 type="checkbox"
                 checked={currentVerified || false}
                 onChange={(e) =>
-                  setDraft({ ...draft, verified: e.target.checked })
+                  onDraftChange({
+                    ...localDraft,
+                    verified: e.target.checked,
+                  })
                 }
                 className="rounded border-hairline"
               />
@@ -2301,7 +2439,10 @@ function TraitRow({
                 size="sm"
                 value={currentPerformedAt?.slice(0, 10) || ""}
                 onChange={(e) =>
-                  setDraft({ ...draft, performedAt: e.target.value })
+                  onDraftChange({
+                    ...localDraft,
+                    performedAt: e.target.value,
+                  })
                 }
                 className="w-full"
               />
@@ -2310,7 +2451,12 @@ function TraitRow({
               <label className="text-xs text-secondary block mb-1">Source</label>
               <select
                 value={currentSource || ""}
-                onChange={(e) => setDraft({ ...draft, source: e.target.value })}
+                onChange={(e) =>
+                  onDraftChange({
+                    ...localDraft,
+                    source: e.target.value,
+                  })
+                }
                 className="text-sm border border-hairline rounded px-2 py-1.5 w-full bg-card text-inherit"
               >
                 <option value="">Select source...</option>
@@ -2337,7 +2483,7 @@ function TraitRow({
               {trait.documents.map((doc: any) => (
                 <div
                   key={doc.documentId}
-                  className="flex items-center justify-between gap-2 rounded border border-hairline px-3 py-2 text-xs bg-white dark:bg-neutral-900"
+                  className="flex items-center justify-between gap-2 rounded border border-hairline px-3 py-2 text-xs bg-card text-inherit"
                 >
                   <div className="flex-1 min-w-0">
                     <div className="font-medium truncate">{doc.title}</div>
@@ -2371,7 +2517,7 @@ function TraitRow({
             size="sm"
             variant="outline"
             onClick={() => {
-              setDraft({});
+              onDraftReset();
               onCollapse();
             }}
           >
