@@ -1711,6 +1711,8 @@ function HealthTab({
   const [error, setError] = React.useState<{ status?: number; message?: string; code?: string } | null>(null);
   const [uploadModalOpen, setUploadModalOpen] = React.useState(false);
   const [uploadTraitKey, setUploadTraitKey] = React.useState<string | null>(null);
+  const [expandedTraitKey, setExpandedTraitKey] = React.useState<string | null>(null);
+  const [collapsedCategories, setCollapsedCategories] = React.useState<Set<string>>(new Set());
 
   const fetchTraits = React.useCallback(async () => {
     try {
@@ -1838,24 +1840,68 @@ function HealthTab({
     );
   }
 
+  const toggleCategory = (category: string) => {
+    setCollapsedCategories((prev) => {
+      const next = new Set(prev);
+      if (next.has(category)) {
+        next.delete(category);
+      } else {
+        next.add(category);
+      }
+      return next;
+    });
+  };
+
   return (
     <div className="space-y-3">
       {categories.map((cat: any) => {
         const items = cat.items || [];
         if (items.length === 0) return null;
 
+        const isCollapsed = collapsedCategories.has(cat.category);
+        const completedCount = items.filter((t: any) => {
+          const hasValue = t.value?.boolean !== undefined ||
+                          t.value?.text ||
+                          t.value?.number !== undefined ||
+                          t.value?.date ||
+                          t.value?.json;
+          return hasValue;
+        }).length;
+
         return (
-          <SectionCard key={cat.category} title={cat.category}>
-            <div className="space-y-4">
-              {items.map((trait: any) => (
-                <TraitRow
-                  key={trait.traitKey}
-                  trait={trait}
-                  onSave={(update) => handleSaveTrait(trait.traitKey, update)}
-                  onUpload={() => handleUploadFromTrait(trait.traitKey)}
-                />
-              ))}
-            </div>
+          <SectionCard
+            key={cat.category}
+            title={
+              <div className="flex items-center justify-between">
+                <span>{cat.category}</span>
+                <button
+                  onClick={() => toggleCategory(cat.category)}
+                  className="text-xs text-secondary hover:text-primary px-2 py-1"
+                >
+                  {isCollapsed ? `Show ${items.length} traits` : 'Collapse'}
+                </button>
+              </div>
+            }
+          >
+            {isCollapsed ? (
+              <div className="text-sm text-secondary">
+                {completedCount} of {items.length} completed
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {items.map((trait: any) => (
+                  <TraitRow
+                    key={trait.traitKey}
+                    trait={trait}
+                    isExpanded={expandedTraitKey === trait.traitKey}
+                    onExpand={() => setExpandedTraitKey(trait.traitKey)}
+                    onCollapse={() => setExpandedTraitKey(null)}
+                    onSave={(update) => handleSaveTrait(trait.traitKey, update)}
+                    onUpload={() => handleUploadFromTrait(trait.traitKey)}
+                  />
+                ))}
+              </div>
+            )}
           </SectionCard>
         );
       })}
@@ -1876,10 +1922,16 @@ function HealthTab({
 
 function TraitRow({
   trait,
+  isExpanded,
+  onExpand,
+  onCollapse,
   onSave,
   onUpload,
 }: {
   trait: any;
+  isExpanded: boolean;
+  onExpand: () => void;
+  onCollapse: () => void;
   onSave: (update: any) => void;
   onUpload: () => void;
 }) {
@@ -2068,28 +2120,145 @@ function TraitRow({
     return <div className="text-xs text-secondary">Unsupported type</div>;
   };
 
+  // Helper to format value for display
+  const getDisplayValue = () => {
+    if (!trait.value) return "Not provided";
+
+    if (trait.valueType === "BOOLEAN") {
+      return trait.value.boolean ? "Yes" : "No";
+    }
+    if (trait.valueType === "TEXT" || trait.valueType === "ENUM") {
+      return trait.value.text || "Not provided";
+    }
+    if (trait.valueType === "NUMBER") {
+      return trait.value.number !== undefined ? String(trait.value.number) : "Not provided";
+    }
+    if (trait.valueType === "DATE") {
+      return trait.value.date ? new Date(trait.value.date).toLocaleDateString() : "Not provided";
+    }
+    if (trait.valueType === "JSON") {
+      if (trait.traitKey === "dog.hips.pennhip" && trait.value.json) {
+        const { di, side } = trait.value.json;
+        return di !== undefined ? `DI: ${di}${side ? ` (${side})` : ''}` : "Not provided";
+      }
+      return "Configured";
+    }
+    return "Not provided";
+  };
+
+  const hasValue = trait.value?.boolean !== undefined ||
+                   trait.value?.text ||
+                   trait.value?.number !== undefined ||
+                   trait.value?.date ||
+                   trait.value?.json;
+
+  // COLLAPSED STATE (default)
+  if (!isExpanded) {
+    return (
+      <div className="flex items-center justify-between py-2 px-3 hover:bg-subtle rounded group">
+        <div className="flex items-center gap-3 flex-1 min-w-0">
+          <div className="flex-1 min-w-0">
+            <div className="text-sm font-medium truncate">{trait.displayName}</div>
+            <div className="text-xs text-secondary truncate">{getDisplayValue()}</div>
+          </div>
+          <div className="flex items-center gap-2">
+            {trait.verified && (
+              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-100">
+                Verified
+              </span>
+            )}
+            {trait.marketplaceVisible && (
+              <span className="text-xs text-secondary" title="Visible on marketplace">
+                👁
+              </span>
+            )}
+            {trait.documents && trait.documents.length > 0 && (
+              <div className="flex gap-1">
+                {trait.documents.slice(0, 2).map((doc: any) => (
+                  <span
+                    key={doc.documentId}
+                    className="inline-flex items-center px-2 py-0.5 rounded text-xs bg-neutral-100 text-neutral-700 dark:bg-neutral-800 dark:text-neutral-300 truncate max-w-[8rem]"
+                    title={doc.title}
+                  >
+                    {doc.title}
+                  </span>
+                ))}
+                {trait.documents.length > 2 && (
+                  <span className="text-xs text-secondary">+{trait.documents.length - 2}</span>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={onExpand}
+          className="ml-2 opacity-0 group-hover:opacity-100"
+        >
+          Edit
+        </Button>
+      </div>
+    );
+  }
+
+  // EXPANDED STATE (editing)
   return (
-    <div className="border-b border-hairline pb-4 last:border-0 last:pb-0">
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+    <div className="border border-hairline rounded-lg p-4 bg-subtle">
+      <div className="flex items-center justify-between mb-3">
         <div>
           <div className="font-medium text-sm">{trait.displayName}</div>
-          <div className="text-xs text-secondary mt-1">{trait.traitKey}</div>
+          <div className="text-xs text-secondary mt-0.5">{trait.traitKey}</div>
         </div>
-        <div>{renderValueEditor()}</div>
-        <div className="space-y-2">
-          <div className="flex items-center gap-3 flex-wrap">
-            <label className="flex items-center gap-1 text-xs cursor-pointer">
-              <input
-                type="checkbox"
-                checked={currentMarketplace || false}
+        <Button size="sm" variant="ghost" onClick={onCollapse}>
+          Cancel
+        </Button>
+      </div>
+
+      <div className="space-y-4">
+        {/* Value Editor */}
+        <div>
+          <label className="text-xs text-secondary block mb-1">Value</label>
+          {renderValueEditor()}
+        </div>
+
+        {/* Additional Details Section */}
+        <div className="border-t border-hairline pt-3 space-y-3">
+          <div className="text-xs font-medium text-secondary mb-2">Additional Details</div>
+
+          {/* Performed Date & Source */}
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="text-xs text-secondary block mb-1">Performed Date</label>
+              <Input
+                type="date"
+                size="sm"
+                value={currentPerformedAt?.slice(0, 10) || ""}
                 onChange={(e) =>
-                  setDraft({ ...draft, marketplaceVisible: e.target.checked })
+                  setDraft({ ...draft, performedAt: e.target.value })
                 }
-                className="rounded border-hairline"
+                className="w-full"
               />
-              Marketplace
-            </label>
-            <label className="flex items-center gap-1 text-xs cursor-pointer">
+            </div>
+            <div>
+              <label className="text-xs text-secondary block mb-1">Source</label>
+              <select
+                value={currentSource || ""}
+                onChange={(e) => setDraft({ ...draft, source: e.target.value })}
+                className="text-sm border border-hairline rounded px-2 py-1.5 w-full"
+              >
+                <option value="">Select source...</option>
+                <option value="BREEDER_ENTERED">Breeder Entered</option>
+                <option value="VETERINARY_RECORD">Veterinary Record</option>
+                <option value="REGISTRY_DATA">Registry Data</option>
+                <option value="LAB_RESULT">Lab Result</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Verification & Marketplace */}
+          <div className="flex items-center gap-4">
+            <label className="flex items-center gap-2 text-sm cursor-pointer">
               <input
                 type="checkbox"
                 checked={currentVerified || false}
@@ -2098,63 +2267,61 @@ function TraitRow({
                 }
                 className="rounded border-hairline"
               />
-              Verified
+              <span>Verified</span>
+            </label>
+            <label className="flex items-center gap-2 text-sm cursor-pointer">
+              <input
+                type="checkbox"
+                checked={currentMarketplace || false}
+                onChange={(e) =>
+                  setDraft({ ...draft, marketplaceVisible: e.target.checked })
+                }
+                className="rounded border-hairline"
+              />
+              <span>Show on Marketplace</span>
             </label>
           </div>
-          <div className="flex items-center gap-2">
-            <Input
-              type="date"
-              size="sm"
-              value={currentPerformedAt?.slice(0, 10) || ""}
-              onChange={(e) =>
-                setDraft({ ...draft, performedAt: e.target.value })
-              }
-              placeholder="Performed"
-              className="w-36"
-            />
-            <select
-              value={currentSource || ""}
-              onChange={(e) => setDraft({ ...draft, source: e.target.value })}
-              className="text-xs border border-hairline rounded px-2 py-1"
-            >
-              <option value="">Source...</option>
-              <option value="BREEDER_ENTERED">Breeder</option>
-              <option value="VETERINARY_RECORD">Vet</option>
-              <option value="REGISTRY_DATA">Registry</option>
-              <option value="LAB_RESULT">Lab</option>
-            </select>
+        </div>
+
+        {/* Documents */}
+        {trait.documents && trait.documents.length > 0 && (
+          <div>
+            <label className="text-xs text-secondary block mb-2">Linked Documents</label>
+            <div className="flex flex-wrap gap-2">
+              {trait.documents.map((doc: any) => (
+                <span
+                  key={doc.documentId}
+                  className="inline-flex items-center gap-2 rounded border border-hairline px-2.5 py-1.5 text-xs bg-neutral-50 dark:bg-neutral-900"
+                >
+                  <span className="truncate max-w-[12rem]">{doc.title}</span>
+                  <span className="text-secondary text-xs">{doc.visibility}</span>
+                  {doc.status && (
+                    <span className="text-secondary text-xs">({doc.status})</span>
+                  )}
+                </span>
+              ))}
+            </div>
           </div>
-          <div className="flex items-center gap-2">
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={handleSave}
-              disabled={saving}
-            >
-              {saving ? "Saving..." : "Save"}
-            </Button>
-            <Button size="sm" variant="outline" onClick={onUpload}>
-              Upload
-            </Button>
-          </div>
+        )}
+
+        {/* Action Buttons */}
+        <div className="flex items-center gap-2 pt-2">
+          <Button
+            size="sm"
+            variant="primary"
+            onClick={async () => {
+              await handleSave();
+              onCollapse();
+            }}
+            disabled={saving}
+          >
+            {saving ? "Saving..." : "Save"}
+          </Button>
+          <Button size="sm" variant="outline" onClick={onUpload}>
+            Upload Document
+          </Button>
         </div>
       </div>
-      {trait.documents && trait.documents.length > 0 && (
-        <div className="mt-3 flex flex-wrap gap-2">
-          {trait.documents.map((doc: any) => (
-            <span
-              key={doc.documentId}
-              className="inline-flex items-center gap-2 rounded border border-hairline px-2 py-1 text-xs bg-neutral-50 dark:bg-neutral-900"
-            >
-              <span className="truncate max-w-[12rem]">{doc.title}</span>
-              <span className="text-secondary">{doc.visibility}</span>
-              {doc.status && (
-                <span className="text-secondary">({doc.status})</span>
-              )}
-            </span>
-          ))}
-        </div>
-      )}
     </div>
   );
 }
