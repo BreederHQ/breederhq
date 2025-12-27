@@ -3,6 +3,8 @@
 
 This is a minimal npm workspaces monorepo with three apps and three packages.
 
+Party migration docs: [Frontend UI merge](breederhq/docs/migrations/party-ui-merge/README.md) and [API migration](breederhq-api/docs/migrations/party/README.md).
+
 ## Structure
 - `apps/contacts` Vite + React + TS app
 - `apps/animals` Vite + React + TS app
