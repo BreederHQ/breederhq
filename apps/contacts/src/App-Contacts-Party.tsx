@@ -684,11 +684,13 @@ export default function AppContactsParty() {
             // Transform prefersX fields to commPreferences array
             if (key.startsWith('prefers')) {
               const channel = key.replace('prefers', '').toUpperCase();
+              // Value is already a PreferenceLevel enum (ALLOW, NOT_PREFERRED, NEVER)
               commPreferences.push({
                 channel,
-                preference: value ? 'ALLOW' : 'NEVER',
+                preference: value as string,
               });
-            } else {
+            } else if (!key.includes('Compliance')) {
+              // Skip compliance fields (emailCompliance, smsCompliance, etc.) - they're read-only
               payload[key] = value;
             }
           }
@@ -715,11 +717,13 @@ export default function AppContactsParty() {
           for (const [key, value] of Object.entries(draft)) {
             if (key.startsWith('prefers')) {
               const channel = key.replace('prefers', '').toUpperCase();
+              // Value is already a PreferenceLevel enum (ALLOW, NOT_PREFERRED, NEVER)
               commPreferences.push({
                 channel,
-                preference: value ? 'ALLOW' : 'NEVER',
+                preference: value as string,
               });
-            } else {
+            } else if (!key.includes('Compliance')) {
+              // Skip compliance fields (emailCompliance, smsCompliance, etc.) - they're read-only
               payload[key] = value;
             }
           }
@@ -728,7 +732,7 @@ export default function AppContactsParty() {
             payload.commPreferences = commPreferences;
           }
 
-          await api.organizations.update(row.organizationId, draft);
+          await api.organizations.update(row.organizationId, payload);
           const updated = await api.organizations.get(row.organizationId);
           const updatedRow = organizationToPartyRow(updated);
           // Preserve the original partyId to prevent key collision
