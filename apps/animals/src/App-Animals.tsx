@@ -1733,7 +1733,7 @@ function HealthTab({
   const [collapsedCategories, setCollapsedCategories] = React.useState<Set<string>>(new Set());
 
   const getTraitDraftKey = React.useCallback((trait: any) => {
-    const raw = trait?.traitValueId ?? trait?.traitKey ?? "";
+    const raw = trait?.traitKey ?? trait?.traitValueId ?? "";
     return String(raw);
   }, []);
 
@@ -1760,7 +1760,9 @@ function HealthTab({
         performedAt: trait.performedAt,
         source: trait.source,
       };
-      if (trait.valueType === "JSON" && trait.traitKey !== "dog.hips.pennhip") {
+      const valueType = String(trait.valueType || "").toUpperCase();
+      const isJsonValue = valueType.includes("JSON") || valueType === "OBJECT";
+      if (isJsonValue && trait.traitKey !== "dog.hips.pennhip") {
         nextDraft.jsonText =
           trait.value?.json !== undefined
             ? JSON.stringify(trait.value.json, null, 2)
@@ -1810,6 +1812,10 @@ function HealthTab({
       })).filter((cat: any) => cat.items.length > 0);
 
       setCategories(filteredCategories);
+      setCollapsedCategories((prev) => {
+        if (prev.size > 0) return prev;
+        return new Set(filteredCategories.map((cat: any) => String(cat.category || "")).filter(Boolean));
+      });
     } catch (err: any) {
       console.error("[HealthTab] Failed to load traits", err);
       setError({
@@ -1970,7 +1976,12 @@ function HealthTab({
                     aria-label={isCollapsed ? "Expand category" : "Collapse category"}
                   >
                     <svg
-                      className={`w-4 h-4 transition-transform duration-200 ${isCollapsed ? "" : "rotate-90"}`}
+                      className="w-4 h-4 transition-transform duration-200"
+                      style={{
+                        transform: isCollapsed ? "rotate(0deg)" : "rotate(90deg)",
+                        transformOrigin: "center",
+                        transformBox: "fill-box",
+                      }}
                       fill="none"
                       stroke="currentColor"
                       viewBox="0 0 24 24"
@@ -2035,6 +2046,26 @@ function HealthTab({
   );
 }
 
+function humanizeTraitKey(key: string) {
+  const last = String(key || "").split(".").pop() || "";
+  if (!last) return "";
+  const spaced = last.replace(/[_-]+/g, " ").replace(/([a-z])([A-Z])/g, "$1 $2");
+  return spaced.replace(/\b\w/g, (m) => m.toUpperCase());
+}
+
+function formatTraitDisplayName(displayName?: string, traitKey?: string) {
+  const rawDisplayName = String(displayName || "").trim();
+  const rawKey = String(traitKey || "").trim();
+  if (rawDisplayName && !rawDisplayName.includes(".") && rawDisplayName !== rawKey) {
+    return rawDisplayName;
+  }
+  if (rawKey) {
+    const humanized = humanizeTraitKey(rawKey);
+    return humanized || rawDisplayName || "Trait";
+  }
+  return rawDisplayName || "Trait";
+}
+
 function TraitRow({
   trait,
   draft,
@@ -2076,18 +2107,36 @@ function TraitRow({
     ? localDraft.performedAt
     : trait.performedAt;
   const currentSource = localDraft.source !== undefined ? localDraft.source : trait.source;
+  const valueType = String(trait.valueType || "").toUpperCase();
+  const isPennHip = trait.traitKey === "dog.hips.pennhip";
+  const isBoolean = valueType === "BOOLEAN" || valueType === "BOOL";
+  const isEnum = valueType === "ENUM";
+  const isNumber = valueType === "NUMBER";
+  const isDate = valueType === "DATE";
+  const isText = valueType === "TEXT";
+  const isJsonValue =
+    valueType.includes("JSON") || valueType === "OBJECT" || trait.value?.json !== undefined;
+  const booleanLabel = trait.displayName?.toLowerCase().includes("completed") ? "Completed" : "Yes";
+  const displayName = formatTraitDisplayName(trait.displayName, trait.traitKey);
 
   const handleSave = async () => {
     setSaving(true);
     try {
       const update: any = {};
 
-      if (trait.valueType === "JSON" && trait.traitKey !== "dog.hips.pennhip") {
-        const hasJsonSource = localDraft.jsonText !== undefined || trait.value?.json !== undefined;
+      if (isJsonValue && !isPennHip) {
+        const hasJsonSource =
+          localDraft.jsonText !== undefined ||
+          trait.value?.json !== undefined ||
+          currentValue?.json !== undefined;
         if (hasJsonSource) {
           const jsonText =
             localDraft.jsonText ??
-            (trait.value?.json !== undefined ? JSON.stringify(trait.value.json, null, 2) : "");
+            (trait.value?.json !== undefined
+              ? JSON.stringify(trait.value.json, null, 2)
+              : currentValue?.json !== undefined
+                ? JSON.stringify(currentValue.json, null, 2)
+                : "");
           if (!jsonText.trim()) {
             update.value = { json: null };
           } else {
@@ -2095,21 +2144,23 @@ function TraitRow({
               update.value = { json: JSON.parse(jsonText) };
             } catch {
               toast.error("Invalid JSON format");
-              return;
+              return false;
             }
           }
         }
-      } else if (trait.valueType === "BOOLEAN" && currentValue?.boolean !== undefined) {
+      } else if (isPennHip && currentValue?.json !== undefined) {
+        update.value = { json: currentValue.json };
+      } else if (isBoolean && currentValue?.boolean !== undefined) {
         update.value = { boolean: currentValue.boolean };
-      } else if (trait.valueType === "TEXT" && currentValue?.text !== undefined) {
+      } else if (isText && currentValue?.text !== undefined) {
         update.value = { text: currentValue.text };
-      } else if (trait.valueType === "NUMBER" && currentValue?.number !== undefined) {
+      } else if (isNumber && currentValue?.number !== undefined) {
         update.value = { number: currentValue.number };
-      } else if (trait.valueType === "DATE" && currentValue?.date !== undefined) {
+      } else if (isDate && currentValue?.date !== undefined) {
         update.value = { date: currentValue.date };
-      } else if (trait.valueType === "ENUM" && currentValue?.text !== undefined) {
+      } else if (isEnum && currentValue?.text !== undefined) {
         update.value = { text: currentValue.text };
-      } else if (trait.valueType === "JSON" && currentValue?.json !== undefined) {
+      } else if (isJsonValue && currentValue?.json !== undefined) {
         update.value = { json: currentValue.json };
       }
 
@@ -2119,13 +2170,14 @@ function TraitRow({
       if (currentSource !== undefined) update.source = currentSource;
 
       await onSave(update);
+      return true;
     } finally {
       setSaving(false);
     }
   };
 
   const renderValueEditor = () => {
-    if (trait.valueType === "BOOLEAN") {
+    if (isBoolean) {
       return (
         <label className="flex items-center gap-2 cursor-pointer">
           <input
@@ -2139,12 +2191,12 @@ function TraitRow({
             }
             className="rounded border-hairline"
           />
-          <span className="text-sm">Yes</span>
+          <span className="text-sm">{booleanLabel}</span>
         </label>
       );
     }
 
-    if (trait.valueType === "ENUM") {
+    if (isEnum) {
       return (
         <select
           value={currentValue?.text || ""}
@@ -2166,7 +2218,7 @@ function TraitRow({
       );
     }
 
-    if (trait.valueType === "NUMBER") {
+    if (isNumber) {
       return (
         <Input
           type="number"
@@ -2183,7 +2235,7 @@ function TraitRow({
       );
     }
 
-    if (trait.valueType === "DATE") {
+    if (isDate) {
       return (
         <Input
           type="date"
@@ -2200,7 +2252,7 @@ function TraitRow({
       );
     }
 
-    if (trait.valueType === "JSON" && trait.traitKey === "dog.hips.pennhip") {
+    if (isPennHip) {
       const json = currentValue?.json || {};
       return (
         <div className="space-y-2">
@@ -2258,7 +2310,7 @@ function TraitRow({
       );
     }
 
-    if (trait.valueType === "JSON") {
+    if (isJsonValue) {
       const jsonText =
         localDraft.jsonText ??
         (trait.value?.json !== undefined ? JSON.stringify(trait.value.json, null, 2) : "");
@@ -2277,7 +2329,7 @@ function TraitRow({
       );
     }
 
-    if (trait.valueType === "TEXT") {
+    if (isText) {
       return (
         <Input
           size="sm"
@@ -2296,35 +2348,32 @@ function TraitRow({
     return <div className="text-xs text-secondary">Unsupported type</div>;
   };
 
-  const showValueLabel = trait.valueType !== "BOOLEAN";
-  const valueLabel =
-    trait.valueType === "JSON" && trait.traitKey !== "dog.hips.pennhip"
-      ? "Details"
-      : "Value";
+  const showValueLabel = !isBoolean;
+  const valueLabel = isJsonValue && !isPennHip ? "Details" : "Value";
 
   // Helper to format value for display
   const getDisplayValue = () => {
-    if (trait.valueType === "BOOLEAN") {
+    if (isPennHip) {
+      const json = trait.value?.json;
+      if (!json || json.di === undefined) return "Not provided";
+      const sideLabel = json.side ? ` (${json.side})` : "";
+      const notesLabel = json.notes ? " (notes)" : "";
+      return `DI: ${json.di}${sideLabel}${notesLabel}`;
+    }
+    if (isBoolean) {
       if (trait.value?.boolean === undefined) return "Not provided";
       return trait.value.boolean ? "Yes" : "No";
     }
-    if (trait.valueType === "TEXT" || trait.valueType === "ENUM") {
+    if (isText || isEnum) {
       return trait.value?.text || "Not provided";
     }
-    if (trait.valueType === "NUMBER") {
+    if (isNumber) {
       return trait.value?.number !== undefined ? String(trait.value.number) : "Not provided";
     }
-    if (trait.valueType === "DATE") {
+    if (isDate) {
       return trait.value?.date ? new Date(trait.value.date).toLocaleDateString() : "Not provided";
     }
-    if (trait.valueType === "JSON") {
-      if (trait.traitKey === "dog.hips.pennhip" && trait.value?.json) {
-        const { di, side, notes } = trait.value.json;
-        if (di === undefined) return "Not provided";
-        const sideLabel = side ? ` (${side})` : "";
-        const notesLabel = notes ? " (notes)" : "";
-        return `DI: ${di}${sideLabel}${notesLabel}`;
-      }
+    if (isJsonValue || trait.value?.json !== undefined) {
       return trait.value?.json != null ? "Provided" : "Not provided";
     }
     return "Not provided";
@@ -2342,7 +2391,7 @@ function TraitRow({
       <div className="flex items-center justify-between py-2 px-3 hover:bg-subtle rounded group">
         <div className="flex items-center gap-3 flex-1 min-w-0">
           <div className="flex-1 min-w-0">
-            <div className="text-sm font-medium truncate">{trait.displayName}</div>
+            <div className="text-sm font-medium truncate">{displayName}</div>
             <div className="text-xs text-secondary truncate">{getDisplayValue()}</div>
           </div>
           <div className="flex items-center gap-2">
@@ -2381,7 +2430,7 @@ function TraitRow({
   return (
     <div className="border border-hairline rounded-lg p-4 bg-subtle">
       <div className="mb-4">
-        <div className="font-medium text-sm">{trait.displayName}</div>
+        <div className="font-medium text-sm">{displayName}</div>
       </div>
 
       <div className="space-y-4">
@@ -2483,7 +2532,7 @@ function TraitRow({
               {trait.documents.map((doc: any) => (
                 <div
                   key={doc.documentId}
-                  className="flex items-center justify-between gap-2 rounded border border-hairline px-3 py-2 text-xs bg-card text-inherit"
+                  className="flex items-center justify-between gap-2 rounded border border-hairline px-3 py-2 text-xs bg-surface text-inherit"
                 >
                   <div className="flex-1 min-w-0">
                     <div className="font-medium truncate">{doc.title}</div>
@@ -2506,8 +2555,8 @@ function TraitRow({
             size="sm"
             variant="primary"
             onClick={async () => {
-              await handleSave();
-              onCollapse();
+              const didSave = await handleSave();
+              if (didSave) onCollapse();
             }}
             disabled={saving}
           >
@@ -2574,7 +2623,7 @@ function DocumentsTab({
         (cat.items || []).forEach((t: any) => {
           flatTraits.push({
             traitKey: t.traitKey,
-            displayName: t.displayName,
+            displayName: formatTraitDisplayName(t.displayName, t.traitKey),
             category: cat.category,
           });
         });
@@ -2704,7 +2753,7 @@ function DocumentsTab({
                         onClick={() => onHealthTabRequest?.(lt.traitKey)}
                         className="text-xs px-2 py-0.5 rounded border border-hairline hover:bg-neutral-100 dark:hover:bg-neutral-800"
                       >
-                        {lt.displayName}
+                        {formatTraitDisplayName(lt.displayName, lt.traitKey)}
                       </button>
                     ))}
                   </div>
@@ -2899,7 +2948,7 @@ function DocumentUploadModal({
                           }}
                           className="rounded border-hairline"
                         />
-                        {t.displayName}
+                        {formatTraitDisplayName(t.displayName, t.traitKey)}
                       </label>
                     ))}
                   </div>
@@ -3983,7 +4032,14 @@ export default function AppAnimals() {
             mode={mode}
             onEdit={() => setMode("edit")}
             onCancel={() => setMode("view")}
-            onSave={requestSave}
+            onSave={async () => {
+              const currentTab = activeTab;
+              await Promise.resolve(requestSave());
+              setActiveTab(currentTab);
+              if (typeof window !== "undefined" && window.requestAnimationFrame) {
+                window.requestAnimationFrame(() => setActiveTab(currentTab));
+              }
+            }}
             tabs={detailsConfig.tabs(row)}
             activeTab={activeTab}
             onTabChange={setActiveTab}
@@ -5082,3 +5138,5 @@ export default function AppAnimals() {
     </div>
   );
 }
+
+
