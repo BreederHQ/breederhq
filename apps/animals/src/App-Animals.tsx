@@ -1713,6 +1713,7 @@ function HealthTab({
   const [uploadTraitKey, setUploadTraitKey] = React.useState<string | null>(null);
   const [expandedTraitKey, setExpandedTraitKey] = React.useState<string | null>(null);
   const [collapsedCategories, setCollapsedCategories] = React.useState<Set<string>>(new Set());
+  const [editMode, setEditMode] = React.useState(false);
 
   const fetchTraits = React.useCallback(async () => {
     try {
@@ -1725,7 +1726,17 @@ function HealthTab({
         console.log('[HealthTab] Traits response:', data);
       }
 
-      setCategories(data?.categories || []);
+      // Filter out non-health traits (microchip, registry numbers)
+      const filteredCategories = (data?.categories || []).map((cat: any) => ({
+        ...cat,
+        items: (cat.items || []).filter((t: any) => {
+          const key = t.traitKey || "";
+          // Exclude ID and registry traits
+          return !key.startsWith("dog.id.") && !key.startsWith("dog.registry.");
+        }),
+      })).filter((cat: any) => cat.items.length > 0);
+
+      setCategories(filteredCategories);
     } catch (err: any) {
       console.error("[HealthTab] Failed to load traits", err);
       setError({
@@ -1854,6 +1865,23 @@ function HealthTab({
 
   return (
     <div className="space-y-3">
+      {/* Top-right Edit Health button */}
+      <div className="flex justify-end mb-2">
+        <Button
+          size="sm"
+          variant={editMode ? "primary" : "outline"}
+          onClick={() => {
+            setEditMode(!editMode);
+            if (editMode) {
+              // Exiting edit mode, collapse any expanded row
+              setExpandedTraitKey(null);
+            }
+          }}
+        >
+          {editMode ? "Done" : "Edit Health"}
+        </Button>
+      </div>
+
       {categories.map((cat: any) => {
         const items = cat.items || [];
         if (items.length === 0) return null;
@@ -1872,29 +1900,40 @@ function HealthTab({
           <SectionCard
             key={cat.category}
             title={
-              <div className="flex items-center justify-between">
-                <span>{cat.category}</span>
-                <button
-                  onClick={() => toggleCategory(cat.category)}
-                  className="text-xs text-secondary hover:text-primary px-2 py-1"
-                >
-                  {isCollapsed ? `Show ${items.length} traits` : 'Collapse'}
-                </button>
-              </div>
+              <button
+                onClick={() => toggleCategory(cat.category)}
+                className="flex items-center justify-between w-full text-left hover:opacity-80"
+              >
+                <span className="flex items-center gap-2">
+                  <svg
+                    className={`w-4 h-4 transition-transform ${isCollapsed ? "" : "rotate-90"}`}
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
+                  {cat.category}
+                </span>
+                <span className="text-xs text-secondary font-normal">
+                  {completedCount} of {items.length} provided
+                </span>
+              </button>
             }
           >
-            {isCollapsed ? (
-              <div className="text-sm text-secondary">
-                {completedCount} of {items.length} completed
-              </div>
-            ) : (
+            {!isCollapsed && (
               <div className="space-y-2">
                 {items.map((trait: any) => (
                   <TraitRow
                     key={trait.traitKey}
                     trait={trait}
                     isExpanded={expandedTraitKey === trait.traitKey}
-                    onExpand={() => setExpandedTraitKey(trait.traitKey)}
+                    editMode={editMode}
+                    onExpand={() => {
+                      if (editMode) {
+                        setExpandedTraitKey(trait.traitKey);
+                      }
+                    }}
                     onCollapse={() => setExpandedTraitKey(null)}
                     onSave={(update) => handleSaveTrait(trait.traitKey, update)}
                     onUpload={() => handleUploadFromTrait(trait.traitKey)}
@@ -1923,6 +1962,7 @@ function HealthTab({
 function TraitRow({
   trait,
   isExpanded,
+  editMode,
   onExpand,
   onCollapse,
   onSave,
@@ -1930,6 +1970,7 @@ function TraitRow({
 }: {
   trait: any;
   isExpanded: boolean;
+  editMode: boolean;
   onExpand: () => void;
   onCollapse: () => void;
   onSave: (update: any) => void;
@@ -1937,6 +1978,13 @@ function TraitRow({
 }) {
   const [draft, setDraft] = React.useState<any>({});
   const [saving, setSaving] = React.useState(false);
+
+  // Reset draft when collapsing
+  React.useEffect(() => {
+    if (!isExpanded) {
+      setDraft({});
+    }
+  }, [isExpanded]);
 
   const currentValue = draft.value !== undefined ? draft.value : trait.value;
   const currentMarketplace = draft.marketplaceVisible !== undefined
@@ -2168,36 +2216,27 @@ function TraitRow({
               </span>
             )}
             {trait.marketplaceVisible && (
-              <span className="text-xs text-secondary" title="Visible on marketplace">
-                👁
+              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-100">
+                Marketplace
               </span>
             )}
             {trait.documents && trait.documents.length > 0 && (
-              <div className="flex gap-1">
-                {trait.documents.slice(0, 2).map((doc: any) => (
-                  <span
-                    key={doc.documentId}
-                    className="inline-flex items-center px-2 py-0.5 rounded text-xs bg-neutral-100 text-neutral-700 dark:bg-neutral-800 dark:text-neutral-300 truncate max-w-[8rem]"
-                    title={doc.title}
-                  >
-                    {doc.title}
-                  </span>
-                ))}
-                {trait.documents.length > 2 && (
-                  <span className="text-xs text-secondary">+{trait.documents.length - 2}</span>
-                )}
-              </div>
+              <span className="text-xs text-secondary" title={`${trait.documents.length} document(s)`}>
+                {trait.documents.length} doc{trait.documents.length > 1 ? 's' : ''}
+              </span>
             )}
           </div>
         </div>
-        <Button
-          size="sm"
-          variant="ghost"
-          onClick={onExpand}
-          className="ml-2 opacity-0 group-hover:opacity-100"
-        >
-          Edit
-        </Button>
+        {editMode && (
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={onExpand}
+            className="ml-2"
+          >
+            Edit
+          </Button>
+        )}
       </div>
     );
   }
@@ -2205,12 +2244,19 @@ function TraitRow({
   // EXPANDED STATE (editing)
   return (
     <div className="border border-hairline rounded-lg p-4 bg-subtle">
-      <div className="flex items-center justify-between mb-3">
+      <div className="flex items-center justify-between mb-4">
         <div>
           <div className="font-medium text-sm">{trait.displayName}</div>
           <div className="text-xs text-secondary mt-0.5">{trait.traitKey}</div>
         </div>
-        <Button size="sm" variant="ghost" onClick={onCollapse}>
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={() => {
+            setDraft({});
+            onCollapse();
+          }}
+        >
           Cancel
         </Button>
       </div>
@@ -2218,16 +2264,41 @@ function TraitRow({
       <div className="space-y-4">
         {/* Value Editor */}
         <div>
-          <label className="text-xs text-secondary block mb-1">Value</label>
+          <label className="text-xs font-medium text-secondary block mb-2">Value</label>
           {renderValueEditor()}
         </div>
 
-        {/* Additional Details Section */}
-        <div className="border-t border-hairline pt-3 space-y-3">
-          <div className="text-xs font-medium text-secondary mb-2">Additional Details</div>
+        {/* Visibility and Verification */}
+        <div className="border-t border-hairline pt-4 space-y-3">
+          <div className="text-xs font-medium text-secondary mb-2">Visibility and Verification</div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <label className="flex items-center gap-2 text-sm cursor-pointer">
+              <input
+                type="checkbox"
+                checked={currentMarketplace || false}
+                onChange={(e) =>
+                  setDraft({ ...draft, marketplaceVisible: e.target.checked })
+                }
+                className="rounded border-hairline"
+              />
+              <span>Visible on marketplace</span>
+            </label>
+            <label className="flex items-center gap-2 text-sm cursor-pointer">
+              <input
+                type="checkbox"
+                checked={currentVerified || false}
+                onChange={(e) =>
+                  setDraft({ ...draft, verified: e.target.checked })
+                }
+                className="rounded border-hairline"
+              />
+              <span>Verified</span>
+            </label>
+          </div>
 
           {/* Performed Date & Source */}
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs text-secondary block mb-1">Performed Date</label>
               <Input
@@ -2245,67 +2316,51 @@ function TraitRow({
               <select
                 value={currentSource || ""}
                 onChange={(e) => setDraft({ ...draft, source: e.target.value })}
-                className="text-sm border border-hairline rounded px-2 py-1.5 w-full"
+                className="text-sm border border-hairline rounded px-2 py-1.5 w-full bg-white dark:bg-neutral-900"
               >
                 <option value="">Select source...</option>
-                <option value="BREEDER_ENTERED">Breeder Entered</option>
-                <option value="VETERINARY_RECORD">Veterinary Record</option>
-                <option value="REGISTRY_DATA">Registry Data</option>
-                <option value="LAB_RESULT">Lab Result</option>
+                <option value="BREEDER_ENTERED">Breeder</option>
+                <option value="VETERINARY_RECORD">Vet</option>
+                <option value="LAB_RESULT">Lab</option>
+                <option value="REGISTRY_DATA">Registry</option>
               </select>
             </div>
           </div>
-
-          {/* Verification & Marketplace */}
-          <div className="flex items-center gap-4">
-            <label className="flex items-center gap-2 text-sm cursor-pointer">
-              <input
-                type="checkbox"
-                checked={currentVerified || false}
-                onChange={(e) =>
-                  setDraft({ ...draft, verified: e.target.checked })
-                }
-                className="rounded border-hairline"
-              />
-              <span>Verified</span>
-            </label>
-            <label className="flex items-center gap-2 text-sm cursor-pointer">
-              <input
-                type="checkbox"
-                checked={currentMarketplace || false}
-                onChange={(e) =>
-                  setDraft({ ...draft, marketplaceVisible: e.target.checked })
-                }
-                className="rounded border-hairline"
-              />
-              <span>Show on Marketplace</span>
-            </label>
-          </div>
         </div>
 
-        {/* Documents */}
-        {trait.documents && trait.documents.length > 0 && (
-          <div>
-            <label className="text-xs text-secondary block mb-2">Linked Documents</label>
-            <div className="flex flex-wrap gap-2">
+        {/* Evidence / Documents */}
+        <div className="border-t border-hairline pt-4">
+          <div className="flex items-center justify-between mb-2">
+            <label className="text-xs font-medium text-secondary">Evidence</label>
+            <Button size="sm" variant="outline" onClick={onUpload}>
+              Upload Document
+            </Button>
+          </div>
+
+          {trait.documents && trait.documents.length > 0 ? (
+            <div className="space-y-2">
               {trait.documents.map((doc: any) => (
-                <span
+                <div
                   key={doc.documentId}
-                  className="inline-flex items-center gap-2 rounded border border-hairline px-2.5 py-1.5 text-xs bg-neutral-50 dark:bg-neutral-900"
+                  className="flex items-center justify-between gap-2 rounded border border-hairline px-3 py-2 text-xs bg-white dark:bg-neutral-900"
                 >
-                  <span className="truncate max-w-[12rem]">{doc.title}</span>
-                  <span className="text-secondary text-xs">{doc.visibility}</span>
-                  {doc.status && (
-                    <span className="text-secondary text-xs">({doc.status})</span>
-                  )}
-                </span>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium truncate">{doc.title}</div>
+                    <div className="text-secondary flex items-center gap-2 mt-0.5">
+                      <span>{doc.visibility}</span>
+                      {doc.status && <span>• {doc.status}</span>}
+                    </div>
+                  </div>
+                </div>
               ))}
             </div>
-          </div>
-        )}
+          ) : (
+            <div className="text-xs text-secondary">No documents uploaded</div>
+          )}
+        </div>
 
         {/* Action Buttons */}
-        <div className="flex items-center gap-2 pt-2">
+        <div className="flex items-center gap-2 pt-2 border-t border-hairline">
           <Button
             size="sm"
             variant="primary"
@@ -2317,8 +2372,15 @@ function TraitRow({
           >
             {saving ? "Saving..." : "Save"}
           </Button>
-          <Button size="sm" variant="outline" onClick={onUpload}>
-            Upload Document
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              setDraft({});
+              onCollapse();
+            }}
+          >
+            Cancel
           </Button>
         </div>
       </div>
