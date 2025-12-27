@@ -244,11 +244,19 @@ function contactToPartyRow(c: any): PartyTableRow {
     updated_at: c.updated_at ?? c.updatedAt ?? null,
     archived,
     // Map backend commPrefs object to flat prefersX fields
+    // Backend now returns full preference levels: ALLOW, NOT_PREFERRED, NEVER
     prefersEmail: c.commPrefs?.email ?? null,
     prefersSms: c.commPrefs?.sms ?? null,
     prefersPhone: c.commPrefs?.phone ?? null,
     prefersMail: c.commPrefs?.mail ?? null,
     prefersWhatsapp: c.commPrefs?.whatsapp ?? null,
+    // Map compliance fields (only for EMAIL and SMS)
+    emailCompliance: c.commPrefs?.emailCompliance ?? null,
+    emailComplianceSetAt: c.commPrefs?.emailComplianceSetAt ?? null,
+    emailComplianceSource: c.commPrefs?.emailComplianceSource ?? null,
+    smsCompliance: c.commPrefs?.smsCompliance ?? null,
+    smsComplianceSetAt: c.commPrefs?.smsComplianceSetAt ?? null,
+    smsComplianceSource: c.commPrefs?.smsComplianceSource ?? null,
   } as any;
 }
 
@@ -288,11 +296,19 @@ function organizationToPartyRow(o: any): PartyTableRow {
     updated_at: o.updated_at ?? o.updatedAt ?? null,
     archived,
     // Map backend commPrefs object to flat prefersX fields
+    // Backend now returns full preference levels: ALLOW, NOT_PREFERRED, NEVER
     prefersEmail: o.commPrefs?.email ?? null,
     prefersSms: o.commPrefs?.sms ?? null,
     prefersPhone: o.commPrefs?.phone ?? null,
     prefersMail: o.commPrefs?.mail ?? null,
     prefersWhatsapp: o.commPrefs?.whatsapp ?? null,
+    // Map compliance fields (only for EMAIL and SMS)
+    emailCompliance: o.commPrefs?.emailCompliance ?? null,
+    emailComplianceSetAt: o.commPrefs?.emailComplianceSetAt ?? null,
+    emailComplianceSource: o.commPrefs?.emailComplianceSource ?? null,
+    smsCompliance: o.commPrefs?.smsCompliance ?? null,
+    smsComplianceSetAt: o.commPrefs?.smsComplianceSetAt ?? null,
+    smsComplianceSource: o.commPrefs?.smsComplianceSource ?? null,
   } as any;
 }
 
