@@ -251,6 +251,23 @@ export function makeApi(base?: string, extraHeadersFn?: () => Record<string, str
       return reqWithExtra<any>(`/animals/${encodeURIComponent(String(id))}`, { method: "DELETE" });
     },
 
+    /* profile photo upload and delete (legacy) */
+    async uploadPhoto(id: string | number, file: File): Promise<{ photoUrl: string }> {
+      const form = new FormData();
+      form.append("file", file);
+
+      return reqWithExtra<any>(`/animals/${encodeURIComponent(String(id))}/photo`, {
+        method: "POST",
+        body: form,
+      });
+    },
+
+    async removePhoto(id: string | number): Promise<{ photoUrl: string | null }> {
+      return reqWithExtra<any>(`/animals/${encodeURIComponent(String(id))}/photo`, {
+        method: "DELETE",
+      });
+    },
+
     /* profile photo upload and delete */
     photo: {
       async upload(id: string | number, file: File): Promise<{ photoUrl: string }> {
@@ -280,6 +297,18 @@ export function makeApi(base?: string, extraHeadersFn?: () => Record<string, str
           json: { dates },
         }
       );
+    },
+
+    // Program flags (legacy)
+    async getProgramFlags(id: string | number) {
+      return reqWithExtra<any>(`/animals/${encodeURIComponent(String(id))}/program-flags`);
+    },
+
+    async putProgramFlags(id: string | number, flags: any) {
+      return reqWithExtra<any>(`/animals/${encodeURIComponent(String(id))}/program-flags`, {
+        method: "PUT",
+        json: flags,
+      });
     },
 
 
@@ -351,6 +380,60 @@ export function makeApi(base?: string, extraHeadersFn?: () => Record<string, str
       async remove(id: string | number, identifierId: string | number) {
         return reqWithExtra<any>(
           `/animals/${encodeURIComponent(String(id))}/registries/${encodeURIComponent(String(identifierId))}`,
+          { method: "DELETE" }
+        );
+      },
+    },
+
+    /* traits parity */
+    traits: {
+      async list(id: string | number) {
+        return reqWithExtra<any>(`/animals/${encodeURIComponent(String(id))}/traits`);
+      },
+      async update(id: string | number, updates: any[]) {
+        return reqWithExtra<any>(`/animals/${encodeURIComponent(String(id))}/traits`, {
+          method: "PUT",
+          json: { updates },
+        });
+      },
+    },
+
+    /* documents parity */
+    documents: {
+      async list(id: string | number) {
+        return reqWithExtra<any>(`/animals/${encodeURIComponent(String(id))}/documents`);
+      },
+      async upload(id: string | number, payload: {
+        title: string;
+        originalFileName: string;
+        mimeType: string;
+        sizeBytes?: number;
+        visibility: string;
+        linkTraitKeys?: string[];
+      }) {
+        return reqWithExtra<any>(`/animals/${encodeURIComponent(String(id))}/documents`, {
+          method: "POST",
+          json: payload,
+        });
+      },
+      async uploadForTrait(id: string | number, traitKey: string, payload: {
+        title: string;
+        originalFileName: string;
+        mimeType: string;
+        sizeBytes?: number;
+        visibility: string;
+      }) {
+        return reqWithExtra<any>(
+          `/animals/${encodeURIComponent(String(id))}/traits/${encodeURIComponent(traitKey)}/documents`,
+          {
+            method: "POST",
+            json: payload,
+          }
+        );
+      },
+      async remove(id: string | number, documentId: string | number) {
+        return reqWithExtra<any>(
+          `/animals/${encodeURIComponent(String(id))}/documents/${encodeURIComponent(String(documentId))}`,
           { method: "DELETE" }
         );
       },
