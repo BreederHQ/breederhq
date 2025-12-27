@@ -1064,10 +1064,44 @@ export function PartyDetailsView({
             {/* Communication Preferences - for Organizations only */}
             {row.kind === "ORGANIZATION" && (
               <SectionCard title="Communication Preferences">
+                <div className="flex flex-wrap items-center gap-2 mb-3">
+                  <PillToggle
+                    on={!!prefs.email}
+                    label="Email"
+                    onClick={() => togglePref("email")}
+                    className={mode === "view" ? "opacity-50 pointer-events-none" : ""}
+                  />
+                  <PillToggle
+                    on={!!prefs.sms}
+                    label="SMS"
+                    onClick={() => togglePref("sms")}
+                    className={mode === "view" ? "opacity-50 pointer-events-none" : ""}
+                  />
+                  <PillToggle
+                    on={!!prefs.phone}
+                    label="Phone"
+                    onClick={() => togglePref("phone")}
+                    className={mode === "view" ? "opacity-50 pointer-events-none" : ""}
+                  />
+                  <PillToggle
+                    on={!!prefs.mail}
+                    label="Mail"
+                    onClick={() => togglePref("mail")}
+                    className={mode === "view" ? "opacity-50 pointer-events-none" : ""}
+                  />
+                  <PillToggle
+                    on={!!prefs.whatsapp}
+                    label="WhatsApp"
+                    onClick={() => togglePref("whatsapp")}
+                    className={mode === "view" ? "opacity-50 pointer-events-none" : ""}
+                  />
+                </div>
+
+                {/* Website */}
                 <div className="flex items-center gap-3">
                   <div className="text-xs text-secondary min-w-[80px]">Website</div>
                   {mode === "view" ? (
-                    <div className="text-sm">{row.website || "-"}</div>
+                    <div className="text-sm">{row.website || "—"}</div>
                   ) : (
                     <div className="flex-1">
                       {editText("website")}
@@ -1075,11 +1109,12 @@ export function PartyDetailsView({
                   )}
                 </div>
 
+                {/* Email */}
                 <div className="flex items-center gap-3">
                   <div className="text-xs text-secondary min-w-[80px]">Email</div>
                   {mode === "view" ? (
                     <div className="text-sm flex items-center gap-2">
-                      <span>{row.email || "-"}</span>
+                      <span>{row.email || "—"}</span>
                       {row.email ? (
                         <button
                           type="button"
@@ -1109,7 +1144,7 @@ export function PartyDetailsView({
                   <div className="text-xs text-secondary min-w-[80px]">Cell Phone</div>
                   {mode === "view" ? (
                     <div className="text-sm">
-                      {formatE164Phone((row as any).phoneMobileE164 || row.phone) || "-"}
+                      {formatE164Phone((row as any).phoneMobileE164 || row.phone) || "—"}
                     </div>
                   ) : (
                     <div className="flex-1">
@@ -1134,7 +1169,7 @@ export function PartyDetailsView({
                 <div className="flex items-center gap-3">
                   <div className="text-xs text-secondary min-w-[80px]">Landline</div>
                   {mode === "view" ? (
-                    <div className="text-sm">{formatE164Phone((row as any).phoneLandlineE164) || "-"}</div>
+                    <div className="text-sm">{formatE164Phone((row as any).phoneLandlineE164) || "—"}</div>
                   ) : (
                     <div className="flex-1">
                       {/* @ts-ignore */}
@@ -1156,7 +1191,7 @@ export function PartyDetailsView({
                 <div className="flex items-center gap-3">
                   <div className="text-xs text-secondary min-w-[80px]">WhatsApp</div>
                   {mode === "view" ? (
-                    <div className="text-sm">{formatE164Phone((row as any).whatsappE164) || "-"}</div>
+                    <div className="text-sm">{formatE164Phone((row as any).whatsappE164) || "—"}</div>
                   ) : (
                     <div className="flex-1">
                       {/* @ts-ignore */}
@@ -1180,6 +1215,102 @@ export function PartyDetailsView({
                 {mode === "edit" && (
                   <div className="text-xs text-secondary">
                     If Cell Phone is left empty, WhatsApp will be used as the phone on save.
+                  </div>
+                )}
+              </SectionCard>
+            )}
+
+            {/* Compliance - for Organizations */}
+            {row.kind === "ORGANIZATION" && (
+              <SectionCard title="Compliance">
+                <div className="text-xs text-secondary mb-2">
+                  System sets these from unsubscribes. Select Reset to opt the user back in. Action is logged on save.
+                </div>
+
+                {mode === "view" ? (
+                  <div className="flex flex-wrap items-center gap-6">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs">EMAIL</span>
+                      <span className="text-xs px-2 py-0.5 rounded border border-hairline">
+                        {(row as any).emailUnsubscribed ? "unsubscribed" : "subscribed"}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs">SMS</span>
+                      <span className="text-xs px-2 py-0.5 rounded border border-hairline">
+                        {(row as any).smsUnsubscribed ? "unsubscribed" : "subscribed"}
+                      </span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex flex-wrap items-center gap-8">
+                    {/* EMAIL Reset */}
+                    <label className="flex items-center gap-2 text-xs">
+                      <span>EMAIL</span>
+                      <span className="px-2 py-0.5 rounded border border-hairline text-xs">
+                        {(row as any).emailUnsubscribed ? "unsubscribed" : "subscribed"}
+                      </span>
+                      <input
+                        type="checkbox"
+                        defaultChecked={!!(row as any).emailOptOutOverride}
+                        onChange={(e) => {
+                          const el = e.currentTarget as HTMLInputElement;
+                          const checked = el.checked;
+
+                          if (checked) {
+                            setConfirmReset({
+                              channel: "email",
+                              onAnswer: (ok) => {
+                                if (ok) {
+                                  setDraft((d: any) => ({ ...d, emailOptOutOverride: true }));
+                                  el.checked = true;
+                                } else {
+                                  el.checked = false;
+                                }
+                                setConfirmReset(null);
+                              },
+                            });
+                          } else {
+                            setDraft((d: any) => ({ ...d, emailOptOutOverride: false }));
+                          }
+                        }}
+                      />
+                      <span>Reset</span>
+                    </label>
+
+                    {/* SMS Reset */}
+                    <label className="flex items-center gap-2 text-xs">
+                      <span>SMS</span>
+                      <span className="px-2 py-0.5 rounded border border-hairline text-xs">
+                        {(row as any).smsUnsubscribed ? "unsubscribed" : "subscribed"}
+                      </span>
+                      <input
+                        type="checkbox"
+                        defaultChecked={!!(row as any).smsOptOutOverride}
+                        onChange={(e) => {
+                          const el = e.currentTarget as HTMLInputElement;
+                          const checked = el.checked;
+
+                          if (checked) {
+                            setConfirmReset({
+                              channel: "sms",
+                              onAnswer: (ok) => {
+                                if (ok) {
+                                  setDraft((d: any) => ({ ...d, smsOptOutOverride: true }));
+                                  el.checked = true;
+                                } else {
+                                  el.checked = false;
+                                }
+                                setConfirmReset(null);
+                              },
+                            });
+                          } else {
+                            setDraft((d: any) => ({ ...d, smsOptOutOverride: false }));
+                          }
+                        }}
+                      />
+                      <span>Reset</span>
+                    </label>
                   </div>
                 )}
               </SectionCard>
