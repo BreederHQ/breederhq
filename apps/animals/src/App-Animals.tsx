@@ -2037,6 +2037,26 @@ function HealthTab({
   );
 }
 
+function humanizeTraitKey(key: string) {
+  const last = String(key || "").split(".").pop() || "";
+  if (!last) return "";
+  const spaced = last.replace(/[_-]+/g, " ").replace(/([a-z])([A-Z])/g, "$1 $2");
+  return spaced.replace(/\b\w/g, (m) => m.toUpperCase());
+}
+
+function formatTraitDisplayName(displayName?: string, traitKey?: string) {
+  const rawDisplayName = String(displayName || "").trim();
+  const rawKey = String(traitKey || "").trim();
+  if (rawDisplayName && !rawDisplayName.includes(".") && rawDisplayName !== rawKey) {
+    return rawDisplayName;
+  }
+  if (rawKey) {
+    const humanized = humanizeTraitKey(rawKey);
+    return humanized || rawDisplayName || "Trait";
+  }
+  return rawDisplayName || "Trait";
+}
+
 function TraitRow({
   trait,
   draft,
@@ -2088,6 +2108,7 @@ function TraitRow({
   const isJsonValue =
     valueType.includes("JSON") || valueType === "OBJECT" || trait.value?.json !== undefined;
   const booleanLabel = trait.displayName?.toLowerCase().includes("completed") ? "Completed" : "Yes";
+  const displayName = formatTraitDisplayName(trait.displayName, trait.traitKey);
 
   const handleSave = async () => {
     setSaving(true);
@@ -2361,7 +2382,7 @@ function TraitRow({
       <div className="flex items-center justify-between py-2 px-3 hover:bg-subtle rounded group">
         <div className="flex items-center gap-3 flex-1 min-w-0">
           <div className="flex-1 min-w-0">
-            <div className="text-sm font-medium truncate">{trait.displayName}</div>
+            <div className="text-sm font-medium truncate">{displayName}</div>
             <div className="text-xs text-secondary truncate">{getDisplayValue()}</div>
           </div>
           <div className="flex items-center gap-2">
@@ -2400,7 +2421,7 @@ function TraitRow({
   return (
     <div className="border border-hairline rounded-lg p-4 bg-subtle">
       <div className="mb-4">
-        <div className="font-medium text-sm">{trait.displayName}</div>
+        <div className="font-medium text-sm">{displayName}</div>
       </div>
 
       <div className="space-y-4">
@@ -2593,7 +2614,7 @@ function DocumentsTab({
         (cat.items || []).forEach((t: any) => {
           flatTraits.push({
             traitKey: t.traitKey,
-            displayName: t.displayName,
+            displayName: formatTraitDisplayName(t.displayName, t.traitKey),
             category: cat.category,
           });
         });
@@ -2723,7 +2744,7 @@ function DocumentsTab({
                         onClick={() => onHealthTabRequest?.(lt.traitKey)}
                         className="text-xs px-2 py-0.5 rounded border border-hairline hover:bg-neutral-100 dark:hover:bg-neutral-800"
                       >
-                        {lt.displayName}
+                        {formatTraitDisplayName(lt.displayName, lt.traitKey)}
                       </button>
                     ))}
                   </div>
@@ -2918,7 +2939,7 @@ function DocumentUploadModal({
                           }}
                           className="rounded border-hairline"
                         />
-                        {t.displayName}
+                        {formatTraitDisplayName(t.displayName, t.traitKey)}
                       </label>
                     ))}
                   </div>
