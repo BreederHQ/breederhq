@@ -243,7 +243,13 @@ function contactToPartyRow(c: any): PartyTableRow {
     created_at: c.created_at ?? c.createdAt ?? null,
     updated_at: c.updated_at ?? c.updatedAt ?? null,
     archived,
-  };
+    // Map backend commPrefs object to flat prefersX fields
+    prefersEmail: c.commPrefs?.email ?? null,
+    prefersSms: c.commPrefs?.sms ?? null,
+    prefersPhone: c.commPrefs?.phone ?? null,
+    prefersMail: c.commPrefs?.mail ?? null,
+    prefersWhatsapp: c.commPrefs?.whatsapp ?? null,
+  } as any;
 }
 
 /**
@@ -645,13 +651,61 @@ export default function AppContactsParty() {
         if (!row) return;
 
         if (row.kind === "CONTACT" && row.contactId) {
-          await api.contacts.update(row.contactId, draft);
+          // Transform communication preferences to new backend format
+          const payload: any = {};
+          const commPreferences: Array<{
+            channel: string;
+            preference: string;
+          }> = [];
+
+          for (const [key, value] of Object.entries(draft)) {
+            // Transform prefersX fields to commPreferences array
+            if (key.startsWith('prefers')) {
+              const channel = key.replace('prefers', '').toUpperCase();
+              commPreferences.push({
+                channel,
+                preference: value ? 'ALLOW' : 'NEVER',
+              });
+            } else {
+              payload[key] = value;
+            }
+          }
+
+          // Only include commPreferences if we have any
+          if (commPreferences.length > 0) {
+            payload.commPreferences = commPreferences;
+          }
+
+          await api.contacts.update(row.contactId, payload);
           const updated = await api.contacts.get(row.contactId);
           const updatedRow = contactToPartyRow(updated);
           // Preserve the original partyId to prevent key collision
           updatedRow.partyId = row.partyId;
           applyRowUpdate(updatedRow);
         } else if (row.kind === "ORGANIZATION" && row.organizationId) {
+          // Transform communication preferences for organizations too
+          const payload: any = {};
+          const commPreferences: Array<{
+            channel: string;
+            preference: string;
+          }> = [];
+
+          for (const [key, value] of Object.entries(draft)) {
+            if (key.startsWith('prefers')) {
+              const channel = key.replace('prefers', '').toUpperCase();
+              commPreferences.push({
+                channel,
+                preference: value ? 'ALLOW' : 'NEVER',
+              });
+            } else {
+              payload[key] = value;
+            }
+          }
+
+          if (commPreferences.length > 0) {
+            payload.commPreferences = commPreferences;
+          }
+
           await api.organizations.update(row.organizationId, draft);
           const updated = await api.organizations.get(row.organizationId);
           const updatedRow = organizationToPartyRow(updated);
