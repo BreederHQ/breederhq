@@ -287,7 +287,13 @@ function organizationToPartyRow(o: any): PartyTableRow {
     created_at: o.created_at ?? o.createdAt ?? null,
     updated_at: o.updated_at ?? o.updatedAt ?? null,
     archived,
-  };
+    // Map backend commPrefs object to flat prefersX fields
+    prefersEmail: o.commPrefs?.email ?? null,
+    prefersSms: o.commPrefs?.sms ?? null,
+    prefersPhone: o.commPrefs?.phone ?? null,
+    prefersMail: o.commPrefs?.mail ?? null,
+    prefersWhatsapp: o.commPrefs?.whatsapp ?? null,
+  } as any;
 }
 
 // Removed - we'll use DetailsHost's context API instead
