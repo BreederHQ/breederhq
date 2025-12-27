@@ -1752,7 +1752,11 @@ function HealthTab({
 
   React.useEffect(() => {
     fetchTraits();
-  }, [fetchTraits]);
+    // When switching to view mode, collapse any expanded row
+    if (mode === "view") {
+      setExpandedTraitKey(null);
+    }
+  }, [fetchTraits, mode]);
 
   const handleSaveTrait = async (traitKey: string, update: any) => {
     try {
@@ -1863,13 +1867,6 @@ function HealthTab({
       return next;
     });
   };
-
-  // When exiting edit mode, collapse any expanded row
-  React.useEffect(() => {
-    if (mode === "view") {
-      setExpandedTraitKey(null);
-    }
-  }, [mode]);
 
   return (
     <div className="space-y-3">
