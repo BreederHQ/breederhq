@@ -477,21 +477,23 @@ export function PartyDetailsView({
   }, [row]);
 
   // Communication preferences for Contacts
+  // Backend returns PreferenceLevel enum: 'ALLOW', 'NOT_PREFERRED', 'NEVER'
+  // UI treats 'ALLOW' as true (ON), everything else as false (OFF)
   const [prefs, setPrefs] = React.useState(() => ({
-    email: !!(row as any).prefersEmail,
-    sms: !!(row as any).prefersSms,
-    phone: !!(row as any).prefersPhone,
-    mail: !!(row as any).prefersMail,
-    whatsapp: !!(row as any).prefersWhatsapp,
+    email: (row as any).prefersEmail === 'ALLOW',
+    sms: (row as any).prefersSms === 'ALLOW',
+    phone: (row as any).prefersPhone === 'ALLOW',
+    mail: (row as any).prefersMail === 'ALLOW',
+    whatsapp: (row as any).prefersWhatsapp === 'ALLOW',
   }));
 
   React.useEffect(() => {
     setPrefs({
-      email: !!(row as any).prefersEmail,
-      sms: !!(row as any).prefersSms,
-      phone: !!(row as any).prefersPhone,
-      mail: !!(row as any).prefersMail,
-      whatsapp: !!(row as any).prefersWhatsapp,
+      email: (row as any).prefersEmail === 'ALLOW',
+      sms: (row as any).prefersSms === 'ALLOW',
+      phone: (row as any).prefersPhone === 'ALLOW',
+      mail: (row as any).prefersMail === 'ALLOW',
+      whatsapp: (row as any).prefersWhatsapp === 'ALLOW',
     });
   }, [row]);
 
@@ -501,7 +503,8 @@ export function PartyDetailsView({
       setPrefs((prev) => {
         const next = !prev[key];
         const camel = `prefers${key[0].toUpperCase()}${key.slice(1)}`;
-        setDraft((d: any) => ({ ...d, [camel]: next }));
+        // Set enum value: true = 'ALLOW', false = 'NEVER'
+        setDraft((d: any) => ({ ...d, [camel]: next ? 'ALLOW' : 'NEVER' }));
         return { ...prev, [key]: next };
       });
     },
