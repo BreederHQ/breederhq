@@ -1812,6 +1812,10 @@ function HealthTab({
       })).filter((cat: any) => cat.items.length > 0);
 
       setCategories(filteredCategories);
+      setCollapsedCategories((prev) => {
+        if (prev.size > 0) return prev;
+        return new Set(filteredCategories.map((cat: any) => String(cat.category || "")).filter(Boolean));
+      });
     } catch (err: any) {
       console.error("[HealthTab] Failed to load traits", err);
       setError({
@@ -1972,7 +1976,12 @@ function HealthTab({
                     aria-label={isCollapsed ? "Expand category" : "Collapse category"}
                   >
                     <svg
-                      className={`w-4 h-4 transition-transform duration-200 ${isCollapsed ? "" : "rotate-90"}`}
+                      className="w-4 h-4 transition-transform duration-200"
+                      style={{
+                        transform: isCollapsed ? "rotate(0deg)" : "rotate(90deg)",
+                        transformOrigin: "center",
+                        transformBox: "fill-box",
+                      }}
                       fill="none"
                       stroke="currentColor"
                       viewBox="0 0 24 24"
@@ -5129,3 +5138,5 @@ export default function AppAnimals() {
     </div>
   );
 }
+
+
