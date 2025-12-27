@@ -1887,7 +1887,7 @@ export default function AppBreeding() {
   }, []);
 
   // ── Planner view state ─────────────────────────────────────
-  const [plannerMode, setPlannerMode] = React.useState<"per-plan" | "master">("per-plan");
+  const [plannerMode, setPlannerMode] = React.useState<"per-plan" | "rollup">("per-plan");
 
   // Planner inner content sizing (scroll only inside the card body)
   const plannerContentRef = React.useRef<HTMLDivElement | null>(null);
@@ -2788,7 +2788,7 @@ export default function AppBreeding() {
                     aria-modal="true"
                     className="pointer-events-auto relative w-[720px] max-w-[94vw] rounded-xl border border-hairline bg-surface shadow-xl p-4"
                   >
-                    <div className="text-lg font-semibold mb-1">New breeding plan</div>
+                    <div className="text-lg font-semibold mb-1">New Breeding Plan</div>
                     <div className="text-sm text-secondary mb-4">
                       A plan must have a Dam and a Sire to be complete. You can start with just the Dam and add a Sire later.
                     </div>
@@ -2830,7 +2830,9 @@ export default function AppBreeding() {
 
                       {/* Breed (search + browse + new custom) */}
                       <div className="sm:col-span-3">
-                        <div className="text-xs text-secondary mb-1">Breed</div>
+                        <div className="text-xs text-secondary mb-1">
+                          Breed <span className="text-[hsl(var(--brand-orange))]">*</span>
+                        </div>
                         <div className="flex items-center gap-2">
                           <div className="flex-1">
                             <BreedCombo

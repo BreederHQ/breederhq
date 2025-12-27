@@ -24,7 +24,7 @@ export function SectionCard({
       {(title || headerRight) && (
         <div className="bhq-section-header flex items-center justify-between mb-2">
           {/* remove the forced all-caps, give a stable class for global styling */}
-          <div className="bhq-section-title">{title}</div>
+          <div className="bhq-section-title flex-1">{title}</div>
           {headerRight}
         </div>
       )}

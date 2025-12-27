@@ -80,10 +80,18 @@ export function DetailsHost<T>({
     setOpenId(String(id));
   }, [config, setOpenId]);
 
+  const openIdRef = React.useRef<string | null>(null);
+
   React.useEffect(() => {
-    if (openId == null) { setOpenRow(null); return; }
+    if (openId == null) {
+      openIdRef.current = null;
+      setOpenRow(null);
+      return;
+    }
     const idStr = String(openId);
     const local = rows.find(r => String(config.getRowId(r)) === idStr) || null;
+    const isNewOpen = openIdRef.current !== idStr;
+    openIdRef.current = idStr;
 
     if (config.fetchRow) {
       // Allow a brief undefined to show a skeleton if you want
@@ -92,10 +100,12 @@ export function DetailsHost<T>({
     } else {
       setOpenRow(local);
     }
-    setMode("view");
-    setDraftSafe({});
-    setActiveTab(config.tabs?.[0]?.key ?? "overview");
-  }, [openId, rows, config]);
+    if (isNewOpen) {
+      setMode("view");
+      setDraftSafe({});
+      setActiveTab(config.tabs?.[0]?.key ?? "overview");
+    }
+  }, [openId, rows, config, setDraftSafe]);
 
   const requestSave = React.useCallback(async () => {
     if (!config.onSave || !openRow) return;
@@ -130,7 +140,7 @@ export function DetailsHost<T>({
         <DetailsDrawer
           title={headerInfo.title}
           onClose={handleClose}
-          onBackdropClick={closeOnOutsideClick && !hasPendingChanges ? handleClose : undefined}
+          onBackdropClick={closeOnOutsideClick ? handleClose : undefined}
           onEscapeKey={closeOnEscape ? handleClose : undefined}
           width={config.width ?? 720}
           placement={config.placement ?? "right"}

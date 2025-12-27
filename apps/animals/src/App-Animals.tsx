@@ -29,6 +29,7 @@ import {
   Popover,
   Dialog,
 } from "@bhq/ui";
+import type { OwnershipRow } from "@bhq/ui/utils/ownership";
 
 import { Overlay, getOverlayRoot } from "@bhq/ui/overlay";
 import { toast } from "@bhq/ui/atoms/Toast";
@@ -70,15 +71,7 @@ function getPlaceholderForSpecies(species?: string | null): string {
 /** ────────────────────────────────────────────────────────────────────────
  * Types & utils
  * ─────────────────────────────────────────────────────────────────────── */
-type OwnershipRow = {
-  partyId?: number | null;
-  partyType: "Organization" | "Contact";
-  organizationId?: number | null;
-  contactId?: number | null;
-  display_name?: string | null;
-  is_primary?: boolean;
-  percent?: number;
-};
+// NOTE: OwnershipRow is imported from @bhq/ui/utils/ownership at top of file
 
 function normalizeOwnerPartyType(raw: any, owner?: any): "Organization" | "Contact" {
   const kind = owner?.kind ?? owner?.partyType ?? owner?.type ?? raw;
@@ -131,18 +124,18 @@ type ProgramFlags = {
 
 type PreferredPartner = { id: number; name: string; sex?: string | null };
 
-const COLUMNS: Array<{ key: keyof AnimalRow & string; label: string; default?: boolean }> = [
+const COLUMNS: Array<{ key: keyof AnimalRow & string; label: string; default?: boolean; center?: boolean }> = [
   { key: "name", label: "Name", default: true },
-  { key: "species", label: "Species", default: true },
-  { key: "breed", label: "Breed", default: true },
-  { key: "sex", label: "Sex", default: true },
-  { key: "status", label: "Status", default: true },
+  { key: "species", label: "Species", default: true, center: true },
+  { key: "breed", label: "Breed", default: true, center: true },
+  { key: "sex", label: "Sex", default: true, center: true },
+  { key: "status", label: "Status", default: true, center: true },
   { key: "ownerName", label: "Owner", default: false },
   { key: "microchip", label: "Microchip #", default: false },
   { key: "tags", label: "Tags", default: true },
-  { key: "dob", label: "DOB", default: false },
-  { key: "created_at", label: "Created", default: false },
-  { key: "updated_at", label: "Updated", default: false },
+  { key: "dob", label: "DOB", default: false, center: true },
+  { key: "created_at", label: "Created", default: false, center: true },
+  { key: "updated_at", label: "Updated", default: false, center: true },
 ];
 
 const SPECIES_LABEL: Record<string, string> = { DOG: "Dog", CAT: "Cat", HORSE: "Horse", GOAT: "Goat", SHEEP: "Sheep", RABBIT: "Rabbit" };
@@ -222,210 +215,7 @@ function animalToRow(p: any): AnimalRow {
   };
 }
 
-// ───────── Date-picker hoist helpers (copied from Breeding) ─────────
-
-const OVERLAY_ROOT_SELECTOR = "#bhq-overlay-root";
-
-function ensureOverlayRoot(): HTMLElement {
-  return (document.querySelector(OVERLAY_ROOT_SELECTOR) as HTMLElement) || document.body;
-}
-
-/** Find the outermost popup element we actually want to move. */
-function findDatePopup(): HTMLElement | null {
-  const candidates = [
-    // Radix Popper wrapper
-    ...Array.from(document.querySelectorAll<HTMLElement>('[data-radix-popper-content-wrapper]')),
-    // react-datepicker
-    ...Array.from(document.querySelectorAll<HTMLElement>(".react-datepicker")),
-    // react-day-picker
-    ...Array.from(document.querySelectorAll<HTMLElement>(".rdp,.rdp-root")),
-    // generic open dialogs/menus (fallback)
-    ...Array.from(
-      document.querySelectorAll<HTMLElement>('[role="dialog"][data-state="open"],[role="menu"][data-state="open"]')
-    ),
-  ];
-
-  const filtered = candidates.filter((el) => !el.closest("[data-bhq-details]"));
-
-  const list = filtered.length ? filtered : candidates;
-  if (!list.length) return null;
-
-  const isVisible = (el: HTMLElement) => {
-    const cs = getComputedStyle(el);
-    const r = el.getBoundingClientRect();
-    return cs.display !== "none" && cs.visibility !== "hidden" && r.width > 8 && r.height > 8;
-  };
-
-  list.sort((a, b) => {
-    const va = isVisible(a) ? 1 : 0;
-    const vb = isVisible(b) ? 1 : 0;
-    const ra = a.getBoundingClientRect();
-    const rb = b.getBoundingClientRect();
-    return vb - va || rb.width * rb.height - ra.width * ra.height;
-  });
-
-  return list[0] || null;
-}
-
-/** Wait up to ~300ms for a date popup to mount, then hoist and place it near the trigger. */
-function hoistAndPlaceDatePopup(triggerEl: HTMLElement) {
-  const root = ensureOverlayRoot();
-
-  let raf = 0;
-  let tries = 0;
-  const MAX_TRIES = 12; // ~200–300ms
-
-  const place = (pop: HTMLElement) => {
-    if (pop.parentNode !== root) root.appendChild(pop);
-
-    Object.assign(pop.style, {
-      position: "fixed",
-      transform: "none",
-      inset: "auto",
-      zIndex: "2147483647",
-      maxWidth: "none",
-      maxHeight: "none",
-      overflow: "visible",
-      contain: "paint",
-      isolation: "auto",
-      filter: "none",
-      perspective: "none",
-      willChange: "top,left",
-    } as CSSStyleDeclaration);
-
-    const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
-    const GAP = 8;
-
-    const doPosition = () => {
-      const r = triggerEl.getBoundingClientRect();
-      const pr = pop.getBoundingClientRect();
-      const vw = window.innerWidth;
-      const vh = window.innerHeight;
-
-      let top = r.bottom + GAP;
-      let left = r.left;
-
-      left = clamp(left, GAP, vw - pr.width - GAP);
-
-      if (top + pr.height > vh - GAP) {
-        top = clamp(r.top - pr.height - GAP, GAP, vh - pr.height - GAP);
-      } else {
-        top = clamp(top, GAP, vh - pr.height - GAP);
-      }
-
-      pop.style.top = `${Math.round(top)}px`;
-      pop.style.left = `${Math.round(left)}px`;
-    };
-
-    doPosition();
-    setTimeout(doPosition, 30);
-
-    const onRelayout = () => {
-      if (!pop.isConnected) {
-        window.removeEventListener("resize", onRelayout);
-        window.removeEventListener("scroll", onRelayout, true);
-        return;
-      }
-      doPosition();
-    };
-    window.addEventListener("resize", onRelayout);
-    window.addEventListener("scroll", onRelayout, true);
-
-    const mo = new MutationObserver(() => {
-      if (!pop.isConnected) {
-        window.removeEventListener("resize", onRelayout);
-        window.removeEventListener("scroll", onRelayout, true);
-        mo.disconnect();
-      }
-    });
-    mo.observe(document.body, { childList: true, subtree: true });
-  };
-
-  const tick = () => {
-    const pop = findDatePopup();
-    if (pop) {
-      place(pop);
-      return;
-    }
-    if (tries++ < MAX_TRIES) {
-      raf = requestAnimationFrame(tick);
-    }
-  };
-
-  raf = requestAnimationFrame(tick);
-}
-
-/** Wire up native date picker to our overlay hoist helper. */
-type AttachDatePopupOpts = {
-  shell: HTMLElement;
-  button: HTMLButtonElement;
-  hiddenInput: HTMLInputElement;
-  onPopupOpen?: () => void;
-  onPopupClose?: () => void;
-};
-
-function attachDatePopupPositioning(opts: AttachDatePopupOpts) {
-  const { shell, button, hiddenInput, onPopupOpen, onPopupClose } = opts;
-
-  if (!shell || !button || !hiddenInput) {
-    return () => { };
-  }
-
-  let isOpen = false;
-
-  const openPicker = () => {
-    if (hiddenInput.disabled || hiddenInput.readOnly) return;
-
-    if (!isOpen) {
-      isOpen = true;
-      onPopupOpen?.();
-    }
-
-    try {
-      hiddenInput.focus();
-      const anyInput = hiddenInput as any;
-      if (typeof anyInput.showPicker === "function") {
-        anyInput.showPicker();
-      } else {
-        hiddenInput.click();
-      }
-    } catch {
-      // ignore
-    }
-
-    hoistAndPlaceDatePopup(button);
-  };
-
-  const handleButtonClick = (e: MouseEvent) => {
-    e.preventDefault();
-    openPicker();
-  };
-
-  const handleKeyDown = (e: KeyboardEvent) => {
-    if (e.key === "ArrowDown" && (e.altKey || e.metaKey)) {
-      e.preventDefault();
-      openPicker();
-    }
-  };
-
-  const handleBlur = () => {
-    if (!isOpen) return;
-    isOpen = false;
-    onPopupClose?.();
-  };
-
-  button.addEventListener("click", handleButtonClick);
-  shell.addEventListener("keydown", handleKeyDown);
-  hiddenInput.addEventListener("blur", handleBlur);
-
-  return () => {
-    button.removeEventListener("click", handleButtonClick);
-    shell.removeEventListener("keydown", handleKeyDown);
-    hiddenInput.removeEventListener("blur", handleBlur);
-  };
-}
-
-/* CalendarInput: same calendar field used in Breeding */
+/* CalendarInput: text field + native date picker */
 
 type CalendarInputProps = {
   value: string;
@@ -439,21 +229,16 @@ type CalendarInputProps = {
 
 const dateInputCls = "h-8 py-0 px-2 text-sm bg-transparent border-hairline";
 
-/* CalendarInput: text field + native date picker, shared with Breeding */
-
 function CalendarInput(props: any) {
   const readOnly = !!props.readOnly;
   const className = props.className;
   const inputClassName = props.inputClassName;
-  const onChange = props.onChange as
-    | React.ChangeEventHandler<HTMLInputElement>
-    | undefined;
+  const onChange = props.onChange as React.ChangeEventHandler<HTMLInputElement> | undefined;
   const value = props.value as string | undefined;
   const defaultValue = props.defaultValue as string | undefined;
   const placeholder = props.placeholder ?? "mm/dd/yyyy";
   const showIcon = props.showIcon ?? true;
 
-  // Any extra props intended for the visible input
   const rest: any = { ...props };
   delete rest.readOnly;
   delete rest.className;
@@ -464,7 +249,6 @@ function CalendarInput(props: any) {
   delete rest.placeholder;
   delete rest.showIcon;
 
-  // ISO helpers
   const onlyISO = (s: string) => (s || "").slice(0, 10);
 
   const toDisplay = (s: string | undefined | null) => {
@@ -499,38 +283,13 @@ function CalendarInput(props: any) {
     }
   }, [value]);
 
-  const shellRef = React.useRef<HTMLDivElement>(null);
   const inputRef = React.useRef<HTMLInputElement>(null);
-  const buttonRef = React.useRef<HTMLButtonElement>(null);
   const hiddenRef = React.useRef<HTMLInputElement>(null);
-
-  const [expanded, setExpanded] = React.useState(false);
-
-  React.useEffect(() => {
-    if (!showIcon) return;
-
-    const shell = shellRef.current;
-    const btn = buttonRef.current;
-    const hidden = hiddenRef.current;
-    if (!shell || !btn || !hidden) return;
-
-    const cleanup = attachDatePopupPositioning({
-      shell,
-      button: btn,
-      hiddenInput: hidden,
-      onPopupOpen: () => setExpanded(true),
-      onPopupClose: () => setExpanded(false),
-    });
-
-    return cleanup;
-  }, [showIcon]);
 
   const handleTextChange: React.ChangeEventHandler<HTMLInputElement> = (e) => {
     const raw = e.currentTarget.value;
     setTextValue(raw);
-
     if (!onChange) return;
-
     const iso = toISO(raw);
     onChange({ currentTarget: { value: iso } } as any);
   };
@@ -539,13 +298,17 @@ function CalendarInput(props: any) {
     const iso = onlyISO(e.currentTarget.value || "");
     const display = toDisplay(iso);
     setTextValue(display);
-
     if (!onChange) return;
     onChange({ currentTarget: { value: iso } } as any);
   };
 
+  const handleIconClick = () => {
+    if (readOnly) return;
+    hiddenRef.current?.showPicker?.();
+  };
+
   return (
-    <div ref={shellRef} className={className}>
+    <div className={className}>
       <div className="relative">
         <Input
           ref={inputRef}
@@ -559,18 +322,17 @@ function CalendarInput(props: any) {
         {showIcon && (
           <button
             type="button"
-            ref={buttonRef}
             className="absolute inset-y-0 right-2 flex items-center text-muted-foreground"
             aria-label="Open date picker"
+            onClick={handleIconClick}
           >
             <span className="text-xs">📅</span>
           </button>
         )}
-
-        {/* Hidden native date input for mobile and popup control */}
         <input
           ref={hiddenRef}
           type="date"
+          value={value ? onlyISO(value) : ""}
           onChange={handleHiddenChange}
           style={{
             position: "absolute",
@@ -1468,7 +1230,6 @@ function CycleTab({
       try {
         await fn({ animalId: id, dates: next });
         setDates(next);
-        toast.success("Cycle start dates saved.");
         onSaved(next);
       } catch (err) {
         console.error("[Animals] save cycle start dates failed", err);
@@ -1516,9 +1277,12 @@ function CycleTab({
   const pretty = React.useCallback((iso?: string | null) => {
     if (!iso) return "—";
     const s = String(iso);
-    const t = Date.parse(s.length === 10 ? `${s}T00:00:00Z` : s);
-    if (Number.isNaN(t)) return "—";
-    return new Date(t).toLocaleDateString();
+    // Parse as local date, not UTC, to avoid timezone shift
+    const [y, m, d] = s.slice(0, 10).split("-");
+    if (!y || !m || !d) return "—";
+    const date = new Date(Number(y), Number(m) - 1, Number(d));
+    if (isNaN(date.getTime())) return "—";
+    return date.toLocaleDateString();
   }, []);
 
   const dobIso = React.useMemo(
@@ -1927,6 +1691,1238 @@ function ProgramTab({
         )}
       </SectionCard>
     </div>
+  );
+}
+
+/** ────────────────────────────────────────────────────────────────────────
+ * Health Tab — species-standardized trait fields with document linking
+ * ─────────────────────────────────────────────────────────────────────── */
+type TraitDraft = {
+  value?: {
+    boolean?: boolean;
+    text?: string;
+    number?: number;
+    date?: string;
+    json?: any;
+  };
+  marketplaceVisible?: boolean | null;
+  verified?: boolean | null;
+  performedAt?: string | null;
+  source?: string | null;
+  jsonText?: string;
+};
+
+function HealthTab({
+  animal,
+  api,
+  onDocumentsTabRequest,
+  mode,
+}: {
+  animal: AnimalRow;
+  api: any;
+  onDocumentsTabRequest?: () => void;
+  mode: "view" | "edit";
+}) {
+  const [categories, setCategories] = React.useState<any[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<{ status?: number; message?: string; code?: string } | null>(null);
+  const [uploadModalOpen, setUploadModalOpen] = React.useState(false);
+  const [uploadTraitKey, setUploadTraitKey] = React.useState<string | null>(null);
+  const [expandedTraitKey, setExpandedTraitKey] = React.useState<string | null>(null);
+  const [traitDrafts, setTraitDrafts] = React.useState<Record<string, TraitDraft>>({});
+  const [collapsedCategories, setCollapsedCategories] = React.useState<Set<string>>(new Set());
+
+  const getTraitDraftKey = React.useCallback((trait: any) => {
+    const raw = trait?.traitValueId ?? trait?.traitKey ?? "";
+    return String(raw);
+  }, []);
+
+  const ensureTraitDraft = React.useCallback((trait: any) => {
+    const key = getTraitDraftKey(trait);
+    setTraitDrafts((prev) => {
+      if (prev[key]) return prev;
+      const baseValue =
+        trait.value && typeof trait.value === "object" ? { ...trait.value } : undefined;
+      let clonedJson = baseValue?.json;
+      if (clonedJson && typeof clonedJson === "object") {
+        try {
+          clonedJson = JSON.parse(JSON.stringify(clonedJson));
+        } catch {
+        }
+      }
+      const nextValue = baseValue
+        ? { ...baseValue, ...(clonedJson !== baseValue?.json ? { json: clonedJson } : {}) }
+        : undefined;
+      const nextDraft: TraitDraft = {
+        value: nextValue,
+        marketplaceVisible: trait.marketplaceVisible,
+        verified: trait.verified,
+        performedAt: trait.performedAt,
+        source: trait.source,
+      };
+      if (trait.valueType === "JSON" && trait.traitKey !== "dog.hips.pennhip") {
+        nextDraft.jsonText =
+          trait.value?.json !== undefined
+            ? JSON.stringify(trait.value.json, null, 2)
+            : "";
+      }
+      return { ...prev, [key]: nextDraft };
+    });
+    return key;
+  }, [getTraitDraftKey]);
+
+  const updateTraitDraft = React.useCallback((key: string, updater: TraitDraft | ((d: TraitDraft) => TraitDraft)) => {
+    setTraitDrafts((prev) => {
+      const current = prev[key] ?? {};
+      const next = typeof updater === "function" ? (updater as (d: TraitDraft) => TraitDraft)(current) : updater;
+      if (next === current) return prev;
+      return { ...prev, [key]: next };
+    });
+  }, []);
+
+  const clearTraitDraft = React.useCallback((key: string) => {
+    setTraitDrafts((prev) => {
+      if (!(key in prev)) return prev;
+      const { [key]: _removed, ...rest } = prev;
+      return rest;
+    });
+  }, []);
+
+  const fetchTraits = React.useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const data = await api?.animals?.traits?.list(animal.id);
+
+      // Dev-only diagnostic logging
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[HealthTab] Traits response:', data);
+      }
+
+      // Filter out non-health traits (microchip, registry numbers)
+      const filteredCategories = (data?.categories || []).map((cat: any) => ({
+        ...cat,
+        items: (cat.items || []).filter((t: any) => {
+          const key = t.traitKey || "";
+          // Exclude ID and registry traits
+          return !key.startsWith("dog.id.") && !key.startsWith("dog.registry.");
+        }),
+      })).filter((cat: any) => cat.items.length > 0);
+
+      setCategories(filteredCategories);
+    } catch (err: any) {
+      console.error("[HealthTab] Failed to load traits", err);
+      setError({
+        status: err?.status,
+        message: err?.data?.message || err?.message || "Failed to load health data",
+        code: err?.data?.code,
+      });
+    } finally {
+      setLoading(false);
+    }
+  }, [api, animal.id]);
+
+  React.useEffect(() => {
+    fetchTraits();
+    // When switching to view mode, collapse any expanded row
+    if (mode === "view") {
+      setExpandedTraitKey(null);
+      setTraitDrafts({});
+    }
+  }, [fetchTraits, mode]);
+
+  const handleSaveTrait = async (traitKey: string, draftKey: string, update: any) => {
+    try {
+      await api?.animals?.traits?.update(animal.id, [{ traitKey, ...update }]);
+      toast.success("Trait saved");
+      clearTraitDraft(draftKey);
+      await fetchTraits();
+    } catch (err: any) {
+      console.error("[HealthTab] Save failed", err);
+      toast.error(err?.data?.message || "Failed to save trait");
+    }
+  };
+
+  const handleUploadFromTrait = (traitKey: string) => {
+    setUploadTraitKey(traitKey);
+    setUploadModalOpen(true);
+  };
+
+  const handleUploadSubmit = async (payload: any) => {
+    try {
+      if (uploadTraitKey) {
+        await api?.animals?.documents?.uploadForTrait(animal.id, uploadTraitKey, payload);
+      }
+      toast.success("Document uploaded");
+      setUploadModalOpen(false);
+      setUploadTraitKey(null);
+      await fetchTraits();
+    } catch (err: any) {
+      console.error("[HealthTab] Upload failed", err);
+      toast.error(err?.data?.message || "Failed to upload document");
+    }
+  };
+
+  // Loading state with skeleton rows
+  if (loading) {
+    const skeletonCategories = ["Orthopedic", "Eyes", "Cardiac", "Genetic", "Reproductive", "General"];
+    return (
+      <div className="space-y-3">
+        {skeletonCategories.map((cat) => (
+          <SectionCard key={cat} title={cat}>
+            <div className="space-y-4">
+              {[1, 2].map((i) => (
+                <div key={i} className="flex items-center gap-3 animate-pulse">
+                  <div className="h-4 bg-subtle rounded w-1/3"></div>
+                  <div className="h-8 bg-subtle rounded flex-1"></div>
+                </div>
+              ))}
+            </div>
+          </SectionCard>
+        ))}
+      </div>
+    );
+  }
+
+  // Error state
+  if (error) {
+    return (
+      <div className="space-y-3">
+        <SectionCard title="Health">
+          <div className="space-y-3">
+            <div className="text-sm text-secondary">
+              Failed to load health traits.
+            </div>
+            {error.status && (
+              <div className="text-xs text-secondary">
+                Status: {error.status}
+                {error.code && ` | Code: ${error.code}`}
+              </div>
+            )}
+            {error.message && (
+              <div className="text-xs text-secondary">
+                {error.message}
+              </div>
+            )}
+            <button
+              onClick={fetchTraits}
+              className="px-3 py-1.5 text-sm bg-primary text-white rounded hover:bg-primary-dark"
+            >
+              Retry
+            </button>
+          </div>
+        </SectionCard>
+      </div>
+    );
+  }
+
+  // Empty state
+  const hasAnyTraits = categories.some((cat) => (cat.items || []).length > 0);
+  if (!categories || categories.length === 0 || !hasAnyTraits) {
+    return (
+      <div className="space-y-3">
+        <SectionCard title="Health">
+          <div className="text-sm text-secondary">
+            No trait definitions found for this species ({animal.species}).
+          </div>
+        </SectionCard>
+      </div>
+    );
+  }
+
+  const toggleCategory = (category: string) => {
+    setCollapsedCategories((prev) => {
+      const next = new Set(prev);
+      if (next.has(category)) {
+        next.delete(category);
+      } else {
+        next.add(category);
+      }
+      return next;
+    });
+  };
+
+  return (
+    <div className="space-y-3">
+      {categories.map((cat: any) => {
+        const items = cat.items || [];
+        if (items.length === 0) return null;
+
+        const isCollapsed = collapsedCategories.has(cat.category);
+        const completedCount = items.filter((t: any) => {
+          const hasValue = t.value?.boolean !== undefined ||
+                          t.value?.text ||
+                          t.value?.number !== undefined ||
+                          t.value?.date ||
+                          t.value?.json;
+          return hasValue;
+        }).length;
+
+        return (
+          <SectionCard
+            key={cat.category}
+            title={
+              <>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => toggleCategory(cat.category)}
+                    className="hover:opacity-80 transition-opacity -ml-1"
+                    aria-label={isCollapsed ? "Expand category" : "Collapse category"}
+                  >
+                    <svg
+                      className={`w-4 h-4 transition-transform duration-200 ${isCollapsed ? "" : "rotate-90"}`}
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                  </button>
+                  <span className="relative">
+                    {cat.category}
+                  </span>
+                </div>
+              </>
+            }
+            right={
+              <span className="text-xs text-secondary font-normal">
+                {completedCount} of {items.length} provided
+              </span>
+            }
+          >
+            {!isCollapsed && (
+              <div className="space-y-2">
+                {items.map((trait: any) => {
+                  const draftKey = getTraitDraftKey(trait);
+                  return (
+                    <TraitRow
+                      key={trait.traitKey}
+                      trait={trait}
+                      draft={traitDrafts[draftKey]}
+                      isExpanded={expandedTraitKey === draftKey}
+                      editMode={mode === "edit"}
+                      onExpand={() => {
+                        if (mode === "edit") {
+                          const nextKey = ensureTraitDraft(trait);
+                          setExpandedTraitKey(nextKey);
+                        }
+                      }}
+                      onCollapse={() => setExpandedTraitKey(null)}
+                      onDraftChange={(next) => updateTraitDraft(draftKey, next)}
+                      onDraftReset={() => clearTraitDraft(draftKey)}
+                      onSave={(update) => handleSaveTrait(trait.traitKey, draftKey, update)}
+                      onUpload={() => handleUploadFromTrait(trait.traitKey)}
+                    />
+                  );
+                })}
+              </div>
+            )}
+          </SectionCard>
+        );
+      })}
+      {uploadModalOpen && (
+        <DocumentUploadModal
+          open={uploadModalOpen}
+          onClose={() => {
+            setUploadModalOpen(false);
+            setUploadTraitKey(null);
+          }}
+          onSubmit={handleUploadSubmit}
+          lockedTraitKey={uploadTraitKey}
+        />
+      )}
+    </div>
+  );
+}
+
+function TraitRow({
+  trait,
+  draft,
+  isExpanded,
+  editMode,
+  onExpand,
+  onCollapse,
+  onSave,
+  onUpload,
+  onDraftChange,
+  onDraftReset,
+}: {
+  trait: any;
+  draft?: TraitDraft;
+  isExpanded: boolean;
+  editMode: boolean;
+  onExpand: () => void;
+  onCollapse: () => void;
+  onSave: (update: any) => void;
+  onUpload: () => void;
+  onDraftChange: (next: TraitDraft) => void;
+  onDraftReset: () => void;
+}) {
+  const [saving, setSaving] = React.useState(false);
+  const localDraft = draft ?? {};
+
+  React.useEffect(() => {
+    if (!isExpanded && draft) {
+      onDraftReset();
+    }
+  }, [isExpanded, draft, onDraftReset]);
+
+  const currentValue = localDraft.value !== undefined ? localDraft.value : trait.value;
+  const currentMarketplace = localDraft.marketplaceVisible !== undefined
+    ? localDraft.marketplaceVisible
+    : trait.marketplaceVisible;
+  const currentVerified = localDraft.verified !== undefined ? localDraft.verified : trait.verified;
+  const currentPerformedAt = localDraft.performedAt !== undefined
+    ? localDraft.performedAt
+    : trait.performedAt;
+  const currentSource = localDraft.source !== undefined ? localDraft.source : trait.source;
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const update: any = {};
+
+      if (trait.valueType === "JSON" && trait.traitKey !== "dog.hips.pennhip") {
+        const hasJsonSource = localDraft.jsonText !== undefined || trait.value?.json !== undefined;
+        if (hasJsonSource) {
+          const jsonText =
+            localDraft.jsonText ??
+            (trait.value?.json !== undefined ? JSON.stringify(trait.value.json, null, 2) : "");
+          if (!jsonText.trim()) {
+            update.value = { json: null };
+          } else {
+            try {
+              update.value = { json: JSON.parse(jsonText) };
+            } catch {
+              toast.error("Invalid JSON format");
+              return;
+            }
+          }
+        }
+      } else if (trait.valueType === "BOOLEAN" && currentValue?.boolean !== undefined) {
+        update.value = { boolean: currentValue.boolean };
+      } else if (trait.valueType === "TEXT" && currentValue?.text !== undefined) {
+        update.value = { text: currentValue.text };
+      } else if (trait.valueType === "NUMBER" && currentValue?.number !== undefined) {
+        update.value = { number: currentValue.number };
+      } else if (trait.valueType === "DATE" && currentValue?.date !== undefined) {
+        update.value = { date: currentValue.date };
+      } else if (trait.valueType === "ENUM" && currentValue?.text !== undefined) {
+        update.value = { text: currentValue.text };
+      } else if (trait.valueType === "JSON" && currentValue?.json !== undefined) {
+        update.value = { json: currentValue.json };
+      }
+
+      if (currentMarketplace !== undefined) update.marketplaceVisible = currentMarketplace;
+      if (currentVerified !== undefined) update.verified = currentVerified;
+      if (currentPerformedAt !== undefined) update.performedAt = currentPerformedAt;
+      if (currentSource !== undefined) update.source = currentSource;
+
+      await onSave(update);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const renderValueEditor = () => {
+    if (trait.valueType === "BOOLEAN") {
+      return (
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={currentValue?.boolean === true}
+            onChange={(e) =>
+              onDraftChange({
+                ...localDraft,
+                value: { boolean: e.target.checked },
+              })
+            }
+            className="rounded border-hairline"
+          />
+          <span className="text-sm">Yes</span>
+        </label>
+      );
+    }
+
+    if (trait.valueType === "ENUM") {
+      return (
+        <select
+          value={currentValue?.text || ""}
+          onChange={(e) =>
+            onDraftChange({
+              ...localDraft,
+              value: { text: e.target.value },
+            })
+          }
+          className="text-sm border border-hairline rounded px-2 py-1 bg-card text-inherit"
+        >
+          <option value="">Select...</option>
+          {(trait.enumValues || []).map((opt: string) => (
+            <option key={opt} value={opt}>
+              {opt}
+            </option>
+          ))}
+        </select>
+      );
+    }
+
+    if (trait.valueType === "NUMBER") {
+      return (
+        <Input
+          type="number"
+          size="sm"
+          value={currentValue?.number ?? ""}
+          onChange={(e) =>
+            onDraftChange({
+              ...localDraft,
+              value: { number: parseFloat(e.target.value) || 0 },
+            })
+          }
+          className="w-32"
+        />
+      );
+    }
+
+    if (trait.valueType === "DATE") {
+      return (
+        <Input
+          type="date"
+          size="sm"
+          value={currentValue?.date?.slice(0, 10) || ""}
+          onChange={(e) =>
+            onDraftChange({
+              ...localDraft,
+              value: { date: e.target.value },
+            })
+          }
+          className="w-40"
+        />
+      );
+    }
+
+    if (trait.valueType === "JSON" && trait.traitKey === "dog.hips.pennhip") {
+      const json = currentValue?.json || {};
+      return (
+        <div className="space-y-2">
+          <div className="flex items-center gap-2">
+            <label className="text-xs text-secondary w-16">DI:</label>
+            <Input
+              type="number"
+              size="sm"
+              value={json.di ?? ""}
+              onChange={(e) =>
+                onDraftChange({
+                  ...localDraft,
+                  value: {
+                    json: { ...json, di: parseFloat(e.target.value) || 0 },
+                  },
+                })
+              }
+              className="w-24"
+              step="0.01"
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <label className="text-xs text-secondary w-16">Side:</label>
+            <select
+              value={json.side || ""}
+              onChange={(e) =>
+                onDraftChange({
+                  ...localDraft,
+                  value: { json: { ...json, side: e.target.value } },
+                })
+              }
+              className="text-sm border border-hairline rounded px-2 py-1 bg-card text-inherit"
+            >
+              <option value="">Select...</option>
+              <option value="left">Left</option>
+              <option value="right">Right</option>
+              <option value="both">Both</option>
+            </select>
+          </div>
+          <div className="flex items-center gap-2">
+            <label className="text-xs text-secondary w-16">Notes:</label>
+            <Input
+              size="sm"
+              value={json.notes || ""}
+              onChange={(e) =>
+                onDraftChange({
+                  ...localDraft,
+                  value: { json: { ...json, notes: e.target.value } },
+                })
+              }
+              className="flex-1"
+            />
+          </div>
+        </div>
+      );
+    }
+
+    if (trait.valueType === "JSON") {
+      const jsonText =
+        localDraft.jsonText ??
+        (trait.value?.json !== undefined ? JSON.stringify(trait.value.json, null, 2) : "");
+      return (
+        <textarea
+          className="w-full rounded border border-hairline bg-card px-2 py-2 text-sm text-inherit"
+          rows={5}
+          value={jsonText}
+          onChange={(e) =>
+            onDraftChange({
+              ...localDraft,
+              jsonText: (e.currentTarget as HTMLTextAreaElement).value,
+            })
+          }
+        />
+      );
+    }
+
+    if (trait.valueType === "TEXT") {
+      return (
+        <Input
+          size="sm"
+          value={currentValue?.text || ""}
+          onChange={(e) =>
+            onDraftChange({
+              ...localDraft,
+              value: { text: e.target.value },
+            })
+          }
+          className="w-full"
+        />
+      );
+    }
+
+    return <div className="text-xs text-secondary">Unsupported type</div>;
+  };
+
+  const showValueLabel = trait.valueType !== "BOOLEAN";
+  const valueLabel =
+    trait.valueType === "JSON" && trait.traitKey !== "dog.hips.pennhip"
+      ? "Details"
+      : "Value";
+
+  // Helper to format value for display
+  const getDisplayValue = () => {
+    if (trait.valueType === "BOOLEAN") {
+      if (trait.value?.boolean === undefined) return "Not provided";
+      return trait.value.boolean ? "Yes" : "No";
+    }
+    if (trait.valueType === "TEXT" || trait.valueType === "ENUM") {
+      return trait.value?.text || "Not provided";
+    }
+    if (trait.valueType === "NUMBER") {
+      return trait.value?.number !== undefined ? String(trait.value.number) : "Not provided";
+    }
+    if (trait.valueType === "DATE") {
+      return trait.value?.date ? new Date(trait.value.date).toLocaleDateString() : "Not provided";
+    }
+    if (trait.valueType === "JSON") {
+      if (trait.traitKey === "dog.hips.pennhip" && trait.value?.json) {
+        const { di, side, notes } = trait.value.json;
+        if (di === undefined) return "Not provided";
+        const sideLabel = side ? ` (${side})` : "";
+        const notesLabel = notes ? " (notes)" : "";
+        return `DI: ${di}${sideLabel}${notesLabel}`;
+      }
+      return trait.value?.json != null ? "Provided" : "Not provided";
+    }
+    return "Not provided";
+  };
+
+  const hasValue = trait.value?.boolean !== undefined ||
+                   trait.value?.text ||
+                   trait.value?.number !== undefined ||
+                   trait.value?.date ||
+                   trait.value?.json;
+
+  // COLLAPSED STATE (default)
+  if (!isExpanded) {
+    return (
+      <div className="flex items-center justify-between py-2 px-3 hover:bg-subtle rounded group">
+        <div className="flex items-center gap-3 flex-1 min-w-0">
+          <div className="flex-1 min-w-0">
+            <div className="text-sm font-medium truncate">{trait.displayName}</div>
+            <div className="text-xs text-secondary truncate">{getDisplayValue()}</div>
+          </div>
+          <div className="flex items-center gap-2">
+            {trait.verified && (
+              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-100">
+                Verified
+              </span>
+            )}
+            {trait.marketplaceVisible && (
+              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-100">
+                Marketplace
+              </span>
+            )}
+            {trait.documents && trait.documents.length > 0 && (
+              <span className="text-xs text-secondary" title={`${trait.documents.length} document(s)`}>
+                {trait.documents.length} doc{trait.documents.length > 1 ? 's' : ''}
+              </span>
+            )}
+          </div>
+        </div>
+        {editMode && (
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={onExpand}
+            className="ml-2"
+          >
+            Edit
+          </Button>
+        )}
+      </div>
+    );
+  }
+
+  // EXPANDED STATE (editing)
+  return (
+    <div className="border border-hairline rounded-lg p-4 bg-subtle">
+      <div className="mb-4">
+        <div className="font-medium text-sm">{trait.displayName}</div>
+      </div>
+
+      <div className="space-y-4">
+        {/* Value Editor */}
+        <div>
+          {showValueLabel && (
+            <label className="text-xs font-medium text-secondary block mb-2">
+              {valueLabel}
+            </label>
+          )}
+          {renderValueEditor()}
+        </div>
+
+        {/* Visibility and Verification */}
+        <div className="border-t border-hairline pt-4 space-y-3">
+          <div className="text-xs font-medium text-secondary mb-2">Visibility and Verification</div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <label className="flex items-center gap-2 text-sm cursor-pointer">
+              <input
+                type="checkbox"
+                checked={currentMarketplace || false}
+                onChange={(e) =>
+                  onDraftChange({
+                    ...localDraft,
+                    marketplaceVisible: e.target.checked,
+                  })
+                }
+                className="rounded border-hairline"
+              />
+              <span>Visible on marketplace</span>
+            </label>
+            <label className="flex items-center gap-2 text-sm cursor-pointer">
+              <input
+                type="checkbox"
+                checked={currentVerified || false}
+                onChange={(e) =>
+                  onDraftChange({
+                    ...localDraft,
+                    verified: e.target.checked,
+                  })
+                }
+                className="rounded border-hairline"
+              />
+              <span>Verified</span>
+            </label>
+          </div>
+
+          {/* Performed Date & Source */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs text-secondary block mb-1">Performed Date</label>
+              <Input
+                type="date"
+                size="sm"
+                value={currentPerformedAt?.slice(0, 10) || ""}
+                onChange={(e) =>
+                  onDraftChange({
+                    ...localDraft,
+                    performedAt: e.target.value,
+                  })
+                }
+                className="w-full"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-secondary block mb-1">Source</label>
+              <select
+                value={currentSource || ""}
+                onChange={(e) =>
+                  onDraftChange({
+                    ...localDraft,
+                    source: e.target.value,
+                  })
+                }
+                className="text-sm border border-hairline rounded px-2 py-1.5 w-full bg-card text-inherit"
+              >
+                <option value="">Select source...</option>
+                <option value="BREEDER_ENTERED">Breeder</option>
+                <option value="VETERINARY_RECORD">Vet</option>
+                <option value="LAB_RESULT">Lab</option>
+                <option value="REGISTRY_DATA">Registry</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        {/* Evidence / Documents */}
+        <div className="border-t border-hairline pt-4">
+          <div className="flex items-center justify-between mb-2">
+            <label className="text-xs font-medium text-secondary">Evidence</label>
+            <Button size="sm" variant="outline" onClick={onUpload}>
+              Upload Document
+            </Button>
+          </div>
+
+          {trait.documents && trait.documents.length > 0 ? (
+            <div className="space-y-2">
+              {trait.documents.map((doc: any) => (
+                <div
+                  key={doc.documentId}
+                  className="flex items-center justify-between gap-2 rounded border border-hairline px-3 py-2 text-xs bg-card text-inherit"
+                >
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium truncate">{doc.title}</div>
+                    <div className="text-secondary flex items-center gap-2 mt-0.5">
+                      <span>{doc.visibility}</span>
+                      {doc.status && <span>• {doc.status}</span>}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-xs text-secondary">No documents uploaded</div>
+          )}
+        </div>
+
+        {/* Action Buttons */}
+        <div className="flex items-center gap-2 pt-2 border-t border-hairline">
+          <Button
+            size="sm"
+            variant="primary"
+            onClick={async () => {
+              await handleSave();
+              onCollapse();
+            }}
+            disabled={saving}
+          >
+            {saving ? "Saving..." : "Save"}
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              onDraftReset();
+              onCollapse();
+            }}
+          >
+            Cancel
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** ────────────────────────────────────────────────────────────────────────
+ * Documents Tab — list animal documents with trait linking
+ * ─────────────────────────────────────────────────────────────────────── */
+function DocumentsTab({
+  animal,
+  api,
+  onHealthTabRequest,
+}: {
+  animal: AnimalRow;
+  api: any;
+  onHealthTabRequest?: (traitKey?: string) => void;
+}) {
+  const [documents, setDocuments] = React.useState<any[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<{ status?: number; message?: string; code?: string } | null>(null);
+  const [uploadModalOpen, setUploadModalOpen] = React.useState(false);
+  const [deleteConfirmId, setDeleteConfirmId] = React.useState<number | null>(null);
+  const [allTraits, setAllTraits] = React.useState<any[]>([]);
+
+  const fetchDocuments = React.useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const data = await api?.animals?.documents?.list(animal.id);
+      setDocuments(data?.documents || []);
+    } catch (err: any) {
+      console.error("[DocumentsTab] Failed to load documents", err);
+      setError({
+        status: err?.status,
+        message: err?.data?.message || err?.message || "Failed to load documents",
+        code: err?.data?.code,
+      });
+    } finally {
+      setLoading(false);
+    }
+  }, [api, animal.id]);
+
+  const fetchTraits = React.useCallback(async () => {
+    try {
+      const data = await api?.animals?.traits?.list(animal.id);
+      const flatTraits: any[] = [];
+      (data?.categories || []).forEach((cat: any) => {
+        (cat.items || []).forEach((t: any) => {
+          flatTraits.push({
+            traitKey: t.traitKey,
+            displayName: t.displayName,
+            category: cat.category,
+          });
+        });
+      });
+      setAllTraits(flatTraits);
+    } catch (err) {
+      console.error("[DocumentsTab] Failed to load traits", err);
+    }
+  }, [api, animal.id]);
+
+  React.useEffect(() => {
+    fetchDocuments();
+    fetchTraits();
+  }, [fetchDocuments, fetchTraits]);
+
+  const handleUploadSubmit = async (payload: any) => {
+    try {
+      await api?.animals?.documents?.upload(animal.id, payload);
+      toast.success("Document uploaded");
+      setUploadModalOpen(false);
+      await fetchDocuments();
+    } catch (err: any) {
+      console.error("[DocumentsTab] Upload failed", err);
+      toast.error(err?.data?.message || "Failed to upload document");
+    }
+  };
+
+  const handleDelete = async (documentId: number) => {
+    try {
+      await api?.animals?.documents?.remove(animal.id, documentId);
+      toast.success("Document deleted");
+      setDeleteConfirmId(null);
+      await fetchDocuments();
+    } catch (err: any) {
+      console.error("[DocumentsTab] Delete failed", err);
+      toast.error(err?.data?.message || "Failed to delete document");
+    }
+  };
+
+  if (loading) {
+    return <div className="p-4 text-sm text-secondary">Loading documents...</div>;
+  }
+
+  // Error state
+  if (error) {
+    return (
+      <div className="space-y-3">
+        <SectionCard title="Documents">
+          <div className="space-y-3">
+            <div className="text-sm text-secondary">
+              Failed to load documents.
+            </div>
+            {error.status && (
+              <div className="text-xs text-secondary">
+                Status: {error.status}
+                {error.code && ` | Code: ${error.code}`}
+              </div>
+            )}
+            {error.message && (
+              <div className="text-xs text-secondary">
+                {error.message}
+              </div>
+            )}
+            <button
+              onClick={fetchDocuments}
+              className="px-3 py-1.5 text-sm bg-primary text-white rounded hover:bg-primary-dark"
+            >
+              Retry
+            </button>
+          </div>
+        </SectionCard>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      <SectionCard
+        title="Documents"
+        rightAction={
+          <Button size="sm" variant="outline" onClick={() => setUploadModalOpen(true)}>
+            Upload
+          </Button>
+        }
+      >
+        {documents.length === 0 ? (
+          <div className="text-sm text-secondary">No documents uploaded yet</div>
+        ) : (
+          <div className="space-y-3">
+            {documents.map((doc: any) => (
+              <div
+                key={doc.documentId}
+                className="border border-hairline rounded p-3 space-y-2"
+              >
+                <div className="flex items-start justify-between">
+                  <div>
+                    <div className="font-medium text-sm">{doc.title}</div>
+                    <div className="text-xs text-secondary mt-1">
+                      {doc.originalFileName} • {doc.mimeType}
+                      {doc.sizeBytes && ` • ${(doc.sizeBytes / 1024).toFixed(1)} KB`}
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setDeleteConfirmId(doc.documentId)}
+                    className="text-secondary hover:text-primary text-xs"
+                    title="Delete"
+                  >
+                    Delete
+                  </button>
+                </div>
+                <div className="flex items-center gap-2 text-xs">
+                  <span className="px-2 py-0.5 rounded border border-hairline">
+                    {doc.visibility}
+                  </span>
+                  {doc.status && (
+                    <span className="px-2 py-0.5 rounded border border-hairline text-secondary">
+                      {doc.status}
+                    </span>
+                  )}
+                </div>
+                {doc.linkedTraits && doc.linkedTraits.length > 0 && (
+                  <div className="flex flex-wrap gap-2">
+                    <span className="text-xs text-secondary">Linked to:</span>
+                    {doc.linkedTraits.map((lt: any) => (
+                      <button
+                        key={lt.traitKey}
+                        onClick={() => onHealthTabRequest?.(lt.traitKey)}
+                        className="text-xs px-2 py-0.5 rounded border border-hairline hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                      >
+                        {lt.displayName}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </SectionCard>
+      {uploadModalOpen && (
+        <DocumentUploadModal
+          open={uploadModalOpen}
+          onClose={() => setUploadModalOpen(false)}
+          onSubmit={handleUploadSubmit}
+          allTraits={allTraits}
+        />
+      )}
+      {deleteConfirmId !== null && (
+        <Dialog open={true} onOpenChange={() => setDeleteConfirmId(null)}>
+          <div className="p-4 space-y-4">
+            <div className="text-lg font-medium">Delete Document</div>
+            <div className="text-sm">
+              Are you sure you want to delete this document? This action cannot be undone.
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setDeleteConfirmId(null)}>
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={() => handleDelete(deleteConfirmId)}
+              >
+                Delete
+              </Button>
+            </div>
+          </div>
+        </Dialog>
+      )}
+    </div>
+  );
+}
+
+/** ────────────────────────────────────────────────────────────────────────
+ * Document Upload Modal — shared between Health and Documents tabs
+ * ─────────────────────────────────────────────────────────────────────── */
+function DocumentUploadModal({
+  open,
+  onClose,
+  onSubmit,
+  lockedTraitKey,
+  allTraits,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onSubmit: (payload: any) => Promise<void>;
+  lockedTraitKey?: string | null;
+  allTraits?: any[];
+}) {
+  const [title, setTitle] = React.useState("");
+  const [originalFileName, setOriginalFileName] = React.useState("");
+  const [mimeType, setMimeType] = React.useState("application/pdf");
+  const [sizeBytes, setSizeBytes] = React.useState<number | undefined>(undefined);
+  const [visibility, setVisibility] = React.useState("PRIVATE");
+  const [selectedTraitKeys, setSelectedTraitKeys] = React.useState<string[]>([]);
+  const [submitting, setSubmitting] = React.useState(false);
+
+  const groupedTraits = React.useMemo(() => {
+    if (!allTraits) return {};
+    const groups: Record<string, any[]> = {};
+    allTraits.forEach((t) => {
+      if (!groups[t.category]) groups[t.category] = [];
+      groups[t.category].push(t);
+    });
+    return groups;
+  }, [allTraits]);
+
+  const handleSubmit = async () => {
+    if (!title.trim() || !originalFileName.trim()) {
+      toast.error("Title and filename are required");
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const payload: any = {
+        title: title.trim(),
+        originalFileName: originalFileName.trim(),
+        mimeType,
+        visibility,
+      };
+      if (sizeBytes) payload.sizeBytes = sizeBytes;
+      if (!lockedTraitKey && selectedTraitKeys.length > 0) {
+        payload.linkTraitKeys = selectedTraitKeys;
+      }
+      await onSubmit(payload);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onClose}>
+      <div className="p-4 space-y-4 max-w-lg">
+        <div className="text-lg font-medium">Upload Document</div>
+        <div className="space-y-3">
+          <div>
+            <label className="text-xs text-secondary block mb-1">
+              Title <span className="text-red-500">*</span>
+            </label>
+            <Input
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="Hip Dysplasia Report"
+            />
+          </div>
+          <div>
+            <label className="text-xs text-secondary block mb-1">
+              Filename <span className="text-red-500">*</span>
+            </label>
+            <Input
+              value={originalFileName}
+              onChange={(e) => setOriginalFileName(e.target.value)}
+              placeholder="hips-2024.pdf"
+            />
+          </div>
+          <div>
+            <label className="text-xs text-secondary block mb-1">MIME Type</label>
+            <select
+              value={mimeType}
+              onChange={(e) => setMimeType(e.target.value)}
+              className="w-full text-sm border border-hairline rounded px-2 py-2"
+            >
+              <option value="application/pdf">PDF</option>
+              <option value="image/jpeg">JPEG</option>
+              <option value="image/png">PNG</option>
+              <option value="application/vnd.openxmlformats-officedocument.wordprocessingml.document">
+                DOCX
+              </option>
+              <option value="text/plain">Text</option>
+            </select>
+          </div>
+          <div>
+            <label className="text-xs text-secondary block mb-1">Size (bytes)</label>
+            <Input
+              type="number"
+              value={sizeBytes ?? ""}
+              onChange={(e) =>
+                setSizeBytes(e.target.value ? parseInt(e.target.value) : undefined)
+              }
+              placeholder="Optional"
+            />
+          </div>
+          <div>
+            <label className="text-xs text-secondary block mb-1">Visibility</label>
+            <select
+              value={visibility}
+              onChange={(e) => setVisibility(e.target.value)}
+              className="w-full text-sm border border-hairline rounded px-2 py-2"
+            >
+              <option value="PRIVATE">Private</option>
+              <option value="BUYERS">Buyers</option>
+              <option value="PUBLIC">Public</option>
+            </select>
+          </div>
+          {!lockedTraitKey && allTraits && allTraits.length > 0 && (
+            <div>
+              <label className="text-xs text-secondary block mb-1">
+                Link to Traits (optional)
+              </label>
+              <div className="border border-hairline rounded p-2 max-h-48 overflow-y-auto space-y-2">
+                {Object.entries(groupedTraits).map(([category, traits]) => (
+                  <div key={category}>
+                    <div className="text-xs font-medium text-secondary mb-1">
+                      {category}
+                    </div>
+                    {traits.map((t: any) => (
+                      <label
+                        key={t.traitKey}
+                        className="flex items-center gap-2 text-sm cursor-pointer py-0.5"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selectedTraitKeys.includes(t.traitKey)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setSelectedTraitKeys([...selectedTraitKeys, t.traitKey]);
+                            } else {
+                              setSelectedTraitKeys(
+                                selectedTraitKeys.filter((k) => k !== t.traitKey)
+                              );
+                            }
+                          }}
+                          className="rounded border-hairline"
+                        />
+                        {t.displayName}
+                      </label>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          {lockedTraitKey && (
+            <div className="text-xs text-secondary">
+              This document will be linked to the selected trait.
+            </div>
+          )}
+        </div>
+        <div className="flex justify-end gap-2">
+          <Button variant="outline" onClick={onClose} disabled={submitting}>
+            Cancel
+          </Button>
+          <Button onClick={handleSubmit} disabled={submitting}>
+            {submitting ? "Uploading..." : "Upload"}
+          </Button>
+        </div>
+      </div>
+    </Dialog>
   );
 }
 
@@ -2963,6 +3959,8 @@ export default function AppAnimals() {
         if ((r.sex || "").toLowerCase().startsWith("f"))
           tabs.push({ key: "cycle", label: "Cycle Info" } as any);
         tabs.push({ key: "program", label: "Program" } as any);
+        tabs.push({ key: "health", label: "Health" } as any);
+        tabs.push({ key: "documents", label: "Documents" } as any);
         tabs.push({ key: "pairing", label: "Pairing" } as any);
         tabs.push({ key: "audit", label: "Audit" } as any);
         return tabs;
@@ -3390,6 +4388,23 @@ export default function AppAnimals() {
             />
           )}
 
+          {activeTab === "health" && (
+            <HealthTab
+              animal={row}
+              api={api}
+              onDocumentsTabRequest={() => setActiveTab("documents")}
+              mode={mode}
+            />
+          )}
+
+          {activeTab === "documents" && (
+            <DocumentsTab
+              animal={row}
+              api={api}
+              onHealthTabRequest={(traitKey) => setActiveTab("health")}
+            />
+          )}
+
           {activeTab === "pairing" && (
             <PairingTab animal={row} api={api} />
           )}
@@ -3512,56 +4527,53 @@ export default function AppAnimals() {
       };
 
       const created = await (api.animals as any).create?.(payload);
-
-      let toSaveOwners = owners;
-      if (toSaveOwners.length === 0) {
-        const org = await safeGetCreatingOrg(api);
-        if (org) {
-          const orgPartyIdRaw =
-            (org as any).partyId ?? (org as any).party_id ?? null;
-          const orgPartyId = Number.isFinite(Number(orgPartyIdRaw))
-            ? Number(orgPartyIdRaw)
-            : null;
-          if (orgPartyId == null) {
-            toSaveOwners = [];
-          } else {
-            toSaveOwners = [
-              {
-                partyId: orgPartyId,
-                partyType: "Organization",
-                organizationId: Number(org.id),
-                contactId: null,
-                display_name:
-                  (org as any).display_name ||
-                  (org as any).name ||
-                  "My Organization",
-                is_primary: true,
-                percent: 100,
-              },
-            ];
-          }
-        }
-      }
-
-      let ownerNameOverride: string | null = null;
-      if (toSaveOwners.length) {
-        const primary =
-          toSaveOwners.find((o) => o.is_primary) ?? toSaveOwners[0];
-        ownerNameOverride = primary?.display_name ?? null;
-      }
-
       const animalId = Number((created as any).id);
 
-      if (toSaveOwners.length) {
+      // Sync owners if any were specified in the form
+      // Note: Backend automatically creates a default owner (tenant party) if none provided
+      if (owners.length > 0) {
         try {
-          await syncOwners(animalId, toSaveOwners as OwnershipRow[]);
+          await syncOwners(animalId, owners as OwnershipRow[]);
         } catch {
+          // Owner sync failed, but animal was created
         }
       }
+
+      // Fetch the actual owners from the backend (includes backend-created default owner)
+      let fetchedOwners: any[] = [];
+      try {
+        const ownersResp = await api.animals.owners.list(animalId);
+        fetchedOwners = Array.isArray((ownersResp as any)?.items)
+          ? (ownersResp as any).items
+          : [];
+      } catch {
+        // Failed to fetch owners, proceed with empty list
+      }
+
+      // Convert backend owner format to frontend OwnershipRow format
+      const normalizedOwners: OwnershipRow[] = fetchedOwners.map((o: any) => {
+        const partyType = o.kind === "ORGANIZATION" || o.kind === "PERSON"
+          ? (o.kind === "ORGANIZATION" ? "Organization" : "Contact")
+          : normalizeOwnerPartyType(o.kind);
+
+        return {
+          partyId: o.partyId,
+          partyType,
+          organizationId: o.kind === "ORGANIZATION" ? o.backing?.organizationId : null,
+          contactId: o.kind === "PERSON" ? o.backing?.contactId : null,
+          display_name: o.displayName,
+          is_primary: o.isPrimary,
+          percent: o.percent,
+        };
+      });
+
+      const ownerNameOverride = fetchedOwners.find((o: any) => o.isPrimary)?.displayName
+        ?? fetchedOwners[0]?.displayName
+        ?? null;
 
       const row = animalToRow({
         ...created,
-        owners: toSaveOwners,
+        owners: normalizedOwners,
         ownerName: ownerNameOverride ?? undefined,
       });
 
@@ -3753,7 +4765,7 @@ export default function AppAnimals() {
                         let v = (r as any)[c.key] as any;
                         if (DATE_KEYS.has(c.key as any)) v = fmt(v);
                         if (Array.isArray(v)) v = v.join(", ");
-                        return <TableCell key={c.key}>{v ?? ""}</TableCell>;
+                        return <TableCell key={c.key} align={c.center ? "center" : "left"}>{v ?? ""}</TableCell>;
                       })}
                     </TableRow>
                   ))}

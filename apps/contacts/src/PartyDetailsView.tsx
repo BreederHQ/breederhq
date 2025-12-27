@@ -477,21 +477,23 @@ export function PartyDetailsView({
   }, [row]);
 
   // Communication preferences for Contacts
+  // Backend returns PreferenceLevel enum: 'ALLOW', 'NOT_PREFERRED', 'NEVER'
+  // UI treats 'ALLOW' as true (ON), everything else as false (OFF)
   const [prefs, setPrefs] = React.useState(() => ({
-    email: !!(row as any).prefersEmail,
-    sms: !!(row as any).prefersSms,
-    phone: !!(row as any).prefersPhone,
-    mail: !!(row as any).prefersMail,
-    whatsapp: !!(row as any).prefersWhatsapp,
+    email: (row as any).prefersEmail === 'ALLOW',
+    sms: (row as any).prefersSms === 'ALLOW',
+    phone: (row as any).prefersPhone === 'ALLOW',
+    mail: (row as any).prefersMail === 'ALLOW',
+    whatsapp: (row as any).prefersWhatsapp === 'ALLOW',
   }));
 
   React.useEffect(() => {
     setPrefs({
-      email: !!(row as any).prefersEmail,
-      sms: !!(row as any).prefersSms,
-      phone: !!(row as any).prefersPhone,
-      mail: !!(row as any).prefersMail,
-      whatsapp: !!(row as any).prefersWhatsapp,
+      email: (row as any).prefersEmail === 'ALLOW',
+      sms: (row as any).prefersSms === 'ALLOW',
+      phone: (row as any).prefersPhone === 'ALLOW',
+      mail: (row as any).prefersMail === 'ALLOW',
+      whatsapp: (row as any).prefersWhatsapp === 'ALLOW',
     });
   }, [row]);
 
@@ -501,7 +503,8 @@ export function PartyDetailsView({
       setPrefs((prev) => {
         const next = !prev[key];
         const camel = `prefers${key[0].toUpperCase()}${key.slice(1)}`;
-        setDraft((d: any) => ({ ...d, [camel]: next }));
+        // Set enum value: true = 'ALLOW', false = 'NEVER'
+        setDraft((d: any) => ({ ...d, [camel]: next ? 'ALLOW' : 'NEVER' }));
         return { ...prev, [key]: next };
       });
     },
@@ -668,6 +671,8 @@ export function PartyDetailsView({
         tabs={[
           { key: "overview", label: "Overview" },
           { key: "animals", label: "Animals" },
+          { key: "documents", label: "Documents" },
+          { key: "finances", label: "Finances" },
           { key: "audit", label: "Audit" },
         ]}
         activeTab={activeTab}
@@ -825,31 +830,31 @@ export function PartyDetailsView({
                     on={!!prefs.email}
                     label="Email"
                     onClick={() => togglePref("email")}
-                    className={mode === "view" ? "opacity-50 pointer-events-none" : ""}
+                    className={`inline-flex h-7 items-center justify-center whitespace-nowrap rounded-full px-3.5 text-[11px] leading-none border transition-colors select-none${mode === "view" ? " pointer-events-none" : ""}`}
                   />
                   <PillToggle
                     on={!!prefs.sms}
                     label="SMS"
                     onClick={() => togglePref("sms")}
-                    className={mode === "view" ? "opacity-50 pointer-events-none" : ""}
+                    className={`inline-flex h-7 items-center justify-center whitespace-nowrap rounded-full px-3.5 text-[11px] leading-none border transition-colors select-none${mode === "view" ? " pointer-events-none" : ""}`}
                   />
                   <PillToggle
                     on={!!prefs.phone}
                     label="Phone"
                     onClick={() => togglePref("phone")}
-                    className={mode === "view" ? "opacity-50 pointer-events-none" : ""}
+                    className={`inline-flex h-7 items-center justify-center whitespace-nowrap rounded-full px-3.5 text-[11px] leading-none border transition-colors select-none${mode === "view" ? " pointer-events-none" : ""}`}
                   />
                   <PillToggle
                     on={!!prefs.mail}
                     label="Mail"
                     onClick={() => togglePref("mail")}
-                    className={mode === "view" ? "opacity-50 pointer-events-none" : ""}
+                    className={`inline-flex h-7 items-center justify-center whitespace-nowrap rounded-full px-3.5 text-[11px] leading-none border transition-colors select-none${mode === "view" ? " pointer-events-none" : ""}`}
                   />
                   <PillToggle
                     on={!!prefs.whatsapp}
                     label="WhatsApp"
                     onClick={() => togglePref("whatsapp")}
-                    className={mode === "view" ? "opacity-50 pointer-events-none" : ""}
+                    className={`inline-flex h-7 items-center justify-center whitespace-nowrap rounded-full px-3.5 text-[11px] leading-none border transition-colors select-none${mode === "view" ? " pointer-events-none" : ""}`}
                   />
                 </div>
 
@@ -1064,10 +1069,44 @@ export function PartyDetailsView({
             {/* Communication Preferences - for Organizations only */}
             {row.kind === "ORGANIZATION" && (
               <SectionCard title="Communication Preferences">
+                <div className="flex flex-wrap items-center gap-2 mb-3">
+                  <PillToggle
+                    on={!!prefs.email}
+                    label="Email"
+                    onClick={() => togglePref("email")}
+                    className={`inline-flex h-7 items-center justify-center whitespace-nowrap rounded-full px-3.5 text-[11px] leading-none border transition-colors select-none${mode === "view" ? " pointer-events-none" : ""}`}
+                  />
+                  <PillToggle
+                    on={!!prefs.sms}
+                    label="SMS"
+                    onClick={() => togglePref("sms")}
+                    className={`inline-flex h-7 items-center justify-center whitespace-nowrap rounded-full px-3.5 text-[11px] leading-none border transition-colors select-none${mode === "view" ? " pointer-events-none" : ""}`}
+                  />
+                  <PillToggle
+                    on={!!prefs.phone}
+                    label="Phone"
+                    onClick={() => togglePref("phone")}
+                    className={`inline-flex h-7 items-center justify-center whitespace-nowrap rounded-full px-3.5 text-[11px] leading-none border transition-colors select-none${mode === "view" ? " pointer-events-none" : ""}`}
+                  />
+                  <PillToggle
+                    on={!!prefs.mail}
+                    label="Mail"
+                    onClick={() => togglePref("mail")}
+                    className={`inline-flex h-7 items-center justify-center whitespace-nowrap rounded-full px-3.5 text-[11px] leading-none border transition-colors select-none${mode === "view" ? " pointer-events-none" : ""}`}
+                  />
+                  <PillToggle
+                    on={!!prefs.whatsapp}
+                    label="WhatsApp"
+                    onClick={() => togglePref("whatsapp")}
+                    className={`inline-flex h-7 items-center justify-center whitespace-nowrap rounded-full px-3.5 text-[11px] leading-none border transition-colors select-none${mode === "view" ? " pointer-events-none" : ""}`}
+                  />
+                </div>
+
+                {/* Website */}
                 <div className="flex items-center gap-3">
                   <div className="text-xs text-secondary min-w-[80px]">Website</div>
                   {mode === "view" ? (
-                    <div className="text-sm">{row.website || "-"}</div>
+                    <div className="text-sm">{row.website || "—"}</div>
                   ) : (
                     <div className="flex-1">
                       {editText("website")}
@@ -1075,11 +1114,12 @@ export function PartyDetailsView({
                   )}
                 </div>
 
+                {/* Email */}
                 <div className="flex items-center gap-3">
                   <div className="text-xs text-secondary min-w-[80px]">Email</div>
                   {mode === "view" ? (
                     <div className="text-sm flex items-center gap-2">
-                      <span>{row.email || "-"}</span>
+                      <span>{row.email || "—"}</span>
                       {row.email ? (
                         <button
                           type="button"
@@ -1109,7 +1149,7 @@ export function PartyDetailsView({
                   <div className="text-xs text-secondary min-w-[80px]">Cell Phone</div>
                   {mode === "view" ? (
                     <div className="text-sm">
-                      {formatE164Phone((row as any).phoneMobileE164 || row.phone) || "-"}
+                      {formatE164Phone((row as any).phoneMobileE164 || row.phone) || "—"}
                     </div>
                   ) : (
                     <div className="flex-1">
@@ -1134,7 +1174,7 @@ export function PartyDetailsView({
                 <div className="flex items-center gap-3">
                   <div className="text-xs text-secondary min-w-[80px]">Landline</div>
                   {mode === "view" ? (
-                    <div className="text-sm">{formatE164Phone((row as any).phoneLandlineE164) || "-"}</div>
+                    <div className="text-sm">{formatE164Phone((row as any).phoneLandlineE164) || "—"}</div>
                   ) : (
                     <div className="flex-1">
                       {/* @ts-ignore */}
@@ -1156,7 +1196,7 @@ export function PartyDetailsView({
                 <div className="flex items-center gap-3">
                   <div className="text-xs text-secondary min-w-[80px]">WhatsApp</div>
                   {mode === "view" ? (
-                    <div className="text-sm">{formatE164Phone((row as any).whatsappE164) || "-"}</div>
+                    <div className="text-sm">{formatE164Phone((row as any).whatsappE164) || "—"}</div>
                   ) : (
                     <div className="flex-1">
                       {/* @ts-ignore */}
@@ -1180,6 +1220,102 @@ export function PartyDetailsView({
                 {mode === "edit" && (
                   <div className="text-xs text-secondary">
                     If Cell Phone is left empty, WhatsApp will be used as the phone on save.
+                  </div>
+                )}
+              </SectionCard>
+            )}
+
+            {/* Compliance - for Organizations */}
+            {row.kind === "ORGANIZATION" && (
+              <SectionCard title="Compliance">
+                <div className="text-xs text-secondary mb-2">
+                  System sets these from unsubscribes. Select Reset to opt the user back in. Action is logged on save.
+                </div>
+
+                {mode === "view" ? (
+                  <div className="flex flex-wrap items-center gap-6">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs">EMAIL</span>
+                      <span className="text-xs px-2 py-0.5 rounded border border-hairline">
+                        {(row as any).emailUnsubscribed ? "unsubscribed" : "subscribed"}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs">SMS</span>
+                      <span className="text-xs px-2 py-0.5 rounded border border-hairline">
+                        {(row as any).smsUnsubscribed ? "unsubscribed" : "subscribed"}
+                      </span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex flex-wrap items-center gap-8">
+                    {/* EMAIL Reset */}
+                    <label className="flex items-center gap-2 text-xs">
+                      <span>EMAIL</span>
+                      <span className="px-2 py-0.5 rounded border border-hairline text-xs">
+                        {(row as any).emailUnsubscribed ? "unsubscribed" : "subscribed"}
+                      </span>
+                      <input
+                        type="checkbox"
+                        defaultChecked={!!(row as any).emailOptOutOverride}
+                        onChange={(e) => {
+                          const el = e.currentTarget as HTMLInputElement;
+                          const checked = el.checked;
+
+                          if (checked) {
+                            setConfirmReset({
+                              channel: "email",
+                              onAnswer: (ok) => {
+                                if (ok) {
+                                  setDraft((d: any) => ({ ...d, emailOptOutOverride: true }));
+                                  el.checked = true;
+                                } else {
+                                  el.checked = false;
+                                }
+                                setConfirmReset(null);
+                              },
+                            });
+                          } else {
+                            setDraft((d: any) => ({ ...d, emailOptOutOverride: false }));
+                          }
+                        }}
+                      />
+                      <span>Reset</span>
+                    </label>
+
+                    {/* SMS Reset */}
+                    <label className="flex items-center gap-2 text-xs">
+                      <span>SMS</span>
+                      <span className="px-2 py-0.5 rounded border border-hairline text-xs">
+                        {(row as any).smsUnsubscribed ? "unsubscribed" : "subscribed"}
+                      </span>
+                      <input
+                        type="checkbox"
+                        defaultChecked={!!(row as any).smsOptOutOverride}
+                        onChange={(e) => {
+                          const el = e.currentTarget as HTMLInputElement;
+                          const checked = el.checked;
+
+                          if (checked) {
+                            setConfirmReset({
+                              channel: "sms",
+                              onAnswer: (ok) => {
+                                if (ok) {
+                                  setDraft((d: any) => ({ ...d, smsOptOutOverride: true }));
+                                  el.checked = true;
+                                } else {
+                                  el.checked = false;
+                                }
+                                setConfirmReset(null);
+                              },
+                            });
+                          } else {
+                            setDraft((d: any) => ({ ...d, smsOptOutOverride: false }));
+                          }
+                        }}
+                      />
+                      <span>Reset</span>
+                    </label>
                   </div>
                 )}
               </SectionCard>
@@ -1239,6 +1375,22 @@ export function PartyDetailsView({
           <div className="space-y-3">
             <SectionCard title="Audit Events">
               <div className="text-sm text-secondary">Audit events will appear here once available.</div>
+            </SectionCard>
+          </div>
+        )}
+
+        {activeTab === "documents" && (
+          <div className="space-y-3">
+            <SectionCard title="Documents">
+              <div className="text-sm text-secondary">Coming Soon</div>
+            </SectionCard>
+          </div>
+        )}
+
+        {activeTab === "finances" && (
+          <div className="space-y-3">
+            <SectionCard title="Finances">
+              <div className="text-sm text-secondary">Coming Soon</div>
             </SectionCard>
           </div>
         )}

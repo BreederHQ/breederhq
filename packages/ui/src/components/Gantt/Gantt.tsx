@@ -1,6 +1,9 @@
 import * as React from "react";
-import type { StageWindows, Range } from "../../utils";
 import "../../styles/gantt.css";
+
+// Local type definitions (these were not properly exported from utils)
+type Range = { start: string | Date; end: string | Date };
+type StageWindows = Record<string, Range[]>;
 
 /* ───────── types ───────── */
 
@@ -390,8 +393,8 @@ export default function BHQGantt(props: BHQGanttProps) {
 
                     // likely, hatched
                     if (p.likely?.start && p.likely?.end) {
-                      const x1 = xOf(p.likely.start);
-                      const x2 = Math.min(xOf(p.likely.end), contentEndX);
+                      const x1 = xOf(p.likely.start as Date);
+                      const x2 = Math.min(xOf(p.likely.end as Date), contentEndX);
                       const w = Math.max(1, x2 - x1);
 
                       const localPatId = `${hatchBaseId}-${s.key}-${j}`;
@@ -458,8 +461,8 @@ export default function BHQGantt(props: BHQGanttProps) {
 
                     // solid inner (center fill or risky bands depending on caller)
                     if (p.full?.start && p.full?.end) {
-                      const x1 = xOf(p.full.start);
-                      const x2 = Math.min(xOf(p.full.end), contentEndX);
+                      const x1 = xOf(p.full.start as Date);
+                      const x2 = Math.min(xOf(p.full.end as Date), contentEndX);
                       const fillColor = (p as any).color || s.baseColor;
                       const fillOpacity = (p as any).opacity ?? 1;
                       items.push(

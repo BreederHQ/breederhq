@@ -36,10 +36,24 @@ export function confirmDialog(opts: ConfirmDialogOptions): Promise<boolean> {
 
     const r = createRoot(host);
     r.render(
-      <div className="fixed inset-0 z-[2147483647]">
-        <div className="absolute inset-0 bg-black/50" onClick={() => close(false)} />
-        <div className="absolute inset-0 flex items-center justify-center">
-          <div className="relative w-[420px] max-w-[92vw] rounded-xl border border-hairline bg-surface shadow-xl p-4">
+      <div
+        className="fixed inset-0"
+        style={{
+          zIndex: 2147483647,
+          isolation: 'isolate',
+          pointerEvents: 'none'
+        }}
+      >
+        <div
+          className="absolute inset-0 bg-black/50"
+          style={{ pointerEvents: 'auto' }}
+          onClick={() => close(false)}
+        />
+        <div className="absolute inset-0 flex items-center justify-center" style={{ pointerEvents: 'none' }}>
+          <div
+            className="relative w-[420px] max-w-[92vw] rounded-xl border border-hairline bg-surface shadow-xl p-4"
+            style={{ pointerEvents: 'auto' }}
+          >
             <div className="text-base font-semibold mb-2">{title}</div>
             <div className="text-sm text-secondary mb-4 whitespace-pre-line">{message}</div>
             <div className="flex justify-end gap-2">

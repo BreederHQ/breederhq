@@ -243,7 +243,21 @@ function contactToPartyRow(c: any): PartyTableRow {
     created_at: c.created_at ?? c.createdAt ?? null,
     updated_at: c.updated_at ?? c.updatedAt ?? null,
     archived,
-  };
+    // Map backend commPrefs object to flat prefersX fields
+    // Backend now returns full preference levels: ALLOW, NOT_PREFERRED, NEVER
+    prefersEmail: c.commPrefs?.email ?? null,
+    prefersSms: c.commPrefs?.sms ?? null,
+    prefersPhone: c.commPrefs?.phone ?? null,
+    prefersMail: c.commPrefs?.mail ?? null,
+    prefersWhatsapp: c.commPrefs?.whatsapp ?? null,
+    // Map compliance fields (only for EMAIL and SMS)
+    emailCompliance: c.commPrefs?.emailCompliance ?? null,
+    emailComplianceSetAt: c.commPrefs?.emailComplianceSetAt ?? null,
+    emailComplianceSource: c.commPrefs?.emailComplianceSource ?? null,
+    smsCompliance: c.commPrefs?.smsCompliance ?? null,
+    smsComplianceSetAt: c.commPrefs?.smsComplianceSetAt ?? null,
+    smsComplianceSource: c.commPrefs?.smsComplianceSource ?? null,
+  } as any;
 }
 
 /**
@@ -281,7 +295,21 @@ function organizationToPartyRow(o: any): PartyTableRow {
     created_at: o.created_at ?? o.createdAt ?? null,
     updated_at: o.updated_at ?? o.updatedAt ?? null,
     archived,
-  };
+    // Map backend commPrefs object to flat prefersX fields
+    // Backend now returns full preference levels: ALLOW, NOT_PREFERRED, NEVER
+    prefersEmail: o.commPrefs?.email ?? null,
+    prefersSms: o.commPrefs?.sms ?? null,
+    prefersPhone: o.commPrefs?.phone ?? null,
+    prefersMail: o.commPrefs?.mail ?? null,
+    prefersWhatsapp: o.commPrefs?.whatsapp ?? null,
+    // Map compliance fields (only for EMAIL and SMS)
+    emailCompliance: o.commPrefs?.emailCompliance ?? null,
+    emailComplianceSetAt: o.commPrefs?.emailComplianceSetAt ?? null,
+    emailComplianceSource: o.commPrefs?.emailComplianceSource ?? null,
+    smsCompliance: o.commPrefs?.smsCompliance ?? null,
+    smsComplianceSetAt: o.commPrefs?.smsComplianceSetAt ?? null,
+    smsComplianceSource: o.commPrefs?.smsComplianceSource ?? null,
+  } as any;
 }
 
 // Removed - we'll use DetailsHost's context API instead
@@ -636,6 +664,8 @@ export default function AppContactsParty() {
       tabs: [
         { key: "overview", label: "Overview" },
         { key: "animals", label: "Animals" },
+        { key: "documents", label: "Documents" },
+        { key: "finances", label: "Finances" },
         { key: "audit", label: "Audit" },
       ],
       customChrome: true, // Use custom chrome with DetailsScaffold
@@ -645,14 +675,66 @@ export default function AppContactsParty() {
         if (!row) return;
 
         if (row.kind === "CONTACT" && row.contactId) {
-          await api.contacts.update(row.contactId, draft);
+          // Transform communication preferences to new backend format
+          const payload: any = {};
+          const commPreferences: Array<{
+            channel: string;
+            preference: string;
+          }> = [];
+
+          for (const [key, value] of Object.entries(draft)) {
+            // Transform prefersX fields to commPreferences array
+            if (key.startsWith('prefers')) {
+              const channel = key.replace('prefers', '').toUpperCase();
+              // Value is already a PreferenceLevel enum (ALLOW, NOT_PREFERRED, NEVER)
+              commPreferences.push({
+                channel,
+                preference: value as string,
+              });
+            } else if (!key.includes('Compliance')) {
+              // Skip compliance fields (emailCompliance, smsCompliance, etc.) - they're read-only
+              payload[key] = value;
+            }
+          }
+
+          // Only include commPreferences if we have any
+          if (commPreferences.length > 0) {
+            payload.commPreferences = commPreferences;
+          }
+
+          await api.contacts.update(row.contactId, payload);
           const updated = await api.contacts.get(row.contactId);
           const updatedRow = contactToPartyRow(updated);
           // Preserve the original partyId to prevent key collision
           updatedRow.partyId = row.partyId;
           applyRowUpdate(updatedRow);
         } else if (row.kind === "ORGANIZATION" && row.organizationId) {
-          await api.organizations.update(row.organizationId, draft);
+          // Transform communication preferences for organizations too
+          const payload: any = {};
+          const commPreferences: Array<{
+            channel: string;
+            preference: string;
+          }> = [];
+
+          for (const [key, value] of Object.entries(draft)) {
+            if (key.startsWith('prefers')) {
+              const channel = key.replace('prefers', '').toUpperCase();
+              // Value is already a PreferenceLevel enum (ALLOW, NOT_PREFERRED, NEVER)
+              commPreferences.push({
+                channel,
+                preference: value as string,
+              });
+            } else if (!key.includes('Compliance')) {
+              // Skip compliance fields (emailCompliance, smsCompliance, etc.) - they're read-only
+              payload[key] = value;
+            }
+          }
+
+          if (commPreferences.length > 0) {
+            payload.commPreferences = commPreferences;
+          }
+
+          await api.organizations.update(row.organizationId, payload);
           const updated = await api.organizations.get(row.organizationId);
           const updatedRow = organizationToPartyRow(updated);
           // Preserve the original partyId to prevent key collision

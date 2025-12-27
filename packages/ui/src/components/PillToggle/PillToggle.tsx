@@ -15,7 +15,7 @@ export function PillToggle({ on, label, onClick, className = "" }: PillTogglePro
       type="button"
       onClick={onClick}
       className={[
-        "pill inline-flex items-center rounded-full px-3 h-7 text-[13px] leading-none select-none transition-colors",
+        "pill inline-flex items-center rounded-full px-3 py-1 text-[13px] leading-none select-none transition-colors",
         on
           ? "bg-[hsl(var(--brand-orange))] text-black hover:brightness-95"
           : "bg-surface border border-hairline text-primary hover:bg-[hsl(var(--brand-orange))]/12",
