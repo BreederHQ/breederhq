@@ -1701,10 +1701,12 @@ function HealthTab({
   animal,
   api,
   onDocumentsTabRequest,
+  mode,
 }: {
   animal: AnimalRow;
   api: any;
   onDocumentsTabRequest?: () => void;
+  mode: "view" | "edit";
 }) {
   const [categories, setCategories] = React.useState<any[]>([]);
   const [loading, setLoading] = React.useState(true);
@@ -1713,7 +1715,6 @@ function HealthTab({
   const [uploadTraitKey, setUploadTraitKey] = React.useState<string | null>(null);
   const [expandedTraitKey, setExpandedTraitKey] = React.useState<string | null>(null);
   const [collapsedCategories, setCollapsedCategories] = React.useState<Set<string>>(new Set());
-  const [editMode, setEditMode] = React.useState(false);
 
   const fetchTraits = React.useCallback(async () => {
     try {
@@ -1863,25 +1864,15 @@ function HealthTab({
     });
   };
 
+  // When exiting edit mode, collapse any expanded row
+  React.useEffect(() => {
+    if (mode === "view") {
+      setExpandedTraitKey(null);
+    }
+  }, [mode]);
+
   return (
     <div className="space-y-3">
-      {/* Top-right Edit Health button */}
-      <div className="flex justify-end mb-2">
-        <Button
-          size="sm"
-          variant={editMode ? "primary" : "outline"}
-          onClick={() => {
-            setEditMode(!editMode);
-            if (editMode) {
-              // Exiting edit mode, collapse any expanded row
-              setExpandedTraitKey(null);
-            }
-          }}
-        >
-          {editMode ? "Done" : "Edit Health"}
-        </Button>
-      </div>
-
       {categories.map((cat: any) => {
         const items = cat.items || [];
         if (items.length === 0) return null;
@@ -1900,25 +1891,32 @@ function HealthTab({
           <SectionCard
             key={cat.category}
             title={
-              <button
-                onClick={() => toggleCategory(cat.category)}
-                className="flex items-center justify-between w-full text-left hover:opacity-80"
-              >
-                <span className="flex items-center gap-2">
-                  <svg
-                    className={`w-4 h-4 transition-transform ${isCollapsed ? "" : "rotate-90"}`}
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
+              <>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => toggleCategory(cat.category)}
+                    className="hover:opacity-80 transition-opacity -ml-1"
+                    aria-label={isCollapsed ? "Expand category" : "Collapse category"}
                   >
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                  </svg>
-                  {cat.category}
-                </span>
-                <span className="text-xs text-secondary font-normal">
-                  {completedCount} of {items.length} provided
-                </span>
-              </button>
+                    <svg
+                      className={`w-4 h-4 transition-transform duration-200 ${isCollapsed ? "" : "rotate-90"}`}
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                  </button>
+                  <span className="relative">
+                    {cat.category}
+                  </span>
+                </div>
+              </>
+            }
+            right={
+              <span className="text-xs text-secondary font-normal">
+                {completedCount} of {items.length} provided
+              </span>
             }
           >
             {!isCollapsed && (
@@ -1928,9 +1926,9 @@ function HealthTab({
                     key={trait.traitKey}
                     trait={trait}
                     isExpanded={expandedTraitKey === trait.traitKey}
-                    editMode={editMode}
+                    editMode={mode === "edit"}
                     onExpand={() => {
-                      if (editMode) {
+                      if (mode === "edit") {
                         setExpandedTraitKey(trait.traitKey);
                       }
                     }}
@@ -2051,7 +2049,7 @@ function TraitRow({
           onChange={(e) =>
             setDraft({ ...draft, value: { text: e.target.value } })
           }
-          className="text-sm border border-hairline rounded px-2 py-1"
+          className="text-sm border border-hairline rounded px-2 py-1 bg-card text-inherit"
         >
           <option value="">Select...</option>
           {(trait.enumValues || []).map((opt: string) => (
@@ -2126,7 +2124,7 @@ function TraitRow({
                   value: { json: { ...json, side: e.target.value } },
                 })
               }
-              className="text-sm border border-hairline rounded px-2 py-1"
+              className="text-sm border border-hairline rounded px-2 py-1 bg-card text-inherit"
             >
               <option value="">Select...</option>
               <option value="left">Left</option>
@@ -2316,7 +2314,7 @@ function TraitRow({
               <select
                 value={currentSource || ""}
                 onChange={(e) => setDraft({ ...draft, source: e.target.value })}
-                className="text-sm border border-hairline rounded px-2 py-1.5 w-full bg-white dark:bg-neutral-900"
+                className="text-sm border border-hairline rounded px-2 py-1.5 w-full bg-card text-inherit"
               >
                 <option value="">Select source...</option>
                 <option value="BREEDER_ENTERED">Breeder</option>
@@ -4252,6 +4250,7 @@ export default function AppAnimals() {
               animal={row}
               api={api}
               onDocumentsTabRequest={() => setActiveTab("documents")}
+              mode={mode}
             />
           )}
 
