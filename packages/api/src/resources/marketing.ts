@@ -8,12 +8,14 @@ export interface SendEmailRequest {
   text?: string;
   templateKey?: string;
   metadata?: Record<string, any>;
+  category: "transactional" | "marketing";
 }
 
 export interface SendEmailResponse {
   ok: boolean;
   messageId?: string;
   error?: string;
+  skipped?: boolean;
 }
 
 export function makeMarketing(http: Http) {
