@@ -10,6 +10,7 @@ import { getOverlayRoot } from "../../overlay";
 import { PaymentCreateModal } from "./PaymentCreateModal";
 import { ReceiptsSection } from "./ReceiptsSection";
 import { useToast } from "../../atoms/Toast";
+import type { InvoiceLineItemDTO } from "@bhq/api/types/finance";
 
 export interface InvoiceDetailDrawerProps {
   invoice: any;
@@ -123,6 +124,12 @@ export function InvoiceDetailDrawer({
                   {invoice.status}
                 </Badge>
               </div>
+              {invoice.category && (
+                <div>
+                  <div className="text-xs text-secondary mb-1">Category</div>
+                  <div>{invoice.category}</div>
+                </div>
+              )}
               <div>
                 <div className="text-xs text-secondary mb-1">Client</div>
                 <div>{invoice.clientPartyName || "—"}</div>
@@ -154,6 +161,67 @@ export function InvoiceDetailDrawer({
                 </div>
               )}
             </div>
+          </SectionCard>
+
+          {/* Line Items Section */}
+          <SectionCard title="Line Items">
+            {(() => {
+              // Backward compatibility: if no lineItems, show synthetic row
+              const lineItems = invoice.lineItems && invoice.lineItems.length > 0
+                ? invoice.lineItems
+                : [{
+                    kind: "OTHER",
+                    description: "Invoice total",
+                    qty: 1,
+                    unitCents: invoice.totalCents,
+                    totalCents: invoice.totalCents,
+                  }];
+
+              const subtotal = lineItems.reduce((sum: number, item: any) => sum + (item.totalCents || 0), 0);
+
+              return (
+                <>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead className="border-b border-hairline">
+                        <tr>
+                          <th className="text-left py-2 pr-3 font-medium">Kind</th>
+                          <th className="text-left py-2 pr-3 font-medium">Description</th>
+                          <th className="text-right py-2 pr-3 font-medium">Qty</th>
+                          <th className="text-right py-2 pr-3 font-medium">Unit Price</th>
+                          <th className="text-right py-2 pr-3 font-medium">Line Total</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {lineItems.map((item: any, idx: number) => (
+                          <tr key={item.id || idx} className="border-b border-hairline/60">
+                            <td className="py-2 pr-3">{item.kind || "—"}</td>
+                            <td className="py-2 pr-3">{item.description || "—"}</td>
+                            <td className="py-2 pr-3 text-right">{item.qty || 1}</td>
+                            <td className="py-2 pr-3 text-right">{formatCents(item.unitCents)}</td>
+                            <td className="py-2 pr-3 text-right">{formatCents(item.totalCents)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Totals */}
+                  <div className="flex justify-end mt-3">
+                    <div className="w-64 space-y-1 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-secondary">Subtotal:</span>
+                        <span className="font-semibold">{formatCents(subtotal)}</span>
+                      </div>
+                      <div className="flex justify-between border-t border-hairline pt-1">
+                        <span className="font-medium">Total:</span>
+                        <span className="font-semibold">{formatCents(subtotal)}</span>
+                      </div>
+                    </div>
+                  </div>
+                </>
+              );
+            })()}
           </SectionCard>
 
           {/* Payment History */}
