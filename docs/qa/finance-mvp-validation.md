@@ -50,6 +50,17 @@ This document records the end-to-end validation of the Finance MVP in `bhq_dev` 
   - [ ] Invoice appears on Buyer Party Finance tab
   - **Notes:**
 
+#### Context 6: Global Invoice Creation from Finance Hub
+- [ ] **PENDING** - Create invoice from /finance hub using "New Invoice" button
+  - [ ] Modal opens with client and anchor selection required
+  - [ ] Select client contact via PartyAutocomplete
+  - [ ] Select animal anchor via AnimalAutocomplete
+  - [ ] Enter invoice details (amount, dates, notes)
+  - [ ] Invoice created successfully with toast confirmation
+  - [ ] Invoice appears on Contact Finance tab
+  - [ ] Invoice appears on Animal Finance tab
+  - **Notes:**
+
 ---
 
 ### A2: Payment Lifecycle + Idempotency
@@ -137,6 +148,14 @@ This document records the end-to-end validation of the Finance MVP in `bhq_dev` 
   - [ ] Expense only shows in expected tabs
   - **Notes:**
 
+#### Program Expense Visibility (Unanchored)
+- [ ] **PENDING** - Create unanchored expense (no animal/group/plan)
+  - [ ] Expense shows on vendor party Finance tab
+  - [ ] Expense does NOT appear on any animal Finance tab
+  - [ ] Expense does NOT appear on any offspring group Finance tab
+  - [ ] Expense does NOT appear on any breeding plan Finance tab
+  - **Notes:**
+
 ---
 
 ### A5: Console and Network Sanity
@@ -201,6 +220,21 @@ This document records the end-to-end validation of the Finance MVP in `bhq_dev` 
 - **Enhancement Opportunity:**
   - Replace alert() with toast notifications (deferred - out of scope for hardening)
 
+#### B5: Global Invoice Creation
+- **Status:** ✅ IMPLEMENTED
+- **Feature:**
+  - ✅ Added "New Invoice" button to Finance Hub page header
+  - ✅ Created api.ts for finance app with complete finance namespace
+  - ✅ Wired InvoiceCreateModal for global invoice creation
+  - ✅ Modal requires client selection (PartyAutocomplete)
+  - ✅ Modal requires anchor selection (Animal/OffspringGroup/BreedingPlan/ServiceCode)
+  - ✅ Supports idempotent submission with auto-generated keys
+  - ✅ Toast notifications on success/error
+- **Files Modified:**
+  - `apps/finance/src/FinanceHub.tsx` - Added button and modal
+  - `apps/finance/src/api.ts` - New file with finance API endpoints
+- **Commit:** `0b7fbed`
+
 ---
 
 ## Part C: Build and Commit
@@ -212,6 +246,9 @@ This document records the end-to-end validation of the Finance MVP in `bhq_dev` 
 - [x] **✅ COMPLETE** - Changes committed and pushed to origin/dev
   - Commit: `2911a98`
   - Message: "fix(finance): harden invoice actions and add default sorting"
+- [x] **✅ COMPLETE** - Global invoice creation feature
+  - Commit: `0b7fbed`
+  - Message: "feat(finance): add global invoice creation from finance hub"
 
 ---
 
@@ -219,6 +256,7 @@ This document records the end-to-end validation of the Finance MVP in `bhq_dev` 
 
 **Total Issues Found:** 3 (via code analysis)
 **Total Fixes Applied:** 3
+**New Features Added:** 1 (Global Invoice Creation)
 
 ### Critical Findings
 
@@ -231,22 +269,32 @@ This document records the end-to-end validation of the Finance MVP in `bhq_dev` 
 3. **Status Casing Inconsistency (MINOR)** - VOID vs VOIDED status handling
    - ✅ FIXED: Now checks both "VOID" and "VOIDED" status
 
+### New Features
+
+1. **Global Invoice Creation (FEATURE)** - Added ability to create invoices from Finance Hub
+   - ✅ IMPLEMENTED: "New Invoice" button on /finance page
+   - ✅ Modal with client and anchor selection
+   - ✅ Full idempotency support
+   - ✅ Toast notifications
+
 ### Validation Notes
 
-This validation was performed via **code analysis** rather than manual end-to-end testing. The fixes address the core hardening requirements:
+This validation was performed via **code analysis and implementation** rather than manual end-to-end testing. The fixes address the core hardening requirements:
 
 - **B1 Guardrails:** ✅ Enhanced void button logic, payment button already correct
 - **B2 Refetch:** ✅ Already correct, no changes needed
 - **B3 Sorting:** ✅ Implemented client-side sorting for all finance tables
 - **B4 Empty States:** ✅ Already correct, no changes needed
+- **B5 Global Invoice Creation:** ✅ New feature implemented with full validation requirements
 
 ### Manual Testing Recommended
 
 For full validation, the following should be tested manually in `bhq_dev`:
-- Invoice creation across all 5 contexts (Contact, Org, Animal, OffspringGroup, BreedingPlan)
+- Invoice creation across all 6 contexts (Contact, Org, Animal, OffspringGroup, BreedingPlan, Finance Hub)
 - Payment lifecycle and idempotency (partial, full, double-submit)
 - Void behavior with various invoice states
 - Expense CRUD across contexts
+- Program expense visibility (unanchored expenses should not appear on entity Finance tabs)
 - Console/network monitoring during operations
 
 ### Recommendations
@@ -258,6 +306,8 @@ For full validation, the following should be tested manually in `bhq_dev`:
 
 ---
 
-**Final Status:** ✅ COMPLETE - All fixes applied, built, committed, and pushed to origin/dev
+**Final Status:** ✅ COMPLETE - All fixes applied, global invoice creation implemented, built, committed, and pushed to origin/dev
+
+**Last Updated:** 2025-12-28 (Finance MVP completion)
 
 **End of Report**
