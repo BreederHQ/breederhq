@@ -16,6 +16,48 @@ export interface ListResponse<T> {
   total: number;
 }
 
+// ─────────────────── INVOICE LINE ITEMS ───────────────────
+
+export type LineItemKind =
+  | "DEPOSIT"
+  | "SERVICE_FEE"
+  | "GOODS"
+  | "DISCOUNT"
+  | "TAX"
+  | "OTHER";
+
+export type InvoiceCategory =
+  | "DEPOSIT"
+  | "SERVICE"
+  | "GOODS"
+  | "MIXED"
+  | "OTHER";
+
+export interface InvoiceLineItemDTO {
+  id: ID;
+  invoiceId: ID;
+  kind: LineItemKind;
+  description: string;
+  qty: number;
+  unitCents: number;
+  totalCents: number;
+  discountCents?: number | null;
+  taxRate?: number | null;
+  category?: string | null;
+  itemCode?: string | null;
+}
+
+export interface CreateLineItemInput {
+  kind: LineItemKind;
+  description: string;
+  qty: number;
+  unitCents: number;
+  discountCents?: number | null;
+  taxRate?: number | null;
+  category?: string | null;
+  itemCode?: string | null;
+}
+
 // ─────────────────── INVOICES ───────────────────
 
 export type InvoiceStatus =
@@ -52,6 +94,12 @@ export interface InvoiceDTO {
   breedingPlanId?: number | null;
   serviceCode?: string | null;
 
+  // Category derived from line items
+  category?: InvoiceCategory | null;
+
+  // Line items (optional, may not be present in list responses)
+  lineItems?: InvoiceLineItemDTO[];
+
   // Metadata
   notes?: string | null;
   createdAt: string; // ISO
@@ -60,7 +108,7 @@ export interface InvoiceDTO {
 
 export interface CreateInvoiceInput {
   clientPartyId: number;
-  totalCents: number;
+  totalCents?: number; // Optional when lineItems provided
   dueAt?: string | null;
   issuedAt?: string | null;
 
@@ -70,6 +118,9 @@ export interface CreateInvoiceInput {
   offspringGroupId?: number | null;
   breedingPlanId?: number | null;
   serviceCode?: string | null;
+
+  // Line items (optional, if not provided use totalCents)
+  lineItems?: CreateLineItemInput[];
 
   notes?: string | null;
 }

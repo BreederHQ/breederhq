@@ -10,7 +10,8 @@ import { PartyAutocomplete, type AutocompleteOption } from "./PartyAutocomplete"
 import { AnimalAutocomplete } from "./AnimalAutocomplete";
 import { OffspringGroupAutocomplete } from "./OffspringGroupAutocomplete";
 import { BreedingPlanAutocomplete } from "./BreedingPlanAutocomplete";
-import { parseToCents, centsToInput } from "../../utils/money";
+import { parseToCents, centsToInput, formatCents } from "../../utils/money";
+import type { LineItemKind, CreateLineItemInput } from "@bhq/api/types/finance";
 
 // Idempotency key generation
 function generateIdempotencyKey(): string {
@@ -22,7 +23,7 @@ function generateIdempotencyKey(): string {
 
 type CreateInvoiceInput = {
   clientPartyId: number;
-  totalCents: number;
+  totalCents?: number;
   dueAt?: string | null;
   issuedAt?: string | null;
   animalId?: number | null;
@@ -30,8 +31,17 @@ type CreateInvoiceInput = {
   offspringGroupId?: number | null;
   breedingPlanId?: number | null;
   serviceCode?: string | null;
+  lineItems?: CreateLineItemInput[];
   notes?: string | null;
 };
+
+interface LineItemRow {
+  tempId: string;
+  kind: LineItemKind;
+  description: string;
+  qty: string;
+  unitPrice: string;
+}
 
 export interface InvoiceCreateModalProps {
   open: boolean;
@@ -58,6 +68,7 @@ interface FormState {
   offspringGroup: AutocompleteOption | null;
   breedingPlan: AutocompleteOption | null;
   serviceCode: string;
+  lineItems: LineItemRow[];
 }
 
 interface Errors {
@@ -65,6 +76,7 @@ interface Errors {
   total?: string;
   issuedAt?: string;
   anchor?: string;
+  lineItems?: string;
 }
 
 export function InvoiceCreateModal({
@@ -104,6 +116,15 @@ export function InvoiceCreateModal({
     offspringGroup: null,
     breedingPlan: null,
     serviceCode: "",
+    lineItems: [
+      {
+        tempId: crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-0`,
+        kind: "OTHER" as LineItemKind,
+        description: "",
+        qty: "1",
+        unitPrice: "",
+      },
+    ],
   });
 
   // Reset form when modal opens
@@ -121,11 +142,63 @@ export function InvoiceCreateModal({
         offspringGroup: null,
         breedingPlan: null,
         serviceCode: "",
+        lineItems: [
+          {
+            tempId: crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-0`,
+            kind: "OTHER" as LineItemKind,
+            description: "",
+            qty: "1",
+            unitPrice: "",
+          },
+        ],
       });
       setErrors({});
       setSubmitting(false);
     }
   }, [open, initialAnchorType]);
+
+  // Line item helpers
+  const computeLineTotal = (item: LineItemRow): number => {
+    const qty = Number(item.qty) || 0;
+    const unitCents = parseToCents(item.unitPrice);
+    return qty * unitCents;
+  };
+
+  const computeSubtotal = (): number => {
+    return form.lineItems.reduce((sum, item) => sum + computeLineTotal(item), 0);
+  };
+
+  const addLineItem = () => {
+    setForm((f) => ({
+      ...f,
+      lineItems: [
+        ...f.lineItems,
+        {
+          tempId: crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${f.lineItems.length}`,
+          kind: "OTHER" as LineItemKind,
+          description: "",
+          qty: "1",
+          unitPrice: "",
+        },
+      ],
+    }));
+  };
+
+  const removeLineItem = (tempId: string) => {
+    setForm((f) => ({
+      ...f,
+      lineItems: f.lineItems.filter((item) => item.tempId !== tempId),
+    }));
+  };
+
+  const updateLineItem = (tempId: string, field: keyof LineItemRow, value: string) => {
+    setForm((f) => ({
+      ...f,
+      lineItems: f.lineItems.map((item) =>
+        item.tempId === tempId ? { ...item, [field]: value } : item
+      ),
+    }));
+  };
 
   const validate = (): boolean => {
     const errs: Errors = {};
@@ -134,9 +207,27 @@ export function InvoiceCreateModal({
       errs.clientParty = "Client contact or organization is required";
     }
 
-    const totalCents = parseToCents(form.totalInput);
-    if (!form.totalInput || totalCents <= 0) {
-      errs.total = "Total amount must be greater than zero";
+    // Validate line items
+    if (form.lineItems.length === 0) {
+      errs.lineItems = "At least one line item is required";
+    } else {
+      for (const item of form.lineItems) {
+        const qty = Number(item.qty);
+        if (!qty || qty < 1) {
+          errs.lineItems = "All line items must have quantity >= 1";
+          break;
+        }
+        const unitCents = parseToCents(item.unitPrice);
+        if (isNaN(unitCents)) {
+          errs.lineItems = "All line items must have valid unit prices";
+          break;
+        }
+      }
+
+      const subtotal = computeSubtotal();
+      if (subtotal <= 0) {
+        errs.lineItems = "Invoice total must be greater than zero";
+      }
     }
 
     if (!form.issuedAt) {
@@ -165,11 +256,17 @@ export function InvoiceCreateModal({
 
     setSubmitting(true);
     try {
-      const totalCents = parseToCents(form.totalInput);
+      // Build line items from form
+      const lineItems: CreateLineItemInput[] = form.lineItems.map((item) => ({
+        kind: item.kind,
+        description: item.description,
+        qty: Number(item.qty) || 1,
+        unitCents: parseToCents(item.unitPrice),
+      }));
 
       const input: CreateInvoiceInput = {
         clientPartyId: form.clientParty!.id,
-        totalCents,
+        lineItems,
         issuedAt: form.issuedAt || null,
         dueAt: form.dueAt || null,
         notes: form.notes || null,
@@ -233,16 +330,116 @@ export function InvoiceCreateModal({
           error={errors.clientParty}
         />
 
-        <div>
-          <label className="block text-xs text-secondary mb-1">Total Amount *</label>
-          <Input
-            type="text"
-            value={form.totalInput}
-            onChange={(e) => setForm((f) => ({ ...f, totalInput: e.target.value }))}
-            placeholder="0.00"
-          />
-          {errors.total && <div className="text-xs text-red-400 mt-1">{errors.total}</div>}
-          <div className="text-xs text-secondary mt-1">Enter amount in dollars (e.g., 123.45)</div>
+        {/* Line Items Section */}
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <label className="block text-xs text-secondary">Line Items *</label>
+            <Button type="button" size="sm" variant="outline" onClick={addLineItem}>
+              Add Line Item
+            </Button>
+          </div>
+
+          {/* Line Items Table */}
+          <div className="border border-hairline rounded-md overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-muted/20 border-b border-hairline">
+                  <tr>
+                    <th className="text-left py-2 px-2 font-medium text-xs">Kind</th>
+                    <th className="text-left py-2 px-2 font-medium text-xs">Description</th>
+                    <th className="text-left py-2 px-2 font-medium text-xs w-20">Qty</th>
+                    <th className="text-left py-2 px-2 font-medium text-xs w-28">Unit Price</th>
+                    <th className="text-right py-2 px-2 font-medium text-xs w-28">Line Total</th>
+                    <th className="w-10"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {form.lineItems.map((item, idx) => (
+                    <tr key={item.tempId} className="border-b border-hairline/60 last:border-b-0">
+                      <td className="py-2 px-2">
+                        <select
+                          className="w-full h-8 px-2 bg-card border border-hairline rounded text-xs"
+                          value={item.kind}
+                          onChange={(e) =>
+                            updateLineItem(item.tempId, "kind", e.target.value)
+                          }
+                        >
+                          <option value="OTHER">Other</option>
+                          <option value="DEPOSIT">Deposit</option>
+                          <option value="SERVICE_FEE">Service Fee</option>
+                          <option value="GOODS">Goods</option>
+                          <option value="DISCOUNT">Discount</option>
+                          <option value="TAX">Tax</option>
+                        </select>
+                      </td>
+                      <td className="py-2 px-2">
+                        <Input
+                          type="text"
+                          value={item.description}
+                          onChange={(e) =>
+                            updateLineItem(item.tempId, "description", e.target.value)
+                          }
+                          placeholder="Description"
+                          className="h-8 text-xs"
+                        />
+                      </td>
+                      <td className="py-2 px-2">
+                        <Input
+                          type="number"
+                          min="1"
+                          value={item.qty}
+                          onChange={(e) => updateLineItem(item.tempId, "qty", e.target.value)}
+                          className="h-8 text-xs"
+                        />
+                      </td>
+                      <td className="py-2 px-2">
+                        <Input
+                          type="text"
+                          value={item.unitPrice}
+                          onChange={(e) =>
+                            updateLineItem(item.tempId, "unitPrice", e.target.value)
+                          }
+                          placeholder="0.00"
+                          className="h-8 text-xs"
+                        />
+                      </td>
+                      <td className="py-2 px-2 text-right text-xs">
+                        {formatCents(computeLineTotal(item))}
+                      </td>
+                      <td className="py-2 px-2">
+                        {form.lineItems.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => removeLineItem(item.tempId)}
+                            className="text-red-400 hover:text-red-300 text-xs"
+                            aria-label="Remove"
+                          >
+                            ×
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Totals */}
+          <div className="flex justify-end">
+            <div className="w-64 space-y-1 text-sm">
+              <div className="flex justify-between">
+                <span className="text-secondary">Subtotal:</span>
+                <span className="font-semibold">{formatCents(computeSubtotal())}</span>
+              </div>
+              <div className="flex justify-between border-t border-hairline pt-1">
+                <span className="font-medium">Invoice Total:</span>
+                <span className="font-semibold">{formatCents(computeSubtotal())}</span>
+              </div>
+            </div>
+          </div>
+
+          {errors.lineItems && <div className="text-xs text-red-400">{errors.lineItems}</div>}
         </div>
 
         <div className="grid grid-cols-2 gap-3">
