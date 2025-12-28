@@ -2,10 +2,14 @@
 // Finance hub - entry point explaining Finance is managed on entity tabs
 
 import * as React from "react";
-import { PageHeader, Card, Button } from "@bhq/ui";
-import { DollarSign, Users, Building2, Dog, Baby, Heart } from "lucide-react";
+import { PageHeader, Card, Button, InvoiceCreateModal } from "@bhq/ui";
+import { DollarSign, Users, Building2, Dog, Baby, Heart, Plus } from "lucide-react";
+import { makeApi } from "./api";
 
 export default function FinanceHub() {
+  const api = React.useMemo(() => makeApi("/api/v1"), []);
+  const [showInvoiceModal, setShowInvoiceModal] = React.useState(false);
+
   React.useEffect(() => {
     if (typeof window !== "undefined") {
       window.dispatchEvent(
@@ -54,6 +58,12 @@ export default function FinanceHub() {
       <PageHeader
         title="Finance"
         subtitle="Financial management across your breeding operation"
+        actions={
+          <Button onClick={() => setShowInvoiceModal(true)}>
+            <Plus className="h-4 w-4 mr-2" />
+            New Invoice
+          </Button>
+        }
       />
 
       <Card className="p-6 space-y-4">
@@ -101,6 +111,16 @@ export default function FinanceHub() {
           })}
         </div>
       </Card>
+
+      <InvoiceCreateModal
+        open={showInvoiceModal}
+        onClose={() => setShowInvoiceModal(false)}
+        onSuccess={() => {
+          // Successfully created - modal will close itself
+          // No list to refresh on this page
+        }}
+        api={api}
+      />
     </div>
   );
 }
