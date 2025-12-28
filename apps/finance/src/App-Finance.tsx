@@ -20,6 +20,8 @@ import {
 import "@bhq/ui/styles/details.css";
 import { OverlayMount } from "@bhq/ui/overlay/OverlayMount";
 import { Plus, MoreHorizontal, X, DollarSign, Download } from "lucide-react";
+import { ExpenseModal } from "@bhq/ui/components/Finance";
+import { makeApi } from "@bhq/api";
 
 const MODAL_Z = 2147483000;
 const DATE_LOCALE = "en-US";
@@ -447,6 +449,140 @@ function FinanceTabs({
         Expenses
       </button>
     </div>
+  );
+}
+
+/* Program Expenses Component */
+function ProgramExpenses() {
+  const api = React.useMemo(() => makeApi("/api/v1"), []);
+  const [expenses, setExpenses] = React.useState<any[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [selectedExpense, setSelectedExpense] = React.useState<any | null>(null);
+  const [expenseModalOpen, setExpenseModalOpen] = React.useState(false);
+
+  const loadData = React.useCallback(async () => {
+    setLoading(true);
+    try {
+      // List all expenses without anchor filters
+      const result = await api.finance.expenses.list({ limit: 200 });
+      const items = result?.items || [];
+
+      // Filter to only unanchored expenses (no animalId, offspringGroupId, breedingPlanId)
+      const unanchored = items.filter((exp: any) =>
+        !exp.animalId && !exp.offspringGroupId && !exp.breedingPlanId
+      );
+
+      // Sort by incurredAt desc, fallback to createdAt desc
+      const sorted = unanchored.sort((a: any, b: any) => {
+        const aDate = a.incurredAt || a.createdAt;
+        const bDate = b.incurredAt || b.createdAt;
+        if (!aDate) return 1;
+        if (!bDate) return -1;
+        return new Date(bDate).getTime() - new Date(aDate).getTime();
+      });
+
+      setExpenses(sorted);
+    } catch (err) {
+      console.error("Failed to load program expenses:", err);
+    } finally {
+      setLoading(false);
+    }
+  }, [api]);
+
+  React.useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  const formatCents = (cents?: number | null) => {
+    if (typeof cents !== "number") return "—";
+    return `$${(cents / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  };
+
+  if (loading) {
+    return (
+      <Card className="p-4">
+        <div className="text-sm text-secondary">Loading program expenses...</div>
+      </Card>
+    );
+  }
+
+  return (
+    <>
+      <SectionCard
+        title="Program Expenses"
+        subtitle="Unanchored operational expenses like food, rent, utilities, insurance, marketing, supplies"
+        right={
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              setSelectedExpense(null);
+              setExpenseModalOpen(true);
+            }}
+          >
+            <Plus className="h-4 w-4 mr-1" />
+            Add Expense
+          </Button>
+        }
+      >
+        {expenses.length === 0 ? (
+          <div className="text-sm text-secondary py-4">
+            No program expenses found. Add expenses like food, rent, utilities, insurance, marketing, or supplies.
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="border-b border-hairline">
+                <tr>
+                  <th className="text-left py-2 pr-3 font-medium">Category</th>
+                  <th className="text-left py-2 pr-3 font-medium">Description</th>
+                  <th className="text-right py-2 pr-3 font-medium">Amount</th>
+                  <th className="text-left py-2 pr-3 font-medium">Date</th>
+                  <th className="text-right py-2 pr-3 font-medium">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {expenses.map((exp) => (
+                  <tr key={exp.id} className="border-b border-hairline/60">
+                    <td className="py-2 pr-3">{exp.category || "—"}</td>
+                    <td className="py-2 pr-3">{exp.description || exp.notes || "—"}</td>
+                    <td className="py-2 pr-3 text-right">{formatCents(exp.amountCents)}</td>
+                    <td className="py-2 pr-3">
+                      {exp.incurredAt ? new Date(exp.incurredAt).toLocaleDateString() : "—"}
+                    </td>
+                    <td className="py-2 pr-3 text-right">
+                      <Button
+                        size="xs"
+                        variant="ghost"
+                        onClick={() => {
+                          setSelectedExpense(exp);
+                          setExpenseModalOpen(true);
+                        }}
+                      >
+                        Edit
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </SectionCard>
+
+      <ExpenseModal
+        open={expenseModalOpen}
+        onClose={() => {
+          setExpenseModalOpen(false);
+          setSelectedExpense(null);
+        }}
+        onSuccess={() => {
+          loadData();
+        }}
+        api={api}
+        expense={selectedExpense}
+      />
+    </>
   );
 }
 
@@ -994,11 +1130,7 @@ export default function AppFinance() {
           </Card>
         )}
 
-        {tab === "expenses" && (
-          <Card className="p-4 text-sm text-secondary">
-            Expenses view coming soon.
-          </Card>
-        )}
+        {tab === "expenses" && <ProgramExpenses />}
       </div>
 
       {/* Create / edit invoice modal */}
