@@ -30,6 +30,7 @@ export type PaymentsResource = {
   list(params?: ListParams): Promise<ListResponse<PaymentDTO>>;
   get(id: ID): Promise<PaymentDTO>;
   create(input: CreatePaymentInput, idempotencyKey: string): Promise<PaymentDTO>;
+  export(filters?: any): Promise<ListResponse<any>>;
 };
 
 export type ExpensesResource = {
@@ -40,10 +41,19 @@ export type ExpensesResource = {
   delete(id: ID): Promise<{ success: true }>;
 };
 
+export type FinanceSummary = {
+  outstandingTotalCents: number;
+  invoicedMtdCents: number;
+  collectedMtdCents: number;
+  expensesMtdCents: number;
+  depositsOutstandingCents: number;
+};
+
 export type FinanceResource = {
   invoices: InvoicesResource;
   payments: PaymentsResource;
   expenses: ExpensesResource;
+  summary(): Promise<FinanceSummary>;
 };
 
 // ─────────────────── HELPERS ───────────────────
@@ -154,6 +164,11 @@ function makePayments(http: Http): PaymentsResource {
       const headers: IdempotencyHeaders = { "Idempotency-Key": idempotencyKey };
       return http.post(`/api/v1/payments`, input, { headers });
     },
+
+    async export(filters?: any): Promise<ListResponse<any>> {
+      const res = await http.post(`/api/v1/finance/payments/export`, filters || {});
+      return normalizeList<any>(res);
+    },
   };
 }
 
@@ -192,5 +207,9 @@ export function makeFinance(http: Http): FinanceResource {
     invoices: makeInvoices(http),
     payments: makePayments(http),
     expenses: makeExpenses(http),
+
+    async summary(): Promise<FinanceSummary> {
+      return http.get(`/api/v1/finance/summary`);
+    },
   };
 }

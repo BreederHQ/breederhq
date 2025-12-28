@@ -132,6 +132,9 @@ export function makeApi(baseArg?: string) {
   /* ───────── Finance namespace for invoices, payments, expenses ───────── */
 
   const finance = {
+    async summary() {
+      return reqWithExtra<any>("/finance/summary");
+    },
     invoices: {
       async list(params?: any) {
         const qs = new URLSearchParams();
@@ -172,6 +175,22 @@ export function makeApi(baseArg?: string) {
           json: {},
         });
       },
+      attachments: {
+        async list(invoiceId: number) {
+          return reqWithExtra<any[]>(`/invoices/${invoiceId}/attachments`);
+        },
+        async create(invoiceId: number, body: any) {
+          return reqWithExtra<any>(`/invoices/${invoiceId}/attachments`, {
+            method: "POST",
+            json: body,
+          });
+        },
+        async delete(invoiceId: number, attachmentId: number) {
+          return reqWithExtra<any>(`/invoices/${invoiceId}/attachments/${attachmentId}`, {
+            method: "DELETE",
+          });
+        },
+      },
     },
     payments: {
       async list(params?: any) {
@@ -200,6 +219,29 @@ export function makeApi(baseArg?: string) {
           json: input,
           headers: { "Idempotency-Key": idempotencyKey } as any,
         });
+      },
+      async export(filters: any) {
+        const res = await reqWithExtra<{ items: any[]; total: number }>("/finance/payments/export", {
+          method: "POST",
+          json: filters,
+        });
+        return res;
+      },
+      attachments: {
+        async list(paymentId: number) {
+          return reqWithExtra<any[]>(`/payments/${paymentId}/attachments`);
+        },
+        async create(paymentId: number, body: any) {
+          return reqWithExtra<any>(`/payments/${paymentId}/attachments`, {
+            method: "POST",
+            json: body,
+          });
+        },
+        async delete(paymentId: number, attachmentId: number) {
+          return reqWithExtra<any>(`/payments/${paymentId}/attachments/${attachmentId}`, {
+            method: "DELETE",
+          });
+        },
       },
     },
     expenses: {
@@ -238,6 +280,22 @@ export function makeApi(baseArg?: string) {
       async delete(id: number) {
         await reqWithExtra<any>(`/expenses/${id}`, { method: "DELETE" });
         return { success: true };
+      },
+      attachments: {
+        async list(expenseId: number) {
+          return reqWithExtra<any[]>(`/expenses/${expenseId}/attachments`);
+        },
+        async create(expenseId: number, body: any) {
+          return reqWithExtra<any>(`/expenses/${expenseId}/attachments`, {
+            method: "POST",
+            json: body,
+          });
+        },
+        async delete(expenseId: number, attachmentId: number) {
+          return reqWithExtra<any>(`/expenses/${expenseId}/attachments/${attachmentId}`, {
+            method: "DELETE",
+          });
+        },
       },
     },
     parties: {

@@ -113,33 +113,21 @@ export function FinanceTab({
   }, [invoices]);
 
   const handleExportPayments = React.useCallback(async () => {
-    if (!api?.finance?.payments) return;
+    if (!api?.finance?.payments?.export) return;
     try {
-      // Fetch all payments with invoice numbers if we don't have them already
-      let paymentsToExport = payments;
+      // Use the new scoped export endpoint that filters payments by invoice filters
+      const result = await api.finance.payments.export(invoiceFilters);
 
-      // If we haven't loaded payments yet (not in breeding plan mode), load them now
-      if (payments.length === 0) {
-        const payRes = await api.finance.payments.list({ limit: 1000 });
-        paymentsToExport = payRes?.items || [];
+      if (!result?.items || result.items.length === 0) {
+        console.warn("No payments to export");
+        return;
       }
 
-      if (paymentsToExport.length === 0) return;
-
-      // Enrich payments with invoice numbers
-      const enrichedPayments = paymentsToExport.map((pmt: any) => {
-        const invoice = invoices.find((inv) => inv.id === pmt.invoiceId);
-        return {
-          ...pmt,
-          invoiceNumber: invoice?.invoiceNumber || "",
-        };
-      });
-
-      exportPaymentsCSV(enrichedPayments, "payments");
+      exportPaymentsCSV(result.items, "payments");
     } catch (err) {
       console.error("Failed to export payments:", err);
     }
-  }, [api, payments, invoices]);
+  }, [api, invoiceFilters]);
 
   const handleExportExpenses = React.useCallback(() => {
     if (expenses.length === 0) return;

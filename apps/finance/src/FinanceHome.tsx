@@ -12,65 +12,20 @@ type Props = {
 
 export default function FinanceHome({ api }: Props) {
   const [summary, setSummary] = React.useState<{
-    totalOutstanding: number;
-    totalInvoiced: number;
-    totalCollected: number;
-    programExpensesThisMonth: number;
+    outstandingTotalCents: number;
+    invoicedMtdCents: number;
+    collectedMtdCents: number;
+    expensesMtdCents: number;
+    depositsOutstandingCents: number;
   } | null>(null);
   const [loading, setLoading] = React.useState(true);
 
-  // Load summary stats
+  // Load summary stats from server
   const loadSummary = React.useCallback(async () => {
     setLoading(true);
     try {
-      // Load all invoices
-      const allInvoicesRes = await api.finance.invoices.list({ limit: 1000, offset: 0 });
-      const allInvoices = allInvoicesRes.items || [];
-
-      // Calculate outstanding (client-side filter for ISSUED and PARTIALLY_PAID)
-      const outstandingInvoices = allInvoices.filter(
-        (inv: any) => inv.status === "ISSUED" || inv.status === "PARTIALLY_PAID"
-      );
-      const totalOutstanding = outstandingInvoices.reduce(
-        (sum: number, inv: any) => sum + (inv.balanceCents || 0),
-        0
-      );
-
-      // Calculate total invoiced and collected
-      const totalInvoiced = allInvoices.reduce(
-        (sum: number, inv: any) => sum + (inv.totalCents || 0),
-        0
-      );
-      const totalCollected = allInvoices.reduce(
-        (sum: number, inv: any) => sum + ((inv.totalCents || 0) - (inv.balanceCents || 0)),
-        0
-      );
-
-      // Load all expenses and filter for this month's program expenses
-      const allExpensesRes = await api.finance.expenses.list({ limit: 1000, offset: 0 });
-      const allExpenses = allExpensesRes.items || [];
-
-      const now = new Date();
-      const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-      const firstOfNextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-
-      const programExpensesThisMonth = allExpenses
-        .filter((exp: any) => {
-          // Filter for program expenses (unanchored)
-          if (exp.animalId || exp.offspringGroupId || exp.breedingPlanId) return false;
-          // Filter for this month
-          if (!exp.incurredAt) return false;
-          const incurredDate = new Date(exp.incurredAt);
-          return incurredDate >= firstOfMonth && incurredDate < firstOfNextMonth;
-        })
-        .reduce((sum: number, exp: any) => sum + (exp.amountCents || 0), 0);
-
-      setSummary({
-        totalOutstanding,
-        totalInvoiced,
-        totalCollected,
-        programExpensesThisMonth,
-      });
+      const data = await api.finance.summary();
+      setSummary(data);
     } catch (err) {
       console.error("Failed to load summary:", err);
     } finally {
@@ -202,28 +157,28 @@ export default function FinanceHome({ api }: Props) {
         <Card className="p-4">
           <div className="text-xs text-secondary mb-1">Outstanding Invoices</div>
           <div className="text-2xl font-bold">
-            {loading ? "—" : formatCents(summary?.totalOutstanding || 0)}
+            {loading ? "—" : formatCents(summary?.outstandingTotalCents || 0)}
           </div>
         </Card>
 
         <Card className="p-4">
-          <div className="text-xs text-secondary mb-1">Total Invoiced</div>
+          <div className="text-xs text-secondary mb-1">Invoiced (MTD)</div>
           <div className="text-2xl font-bold">
-            {loading ? "—" : formatCents(summary?.totalInvoiced || 0)}
+            {loading ? "—" : formatCents(summary?.invoicedMtdCents || 0)}
           </div>
         </Card>
 
         <Card className="p-4">
-          <div className="text-xs text-secondary mb-1">Total Collected</div>
+          <div className="text-xs text-secondary mb-1">Collected (MTD)</div>
           <div className="text-2xl font-bold">
-            {loading ? "—" : formatCents(summary?.totalCollected || 0)}
+            {loading ? "—" : formatCents(summary?.collectedMtdCents || 0)}
           </div>
         </Card>
 
         <Card className="p-4">
-          <div className="text-xs text-secondary mb-1">Program Expenses (MTD)</div>
+          <div className="text-xs text-secondary mb-1">Expenses (MTD)</div>
           <div className="text-2xl font-bold">
-            {loading ? "—" : formatCents(summary?.programExpensesThisMonth || 0)}
+            {loading ? "—" : formatCents(summary?.expensesMtdCents || 0)}
           </div>
         </Card>
       </div>
