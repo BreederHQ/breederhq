@@ -3,12 +3,14 @@
 
 import * as React from "react";
 import { SectionCard, Badge, Button } from "@bhq/ui";
+import { Download } from "lucide-react";
 import { formatCents } from "../../utils/money";
 import { InvoiceDetailDrawer } from "./InvoiceDetailDrawer";
 import { InvoiceCreateModal } from "./InvoiceCreateModal";
 import { ExpenseModal } from "./ExpenseModal";
 import { BreedingPlanFinancialSummary } from "./BreedingPlanFinancialSummary";
 import type { Invoice, Payment, OffspringGroup, Offspring } from "../../utils/financeRollups";
+import { exportInvoicesCSV, exportPaymentsCSV, exportExpensesCSV } from "../../utils/financeExports";
 
 export interface FinanceTabProps {
   invoiceFilters?: Record<string, any>;
@@ -104,6 +106,46 @@ export function FinanceTab({
     loadData();
   }, [loadData]);
 
+  // Export handlers
+  const handleExportInvoices = React.useCallback(() => {
+    if (invoices.length === 0) return;
+    exportInvoicesCSV(invoices as any[], "invoices");
+  }, [invoices]);
+
+  const handleExportPayments = React.useCallback(async () => {
+    if (!api?.finance?.payments) return;
+    try {
+      // Fetch all payments with invoice numbers if we don't have them already
+      let paymentsToExport = payments;
+
+      // If we haven't loaded payments yet (not in breeding plan mode), load them now
+      if (payments.length === 0) {
+        const payRes = await api.finance.payments.list({ limit: 1000 });
+        paymentsToExport = payRes?.items || [];
+      }
+
+      if (paymentsToExport.length === 0) return;
+
+      // Enrich payments with invoice numbers
+      const enrichedPayments = paymentsToExport.map((pmt: any) => {
+        const invoice = invoices.find((inv) => inv.id === pmt.invoiceId);
+        return {
+          ...pmt,
+          invoiceNumber: invoice?.invoiceNumber || "",
+        };
+      });
+
+      exportPaymentsCSV(enrichedPayments, "payments");
+    } catch (err) {
+      console.error("Failed to export payments:", err);
+    }
+  }, [api, payments, invoices]);
+
+  const handleExportExpenses = React.useCallback(() => {
+    if (expenses.length === 0) return;
+    exportExpensesCSV(expenses as any[], "expenses");
+  }, [expenses]);
+
   if (loading) {
     return (
       <div className="space-y-3">
@@ -144,21 +186,44 @@ export function FinanceTab({
       <SectionCard
         title="Invoices"
         right={
-          !hideCreateActions ? (
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => {
-                if (onCreateInvoice) {
-                  onCreateInvoice();
-                } else {
-                  setCreateInvoiceOpen(true);
-                }
-              }}
-            >
-              Create Invoice
-            </Button>
-          ) : undefined
+          <div className="flex gap-2">
+            {invoices.length > 0 && (
+              <>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={handleExportInvoices}
+                  title="Export Invoices to CSV"
+                >
+                  <Download className="h-4 w-4" />
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={handleExportPayments}
+                  title="Export Payments to CSV"
+                >
+                  <Download className="h-4 w-4 mr-1" />
+                  Payments
+                </Button>
+              </>
+            )}
+            {!hideCreateActions && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  if (onCreateInvoice) {
+                    onCreateInvoice();
+                  } else {
+                    setCreateInvoiceOpen(true);
+                  }
+                }}
+              >
+                Create Invoice
+              </Button>
+            )}
+          </div>
         }
       >
         {invoices.length === 0 ? (
@@ -207,22 +272,34 @@ export function FinanceTab({
       <SectionCard
         title="Expenses"
         right={
-          !hideCreateActions ? (
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => {
-                if (onCreateExpense) {
-                  onCreateExpense();
-                } else {
-                  setSelectedExpense(null);
-                  setExpenseModalOpen(true);
-                }
-              }}
-            >
-              Create Expense
-            </Button>
-          ) : undefined
+          <div className="flex gap-2">
+            {expenses.length > 0 && (
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={handleExportExpenses}
+                title="Export to CSV"
+              >
+                <Download className="h-4 w-4" />
+              </Button>
+            )}
+            {!hideCreateActions && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  if (onCreateExpense) {
+                    onCreateExpense();
+                  } else {
+                    setSelectedExpense(null);
+                    setExpenseModalOpen(true);
+                  }
+                }}
+              >
+                Create Expense
+              </Button>
+            )}
+          </div>
         }
       >
         {expenses.length === 0 ? (
