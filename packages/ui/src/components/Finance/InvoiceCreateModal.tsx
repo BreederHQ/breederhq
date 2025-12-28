@@ -5,7 +5,7 @@ import * as React from "react";
 import { Dialog } from "../Dialog";
 import { Button } from "../Button";
 import { Input } from "../Input";
-import { useToast } from "../Toast";
+import { useToast } from "../../atoms/Toast";
 import { PartyAutocomplete, type AutocompleteOption } from "./PartyAutocomplete";
 import { AnimalAutocomplete } from "./AnimalAutocomplete";
 import { OffspringGroupAutocomplete } from "./OffspringGroupAutocomplete";

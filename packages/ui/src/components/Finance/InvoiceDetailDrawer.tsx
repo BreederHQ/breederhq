@@ -4,10 +4,11 @@
 import * as React from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
-import { Button, Badge, SectionCard, useToast } from "@bhq/ui";
+import { Button, Badge, SectionCard } from "@bhq/ui";
 import { formatCents } from "../../utils/money";
 import { getOverlayRoot } from "../../overlay";
 import { PaymentCreateModal } from "./PaymentCreateModal";
+import { useToast } from "../../atoms/Toast";
 
 export interface InvoiceDetailDrawerProps {
   invoice: any;

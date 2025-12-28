@@ -5,7 +5,7 @@ import * as React from "react";
 import { Dialog } from "../Dialog";
 import { Button } from "../Button";
 import { Input } from "../Input";
-import { useToast } from "../Toast";
+import { useToast } from "../../atoms/Toast";
 import { parseToCents, centsToInput } from "../../utils/money";
 
 // Idempotency key generation
