@@ -2,7 +2,7 @@
 // Expenses ledger - module table with filters and export
 
 import * as React from "react";
-import { PageHeader, Card, Button, Input } from "@bhq/ui";
+import { Card, Button, Input } from "@bhq/ui";
 import { ExpenseModal } from "@bhq/ui/components/Finance";
 import { formatCents } from "@bhq/ui/utils/money";
 import { exportExpensesCSV } from "@bhq/ui/utils/financeExports";
@@ -157,23 +157,18 @@ export default function ExpensesPage({ api }: Props) {
   const end = Math.min(page * pageSize, total);
 
   return (
-    <div className="p-4 space-y-4">
-      <PageHeader
-        title="Expenses"
-        subtitle="Tenant-wide expense ledger"
-        actions={
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={handleExport} disabled={expenses.length === 0}>
-              <Download className="h-4 w-4 mr-2" />
-              Export CSV
-            </Button>
-            <Button onClick={() => setShowExpenseModal(true)}>
-              <Plus className="h-4 w-4 mr-2" />
-              New Expense
-            </Button>
-          </div>
-        }
-      />
+    <div className="space-y-4">
+      {/* Action buttons */}
+      <div className="flex gap-2 justify-end">
+        <Button variant="outline" onClick={handleExport} disabled={expenses.length === 0}>
+          <Download className="h-4 w-4 mr-2" />
+          Export CSV
+        </Button>
+        <Button onClick={() => setShowExpenseModal(true)}>
+          <Plus className="h-4 w-4 mr-2" />
+          New Expense
+        </Button>
+      </div>
 
       <Card className="p-4 space-y-4">
         {/* Filters */}

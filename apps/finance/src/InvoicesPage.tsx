@@ -2,7 +2,7 @@
 // Invoices ledger - module table with filters and export
 
 import * as React from "react";
-import { PageHeader, Card, Button, Badge, Input, SectionCard } from "@bhq/ui";
+import { Card, Button, Badge, Input, SectionCard } from "@bhq/ui";
 import { InvoiceCreateModal, InvoiceDetailDrawer } from "@bhq/ui/components/Finance";
 import { formatCents } from "@bhq/ui/utils/money";
 import { exportInvoicesCSV } from "@bhq/ui/utils/financeExports";
@@ -121,23 +121,18 @@ export default function InvoicesPage({ api }: Props) {
   const end = Math.min(page * pageSize, total);
 
   return (
-    <div className="p-4 space-y-4">
-      <PageHeader
-        title="Invoices"
-        subtitle="Tenant-wide invoice ledger"
-        actions={
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={handleExport} disabled={invoices.length === 0}>
-              <Download className="h-4 w-4 mr-2" />
-              Export CSV
-            </Button>
-            <Button onClick={() => setShowInvoiceModal(true)}>
-              <Plus className="h-4 w-4 mr-2" />
-              New Invoice
-            </Button>
-          </div>
-        }
-      />
+    <div className="space-y-4">
+      {/* Action buttons */}
+      <div className="flex gap-2 justify-end">
+        <Button variant="outline" onClick={handleExport} disabled={invoices.length === 0}>
+          <Download className="h-4 w-4 mr-2" />
+          Export CSV
+        </Button>
+        <Button onClick={() => setShowInvoiceModal(true)}>
+          <Plus className="h-4 w-4 mr-2" />
+          New Invoice
+        </Button>
+      </div>
 
       <Card className="p-4 space-y-4">
         {/* Filters */}

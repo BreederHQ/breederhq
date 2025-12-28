@@ -3,11 +3,10 @@ import React from "react";
 import { createRoot } from "react-dom/client";
 
 // 1) Load design system + Tailwind + app overrides
-import "./theme.css";
 import "./index.css";
 
 // 2) App
-import FinanceHub from "./FinanceHub";
+import AppFinance from "./App-Finance";
 
 /** Ensure a single global overlays root that sits at the top of the viewport. */
 function ensureOverlaysRoot(): HTMLElement {
@@ -41,7 +40,7 @@ function start() {
   const root = createRoot(mount);
   root.render(
     <React.StrictMode>
-      <FinanceHub />
+      <AppFinance />
     </React.StrictMode>
   );
   (window as any).__getOverlaysRoot = ensureOverlaysRoot;

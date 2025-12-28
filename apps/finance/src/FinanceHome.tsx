@@ -2,7 +2,7 @@
 // Finance Home - guidance, summaries, and quick actions
 
 import * as React from "react";
-import { PageHeader, Card, Button, SectionCard } from "@bhq/ui";
+import { Card, Button, SectionCard } from "@bhq/ui";
 import { InvoiceCreateModal, ExpenseModal } from "@bhq/ui/components/Finance";
 import { formatCents } from "@bhq/ui/utils/money";
 import { Plus, ArrowRight } from "lucide-react";
@@ -82,23 +82,18 @@ export default function FinanceHome({ api, onNavigate }: Props) {
   }, [loadSummary]);
 
   return (
-    <div className="p-4 space-y-6">
-      <PageHeader
-        title="Finance"
-        subtitle="Track invoices, payments, and expenses across your breeding program"
-        actions={
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={() => setShowExpenseModal(true)}>
-              <Plus className="h-4 w-4 mr-2" />
-              New Expense
-            </Button>
-            <Button onClick={() => setShowInvoiceModal(true)}>
-              <Plus className="h-4 w-4 mr-2" />
-              New Invoice
-            </Button>
-          </div>
-        }
-      />
+    <div className="space-y-6">
+      {/* Action buttons */}
+      <div className="flex gap-2 justify-end">
+        <Button variant="outline" onClick={() => setShowExpenseModal(true)}>
+          <Plus className="h-4 w-4 mr-2" />
+          New Expense
+        </Button>
+        <Button onClick={() => setShowInvoiceModal(true)}>
+          <Plus className="h-4 w-4 mr-2" />
+          New Invoice
+        </Button>
+      </div>
 
       {/* Guidance Section */}
       <Card className="p-6 space-y-4">

@@ -19,7 +19,7 @@ import AppBreeding from "@bhq/breeding/App-Breeding";
 import AppOffspring from "@bhq/offspring/App-Offspring";
 import AppMarketplace from "@bhq/marketplace/App-Marketplace";
 import AppMarketing from "@bhq/marketing/App-Marketing";
-import FinanceHub from "@bhq/finance/FinanceHub";
+import AppFinance from "@bhq/finance/App-Finance";
 import AdminModule from "@bhq/admin/App-Admin";
 import DashboardPage from "./pages/Dashboard";
 
@@ -149,7 +149,7 @@ function RouteView() {
   if (p === "/offspring" || p.startsWith("/offspring")) return <AppOffspring />;
   if (p === "/marketplace" || p.startsWith("/marketplace")) return <AppMarketplace />;
   if (p === "/marketing" || p.startsWith("/marketing")) return <AppMarketing />;
-  if (p === "/finance" || p.startsWith("/finance")) return <FinanceHub />;
+  if (p === "/finance" || p.startsWith("/finance")) return <AppFinance />;
   if (p === "/admin" || p.startsWith("/admin")) return <AdminModule />;
   return <DashboardPage />;
 }
