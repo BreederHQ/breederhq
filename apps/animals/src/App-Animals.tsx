@@ -3005,9 +3005,6 @@ function RegistryTab({
       // CONTRACT TOLERANCE: Accept either 'items' (canonical) or 'registrations' (legacy).
       // Prefer 'items' if both exist for forward compatibility.
       const rows = data?.items || data?.registrations || [];
-      if (!data?.items && !data?.registrations) {
-        throw new Error("Response missing both items and registrations keys");
-      }
       setRegistrations(rows);
     } catch (err: any) {
       console.error("[RegistryTab] Failed to load registrations", err);
@@ -3029,9 +3026,6 @@ function RegistryTab({
       // CONTRACT TOLERANCE: Accept either 'items' (canonical) or 'registries' (legacy).
       // Prefer 'items' if both exist for forward compatibility.
       const rows = data?.items || data?.registries || [];
-      if (!data?.items && !data?.registries) {
-        throw new Error("Response missing both items and registries keys");
-      }
       setAllRegistries(rows);
       if (rows.length === 0) {
         setRegistriesFetchError("No registries available for this species");
