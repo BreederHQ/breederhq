@@ -4557,6 +4557,18 @@ export default function AppAnimals() {
   const canCreate =
     newName.trim().length > 1 && !!newDob && !!newSex && !!newSpecies;
 
+  const handleCreateOpenChange = React.useCallback((v: boolean) => {
+    if (!createWorking) setCreateOpen(v);
+  }, [createWorking]);
+
+  const handleNameChange = React.useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setNewName((e.currentTarget as HTMLInputElement).value);
+  }, []);
+
+  const handleNicknameChange = React.useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setNickname((e.currentTarget as HTMLInputElement).value);
+  }, []);
+
   const doCreateAnimal = async () => {
     if (!canCreate) {
       setCreateErr("Please complete required fields.");
@@ -4887,9 +4899,7 @@ export default function AppAnimals() {
       {createOpen && (
         <Overlay
           open={createOpen}
-          onOpenChange={(v) => {
-            if (!createWorking) setCreateOpen(v);
-          }}
+          onOpenChange={handleCreateOpenChange}
           ariaLabel="Create Animal"
           size="lg"
           overlayId="create-animal"
@@ -4915,11 +4925,7 @@ export default function AppAnimals() {
                 </div>
                 <Input
                   value={newName}
-                  onChange={(e) =>
-                    setNewName(
-                      (e.currentTarget as HTMLInputElement).value
-                    )
-                  }
+                  onChange={handleNameChange}
                 />
               </div>
 
@@ -4929,11 +4935,7 @@ export default function AppAnimals() {
                 </div>
                 <Input
                   value={nickname}
-                  onChange={(e) =>
-                    setNickname(
-                      (e.currentTarget as HTMLInputElement).value
-                    )
-                  }
+                  onChange={handleNicknameChange}
                 />
               </div>
 
