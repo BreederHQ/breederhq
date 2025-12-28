@@ -4,8 +4,8 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/App-Finance.tsx",
-    "./App-Offspring": "./src/App-Finance.tsx"
+    ".": "./src/FinanceHub.tsx",
+    "./FinanceHub": "./src/FinanceHub.tsx"
   },
   "peerDependencies": {
     "react": "^19.2.0",

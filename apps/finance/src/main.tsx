@@ -7,7 +7,7 @@ import "./theme.css";
 import "./index.css";
 
 // 2) App
-import AppOffspring from "./App-Finance";
+import FinanceHub from "./FinanceHub";
 
 /** Ensure a single global overlays root that sits at the top of the viewport. */
 function ensureOverlaysRoot(): HTMLElement {
@@ -41,7 +41,7 @@ function start() {
   const root = createRoot(mount);
   root.render(
     <React.StrictMode>
-      <AppOffspring />
+      <FinanceHub />
     </React.StrictMode>
   );
   (window as any).__getOverlaysRoot = ensureOverlaysRoot;

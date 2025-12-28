@@ -145,6 +145,7 @@ export const NavShell: React.FC<NavShellProps> = ({
     { key: "offspring", label: "Offspring", href: "/offspring/" },
     { key: "marketing", label: "Marketing", href: "/marketing/" },
     { key: "marketplace", label: "Marketplace", href: "/marketplace/" },
+    { key: "finance", label: "Finance", href: "/finance/" },
     { key: "admin", label: "Admin", href: "/admin/" },
   ];
   const navItems = items && items.length ? items : defaultItems;
