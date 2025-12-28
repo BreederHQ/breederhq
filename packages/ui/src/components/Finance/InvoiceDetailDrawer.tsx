@@ -7,6 +7,7 @@ import { X } from "lucide-react";
 import { Button, Badge, SectionCard } from "@bhq/ui";
 import { formatCents } from "../../utils/money";
 import { getOverlayRoot } from "../../overlay";
+import { PaymentCreateModal } from "./PaymentCreateModal";
 
 export interface InvoiceDetailDrawerProps {
   invoice: any;
@@ -28,6 +29,7 @@ export function InvoiceDetailDrawer({
   const [payments, setPayments] = React.useState<any[]>([]);
   const [loading, setLoading] = React.useState(false);
   const [voiding, setVoiding] = React.useState(false);
+  const [paymentModalOpen, setPaymentModalOpen] = React.useState(false);
 
   const loadPayments = React.useCallback(async () => {
     if (!invoice?.id) return;
@@ -141,8 +143,18 @@ export function InvoiceDetailDrawer({
           <SectionCard
             title="Payment History"
             actions={
-              invoice.status !== "VOID" && invoice.status !== "PAID" && onAddPayment ? (
-                <Button size="sm" variant="outline" onClick={onAddPayment}>
+              invoice.status !== "VOID" && invoice.status !== "PAID" ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    if (onAddPayment) {
+                      onAddPayment();
+                    } else {
+                      setPaymentModalOpen(true);
+                    }
+                  }}
+                >
                   Add Payment
                 </Button>
               ) : undefined
@@ -201,6 +213,20 @@ export function InvoiceDetailDrawer({
             Close
           </Button>
         </div>
+
+        {/* Payment Create Modal */}
+        <PaymentCreateModal
+          open={paymentModalOpen}
+          onClose={() => setPaymentModalOpen(false)}
+          onSuccess={() => {
+            loadPayments();
+            // Notify parent to refresh invoice data
+            if (onVoid) onVoid();
+          }}
+          api={api}
+          invoiceId={invoice.id}
+          invoiceBalance={invoice.balanceCents}
+        />
       </div>
     </div>,
     overlayRoot
