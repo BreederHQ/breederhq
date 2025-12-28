@@ -7,6 +7,8 @@ import { formatCents } from "../../utils/money";
 import { InvoiceDetailDrawer } from "./InvoiceDetailDrawer";
 import { InvoiceCreateModal } from "./InvoiceCreateModal";
 import { ExpenseModal } from "./ExpenseModal";
+import { BreedingPlanFinancialSummary } from "./BreedingPlanFinancialSummary";
+import type { Invoice, Payment, OffspringGroup, Offspring } from "../../utils/financeRollups";
 
 export interface FinanceTabProps {
   invoiceFilters?: Record<string, any>;
@@ -20,6 +22,10 @@ export interface FinanceTabProps {
   api: any; // The finance API client
   onCreateInvoice?: () => void;
   onCreateExpense?: () => void;
+  // Optional breeding plan rollup data
+  showBreedingPlanSummary?: boolean;
+  offspringGroups?: OffspringGroup[];
+  offspring?: Offspring[];
 }
 
 export function FinanceTab({
@@ -30,9 +36,13 @@ export function FinanceTab({
   api,
   onCreateInvoice,
   onCreateExpense,
+  showBreedingPlanSummary = false,
+  offspringGroups = [],
+  offspring = [],
 }: FinanceTabProps) {
   const [invoices, setInvoices] = React.useState<any[]>([]);
   const [expenses, setExpenses] = React.useState<any[]>([]);
+  const [payments, setPayments] = React.useState<any[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const [selectedInvoice, setSelectedInvoice] = React.useState<any | null>(null);
@@ -44,10 +54,20 @@ export function FinanceTab({
     setLoading(true);
     setError(null);
     try {
-      const [invRes, expRes] = await Promise.all([
+      const promises: Promise<any>[] = [
         api.finance.invoices.list({ ...invoiceFilters, limit: 50 }),
         api.finance.expenses.list({ ...expenseFilters, limit: 50 }),
-      ]);
+      ];
+
+      // If showing breeding plan summary, also fetch all payments for rollup calculations
+      if (showBreedingPlanSummary && defaultAnchor?.breedingPlanId) {
+        promises.push(api.finance.payments.list({ limit: 1000 }));
+      }
+
+      const results = await Promise.all(promises);
+      const invRes = results[0];
+      const expRes = results[1];
+      const payRes = results[2];
 
       // Sort invoices by issuedAt desc (newest first), fallback to createdAt
       const sortedInvoices = (invRes?.items || []).sort((a: any, b: any) => {
@@ -69,13 +89,16 @@ export function FinanceTab({
 
       setInvoices(sortedInvoices);
       setExpenses(sortedExpenses);
+      if (payRes) {
+        setPayments(payRes?.items || []);
+      }
     } catch (err: any) {
       console.error("Failed to load finance data:", err);
       setError(err?.message || "Failed to load finance data");
     } finally {
       setLoading(false);
     }
-  }, [api, invoiceFilters, expenseFilters]);
+  }, [api, invoiceFilters, expenseFilters, showBreedingPlanSummary, defaultAnchor?.breedingPlanId]);
 
   React.useEffect(() => {
     loadData();
@@ -106,6 +129,17 @@ export function FinanceTab({
 
   return (
     <div className="space-y-3">
+      {/* Breeding Plan Financial Summary */}
+      {showBreedingPlanSummary && defaultAnchor?.breedingPlanId && (
+        <BreedingPlanFinancialSummary
+          invoices={invoices as Invoice[]}
+          payments={payments as Payment[]}
+          offspringGroups={offspringGroups}
+          offspring={offspring}
+          breedingPlanId={defaultAnchor.breedingPlanId}
+        />
+      )}
+
       {/* Invoices */}
       <SectionCard
         title="Invoices"

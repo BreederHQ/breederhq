@@ -9,3 +9,4 @@ export { PartyAutocomplete, type PartyAutocompleteProps } from "./PartyAutocompl
 export { AnimalAutocomplete, type AnimalAutocompleteProps } from "./AnimalAutocomplete";
 export { OffspringGroupAutocomplete, type OffspringGroupAutocompleteProps } from "./OffspringGroupAutocomplete";
 export { BreedingPlanAutocomplete, type BreedingPlanAutocompleteProps } from "./BreedingPlanAutocomplete";
+export { BreedingPlanFinancialSummary, type BreedingPlanFinancialSummaryProps } from "./BreedingPlanFinancialSummary";

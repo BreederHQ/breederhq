@@ -5155,6 +5155,10 @@ function PlanDetailsView(props: {
             invoiceFilters={{ breedingPlanId: row.id }}
             expenseFilters={{ breedingPlanId: row.id }}
             api={api}
+            showBreedingPlanSummary={true}
+            defaultAnchor={{ breedingPlanId: row.id }}
+            offspringGroups={[]}
+            offspring={[]}
           />
         )}
 
