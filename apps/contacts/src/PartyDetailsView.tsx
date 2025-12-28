@@ -11,6 +11,7 @@ import {
   Badge,
   Button,
 } from "@bhq/ui";
+import { FinanceTab } from "@bhq/ui/components/Finance";
 import { Copy } from "lucide-react";
 import { getOverlayRoot } from "@bhq/ui/overlay";
 import { makeApi } from "./api";
@@ -1387,7 +1388,13 @@ export function PartyDetailsView({
           </div>
         )}
 
-        {activeTab === "finances" && <FinancesTab partyId={row.partyId} api={api} />}
+        {activeTab === "finances" && (
+          <FinanceTab
+            invoiceFilters={{ clientPartyId: row.partyId }}
+            expenseFilters={{ vendorPartyId: row.partyId }}
+            api={api}
+          />
+        )}
       </DetailsScaffold>
 
       {/* Compliance reset confirmation modal */}
@@ -1418,133 +1425,3 @@ export function PartyDetailsView({
   );
 }
 
-// ─────────────────── FINANCES TAB ───────────────────
-
-function FinancesTab({ partyId, api }: { partyId: number; api: ReturnType<typeof makeApi> }) {
-  const [invoices, setInvoices] = React.useState<any[]>([]);
-  const [expenses, setExpenses] = React.useState<any[]>([]);
-  const [loading, setLoading] = React.useState(true);
-
-  const loadData = React.useCallback(async () => {
-    setLoading(true);
-    try {
-      const [invRes, expRes] = await Promise.all([
-        api.finance.invoices.list({ clientPartyId: partyId, limit: 50 }),
-        api.finance.expenses.list({ vendorPartyId: partyId, limit: 50 }),
-      ]);
-      setInvoices(invRes?.items || []);
-      setExpenses(expRes?.items || []);
-    } catch (err) {
-      console.error("Failed to load finance data:", err);
-    } finally {
-      setLoading(false);
-    }
-  }, [partyId, api]);
-
-  React.useEffect(() => {
-    loadData();
-  }, [loadData]);
-
-  if (loading) {
-    return (
-      <div className="space-y-3">
-        <SectionCard title="Finances">
-          <div className="text-sm text-secondary">Loading...</div>
-        </SectionCard>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-3">
-      {/* Invoices */}
-      <SectionCard title="Invoices">
-        {invoices.length === 0 ? (
-          <div className="text-sm text-secondary">No invoices found</div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="border-b border-hairline">
-                <tr>
-                  <th className="text-left py-2 pr-3 font-medium">Invoice #</th>
-                  <th className="text-left py-2 pr-3 font-medium">Status</th>
-                  <th className="text-right py-2 pr-3 font-medium">Total</th>
-                  <th className="text-right py-2 pr-3 font-medium">Balance</th>
-                  <th className="text-left py-2 pr-3 font-medium">Due Date</th>
-                </tr>
-              </thead>
-              <tbody>
-                {invoices.map((inv) => (
-                  <tr key={inv.id} className="border-b border-hairline/60">
-                    <td className="py-2 pr-3">{inv.invoiceNumber || "—"}</td>
-                    <td className="py-2 pr-3">
-                      <Badge variant={inv.status === "PAID" ? "success" : "default"}>
-                        {inv.status || "—"}
-                      </Badge>
-                    </td>
-                    <td className="py-2 pr-3 text-right">
-                      {formatMoney(inv.totalCents)}
-                    </td>
-                    <td className="py-2 pr-3 text-right">
-                      {formatMoney(inv.balanceCents)}
-                    </td>
-                    <td className="py-2 pr-3">
-                      {inv.dueAt ? new Date(inv.dueAt).toLocaleDateString() : "—"}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </SectionCard>
-
-      {/* Expenses */}
-      <SectionCard title="Expenses">
-        {expenses.length === 0 ? (
-          <div className="text-sm text-secondary">No expenses found</div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="border-b border-hairline">
-                <tr>
-                  <th className="text-left py-2 pr-3 font-medium">Category</th>
-                  <th className="text-left py-2 pr-3 font-medium">Description</th>
-                  <th className="text-right py-2 pr-3 font-medium">Amount</th>
-                  <th className="text-left py-2 pr-3 font-medium">Date</th>
-                </tr>
-              </thead>
-              <tbody>
-                {expenses.map((exp) => (
-                  <tr key={exp.id} className="border-b border-hairline/60">
-                    <td className="py-2 pr-3">{exp.category || "—"}</td>
-                    <td className="py-2 pr-3">{exp.description || exp.notes || "—"}</td>
-                    <td className="py-2 pr-3 text-right">
-                      {formatMoney(exp.amountCents)}
-                    </td>
-                    <td className="py-2 pr-3">
-                      {exp.incurredAt ? new Date(exp.incurredAt).toLocaleDateString() : "—"}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </SectionCard>
-    </div>
-  );
-}
-
-function formatMoney(cents?: number | null): string {
-  if (cents == null) return "$0.00";
-  const amount = cents / 100;
-  try {
-    return new Intl.NumberFormat(undefined, {
-      style: "currency",
-      currency: "USD",
-    }).format(amount);
-  } catch {
-    return `$${amount.toFixed(2)}`;
-  }
-}
