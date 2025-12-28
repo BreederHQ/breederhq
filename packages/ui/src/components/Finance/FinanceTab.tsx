@@ -139,7 +139,7 @@ export function FinanceTab({
       {/* Expenses */}
       <SectionCard
         title="Expenses"
-        actions={
+        right={
           !hideCreateActions && onCreateExpense ? (
             <Button size="sm" variant="outline" onClick={onCreateExpense}>
               Create Expense
