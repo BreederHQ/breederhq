@@ -2,20 +2,16 @@
 // Finance Home - guidance, summaries, and quick actions
 
 import * as React from "react";
-import { Card, Button, SectionCard } from "@bhq/ui";
-import { InvoiceCreateModal, ExpenseModal } from "@bhq/ui/components/Finance";
+import { Card, SectionCard } from "@bhq/ui";
 import { formatCents } from "@bhq/ui/utils/money";
-import { Plus, ArrowRight } from "lucide-react";
+import { Users, Building2, Bone, Baby, Heart } from "lucide-react";
 import type { FinanceApi } from "./api";
 
 type Props = {
   api: FinanceApi;
-  onNavigate: (view: "invoices" | "expenses") => void;
 };
 
-export default function FinanceHome({ api, onNavigate }: Props) {
-  const [showInvoiceModal, setShowInvoiceModal] = React.useState(false);
-  const [showExpenseModal, setShowExpenseModal] = React.useState(false);
+export default function FinanceHome({ api }: Props) {
   const [summary, setSummary] = React.useState<{
     totalOutstanding: number;
     totalInvoiced: number;
@@ -83,18 +79,6 @@ export default function FinanceHome({ api, onNavigate }: Props) {
 
   return (
     <div className="space-y-6">
-      {/* Action buttons */}
-      <div className="flex gap-2 justify-end">
-        <Button variant="outline" onClick={() => setShowExpenseModal(true)}>
-          <Plus className="h-4 w-4 mr-2" />
-          New Expense
-        </Button>
-        <Button onClick={() => setShowInvoiceModal(true)}>
-          <Plus className="h-4 w-4 mr-2" />
-          New Invoice
-        </Button>
-      </div>
-
       {/* Guidance Section */}
       <Card className="p-6 space-y-4">
         <h2 className="text-lg font-semibold">Getting Started</h2>
@@ -129,27 +113,81 @@ export default function FinanceHome({ api, onNavigate }: Props) {
 
         <div className="pt-4 border-t border-hairline">
           <h3 className="text-sm font-medium mb-3">Quick Links to Modules</h3>
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-            <Button variant="ghost" className="justify-start" onClick={() => window.location.href = "/contacts"}>
-              <ArrowRight className="h-4 w-4 mr-2" />
-              Contacts
-            </Button>
-            <Button variant="ghost" className="justify-start" onClick={() => window.location.href = "/organizations"}>
-              <ArrowRight className="h-4 w-4 mr-2" />
-              Organizations
-            </Button>
-            <Button variant="ghost" className="justify-start" onClick={() => window.location.href = "/animals"}>
-              <ArrowRight className="h-4 w-4 mr-2" />
-              Animals
-            </Button>
-            <Button variant="ghost" className="justify-start" onClick={() => window.location.href = "/offspring-groups"}>
-              <ArrowRight className="h-4 w-4 mr-2" />
-              Offspring Groups
-            </Button>
-            <Button variant="ghost" className="justify-start" onClick={() => window.location.href = "/breeding"}>
-              <ArrowRight className="h-4 w-4 mr-2" />
-              Breeding Plans
-            </Button>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            <a
+              href="/contacts"
+              className="group rounded-lg border border-hairline bg-surface p-4 hover:border-[hsl(var(--brand-orange))]/30 transition-colors cursor-pointer no-underline"
+            >
+              <div className="flex items-start gap-3">
+                <div className="flex-shrink-0 w-10 h-10 rounded-md bg-[hsl(var(--brand-orange))]/10 flex items-center justify-center text-[hsl(var(--brand-orange))]">
+                  <Users className="h-5 w-5" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="font-semibold text-sm text-primary mb-0.5">Contacts</div>
+                  <p className="text-xs text-secondary">Manage client relationships</p>
+                </div>
+              </div>
+            </a>
+
+            <a
+              href="/organizations"
+              className="group rounded-lg border border-hairline bg-surface p-4 hover:border-[hsl(var(--brand-orange))]/30 transition-colors cursor-pointer no-underline"
+            >
+              <div className="flex items-start gap-3">
+                <div className="flex-shrink-0 w-10 h-10 rounded-md bg-[hsl(var(--brand-orange))]/10 flex items-center justify-center text-[hsl(var(--brand-orange))]">
+                  <Building2 className="h-5 w-5" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="font-semibold text-sm text-primary mb-0.5">Organizations</div>
+                  <p className="text-xs text-secondary">Business accounts</p>
+                </div>
+              </div>
+            </a>
+
+            <a
+              href="/animals"
+              className="group rounded-lg border border-hairline bg-surface p-4 hover:border-[hsl(var(--brand-orange))]/30 transition-colors cursor-pointer no-underline"
+            >
+              <div className="flex items-start gap-3">
+                <div className="flex-shrink-0 w-10 h-10 rounded-md bg-[hsl(var(--brand-orange))]/10 flex items-center justify-center text-[hsl(var(--brand-orange))]">
+                  <Bone className="h-5 w-5" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="font-semibold text-sm text-primary mb-0.5">Animals</div>
+                  <p className="text-xs text-secondary">Track animal expenses</p>
+                </div>
+              </div>
+            </a>
+
+            <a
+              href="/offspring-groups"
+              className="group rounded-lg border border-hairline bg-surface p-4 hover:border-[hsl(var(--brand-orange))]/30 transition-colors cursor-pointer no-underline"
+            >
+              <div className="flex items-start gap-3">
+                <div className="flex-shrink-0 w-10 h-10 rounded-md bg-[hsl(var(--brand-orange))]/10 flex items-center justify-center text-[hsl(var(--brand-orange))]">
+                  <Baby className="h-5 w-5" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="font-semibold text-sm text-primary mb-0.5">Offspring Groups</div>
+                  <p className="text-xs text-secondary">Litter finances</p>
+                </div>
+              </div>
+            </a>
+
+            <a
+              href="/breeding"
+              className="group rounded-lg border border-hairline bg-surface p-4 hover:border-[hsl(var(--brand-orange))]/30 transition-colors cursor-pointer no-underline"
+            >
+              <div className="flex items-start gap-3">
+                <div className="flex-shrink-0 w-10 h-10 rounded-md bg-[hsl(var(--brand-orange))]/10 flex items-center justify-center text-[hsl(var(--brand-orange))]">
+                  <Heart className="h-5 w-5" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="font-semibold text-sm text-primary mb-0.5">Breeding Plans</div>
+                  <p className="text-xs text-secondary">Program rollups</p>
+                </div>
+              </div>
+            </a>
           </div>
         </div>
       </Card>
@@ -185,40 +223,6 @@ export default function FinanceHome({ api, onNavigate }: Props) {
         </Card>
       </div>
 
-      {/* Quick Actions */}
-      <SectionCard title="View All Transactions">
-        <div className="flex gap-4">
-          <Button variant="outline" className="flex-1" onClick={() => onNavigate("invoices")}>
-            <ArrowRight className="h-4 w-4 mr-2" />
-            View All Invoices
-          </Button>
-          <Button variant="outline" className="flex-1" onClick={() => onNavigate("expenses")}>
-            <ArrowRight className="h-4 w-4 mr-2" />
-            View All Expenses
-          </Button>
-        </div>
-      </SectionCard>
-
-      {/* Modals */}
-      <InvoiceCreateModal
-        open={showInvoiceModal}
-        onClose={() => setShowInvoiceModal(false)}
-        onSuccess={() => {
-          setShowInvoiceModal(false);
-          loadSummary();
-        }}
-        api={api}
-      />
-
-      <ExpenseModal
-        open={showExpenseModal}
-        onClose={() => setShowExpenseModal(false)}
-        onSuccess={() => {
-          setShowExpenseModal(false);
-          loadSummary();
-        }}
-        api={api}
-      />
     </div>
   );
 }

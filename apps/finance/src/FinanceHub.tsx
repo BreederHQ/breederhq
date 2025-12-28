@@ -22,11 +22,6 @@ export default function FinanceHub() {
     }
   }, []);
 
-  // Handle navigation from FinanceHome
-  const handleNavigate = React.useCallback((view: "invoices" | "expenses") => {
-    setCurrentView(view);
-  }, []);
-
   return (
     <div className="min-h-screen">
       {/* Sub-navigation */}
@@ -35,7 +30,7 @@ export default function FinanceHub() {
       </div>
 
       {/* Page Content */}
-      {currentView === "home" && <FinanceHome api={api} onNavigate={handleNavigate} />}
+      {currentView === "home" && <FinanceHome api={api} />}
       {currentView === "invoices" && <InvoicesPage api={api} />}
       {currentView === "expenses" && <ExpensesPage api={api} />}
     </div>
