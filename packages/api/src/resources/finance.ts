@@ -114,25 +114,25 @@ function normalizeList<T>(res: any): ListResponse<T> {
 function makeInvoices(http: Http): InvoicesResource {
   return {
     async list(params: ListParams = {}): Promise<ListResponse<InvoiceDTO>> {
-      const res = await http.get(`/api/v1/finance/invoices${buildQuery(params)}`);
+      const res = await http.get(`/api/v1/invoices${buildQuery(params)}`);
       return normalizeList<InvoiceDTO>(res);
     },
 
     async get(id: ID): Promise<InvoiceDTO> {
-      return http.get(`/api/v1/finance/invoices/${id}`);
+      return http.get(`/api/v1/invoices/${id}`);
     },
 
     async create(input: CreateInvoiceInput, idempotencyKey: string): Promise<InvoiceDTO> {
       const headers: IdempotencyHeaders = { "Idempotency-Key": idempotencyKey };
-      return http.post(`/api/v1/finance/invoices`, input, { headers });
+      return http.post(`/api/v1/invoices`, input, { headers });
     },
 
     async update(id: ID, input: UpdateInvoiceInput): Promise<InvoiceDTO> {
-      return http.patch(`/api/v1/finance/invoices/${id}`, input);
+      return http.patch(`/api/v1/invoices/${id}`, input);
     },
 
     async void(id: ID): Promise<InvoiceDTO> {
-      return http.post(`/api/v1/finance/invoices/${id}/void`);
+      return http.post(`/api/v1/invoices/${id}/void`);
     },
   };
 }
@@ -142,17 +142,17 @@ function makeInvoices(http: Http): InvoicesResource {
 function makePayments(http: Http): PaymentsResource {
   return {
     async list(params: ListParams = {}): Promise<ListResponse<PaymentDTO>> {
-      const res = await http.get(`/api/v1/finance/payments${buildQuery(params)}`);
+      const res = await http.get(`/api/v1/payments${buildQuery(params)}`);
       return normalizeList<PaymentDTO>(res);
     },
 
     async get(id: ID): Promise<PaymentDTO> {
-      return http.get(`/api/v1/finance/payments/${id}`);
+      return http.get(`/api/v1/payments/${id}`);
     },
 
     async create(input: CreatePaymentInput, idempotencyKey: string): Promise<PaymentDTO> {
       const headers: IdempotencyHeaders = { "Idempotency-Key": idempotencyKey };
-      return http.post(`/api/v1/finance/payments`, input, { headers });
+      return http.post(`/api/v1/payments`, input, { headers });
     },
   };
 }
@@ -162,24 +162,24 @@ function makePayments(http: Http): PaymentsResource {
 function makeExpenses(http: Http): ExpensesResource {
   return {
     async list(params: ListParams = {}): Promise<ListResponse<ExpenseDTO>> {
-      const res = await http.get(`/api/v1/finance/expenses${buildQuery(params)}`);
+      const res = await http.get(`/api/v1/expenses${buildQuery(params)}`);
       return normalizeList<ExpenseDTO>(res);
     },
 
     async get(id: ID): Promise<ExpenseDTO> {
-      return http.get(`/api/v1/finance/expenses/${id}`);
+      return http.get(`/api/v1/expenses/${id}`);
     },
 
     async create(input: CreateExpenseInput): Promise<ExpenseDTO> {
-      return http.post(`/api/v1/finance/expenses`, input);
+      return http.post(`/api/v1/expenses`, input);
     },
 
     async update(id: ID, input: UpdateExpenseInput): Promise<ExpenseDTO> {
-      return http.patch(`/api/v1/finance/expenses/${id}`, input);
+      return http.patch(`/api/v1/expenses/${id}`, input);
     },
 
     async delete(id: ID): Promise<{ success: true }> {
-      await http.delete(`/api/v1/finance/expenses/${id}`);
+      await http.delete(`/api/v1/expenses/${id}`);
       return { success: true };
     },
   };

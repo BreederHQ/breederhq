@@ -655,15 +655,15 @@ export function makeApi(baseOrigin: string = "", authHeaderFn?: () => Record<str
         Object.entries(params).forEach(([k, v]) => {
           if (v != null && v !== "") p.set(k, String(v));
         });
-        const url = joinUrl(v1, "finance/invoices") + (p.toString() ? `?${p.toString()}` : "");
+        const url = joinUrl(v1, "invoices") + (p.toString() ? `?${p.toString()}` : "");
         return fetchJson<{ items: any[]; total: number }>(url, { method: "GET" }, withAuth());
       },
       async get(id: ID) {
-        const url = joinUrl(v1, "finance/invoices", String(id));
+        const url = joinUrl(v1, "invoices", String(id));
         return fetchJson<any>(url, { method: "GET" }, withAuth());
       },
       async create(body: any, idempotencyKey: string) {
-        const url = joinUrl(v1, "finance/invoices");
+        const url = joinUrl(v1, "invoices");
         return fetchJson<any>(
           url,
           { method: "POST", body: JSON.stringify(body) },
@@ -671,11 +671,11 @@ export function makeApi(baseOrigin: string = "", authHeaderFn?: () => Record<str
         );
       },
       async update(id: ID, body: any) {
-        const url = joinUrl(v1, "finance/invoices", String(id));
+        const url = joinUrl(v1, "invoices", String(id));
         return fetchJson<any>(url, { method: "PATCH", body: JSON.stringify(body) }, withAuth());
       },
       async void(id: ID) {
-        const url = joinUrl(v1, "finance/invoices", String(id), "void");
+        const url = joinUrl(v1, "invoices", String(id), "void");
         return fetchJson<any>(url, { method: "POST" }, withAuth());
       },
     },
@@ -685,15 +685,15 @@ export function makeApi(baseOrigin: string = "", authHeaderFn?: () => Record<str
         Object.entries(params).forEach(([k, v]) => {
           if (v != null && v !== "") p.set(k, String(v));
         });
-        const url = joinUrl(v1, "finance/payments") + (p.toString() ? `?${p.toString()}` : "");
+        const url = joinUrl(v1, "payments") + (p.toString() ? `?${p.toString()}` : "");
         return fetchJson<{ items: any[]; total: number }>(url, { method: "GET" }, withAuth());
       },
       async get(id: ID) {
-        const url = joinUrl(v1, "finance/payments", String(id));
+        const url = joinUrl(v1, "payments", String(id));
         return fetchJson<any>(url, { method: "GET" }, withAuth());
       },
       async create(body: any, idempotencyKey: string) {
-        const url = joinUrl(v1, "finance/payments");
+        const url = joinUrl(v1, "payments");
         return fetchJson<any>(
           url,
           { method: "POST", body: JSON.stringify(body) },
@@ -707,23 +707,23 @@ export function makeApi(baseOrigin: string = "", authHeaderFn?: () => Record<str
         Object.entries(params).forEach(([k, v]) => {
           if (v != null && v !== "") p.set(k, String(v));
         });
-        const url = joinUrl(v1, "finance/expenses") + (p.toString() ? `?${p.toString()}` : "");
+        const url = joinUrl(v1, "expenses") + (p.toString() ? `?${p.toString()}` : "");
         return fetchJson<{ items: any[]; total: number }>(url, { method: "GET" }, withAuth());
       },
       async get(id: ID) {
-        const url = joinUrl(v1, "finance/expenses", String(id));
+        const url = joinUrl(v1, "expenses", String(id));
         return fetchJson<any>(url, { method: "GET" }, withAuth());
       },
       async create(body: any) {
-        const url = joinUrl(v1, "finance/expenses");
+        const url = joinUrl(v1, "expenses");
         return fetchJson<any>(url, { method: "POST", body: JSON.stringify(body) }, withAuth());
       },
       async update(id: ID, body: any) {
-        const url = joinUrl(v1, "finance/expenses", String(id));
+        const url = joinUrl(v1, "expenses", String(id));
         return fetchJson<any>(url, { method: "PATCH", body: JSON.stringify(body) }, withAuth());
       },
       async remove(id: ID) {
-        const url = joinUrl(v1, "finance/expenses", String(id));
+        const url = joinUrl(v1, "expenses", String(id));
         return fetchJson<{ ok: true }>(url, { method: "DELETE" }, withAuth());
       },
     },

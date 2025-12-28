@@ -5150,10 +5150,10 @@ function PlanDetailsView(props: {
         )}
 
         {/* FINANCES TAB */}
-        {activeTab === "finances" && plan?.id && (
+        {activeTab === "finances" && row?.id && (
           <FinanceTab
-            invoiceFilters={{ breedingPlanId: plan.id }}
-            expenseFilters={{ breedingPlanId: plan.id }}
+            invoiceFilters={{ breedingPlanId: row.id }}
+            expenseFilters={{ breedingPlanId: row.id }}
             api={api}
           />
         )}

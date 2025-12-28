@@ -5078,7 +5078,7 @@ function OffspringGroupsTab(
                     <FinanceTab
                       invoiceFilters={{ offspringGroupId: groupId }}
                       expenseFilters={{ offspringGroupId: groupId }}
-                      api={offspringApi}
+                      api={api}
                     />
                   )}
 

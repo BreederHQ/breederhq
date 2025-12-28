@@ -203,5 +203,185 @@ export function makeApi(base?: string) {
         return parse<any>(res);
       },
     },
+
+    /* ──── Finance namespace for invoices, payments, expenses ──── */
+    finance: {
+      invoices: {
+        async list(params?: any) {
+          const ctx = await getCtx(root);
+          const qs = new URLSearchParams();
+          if (params) {
+            Object.entries(params).forEach(([k, v]) => {
+              if (v !== undefined && v !== null && v !== "") {
+                qs.set(k, String(v));
+              }
+            });
+          }
+          const query = qs.toString();
+          const url = `${root}/invoices${query ? `?${query}` : ""}`;
+          const res = await fetch(url, {
+            method: "GET",
+            credentials: "include",
+            headers: headersFor(ctx, { method: "GET" }),
+          });
+          const data = await parse<{ data: any[]; meta?: any }>(res);
+          return {
+            items: data.data || [],
+            total: data.meta?.total || 0,
+          };
+        },
+        async get(id: number) {
+          const ctx = await getCtx(root);
+          const res = await fetch(`${root}/invoices/${id}`, {
+            method: "GET",
+            credentials: "include",
+            headers: headersFor(ctx, { method: "GET" }),
+          });
+          return parse<any>(res);
+        },
+        async create(input: any, idempotencyKey: string) {
+          const ctx = await getCtx(root);
+          const h = headersFor(ctx, { method: "POST" });
+          h["Idempotency-Key"] = idempotencyKey;
+          const res = await fetch(`${root}/invoices`, {
+            method: "POST",
+            credentials: "include",
+            headers: h,
+            body: JSON.stringify(input),
+          });
+          return parse<any>(res);
+        },
+        async update(id: number, input: any) {
+          const ctx = await getCtx(root);
+          const res = await fetch(`${root}/invoices/${id}`, {
+            method: "PATCH",
+            credentials: "include",
+            headers: headersFor(ctx, { method: "PATCH" }),
+            body: JSON.stringify(input),
+          });
+          return parse<any>(res);
+        },
+        async void(id: number) {
+          const ctx = await getCtx(root);
+          const res = await fetch(`${root}/invoices/${id}/void`, {
+            method: "PATCH",
+            credentials: "include",
+            headers: headersFor(ctx, { method: "PATCH" }),
+            body: JSON.stringify({}),
+          });
+          return parse<any>(res);
+        },
+      },
+      payments: {
+        async list(params?: any) {
+          const ctx = await getCtx(root);
+          const qs = new URLSearchParams();
+          if (params) {
+            Object.entries(params).forEach(([k, v]) => {
+              if (v !== undefined && v !== null && v !== "") {
+                qs.set(k, String(v));
+              }
+            });
+          }
+          const query = qs.toString();
+          const url = `${root}/payments${query ? `?${query}` : ""}`;
+          const res = await fetch(url, {
+            method: "GET",
+            credentials: "include",
+            headers: headersFor(ctx, { method: "GET" }),
+          });
+          const data = await parse<{ data: any[]; meta?: any }>(res);
+          return {
+            items: data.data || [],
+            total: data.meta?.total || 0,
+          };
+        },
+        async get(id: number) {
+          const ctx = await getCtx(root);
+          const res = await fetch(`${root}/payments/${id}`, {
+            method: "GET",
+            credentials: "include",
+            headers: headersFor(ctx, { method: "GET" }),
+          });
+          return parse<any>(res);
+        },
+        async create(input: any, idempotencyKey: string) {
+          const ctx = await getCtx(root);
+          const h = headersFor(ctx, { method: "POST" });
+          h["Idempotency-Key"] = idempotencyKey;
+          const res = await fetch(`${root}/payments`, {
+            method: "POST",
+            credentials: "include",
+            headers: h,
+            body: JSON.stringify(input),
+          });
+          return parse<any>(res);
+        },
+      },
+      expenses: {
+        async list(params?: any) {
+          const ctx = await getCtx(root);
+          const qs = new URLSearchParams();
+          if (params) {
+            Object.entries(params).forEach(([k, v]) => {
+              if (v !== undefined && v !== null && v !== "") {
+                qs.set(k, String(v));
+              }
+            });
+          }
+          const query = qs.toString();
+          const url = `${root}/expenses${query ? `?${query}` : ""}`;
+          const res = await fetch(url, {
+            method: "GET",
+            credentials: "include",
+            headers: headersFor(ctx, { method: "GET" }),
+          });
+          const data = await parse<{ data: any[]; meta?: any }>(res);
+          return {
+            items: data.data || [],
+            total: data.meta?.total || 0,
+          };
+        },
+        async get(id: number) {
+          const ctx = await getCtx(root);
+          const res = await fetch(`${root}/expenses/${id}`, {
+            method: "GET",
+            credentials: "include",
+            headers: headersFor(ctx, { method: "GET" }),
+          });
+          return parse<any>(res);
+        },
+        async create(input: any) {
+          const ctx = await getCtx(root);
+          const res = await fetch(`${root}/expenses`, {
+            method: "POST",
+            credentials: "include",
+            headers: headersFor(ctx, { method: "POST" }),
+            body: JSON.stringify(input),
+          });
+          return parse<any>(res);
+        },
+        async update(id: number, input: any) {
+          const ctx = await getCtx(root);
+          const res = await fetch(`${root}/expenses/${id}`, {
+            method: "PATCH",
+            credentials: "include",
+            headers: headersFor(ctx, { method: "PATCH" }),
+            body: JSON.stringify(input),
+          });
+          return parse<any>(res);
+        },
+        async delete(id: number) {
+          const ctx = await getCtx(root);
+          const res = await fetch(`${root}/expenses/${id}`, {
+            method: "DELETE",
+            credentials: "include",
+            headers: headersFor(ctx, { method: "DELETE" }),
+          });
+          await parse<any>(res);
+          return { success: true };
+        },
+      },
+    },
   };
 }
