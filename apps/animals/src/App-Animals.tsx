@@ -1806,8 +1806,8 @@ function HealthTab({
         ...cat,
         items: (cat.items || []).filter((t: any) => {
           const key = t.traitKey || "";
-          // Exclude ID and registry traits
-          return !key.startsWith("dog.id.") && !key.startsWith("dog.registry.");
+          // Exclude identity traits (*.id.* and *.registry.*)
+          return !key.includes(".id.") && !key.includes(".registry.");
         }),
       })).filter((cat: any) => cat.items.length > 0);
 
