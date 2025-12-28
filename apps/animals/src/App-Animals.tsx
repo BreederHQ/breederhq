@@ -2991,6 +2991,7 @@ function RegistryTab({
   const [allRegistries, setAllRegistries] = React.useState<any[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [loadingRegistries, setLoadingRegistries] = React.useState(false);
+  const [registriesFetchError, setRegistriesFetchError] = React.useState<string | null>(null);
   const [error, setError] = React.useState<{ status?: number; message?: string; code?: string } | null>(null);
   const [expandedId, setExpandedId] = React.useState<number | "draft" | null>(null);
   const [drafts, setDrafts] = React.useState<Record<number | "draft", any>>({});
@@ -3001,7 +3002,13 @@ function RegistryTab({
       setLoading(true);
       setError(null);
       const data = await api?.animals?.registries?.list(animal.id);
-      setRegistrations(data?.registrations || []);
+      // CONTRACT TOLERANCE: Accept either 'items' (canonical) or 'registrations' (legacy).
+      // Prefer 'items' if both exist for forward compatibility.
+      const rows = data?.items || data?.registrations || [];
+      if (!data?.items && !data?.registrations) {
+        throw new Error("Response missing both items and registrations keys");
+      }
+      setRegistrations(rows);
     } catch (err: any) {
       console.error("[RegistryTab] Failed to load registrations", err);
       setError({
@@ -3017,10 +3024,23 @@ function RegistryTab({
   const fetchAllRegistries = React.useCallback(async () => {
     try {
       setLoadingRegistries(true);
+      setRegistriesFetchError(null);
       const data = await api?.registries?.list({ species: animal.species });
-      setAllRegistries(data?.registries || []);
+      // CONTRACT TOLERANCE: Accept either 'items' (canonical) or 'registries' (legacy).
+      // Prefer 'items' if both exist for forward compatibility.
+      const rows = data?.items || data?.registries || [];
+      if (!data?.items && !data?.registries) {
+        throw new Error("Response missing both items and registries keys");
+      }
+      setAllRegistries(rows);
+      if (rows.length === 0) {
+        setRegistriesFetchError("No registries available for this species");
+      }
     } catch (err: any) {
       console.error("[RegistryTab] Failed to load registries", err);
+      const msg = err?.data?.message || err?.message || "Failed to load registries";
+      setRegistriesFetchError(msg);
+      setAllRegistries([]);
     } finally {
       setLoadingRegistries(false);
     }
@@ -3194,7 +3214,7 @@ function RegistryTab({
                         value={draft?.registryId || ""}
                         onChange={(e) => updateDraft(reg.id, { registryId: Number(e.target.value) })}
                         className="text-sm border border-hairline rounded px-2 py-1.5 w-full bg-card text-inherit"
-                        disabled={loadingRegistries}
+                        disabled={loadingRegistries || !!registriesFetchError}
                       >
                         <option value="">
                           {loadingRegistries ? "Loading registries..." : "Select a registry"}
@@ -3207,6 +3227,17 @@ function RegistryTab({
                       </select>
                       {loadingRegistries && (
                         <div className="text-xs text-secondary mt-1">Loading available registries...</div>
+                      )}
+                      {registriesFetchError && !loadingRegistries && (
+                        <div className="text-xs text-red-500 mt-1 flex items-center gap-2">
+                          {registriesFetchError}
+                          <button
+                            onClick={fetchAllRegistries}
+                            className="text-xs text-primary hover:underline"
+                          >
+                            Retry
+                          </button>
+                        </div>
                       )}
                     </div>
 
@@ -3240,7 +3271,12 @@ function RegistryTab({
                     </div>
 
                     <div className="flex items-center gap-2 pt-2">
-                      <Button size="sm" variant="primary" onClick={() => handleSave(reg.id)}>
+                      <Button
+                        size="sm"
+                        variant="primary"
+                        onClick={() => handleSave(reg.id)}
+                        disabled={loadingRegistries || !!registriesFetchError || allRegistries.length === 0}
+                      >
                         Save
                       </Button>
                       <Button size="sm" variant="outline" onClick={() => handleCancel(reg.id)}>
