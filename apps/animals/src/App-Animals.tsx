@@ -29,6 +29,7 @@ import {
   Popover,
   Dialog,
 } from "@bhq/ui";
+import { FinanceTab } from "@bhq/ui/components/Finance";
 import type { OwnershipRow } from "@bhq/ui/utils/ownership";
 
 import { Overlay, getOverlayRoot } from "@bhq/ui/overlay";
@@ -4380,6 +4381,7 @@ export default function AppAnimals() {
         tabs.push({ key: "health", label: "Health" } as any);
         tabs.push({ key: "registry", label: "Registry" } as any);
         tabs.push({ key: "documents", label: "Documents" } as any);
+        tabs.push({ key: "finances", label: "Finances" } as any);
         tabs.push({ key: "pairing", label: "Pairing" } as any);
         tabs.push({ key: "audit", label: "Audit" } as any);
         return tabs;
@@ -4836,6 +4838,14 @@ export default function AppAnimals() {
               animal={row}
               api={api}
               onHealthTabRequest={(traitKey) => setActiveTab("health")}
+            />
+          )}
+
+          {activeTab === "finances" && (
+            <FinanceTab
+              invoiceFilters={{ animalId: row.id }}
+              expenseFilters={{ animalId: row.id }}
+              api={api}
             />
           )}
 
