@@ -5,6 +5,7 @@ import * as React from "react";
 import { SectionCard, Badge, Button } from "@bhq/ui";
 import { formatCents } from "../../utils/money";
 import { InvoiceDetailDrawer } from "./InvoiceDetailDrawer";
+import { InvoiceCreateModal } from "./InvoiceCreateModal";
 
 export interface FinanceTabProps {
   invoiceFilters?: Record<string, any>;
@@ -24,6 +25,7 @@ export function FinanceTab({
   invoiceFilters = {},
   expenseFilters = {},
   hideCreateActions = false,
+  defaultAnchor,
   api,
   onCreateInvoice,
   onCreateExpense,
@@ -33,6 +35,7 @@ export function FinanceTab({
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const [selectedInvoice, setSelectedInvoice] = React.useState<any | null>(null);
+  const [createInvoiceOpen, setCreateInvoiceOpen] = React.useState(false);
 
   const loadData = React.useCallback(async () => {
     setLoading(true);
@@ -85,8 +88,18 @@ export function FinanceTab({
       <SectionCard
         title="Invoices"
         right={
-          !hideCreateActions && onCreateInvoice ? (
-            <Button size="sm" variant="outline" onClick={onCreateInvoice}>
+          !hideCreateActions ? (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                if (onCreateInvoice) {
+                  onCreateInvoice();
+                } else {
+                  setCreateInvoiceOpen(true);
+                }
+              }}
+            >
               Create Invoice
             </Button>
           ) : undefined
@@ -174,6 +187,17 @@ export function FinanceTab({
           </div>
         )}
       </SectionCard>
+
+      {/* Invoice Create Modal */}
+      <InvoiceCreateModal
+        open={createInvoiceOpen}
+        onClose={() => setCreateInvoiceOpen(false)}
+        onSuccess={() => {
+          loadData();
+        }}
+        api={api}
+        defaultAnchor={defaultAnchor}
+      />
 
       {/* Invoice Detail Drawer */}
       <InvoiceDetailDrawer
