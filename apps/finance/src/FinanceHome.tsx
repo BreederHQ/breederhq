@@ -23,40 +23,46 @@ export default function FinanceHome({ api }: Props) {
   const loadSummary = React.useCallback(async () => {
     setLoading(true);
     try {
-      // Load outstanding invoices
-      const outstandingRes = await api.finance.invoices.list({
-        limit: 1000,
-        offset: 0,
-        status: "ISSUED,PARTIALLY_PAID",
-      });
-      const totalOutstanding = outstandingRes.items.reduce(
+      // Load all invoices
+      const allInvoicesRes = await api.finance.invoices.list({ limit: 1000, offset: 0 });
+      const allInvoices = allInvoicesRes.items || [];
+
+      // Calculate outstanding (client-side filter for ISSUED and PARTIALLY_PAID)
+      const outstandingInvoices = allInvoices.filter(
+        (inv: any) => inv.status === "ISSUED" || inv.status === "PARTIALLY_PAID"
+      );
+      const totalOutstanding = outstandingInvoices.reduce(
         (sum: number, inv: any) => sum + (inv.balanceCents || 0),
         0
       );
 
-      // Load all invoices for total invoiced/collected
-      const allInvoicesRes = await api.finance.invoices.list({ limit: 1000, offset: 0 });
-      const totalInvoiced = allInvoicesRes.items.reduce(
+      // Calculate total invoiced and collected
+      const totalInvoiced = allInvoices.reduce(
         (sum: number, inv: any) => sum + (inv.totalCents || 0),
         0
       );
-      const totalCollected = allInvoicesRes.items.reduce(
+      const totalCollected = allInvoices.reduce(
         (sum: number, inv: any) => sum + ((inv.totalCents || 0) - (inv.balanceCents || 0)),
         0
       );
 
-      // Load program expenses this month
+      // Load all expenses and filter for this month's program expenses
+      const allExpensesRes = await api.finance.expenses.list({ limit: 1000, offset: 0 });
+      const allExpenses = allExpensesRes.items || [];
+
       const now = new Date();
       const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
       const firstOfNextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-      const expensesRes = await api.finance.expenses.list({
-        limit: 1000,
-        offset: 0,
-        incurredAtFrom: firstOfMonth.toISOString().slice(0, 10),
-        incurredAtTo: firstOfNextMonth.toISOString().slice(0, 10),
-      });
-      const programExpensesThisMonth = expensesRes.items
-        .filter((exp: any) => !exp.animalId && !exp.offspringGroupId && !exp.breedingPlanId)
+
+      const programExpensesThisMonth = allExpenses
+        .filter((exp: any) => {
+          // Filter for program expenses (unanchored)
+          if (exp.animalId || exp.offspringGroupId || exp.breedingPlanId) return false;
+          // Filter for this month
+          if (!exp.incurredAt) return false;
+          const incurredDate = new Date(exp.incurredAt);
+          return incurredDate >= firstOfMonth && incurredDate < firstOfNextMonth;
+        })
         .reduce((sum: number, exp: any) => sum + (exp.amountCents || 0), 0);
 
       setSummary({
