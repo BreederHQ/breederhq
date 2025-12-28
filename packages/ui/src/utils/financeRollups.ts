@@ -7,7 +7,8 @@ export interface Invoice {
   balanceCents: number;
   status?: string;
   issuedAt?: string | null;
-  serviceCode?: string | null;
+  category?: string | null; // InvoiceCategory: DEPOSIT, SERVICE, GOODS, MIXED, OTHER
+  serviceCode?: string | null; // Legacy field, fallback if category not set
   breedingPlanId?: number | null;
   offspringGroupId?: number | null;
   offspringId?: number | null;
@@ -65,13 +66,16 @@ export interface DepositTiming {
  * Determine if an invoice represents a deposit based on available data patterns
  */
 function isDepositInvoice(invoice: Invoice): boolean {
-  // Check serviceCode for "deposit" keyword (case-insensitive)
+  // Primary method: explicit category field
+  if (invoice.category === "DEPOSIT" || invoice.category === "MIXED") {
+    return true;
+  }
+
+  // Fallback for legacy invoices without category: check serviceCode
   if (invoice.serviceCode && invoice.serviceCode.toLowerCase().includes("deposit")) {
     return true;
   }
 
-  // Additional heuristics can be added here if needed
-  // For now, we rely primarily on serviceCode
   return false;
 }
 
