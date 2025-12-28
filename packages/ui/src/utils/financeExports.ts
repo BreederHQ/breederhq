@@ -27,12 +27,14 @@ export interface Payment {
   id: number;
   invoiceId?: number;
   invoiceNumber?: string;
+  clientPartyName?: string;
   amountCents: number;
   receivedAt?: string;
   methodType?: string;
   processor?: string;
   referenceNumber?: string;
   checkNumber?: string;
+  attachmentCount?: number; // Number of receipt attachments
   createdAt?: string;
 }
 
@@ -49,6 +51,7 @@ export interface Expense {
   breedingPlanId?: number;
   description?: string;
   notes?: string;
+  attachmentCount?: number; // Number of receipt attachments
   createdAt?: string;
 }
 
@@ -125,11 +128,15 @@ export function exportPaymentsCSV(payments: Payment[], filename = "payments"): v
     rows: payments,
     columns: [
       { key: "invoiceNumber", label: "Invoice Number" },
+      { key: "invoiceId", label: "Invoice ID" },
+      { key: "clientPartyName", label: "Client Name" },
       { key: "amountCents", label: "Amount" },
       { key: "receivedAt", label: "Received Date" },
       { key: "methodType", label: "Method" },
       { key: "processor", label: "Processor" },
       { key: "reference", label: "Reference" },
+      { key: "hasReceipt", label: "Has Receipt" },
+      { key: "receiptCount", label: "Receipt Count" },
       { key: "createdAt", label: "Created Date" },
     ],
     formatValue: (value, key, row) => {
@@ -141,6 +148,14 @@ export function exportPaymentsCSV(payments: Payment[], filename = "payments"): v
       // Handle reference (could be referenceNumber or checkNumber)
       if (key === "reference") {
         return row.referenceNumber || row.checkNumber || "";
+      }
+
+      // Handle receipt indicators
+      if (key === "hasReceipt") {
+        return (row.attachmentCount ?? 0) > 0 ? "Yes" : "No";
+      }
+      if (key === "receiptCount") {
+        return String(row.attachmentCount ?? 0);
       }
 
       // Handle dates
@@ -167,6 +182,8 @@ export function exportExpensesCSV(expenses: Expense[], filename = "expenses"): v
       { key: "vendorName", label: "Vendor" },
       { key: "anchorType", label: "Anchor Type" },
       { key: "anchorId", label: "Anchor ID" },
+      { key: "hasReceipt", label: "Has Receipt" },
+      { key: "receiptCount", label: "Receipt Count" },
       { key: "notes", label: "Notes" },
       { key: "createdAt", label: "Created Date" },
     ],
@@ -191,6 +208,14 @@ export function exportExpensesCSV(expenses: Expense[], filename = "expenses"): v
       if (key === "anchorId") {
         const { anchorId } = getAnchorInfo(row);
         return anchorId;
+      }
+
+      // Handle receipt indicators
+      if (key === "hasReceipt") {
+        return (row.attachmentCount ?? 0) > 0 ? "Yes" : "No";
+      }
+      if (key === "receiptCount") {
+        return String(row.attachmentCount ?? 0);
       }
 
       // Handle notes (could be description or notes)
