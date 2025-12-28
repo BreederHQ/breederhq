@@ -4,8 +4,23 @@ import {
   SectionCard,
   Badge,
 } from "@bhq/ui";
+import MessagesPage from "./pages/MessagesPage";
 
 export default function AppMarketing() {
+  const [pathname, setPathname] = React.useState(() => {
+    try {
+      return window.location.pathname.toLowerCase();
+    } catch {
+      return "/marketing";
+    }
+  });
+
+  React.useEffect(() => {
+    const onPop = () => setPathname(window.location.pathname.toLowerCase());
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
+
   React.useEffect(() => {
     if (typeof window !== "undefined") {
       window.dispatchEvent(
@@ -15,6 +30,12 @@ export default function AppMarketing() {
       );
     }
   }, []);
+
+  const path = pathname.endsWith("/") ? pathname.slice(0, -1) : pathname;
+
+  if (path === "/marketing/messages" || path.startsWith("/marketing/messages")) {
+    return <MessagesPage />;
+  }
 
   return (
     <div className="p-6 space-y-6">
@@ -53,6 +74,16 @@ export default function AppMarketing() {
             </p>
           </div>
         </div>
+      </div>
+
+      {/* Quick Links */}
+      <div className="flex gap-3 mb-2">
+        <a
+          href="/marketing/messages"
+          className="px-4 py-2 rounded-md bg-surface border border-hairline hover:border-[hsl(var(--brand-orange))]/40 text-sm text-primary transition-colors"
+        >
+          Direct Messages
+        </a>
       </div>
 
       {/* What This Helps You Do - Split Cards */}

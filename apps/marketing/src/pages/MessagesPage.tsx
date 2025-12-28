@@ -1,0 +1,313 @@
+import * as React from "react";
+import { PageHeader, SectionCard } from "@bhq/ui";
+import { makeApi } from "@bhq/api";
+import type { MessageThread, Message } from "@bhq/api";
+
+const api = makeApi("/api/v1");
+
+interface ThreadListItemProps {
+  thread: MessageThread;
+  isActive: boolean;
+  onClick: () => void;
+}
+
+function ThreadListItem({ thread, isActive, onClick }: ThreadListItemProps) {
+  const otherParticipant = thread.participants?.find(
+    (p) => p.partyId !== (window as any).platform?.currentOrgId
+  );
+  const otherName = otherParticipant?.party?.name || "Unknown";
+  const lastMessage = thread.messages?.[thread.messages.length - 1];
+  const preview = lastMessage?.body
+    ? lastMessage.body.length > 60
+      ? `${lastMessage.body.slice(0, 60)}...`
+      : lastMessage.body
+    : "No messages yet";
+  const hasUnread = (thread.unreadCount ?? 0) > 0;
+
+  return (
+    <div
+      onClick={onClick}
+      className={`
+        relative p-3 rounded-lg cursor-pointer transition-colors border
+        ${
+          isActive
+            ? "bg-surface-strong border-[hsl(var(--brand-orange))]/40"
+            : "bg-surface border-hairline hover:border-[hsl(var(--brand-orange))]/20 hover:bg-surface-strong/50"
+        }
+      `}
+    >
+      {hasUnread && (
+        <div className="absolute top-3 right-3 w-2 h-2 rounded-full bg-[hsl(var(--brand-orange))]" />
+      )}
+      <div className="flex flex-col gap-1">
+        <div className="font-semibold text-sm text-primary">
+          {thread.subject || `Conversation with ${otherName}`}
+        </div>
+        <div className="text-xs text-secondary">{otherName}</div>
+        <div className="text-xs text-secondary line-clamp-2 mt-1">{preview}</div>
+      </div>
+    </div>
+  );
+}
+
+interface MessageBubbleProps {
+  message: Message;
+  isOwn: boolean;
+}
+
+function MessageBubble({ message, isOwn }: MessageBubbleProps) {
+  const timeStr = new Date(message.createdAt).toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+
+  return (
+    <div className={`flex ${isOwn ? "justify-end" : "justify-start"} mb-3`}>
+      <div className={`max-w-[70%] ${isOwn ? "items-end" : "items-start"} flex flex-col gap-1`}>
+        <div className="text-xs text-secondary px-2">
+          {isOwn ? "You" : message.senderParty?.name || "Unknown"} · {timeStr}
+        </div>
+        <div
+          className={`
+            px-3 py-2 rounded-lg text-sm whitespace-pre-wrap
+            ${
+              isOwn
+                ? "bg-[hsl(var(--brand-orange))]/20 border border-[hsl(var(--brand-orange))]/30 text-primary"
+                : "bg-surface-strong border border-hairline text-primary"
+            }
+          `}
+        >
+          {message.body}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+interface ThreadViewProps {
+  thread: MessageThread;
+  onSendMessage: (body: string) => Promise<void>;
+}
+
+function ThreadView({ thread, onSendMessage }: ThreadViewProps) {
+  const [messageBody, setMessageBody] = React.useState("");
+  const [sending, setSending] = React.useState(false);
+  const messagesEndRef = React.useRef<HTMLDivElement>(null);
+  const currentOrgId = (window as any).platform?.currentOrgId;
+
+  React.useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [thread.messages]);
+
+  async function handleSend(e: React.FormEvent) {
+    e.preventDefault();
+    const trimmed = messageBody.trim();
+    if (!trimmed || sending) return;
+
+    setSending(true);
+    try {
+      await onSendMessage(trimmed);
+      setMessageBody("");
+    } catch (err) {
+      console.error("Failed to send message:", err);
+    } finally {
+      setSending(false);
+    }
+  }
+
+  const otherParticipant = thread.participants?.find((p) => p.partyId !== currentOrgId);
+  const otherName = otherParticipant?.party?.name || "Unknown";
+
+  return (
+    <div className="flex flex-col h-full">
+      <div className="border-b border-hairline p-4 bg-surface">
+        <div className="font-semibold text-primary">
+          {thread.subject || `Conversation with ${otherName}`}
+        </div>
+        <div className="text-xs text-secondary mt-1">{otherName}</div>
+      </div>
+
+      <div className="flex-1 overflow-y-auto p-4 space-y-1">
+        {thread.messages?.length === 0 ? (
+          <div className="text-center text-secondary text-sm py-8">No messages yet. Start the conversation!</div>
+        ) : (
+          thread.messages?.map((msg) => (
+            <MessageBubble key={msg.id} message={msg} isOwn={msg.senderPartyId === currentOrgId} />
+          ))
+        )}
+        <div ref={messagesEndRef} />
+      </div>
+
+      <form onSubmit={handleSend} className="border-t border-hairline p-4 bg-surface">
+        <div className="flex gap-2">
+          <textarea
+            value={messageBody}
+            onChange={(e) => setMessageBody(e.target.value)}
+            placeholder="Type your message..."
+            rows={3}
+            disabled={sending}
+            className="flex-1 px-3 py-2 rounded-md bg-card border border-hairline text-primary text-sm resize-none focus:outline-none focus:border-[hsl(var(--brand-orange))]/50"
+          />
+          <button
+            type="submit"
+            disabled={!messageBody.trim() || sending}
+            className="self-end h-10 px-4 rounded-md bg-[hsl(var(--brand-orange))] text-black font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {sending ? "Sending..." : "Send"}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+export default function MessagesPage() {
+  const [threads, setThreads] = React.useState<MessageThread[]>([]);
+  const [selectedThreadId, setSelectedThreadId] = React.useState<number | null>(null);
+  const [selectedThread, setSelectedThread] = React.useState<MessageThread | null>(null);
+  const [loading, setLoading] = React.useState(true);
+  const [threadLoading, setThreadLoading] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    window.dispatchEvent(
+      new CustomEvent("bhq:module", {
+        detail: { key: "marketing", label: "Marketing" },
+      })
+    );
+  }, []);
+
+  async function loadThreads() {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await api.messages.threads.list();
+      const sorted = (res.threads || []).sort((a, b) => {
+        const aLast = a.messages?.[a.messages.length - 1]?.createdAt || a.createdAt;
+        const bLast = b.messages?.[b.messages.length - 1]?.createdAt || b.createdAt;
+        return new Date(bLast).getTime() - new Date(aLast).getTime();
+      });
+      setThreads(sorted);
+      if (sorted.length > 0 && !selectedThreadId) {
+        setSelectedThreadId(sorted[0].id);
+      }
+    } catch (err: any) {
+      console.error("Failed to load threads:", err);
+      setError(err?.message || "Failed to load threads");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function loadThread(id: number) {
+    setThreadLoading(true);
+    setError(null);
+    try {
+      const res = await api.messages.threads.get(id);
+      setSelectedThread(res.thread);
+      setThreads((prev) =>
+        prev.map((t) => (t.id === id ? { ...t, unreadCount: 0 } : t))
+      );
+    } catch (err: any) {
+      console.error("Failed to load thread:", err);
+      setError(err?.message || "Failed to load thread");
+    } finally {
+      setThreadLoading(false);
+    }
+  }
+
+  async function handleSendMessage(body: string) {
+    if (!selectedThreadId) return;
+    const res = await api.messages.threads.sendMessage(selectedThreadId, { body });
+    setSelectedThread((prev) =>
+      prev ? { ...prev, messages: [...prev.messages, res.message] } : prev
+    );
+  }
+
+  React.useEffect(() => {
+    loadThreads();
+  }, []);
+
+  React.useEffect(() => {
+    if (selectedThreadId) {
+      loadThread(selectedThreadId);
+    }
+  }, [selectedThreadId]);
+
+  return (
+    <div className="p-6 space-y-6">
+      <PageHeader title="Direct Messages" subtitle="Internal messages for breeders only" />
+
+      {error && (
+        <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-400">
+          {error}
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[calc(100vh-200px)]">
+        <div className="lg:col-span-1">
+          <SectionCard title="Inbox" className="h-full flex flex-col">
+            {loading ? (
+              <div className="flex items-center justify-center py-8 text-secondary text-sm">Loading threads...</div>
+            ) : threads.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-12 text-center">
+                <svg
+                  className="w-12 h-12 text-secondary/50 mb-3"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M22 12h-6l-2 3h-4l-2-3H2" />
+                  <path d="M5 7h14l3 5v6a3 3 0 0 1-3 3H5a3 3 0 0 1-3-3v-6l3-5Z" />
+                </svg>
+                <div className="text-sm text-secondary">No conversations yet</div>
+                <div className="text-xs text-secondary mt-1">Messages will appear here when you start a conversation</div>
+              </div>
+            ) : (
+              <div className="space-y-2 overflow-y-auto flex-1">
+                {threads.map((thread) => (
+                  <ThreadListItem
+                    key={thread.id}
+                    thread={thread}
+                    isActive={thread.id === selectedThreadId}
+                    onClick={() => setSelectedThreadId(thread.id)}
+                  />
+                ))}
+              </div>
+            )}
+          </SectionCard>
+        </div>
+
+        <div className="lg:col-span-2">
+          <SectionCard title="Conversation" className="h-full flex flex-col">
+            {threadLoading ? (
+              <div className="flex items-center justify-center flex-1 text-secondary text-sm">Loading conversation...</div>
+            ) : !selectedThread ? (
+              <div className="flex flex-col items-center justify-center flex-1 text-center">
+                <svg
+                  className="w-12 h-12 text-secondary/50 mb-3"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                </svg>
+                <div className="text-sm text-secondary">Select a conversation to view messages</div>
+              </div>
+            ) : (
+              <ThreadView thread={selectedThread} onSendMessage={handleSendMessage} />
+            )}
+          </SectionCard>
+        </div>
+      </div>
+    </div>
+  );
+}
