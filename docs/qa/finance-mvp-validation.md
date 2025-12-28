@@ -209,7 +209,9 @@ This document records the end-to-end validation of the Finance MVP in `bhq_dev` 
 - [x] **✅ SUCCESS** - `npm run build` completed successfully (6.33s)
 
 ### Commits Made
-- [ ] **PENDING** - Changes committed and pushed to origin/dev
+- [x] **✅ COMPLETE** - Changes committed and pushed to origin/dev
+  - Commit: `2911a98`
+  - Message: "fix(finance): harden invoice actions and add default sorting"
 
 ---
 
@@ -256,6 +258,6 @@ For full validation, the following should be tested manually in `bhq_dev`:
 
 ---
 
-**Final Status:** FIXES APPLIED, BUILD PENDING
+**Final Status:** ✅ COMPLETE - All fixes applied, built, committed, and pushed to origin/dev
 
 **End of Report**
