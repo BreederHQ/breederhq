@@ -6,6 +6,7 @@ import { SectionCard, Badge, Button } from "@bhq/ui";
 import { formatCents } from "../../utils/money";
 import { InvoiceDetailDrawer } from "./InvoiceDetailDrawer";
 import { InvoiceCreateModal } from "./InvoiceCreateModal";
+import { ExpenseModal } from "./ExpenseModal";
 
 export interface FinanceTabProps {
   invoiceFilters?: Record<string, any>;
@@ -36,6 +37,8 @@ export function FinanceTab({
   const [error, setError] = React.useState<string | null>(null);
   const [selectedInvoice, setSelectedInvoice] = React.useState<any | null>(null);
   const [createInvoiceOpen, setCreateInvoiceOpen] = React.useState(false);
+  const [expenseModalOpen, setExpenseModalOpen] = React.useState(false);
+  const [selectedExpense, setSelectedExpense] = React.useState<any | null>(null);
 
   const loadData = React.useCallback(async () => {
     setLoading(true);
@@ -151,8 +154,19 @@ export function FinanceTab({
       <SectionCard
         title="Expenses"
         right={
-          !hideCreateActions && onCreateExpense ? (
-            <Button size="sm" variant="outline" onClick={onCreateExpense}>
+          !hideCreateActions ? (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                if (onCreateExpense) {
+                  onCreateExpense();
+                } else {
+                  setSelectedExpense(null);
+                  setExpenseModalOpen(true);
+                }
+              }}
+            >
               Create Expense
             </Button>
           ) : undefined
@@ -169,6 +183,7 @@ export function FinanceTab({
                   <th className="text-left py-2 pr-3 font-medium">Description</th>
                   <th className="text-right py-2 pr-3 font-medium">Amount</th>
                   <th className="text-left py-2 pr-3 font-medium">Date</th>
+                  <th className="text-right py-2 pr-3 font-medium">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -179,6 +194,18 @@ export function FinanceTab({
                     <td className="py-2 pr-3 text-right">{formatCents(exp.amountCents)}</td>
                     <td className="py-2 pr-3">
                       {exp.incurredAt ? new Date(exp.incurredAt).toLocaleDateString() : "—"}
+                    </td>
+                    <td className="py-2 pr-3 text-right">
+                      <Button
+                        size="xs"
+                        variant="ghost"
+                        onClick={() => {
+                          setSelectedExpense(exp);
+                          setExpenseModalOpen(true);
+                        }}
+                      >
+                        Edit
+                      </Button>
                     </td>
                   </tr>
                 ))}
@@ -196,6 +223,21 @@ export function FinanceTab({
           loadData();
         }}
         api={api}
+        defaultAnchor={defaultAnchor}
+      />
+
+      {/* Expense Modal (Create/Edit) */}
+      <ExpenseModal
+        open={expenseModalOpen}
+        onClose={() => {
+          setExpenseModalOpen(false);
+          setSelectedExpense(null);
+        }}
+        onSuccess={() => {
+          loadData();
+        }}
+        api={api}
+        expense={selectedExpense}
         defaultAnchor={defaultAnchor}
       />
 
