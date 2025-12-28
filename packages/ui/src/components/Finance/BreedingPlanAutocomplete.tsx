@@ -28,8 +28,8 @@ export function BreedingPlanAutocomplete({
   const handleSearch = React.useCallback(
     async (query: string): Promise<AutocompleteOption[]> => {
       try {
-        const response = await api.breeding.plans.list({ q: query, limit: 20 });
-        return (response?.items || []).map((plan: any) => ({
+        const response = await api.finance.breedingPlans.search(query, { limit: 20 });
+        return (response || []).map((plan: any) => ({
           id: plan.id,
           label: plan.name || plan.label || `Plan ${plan.id}`,
         }));

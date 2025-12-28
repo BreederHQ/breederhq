@@ -28,8 +28,8 @@ export function AnimalAutocomplete({
   const handleSearch = React.useCallback(
     async (query: string): Promise<AutocompleteOption[]> => {
       try {
-        const response = await api.animals.list({ q: query, limit: 20 });
-        return (response?.items || []).map((animal: any) => ({
+        const response = await api.finance.animals.search(query, { limit: 20 });
+        return (response || []).map((animal: any) => ({
           id: animal.id,
           label: animal.name || `Animal ${animal.id}`,
         }));

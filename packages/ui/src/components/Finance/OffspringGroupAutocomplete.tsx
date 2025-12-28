@@ -28,8 +28,8 @@ export function OffspringGroupAutocomplete({
   const handleSearch = React.useCallback(
     async (query: string): Promise<AutocompleteOption[]> => {
       try {
-        const response = await api.offspring.groups.list({ q: query, limit: 20 });
-        return (response?.items || []).map((group: any) => ({
+        const response = await api.finance.offspringGroups.search(query, { limit: 20 });
+        return (response || []).map((group: any) => ({
           id: group.id,
           label: group.name || group.label || `Group ${group.id}`,
         }));

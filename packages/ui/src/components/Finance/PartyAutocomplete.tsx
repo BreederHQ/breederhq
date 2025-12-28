@@ -28,8 +28,8 @@ export function PartyAutocomplete({
   const handleSearch = React.useCallback(
     async (query: string): Promise<AutocompleteOption[]> => {
       try {
-        const response = await api.contacts.list({ q: query, limit: 20 });
-        return (response?.items || []).map((party: any) => ({
+        const response = await api.finance.parties.search(query, { limit: 20 });
+        return (response || []).map((party: any) => ({
           id: party.id,
           label: party.organizationName || party.displayName || party.email || `Party ${party.id}`,
         }));
