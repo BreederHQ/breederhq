@@ -505,5 +505,13 @@ export function makeApi(base?: string, extraHeadersFn?: () => Record<string, str
     },
   };
 
-  return { animals, lookups, breeds };
+  /* ───────── Registries master data ───────── */
+
+  const registries = {
+    async list(opts: { species?: Species } = {}) {
+      return reqWithExtra<any>(`/registries${spFrom(opts || {})}`);
+    },
+  };
+
+  return { animals, lookups, breeds, registries };
 }

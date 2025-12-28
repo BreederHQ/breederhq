@@ -2703,7 +2703,7 @@ function DocumentsTab({
     <div className="space-y-3">
       <SectionCard
         title="Documents"
-        rightAction={
+        right={
           <Button size="sm" variant="outline" onClick={() => setUploadModalOpen(true)}>
             Upload
           </Button>
@@ -2972,6 +2972,330 @@ function DocumentUploadModal({
         </div>
       </div>
     </Dialog>
+  );
+}
+
+/** ────────────────────────────────────────────────────────────────────────
+ * Registry Tab - Animal registry identifiers
+ * ─────────────────────────────────────────────────────────────────────── */
+function RegistryTab({
+  animal,
+  api,
+  mode,
+}: {
+  animal: AnimalRow;
+  api: any;
+  mode: "view" | "edit";
+}) {
+  const [registrations, setRegistrations] = React.useState<any[]>([]);
+  const [allRegistries, setAllRegistries] = React.useState<any[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<{ status?: number; message?: string; code?: string } | null>(null);
+  const [expandedId, setExpandedId] = React.useState<number | "draft" | null>(null);
+  const [drafts, setDrafts] = React.useState<Record<number | "draft", any>>({});
+  const [deleteConfirmId, setDeleteConfirmId] = React.useState<number | null>(null);
+
+  const fetchRegistrations = React.useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const data = await api?.animals?.registries?.list(animal.id);
+      setRegistrations(data?.registrations || []);
+    } catch (err: any) {
+      console.error("[RegistryTab] Failed to load registrations", err);
+      setError({
+        status: err?.status,
+        message: err?.data?.message || err?.message || "Failed to load registrations",
+        code: err?.data?.code,
+      });
+    } finally {
+      setLoading(false);
+    }
+  }, [api, animal.id]);
+
+  const fetchAllRegistries = React.useCallback(async () => {
+    try {
+      const data = await api?.registries?.list({ species: animal.species });
+      setAllRegistries(data?.registries || []);
+    } catch (err) {
+      console.error("[RegistryTab] Failed to load registries", err);
+    }
+  }, [api, animal.species]);
+
+  React.useEffect(() => {
+    fetchRegistrations();
+    fetchAllRegistries();
+  }, [fetchRegistrations, fetchAllRegistries]);
+
+  const handleAddRegistration = () => {
+    setExpandedId("draft");
+    setDrafts({
+      ...drafts,
+      draft: {
+        registryId: null,
+        identifier: "",
+        registrarOfRecord: "",
+        issuedAt: "",
+      },
+    });
+  };
+
+  const handleSave = async (id: number | "draft") => {
+    const draft = drafts[id];
+    if (!draft) return;
+
+    if (!draft.registryId || !draft.identifier?.trim()) {
+      toast.error("Registry and registration number are required");
+      return;
+    }
+
+    try {
+      const payload = {
+        registryId: draft.registryId,
+        identifier: draft.identifier.trim(),
+        registrarOfRecord: draft.registrarOfRecord?.trim() || null,
+        issuedAt: draft.issuedAt || null,
+      };
+
+      if (id === "draft") {
+        await api?.animals?.registries?.add(animal.id, payload);
+        toast.success("Registration added");
+      } else {
+        await api?.animals?.registries?.update(animal.id, id, payload);
+        toast.success("Registration updated");
+      }
+
+      setExpandedId(null);
+      const nextDrafts = { ...drafts };
+      delete nextDrafts[id];
+      setDrafts(nextDrafts);
+      await fetchRegistrations();
+    } catch (err: any) {
+      console.error("[RegistryTab] Save failed", err);
+      toast.error(err?.data?.message || "Failed to save registration");
+    }
+  };
+
+  const handleCancel = (id: number | "draft") => {
+    setExpandedId(null);
+    const nextDrafts = { ...drafts };
+    delete nextDrafts[id];
+    setDrafts(nextDrafts);
+  };
+
+  const handleEdit = (reg: any) => {
+    setExpandedId(reg.id);
+    setDrafts({
+      ...drafts,
+      [reg.id]: {
+        registryId: reg.registryId,
+        identifier: reg.identifier,
+        registrarOfRecord: reg.registrarOfRecord || "",
+        issuedAt: reg.issuedAt ? reg.issuedAt.slice(0, 10) : "",
+      },
+    });
+  };
+
+  const handleDelete = async (id: number) => {
+    try {
+      await api?.animals?.registries?.remove(animal.id, id);
+      toast.success("Registration deleted");
+      setDeleteConfirmId(null);
+      setExpandedId(null);
+      const nextDrafts = { ...drafts };
+      delete nextDrafts[id];
+      setDrafts(nextDrafts);
+      await fetchRegistrations();
+    } catch (err: any) {
+      console.error("[RegistryTab] Delete failed", err);
+      toast.error(err?.data?.message || "Failed to delete registration");
+    }
+  };
+
+  const updateDraft = (id: number | "draft", updates: any) => {
+    setDrafts({
+      ...drafts,
+      [id]: { ...drafts[id], ...updates },
+    });
+  };
+
+  if (loading) {
+    return <div className="p-4 text-sm text-secondary">Loading registrations...</div>;
+  }
+
+  if (error) {
+    return (
+      <div className="space-y-3">
+        <SectionCard title="Registrations">
+          <div className="space-y-3">
+            <div className="text-sm text-secondary">Failed to load registrations.</div>
+            {error.status && (
+              <div className="text-xs text-secondary">
+                Status: {error.status}
+                {error.code && ` | Code: ${error.code}`}
+              </div>
+            )}
+            {error.message && <div className="text-xs text-secondary">{error.message}</div>}
+            <button
+              onClick={fetchRegistrations}
+              className="px-3 py-1.5 text-sm bg-primary text-white rounded hover:bg-primary-dark"
+            >
+              Retry
+            </button>
+          </div>
+        </SectionCard>
+      </div>
+    );
+  }
+
+  const allItems = [
+    ...(expandedId === "draft" ? [{ id: "draft", isDraft: true }] : []),
+    ...registrations,
+  ];
+
+  return (
+    <div className="space-y-3">
+      <SectionCard
+        title="Registrations"
+        right={
+          mode === "edit" && expandedId !== "draft" ? (
+            <Button size="sm" variant="outline" onClick={handleAddRegistration}>
+              Add Registration
+            </Button>
+          ) : null
+        }
+      >
+        {allItems.length === 0 ? (
+          <div className="text-sm text-secondary">No registrations yet</div>
+        ) : (
+          <div className="space-y-3">
+            {allItems.map((reg: any) => {
+              const isExpanded = expandedId === reg.id;
+              const draft = drafts[reg.id];
+              const registry = allRegistries.find((r) => r.id === (draft?.registryId || reg.registryId));
+
+              if (isExpanded && mode === "edit") {
+                return (
+                  <div key={reg.id} className="border border-hairline rounded p-3 space-y-3">
+                    <div>
+                      <label className="text-xs text-secondary block mb-1">
+                        Registry <span className="text-red-500">*</span>
+                      </label>
+                      <select
+                        value={draft?.registryId || ""}
+                        onChange={(e) => updateDraft(reg.id, { registryId: Number(e.target.value) })}
+                        className="w-full text-sm border border-hairline rounded px-2 py-2"
+                      >
+                        <option value="">Select a registry</option>
+                        {allRegistries.map((r) => (
+                          <option key={r.id} value={r.id}>
+                            {r.name} {r.code ? `(${r.code})` : ""}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="text-xs text-secondary block mb-1">
+                        Registration Number <span className="text-red-500">*</span>
+                      </label>
+                      <Input
+                        value={draft?.identifier || ""}
+                        onChange={(e) => updateDraft(reg.id, { identifier: e.target.value })}
+                        placeholder="ABC123456"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-xs text-secondary block mb-1">Registrar of Record</label>
+                      <Input
+                        value={draft?.registrarOfRecord || ""}
+                        onChange={(e) => updateDraft(reg.id, { registrarOfRecord: e.target.value })}
+                        placeholder="Optional"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-xs text-secondary block mb-1">Issued Date</label>
+                      <Input
+                        type="date"
+                        value={draft?.issuedAt || ""}
+                        onChange={(e) => updateDraft(reg.id, { issuedAt: e.target.value })}
+                      />
+                    </div>
+
+                    <div className="flex items-center gap-2 pt-2">
+                      <Button size="sm" variant="primary" onClick={() => handleSave(reg.id)}>
+                        Save
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={() => handleCancel(reg.id)}>
+                        Cancel
+                      </Button>
+                      {!reg.isDraft && (
+                        <button
+                          onClick={() => setDeleteConfirmId(reg.id)}
+                          className="ml-auto text-xs text-secondary hover:text-primary"
+                        >
+                          Delete
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              }
+
+              if (reg.isDraft) return null;
+
+              return (
+                <div key={reg.id} className="border border-hairline rounded p-3">
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <div className="font-medium text-sm">{registry?.name || "Unknown Registry"}</div>
+                      <div className="text-sm text-secondary mt-1">
+                        {reg.identifier}
+                        {registry?.code && <span className="text-xs ml-2">({registry.code})</span>}
+                      </div>
+                      {reg.registrarOfRecord && (
+                        <div className="text-xs text-secondary mt-1">Registrar: {reg.registrarOfRecord}</div>
+                      )}
+                      {reg.issuedAt && (
+                        <div className="text-xs text-secondary mt-1">
+                          Issued: {new Date(reg.issuedAt).toLocaleDateString()}
+                        </div>
+                      )}
+                    </div>
+                    {mode === "edit" && (
+                      <Button size="sm" variant="ghost" onClick={() => handleEdit(reg)}>
+                        Edit
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </SectionCard>
+
+      {deleteConfirmId !== null && (
+        <Dialog open={true} onOpenChange={() => setDeleteConfirmId(null)}>
+          <div className="p-4 space-y-4">
+            <div className="text-lg font-medium">Delete Registration</div>
+            <div className="text-sm">
+              Are you sure you want to delete this registration? This action cannot be undone.
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setDeleteConfirmId(null)}>
+                Cancel
+              </Button>
+              <Button variant="primary" onClick={() => handleDelete(deleteConfirmId)}>
+                Delete
+              </Button>
+            </div>
+          </div>
+        </Dialog>
+      )}
+    </div>
   );
 }
 
@@ -4009,6 +4333,7 @@ export default function AppAnimals() {
           tabs.push({ key: "cycle", label: "Cycle Info" } as any);
         tabs.push({ key: "program", label: "Program" } as any);
         tabs.push({ key: "health", label: "Health" } as any);
+        tabs.push({ key: "registry", label: "Registry" } as any);
         tabs.push({ key: "documents", label: "Documents" } as any);
         tabs.push({ key: "pairing", label: "Pairing" } as any);
         tabs.push({ key: "audit", label: "Audit" } as any);
@@ -4449,6 +4774,14 @@ export default function AppAnimals() {
               animal={row}
               api={api}
               onDocumentsTabRequest={() => setActiveTab("documents")}
+              mode={mode}
+            />
+          )}
+
+          {activeTab === "registry" && (
+            <RegistryTab
+              animal={row}
+              api={api}
               mode={mode}
             />
           )}
