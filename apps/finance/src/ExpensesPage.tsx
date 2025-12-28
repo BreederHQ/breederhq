@@ -2,11 +2,11 @@
 // Expenses ledger - module table with filters and export
 
 import * as React from "react";
-import { Card, Button, Input } from "@bhq/ui";
+import { Card, Button, Input, PageHeader, Popover } from "@bhq/ui";
 import { ExpenseModal } from "@bhq/ui/components/Finance";
 import { formatCents } from "@bhq/ui/utils/money";
 import { exportExpensesCSV } from "@bhq/ui/utils/financeExports";
-import { Plus, Search, Download, X } from "lucide-react";
+import { Plus, Search, Download, X, MoreHorizontal } from "lucide-react";
 import type { FinanceApi } from "./api";
 
 type ExpenseCategory =
@@ -66,6 +66,7 @@ export default function ExpensesPage({ api }: Props) {
   const [page, setPage] = React.useState(1);
   const [total, setTotal] = React.useState(0);
   const [selectedExpense, setSelectedExpense] = React.useState<any | null>(null);
+  const [menuOpen, setMenuOpen] = React.useState(false);
   const pageSize = 50;
 
   // Load expenses
@@ -130,6 +131,7 @@ export default function ExpensesPage({ api }: Props) {
 
   const handleExport = () => {
     exportExpensesCSV(expenses, `expenses-${new Date().toISOString().slice(0, 10)}`);
+    setMenuOpen(false);
   };
 
   const clearFilters = () => {
@@ -157,17 +159,36 @@ export default function ExpensesPage({ api }: Props) {
   const end = Math.min(page * pageSize, total);
 
   return (
-    <div className="space-y-4">
-      {/* Action buttons */}
-      <div className="flex gap-2 justify-end">
-        <Button variant="outline" onClick={handleExport} disabled={expenses.length === 0}>
-          <Download className="h-4 w-4 mr-2" />
-          Export CSV
-        </Button>
-        <Button onClick={() => setShowExpenseModal(true)}>
-          <Plus className="h-4 w-4 mr-2" />
-          New Expense
-        </Button>
+    <div className="p-4 space-y-4">
+      {/* Page Header */}
+      <div className="relative">
+        <PageHeader title="Expenses" subtitle="Track all program and anchored expenses" />
+        <div
+          className="absolute right-0 top-0 h-full flex items-center gap-2 pr-1"
+          style={{ zIndex: 5, pointerEvents: "auto" }}
+        >
+          <Popover open={menuOpen} onOpenChange={setMenuOpen}>
+            <Popover.Trigger asChild>
+              <Button size="sm" variant="outline" aria-label="More actions">
+                <MoreHorizontal className="h-4 w-4" />
+              </Button>
+            </Popover.Trigger>
+            <Popover.Content align="end" className="w-48">
+              <button
+                className="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-white/5 rounded"
+                onClick={handleExport}
+                disabled={expenses.length === 0}
+              >
+                <Download className="h-4 w-4" />
+                Export CSV
+              </button>
+            </Popover.Content>
+          </Popover>
+          <Button size="sm" onClick={() => setShowExpenseModal(true)}>
+            <Plus className="h-4 w-4 mr-2" />
+            New Expense
+          </Button>
+        </div>
       </div>
 
       <Card className="p-4 space-y-4">
