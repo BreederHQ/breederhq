@@ -48,8 +48,27 @@ export function FinanceTab({
         api.finance.invoices.list({ ...invoiceFilters, limit: 50 }),
         api.finance.expenses.list({ ...expenseFilters, limit: 50 }),
       ]);
-      setInvoices(invRes?.items || []);
-      setExpenses(expRes?.items || []);
+
+      // Sort invoices by issuedAt desc (newest first), fallback to createdAt
+      const sortedInvoices = (invRes?.items || []).sort((a: any, b: any) => {
+        const aDate = a.issuedAt || a.createdAt;
+        const bDate = b.issuedAt || b.createdAt;
+        if (!aDate) return 1;
+        if (!bDate) return -1;
+        return new Date(bDate).getTime() - new Date(aDate).getTime();
+      });
+
+      // Sort expenses by incurredAt desc (newest first), fallback to createdAt
+      const sortedExpenses = (expRes?.items || []).sort((a: any, b: any) => {
+        const aDate = a.incurredAt || a.createdAt;
+        const bDate = b.incurredAt || b.createdAt;
+        if (!aDate) return 1;
+        if (!bDate) return -1;
+        return new Date(bDate).getTime() - new Date(aDate).getTime();
+      });
+
+      setInvoices(sortedInvoices);
+      setExpenses(sortedExpenses);
     } catch (err: any) {
       console.error("Failed to load finance data:", err);
       setError(err?.message || "Failed to load finance data");

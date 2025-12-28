@@ -36,7 +36,17 @@ export function InvoiceDetailDrawer({
     setLoading(true);
     try {
       const res = await api.finance.payments.list({ invoiceId: invoice.id, limit: 100 });
-      setPayments(res?.items || []);
+
+      // Sort payments by receivedAt desc (newest first), fallback to createdAt
+      const sortedPayments = (res?.items || []).sort((a: any, b: any) => {
+        const aDate = a.receivedAt || a.createdAt;
+        const bDate = b.receivedAt || b.createdAt;
+        if (!aDate) return 1;
+        if (!bDate) return -1;
+        return new Date(bDate).getTime() - new Date(aDate).getTime();
+      });
+
+      setPayments(sortedPayments);
     } catch (err) {
       console.error("Failed to load payments:", err);
     } finally {
@@ -143,7 +153,7 @@ export function InvoiceDetailDrawer({
           <SectionCard
             title="Payment History"
             actions={
-              invoice.status !== "VOID" && invoice.status !== "PAID" ? (
+              invoice.status !== "VOID" && invoice.status !== "VOIDED" && invoice.status !== "PAID" ? (
                 <Button
                   size="sm"
                   variant="outline"
@@ -198,12 +208,12 @@ export function InvoiceDetailDrawer({
         {/* Footer Actions */}
         <div className="border-t border-hairline p-4 flex items-center justify-between">
           <div>
-            {invoice.status !== "VOID" && (
+            {invoice.status !== "VOID" && invoice.status !== "VOIDED" && (
               <Button
                 size="sm"
                 variant="destructive"
                 onClick={handleVoid}
-                disabled={voiding}
+                disabled={voiding || invoice.status === "PAID" || invoice.status === "PARTIALLY_PAID"}
               >
                 {voiding ? "Voiding..." : "Void Invoice"}
               </Button>
