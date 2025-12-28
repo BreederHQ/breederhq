@@ -5,6 +5,7 @@ import * as React from "react";
 import { Dialog } from "../Dialog";
 import { Button } from "../Button";
 import { Input } from "../Input";
+import { useToast } from "../Toast";
 import { parseToCents, centsToInput } from "../../utils/money";
 
 // Idempotency key generation
@@ -71,6 +72,7 @@ export function PaymentCreateModal({
   invoiceId,
   invoiceBalance = 0,
 }: PaymentCreateModalProps) {
+  const { toast } = useToast();
   const [submitting, setSubmitting] = React.useState(false);
   const [errors, setErrors] = React.useState<Errors>({});
   const idempotencyKeyRef = React.useRef<string>("");
@@ -150,11 +152,18 @@ export function PaymentCreateModal({
 
       // Handle idempotency conflict (409)
       if (err?.status === 409 || err?.message?.includes("409")) {
-        alert("This payment was already created (duplicate submission detected)");
+        toast({
+          title: "Payment already recorded",
+          description: "This payment was already created (duplicate submission detected)",
+        });
         onSuccess(); // Refresh data
         onClose();
       } else {
-        alert(err?.message || "Failed to create payment");
+        toast({
+          title: "Error",
+          description: err?.message || "Failed to create payment",
+          variant: "destructive",
+        });
       }
     } finally {
       setSubmitting(false);

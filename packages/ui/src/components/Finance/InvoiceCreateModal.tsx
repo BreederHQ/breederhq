@@ -5,6 +5,7 @@ import * as React from "react";
 import { Dialog } from "../Dialog";
 import { Button } from "../Button";
 import { Input } from "../Input";
+import { useToast } from "../Toast";
 import { PartyAutocomplete, type AutocompleteOption } from "./PartyAutocomplete";
 import { AnimalAutocomplete } from "./AnimalAutocomplete";
 import { OffspringGroupAutocomplete } from "./OffspringGroupAutocomplete";
@@ -73,6 +74,7 @@ export function InvoiceCreateModal({
   api,
   defaultAnchor,
 }: InvoiceCreateModalProps) {
+  const { toast } = useToast();
   const [submitting, setSubmitting] = React.useState(false);
   const [errors, setErrors] = React.useState<Errors>({});
   const idempotencyKeyRef = React.useRef<string>("");
@@ -202,11 +204,18 @@ export function InvoiceCreateModal({
 
       // Handle idempotency conflict (409)
       if (err?.status === 409 || err?.message?.includes("409")) {
-        alert("This invoice was already created (duplicate submission detected)");
+        toast({
+          title: "Invoice already created",
+          description: "This invoice was already created (duplicate submission detected)",
+        });
         onSuccess(); // Refresh the list
         onClose();
       } else {
-        alert(err?.message || "Failed to create invoice");
+        toast({
+          title: "Error",
+          description: err?.message || "Failed to create invoice",
+          variant: "destructive",
+        });
       }
     } finally {
       setSubmitting(false);

@@ -5,6 +5,7 @@ import * as React from "react";
 import { Dialog } from "../Dialog";
 import { Button } from "../Button";
 import { Input } from "../Input";
+import { useToast } from "../Toast";
 import { PartyAutocomplete, type AutocompleteOption } from "./PartyAutocomplete";
 import { AnimalAutocomplete } from "./AnimalAutocomplete";
 import { OffspringGroupAutocomplete } from "./OffspringGroupAutocomplete";
@@ -83,6 +84,7 @@ export function ExpenseModal({
   expense,
   defaultAnchor,
 }: ExpenseModalProps) {
+  const { toast } = useToast();
   const [submitting, setSubmitting] = React.useState(false);
   const [deleting, setDeleting] = React.useState(false);
   const [errors, setErrors] = React.useState<Errors>({});
@@ -226,8 +228,12 @@ export function ExpenseModal({
       onClose();
     } catch (err: any) {
       console.error(`Failed to ${isEditMode ? "update" : "create"} expense:`, err);
-      alert(err?.message || `Failed to ${isEditMode ? "update" : "create"} expense`);
-    } finally {
+      toast({
+        title: "Error",
+        description: err?.message || `Failed to ${isEditMode ? "update" : "create"} expense`,
+        variant: "destructive",
+      });
+    } finally{
       setSubmitting(false);
     }
   };
@@ -243,7 +249,11 @@ export function ExpenseModal({
       onClose();
     } catch (err: any) {
       console.error("Failed to delete expense:", err);
-      alert(err?.message || "Failed to delete expense");
+      toast({
+        title: "Error",
+        description: err?.message || "Failed to delete expense",
+        variant: "destructive",
+      });
     } finally {
       setDeleting(false);
     }

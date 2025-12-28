@@ -4,7 +4,7 @@
 import * as React from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
-import { Button, Badge, SectionCard } from "@bhq/ui";
+import { Button, Badge, SectionCard, useToast } from "@bhq/ui";
 import { formatCents } from "../../utils/money";
 import { getOverlayRoot } from "../../overlay";
 import { PaymentCreateModal } from "./PaymentCreateModal";
@@ -26,6 +26,7 @@ export function InvoiceDetailDrawer({
   onVoid,
   onAddPayment,
 }: InvoiceDetailDrawerProps) {
+  const { toast } = useToast();
   const [payments, setPayments] = React.useState<any[]>([]);
   const [loading, setLoading] = React.useState(false);
   const [voiding, setVoiding] = React.useState(false);
@@ -71,7 +72,11 @@ export function InvoiceDetailDrawer({
       onClose();
     } catch (err: any) {
       console.error("Failed to void invoice:", err);
-      alert(err?.message || "Failed to void invoice");
+      toast({
+        title: "Error",
+        description: err?.message || "Failed to void invoice",
+        variant: "destructive",
+      });
     } finally {
       setVoiding(false);
     }
