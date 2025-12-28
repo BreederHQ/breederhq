@@ -3,12 +3,14 @@
 
 import * as React from "react";
 import { PageHeader, Card, Button, InvoiceCreateModal } from "@bhq/ui";
+import { ExpenseModal } from "@bhq/ui/components/Finance";
 import { DollarSign, Users, Building2, Dog, Baby, Heart, Plus } from "lucide-react";
 import { makeApi } from "./api";
 
 export default function FinanceHub() {
   const api = React.useMemo(() => makeApi("/api/v1"), []);
   const [showInvoiceModal, setShowInvoiceModal] = React.useState(false);
+  const [showExpenseModal, setShowExpenseModal] = React.useState(false);
 
   React.useEffect(() => {
     if (typeof window !== "undefined") {
@@ -59,10 +61,16 @@ export default function FinanceHub() {
         title="Finance"
         subtitle="Financial management across your breeding operation"
         actions={
-          <Button onClick={() => setShowInvoiceModal(true)}>
-            <Plus className="h-4 w-4 mr-2" />
-            New Invoice
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => setShowExpenseModal(true)}>
+              <Plus className="h-4 w-4 mr-2" />
+              New Expense
+            </Button>
+            <Button onClick={() => setShowInvoiceModal(true)}>
+              <Plus className="h-4 w-4 mr-2" />
+              New Invoice
+            </Button>
+          </div>
         }
       />
 
@@ -118,6 +126,15 @@ export default function FinanceHub() {
         onSuccess={() => {
           // Successfully created - modal will close itself
           // No list to refresh on this page
+        }}
+        api={api}
+      />
+
+      <ExpenseModal
+        open={showExpenseModal}
+        onClose={() => setShowExpenseModal(false)}
+        onSuccess={() => {
+          setShowExpenseModal(false);
         }}
         api={api}
       />
