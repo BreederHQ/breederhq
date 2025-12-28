@@ -148,12 +148,23 @@ This document records the end-to-end validation of the Finance MVP in `bhq_dev` 
   - [ ] Expense only shows in expected tabs
   - **Notes:**
 
-#### Program Expense Visibility (Unanchored)
-- [ ] **PENDING** - Create unanchored expense (no animal/group/plan)
-  - [ ] Expense shows on vendor party Finance tab
+#### Program Expense Creation and Visibility (Unanchored)
+- [ ] **PENDING** - Create unanchored operational expense from /finance hub "New Expense" button
+  - [ ] Modal opens with no locked anchor (all anchors optional)
+  - [ ] Select category (e.g., FOOD, FACILITY, INSURANCE)
+  - [ ] Enter amount and date
+  - [ ] Optionally select vendor via PartyAutocomplete
+  - [ ] Leave anchor selection as "None" (creates program-level expense)
+  - [ ] Expense created successfully with toast confirmation
+  - [ ] Expense appears immediately in Program Expenses panel on /finance hub
   - [ ] Expense does NOT appear on any animal Finance tab
   - [ ] Expense does NOT appear on any offspring group Finance tab
   - [ ] Expense does NOT appear on any breeding plan Finance tab
+  - [ ] If vendorPartyId is set, expense may appear on vendor party Finance tab (optional, not required for MVP)
+  - **Expected Behavior:**
+    - Unanchored operational expenses (FOOD, FACILITY, INSURANCE, MARKETING, SUPPLIES, etc.) are entered and visible on /finance hub under Program Expenses panel
+    - They do not appear on Animal, Offspring Group, or Breeding Plan Finance tabs
+    - If vendorPartyId is set, the vendor party Finance tab may show that expense when filtering by vendorPartyId, but this is not required for MVP
   - **Notes:**
 
 ---
@@ -220,20 +231,25 @@ This document records the end-to-end validation of the Finance MVP in `bhq_dev` 
 - **Enhancement Opportunity:**
   - Replace alert() with toast notifications (deferred - out of scope for hardening)
 
-#### B5: Global Invoice Creation
+#### B5: Global Invoice and Expense Creation
 - **Status:** ✅ IMPLEMENTED
-- **Feature:**
+- **Features:**
   - ✅ Added "New Invoice" button to Finance Hub page header
+  - ✅ Added "New Expense" button to Finance Hub page header
   - ✅ Created api.ts for finance app with complete finance namespace
   - ✅ Wired InvoiceCreateModal for global invoice creation
-  - ✅ Modal requires client selection (PartyAutocomplete)
-  - ✅ Modal requires anchor selection (Animal/OffspringGroup/BreedingPlan/ServiceCode)
+  - ✅ Wired ExpenseModal for global program-level expense creation
+  - ✅ Modal requires client selection (PartyAutocomplete) for invoices
+  - ✅ Modal requires anchor selection (Animal/OffspringGroup/BreedingPlan/ServiceCode) for invoices
+  - ✅ Expense modal allows optional anchor (None = program-level expense)
   - ✅ Supports idempotent submission with auto-generated keys
   - ✅ Toast notifications on success/error
 - **Files Modified:**
-  - `apps/finance/src/FinanceHub.tsx` - Added button and modal
+  - `apps/finance/src/FinanceHub.tsx` - Added buttons and modals
   - `apps/finance/src/api.ts` - New file with finance API endpoints
-- **Commit:** `0b7fbed`
+- **Commits:**
+  - Initial invoice creation: `0b7fbed`
+  - Program expense creation: TBD
 
 ---
 
@@ -277,6 +293,14 @@ This document records the end-to-end validation of the Finance MVP in `bhq_dev` 
    - ✅ Full idempotency support
    - ✅ Toast notifications
 
+2. **Global Program Expense Creation (FEATURE)** - Added ability to create program-level expenses from Finance Hub
+   - ✅ IMPLEMENTED: "New Expense" button on /finance page
+   - ✅ Modal with optional anchor (None = program-level expense)
+   - ✅ Program Expenses panel filters to show only unanchored expenses
+   - ✅ Entity Finance tabs correctly exclude unanchored expenses
+   - ✅ Full idempotency support via ExpenseModal
+   - ✅ Toast notifications
+
 ### Validation Notes
 
 This validation was performed via **code analysis and implementation** rather than manual end-to-end testing. The fixes address the core hardening requirements:
@@ -294,7 +318,11 @@ For full validation, the following should be tested manually in `bhq_dev`:
 - Payment lifecycle and idempotency (partial, full, double-submit)
 - Void behavior with various invoice states
 - Expense CRUD across contexts
-- Program expense visibility (unanchored expenses should not appear on entity Finance tabs)
+- **Program expense creation and visibility:**
+  - Create unanchored expense from /finance hub "New Expense" button
+  - Verify it appears in Program Expenses panel on /finance hub
+  - Verify it does NOT appear on Animal/OffspringGroup/BreedingPlan Finance tabs
+  - If vendor is set, optionally verify it appears on vendor party Finance tab
 - Console/network monitoring during operations
 
 ### Recommendations
