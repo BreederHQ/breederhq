@@ -30,6 +30,7 @@ export * from "./sort";
 export * from "./tenant";
 export * from "./weights";
 export * from "./csvExport";
+export * from "./money";
 
 
 // Temporary helper until all expected-date shapes are unified across apps.

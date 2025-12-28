@@ -647,6 +647,88 @@ export function makeApi(baseOrigin: string = "", authHeaderFn?: () => Record<str
     },
   };
 
+  /* --------------------------------- FINANCE --------------------------------- */
+  const finance = {
+    invoices: {
+      async list(params: any = {}) {
+        const p = new URLSearchParams();
+        Object.entries(params).forEach(([k, v]) => {
+          if (v != null && v !== "") p.set(k, String(v));
+        });
+        const url = joinUrl(v1, "finance/invoices") + (p.toString() ? `?${p.toString()}` : "");
+        return fetchJson<{ items: any[]; total: number }>(url, { method: "GET" }, withAuth());
+      },
+      async get(id: ID) {
+        const url = joinUrl(v1, "finance/invoices", String(id));
+        return fetchJson<any>(url, { method: "GET" }, withAuth());
+      },
+      async create(body: any, idempotencyKey: string) {
+        const url = joinUrl(v1, "finance/invoices");
+        return fetchJson<any>(
+          url,
+          { method: "POST", body: JSON.stringify(body) },
+          { ...withAuth(), "Idempotency-Key": idempotencyKey }
+        );
+      },
+      async update(id: ID, body: any) {
+        const url = joinUrl(v1, "finance/invoices", String(id));
+        return fetchJson<any>(url, { method: "PATCH", body: JSON.stringify(body) }, withAuth());
+      },
+      async void(id: ID) {
+        const url = joinUrl(v1, "finance/invoices", String(id), "void");
+        return fetchJson<any>(url, { method: "POST" }, withAuth());
+      },
+    },
+    payments: {
+      async list(params: any = {}) {
+        const p = new URLSearchParams();
+        Object.entries(params).forEach(([k, v]) => {
+          if (v != null && v !== "") p.set(k, String(v));
+        });
+        const url = joinUrl(v1, "finance/payments") + (p.toString() ? `?${p.toString()}` : "");
+        return fetchJson<{ items: any[]; total: number }>(url, { method: "GET" }, withAuth());
+      },
+      async get(id: ID) {
+        const url = joinUrl(v1, "finance/payments", String(id));
+        return fetchJson<any>(url, { method: "GET" }, withAuth());
+      },
+      async create(body: any, idempotencyKey: string) {
+        const url = joinUrl(v1, "finance/payments");
+        return fetchJson<any>(
+          url,
+          { method: "POST", body: JSON.stringify(body) },
+          { ...withAuth(), "Idempotency-Key": idempotencyKey }
+        );
+      },
+    },
+    expenses: {
+      async list(params: any = {}) {
+        const p = new URLSearchParams();
+        Object.entries(params).forEach(([k, v]) => {
+          if (v != null && v !== "") p.set(k, String(v));
+        });
+        const url = joinUrl(v1, "finance/expenses") + (p.toString() ? `?${p.toString()}` : "");
+        return fetchJson<{ items: any[]; total: number }>(url, { method: "GET" }, withAuth());
+      },
+      async get(id: ID) {
+        const url = joinUrl(v1, "finance/expenses", String(id));
+        return fetchJson<any>(url, { method: "GET" }, withAuth());
+      },
+      async create(body: any) {
+        const url = joinUrl(v1, "finance/expenses");
+        return fetchJson<any>(url, { method: "POST", body: JSON.stringify(body) }, withAuth());
+      },
+      async update(id: ID, body: any) {
+        const url = joinUrl(v1, "finance/expenses", String(id));
+        return fetchJson<any>(url, { method: "PATCH", body: JSON.stringify(body) }, withAuth());
+      },
+      async remove(id: ID) {
+        const url = joinUrl(v1, "finance/expenses", String(id));
+        return fetchJson<{ ok: true }>(url, { method: "DELETE" }, withAuth());
+      },
+    },
+  };
+
   return {
     contacts,
     contactsExtras,
@@ -655,6 +737,7 @@ export function makeApi(baseOrigin: string = "", authHeaderFn?: () => Record<str
     animals,
     lookups,
     audit,
+    finance,
   };
 }
 
