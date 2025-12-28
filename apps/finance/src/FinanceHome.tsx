@@ -4,7 +4,6 @@
 import * as React from "react";
 import { Card, SectionCard } from "@bhq/ui";
 import { formatCents } from "@bhq/ui/utils/money";
-import { Users, Building2, Bone, Baby, Heart } from "lucide-react";
 import type { FinanceApi } from "./api";
 
 type Props = {
@@ -119,8 +118,8 @@ export default function FinanceHome({ api }: Props) {
               className="group rounded-lg border border-hairline bg-surface p-4 hover:border-[hsl(var(--brand-orange))]/30 transition-colors cursor-pointer no-underline"
             >
               <div className="flex items-start gap-3">
-                <div className="flex-shrink-0 w-10 h-10 rounded-md bg-[hsl(var(--brand-orange))]/10 flex items-center justify-center text-[hsl(var(--brand-orange))]">
-                  <Users className="h-5 w-5" />
+                <div className="flex-shrink-0 w-10 h-10 flex items-center justify-center text-2xl">
+                  📇
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="font-semibold text-sm text-primary mb-0.5">Contacts</div>
@@ -134,8 +133,8 @@ export default function FinanceHome({ api }: Props) {
               className="group rounded-lg border border-hairline bg-surface p-4 hover:border-[hsl(var(--brand-orange))]/30 transition-colors cursor-pointer no-underline"
             >
               <div className="flex items-start gap-3">
-                <div className="flex-shrink-0 w-10 h-10 rounded-md bg-[hsl(var(--brand-orange))]/10 flex items-center justify-center text-[hsl(var(--brand-orange))]">
-                  <Building2 className="h-5 w-5" />
+                <div className="flex-shrink-0 w-10 h-10 flex items-center justify-center text-2xl">
+                  🏤
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="font-semibold text-sm text-primary mb-0.5">Organizations</div>
@@ -149,8 +148,8 @@ export default function FinanceHome({ api }: Props) {
               className="group rounded-lg border border-hairline bg-surface p-4 hover:border-[hsl(var(--brand-orange))]/30 transition-colors cursor-pointer no-underline"
             >
               <div className="flex items-start gap-3">
-                <div className="flex-shrink-0 w-10 h-10 rounded-md bg-[hsl(var(--brand-orange))]/10 flex items-center justify-center text-[hsl(var(--brand-orange))]">
-                  <Bone className="h-5 w-5" />
+                <div className="flex-shrink-0 w-10 h-10 flex items-center justify-center text-2xl">
+                  🐾
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="font-semibold text-sm text-primary mb-0.5">Animals</div>
@@ -164,8 +163,8 @@ export default function FinanceHome({ api }: Props) {
               className="group rounded-lg border border-hairline bg-surface p-4 hover:border-[hsl(var(--brand-orange))]/30 transition-colors cursor-pointer no-underline"
             >
               <div className="flex items-start gap-3">
-                <div className="flex-shrink-0 w-10 h-10 rounded-md bg-[hsl(var(--brand-orange))]/10 flex items-center justify-center text-[hsl(var(--brand-orange))]">
-                  <Baby className="h-5 w-5" />
+                <div className="flex-shrink-0 w-10 h-10 flex items-center justify-center text-2xl">
+                  🍼
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="font-semibold text-sm text-primary mb-0.5">Offspring Groups</div>
@@ -179,8 +178,8 @@ export default function FinanceHome({ api }: Props) {
               className="group rounded-lg border border-hairline bg-surface p-4 hover:border-[hsl(var(--brand-orange))]/30 transition-colors cursor-pointer no-underline"
             >
               <div className="flex items-start gap-3">
-                <div className="flex-shrink-0 w-10 h-10 rounded-md bg-[hsl(var(--brand-orange))]/10 flex items-center justify-center text-[hsl(var(--brand-orange))]">
-                  <Heart className="h-5 w-5" />
+                <div className="flex-shrink-0 w-10 h-10 flex items-center justify-center text-2xl">
+                  🧬
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="font-semibold text-sm text-primary mb-0.5">Breeding Plans</div>
