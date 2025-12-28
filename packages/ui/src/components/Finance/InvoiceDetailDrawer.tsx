@@ -1,0 +1,208 @@
+// packages/ui/src/components/Finance/InvoiceDetailDrawer.tsx
+// Drawer component to view invoice details and payment history
+
+import * as React from "react";
+import { createPortal } from "react-dom";
+import { X } from "lucide-react";
+import { Button, Badge, SectionCard } from "@bhq/ui";
+import { formatCents } from "../../utils/money";
+import { getOverlayRoot } from "../../overlay";
+
+export interface InvoiceDetailDrawerProps {
+  invoice: any;
+  api: any;
+  open: boolean;
+  onClose: () => void;
+  onVoid?: () => void;
+  onAddPayment?: () => void;
+}
+
+export function InvoiceDetailDrawer({
+  invoice,
+  api,
+  open,
+  onClose,
+  onVoid,
+  onAddPayment,
+}: InvoiceDetailDrawerProps) {
+  const [payments, setPayments] = React.useState<any[]>([]);
+  const [loading, setLoading] = React.useState(false);
+  const [voiding, setVoiding] = React.useState(false);
+
+  const loadPayments = React.useCallback(async () => {
+    if (!invoice?.id) return;
+    setLoading(true);
+    try {
+      const res = await api.finance.payments.list({ invoiceId: invoice.id, limit: 100 });
+      setPayments(res?.items || []);
+    } catch (err) {
+      console.error("Failed to load payments:", err);
+    } finally {
+      setLoading(false);
+    }
+  }, [api, invoice?.id]);
+
+  React.useEffect(() => {
+    if (open && invoice?.id) {
+      loadPayments();
+    }
+  }, [open, invoice?.id, loadPayments]);
+
+  const handleVoid = async () => {
+    if (!invoice?.id) return;
+    if (!confirm("Are you sure you want to void this invoice? This action cannot be undone.")) return;
+
+    setVoiding(true);
+    try {
+      await api.finance.invoices.void(invoice.id);
+      if (onVoid) onVoid();
+      onClose();
+    } catch (err: any) {
+      console.error("Failed to void invoice:", err);
+      alert(err?.message || "Failed to void invoice");
+    } finally {
+      setVoiding(false);
+    }
+  };
+
+  const overlayRoot = getOverlayRoot();
+  if (!open || !overlayRoot) return null;
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[100] flex items-center justify-end bg-black/50"
+      onClick={onClose}
+    >
+      <div
+        className="h-full w-full max-w-2xl bg-surface shadow-xl flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between border-b border-hairline p-4">
+          <div>
+            <h2 className="text-lg font-semibold">Invoice Details</h2>
+            <p className="text-sm text-secondary">{invoice.invoiceNumber}</p>
+          </div>
+          <button
+            type="button"
+            className="rounded p-2 hover:bg-white/5"
+            onClick={onClose}
+            aria-label="Close"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          {/* Invoice Info */}
+          <SectionCard title="Invoice Information">
+            <div className="grid grid-cols-2 gap-4 text-sm">
+              <div>
+                <div className="text-xs text-secondary mb-1">Status</div>
+                <Badge variant={invoice.status === "PAID" ? "success" : "default"}>
+                  {invoice.status}
+                </Badge>
+              </div>
+              <div>
+                <div className="text-xs text-secondary mb-1">Client</div>
+                <div>{invoice.clientPartyName || "—"}</div>
+              </div>
+              <div>
+                <div className="text-xs text-secondary mb-1">Issued Date</div>
+                <div>
+                  {invoice.issuedAt ? new Date(invoice.issuedAt).toLocaleDateString() : "—"}
+                </div>
+              </div>
+              <div>
+                <div className="text-xs text-secondary mb-1">Due Date</div>
+                <div>
+                  {invoice.dueAt ? new Date(invoice.dueAt).toLocaleDateString() : "—"}
+                </div>
+              </div>
+              <div>
+                <div className="text-xs text-secondary mb-1">Total</div>
+                <div className="font-semibold">{formatCents(invoice.totalCents)}</div>
+              </div>
+              <div>
+                <div className="text-xs text-secondary mb-1">Balance</div>
+                <div className="font-semibold">{formatCents(invoice.balanceCents)}</div>
+              </div>
+              {invoice.notes && (
+                <div className="col-span-2">
+                  <div className="text-xs text-secondary mb-1">Notes</div>
+                  <div>{invoice.notes}</div>
+                </div>
+              )}
+            </div>
+          </SectionCard>
+
+          {/* Payment History */}
+          <SectionCard
+            title="Payment History"
+            actions={
+              invoice.status !== "VOID" && invoice.status !== "PAID" && onAddPayment ? (
+                <Button size="sm" variant="outline" onClick={onAddPayment}>
+                  Add Payment
+                </Button>
+              ) : undefined
+            }
+          >
+            {loading ? (
+              <div className="text-sm text-secondary">Loading payments...</div>
+            ) : payments.length === 0 ? (
+              <div className="text-sm text-secondary">No payments recorded</div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="border-b border-hairline">
+                    <tr>
+                      <th className="text-left py-2 pr-3 font-medium">Date</th>
+                      <th className="text-left py-2 pr-3 font-medium">Method</th>
+                      <th className="text-right py-2 pr-3 font-medium">Amount</th>
+                      <th className="text-left py-2 pr-3 font-medium">Reference</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {payments.map((pmt) => (
+                      <tr key={pmt.id} className="border-b border-hairline/60">
+                        <td className="py-2 pr-3">
+                          {pmt.receivedAt
+                            ? new Date(pmt.receivedAt).toLocaleDateString()
+                            : "—"}
+                        </td>
+                        <td className="py-2 pr-3">{pmt.methodType || "—"}</td>
+                        <td className="py-2 pr-3 text-right">{formatCents(pmt.amountCents)}</td>
+                        <td className="py-2 pr-3">{pmt.referenceNumber || pmt.checkNumber || "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </SectionCard>
+        </div>
+
+        {/* Footer Actions */}
+        <div className="border-t border-hairline p-4 flex items-center justify-between">
+          <div>
+            {invoice.status !== "VOID" && (
+              <Button
+                size="sm"
+                variant="destructive"
+                onClick={handleVoid}
+                disabled={voiding}
+              >
+                {voiding ? "Voiding..." : "Void Invoice"}
+              </Button>
+            )}
+          </div>
+          <Button size="sm" variant="outline" onClick={onClose}>
+            Close
+          </Button>
+        </div>
+      </div>
+    </div>,
+    overlayRoot
+  );
+}

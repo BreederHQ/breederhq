@@ -4,6 +4,7 @@
 import * as React from "react";
 import { SectionCard, Badge, Button } from "@bhq/ui";
 import { formatCents } from "../../utils/money";
+import { InvoiceDetailDrawer } from "./InvoiceDetailDrawer";
 
 export interface FinanceTabProps {
   invoiceFilters?: Record<string, any>;
@@ -17,7 +18,6 @@ export interface FinanceTabProps {
   api: any; // The finance API client
   onCreateInvoice?: () => void;
   onCreateExpense?: () => void;
-  onInvoiceClick?: (invoice: any) => void;
 }
 
 export function FinanceTab({
@@ -27,12 +27,12 @@ export function FinanceTab({
   api,
   onCreateInvoice,
   onCreateExpense,
-  onInvoiceClick,
 }: FinanceTabProps) {
   const [invoices, setInvoices] = React.useState<any[]>([]);
   const [expenses, setExpenses] = React.useState<any[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
+  const [selectedInvoice, setSelectedInvoice] = React.useState<any | null>(null);
 
   const loadData = React.useCallback(async () => {
     setLoading(true);
@@ -104,7 +104,7 @@ export function FinanceTab({
                   <th className="text-right py-2 pr-3 font-medium">Total</th>
                   <th className="text-right py-2 pr-3 font-medium">Balance</th>
                   <th className="text-left py-2 pr-3 font-medium">Due Date</th>
-                  {onInvoiceClick && <th className="text-right py-2 pr-3 font-medium">Actions</th>}
+                  <th className="text-right py-2 pr-3 font-medium">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -121,13 +121,11 @@ export function FinanceTab({
                     <td className="py-2 pr-3">
                       {inv.dueAt ? new Date(inv.dueAt).toLocaleDateString() : "—"}
                     </td>
-                    {onInvoiceClick && (
-                      <td className="py-2 pr-3 text-right">
-                        <Button size="xs" variant="ghost" onClick={() => onInvoiceClick(inv)}>
-                          View
-                        </Button>
-                      </td>
-                    )}
+                    <td className="py-2 pr-3 text-right">
+                      <Button size="xs" variant="ghost" onClick={() => setSelectedInvoice(inv)}>
+                        View
+                      </Button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -176,6 +174,22 @@ export function FinanceTab({
           </div>
         )}
       </SectionCard>
+
+      {/* Invoice Detail Drawer */}
+      <InvoiceDetailDrawer
+        invoice={selectedInvoice}
+        api={api}
+        open={!!selectedInvoice}
+        onClose={() => setSelectedInvoice(null)}
+        onVoid={() => {
+          setSelectedInvoice(null);
+          loadData();
+        }}
+        onAddPayment={() => {
+          // TODO: Open payment creation modal
+          console.log("Add payment for invoice:", selectedInvoice);
+        }}
+      />
     </div>
   );
 }
