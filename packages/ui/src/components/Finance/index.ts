@@ -10,3 +10,4 @@ export { AnimalAutocomplete, type AnimalAutocompleteProps } from "./AnimalAutoco
 export { OffspringGroupAutocomplete, type OffspringGroupAutocompleteProps } from "./OffspringGroupAutocomplete";
 export { BreedingPlanAutocomplete, type BreedingPlanAutocompleteProps } from "./BreedingPlanAutocomplete";
 export { BreedingPlanFinancialSummary, type BreedingPlanFinancialSummaryProps } from "./BreedingPlanFinancialSummary";
+export { ReceiptsSection, type ReceiptsSectionProps } from "./ReceiptsSection";

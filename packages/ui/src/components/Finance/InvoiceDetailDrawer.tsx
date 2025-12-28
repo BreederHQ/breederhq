@@ -8,6 +8,7 @@ import { Button, Badge, SectionCard } from "@bhq/ui";
 import { formatCents } from "../../utils/money";
 import { getOverlayRoot } from "../../overlay";
 import { PaymentCreateModal } from "./PaymentCreateModal";
+import { ReceiptsSection } from "./ReceiptsSection";
 import { useToast } from "../../atoms/Toast";
 
 export interface InvoiceDetailDrawerProps {
@@ -208,6 +209,15 @@ export function InvoiceDetailDrawer({
                 </table>
               </div>
             )}
+          </SectionCard>
+
+          {/* Invoice Attachments */}
+          <SectionCard title="Invoice Attachments">
+            <ReceiptsSection
+              label="Attachments"
+              entityId={invoice.id}
+              attachments={api.finance.invoices.attachments}
+            />
           </SectionCard>
         </div>
 

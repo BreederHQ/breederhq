@@ -11,6 +11,7 @@ import { AnimalAutocomplete } from "./AnimalAutocomplete";
 import { OffspringGroupAutocomplete } from "./OffspringGroupAutocomplete";
 import { BreedingPlanAutocomplete } from "./BreedingPlanAutocomplete";
 import { parseToCents, centsToInput } from "../../utils/money";
+import { ReceiptsSection } from "./ReceiptsSection";
 
 type ExpenseCategory =
   | "VET"
@@ -391,6 +392,14 @@ export function ExpenseModal({
             placeholder="Optional notes..."
           />
         </div>
+
+        {isEditMode && expense && (
+          <ReceiptsSection
+            label="Receipts"
+            entityId={expense.id}
+            attachments={api.finance.expenses.attachments}
+          />
+        )}
 
         <div className="flex items-center justify-between pt-3 border-t border-hairline">
           <div>
