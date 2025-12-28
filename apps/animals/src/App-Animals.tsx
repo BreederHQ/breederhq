@@ -2990,6 +2990,7 @@ function RegistryTab({
   const [registrations, setRegistrations] = React.useState<any[]>([]);
   const [allRegistries, setAllRegistries] = React.useState<any[]>([]);
   const [loading, setLoading] = React.useState(true);
+  const [loadingRegistries, setLoadingRegistries] = React.useState(false);
   const [error, setError] = React.useState<{ status?: number; message?: string; code?: string } | null>(null);
   const [expandedId, setExpandedId] = React.useState<number | "draft" | null>(null);
   const [drafts, setDrafts] = React.useState<Record<number | "draft", any>>({});
@@ -3015,17 +3016,25 @@ function RegistryTab({
 
   const fetchAllRegistries = React.useCallback(async () => {
     try {
+      setLoadingRegistries(true);
       const data = await api?.registries?.list({ species: animal.species });
       setAllRegistries(data?.registries || []);
-    } catch (err) {
+    } catch (err: any) {
       console.error("[RegistryTab] Failed to load registries", err);
+    } finally {
+      setLoadingRegistries(false);
     }
   }, [api, animal.species]);
 
   React.useEffect(() => {
     fetchRegistrations();
-    fetchAllRegistries();
-  }, [fetchRegistrations, fetchAllRegistries]);
+  }, [fetchRegistrations]);
+
+  React.useEffect(() => {
+    if (mode === "edit") {
+      fetchAllRegistries();
+    }
+  }, [mode, fetchAllRegistries]);
 
   const handleAddRegistration = () => {
     setExpandedId("draft");
@@ -3184,15 +3193,21 @@ function RegistryTab({
                       <select
                         value={draft?.registryId || ""}
                         onChange={(e) => updateDraft(reg.id, { registryId: Number(e.target.value) })}
-                        className="w-full text-sm border border-hairline rounded px-2 py-2"
+                        className="w-full text-sm border border-hairline rounded px-2 py-2 bg-background"
+                        disabled={loadingRegistries}
                       >
-                        <option value="">Select a registry</option>
+                        <option value="">
+                          {loadingRegistries ? "Loading registries..." : "Select a registry"}
+                        </option>
                         {allRegistries.map((r) => (
                           <option key={r.id} value={r.id}>
                             {r.name} {r.code ? `(${r.code})` : ""}
                           </option>
                         ))}
                       </select>
+                      {loadingRegistries && (
+                        <div className="text-xs text-secondary mt-1">Loading available registries...</div>
+                      )}
                     </div>
 
                     <div>
