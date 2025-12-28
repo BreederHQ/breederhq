@@ -3193,7 +3193,7 @@ function RegistryTab({
                       <select
                         value={draft?.registryId || ""}
                         onChange={(e) => updateDraft(reg.id, { registryId: Number(e.target.value) })}
-                        className="w-full text-sm border border-hairline rounded px-2 py-2 bg-background"
+                        className="text-sm border border-hairline rounded px-2 py-1.5 w-full bg-card text-inherit"
                         disabled={loadingRegistries}
                       >
                         <option value="">
