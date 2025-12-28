@@ -277,3 +277,5 @@ export function makeApi(baseArg?: string) {
 
   return { finance };
 }
+
+export type FinanceApi = ReturnType<typeof makeApi>;
