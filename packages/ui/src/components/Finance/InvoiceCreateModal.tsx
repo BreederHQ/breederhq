@@ -161,7 +161,14 @@ export function InvoiceCreateModal({
   const computeLineTotal = (item: LineItemRow): number => {
     const qty = Number(item.qty) || 0;
     const unitCents = parseToCents(item.unitPrice);
-    return qty * unitCents;
+    const total = qty * unitCents;
+
+    // Apply sign logic: DISCOUNT reduces total
+    if (item.kind === "DISCOUNT") {
+      return -Math.abs(total);
+    }
+
+    return total;
   };
 
   const computeSubtotal = (): number => {
@@ -257,12 +264,22 @@ export function InvoiceCreateModal({
     setSubmitting(true);
     try {
       // Build line items from form
-      const lineItems: CreateLineItemInput[] = form.lineItems.map((item) => ({
-        kind: item.kind,
-        description: item.description,
-        qty: Number(item.qty) || 1,
-        unitCents: parseToCents(item.unitPrice),
-      }));
+      const lineItems: CreateLineItemInput[] = form.lineItems.map((item) => {
+        const qty = Number(item.qty) || 1;
+        let unitCents = parseToCents(item.unitPrice);
+
+        // Apply sign logic: DISCOUNT items must have negative unitCents
+        if (item.kind === "DISCOUNT") {
+          unitCents = -Math.abs(unitCents);
+        }
+
+        return {
+          kind: item.kind,
+          description: item.description,
+          qty,
+          unitCents,
+        };
+      });
 
       const input: CreateInvoiceInput = {
         clientPartyId: form.clientParty!.id,
