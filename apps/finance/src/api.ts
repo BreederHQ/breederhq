@@ -147,10 +147,11 @@ export function makeApi(baseArg?: string) {
         }
         const query = qs.toString();
         const path = `/invoices${query ? `?${query}` : ""}`;
-        const res = await reqWithExtra<{ data: any[]; meta?: any }>(path);
+        // Backend returns { items: [...], total: number }
+        const res = await reqWithExtra<{ items?: any[]; data?: any[]; total?: number; meta?: any }>(path);
         return {
-          items: res.data || [],
-          total: res.meta?.total || 0,
+          items: res.items || res.data || [],
+          total: res.total ?? res.meta?.total ?? 0,
         };
       },
       async get(id: number) {
@@ -204,10 +205,11 @@ export function makeApi(baseArg?: string) {
         }
         const query = qs.toString();
         const path = `/payments${query ? `?${query}` : ""}`;
-        const res = await reqWithExtra<{ data: any[]; meta?: any }>(path);
+        // Backend returns { items: [...], total: number }
+        const res = await reqWithExtra<{ items?: any[]; data?: any[]; total?: number; meta?: any }>(path);
         return {
-          items: res.data || [],
-          total: res.meta?.total || 0,
+          items: res.items || res.data || [],
+          total: res.total ?? res.meta?.total ?? 0,
         };
       },
       async get(id: number) {
@@ -256,10 +258,11 @@ export function makeApi(baseArg?: string) {
         }
         const query = qs.toString();
         const path = `/expenses${query ? `?${query}` : ""}`;
-        const res = await reqWithExtra<{ data: any[]; meta?: any }>(path);
+        // Backend returns { items: [...], total: number }
+        const res = await reqWithExtra<{ items?: any[]; data?: any[]; total?: number; meta?: any }>(path);
         return {
-          items: res.data || [],
-          total: res.meta?.total || 0,
+          items: res.items || res.data || [],
+          total: res.total ?? res.meta?.total ?? 0,
         };
       },
       async get(id: number) {
