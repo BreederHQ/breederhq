@@ -84,15 +84,17 @@ export function AsyncAutocomplete({
     return () => document.removeEventListener("mousedown", handler);
   }, [open]);
 
-  // Track input position for portal dropdown
+  // Track input position for portal dropdown (fixed positioning)
   React.useEffect(() => {
     if (!open || !containerRef.current) return;
     const updatePosition = () => {
       const rect = containerRef.current?.getBoundingClientRect();
       if (rect) {
+        // For fixed positioning, use viewport-relative coords directly
+        // Add 4px gap between input and dropdown
         setDropdownPos({
-          top: rect.bottom + window.scrollY,
-          left: rect.left + window.scrollX,
+          top: rect.bottom + 4,
+          left: rect.left,
           width: rect.width,
         });
       }
@@ -147,7 +149,7 @@ export function AsyncAutocomplete({
         width: dropdownPos.width,
         zIndex: 2147483647,
       }}
-      className="bg-card border border-hairline rounded-md shadow-lg max-h-60 overflow-auto"
+      className="bg-surface border border-hairline rounded-md shadow-xl max-h-60 overflow-auto ring-1 ring-black/5"
     >
       {loading && (
         <div className="px-3 py-2 text-sm text-secondary">Loading...</div>
