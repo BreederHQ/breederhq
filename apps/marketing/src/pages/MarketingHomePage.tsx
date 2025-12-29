@@ -134,30 +134,33 @@ function PrimaryTile({ badgeType, title, description, buttonLabel, href, icon, i
   };
 
   return (
-    <div className="relative rounded-2xl bg-[#1e1e22] p-7 shadow-xl shadow-black/30 hover:shadow-2xl hover:shadow-black/40 hover:-translate-y-1 transition-all duration-200 overflow-hidden min-h-[220px]">
-      {/* Large icon positioned at the right */}
-      <div className={`absolute right-6 top-1/2 -translate-y-1/2 pointer-events-none opacity-90 ${iconColorClass}`}>
-        {icon}
-      </div>
+    <div className="rounded-2xl bg-[#1e1e22] p-7 shadow-xl shadow-black/30 hover:shadow-2xl hover:shadow-black/40 hover:-translate-y-1 transition-all duration-200 min-h-[220px]">
+      {/* Grid layout: content left, icon right - prevents overlap */}
+      <div className="grid grid-cols-[1fr_auto] gap-4 h-full">
+        {/* Content column */}
+        <div className="flex flex-col gap-4 min-w-0">
+          {/* Top badge */}
+          <div>
+            {badgeType === "live" ? <LiveBadge /> : <ActiveBadge />}
+          </div>
 
-      {/* Content */}
-      <div className="relative z-10 flex flex-col gap-4 max-w-[60%]">
-        {/* Top badge */}
-        <div>
-          {badgeType === "live" ? <LiveBadge /> : <ActiveBadge />}
+          {/* Title and description */}
+          <div>
+            <h3 className="text-2xl font-semibold text-white">{title}</h3>
+            <p className="mt-2 text-sm text-neutral-400 leading-relaxed">{description}</p>
+          </div>
+
+          {/* Button */}
+          <div className="mt-auto pt-3">
+            <OrangeButton onClick={handleClick}>
+              {buttonLabel}
+            </OrangeButton>
+          </div>
         </div>
 
-        {/* Title and description */}
-        <div>
-          <h3 className="text-2xl font-semibold text-white">{title}</h3>
-          <p className="mt-2 text-sm text-neutral-400 leading-relaxed">{description}</p>
-        </div>
-
-        {/* Button */}
-        <div className="mt-auto pt-3">
-          <OrangeButton onClick={handleClick}>
-            {buttonLabel}
-          </OrangeButton>
+        {/* Icon column - fixed width, vertically centered */}
+        <div className={`flex items-center justify-end pointer-events-none opacity-90 ${iconColorClass}`}>
+          {icon}
         </div>
       </div>
     </div>
