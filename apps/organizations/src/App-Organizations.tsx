@@ -22,6 +22,7 @@ import {
   buildRangeAwareSchema,
   inDateRange,
 } from "@bhq/ui";
+import { FinanceTab } from "@bhq/ui/components/Finance";
 import { getOverlayRoot } from "@bhq/ui/overlay";
 import "@bhq/ui/styles/table.css";
 import { makeApi } from "./api";
@@ -32,6 +33,7 @@ import { makeApi } from "./api";
 
 type OrgRow = {
   id: number;
+  partyId?: number;
   name: string;
   email?: string | null;
   phone?: string | null;
@@ -78,6 +80,7 @@ function fmt(d?: string | null) {
 function orgToRow(p: any): OrgRow {
   return {
     id: p.id,
+    partyId: p.partyId ?? p.party_id ?? p.id,
     name: p.name,
     email: p.email ?? null,
     phone: p.phone ?? null,
@@ -379,12 +382,12 @@ export default function AppOrganizations() {
           </div>
         )}
 
-        {activeTab === "finances" && (
-          <div className="space-y-2">
-            <SectionCard title="Finances">
-              <div className="text-sm text-secondary">Coming Soon</div>
-            </SectionCard>
-          </div>
+        {activeTab === "finances" && row.partyId && (
+          <FinanceTab
+            invoiceFilters={{ clientPartyId: row.partyId }}
+            expenseFilters={{ vendorPartyId: row.partyId }}
+            api={api}
+          />
         )}
       </DetailsScaffold>
     ),

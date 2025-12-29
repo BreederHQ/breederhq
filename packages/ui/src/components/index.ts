@@ -16,6 +16,7 @@ export * from "./EmptyState";
 export * from "./EntityRow";
 export * from "./FieldRow";
 export * from "./Filters";
+export * from "./Finance";
 export * from "./Gantt";
 export * from "./Input";
 export * from "./IntlPhoneField";

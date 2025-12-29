@@ -29,6 +29,7 @@ import {
   Popover,
   Dialog,
 } from "@bhq/ui";
+import { FinanceTab } from "@bhq/ui/components/Finance";
 import type { OwnershipRow } from "@bhq/ui/utils/ownership";
 
 import { Overlay, getOverlayRoot } from "@bhq/ui/overlay";
@@ -2703,7 +2704,7 @@ function DocumentsTab({
     <div className="space-y-3">
       <SectionCard
         title="Documents"
-        rightAction={
+        right={
           <Button size="sm" variant="outline" onClick={() => setUploadModalOpen(true)}>
             Upload
           </Button>
@@ -2972,6 +2973,375 @@ function DocumentUploadModal({
         </div>
       </div>
     </Dialog>
+  );
+}
+
+/** ────────────────────────────────────────────────────────────────────────
+ * Registry Tab - Animal registry identifiers
+ * ─────────────────────────────────────────────────────────────────────── */
+function RegistryTab({
+  animal,
+  api,
+  mode,
+}: {
+  animal: AnimalRow;
+  api: any;
+  mode: "view" | "edit";
+}) {
+  const [registrations, setRegistrations] = React.useState<any[]>([]);
+  const [allRegistries, setAllRegistries] = React.useState<any[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [loadingRegistries, setLoadingRegistries] = React.useState(false);
+  const [registriesFetchError, setRegistriesFetchError] = React.useState<string | null>(null);
+  const [error, setError] = React.useState<{ status?: number; message?: string; code?: string } | null>(null);
+  const [expandedId, setExpandedId] = React.useState<number | "draft" | null>(null);
+  const [drafts, setDrafts] = React.useState<Record<number | "draft", any>>({});
+  const [deleteConfirmId, setDeleteConfirmId] = React.useState<number | null>(null);
+
+  const fetchRegistrations = React.useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const data = await api?.animals?.registries?.list(animal.id);
+      // CONTRACT TOLERANCE: Accept either 'items' (canonical) or 'registrations' (legacy).
+      // Prefer 'items' if both exist for forward compatibility.
+      const rows = data?.items || data?.registrations || [];
+      setRegistrations(rows);
+    } catch (err: any) {
+      console.error("[RegistryTab] Failed to load registrations", err);
+      setError({
+        status: err?.status,
+        message: err?.data?.message || err?.message || "Failed to load registrations",
+        code: err?.data?.code,
+      });
+    } finally {
+      setLoading(false);
+    }
+  }, [api, animal.id]);
+
+  const fetchAllRegistries = React.useCallback(async () => {
+    try {
+      setLoadingRegistries(true);
+      setRegistriesFetchError(null);
+      const data = await api?.registries?.list({ species: animal.species });
+      // CONTRACT TOLERANCE: Accept either 'items' (canonical) or 'registries' (legacy).
+      // Prefer 'items' if both exist for forward compatibility.
+      const rows = data?.items || data?.registries || [];
+      setAllRegistries(rows);
+      if (rows.length === 0) {
+        setRegistriesFetchError("No registries available for this species");
+      }
+    } catch (err: any) {
+      console.error("[RegistryTab] Failed to load registries", err);
+      const msg = err?.data?.message || err?.message || "Failed to load registries";
+      setRegistriesFetchError(msg);
+      setAllRegistries([]);
+    } finally {
+      setLoadingRegistries(false);
+    }
+  }, [api, animal.species]);
+
+  React.useEffect(() => {
+    fetchRegistrations();
+  }, [fetchRegistrations]);
+
+  React.useEffect(() => {
+    if (mode === "edit") {
+      fetchAllRegistries();
+    }
+  }, [mode, fetchAllRegistries]);
+
+  const handleAddRegistration = () => {
+    setExpandedId("draft");
+    setDrafts({
+      ...drafts,
+      draft: {
+        registryId: null,
+        identifier: "",
+        registrarOfRecord: "",
+        issuedAt: "",
+      },
+    });
+  };
+
+  const handleSave = async (id: number | "draft") => {
+    const draft = drafts[id];
+    if (!draft) return;
+
+    if (!draft.registryId || !draft.identifier?.trim()) {
+      toast.error("Registry and registration number are required");
+      return;
+    }
+
+    try {
+      const payload = {
+        registryId: draft.registryId,
+        identifier: draft.identifier.trim(),
+        registrarOfRecord: draft.registrarOfRecord?.trim() || null,
+        issuedAt: draft.issuedAt || null,
+      };
+
+      if (id === "draft") {
+        await api?.animals?.registries?.add(animal.id, payload);
+        toast.success("Registration added");
+      } else {
+        await api?.animals?.registries?.update(animal.id, id, payload);
+        toast.success("Registration updated");
+      }
+
+      setExpandedId(null);
+      const nextDrafts = { ...drafts };
+      delete nextDrafts[id];
+      setDrafts(nextDrafts);
+      await fetchRegistrations();
+    } catch (err: any) {
+      console.error("[RegistryTab] Save failed", err);
+      toast.error(err?.data?.message || "Failed to save registration");
+    }
+  };
+
+  const handleCancel = (id: number | "draft") => {
+    setExpandedId(null);
+    const nextDrafts = { ...drafts };
+    delete nextDrafts[id];
+    setDrafts(nextDrafts);
+  };
+
+  const handleEdit = (reg: any) => {
+    setExpandedId(reg.id);
+    setDrafts({
+      ...drafts,
+      [reg.id]: {
+        registryId: reg.registryId,
+        identifier: reg.identifier,
+        registrarOfRecord: reg.registrarOfRecord || "",
+        issuedAt: reg.issuedAt ? reg.issuedAt.slice(0, 10) : "",
+      },
+    });
+  };
+
+  const handleDelete = async (id: number) => {
+    try {
+      await api?.animals?.registries?.remove(animal.id, id);
+      toast.success("Registration deleted");
+      setDeleteConfirmId(null);
+      setExpandedId(null);
+      const nextDrafts = { ...drafts };
+      delete nextDrafts[id];
+      setDrafts(nextDrafts);
+      await fetchRegistrations();
+    } catch (err: any) {
+      console.error("[RegistryTab] Delete failed", err);
+      toast.error(err?.data?.message || "Failed to delete registration");
+    }
+  };
+
+  const updateDraft = (id: number | "draft", updates: any) => {
+    setDrafts({
+      ...drafts,
+      [id]: { ...drafts[id], ...updates },
+    });
+  };
+
+  if (loading) {
+    return <div className="p-4 text-sm text-secondary">Loading registrations...</div>;
+  }
+
+  if (error) {
+    return (
+      <div className="space-y-3">
+        <SectionCard title="Registrations">
+          <div className="space-y-3">
+            <div className="text-sm text-secondary">Failed to load registrations.</div>
+            {error.status && (
+              <div className="text-xs text-secondary">
+                Status: {error.status}
+                {error.code && ` | Code: ${error.code}`}
+              </div>
+            )}
+            {error.message && <div className="text-xs text-secondary">{error.message}</div>}
+            <button
+              onClick={fetchRegistrations}
+              className="px-3 py-1.5 text-sm bg-primary text-white rounded hover:bg-primary-dark"
+            >
+              Retry
+            </button>
+          </div>
+        </SectionCard>
+      </div>
+    );
+  }
+
+  const allItems = [
+    ...(expandedId === "draft" ? [{ id: "draft", isDraft: true }] : []),
+    ...registrations,
+  ];
+
+  return (
+    <div className="space-y-3">
+      <SectionCard
+        title="Registrations"
+        right={
+          mode === "edit" && expandedId !== "draft" ? (
+            <Button size="sm" variant="outline" onClick={handleAddRegistration}>
+              Add Registration
+            </Button>
+          ) : null
+        }
+      >
+        {allItems.length === 0 ? (
+          <div className="text-sm text-secondary">No registrations yet</div>
+        ) : (
+          <div className="space-y-3">
+            {allItems.map((reg: any) => {
+              const isExpanded = expandedId === reg.id;
+              const draft = drafts[reg.id];
+              const registry = allRegistries.find((r) => r.id === (draft?.registryId || reg.registryId));
+
+              if (isExpanded && mode === "edit") {
+                return (
+                  <div key={reg.id} className="border border-hairline rounded p-3 space-y-3">
+                    <div>
+                      <label className="text-xs text-secondary block mb-1">
+                        Registry <span className="text-red-500">*</span>
+                      </label>
+                      <select
+                        value={draft?.registryId || ""}
+                        onChange={(e) => updateDraft(reg.id, { registryId: Number(e.target.value) })}
+                        className="text-sm border border-hairline rounded px-2 py-1.5 w-full bg-card text-inherit"
+                        disabled={loadingRegistries || !!registriesFetchError}
+                      >
+                        <option value="">
+                          {loadingRegistries ? "Loading registries..." : "Select a registry"}
+                        </option>
+                        {allRegistries.map((r) => (
+                          <option key={r.id} value={r.id}>
+                            {r.name} {r.code ? `(${r.code})` : ""}
+                          </option>
+                        ))}
+                      </select>
+                      {loadingRegistries && (
+                        <div className="text-xs text-secondary mt-1">Loading available registries...</div>
+                      )}
+                      {registriesFetchError && !loadingRegistries && (
+                        <div className="text-xs text-red-500 mt-1 flex items-center gap-2">
+                          {registriesFetchError}
+                          <button
+                            onClick={fetchAllRegistries}
+                            className="text-xs text-primary hover:underline"
+                          >
+                            Retry
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
+                    <div>
+                      <label className="text-xs text-secondary block mb-1">
+                        Registration Number <span className="text-red-500">*</span>
+                      </label>
+                      <Input
+                        value={draft?.identifier || ""}
+                        onChange={(e) => updateDraft(reg.id, { identifier: e.target.value })}
+                        placeholder="ABC123456"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-xs text-secondary block mb-1">Registrar of Record</label>
+                      <Input
+                        value={draft?.registrarOfRecord || ""}
+                        onChange={(e) => updateDraft(reg.id, { registrarOfRecord: e.target.value })}
+                        placeholder="Optional"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-xs text-secondary block mb-1">Issued Date</label>
+                      <Input
+                        type="date"
+                        value={draft?.issuedAt || ""}
+                        onChange={(e) => updateDraft(reg.id, { issuedAt: e.target.value })}
+                      />
+                    </div>
+
+                    <div className="flex items-center gap-2 pt-2">
+                      <Button
+                        size="sm"
+                        variant="primary"
+                        onClick={() => handleSave(reg.id)}
+                        disabled={loadingRegistries || !!registriesFetchError || allRegistries.length === 0}
+                      >
+                        Save
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={() => handleCancel(reg.id)}>
+                        Cancel
+                      </Button>
+                      {!reg.isDraft && (
+                        <button
+                          onClick={() => setDeleteConfirmId(reg.id)}
+                          className="ml-auto text-xs text-secondary hover:text-primary"
+                        >
+                          Delete
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              }
+
+              if (reg.isDraft) return null;
+
+              return (
+                <div key={reg.id} className="border border-hairline rounded p-3">
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <div className="font-medium text-sm">{registry?.name || "Unknown Registry"}</div>
+                      <div className="text-sm text-secondary mt-1">
+                        {reg.identifier}
+                        {registry?.code && <span className="text-xs ml-2">({registry.code})</span>}
+                      </div>
+                      {reg.registrarOfRecord && (
+                        <div className="text-xs text-secondary mt-1">Registrar: {reg.registrarOfRecord}</div>
+                      )}
+                      {reg.issuedAt && (
+                        <div className="text-xs text-secondary mt-1">
+                          Issued: {new Date(reg.issuedAt).toLocaleDateString()}
+                        </div>
+                      )}
+                    </div>
+                    {mode === "edit" && (
+                      <Button size="sm" variant="ghost" onClick={() => handleEdit(reg)}>
+                        Edit
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </SectionCard>
+
+      {deleteConfirmId !== null && (
+        <Dialog open={true} onOpenChange={() => setDeleteConfirmId(null)}>
+          <div className="p-4 space-y-4">
+            <div className="text-lg font-medium">Delete Registration</div>
+            <div className="text-sm">
+              Are you sure you want to delete this registration? This action cannot be undone.
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setDeleteConfirmId(null)}>
+                Cancel
+              </Button>
+              <Button variant="primary" onClick={() => handleDelete(deleteConfirmId)}>
+                Delete
+              </Button>
+            </div>
+          </div>
+        </Dialog>
+      )}
+    </div>
   );
 }
 
@@ -4009,7 +4379,9 @@ export default function AppAnimals() {
           tabs.push({ key: "cycle", label: "Cycle Info" } as any);
         tabs.push({ key: "program", label: "Program" } as any);
         tabs.push({ key: "health", label: "Health" } as any);
+        tabs.push({ key: "registry", label: "Registry" } as any);
         tabs.push({ key: "documents", label: "Documents" } as any);
+        tabs.push({ key: "finances", label: "Finances" } as any);
         tabs.push({ key: "pairing", label: "Pairing" } as any);
         tabs.push({ key: "audit", label: "Audit" } as any);
         return tabs;
@@ -4453,11 +4825,27 @@ export default function AppAnimals() {
             />
           )}
 
+          {activeTab === "registry" && (
+            <RegistryTab
+              animal={row}
+              api={api}
+              mode={mode}
+            />
+          )}
+
           {activeTab === "documents" && (
             <DocumentsTab
               animal={row}
               api={api}
               onHealthTabRequest={(traitKey) => setActiveTab("health")}
+            />
+          )}
+
+          {activeTab === "finances" && (
+            <FinanceTab
+              invoiceFilters={{ animalId: row.id }}
+              expenseFilters={{ animalId: row.id }}
+              api={api}
             />
           )}
 
@@ -4556,6 +4944,18 @@ export default function AppAnimals() {
 
   const canCreate =
     newName.trim().length > 1 && !!newDob && !!newSex && !!newSpecies;
+
+  const handleCreateOpenChange = React.useCallback((v: boolean) => {
+    if (!createWorking) setCreateOpen(v);
+  }, [createWorking]);
+
+  const handleNameChange = React.useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setNewName((e.currentTarget as HTMLInputElement).value);
+  }, []);
+
+  const handleNicknameChange = React.useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setNickname((e.currentTarget as HTMLInputElement).value);
+  }, []);
 
   const doCreateAnimal = async () => {
     if (!canCreate) {
@@ -4887,9 +5287,7 @@ export default function AppAnimals() {
       {createOpen && (
         <Overlay
           open={createOpen}
-          onOpenChange={(v) => {
-            if (!createWorking) setCreateOpen(v);
-          }}
+          onOpenChange={handleCreateOpenChange}
           ariaLabel="Create Animal"
           size="lg"
           overlayId="create-animal"
@@ -4915,11 +5313,7 @@ export default function AppAnimals() {
                 </div>
                 <Input
                   value={newName}
-                  onChange={(e) =>
-                    setNewName(
-                      (e.currentTarget as HTMLInputElement).value
-                    )
-                  }
+                  onChange={handleNameChange}
                 />
               </div>
 
@@ -4929,11 +5323,7 @@ export default function AppAnimals() {
                 </div>
                 <Input
                   value={nickname}
-                  onChange={(e) =>
-                    setNickname(
-                      (e.currentTarget as HTMLInputElement).value
-                    )
-                  }
+                  onChange={handleNicknameChange}
                 />
               </div>
 

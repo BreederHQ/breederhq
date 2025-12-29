@@ -11,6 +11,7 @@ import {
   Badge,
   Button,
 } from "@bhq/ui";
+import { FinanceTab } from "@bhq/ui/components/Finance";
 import { Copy } from "lucide-react";
 import { getOverlayRoot } from "@bhq/ui/overlay";
 import { makeApi } from "./api";
@@ -1388,11 +1389,11 @@ export function PartyDetailsView({
         )}
 
         {activeTab === "finances" && (
-          <div className="space-y-3">
-            <SectionCard title="Finances">
-              <div className="text-sm text-secondary">Coming Soon</div>
-            </SectionCard>
-          </div>
+          <FinanceTab
+            invoiceFilters={{ clientPartyId: row.partyId }}
+            expenseFilters={{ vendorPartyId: row.partyId }}
+            api={api}
+          />
         )}
       </DetailsScaffold>
 
@@ -1423,3 +1424,4 @@ export function PartyDetailsView({
     </>
   );
 }
+

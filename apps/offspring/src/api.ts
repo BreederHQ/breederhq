@@ -906,5 +906,83 @@ export function makeOffspringApiClient(opts?: MakeOpts): OffspringApi {
         return core.raw.get<any>(path, {});
       },
     },
+
+    /* Finance namespace for invoices, payments, expenses */
+    finance: {
+      invoices: {
+        list: (params?: any) => {
+          const qs = new URLSearchParams();
+          if (params) {
+            Object.entries(params).forEach(([k, v]) => {
+              if (v !== undefined && v !== null && v !== "") {
+                qs.set(k, String(v));
+              }
+            });
+          }
+          const query = qs.toString();
+          const path = `/invoices${query ? `?${query}` : ""}`;
+          return core.raw.get<{ data: any[]; meta?: any }>(path, {}).then(res => ({
+            items: res.data || [],
+            total: res.meta?.total || 0,
+          }));
+        },
+        get: (id: number) => core.raw.get<any>(`/invoices/${id}`, {}),
+        create: (input: any, idempotencyKey: string) =>
+          core.raw.post<any>("/invoices", input, {
+            headers: { "Idempotency-Key": idempotencyKey } as any,
+          }),
+        update: (id: number, input: any) =>
+          core.raw.patch<any>(`/invoices/${id}`, input, {}),
+        void: (id: number) =>
+          core.raw.patch<any>(`/invoices/${id}/void`, {}, {}),
+      },
+      payments: {
+        list: (params?: any) => {
+          const qs = new URLSearchParams();
+          if (params) {
+            Object.entries(params).forEach(([k, v]) => {
+              if (v !== undefined && v !== null && v !== "") {
+                qs.set(k, String(v));
+              }
+            });
+          }
+          const query = qs.toString();
+          const path = `/payments${query ? `?${query}` : ""}`;
+          return core.raw.get<{ data: any[]; meta?: any }>(path, {}).then(res => ({
+            items: res.data || [],
+            total: res.meta?.total || 0,
+          }));
+        },
+        get: (id: number) => core.raw.get<any>(`/payments/${id}`, {}),
+        create: (input: any, idempotencyKey: string) =>
+          core.raw.post<any>("/payments", input, {
+            headers: { "Idempotency-Key": idempotencyKey } as any,
+          }),
+      },
+      expenses: {
+        list: (params?: any) => {
+          const qs = new URLSearchParams();
+          if (params) {
+            Object.entries(params).forEach(([k, v]) => {
+              if (v !== undefined && v !== null && v !== "") {
+                qs.set(k, String(v));
+              }
+            });
+          }
+          const query = qs.toString();
+          const path = `/expenses${query ? `?${query}` : ""}`;
+          return core.raw.get<{ data: any[]; meta?: any }>(path, {}).then(res => ({
+            items: res.data || [],
+            total: res.meta?.total || 0,
+          }));
+        },
+        get: (id: number) => core.raw.get<any>(`/expenses/${id}`, {}),
+        create: (input: any) => core.raw.post<any>("/expenses", input, {}),
+        update: (id: number, input: any) =>
+          core.raw.patch<any>(`/expenses/${id}`, input, {}),
+        delete: (id: number) =>
+          core.raw.del<any>(`/expenses/${id}`, {}).then(() => ({ success: true })),
+      },
+    },
   };
 }

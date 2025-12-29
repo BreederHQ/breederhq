@@ -25,6 +25,7 @@ import {
   exportToCsv,
   Popover,
 } from "@bhq/ui";
+import { FinanceTab } from "@bhq/ui/components/Finance";
 
 import { Overlay } from "@bhq/ui/overlay";
 import "@bhq/ui/styles/table.css";
@@ -4988,6 +4989,7 @@ function OffspringGroupsTab(
               { key: "linkedOffspring", label: "Offspring" },
               { key: "media", label: "Media" },
               { key: "documents", label: "Documents" },
+              { key: "finances", label: "Finances" },
               { key: "analytics", label: "Analytics" },
             ],
             customChrome: true,
@@ -5043,6 +5045,7 @@ function OffspringGroupsTab(
                     { key: "linkedOffspring", label: "Offspring" },
                     { key: "media", label: "Media" },
                     { key: "documents", label: "Documents" },
+                    { key: "finances", label: "Finances" },
                     { key: "analytics", label: "Analytics" },
                   ]}
                   activeTab={effectiveTab}
@@ -5070,6 +5073,14 @@ function OffspringGroupsTab(
                     </div>
                   }
                 >
+
+                  {effectiveTab === "finances" && (
+                    <FinanceTab
+                      invoiceFilters={{ offspringGroupId: groupId }}
+                      expenseFilters={{ offspringGroupId: groupId }}
+                      api={api}
+                    />
+                  )}
 
                   {effectiveTab === "analytics" && (
                     <>

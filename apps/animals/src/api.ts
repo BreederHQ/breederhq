@@ -505,5 +505,126 @@ export function makeApi(base?: string, extraHeadersFn?: () => Record<string, str
     },
   };
 
-  return { animals, lookups, breeds };
+  /* ───────── Registries master data ───────── */
+
+  const registries = {
+    async list(opts: { species?: Species } = {}) {
+      return reqWithExtra<any>(`/registries${spFrom(opts || {})}`);
+    },
+  };
+
+  /* ───────── Finance namespace for invoices, payments, expenses ───────── */
+
+  const finance = {
+    invoices: {
+      async list(params?: any) {
+        const qs = new URLSearchParams();
+        if (params) {
+          Object.entries(params).forEach(([k, v]) => {
+            if (v !== undefined && v !== null && v !== "") {
+              qs.set(k, String(v));
+            }
+          });
+        }
+        const query = qs.toString();
+        const path = `/invoices${query ? `?${query}` : ""}`;
+        const res = await reqWithExtra<{ data: any[]; meta?: any }>(path);
+        return {
+          items: res.data || [],
+          total: res.meta?.total || 0,
+        };
+      },
+      async get(id: number) {
+        return reqWithExtra<any>(`/invoices/${id}`);
+      },
+      async create(input: any, idempotencyKey: string) {
+        return reqWithExtra<any>("/invoices", {
+          method: "POST",
+          json: input,
+          headers: { "Idempotency-Key": idempotencyKey } as any,
+        });
+      },
+      async update(id: number, input: any) {
+        return reqWithExtra<any>(`/invoices/${id}`, {
+          method: "PATCH",
+          json: input,
+        });
+      },
+      async void(id: number) {
+        return reqWithExtra<any>(`/invoices/${id}/void`, {
+          method: "PATCH",
+          json: {},
+        });
+      },
+    },
+    payments: {
+      async list(params?: any) {
+        const qs = new URLSearchParams();
+        if (params) {
+          Object.entries(params).forEach(([k, v]) => {
+            if (v !== undefined && v !== null && v !== "") {
+              qs.set(k, String(v));
+            }
+          });
+        }
+        const query = qs.toString();
+        const path = `/payments${query ? `?${query}` : ""}`;
+        const res = await reqWithExtra<{ data: any[]; meta?: any }>(path);
+        return {
+          items: res.data || [],
+          total: res.meta?.total || 0,
+        };
+      },
+      async get(id: number) {
+        return reqWithExtra<any>(`/payments/${id}`);
+      },
+      async create(input: any, idempotencyKey: string) {
+        return reqWithExtra<any>("/payments", {
+          method: "POST",
+          json: input,
+          headers: { "Idempotency-Key": idempotencyKey } as any,
+        });
+      },
+    },
+    expenses: {
+      async list(params?: any) {
+        const qs = new URLSearchParams();
+        if (params) {
+          Object.entries(params).forEach(([k, v]) => {
+            if (v !== undefined && v !== null && v !== "") {
+              qs.set(k, String(v));
+            }
+          });
+        }
+        const query = qs.toString();
+        const path = `/expenses${query ? `?${query}` : ""}`;
+        const res = await reqWithExtra<{ data: any[]; meta?: any }>(path);
+        return {
+          items: res.data || [],
+          total: res.meta?.total || 0,
+        };
+      },
+      async get(id: number) {
+        return reqWithExtra<any>(`/expenses/${id}`);
+      },
+      async create(input: any) {
+        return reqWithExtra<any>("/expenses", {
+          method: "POST",
+          json: input,
+        });
+      },
+      async update(id: number, input: any) {
+        return reqWithExtra<any>(`/expenses/${id}`, {
+          method: "PATCH",
+          json: input,
+        });
+      },
+      async delete(id: number) {
+        await reqWithExtra<any>(`/expenses/${id}`, { method: "DELETE" });
+        return { success: true };
+      },
+    },
+  };
+
+  return { animals, lookups, breeds, registries, finance };
 }

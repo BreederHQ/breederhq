@@ -27,6 +27,7 @@ import {
   exportToCsv,
   Popover,
 } from "@bhq/ui";
+import { FinanceTab } from "@bhq/ui/components/Finance";
 import { Overlay } from "@bhq/ui/overlay";
 import { OverlayMount } from "@bhq/ui/overlay/OverlayMount";
 import { getOverlayRoot } from "@bhq/ui/overlay/core";
@@ -63,8 +64,9 @@ const modalRoot = typeof document !== "undefined" ? document.body : null;
 
 const PLAN_TABS = [
   { key: "overview", label: "Overview" },
-  { key: "dates", label: "Dates" }, // NEW
+  { key: "dates", label: "Dates" },
   { key: "deposits", label: "Deposits" },
+  { key: "finances", label: "Finances" },
   { key: "audit", label: "Audit" },
 ] as const;
 
@@ -5145,6 +5147,19 @@ function PlanDetailsView(props: {
               </div>
             </div>
           </div>
+        )}
+
+        {/* FINANCES TAB */}
+        {activeTab === "finances" && row?.id && (
+          <FinanceTab
+            invoiceFilters={{ breedingPlanId: row.id }}
+            expenseFilters={{ breedingPlanId: row.id }}
+            api={api}
+            showBreedingPlanSummary={true}
+            defaultAnchor={{ breedingPlanId: row.id }}
+            offspringGroups={[]}
+            offspring={[]}
+          />
         )}
 
         {/* AUDIT TAB */}

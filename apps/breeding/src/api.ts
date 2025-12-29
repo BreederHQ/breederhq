@@ -402,6 +402,98 @@ export function makeBreedingApi(opts: ApiOpts) {
         );
       },
     },
+
+    /* Finance namespace for invoices, payments, expenses */
+    finance: {
+      invoices: {
+        list(params?: any) {
+          const qs = new URLSearchParams();
+          if (params) {
+            Object.entries(params).forEach(([k, v]) => {
+              if (v !== undefined && v !== null && v !== "") {
+                qs.set(k, String(v));
+              }
+            });
+          }
+          const query = qs.toString();
+          const path = `/invoices${query ? `?${query}` : ""}`;
+          return get<{ data: any[]; meta?: any }>(path).then(res => ({
+            items: res.data || [],
+            total: res.meta?.total || 0,
+          }));
+        },
+        get(id: number) {
+          return get<any>(`/invoices/${id}`);
+        },
+        create(input: any, idempotencyKey: string) {
+          return post<any>("/invoices", input, {
+            headers: { "Idempotency-Key": idempotencyKey },
+          } as any);
+        },
+        update(id: number, input: any) {
+          return patch<any>(`/invoices/${id}`, input);
+        },
+        void(id: number) {
+          return patch<any>(`/invoices/${id}/void`, {});
+        },
+      },
+      payments: {
+        list(params?: any) {
+          const qs = new URLSearchParams();
+          if (params) {
+            Object.entries(params).forEach(([k, v]) => {
+              if (v !== undefined && v !== null && v !== "") {
+                qs.set(k, String(v));
+              }
+            });
+          }
+          const query = qs.toString();
+          const path = `/payments${query ? `?${query}` : ""}`;
+          return get<{ data: any[]; meta?: any }>(path).then(res => ({
+            items: res.data || [],
+            total: res.meta?.total || 0,
+          }));
+        },
+        get(id: number) {
+          return get<any>(`/payments/${id}`);
+        },
+        create(input: any, idempotencyKey: string) {
+          return post<any>("/payments", input, {
+            headers: { "Idempotency-Key": idempotencyKey },
+          } as any);
+        },
+      },
+      expenses: {
+        list(params?: any) {
+          const qs = new URLSearchParams();
+          if (params) {
+            Object.entries(params).forEach(([k, v]) => {
+              if (v !== undefined && v !== null && v !== "") {
+                qs.set(k, String(v));
+              }
+            });
+          }
+          const query = qs.toString();
+          const path = `/expenses${query ? `?${query}` : ""}`;
+          return get<{ data: any[]; meta?: any }>(path).then(res => ({
+            items: res.data || [],
+            total: res.meta?.total || 0,
+          }));
+        },
+        get(id: number) {
+          return get<any>(`/expenses/${id}`);
+        },
+        create(input: any) {
+          return post<any>("/expenses", input);
+        },
+        update(id: number, input: any) {
+          return patch<any>(`/expenses/${id}`, input);
+        },
+        delete(id: number) {
+          return del<any>(`/expenses/${id}`).then(() => ({ success: true }));
+        },
+      },
+    },
   };
 }
 
