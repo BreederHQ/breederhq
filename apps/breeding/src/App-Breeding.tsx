@@ -5156,7 +5156,7 @@ function PlanDetailsView(props: {
             expenseFilters={{ breedingPlanId: row.id }}
             api={api}
             showBreedingPlanSummary={true}
-            defaultAnchor={{ breedingPlanId: row.id }}
+            defaultAnchor={{ breedingPlanId: row.id as number, breedingPlanName: row.name }}
             offspringGroups={[]}
             offspring={[]}
           />

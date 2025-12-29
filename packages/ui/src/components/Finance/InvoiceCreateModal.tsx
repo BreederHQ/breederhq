@@ -48,10 +48,14 @@ export interface InvoiceCreateModalProps {
   onClose: () => void;
   onSuccess: () => void;
   api: any;
+  /** Pre-fill and lock the anchor (e.g., when creating from Animal/Offspring/Breeding Plan page) */
   defaultAnchor?: {
     animalId?: number;
+    animalName?: string;
     offspringGroupId?: number;
+    offspringGroupName?: string;
     breedingPlanId?: number;
+    breedingPlanName?: string;
   };
   /** Pre-fill and lock the client party (e.g., when creating from Organization/Contact page) */
   defaultClientParty?: AutocompleteOption | null;
@@ -490,9 +494,15 @@ export function InvoiceCreateModal({
           <div className="p-3 bg-muted/20 rounded-md border border-hairline">
             <div className="text-xs text-secondary mb-1">Linked To</div>
             <div className="text-sm">
-              {defaultAnchor?.animalId && `Animal ID: ${defaultAnchor.animalId}`}
-              {defaultAnchor?.offspringGroupId && `Offspring Group ID: ${defaultAnchor.offspringGroupId}`}
-              {defaultAnchor?.breedingPlanId && `Breeding Plan ID: ${defaultAnchor.breedingPlanId}`}
+              {defaultAnchor?.animalId && (
+                <span>Animal: {defaultAnchor.animalName || `ID ${defaultAnchor.animalId}`}</span>
+              )}
+              {defaultAnchor?.offspringGroupId && (
+                <span>Offspring Group: {defaultAnchor.offspringGroupName || `ID ${defaultAnchor.offspringGroupId}`}</span>
+              )}
+              {defaultAnchor?.breedingPlanId && (
+                <span>Breeding Plan: {defaultAnchor.breedingPlanName || `ID ${defaultAnchor.breedingPlanId}`}</span>
+              )}
             </div>
           </div>
         ) : (

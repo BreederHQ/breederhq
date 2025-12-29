@@ -16,10 +16,14 @@ export interface FinanceTabProps {
   invoiceFilters?: Record<string, any>;
   expenseFilters?: Record<string, any>;
   hideCreateActions?: boolean;
+  /** Pre-fill and lock the anchor when creating invoices (e.g., from Animal/Offspring/Breeding Plan page) */
   defaultAnchor?: {
     animalId?: number;
+    animalName?: string;
     offspringGroupId?: number;
+    offspringGroupName?: string;
     breedingPlanId?: number;
+    breedingPlanName?: string;
   };
   /** Pre-fill and lock the client party when creating invoices (e.g., from Organization/Contact page) */
   defaultClientParty?: { id: number | string; label: string } | null;

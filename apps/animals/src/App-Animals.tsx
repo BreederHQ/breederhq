@@ -4846,7 +4846,7 @@ export default function AppAnimals() {
               invoiceFilters={{ animalId: row.id }}
               expenseFilters={{ animalId: row.id }}
               api={api}
-              defaultAnchor={{ animalId: row.id }}
+              defaultAnchor={{ animalId: row.id, animalName: row.name }}
             />
           )}
 
