@@ -1,12 +1,37 @@
 import * as React from "react";
-import { PageHeader, Badge, Button } from "@bhq/ui";
+import { PageHeader, Button } from "@bhq/ui";
 
 /* ───────────────── Icons ───────────────── */
 
-function MessageIcon({ className }: { className?: string }) {
+function MessageInboxIcon({ className }: { className?: string }) {
   return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+    <svg className={className} viewBox="0 0 80 80" fill="none">
+      {/* Envelope body */}
+      <rect x="8" y="20" width="64" height="48" rx="4" stroke="currentColor" strokeWidth="3" fill="none" />
+      {/* Envelope flap / V shape */}
+      <path d="M8 24 L40 48 L72 24" stroke="currentColor" strokeWidth="3" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+      {/* Inner checkmark or detail line */}
+      <path d="M24 44 L36 56 L56 32" stroke="currentColor" strokeWidth="3" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function TemplateCardsIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 100 80" fill="none">
+      {/* Back card (purple/violet) */}
+      <rect x="30" y="4" width="56" height="40" rx="4" fill="#8B7EC8" stroke="#6B5CA8" strokeWidth="2" />
+      <rect x="38" y="12" width="24" height="3" rx="1.5" fill="#A99CD8" />
+      <rect x="38" y="18" width="40" height="2" rx="1" fill="#A99CD8" />
+      <rect x="38" y="23" width="36" height="2" rx="1" fill="#A99CD8" />
+      <rect x="38" y="28" width="32" height="2" rx="1" fill="#A99CD8" />
+
+      {/* Front card (gray/neutral) */}
+      <rect x="10" y="24" width="56" height="40" rx="4" fill="#4A4A52" stroke="#3A3A42" strokeWidth="2" />
+      <rect x="18" y="32" width="24" height="3" rx="1.5" fill="#6A6A72" />
+      <rect x="18" y="38" width="40" height="2" rx="1" fill="#5A5A62" />
+      <rect x="18" y="43" width="36" height="2" rx="1" fill="#5A5A62" />
+      <rect x="18" y="48" width="32" height="2" rx="1" fill="#5A5A62" />
     </svg>
   );
 }
@@ -41,18 +66,38 @@ function ClockIcon({ className }: { className?: string }) {
   );
 }
 
+/* ───────────────── Badge Components ───────────────── */
+
+function LiveBadge({ className = "" }: { className?: string }) {
+  return (
+    <span className={`inline-flex items-center rounded px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide border border-amber-600/60 text-amber-500 bg-transparent ${className}`}>
+      LIVE
+    </span>
+  );
+}
+
+function ActiveBadge({ className = "" }: { className?: string }) {
+  return (
+    <span className={`inline-flex items-center rounded px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide border border-neutral-500/60 text-neutral-400 bg-neutral-800/50 ${className}`}>
+      ACTIVE
+    </span>
+  );
+}
+
 /* ───────────────── Primary Action Tile ───────────────── */
 
 interface PrimaryTileProps {
-  badge: React.ReactNode;
+  badgeType: "live" | "active";
   title: string;
   description: string;
   buttonLabel: string;
   href: string;
   icon: React.ReactNode;
+  iconColorClass?: string;
+  showFloatingBadge?: boolean;
 }
 
-function PrimaryTile({ badge, title, description, buttonLabel, href, icon }: PrimaryTileProps) {
+function PrimaryTile({ badgeType, title, description, buttonLabel, href, icon, iconColorClass = "text-secondary", showFloatingBadge = false }: PrimaryTileProps) {
   const handleClick = (e: React.MouseEvent) => {
     e.preventDefault();
     window.history.pushState(null, "", href);
@@ -60,24 +105,37 @@ function PrimaryTile({ badge, title, description, buttonLabel, href, icon }: Pri
   };
 
   return (
-    <div className="relative rounded-xl border border-hairline bg-surface p-5 hover:border-[hsl(var(--brand-orange))]/30 transition-colors overflow-hidden">
-      {/* Large inset icon */}
-      <div className="absolute right-4 top-1/2 -translate-y-1/2 opacity-[0.08] pointer-events-none">
+    <div className="relative rounded-xl border border-hairline bg-[#1a1a1c] p-6 hover:border-[hsl(var(--brand-orange))]/30 transition-colors overflow-hidden min-h-[180px]">
+      {/* Floating badge on right side */}
+      {showFloatingBadge && badgeType === "live" && (
+        <div className="absolute top-4 right-4 z-20">
+          <span className="inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold bg-amber-600 text-black">
+            LIVE
+          </span>
+        </div>
+      )}
+
+      {/* Large icon positioned at the right */}
+      <div className={`absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none ${iconColorClass}`}>
         {icon}
       </div>
 
-      <div className="relative z-10 flex flex-col gap-3">
-        <div className="flex items-center gap-2">
-          {badge}
-        </div>
-
+      {/* Content */}
+      <div className="relative z-10 flex flex-col gap-4 max-w-[60%]">
+        {/* Top badge */}
         <div>
-          <h3 className="text-lg font-semibold text-primary">{title}</h3>
-          <p className="mt-1 text-sm text-secondary">{description}</p>
+          {badgeType === "live" ? <LiveBadge /> : <ActiveBadge />}
         </div>
 
+        {/* Title and description */}
+        <div>
+          <h3 className="text-xl font-semibold text-primary">{title}</h3>
+          <p className="mt-1.5 text-sm text-secondary">{description}</p>
+        </div>
+
+        {/* Button */}
         <div className="mt-2">
-          <Button onClick={handleClick}>
+          <Button onClick={handleClick} variant="primary" className="bg-amber-600 hover:bg-amber-500">
             {buttonLabel}
           </Button>
         </div>
@@ -166,20 +224,22 @@ export default function MarketingHomePage() {
         </h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <PrimaryTile
-            badge={<Badge variant="amber" className="text-xs font-semibold">LIVE</Badge>}
+            badgeType="live"
             title="Direct Messages"
             description="Private conversations with clients."
             buttonLabel="Open Inbox"
             href="/marketing/messages"
-            icon={<MessageIcon className="w-32 h-32" />}
+            icon={<MessageInboxIcon className="w-28 h-28" />}
+            iconColorClass="text-amber-500"
+            showFloatingBadge={true}
           />
           <PrimaryTile
-            badge={<Badge variant="neutral" className="text-xs font-semibold">ACTIVE</Badge>}
+            badgeType="active"
             title="Email and Message Templates"
             description="Reusable emails, DM replies, announcements."
             buttonLabel="Manage Templates"
             href="/marketing/templates"
-            icon={<TemplateIcon className="w-32 h-32" />}
+            icon={<TemplateCardsIcon className="w-32 h-28" />}
           />
         </div>
       </section>
