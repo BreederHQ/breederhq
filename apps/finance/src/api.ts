@@ -316,6 +316,28 @@ export function makeApi(baseArg?: string) {
         return Array.isArray(res) ? res : (res?.items || []);
       },
     },
+    contacts: {
+      async create(input: {
+        first_name?: string;
+        last_name?: string;
+        display_name?: string;
+        email?: string;
+        phone_e164?: string;
+      }) {
+        return reqWithExtra<any>("/contacts", {
+          method: "POST",
+          json: input,
+        });
+      },
+    },
+    organizations: {
+      async create(input: { name: string; website?: string | null }) {
+        return reqWithExtra<any>("/organizations", {
+          method: "POST",
+          json: input,
+        });
+      },
+    },
     animals: {
       async search(query: string, opts?: { limit?: number }) {
         const qs = new URLSearchParams();
