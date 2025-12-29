@@ -1,24 +1,47 @@
 import * as React from "react";
-import { PageHeader, Badge, Button } from "@bhq/ui";
+import { PageHeader, Button } from "@bhq/ui";
 
 /* ───────────────── Icons ───────────────── */
 
-function MessageIcon({ className }: { className?: string }) {
+function ChatIcon({ className }: { className?: string }) {
   return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+    <svg className={className} viewBox="0 0 64 64" fill="none">
+      <defs>
+        <linearGradient id="chatGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#e87924" />
+          <stop offset="100%" stopColor="#c45a10" />
+        </linearGradient>
+      </defs>
+      {/* Main chat bubble */}
+      <path
+        d="M8 12 h40 a6 6 0 0 1 6 6 v20 a6 6 0 0 1-6 6 h-24 l-12 10 v-10 h-4 a6 6 0 0 1-6-6 v-20 a6 6 0 0 1 6-6z"
+        stroke="url(#chatGradient)"
+        strokeWidth="3"
+        fill="none"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      {/* Three dots for typing/message indicator - horizontally centered in bubble */}
+      <circle cx="17" cy="28" r="3" fill="url(#chatGradient)" />
+      <circle cx="29" cy="28" r="3" fill="url(#chatGradient)" />
+      <circle cx="41" cy="28" r="3" fill="url(#chatGradient)" />
     </svg>
   );
 }
 
-function TemplateIcon({ className }: { className?: string }) {
+function EmailIcon({ className }: { className?: string }) {
   return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-      <polyline points="14 2 14 8 20 8" />
-      <line x1="16" y1="13" x2="8" y2="13" />
-      <line x1="16" y1="17" x2="8" y2="17" />
-      <polyline points="10 9 9 9 8 9" />
+    <svg className={className} viewBox="0 0 64 64" fill="none">
+      <defs>
+        <linearGradient id="emailGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#e87924" />
+          <stop offset="100%" stopColor="#c45a10" />
+        </linearGradient>
+      </defs>
+      {/* Main envelope body */}
+      <rect x="6" y="14" width="52" height="40" rx="4" stroke="url(#emailGradient)" strokeWidth="3" fill="none" />
+      {/* Envelope flap / V shape */}
+      <path d="M6 22 L32 38 L58 22" stroke="url(#emailGradient)" strokeWidth="3" fill="none" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
@@ -27,7 +50,6 @@ function TemplateIcon({ className }: { className?: string }) {
 /* ───────────────── Primary Action Tile ───────────────── */
 
 interface PrimaryTileProps {
-  badge: React.ReactNode;
   title: string;
   description: string;
   buttonLabel: string;
@@ -35,7 +57,7 @@ interface PrimaryTileProps {
   icon: React.ReactNode;
 }
 
-function PrimaryTile({ badge, title, description, buttonLabel, href, icon }: PrimaryTileProps) {
+function PrimaryTile({ title, description, buttonLabel, href, icon }: PrimaryTileProps) {
   const handleClick = (e: React.MouseEvent) => {
     e.preventDefault();
     window.history.pushState(null, "", href);
@@ -43,23 +65,37 @@ function PrimaryTile({ badge, title, description, buttonLabel, href, icon }: Pri
   };
 
   return (
-    <div className="relative rounded-xl border border-hairline bg-surface p-5 hover:border-[hsl(var(--brand-orange))]/30 transition-colors overflow-hidden">
-      {/* Large inset icon */}
-      <div className="absolute right-4 top-1/2 -translate-y-1/2 opacity-[0.08] pointer-events-none">
+    <div
+      className="relative rounded-2xl hover:brightness-110 transition-all overflow-hidden"
+      style={{
+        backgroundColor: '#1a1a1a',
+        border: '1px solid rgba(60, 60, 60, 0.5)',
+        height: '200px',
+      }}
+    >
+      {/* Live pill in top-left */}
+      <div style={{ position: 'absolute', top: '16px', left: '16px' }}>
+        <span
+          className="text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-full"
+          style={{
+            backgroundColor: '#16a34a',
+            color: '#fff',
+          }}
+        >
+          Live
+        </span>
+      </div>
+
+      {/* Icon positioned in top-right */}
+      <div style={{ position: 'absolute', top: '16px', right: '16px' }}>
         {icon}
       </div>
 
-      <div className="relative z-10 flex flex-col gap-3">
-        <div className="flex items-center gap-2">
-          {badge}
-        </div>
-
-        <div>
-          <h3 className="text-lg font-semibold text-primary">{title}</h3>
-          <p className="mt-1 text-sm text-secondary">{description}</p>
-        </div>
-
-        <div className="mt-2">
+      {/* Content positioned at bottom-left */}
+      <div style={{ position: 'absolute', bottom: '24px', left: '24px' }}>
+        <h3 className="text-xl font-semibold text-primary">{title}</h3>
+        <p className="mt-1 text-sm text-secondary">{description}</p>
+        <div className="mt-4">
           <Button onClick={handleClick}>
             {buttonLabel}
           </Button>
@@ -104,7 +140,7 @@ function SecondaryTile({ icon, title, description, href }: SecondaryTileProps) {
         <span
           className="text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-full"
           style={{
-            backgroundColor: 'rgba(74, 124, 89, 0.9)',
+            backgroundColor: '#16a34a',
             color: '#fff',
           }}
         >
@@ -166,20 +202,18 @@ export default function MarketingHomePage() {
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <PrimaryTile
-            badge={<Badge variant="amber" className="text-xs font-semibold">LIVE</Badge>}
             title="Direct Messages"
             description="Private conversations with clients."
             buttonLabel="Open Inbox"
             href="/marketing/messages"
-            icon={<MessageIcon className="w-32 h-32" />}
+            icon={<ChatIcon className="w-24 h-24" />}
           />
           <PrimaryTile
-            badge={<Badge variant="neutral" className="text-xs font-semibold">ACTIVE</Badge>}
             title="Email and Message Templates"
             description="Reusable emails, DM replies, announcements."
             buttonLabel="Manage Templates"
             href="/marketing/templates"
-            icon={<TemplateIcon className="w-32 h-32" />}
+            icon={<EmailIcon className="w-24 h-24" />}
           />
         </div>
       </section>
