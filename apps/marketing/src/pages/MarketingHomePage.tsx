@@ -1,55 +1,39 @@
 import * as React from "react";
-import { PageHeader, Button } from "@bhq/ui";
 
-/* ───────────────── Large Hero Illustrations ───────────────── */
+/* ───────────────── Icons ───────────────── */
 
-function InboxTrayIllustration({ className }: { className?: string }) {
+function MessageInboxIcon({ className }: { className?: string }) {
   return (
-    <svg className={className} viewBox="0 0 200 160" fill="none">
-      {/* Back envelope */}
-      <rect x="30" y="20" width="140" height="100" rx="8" fill="currentColor" fillOpacity="0.15" />
-      {/* Main envelope body */}
-      <rect x="20" y="35" width="160" height="110" rx="10" fill="currentColor" fillOpacity="0.25" stroke="currentColor" strokeOpacity="0.4" strokeWidth="2" />
-      {/* Envelope flap */}
-      <path d="M20 50 L100 100 L180 50" stroke="currentColor" strokeOpacity="0.5" strokeWidth="2.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
-      {/* Inner tray lines */}
-      <rect x="45" y="110" width="60" height="6" rx="3" fill="currentColor" fillOpacity="0.3" />
-      <rect x="45" y="122" width="90" height="4" rx="2" fill="currentColor" fillOpacity="0.2" />
-      <rect x="45" y="132" width="75" height="4" rx="2" fill="currentColor" fillOpacity="0.15" />
-      {/* Notification dot */}
-      <circle cx="165" cy="45" r="12" fill="currentColor" fillOpacity="0.6" />
-      <text x="165" y="50" textAnchor="middle" fill="white" fontSize="14" fontWeight="bold">3</text>
+    <svg className={className} viewBox="0 0 80 80" fill="none">
+      {/* Envelope body */}
+      <rect x="8" y="20" width="64" height="48" rx="4" stroke="currentColor" strokeWidth="3" fill="none" />
+      {/* Envelope flap / V shape */}
+      <path d="M8 24 L40 48 L72 24" stroke="currentColor" strokeWidth="3" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+      {/* Inner checkmark or detail line */}
+      <path d="M24 44 L36 56 L56 32" stroke="currentColor" strokeWidth="3" fill="none" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
 
-function StackedCardsIllustration({ className }: { className?: string }) {
+function TemplateCardsIcon({ className }: { className?: string }) {
   return (
-    <svg className={className} viewBox="0 0 200 160" fill="none">
-      {/* Back card (purple tint) */}
-      <rect x="50" y="10" width="130" height="90" rx="8" fill="#8B7EC8" fillOpacity="0.4" stroke="#6B5CA8" strokeOpacity="0.5" strokeWidth="2" />
-      <rect x="65" y="25" width="50" height="6" rx="3" fill="#A99CD8" fillOpacity="0.6" />
-      <rect x="65" y="38" width="90" height="4" rx="2" fill="#A99CD8" fillOpacity="0.4" />
-      <rect x="65" y="48" width="80" height="4" rx="2" fill="#A99CD8" fillOpacity="0.3" />
-      <rect x="65" y="58" width="70" height="4" rx="2" fill="#A99CD8" fillOpacity="0.25" />
+    <svg className={className} viewBox="0 0 100 80" fill="none">
+      {/* Back card (purple/violet) */}
+      <rect x="30" y="4" width="56" height="40" rx="4" fill="#8B7EC8" stroke="#6B5CA8" strokeWidth="2" />
+      <rect x="38" y="12" width="24" height="3" rx="1.5" fill="#A99CD8" />
+      <rect x="38" y="18" width="40" height="2" rx="1" fill="#A99CD8" />
+      <rect x="38" y="23" width="36" height="2" rx="1" fill="#A99CD8" />
+      <rect x="38" y="28" width="32" height="2" rx="1" fill="#A99CD8" />
 
-      {/* Middle card */}
-      <rect x="30" y="40" width="130" height="90" rx="8" fill="#6B5CA8" fillOpacity="0.3" stroke="#5B4C98" strokeOpacity="0.4" strokeWidth="2" />
-      <rect x="45" y="55" width="50" height="6" rx="3" fill="#9B8DC8" fillOpacity="0.5" />
-      <rect x="45" y="68" width="90" height="4" rx="2" fill="#9B8DC8" fillOpacity="0.35" />
-      <rect x="45" y="78" width="80" height="4" rx="2" fill="#9B8DC8" fillOpacity="0.25" />
-
-      {/* Front card (neutral) */}
-      <rect x="10" y="70" width="130" height="90" rx="8" fill="currentColor" fillOpacity="0.2" stroke="currentColor" strokeOpacity="0.3" strokeWidth="2" />
-      <rect x="25" y="85" width="50" height="6" rx="3" fill="currentColor" fillOpacity="0.35" />
-      <rect x="25" y="98" width="95" height="4" rx="2" fill="currentColor" fillOpacity="0.25" />
-      <rect x="25" y="108" width="85" height="4" rx="2" fill="currentColor" fillOpacity="0.2" />
-      <rect x="25" y="118" width="70" height="4" rx="2" fill="currentColor" fillOpacity="0.15" />
+      {/* Front card (gray/neutral) */}
+      <rect x="10" y="24" width="56" height="40" rx="4" fill="#4A4A52" stroke="#3A3A42" strokeWidth="2" />
+      <rect x="18" y="32" width="24" height="3" rx="1.5" fill="#6A6A72" />
+      <rect x="18" y="38" width="40" height="2" rx="1" fill="#5A5A62" />
+      <rect x="18" y="43" width="36" height="2" rx="1" fill="#5A5A62" />
+      <rect x="18" y="48" width="32" height="2" rx="1" fill="#5A5A62" />
     </svg>
   );
 }
-
-/* ───────────────── Small Icons for Setup Tiles ───────────────── */
 
 function TemplateIcon({ className }: { className?: string }) {
   return (
@@ -81,122 +65,136 @@ function ClockIcon({ className }: { className?: string }) {
   );
 }
 
-function ChevronRightIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <polyline points="9 18 15 12 9 6" />
-    </svg>
-  );
-}
-
 /* ───────────────── Badge Components ───────────────── */
 
-function LiveBadge() {
+function LiveBadge({ className = "" }: { className?: string }) {
   return (
-    <span className="inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-sm">
+    <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-sm ${className}`}>
       LIVE
     </span>
   );
 }
 
-function ActiveBadge() {
+function ActiveBadge({ className = "" }: { className?: string }) {
   return (
-    <span className="inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide bg-neutral-700/80 text-neutral-200">
+    <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-neutral-700 text-neutral-300 ${className}`}>
       ACTIVE
     </span>
   );
 }
 
-function ComingSoonPill() {
+/* ───────────────── Orange CTA Button ───────────────── */
+
+interface OrangeButtonProps {
+  children: React.ReactNode;
+  onClick?: (e: React.MouseEvent) => void;
+  className?: string;
+}
+
+function OrangeButton({ children, onClick, className = "" }: OrangeButtonProps) {
   return (
-    <span className="inline-flex items-center rounded px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide bg-secondary/10 text-secondary/40">
-      Coming Soon
-    </span>
+    <button
+      onClick={onClick}
+      className={`
+        inline-flex items-center justify-center px-5 py-2.5
+        bg-gradient-to-r from-orange-500 to-amber-500
+        hover:from-orange-400 hover:to-amber-400
+        active:from-orange-600 active:to-amber-600
+        text-white font-semibold text-sm
+        rounded-lg shadow-md shadow-orange-500/25
+        hover:shadow-lg hover:shadow-orange-500/30
+        hover:-translate-y-0.5
+        active:translate-y-0
+        transition-all duration-150
+        ${className}
+      `}
+    >
+      {children}
+    </button>
   );
 }
 
-/* ───────────────── Navigation Helper ───────────────── */
+/* ───────────────── Primary Action Tile ───────────────── */
 
-function navigateTo(href: string) {
-  return (e: React.MouseEvent) => {
+interface PrimaryTileProps {
+  badgeType: "live" | "active";
+  title: string;
+  description: string;
+  buttonLabel: string;
+  href: string;
+  icon: React.ReactNode;
+  iconColorClass?: string;
+}
+
+function PrimaryTile({ badgeType, title, description, buttonLabel, href, icon, iconColorClass = "text-neutral-600" }: PrimaryTileProps) {
+  const handleClick = (e: React.MouseEvent) => {
     e.preventDefault();
     window.history.pushState(null, "", href);
     window.dispatchEvent(new PopStateEvent("popstate"));
   };
-}
-
-/* ───────────────── Hero Communication Card ───────────────── */
-
-interface HeroCommCardProps {
-  badgeText: "LIVE" | "ACTIVE";
-  title: string;
-  description: string;
-  buttonText: string;
-  href: string;
-  illustration: React.ReactNode;
-  gradientColor: "orange" | "purple";
-}
-
-function HeroCommCard({ badgeText, title, description, buttonText, href, illustration, gradientColor }: HeroCommCardProps) {
-  const gradientClass = gradientColor === "orange"
-    ? "from-orange-500/15 to-transparent"
-    : "from-purple-500/12 to-transparent";
 
   return (
-    <div className="rounded-2xl bg-surface border border-hairline shadow-md hover:shadow-lg transition-shadow duration-200 overflow-hidden">
-      <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] p-6 sm:p-7 gap-4 sm:gap-6">
-        {/* Left: Content */}
-        <div className="flex flex-col min-w-0">
-          <div className="mb-3">
-            {badgeText === "LIVE" ? <LiveBadge /> : <ActiveBadge />}
-          </div>
-          <h3 className="text-lg font-semibold text-primary mb-2">{title}</h3>
-          <p className="text-sm text-secondary mb-5 leading-relaxed">{description}</p>
-          <div className="mt-auto">
-            <Button onClick={navigateTo(href)} variant="primary">
-              {buttonText}
-            </Button>
-          </div>
+    <div className="relative rounded-xl bg-[#1e1e22] p-6 shadow-lg shadow-black/20 hover:shadow-xl hover:shadow-black/30 hover:-translate-y-0.5 transition-all duration-200 overflow-hidden min-h-[200px]">
+      {/* Large icon positioned at the right */}
+      <div className={`absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none opacity-80 ${iconColorClass}`}>
+        {icon}
+      </div>
+
+      {/* Content */}
+      <div className="relative z-10 flex flex-col gap-4 max-w-[65%]">
+        {/* Top badge */}
+        <div>
+          {badgeType === "live" ? <LiveBadge /> : <ActiveBadge />}
         </div>
 
-        {/* Right: Illustration with gradient wash */}
-        <div className="relative hidden sm:flex items-center justify-center w-[140px] md:w-[180px] lg:w-[200px]">
-          {/* Gradient wash behind illustration */}
-          <div className={`absolute inset-0 rounded-xl bg-gradient-to-l ${gradientClass}`} />
-          {/* Illustration */}
-          <div className="relative opacity-75">
-            {illustration}
-          </div>
+        {/* Title and description */}
+        <div>
+          <h3 className="text-xl font-semibold text-white">{title}</h3>
+          <p className="mt-2 text-sm text-neutral-400 leading-relaxed">{description}</p>
+        </div>
+
+        {/* Button */}
+        <div className="mt-auto pt-2">
+          <OrangeButton onClick={handleClick}>
+            {buttonLabel}
+          </OrangeButton>
         </div>
       </div>
     </div>
   );
 }
 
-/* ───────────────── Setup Tile Component ───────────────── */
+/* ───────────────── Secondary Tile ───────────────── */
 
-interface SetupTileProps {
+interface SecondaryTileProps {
   icon: React.ReactNode;
   title: string;
   description: string;
   href: string;
 }
 
-function SetupTile({ icon, title, description, href }: SetupTileProps) {
+function SecondaryTile({ icon, title, description, href }: SecondaryTileProps) {
+  const handleClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    window.history.pushState(null, "", href);
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  };
+
   return (
     <a
       href={href}
-      onClick={navigateTo(href)}
-      className="group flex items-center gap-3 rounded-lg bg-surface border border-hairline p-3.5 hover:border-hairline-strong transition-colors"
+      onClick={handleClick}
+      className="group rounded-lg bg-[#1a1a1e] p-4 shadow-md shadow-black/10 hover:shadow-lg hover:shadow-black/20 hover:-translate-y-0.5 transition-all duration-200"
     >
-      <div className="flex-shrink-0 w-9 h-9 rounded-md bg-surface-strong flex items-center justify-center text-secondary group-hover:text-primary transition-colors">
-        {icon}
+      <div className="flex items-start gap-3">
+        <div className="flex-shrink-0 w-9 h-9 rounded-lg bg-[#27272b] flex items-center justify-center text-neutral-400 group-hover:text-orange-400 transition-colors">
+          {icon}
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="font-medium text-sm text-white group-hover:text-orange-400 transition-colors">{title}</div>
+          <p className="mt-1 text-xs text-neutral-500 leading-relaxed">{description}</p>
+        </div>
       </div>
-      <div className="flex-1 min-w-0">
-        <div className="text-sm font-medium text-primary">{title}</div>
-        <p className="text-xs text-secondary truncate">{description}</p>
-      </div>
-      <ChevronRightIcon className="w-4 h-4 text-secondary/40 group-hover:text-secondary transition-colors" />
     </a>
   );
 }
@@ -211,15 +209,12 @@ interface PlannedCapabilityProps {
 
 function PlannedCapability({ icon, title, description }: PlannedCapabilityProps) {
   return (
-    <div className="rounded-md bg-surface/20 border border-hairline/20 p-2.5 cursor-default select-none">
-      <div className="flex items-start gap-2">
-        <span className="text-xs opacity-25 flex-shrink-0 pt-0.5">{icon}</span>
+    <div className="rounded-lg bg-[#18181b] p-3">
+      <div className="flex items-start gap-3">
+        <div className="flex-shrink-0 text-lg opacity-40">{icon}</div>
         <div className="flex-1 min-w-0">
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-[11px] font-medium text-secondary/45">{title}</span>
-            <ComingSoonPill />
-          </div>
-          <p className="text-[10px] text-secondary/35 mt-0.5 leading-relaxed">{description}</p>
+          <div className="font-medium text-xs text-neutral-500">{title}</div>
+          <p className="mt-0.5 text-xs text-neutral-600 leading-relaxed">{description}</p>
         </div>
       </div>
     </div>
@@ -230,117 +225,226 @@ function PlannedCapability({ icon, title, description }: PlannedCapabilityProps)
 
 export default function MarketingHomePage() {
   return (
-    <div className="p-6 space-y-10 max-w-6xl">
+    <div className="min-h-screen bg-gradient-to-b from-[#141417] to-[#0f0f11] p-6 space-y-10">
       {/* Page Header */}
-      <PageHeader
-        title="Marketing"
-        subtitle="Nurture, promote, and track, all in one place."
-      />
+      <div>
+        <h1 className="text-2xl font-semibold text-white tracking-tight">Marketing</h1>
+        <p className="text-sm text-neutral-400 mt-1">
+          Communicate with clients and manage your messaging
+        </p>
+        <p className="text-xs text-neutral-500 mt-2">
+          Direct messaging is live. Additional capabilities are rolling out in phases.
+        </p>
+      </div>
 
-      {/* Section: Active Communications */}
+      {/* Active Communications - Primary Section */}
       <section>
-        <h2 className="text-sm font-semibold text-primary uppercase tracking-wide mb-5">
+        <h2 className="text-xs font-semibold text-neutral-300 uppercase tracking-wider mb-4">
           Active Communications
         </h2>
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-          <HeroCommCard
-            badgeText="LIVE"
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          <PrimaryTile
+            badgeType="live"
             title="Direct Messages"
             description="Private conversations with clients."
-            buttonText="Open Inbox"
+            buttonLabel="Open Inbox"
             href="/marketing/messages"
-            illustration={<InboxTrayIllustration className="w-36 h-32 md:w-40 md:h-36 text-orange-500" />}
-            gradientColor="orange"
+            icon={<MessageInboxIcon className="w-32 h-32" />}
+            iconColorClass="text-orange-500/70"
           />
-          <HeroCommCard
-            badgeText="ACTIVE"
+          <PrimaryTile
+            badgeType="active"
             title="Email and Message Templates"
             description="Reusable emails, DM replies, announcements."
-            buttonText="Manage Templates"
+            buttonLabel="Manage Templates"
             href="/marketing/templates"
-            illustration={<StackedCardsIllustration className="w-36 h-32 md:w-40 md:h-36 text-purple-400" />}
-            gradientColor="purple"
+            icon={<TemplateCardsIcon className="w-36 h-32" />}
           />
         </div>
       </section>
 
-      {/* Section: Message Setup and Automation */}
+      {/* Message Setup and Automation - Secondary Section */}
       <section>
-        <h2 className="text-xs font-semibold text-secondary uppercase tracking-wide mb-4">
+        <h2 className="text-xs font-semibold text-neutral-300 uppercase tracking-wider mb-4">
           Message Setup and Automation
         </h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          <SetupTile
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <SecondaryTile
             icon={<TemplateIcon className="w-4 h-4" />}
             title="Templates"
-            description="Create and reuse messages across email and DM"
+            description="Create and manage reusable message templates"
             href="/marketing/templates"
           />
-          <SetupTile
+          <SecondaryTile
             icon={<AutoReplyIcon className="w-4 h-4" />}
             title="Auto Replies"
-            description="Send instant replies when you're unavailable"
+            description="Set up automatic responses to common inquiries"
             href="/marketing/auto-replies"
           />
-          <SetupTile
+          <SecondaryTile
             icon={<ClockIcon className="w-4 h-4" />}
             title="Business Hours"
-            description="Control when automated replies are sent"
+            description="Define when you are available for messages"
             href="/marketing/business-hours"
           />
         </div>
       </section>
 
-      {/* Section: Planned Capabilities (Heavily Demoted) */}
-      <section className="pt-4 opacity-50">
-        <div className="flex items-baseline gap-2 mb-3">
-          <h2 className="text-[10px] font-medium text-secondary/40 uppercase tracking-wider">
+      {/* Planned Capabilities - Roadmap Section (Demoted) */}
+      <section className="pt-4">
+        <div className="flex items-baseline gap-3 mb-4">
+          <h2 className="text-[11px] font-medium text-neutral-500 uppercase tracking-wider">
             Planned Capabilities
           </h2>
-          <span className="text-[10px] text-secondary/25 italic">Rolling out in phases</span>
+          <span className="text-[11px] text-neutral-600">Rolling out in phases</span>
         </div>
 
-        <div className="space-y-3">
-          {/* Campaign Hub */}
+        <div className="space-y-5">
+          {/* Group: Campaign Hub */}
           <div>
-            <h3 className="text-[10px] font-medium text-secondary/30 uppercase mb-1.5">Campaign Hub</h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1.5">
-              <PlannedCapability icon="📅" title="Campaign Planning" description="Litter announcements, planned breedings, availability." />
-              <PlannedCapability icon="🗓️" title="Central Calendar" description="See what is planned, posted, and coming up." />
+            <h3 className="text-[11px] font-medium text-neutral-600 mb-2.5">Campaign Hub</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+              <PlannedCapability
+                icon="📅"
+                title="Campaign Planning"
+                description="Litter announcements, planned breedings, availability, services, and milestones."
+              />
+              <PlannedCapability
+                icon="🗓️"
+                title="Central Calendar"
+                description="See what is planned, posted, and coming up."
+              />
             </div>
           </div>
 
-          {/* Multi-Channel Publishing */}
+          {/* Group: Multi-Channel Publishing */}
           <div>
-            <h3 className="text-[10px] font-medium text-secondary/30 uppercase mb-1.5">Multi-Channel Publishing</h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1.5">
-              <PlannedCapability icon="📱" title="Social Media" description="Facebook and Instagram business pages." />
-              <PlannedCapability icon="✉️" title="Email and SMS" description="Reach waitlists, past buyers, and approved breeders." />
-              <PlannedCapability icon="🌐" title="BreederHQ Surfaces" description="Public profile and Marketplace visibility." />
+            <h3 className="text-[11px] font-medium text-neutral-600 mb-2.5">Multi-Channel Publishing</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+              <PlannedCapability
+                icon="📱"
+                title="Social Media"
+                description="Facebook and Instagram business pages."
+              />
+              <PlannedCapability
+                icon="✉️"
+                title="Email and SMS"
+                description="Reach waitlists, past buyers, and approved breeders."
+              />
+              <PlannedCapability
+                icon="🌐"
+                title="BreederHQ Surfaces"
+                description="Public profile and Marketplace visibility."
+              />
             </div>
           </div>
 
-          {/* AI Assisted Writing */}
+          {/* Group: AI Assisted Writing */}
           <div>
-            <h3 className="text-[10px] font-medium text-secondary/30 uppercase mb-1.5">AI Assisted Writing</h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1.5">
-              <PlannedCapability icon="✍️" title="Post Creation Help" description="Turn a few details into ready to post copy." />
-              <PlannedCapability icon="🎨" title="Tone and Format Adaptation" description="Different styles for social, email, and text." />
-              <PlannedCapability icon="🔄" title="Multiple Variations" description="Pick what fits your voice and audience." />
+            <h3 className="text-[11px] font-medium text-neutral-600 mb-2.5">AI Assisted Writing</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+              <PlannedCapability
+                icon="✍️"
+                title="Post Creation Help"
+                description="Turn a few details into ready to post copy."
+              />
+              <PlannedCapability
+                icon="🎨"
+                title="Tone and Format Adaptation"
+                description="Different styles for social, email, and text."
+              />
+              <PlannedCapability
+                icon="🔄"
+                title="Multiple Variations"
+                description="Pick what fits your voice and audience."
+              />
             </div>
           </div>
 
-          {/* Audience and Performance */}
+          {/* Group: Visual Assets */}
           <div>
-            <h3 className="text-[10px] font-medium text-secondary/30 uppercase mb-1.5">Audience and Performance</h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1.5">
-              <PlannedCapability icon="👥" title="Audience Selection" description="Past buyers, waitlist, breeders, public." />
-              <PlannedCapability icon="📊" title="What Works" description="Views, clicks, and inquiries." />
-              <PlannedCapability icon="🔔" title="Smart Suggestions" description="Reminders based on activity and interest." />
+            <h3 className="text-[11px] font-medium text-neutral-600 mb-2.5">Visual Assets</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+              <PlannedCapability
+                icon="📸"
+                title="Image and Caption Support"
+                description="Pair photos with clear, engaging captions."
+              />
+              <PlannedCapability
+                icon="⭐"
+                title="Program and Litter Highlights"
+                description="Spotlight animals, services, and milestones."
+              />
+            </div>
+          </div>
+
+          {/* Group: Audience Targeting */}
+          <div>
+            <h3 className="text-[11px] font-medium text-neutral-600 mb-2.5">Audience Targeting</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+              <PlannedCapability
+                icon="👥"
+                title="Simple Audience Selection"
+                description="Past buyers, waitlist, breeders, public."
+              />
+              <PlannedCapability
+                icon="🎯"
+                title="Right Message, Right People"
+                description="Avoid overposting or misdirected outreach."
+              />
+            </div>
+          </div>
+
+          {/* Group: Performance Feedback */}
+          <div>
+            <h3 className="text-[11px] font-medium text-neutral-600 mb-2.5">Performance Feedback</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+              <PlannedCapability
+                icon="📊"
+                title="What Works"
+                description="Views, clicks, and inquiries."
+              />
+              <PlannedCapability
+                icon="💡"
+                title="What Drives Interest"
+                description="See which posts lead to real conversations."
+              />
+            </div>
+          </div>
+
+          {/* Group: Smart Suggestions */}
+          <div>
+            <h3 className="text-[11px] font-medium text-neutral-600 mb-2.5">Smart Suggestions</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+              <PlannedCapability
+                icon="🔔"
+                title="Helpful Reminders"
+                description="Upcoming litters, go home weeks, seasonal moments."
+              />
+              <PlannedCapability
+                icon="🧭"
+                title="Quiet Guidance"
+                description="Suggestions based on activity and interest."
+              />
             </div>
           </div>
         </div>
       </section>
+
+      {/* Footer Callout */}
+      <div className="rounded-xl bg-gradient-to-br from-[#1e1e22] to-[#1a1a1e] p-5 shadow-lg shadow-black/10">
+        <div className="flex items-start gap-4">
+          <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-gradient-to-br from-orange-500/20 to-amber-500/10 flex items-center justify-center text-lg">
+            🔗
+          </div>
+          <div>
+            <div className="font-semibold text-sm text-white mb-1">Stays Connected</div>
+            <p className="text-xs text-neutral-400 leading-relaxed">
+              Marketing connects directly with Animals, Offspring, Contacts, and Marketplace so everything stays in sync.
+            </p>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
