@@ -387,6 +387,7 @@ export default function AppOrganizations() {
             invoiceFilters={{ clientPartyId: row.partyId }}
             expenseFilters={{ vendorPartyId: row.partyId }}
             api={api}
+            defaultClientParty={{ id: row.partyId, label: row.name }}
           />
         )}
       </DetailsScaffold>

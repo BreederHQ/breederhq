@@ -53,6 +53,8 @@ export interface InvoiceCreateModalProps {
     offspringGroupId?: number;
     breedingPlanId?: number;
   };
+  /** Pre-fill and lock the client party (e.g., when creating from Organization/Contact page) */
+  defaultClientParty?: AutocompleteOption | null;
 }
 
 type AnchorType = "animal" | "offspringGroup" | "breedingPlan" | "serviceCode" | null;
@@ -85,6 +87,7 @@ export function InvoiceCreateModal({
   onSuccess,
   api,
   defaultAnchor,
+  defaultClientParty,
 }: InvoiceCreateModalProps) {
   const { toast } = useToast();
   const [submitting, setSubmitting] = React.useState(false);
@@ -97,6 +100,9 @@ export function InvoiceCreateModal({
     defaultAnchor?.offspringGroupId ||
     defaultAnchor?.breedingPlanId
   );
+
+  // Determine if client party is locked (from Organization/Contact page)
+  const clientPartyLocked = !!defaultClientParty;
 
   const initialAnchorType: AnchorType = React.useMemo(() => {
     if (defaultAnchor?.animalId) return "animal";
@@ -132,7 +138,7 @@ export function InvoiceCreateModal({
     if (open) {
       idempotencyKeyRef.current = generateIdempotencyKey();
       setForm({
-        clientParty: null,
+        clientParty: defaultClientParty || null,
         totalInput: "",
         issuedAt: new Date().toISOString().slice(0, 10),
         dueAt: "",
@@ -155,7 +161,7 @@ export function InvoiceCreateModal({
       setErrors({});
       setSubmitting(false);
     }
-  }, [open, initialAnchorType]);
+  }, [open, initialAnchorType, defaultClientParty]);
 
   // Line item helpers
   const computeLineTotal = (item: LineItemRow): number => {
@@ -344,6 +350,7 @@ export function InvoiceCreateModal({
           api={api}
           label="Client Contact / Organization *"
           error={errors.clientParty}
+          disabled={clientPartyLocked}
         />
 
         {/* Line Items Section */}

@@ -21,6 +21,8 @@ export interface FinanceTabProps {
     offspringGroupId?: number;
     breedingPlanId?: number;
   };
+  /** Pre-fill and lock the client party when creating invoices (e.g., from Organization/Contact page) */
+  defaultClientParty?: { id: number | string; label: string } | null;
   api: any; // The finance API client
   onCreateInvoice?: () => void;
   onCreateExpense?: () => void;
@@ -35,6 +37,7 @@ export function FinanceTab({
   expenseFilters = {},
   hideCreateActions = false,
   defaultAnchor,
+  defaultClientParty,
   api,
   onCreateInvoice,
   onCreateExpense,
@@ -342,6 +345,7 @@ export function FinanceTab({
         }}
         api={api}
         defaultAnchor={defaultAnchor}
+        defaultClientParty={defaultClientParty}
       />
 
       {/* Expense Modal (Create/Edit) */}
