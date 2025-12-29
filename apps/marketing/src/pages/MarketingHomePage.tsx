@@ -1,34 +1,55 @@
 import * as React from "react";
 import { PageHeader, Button } from "@bhq/ui";
 
-/* ───────────────── Icons ───────────────── */
+/* ───────────────── Large Hero Illustrations ───────────────── */
 
-function MessageInboxIcon({ className }: { className?: string }) {
+function InboxTrayIllustration({ className }: { className?: string }) {
   return (
-    <svg className={className} viewBox="0 0 80 80" fill="none">
-      <rect x="8" y="20" width="64" height="48" rx="4" stroke="currentColor" strokeWidth="3" fill="none" />
-      <path d="M8 24 L40 48 L72 24" stroke="currentColor" strokeWidth="3" fill="none" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M24 44 L36 56 L56 32" stroke="currentColor" strokeWidth="3" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+    <svg className={className} viewBox="0 0 200 160" fill="none">
+      {/* Back envelope */}
+      <rect x="30" y="20" width="140" height="100" rx="8" fill="currentColor" fillOpacity="0.15" />
+      {/* Main envelope body */}
+      <rect x="20" y="35" width="160" height="110" rx="10" fill="currentColor" fillOpacity="0.25" stroke="currentColor" strokeOpacity="0.4" strokeWidth="2" />
+      {/* Envelope flap */}
+      <path d="M20 50 L100 100 L180 50" stroke="currentColor" strokeOpacity="0.5" strokeWidth="2.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+      {/* Inner tray lines */}
+      <rect x="45" y="110" width="60" height="6" rx="3" fill="currentColor" fillOpacity="0.3" />
+      <rect x="45" y="122" width="90" height="4" rx="2" fill="currentColor" fillOpacity="0.2" />
+      <rect x="45" y="132" width="75" height="4" rx="2" fill="currentColor" fillOpacity="0.15" />
+      {/* Notification dot */}
+      <circle cx="165" cy="45" r="12" fill="currentColor" fillOpacity="0.6" />
+      <text x="165" y="50" textAnchor="middle" fill="white" fontSize="14" fontWeight="bold">3</text>
     </svg>
   );
 }
 
-function TemplateCardsIcon({ className }: { className?: string }) {
+function StackedCardsIllustration({ className }: { className?: string }) {
   return (
-    <svg className={className} viewBox="0 0 100 80" fill="none">
-      <rect x="30" y="4" width="56" height="40" rx="4" fill="#8B7EC8" stroke="#6B5CA8" strokeWidth="2" />
-      <rect x="38" y="12" width="24" height="3" rx="1.5" fill="#A99CD8" />
-      <rect x="38" y="18" width="40" height="2" rx="1" fill="#A99CD8" />
-      <rect x="38" y="23" width="36" height="2" rx="1" fill="#A99CD8" />
-      <rect x="38" y="28" width="32" height="2" rx="1" fill="#A99CD8" />
-      <rect x="10" y="24" width="56" height="40" rx="4" fill="#4A4A52" stroke="#3A3A42" strokeWidth="2" />
-      <rect x="18" y="32" width="24" height="3" rx="1.5" fill="#6A6A72" />
-      <rect x="18" y="38" width="40" height="2" rx="1" fill="#5A5A62" />
-      <rect x="18" y="43" width="36" height="2" rx="1" fill="#5A5A62" />
-      <rect x="18" y="48" width="32" height="2" rx="1" fill="#5A5A62" />
+    <svg className={className} viewBox="0 0 200 160" fill="none">
+      {/* Back card (purple tint) */}
+      <rect x="50" y="10" width="130" height="90" rx="8" fill="#8B7EC8" fillOpacity="0.4" stroke="#6B5CA8" strokeOpacity="0.5" strokeWidth="2" />
+      <rect x="65" y="25" width="50" height="6" rx="3" fill="#A99CD8" fillOpacity="0.6" />
+      <rect x="65" y="38" width="90" height="4" rx="2" fill="#A99CD8" fillOpacity="0.4" />
+      <rect x="65" y="48" width="80" height="4" rx="2" fill="#A99CD8" fillOpacity="0.3" />
+      <rect x="65" y="58" width="70" height="4" rx="2" fill="#A99CD8" fillOpacity="0.25" />
+
+      {/* Middle card */}
+      <rect x="30" y="40" width="130" height="90" rx="8" fill="#6B5CA8" fillOpacity="0.3" stroke="#5B4C98" strokeOpacity="0.4" strokeWidth="2" />
+      <rect x="45" y="55" width="50" height="6" rx="3" fill="#9B8DC8" fillOpacity="0.5" />
+      <rect x="45" y="68" width="90" height="4" rx="2" fill="#9B8DC8" fillOpacity="0.35" />
+      <rect x="45" y="78" width="80" height="4" rx="2" fill="#9B8DC8" fillOpacity="0.25" />
+
+      {/* Front card (neutral) */}
+      <rect x="10" y="70" width="130" height="90" rx="8" fill="currentColor" fillOpacity="0.2" stroke="currentColor" strokeOpacity="0.3" strokeWidth="2" />
+      <rect x="25" y="85" width="50" height="6" rx="3" fill="currentColor" fillOpacity="0.35" />
+      <rect x="25" y="98" width="95" height="4" rx="2" fill="currentColor" fillOpacity="0.25" />
+      <rect x="25" y="108" width="85" height="4" rx="2" fill="currentColor" fillOpacity="0.2" />
+      <rect x="25" y="118" width="70" height="4" rx="2" fill="currentColor" fillOpacity="0.15" />
     </svg>
   );
 }
+
+/* ───────────────── Small Icons for Setup Tiles ───────────────── */
 
 function TemplateIcon({ className }: { className?: string }) {
   return (
@@ -86,6 +107,14 @@ function ActiveBadge() {
   );
 }
 
+function ComingSoonPill() {
+  return (
+    <span className="inline-flex items-center rounded px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide bg-secondary/10 text-secondary/40">
+      Coming Soon
+    </span>
+  );
+}
+
 /* ───────────────── Navigation Helper ───────────────── */
 
 function navigateTo(href: string) {
@@ -96,37 +125,48 @@ function navigateTo(href: string) {
   };
 }
 
-/* ───────────────── Hero Card Component ───────────────── */
+/* ───────────────── Hero Communication Card ───────────────── */
 
-interface HeroCardProps {
-  badge: "live" | "active";
+interface HeroCommCardProps {
+  badgeText: "LIVE" | "ACTIVE";
   title: string;
   description: string;
-  buttonLabel: string;
+  buttonText: string;
   href: string;
-  icon: React.ReactNode;
+  illustration: React.ReactNode;
+  gradientColor: "orange" | "purple";
 }
 
-function HeroCard({ badge, title, description, buttonLabel, href, icon }: HeroCardProps) {
+function HeroCommCard({ badgeText, title, description, buttonText, href, illustration, gradientColor }: HeroCommCardProps) {
+  const gradientClass = gradientColor === "orange"
+    ? "from-orange-500/15 to-transparent"
+    : "from-purple-500/12 to-transparent";
+
   return (
-    <div className="rounded-xl bg-surface border border-hairline p-6 shadow-md hover:shadow-lg hover:border-[hsl(var(--brand-orange))]/50 transition-all duration-200">
-      <div className="flex gap-5">
+    <div className="rounded-2xl bg-surface border border-hairline shadow-md hover:shadow-lg transition-shadow duration-200 overflow-hidden">
+      <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] p-6 sm:p-7 gap-4 sm:gap-6">
         {/* Left: Content */}
-        <div className="flex-1 min-w-0 flex flex-col">
+        <div className="flex flex-col min-w-0">
           <div className="mb-3">
-            {badge === "live" ? <LiveBadge /> : <ActiveBadge />}
+            {badgeText === "LIVE" ? <LiveBadge /> : <ActiveBadge />}
           </div>
-          <h3 className="text-lg font-semibold text-primary mb-1.5">{title}</h3>
-          <p className="text-sm text-secondary mb-5">{description}</p>
+          <h3 className="text-lg font-semibold text-primary mb-2">{title}</h3>
+          <p className="text-sm text-secondary mb-5 leading-relaxed">{description}</p>
           <div className="mt-auto">
             <Button onClick={navigateTo(href)} variant="primary">
-              {buttonLabel}
+              {buttonText}
             </Button>
           </div>
         </div>
-        {/* Right: Icon (constrained size, reduced opacity) */}
-        <div className="flex-shrink-0 w-16 h-16 sm:w-20 sm:h-20 flex items-center justify-center text-[hsl(var(--brand-orange))]/50 opacity-70">
-          {icon}
+
+        {/* Right: Illustration with gradient wash */}
+        <div className="relative hidden sm:flex items-center justify-center w-[140px] md:w-[180px] lg:w-[200px]">
+          {/* Gradient wash behind illustration */}
+          <div className={`absolute inset-0 rounded-xl bg-gradient-to-l ${gradientClass}`} />
+          {/* Illustration */}
+          <div className="relative opacity-75">
+            {illustration}
+          </div>
         </div>
       </div>
     </div>
@@ -171,12 +211,15 @@ interface PlannedCapabilityProps {
 
 function PlannedCapability({ icon, title, description }: PlannedCapabilityProps) {
   return (
-    <div className="rounded-md bg-surface/30 border border-hairline/30 p-2.5 cursor-default select-none">
+    <div className="rounded-md bg-surface/20 border border-hairline/20 p-2.5 cursor-default select-none">
       <div className="flex items-start gap-2">
-        <span className="text-xs opacity-30">{icon}</span>
+        <span className="text-xs opacity-25 flex-shrink-0 pt-0.5">{icon}</span>
         <div className="flex-1 min-w-0">
-          <div className="text-[11px] font-medium text-secondary/50">{title}</div>
-          <p className="text-[11px] text-secondary/40 mt-0.5 leading-relaxed">{description}</p>
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[11px] font-medium text-secondary/45">{title}</span>
+            <ComingSoonPill />
+          </div>
+          <p className="text-[10px] text-secondary/35 mt-0.5 leading-relaxed">{description}</p>
         </div>
       </div>
     </div>
@@ -199,22 +242,24 @@ export default function MarketingHomePage() {
         <h2 className="text-sm font-semibold text-primary uppercase tracking-wide mb-5">
           Active Communications
         </h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-          <HeroCard
-            badge="live"
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+          <HeroCommCard
+            badgeText="LIVE"
             title="Direct Messages"
             description="Private conversations with clients."
-            buttonLabel="Open Inbox"
+            buttonText="Open Inbox"
             href="/marketing/messages"
-            icon={<MessageInboxIcon className="w-14 h-14 sm:w-16 sm:h-16" />}
+            illustration={<InboxTrayIllustration className="w-36 h-32 md:w-40 md:h-36 text-orange-500" />}
+            gradientColor="orange"
           />
-          <HeroCard
-            badge="active"
+          <HeroCommCard
+            badgeText="ACTIVE"
             title="Email and Message Templates"
             description="Reusable emails, DM replies, announcements."
-            buttonLabel="Manage Templates"
+            buttonText="Manage Templates"
             href="/marketing/templates"
-            icon={<TemplateCardsIcon className="w-16 h-14 sm:w-20 sm:h-16" />}
+            illustration={<StackedCardsIllustration className="w-36 h-32 md:w-40 md:h-36 text-purple-400" />}
+            gradientColor="purple"
           />
         </div>
       </section>
@@ -247,18 +292,18 @@ export default function MarketingHomePage() {
       </section>
 
       {/* Section: Planned Capabilities (Heavily Demoted) */}
-      <section className="pt-4 opacity-60">
+      <section className="pt-4 opacity-50">
         <div className="flex items-baseline gap-2 mb-3">
-          <h2 className="text-[10px] font-medium text-secondary/50 uppercase tracking-wider">
+          <h2 className="text-[10px] font-medium text-secondary/40 uppercase tracking-wider">
             Planned Capabilities
           </h2>
-          <span className="text-[10px] text-secondary/30 italic">Rolling out in phases</span>
+          <span className="text-[10px] text-secondary/25 italic">Rolling out in phases</span>
         </div>
 
         <div className="space-y-3">
           {/* Campaign Hub */}
           <div>
-            <h3 className="text-[10px] font-medium text-secondary/40 uppercase mb-1.5">Campaign Hub</h3>
+            <h3 className="text-[10px] font-medium text-secondary/30 uppercase mb-1.5">Campaign Hub</h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1.5">
               <PlannedCapability icon="📅" title="Campaign Planning" description="Litter announcements, planned breedings, availability." />
               <PlannedCapability icon="🗓️" title="Central Calendar" description="See what is planned, posted, and coming up." />
@@ -267,7 +312,7 @@ export default function MarketingHomePage() {
 
           {/* Multi-Channel Publishing */}
           <div>
-            <h3 className="text-[10px] font-medium text-secondary/40 uppercase mb-1.5">Multi-Channel Publishing</h3>
+            <h3 className="text-[10px] font-medium text-secondary/30 uppercase mb-1.5">Multi-Channel Publishing</h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1.5">
               <PlannedCapability icon="📱" title="Social Media" description="Facebook and Instagram business pages." />
               <PlannedCapability icon="✉️" title="Email and SMS" description="Reach waitlists, past buyers, and approved breeders." />
@@ -277,7 +322,7 @@ export default function MarketingHomePage() {
 
           {/* AI Assisted Writing */}
           <div>
-            <h3 className="text-[10px] font-medium text-secondary/40 uppercase mb-1.5">AI Assisted Writing</h3>
+            <h3 className="text-[10px] font-medium text-secondary/30 uppercase mb-1.5">AI Assisted Writing</h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1.5">
               <PlannedCapability icon="✍️" title="Post Creation Help" description="Turn a few details into ready to post copy." />
               <PlannedCapability icon="🎨" title="Tone and Format Adaptation" description="Different styles for social, email, and text." />
@@ -287,7 +332,7 @@ export default function MarketingHomePage() {
 
           {/* Audience and Performance */}
           <div>
-            <h3 className="text-[10px] font-medium text-secondary/40 uppercase mb-1.5">Audience and Performance</h3>
+            <h3 className="text-[10px] font-medium text-secondary/30 uppercase mb-1.5">Audience and Performance</h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1.5">
               <PlannedCapability icon="👥" title="Audience Selection" description="Past buyers, waitlist, breeders, public." />
               <PlannedCapability icon="📊" title="What Works" description="Views, clicks, and inquiries." />
