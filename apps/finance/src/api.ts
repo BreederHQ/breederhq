@@ -302,9 +302,15 @@ export function makeApi(baseArg?: string) {
       async search(query: string, opts?: { limit?: number; typeFilter?: string }) {
         const qs = new URLSearchParams();
         qs.set("q", query);
+        qs.set("dir", "asc"); // Required param - sort direction
         if (opts?.limit) qs.set("limit", String(opts.limit));
         if (opts?.typeFilter) qs.set("type", opts.typeFilter);
-        return reqWithExtra<any[]>(`/parties/search?${qs.toString()}`);
+        // Backend returns { items: [...], total: number }
+        const res = await reqWithExtra<{ items?: any[]; total?: number } | any[]>(
+          `/parties?${qs.toString()}`
+        );
+        // Normalize response: handle both array and { items: [] } shapes
+        return Array.isArray(res) ? res : (res?.items || []);
       },
     },
     animals: {
