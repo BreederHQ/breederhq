@@ -134,14 +134,14 @@ function PrimaryTile({ badgeType, title, description, buttonLabel, href, icon, i
   };
 
   return (
-    <div className="relative rounded-xl bg-[#1e1e22] p-6 shadow-lg shadow-black/20 hover:shadow-xl hover:shadow-black/30 hover:-translate-y-0.5 transition-all duration-200 overflow-hidden min-h-[200px]">
+    <div className="relative rounded-2xl bg-[#1e1e22] p-7 shadow-xl shadow-black/30 hover:shadow-2xl hover:shadow-black/40 hover:-translate-y-1 transition-all duration-200 overflow-hidden min-h-[220px]">
       {/* Large icon positioned at the right */}
-      <div className={`absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none opacity-80 ${iconColorClass}`}>
+      <div className={`absolute right-6 top-1/2 -translate-y-1/2 pointer-events-none opacity-90 ${iconColorClass}`}>
         {icon}
       </div>
 
       {/* Content */}
-      <div className="relative z-10 flex flex-col gap-4 max-w-[65%]">
+      <div className="relative z-10 flex flex-col gap-4 max-w-[60%]">
         {/* Top badge */}
         <div>
           {badgeType === "live" ? <LiveBadge /> : <ActiveBadge />}
@@ -149,12 +149,12 @@ function PrimaryTile({ badgeType, title, description, buttonLabel, href, icon, i
 
         {/* Title and description */}
         <div>
-          <h3 className="text-xl font-semibold text-white">{title}</h3>
+          <h3 className="text-2xl font-semibold text-white">{title}</h3>
           <p className="mt-2 text-sm text-neutral-400 leading-relaxed">{description}</p>
         </div>
 
         {/* Button */}
-        <div className="mt-auto pt-2">
+        <div className="mt-auto pt-3">
           <OrangeButton onClick={handleClick}>
             {buttonLabel}
           </OrangeButton>
@@ -209,12 +209,12 @@ interface PlannedCapabilityProps {
 
 function PlannedCapability({ icon, title, description }: PlannedCapabilityProps) {
   return (
-    <div className="rounded-lg bg-[#18181b] p-3">
+    <div className="rounded-lg bg-[#19191c] p-4 shadow-sm shadow-black/10">
       <div className="flex items-start gap-3">
-        <div className="flex-shrink-0 text-lg opacity-40">{icon}</div>
+        <div className="flex-shrink-0 text-base opacity-50">{icon}</div>
         <div className="flex-1 min-w-0">
           <div className="font-medium text-xs text-neutral-500">{title}</div>
-          <p className="mt-0.5 text-xs text-neutral-600 leading-relaxed">{description}</p>
+          <p className="mt-1 text-xs text-neutral-600 leading-relaxed">{description}</p>
         </div>
       </div>
     </div>
@@ -239,10 +239,10 @@ export default function MarketingHomePage() {
 
       {/* Active Communications - Primary Section */}
       <section>
-        <h2 className="text-xs font-semibold text-neutral-300 uppercase tracking-wider mb-4">
+        <h2 className="text-sm font-semibold text-white uppercase tracking-wide mb-5">
           Active Communications
         </h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <PrimaryTile
             badgeType="live"
             title="Direct Messages"
@@ -265,7 +265,7 @@ export default function MarketingHomePage() {
 
       {/* Message Setup and Automation - Secondary Section */}
       <section>
-        <h2 className="text-xs font-semibold text-neutral-300 uppercase tracking-wider mb-4">
+        <h2 className="text-xs font-semibold text-neutral-300 uppercase tracking-wide mb-4">
           Message Setup and Automation
         </h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
