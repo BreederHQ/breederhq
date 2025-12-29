@@ -219,6 +219,10 @@ export function InvoiceCreateModal({
       errs.lineItems = "At least one line item is required";
     } else {
       for (const item of form.lineItems) {
+        if (!item.description.trim()) {
+          errs.lineItems = "All line items must have a description";
+          break;
+        }
         const qty = Number(item.qty);
         if (!qty || qty < 1) {
           errs.lineItems = "All line items must have quantity >= 1";
@@ -231,9 +235,11 @@ export function InvoiceCreateModal({
         }
       }
 
-      const subtotal = computeSubtotal();
-      if (subtotal <= 0) {
-        errs.lineItems = "Invoice total must be greater than zero";
+      if (!errs.lineItems) {
+        const subtotal = computeSubtotal();
+        if (subtotal <= 0) {
+          errs.lineItems = "Invoice total must be greater than zero";
+        }
       }
     }
 
@@ -318,18 +324,11 @@ export function InvoiceCreateModal({
 
       // Handle idempotency conflict (409)
       if (err?.status === 409 || err?.message?.includes("409")) {
-        toast({
-          title: "Invoice already created",
-          description: "This invoice was already created (duplicate submission detected)",
-        });
+        toast.info("Invoice already created (duplicate submission detected)");
         onSuccess(); // Refresh the list
         onClose();
       } else {
-        toast({
-          title: "Error",
-          description: err?.message || "Failed to create invoice",
-          variant: "destructive",
-        });
+        toast.error(err?.message || "Failed to create invoice");
       }
     } finally {
       setSubmitting(false);
