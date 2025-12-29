@@ -5,6 +5,7 @@ import * as React from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { Button, Badge, SectionCard } from "@bhq/ui";
+import { Dialog } from "../Dialog";
 import { formatCents } from "../../utils/money";
 import { getOverlayRoot } from "../../overlay";
 import { PaymentCreateModal } from "./PaymentCreateModal";
@@ -34,6 +35,7 @@ export function InvoiceDetailDrawer({
   const [loading, setLoading] = React.useState(false);
   const [voiding, setVoiding] = React.useState(false);
   const [paymentModalOpen, setPaymentModalOpen] = React.useState(false);
+  const [voidConfirmOpen, setVoidConfirmOpen] = React.useState(false);
 
   const loadPayments = React.useCallback(async () => {
     if (!invoice?.id) return;
@@ -64,22 +66,23 @@ export function InvoiceDetailDrawer({
     }
   }, [open, invoice?.id, loadPayments]);
 
-  const handleVoid = async () => {
+  const handleVoidClick = () => {
+    setVoidConfirmOpen(true);
+  };
+
+  const handleVoidConfirm = async () => {
     if (!invoice?.id) return;
-    if (!confirm("Are you sure you want to void this invoice? This action cannot be undone.")) return;
 
     setVoiding(true);
+    setVoidConfirmOpen(false);
     try {
       await api.finance.invoices.void(invoice.id);
+      toast.success("Invoice voided successfully");
       if (onVoid) onVoid();
       onClose();
     } catch (err: any) {
       console.error("Failed to void invoice:", err);
-      toast({
-        title: "Error",
-        description: err?.message || "Failed to void invoice",
-        variant: "destructive",
-      });
+      toast.error(err?.message || "Failed to void invoice");
     } finally {
       setVoiding(false);
     }
@@ -296,7 +299,7 @@ export function InvoiceDetailDrawer({
               <Button
                 size="sm"
                 variant="destructive"
-                onClick={handleVoid}
+                onClick={handleVoidClick}
                 disabled={voiding || invoice.status === "PAID" || invoice.status === "PARTIALLY_PAID"}
               >
                 {voiding ? "Voiding..." : "Void Invoice"}
@@ -307,6 +310,38 @@ export function InvoiceDetailDrawer({
             Close
           </Button>
         </div>
+
+        {/* Void Confirmation Dialog */}
+        <Dialog
+          open={voidConfirmOpen}
+          onClose={() => setVoidConfirmOpen(false)}
+          title="Void Invoice"
+          size="sm"
+        >
+          <div className="space-y-4">
+            <p className="text-sm text-secondary">
+              Are you sure you want to void invoice <strong>{invoice.invoiceNumber}</strong>?
+              This action cannot be undone.
+            </p>
+            <div className="flex justify-end gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setVoidConfirmOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                variant="destructive"
+                onClick={handleVoidConfirm}
+                disabled={voiding}
+              >
+                {voiding ? "Voiding..." : "Void Invoice"}
+              </Button>
+            </div>
+          </div>
+        </Dialog>
 
         {/* Payment Create Modal */}
         <PaymentCreateModal
