@@ -1,5 +1,4 @@
 import * as React from "react";
-import { PageHeader, Button } from "@bhq/ui";
 
 /* ───────────────── Icons ───────────────── */
 
@@ -70,7 +69,7 @@ function ClockIcon({ className }: { className?: string }) {
 
 function LiveBadge({ className = "" }: { className?: string }) {
   return (
-    <span className={`inline-flex items-center rounded px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide border border-amber-600/60 text-amber-500 bg-transparent ${className}`}>
+    <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-sm ${className}`}>
       LIVE
     </span>
   );
@@ -78,9 +77,40 @@ function LiveBadge({ className = "" }: { className?: string }) {
 
 function ActiveBadge({ className = "" }: { className?: string }) {
   return (
-    <span className={`inline-flex items-center rounded px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide border border-neutral-500/60 text-neutral-400 bg-neutral-800/50 ${className}`}>
+    <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-neutral-700 text-neutral-300 ${className}`}>
       ACTIVE
     </span>
+  );
+}
+
+/* ───────────────── Orange CTA Button ───────────────── */
+
+interface OrangeButtonProps {
+  children: React.ReactNode;
+  onClick?: (e: React.MouseEvent) => void;
+  className?: string;
+}
+
+function OrangeButton({ children, onClick, className = "" }: OrangeButtonProps) {
+  return (
+    <button
+      onClick={onClick}
+      className={`
+        inline-flex items-center justify-center px-5 py-2.5
+        bg-gradient-to-r from-orange-500 to-amber-500
+        hover:from-orange-400 hover:to-amber-400
+        active:from-orange-600 active:to-amber-600
+        text-white font-semibold text-sm
+        rounded-lg shadow-md shadow-orange-500/25
+        hover:shadow-lg hover:shadow-orange-500/30
+        hover:-translate-y-0.5
+        active:translate-y-0
+        transition-all duration-150
+        ${className}
+      `}
+    >
+      {children}
+    </button>
   );
 }
 
@@ -94,10 +124,9 @@ interface PrimaryTileProps {
   href: string;
   icon: React.ReactNode;
   iconColorClass?: string;
-  showFloatingBadge?: boolean;
 }
 
-function PrimaryTile({ badgeType, title, description, buttonLabel, href, icon, iconColorClass = "text-secondary", showFloatingBadge = false }: PrimaryTileProps) {
+function PrimaryTile({ badgeType, title, description, buttonLabel, href, icon, iconColorClass = "text-neutral-600" }: PrimaryTileProps) {
   const handleClick = (e: React.MouseEvent) => {
     e.preventDefault();
     window.history.pushState(null, "", href);
@@ -105,23 +134,14 @@ function PrimaryTile({ badgeType, title, description, buttonLabel, href, icon, i
   };
 
   return (
-    <div className="relative rounded-xl border border-hairline bg-[#1a1a1c] p-6 hover:border-[hsl(var(--brand-orange))]/30 transition-colors overflow-hidden min-h-[180px]">
-      {/* Floating badge on right side */}
-      {showFloatingBadge && badgeType === "live" && (
-        <div className="absolute top-4 right-4 z-20">
-          <span className="inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold bg-amber-600 text-black">
-            LIVE
-          </span>
-        </div>
-      )}
-
+    <div className="relative rounded-xl bg-[#1e1e22] p-6 shadow-lg shadow-black/20 hover:shadow-xl hover:shadow-black/30 hover:-translate-y-0.5 transition-all duration-200 overflow-hidden min-h-[200px]">
       {/* Large icon positioned at the right */}
-      <div className={`absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none ${iconColorClass}`}>
+      <div className={`absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none opacity-80 ${iconColorClass}`}>
         {icon}
       </div>
 
       {/* Content */}
-      <div className="relative z-10 flex flex-col gap-4 max-w-[60%]">
+      <div className="relative z-10 flex flex-col gap-4 max-w-[65%]">
         {/* Top badge */}
         <div>
           {badgeType === "live" ? <LiveBadge /> : <ActiveBadge />}
@@ -129,15 +149,15 @@ function PrimaryTile({ badgeType, title, description, buttonLabel, href, icon, i
 
         {/* Title and description */}
         <div>
-          <h3 className="text-xl font-semibold text-primary">{title}</h3>
-          <p className="mt-1.5 text-sm text-secondary">{description}</p>
+          <h3 className="text-xl font-semibold text-white">{title}</h3>
+          <p className="mt-2 text-sm text-neutral-400 leading-relaxed">{description}</p>
         </div>
 
         {/* Button */}
-        <div className="mt-2">
-          <Button onClick={handleClick} variant="primary" className="bg-amber-600 hover:bg-amber-500">
+        <div className="mt-auto pt-2">
+          <OrangeButton onClick={handleClick}>
             {buttonLabel}
-          </Button>
+          </OrangeButton>
         </div>
       </div>
     </div>
@@ -164,15 +184,15 @@ function SecondaryTile({ icon, title, description, href }: SecondaryTileProps) {
     <a
       href={href}
       onClick={handleClick}
-      className="group rounded-lg border border-hairline bg-surface/50 p-4 hover:border-[hsl(var(--brand-orange))]/30 hover:bg-surface transition-colors"
+      className="group rounded-lg bg-[#1a1a1e] p-4 shadow-md shadow-black/10 hover:shadow-lg hover:shadow-black/20 hover:-translate-y-0.5 transition-all duration-200"
     >
       <div className="flex items-start gap-3">
-        <div className="flex-shrink-0 w-8 h-8 rounded-md bg-surface-strong border border-hairline flex items-center justify-center text-secondary group-hover:text-primary transition-colors">
+        <div className="flex-shrink-0 w-9 h-9 rounded-lg bg-[#27272b] flex items-center justify-center text-neutral-400 group-hover:text-orange-400 transition-colors">
           {icon}
         </div>
         <div className="flex-1 min-w-0">
-          <div className="font-medium text-sm text-primary">{title}</div>
-          <p className="mt-0.5 text-xs text-secondary">{description}</p>
+          <div className="font-medium text-sm text-white group-hover:text-orange-400 transition-colors">{title}</div>
+          <p className="mt-1 text-xs text-neutral-500 leading-relaxed">{description}</p>
         </div>
       </div>
     </a>
@@ -189,12 +209,12 @@ interface PlannedCapabilityProps {
 
 function PlannedCapability({ icon, title, description }: PlannedCapabilityProps) {
   return (
-    <div className="rounded-lg border border-hairline/50 bg-surface/30 p-3">
+    <div className="rounded-lg bg-[#18181b] p-3">
       <div className="flex items-start gap-3">
-        <div className="flex-shrink-0 text-xl opacity-50">{icon}</div>
+        <div className="flex-shrink-0 text-lg opacity-40">{icon}</div>
         <div className="flex-1 min-w-0">
-          <div className="font-medium text-xs text-secondary">{title}</div>
-          <p className="mt-0.5 text-xs text-secondary/70 leading-relaxed">{description}</p>
+          <div className="font-medium text-xs text-neutral-500">{title}</div>
+          <p className="mt-0.5 text-xs text-neutral-600 leading-relaxed">{description}</p>
         </div>
       </div>
     </div>
@@ -205,33 +225,32 @@ function PlannedCapability({ icon, title, description }: PlannedCapabilityProps)
 
 export default function MarketingHomePage() {
   return (
-    <div className="p-6 space-y-8">
+    <div className="min-h-screen bg-gradient-to-b from-[#141417] to-[#0f0f11] p-6 space-y-10">
       {/* Page Header */}
       <div>
-        <PageHeader
-          title="Marketing"
-          subtitle="Communicate with clients and manage your messaging"
-        />
-        <p className="text-xs text-secondary mt-1">
+        <h1 className="text-2xl font-semibold text-white tracking-tight">Marketing</h1>
+        <p className="text-sm text-neutral-400 mt-1">
+          Communicate with clients and manage your messaging
+        </p>
+        <p className="text-xs text-neutral-500 mt-2">
           Direct messaging is live. Additional capabilities are rolling out in phases.
         </p>
       </div>
 
       {/* Active Communications - Primary Section */}
       <section>
-        <h2 className="text-sm font-semibold text-primary uppercase tracking-wide mb-4">
+        <h2 className="text-xs font-semibold text-neutral-300 uppercase tracking-wider mb-4">
           Active Communications
         </h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
           <PrimaryTile
             badgeType="live"
             title="Direct Messages"
             description="Private conversations with clients."
             buttonLabel="Open Inbox"
             href="/marketing/messages"
-            icon={<MessageInboxIcon className="w-28 h-28" />}
-            iconColorClass="text-amber-500"
-            showFloatingBadge={true}
+            icon={<MessageInboxIcon className="w-32 h-32" />}
+            iconColorClass="text-orange-500/70"
           />
           <PrimaryTile
             badgeType="active"
@@ -239,17 +258,17 @@ export default function MarketingHomePage() {
             description="Reusable emails, DM replies, announcements."
             buttonLabel="Manage Templates"
             href="/marketing/templates"
-            icon={<TemplateCardsIcon className="w-32 h-28" />}
+            icon={<TemplateCardsIcon className="w-36 h-32" />}
           />
         </div>
       </section>
 
       {/* Message Setup and Automation - Secondary Section */}
       <section>
-        <h2 className="text-sm font-semibold text-primary uppercase tracking-wide mb-4">
+        <h2 className="text-xs font-semibold text-neutral-300 uppercase tracking-wider mb-4">
           Message Setup and Automation
         </h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           <SecondaryTile
             icon={<TemplateIcon className="w-4 h-4" />}
             title="Templates"
@@ -271,20 +290,20 @@ export default function MarketingHomePage() {
         </div>
       </section>
 
-      {/* Planned Capabilities - Roadmap Section */}
-      <section className="opacity-75">
+      {/* Planned Capabilities - Roadmap Section (Demoted) */}
+      <section className="pt-4">
         <div className="flex items-baseline gap-3 mb-4">
-          <h2 className="text-xs font-semibold text-secondary uppercase tracking-wide">
+          <h2 className="text-[11px] font-medium text-neutral-500 uppercase tracking-wider">
             Planned Capabilities
           </h2>
-          <span className="text-xs text-secondary/70">Rolling out in phases</span>
+          <span className="text-[11px] text-neutral-600">Rolling out in phases</span>
         </div>
 
-        <div className="space-y-6">
+        <div className="space-y-5">
           {/* Group: Campaign Hub */}
           <div>
-            <h3 className="text-xs font-medium text-secondary/80 mb-3">Campaign Hub</h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            <h3 className="text-[11px] font-medium text-neutral-600 mb-2.5">Campaign Hub</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
               <PlannedCapability
                 icon="📅"
                 title="Campaign Planning"
@@ -300,8 +319,8 @@ export default function MarketingHomePage() {
 
           {/* Group: Multi-Channel Publishing */}
           <div>
-            <h3 className="text-xs font-medium text-secondary/80 mb-3">Multi-Channel Publishing</h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            <h3 className="text-[11px] font-medium text-neutral-600 mb-2.5">Multi-Channel Publishing</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
               <PlannedCapability
                 icon="📱"
                 title="Social Media"
@@ -322,8 +341,8 @@ export default function MarketingHomePage() {
 
           {/* Group: AI Assisted Writing */}
           <div>
-            <h3 className="text-xs font-medium text-secondary/80 mb-3">AI Assisted Writing</h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            <h3 className="text-[11px] font-medium text-neutral-600 mb-2.5">AI Assisted Writing</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
               <PlannedCapability
                 icon="✍️"
                 title="Post Creation Help"
@@ -344,8 +363,8 @@ export default function MarketingHomePage() {
 
           {/* Group: Visual Assets */}
           <div>
-            <h3 className="text-xs font-medium text-secondary/80 mb-3">Visual Assets</h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            <h3 className="text-[11px] font-medium text-neutral-600 mb-2.5">Visual Assets</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
               <PlannedCapability
                 icon="📸"
                 title="Image and Caption Support"
@@ -361,8 +380,8 @@ export default function MarketingHomePage() {
 
           {/* Group: Audience Targeting */}
           <div>
-            <h3 className="text-xs font-medium text-secondary/80 mb-3">Audience Targeting</h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            <h3 className="text-[11px] font-medium text-neutral-600 mb-2.5">Audience Targeting</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
               <PlannedCapability
                 icon="👥"
                 title="Simple Audience Selection"
@@ -378,8 +397,8 @@ export default function MarketingHomePage() {
 
           {/* Group: Performance Feedback */}
           <div>
-            <h3 className="text-xs font-medium text-secondary/80 mb-3">Performance Feedback</h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            <h3 className="text-[11px] font-medium text-neutral-600 mb-2.5">Performance Feedback</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
               <PlannedCapability
                 icon="📊"
                 title="What Works"
@@ -395,8 +414,8 @@ export default function MarketingHomePage() {
 
           {/* Group: Smart Suggestions */}
           <div>
-            <h3 className="text-xs font-medium text-secondary/80 mb-3">Smart Suggestions</h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            <h3 className="text-[11px] font-medium text-neutral-600 mb-2.5">Smart Suggestions</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
               <PlannedCapability
                 icon="🔔"
                 title="Helpful Reminders"
@@ -413,14 +432,14 @@ export default function MarketingHomePage() {
       </section>
 
       {/* Footer Callout */}
-      <div className="rounded-xl border border-[hsl(var(--brand-orange))]/20 bg-gradient-to-br from-[hsl(var(--brand-orange))]/5 to-[hsl(var(--brand-teal))]/5 p-4">
-        <div className="flex items-start gap-3">
-          <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-[hsl(var(--brand-orange))]/20 flex items-center justify-center text-lg">
+      <div className="rounded-xl bg-gradient-to-br from-[#1e1e22] to-[#1a1a1e] p-5 shadow-lg shadow-black/10">
+        <div className="flex items-start gap-4">
+          <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-gradient-to-br from-orange-500/20 to-amber-500/10 flex items-center justify-center text-lg">
             🔗
           </div>
           <div>
-            <div className="font-semibold text-sm text-primary mb-1">Stays Connected</div>
-            <p className="text-xs text-secondary">
+            <div className="font-semibold text-sm text-white mb-1">Stays Connected</div>
+            <p className="text-xs text-neutral-400 leading-relaxed">
               Marketing connects directly with Animals, Offspring, Contacts, and Marketplace so everything stays in sync.
             </p>
           </div>
