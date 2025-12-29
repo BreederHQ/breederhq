@@ -1,5 +1,5 @@
 import * as React from "react";
-import { PageHeader } from "@bhq/ui";
+import { PageHeader, Button } from "@bhq/ui";
 
 /* ───────────────── Icons ───────────────── */
 
@@ -72,7 +72,7 @@ function ChevronRightIcon({ className }: { className?: string }) {
 
 function LiveBadge() {
   return (
-    <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide bg-gradient-to-r from-amber-500 to-orange-500 text-white">
+    <span className="inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-sm">
       LIVE
     </span>
   );
@@ -80,7 +80,7 @@ function LiveBadge() {
 
 function ActiveBadge() {
   return (
-    <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide bg-neutral-600 text-neutral-200">
+    <span className="inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide bg-neutral-700/80 text-neutral-200">
       ACTIVE
     </span>
   );
@@ -109,26 +109,23 @@ interface HeroCardProps {
 
 function HeroCard({ badge, title, description, buttonLabel, href, icon }: HeroCardProps) {
   return (
-    <div className="rounded-xl bg-surface border border-hairline p-5 hover:border-[hsl(var(--brand-orange))]/40 transition-colors">
-      <div className="flex gap-4">
+    <div className="rounded-xl bg-surface border border-hairline p-6 shadow-md hover:shadow-lg hover:border-[hsl(var(--brand-orange))]/50 transition-all duration-200">
+      <div className="flex gap-5">
         {/* Left: Content */}
         <div className="flex-1 min-w-0 flex flex-col">
           <div className="mb-3">
             {badge === "live" ? <LiveBadge /> : <ActiveBadge />}
           </div>
-          <h3 className="text-lg font-semibold text-primary mb-1">{title}</h3>
-          <p className="text-sm text-secondary mb-4">{description}</p>
+          <h3 className="text-lg font-semibold text-primary mb-1.5">{title}</h3>
+          <p className="text-sm text-secondary mb-5">{description}</p>
           <div className="mt-auto">
-            <button
-              onClick={navigateTo(href)}
-              className="inline-flex items-center px-4 py-2 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-400 hover:to-amber-400 text-white text-sm font-medium rounded-lg shadow-sm hover:shadow transition-all"
-            >
+            <Button onClick={navigateTo(href)} variant="primary">
               {buttonLabel}
-            </button>
+            </Button>
           </div>
         </div>
-        {/* Right: Icon (constrained size) */}
-        <div className="flex-shrink-0 w-20 h-20 flex items-center justify-center text-[hsl(var(--brand-orange))]/60">
+        {/* Right: Icon (constrained size, reduced opacity) */}
+        <div className="flex-shrink-0 w-16 h-16 sm:w-20 sm:h-20 flex items-center justify-center text-[hsl(var(--brand-orange))]/50 opacity-70">
           {icon}
         </div>
       </div>
@@ -150,16 +147,16 @@ function SetupTile({ icon, title, description, href }: SetupTileProps) {
     <a
       href={href}
       onClick={navigateTo(href)}
-      className="group flex items-center gap-3 rounded-lg bg-surface border border-hairline p-4 hover:border-[hsl(var(--brand-orange))]/40 transition-colors"
+      className="group flex items-center gap-3 rounded-lg bg-surface border border-hairline p-3.5 hover:border-hairline-strong transition-colors"
     >
-      <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-surface-strong flex items-center justify-center text-secondary group-hover:text-[hsl(var(--brand-orange))] transition-colors">
+      <div className="flex-shrink-0 w-9 h-9 rounded-md bg-surface-strong flex items-center justify-center text-secondary group-hover:text-primary transition-colors">
         {icon}
       </div>
       <div className="flex-1 min-w-0">
-        <div className="text-sm font-medium text-primary group-hover:text-[hsl(var(--brand-orange))] transition-colors">{title}</div>
+        <div className="text-sm font-medium text-primary">{title}</div>
         <p className="text-xs text-secondary truncate">{description}</p>
       </div>
-      <ChevronRightIcon className="w-4 h-4 text-secondary/50 group-hover:text-[hsl(var(--brand-orange))] transition-colors" />
+      <ChevronRightIcon className="w-4 h-4 text-secondary/40 group-hover:text-secondary transition-colors" />
     </a>
   );
 }
@@ -174,12 +171,12 @@ interface PlannedCapabilityProps {
 
 function PlannedCapability({ icon, title, description }: PlannedCapabilityProps) {
   return (
-    <div className="rounded-lg bg-surface/50 border border-hairline/50 p-3 cursor-default">
-      <div className="flex items-start gap-2.5">
-        <span className="text-sm opacity-40">{icon}</span>
+    <div className="rounded-md bg-surface/30 border border-hairline/30 p-2.5 cursor-default select-none">
+      <div className="flex items-start gap-2">
+        <span className="text-xs opacity-30">{icon}</span>
         <div className="flex-1 min-w-0">
-          <div className="text-xs font-medium text-secondary/70">{title}</div>
-          <p className="text-xs text-secondary/50 mt-0.5 leading-relaxed">{description}</p>
+          <div className="text-[11px] font-medium text-secondary/50">{title}</div>
+          <p className="text-[11px] text-secondary/40 mt-0.5 leading-relaxed">{description}</p>
         </div>
       </div>
     </div>
@@ -190,7 +187,7 @@ function PlannedCapability({ icon, title, description }: PlannedCapabilityProps)
 
 export default function MarketingHomePage() {
   return (
-    <div className="p-6 space-y-8 max-w-6xl">
+    <div className="p-6 space-y-10 max-w-6xl">
       {/* Page Header */}
       <PageHeader
         title="Marketing"
@@ -199,17 +196,17 @@ export default function MarketingHomePage() {
 
       {/* Section: Active Communications */}
       <section>
-        <h2 className="text-sm font-semibold text-primary uppercase tracking-wide mb-4">
+        <h2 className="text-sm font-semibold text-primary uppercase tracking-wide mb-5">
           Active Communications
         </h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
           <HeroCard
             badge="live"
             title="Direct Messages"
             description="Private conversations with clients."
             buttonLabel="Open Inbox"
             href="/marketing/messages"
-            icon={<MessageInboxIcon className="w-16 h-16" />}
+            icon={<MessageInboxIcon className="w-14 h-14 sm:w-16 sm:h-16" />}
           />
           <HeroCard
             badge="active"
@@ -217,31 +214,31 @@ export default function MarketingHomePage() {
             description="Reusable emails, DM replies, announcements."
             buttonLabel="Manage Templates"
             href="/marketing/templates"
-            icon={<TemplateCardsIcon className="w-20 h-16" />}
+            icon={<TemplateCardsIcon className="w-16 h-14 sm:w-20 sm:h-16" />}
           />
         </div>
       </section>
 
       {/* Section: Message Setup and Automation */}
       <section>
-        <h2 className="text-xs font-semibold text-secondary uppercase tracking-wide mb-3">
+        <h2 className="text-xs font-semibold text-secondary uppercase tracking-wide mb-4">
           Message Setup and Automation
         </h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           <SetupTile
-            icon={<TemplateIcon className="w-5 h-5" />}
+            icon={<TemplateIcon className="w-4 h-4" />}
             title="Templates"
             description="Create and reuse messages across email and DM"
             href="/marketing/templates"
           />
           <SetupTile
-            icon={<AutoReplyIcon className="w-5 h-5" />}
+            icon={<AutoReplyIcon className="w-4 h-4" />}
             title="Auto Replies"
             description="Send instant replies when you're unavailable"
             href="/marketing/auto-replies"
           />
           <SetupTile
-            icon={<ClockIcon className="w-5 h-5" />}
+            icon={<ClockIcon className="w-4 h-4" />}
             title="Business Hours"
             description="Control when automated replies are sent"
             href="/marketing/business-hours"
@@ -249,20 +246,20 @@ export default function MarketingHomePage() {
         </div>
       </section>
 
-      {/* Section: Planned Capabilities (Demoted) */}
-      <section className="pt-2">
+      {/* Section: Planned Capabilities (Heavily Demoted) */}
+      <section className="pt-4 opacity-60">
         <div className="flex items-baseline gap-2 mb-3">
-          <h2 className="text-[11px] font-medium text-secondary/60 uppercase tracking-wider">
+          <h2 className="text-[10px] font-medium text-secondary/50 uppercase tracking-wider">
             Planned Capabilities
           </h2>
-          <span className="text-[11px] text-secondary/40">Rolling out in phases</span>
+          <span className="text-[10px] text-secondary/30 italic">Rolling out in phases</span>
         </div>
 
-        <div className="space-y-4">
+        <div className="space-y-3">
           {/* Campaign Hub */}
           <div>
-            <h3 className="text-[10px] font-medium text-secondary/50 uppercase mb-2">Campaign Hub</h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+            <h3 className="text-[10px] font-medium text-secondary/40 uppercase mb-1.5">Campaign Hub</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1.5">
               <PlannedCapability icon="📅" title="Campaign Planning" description="Litter announcements, planned breedings, availability." />
               <PlannedCapability icon="🗓️" title="Central Calendar" description="See what is planned, posted, and coming up." />
             </div>
@@ -270,8 +267,8 @@ export default function MarketingHomePage() {
 
           {/* Multi-Channel Publishing */}
           <div>
-            <h3 className="text-[10px] font-medium text-secondary/50 uppercase mb-2">Multi-Channel Publishing</h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+            <h3 className="text-[10px] font-medium text-secondary/40 uppercase mb-1.5">Multi-Channel Publishing</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1.5">
               <PlannedCapability icon="📱" title="Social Media" description="Facebook and Instagram business pages." />
               <PlannedCapability icon="✉️" title="Email and SMS" description="Reach waitlists, past buyers, and approved breeders." />
               <PlannedCapability icon="🌐" title="BreederHQ Surfaces" description="Public profile and Marketplace visibility." />
@@ -280,8 +277,8 @@ export default function MarketingHomePage() {
 
           {/* AI Assisted Writing */}
           <div>
-            <h3 className="text-[10px] font-medium text-secondary/50 uppercase mb-2">AI Assisted Writing</h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+            <h3 className="text-[10px] font-medium text-secondary/40 uppercase mb-1.5">AI Assisted Writing</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1.5">
               <PlannedCapability icon="✍️" title="Post Creation Help" description="Turn a few details into ready to post copy." />
               <PlannedCapability icon="🎨" title="Tone and Format Adaptation" description="Different styles for social, email, and text." />
               <PlannedCapability icon="🔄" title="Multiple Variations" description="Pick what fits your voice and audience." />
@@ -290,8 +287,8 @@ export default function MarketingHomePage() {
 
           {/* Audience and Performance */}
           <div>
-            <h3 className="text-[10px] font-medium text-secondary/50 uppercase mb-2">Audience and Performance</h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+            <h3 className="text-[10px] font-medium text-secondary/40 uppercase mb-1.5">Audience and Performance</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1.5">
               <PlannedCapability icon="👥" title="Audience Selection" description="Past buyers, waitlist, breeders, public." />
               <PlannedCapability icon="📊" title="What Works" description="Views, clicks, and inquiries." />
               <PlannedCapability icon="🔔" title="Smart Suggestions" description="Reminders based on activity and interest." />
