@@ -48,6 +48,31 @@ if (IS_DEV) {
   console.debug("[MessagesPage] API base resolved to:", API_BASE);
 }
 
+const THREAD_ID_PARAM = "threadId";
+
+/* ────────────────────────────────────────────────────────────────────────────
+ * URL Helpers
+ * ────────────────────────────────────────────────────────────────────────── */
+
+function getThreadIdFromUrl(): number | null {
+  const params = new URLSearchParams(window.location.search);
+  const val = params.get(THREAD_ID_PARAM);
+  if (!val) return null;
+  const parsed = parseInt(val, 10);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function setThreadIdInUrl(threadId: number | null): void {
+  const url = new URL(window.location.href);
+  if (threadId != null) {
+    url.searchParams.set(THREAD_ID_PARAM, String(threadId));
+  } else {
+    url.searchParams.delete(THREAD_ID_PARAM);
+  }
+  // Use replaceState to avoid polluting browser history
+  window.history.replaceState({}, "", url.toString());
+}
+
 interface ThreadListItemProps {
   thread: MessageThread;
   isActive: boolean;
@@ -350,6 +375,9 @@ export default function MessagesPage() {
   const [error, setError] = React.useState<string | null>(null);
   const [composing, setComposing] = React.useState(false);
 
+  // Track pending thread ID from URL (to open thread once data loads)
+  const [pendingThreadId, setPendingThreadId] = React.useState<number | null>(() => getThreadIdFromUrl());
+
   React.useEffect(() => {
     window.dispatchEvent(
       new CustomEvent("bhq:module", {
@@ -378,7 +406,8 @@ export default function MessagesPage() {
         return new Date(bKey).getTime() - new Date(aKey).getTime();
       });
       setThreads(sorted);
-      if (sorted.length > 0 && !selectedThreadId) {
+      // Only auto-select first thread if no URL param pending and no selection
+      if (sorted.length > 0 && !selectedThreadId && !pendingThreadId) {
         setSelectedThreadId(sorted[0].id);
       }
     } catch (err: any) {
@@ -443,6 +472,30 @@ export default function MessagesPage() {
       loadThread(selectedThreadId);
     }
   }, [selectedThreadId]);
+
+  // Handle URL-based thread deep link once data loads
+  React.useEffect(() => {
+    if (!pendingThreadId || loading || threads.length === 0) return;
+
+    // Find the thread in loaded data
+    const found = threads.find((t) => t.id === pendingThreadId);
+    if (found) {
+      setSelectedThreadId(found.id);
+    } else {
+      // Thread not found, clear the invalid URL param
+      setThreadIdInUrl(null);
+    }
+    // Clear pending ID after processing
+    setPendingThreadId(null);
+  }, [pendingThreadId, loading, threads]);
+
+  // Sync URL when thread selection changes
+  React.useEffect(() => {
+    // Skip URL update during initial pending ID processing
+    if (pendingThreadId) return;
+
+    setThreadIdInUrl(selectedThreadId);
+  }, [selectedThreadId, pendingThreadId]);
 
   return (
     <div className="p-6 space-y-6">
