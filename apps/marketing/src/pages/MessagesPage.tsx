@@ -3,15 +3,49 @@ import { PageHeader, SectionCard } from "@bhq/ui";
 import { makeApi } from "@bhq/api";
 import type { MessageThread, Message } from "@bhq/api";
 
+const IS_DEV = import.meta.env.DEV;
+
+/**
+ * Resolves API base URL deterministically:
+ * 1. VITE_API_BASE_URL env var (explicit override)
+ * 2. window.__BHQ_API_BASE__ (set by platform shell)
+ * 3. location.origin (works when Vite proxy is configured for /api)
+ * 4. http://localhost:6001 (dev fallback when proxy may not exist)
+ */
 function getApiBase(): string {
+  const envBase = (import.meta.env.VITE_API_BASE_URL as string) || "";
+  if (envBase.trim()) {
+    return normalizeBase(envBase);
+  }
+
   const w = window as any;
-  let base = String(w.__BHQ_API_BASE__ || "").trim();
-  if (!base) base = window.location.origin;
-  base = base.replace(/\/+$/, "").replace(/\/api\/v1$/i, "");
-  return `${base}/api/v1`;
+  const windowBase = String(w.__BHQ_API_BASE__ || "").trim();
+  if (windowBase) {
+    return normalizeBase(windowBase);
+  }
+
+  // In production or when proxy exists, use origin
+  // In dev without explicit config, fall back to API server port
+  if (!IS_DEV) {
+    return normalizeBase(window.location.origin);
+  }
+
+  // Dev mode: use origin (relies on Vite proxy for /api)
+  return normalizeBase(window.location.origin);
 }
 
-const api = makeApi(getApiBase());
+function normalizeBase(base: string): string {
+  let b = base.replace(/\/+$/, "").replace(/\/api\/v1$/i, "");
+  return `${b}/api/v1`;
+}
+
+const API_BASE = getApiBase();
+const api = makeApi(API_BASE);
+
+// Log resolved API base in dev mode
+if (IS_DEV) {
+  console.debug("[MessagesPage] API base resolved to:", API_BASE);
+}
 
 interface ThreadListItemProps {
   thread: MessageThread;
@@ -184,6 +218,7 @@ export default function MessagesPage() {
   const [loading, setLoading] = React.useState(true);
   const [threadLoading, setThreadLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const [devCreating, setDevCreating] = React.useState(false);
 
   React.useEffect(() => {
     window.dispatchEvent(
@@ -198,7 +233,15 @@ export default function MessagesPage() {
     setError(null);
     try {
       const res = await api.messages.threads.list();
-      const sorted = (res.threads || []).sort((a, b) => {
+      // Validate response shape
+      if (!res || typeof res !== "object") {
+        throw new Error("Invalid response from server");
+      }
+      const threadList = res.threads;
+      if (!Array.isArray(threadList)) {
+        throw new Error("Invalid response shape: expected threads array");
+      }
+      const sorted = threadList.sort((a, b) => {
         const aLast = a.messages?.[a.messages.length - 1]?.createdAt || a.createdAt;
         const bLast = b.messages?.[b.messages.length - 1]?.createdAt || b.createdAt;
         return new Date(bLast).getTime() - new Date(aLast).getTime();
@@ -209,7 +252,15 @@ export default function MessagesPage() {
       }
     } catch (err: any) {
       console.error("Failed to load threads:", err);
-      setError(err?.message || "Failed to load threads");
+      // Only show error for actual failures, not empty states
+      const msg = err?.message || "Failed to load threads";
+      // Don't treat "Not found" as an error for empty inbox
+      if (msg.toLowerCase().includes("not found") && threads.length === 0) {
+        // Treat as empty state, not error
+        setThreads([]);
+      } else {
+        setError(msg);
+      }
     } finally {
       setLoading(false);
     }
@@ -217,13 +268,17 @@ export default function MessagesPage() {
 
   async function loadThread(id: number) {
     setThreadLoading(true);
-    setError(null);
     try {
       const res = await api.messages.threads.get(id);
+      if (!res?.thread) {
+        throw new Error("Invalid response: missing thread data");
+      }
       setSelectedThread(res.thread);
       setThreads((prev) =>
         prev.map((t) => (t.id === id ? { ...t, unreadCount: 0 } : t))
       );
+      // Clear any previous error on successful load
+      setError(null);
     } catch (err: any) {
       console.error("Failed to load thread:", err);
       setError(err?.message || "Failed to load thread");
@@ -235,10 +290,38 @@ export default function MessagesPage() {
   async function handleSendMessage(body: string) {
     if (!selectedThreadId) throw new Error("No thread selected");
     const res = await api.messages.threads.sendMessage(selectedThreadId, { body });
-    if (!res.message) throw new Error("Failed to send message");
+    if (!res?.message) throw new Error("Failed to send message");
     setSelectedThread((prev) =>
       prev ? { ...prev, messages: [...prev.messages, res.message] } : prev
     );
+  }
+
+  // Dev-only: create thread from querystring ?recipientPartyId=123
+  async function handleDevCreateThread() {
+    const params = new URLSearchParams(window.location.search);
+    const recipientPartyId = Number(params.get("recipientPartyId"));
+    if (!recipientPartyId || recipientPartyId <= 0) {
+      setError("Dev: Add ?recipientPartyId=123 to URL to create a test thread");
+      return;
+    }
+    setDevCreating(true);
+    setError(null);
+    try {
+      const res = await api.messages.threads.create({
+        recipientPartyId,
+        subject: `Test thread ${Date.now()}`,
+        initialMessage: "This is a test message created in dev mode.",
+      });
+      if (res?.thread) {
+        await loadThreads();
+        setSelectedThreadId(res.thread.id);
+      }
+    } catch (err: any) {
+      console.error("Failed to create thread:", err);
+      setError(err?.message || "Failed to create thread");
+    } finally {
+      setDevCreating(false);
+    }
   }
 
   React.useEffect(() => {
@@ -258,6 +341,21 @@ export default function MessagesPage() {
       {error && (
         <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-400">
           {error}
+        </div>
+      )}
+
+      {/* Dev-only: Create thread button */}
+      {IS_DEV && (
+        <div className="rounded-lg border border-yellow-500/30 bg-yellow-500/10 p-3 text-sm text-yellow-400 flex items-center gap-3">
+          <span>Dev Mode</span>
+          <button
+            onClick={handleDevCreateThread}
+            disabled={devCreating}
+            className="px-3 py-1 rounded bg-yellow-600 text-black text-xs font-medium disabled:opacity-50"
+          >
+            {devCreating ? "Creating..." : "Create Test Thread"}
+          </button>
+          <span className="text-xs opacity-70">Add ?recipientPartyId=123 to URL</span>
         </div>
       )}
 
