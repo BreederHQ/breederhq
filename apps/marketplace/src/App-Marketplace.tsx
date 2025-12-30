@@ -1,11 +1,46 @@
+// apps/marketplace/src/App-Marketplace.tsx
 import * as React from "react";
 import {
   PageHeader,
   SectionCard,
   Badge,
 } from "@bhq/ui";
+import { ProgramPage } from "./pages/ProgramPage";
+import { OffspringGroupDetailPage } from "./pages/OffspringGroupDetailPage";
+import { AnimalDetailPage } from "./pages/AnimalDetailPage";
+
+type Route =
+  | { type: "home" }
+  | { type: "program"; programSlug: string }
+  | { type: "offspring-group"; programSlug: string; listingSlug: string }
+  | { type: "animal"; programSlug: string; urlSlug: string };
+
+function parseRoute(pathname: string): Route {
+  // /marketplace/programs/:programSlug/offspring-groups/:listingSlug
+  const offspringMatch = pathname.match(/^\/marketplace\/programs\/([^/]+)\/offspring-groups\/([^/]+)\/?$/);
+  if (offspringMatch) {
+    return { type: "offspring-group", programSlug: offspringMatch[1], listingSlug: offspringMatch[2] };
+  }
+
+  // /marketplace/programs/:programSlug/animals/:urlSlug
+  const animalMatch = pathname.match(/^\/marketplace\/programs\/([^/]+)\/animals\/([^/]+)\/?$/);
+  if (animalMatch) {
+    return { type: "animal", programSlug: animalMatch[1], urlSlug: animalMatch[2] };
+  }
+
+  // /marketplace/programs/:programSlug
+  const programMatch = pathname.match(/^\/marketplace\/programs\/([^/]+)\/?$/);
+  if (programMatch) {
+    return { type: "program", programSlug: programMatch[1] };
+  }
+
+  // Default: home
+  return { type: "home" };
+}
 
 export default function AppMarketplace() {
+  const [route, setRoute] = React.useState<Route>(() => parseRoute(window.location.pathname));
+
   React.useEffect(() => {
     if (typeof window !== "undefined") {
       window.dispatchEvent(
@@ -16,6 +51,46 @@ export default function AppMarketplace() {
     }
   }, []);
 
+  React.useEffect(() => {
+    const onPopState = () => {
+      setRoute(parseRoute(window.location.pathname));
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
+
+  const handleNavigate = React.useCallback((path: string) => {
+    window.history.pushState(null, "", path);
+    setRoute(parseRoute(path));
+  }, []);
+
+  switch (route.type) {
+    case "program":
+      return <ProgramPage programSlug={route.programSlug} onNavigate={handleNavigate} />;
+    case "offspring-group":
+      return (
+        <OffspringGroupDetailPage
+          programSlug={route.programSlug}
+          listingSlug={route.listingSlug}
+          onNavigate={handleNavigate}
+        />
+      );
+    case "animal":
+      return (
+        <AnimalDetailPage
+          programSlug={route.programSlug}
+          urlSlug={route.urlSlug}
+          onNavigate={handleNavigate}
+        />
+      );
+    default:
+      return <MarketplaceHomePage />;
+  }
+}
+
+/* ───────────────── Home/Landing Page ───────────────── */
+
+function MarketplaceHomePage() {
   return (
     <div className="p-6 space-y-6">
       {/* Hero Section */}
