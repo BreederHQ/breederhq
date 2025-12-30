@@ -157,7 +157,7 @@ const API_ROOT = (
 ; (window as any).__BHQ_DASHBOARD_REMOTE__ = false;
 
 // Portal feature gate: default false, enable via VITE_PORTAL_ENABLED=true
-const PORTAL_ENABLED = ((import.meta as any)?.env?.VITE_PORTAL_ENABLED === "true");
+const PORTAL_ENABLED = import.meta.env.VITE_PORTAL_ENABLED === "true";
 
 // Simple path router
 function RouteView() {
