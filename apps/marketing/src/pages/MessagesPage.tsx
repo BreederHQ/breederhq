@@ -3,7 +3,50 @@ import { PageHeader, SectionCard } from "@bhq/ui";
 import { makeApi } from "@bhq/api";
 import type { MessageThread, Message } from "@bhq/api";
 
-const api = makeApi("/api/v1");
+const IS_DEV = import.meta.env.DEV;
+
+/**
+ * Resolves API base URL deterministically:
+ * 1. VITE_API_BASE_URL env var (if defined and non-empty)
+ * 2. window.__BHQ_API_BASE__ (if defined and non-empty)
+ * 3. In dev: http://localhost:6001 (direct to API server, not Vite origin)
+ * 4. In prod: location.origin
+ */
+function getApiBase(): string {
+  // 1. Explicit env override
+  const envBase = (import.meta.env.VITE_API_BASE_URL as string) || "";
+  if (envBase.trim()) {
+    return normalizeBase(envBase);
+  }
+
+  // 2. Platform shell injection
+  const w = window as any;
+  const windowBase = String(w.__BHQ_API_BASE__ || "").trim();
+  if (windowBase) {
+    return normalizeBase(windowBase);
+  }
+
+  // 3. Dev mode: default to API server port (never use Vite origin)
+  if (IS_DEV) {
+    return "http://localhost:6001/api/v1";
+  }
+
+  // 4. Production: use origin
+  return normalizeBase(window.location.origin);
+}
+
+function normalizeBase(base: string): string {
+  const b = base.replace(/\/+$/, "").replace(/\/api\/v1$/i, "");
+  return `${b}/api/v1`;
+}
+
+const API_BASE = getApiBase();
+const api = makeApi(API_BASE);
+
+// Log resolved API base in dev mode
+if (IS_DEV) {
+  console.debug("[MessagesPage] API base resolved to:", API_BASE);
+}
 
 interface ThreadListItemProps {
   thread: MessageThread;
@@ -12,10 +55,11 @@ interface ThreadListItemProps {
 }
 
 function ThreadListItem({ thread, isActive, onClick }: ThreadListItemProps) {
+  const currentOrgId = (window as any).platform?.currentOrgId;
   const otherParticipant = thread.participants?.find(
-    (p) => p.partyId !== (window as any).platform?.currentOrgId
+    (p) => p.partyId !== currentOrgId
   );
-  const otherName = otherParticipant?.party?.name || "Unknown";
+  const otherName = otherParticipant?.party?.name || "Unknown contact";
   const lastMessage = thread.messages?.[thread.messages.length - 1];
   const preview = lastMessage?.body
     ? lastMessage.body.length > 60
@@ -67,7 +111,7 @@ function MessageBubble({ message, isOwn }: MessageBubbleProps) {
     <div className={`flex ${isOwn ? "justify-end" : "justify-start"} mb-3`}>
       <div className={`max-w-[70%] ${isOwn ? "items-end" : "items-start"} flex flex-col gap-1`}>
         <div className="text-xs text-secondary px-2">
-          {isOwn ? "You" : message.senderParty?.name || "Unknown"} · {timeStr}
+          {isOwn ? "You" : message.senderParty?.name || "Unknown contact"} · {timeStr}
         </div>
         <div
           className={`
@@ -94,6 +138,7 @@ interface ThreadViewProps {
 function ThreadView({ thread, onSendMessage }: ThreadViewProps) {
   const [messageBody, setMessageBody] = React.useState("");
   const [sending, setSending] = React.useState(false);
+  const [sendError, setSendError] = React.useState<string | null>(null);
   const messagesEndRef = React.useRef<HTMLDivElement>(null);
   const currentOrgId = (window as any).platform?.currentOrgId;
 
@@ -107,18 +152,20 @@ function ThreadView({ thread, onSendMessage }: ThreadViewProps) {
     if (!trimmed || sending) return;
 
     setSending(true);
+    setSendError(null);
     try {
       await onSendMessage(trimmed);
       setMessageBody("");
-    } catch (err) {
+    } catch (err: any) {
       console.error("Failed to send message:", err);
+      setSendError(err?.message || "Failed to send message");
     } finally {
       setSending(false);
     }
   }
 
   const otherParticipant = thread.participants?.find((p) => p.partyId !== currentOrgId);
-  const otherName = otherParticipant?.party?.name || "Unknown";
+  const otherName = otherParticipant?.party?.name || "Unknown contact";
 
   return (
     <div className="flex flex-col h-full">
@@ -141,6 +188,9 @@ function ThreadView({ thread, onSendMessage }: ThreadViewProps) {
       </div>
 
       <form onSubmit={handleSend} className="border-t border-hairline p-4 bg-surface">
+        {sendError && (
+          <div className="mb-2 text-xs text-red-400">{sendError}</div>
+        )}
         <div className="flex gap-2">
           <textarea
             value={messageBody}
@@ -184,7 +234,15 @@ export default function MessagesPage() {
     setError(null);
     try {
       const res = await api.messages.threads.list();
-      const sorted = (res.threads || []).sort((a, b) => {
+      // Validate response shape
+      if (!res || typeof res !== "object") {
+        throw new Error("Invalid response from server");
+      }
+      const threadList = res.threads;
+      if (!Array.isArray(threadList)) {
+        throw new Error("Invalid response shape: expected threads array");
+      }
+      const sorted = threadList.sort((a, b) => {
         const aLast = a.messages?.[a.messages.length - 1]?.createdAt || a.createdAt;
         const bLast = b.messages?.[b.messages.length - 1]?.createdAt || b.createdAt;
         return new Date(bLast).getTime() - new Date(aLast).getTime();
@@ -195,7 +253,15 @@ export default function MessagesPage() {
       }
     } catch (err: any) {
       console.error("Failed to load threads:", err);
-      setError(err?.message || "Failed to load threads");
+      // Only show error for actual failures, not empty states
+      const msg = err?.message || "Failed to load threads";
+      // Don't treat "Not found" as an error for empty inbox
+      if (msg.toLowerCase().includes("not found") && threads.length === 0) {
+        // Treat as empty state, not error
+        setThreads([]);
+      } else {
+        setError(msg);
+      }
     } finally {
       setLoading(false);
     }
@@ -203,13 +269,17 @@ export default function MessagesPage() {
 
   async function loadThread(id: number) {
     setThreadLoading(true);
-    setError(null);
     try {
       const res = await api.messages.threads.get(id);
+      if (!res?.thread) {
+        throw new Error("Invalid response: missing thread data");
+      }
       setSelectedThread(res.thread);
       setThreads((prev) =>
         prev.map((t) => (t.id === id ? { ...t, unreadCount: 0 } : t))
       );
+      // Clear any previous error on successful load
+      setError(null);
     } catch (err: any) {
       console.error("Failed to load thread:", err);
       setError(err?.message || "Failed to load thread");
@@ -219,8 +289,9 @@ export default function MessagesPage() {
   }
 
   async function handleSendMessage(body: string) {
-    if (!selectedThreadId) return;
+    if (!selectedThreadId) throw new Error("No thread selected");
     const res = await api.messages.threads.sendMessage(selectedThreadId, { body });
+    if (!res?.message) throw new Error("Failed to send message");
     setSelectedThread((prev) =>
       prev ? { ...prev, messages: [...prev.messages, res.message] } : prev
     );

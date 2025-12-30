@@ -147,6 +147,9 @@ export default function InvoicesPage({ api }: Props) {
   const [selectedInvoice, setSelectedInvoice] = React.useState<any | null>(null);
   const [menuOpen, setMenuOpen] = React.useState(false);
 
+  // Show voided toggle (defaults to false - hide voided invoices)
+  const [showVoided, setShowVoided] = React.useState(false);
+
   // Load data
   React.useEffect(() => {
     let cancelled = false;
@@ -188,10 +191,17 @@ export default function InvoicesPage({ api }: Props) {
   // Client search + filters
   const displayRows = React.useMemo(() => {
     const active = Object.entries(filters || {}).filter(([, v]) => (v ?? "") !== "");
-    if (!active.length && !qDebounced) return rows;
 
     const lc = (v: any) => String(v ?? "").toLowerCase();
     let data = [...rows];
+
+    // Filter out voided invoices unless showVoided is enabled
+    if (!showVoided) {
+      data = data.filter((r) => {
+        const status = String(r.status || "").toUpperCase();
+        return status !== "VOID" && status !== "VOIDED";
+      });
+    }
 
     if (qDebounced) {
       const ql = qDebounced.toLowerCase();
@@ -232,7 +242,7 @@ export default function InvoicesPage({ api }: Props) {
     }
 
     return data;
-  }, [rows, filters, qDebounced]);
+  }, [rows, filters, qDebounced, showVoided]);
 
   // Sorting
   const [sorts, setSorts] = React.useState<Array<{ key: string; dir: "asc" | "desc" }>>([]);
@@ -504,6 +514,9 @@ export default function InvoicesPage({ api }: Props) {
             end={end}
             filteredTotal={sortedRows.length}
             total={rows.length}
+            includeArchived={showVoided}
+            onIncludeArchivedChange={setShowVoided}
+            includeArchivedLabel="Show voided"
           />
         </Table>
       </Card>

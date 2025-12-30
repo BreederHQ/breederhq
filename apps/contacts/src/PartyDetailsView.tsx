@@ -1393,6 +1393,7 @@ export function PartyDetailsView({
             invoiceFilters={{ clientPartyId: row.partyId }}
             expenseFilters={{ vendorPartyId: row.partyId }}
             api={api}
+            defaultClientParty={{ id: row.partyId, label: row.displayName }}
           />
         )}
       </DetailsScaffold>

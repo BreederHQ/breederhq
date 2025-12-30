@@ -147,10 +147,11 @@ export function makeApi(baseArg?: string) {
         }
         const query = qs.toString();
         const path = `/invoices${query ? `?${query}` : ""}`;
-        const res = await reqWithExtra<{ data: any[]; meta?: any }>(path);
+        // Backend returns { items: [...], total: number }
+        const res = await reqWithExtra<{ items?: any[]; data?: any[]; total?: number; meta?: any }>(path);
         return {
-          items: res.data || [],
-          total: res.meta?.total || 0,
+          items: res.items || res.data || [],
+          total: res.total ?? res.meta?.total ?? 0,
         };
       },
       async get(id: number) {
@@ -204,10 +205,11 @@ export function makeApi(baseArg?: string) {
         }
         const query = qs.toString();
         const path = `/payments${query ? `?${query}` : ""}`;
-        const res = await reqWithExtra<{ data: any[]; meta?: any }>(path);
+        // Backend returns { items: [...], total: number }
+        const res = await reqWithExtra<{ items?: any[]; data?: any[]; total?: number; meta?: any }>(path);
         return {
-          items: res.data || [],
-          total: res.meta?.total || 0,
+          items: res.items || res.data || [],
+          total: res.total ?? res.meta?.total ?? 0,
         };
       },
       async get(id: number) {
@@ -256,10 +258,11 @@ export function makeApi(baseArg?: string) {
         }
         const query = qs.toString();
         const path = `/expenses${query ? `?${query}` : ""}`;
-        const res = await reqWithExtra<{ data: any[]; meta?: any }>(path);
+        // Backend returns { items: [...], total: number }
+        const res = await reqWithExtra<{ items?: any[]; data?: any[]; total?: number; meta?: any }>(path);
         return {
-          items: res.data || [],
-          total: res.meta?.total || 0,
+          items: res.items || res.data || [],
+          total: res.total ?? res.meta?.total ?? 0,
         };
       },
       async get(id: number) {
@@ -302,9 +305,37 @@ export function makeApi(baseArg?: string) {
       async search(query: string, opts?: { limit?: number; typeFilter?: string }) {
         const qs = new URLSearchParams();
         qs.set("q", query);
+        qs.set("dir", "asc"); // Required param - sort direction
         if (opts?.limit) qs.set("limit", String(opts.limit));
         if (opts?.typeFilter) qs.set("type", opts.typeFilter);
-        return reqWithExtra<any[]>(`/parties/search?${qs.toString()}`);
+        // Backend returns { items: [...], total: number }
+        const res = await reqWithExtra<{ items?: any[]; total?: number } | any[]>(
+          `/parties?${qs.toString()}`
+        );
+        // Normalize response: handle both array and { items: [] } shapes
+        return Array.isArray(res) ? res : (res?.items || []);
+      },
+    },
+    contacts: {
+      async create(input: {
+        first_name?: string;
+        last_name?: string;
+        display_name?: string;
+        email?: string;
+        phone_e164?: string;
+      }) {
+        return reqWithExtra<any>("/contacts", {
+          method: "POST",
+          json: input,
+        });
+      },
+    },
+    organizations: {
+      async create(input: { name: string; website?: string | null }) {
+        return reqWithExtra<any>("/organizations", {
+          method: "POST",
+          json: input,
+        });
       },
     },
     animals: {
@@ -312,7 +343,12 @@ export function makeApi(baseArg?: string) {
         const qs = new URLSearchParams();
         qs.set("q", query);
         if (opts?.limit) qs.set("limit", String(opts.limit));
-        return reqWithExtra<any[]>(`/animals/search?${qs.toString()}`);
+        // Backend returns { items: [...], total: number }
+        const res = await reqWithExtra<{ items?: any[]; total?: number } | any[]>(
+          `/animals?${qs.toString()}`
+        );
+        // Normalize response: handle both array and { items: [] } shapes
+        return Array.isArray(res) ? res : (res?.items || []);
       },
     },
     offspringGroups: {
@@ -320,7 +356,12 @@ export function makeApi(baseArg?: string) {
         const qs = new URLSearchParams();
         qs.set("q", query);
         if (opts?.limit) qs.set("limit", String(opts.limit));
-        return reqWithExtra<any[]>(`/offspring-groups/search?${qs.toString()}`);
+        // Backend returns { items: [...], nextCursor: ... }
+        const res = await reqWithExtra<{ items?: any[]; nextCursor?: string } | any[]>(
+          `/offspring?${qs.toString()}`
+        );
+        // Normalize response: handle both array and { items: [] } shapes
+        return Array.isArray(res) ? res : (res?.items || []);
       },
     },
     breedingPlans: {
@@ -328,7 +369,12 @@ export function makeApi(baseArg?: string) {
         const qs = new URLSearchParams();
         qs.set("q", query);
         if (opts?.limit) qs.set("limit", String(opts.limit));
-        return reqWithExtra<any[]>(`/breeding-plans/search?${qs.toString()}`);
+        // Backend returns { items: [...], total: number }
+        const res = await reqWithExtra<{ items?: any[]; total?: number } | any[]>(
+          `/breeding/plans?${qs.toString()}`
+        );
+        // Normalize response: handle both array and { items: [] } shapes
+        return Array.isArray(res) ? res : (res?.items || []);
       },
     },
   };

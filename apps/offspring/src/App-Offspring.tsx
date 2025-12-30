@@ -5079,6 +5079,7 @@ function OffspringGroupsTab(
                       invoiceFilters={{ offspringGroupId: groupId }}
                       expenseFilters={{ offspringGroupId: groupId }}
                       api={api}
+                      defaultAnchor={{ offspringGroupId: groupId, offspringGroupName: tblRow.groupName || tblRow.planCode || `Group #${groupId}` }}
                     />
                   )}
 

@@ -48,11 +48,17 @@ export interface InvoiceCreateModalProps {
   onClose: () => void;
   onSuccess: () => void;
   api: any;
+  /** Pre-fill and lock the anchor (e.g., when creating from Animal/Offspring/Breeding Plan page) */
   defaultAnchor?: {
     animalId?: number;
+    animalName?: string;
     offspringGroupId?: number;
+    offspringGroupName?: string;
     breedingPlanId?: number;
+    breedingPlanName?: string;
   };
+  /** Pre-fill and lock the client party (e.g., when creating from Organization/Contact page) */
+  defaultClientParty?: AutocompleteOption | null;
 }
 
 type AnchorType = "animal" | "offspringGroup" | "breedingPlan" | "serviceCode" | null;
@@ -85,11 +91,13 @@ export function InvoiceCreateModal({
   onSuccess,
   api,
   defaultAnchor,
+  defaultClientParty,
 }: InvoiceCreateModalProps) {
   const { toast } = useToast();
   const [submitting, setSubmitting] = React.useState(false);
   const [errors, setErrors] = React.useState<Errors>({});
   const idempotencyKeyRef = React.useRef<string>("");
+  const [confirmCloseOpen, setConfirmCloseOpen] = React.useState(false);
 
   // Determine if anchor is locked (from entity tab) or requires user selection (from Party tab)
   const anchorLocked = !!(
@@ -97,6 +105,9 @@ export function InvoiceCreateModal({
     defaultAnchor?.offspringGroupId ||
     defaultAnchor?.breedingPlanId
   );
+
+  // Determine if client party is locked (from Organization/Contact page)
+  const clientPartyLocked = !!defaultClientParty;
 
   const initialAnchorType: AnchorType = React.useMemo(() => {
     if (defaultAnchor?.animalId) return "animal";
@@ -132,7 +143,7 @@ export function InvoiceCreateModal({
     if (open) {
       idempotencyKeyRef.current = generateIdempotencyKey();
       setForm({
-        clientParty: null,
+        clientParty: defaultClientParty || null,
         totalInput: "",
         issuedAt: new Date().toISOString().slice(0, 10),
         dueAt: "",
@@ -154,8 +165,54 @@ export function InvoiceCreateModal({
       });
       setErrors({});
       setSubmitting(false);
+      setConfirmCloseOpen(false);
     }
-  }, [open, initialAnchorType]);
+  }, [open, initialAnchorType, defaultClientParty]);
+
+  // Compute dirty state - form has unsaved changes
+  const isDirty = React.useMemo(() => {
+    // Check if client party was changed (only if not pre-filled)
+    if (!clientPartyLocked && form.clientParty !== null) return true;
+
+    // Check if any line item has data
+    const hasLineItemData = form.lineItems.some(
+      (item) => item.description.trim() !== "" || item.unitPrice.trim() !== ""
+    );
+    if (hasLineItemData) return true;
+
+    // Check dates (issuedAt defaults to today, so only check if changed from today or if dueAt set)
+    const today = new Date().toISOString().slice(0, 10);
+    if (form.issuedAt !== today) return true;
+    if (form.dueAt.trim() !== "") return true;
+
+    // Check notes
+    if (form.notes.trim() !== "") return true;
+
+    // Check anchor selection (only if not locked)
+    if (!anchorLocked) {
+      if (form.anchorType !== initialAnchorType) return true;
+      if (form.animal !== null) return true;
+      if (form.offspringGroup !== null) return true;
+      if (form.breedingPlan !== null) return true;
+      if (form.serviceCode.trim() !== "") return true;
+    }
+
+    return false;
+  }, [form, clientPartyLocked, anchorLocked, initialAnchorType]);
+
+  // Handle close request - check for unsaved changes
+  const handleRequestClose = React.useCallback(() => {
+    if (isDirty) {
+      setConfirmCloseOpen(true);
+    } else {
+      onClose();
+    }
+  }, [isDirty, onClose]);
+
+  const handleConfirmClose = () => {
+    setConfirmCloseOpen(false);
+    onClose();
+  };
 
   // Line item helpers
   const computeLineTotal = (item: LineItemRow): number => {
@@ -219,6 +276,10 @@ export function InvoiceCreateModal({
       errs.lineItems = "At least one line item is required";
     } else {
       for (const item of form.lineItems) {
+        if (!item.description.trim()) {
+          errs.lineItems = "All line items must have a description";
+          break;
+        }
         const qty = Number(item.qty);
         if (!qty || qty < 1) {
           errs.lineItems = "All line items must have quantity >= 1";
@@ -231,9 +292,11 @@ export function InvoiceCreateModal({
         }
       }
 
-      const subtotal = computeSubtotal();
-      if (subtotal <= 0) {
-        errs.lineItems = "Invoice total must be greater than zero";
+      if (!errs.lineItems) {
+        const subtotal = computeSubtotal();
+        if (subtotal <= 0) {
+          errs.lineItems = "Invoice total must be greater than zero";
+        }
       }
     }
 
@@ -318,18 +381,11 @@ export function InvoiceCreateModal({
 
       // Handle idempotency conflict (409)
       if (err?.status === 409 || err?.message?.includes("409")) {
-        toast({
-          title: "Invoice already created",
-          description: "This invoice was already created (duplicate submission detected)",
-        });
+        toast.info("Invoice already created (duplicate submission detected)");
         onSuccess(); // Refresh the list
         onClose();
       } else {
-        toast({
-          title: "Error",
-          description: err?.message || "Failed to create invoice",
-          variant: "destructive",
-        });
+        toast.error(err?.message || "Failed to create invoice");
       }
     } finally {
       setSubmitting(false);
@@ -337,7 +393,7 @@ export function InvoiceCreateModal({
   };
 
   return (
-    <Dialog open={open} onClose={onClose} title="Create Invoice" size="lg">
+    <Dialog open={open} onClose={handleRequestClose} title="Create Invoice" size="lg">
       <div className="space-y-4">
         <PartyAutocomplete
           value={form.clientParty}
@@ -345,6 +401,7 @@ export function InvoiceCreateModal({
           api={api}
           label="Client Contact / Organization *"
           error={errors.clientParty}
+          disabled={clientPartyLocked}
         />
 
         {/* Line Items Section */}
@@ -484,9 +541,15 @@ export function InvoiceCreateModal({
           <div className="p-3 bg-muted/20 rounded-md border border-hairline">
             <div className="text-xs text-secondary mb-1">Linked To</div>
             <div className="text-sm">
-              {defaultAnchor?.animalId && `Animal ID: ${defaultAnchor.animalId}`}
-              {defaultAnchor?.offspringGroupId && `Offspring Group ID: ${defaultAnchor.offspringGroupId}`}
-              {defaultAnchor?.breedingPlanId && `Breeding Plan ID: ${defaultAnchor.breedingPlanId}`}
+              {defaultAnchor?.animalId && (
+                <span>Animal: {defaultAnchor.animalName || `ID ${defaultAnchor.animalId}`}</span>
+              )}
+              {defaultAnchor?.offspringGroupId && (
+                <span>Offspring Group: {defaultAnchor.offspringGroupName || `ID ${defaultAnchor.offspringGroupId}`}</span>
+              )}
+              {defaultAnchor?.breedingPlanId && (
+                <span>Breeding Plan: {defaultAnchor.breedingPlanName || `ID ${defaultAnchor.breedingPlanId}`}</span>
+              )}
             </div>
           </div>
         ) : (
@@ -561,7 +624,7 @@ export function InvoiceCreateModal({
         </div>
 
         <div className="flex justify-end gap-2 pt-3 border-t border-hairline">
-          <Button variant="ghost" onClick={onClose} disabled={submitting}>
+          <Button variant="ghost" onClick={handleRequestClose} disabled={submitting}>
             Cancel
           </Button>
           <Button onClick={handleSubmit} disabled={submitting}>
@@ -569,6 +632,36 @@ export function InvoiceCreateModal({
           </Button>
         </div>
       </div>
+
+      {/* Unsaved Changes Confirmation Dialog */}
+      <Dialog
+        open={confirmCloseOpen}
+        onClose={() => setConfirmCloseOpen(false)}
+        title="Unsaved Changes"
+        size="sm"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-secondary">
+            You have unsaved changes. Are you sure you want to close this form? Your changes will be lost.
+          </p>
+          <div className="flex justify-end gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setConfirmCloseOpen(false)}
+            >
+              Keep Editing
+            </Button>
+            <Button
+              size="sm"
+              variant="destructive"
+              onClick={handleConfirmClose}
+            >
+              Discard Changes
+            </Button>
+          </div>
+        </div>
+      </Dialog>
     </Dialog>
   );
 }
