@@ -43,6 +43,25 @@ export default function TemplatesHubPage() {
     { name: "Litter Announcement", category: "Social Drafts", lastEdited: "Draft" },
   ];
 
+  // Map category display name to tab value
+  const categoryToTabValue = (category: string): string => {
+    switch (category) {
+      case "Email":
+        return "email";
+      case "Direct Messages":
+        return "dm";
+      case "Social Drafts":
+        return "social";
+      default:
+        return "all";
+    }
+  };
+
+  // Filter templates based on active tab
+  const filteredTemplates = placeholderTemplates.filter(
+    (t) => activeTab === "all" || categoryToTabValue(t.category) === activeTab
+  );
+
   const handleBackClick = (e: React.MouseEvent) => {
     e.preventDefault();
     window.history.pushState(null, "", "/marketing");
@@ -89,9 +108,15 @@ export default function TemplatesHubPage() {
         }
       >
         <div className="space-y-2">
-          {placeholderTemplates.map((template, idx) => (
-            <TemplateItem key={idx} {...template} />
-          ))}
+          {filteredTemplates.length > 0 ? (
+            filteredTemplates.map((template, idx) => (
+              <TemplateItem key={idx} {...template} />
+            ))
+          ) : (
+            <div className="py-8 text-center text-sm text-secondary">
+              No templates in this category.
+            </div>
+          )}
         </div>
 
         {/* Coming Soon Notice */}
