@@ -19,8 +19,18 @@ export function OffspringGroupDetailPage({ programSlug, listingSlug, onNavigate 
   const [group, setGroup] = React.useState<PublicOffspringGroupDTO | null>(null);
   const [errorMessage, setErrorMessage] = React.useState<string | undefined>();
 
+  // Prevent duplicate fetches on re-render
+  const fetchedKeyRef = React.useRef<string | null>(null);
+  const fetchKey = `${programSlug}:${listingSlug}`;
+
   React.useEffect(() => {
+    // Skip if we already fetched this key
+    if (fetchedKeyRef.current === fetchKey && loadState !== "loading") {
+      return;
+    }
+
     let cancelled = false;
+    fetchedKeyRef.current = fetchKey;
 
     async function load() {
       setLoadState("loading");
@@ -48,14 +58,14 @@ export function OffspringGroupDetailPage({ programSlug, listingSlug, onNavigate 
 
     load();
     return () => { cancelled = true; };
-  }, [programSlug, listingSlug]);
+  }, [programSlug, listingSlug, fetchKey, loadState]);
 
   const handleBack = () => {
     onNavigate(`/marketplace/programs/${programSlug}`);
   };
 
   if (loadState === "loading") {
-    return <LoadingState />;
+    return <LoadingState variant="detail" />;
   }
 
   if (loadState === "not-found") {

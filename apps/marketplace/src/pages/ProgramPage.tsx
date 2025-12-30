@@ -26,12 +26,22 @@ export function ProgramPage({ programSlug, onNavigate }: ProgramPageProps) {
   const [animals, setAnimals] = React.useState<PublicAnimalSummary[]>([]);
   const [errorMessage, setErrorMessage] = React.useState<string | undefined>();
 
+  // Prevent duplicate fetches on re-render
+  const fetchedSlugRef = React.useRef<string | null>(null);
+
   React.useEffect(() => {
+    // Skip if we already fetched this slug
+    if (fetchedSlugRef.current === programSlug && loadState !== "loading") {
+      return;
+    }
+
     let cancelled = false;
+    fetchedSlugRef.current = programSlug;
 
     async function load() {
       setLoadState("loading");
       try {
+        // Parallel fetch for all data
         const [programData, groupsData, animalsData] = await Promise.all([
           publicMarketplaceApi.programs.get(programSlug),
           publicMarketplaceApi.programs.listOffspringGroups(programSlug).catch(() => ({ items: [] })),
@@ -64,10 +74,10 @@ export function ProgramPage({ programSlug, onNavigate }: ProgramPageProps) {
 
     load();
     return () => { cancelled = true; };
-  }, [programSlug]);
+  }, [programSlug, loadState]);
 
   if (loadState === "loading") {
-    return <LoadingState />;
+    return <LoadingState variant="program" />;
   }
 
   if (loadState === "not-found") {

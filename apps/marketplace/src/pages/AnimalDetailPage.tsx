@@ -5,6 +5,7 @@ import { publicMarketplaceApi } from "../api";
 import type { PublicAnimalDTO, ApiError } from "../types";
 import { LoadingState } from "../components/LoadingState";
 import { ErrorState } from "../components/ErrorState";
+import { CompactEmptyState } from "../components/CompactEmptyState";
 
 type AnimalDetailPageProps = {
   programSlug: string;
@@ -19,8 +20,18 @@ export function AnimalDetailPage({ programSlug, urlSlug, onNavigate }: AnimalDet
   const [animal, setAnimal] = React.useState<PublicAnimalDTO | null>(null);
   const [errorMessage, setErrorMessage] = React.useState<string | undefined>();
 
+  // Prevent duplicate fetches on re-render
+  const fetchedKeyRef = React.useRef<string | null>(null);
+  const fetchKey = `${programSlug}:${urlSlug}`;
+
   React.useEffect(() => {
+    // Skip if we already fetched this key
+    if (fetchedKeyRef.current === fetchKey && loadState !== "loading") {
+      return;
+    }
+
     let cancelled = false;
+    fetchedKeyRef.current = fetchKey;
 
     async function load() {
       setLoadState("loading");
@@ -48,14 +59,14 @@ export function AnimalDetailPage({ programSlug, urlSlug, onNavigate }: AnimalDet
 
     load();
     return () => { cancelled = true; };
-  }, [programSlug, urlSlug]);
+  }, [programSlug, urlSlug, fetchKey, loadState]);
 
   const handleBack = () => {
     onNavigate(`/marketplace/programs/${programSlug}`);
   };
 
   if (loadState === "loading") {
-    return <LoadingState />;
+    return <LoadingState variant="detail" />;
   }
 
   if (loadState === "not-found") {
@@ -140,8 +151,10 @@ export function AnimalDetailPage({ programSlug, urlSlug, onNavigate }: AnimalDet
       )}
 
       {/* Registrations */}
-      {animal.registrations && animal.registrations.length > 0 && (
-        <SectionCard title="Registrations">
+      <SectionCard title="Registrations">
+        {!animal.registrations || animal.registrations.length === 0 ? (
+          <CompactEmptyState message="No registrations on file" />
+        ) : (
           <div className="space-y-2">
             {animal.registrations.map((reg, i) => (
               <div key={i} className="flex items-center gap-3 p-2 rounded-lg bg-surface-strong/30">
@@ -160,12 +173,14 @@ export function AnimalDetailPage({ programSlug, urlSlug, onNavigate }: AnimalDet
               </div>
             ))}
           </div>
-        </SectionCard>
-      )}
+        )}
+      </SectionCard>
 
       {/* Titles */}
-      {animal.titles && animal.titles.length > 0 && (
-        <SectionCard title="Titles & Achievements">
+      <SectionCard title="Titles & Achievements">
+        {!animal.titles || animal.titles.length === 0 ? (
+          <CompactEmptyState message="No titles on file" />
+        ) : (
           <div className="flex flex-wrap gap-2">
             {animal.titles.map((title, i) => (
               <div
@@ -179,12 +194,14 @@ export function AnimalDetailPage({ programSlug, urlSlug, onNavigate }: AnimalDet
               </div>
             ))}
           </div>
-        </SectionCard>
-      )}
+        )}
+      </SectionCard>
 
       {/* Health Tests */}
-      {animal.healthTests && animal.healthTests.length > 0 && (
-        <SectionCard title="Health Testing">
+      <SectionCard title="Health Testing">
+        {!animal.healthTests || animal.healthTests.length === 0 ? (
+          <CompactEmptyState message="No health tests on file" />
+        ) : (
           <div className="space-y-2">
             {animal.healthTests.map((test, i) => (
               <div key={i} className="flex items-center justify-between p-2 rounded-lg bg-surface-strong/30">
@@ -206,8 +223,8 @@ export function AnimalDetailPage({ programSlug, urlSlug, onNavigate }: AnimalDet
               </div>
             ))}
           </div>
-        </SectionCard>
-      )}
+        )}
+      </SectionCard>
     </div>
   );
 }
