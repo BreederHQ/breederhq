@@ -2,6 +2,8 @@
 // Public marketplace API client - no auth required, no tenant header needed
 import type {
   PublicProgramDTO,
+  PublicProgramSummary,
+  ProgramsListParams,
   PublicOffspringGroupSummary,
   PublicOffspringGroupDTO,
   PublicAnimalSummary,
@@ -50,6 +52,19 @@ export function makePublicMarketplaceApi(base?: string) {
 
   return {
     programs: {
+      /** List all public programs with optional filters */
+      async list(params?: ProgramsListParams): Promise<PublicListResponse<PublicProgramSummary>> {
+        const qs = new URLSearchParams();
+        if (params?.search) qs.set("search", params.search);
+        if (params?.species) qs.set("species", params.species);
+        if (params?.breed) qs.set("breed", params.breed);
+        if (params?.location) qs.set("location", params.location);
+        if (params?.limit) qs.set("limit", String(params.limit));
+        if (params?.offset) qs.set("offset", String(params.offset));
+        const query = qs.toString();
+        return req<PublicListResponse<PublicProgramSummary>>(`/programs${query ? `?${query}` : ""}`);
+      },
+
       /** Get program profile by slug */
       async get(programSlug: string): Promise<PublicProgramDTO> {
         return req<PublicProgramDTO>(`/programs/${encodeURIComponent(programSlug)}`);

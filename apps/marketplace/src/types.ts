@@ -1,6 +1,21 @@
 // apps/marketplace/src/types.ts
 // TypeScript types for public marketplace DTOs
 
+/** Program summary in list responses */
+export interface PublicProgramSummary {
+  id: number;
+  slug: string;
+  name: string;
+  photoUrl?: string | null;
+  species?: string | null;
+  breed?: string | null;
+  location?: {
+    city?: string | null;
+    region?: string | null;
+    country?: string | null;
+  } | null;
+}
+
 /** Program profile DTO returned from GET /public/marketplace/programs/:programSlug */
 export interface PublicProgramDTO {
   id: number;
@@ -15,6 +30,16 @@ export interface PublicProgramDTO {
     region?: string | null;
     country?: string | null;
   } | null;
+}
+
+/** Query parameters for listing programs */
+export interface ProgramsListParams {
+  search?: string;
+  species?: string;
+  breed?: string;
+  location?: string;
+  limit?: number;
+  offset?: number;
 }
 
 /** Offspring group summary in list responses */
