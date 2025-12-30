@@ -12,6 +12,7 @@ import {
   Button,
 } from "@bhq/ui";
 import { FinanceTab } from "@bhq/ui/components/Finance";
+import { PortalAccessTab } from "@bhq/ui/components/PortalAccess";
 import { Copy } from "lucide-react";
 import { getOverlayRoot } from "@bhq/ui/overlay";
 import { makeApi } from "./api";
@@ -674,6 +675,7 @@ export function PartyDetailsView({
           { key: "animals", label: "Animals" },
           { key: "documents", label: "Documents" },
           { key: "finances", label: "Finances" },
+          { key: "portal", label: "Portal" },
           { key: "audit", label: "Audit" },
         ]}
         activeTab={activeTab}
@@ -1394,6 +1396,14 @@ export function PartyDetailsView({
             expenseFilters={{ vendorPartyId: row.partyId }}
             api={api}
             defaultClientParty={{ id: row.partyId, label: row.displayName }}
+          />
+        )}
+
+        {activeTab === "portal" && (
+          <PortalAccessTab
+            partyId={row.partyId}
+            partyEmail={row.email || null}
+            api={api}
           />
         )}
       </DetailsScaffold>

@@ -9,6 +9,7 @@ import { makeOffspring } from "./resources/offspring";
 import { makeFinance, type FinanceResource } from "./resources/finance";
 import { makeMarketing, type MarketingResource } from "./resources/marketing";
 import { makeMessages, type MessagesResource } from "./resources/messages";
+import { makePortalAccess, type PortalAccessResource } from "./resources/portal-access";
 
 export { createHttp, type Http, type MakeAuthHeader } from "./http";
 
@@ -20,6 +21,7 @@ export { makeOffspring } from "./resources/offspring";
 export { makeFinance, type FinanceResource, type InvoicesResource, type PaymentsResource, type ExpensesResource } from "./resources/finance";
 export { makeMarketing, type MarketingResource } from "./resources/marketing";
 export { makeMessages, type MessagesResource } from "./resources/messages";
+export { makePortalAccess, type PortalAccessResource, type PortalAccessDTO, type PortalAccessStatus, type PortalAccessResponse } from "./resources/portal-access";
 
 // (Optional) re-export shared types if you keep them under src/types/*
 export * from "./types/contacts";
@@ -40,5 +42,6 @@ export function makeApi(baseURL: string, makeAuth?: MakeAuthHeader) {
     finance:   makeFinance(http),
     marketing: makeMarketing(http),
     messages:  makeMessages(http),
+    portalAccess: makePortalAccess(http),
   };
 }
