@@ -3,7 +3,15 @@ import { PageHeader, SectionCard } from "@bhq/ui";
 import { makeApi } from "@bhq/api";
 import type { MessageThread, Message } from "@bhq/api";
 
-const api = makeApi("/api/v1");
+function getApiBase(): string {
+  const w = window as any;
+  let base = String(w.__BHQ_API_BASE__ || "").trim();
+  if (!base) base = window.location.origin;
+  base = base.replace(/\/+$/, "").replace(/\/api\/v1$/i, "");
+  return `${base}/api/v1`;
+}
+
+const api = makeApi(getApiBase());
 
 interface ThreadListItemProps {
   thread: MessageThread;
@@ -94,6 +102,7 @@ interface ThreadViewProps {
 function ThreadView({ thread, onSendMessage }: ThreadViewProps) {
   const [messageBody, setMessageBody] = React.useState("");
   const [sending, setSending] = React.useState(false);
+  const [sendError, setSendError] = React.useState<string | null>(null);
   const messagesEndRef = React.useRef<HTMLDivElement>(null);
   const currentOrgId = (window as any).platform?.currentOrgId;
 
@@ -107,11 +116,13 @@ function ThreadView({ thread, onSendMessage }: ThreadViewProps) {
     if (!trimmed || sending) return;
 
     setSending(true);
+    setSendError(null);
     try {
       await onSendMessage(trimmed);
       setMessageBody("");
-    } catch (err) {
+    } catch (err: any) {
       console.error("Failed to send message:", err);
+      setSendError(err?.message || "Failed to send message");
     } finally {
       setSending(false);
     }
@@ -141,6 +152,9 @@ function ThreadView({ thread, onSendMessage }: ThreadViewProps) {
       </div>
 
       <form onSubmit={handleSend} className="border-t border-hairline p-4 bg-surface">
+        {sendError && (
+          <div className="mb-2 text-xs text-red-400">{sendError}</div>
+        )}
         <div className="flex gap-2">
           <textarea
             value={messageBody}
@@ -219,8 +233,9 @@ export default function MessagesPage() {
   }
 
   async function handleSendMessage(body: string) {
-    if (!selectedThreadId) return;
+    if (!selectedThreadId) throw new Error("No thread selected");
     const res = await api.messages.threads.sendMessage(selectedThreadId, { body });
+    if (!res.message) throw new Error("Failed to send message");
     setSelectedThread((prev) =>
       prev ? { ...prev, messages: [...prev.messages, res.message] } : prev
     );
