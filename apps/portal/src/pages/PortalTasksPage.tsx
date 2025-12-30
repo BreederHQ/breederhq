@@ -1,21 +1,43 @@
 // apps/portal/src/pages/PortalTasksPage.tsx
 import * as React from "react";
 import { PageHeader, Button, Badge } from "@bhq/ui";
-import { mockTasks, type PortalTask } from "../mock";
+import { usePortalTasks, type TaskCard } from "../tasks/taskSources";
 
-/* ───────────────── Task Row ───────────────── */
+/* ───────────────── Task Card Component ───────────────── */
 
-function TaskRow({ task }: { task: PortalTask }) {
-  const priorityColors: Record<PortalTask["priority"], "red" | "amber" | "green"> = {
-    high: "red",
-    medium: "amber",
-    low: "green",
+function TaskCardRow({ task }: { task: TaskCard }) {
+  const statusColors: Record<TaskCard["status"], "red" | "amber" | "green"> = {
+    overdue: "red",
+    pending: "amber",
+    upcoming: "green",
   };
 
-  const statusLabels: Record<PortalTask["status"], string> = {
-    pending: "Pending",
-    in_progress: "In Progress",
-    completed: "Completed",
+  const statusLabels: Record<TaskCard["status"], string> = {
+    overdue: "Overdue",
+    pending: "Due Soon",
+    upcoming: "Upcoming",
+  };
+
+  const typeLabels: Record<TaskCard["type"], string> = {
+    invoice: "Invoice",
+    contract: "Contract",
+    appointment: "Appointment",
+    document: "Document",
+  };
+
+  const handleClick = () => {
+    window.history.pushState(null, "", task.href);
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  };
+
+  const formatDueDate = (dueAt: string | null) => {
+    if (!dueAt) return "No due date";
+    const date = new Date(dueAt);
+    return date.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
   };
 
   return (
@@ -23,16 +45,21 @@ function TaskRow({ task }: { task: PortalTask }) {
       <div className="flex items-start justify-between gap-4">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
-            <Badge variant={priorityColors[task.priority]}>
-              {task.priority.charAt(0).toUpperCase() + task.priority.slice(1)}
+            <Badge variant={statusColors[task.status]}>
+              {statusLabels[task.status]}
             </Badge>
-            <Badge variant="neutral">{statusLabels[task.status]}</Badge>
+            <Badge variant="neutral">{typeLabels[task.type]}</Badge>
           </div>
           <div className="font-medium text-primary mt-2">{task.title}</div>
-          <p className="text-sm text-secondary mt-1">Due: {task.dueDate}</p>
+          <p className="text-sm text-secondary mt-1">{task.subtitle}</p>
+          {task.dueAt && (
+            <p className="text-xs text-secondary mt-1">
+              Due: {formatDueDate(task.dueAt)}
+            </p>
+          )}
         </div>
-        <Button variant="secondary" size="sm">
-          View
+        <Button variant="secondary" size="sm" onClick={handleClick}>
+          {task.ctaLabel}
         </Button>
       </div>
     </div>
@@ -47,10 +74,95 @@ function EmptyTasks() {
       <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-surface-strong flex items-center justify-center text-3xl">
         ✅
       </div>
-      <h3 className="text-lg font-medium text-primary mb-2">No tasks</h3>
+      <h3 className="text-lg font-medium text-primary mb-2">All caught up!</h3>
       <p className="text-sm text-secondary max-w-sm mx-auto">
-        When you have action items, they will appear here.
+        You have no pending tasks. When you have invoices to pay, contracts to sign,
+        or appointments to confirm, they will appear here.
       </p>
+    </div>
+  );
+}
+
+/* ───────────────── Loading State ───────────────── */
+
+function LoadingTasks() {
+  return (
+    <div className="text-center py-16">
+      <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-surface-strong flex items-center justify-center text-2xl animate-pulse">
+        📋
+      </div>
+      <h3 className="text-lg font-medium text-primary mb-2">Loading tasks...</h3>
+      <p className="text-sm text-secondary">Checking for pending items</p>
+    </div>
+  );
+}
+
+/* ───────────────── Source Status ───────────────── */
+
+function SourceStatus({
+  sources,
+}: {
+  sources: { name: string; available: boolean }[];
+}) {
+  const unavailable = sources.filter((s) => !s.available);
+  if (unavailable.length === 0) return null;
+
+  return (
+    <div className="mt-6 p-4 rounded-lg border border-hairline bg-surface/30">
+      <div className="text-xs text-secondary">
+        <span className="font-medium">Coming Soon:</span>{" "}
+        {unavailable.map((s) => s.name).join(", ")} tasks will be available in a
+        future update.
+      </div>
+    </div>
+  );
+}
+
+/* ───────────────── Grouped Tasks ───────────────── */
+
+function GroupedTasks({ tasks }: { tasks: TaskCard[] }) {
+  // Group by type
+  const grouped = tasks.reduce(
+    (acc, task) => {
+      if (!acc[task.type]) acc[task.type] = [];
+      acc[task.type].push(task);
+      return acc;
+    },
+    {} as Record<string, TaskCard[]>
+  );
+
+  const typeOrder: TaskCard["type"][] = [
+    "invoice",
+    "contract",
+    "appointment",
+    "document",
+  ];
+  const typeLabels: Record<TaskCard["type"], string> = {
+    invoice: "Invoices",
+    contract: "Contracts",
+    appointment: "Appointments",
+    document: "Documents",
+  };
+
+  return (
+    <div className="space-y-8">
+      {typeOrder.map((type) => {
+        const typeTasks = grouped[type];
+        if (!typeTasks || typeTasks.length === 0) return null;
+
+        return (
+          <div key={type}>
+            <h3 className="text-sm font-semibold text-secondary uppercase tracking-wider mb-3">
+              {typeLabels[type]} ({typeTasks.length})
+            </h3>
+            <div className="space-y-3">
+              {typeTasks.map((task) => (
+                <TaskCardRow key={task.id} task={task} />
+              ))}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -58,18 +170,32 @@ function EmptyTasks() {
 /* ───────────────── Main Component ───────────────── */
 
 export default function PortalTasksPage() {
-  const pendingCount = mockTasks.filter((t) => t.status !== "completed").length;
+  const { tasks, sources, loading, error } = usePortalTasks();
 
   const handleBackClick = () => {
     window.history.pushState(null, "", "/portal");
     window.dispatchEvent(new PopStateEvent("popstate"));
   };
 
+  const overdueCount = tasks.filter((t) => t.status === "overdue").length;
+  const pendingCount = tasks.filter((t) => t.status === "pending").length;
+
+  const getSubtitle = () => {
+    if (loading) return "Loading...";
+    if (tasks.length === 0) return "No pending tasks";
+    const parts: string[] = [];
+    if (overdueCount > 0)
+      parts.push(`${overdueCount} overdue`);
+    if (pendingCount > 0)
+      parts.push(`${pendingCount} pending`);
+    return parts.join(", ") || `${tasks.length} task${tasks.length !== 1 ? "s" : ""}`;
+  };
+
   return (
     <div className="p-6">
       <PageHeader
         title="Tasks"
-        subtitle={pendingCount > 0 ? `${pendingCount} pending task${pendingCount !== 1 ? "s" : ""}` : "All tasks completed"}
+        subtitle={getSubtitle()}
         actions={
           <Button variant="secondary" onClick={handleBackClick}>
             Back to Portal
@@ -77,17 +203,23 @@ export default function PortalTasksPage() {
         }
       />
 
+      {error && (
+        <div className="mt-4 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-400">
+          {error}
+        </div>
+      )}
+
       <div className="mt-8">
-        {mockTasks.length === 0 ? (
+        {loading ? (
+          <LoadingTasks />
+        ) : tasks.length === 0 ? (
           <EmptyTasks />
         ) : (
-          <div className="space-y-3">
-            {mockTasks.map((task) => (
-              <TaskRow key={task.id} task={task} />
-            ))}
-          </div>
+          <GroupedTasks tasks={tasks} />
         )}
       </div>
+
+      <SourceStatus sources={sources} />
     </div>
   );
 }

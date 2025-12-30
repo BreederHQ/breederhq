@@ -3,6 +3,7 @@ import * as React from "react";
 import { PageHeader, Button } from "@bhq/ui";
 import { makeApi } from "@bhq/api";
 import { PORTAL_FEATURE_FLAGS } from "../mock";
+import { fetchAllTasks } from "../tasks/taskSources";
 
 // Resolve API base URL (same pattern as MessagesPage)
 function getApiBase(): string {
@@ -49,31 +50,47 @@ function useDashboardCounts() {
       setLoading(true);
       setError(null);
 
-      try {
-        // Fetch message threads and sum unreadCount
-        const res = await api.messages.threads.list();
-        if (cancelled) return;
+      // Fetch messages and tasks in parallel
+      const [messagesResult, tasksResult] = await Promise.allSettled([
+        api.messages.threads.list(),
+        fetchAllTasks(),
+      ]);
 
-        const threads = res?.threads || [];
-        const unreadMessages = threads.reduce(
+      if (cancelled) return;
+
+      let unreadMessages = 0;
+      let taskCount = 0;
+      const errors: string[] = [];
+
+      // Process messages result
+      if (messagesResult.status === "fulfilled") {
+        const threads = messagesResult.value?.threads || [];
+        unreadMessages = threads.reduce(
           (sum, t) => sum + (t.unreadCount ?? 0),
           0
         );
-
-        setCounts({
-          unreadMessages,
-          tasks: 0, // No tasks endpoint exists yet
-        });
-      } catch (err: any) {
-        if (cancelled) return;
-        console.error("[PortalDashboard] Failed to fetch counts:", err);
-        // Don't show error for 404/empty state
+      } else {
+        const err = messagesResult.reason;
         if (!err?.message?.toLowerCase().includes("not found")) {
-          setError(err?.message || "Failed to load dashboard data");
+          errors.push("messages");
         }
-      } finally {
-        if (!cancelled) setLoading(false);
       }
+
+      // Process tasks result
+      if (tasksResult.status === "fulfilled") {
+        taskCount = tasksResult.value?.tasks?.length || 0;
+      } else {
+        // Tasks failures are non-blocking, just log
+        console.error("[PortalDashboard] Failed to fetch tasks:", tasksResult.reason);
+      }
+
+      setCounts({ unreadMessages, tasks: taskCount });
+
+      if (errors.length > 0) {
+        setError(`Failed to load ${errors.join(", ")}`);
+      }
+
+      setLoading(false);
     }
 
     fetchCounts();
@@ -420,8 +437,8 @@ export default function PortalDashboard() {
             buttonLabel="Open Tasks"
             href="/portal/tasks"
             icon={<TasksIcon className="w-24 h-24" />}
-            badge="coming-soon"
-            count={0}
+            badge={loading ? "live" : counts.tasks > 0 ? "active" : "live"}
+            count={loading ? undefined : counts.tasks}
           />
           <PrimaryTile
             title="Messages"
