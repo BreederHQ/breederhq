@@ -1,7 +1,87 @@
 // apps/portal/src/pages/PortalDashboard.tsx
 import * as React from "react";
 import { PageHeader, Button } from "@bhq/ui";
-import { mockCounts, PORTAL_FEATURE_FLAGS } from "../mock";
+import { makeApi } from "@bhq/api";
+import { PORTAL_FEATURE_FLAGS } from "../mock";
+
+// Resolve API base URL (same pattern as MessagesPage)
+function getApiBase(): string {
+  const envBase = (import.meta.env.VITE_API_BASE_URL as string) || "";
+  if (envBase.trim()) {
+    return normalizeBase(envBase);
+  }
+  const w = window as any;
+  const windowBase = String(w.__BHQ_API_BASE__ || "").trim();
+  if (windowBase) {
+    return normalizeBase(windowBase);
+  }
+  if (import.meta.env.DEV) {
+    return "http://localhost:6001/api/v1";
+  }
+  return normalizeBase(window.location.origin);
+}
+
+function normalizeBase(base: string): string {
+  const b = base.replace(/\/+$/, "").replace(/\/api\/v1$/i, "");
+  return `${b}/api/v1`;
+}
+
+const api = makeApi(getApiBase());
+
+// Dashboard counts state
+interface DashboardCounts {
+  unreadMessages: number;
+  tasks: number;
+}
+
+function useDashboardCounts() {
+  const [counts, setCounts] = React.useState<DashboardCounts>({
+    unreadMessages: 0,
+    tasks: 0,
+  });
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    let cancelled = false;
+
+    async function fetchCounts() {
+      setLoading(true);
+      setError(null);
+
+      try {
+        // Fetch message threads and sum unreadCount
+        const res = await api.messages.threads.list();
+        if (cancelled) return;
+
+        const threads = res?.threads || [];
+        const unreadMessages = threads.reduce(
+          (sum, t) => sum + (t.unreadCount ?? 0),
+          0
+        );
+
+        setCounts({
+          unreadMessages,
+          tasks: 0, // No tasks endpoint exists yet
+        });
+      } catch (err: any) {
+        if (cancelled) return;
+        console.error("[PortalDashboard] Failed to fetch counts:", err);
+        // Don't show error for 404/empty state
+        if (!err?.message?.toLowerCase().includes("not found")) {
+          setError(err?.message || "Failed to load dashboard data");
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    fetchCounts();
+    return () => { cancelled = true; };
+  }, []);
+
+  return { counts, loading, error };
+}
 
 /* ───────────────── Icons ───────────────── */
 
@@ -311,6 +391,8 @@ function PlannedCapability({ icon, title, description }: PlannedCapabilityProps)
 /* ───────────────── Main Component ───────────────── */
 
 export default function PortalDashboard() {
+  const { counts, loading, error } = useDashboardCounts();
+
   return (
     <div className="p-6">
       {/* Page Header */}
@@ -318,6 +400,13 @@ export default function PortalDashboard() {
         title="Client Portal"
         subtitle="Your personalized hub for tasks, messages, documents, and more."
       />
+
+      {/* Error banner (non-blocking) */}
+      {error && (
+        <div className="mt-4 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-400">
+          {error}
+        </div>
+      )}
 
       {/* Section 1: Active Items */}
       <section className="mt-8">
@@ -331,8 +420,8 @@ export default function PortalDashboard() {
             buttonLabel="Open Tasks"
             href="/portal/tasks"
             icon={<TasksIcon className="w-24 h-24" />}
-            badge="active"
-            count={mockCounts.tasks}
+            badge="coming-soon"
+            count={0}
           />
           <PrimaryTile
             title="Messages"
@@ -340,8 +429,8 @@ export default function PortalDashboard() {
             buttonLabel="Open Inbox"
             href="/portal/messages"
             icon={<MessagesIcon className="w-24 h-24" />}
-            badge="active"
-            count={mockCounts.unreadMessages}
+            badge={loading ? "live" : counts.unreadMessages > 0 ? "active" : "live"}
+            count={loading ? undefined : counts.unreadMessages}
           />
         </div>
       </section>
@@ -358,8 +447,8 @@ export default function PortalDashboard() {
               title="Billing and Transactions"
               description="View invoices and payment history"
               href="/portal/billing"
-              badge={mockCounts.pendingInvoices > 0 ? "pending" : "live"}
-              count={mockCounts.pendingInvoices}
+              badge="coming-soon"
+              count={0}
             />
           )}
           {PORTAL_FEATURE_FLAGS.SHOW_AGREEMENTS && (
@@ -368,8 +457,8 @@ export default function PortalDashboard() {
               title="Agreements"
               description="Review and sign documents"
               href="/portal/agreements"
-              badge={mockCounts.pendingAgreements > 0 ? "pending" : "live"}
-              count={mockCounts.pendingAgreements}
+              badge="coming-soon"
+              count={0}
             />
           )}
           <SecondaryTile
@@ -377,8 +466,8 @@ export default function PortalDashboard() {
             title="Documents"
             description="Access shared files and records"
             href="/portal/documents"
-            badge="live"
-            count={mockCounts.documents}
+            badge="coming-soon"
+            count={0}
           />
         </div>
       </section>
@@ -395,16 +484,16 @@ export default function PortalDashboard() {
               title="Current Placements"
               description="View your reserved or placed animals"
               href="/portal/offspring"
-              badge="live"
-              count={mockCounts.offspring}
+              badge="coming-soon"
+              count={0}
             />
             <SecondaryTile
               icon={<span className="text-base">👪</span>}
               title="Offspring Groups"
               description="Explore available or upcoming litters"
               href="/portal/offspring?view=groups"
-              badge="live"
-              count={mockCounts.offspringGroups}
+              badge="coming-soon"
+              count={0}
             />
           </div>
         </section>
@@ -422,8 +511,8 @@ export default function PortalDashboard() {
               title="Waitlist"
               description="Update your preferences and position"
               href="/portal/waitlist"
-              badge="live"
-              count={mockCounts.waitlistPositions}
+              badge="coming-soon"
+              count={0}
             />
           )}
           {PORTAL_FEATURE_FLAGS.SHOW_SCHEDULING && (
@@ -432,8 +521,8 @@ export default function PortalDashboard() {
               title="Scheduling"
               description="View upcoming appointments"
               href="/portal/profile?tab=appointments"
-              badge="live"
-              count={mockCounts.upcomingAppointments}
+              badge="coming-soon"
+              count={0}
             />
           )}
         </div>
