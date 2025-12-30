@@ -27,6 +27,34 @@ import DashboardPage from "./pages/Dashboard";
 // Support Pages
 import SettingsPanel from "./pages/SettingsPanel";
 
+// Portal disabled page (shown when PORTAL_ENABLED is false)
+function PortalDisabledPage() {
+  const handleBackClick = () => {
+    window.history.pushState(null, "", "/");
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  };
+
+  return (
+    <div className="p-6">
+      <div className="max-w-md mx-auto mt-16 text-center">
+        <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-surface-strong flex items-center justify-center text-3xl">
+          🔒
+        </div>
+        <h1 className="text-xl font-semibold text-primary mb-2">Client Portal Not Available</h1>
+        <p className="text-sm text-secondary mb-6">
+          The Client Portal is not enabled for this environment.
+        </p>
+        <button
+          onClick={handleBackClick}
+          className="h-9 px-4 rounded-md bg-[hsl(var(--brand-orange))] text-white text-sm font-medium"
+        >
+          Return to Dashboard
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // Lightweight "current module" state (key + label)
 type ActiveModule = { key: "dashboard" | "contacts" | "animals" | "breeding" | "offspring" | "marketplace" | "marketing" | "finance" | "admin" | "portal"; label: string };
 const DEFAULT_MODULE: ActiveModule = { key: "dashboard", label: "Dashboard" };
@@ -128,6 +156,9 @@ const API_ROOT = (
 // disable dashboard network calls in dev
 ; (window as any).__BHQ_DASHBOARD_REMOTE__ = false;
 
+// Portal feature gate: default false, enable via VITE_PORTAL_ENABLED=true
+const PORTAL_ENABLED = ((import.meta as any)?.env?.VITE_PORTAL_ENABLED === "true");
+
 // Simple path router
 function RouteView() {
   const [path, setPath] = React.useState<string>(() => {
@@ -152,7 +183,10 @@ function RouteView() {
   if (p === "/marketing" || p.startsWith("/marketing")) return <AppMarketing />;
   if (p === "/finance" || p.startsWith("/finance")) return <AppFinance />;
   if (p === "/admin" || p.startsWith("/admin")) return <AdminModule />;
-  if (p === "/portal" || p.startsWith("/portal")) return <AppPortal />;
+  if (p === "/portal" || p.startsWith("/portal")) {
+    if (!PORTAL_ENABLED) return <PortalDisabledPage />;
+    return <AppPortal />;
+  }
   return <DashboardPage />;
 }
 
@@ -329,7 +363,7 @@ export default function AppPlatform() {
               { key: "offspring", label: "Offspring", href: "/offspring", icon: "offspring" },
               { key: "marketing", label: "Marketing", href: "/marketing" },
               { key: "finance", label: "Finance", href: "/finance", icon: "finance" },
-              { key: "portal", label: "Client Portal", href: "/portal" },
+              ...(PORTAL_ENABLED ? [{ key: "portal" as const, label: "Client Portal", href: "/portal" }] : []),
               { key: "admin", label: "Admin", href: "/admin", icon: "admin" },
             ]}
             orgName={orgName}
