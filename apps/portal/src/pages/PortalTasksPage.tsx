@@ -36,6 +36,17 @@ function TaskCardRow({ task }: { task: TaskCard }) {
     }
   };
 
+  const handleSecondaryClick = () => {
+    if (!task.secondaryAction) return;
+    const href = task.secondaryAction.href;
+    if (href.startsWith("/portal")) {
+      window.history.pushState(null, "", href);
+      window.dispatchEvent(new PopStateEvent("popstate"));
+    } else {
+      window.location.href = href;
+    }
+  };
+
   const formatDueDate = (dueAt: string | null) => {
     if (!dueAt) return "No due date";
     const date = new Date(dueAt);
@@ -63,10 +74,22 @@ function TaskCardRow({ task }: { task: TaskCard }) {
               Due: {formatDueDate(task.dueAt)}
             </p>
           )}
+          {task.note && (
+            <p className="text-xs text-secondary/70 mt-1 italic">
+              {task.note}
+            </p>
+          )}
         </div>
-        <Button variant="secondary" size="sm" onClick={handleClick}>
-          {task.ctaLabel}
-        </Button>
+        <div className="flex flex-col gap-2">
+          <Button variant="secondary" size="sm" onClick={handleClick}>
+            {task.ctaLabel}
+          </Button>
+          {task.secondaryAction && (
+            <Button variant="secondary" size="sm" onClick={handleSecondaryClick}>
+              {task.secondaryAction.label}
+            </Button>
+          )}
+        </div>
       </div>
     </div>
   );

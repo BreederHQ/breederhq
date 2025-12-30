@@ -475,14 +475,14 @@ export default function MessagesPage() {
 
   // Handle URL-based thread deep link once data loads
   React.useEffect(() => {
-    if (!pendingThreadId || loading || threads.length === 0) return;
+    if (!pendingThreadId || loading) return;
 
     // Find the thread in loaded data
     const found = threads.find((t) => t.id === pendingThreadId);
     if (found) {
       setSelectedThreadId(found.id);
     } else {
-      // Thread not found, clear the invalid URL param
+      // Thread not found or inbox empty, clear the invalid URL param
       setThreadIdInUrl(null);
     }
     // Clear pending ID after processing

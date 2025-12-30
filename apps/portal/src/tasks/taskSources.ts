@@ -6,6 +6,12 @@ import { makeApi } from "@bhq/api";
 import type { InvoiceDTO } from "@bhq/api";
 import { buildInvoiceHref } from "../links";
 
+// Secondary action for task cards (e.g., Message CTA)
+export interface TaskSecondaryAction {
+  label: string;
+  href: string;
+}
+
 // Task card interface for unified display
 export interface TaskCard {
   id: string;
@@ -16,6 +22,10 @@ export interface TaskCard {
   status: "pending" | "overdue" | "upcoming";
   ctaLabel: string;
   href: string;
+  // Optional secondary action (e.g., link to message thread)
+  secondaryAction?: TaskSecondaryAction | null;
+  // Optional note shown below subtitle
+  note?: string | null;
 }
 
 // Resolve API base URL (same pattern as MessagesPage/PortalDashboard)
@@ -75,6 +85,13 @@ async function fetchInvoiceTasks(): Promise<TaskCard[]> {
       const overdue = inv.status === "OVERDUE" || isOverdue(inv.dueAt);
       const remaining = inv.balanceCents ?? (inv.totalCents - inv.paidCents);
 
+      // Check for linked message thread (not yet available in API)
+      // When InvoiceDTO gains a threadId field, use buildThreadHref() here
+      const hasThreadLink = false; // Placeholder: (inv as any).threadId != null
+      const secondaryAction = hasThreadLink
+        ? { label: "Message", href: "/marketing/messages" } // Will use buildThreadHref(inv.threadId) when available
+        : null;
+
       return {
         id: `invoice-${inv.id}`,
         type: "invoice",
@@ -84,6 +101,8 @@ async function fetchInvoiceTasks(): Promise<TaskCard[]> {
         status: overdue ? "overdue" : "pending",
         ctaLabel: "View Invoice",
         href: buildInvoiceHref(inv.id),
+        secondaryAction,
+        note: hasThreadLink ? null : "Messaging link not available yet.",
       };
     });
   } catch (err: any) {
