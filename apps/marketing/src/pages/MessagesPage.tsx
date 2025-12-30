@@ -7,35 +7,36 @@ const IS_DEV = import.meta.env.DEV;
 
 /**
  * Resolves API base URL deterministically:
- * 1. VITE_API_BASE_URL env var (explicit override)
- * 2. window.__BHQ_API_BASE__ (set by platform shell)
- * 3. location.origin (works when Vite proxy is configured for /api)
- * 4. http://localhost:6001 (dev fallback when proxy may not exist)
+ * 1. VITE_API_BASE_URL env var (if defined and non-empty)
+ * 2. window.__BHQ_API_BASE__ (if defined and non-empty)
+ * 3. In dev: http://localhost:6001 (direct to API server, not Vite origin)
+ * 4. In prod: location.origin
  */
 function getApiBase(): string {
+  // 1. Explicit env override
   const envBase = (import.meta.env.VITE_API_BASE_URL as string) || "";
   if (envBase.trim()) {
     return normalizeBase(envBase);
   }
 
+  // 2. Platform shell injection
   const w = window as any;
   const windowBase = String(w.__BHQ_API_BASE__ || "").trim();
   if (windowBase) {
     return normalizeBase(windowBase);
   }
 
-  // In production or when proxy exists, use origin
-  // In dev without explicit config, fall back to API server port
-  if (!IS_DEV) {
-    return normalizeBase(window.location.origin);
+  // 3. Dev mode: default to API server port (never use Vite origin)
+  if (IS_DEV) {
+    return "http://localhost:6001/api/v1";
   }
 
-  // Dev mode: use origin (relies on Vite proxy for /api)
+  // 4. Production: use origin
   return normalizeBase(window.location.origin);
 }
 
 function normalizeBase(base: string): string {
-  let b = base.replace(/\/+$/, "").replace(/\/api\/v1$/i, "");
+  const b = base.replace(/\/+$/, "").replace(/\/api\/v1$/i, "");
   return `${b}/api/v1`;
 }
 
