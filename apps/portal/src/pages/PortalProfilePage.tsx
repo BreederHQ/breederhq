@@ -2,7 +2,7 @@
 import * as React from "react";
 import { PageHeader, Button, Badge } from "@bhq/ui";
 import { mockAppointments, type PortalAppointment } from "../mock";
-import { useSession } from "../hooks/useSession";
+import { usePortalContext } from "../hooks/usePortalContext";
 
 /* ───────────────── Appointment Row ───────────────── */
 
@@ -161,7 +161,7 @@ function PreferencesSection() {
 
 export default function PortalProfilePage() {
   const [activeTab, setActiveTab] = React.useState<"profile" | "appointments">("profile");
-  const { session, loading } = useSession();
+  const { userEmail, userInitial, orgName, loading } = usePortalContext();
 
   // Check URL for tab param
   React.useEffect(() => {
@@ -170,10 +170,6 @@ export default function PortalProfilePage() {
       setActiveTab("appointments");
     }
   }, []);
-
-  // Extract session info
-  const email = session?.user?.email || null;
-  const orgName = session?.org?.name || null;
 
   const handleBackClick = () => {
     window.history.pushState(null, "", "/portal");
@@ -219,7 +215,7 @@ export default function PortalProfilePage() {
       <div className="mt-6">
         {activeTab === "profile" ? (
           <div className="space-y-6">
-            <ProfileSection email={email} orgName={orgName} loading={loading} />
+            <ProfileSection email={userEmail} orgName={orgName} loading={loading} />
             <PreferencesSection />
           </div>
         ) : (
