@@ -2,6 +2,7 @@
 import * as React from "react";
 import { PageHeader, Button, Badge } from "@bhq/ui";
 import { mockAppointments, type PortalAppointment } from "../mock";
+import { useSession } from "../hooks/useSession";
 
 /* ───────────────── Appointment Row ───────────────── */
 
@@ -65,26 +66,45 @@ function EmptyAppointments() {
 
 /* ───────────────── Profile Section ───────────────── */
 
-function ProfileSection() {
+interface ProfileSectionProps {
+  email: string | null;
+  orgName: string | null;
+  loading: boolean;
+}
+
+function ProfileSection({ email, orgName, loading }: ProfileSectionProps) {
+  // Get initials from email for avatar
+  const initials = email ? email.charAt(0).toUpperCase() : "?";
+
   return (
     <div className="rounded-xl border border-hairline bg-surface/50 p-6">
       <div className="flex items-start gap-4">
-        <div className="flex-shrink-0 w-16 h-16 rounded-full bg-[hsl(var(--brand-orange))]/10 border border-[hsl(var(--brand-orange))]/30 flex items-center justify-center text-2xl">
-          👤
+        <div className="flex-shrink-0 w-16 h-16 rounded-full bg-[hsl(var(--brand-orange))]/10 border border-[hsl(var(--brand-orange))]/30 flex items-center justify-center text-2xl font-semibold text-[hsl(var(--brand-orange))]">
+          {loading ? "..." : initials}
         </div>
         <div className="flex-1">
           <h3 className="font-semibold text-lg text-primary">Your Profile</h3>
-          <p className="text-sm text-secondary mt-1">
-            Manage your contact information and preferences.
-          </p>
+          {loading ? (
+            <p className="text-sm text-secondary mt-1 animate-pulse">Loading...</p>
+          ) : (
+            <>
+              <p className="text-sm text-primary mt-1">{email || "No email"}</p>
+              {orgName && (
+                <p className="text-xs text-secondary mt-0.5">{orgName}</p>
+              )}
+            </>
+          )}
           <div className="mt-4 flex flex-wrap gap-2">
-            <Button variant="secondary" size="sm">
+            <Button variant="secondary" size="sm" disabled>
               Edit Profile
             </Button>
-            <Button variant="ghost" size="sm">
+            <Button variant="ghost" size="sm" disabled>
               Change Password
             </Button>
           </div>
+          <p className="text-xs text-secondary/70 mt-2 italic">
+            Profile editing coming soon
+          </p>
         </div>
       </div>
     </div>
@@ -95,35 +115,41 @@ function ProfileSection() {
 
 function PreferencesSection() {
   return (
-    <div className="rounded-xl border border-hairline bg-surface/50 p-6">
-      <h3 className="font-semibold text-primary mb-4">Communication Preferences</h3>
+    <div className="rounded-xl border border-hairline bg-surface/50 p-6 opacity-60">
+      <div className="flex items-center gap-2 mb-4">
+        <h3 className="font-semibold text-primary">Communication Preferences</h3>
+        <Badge variant="neutral">Coming Soon</Badge>
+      </div>
       <div className="space-y-3">
-        <label className="flex items-center gap-3 cursor-pointer">
+        <label className="flex items-center gap-3 cursor-not-allowed">
           <input
             type="checkbox"
             defaultChecked
-            className="w-4 h-4 rounded border-hairline bg-surface accent-[hsl(var(--brand-orange))]"
+            disabled
+            className="w-4 h-4 rounded border-hairline bg-surface accent-[hsl(var(--brand-orange))] cursor-not-allowed"
           />
-          <span className="text-sm text-primary">Email notifications for messages</span>
+          <span className="text-sm text-secondary">Email notifications for messages</span>
         </label>
-        <label className="flex items-center gap-3 cursor-pointer">
+        <label className="flex items-center gap-3 cursor-not-allowed">
           <input
             type="checkbox"
             defaultChecked
-            className="w-4 h-4 rounded border-hairline bg-surface accent-[hsl(var(--brand-orange))]"
+            disabled
+            className="w-4 h-4 rounded border-hairline bg-surface accent-[hsl(var(--brand-orange))] cursor-not-allowed"
           />
-          <span className="text-sm text-primary">Email reminders for tasks</span>
+          <span className="text-sm text-secondary">Email reminders for tasks</span>
         </label>
-        <label className="flex items-center gap-3 cursor-pointer">
+        <label className="flex items-center gap-3 cursor-not-allowed">
           <input
             type="checkbox"
-            className="w-4 h-4 rounded border-hairline bg-surface accent-[hsl(var(--brand-orange))]"
+            disabled
+            className="w-4 h-4 rounded border-hairline bg-surface accent-[hsl(var(--brand-orange))] cursor-not-allowed"
           />
-          <span className="text-sm text-primary">Marketing emails and updates</span>
+          <span className="text-sm text-secondary">Marketing emails and updates</span>
         </label>
       </div>
       <div className="mt-4">
-        <Button variant="secondary" size="sm">
+        <Button variant="secondary" size="sm" disabled>
           Save Preferences
         </Button>
       </div>
@@ -135,6 +161,7 @@ function PreferencesSection() {
 
 export default function PortalProfilePage() {
   const [activeTab, setActiveTab] = React.useState<"profile" | "appointments">("profile");
+  const { session, loading } = useSession();
 
   // Check URL for tab param
   React.useEffect(() => {
@@ -143,6 +170,10 @@ export default function PortalProfilePage() {
       setActiveTab("appointments");
     }
   }, []);
+
+  // Extract session info
+  const email = session?.user?.email || null;
+  const orgName = session?.org?.name || null;
 
   const handleBackClick = () => {
     window.history.pushState(null, "", "/portal");
@@ -188,7 +219,7 @@ export default function PortalProfilePage() {
       <div className="mt-6">
         {activeTab === "profile" ? (
           <div className="space-y-6">
-            <ProfileSection />
+            <ProfileSection email={email} orgName={orgName} loading={loading} />
             <PreferencesSection />
           </div>
         ) : (
