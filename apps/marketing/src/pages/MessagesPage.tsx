@@ -242,10 +242,11 @@ export default function MessagesPage() {
       if (!Array.isArray(threadList)) {
         throw new Error("Invalid response shape: expected threads array");
       }
+      // Sort by thread-level timestamps only. Do not depend on messages[] in list payload.
       const sorted = threadList.sort((a, b) => {
-        const aLast = a.messages?.[a.messages.length - 1]?.createdAt || a.createdAt;
-        const bLast = b.messages?.[b.messages.length - 1]?.createdAt || b.createdAt;
-        return new Date(bLast).getTime() - new Date(aLast).getTime();
+        const aKey = a.lastMessageAt || a.updatedAt || a.createdAt;
+        const bKey = b.lastMessageAt || b.updatedAt || b.createdAt;
+        return new Date(bKey).getTime() - new Date(aKey).getTime();
       });
       setThreads(sorted);
       if (sorted.length > 0 && !selectedThreadId) {
