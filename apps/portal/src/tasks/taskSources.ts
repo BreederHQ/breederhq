@@ -82,7 +82,7 @@ async function fetchInvoiceTasks(): Promise<TaskCard[]> {
         dueAt: inv.dueAt,
         status: overdue ? "overdue" : "pending",
         ctaLabel: "View Invoice",
-        href: `/portal/billing?invoice=${inv.id}`,
+        href: `/finance/invoices?invoice=${inv.id}`,
       };
     });
   } catch (err: any) {
