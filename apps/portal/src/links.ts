@@ -5,20 +5,11 @@
 /**
  * Build the href for viewing an invoice.
  *
- * Canonical behavior: The Finance module uses a drawer-based detail view
- * with no URL-based deep linking. Clicking a row in /finance/invoices
- * opens InvoiceDetailDrawer via React state, not URL params.
- *
- * Since deep linking to a specific invoice is not supported by Finance,
- * we link to the invoices list page. The user can locate their invoice there.
- *
- * If Finance adds URL param support in the future (e.g., ?invoice=:id or
- * /finance/invoices/:id), update this function to use it.
+ * Finance module supports URL-based deep linking via ?invoiceId=<id>.
+ * When navigating to this URL, the InvoiceDetailDrawer opens automatically.
  */
-export function buildInvoiceHref(_invoiceId: string | number): string {
-  // Finance does not support deep linking to specific invoices.
-  // Link to the invoices list page.
-  return "/finance/invoices";
+export function buildInvoiceHref(invoiceId: string | number): string {
+  return `/finance/invoices?invoiceId=${encodeURIComponent(String(invoiceId))}`;
 }
 
 /**

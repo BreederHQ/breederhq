@@ -62,6 +62,27 @@ const STORAGE_KEY = "bhq_finance_invoices_cols_v1";
 const Q_KEY = "bhq_finance_invoices_q_v1";
 const FILTERS_KEY = "bhq_finance_invoices_filters_v1";
 const DATE_KEYS = new Set(["issuedAt", "dueAt"] as const);
+const INVOICE_ID_PARAM = "invoiceId";
+
+/* ────────────────────────────────────────────────────────────────────────────
+ * URL Helpers
+ * ────────────────────────────────────────────────────────────────────────── */
+
+function getInvoiceIdFromUrl(): string | null {
+  const params = new URLSearchParams(window.location.search);
+  return params.get(INVOICE_ID_PARAM);
+}
+
+function setInvoiceIdInUrl(invoiceId: ID | null): void {
+  const url = new URL(window.location.href);
+  if (invoiceId != null) {
+    url.searchParams.set(INVOICE_ID_PARAM, String(invoiceId));
+  } else {
+    url.searchParams.delete(INVOICE_ID_PARAM);
+  }
+  // Use replaceState to avoid polluting browser history
+  window.history.replaceState({}, "", url.toString());
+}
 
 /* ────────────────────────────────────────────────────────────────────────────
  * Helpers
@@ -147,8 +168,35 @@ export default function InvoicesPage({ api }: Props) {
   const [selectedInvoice, setSelectedInvoice] = React.useState<any | null>(null);
   const [menuOpen, setMenuOpen] = React.useState(false);
 
+  // Track pending invoice ID from URL (to open drawer once data loads)
+  const [pendingInvoiceId, setPendingInvoiceId] = React.useState<string | null>(() => getInvoiceIdFromUrl());
+
   // Show voided toggle (defaults to false - hide voided invoices)
   const [showVoided, setShowVoided] = React.useState(false);
+
+  // Handle URL-based invoice deep link once data loads
+  React.useEffect(() => {
+    if (!pendingInvoiceId || loading || rows.length === 0) return;
+
+    // Find the invoice in loaded data
+    const found = rows.find((r) => String(r.id) === pendingInvoiceId);
+    if (found) {
+      setSelectedInvoice(found);
+    } else {
+      // Invoice not found, clear the invalid URL param
+      setInvoiceIdInUrl(null);
+    }
+    // Clear pending ID after processing
+    setPendingInvoiceId(null);
+  }, [pendingInvoiceId, loading, rows]);
+
+  // Sync URL when drawer opens/closes
+  React.useEffect(() => {
+    // Skip URL update during initial pending ID processing
+    if (pendingInvoiceId) return;
+
+    setInvoiceIdInUrl(selectedInvoice?.id ?? null);
+  }, [selectedInvoice, pendingInvoiceId]);
 
   // Load data
   React.useEffect(() => {
