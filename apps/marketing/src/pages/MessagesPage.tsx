@@ -55,10 +55,11 @@ interface ThreadListItemProps {
 }
 
 function ThreadListItem({ thread, isActive, onClick }: ThreadListItemProps) {
+  const currentOrgId = (window as any).platform?.currentOrgId;
   const otherParticipant = thread.participants?.find(
-    (p) => p.partyId !== (window as any).platform?.currentOrgId
+    (p) => p.partyId !== currentOrgId
   );
-  const otherName = otherParticipant?.party?.name || "Unknown";
+  const otherName = otherParticipant?.party?.name || "Unknown contact";
   const lastMessage = thread.messages?.[thread.messages.length - 1];
   const preview = lastMessage?.body
     ? lastMessage.body.length > 60
@@ -110,7 +111,7 @@ function MessageBubble({ message, isOwn }: MessageBubbleProps) {
     <div className={`flex ${isOwn ? "justify-end" : "justify-start"} mb-3`}>
       <div className={`max-w-[70%] ${isOwn ? "items-end" : "items-start"} flex flex-col gap-1`}>
         <div className="text-xs text-secondary px-2">
-          {isOwn ? "You" : message.senderParty?.name || "Unknown"} · {timeStr}
+          {isOwn ? "You" : message.senderParty?.name || "Unknown contact"} · {timeStr}
         </div>
         <div
           className={`
@@ -164,7 +165,7 @@ function ThreadView({ thread, onSendMessage }: ThreadViewProps) {
   }
 
   const otherParticipant = thread.participants?.find((p) => p.partyId !== currentOrgId);
-  const otherName = otherParticipant?.party?.name || "Unknown";
+  const otherName = otherParticipant?.party?.name || "Unknown contact";
 
   return (
     <div className="flex flex-col h-full">
@@ -219,7 +220,6 @@ export default function MessagesPage() {
   const [loading, setLoading] = React.useState(true);
   const [threadLoading, setThreadLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
-  const [devCreating, setDevCreating] = React.useState(false);
 
   React.useEffect(() => {
     window.dispatchEvent(
@@ -297,34 +297,6 @@ export default function MessagesPage() {
     );
   }
 
-  // Dev-only: create thread from querystring ?recipientPartyId=123
-  async function handleDevCreateThread() {
-    const params = new URLSearchParams(window.location.search);
-    const recipientPartyId = Number(params.get("recipientPartyId"));
-    if (!recipientPartyId || recipientPartyId <= 0) {
-      setError("Dev: Add ?recipientPartyId=123 to URL to create a test thread");
-      return;
-    }
-    setDevCreating(true);
-    setError(null);
-    try {
-      const res = await api.messages.threads.create({
-        recipientPartyId,
-        subject: `Test thread ${Date.now()}`,
-        initialMessage: "This is a test message created in dev mode.",
-      });
-      if (res?.thread) {
-        await loadThreads();
-        setSelectedThreadId(res.thread.id);
-      }
-    } catch (err: any) {
-      console.error("Failed to create thread:", err);
-      setError(err?.message || "Failed to create thread");
-    } finally {
-      setDevCreating(false);
-    }
-  }
-
   React.useEffect(() => {
     loadThreads();
   }, []);
@@ -342,21 +314,6 @@ export default function MessagesPage() {
       {error && (
         <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-400">
           {error}
-        </div>
-      )}
-
-      {/* Dev-only: Create thread button */}
-      {IS_DEV && (
-        <div className="rounded-lg border border-yellow-500/30 bg-yellow-500/10 p-3 text-sm text-yellow-400 flex items-center gap-3">
-          <span>Dev Mode</span>
-          <button
-            onClick={handleDevCreateThread}
-            disabled={devCreating}
-            className="px-3 py-1 rounded bg-yellow-600 text-black text-xs font-medium disabled:opacity-50"
-          >
-            {devCreating ? "Creating..." : "Create Test Thread"}
-          </button>
-          <span className="text-xs opacity-70">Add ?recipientPartyId=123 to URL</span>
         </div>
       )}
 
