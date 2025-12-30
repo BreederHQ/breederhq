@@ -139,9 +139,7 @@ function SourceStatus({
   return (
     <div className="mt-6 p-4 rounded-lg border border-hairline bg-surface/30">
       <div className="text-xs text-secondary">
-        <span className="font-medium">Coming Soon:</span>{" "}
-        {unavailable.map((s) => s.name).join(", ")} tasks will be available in a
-        future update.
+        {unavailable.map((s) => s.name).join(", ")}: This section will populate when items exist.
       </div>
     </div>
   );

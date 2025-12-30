@@ -242,14 +242,13 @@ function ScheduleIcon({ className }: { className?: string }) {
 
 /* ───────────────── Status Badges ───────────────── */
 
-type BadgeType = "live" | "active" | "pending" | "coming-soon";
+type BadgeType = "live" | "active" | "pending";
 
 function StatusBadge({ type }: { type: BadgeType }) {
   const styles: Record<BadgeType, { bg: string; text: string; label: string }> = {
     live: { bg: "#16a34a", text: "#fff", label: "Live" },
     active: { bg: "#2563eb", text: "#fff", label: "Active" },
     pending: { bg: "#d97706", text: "#fff", label: "Pending" },
-    "coming-soon": { bg: "#6b7280", text: "#fff", label: "Coming Soon" },
   };
   const s = styles[type];
 
@@ -378,33 +377,6 @@ function SecondaryTile({ icon, title, description, href, badge = "live", count }
   );
 }
 
-/* ───────────────── Planned Capability Card ───────────────── */
-
-interface PlannedCapabilityProps {
-  icon: string;
-  title: string;
-  description: string;
-}
-
-function PlannedCapability({ icon, title, description }: PlannedCapabilityProps) {
-  return (
-    <div className="rounded-lg p-3" style={{ border: "1px solid rgba(55, 55, 55, 0.8)" }}>
-      <div className="flex items-start gap-3">
-        <div
-          className="flex-shrink-0 w-8 h-8 rounded-md flex items-center justify-center text-base"
-          style={{ backgroundColor: "rgba(40, 40, 40, 0.9)" }}
-        >
-          {icon}
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="font-medium text-sm text-primary">{title}</div>
-          <p className="mt-0.5 text-xs text-secondary leading-relaxed">{description}</p>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 /* ───────────────── Main Component ───────────────── */
 
 export default function PortalDashboard() {
@@ -462,9 +434,9 @@ export default function PortalDashboard() {
             <SecondaryTile
               icon={<BillingIcon className="w-5 h-5" />}
               title="Billing and Transactions"
-              description="View invoices and payment history"
+              description="No items yet."
               href="/portal/billing"
-              badge="coming-soon"
+              badge="live"
               count={0}
             />
           )}
@@ -472,18 +444,18 @@ export default function PortalDashboard() {
             <SecondaryTile
               icon={<AgreementsIcon className="w-5 h-5" />}
               title="Agreements"
-              description="Review and sign documents"
+              description="No items yet."
               href="/portal/agreements"
-              badge="coming-soon"
+              badge="live"
               count={0}
             />
           )}
           <SecondaryTile
             icon={<DocumentsIcon className="w-5 h-5" />}
             title="Documents"
-            description="Access shared files and records"
+            description="No items yet."
             href="/portal/documents"
-            badge="coming-soon"
+            badge="live"
             count={0}
           />
         </div>
@@ -499,17 +471,17 @@ export default function PortalDashboard() {
             <SecondaryTile
               icon={<OffspringIcon className="w-5 h-5" />}
               title="Current Placements"
-              description="View your reserved or placed animals"
+              description="No items yet."
               href="/portal/offspring"
-              badge="coming-soon"
+              badge="live"
               count={0}
             />
             <SecondaryTile
               icon={<span className="text-base">👪</span>}
               title="Offspring Groups"
-              description="Explore available or upcoming litters"
+              description="No items yet."
               href="/portal/offspring?view=groups"
-              badge="coming-soon"
+              badge="live"
               count={0}
             />
           </div>
@@ -526,9 +498,9 @@ export default function PortalDashboard() {
             <SecondaryTile
               icon={<WaitlistIcon className="w-5 h-5" />}
               title="Waitlist"
-              description="Update your preferences and position"
+              description="No items yet."
               href="/portal/waitlist"
-              badge="coming-soon"
+              badge="live"
               count={0}
             />
           )}
@@ -536,93 +508,15 @@ export default function PortalDashboard() {
             <SecondaryTile
               icon={<ScheduleIcon className="w-5 h-5" />}
               title="Scheduling"
-              description="View upcoming appointments"
+              description="No items yet."
               href="/portal/profile?tab=appointments"
-              badge="coming-soon"
+              badge="live"
               count={0}
             />
           )}
         </div>
       </section>
 
-      {/* Section 5: Planned Capabilities */}
-      <section style={{ marginTop: "3rem" }}>
-        <div style={{ marginBottom: "2rem" }}>
-          <h2 className="text-xl font-semibold text-primary">Planned Capabilities</h2>
-        </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
-          {/* Group: Enhanced Communication */}
-          <div>
-            <h3 className="text-sm font-semibold text-secondary uppercase tracking-wider mb-3">Enhanced Communication</h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-              <PlannedCapability
-                icon="🔔"
-                title="Push Notifications"
-                description="Get notified of important updates instantly."
-              />
-              <PlannedCapability
-                icon="📧"
-                title="Email Preferences"
-                description="Control what emails you receive."
-              />
-            </div>
-          </div>
-
-          {/* Group: Health and Care */}
-          <div>
-            <h3 className="text-sm font-semibold text-secondary uppercase tracking-wider mb-3">Health and Care</h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-              <PlannedCapability
-                icon="💉"
-                title="Vaccination Tracking"
-                description="View and track vaccination schedules."
-              />
-              <PlannedCapability
-                icon="🏥"
-                title="Health Records"
-                description="Access complete health history."
-              />
-              <PlannedCapability
-                icon="📋"
-                title="Care Instructions"
-                description="Personalized care guides for your animal."
-              />
-            </div>
-          </div>
-
-          {/* Group: Community */}
-          <div>
-            <h3 className="text-sm font-semibold text-secondary uppercase tracking-wider mb-3">Community</h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-              <PlannedCapability
-                icon="📸"
-                title="Photo Sharing"
-                description="Share and view photos of your animals."
-              />
-              <PlannedCapability
-                icon="⭐"
-                title="Reviews and Testimonials"
-                description="Share your experience with others."
-              />
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Footer Callout */}
-      <div style={{ marginTop: "3rem" }} className="rounded-xl border border-[hsl(var(--brand-orange))]/20 bg-gradient-to-br from-[hsl(var(--brand-orange))]/5 to-[hsl(var(--brand-teal))]/5 p-4">
-        <div className="flex items-start gap-3">
-          <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-[hsl(var(--brand-orange))]/20 flex items-center justify-center text-lg">
-            🔗
-          </div>
-          <div>
-            <div className="font-semibold text-sm text-primary mb-1">Everything Connected</div>
-            <p className="text-xs text-secondary">
-              Your portal syncs with your breeder's records, so documents, updates, and communications stay in one place.
-            </p>
-          </div>
-        </div>
-      </div>
     </div>
   );
 }

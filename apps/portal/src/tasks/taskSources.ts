@@ -102,7 +102,7 @@ async function fetchInvoiceTasks(): Promise<TaskCard[]> {
         ctaLabel: "View Invoice",
         href: buildInvoiceHref(inv.id),
         secondaryAction,
-        note: hasThreadLink ? null : "Messaging link not available yet.",
+        note: null,
       };
     });
   } catch (err: any) {

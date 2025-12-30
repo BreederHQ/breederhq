@@ -103,7 +103,7 @@ function ProfileSection({ email, orgName, loading }: ProfileSectionProps) {
             </Button>
           </div>
           <p className="text-xs text-secondary/70 mt-2 italic">
-            Profile editing coming soon
+            Not available yet.
           </p>
         </div>
       </div>
@@ -118,7 +118,7 @@ function PreferencesSection() {
     <div className="rounded-xl border border-hairline bg-surface/50 p-6 opacity-60">
       <div className="flex items-center gap-2 mb-4">
         <h3 className="font-semibold text-primary">Communication Preferences</h3>
-        <Badge variant="neutral">Coming Soon</Badge>
+        <Badge variant="neutral">Not Available</Badge>
       </div>
       <div className="space-y-3">
         <label className="flex items-center gap-3 cursor-not-allowed">
