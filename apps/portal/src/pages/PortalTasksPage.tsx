@@ -26,8 +26,14 @@ function TaskCardRow({ task }: { task: TaskCard }) {
   };
 
   const handleClick = () => {
-    window.history.pushState(null, "", task.href);
-    window.dispatchEvent(new PopStateEvent("popstate"));
+    // Cross-module links (e.g., /finance/*) require full page navigation
+    // Intra-portal links (e.g., /portal/*) use SPA navigation
+    if (task.href.startsWith("/portal")) {
+      window.history.pushState(null, "", task.href);
+      window.dispatchEvent(new PopStateEvent("popstate"));
+    } else {
+      window.location.href = task.href;
+    }
   };
 
   const formatDueDate = (dueAt: string | null) => {

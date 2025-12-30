@@ -4,6 +4,7 @@
 
 import { makeApi } from "@bhq/api";
 import type { InvoiceDTO } from "@bhq/api";
+import { buildInvoiceHref } from "../links";
 
 // Task card interface for unified display
 export interface TaskCard {
@@ -82,7 +83,7 @@ async function fetchInvoiceTasks(): Promise<TaskCard[]> {
         dueAt: inv.dueAt,
         status: overdue ? "overdue" : "pending",
         ctaLabel: "View Invoice",
-        href: `/finance/invoices?invoice=${inv.id}`,
+        href: buildInvoiceHref(inv.id),
       };
     });
   } catch (err: any) {

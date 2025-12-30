@@ -3,6 +3,7 @@ import * as React from "react";
 import { PageHeader, Button, Badge } from "@bhq/ui";
 import { makeApi } from "@bhq/api";
 import type { InvoiceDTO, InvoiceStatus } from "@bhq/api";
+import { navigateToInvoice } from "../links";
 
 /* ───────────────── API Setup ───────────────── */
 
@@ -70,8 +71,7 @@ function InvoiceRow({ invoice }: { invoice: InvoiceDTO }) {
   };
 
   const handleViewInvoice = () => {
-    // Navigate to canonical Finance invoices page
-    window.location.href = `/finance/invoices?invoice=${invoice.id}`;
+    navigateToInvoice(invoice.id);
   };
 
   const isPending = ["ISSUED", "PARTIALLY_PAID", "OVERDUE"].includes(invoice.status);
