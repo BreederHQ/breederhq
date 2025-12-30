@@ -11,15 +11,6 @@ export interface PortalTask {
   priority: "low" | "medium" | "high";
 }
 
-export interface PortalMessage {
-  id: string;
-  from: string;
-  subject: string;
-  preview: string;
-  date: string;
-  read: boolean;
-}
-
 export interface PortalInvoice {
   id: string;
   amount: number;
@@ -104,8 +95,6 @@ export const mockCounts: PortalCounts = {
 };
 
 export const mockTasks: PortalTask[] = [];
-
-export const mockMessages: PortalMessage[] = [];
 
 export const mockInvoices: PortalInvoice[] = [];
 

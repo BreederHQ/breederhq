@@ -1,7 +1,7 @@
 // apps/portal/src/App-Portal.tsx
 import * as React from "react";
 import PortalDashboard from "./pages/PortalDashboard";
-import PortalMessagesPage from "./pages/PortalMessagesPage";
+import MessagesPage from "@bhq/marketing/pages/MessagesPage";
 import PortalTasksPage from "./pages/PortalTasksPage";
 import PortalBillingPage from "./pages/PortalBillingPage";
 import PortalAgreementsPage from "./pages/PortalAgreementsPage";
@@ -80,7 +80,7 @@ export default function AppPortal() {
 
   switch (currentView) {
     case "messages":
-      return <PortalMessagesPage />;
+      return <MessagesPage />;
     case "tasks":
       return <PortalTasksPage />;
     case "billing":

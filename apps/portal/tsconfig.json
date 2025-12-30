@@ -10,7 +10,8 @@
       "@bhq/ui/styles": ["../../packages/ui/src"],
       "@bhq/config": ["../../packages/config"],
       "@bhq/api/*": ["../../packages/api/src/*"],
-      "@bhq/portal/*": ["../portal/src/*"]
+      "@bhq/portal/*": ["../portal/src/*"],
+      "@bhq/marketing/*": ["../marketing/src/*"]
     },
     "types": ["vite/client"]
   },
