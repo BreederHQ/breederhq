@@ -13,12 +13,10 @@ export default defineConfig({
       "@bhq/animals": fileURLToPath(new URL("../animals/src", import.meta.url)),
       "@bhq/breeding": fileURLToPath(new URL("../breeding/src", import.meta.url)),
       "@bhq/offspring": fileURLToPath(new URL("../offspring/src", import.meta.url)),
-      "@bhq/marketplace": fileURLToPath(new URL("../marketplace/src", import.meta.url)),
       "@bhq/marketing": fileURLToPath(new URL("../marketing/src", import.meta.url)),
       "@bhq/finance": fileURLToPath(new URL("../finance/src", import.meta.url)),
       "@bhq/organizations": fileURLToPath(new URL("../organizations/src", import.meta.url)),
       "@bhq/admin": fileURLToPath(new URL("../admin/src", import.meta.url)),
-      "@bhq/portal": fileURLToPath(new URL("../portal/src", import.meta.url)),
     },
 
     dedupe: ["react", "react-dom", "lucide-react"],
@@ -30,6 +28,7 @@ export default defineConfig({
     port: 6170,
     strictPort: true,
     host: true,
+    allowedHosts: ["app.breederhq.test"],
     proxy: {
       "/api": { target: "http://127.0.0.1:6001", changeOrigin: true },
       "/health": { target: "http://127.0.0.1:6001", changeOrigin: true },

@@ -9,8 +9,8 @@ type ID = string | number;
 export type DetailsConfig<T> = {
   idParam?: string;
   getRowId: (row: T) => ID;
-  header: (row: T) => { title: React.ReactNode; subtitle?: React.ReactNode };
-  tabs?: Array<{ key: string; label: string }>;
+  header: (row: T) => { title: React.ReactNode; subtitle?: React.ReactNode; extra?: React.ReactNode };
+  tabs?: Array<{ key: string; label: string }> | ((row: T) => Array<{ key: string; label: string }>);
   width?: number | string;
   fetchRow?: (id: ID) => Promise<T> | T;
   onSave?: (id: ID, draft: Partial<T>) => Promise<void> | void;
@@ -57,7 +57,22 @@ export function DetailsHost<T>({
 
   const [openRow, setOpenRow] = React.useState<T | null>(null);
   const [mode, setMode] = React.useState<"view" | "edit">("view");
-  const [activeTab, setActiveTab] = React.useState(config.tabs?.[0]?.key ?? "overview");
+
+  // Helper to resolve tabs - can be array or function
+  const resolveTabs = React.useCallback((row: T | null): Array<{ key: string; label: string }> | undefined => {
+    if (!config.tabs) return undefined;
+    if (typeof config.tabs === "function") {
+      return row ? config.tabs(row) : undefined;
+    }
+    return config.tabs;
+  }, [config.tabs]);
+
+  const getDefaultTabKey = React.useCallback((row: T | null): string => {
+    const tabs = resolveTabs(row);
+    return tabs?.[0]?.key ?? "overview";
+  }, [resolveTabs]);
+
+  const [activeTab, setActiveTab] = React.useState(getDefaultTabKey(null));
   const [draft, setDraft] = React.useState<Partial<T>>({});
   const draftRef = React.useRef<Partial<T>>({});
   const setDraftSafe = React.useCallback((next: React.SetStateAction<Partial<T>>) => {
@@ -103,9 +118,9 @@ export function DetailsHost<T>({
     if (isNewOpen) {
       setMode("view");
       setDraftSafe({});
-      setActiveTab(config.tabs?.[0]?.key ?? "overview");
+      setActiveTab(getDefaultTabKey(local));
     }
-  }, [openId, rows, config, setDraftSafe]);
+  }, [openId, rows, config, setDraftSafe, getDefaultTabKey]);
 
   const requestSave = React.useCallback(async () => {
     if (!config.onSave || !openRow) return;
@@ -164,9 +179,9 @@ export function DetailsHost<T>({
                   />
                 ) : undefined}
               />
-              {config.tabs && (
+              {resolveTabs(openRow) && (
                 <div className="px-4 pt-3">
-                  <DrawerTabs tabs={config.tabs} active={activeTab} onChange={setActiveTab} />
+                  <DrawerTabs tabs={resolveTabs(openRow)!} active={activeTab} onChange={setActiveTab} />
                 </div>
               )}
             </>

@@ -1,6 +1,6 @@
 import * as React from "react";
 
-type Variant = "neutral" | "amber" | "red" | "green" | "blue";
+type Variant = "neutral" | "amber" | "red" | "green" | "blue" | "success" | "default";
 
 const map: Record<Variant, string> = {
   neutral: "bg-surface-strong border-hairline text-secondary",
@@ -8,6 +8,8 @@ const map: Record<Variant, string> = {
   red:     "bg-red-200/70 border-red-300 text-red-900",
   green:   "bg-green-200/70 border-green-300 text-green-900",
   blue:    "bg-blue-200/70 border-blue-300 text-blue-900",
+  default: "bg-surface-strong border-hairline text-secondary",
+  success: "bg-green-200/70 border-green-300 text-green-900",
 };
 
 export type BadgeProps = {

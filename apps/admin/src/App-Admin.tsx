@@ -634,7 +634,7 @@ export default function AppAdmin() {
         {
           label: "Email",
           view: (r: TenantRow) => r.primaryEmail ?? "—",
-          edit: (r, set) => <Input size="sm" defaultValue={r.primaryEmail ?? ""} onChange={e => set({ primaryEmail: e.target.value })} />,
+          edit: (r: TenantRow, set: (updates: Partial<TenantRow>) => void) => <Input size="sm" defaultValue={r.primaryEmail ?? ""} onChange={e => set({ primaryEmail: e.target.value })} />,
         },
         // CHANGE THIS LINE:
         { label: "Users", view: (r: TenantRow) => String(usersExclOwner(r)) },
@@ -654,10 +654,11 @@ export default function AppAdmin() {
     width: 820,
     placement: "center" as const,
     align: "top" as const,
-    fetchRow: (id: number) => adminApi.getTenant(id),
-    onSave: async (id: number, draft: Partial<TenantRow>) => {
-      const updated = await adminApi.patchTenant(id, draft);
-      setRows(prev => prev.map(r => (r.id === id ? { ...r, ...tenantToRow(updated) } : r)));
+    fetchRow: (id: string | number) => adminApi.getTenant(Number(id)),
+    onSave: async (id: string | number, draft: Partial<TenantRow>) => {
+      const numId = Number(id);
+      const updated = await adminApi.patchTenant(numId, draft);
+      setRows(prev => prev.map(r => (r.id === numId ? { ...r, ...tenantToRow(updated) } : r)));
     },
     header: (r: TenantRow) => ({ title: r.name, subtitle: r.primaryEmail || "" }),
     tabs: [
@@ -1014,7 +1015,7 @@ function UsersTab({
       .listUsers(tenantId, { page: 1, limit: 50, includeArchived: showArchived } as any)
       .then((res: any) => {
         // Hide the tenant owner from the list
-        const list: AdminTenantUser[] = (res?.items || []).filter(u => u.role !== "OWNER");
+        const list: AdminTenantUser[] = (res?.items || []).filter((u: AdminTenantUser) => u.role !== "OWNER");
         setItems(list);
       })
       .catch((e: any) => setErr(e?.message || "Failed to load users"))

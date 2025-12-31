@@ -3,7 +3,8 @@
 // Extended with optional fields used by the legacy mock so the UI can adopt them
 // incrementally without breaking the current server shape.
 
-export type ID = string | number;
+import type { ID, ListParams, ListResponse } from "./common";
+export type { ID, ListParams, ListResponse };
 
 // Minimal fields guaranteed by current server
 export interface ContactCore {
@@ -66,21 +67,6 @@ export interface ContactExtras {
 
 // Full DTO the SDK returns to apps
 export type ContactDTO = ContactCore & ContactExtras;
-
-// List params supported by the SDK. The SDK will pass through anything it doesn't understand.
-export interface ListParams {
-  q?: string;
-  limit?: number;
-  offset?: number;
-  sort?: string; // comma list, supports -prefix for desc (e.g., "lastName,-updatedAt")
-  // Optional generic filters (column -> value). The API may ignore unknown keys.
-  filters?: Record<string, string | number | boolean | null | undefined>;
-}
-
-export interface ListResponse<T> {
-  items: T[];
-  total: number;
-}
 
 // Inputs for create / update. Keep optional for non-breaking usage.
 export interface CreateContactInput {

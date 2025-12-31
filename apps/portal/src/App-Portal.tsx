@@ -1,5 +1,6 @@
 // apps/portal/src/App-Portal.tsx
 import * as React from "react";
+import { AuthGate } from "./components/AuthGate";
 import PortalDashboard from "./pages/PortalDashboard";
 import MessagesPage from "@bhq/marketing/pages/MessagesPage";
 import PortalTasksPage from "./pages/PortalTasksPage";
@@ -9,6 +10,11 @@ import PortalDocumentsPage from "./pages/PortalDocumentsPage";
 import PortalOffspringPage from "./pages/PortalOffspringPage";
 import PortalWaitlistPage from "./pages/PortalWaitlistPage";
 import PortalProfilePage from "./pages/PortalProfilePage";
+import PortalActivatePage from "./pages/PortalActivatePage";
+import PortalLoginPage from "./pages/PortalLoginPage";
+
+// Public routes that don't require authentication
+const PUBLIC_PATHS = ["/login", "/activate", "/logout"];
 
 type ViewRoute =
   | "dashboard"
@@ -19,11 +25,21 @@ type ViewRoute =
   | "documents"
   | "offspring"
   | "waitlist"
-  | "profile";
+  | "profile"
+  | "activate"
+  | "login";
 
 function getViewFromPath(pathname: string): ViewRoute {
   const path = pathname.toLowerCase().replace(/\/+$/, "");
 
+  // Public routes first
+  if (path === "/login" || path.startsWith("/login?")) {
+    return "login";
+  }
+  if (path === "/activate" || path.startsWith("/activate?")) {
+    return "activate";
+  }
+  // Protected routes
   if (path === "/portal/messages" || path.startsWith("/portal/messages/")) {
     return "messages";
   }
@@ -78,24 +94,39 @@ export default function AppPortal() {
     }
   }, []);
 
-  switch (currentView) {
-    case "messages":
-      return <MessagesPage />;
-    case "tasks":
-      return <PortalTasksPage />;
-    case "billing":
-      return <PortalBillingPage />;
-    case "agreements":
-      return <PortalAgreementsPage />;
-    case "documents":
-      return <PortalDocumentsPage />;
-    case "offspring":
-      return <PortalOffspringPage />;
-    case "waitlist":
-      return <PortalWaitlistPage />;
-    case "profile":
-      return <PortalProfilePage />;
-    default:
-      return <PortalDashboard />;
+  // Render public routes outside AuthGate
+  if (currentView === "login") {
+    return <PortalLoginPage />;
   }
+  if (currentView === "activate") {
+    return <PortalActivatePage />;
+  }
+
+  // All other routes require authentication
+  return (
+    <AuthGate publicPaths={PUBLIC_PATHS}>
+      {(() => {
+        switch (currentView) {
+          case "messages":
+            return <MessagesPage />;
+          case "tasks":
+            return <PortalTasksPage />;
+          case "billing":
+            return <PortalBillingPage />;
+          case "agreements":
+            return <PortalAgreementsPage />;
+          case "documents":
+            return <PortalDocumentsPage />;
+          case "offspring":
+            return <PortalOffspringPage />;
+          case "waitlist":
+            return <PortalWaitlistPage />;
+          case "profile":
+            return <PortalProfilePage />;
+          default:
+            return <PortalDashboard />;
+        }
+      })()}
+    </AuthGate>
+  );
 }

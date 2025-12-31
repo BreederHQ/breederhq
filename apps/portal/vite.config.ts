@@ -24,6 +24,7 @@ export default defineConfig({
     port: 6171,
     strictPort: true,
     host: true,
+    allowedHosts: ["portal.breederhq.test"],
     proxy: {
       "/api": {
         target: "http://localhost:6001",

@@ -1,15 +1,11 @@
-/* 1) Load BHQ design-system FIRST so PostCSS is happy and tokens exist */
+/* All @import statements must come first (CSS spec requirement) */
 @import "@bhq/ui/bhq.css";
-
-/* 2) Tailwind v3 directives */
-@tailwind base;
-@tailwind components;
-
-/* 3) Library component styles (tables + footer) */
 @import "@bhq/ui/styles/table.css";
 @import "@bhq/ui/styles/table-footer.css";
 
-/* 4) Tailwind utilities */
+/* Tailwind directives */
+@tailwind base;
+@tailwind components;
 @tailwind utilities;
 
 /* Ensure the app's mount has sane height, and body can scroll */

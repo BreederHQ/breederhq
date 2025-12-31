@@ -4,7 +4,7 @@ export * from "./AppSection";
 export * from "./Badge";
 export * from "./BreedSelect";
 export * from "./Button";
-export * from "./Calendar";
+// Calendar excluded from barrel - import directly from "@bhq/ui/components/Calendar" to avoid FullCalendar dep
 export * from "./Card";
 export * from "./ChecklistFilter";
 export * from "./ColumnsPopover";
@@ -20,6 +20,7 @@ export * from "./Finance";
 export * from "./Gantt";
 export * from "./Input";
 export * from "./IntlPhoneField";
+export * from "./LoginPage";
 export * from "./MedicationDoser";
 export * from "./MiniStat";
 export * from "./OverlayShell";

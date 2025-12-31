@@ -1,14 +1,14 @@
-# Local development reverse proxy for subdomain-based routing
-# Requires Caddy installed: https://caddyserver.com/docs/install
-
 app.breederhq.test {
-	reverse_proxy localhost:6170
+  tls internal
+  reverse_proxy localhost:6170
 }
 
 portal.breederhq.test {
-	reverse_proxy localhost:6171
+  tls internal
+  reverse_proxy localhost:6171
 }
 
 marketplace.breederhq.test {
-	reverse_proxy localhost:6172
+  tls internal
+  reverse_proxy localhost:6172
 }

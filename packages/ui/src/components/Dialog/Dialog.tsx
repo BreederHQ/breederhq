@@ -9,6 +9,8 @@ export type DialogSize = "sm" | "md" | "lg" | "xl";
 export interface DialogProps {
   open?: boolean;
   onClose?: () => void;
+  /** Alias for onClose - called when dialog should close */
+  onOpenChange?: (open: boolean) => void;
   title?: React.ReactNode;
   children?: React.ReactNode;
   size?: DialogSize;
@@ -19,21 +21,27 @@ export interface DialogProps {
 export function Dialog({
   open = false,
   onClose,
+  onOpenChange,
   title,
   children,
   size = "md",
   initialFocusRef,
   className = "",
 }: DialogProps) {
+  // Support both onClose and onOpenChange APIs
+  const handleClose = React.useCallback(() => {
+    onClose?.();
+    onOpenChange?.(false);
+  }, [onClose, onOpenChange]);
   const contentRef = React.useRef<HTMLDivElement>(null);
 
   // close on ESC
   React.useEffect(() => {
     if (!open) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose?.(); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") handleClose(); };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
+  }, [open, handleClose]);
 
   // autofocus
   React.useEffect(() => {
@@ -43,12 +51,14 @@ export function Dialog({
 
   if (!open) return null;
 
+  const hasCloseHandler = !!(onClose || onOpenChange);
+
   const node = (
     <>
       <div
         className="bhq-dialog__backdrop"
         aria-hidden="true"
-        onClick={onClose}
+        onClick={handleClose}
       />
       <div
         role="dialog"
@@ -59,11 +69,11 @@ export function Dialog({
         ref={contentRef}
         onClick={(e) => e.stopPropagation()}
       >
-        {(title || onClose) && (
+        {(title || hasCloseHandler) && (
           <header className="bhq-dialog__header">
             <div className="bhq-dialog__title">{title}</div>
-            {onClose && (
-              <Button variant="ghost" size="icon" aria-label="Close" onClick={onClose}>
+            {hasCloseHandler && (
+              <Button variant="ghost" size="icon" aria-label="Close" onClick={handleClose}>
                 ×
               </Button>
             )}
@@ -75,7 +85,7 @@ export function Dialog({
   );
 
   return createPortal(
-    <div className="bhq-dialog__root" onClick={onClose}>{node}</div>,
+    <div className="bhq-dialog__root" onClick={handleClose}>{node}</div>,
     getOverlayRoot()
   );
 }

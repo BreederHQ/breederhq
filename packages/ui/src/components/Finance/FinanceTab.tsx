@@ -2,7 +2,9 @@
 // Reusable Finance tab component for displaying invoices and expenses
 
 import * as React from "react";
-import { SectionCard, Badge, Button } from "@bhq/ui";
+import { SectionCard } from "../SectionCard";
+import { Badge } from "../Badge";
+import { Button } from "../Button";
 import { Download } from "lucide-react";
 import { formatCents } from "../../utils/money";
 import { InvoiceDetailDrawer } from "./InvoiceDetailDrawer";

@@ -1,9 +1,9 @@
 {
-  "rewrites": [
-    {
-      "source": "/api/v1/(.*)",
-      "destination": "https://breederhq-api.onrender.com/api/v1/$1"
-    },
-    { "source": "/(.*)", "destination": "/index.html" }
-  ]
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "version": 2,
+  "public": false,
+  "github": {
+    "silent": true
+  },
+  "_comment": "ROOT CONFIG - Each surface (platform/portal/marketplace) must be deployed as a separate Vercel project from its app directory. Do NOT deploy from root. See docs/runbooks/PRODUCTION_SURFACES.md"
 }

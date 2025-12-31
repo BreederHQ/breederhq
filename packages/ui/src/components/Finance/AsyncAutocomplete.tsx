@@ -8,7 +8,7 @@ import clsx from "clsx";
 import { getFlyoutRoot } from "../../overlay";
 
 export interface AutocompleteOption {
-  id: number;
+  id: number | string;
   label: string;
 }
 

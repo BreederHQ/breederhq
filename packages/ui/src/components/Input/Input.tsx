@@ -1,9 +1,7 @@
 import React from "react";
 import clsx from "clsx";
 
-type Native = React.InputHTMLAttributes<HTMLInputElement>;
-
-type Props = Native & {
+export interface InputProps extends Omit<React.InputHTMLAttributes<HTMLInputElement>, "size"> {
   tone?: "default" | "subtle";
   size?: "sm" | "md";
   /** UI-only. Do not forward to DOM. */
@@ -12,14 +10,14 @@ type Props = Native & {
   icon?: React.ReactNode;
   /** Optional wrapper class when rendering an icon. */
   wrapperClassName?: string;
-};
+}
 
-export const Input = React.forwardRef<HTMLInputElement, Props>(function Input(
+export const Input = React.forwardRef<HTMLInputElement, InputProps>(function Input(
   { className, tone = "default", size = "md", ...allProps },
   ref
 ) {
   // hard strip UI-only props
-  const { showIcon, icon, wrapperClassName, ...props } = allProps as Props;
+  const { showIcon, icon, wrapperClassName, ...props } = allProps;
   // belt-and-suspenders: delete if something slipped through
   if ("showIcon" in (props as any)) delete (props as any).showIcon;
 

@@ -1,8 +1,8 @@
 // packages/ui/src/hooks/useColumns.ts
 import * as React from "react";
 
-export function useColumns<K extends string>(
-  defs: Array<{ key: K; default?: boolean }>,
+export function useColumns<K extends string, T extends { key: K; default?: boolean }>(
+  defs: T[],
   storageKey: string
 ) {
   const defaults = React.useMemo(

@@ -27,9 +27,6 @@
       "@bhq/finance": ["../finance/src/index.ts"],
       "@bhq/finance/*": ["../finance/src/*"],
 
-      "@bhq/marketplace": ["../marketplace/src/index.ts"],
-      "@bhq/marketplace/*": ["../marketplace/src/*"],
-
       "@bhq/marketing": ["../marketing/src/index.ts"],
       "@bhq/marketing/*": ["../marketing/src/*"],
 

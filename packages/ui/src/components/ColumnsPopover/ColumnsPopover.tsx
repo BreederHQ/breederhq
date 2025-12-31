@@ -28,6 +28,7 @@ type Props = {
   onSet: (next: Record<string, boolean>) => void;
   allColumns?: ColumnMeta[];
   defaultKeys?: string[];
+  triggerClassName?: string;
 };
 
 export function ColumnsPopover({
@@ -36,6 +37,7 @@ export function ColumnsPopover({
   onSet,
   allColumns,
   defaultKeys,
+  triggerClassName,
 }: Props) {
   const [open, setOpen] = React.useState(false);
   const btnRef = React.useRef<HTMLButtonElement | null>(null);
@@ -229,7 +231,7 @@ export function ColumnsPopover({
         onClick={() => setOpen(o => !o)}
         aria-expanded={open}
         aria-haspopup="menu"
-        className="h-9 w-9"
+        className={triggerClassName ?? "h-9 w-9"}
         title="Choose columns"
       >
         <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">

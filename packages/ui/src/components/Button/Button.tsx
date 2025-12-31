@@ -2,8 +2,8 @@ import React from "react";
 import clsx from "clsx";
 
 export type ButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> & {
-  variant?: "primary" | "secondary" | "ghost" | "soft" | "outline" | "destructive";
-  size?: "sm" | "md" | "icon";
+  variant?: "primary" | "secondary" | "ghost" | "soft" | "outline" | "destructive" | "default";
+  size?: "xs" | "sm" | "md" | "icon";
   loading?: boolean;
 };
 
@@ -25,7 +25,8 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>((
     "active:translate-y-0 disabled:opacity-60 disabled:pointer-events-none";
 
   const sizes =
-    size === "sm" ? "h-8 px-3 text-xs"
+    size === "xs" ? "h-6 px-2 text-xs"
+      : size === "sm" ? "h-8 px-3 text-xs"
       : size === "icon" ? "h-9 w-9 text-sm"
         : "h-9 px-3 text-sm";
 
@@ -33,7 +34,7 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>((
     variant === "primary"
       ? "text-white bg-[hsl(var(--brand-orange))] " +
       "hover:-translate-y-px hover:shadow-[0_10px_28px_-12px_hsl(var(--brand-orange))]"
-      : variant === "secondary"
+      : variant === "secondary" || variant === "default"
         ? "text-primary bg-surface-strong border border-hairline hover:bg-surface hover:-translate-y-px"
         : variant === "outline"
           ? "text-primary bg-transparent border border-hairline hover:bg-surface/60"

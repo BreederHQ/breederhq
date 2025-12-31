@@ -2,7 +2,7 @@
 // This is the canonical identity model across all modules.
 // Legacy contactId/organizationId fields are deprecated and will be removed in Phase 5.
 
-export type ID = string | number;
+import type { ID } from "./common";
 
 /**
  * Party kind discriminator
