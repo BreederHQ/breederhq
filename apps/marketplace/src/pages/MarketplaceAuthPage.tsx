@@ -101,6 +101,8 @@ export function MarketplaceAuthPage({ mode, onModeChange, onSuccess }: Props) {
         return "Email and password are required.";
       case "password_too_short":
         return "Password must be at least 8 characters.";
+      case "RATE_LIMITED":
+        return "Too many attempts. Please wait a minute and try again.";
       default:
         return "Something went wrong. Please try again.";
     }

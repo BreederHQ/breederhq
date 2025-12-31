@@ -89,6 +89,8 @@ export default function PortalActivatePage() {
         return "Staff members cannot use client portal invites for the same organization.";
       case "membership_suspended":
         return "Your portal access has been suspended. Please contact support.";
+      case "RATE_LIMITED":
+        return "Too many attempts. Please wait a minute and try again.";
       default:
         return "Activation failed. Please try again or contact support.";
     }
