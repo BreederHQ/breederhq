@@ -1,5 +1,5 @@
 // packages/api/src/http.ts
-// Centralized fetch that always forwards cookies and X-Org-Id
+// Centralized fetch that always forwards cookies, X-Org-Id, and X-Tenant-Id
 
 export type Json = Record<string, unknown> | Array<unknown> | string | number | boolean | null;
 
@@ -31,6 +31,17 @@ function getOrgId(): string | null {
   return null;
 }
 
+function getTenantId(): string | null {
+  const w = (window as any) || {};
+  const fromWin = w.__BHQ_TENANT_ID__;
+  if (fromWin != null && String(fromWin).trim() !== "") return String(fromWin);
+  try {
+    const ls = localStorage.getItem("BHQ_TENANT_ID");
+    if (ls && ls.trim() !== "") return ls;
+  } catch { }
+  return null;
+}
+
 export async function apiFetch<T = any>(
   path: string,
   init: RequestInit = {}
@@ -47,6 +58,12 @@ export async function apiFetch<T = any>(
   const orgId = getOrgId();
   if (Number(orgId) > 0 && !headers.has("X-Org-Id")) {
     headers.set("X-Org-Id", String(Number(orgId)));
+  }
+
+  // Inject tenant header if we have one
+  const tenantId = getTenantId();
+  if (Number(tenantId) > 0 && !headers.has("X-Tenant-Id")) {
+    headers.set("X-Tenant-Id", String(Number(tenantId)));
   }
 
   const res = await fetch(url, {
@@ -111,6 +128,12 @@ export function createHttp(baseURL: string, makeAuth?: MakeAuthHeader): Http {
     const orgId = getOrgId();
     if (Number(orgId) > 0 && !headers.has("X-Org-Id")) {
       headers.set("X-Org-Id", String(Number(orgId)));
+    }
+
+    // Inject tenant header if we have one
+    const tenantId = getTenantId();
+    if (Number(tenantId) > 0 && !headers.has("X-Tenant-Id")) {
+      headers.set("X-Tenant-Id", String(Number(tenantId)));
     }
 
     const res = await fetch(url, {

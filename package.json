@@ -14,7 +14,10 @@
   "scripts": {
     "dev": "npm -C ./apps/platform run dev",
     "dev:platform": "npm -C ./apps/platform run dev",
+    "dev:portal": "npm -C ./apps/portal run dev",
+    "dev:marketplace": "npm -C ./apps/marketplace run dev",
     "dev:api": "npm -C ../breederhq-api run dev",
+    "dev:all": "concurrently -n platform,portal,marketplace,caddy -c blue,green,magenta,yellow \"npm run dev:platform\" \"npm run dev:portal\" \"npm run dev:marketplace\" \"caddy run --config Caddyfile\"",
     "build": "npm -C ./apps/platform run build",
     "lint": "eslint . --ext .ts,.tsx --max-warnings=0",
     "format": "prettier --write \"**/*.{ts,.tsx,js,json,css,md}\"",

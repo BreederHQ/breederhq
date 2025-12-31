@@ -1,7 +1,7 @@
 import * as React from "react";
 import { PageHeader, SectionCard } from "@bhq/ui";
 import { makeApi } from "@bhq/api";
-import type { MessageThread, Message } from "@bhq/api";
+import type { MessageThread, Message, ContactDTO } from "@bhq/api";
 
 const IS_DEV = import.meta.env.DEV;
 
@@ -46,6 +46,31 @@ const api = makeApi(API_BASE);
 // Log resolved API base in dev mode
 if (IS_DEV) {
   console.debug("[MessagesPage] API base resolved to:", API_BASE);
+}
+
+const THREAD_ID_PARAM = "threadId";
+
+/* ────────────────────────────────────────────────────────────────────────────
+ * URL Helpers
+ * ────────────────────────────────────────────────────────────────────────── */
+
+function getThreadIdFromUrl(): number | null {
+  const params = new URLSearchParams(window.location.search);
+  const val = params.get(THREAD_ID_PARAM);
+  if (!val) return null;
+  const parsed = parseInt(val, 10);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function setThreadIdInUrl(threadId: number | null): void {
+  const url = new URL(window.location.href);
+  if (threadId != null) {
+    url.searchParams.set(THREAD_ID_PARAM, String(threadId));
+  } else {
+    url.searchParams.delete(THREAD_ID_PARAM);
+  }
+  // Use replaceState to avoid polluting browser history
+  window.history.replaceState({}, "", url.toString());
 }
 
 interface ThreadListItemProps {
@@ -213,6 +238,134 @@ function ThreadView({ thread, onSendMessage }: ThreadViewProps) {
   );
 }
 
+interface RecipientOption {
+  partyId: number;
+  name: string;
+  kind: "contact" | "organization";
+}
+
+interface NewConversationProps {
+  onCreated: (thread: MessageThread) => void;
+  onCancel: () => void;
+}
+
+function NewConversation({ onCreated, onCancel }: NewConversationProps) {
+  const [recipients, setRecipients] = React.useState<RecipientOption[]>([]);
+  const [loadingRecipients, setLoadingRecipients] = React.useState(true);
+  const [selectedRecipient, setSelectedRecipient] = React.useState<RecipientOption | null>(null);
+  const [messageBody, setMessageBody] = React.useState("");
+  const [sending, setSending] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    async function loadRecipients() {
+      setLoadingRecipients(true);
+      try {
+        const contactsRes = await api.contacts.list({ limit: 100 });
+        const options: RecipientOption[] = (contactsRes?.items || []).map((c: ContactDTO) => ({
+          partyId: Number(c.id),
+          name: [c.firstName, c.lastName].filter(Boolean).join(" ") || c.email || `Contact ${c.id}`,
+          kind: "contact" as const,
+        }));
+        setRecipients(options);
+      } catch (err: any) {
+        console.error("Failed to load recipients:", err);
+        setError("Failed to load contacts");
+      } finally {
+        setLoadingRecipients(false);
+      }
+    }
+    loadRecipients();
+  }, []);
+
+  async function handleCreate(e: React.FormEvent) {
+    e.preventDefault();
+    if (!selectedRecipient || !messageBody.trim() || sending) return;
+
+    setSending(true);
+    setError(null);
+    try {
+      const res = await api.messages.threads.create({
+        recipientPartyId: selectedRecipient.partyId,
+        initialMessage: messageBody.trim(),
+      });
+      if (!res?.thread) throw new Error("Failed to create conversation");
+      onCreated(res.thread);
+    } catch (err: any) {
+      console.error("Failed to create conversation:", err);
+      setError(err?.message || "Failed to create conversation");
+      setSending(false);
+    }
+  }
+
+  return (
+    <div className="flex flex-col h-full">
+      <div className="border-b border-hairline p-4 bg-surface flex items-center justify-between">
+        <div className="font-semibold text-primary">New Conversation</div>
+        <button
+          type="button"
+          onClick={onCancel}
+          className="text-xs text-secondary hover:text-primary"
+        >
+          Cancel
+        </button>
+      </div>
+
+      <form onSubmit={handleCreate} className="flex-1 flex flex-col p-4">
+        {error && (
+          <div className="mb-3 text-xs text-red-400">{error}</div>
+        )}
+
+        <div className="mb-4">
+          <label className="block text-xs text-secondary mb-1">To:</label>
+          {loadingRecipients ? (
+            <div className="text-xs text-secondary">Loading contacts...</div>
+          ) : recipients.length === 0 ? (
+            <div className="text-xs text-secondary">No contacts available</div>
+          ) : (
+            <select
+              value={selectedRecipient?.partyId ?? ""}
+              onChange={(e) => {
+                const id = Number(e.target.value);
+                setSelectedRecipient(recipients.find((r) => r.partyId === id) || null);
+              }}
+              className="w-full px-3 py-2 rounded-md bg-card border border-hairline text-primary text-sm focus:outline-none focus:border-[hsl(var(--brand-orange))]/50"
+            >
+              <option value="">Select a contact...</option>
+              {recipients.map((r) => (
+                <option key={r.partyId} value={r.partyId}>
+                  {r.name}
+                </option>
+              ))}
+            </select>
+          )}
+        </div>
+
+        <div className="flex-1 flex flex-col">
+          <label className="block text-xs text-secondary mb-1">Message:</label>
+          <textarea
+            value={messageBody}
+            onChange={(e) => setMessageBody(e.target.value)}
+            placeholder="Type your message..."
+            disabled={sending}
+            className="flex-1 min-h-[120px] px-3 py-2 rounded-md bg-card border border-hairline text-primary text-sm resize-none focus:outline-none focus:border-[hsl(var(--brand-orange))]/50"
+          />
+        </div>
+
+        <div className="mt-4 flex justify-end">
+          <button
+            type="submit"
+            disabled={!selectedRecipient || !messageBody.trim() || sending}
+            className="h-10 px-4 rounded-md bg-[hsl(var(--brand-orange))] text-black font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {sending ? "Sending..." : "Send"}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
 export default function MessagesPage() {
   const [threads, setThreads] = React.useState<MessageThread[]>([]);
   const [selectedThreadId, setSelectedThreadId] = React.useState<number | null>(null);
@@ -220,6 +373,10 @@ export default function MessagesPage() {
   const [loading, setLoading] = React.useState(true);
   const [threadLoading, setThreadLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const [composing, setComposing] = React.useState(false);
+
+  // Track pending thread ID from URL (to open thread once data loads)
+  const [pendingThreadId, setPendingThreadId] = React.useState<number | null>(() => getThreadIdFromUrl());
 
   React.useEffect(() => {
     window.dispatchEvent(
@@ -242,13 +399,15 @@ export default function MessagesPage() {
       if (!Array.isArray(threadList)) {
         throw new Error("Invalid response shape: expected threads array");
       }
+      // Sort by thread-level timestamps only. Do not depend on messages[] in list payload.
       const sorted = threadList.sort((a, b) => {
-        const aLast = a.messages?.[a.messages.length - 1]?.createdAt || a.createdAt;
-        const bLast = b.messages?.[b.messages.length - 1]?.createdAt || b.createdAt;
-        return new Date(bLast).getTime() - new Date(aLast).getTime();
+        const aKey = a.lastMessageAt || a.updatedAt || a.createdAt;
+        const bKey = b.lastMessageAt || b.updatedAt || b.createdAt;
+        return new Date(bKey).getTime() - new Date(aKey).getTime();
       });
       setThreads(sorted);
-      if (sorted.length > 0 && !selectedThreadId) {
+      // Only auto-select first thread if no URL param pending and no selection
+      if (sorted.length > 0 && !selectedThreadId && !pendingThreadId) {
         setSelectedThreadId(sorted[0].id);
       }
     } catch (err: any) {
@@ -297,6 +456,13 @@ export default function MessagesPage() {
     );
   }
 
+  function handleNewConversationCreated(thread: MessageThread) {
+    setComposing(false);
+    setThreads((prev) => [thread, ...prev]);
+    setSelectedThreadId(thread.id);
+    setSelectedThread(thread);
+  }
+
   React.useEffect(() => {
     loadThreads();
   }, []);
@@ -306,6 +472,30 @@ export default function MessagesPage() {
       loadThread(selectedThreadId);
     }
   }, [selectedThreadId]);
+
+  // Handle URL-based thread deep link once data loads
+  React.useEffect(() => {
+    if (!pendingThreadId || loading) return;
+
+    // Find the thread in loaded data
+    const found = threads.find((t) => t.id === pendingThreadId);
+    if (found) {
+      setSelectedThreadId(found.id);
+    } else {
+      // Thread not found or inbox empty, clear the invalid URL param
+      setThreadIdInUrl(null);
+    }
+    // Clear pending ID after processing
+    setPendingThreadId(null);
+  }, [pendingThreadId, loading, threads]);
+
+  // Sync URL when thread selection changes
+  React.useEffect(() => {
+    // Skip URL update during initial pending ID processing
+    if (pendingThreadId) return;
+
+    setThreadIdInUrl(selectedThreadId);
+  }, [selectedThreadId, pendingThreadId]);
 
   return (
     <div className="p-6 space-y-6">
@@ -319,10 +509,26 @@ export default function MessagesPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[calc(100vh-200px)]">
         <div className="lg:col-span-1">
-          <SectionCard title="Inbox" className="h-full flex flex-col">
+          <SectionCard
+            title="Inbox"
+            className="h-full flex flex-col"
+            right={
+              <button
+                type="button"
+                onClick={() => {
+                  setComposing(true);
+                  setSelectedThread(null);
+                  setSelectedThreadId(null);
+                }}
+                className="text-xs px-2 py-1 rounded bg-[hsl(var(--brand-orange))]/10 text-[hsl(var(--brand-orange))] hover:bg-[hsl(var(--brand-orange))]/20"
+              >
+                + New
+              </button>
+            }
+          >
             {loading ? (
               <div className="flex items-center justify-center py-8 text-secondary text-sm">Loading threads...</div>
-            ) : threads.length === 0 ? (
+            ) : threads.length === 0 && !composing ? (
               <div className="flex flex-col items-center justify-center py-12 text-center">
                 <svg
                   className="w-12 h-12 text-secondary/50 mb-3"
@@ -337,7 +543,7 @@ export default function MessagesPage() {
                   <path d="M5 7h14l3 5v6a3 3 0 0 1-3 3H5a3 3 0 0 1-3-3v-6l3-5Z" />
                 </svg>
                 <div className="text-sm text-secondary">No conversations yet</div>
-                <div className="text-xs text-secondary mt-1">Messages will appear here when you start a conversation</div>
+                <div className="text-xs text-secondary mt-1">Click "+ New" to start a conversation</div>
               </div>
             ) : (
               <div className="space-y-2 overflow-y-auto flex-1">
@@ -345,8 +551,11 @@ export default function MessagesPage() {
                   <ThreadListItem
                     key={thread.id}
                     thread={thread}
-                    isActive={thread.id === selectedThreadId}
-                    onClick={() => setSelectedThreadId(thread.id)}
+                    isActive={thread.id === selectedThreadId && !composing}
+                    onClick={() => {
+                      setComposing(false);
+                      setSelectedThreadId(thread.id);
+                    }}
                   />
                 ))}
               </div>
@@ -355,8 +564,13 @@ export default function MessagesPage() {
         </div>
 
         <div className="lg:col-span-2">
-          <SectionCard title="Conversation" className="h-full flex flex-col">
-            {threadLoading ? (
+          <SectionCard title={composing ? "New Conversation" : "Conversation"} className="h-full flex flex-col">
+            {composing ? (
+              <NewConversation
+                onCreated={handleNewConversationCreated}
+                onCancel={() => setComposing(false)}
+              />
+            ) : threadLoading ? (
               <div className="flex items-center justify-center flex-1 text-secondary text-sm">Loading conversation...</div>
             ) : !selectedThread ? (
               <div className="flex flex-col items-center justify-center flex-1 text-center">

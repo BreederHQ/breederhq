@@ -27,6 +27,7 @@ export * from "./Ownership";
 export * from "./PageHeader";
 export * from "./PillToggle";
 export * from "./Popover";
+export * from "./PortalAccess";
 export * from "./RegionSelect";
 export * from "./SearchBar";
 export * from "./SectionCard";

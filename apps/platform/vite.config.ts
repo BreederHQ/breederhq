@@ -18,6 +18,7 @@ export default defineConfig({
       "@bhq/finance": fileURLToPath(new URL("../finance/src", import.meta.url)),
       "@bhq/organizations": fileURLToPath(new URL("../organizations/src", import.meta.url)),
       "@bhq/admin": fileURLToPath(new URL("../admin/src", import.meta.url)),
+      "@bhq/portal": fileURLToPath(new URL("../portal/src", import.meta.url)),
     },
 
     dedupe: ["react", "react-dom", "lucide-react"],
@@ -28,6 +29,7 @@ export default defineConfig({
   server: {
     port: 6170,
     strictPort: true,
+    host: true,
     proxy: {
       "/api": { target: "http://127.0.0.1:6001", changeOrigin: true },
       "/health": { target: "http://127.0.0.1:6001", changeOrigin: true },
