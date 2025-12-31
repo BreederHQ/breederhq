@@ -4804,7 +4804,17 @@ export default function AppAnimals() {
             <CycleTab
               animal={row}
               api={api}
-              onSaved={(dates) => setDraft({ cycleStartDates: dates })}
+              onSaved={(dates) => {
+                // CycleTab already persists to the API, so we just need to update local state.
+                // Update rows so the list reflects the change and DetailsHost re-fetches.
+                // Do NOT call setDraft here - that would mark as dirty and trigger
+                // "unsaved changes" warning even though data is already saved.
+                setRows((prev) =>
+                  prev.map((r) =>
+                    r.id === row.id ? { ...r, cycleStartDates: dates } : r
+                  )
+                );
+              }}
             />
           )}
 
