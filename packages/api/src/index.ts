@@ -23,13 +23,31 @@ export { makeMarketing, type MarketingResource } from "./resources/marketing";
 export { makeMessages, type MessagesResource } from "./resources/messages";
 export { makePortalAccess, type PortalAccessResource, type PortalAccessDTO, type PortalAccessStatus, type PortalAccessResponse } from "./resources/portal-access";
 
-// (Optional) re-export shared types if you keep them under src/types/*
+// Re-export shared types - common types first (ID, ListParams, ListResponse)
 export * from "./types/contacts";
 export * from "./types/animals";
 export * from "./types/breeding";
 export * from "./types/offspring";
 export * from "./types/party";
-export * from "./types/finance";
+export {
+  type LineItemKind,
+  type InvoiceCategory,
+  type InvoiceLineItemDTO,
+  type CreateLineItemInput,
+  type InvoiceStatus,
+  type InvoiceDTO,
+  type CreateInvoiceInput,
+  type UpdateInvoiceInput,
+  type PaymentMethodType,
+  type PaymentDTO,
+  type CreatePaymentInput,
+  type ExpenseCategory,
+  type ExpenseDTO,
+  type CreateExpenseInput,
+  type UpdateExpenseInput,
+  type IdempotencyHeaders,
+  generateIdempotencyKey,
+} from "./types/finance";
 
 export function makeApi(baseURL: string, makeAuth?: MakeAuthHeader) {
   const http = createHttp(baseURL, makeAuth);

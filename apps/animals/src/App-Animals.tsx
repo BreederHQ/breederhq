@@ -1294,6 +1294,7 @@ function CycleTab({
   const proj = React.useMemo(() => {
     return projectUpcomingCycleStarts(
       {
+        animalId: String(animal?.id ?? ""),
         species: species as any,
         cycleStartsAsc,
         dob: dobIso ?? null,
@@ -1301,7 +1302,7 @@ function CycleTab({
       },
       { horizonMonths: 36, maxCount: 12 }
     );
-  }, [species, cycleStartsAsc, dobIso, todayIso]);
+  }, [animal?.id, species, cycleStartsAsc, dobIso, todayIso]);
 
   const learned = React.useMemo(
     () => ({
@@ -1397,8 +1398,8 @@ return (
                   <div className="flex items-center gap-2 w-full">
                     <CalendarInput
                       value={d}
-                      onChange={(e) => {
-                        const v = (e.currentTarget as HTMLInputElement).value;
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                        const v = e.currentTarget.value;
                         if (!v) return;
                         setDates((prev) => {
                           const next = prev.filter((x) => x !== d);
@@ -1445,8 +1446,8 @@ return (
           <div className="w-64">
             <CalendarInput
               value={newDateIso}
-              onChange={(e) => {
-                const v = (e.currentTarget as HTMLInputElement).value;
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                const v = e.currentTarget.value;
                 setNewDateIso(v || "");
               }}
               placeholder="mm/dd/yyyy"
@@ -1798,7 +1799,7 @@ function HealthTab({
       const data = await api?.animals?.traits?.list(animal.id);
 
       // Dev-only diagnostic logging
-      if (process.env.NODE_ENV === 'development') {
+      if (import.meta.env?.DEV) {
         console.log('[HealthTab] Traits response:', data);
       }
 
@@ -2995,7 +2996,7 @@ function RegistryTab({
   const [registriesFetchError, setRegistriesFetchError] = React.useState<string | null>(null);
   const [error, setError] = React.useState<{ status?: number; message?: string; code?: string } | null>(null);
   const [expandedId, setExpandedId] = React.useState<number | "draft" | null>(null);
-  const [drafts, setDrafts] = React.useState<Record<number | "draft", any>>({});
+  const [drafts, setDrafts] = React.useState<Record<number | "draft", any>>({} as Record<number | "draft", any>);
   const [deleteConfirmId, setDeleteConfirmId] = React.useState<number | null>(null);
 
   const fetchRegistrations = React.useCallback(async () => {
@@ -4252,7 +4253,7 @@ export default function AppAnimals() {
         const file = new File([blob], "photo.jpg", { type: "image/jpeg" });
 
         const res = await api.animals.uploadPhoto(animalId, file);
-        const url = (res && (res.url || res.photoUrl || res.photo_url)) || null;
+        const url = (res && ((res as any).url || res.photoUrl || (res as any).photo_url)) || null;
 
         if (!url) {
           toast.error("Upload returned no photo URL.");
@@ -4278,12 +4279,13 @@ export default function AppAnimals() {
       width: 720,
       placement: "center" as const,
       align: "top" as const,
-      fetchRow: async (id: number) => {
-        const base = await api.animals.get(id);
+      fetchRow: async (id: string | number) => {
+        const numId = Number(id);
+        const base = await api.animals.get(numId);
 
         let owners: OwnershipRow[] = [];
         try {
-          const resp = await api.animals.owners.list(id);
+          const resp = await api.animals.owners.list(numId);
           const items = Array.isArray((resp as any)?.items)
             ? (resp as any).items
             : Array.isArray(resp)
@@ -4329,7 +4331,8 @@ export default function AppAnimals() {
 
         return animalToRow({ ...base, owners });
       },
-      onSave: async (id: number, draft: Partial<AnimalRow>) => {
+      onSave: async (id: string | number, draft: Partial<AnimalRow>) => {
+        const numId = Number(id);
         const toWire = (d: Partial<AnimalRow>) => {
           const out: any = { ...d };
           if (out.species) out.species = String(out.species).toUpperCase();
@@ -4338,7 +4341,7 @@ export default function AppAnimals() {
           return out;
         };
 
-        const updated = await api.animals.update(id, toWire(draft));
+        const updated = await api.animals.update(numId, toWire(draft));
 
         const owners: OwnershipRow[] | undefined = (draft as any)?.owners;
         let ownerNameOverride: string | undefined;
@@ -4347,14 +4350,14 @@ export default function AppAnimals() {
           ownerNameOverride =
             primary?.display_name ?? owners[0]?.display_name ?? undefined;
           try {
-            await syncOwners(id, owners);
+            await syncOwners(numId, owners);
           } catch {
           }
         }
 
         setRows((prev) =>
           prev.map((r) => {
-            if (r.id !== id) return r;
+            if (r.id !== numId) return r;
             const base: any = { ...r, ...animalToRow(updated) };
             if (owners) {
               (base as any).owners = owners;
@@ -5381,7 +5384,7 @@ export default function AppAnimals() {
                       ).toUpperCase() as "DOG" | "CAT" | "HORSE";
                       setCustomBreedSpecies(speciesEnum);
                       setOnCustomBreedCreated(
-                        () => (created) => {
+                        () => (created: { id: number; name: string }) => {
                           setNewBreed({
                             id: created.id,
                             name: created.name,

@@ -9,10 +9,8 @@ export function readTenantIdFast(): number | undefined {
     const raw = document.cookie.match(/(?:^|; )bhq_s=([^;]*)/)?.[1];
     if (raw) {
       const payloadB64 = raw.includes(".") ? raw.split(".")[1] : raw; // JWT payload or raw
-      const json =
-        typeof atob === "function"
-          ? atob(payloadB64.replace(/-/g, "+").replace(/_/g, "/"))
-          : Buffer.from(payloadB64, "base64").toString("utf8");
+      // Browser-only base64 decode (atob is always available in browser)
+      const json = atob(payloadB64.replace(/-/g, "+").replace(/_/g, "/"));
       const obj = JSON.parse(json);
       const t = Number(obj?.tenantId ?? obj?.orgId ?? obj?.tenantID ?? obj?.tenant_id);
       if (Number.isInteger(t) && t > 0) return t;

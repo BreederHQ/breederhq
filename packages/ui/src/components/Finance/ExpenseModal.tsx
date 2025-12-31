@@ -196,7 +196,7 @@ export function ExpenseModal({
         category: form.category,
         amountCents,
         incurredAt: form.incurredAt,
-        vendorPartyId: form.vendorParty?.id || null,
+        vendorPartyId: form.vendorParty?.id ? Number(form.vendorParty.id) : null,
         description: form.description || null,
         notes: form.notes || null,
       };
@@ -211,11 +211,11 @@ export function ExpenseModal({
       } else {
         // User-selected anchor (optional for expenses)
         if (form.anchorType === "animal" && form.animal) {
-          input.animalId = form.animal.id;
+          input.animalId = Number(form.animal.id);
         } else if (form.anchorType === "offspringGroup" && form.offspringGroup) {
-          input.offspringGroupId = form.offspringGroup.id;
+          input.offspringGroupId = Number(form.offspringGroup.id);
         } else if (form.anchorType === "breedingPlan" && form.breedingPlan) {
-          input.breedingPlanId = form.breedingPlan.id;
+          input.breedingPlanId = Number(form.breedingPlan.id);
         }
       }
 
@@ -229,11 +229,7 @@ export function ExpenseModal({
       onClose();
     } catch (err: any) {
       console.error(`Failed to ${isEditMode ? "update" : "create"} expense:`, err);
-      toast({
-        title: "Error",
-        description: err?.message || `Failed to ${isEditMode ? "update" : "create"} expense`,
-        variant: "destructive",
-      });
+      toast.error(err?.message || `Failed to ${isEditMode ? "update" : "create"} expense`);
     } finally{
       setSubmitting(false);
     }
@@ -250,11 +246,7 @@ export function ExpenseModal({
       onClose();
     } catch (err: any) {
       console.error("Failed to delete expense:", err);
-      toast({
-        title: "Error",
-        description: err?.message || "Failed to delete expense",
-        variant: "destructive",
-      });
+      toast.error(err?.message || "Failed to delete expense");
     } finally {
       setDeleting(false);
     }

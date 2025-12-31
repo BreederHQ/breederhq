@@ -6,6 +6,8 @@ export type SectionCardProps = {
   right?: React.ReactNode;
   /** Deprecated alias kept for compatibility with older callers */
   rightSlot?: React.ReactNode;
+  /** Actions to display in header (alias for right) */
+  actions?: React.ReactNode;
   children?: React.ReactNode;
   className?: string;
 };
@@ -14,10 +16,11 @@ export function SectionCard({
   title,
   right,
   rightSlot,
+  actions,
   children,
   className = "",
 }: SectionCardProps) {
-  const headerRight = right ?? rightSlot;
+  const headerRight = right ?? rightSlot ?? actions;
 
   return (
     <div className={["bhq-section-card rounded-xl border border-hairline bg-surface p-3", className].join(" ")}>

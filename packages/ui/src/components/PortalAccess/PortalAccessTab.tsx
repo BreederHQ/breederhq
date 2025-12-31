@@ -2,7 +2,9 @@
 // Portal Access tab component for managing client portal access per Party
 
 import * as React from "react";
-import { SectionCard, Badge, Button } from "@bhq/ui";
+import { SectionCard } from "../SectionCard";
+import { Badge } from "../Badge";
+import { Button } from "../Button";
 import type { PortalAccessDTO, PortalAccessStatus, PortalAccessResource } from "@bhq/api";
 
 export interface PortalAccessTabProps {

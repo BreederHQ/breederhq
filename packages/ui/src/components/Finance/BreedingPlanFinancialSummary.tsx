@@ -2,7 +2,7 @@
 // Read-only financial summary rollups for breeding plans
 
 import * as React from "react";
-import { SectionCard } from "@bhq/ui";
+import { SectionCard } from "../SectionCard";
 import { formatCents } from "../../utils/money";
 import {
   computeRevenueSummary,

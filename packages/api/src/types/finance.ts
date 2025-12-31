@@ -1,20 +1,8 @@
 // Finance SDK types
 // Types for invoices, payments, and expenses
 
-export type ID = string | number;
-
-export interface ListParams {
-  q?: string;
-  limit?: number;
-  offset?: number;
-  sort?: string;
-  filters?: Record<string, string | number | boolean | null | undefined>;
-}
-
-export interface ListResponse<T> {
-  items: T[];
-  total: number;
-}
+import type { ID, ListParams, ListResponse } from "./common";
+export type { ID, ListParams, ListResponse };
 
 // ─────────────────── INVOICE LINE ITEMS ───────────────────
 
@@ -251,9 +239,9 @@ export interface UpdateExpenseInput {
 
 // ─────────────────── IDEMPOTENCY ───────────────────
 
-export interface IdempotencyHeaders {
+export type IdempotencyHeaders = Record<string, string> & {
   "Idempotency-Key": string;
-}
+};
 
 /**
  * Generate a unique idempotency key for invoice/payment creation

@@ -30,6 +30,11 @@ export type TableProps<K extends string = string, TID extends RowID = RowID> = {
 
   /** Optional: bulk actions bar renderer (shown when anything selected) */
   renderBulkActions?: (args: { selectedIds: Array<RowId>; clear: () => void }) => React.ReactNode;
+
+  /** Optional: Column visibility state (Record<columnKey, boolean>) */
+  columnState?: Record<K, boolean>;
+  /** Optional: Callback when column visibility changes */
+  onColumnStateChange?: (state: Record<K, boolean>) => void;
 };
 
 export function Table<K extends string = string, TID extends RowID = RowID>({
@@ -44,6 +49,8 @@ export function Table<K extends string = string, TID extends RowID = RowID>({
   selectedIds,
   onSelectionChange,
   renderBulkActions,
+  columnState,
+  onColumnStateChange,
 }: TableProps<K, TID>) {
   // Memoize options to avoid re-creating the controller on every render.
   const controllerOpts = React.useMemo(() => {

@@ -11,7 +11,7 @@ import { AnimalAutocomplete } from "./AnimalAutocomplete";
 import { OffspringGroupAutocomplete } from "./OffspringGroupAutocomplete";
 import { BreedingPlanAutocomplete } from "./BreedingPlanAutocomplete";
 import { parseToCents, centsToInput, formatCents } from "../../utils/money";
-import type { LineItemKind, CreateLineItemInput } from "@bhq/api/types/finance";
+import type { LineItemKind, CreateLineItemInput } from "@bhq/api";
 
 // Idempotency key generation
 function generateIdempotencyKey(): string {
@@ -345,7 +345,7 @@ export function InvoiceCreateModal({
       });
 
       const input: CreateInvoiceInput = {
-        clientPartyId: form.clientParty!.id,
+        clientPartyId: Number(form.clientParty!.id),
         lineItems,
         issuedAt: form.issuedAt || null,
         dueAt: form.dueAt || null,
@@ -362,11 +362,11 @@ export function InvoiceCreateModal({
       } else {
         // User-selected anchor
         if (form.anchorType === "animal" && form.animal) {
-          input.animalId = form.animal.id;
+          input.animalId = Number(form.animal.id);
         } else if (form.anchorType === "offspringGroup" && form.offspringGroup) {
-          input.offspringGroupId = form.offspringGroup.id;
+          input.offspringGroupId = Number(form.offspringGroup.id);
         } else if (form.anchorType === "breedingPlan" && form.breedingPlan) {
-          input.breedingPlanId = form.breedingPlan.id;
+          input.breedingPlanId = Number(form.breedingPlan.id);
         } else if (form.anchorType === "serviceCode" && form.serviceCode.trim()) {
           input.serviceCode = form.serviceCode.trim();
         }

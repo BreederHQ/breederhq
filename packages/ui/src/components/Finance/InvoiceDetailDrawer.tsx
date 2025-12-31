@@ -4,14 +4,16 @@
 import * as React from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
-import { Button, Badge, SectionCard } from "@bhq/ui";
+import { Button } from "../Button";
+import { Badge } from "../Badge";
+import { SectionCard } from "../SectionCard";
 import { Dialog } from "../Dialog";
 import { formatCents } from "../../utils/money";
 import { getOverlayRoot } from "../../overlay";
 import { PaymentCreateModal } from "./PaymentCreateModal";
 import { ReceiptsSection } from "./ReceiptsSection";
 import { useToast } from "../../atoms/Toast";
-import type { InvoiceLineItemDTO } from "@bhq/api/types/finance";
+import type { InvoiceLineItemDTO } from "@bhq/api";
 
 export interface InvoiceDetailDrawerProps {
   invoice: any;

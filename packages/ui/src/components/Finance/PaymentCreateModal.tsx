@@ -152,18 +152,11 @@ export function PaymentCreateModal({
 
       // Handle idempotency conflict (409)
       if (err?.status === 409 || err?.message?.includes("409")) {
-        toast({
-          title: "Payment already recorded",
-          description: "This payment was already created (duplicate submission detected)",
-        });
+        toast.info("Payment already recorded - duplicate submission detected");
         onSuccess(); // Refresh data
         onClose();
       } else {
-        toast({
-          title: "Error",
-          description: err?.message || "Failed to create payment",
-          variant: "destructive",
-        });
+        toast.error(err?.message || "Failed to create payment");
       }
     } finally {
       setSubmitting(false);
