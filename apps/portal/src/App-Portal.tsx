@@ -9,6 +9,7 @@ import PortalDocumentsPage from "./pages/PortalDocumentsPage";
 import PortalOffspringPage from "./pages/PortalOffspringPage";
 import PortalWaitlistPage from "./pages/PortalWaitlistPage";
 import PortalProfilePage from "./pages/PortalProfilePage";
+import PortalActivatePage from "./pages/PortalActivatePage";
 
 type ViewRoute =
   | "dashboard"
@@ -19,11 +20,16 @@ type ViewRoute =
   | "documents"
   | "offspring"
   | "waitlist"
-  | "profile";
+  | "profile"
+  | "activate";
 
 function getViewFromPath(pathname: string): ViewRoute {
   const path = pathname.toLowerCase().replace(/\/+$/, "");
 
+  // Activation route (no auth required)
+  if (path === "/activate" || path.startsWith("/activate?")) {
+    return "activate";
+  }
   if (path === "/portal/messages" || path.startsWith("/portal/messages/")) {
     return "messages";
   }
@@ -79,6 +85,8 @@ export default function AppPortal() {
   }, []);
 
   switch (currentView) {
+    case "activate":
+      return <PortalActivatePage />;
     case "messages":
       return <MessagesPage />;
     case "tasks":
