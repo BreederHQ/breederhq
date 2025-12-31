@@ -105,3 +105,23 @@ If a user sees platform routes on portal, check:
 
 ### Cookie not shared across subdomains
 Ensure backend sets `domain=.breederhq.com` (with leading dot) in production.
+
+## Surface Derivation Allowlist
+
+In production (`NODE_ENV=production`), the backend enforces a **strict hostname allowlist**.
+Only these exact hostnames are recognized:
+
+| Hostname                   | Surface         |
+|----------------------------|-----------------|
+| `app.breederhq.com`        | PLATFORM        |
+| `portal.breederhq.com`     | PORTAL          |
+| `marketplace.breederhq.com`| MARKETPLACE     |
+
+Any request from an unrecognized hostname returns:
+```json
+{ "error": "SURFACE_ACCESS_DENIED", "surface": "UNKNOWN" }
+```
+
+This prevents attackers from using hostnames like `portal.malicious.com` to bypass surface-based access controls.
+
+In development, the backend uses flexible prefix matching (`portal.*`, `marketplace.*`, etc.) to support local testing with `*.breederhq.test` domains and Vercel preview deployments.
