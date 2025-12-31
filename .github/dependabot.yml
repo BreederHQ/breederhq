@@ -1,0 +1,159 @@
+# Dependabot configuration for npm workspaces monorepo
+# Docs: https://docs.github.com/en/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
+version: 2
+
+updates:
+  # Root workspace - handles shared dependencies
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    # Avoid major version bumps by default (require manual review)
+    versioning-strategy: "increase-if-necessary"
+    # Group build tooling updates to reduce PR spam
+    groups:
+      build-tooling:
+        patterns:
+          - "vite"
+          - "vite-*"
+          - "@vitejs/*"
+          - "esbuild"
+          - "rollup"
+          - "postcss"
+          - "postcss-*"
+          - "autoprefixer"
+          - "tailwindcss"
+          - "@tailwindcss/*"
+          - "typescript"
+          - "tsup"
+          - "ts-node"
+        update-types:
+          - "minor"
+          - "patch"
+      linting:
+        patterns:
+          - "eslint"
+          - "eslint-*"
+          - "@eslint/*"
+          - "prettier"
+        update-types:
+          - "minor"
+          - "patch"
+      react:
+        patterns:
+          - "react"
+          - "react-dom"
+          - "@types/react"
+          - "@types/react-dom"
+        update-types:
+          - "minor"
+          - "patch"
+    # Ignore major version bumps to avoid breaking changes
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "npm"
+
+  # Platform app
+  - package-ecosystem: "npm"
+    directory: "/apps/platform"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    versioning-strategy: "increase-if-necessary"
+    groups:
+      vite-tooling:
+        patterns:
+          - "vite"
+          - "vite-*"
+          - "@vitejs/*"
+        update-types:
+          - "minor"
+          - "patch"
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "npm"
+      - "app:platform"
+
+  # Portal app
+  - package-ecosystem: "npm"
+    directory: "/apps/portal"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    versioning-strategy: "increase-if-necessary"
+    groups:
+      vite-tooling:
+        patterns:
+          - "vite"
+          - "vite-*"
+          - "@vitejs/*"
+        update-types:
+          - "minor"
+          - "patch"
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "npm"
+      - "app:portal"
+
+  # Marketing app
+  - package-ecosystem: "npm"
+    directory: "/apps/marketing"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    versioning-strategy: "increase-if-necessary"
+    groups:
+      vite-tooling:
+        patterns:
+          - "vite"
+          - "vite-*"
+          - "@vitejs/*"
+        update-types:
+          - "minor"
+          - "patch"
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "npm"
+      - "app:marketing"
+
+  # Marketplace app
+  - package-ecosystem: "npm"
+    directory: "/apps/marketplace"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    versioning-strategy: "increase-if-necessary"
+    groups:
+      vite-tooling:
+        patterns:
+          - "vite"
+          - "vite-*"
+          - "@vitejs/*"
+        update-types:
+          - "minor"
+          - "patch"
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "npm"
+      - "app:marketplace"
