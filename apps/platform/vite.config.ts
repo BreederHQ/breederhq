@@ -29,6 +29,7 @@ export default defineConfig({
   server: {
     port: 6170,
     strictPort: true,
+    host: true,
     proxy: {
       "/api": { target: "http://127.0.0.1:6001", changeOrigin: true },
       "/health": { target: "http://127.0.0.1:6001", changeOrigin: true },

@@ -18,7 +18,7 @@
     "vite": "5.4.8"
   },
   "scripts": {
-    "dev": "vite --port 6178 --strictPort",
+    "dev": "vite",
     "build": "vite build",
     "preview": "vite preview --port 5178"
   }

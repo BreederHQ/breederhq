@@ -21,8 +21,9 @@ export default defineConfig({
     dedupe: ["react", "react-dom"],
   },
   server: {
-    port: 6180,
+    port: 6171,
     strictPort: true,
+    host: true,
     proxy: {
       "/api": {
         target: "http://localhost:6001",
