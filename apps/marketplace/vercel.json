@@ -1,8 +1,7 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "ignoreBuildStep": "bash ../../scripts/ignore-build.sh",
   "installCommand": "cd ../.. && npm ci",
-  "buildCommand": "cd ../.. && npm run -w apps/marketplace build",
+  "buildCommand": "bash ../../scripts/vercel-build.sh apps/marketplace",
   "outputDirectory": "dist",
   "framework": "vite",
   "rewrites": [
