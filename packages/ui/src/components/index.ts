@@ -20,6 +20,7 @@ export * from "./Finance";
 export * from "./Gantt";
 export * from "./Input";
 export * from "./IntlPhoneField";
+export * from "./LoginPage";
 export * from "./MedicationDoser";
 export * from "./MiniStat";
 export * from "./OverlayShell";
