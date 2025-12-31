@@ -96,12 +96,32 @@ export default function AppMarketplace() {
     }
   }, []);
 
+  // popstate listener for navigation (must be before early returns to satisfy hooks rules)
+  React.useEffect(() => {
+    const onPopState = () => {
+      const { route, canonicalPath } = parseRoute(window.location.pathname);
+      if (canonicalPath) {
+        window.history.replaceState(null, "", canonicalPath);
+      }
+      setRoute(route);
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
+
   // Handle successful auth - re-check auth state
   const handleAuthSuccess = React.useCallback(() => {
     // Force auth hook to re-run
     setAuthCheckKey((k) => k + 1);
     // Reload the page to get fresh state with entitlement
     window.location.reload();
+  }, []);
+
+  const handleNavigate = React.useCallback((path: string) => {
+    const { route, canonicalPath } = parseRoute(path);
+    const finalPath = canonicalPath || path;
+    window.history.pushState(null, "", finalPath);
+    setRoute(route);
   }, []);
 
   // Show loading state while checking auth
@@ -123,25 +143,6 @@ export default function AppMarketplace() {
       />
     );
   }
-
-  React.useEffect(() => {
-    const onPopState = () => {
-      const { route, canonicalPath } = parseRoute(window.location.pathname);
-      if (canonicalPath) {
-        window.history.replaceState(null, "", canonicalPath);
-      }
-      setRoute(route);
-    };
-    window.addEventListener("popstate", onPopState);
-    return () => window.removeEventListener("popstate", onPopState);
-  }, []);
-
-  const handleNavigate = React.useCallback((path: string) => {
-    const { route, canonicalPath } = parseRoute(path);
-    const finalPath = canonicalPath || path;
-    window.history.pushState(null, "", finalPath);
-    setRoute(route);
-  }, []);
 
   switch (route.type) {
     case "program":
