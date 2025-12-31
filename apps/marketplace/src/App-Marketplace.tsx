@@ -4,6 +4,8 @@ import { ProgramsIndexPage } from "./pages/ProgramsIndexPage";
 import { ProgramPage } from "./pages/ProgramPage";
 import { OffspringGroupDetailPage } from "./pages/OffspringGroupDetailPage";
 import { AnimalDetailPage } from "./pages/AnimalDetailPage";
+import { MarketplaceAuthPage } from "./pages/MarketplaceAuthPage";
+import { useMarketplaceAuth } from "./hooks/useMarketplaceAuth";
 import {
   normalizeSlug,
   buildProgramPath,
@@ -71,6 +73,10 @@ function parseRoute(pathname: string): ParsedRoute {
 }
 
 export default function AppMarketplace() {
+  const auth = useMarketplaceAuth();
+  const [authMode, setAuthMode] = React.useState<"login" | "register">("login");
+  const [authCheckKey, setAuthCheckKey] = React.useState(0);
+
   const [route, setRoute] = React.useState<Route>(() => {
     const { route, canonicalPath } = parseRoute(window.location.pathname);
     // Perform canonical redirect on initial load if needed
@@ -89,6 +95,34 @@ export default function AppMarketplace() {
       );
     }
   }, []);
+
+  // Handle successful auth - re-check auth state
+  const handleAuthSuccess = React.useCallback(() => {
+    // Force auth hook to re-run
+    setAuthCheckKey((k) => k + 1);
+    // Reload the page to get fresh state with entitlement
+    window.location.reload();
+  }, []);
+
+  // Show loading state while checking auth
+  if (auth.loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-page">
+        <div className="text-secondary">Loading...</div>
+      </div>
+    );
+  }
+
+  // Show auth page if not authenticated
+  if (!auth.authenticated) {
+    return (
+      <MarketplaceAuthPage
+        mode={authMode}
+        onModeChange={setAuthMode}
+        onSuccess={handleAuthSuccess}
+      />
+    );
+  }
 
   React.useEffect(() => {
     const onPopState = () => {
