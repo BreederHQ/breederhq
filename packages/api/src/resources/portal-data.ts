@@ -33,7 +33,7 @@ export interface DocumentDTO {
   description: string | null;
   category: DocumentCategory | null;
   uploadedAt: string;
-  fileUrl: string;
+  fileUrl: string | null; // null when downloads must go through secure endpoint
   mimeType: string | null;
   fileSizeBytes: number | null;
   source: DocumentSource;

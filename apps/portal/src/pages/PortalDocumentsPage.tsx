@@ -61,13 +61,8 @@ function DocumentRow({ document }: { document: DocumentDTO }) {
             </div>
           </div>
         </div>
-        <Button
-          variant="secondary"
-          size="sm"
-          onClick={() => window.open(document.fileUrl, "_blank")}
-        >
-          Download
-        </Button>
+        {/* Download button removed until file storage is configured */}
+        {/* When storage is ready, use: /api/v1/portal/documents/{id}/download */}
       </div>
     </div>
   );
