@@ -1129,9 +1129,10 @@ function WhatIfRowEditor(props: WhatIfRowEditorProps) {
 
   const [damRepro, setDamRepro] = React.useState<WhatIfDamReproData | null>(null);
   const [damLoadError, setDamLoadError] = React.useState<string | null>(null);
+  const [refreshTrigger, setRefreshTrigger] = React.useState(0);
 
   React.useEffect(() => {
-    console.log("[whatif] dam repro effect run", { damId: row.damId });
+    console.log("[whatif] dam repro effect run", { damId: row.damId, refreshTrigger });
 
     let cancelled = false;
 
@@ -1253,7 +1254,7 @@ function WhatIfRowEditor(props: WhatIfRowEditorProps) {
     return () => {
       cancelled = true;
     };
-  }, [row.damId]);
+  }, [row.damId, refreshTrigger]);
 
   const handleDamChange: React.ChangeEventHandler<HTMLSelectElement> = (e) => {
     const val = e.currentTarget.value;
@@ -1329,6 +1330,12 @@ function WhatIfRowEditor(props: WhatIfRowEditorProps) {
             className="h-8 w-full rounded-md border border-hairline bg-surface-subtle px-2 text-sm text-primary"
             value={row.cycleStartIso ?? ""}
             onChange={handleCycleChange}
+            onFocus={() => {
+              if (row.damId) {
+                console.log("[whatif] cycle dropdown focused, refreshing override");
+                setRefreshTrigger((prev) => prev + 1);
+              }
+            }}
             disabled={!row.damId || projectedCycles.length === 0}
           >
             <option value="">
