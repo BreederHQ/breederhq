@@ -108,27 +108,14 @@ export function ProgramPage({ programSlug, onNavigate }: ProgramPageProps) {
     );
   }
 
-  const location = [program.location?.city, program.location?.region, program.location?.country]
-    .filter(Boolean)
-    .join(", ");
-
   return (
     <div className="p-6 space-y-6">
       {/* Program Header */}
       <div className="flex items-start gap-4">
-        {/* Photo */}
-        <div className="flex-shrink-0 w-20 h-20 rounded-xl bg-surface-strong/50 border border-hairline overflow-hidden flex items-center justify-center">
-          {program.photoUrl ? (
-            <img src={program.photoUrl} alt={program.name} className="w-full h-full object-cover" />
-          ) : (
-            <span className="text-3xl opacity-50">🏠</span>
-          )}
-        </div>
-
         <div className="flex-1 min-w-0">
           <PageHeader
             title={program.name}
-            subtitle={location || program.species || undefined}
+            subtitle={program.website || undefined}
           />
         </div>
       </div>

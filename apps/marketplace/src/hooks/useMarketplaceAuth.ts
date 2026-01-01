@@ -1,29 +1,36 @@
 // apps/marketplace/src/hooks/useMarketplaceAuth.ts
-// Hook to check marketplace auth state.
+// Hook to check marketplace auth state using /api/v1/marketplace/me endpoint.
 //
 // The marketplace surface requires:
 // 1. Valid session cookie
-// 2. UserEntitlement(MARKETPLACE_ACCESS, ACTIVE)
+// 2. Either MARKETPLACE_ACCESS entitlement OR STAFF membership (policy-based)
 //
-// If either is missing, the backend returns 401/403.
+// Response from /marketplace/me:
+// - 200: authenticated and entitled (returns marketplaceEntitled: true)
+// - 401: not authenticated
+// - 403: authenticated but not entitled (SURFACE_ACCESS_DENIED)
 
 import * as React from "react";
 
 export interface MarketplaceAuthState {
   loading: boolean;
   authenticated: boolean;
-  error: string | null;
+  entitled: boolean;
+  error: "not_authenticated" | "not_entitled" | "network_error" | null;
+  entitlementSource?: "SUPER_ADMIN" | "ENTITLEMENT" | "STAFF_POLICY" | null;
 }
 
 /**
- * Check marketplace authentication status.
- * Makes a lightweight request to validate session + entitlement.
+ * Check marketplace authentication and entitlement status.
+ * Uses /api/v1/marketplace/me for accurate entitlement checking.
  */
 export function useMarketplaceAuth(): MarketplaceAuthState {
   const [state, setState] = React.useState<MarketplaceAuthState>({
     loading: true,
     authenticated: false,
+    entitled: false,
     error: null,
+    entitlementSource: null,
   });
 
   React.useEffect(() => {
@@ -31,24 +38,57 @@ export function useMarketplaceAuth(): MarketplaceAuthState {
 
     async function check() {
       try {
-        // Try to fetch session info - if user doesn't have entitlement, this will 403
-        const res = await fetch("/api/v1/session", { credentials: "include" });
+        const res = await fetch("/api/v1/marketplace/me", {
+          credentials: "include",
+          headers: { "Cache-Control": "no-cache" },
+        });
 
         if (cancelled) return;
 
         if (res.ok) {
-          setState({ loading: false, authenticated: true, error: null });
+          const data = await res.json();
+          setState({
+            loading: false,
+            authenticated: true,
+            entitled: data.marketplaceEntitled === true,
+            error: data.marketplaceEntitled ? null : "not_entitled",
+            entitlementSource: data.entitlementSource || null,
+          });
         } else if (res.status === 401) {
-          setState({ loading: false, authenticated: false, error: "not_authenticated" });
+          setState({
+            loading: false,
+            authenticated: false,
+            entitled: false,
+            error: "not_authenticated",
+            entitlementSource: null,
+          });
         } else if (res.status === 403) {
-          // Has session but lacks entitlement
-          setState({ loading: false, authenticated: false, error: "no_entitlement" });
+          // Has session but lacks entitlement (blocked at middleware level)
+          setState({
+            loading: false,
+            authenticated: true,
+            entitled: false,
+            error: "not_entitled",
+            entitlementSource: null,
+          });
         } else {
-          setState({ loading: false, authenticated: false, error: "unknown_error" });
+          setState({
+            loading: false,
+            authenticated: false,
+            entitled: false,
+            error: "network_error",
+            entitlementSource: null,
+          });
         }
-      } catch (err: any) {
+      } catch {
         if (cancelled) return;
-        setState({ loading: false, authenticated: false, error: err?.message || "network_error" });
+        setState({
+          loading: false,
+          authenticated: false,
+          entitled: false,
+          error: "network_error",
+          entitlementSource: null,
+        });
       }
     }
 

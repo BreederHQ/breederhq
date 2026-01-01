@@ -159,7 +159,7 @@ async function resolveTenantIdSafe(): Promise<string | null> {
   if (metaTenant) return (TENANT_ID_CACHE = metaTenant);
 
   try {
-    const res = await fetch("/api/v1/session", { credentials: "include", headers: { Accept: "application/json" } });
+    const res = await fetch("/api/v1/session", { credentials: "include", cache: "no-store", headers: { Accept: "application/json" } });
     if (res.ok) {
       const j = await res.json().catch(() => ({}));
       const t =
@@ -341,12 +341,12 @@ export function useCountries(): CountryDef[] {
   }, []);
   return list;
 }
-export function asCountryCode(country: string, countries: CountryDef[]): string {
+function asCountryCode(country: string, countries: CountryDef[]): string {
   const code = normalizeCountryCode(country);
   if (!code) return "";
   return countries.some((c) => c.code === code) ? code : "";
 }
-export function countryNameFromValue(country: string, countries: CountryDef[]): string {
+function countryNameFromValue(country: string, countries: CountryDef[]): string {
   const code = normalizeCountryCode(country);
   const found = countries.find((c) => c.code === code);
   return found ? found.name : "";
@@ -723,7 +723,7 @@ const ProfileTab = React.forwardRef<ProfileHandle, {
     return (f.nickname || `${f.firstName} ${f.lastName}`.trim() || emailGuess || "Profile").trim();
   }
   async function getSessionUserId(): Promise<{ id: string; email: string }> {
-    const res = await fetch("/api/v1/session", { credentials: "include", headers: { Accept: "application/json" } });
+    const res = await fetch("/api/v1/session", { credentials: "include", cache: "no-store", headers: { Accept: "application/json" } });
     if (res.status === 401) { window.location.assign("/login"); throw new Error("Unauthorized"); }
     if (!res.ok) throw new Error("Failed to load current session");
     const j = await res.json().catch(() => ({}));

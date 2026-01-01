@@ -40,14 +40,16 @@ function getApiBase(): string {
     return normalizeBase(windowBase);
   }
   if (import.meta.env.DEV) {
-    return "http://localhost:6001/api/v1";
+    // Use relative path so Vite proxy handles it (preserves cookies)
+    // Return empty string since resource paths already include /api/v1
+    return "";
   }
   return normalizeBase(window.location.origin);
 }
 
 function normalizeBase(base: string): string {
-  const b = base.replace(/\/+$/, "").replace(/\/api\/v1$/i, "");
-  return `${b}/api/v1`;
+  // Strip trailing slashes and /api/v1 suffix since resource paths include it
+  return base.replace(/\/+$/, "").replace(/\/api\/v1$/i, "");
 }
 
 const api = makeApi(getApiBase());

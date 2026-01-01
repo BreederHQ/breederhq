@@ -45,6 +45,7 @@ export function projectUpcomingCycleStarts(
   const effective = computeEffectiveCycleLenDays({
     species: summary.species,
     cycleStartsAsc,
+    femaleCycleLenOverrideDays: summary.femaleCycleLenOverrideDays,
   });
 
   const projected: ProjectedCycleStart[] = [];

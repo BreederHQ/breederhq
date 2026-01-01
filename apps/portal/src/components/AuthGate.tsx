@@ -42,9 +42,14 @@ function isPublicPath(pathname: string, publicPaths: string[]): boolean {
  */
 async function checkSession(): Promise<SessionCheckResult> {
   try {
-    const res = await fetch("/api/v1/session", {
+    // Add cache-busting timestamp to prevent any caching
+    const res = await fetch(`/api/v1/session?_=${Date.now()}`, {
       credentials: "include",
       cache: "no-store",
+      headers: {
+        "Cache-Control": "no-cache, no-store, must-revalidate",
+        "Pragma": "no-cache",
+      },
     });
 
     if (res.ok) {

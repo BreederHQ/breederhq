@@ -5,6 +5,7 @@ import { ProgramPage } from "./pages/ProgramPage";
 import { OffspringGroupDetailPage } from "./pages/OffspringGroupDetailPage";
 import { AnimalDetailPage } from "./pages/AnimalDetailPage";
 import { MarketplaceAuthPage } from "./pages/MarketplaceAuthPage";
+import { NotEntitledPage } from "./pages/NotEntitledPage";
 import { useMarketplaceAuth } from "./hooks/useMarketplaceAuth";
 import {
   normalizeSlug,
@@ -142,6 +143,11 @@ export default function AppMarketplace() {
         onSuccess={handleAuthSuccess}
       />
     );
+  }
+
+  // Show not entitled page if authenticated but lacks marketplace access
+  if (!auth.entitled) {
+    return <NotEntitledPage onLogout={handleAuthSuccess} />;
   }
 
   switch (route.type) {

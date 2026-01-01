@@ -582,7 +582,7 @@ type GroupTableRow = {
   expectedHormoneTestingStart?: string | null;
   expectedBreedDate?: string | null;
   expectedBirth?: string | null;
-  expectedWeanedDate?: string | null;
+  expectedWeaned?: string | null;
   expectedPlacementStart?: string | null;
   expectedPlacementCompleted?: string | null;
 
@@ -709,7 +709,7 @@ function computeExpectedForPlanLite(plan: { species?: string | null; lockedCycle
       expectedHormoneTestingStart: null,
       expectedBreedDate: null,
       expectedBirthDate: null,
-      expectedWeanedDate: null,
+      expectedWeaned: null,
       expectedPlacementStartDate: null,
       expectedPlacementCompletedDate: null,
     };
@@ -731,47 +731,29 @@ const computeFromLocked = React.useCallback(
 
     const t = reproEngine.buildTimelineFromSeed(summary as any, locked as any);
 
-    // Map to the legacy “expected” shape your UI already uses.
-    // Keep keys aligned to your existing usage in lockCycle payload.
-    return {
-      ovulation: t.milestones?.ovulation_center ?? null,
-      birth_expected: t.windows?.whelping_likely?.start ?? null,
-      placement_expected: t.windows?.go_home_normal_likely?.start ?? null,
-      placement_expected_end: t.windows?.go_home_normal_likely?.end ?? null,
-      placement_extended_end: t.windows?.go_home_extended_full?.end ?? null,
-      placement_extended_full: t.windows?.go_home_extended_full
-        ? [t.windows.go_home_extended_full.start, t.windows.go_home_extended_full.end]
-        : null,
-    };
+    // Return the timeline windows and milestones directly
+    return t;
   },
   [row.species],
 );
 
   const expectedCycleStart = locked;
   const expectedHormoneTestingStart = pickExpectedTestingStart(preview, locked);
-  const expectedBreedDate = onlyDay(preview.ovulation ?? preview.breeding_expected) || null;
-  const expectedBirthDate = onlyDay(preview.birth_expected) || null;
-  const expectedWeanedDate =
+  const expectedBreedDate = onlyDay(preview.milestones?.ovulation_center) || null;
+  const expectedBirthDate = onlyDay(preview.windows?.whelping?.likely?.[0]) || null;
+  const expectedWeaned =
     onlyDay(
-      preview.weaning_expected ??
-      preview.weaned_expected ??
-      preview.puppy_care_likely?.[0],
+      preview.windows?.puppy_care?.likely?.[1],
     ) || null;
 
   const expectedPlacementStartDate =
     onlyDay(
-      preview.placement_expected ??
-      preview.placement_start_expected ??
-      preview.placement_start,
+      preview.windows?.go_home_normal?.likely?.[0],
     ) || null;
 
   const expectedPlacementCompletedDate =
     onlyDay(
-      preview.placement_extended_end ??
-      preview.placement_extended_end_expected ??
-      preview.placement_expected_end ??
-      preview.placement_completed_expected ??
-      preview.placement_extended_full?.[1],
+      preview.windows?.go_home_extended?.full?.[1],
     ) || null;
 
   return {
@@ -779,7 +761,7 @@ const computeFromLocked = React.useCallback(
     expectedHormoneTestingStart,
     expectedBreedDate,
     expectedBirthDate,
-    expectedWeanedDate,
+    expectedWeaned,
     expectedPlacementStartDate,
     expectedPlacementCompletedDate,
   };
@@ -792,7 +774,7 @@ type ExpectedLite = {
   expectedHormoneTestingStart: string | null;
   expectedBreedDate: string | null;
   expectedBirthDate: string | null;
-  expectedWeanedDate: string | null;
+  expectedWeaned: string | null;
   expectedPlacementStartDate: string | null;
   expectedPlacementCompletedDate: string | null;
 };
@@ -809,7 +791,7 @@ function mapDetailToTableRow(d: OffspringRow): GroupTableRow {
     expectedHormoneTestingStart: null,
     expectedBreedDate: null,
     expectedBirthDate: null,
-    expectedWeanedDate: null,
+    expectedWeaned: null,
     expectedPlacementStartDate: null,
     expectedPlacementCompletedDate: null,
   };
@@ -876,7 +858,7 @@ function mapDetailToTableRow(d: OffspringRow): GroupTableRow {
     expectedHormoneTestingStart: expected.expectedHormoneTestingStart,
     expectedBreedDate: expected.expectedBreedDate,
     expectedBirth: expected.expectedBirthDate,
-    expectedWeanedDate: expected.expectedWeanedDate,
+    expectedWeaned: expected.expectedWeaned,
     expectedPlacementStart: expected.expectedPlacementStartDate,
     expectedPlacementCompleted: expected.expectedPlacementCompletedDate,
 

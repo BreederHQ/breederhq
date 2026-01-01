@@ -200,6 +200,7 @@ function resolveScopeHeaders(): HeadersInit {
 async function getSessionUserId(): Promise<string> {
   const res = await fetch("/api/v1/session", {
     credentials: "include",
+    cache: "no-store",
     headers: resolveScopeHeaders(),
   });
   if (!res.ok) throw new Error("session_failed");

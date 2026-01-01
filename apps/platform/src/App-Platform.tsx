@@ -202,7 +202,15 @@ export default function AppPlatform() {
     let ignore = false;
     (async () => {
       try {
-        const r = await fetch("/api/v1/session", { credentials: "include" });
+        // Add cache-busting timestamp to prevent any caching
+        const r = await fetch(`/api/v1/session?_=${Date.now()}`, {
+          credentials: "include",
+          cache: "no-store",
+          headers: {
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Pragma": "no-cache",
+          },
+        });
         const j = await r.json().catch(() => null);
         if (!ignore) setAuth(r.ok ? j : null);
       } catch {
@@ -280,17 +288,39 @@ export default function AppPlatform() {
   // Logout
   async function doLogout() {
     try {
+      // Get CSRF token from cookie
+      const xsrf = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]+)/)?.[1];
       await fetch("/api/v1/auth/logout", {
         method: "POST",
         credentials: "include",
         cache: "no-store",
+        headers: {
+          "Cache-Control": "no-cache, no-store, must-revalidate",
+          "Pragma": "no-cache",
+          ...(xsrf ? { "x-csrf-token": decodeURIComponent(xsrf) } : {}),
+        },
       });
     } catch { /* ignore */ }
     finally {
+      // Clear all BHQ localStorage items
       try { localStorage.removeItem("BHQ_ORG_ID"); } catch { /* ignore */ }
       try { localStorage.removeItem("BHQ_TENANT_ID"); } catch { /* ignore */ }
+      try { localStorage.removeItem("BHQ_LAST_MODULE"); } catch { /* ignore */ }
+
+      // Clear all window globals
       (window as any).__BHQ_ORG_ID__ = undefined;
       (window as any).__BHQ_TENANT_ID__ = undefined;
+      (window as any).__BHQ_DASHBOARD_REMOTE__ = undefined;
+
+      // Clear platform object cache
+      if ((window as any).platform) {
+        delete (window as any).platform.currentOrgId;
+        delete (window as any).platform.currentUser;
+      }
+
+      // Clear session storage as well
+      try { sessionStorage.clear(); } catch { /* ignore */ }
+
       setAuth(null);
       window.location.replace(`/login?ts=${Date.now()}`);
     }
@@ -324,6 +354,7 @@ export default function AppPlatform() {
               { key: "breeding", label: "Breeding", href: "/breeding", icon: "breeding" },
               { key: "offspring", label: "Offspring", href: "/offspring", icon: "offspring" },
               { key: "marketing", label: "Marketing", href: "/marketing" },
+              { key: "marketplace", label: "Marketplace", href: (import.meta as any)?.env?.VITE_MARKETPLACE_URL || "https://marketplace.breederhq.com" },
               { key: "finance", label: "Finance", href: "/finance", icon: "finance" },
               { key: "admin", label: "Admin", href: "/admin", icon: "admin" },
             ]}

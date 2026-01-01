@@ -4,8 +4,6 @@ import { PageHeader, EmptyState } from "@bhq/ui";
 import { publicMarketplaceApi } from "../api";
 import type { PublicProgramSummary, ApiError } from "../types";
 import { ProgramCard } from "../components/ProgramCard";
-import { LoadingState } from "../components/LoadingState";
-import { ErrorState } from "../components/ErrorState";
 
 type ProgramsIndexPageProps = {
   onNavigate: (path: string) => void;
@@ -71,7 +69,7 @@ export function ProgramsIndexPage({ onNavigate }: ProgramsIndexPageProps) {
       } catch (err) {
         if (cancelled) return;
         const apiErr = err as ApiError;
-        setErrorMessage(apiErr.message);
+        setErrorMessage(apiErr.message || "Failed to load programs");
         setLoadState("error");
       }
     }
@@ -175,14 +173,33 @@ export function ProgramsIndexPage({ onNavigate }: ProgramsIndexPageProps) {
       {loadState === "loading" && <ProgramsLoadingSkeleton />}
 
       {loadState === "error" && (
-        <ErrorState
-          type="error"
-          message={errorMessage}
-          onBack={() => {
-            setLoadState("loading");
-            setDebouncedFilters({ ...debouncedFilters });
-          }}
-        />
+        <div className="rounded-xl border border-hairline bg-surface p-6">
+          <div className="flex flex-col items-center text-center space-y-3">
+            <div className="w-12 h-12 rounded-full bg-red-500/10 flex items-center justify-center">
+              <svg
+                className="w-6 h-6 text-red-500"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <circle cx="12" cy="12" r="10" />
+                <line x1="15" y1="9" x2="9" y2="15" />
+                <line x1="9" y1="9" x2="15" y2="15" />
+              </svg>
+            </div>
+            <div>
+              <h3 className="text-base font-semibold text-primary mb-1">
+                Unable to load programs
+              </h3>
+              <p className="text-sm text-secondary max-w-md">
+                {errorMessage || "An unexpected error occurred. Please try again."}
+              </p>
+            </div>
+          </div>
+        </div>
       )}
 
       {loadState === "success" && programs.length === 0 && (
@@ -204,7 +221,7 @@ export function ProgramsIndexPage({ onNavigate }: ProgramsIndexPageProps) {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {programs.map((program) => (
               <ProgramCard
-                key={program.id}
+                key={program.slug}
                 program={program}
                 onClick={() => onNavigate(`/marketplace/programs/${program.slug}`)}
               />

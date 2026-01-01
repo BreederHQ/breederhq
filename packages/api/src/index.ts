@@ -10,6 +10,7 @@ import { makeFinance, type FinanceResource } from "./resources/finance";
 import { makeMarketing, type MarketingResource } from "./resources/marketing";
 import { makeMessages, type MessagesResource } from "./resources/messages";
 import { makePortalAccess, type PortalAccessResource } from "./resources/portal-access";
+import { makePortalData, type PortalDataResource } from "./resources/portal-data";
 
 export { createHttp, type Http, type MakeAuthHeader } from "./http";
 
@@ -22,6 +23,7 @@ export { makeFinance, type FinanceResource, type InvoicesResource, type Payments
 export { makeMarketing, type MarketingResource } from "./resources/marketing";
 export { makeMessages, type MessagesResource } from "./resources/messages";
 export { makePortalAccess, type PortalAccessResource, type PortalAccessDTO, type PortalAccessStatus, type PortalAccessResponse } from "./resources/portal-access";
+export { makePortalData, type PortalDataResource } from "./resources/portal-data";
 
 // Re-export shared types - common types first (ID, ListParams, ListResponse)
 export * from "./types/contacts";
@@ -61,5 +63,6 @@ export function makeApi(baseURL: string, makeAuth?: MakeAuthHeader) {
     marketing: makeMarketing(http),
     messages:  makeMessages(http),
     portalAccess: makePortalAccess(http),
+    portalData: makePortalData(http),
   };
 }

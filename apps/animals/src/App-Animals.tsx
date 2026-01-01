@@ -113,6 +113,7 @@ type AnimalRow = {
   updated_at?: string | null;
   lastCycle?: string | null;
   cycleStartDates?: string[];
+  femaleCycleLenOverrideDays?: number | null;
 };
 
 type ProgramFlags = {
@@ -1209,6 +1210,10 @@ function CycleTab({
   const [newDateIso, setNewDateIso] = React.useState<string>("");
 
   const [confirmDeleteIso, setConfirmDeleteIso] = React.useState<string | null>(null);
+  const [overrideInput, setOverrideInput] = React.useState<string>(() =>
+    animal.femaleCycleLenOverrideDays ? String(animal.femaleCycleLenOverrideDays) : ""
+  );
+  const [overrideSaving, setOverrideSaving] = React.useState(false);
 
 
   const species = (String(animal.species || "DOG").toUpperCase() || "DOG") as string;
@@ -1241,6 +1246,61 @@ function CycleTab({
     },
     [api, animal?.id, onSaved]
   );
+
+  const saveOverride = React.useCallback(async () => {
+    const id = animal?.id;
+    if (!id) return;
+
+    const parsedValue = overrideInput.trim() === "" ? null : Number(overrideInput);
+    if (parsedValue !== null && (isNaN(parsedValue) || parsedValue <= 0)) {
+      toast.error("Cycle length must be a positive number");
+      return;
+    }
+
+    const updateFn = api?.animals?.update;
+    if (typeof updateFn !== "function") {
+      console.error("[Animals] api.animals.update is not available");
+      toast.error("Cannot save override. API not available.");
+      return;
+    }
+
+    setOverrideSaving(true);
+    try {
+      await updateFn(id, { femaleCycleLenOverrideDays: parsedValue });
+      toast.success(parsedValue === null ? "Override cleared" : "Override saved");
+      // Update local animal object
+      (animal as any).femaleCycleLenOverrideDays = parsedValue;
+    } catch (err) {
+      console.error("[Animals] save override failed", err);
+      toast.error("Could not save override. Please try again.");
+    } finally {
+      setOverrideSaving(false);
+    }
+  }, [api, animal, overrideInput]);
+
+  const clearOverride = React.useCallback(async () => {
+    setOverrideInput("");
+    const id = animal?.id;
+    if (!id) return;
+
+    const updateFn = api?.animals?.update;
+    if (typeof updateFn !== "function") {
+      console.error("[Animals] api.animals.update is not available");
+      return;
+    }
+
+    setOverrideSaving(true);
+    try {
+      await updateFn(id, { femaleCycleLenOverrideDays: null });
+      toast.success("Override cleared");
+      (animal as any).femaleCycleLenOverrideDays = null;
+    } catch (err) {
+      console.error("[Animals] clear override failed", err);
+      toast.error("Could not clear override. Please try again.");
+    } finally {
+      setOverrideSaving(false);
+    }
+  }, [api, animal]);
 
   const handleConfirmRemove = async () => {
     if (!confirmDeleteIso) return;
@@ -1299,15 +1359,17 @@ function CycleTab({
         cycleStartsAsc,
         dob: dobIso ?? null,
         today: todayIso,
+        femaleCycleLenOverrideDays: animal.femaleCycleLenOverrideDays,
       },
       { horizonMonths: 36, maxCount: 12 }
     );
-  }, [animal?.id, species, cycleStartsAsc, dobIso, todayIso]);
+  }, [animal?.id, species, cycleStartsAsc, dobIso, todayIso, animal.femaleCycleLenOverrideDays]);
 
   const learned = React.useMemo(
     () => ({
       days: Number((proj as any)?.effective?.effectiveCycleLenDays ?? 0),
       source: String((proj as any)?.effective?.source ?? "BIOLOGY"),
+      warningConflict: Boolean((proj as any)?.effective?.warningConflict),
     }),
     [proj]
   );
@@ -1344,7 +1406,49 @@ return (
           </div>
         </div>
 
-        
+        <div className="mt-4 pt-4 border-t border-hairline">
+          <div className="text-sm font-medium mb-2">Cycle Length Override</div>
+          {learned.warningConflict && (
+            <div className="mb-3 p-2 bg-yellow-50 border border-yellow-200 rounded text-sm text-yellow-800">
+              <strong>Warning:</strong> Override differs by more than 20% from historical average.
+            </div>
+          )}
+          <div className="flex items-center gap-2">
+            <input
+              type="number"
+              min="1"
+              step="1"
+              value={overrideInput}
+              onChange={(e) => setOverrideInput(e.target.value)}
+              placeholder={learned.source === "HISTORY" || learned.source === "BIOLOGY" ? `Default: ${learned.days} days` : "Enter days"}
+              className="flex-1 max-w-xs px-3 py-2 text-sm border border-hairline rounded-md focus:outline-none focus:ring-2 focus:ring-brand-orange"
+              disabled={overrideSaving}
+            />
+            <Button
+              size="sm"
+              variant="primary"
+              onClick={saveOverride}
+              disabled={overrideSaving || overrideInput === (animal.femaleCycleLenOverrideDays ? String(animal.femaleCycleLenOverrideDays) : "")}
+            >
+              {overrideSaving ? "Saving..." : "Save"}
+            </Button>
+            {animal.femaleCycleLenOverrideDays != null && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={clearOverride}
+                disabled={overrideSaving}
+              >
+                Clear
+              </Button>
+            )}
+          </div>
+          <div className="mt-2 text-xs text-secondary">
+            Override the automatic cycle length calculation. Leave blank to use {learned.source === "HISTORY" ? "historical average" : "biology default"}.
+          </div>
+        </div>
+
+
       </SectionCard>
 
       <SectionCard title="Cycle Start Dates">

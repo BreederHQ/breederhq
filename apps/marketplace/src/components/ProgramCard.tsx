@@ -8,11 +8,14 @@ type ProgramCardProps = {
 };
 
 export function ProgramCard({ program, onClick }: ProgramCardProps) {
-  const location = [program.location?.city, program.location?.region]
-    .filter(Boolean)
-    .join(", ");
+  const location = program.location || "";
 
-  const details = [program.species, program.breed].filter(Boolean).join(" • ");
+  const details = [
+    program.species.length > 0 ? program.species.join(", ") : null,
+    program.breed,
+  ]
+    .filter(Boolean)
+    .join(" • ");
 
   return (
     <button

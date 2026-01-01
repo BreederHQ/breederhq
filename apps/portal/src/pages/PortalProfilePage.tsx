@@ -145,7 +145,7 @@ function PreferencesSection() {
             disabled
             className="w-4 h-4 rounded border-hairline bg-surface accent-[hsl(var(--brand-orange))] cursor-not-allowed"
           />
-          <span className="text-sm text-secondary">Marketing emails and updates</span>
+          <span className="text-sm text-secondary">News and updates</span>
         </label>
       </div>
       <div className="mt-4">

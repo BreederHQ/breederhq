@@ -84,6 +84,7 @@ type WhatIfRow = {
   species: SpeciesWire | null;
   cycleStartIso: string | null;
   showOnChart: boolean;
+  femaleCycleLenOverrideDays?: number | null;
 };
 
 type BHQDateFieldProps = {
@@ -164,7 +165,6 @@ function normalizeExpectedMilestones(
     day(milestones?.breeding_likely?.start) ?? // reproEngine format: { start, end }
     day(milestones?.breeding_full?.[0]) ?? // legacy array format
     day(milestones?.breeding_likely?.[0]) ?? // legacy array format
-    day(milestones?.breeding_expected) ??
     day(milestones?.ovulation_center) ?? // reproEngine milestone
     day(milestones?.ovulation) ??
     null;
@@ -175,18 +175,15 @@ function normalizeExpectedMilestones(
     day(milestones?.whelping_likely?.start) ?? // reproEngine format: { start, end }
     day(milestones?.whelping_full?.[0]) ?? // legacy array format
     day(milestones?.whelping_likely?.[0]) ?? // legacy array format
-    day(milestones?.birth_expected) ??
     null;
 
   const weanedDate =
-    day(milestones?.expectedWeanedDate) ??
+    day(milestones?.expectedWeaned) ??
     day(milestones?.puppy_care_full?.end) ?? // reproEngine format: end of puppy care
     day(milestones?.go_home_normal_full?.start) ?? // reproEngine format: { start, end }
     day(milestones?.go_home_normal_likely?.start) ?? // reproEngine format: { start, end }
     day(milestones?.go_home_normal_full?.[0]) ?? // legacy array format
     day(milestones?.go_home_normal_likely?.[0]) ?? // legacy array format
-    day(milestones?.weaning_expected) ??
-    day(milestones?.weaned_expected) ??
     day(milestones?.post_birth_care_likely?.[0]) ??
     null;
 
@@ -246,16 +243,46 @@ function pickExpectedTestingStart(preview: any, lockedCycleStart?: string | null
 }
 
 
-function computeExpectedForPlan(plan: { species?: string; lockedCycleStart?: string | null }): PlannerExpected | null {
+function computeExpectedForPlan(plan: {
+  species?: string;
+  lockedCycleStart?: string | null;
+  femaleCycleLenOverrideDays?: number | null;
+}): PlannerExpected | null {
   const locked = (plan.lockedCycleStart || "").slice(0, 10) || null;
   const speciesWire = typeof plan.species === "string" ? plan.species : "";
 
   if (!locked || !speciesWire) return null;
 
   try {
-    return (reproEngine.expectedMilestonesFromLocked(locked, speciesWire) as any) ?? null;
+    // expectedMilestonesFromLocked doesn't support override yet, so we need to call buildTimelineFromSeed directly
+    const timeline = (reproEngine as any).buildTimelineFromSeed?.(
+      {
+        animalId: "",
+        species: speciesWire,
+        cycleStartsAsc: [],
+        today: new Date().toISOString().slice(0, 10),
+        femaleCycleLenOverrideDays: plan.femaleCycleLenOverrideDays,
+      },
+      locked
+    );
+
+    if (!timeline) {
+      return (reproEngine.expectedMilestonesFromLocked(locked, speciesWire) as any) ?? null;
+    }
+
+    // Convert timeline to legacy expected format
+    return {
+      ovulation: timeline.milestones?.ovulation_center ?? null,
+      breeding_expected: timeline.windows?.breeding?.likely?.[0] ?? null,
+      birth_expected: timeline.windows?.whelping?.likely?.[0] ?? null,
+      weaning_expected: timeline.windows?.puppy_care?.likely?.[1] ?? null,
+      placement_expected: timeline.windows?.go_home_normal?.likely?.[0] ?? null,
+      placement_expected_end: timeline.windows?.go_home_normal?.likely?.[1] ?? null,
+      ...timeline.windows,
+      ...timeline.milestones,
+    };
   } catch (e) {
-    console.error("[Breeding] expectedMilestonesFromLocked failed", { locked, speciesWire, e });
+    console.error("[Breeding] computeExpectedForPlan failed", { locked, speciesWire, e });
     return null;
   }
 }
@@ -327,7 +354,7 @@ const EDITABLE_PLAN_FIELDS: Array<keyof PlanRow> = [
   "expectedHormoneTestingStart",
   "expectedBreedDate",
   "expectedBirthDate",
-  "expectedWeanedDate",
+  "expectedWeaned",
   "expectedPlacementStartDate",
   "expectedPlacementCompletedDate",
   "cycleStartDateActual",
@@ -356,7 +383,7 @@ const PLAN_DATE_FIELDS = new Set<keyof PlanRow>([
   "expectedHormoneTestingStart",
   "expectedBreedDate",
   "expectedBirthDate",
-  "expectedWeanedDate",
+  "expectedWeaned",
   "expectedPlacementStartDate",
   "expectedPlacementCompletedDate",
   "cycleStartDateActual",
@@ -434,7 +461,7 @@ type PlanRow = {
   expectedHormoneTestingStart?: string | null;
   expectedBreedDate?: string | null;
   expectedBirthDate?: string | null;
-  expectedWeanedDate?: string | null;
+  expectedWeaned?: string | null;
   expectedPlacementStartDate?: string | null;
   expectedPlacementCompletedDate?: string | null;
 
@@ -490,7 +517,7 @@ const COLUMNS: Array<{ key: keyof PlanRow & string; label: string; default?: boo
   { key: "expectedHormoneTestingStart", label: "Hormone Testing Start (Exp)", default: false },
   { key: "expectedBreedDate", label: "Breeding (Exp)", default: false },
   { key: "expectedBirthDate", label: "Birth (Exp)", default: false },
-  { key: "expectedWeanedDate", label: "Weaned (Exp)", default: false },
+  { key: "expectedWeaned", label: "Weaned (Exp)", default: false },
   { key: "expectedPlacementStartDate", label: "Placement Start (Exp)", default: false },
   { key: "expectedPlacementCompletedDate", label: "Placement Completed (Exp)", default: false },
 
@@ -795,11 +822,11 @@ function planToRow(p: any): PlanRow {
     code: p.code ?? null,
 
     /* Canonical expected timeline (strict, breedingMath-driven) */
-    expectedCycleStart: (p.expectedCycleStart ?? p.expected_cycle_start ?? p.lockedCycleStart) ?? null,
+    expectedCycleStart: (p.expectedCycleStart ?? p.lockedCycleStart) ?? null,
     expectedHormoneTestingStart: p.expectedHormoneTestingStart ?? null,
     expectedBreedDate: p.lockedOvulationDate ?? null,
     expectedBirthDate: p.lockedDueDate ?? null,
-    expectedWeanedDate: p.expectedWeanedDate ?? null,
+    expectedWeaned: p.expectedWeaned ?? null,
     expectedPlacementStartDate: p.expectedPlacementStartDate ?? null,
     expectedPlacementCompletedDate: (pickPlacementCompletedAny(p) as any) ?? null,
 
@@ -1226,6 +1253,7 @@ function WhatIfRowEditor(props: WhatIfRowEditorProps) {
       damName: female?.name ?? null,
       species: female?.species ?? null,
       cycleStartIso: null,
+      femaleCycleLenOverrideDays: female?.femaleCycleLenOverrideDays ?? null,
     };
 
     console.log("[whatif] female select changed", { selectedId: id, nextRow: next });
@@ -1252,10 +1280,16 @@ function WhatIfRowEditor(props: WhatIfRowEditorProps) {
   const projectedCycles = React.useMemo(() => {
     if (!speciesWire) return [] as string[];
     const today = new Date().toISOString().slice(0, 10);
-    const summary: any = { species: speciesWire, cycleStartsAsc, dob: null, today };
+    const summary: any = {
+      species: speciesWire,
+      cycleStartsAsc,
+      dob: null,
+      today,
+      femaleCycleLenOverrideDays: row.femaleCycleLenOverrideDays,
+    };
     const { projected } = reproEngine.projectUpcomingCycleStarts(summary, { horizonMonths: 36, maxCount: 36 } as any) as any;
     return Array.isArray(projected) ? projected.map((p: any) => p.date).filter(Boolean) : [];
-  }, [speciesWire, cycleStartsAsc]);
+  }, [speciesWire, cycleStartsAsc, row.femaleCycleLenOverrideDays]);
 
   return (
     <div className="rounded-lg border border-hairline bg-surface p-2">
@@ -1468,7 +1502,7 @@ export default function AppBreeding() {
 
   // All active females for current planner species filter
   const [whatIfFemales, setWhatIfFemales] = React.useState<
-    { id: ID; name: string; species: SpeciesWire | null }[]
+    { id: ID; name: string; species: SpeciesWire | null; femaleCycleLenOverrideDays?: number | null }[]
   >([]);
 
   // Species filter used for Rollup and What If planner
@@ -1513,6 +1547,7 @@ export default function AppBreeding() {
             id: a.id,
             name: a.name,
             species: (a.species as SpeciesWire) ?? null,
+            femaleCycleLenOverrideDays: (a as any).femaleCycleLenOverrideDays ?? null,
           }));
 
         setWhatIfFemales(mapped);
@@ -1561,6 +1596,7 @@ export default function AppBreeding() {
         const expectedDates = computeExpectedForPlan({
           species: speciesUi,
           lockedCycleStart: r.cycleStartIso,
+          femaleCycleLenOverrideDays: r.femaleCycleLenOverrideDays,
         });
 
         // Normalize the expected dates for RollupGantt
@@ -1578,7 +1614,7 @@ export default function AppBreeding() {
           expectedHormoneTestingStart: normalized.hormoneTestingStart,
           expectedBreedDate: normalized.breedDate,
           expectedBirthDate: normalized.birthDate,
-          expectedWeanedDate: normalized.weanedDate,
+          expectedWeaned: normalized.weanedDate,
           expectedPlacementStartDate: normalized.placementStart,
           expectedPlacementCompleted: normalized.placementCompleted,
           placementCompletedDateExpected: normalized.placementCompleted,
@@ -1672,7 +1708,7 @@ export default function AppBreeding() {
       "expectedHormoneTestingStart",
       "expectedBreedDate",
       "expectedBirthDate",
-      "expectedWeanedDate",
+      "expectedWeaned",
       "expectedPlacementStartDate",
       "expectedPlacementCompletedDate",
 
@@ -1745,7 +1781,7 @@ export default function AppBreeding() {
     "expectedHormoneTestingStart",
     "expectedBreedDate",
     "expectedBirthDate",
-    "expectedWeanedDate",
+    "expectedWeaned",
     "expectedPlacementStartDate",
     "expectedPlacementCompletedDate",
 
@@ -2142,7 +2178,7 @@ export default function AppBreeding() {
           expectedHormoneTestingStart: expected.expectedHormoneTestingStart,
           expectedBreedDate: expected.expectedBreedDate,
           expectedBirthDate: expected.expectedBirthDate,
-          expectedWeanedDate: expected.expectedWeanedDate,
+          expectedWeaned: expected.expectedWeaned,
           expectedPlacementStartDate: expected.expectedPlacementStartDate,
           expectedPlacementCompletedDate: expected.expectedPlacementCompletedDate,
         };
@@ -3762,7 +3798,7 @@ function PlanDetailsView(props: {
       expectedHormoneTestingStart: testingStart ?? null,
       expectedBreedDate: expected.breedDate,
       expectedBirthDate: expected.birthDate,
-      expectedWeanedDate: expected.weanedDate,
+      expectedWeaned: expected.weanedDate,
       expectedPlacementStartDate: expected.placementStart,
       expectedPlacementCompletedDate: expected.placementCompleted,
     };
@@ -3807,7 +3843,7 @@ function PlanDetailsView(props: {
         expectedHormoneTestingStart: testingStart ?? null,
         expectedBreedDate: expected.breedDate,
         expectedBirthDate: expected.birthDate,
-        expectedWeanedDate: expected.weanedDate,
+        expectedWeaned: expected.weanedDate,
         expectedPlacementStartDate: expected.placementStart,
         expectedPlacementCompletedDate: expected.placementCompleted,
       });
@@ -3832,7 +3868,7 @@ function PlanDetailsView(props: {
       expectedHormoneTestingStart: null,
       expectedBreedDate: null,
       expectedBirthDate: null,
-      expectedWeanedDate: null,
+      expectedWeaned: null,
 
       expectedPlacementStartDate: null,
       expectedPlacementCompletedDate: null,

@@ -1,0 +1,28 @@
+// breederhq-api Prisma schema
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Animal {
+  id        Int      @id @default(autoincrement())
+  name      String
+  species   String?
+  breed     String?
+  sex       String?
+  status    String?
+
+  // Cycle length override for females (days)
+  // Overrides automatic calculation from history/biology
+  // Valid range: 30-730 days
+  femaleCycleLenOverrideDays Int?
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("animals")
+}
