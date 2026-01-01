@@ -2,6 +2,7 @@
 import * as React from "react";
 import { PageHeader, Button, Badge } from "@bhq/ui";
 import { makeApi, type AgreementDTO, type ContractStatus } from "@bhq/api";
+import PortalAgreementDetailPage from "./PortalAgreementDetailPage";
 
 // Resolve API base URL
 function getApiBase(): string {
@@ -45,6 +46,11 @@ function AgreementRow({ agreement }: { agreement: AgreementDTO }) {
     return new Date(date).toLocaleDateString();
   }
 
+  const handleViewClick = () => {
+    window.history.pushState(null, "", `/portal/agreements/${agreement.id}`);
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  };
+
   return (
     <div className="p-4 rounded-lg border border-hairline bg-surface/50 hover:bg-surface transition-colors">
       <div className="flex items-start justify-between gap-4">
@@ -64,11 +70,9 @@ function AgreementRow({ agreement }: { agreement: AgreementDTO }) {
             {agreement.signedAt && ` • Signed: ${formatDate(agreement.signedAt)}`}
           </div>
         </div>
-        {agreement.status === "signed" && (
-          <Button variant="secondary" size="sm">
-            View
-          </Button>
-        )}
+        <Button variant="secondary" size="sm" onClick={handleViewClick}>
+          View
+        </Button>
       </div>
     </div>
   );
@@ -125,6 +129,21 @@ function ErrorState({ onRetry }: { onRetry: () => void }) {
 /* ───────────────── Main Component ───────────────── */
 
 export default function PortalAgreementsPage() {
+  // Check if we're viewing a specific agreement detail
+  const isDetailView = window.location.pathname.match(/\/portal\/agreements\/\d+/);
+
+  // If viewing detail, render the detail page
+  if (isDetailView) {
+    return <PortalAgreementDetailPage />;
+  }
+
+  // Otherwise, render the list
+  return <AgreementsList />;
+}
+
+/* ───────────────── Agreements List Component ───────────────── */
+
+function AgreementsList() {
   const [agreements, setAgreements] = React.useState<AgreementDTO[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState(false);

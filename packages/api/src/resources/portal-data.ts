@@ -24,6 +24,29 @@ export interface AgreementsResponse {
   agreements: AgreementDTO[];
 }
 
+export interface AgreementPartyDTO {
+  role: string;
+  name: string;
+  signedAt: string | null;
+}
+
+export interface AgreementDetailDTO {
+  id: number;
+  title: string;
+  status: ContractStatus;
+  issuedAt: string | null;
+  signedAt: string | null;
+  voidedAt: string | null;
+  expiresAt: string | null;
+  createdAt: string;
+  clientParty: AgreementPartyDTO;
+  counterparties: AgreementPartyDTO[];
+}
+
+export interface AgreementDetailResponse {
+  agreement: AgreementDetailDTO;
+}
+
 // Documents types
 export type DocumentCategory = "CONTRACT" | "HEALTH" | "PEDIGREE" | "PHOTO" | "OTHER";
 export type DocumentSource = "party" | "offspring";
@@ -85,6 +108,7 @@ export interface OffspringPlacementsResponse {
 
 export type PortalDataResource = {
   getAgreements(): Promise<AgreementsResponse>;
+  getAgreementDetail(id: number): Promise<AgreementDetailResponse>;
   getDocuments(): Promise<DocumentsResponse>;
   getOffspringPlacements(): Promise<OffspringPlacementsResponse>;
 };
@@ -94,6 +118,11 @@ export function makePortalData(http: Http): PortalDataResource {
     async getAgreements(): Promise<AgreementsResponse> {
       const res = await http.get("/portal/agreements");
       return res as AgreementsResponse;
+    },
+
+    async getAgreementDetail(id: number): Promise<AgreementDetailResponse> {
+      const res = await http.get(`/portal/agreements/${id}`);
+      return res as AgreementDetailResponse;
     },
 
     async getDocuments(): Promise<DocumentsResponse> {
