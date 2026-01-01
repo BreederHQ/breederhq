@@ -4,14 +4,13 @@ import { PageHeader, EmptyState } from "@bhq/ui";
 import { publicMarketplaceApi } from "../api";
 import type { PublicProgramSummary, ApiError } from "../types";
 import { ProgramCard } from "../components/ProgramCard";
-import { LoadingState } from "../components/LoadingState";
-import { ErrorState } from "../components/ErrorState";
+import { MarketplacePreviewState } from "../components/MarketplacePreviewState";
 
 type ProgramsIndexPageProps = {
   onNavigate: (path: string) => void;
 };
 
-type LoadState = "loading" | "success" | "error";
+type LoadState = "loading" | "success" | "error" | "preview-unavailable";
 
 type Filters = {
   search: string;
@@ -71,8 +70,13 @@ export function ProgramsIndexPage({ onNavigate }: ProgramsIndexPageProps) {
       } catch (err) {
         if (cancelled) return;
         const apiErr = err as ApiError;
-        setErrorMessage(apiErr.message);
-        setLoadState("error");
+        // Treat 404 or feature-gated responses as preview unavailable, not error
+        if (apiErr.status === 404) {
+          setLoadState("preview-unavailable");
+        } else {
+          setErrorMessage(apiErr.message);
+          setLoadState("error");
+        }
       }
     }
 
@@ -89,6 +93,11 @@ export function ProgramsIndexPage({ onNavigate }: ProgramsIndexPageProps) {
   };
 
   const hasActiveFilters = filters.search || filters.species || filters.location;
+
+  // Show preview state when endpoint is unavailable (404)
+  if (loadState === "preview-unavailable") {
+    return <MarketplacePreviewState />;
+  }
 
   return (
     <div className="p-6 space-y-6">
@@ -175,14 +184,33 @@ export function ProgramsIndexPage({ onNavigate }: ProgramsIndexPageProps) {
       {loadState === "loading" && <ProgramsLoadingSkeleton />}
 
       {loadState === "error" && (
-        <ErrorState
-          type="error"
-          message={errorMessage}
-          onBack={() => {
-            setLoadState("loading");
-            setDebouncedFilters({ ...debouncedFilters });
-          }}
-        />
+        <div className="rounded-xl border border-hairline bg-surface p-6">
+          <div className="flex flex-col items-center text-center space-y-3">
+            <div className="w-12 h-12 rounded-full bg-red-500/10 flex items-center justify-center">
+              <svg
+                className="w-6 h-6 text-red-500"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <circle cx="12" cy="12" r="10" />
+                <line x1="15" y1="9" x2="9" y2="15" />
+                <line x1="9" y1="9" x2="15" y2="15" />
+              </svg>
+            </div>
+            <div>
+              <h3 className="text-base font-semibold text-primary mb-1">
+                Unable to load programs
+              </h3>
+              <p className="text-sm text-secondary max-w-md">
+                {errorMessage || "An unexpected error occurred. Please try again."}
+              </p>
+            </div>
+          </div>
+        </div>
       )}
 
       {loadState === "success" && programs.length === 0 && (
