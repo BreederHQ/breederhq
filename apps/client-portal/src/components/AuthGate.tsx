@@ -96,7 +96,7 @@ async function checkSession(orgSlug: string): Promise<SessionCheckResult> {
       if (membership) {
         const role = membership.role?.toUpperCase();
         // CLIENT role is required for portal access
-        // OWNER, ADMIN, MEMBER roles should use the platform, not client portal
+        // OWNER, ADMIN, MEMBER roles should use the main application, not client portal
         if (role === "CLIENT") {
           return { status: "authenticated", sessionData: data };
         }

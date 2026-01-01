@@ -3,6 +3,18 @@
 import * as React from "react";
 import { useOrg } from "../context/OrgContext";
 
+/**
+ * Format a URL slug into a display name.
+ * "droids-r-us" -> "Droids R Us"
+ */
+export function formatOrgName(slug: string): string {
+  if (!slug) return "";
+  return slug
+    .split("-")
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+}
+
 interface PortalShellProps {
   orgSlug: string;
   children: React.ReactNode;
@@ -82,6 +94,14 @@ function LogoutIcon() {
   );
 }
 
+function ChevronDownIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className || "w-4 h-4"} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <polyline points="6 9 12 15 18 9" />
+    </svg>
+  );
+}
+
 const NAV_ITEMS: NavItem[] = [
   { label: "Dashboard", path: "/dashboard", icon: <DashboardIcon /> },
   { label: "Messages", path: "/messages", icon: <MessagesIcon /> },
@@ -94,6 +114,40 @@ const NAV_ITEMS: NavItem[] = [
 export function PortalShell({ orgSlug, children }: PortalShellProps) {
   const { basePath, navigate } = useOrg();
   const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
+  const [userMenuOpen, setUserMenuOpen] = React.useState(false);
+  const [clientEmail, setClientEmail] = React.useState<string | null>(null);
+  const userMenuRef = React.useRef<HTMLDivElement>(null);
+
+  // Fetch client email from session
+  React.useEffect(() => {
+    async function fetchSession() {
+      try {
+        const res = await fetch("/api/v1/session", { credentials: "include" });
+        if (res.ok) {
+          const data = await res.json();
+          setClientEmail(data?.user?.email || null);
+        }
+      } catch {
+        // Ignore errors
+      }
+    }
+    fetchSession();
+  }, []);
+
+  // Close user menu when clicking outside
+  React.useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) {
+        setUserMenuOpen(false);
+      }
+    }
+    if (userMenuOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+      return () => document.removeEventListener("mousedown", handleClickOutside);
+    }
+  }, [userMenuOpen]);
+
+  const orgDisplayName = formatOrgName(orgSlug);
 
   // Get current path for active state
   const currentPath = React.useMemo(() => {
@@ -141,20 +195,27 @@ export function PortalShell({ orgSlug, children }: PortalShellProps) {
       <header className="sticky top-0 z-50 bg-surface border-b border-hairline">
         <div className="max-w-7xl mx-auto px-4 sm:px-6">
           <div className="flex items-center justify-between h-16">
-            {/* Logo / Brand */}
+            {/* Logo / Brand - Org name primary, BreederHQ secondary */}
             <div className="flex items-center gap-3">
+              {/* Org logo placeholder + name */}
               <a
                 href={`${basePath}/dashboard`}
                 onClick={(e) => handleNavClick(e, "/dashboard")}
-                className="flex items-center gap-2 text-primary font-semibold"
+                className="flex items-center gap-2.5"
               >
-                <div className="w-8 h-8 rounded-lg bg-[hsl(var(--brand-orange))] flex items-center justify-center text-white font-bold text-sm">
+                {/* Placeholder for org logo - shows first letter */}
+                <div className="w-9 h-9 rounded-lg bg-surface-strong border border-hairline flex items-center justify-center text-primary font-semibold text-base">
+                  {orgDisplayName.charAt(0)}
+                </div>
+                <span className="text-primary font-semibold hidden sm:inline">{orgDisplayName}</span>
+              </a>
+              {/* Small BreederHQ mark */}
+              <div className="hidden sm:flex items-center gap-2 text-tertiary text-xs">
+                <span>powered by</span>
+                <div className="w-5 h-5 rounded bg-[hsl(var(--brand-orange))] flex items-center justify-center text-white font-bold text-[10px]">
                   B
                 </div>
-                <span className="hidden sm:inline">Client Portal</span>
-              </a>
-              <span className="text-tertiary hidden sm:inline">|</span>
-              <span className="text-secondary text-sm hidden sm:inline">{orgSlug}</span>
+              </div>
             </div>
 
             {/* Desktop Nav */}
@@ -179,13 +240,37 @@ export function PortalShell({ orgSlug, children }: PortalShellProps) {
                   </a>
                 );
               })}
-              <button
-                onClick={handleLogout}
-                className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-secondary hover:text-primary hover:bg-surface-strong transition-colors ml-2"
-              >
-                <LogoutIcon />
-                <span>Logout</span>
-              </button>
+
+              {/* User Menu Dropdown */}
+              <div className="relative ml-2" ref={userMenuRef}>
+                <button
+                  onClick={() => setUserMenuOpen(!userMenuOpen)}
+                  className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-secondary hover:text-primary hover:bg-surface-strong transition-colors"
+                >
+                  <div className="w-7 h-7 rounded-full bg-surface-strong border border-hairline flex items-center justify-center text-xs font-medium text-primary">
+                    {clientEmail?.charAt(0).toUpperCase() || "?"}
+                  </div>
+                  <ChevronDownIcon className={`w-4 h-4 transition-transform ${userMenuOpen ? "rotate-180" : ""}`} />
+                </button>
+
+                {userMenuOpen && (
+                  <div className="absolute right-0 top-full mt-1 w-64 rounded-lg bg-surface border border-hairline shadow-lg py-1 z-50">
+                    {clientEmail && (
+                      <div className="px-4 py-2 border-b border-hairline">
+                        <p className="text-xs text-tertiary">Signed in as</p>
+                        <p className="text-sm text-primary font-medium truncate">{clientEmail}</p>
+                      </div>
+                    )}
+                    <button
+                      onClick={handleLogout}
+                      className="w-full flex items-center gap-2 px-4 py-2 text-sm text-secondary hover:text-primary hover:bg-surface-strong transition-colors"
+                    >
+                      <LogoutIcon />
+                      <span>Sign out</span>
+                    </button>
+                  </div>
+                )}
+              </div>
             </nav>
 
             {/* Mobile Menu Button */}
@@ -211,6 +296,14 @@ export function PortalShell({ orgSlug, children }: PortalShellProps) {
         {mobileMenuOpen && (
           <nav className="md:hidden border-t border-hairline bg-surface">
             <div className="px-4 py-2 space-y-1">
+              {/* User info in mobile menu */}
+              {clientEmail && (
+                <div className="px-3 py-2 border-b border-hairline mb-2">
+                  <p className="text-xs text-tertiary">Signed in as</p>
+                  <p className="text-sm text-primary font-medium truncate">{clientEmail}</p>
+                </div>
+              )}
+
               {NAV_ITEMS.map((item) => {
                 const isActive = currentPath === item.path ||
                   (item.path === "/dashboard" && currentPath === "/");
@@ -236,7 +329,7 @@ export function PortalShell({ orgSlug, children }: PortalShellProps) {
                 className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-secondary hover:text-primary hover:bg-surface-strong transition-colors"
               >
                 <LogoutIcon />
-                <span>Logout</span>
+                <span>Sign out</span>
               </button>
             </div>
           </nav>
