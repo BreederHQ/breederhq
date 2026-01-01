@@ -280,22 +280,12 @@ function computeExpectedForPlan(plan: {
       locked
     );
 
-    console.log("[computeExpectedForPlan] timeline result", {
-      timeline,
-      hasTimeline: !!timeline,
-      windowsKeys: timeline?.windows ? Object.keys(timeline.windows) : null,
-      milestonesKeys: timeline?.milestones ? Object.keys(timeline.milestones) : null,
-      whelping: timeline?.windows?.whelping,
-      whelping_likely: timeline?.windows?.whelping?.likely,
-    });
-
     if (!timeline) {
-      console.log("[computeExpectedForPlan] no timeline, falling back to expectedMilestonesFromLocked");
       return (reproEngine.expectedMilestonesFromLocked(locked, speciesWire) as any) ?? null;
     }
 
     // Convert timeline to legacy expected format
-    const result = {
+    return {
       ovulation: timeline.milestones?.ovulation_center ?? null,
       breeding_expected: timeline.windows?.breeding?.likely?.[0] ?? null,
       birth_expected: timeline.windows?.whelping?.likely?.[0] ?? null,
@@ -305,15 +295,6 @@ function computeExpectedForPlan(plan: {
       ...timeline.windows,
       ...timeline.milestones,
     };
-
-    console.log("[computeExpectedForPlan] returning result", {
-      result,
-      resultKeys: Object.keys(result),
-      birth_expected: result.birth_expected,
-      whelping: result.whelping,
-    });
-
-    return result;
   } catch (e) {
     console.error("[Breeding] computeExpectedForPlan failed", { locked, speciesWire, e });
     return null;
@@ -3818,18 +3799,6 @@ function PlanDetailsView(props: {
 
     if (!speciesWire) return [];
 
-    console.log("[plan] projectedCycles calculation", {
-      damId: row.damId,
-      damName: row.damName,
-      speciesWire,
-      cycleStartsAsc,
-      override: liveOverride,
-      rowOverride: row.femaleCycleLenOverrideDays,
-      damReproKeys: damRepro ? Object.keys(damRepro) : null,
-      damReproCycleStartDates: (damRepro as any)?.cycleStartDates,
-      damReproLastHeat: (damRepro as any)?.last_heat,
-    });
-
     const summary: ReproSummary = {
       species: speciesWire,
       cycleStartsAsc,
@@ -3843,13 +3812,9 @@ function PlanDetailsView(props: {
       maxCount: 12,
     });
 
-    const result = projected
+    return projected
       .map((p: any) => asISODateOnly(p?.date) ?? String(p?.date ?? "").slice(0, 10))
       .filter((d: any) => !!d);
-
-    console.log("[plan] projectedCycles result", { result });
-
-    return result;
   }, [speciesWire, cycleStartsAsc, liveOverride, damRepro]);
 
   const initialCycle = (row.lockedCycleStart ?? row.expectedCycleStart ?? row.cycleStartDateActual ?? null) as string | null;
@@ -3874,38 +3839,13 @@ function PlanDetailsView(props: {
     if (!pendingCycle || !String(pendingCycle).trim()) return;
     if (!api) return;
 
-    console.log("[plan] lockCycle called", {
-      pendingCycle,
-      species: row.species,
-      liveOverride,
-    });
-
     const expectedRaw = computeExpectedForPlan({
       species: row.species as any,
       lockedCycleStart: pendingCycle,
       femaleCycleLenOverrideDays: liveOverride,
     });
 
-    console.log("[plan] lockCycle expectedRaw", {
-      expectedRaw,
-      expectedRawKeys: expectedRaw ? Object.keys(expectedRaw) : null,
-      breeding_expected: expectedRaw?.breeding_expected,
-      birth_expected: expectedRaw?.birth_expected,
-      ovulation: expectedRaw?.ovulation,
-    });
-
     const expected = normalizeExpectedMilestones(expectedRaw, pendingCycle);
-
-    console.log("[plan] lockCycle normalized", {
-      expected,
-      cycleStart: expected.cycleStart,
-      hormoneTestingStart: expected.hormoneTestingStart,
-      breedDate: expected.breedDate,
-      birthDate: expected.birthDate,
-      weanedDate: expected.weanedDate,
-      placementStart: expected.placementStart,
-      placementCompleted: expected.placementCompleted,
-    });
     const testingStart =
       expected.hormoneTestingStart ?? pickExpectedTestingStart(expectedRaw, pendingCycle);
 
@@ -3929,12 +3869,8 @@ function PlanDetailsView(props: {
     setLockedPreview(true);
     setDraftLive(payload);
 
-    console.log("[plan] lockCycle payload", { payload });
-
     try {
-      console.log("[plan] calling api.updatePlan", { planId: row.id, payload });
       await api.updatePlan(Number(row.id), payload as any);
-      console.log("[plan] updatePlan succeeded");
 
       await api.createEvent(Number(row.id), {
         type: "CYCLE_LOCKED",
@@ -3953,16 +3889,10 @@ function PlanDetailsView(props: {
         },
       });
 
-      console.log("[plan] lockCycle complete");
       // Don't call onPlanUpdated here - stay in edit mode
       // The changes are already persisted and local state is updated via setDraftLive
     } catch (e: any) {
-      console.error("[Breeding] lockCycle persist or audit failed", {
-        error: e,
-        message: e?.message,
-        response: e?.response,
-        status: e?.status,
-      });
+      console.error("[Breeding] lockCycle persist or audit failed", e);
       setExpectedPreview(null);
       setLockedPreview(false);
       setDraftLive({
