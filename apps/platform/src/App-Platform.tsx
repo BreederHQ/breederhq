@@ -75,7 +75,7 @@ const StandaloneLogin = React.memo(function StandaloneLogin() {
   return (
     <div className="auth-page min-h-screen grid place-items-center bg-page text-primary">
       <form onSubmit={onSubmit} className="rounded-xl border border-hairline bg-surface p-6 w-full max-w-md">
-        <h1 className="text-xl font-semibold mb-4">Sign in</h1>
+        <h1 className="text-xl font-semibold mb-4">Sign In</h1>
         <label className="block mb-3">
           <span className="text-sm text-secondary">Email</span>
           <input
@@ -106,7 +106,7 @@ const StandaloneLogin = React.memo(function StandaloneLogin() {
           disabled={working}
           className="h-10 px-4 rounded-md bg-[hsl(var(--brand-orange))] text-black w-full"
         >
-          {working ? "Signing in…" : "Sign in"}
+          {working ? "Signing In…" : "Sign In"}
         </button>
       </form>
     </div>

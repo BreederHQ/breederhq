@@ -9,7 +9,7 @@
 @tailwind utilities;
 
 /* Ensure the app's mount has sane height, and body can scroll */
-html, body { min-height: 100%; }
+html, body { min-height: 100%; background-color: hsl(0 0% 7%); }
 #marketplace-root, #root, #app { min-height: 100vh; display: block; }
 
 /* ===== Overlay layer (for all portals) ===== */

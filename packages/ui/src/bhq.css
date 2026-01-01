@@ -30,13 +30,32 @@ html.theme-dark {
 /* ===== Core utilities (framework-agnostic) */
 .bg-page           { background-color: hsl(var(--page)); }
 .bg-surface        { background-color: hsl(var(--surface)); }
+.bg-surface-2      { background-color: hsl(var(--surface-2)); }
 .bg-surface-strong { background-color: hsl(var(--surface-strong)); }
+.bg-card           { background-color: hsl(var(--surface-2)); }
 .text-primary      { color: hsl(var(--primary)); }
 .text-secondary    { color: hsl(var(--secondary)); }
 .border-hairline   { border-color: hsl(var(--hairline)); }
 
 /* Inputs: show real indeterminate/— state consistently */
 input[type="checkbox"] { appearance: auto !important; }
+
+/* Auth page input styling (white text and placeholders) */
+.auth-page input[type="text"],
+.auth-page input[type="email"],
+.auth-page input[type="password"],
+.auth-page textarea,
+.auth-page select {
+  color: #fff !important;
+  -webkit-text-fill-color: #fff !important;
+  caret-color: #fff !important;
+}
+
+.auth-page input::placeholder,
+.auth-page textarea::placeholder {
+  color: rgba(255, 255, 255, 0.55) !important;
+  opacity: 1 !important;
+}
 
 /* ===== Cards / panels / glass */
 .bhq-card {
