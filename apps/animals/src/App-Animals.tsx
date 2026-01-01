@@ -1215,6 +1215,10 @@ function CycleTab({
   );
   const [overrideSaving, setOverrideSaving] = React.useState(false);
 
+  // Sync override input when animal data changes (e.g., after refetch)
+  React.useEffect(() => {
+    setOverrideInput(animal.femaleCycleLenOverrideDays ? String(animal.femaleCycleLenOverrideDays) : "");
+  }, [animal.femaleCycleLenOverrideDays]);
 
   const species = (String(animal.species || "DOG").toUpperCase() || "DOG") as string;
 
