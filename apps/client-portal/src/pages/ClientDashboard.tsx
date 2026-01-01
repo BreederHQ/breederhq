@@ -26,12 +26,18 @@ const api = makeApi(getApiBase());
 interface DashboardCounts {
   unreadMessages: number;
   tasks: number;
+  agreements: number;
+  documents: number;
+  offspring: number;
 }
 
 function useDashboardCounts() {
   const [counts, setCounts] = React.useState<DashboardCounts>({
     unreadMessages: 0,
     tasks: 0,
+    agreements: 0,
+    documents: 0,
+    offspring: 0,
   });
   const [loading, setLoading] = React.useState(true);
 
@@ -41,15 +47,21 @@ function useDashboardCounts() {
     async function fetchCounts() {
       setLoading(true);
 
-      const [messagesResult, tasksResult] = await Promise.allSettled([
+      const [messagesResult, tasksResult, agreementsResult, documentsResult, offspringResult] = await Promise.allSettled([
         api.messages.threads.list(),
         fetchAllTasks(),
+        api.portalData.getAgreements(),
+        api.portalData.getDocuments(),
+        api.portalData.getOffspringPlacements(),
       ]);
 
       if (cancelled) return;
 
       let unreadMessages = 0;
       let taskCount = 0;
+      let agreementsCount = 0;
+      let documentsCount = 0;
+      let offspringCount = 0;
 
       if (messagesResult.status === "fulfilled") {
         const threads = messagesResult.value?.threads || [];
@@ -63,7 +75,19 @@ function useDashboardCounts() {
         taskCount = tasksResult.value?.tasks?.length || 0;
       }
 
-      setCounts({ unreadMessages, tasks: taskCount });
+      if (agreementsResult.status === "fulfilled") {
+        agreementsCount = agreementsResult.value?.agreements?.length || 0;
+      }
+
+      if (documentsResult.status === "fulfilled") {
+        documentsCount = documentsResult.value?.documents?.length || 0;
+      }
+
+      if (offspringResult.status === "fulfilled") {
+        offspringCount = offspringResult.value?.placements?.length || 0;
+      }
+
+      setCounts({ unreadMessages, tasks: taskCount, agreements: agreementsCount, documents: documentsCount, offspring: offspringCount });
       setLoading(false);
     }
 
@@ -352,16 +376,26 @@ export default function ClientDashboard() {
             {PORTAL_FEATURE_FLAGS.SHOW_AGREEMENTS && (
               <SimpleCard
                 title="Agreements"
-                description="No items yet."
+                description={
+                  counts.agreements > 0
+                    ? `${counts.agreements} agreement${counts.agreements !== 1 ? "s" : ""}`
+                    : "No items yet."
+                }
                 icon={<AgreementsIcon className="w-5 h-5" />}
                 href="/agreements"
+                count={counts.agreements}
               />
             )}
             <SimpleCard
               title="Documents"
-              description="No items yet."
+              description={
+                counts.documents > 0
+                  ? `${counts.documents} document${counts.documents !== 1 ? "s" : ""}`
+                  : "No items yet."
+              }
               icon={<DocumentsIcon className="w-5 h-5" />}
               href="/documents"
+              count={counts.documents}
             />
           </div>
         </Section>
@@ -372,15 +406,14 @@ export default function ClientDashboard() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <SimpleCard
                 title="Current Placements"
-                description="No items yet."
+                description={
+                  counts.offspring > 0
+                    ? `${counts.offspring} placement${counts.offspring !== 1 ? "s" : ""}`
+                    : "No items yet."
+                }
                 icon={<OffspringIcon className="w-5 h-5" />}
                 href="/offspring"
-              />
-              <SimpleCard
-                title="Offspring Groups"
-                description="No items yet."
-                icon={<GroupsIcon className="w-5 h-5" />}
-                href="/offspring?view=groups"
+                count={counts.offspring}
               />
             </div>
           </Section>
