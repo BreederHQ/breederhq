@@ -3963,8 +3963,7 @@ function PlanDetailsView(props: {
     };
 
     try {
-      await api.updatePlan(Number(row.id), payload as any);
-      setDraftLive(payload);
+      const updated = await api.updatePlan(Number(row.id), payload as any);
 
       await api.createEvent(Number(row.id), {
         type: "EXPECTED_DATES_RECALCULATED",
@@ -3977,6 +3976,14 @@ function PlanDetailsView(props: {
           ...expected,
         },
       });
+
+      // Update the parent list and refresh local state without marking as dirty
+      if (onPlanUpdated && updated) {
+        onPlanUpdated(row.id, updated);
+      }
+
+      // Update persisted snapshot to reflect the new saved state
+      setPersistedSnapshot(buildPlanSnapshot(updated || { ...row, ...payload }));
     } catch (e) {
       console.error("[Breeding] recalculateExpectedDates failed", e);
       utils.toast?.error?.("Failed to recalculate expected dates. Please try again.");
