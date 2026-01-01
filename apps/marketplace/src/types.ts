@@ -3,33 +3,21 @@
 
 /** Program summary in list responses */
 export interface PublicProgramSummary {
-  id: number;
   slug: string;
   name: string;
-  photoUrl?: string | null;
-  species?: string | null;
-  breed?: string | null;
-  location?: {
-    city?: string | null;
-    region?: string | null;
-    country?: string | null;
-  } | null;
+  location: string | null;
+  species: string[];
+  breed: string | null;
+  photoUrl: string | null;
 }
 
 /** Program profile DTO returned from GET /public/marketplace/programs/:programSlug */
 export interface PublicProgramDTO {
-  id: number;
   slug: string;
   name: string;
-  bio?: string | null;
-  publicContactEmail?: string | null;
-  photoUrl?: string | null;
-  species?: string | null;
-  location?: {
-    city?: string | null;
-    region?: string | null;
-    country?: string | null;
-  } | null;
+  bio: string | null;
+  publicContactEmail: string | null;
+  website: string | null;
 }
 
 /** Query parameters for listing programs */

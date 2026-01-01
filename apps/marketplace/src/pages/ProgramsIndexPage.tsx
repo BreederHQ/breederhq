@@ -221,7 +221,7 @@ export function ProgramsIndexPage({ onNavigate }: ProgramsIndexPageProps) {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {programs.map((program) => (
               <ProgramCard
-                key={program.id}
+                key={program.slug}
                 program={program}
                 onClick={() => onNavigate(`/marketplace/programs/${program.slug}`)}
               />
