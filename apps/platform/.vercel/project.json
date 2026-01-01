@@ -1,1 +1,16 @@
-{"projectId":"prj_DmiOfn70egiFKEUxKAxguH9nsRje","orgId":"team_MzjDzGx1zgI3V901j6wwH0iV","projectName":"platform"}
+{
+  "projectId": "prj_ovW6IbYElTAfCJiIjdRCj2H0mSOi",
+  "orgId": "team_MzjDzGx1zgI3V901j6wwH0iV",
+  "projectName": "platform",
+  "settings": {
+    "createdAt": 1767291797116,
+    "framework": "vite",
+    "devCommand": null,
+    "installCommand": "cd ../.. && npm ci",
+    "buildCommand": "npm run build",
+    "outputDirectory": "dist",
+    "rootDirectory": null,
+    "directoryListing": false,
+    "nodeVersion": "24.x"
+  }
+}
