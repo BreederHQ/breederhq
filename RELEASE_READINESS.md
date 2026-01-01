@@ -133,7 +133,7 @@ npm run build:platform
 
 **Backend Smoke Test** (requires valid session):
 
-See [breederhq-api/RUNTIME_VERIFICATION.md](../breederhq-api/RUNTIME_VERIFICATION.md) for full test procedures.
+See RUNTIME_VERIFICATION.md in the separate breederhq-api repository for full test procedures.
 
 Quick checklist:
 - [ ] GET /api/v1/animals/:id returns `femaleCycleLenOverrideDays: null`
