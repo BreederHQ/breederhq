@@ -1,31 +1,11 @@
 // apps/portal/src/pages/PortalTasksPage.tsx
 import * as React from "react";
-import { PageHeader, Button, Badge } from "@bhq/ui";
+import { PageHeader, Button } from "@bhq/ui";
 import { usePortalTasks, type TaskCard } from "../tasks/taskSources";
 
-/* ───────────────── Task Card Component ───────────────── */
+/* ───────────────── Task Row Component ───────────────── */
 
-function TaskCardRow({ task }: { task: TaskCard }) {
-  const statusColors: Record<TaskCard["status"], "red" | "amber" | "green"> = {
-    overdue: "red",
-    pending: "amber",
-    upcoming: "green",
-  };
-
-  const statusLabels: Record<TaskCard["status"], string> = {
-    overdue: "Overdue",
-    pending: "Due Soon",
-    upcoming: "Upcoming",
-  };
-
-  const typeLabels: Record<TaskCard["type"], string> = {
-    invoice: "Invoice",
-    contract: "Contract",
-    appointment: "Appointment",
-    document: "Document",
-    offspring: "Offspring",
-  };
-
+function TaskRow({ task, isLast }: { task: TaskCard; isLast: boolean }) {
   const handleClick = () => {
     // Cross-module links (e.g., /finance/*) require full page navigation
     // Intra-portal links (e.g., /portal/*) use SPA navigation
@@ -37,62 +17,74 @@ function TaskCardRow({ task }: { task: TaskCard }) {
     }
   };
 
-  const handleSecondaryClick = () => {
-    if (!task.secondaryAction) return;
-    const href = task.secondaryAction.href;
-    if (href.startsWith("/portal")) {
-      window.history.pushState(null, "", href);
-      window.dispatchEvent(new PopStateEvent("popstate"));
+  const getTimingText = () => {
+    if (!task.dueAt) return null;
+    const date = new Date(task.dueAt);
+    const now = new Date();
+    const diffMs = date.getTime() - now.getTime();
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+    if (task.status === "overdue") {
+      return "Overdue";
+    } else if (diffDays === 0) {
+      return "Due today";
+    } else if (diffDays === 1) {
+      return "Due tomorrow";
+    } else if (diffDays > 1 && diffDays <= 7) {
+      return `Due in ${diffDays} days`;
     } else {
-      window.location.href = href;
+      return `Due ${date.toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+      })}`;
     }
   };
 
-  const formatDueDate = (dueAt: string | null) => {
-    if (!dueAt) return "No due date";
-    const date = new Date(dueAt);
-    return date.toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-    });
-  };
+  const timingText = getTimingText();
 
   return (
-    <div className="p-4 rounded-lg border border-hairline bg-surface/50 hover:bg-surface transition-colors">
-      <div className="flex items-start justify-between gap-4">
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <Badge variant={statusColors[task.status]}>
-              {statusLabels[task.status]}
-            </Badge>
-            <Badge variant="neutral">{typeLabels[task.type]}</Badge>
+    <a
+      href={task.href}
+      onClick={(e) => {
+        e.preventDefault();
+        handleClick();
+      }}
+      className="group flex items-center gap-5 px-0 cursor-pointer transition-colors hover:bg-white/[0.02]"
+      style={{
+        textDecoration: "none",
+        borderBottom: isLast ? "none" : "1px solid rgba(255, 255, 255, 0.05)",
+        paddingTop: "20px",
+        paddingBottom: "20px",
+      }}
+    >
+      <div className="flex-1 min-w-0">
+        <div className="flex items-baseline gap-3">
+          <div className="text-base font-semibold" style={{ color: "hsl(var(--text-primary))" }}>
+            {task.title}
           </div>
-          <div className="font-medium text-primary mt-2">{task.title}</div>
-          <p className="text-sm text-secondary mt-1">{task.subtitle}</p>
-          {task.dueAt && (
-            <p className="text-xs text-secondary mt-1">
-              Due: {formatDueDate(task.dueAt)}
-            </p>
-          )}
-          {task.note && (
-            <p className="text-xs text-secondary/70 mt-1 italic">
-              {task.note}
-            </p>
+          {timingText && (
+            <div
+              className="text-xs font-medium"
+              style={{
+                color: task.status === "overdue" ? "#ef4444" : "hsl(var(--text-secondary))",
+                opacity: task.status === "overdue" ? 1 : 0.85,
+              }}
+            >
+              {timingText}
+            </div>
           )}
         </div>
-        <div className="flex flex-col gap-2">
-          <Button variant="secondary" size="sm" onClick={handleClick}>
-            {task.ctaLabel}
-          </Button>
-          {task.secondaryAction && (
-            <Button variant="secondary" size="sm" onClick={handleSecondaryClick}>
-              {task.secondaryAction.label}
-            </Button>
-          )}
+        <div className="text-sm" style={{ color: "hsl(var(--text-secondary))", marginTop: "3px", opacity: 0.85 }}>
+          {task.subtitle}
         </div>
       </div>
-    </div>
+      <div
+        className="flex-shrink-0 text-sm font-medium"
+        style={{ color: "hsl(var(--text-secondary))", marginLeft: "8px" }}
+      >
+        View
+      </div>
+    </a>
   );
 }
 
@@ -100,48 +92,14 @@ function TaskCardRow({ task }: { task: TaskCard }) {
 
 function EmptyTasks() {
   return (
-    <div className="text-center py-16">
-      <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-surface-strong flex items-center justify-center text-3xl">
-        ✅
-      </div>
-      <h3 className="text-lg font-medium text-primary mb-2">All caught up!</h3>
-      <p className="text-sm text-secondary max-w-sm mx-auto">
-        You have no pending tasks. When you have invoices to pay, contracts to sign,
-        or appointments to confirm, they will appear here.
+    <div style={{ marginTop: "24px" }}>
+      <div style={{ width: "48px", height: "1px", backgroundColor: "rgba(255, 255, 255, 0.06)", marginBottom: "20px" }} />
+      <h3 className="text-lg font-medium" style={{ color: "hsl(var(--text-primary))" }}>
+        No tasks right now.
+      </h3>
+      <p className="text-sm" style={{ color: "hsl(var(--text-secondary))", marginTop: "8px" }}>
+        When you have items that need attention, they'll appear here.
       </p>
-    </div>
-  );
-}
-
-/* ───────────────── Loading State ───────────────── */
-
-function LoadingTasks() {
-  return (
-    <div className="text-center py-16">
-      <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-surface-strong flex items-center justify-center text-2xl animate-pulse">
-        📋
-      </div>
-      <h3 className="text-lg font-medium text-primary mb-2">Loading tasks...</h3>
-      <p className="text-sm text-secondary">Checking for pending items</p>
-    </div>
-  );
-}
-
-/* ───────────────── Source Status ───────────────── */
-
-function SourceStatus({
-  sources,
-}: {
-  sources: { name: string; available: boolean }[];
-}) {
-  const unavailable = sources.filter((s) => !s.available);
-  if (unavailable.length === 0) return null;
-
-  return (
-    <div className="mt-6 p-4 rounded-lg border border-hairline bg-surface/30">
-      <div className="text-xs text-secondary">
-        {unavailable.map((s) => s.name).join(", ")}: This section will populate when items exist.
-      </div>
     </div>
   );
 }
@@ -171,34 +129,23 @@ function GroupedTasks({ tasks }: { tasks: TaskCard[] }) {
     completed: "Completed",
   };
 
-  const urgencyDescriptions: Record<TaskCard["urgency"], string> = {
-    action_required: "These items need your immediate attention",
-    upcoming: "These items are coming up soon",
-    completed: "These items have been completed",
-  };
-
   return (
-    <div className="space-y-8">
+    <div style={{ display: "flex", flexDirection: "column", gap: "32px" }}>
       {urgencyOrder.map((urgency) => {
         const urgencyTasks = grouped[urgency];
         if (!urgencyTasks || urgencyTasks.length === 0) return null;
 
         return (
-          <div key={urgency}>
-            <div className="mb-3">
-              <h3 className="text-sm font-semibold text-secondary uppercase tracking-wider">
-                {urgencyLabels[urgency]} ({urgencyTasks.length})
-              </h3>
-              <p className="text-xs text-secondary/70 mt-1">
-                {urgencyDescriptions[urgency]}
-              </p>
-            </div>
-            <div className="space-y-3">
-              {urgencyTasks.map((task) => (
-                <TaskCardRow key={task.id} task={task} />
+          <section key={urgency}>
+            <h2 className="text-xs font-semibold uppercase tracking-wide" style={{ color: "hsl(var(--text-secondary))", marginBottom: "12px" }}>
+              {urgencyLabels[urgency]} ({urgencyTasks.length})
+            </h2>
+            <div style={{ display: "flex", flexDirection: "column", gap: "0" }}>
+              {urgencyTasks.map((task, index) => (
+                <TaskRow key={task.id} task={task} isLast={index === urgencyTasks.length - 1} />
               ))}
             </div>
-          </div>
+          </section>
         );
       })}
     </div>
@@ -208,56 +155,45 @@ function GroupedTasks({ tasks }: { tasks: TaskCard[] }) {
 /* ───────────────── Main Component ───────────────── */
 
 export default function PortalTasksPage() {
-  const { tasks, sources, loading, error } = usePortalTasks();
+  const { tasks, loading, error } = usePortalTasks();
 
   const handleBackClick = () => {
     window.history.pushState(null, "", "/portal");
     window.dispatchEvent(new PopStateEvent("popstate"));
   };
 
-  const overdueCount = tasks.filter((t) => t.status === "overdue").length;
-  const pendingCount = tasks.filter((t) => t.status === "pending").length;
-
-  const getSubtitle = () => {
-    if (loading) return "Loading...";
-    if (tasks.length === 0) return "No pending tasks";
-    const parts: string[] = [];
-    if (overdueCount > 0)
-      parts.push(`${overdueCount} overdue`);
-    if (pendingCount > 0)
-      parts.push(`${pendingCount} pending`);
-    return parts.join(", ") || `${tasks.length} task${tasks.length !== 1 ? "s" : ""}`;
-  };
-
   return (
-    <div className="p-6">
-      <PageHeader
-        title="Tasks"
-        subtitle={getSubtitle()}
-        actions={
-          <Button variant="secondary" onClick={handleBackClick}>
-            Back to Portal
-          </Button>
-        }
-      />
+    <div className="p-6" style={{ maxWidth: "920px", margin: "0 auto" }}>
+      {/* Page Header */}
+      <div style={{ marginBottom: "24px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <h1 className="text-2xl font-semibold" style={{ color: "hsl(var(--text-primary))" }}>
+          Tasks
+        </h1>
+        <Button variant="secondary" onClick={handleBackClick}>
+          Back to Portal
+        </Button>
+      </div>
 
+      {/* Error banner (non-blocking) */}
       {error && (
-        <div className="mt-4 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-400">
+        <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-400" style={{ marginBottom: "24px" }}>
           {error}
         </div>
       )}
 
-      <div className="mt-8">
-        {loading ? (
-          <LoadingTasks />
-        ) : tasks.length === 0 ? (
-          <EmptyTasks />
-        ) : (
-          <GroupedTasks tasks={tasks} />
-        )}
-      </div>
+      {/* Loading state */}
+      {loading && (
+        <div className="text-sm" style={{ color: "hsl(var(--text-secondary))", marginTop: "24px" }}>
+          Loading...
+        </div>
+      )}
 
-      <SourceStatus sources={sources} />
+      {/* Content */}
+      {!loading && (
+        <div style={{ marginTop: "24px" }}>
+          {tasks.length === 0 ? <EmptyTasks /> : <GroupedTasks tasks={tasks} />}
+        </div>
+      )}
     </div>
   );
 }

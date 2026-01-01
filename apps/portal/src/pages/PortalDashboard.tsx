@@ -86,16 +86,30 @@ function useDashboardCounts() {
         const allTasks = tasksResult.value?.tasks || [];
         taskCount = allTasks.filter(t => t.urgency === "action_required").length;
       } else {
-        // Tasks failures are non-blocking, just log
-        console.error("[PortalDashboard] Failed to fetch tasks:", tasksResult.reason);
+        // Silent failure for auth/forbidden errors (403, ACTOR_CONTEXT_UNRESOLVABLE)
+        const err = tasksResult.reason;
+        const is403 = err?.status === 403 || err?.code === 403;
+        const isActorContext = err?.message?.includes("ACTOR_CONTEXT_UNRESOLVABLE");
+        if (!is403 && !isActorContext) {
+          // Only log non-auth errors
+          console.error("[PortalDashboard] Failed to fetch tasks:", err);
+        }
+        // Treat as zero count regardless
       }
 
       // Process notifications result
       if (notificationsResult.status === "fulfilled") {
         notificationCount = notificationsResult.value?.length || 0;
       } else {
-        // Notifications failures are non-blocking, just log
-        console.error("[PortalDashboard] Failed to fetch notifications:", notificationsResult.reason);
+        // Silent failure for auth/forbidden errors (403, ACTOR_CONTEXT_UNRESOLVABLE)
+        const err = notificationsResult.reason;
+        const is403 = err?.status === 403 || err?.code === 403;
+        const isActorContext = err?.message?.includes("ACTOR_CONTEXT_UNRESOLVABLE");
+        if (!is403 && !isActorContext) {
+          // Only log non-auth errors
+          console.error("[PortalDashboard] Failed to fetch notifications:", err);
+        }
+        // Treat as zero count regardless
       }
 
       setCounts({ unreadMessages, tasks: taskCount, notifications: notificationCount });
@@ -180,36 +194,35 @@ interface SummaryRowProps {
   description: string;
   count: number;
   href: string;
+  isLast?: boolean;
 }
 
-function SummaryRow({ icon, label, description, count, href }: SummaryRowProps) {
-  const handleClick = (e: React.MouseEvent) => {
-    e.preventDefault();
-    window.history.pushState(null, "", href);
-    window.dispatchEvent(new PopStateEvent("popstate"));
-  };
-
+function SummaryRow({ icon, label, description, count, href, isLast = false }: SummaryRowProps) {
   return (
     <a
       href={href}
-      onClick={handleClick}
-      className="group flex items-center gap-4 py-4 px-0 cursor-pointer transition-opacity hover:opacity-80"
-      style={{ textDecoration: "none" }}
+      className="group flex items-center gap-5 px-0 cursor-pointer transition-colors hover:bg-white/[0.02]"
+      style={{
+        textDecoration: "none",
+        borderBottom: isLast ? "none" : "1px solid rgba(255, 255, 255, 0.05)",
+        paddingTop: "20px",
+        paddingBottom: "20px",
+      }}
     >
-      <div className="flex-shrink-0 w-5 h-5" style={{ opacity: 0.8 }}>
+      <div className="flex-shrink-0 w-5 h-5" style={{ opacity: 0.7 }}>
         {icon}
       </div>
       <div className="flex-1 min-w-0">
-        <div className="text-base font-medium" style={{ color: "hsl(var(--text-primary))" }}>
+        <div className="text-base font-semibold" style={{ color: "hsl(var(--text-primary))" }}>
           {label}
         </div>
-        <div className="text-sm" style={{ color: "hsl(var(--text-secondary))", marginTop: "2px" }}>
+        <div className="text-sm" style={{ color: "hsl(var(--text-secondary))", marginTop: "3px", opacity: 0.85 }}>
           {description}
         </div>
       </div>
       <div
-        className="flex-shrink-0 text-xs font-semibold px-2.5 py-1 rounded-full"
-        style={{ backgroundColor: "rgba(232, 121, 36, 0.15)", color: "#e87924" }}
+        className="flex-shrink-0 px-2.5 py-1 rounded-full"
+        style={{ backgroundColor: "rgba(232, 121, 36, 0.12)", color: "#e87924", fontSize: "11px", fontWeight: 600 }}
       >
         {count}
       </div>
@@ -217,7 +230,7 @@ function SummaryRow({ icon, label, description, count, href }: SummaryRowProps) 
         className="flex-shrink-0 text-sm font-medium"
         style={{ color: "hsl(var(--text-secondary))", marginLeft: "8px" }}
       >
-        View →
+        View
       </div>
     </a>
   );
@@ -238,15 +251,12 @@ export default function PortalDashboard() {
   const showEmptyState = !loading && !showPrimarySection && !showSecondarySection;
 
   return (
-    <div className="p-6" style={{ maxWidth: "920px", margin: "0 auto" }}>
+    <div className="p-6" style={{ maxWidth: "920px", margin: "0 auto", backgroundColor: "rgba(255, 255, 255, 0.02)", borderRadius: "12px" }}>
       {/* Page Header */}
-      <div style={{ marginBottom: "32px" }}>
-        <h1 className="text-2xl font-semibold" style={{ color: "hsl(var(--text-primary))" }}>
+      <div style={{ marginBottom: "24px" }}>
+        <h1 className="text-2xl font-bold" style={{ color: "hsl(var(--text-primary))" }}>
           Dashboard
         </h1>
-        <p className="text-sm" style={{ color: "hsl(var(--text-secondary))", marginTop: "4px" }}>
-          Your personalized hub for tasks, messages, and updates.
-        </p>
       </div>
 
       {/* Error banner (non-blocking) */}
@@ -266,7 +276,7 @@ export default function PortalDashboard() {
       {/* Primary Section: Needs your attention */}
       {showPrimarySection && (
         <section style={{ marginBottom: "32px" }}>
-          <h2 className="text-lg font-semibold" style={{ color: "hsl(var(--text-primary))", marginBottom: "12px" }}>
+          <h2 className="text-xs font-semibold uppercase tracking-wide" style={{ color: "hsl(var(--text-secondary))", marginBottom: "12px" }}>
             Needs your attention
           </h2>
           <div style={{ display: "flex", flexDirection: "column", gap: "0" }}>
@@ -277,6 +287,7 @@ export default function PortalDashboard() {
                 description="Action items that need your attention"
                 count={counts.tasks}
                 href="/portal/tasks"
+                isLast={!hasUnreadMessages}
               />
             )}
             {hasUnreadMessages && (
@@ -286,6 +297,7 @@ export default function PortalDashboard() {
                 description="Unread conversations with your breeder"
                 count={counts.unreadMessages}
                 href="/portal/messages"
+                isLast={true}
               />
             )}
           </div>
@@ -295,16 +307,17 @@ export default function PortalDashboard() {
       {/* Secondary Section: Recent updates */}
       {showSecondarySection && (
         <section style={{ marginBottom: "32px" }}>
-          <h2 className="text-lg font-semibold" style={{ color: "hsl(var(--text-primary))", marginBottom: "12px" }}>
+          <h2 className="text-xs font-semibold uppercase tracking-wide" style={{ color: "hsl(var(--text-secondary))", marginBottom: "12px" }}>
             Recent updates
           </h2>
           <div style={{ display: "flex", flexDirection: "column", gap: "0" }}>
             <SummaryRow
               icon={<NotificationsIcon className="w-5 h-5" />}
               label="Notifications"
-              description={`${counts.notifications} notification${counts.notifications !== 1 ? 's' : ''} in the last 7 days`}
+              description="Recent updates that may need your attention"
               count={counts.notifications}
               href="/portal/notifications"
+              isLast={true}
             />
           </div>
         </section>
@@ -312,11 +325,12 @@ export default function PortalDashboard() {
 
       {/* Empty State */}
       {showEmptyState && (
-        <div style={{ marginTop: "64px", textAlign: "center" }}>
-          <h3 className="text-xl font-medium" style={{ color: "hsl(var(--text-primary))" }}>
+        <div style={{ marginTop: "24px" }}>
+          <div style={{ width: "100%", height: "1px", backgroundColor: "rgba(255, 255, 255, 0.1)", marginBottom: "20px" }} />
+          <h3 className="text-xl font-semibold" style={{ color: "hsl(var(--text-primary))" }}>
             You're all set.
           </h3>
-          <p className="text-sm" style={{ color: "hsl(var(--text-secondary))", marginTop: "8px" }}>
+          <p className="text-sm" style={{ color: "hsl(var(--text-secondary))", marginTop: "8px", opacity: 0.9 }}>
             We'll surface tasks, messages, and updates here when they need your attention.
           </p>
         </div>
