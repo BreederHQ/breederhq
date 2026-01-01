@@ -3597,6 +3597,12 @@ function PlanDetailsView(props: {
   const [damRepro, setDamRepro] = React.useState<DamReproData | null>(null);
   const [damLoadError, setDamLoadError] = React.useState<string | null>(null);
   const [refreshTrigger, setRefreshTrigger] = React.useState(0);
+  const [liveOverride, setLiveOverride] = React.useState<number | null>(row.femaleCycleLenOverrideDays ?? null);
+
+  // Sync liveOverride when damId changes (new female selected)
+  React.useEffect(() => {
+    setLiveOverride(row.femaleCycleLenOverrideDays ?? null);
+  }, [row.damId, row.femaleCycleLenOverrideDays]);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -3714,11 +3720,12 @@ function PlanDetailsView(props: {
         // Update the row's femaleCycleLenOverrideDays with fresh data from server
         // This ensures we always use the latest override value when recalculating projected cycles
         const freshOverride = data?.femaleCycleLenOverrideDays ?? null;
-        if (freshOverride !== row.femaleCycleLenOverrideDays) {
+        if (freshOverride !== liveOverride) {
           console.log("[plan] updating override from server", {
-            old: row.femaleCycleLenOverrideDays,
+            old: liveOverride,
             new: freshOverride,
           });
+          setLiveOverride(freshOverride);
           setDraft({ femaleCycleLenOverrideDays: freshOverride });
         }
       } catch (e: any) {
@@ -3777,7 +3784,8 @@ function PlanDetailsView(props: {
       damName: row.damName,
       speciesWire,
       cycleStartsAsc,
-      override: row.femaleCycleLenOverrideDays,
+      override: liveOverride,
+      rowOverride: row.femaleCycleLenOverrideDays,
       damReproKeys: damRepro ? Object.keys(damRepro) : null,
       damReproCycleStartDates: (damRepro as any)?.cycleStartDates,
       damReproLastHeat: (damRepro as any)?.last_heat,
@@ -3788,7 +3796,7 @@ function PlanDetailsView(props: {
       cycleStartsAsc,
       dob: null,
       today,
-      femaleCycleLenOverrideDays: row.femaleCycleLenOverrideDays ?? null,
+      femaleCycleLenOverrideDays: liveOverride,
     };
 
     const { projected } = reproEngine.projectUpcomingCycleStarts(summary, {
@@ -3803,7 +3811,7 @@ function PlanDetailsView(props: {
     console.log("[plan] projectedCycles result", { result });
 
     return result;
-  }, [speciesWire, cycleStartsAsc, row.femaleCycleLenOverrideDays, damRepro]);
+  }, [speciesWire, cycleStartsAsc, liveOverride, damRepro]);
 
   const initialCycle = (row.lockedCycleStart ?? row.expectedCycleStart ?? row.cycleStartDateActual ?? null) as string | null;
   const [pendingCycle, setPendingCycle] = React.useState<string | null>(initialCycle);
