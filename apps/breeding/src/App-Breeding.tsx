@@ -1242,12 +1242,6 @@ function WhatIfRowEditor(props: WhatIfRowEditorProps) {
 
         setDamRepro(parsed);
 
-          reproLen: parsed.repro.length,
-          cycleStartDatesLen: parsed.cycleStartDates.length,
-          lastCycle: parsed.lastCycle,
-          last_heat: parsed.last_heat,
-        });
-
         // Update the row's femaleCycleLenOverrideDays with fresh data from server
         // This ensures we always use the latest override value when recalculating projected cycles
         const freshOverride = data?.femaleCycleLenOverrideDays ?? null;
