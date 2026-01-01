@@ -4,13 +4,12 @@ import { PageHeader, EmptyState } from "@bhq/ui";
 import { publicMarketplaceApi } from "../api";
 import type { PublicProgramSummary, ApiError } from "../types";
 import { ProgramCard } from "../components/ProgramCard";
-import { MarketplacePreviewState } from "../components/MarketplacePreviewState";
 
 type ProgramsIndexPageProps = {
   onNavigate: (path: string) => void;
 };
 
-type LoadState = "loading" | "success" | "error" | "preview-unavailable";
+type LoadState = "loading" | "success" | "error";
 
 type Filters = {
   search: string;
@@ -70,13 +69,8 @@ export function ProgramsIndexPage({ onNavigate }: ProgramsIndexPageProps) {
       } catch (err) {
         if (cancelled) return;
         const apiErr = err as ApiError;
-        // Treat 404 or feature-gated responses as preview unavailable, not error
-        if (apiErr.status === 404) {
-          setLoadState("preview-unavailable");
-        } else {
-          setErrorMessage(apiErr.message);
-          setLoadState("error");
-        }
+        setErrorMessage(apiErr.message || "Failed to load programs");
+        setLoadState("error");
       }
     }
 
@@ -93,11 +87,6 @@ export function ProgramsIndexPage({ onNavigate }: ProgramsIndexPageProps) {
   };
 
   const hasActiveFilters = filters.search || filters.species || filters.location;
-
-  // Show preview state when endpoint is unavailable (404)
-  if (loadState === "preview-unavailable") {
-    return <MarketplacePreviewState />;
-  }
 
   return (
     <div className="p-6 space-y-6">
