@@ -21,19 +21,23 @@ const api = makeApi(getApiBase());
 
 function AgreementRow({ agreement }: { agreement: AgreementDTO }) {
   const statusVariants: Record<ContractStatus, "amber" | "green" | "red" | "neutral"> = {
-    DRAFT: "neutral",
-    PENDING: "amber",
-    ACTIVE: "green",
-    EXPIRED: "red",
-    TERMINATED: "red",
+    draft: "neutral",
+    sent: "amber",
+    viewed: "amber",
+    signed: "green",
+    declined: "red",
+    voided: "red",
+    expired: "red",
   };
 
   const statusLabels: Record<ContractStatus, string> = {
-    DRAFT: "Draft",
-    PENDING: "Pending Signature",
-    ACTIVE: "Active",
-    EXPIRED: "Expired",
-    TERMINATED: "Terminated",
+    draft: "Draft",
+    sent: "Pending Signature",
+    viewed: "Viewed",
+    signed: "Signed",
+    declined: "Declined",
+    voided: "Voided",
+    expired: "Expired",
   };
 
   function formatDate(date: string | null): string {
@@ -60,7 +64,7 @@ function AgreementRow({ agreement }: { agreement: AgreementDTO }) {
             {agreement.signedAt && ` • Signed: ${formatDate(agreement.signedAt)}`}
           </div>
         </div>
-        {agreement.status === "ACTIVE" && (
+        {agreement.status === "signed" && (
           <Button variant="secondary" size="sm">
             View
           </Button>
@@ -143,7 +147,7 @@ export default function PortalAgreementsPage() {
     fetchAgreements();
   }, [fetchAgreements]);
 
-  const pendingCount = agreements.filter((a) => a.status === "PENDING").length;
+  const pendingCount = agreements.filter((a) => a.status === "sent").length;
 
   const handleBackClick = () => {
     window.history.pushState(null, "", "/portal");

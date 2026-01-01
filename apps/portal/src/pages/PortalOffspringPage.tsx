@@ -76,16 +76,9 @@ function PlacementCard({ placement }: { placement: OffspringPlacementDTO }) {
         {placement.sire && (
           <p className="text-xs text-secondary mt-0.5">Sire: {placement.sire.name}</p>
         )}
-        {placement.offspring && (
+        {placement.offspring?.sex && (
           <div className="mt-2 pt-2 border-t border-hairline text-xs text-secondary">
-            {placement.offspring.sex && <span>Sex: {placement.offspring.sex}</span>}
-            {placement.offspring.color && <span> • Color: {placement.offspring.color}</span>}
-            {placement.offspring.microchipId && (
-              <p className="mt-1">Microchip: {placement.offspring.microchipId}</p>
-            )}
-            {placement.offspring.registrationNumber && (
-              <p className="mt-1">Registration: {placement.offspring.registrationNumber}</p>
-            )}
+            <span>Sex: {placement.offspring.sex}</span>
           </div>
         )}
         <div className="mt-3">

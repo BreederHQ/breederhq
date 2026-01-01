@@ -23,7 +23,21 @@ export { makeFinance, type FinanceResource, type InvoicesResource, type Payments
 export { makeMarketing, type MarketingResource } from "./resources/marketing";
 export { makeMessages, type MessagesResource } from "./resources/messages";
 export { makePortalAccess, type PortalAccessResource, type PortalAccessDTO, type PortalAccessStatus, type PortalAccessResponse } from "./resources/portal-access";
-export { makePortalData, type PortalDataResource } from "./resources/portal-data";
+export {
+  makePortalData,
+  type PortalDataResource,
+  type ContractStatus,
+  type ContractPartyRole,
+  type AgreementDTO,
+  type AgreementsResponse,
+  type DocumentCategory,
+  type DocumentSource,
+  type DocumentDTO,
+  type DocumentsResponse,
+  type PlacementStatus,
+  type OffspringPlacementDTO,
+  type OffspringPlacementsResponse,
+} from "./resources/portal-data";
 
 // Re-export shared types - common types first (ID, ListParams, ListResponse)
 export * from "./types/contacts";
