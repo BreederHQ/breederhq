@@ -64,20 +64,11 @@ interface Props {
 }
 
 export function NotEntitledPage({ onLogout }: Props) {
-  const handleLogout = async () => {
-    try {
-      await fetch("/api/v1/auth/logout", {
-        method: "POST",
-        credentials: "include",
-      });
-    } catch {
-      // Ignore errors
-    }
-    if (onLogout) {
-      onLogout();
-    } else {
-      window.location.reload();
-    }
+  const handleReturnToLogin = () => {
+    // Navigate to logout endpoint with redirect back to marketplace
+    // This will clear the session on the server and redirect back
+    const redirectUrl = encodeURIComponent(window.location.origin + "/marketplace");
+    window.location.href = `/api/v1/auth/logout?redirect=${redirectUrl}`;
   };
 
   return (
@@ -91,8 +82,8 @@ export function NotEntitledPage({ onLogout }: Props) {
           Your account does not have access to the Marketplace.
           If you believe this is an error, please contact support.
         </p>
-        <button type="button" style={styles.logoutButton} onClick={handleLogout}>
-          Sign out and try a different account
+        <button type="button" style={styles.logoutButton} onClick={handleReturnToLogin}>
+          Return to login
         </button>
       </div>
     </div>
