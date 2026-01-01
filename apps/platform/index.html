@@ -10,17 +10,3 @@
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
-
-<script>
-  // Create a single source of truth
-  window.platform = window.platform || {};
-
-  // Set these from your real data (replace 9 and 12 with real values):
-  window.platform.currentOrgId = 9;   // the org currently selected in the UI
-  window.platform.userOrgId    = 12;  // the user's own/home org (if different)
-
-  // Fire this EVERY time the selected org changes in your picker:
-  window.dispatchEvent(new CustomEvent('platform:orgChanged', {
-    detail: { orgId: window.platform.currentOrgId }
-  }));
-</script>

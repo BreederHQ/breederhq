@@ -183,7 +183,7 @@ export function makeApi(base?: string) {
 
   return {
     auth: {
-      me: () => request(`${root}/auth/me`, { method: "GET" }),
+      me: () => request(`${root}/auth/me`, { method: "GET", cache: "no-store" }),
       logoutRedirect: () => {
         const back = (typeof window !== "undefined" ? window.location.origin : "") + "/";
         const url = `${root}/auth/logout?redirect=${encodeURIComponent(back)}`;
