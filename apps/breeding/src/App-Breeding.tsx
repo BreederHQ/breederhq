@@ -161,27 +161,37 @@ function normalizeExpectedMilestones(
 
   const breedDate =
     day(milestones?.expectedBreedDate) ??
-    day(milestones?.breeding_full?.start) ?? // reproEngine format: { start, end }
-    day(milestones?.breeding_likely?.start) ?? // reproEngine format: { start, end }
-    day(milestones?.breeding_full?.[0]) ?? // legacy array format
-    day(milestones?.breeding_likely?.[0]) ?? // legacy array format
+    day(milestones?.breeding_expected) ?? // legacy format from computeExpectedForPlan
     day(milestones?.ovulation_center) ?? // reproEngine milestone
     day(milestones?.ovulation) ??
+    day(milestones?.breeding?.likely?.start) ?? // reproEngine nested format
+    day(milestones?.breeding_full?.start) ?? // reproEngine flat format
+    day(milestones?.breeding_likely?.start) ?? // reproEngine flat format
+    day(milestones?.breeding?.likely?.[0]) ?? // reproEngine nested array format
+    day(milestones?.breeding_full?.[0]) ?? // legacy array format
+    day(milestones?.breeding_likely?.[0]) ?? // legacy array format
     null;
 
   const birthDate =
     day(milestones?.expectedBirthDate) ??
-    day(milestones?.whelping_full?.start) ?? // reproEngine format: { start, end }
-    day(milestones?.whelping_likely?.start) ?? // reproEngine format: { start, end }
+    day(milestones?.birth_expected) ?? // legacy format from computeExpectedForPlan
+    day(milestones?.whelping?.likely?.start) ?? // reproEngine nested format
+    day(milestones?.whelping_full?.start) ?? // reproEngine flat format
+    day(milestones?.whelping_likely?.start) ?? // reproEngine flat format
+    day(milestones?.whelping?.likely?.[0]) ?? // reproEngine nested array format
     day(milestones?.whelping_full?.[0]) ?? // legacy array format
     day(milestones?.whelping_likely?.[0]) ?? // legacy array format
     null;
 
   const weanedDate =
     day(milestones?.expectedWeaned) ??
-    day(milestones?.puppy_care_full?.end) ?? // reproEngine format: end of puppy care
-    day(milestones?.go_home_normal_full?.start) ?? // reproEngine format: { start, end }
-    day(milestones?.go_home_normal_likely?.start) ?? // reproEngine format: { start, end }
+    day(milestones?.weaning_expected) ?? // legacy format from computeExpectedForPlan
+    day(milestones?.puppy_care?.full?.end) ?? // reproEngine nested format: end of puppy care
+    day(milestones?.puppy_care_full?.end) ?? // reproEngine flat format: end of puppy care
+    day(milestones?.go_home_normal?.likely?.start) ?? // reproEngine nested format
+    day(milestones?.go_home_normal_full?.start) ?? // reproEngine flat format
+    day(milestones?.go_home_normal_likely?.start) ?? // reproEngine flat format
+    day(milestones?.go_home_normal?.likely?.[0]) ?? // reproEngine nested array format
     day(milestones?.go_home_normal_full?.[0]) ?? // legacy array format
     day(milestones?.go_home_normal_likely?.[0]) ?? // legacy array format
     day(milestones?.post_birth_care_likely?.[0]) ??
