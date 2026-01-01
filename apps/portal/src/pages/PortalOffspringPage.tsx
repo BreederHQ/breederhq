@@ -2,6 +2,7 @@
 import * as React from "react";
 import { PageHeader, Button, Badge } from "@bhq/ui";
 import { makeApi, type OffspringPlacementDTO, type PlacementStatus } from "@bhq/api";
+import PortalOffspringDetailPage from "./PortalOffspringDetailPage";
 
 // Resolve API base URL
 function getApiBase(): string {

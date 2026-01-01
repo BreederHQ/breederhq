@@ -40,6 +40,8 @@ export {
   type PlacementStatus,
   type OffspringPlacementDTO,
   type OffspringPlacementsResponse,
+  type OffspringDetailDTO,
+  type OffspringDetailResponse,
 } from "./resources/portal-data";
 
 // Re-export shared types - common types first (ID, ListParams, ListResponse)

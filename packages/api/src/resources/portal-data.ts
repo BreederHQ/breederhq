@@ -105,12 +105,36 @@ export interface OffspringPlacementDTO {
 export interface OffspringPlacementsResponse {
   placements: OffspringPlacementDTO[];
 }
+export interface OffspringDetailDTO {
+  id: number;
+  name: string;
+  sex: string | null;
+  breed: string | null;
+  species: string;
+  birthDate: string | null;
+  placementStatus: PlacementStatus;
+  dam: { id: number; name: string } | null;
+  sire: { id: number; name: string } | null;
+  groupId: number;
+  groupName: string | null;
+  contractSignedAt: string | null;
+  paidInFullAt: string | null;
+  pickupAt: string | null;
+  placedAt: string | null;
+  createdAt: string;
+}
+
+export interface OffspringDetailResponse {
+  offspring: OffspringDetailDTO;
+}
+
 
 export type PortalDataResource = {
   getAgreements(): Promise<AgreementsResponse>;
   getAgreementDetail(id: number): Promise<AgreementDetailResponse>;
   getDocuments(): Promise<DocumentsResponse>;
   getOffspringPlacements(): Promise<OffspringPlacementsResponse>;
+  getOffspringDetail(id: number): Promise<OffspringDetailResponse>;
 };
 
 export function makePortalData(http: Http): PortalDataResource {
@@ -133,6 +157,11 @@ export function makePortalData(http: Http): PortalDataResource {
     async getOffspringPlacements(): Promise<OffspringPlacementsResponse> {
       const res = await http.get("/portal/offspring");
       return res as OffspringPlacementsResponse;
+    },
+
+    async getOffspringDetail(id: number): Promise<OffspringDetailResponse> {
+      const res = await http.get(`/portal/offspring/${id}`);
+      return res as OffspringDetailResponse;
     },
   };
 }
