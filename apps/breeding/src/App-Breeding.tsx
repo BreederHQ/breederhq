@@ -1231,6 +1231,17 @@ function WhatIfRowEditor(props: WhatIfRowEditorProps) {
           lastCycle: parsed.lastCycle,
           last_heat: parsed.last_heat,
         });
+
+        // Update the row's femaleCycleLenOverrideDays with fresh data from server
+        // This ensures we always use the latest override value when recalculating projected cycles
+        const freshOverride = data?.femaleCycleLenOverrideDays ?? null;
+        if (freshOverride !== row.femaleCycleLenOverrideDays) {
+          console.log("[whatif] updating override from server", {
+            old: row.femaleCycleLenOverrideDays,
+            new: freshOverride,
+          });
+          onChange({ ...row, femaleCycleLenOverrideDays: freshOverride });
+        }
       } catch (e: any) {
         if (cancelled) return;
         console.error("[whatif] dam repro load failed", e);
