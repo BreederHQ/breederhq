@@ -3596,6 +3596,7 @@ function PlanDetailsView(props: {
 
   const [damRepro, setDamRepro] = React.useState<DamReproData | null>(null);
   const [damLoadError, setDamLoadError] = React.useState<string | null>(null);
+  const [refreshTrigger, setRefreshTrigger] = React.useState(0);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -3709,6 +3710,17 @@ function PlanDetailsView(props: {
           ...(lastCycle != null ? ({ lastCycle } as any) : {}),
           ...(cycleStartDates.length ? ({ cycleStartDates } as any) : {}),
         });
+
+        // Update the row's femaleCycleLenOverrideDays with fresh data from server
+        // This ensures we always use the latest override value when recalculating projected cycles
+        const freshOverride = data?.femaleCycleLenOverrideDays ?? null;
+        if (freshOverride !== row.femaleCycleLenOverrideDays) {
+          console.log("[plan] updating override from server", {
+            old: row.femaleCycleLenOverrideDays,
+            new: freshOverride,
+          });
+          setDraft({ femaleCycleLenOverrideDays: freshOverride });
+        }
       } catch (e: any) {
         if (!cancelled) {
           setDamLoadError(e?.message || "Unable to load cycle history for this female.");
@@ -3721,7 +3733,7 @@ function PlanDetailsView(props: {
       cancelled = true;
       controller.abort();
     };
-  }, [row.damId, tenantId]);
+  }, [row.damId, tenantId, refreshTrigger]);
 
   // ===== Cycle math + projections =====
   const speciesWire = normalizeSpeciesWire(row.species);
@@ -3765,6 +3777,7 @@ function PlanDetailsView(props: {
       cycleStartsAsc,
       dob: null,
       today,
+      femaleCycleLenOverrideDays: row.femaleCycleLenOverrideDays ?? null,
     };
 
     const { projected } = reproEngine.projectUpcomingCycleStarts(summary, {
@@ -3775,7 +3788,7 @@ function PlanDetailsView(props: {
     return projected
       .map((p: any) => asISODateOnly(p?.date) ?? String(p?.date ?? "").slice(0, 10))
       .filter((d: any) => !!d);
-  }, [speciesWire, cycleStartsAsc]);
+  }, [speciesWire, cycleStartsAsc, row.femaleCycleLenOverrideDays]);
 
   const initialCycle = (row.lockedCycleStart ?? row.expectedCycleStart ?? row.cycleStartDateActual ?? null) as string | null;
   const [pendingCycle, setPendingCycle] = React.useState<string | null>(initialCycle);
@@ -4601,6 +4614,12 @@ function PlanDetailsView(props: {
                               );
                               // Persist selection as the plan's expected cycle start while in edit mode
                               setDraft({ expectedCycleStart: next });
+                            }}
+                            onFocus={() => {
+                              if (row.damId) {
+                                console.log("[plan] cycle dropdown focused, refreshing override");
+                                setRefreshTrigger((prev) => prev + 1);
+                              }
                             }}
                             disabled={!hasDam || !editable}
                           >
