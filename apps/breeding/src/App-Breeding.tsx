@@ -3734,8 +3734,10 @@ function PlanDetailsView(props: {
   }, [row.damId, tenantId, refreshTrigger]);
 
   // ===== Auto-recalculate expected dates when override changes for locked plans =====
-  const prevOverrideRef = React.useRef<number | null>(liveOverride);
+  const prevOverrideRef = React.useRef<number | null | undefined>(undefined);
   const isRecalculating = React.useRef(false);
+  const hasMountedRef = React.useRef(false);
+
   React.useEffect(() => {
     const isLocked = Boolean((effective.lockedCycleStart ?? "").toString().trim());
     const overrideChanged = prevOverrideRef.current !== liveOverride;
@@ -3744,8 +3746,8 @@ function PlanDetailsView(props: {
     // 1. Override actually changed
     // 2. Cycle is locked
     // 3. Not currently in a recalculation
-    // 4. This isn't the initial mount (prevOverrideRef.current !== null means we've seen at least one value)
-    if (isLocked && overrideChanged && !isRecalculating.current && prevOverrideRef.current !== null) {
+    // 4. Component has mounted at least once (skip initial mount)
+    if (isLocked && overrideChanged && !isRecalculating.current && hasMountedRef.current) {
       isRecalculating.current = true;
       recalculateExpectedDates().finally(() => {
         isRecalculating.current = false;
@@ -3753,6 +3755,7 @@ function PlanDetailsView(props: {
     }
 
     prevOverrideRef.current = liveOverride;
+    hasMountedRef.current = true;
   }, [liveOverride, effective.lockedCycleStart]);
 
   // ===== Cycle math + projections =====
