@@ -266,12 +266,22 @@ function computeExpectedForPlan(plan: {
       locked
     );
 
+    console.log("[computeExpectedForPlan] timeline result", {
+      timeline,
+      hasTimeline: !!timeline,
+      windowsKeys: timeline?.windows ? Object.keys(timeline.windows) : null,
+      milestonesKeys: timeline?.milestones ? Object.keys(timeline.milestones) : null,
+      whelping: timeline?.windows?.whelping,
+      whelping_likely: timeline?.windows?.whelping?.likely,
+    });
+
     if (!timeline) {
+      console.log("[computeExpectedForPlan] no timeline, falling back to expectedMilestonesFromLocked");
       return (reproEngine.expectedMilestonesFromLocked(locked, speciesWire) as any) ?? null;
     }
 
     // Convert timeline to legacy expected format
-    return {
+    const result = {
       ovulation: timeline.milestones?.ovulation_center ?? null,
       breeding_expected: timeline.windows?.breeding?.likely?.[0] ?? null,
       birth_expected: timeline.windows?.whelping?.likely?.[0] ?? null,
@@ -281,6 +291,15 @@ function computeExpectedForPlan(plan: {
       ...timeline.windows,
       ...timeline.milestones,
     };
+
+    console.log("[computeExpectedForPlan] returning result", {
+      result,
+      resultKeys: Object.keys(result),
+      birth_expected: result.birth_expected,
+      whelping: result.whelping,
+    });
+
+    return result;
   } catch (e) {
     console.error("[Breeding] computeExpectedForPlan failed", { locked, speciesWire, e });
     return null;
@@ -3853,11 +3872,26 @@ function PlanDetailsView(props: {
       femaleCycleLenOverrideDays: liveOverride,
     });
 
-    console.log("[plan] lockCycle expectedRaw", { expectedRaw });
+    console.log("[plan] lockCycle expectedRaw", {
+      expectedRaw,
+      expectedRawKeys: expectedRaw ? Object.keys(expectedRaw) : null,
+      breeding_expected: expectedRaw?.breeding_expected,
+      birth_expected: expectedRaw?.birth_expected,
+      ovulation: expectedRaw?.ovulation,
+    });
 
     const expected = normalizeExpectedMilestones(expectedRaw, pendingCycle);
 
-    console.log("[plan] lockCycle normalized", { expected });
+    console.log("[plan] lockCycle normalized", {
+      expected,
+      cycleStart: expected.cycleStart,
+      hormoneTestingStart: expected.hormoneTestingStart,
+      breedDate: expected.breedDate,
+      birthDate: expected.birthDate,
+      weanedDate: expected.weanedDate,
+      placementStart: expected.placementStart,
+      placementCompleted: expected.placementCompleted,
+    });
     const testingStart =
       expected.hormoneTestingStart ?? pickExpectedTestingStart(expectedRaw, pendingCycle);
 

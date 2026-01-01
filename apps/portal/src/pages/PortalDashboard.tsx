@@ -55,16 +55,18 @@ function useDashboardCounts() {
       setLoading(true);
       setError(null);
 
-      // Fetch messages and tasks in parallel
-      const [messagesResult, tasksResult] = await Promise.allSettled([
+      // Fetch messages, tasks, and notifications in parallel
+      const [messagesResult, tasksResult, notificationsResult] = await Promise.allSettled([
         api.messages.threads.list(),
         fetchAllTasks(),
+        fetchAllNotifications(),
       ]);
 
       if (cancelled) return;
 
       let unreadMessages = 0;
       let taskCount = 0;
+      let notificationCount = 0;
       const errors: string[] = [];
 
       // Process messages result
@@ -90,7 +92,15 @@ function useDashboardCounts() {
         console.error("[PortalDashboard] Failed to fetch tasks:", tasksResult.reason);
       }
 
-      setCounts({ unreadMessages, tasks: taskCount });
+      // Process notifications result
+      if (notificationsResult.status === "fulfilled") {
+        notificationCount = notificationsResult.value?.length || 0;
+      } else {
+        // Notifications failures are non-blocking, just log
+        console.error("[PortalDashboard] Failed to fetch notifications:", notificationsResult.reason);
+      }
+
+      setCounts({ unreadMessages, tasks: taskCount, notifications: notificationCount });
 
       if (errors.length > 0) {
         setError(`Failed to load ${errors.join(", ")}`);
@@ -194,6 +204,23 @@ function DocumentsIcon({ className }: { className?: string }) {
       <path d="M20 20 L44 20" stroke="url(#documentsGradient)" strokeWidth="2" strokeLinecap="round" />
       <path d="M20 28 L44 28" stroke="url(#documentsGradient)" strokeWidth="2" strokeLinecap="round" />
       <path d="M20 36 L36 36" stroke="url(#documentsGradient)" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function NotificationsIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 64 64" fill="none">
+      <defs>
+        <linearGradient id="notificationsGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#e87924" />
+          <stop offset="100%" stopColor="#c45a10" />
+        </linearGradient>
+      </defs>
+      <path d="M32 8 L32 12" stroke="url(#notificationsGradient)" strokeWidth="3" strokeLinecap="round" />
+      <path d="M18 48 L46 48" stroke="url(#notificationsGradient)" strokeWidth="3" strokeLinecap="round" />
+      <path d="M28 52 Q32 56 36 52" stroke="url(#notificationsGradient)" strokeWidth="3" fill="none" strokeLinecap="round" />
+      <path d="M32 12 C20 12 14 18 14 28 L14 42 Q14 46 18 48 L46 48 Q50 46 50 42 L50 28 C50 18 44 12 32 12 Z" stroke="url(#notificationsGradient)" strokeWidth="3" fill="none" strokeLinejoin="round" />
     </svg>
   );
 }
@@ -436,6 +463,20 @@ export default function PortalDashboard() {
           <h2 className="text-xl font-semibold text-primary">Key Workflows</h2>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          <SecondaryTile
+            icon={<NotificationsIcon className="w-5 h-5" />}
+            title="Notifications"
+            description={
+              loading
+                ? "Loading..."
+                : counts.notifications === 0
+                ? "No recent activity."
+                : `${counts.notifications} notification${counts.notifications !== 1 ? "s" : ""} in last 7 days`
+            }
+            href="/portal/notifications"
+            badge={loading ? "live" : counts.notifications > 0 ? "active" : "live"}
+            count={loading ? undefined : counts.notifications > 0 ? counts.notifications : undefined}
+          />
           {PORTAL_FEATURE_FLAGS.SHOW_BILLING && (
             <SecondaryTile
               icon={<BillingIcon className="w-5 h-5" />}
