@@ -1152,7 +1152,6 @@ function WhatIfRowEditor(props: WhatIfRowEditorProps) {
   const [refreshTrigger, setRefreshTrigger] = React.useState(0);
 
   React.useEffect(() => {
-    console.log("[whatif] dam repro effect run", { damId: row.damId, refreshTrigger });
 
     let cancelled = false;
 
@@ -1167,7 +1166,6 @@ function WhatIfRowEditor(props: WhatIfRowEditorProps) {
 
     (async () => {
       try {
-        console.log("[whatif] fetch url", url);
 
         const res = await fetch(url, {
           method: "GET",
@@ -1179,8 +1177,6 @@ function WhatIfRowEditor(props: WhatIfRowEditorProps) {
         });
         const bodyText = await res.text();
 
-        console.log("[whatif] fetch status", res.status);
-        console.log("[whatif] fetch body head", bodyText.slice(0, 200));
 
         if (!res.ok) {
           throw new Error(`Dam repro fetch failed: ${res.status} ${bodyText.slice(0, 200)}`);
@@ -1246,7 +1242,6 @@ function WhatIfRowEditor(props: WhatIfRowEditorProps) {
 
         setDamRepro(parsed);
 
-        console.log("[whatif] damRepro set", {
           reproLen: parsed.repro.length,
           cycleStartDatesLen: parsed.cycleStartDates.length,
           lastCycle: parsed.lastCycle,
@@ -1257,10 +1252,6 @@ function WhatIfRowEditor(props: WhatIfRowEditorProps) {
         // This ensures we always use the latest override value when recalculating projected cycles
         const freshOverride = data?.femaleCycleLenOverrideDays ?? null;
         if (freshOverride !== row.femaleCycleLenOverrideDays) {
-          console.log("[whatif] updating override from server", {
-            old: row.femaleCycleLenOverrideDays,
-            new: freshOverride,
-          });
           onChange({ ...row, femaleCycleLenOverrideDays: freshOverride });
         }
       } catch (e: any) {
@@ -1290,7 +1281,6 @@ function WhatIfRowEditor(props: WhatIfRowEditorProps) {
       femaleCycleLenOverrideDays: female?.femaleCycleLenOverrideDays ?? null,
     };
 
-    console.log("[whatif] female select changed", { selectedId: id, nextRow: next });
     onChange(next);
   };
 
@@ -1352,7 +1342,6 @@ function WhatIfRowEditor(props: WhatIfRowEditorProps) {
             onChange={handleCycleChange}
             onFocus={() => {
               if (row.damId) {
-                console.log("[whatif] cycle dropdown focused, refreshing override");
                 setRefreshTrigger((prev) => prev + 1);
               }
             }}
@@ -2634,7 +2623,7 @@ export default function AppBreeding() {
                           <TableRow
                             key={r.id}
                             detailsRow={r}
-                            className={r.archived || r.archivedAt ? "opacity-60 bg-neutral-50 dark:bg-neutral-900/30" : undefined}
+                            className={r.archived || r.archivedAt ? "bhq-row-archived" : undefined}
                           >
                             {visibleSafe.map((c) => {
                               let v = (r as any)[c.key] as any;
@@ -3651,7 +3640,6 @@ function PlanDetailsView(props: {
         const qs = new URLSearchParams({ include });
         const url = `/api/v1/animals/${row.damId}?${qs.toString()}`;
 
-        console.log("[whatif] dam repro fetch", { damId: row.damId, tenantId, url });
 
         const res = await fetch(url, {
           method: "GET",
@@ -3680,19 +3668,6 @@ function PlanDetailsView(props: {
 
         if (cancelled) return;
 
-        console.warn("[BHQ reproEngine][whatif raw animal payload]", {
-          damId: row.damId,
-          topLevelKeys: data ? Object.keys(data) : null,
-          reproType: typeof (data as any)?.repro,
-          reproLen: Array.isArray((data as any)?.repro) ? (data as any).repro.length : null,
-          cycleStartDatesLen: Array.isArray((data as any)?.cycleStartDates)
-            ? (data as any).cycleStartDates.length
-            : null,
-          lastCycle: (data as any)?.lastCycle ?? (data as any)?.last_cycle ?? null,
-          lastHeat: (data as any)?.last_heat ?? (data as any)?.lastHeat ?? null,
-        });
-
-        const reproRaw: WhatIfDamReproEvent[] = Array.isArray(data?.repro)
           ? (data.repro as WhatIfDamReproEvent[])
           : [];
 
@@ -3746,10 +3721,6 @@ function PlanDetailsView(props: {
         // This ensures we always use the latest override value when recalculating projected cycles
         const freshOverride = data?.femaleCycleLenOverrideDays ?? null;
         if (freshOverride !== liveOverride) {
-          console.log("[plan] updating override from server", {
-            old: liveOverride,
-            new: freshOverride,
-          });
           setLiveOverride(freshOverride);
           setDraft({ femaleCycleLenOverrideDays: freshOverride });
         }
@@ -3780,11 +3751,6 @@ function PlanDetailsView(props: {
     // 3. Not currently in a recalculation
     // 4. This isn't the initial mount (prevOverrideRef.current !== null means we've seen at least one value)
     if (isLocked && overrideChanged && !isRecalculating.current && prevOverrideRef.current !== null) {
-      console.log("[plan] override changed for locked plan, recalculating expected dates", {
-        old: prevOverrideRef.current,
-        new: liveOverride,
-        lockedCycleStart: effective.lockedCycleStart,
-      });
       isRecalculating.current = true;
       recalculateExpectedDates().finally(() => {
         isRecalculating.current = false;
@@ -4736,11 +4702,6 @@ function PlanDetailsView(props: {
                             }}
                             onFocus={() => {
                               if (row.damId) {
-                                console.log("[plan] cycle dropdown focused, refreshing override and cycle data", {
-                                  damId: row.damId,
-                                  currentRefreshTrigger: refreshTrigger,
-                                });
-                                setRefreshTrigger((prev) => prev + 1);
                               }
                             }}
                             disabled={!hasDam || !editable}

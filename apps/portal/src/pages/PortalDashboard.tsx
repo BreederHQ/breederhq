@@ -1,8 +1,6 @@
 // apps/portal/src/pages/PortalDashboard.tsx
 import * as React from "react";
-import { PageHeader, Button } from "@bhq/ui";
 import { makeApi } from "@bhq/api";
-import { PORTAL_FEATURE_FLAGS } from "../mock";
 import { fetchAllTasks } from "../tasks/taskSources";
 import { fetchAllNotifications } from "../notifications/notificationSources";
 
@@ -157,57 +155,6 @@ function MessagesIcon({ className }: { className?: string }) {
   );
 }
 
-function BillingIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 64 64" fill="none">
-      <defs>
-        <linearGradient id="billingGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#e87924" />
-          <stop offset="100%" stopColor="#c45a10" />
-        </linearGradient>
-      </defs>
-      <rect x="8" y="16" width="48" height="36" rx="4" stroke="url(#billingGradient)" strokeWidth="3" fill="none" />
-      <path d="M8 28 L56 28" stroke="url(#billingGradient)" strokeWidth="3" />
-      <path d="M16 40 L28 40" stroke="url(#billingGradient)" strokeWidth="3" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-function AgreementsIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 64 64" fill="none">
-      <defs>
-        <linearGradient id="agreementsGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#e87924" />
-          <stop offset="100%" stopColor="#c45a10" />
-        </linearGradient>
-      </defs>
-      <path d="M16 8 L16 56 L48 56 L48 20 L36 8 Z" stroke="url(#agreementsGradient)" strokeWidth="3" fill="none" strokeLinejoin="round" />
-      <path d="M36 8 L36 20 L48 20" stroke="url(#agreementsGradient)" strokeWidth="3" fill="none" strokeLinejoin="round" />
-      <path d="M24 32 L40 32" stroke="url(#agreementsGradient)" strokeWidth="2" strokeLinecap="round" />
-      <path d="M24 40 L40 40" stroke="url(#agreementsGradient)" strokeWidth="2" strokeLinecap="round" />
-      <path d="M24 48 L32 48" stroke="url(#agreementsGradient)" strokeWidth="2" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-function DocumentsIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 64 64" fill="none">
-      <defs>
-        <linearGradient id="documentsGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#e87924" />
-          <stop offset="100%" stopColor="#c45a10" />
-        </linearGradient>
-      </defs>
-      <rect x="12" y="8" width="40" height="48" rx="4" stroke="url(#documentsGradient)" strokeWidth="3" fill="none" />
-      <path d="M20 20 L44 20" stroke="url(#documentsGradient)" strokeWidth="2" strokeLinecap="round" />
-      <path d="M20 28 L44 28" stroke="url(#documentsGradient)" strokeWidth="2" strokeLinecap="round" />
-      <path d="M20 36 L36 36" stroke="url(#documentsGradient)" strokeWidth="2" strokeLinecap="round" />
-    </svg>
-  );
-}
-
 function NotificationsIcon({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 64 64" fill="none">
@@ -225,148 +172,17 @@ function NotificationsIcon({ className }: { className?: string }) {
   );
 }
 
-function OffspringIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 64 64" fill="none">
-      <defs>
-        <linearGradient id="offspringGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#e87924" />
-          <stop offset="100%" stopColor="#c45a10" />
-        </linearGradient>
-      </defs>
-      <circle cx="32" cy="24" r="12" stroke="url(#offspringGradient)" strokeWidth="3" fill="none" />
-      <path d="M16 52 C16 42 24 36 32 36 C40 36 48 42 48 52" stroke="url(#offspringGradient)" strokeWidth="3" fill="none" strokeLinecap="round" />
-    </svg>
-  );
-}
+/* ───────────────── Summary Row Component ───────────────── */
 
-function WaitlistIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 64 64" fill="none">
-      <defs>
-        <linearGradient id="waitlistGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#e87924" />
-          <stop offset="100%" stopColor="#c45a10" />
-        </linearGradient>
-      </defs>
-      <circle cx="32" cy="32" r="24" stroke="url(#waitlistGradient)" strokeWidth="3" fill="none" />
-      <path d="M32 16 L32 32 L44 38" stroke="url(#waitlistGradient)" strokeWidth="3" fill="none" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function ScheduleIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 64 64" fill="none">
-      <defs>
-        <linearGradient id="scheduleGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#e87924" />
-          <stop offset="100%" stopColor="#c45a10" />
-        </linearGradient>
-      </defs>
-      <rect x="8" y="12" width="48" height="44" rx="4" stroke="url(#scheduleGradient)" strokeWidth="3" fill="none" />
-      <path d="M8 24 L56 24" stroke="url(#scheduleGradient)" strokeWidth="3" />
-      <path d="M20 8 L20 16" stroke="url(#scheduleGradient)" strokeWidth="3" strokeLinecap="round" />
-      <path d="M44 8 L44 16" stroke="url(#scheduleGradient)" strokeWidth="3" strokeLinecap="round" />
-      <rect x="16" y="32" width="8" height="8" rx="1" fill="url(#scheduleGradient)" />
-    </svg>
-  );
-}
-
-/* ───────────────── Status Badges ───────────────── */
-
-type BadgeType = "live" | "active" | "pending";
-
-function StatusBadge({ type }: { type: BadgeType }) {
-  const styles: Record<BadgeType, { bg: string; text: string; label: string }> = {
-    live: { bg: "#16a34a", text: "#fff", label: "Live" },
-    active: { bg: "#2563eb", text: "#fff", label: "Active" },
-    pending: { bg: "#d97706", text: "#fff", label: "Pending" },
-  };
-  const s = styles[type];
-
-  return (
-    <span
-      className="text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-full"
-      style={{ backgroundColor: s.bg, color: s.text }}
-    >
-      {s.label}
-    </span>
-  );
-}
-
-/* ───────────────── Primary Action Tile ───────────────── */
-
-interface PrimaryTileProps {
-  title: string;
-  description: string;
-  buttonLabel: string;
-  href: string;
+interface SummaryRowProps {
   icon: React.ReactNode;
-  badge?: BadgeType;
-  count?: number;
-}
-
-function PrimaryTile({ title, description, buttonLabel, href, icon, badge = "live", count }: PrimaryTileProps) {
-  const handleClick = (e: React.MouseEvent) => {
-    e.preventDefault();
-    window.history.pushState(null, "", href);
-    window.dispatchEvent(new PopStateEvent("popstate"));
-  };
-
-  return (
-    <div
-      className="relative rounded-2xl hover:brightness-110 transition-all overflow-hidden"
-      style={{
-        backgroundColor: "#1a1a1a",
-        border: "1px solid rgba(60, 60, 60, 0.5)",
-        height: "200px",
-      }}
-    >
-      {/* Badge in top-left */}
-      <div style={{ position: "absolute", top: "16px", left: "16px" }} className="flex items-center gap-2">
-        <StatusBadge type={badge} />
-        {count !== undefined && count > 0 && (
-          <span
-            className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
-            style={{ backgroundColor: "#e87924", color: "#fff" }}
-          >
-            {count}
-          </span>
-        )}
-      </div>
-
-      {/* Icon in top-right */}
-      <div style={{ position: "absolute", top: "16px", right: "16px" }}>
-        {icon}
-      </div>
-
-      {/* Content at bottom-left */}
-      <div style={{ position: "absolute", bottom: "24px", left: "24px" }}>
-        <h3 className="text-xl font-semibold text-primary">{title}</h3>
-        <p className="mt-1 text-sm text-secondary">{description}</p>
-        <div className="mt-4">
-          <Button onClick={handleClick}>{buttonLabel}</Button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* ───────────────── Secondary Tile ───────────────── */
-
-interface SecondaryTileProps {
-  icon: React.ReactNode;
-  title: string;
+  label: string;
   description: string;
+  count: number;
   href: string;
-  badge?: BadgeType;
-  count?: number;
 }
 
-function SecondaryTile({ icon, title, description, href, badge = "live", count }: SecondaryTileProps) {
-  const [isHovered, setIsHovered] = React.useState(false);
-
+function SummaryRow({ icon, label, description, count, href }: SummaryRowProps) {
   const handleClick = (e: React.MouseEvent) => {
     e.preventDefault();
     window.history.pushState(null, "", href);
@@ -377,34 +193,31 @@ function SecondaryTile({ icon, title, description, href, badge = "live", count }
     <a
       href={href}
       onClick={handleClick}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
-      className="group rounded-lg p-4 cursor-pointer transition-all relative"
-      style={{
-        border: isHovered ? "2px solid hsl(var(--brand-orange))" : "2px solid rgba(232, 121, 36, 0.3)",
-        backgroundColor: isHovered ? "var(--surface)" : "rgba(var(--surface-rgb), 0.5)",
-      }}
+      className="group flex items-center gap-4 py-4 px-0 cursor-pointer transition-opacity hover:opacity-80"
+      style={{ textDecoration: "none" }}
     >
-      {/* Badge */}
-      <div className="absolute top-2 right-2 flex items-center gap-1">
-        {count !== undefined && count > 0 && (
-          <span
-            className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
-            style={{ backgroundColor: "#e87924", color: "#fff" }}
-          >
-            {count}
-          </span>
-        )}
-        <StatusBadge type={badge} />
+      <div className="flex-shrink-0 w-5 h-5" style={{ opacity: 0.8 }}>
+        {icon}
       </div>
-      <div className="flex items-start gap-3">
-        <div className="flex-shrink-0 w-8 h-8 rounded-md bg-surface-strong border border-hairline flex items-center justify-center text-secondary group-hover:text-primary transition-colors">
-          {icon}
+      <div className="flex-1 min-w-0">
+        <div className="text-base font-medium" style={{ color: "hsl(var(--text-primary))" }}>
+          {label}
         </div>
-        <div className="flex-1 min-w-0">
-          <div className="font-medium text-sm text-primary">{title}</div>
-          <p className="mt-0.5 text-xs text-secondary">{description}</p>
+        <div className="text-sm" style={{ color: "hsl(var(--text-secondary))", marginTop: "2px" }}>
+          {description}
         </div>
+      </div>
+      <div
+        className="flex-shrink-0 text-xs font-semibold px-2.5 py-1 rounded-full"
+        style={{ backgroundColor: "rgba(232, 121, 36, 0.15)", color: "#e87924" }}
+      >
+        {count}
+      </div>
+      <div
+        className="flex-shrink-0 text-sm font-medium"
+        style={{ color: "hsl(var(--text-secondary))", marginLeft: "8px" }}
+      >
+        View →
       </div>
     </a>
   );
@@ -415,155 +228,99 @@ function SecondaryTile({ icon, title, description, href, badge = "live", count }
 export default function PortalDashboard() {
   const { counts, loading, error } = useDashboardCounts();
 
+  // Determine what to show
+  const hasActionRequiredTasks = !loading && counts.tasks > 0;
+  const hasUnreadMessages = !loading && counts.unreadMessages > 0;
+  const hasNotifications = !loading && counts.notifications > 0;
+
+  const showPrimarySection = hasActionRequiredTasks || hasUnreadMessages;
+  const showSecondarySection = hasNotifications;
+  const showEmptyState = !loading && !showPrimarySection && !showSecondarySection;
+
   return (
-    <div className="p-6">
+    <div className="p-6" style={{ maxWidth: "920px", margin: "0 auto" }}>
       {/* Page Header */}
-      <PageHeader
-        title="Client Portal"
-        subtitle="Your personalized hub for tasks, messages, documents, and more."
-      />
+      <div style={{ marginBottom: "32px" }}>
+        <h1 className="text-2xl font-semibold" style={{ color: "hsl(var(--text-primary))" }}>
+          Dashboard
+        </h1>
+        <p className="text-sm" style={{ color: "hsl(var(--text-secondary))", marginTop: "4px" }}>
+          Your personalized hub for tasks, messages, and updates.
+        </p>
+      </div>
 
       {/* Error banner (non-blocking) */}
       {error && (
-        <div className="mt-4 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-400">
+        <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-400" style={{ marginBottom: "24px" }}>
           {error}
         </div>
       )}
 
-      {/* Section 1: Active Items */}
-      <section className="mt-8">
-        <div style={{ marginBottom: "1.25rem" }}>
-          <h2 className="text-xl font-semibold text-primary">Active Items</h2>
+      {/* Loading state */}
+      {loading && (
+        <div className="text-sm" style={{ color: "hsl(var(--text-secondary))" }}>
+          Loading...
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <PrimaryTile
-            title="Tasks"
-            description="Action items that need your attention."
-            buttonLabel="Open Tasks"
-            href="/portal/tasks"
-            icon={<TasksIcon className="w-24 h-24" />}
-            badge={loading ? "live" : counts.tasks > 0 ? "active" : "live"}
-            count={loading ? undefined : counts.tasks > 0 ? counts.tasks : undefined}
-          />
-          <PrimaryTile
-            title="Messages"
-            description="Private conversations with your breeder."
-            buttonLabel="Open Inbox"
-            href="/portal/messages"
-            icon={<MessagesIcon className="w-24 h-24" />}
-            badge={loading ? "live" : counts.unreadMessages > 0 ? "active" : "live"}
-            count={loading ? undefined : counts.unreadMessages}
-          />
-        </div>
-      </section>
+      )}
 
-      {/* Section 2: Key Workflows */}
-      <section style={{ marginTop: "3rem" }}>
-        <div style={{ marginBottom: "1.25rem" }}>
-          <h2 className="text-xl font-semibold text-primary">Key Workflows</h2>
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          <SecondaryTile
-            icon={<NotificationsIcon className="w-5 h-5" />}
-            title="Notifications"
-            description={
-              loading
-                ? "Loading..."
-                : counts.notifications === 0
-                ? "No recent activity."
-                : `${counts.notifications} notification${counts.notifications !== 1 ? "s" : ""} in last 7 days`
-            }
-            href="/portal/notifications"
-            badge={loading ? "live" : counts.notifications > 0 ? "active" : "live"}
-            count={loading ? undefined : counts.notifications > 0 ? counts.notifications : undefined}
-          />
-          {PORTAL_FEATURE_FLAGS.SHOW_BILLING && (
-            <SecondaryTile
-              icon={<BillingIcon className="w-5 h-5" />}
-              title="Billing and Transactions"
-              description="No items yet."
-              href="/portal/billing"
-              badge="live"
-              count={0}
-            />
-          )}
-          {PORTAL_FEATURE_FLAGS.SHOW_AGREEMENTS && (
-            <SecondaryTile
-              icon={<AgreementsIcon className="w-5 h-5" />}
-              title="Agreements"
-              description="No items yet."
-              href="/portal/agreements"
-              badge="live"
-              count={0}
-            />
-          )}
-          <SecondaryTile
-            icon={<DocumentsIcon className="w-5 h-5" />}
-            title="Documents"
-            description="No items yet."
-            href="/portal/documents"
-            badge="live"
-            count={0}
-          />
-        </div>
-      </section>
-
-      {/* Section 3: My Offspring */}
-      {PORTAL_FEATURE_FLAGS.SHOW_OFFSPRING && (
-        <section style={{ marginTop: "3rem" }}>
-          <div style={{ marginBottom: "1.25rem" }}>
-            <h2 className="text-xl font-semibold text-primary">My Offspring</h2>
+      {/* Primary Section: Needs your attention */}
+      {showPrimarySection && (
+        <section style={{ marginBottom: "32px" }}>
+          <h2 className="text-lg font-semibold" style={{ color: "hsl(var(--text-primary))", marginBottom: "12px" }}>
+            Needs your attention
+          </h2>
+          <div style={{ display: "flex", flexDirection: "column", gap: "0" }}>
+            {hasActionRequiredTasks && (
+              <SummaryRow
+                icon={<TasksIcon className="w-5 h-5" />}
+                label="Tasks"
+                description="Action items that need your attention"
+                count={counts.tasks}
+                href="/portal/tasks"
+              />
+            )}
+            {hasUnreadMessages && (
+              <SummaryRow
+                icon={<MessagesIcon className="w-5 h-5" />}
+                label="Messages"
+                description="Unread conversations with your breeder"
+                count={counts.unreadMessages}
+                href="/portal/messages"
+              />
+            )}
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            <SecondaryTile
-              icon={<OffspringIcon className="w-5 h-5" />}
-              title="Current Placements"
-              description="No items yet."
-              href="/portal/offspring"
-              badge="live"
-              count={0}
-            />
-            <SecondaryTile
-              icon={<span className="text-base">👪</span>}
-              title="Offspring Groups"
-              description="No items yet."
-              href="/portal/offspring?view=groups"
-              badge="live"
-              count={0}
+        </section>
+      )}
+
+      {/* Secondary Section: Recent updates */}
+      {showSecondarySection && (
+        <section style={{ marginBottom: "32px" }}>
+          <h2 className="text-lg font-semibold" style={{ color: "hsl(var(--text-primary))", marginBottom: "12px" }}>
+            Recent updates
+          </h2>
+          <div style={{ display: "flex", flexDirection: "column", gap: "0" }}>
+            <SummaryRow
+              icon={<NotificationsIcon className="w-5 h-5" />}
+              label="Notifications"
+              description={`${counts.notifications} notification${counts.notifications !== 1 ? 's' : ''} in the last 7 days`}
+              count={counts.notifications}
+              href="/portal/notifications"
             />
           </div>
         </section>
       )}
 
-      {/* Section 4: Preferences */}
-      <section style={{ marginTop: "3rem" }}>
-        <div style={{ marginBottom: "1.25rem" }}>
-          <h2 className="text-xl font-semibold text-primary">Preferences</h2>
+      {/* Empty State */}
+      {showEmptyState && (
+        <div style={{ marginTop: "64px", textAlign: "center" }}>
+          <h3 className="text-xl font-medium" style={{ color: "hsl(var(--text-primary))" }}>
+            You're all set.
+          </h3>
+          <p className="text-sm" style={{ color: "hsl(var(--text-secondary))", marginTop: "8px" }}>
+            We'll surface tasks, messages, and updates here when they need your attention.
+          </p>
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          {PORTAL_FEATURE_FLAGS.SHOW_WAITLIST && (
-            <SecondaryTile
-              icon={<WaitlistIcon className="w-5 h-5" />}
-              title="Waitlist"
-              description="No items yet."
-              href="/portal/waitlist"
-              badge="live"
-              count={0}
-            />
-          )}
-          {PORTAL_FEATURE_FLAGS.SHOW_SCHEDULING && (
-            <SecondaryTile
-              icon={<ScheduleIcon className="w-5 h-5" />}
-              title="Scheduling"
-              description="No items yet."
-              href="/portal/profile?tab=appointments"
-              badge="live"
-              count={0}
-            />
-          )}
-        </div>
-      </section>
-
+      )}
     </div>
   );
 }
