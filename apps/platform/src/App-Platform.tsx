@@ -354,6 +354,7 @@ export default function AppPlatform() {
               { key: "breeding", label: "Breeding", href: "/breeding", icon: "breeding" },
               { key: "offspring", label: "Offspring", href: "/offspring", icon: "offspring" },
               { key: "marketing", label: "Marketing", href: "/marketing" },
+              { key: "marketplace", label: "Marketplace", href: (import.meta as any)?.env?.VITE_MARKETPLACE_URL || "https://marketplace.breederhq.com" },
               { key: "finance", label: "Finance", href: "/finance", icon: "finance" },
               { key: "admin", label: "Admin", href: "/admin", icon: "admin" },
             ]}
