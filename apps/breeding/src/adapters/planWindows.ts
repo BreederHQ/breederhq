@@ -95,10 +95,10 @@ function toPlanStageWindows(tl: ReturnType<typeof buildTimelineFromSeed>): PlanS
 
     cycle_start: (m as any).cycle_start || "",
     ovulation: (m as any).ovulation_center || "",  // reproEngine uses "ovulation_center"
-    birth_expected: (m as any).birth_expected ?? null,
-    placement_start_expected: (m as any).placement_start_expected ?? null,
-    placement_completed_expected: (m as any).placement_completed_expected ?? null,
-    placement_extended_end_expected: (m as any).placement_extended_end_expected ?? null,
+    birth_expected: (w as any).whelping?.full?.[0] ?? null,
+    placement_start_expected: (w as any).go_home_normal?.full?.[0] ?? null,
+    placement_completed_expected: (w as any).go_home_normal?.full?.[1] ?? null,
+    placement_extended_end_expected: (w as any).go_home_extended?.full?.[1] ?? null,
   };
 }
 
