@@ -3612,8 +3612,22 @@ function PlanDetailsView(props: {
     setLiveOverride(row.femaleCycleLenOverrideDays ?? null);
   }, [row.damId, row.femaleCycleLenOverrideDays]);
 
+  const prevDamIdRef = React.useRef<number | null>(null);
+  const fetchedDamIds = React.useRef<Set<number>>(new Set());
+
   React.useEffect(() => {
     let cancelled = false;
+
+    // Only refetch if damId actually changed (not just row object reference)
+    if (prevDamIdRef.current === row.damId && row.damId != null) {
+      return;
+    }
+
+    const isInitialFetch = row.damId != null && !fetchedDamIds.current.has(row.damId);
+    if (row.damId != null) {
+      fetchedDamIds.current.add(row.damId);
+    }
+    prevDamIdRef.current = row.damId ?? null;
 
     setDamRepro(null);
     setDamLoadError(null);
@@ -3717,7 +3731,8 @@ function PlanDetailsView(props: {
         const freshOverride = data?.femaleCycleLenOverrideDays ?? null;
         if (freshOverride !== liveOverride) {
           setLiveOverride(freshOverride);
-          setDraft({ femaleCycleLenOverrideDays: freshOverride });
+          // NEVER call setDraft from animal fetch - the override is already in the row
+          // and calling setDraft here causes spurious "unsaved changes" warnings
         }
       } catch (e: any) {
         if (!cancelled) {
@@ -3737,18 +3752,26 @@ function PlanDetailsView(props: {
   const prevOverrideRef = React.useRef<number | null | undefined>(undefined);
   const isRecalculating = React.useRef(false);
   const hasMountedRef = React.useRef(false);
+  const lastRecalcTimestamp = React.useRef<number>(0);
 
   React.useEffect(() => {
-    const isLocked = Boolean((effective.lockedCycleStart ?? "").toString().trim());
+    const isLocked = Boolean((row.lockedCycleStart ?? "").toString().trim());
     const overrideChanged = prevOverrideRef.current !== liveOverride;
+
+    // Prevent infinite loop: don't recalculate if we just did one within the last 2 seconds
+    const now = Date.now();
+    const timeSinceLastRecalc = now - lastRecalcTimestamp.current;
+    const tooSoon = timeSinceLastRecalc < 2000;
 
     // Only recalculate if:
     // 1. Override actually changed
     // 2. Cycle is locked
     // 3. Not currently in a recalculation
     // 4. Component has mounted at least once (skip initial mount)
-    if (isLocked && overrideChanged && !isRecalculating.current && hasMountedRef.current) {
+    // 5. Hasn't been recalculated in the last 2 seconds (prevents loop from refetch)
+    if (isLocked && overrideChanged && !isRecalculating.current && hasMountedRef.current && !tooSoon) {
       isRecalculating.current = true;
+      lastRecalcTimestamp.current = now;
       recalculateExpectedDates().finally(() => {
         isRecalculating.current = false;
       });
@@ -3756,7 +3779,7 @@ function PlanDetailsView(props: {
 
     prevOverrideRef.current = liveOverride;
     hasMountedRef.current = true;
-  }, [liveOverride, effective.lockedCycleStart]);
+  }, [liveOverride]);
 
   // ===== Cycle math + projections =====
   const speciesWire = normalizeSpeciesWire(row.species);

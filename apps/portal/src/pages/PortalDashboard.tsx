@@ -186,9 +186,9 @@ function NotificationsIcon({ className }: { className?: string }) {
   );
 }
 
-/* ───────────────── Summary Row Component ───────────────── */
+/* ───────────────── Dashboard Row Component ───────────────── */
 
-interface SummaryRowProps {
+interface DashboardRowProps {
   icon: React.ReactNode;
   label: string;
   description: string;
@@ -197,7 +197,9 @@ interface SummaryRowProps {
   isLast?: boolean;
 }
 
-function SummaryRow({ icon, label, description, count, href, isLast = false }: SummaryRowProps) {
+function DashboardRow({ icon, label, description, count, href, isLast = false }: DashboardRowProps) {
+  const hasCount = count > 0;
+
   return (
     <a
       href={href}
@@ -209,26 +211,28 @@ function SummaryRow({ icon, label, description, count, href, isLast = false }: S
         paddingBottom: "20px",
       }}
     >
-      <div className="flex-shrink-0 w-5 h-5" style={{ opacity: 0.7 }}>
+      <div className="flex-shrink-0 w-5 h-5" style={{ opacity: hasCount ? 0.9 : 0.5 }}>
         {icon}
       </div>
       <div className="flex-1 min-w-0">
         <div className="text-base font-semibold" style={{ color: "hsl(var(--text-primary))" }}>
           {label}
         </div>
-        <div className="text-sm" style={{ color: "hsl(var(--text-secondary))", marginTop: "3px", opacity: 0.85 }}>
+        <div className="text-sm" style={{ color: "hsl(var(--text-secondary))", marginTop: "3px" }}>
           {description}
         </div>
       </div>
-      <div
-        className="flex-shrink-0 px-2.5 py-1 rounded-full"
-        style={{ backgroundColor: "rgba(232, 121, 36, 0.12)", color: "#e87924", fontSize: "11px", fontWeight: 600 }}
-      >
-        {count}
-      </div>
+      {hasCount && (
+        <div
+          className="flex-shrink-0 px-2.5 py-1 rounded-full"
+          style={{ backgroundColor: "rgba(232, 121, 36, 0.12)", color: "#e87924", fontSize: "11px", fontWeight: 600 }}
+        >
+          {count}
+        </div>
+      )}
       <div
         className="flex-shrink-0 text-sm font-medium"
-        style={{ color: "hsl(var(--text-secondary))", marginLeft: "8px" }}
+        style={{ color: "hsl(var(--text-secondary))", marginLeft: hasCount ? "8px" : "0" }}
       >
         View
       </div>
@@ -241,19 +245,12 @@ function SummaryRow({ icon, label, description, count, href, isLast = false }: S
 export default function PortalDashboard() {
   const { counts, loading, error } = useDashboardCounts();
 
-  // Determine what to show
-  const hasActionRequiredTasks = !loading && counts.tasks > 0;
-  const hasUnreadMessages = !loading && counts.unreadMessages > 0;
-  const hasNotifications = !loading && counts.notifications > 0;
-
-  const showPrimarySection = hasActionRequiredTasks || hasUnreadMessages;
-  const showSecondarySection = hasNotifications;
-  const showEmptyState = !loading && !showPrimarySection && !showSecondarySection;
+  const allZero = !loading && counts.tasks === 0 && counts.unreadMessages === 0 && counts.notifications === 0;
 
   return (
     <div className="p-6" style={{ maxWidth: "920px", margin: "0 auto", backgroundColor: "rgba(255, 255, 255, 0.02)", borderRadius: "12px" }}>
       {/* Page Header */}
-      <div style={{ marginBottom: "24px" }}>
+      <div style={{ marginBottom: "32px" }}>
         <h1 className="text-2xl font-bold" style={{ color: "hsl(var(--text-primary))" }}>
           Dashboard
         </h1>
@@ -273,66 +270,71 @@ export default function PortalDashboard() {
         </div>
       )}
 
-      {/* Primary Section: Needs your attention */}
-      {showPrimarySection && (
-        <section style={{ marginBottom: "32px" }}>
-          <h2 className="text-xs font-semibold uppercase tracking-wide" style={{ color: "hsl(var(--text-secondary))", marginBottom: "12px" }}>
-            Needs your attention
-          </h2>
-          <div style={{ display: "flex", flexDirection: "column", gap: "0" }}>
-            {hasActionRequiredTasks && (
-              <SummaryRow
+      {/* Dashboard Sections - Always Visible */}
+      {!loading && (
+        <div style={{ display: "flex", flexDirection: "column", gap: "32px" }}>
+          {/* Tasks Section */}
+          <section>
+            <h2 className="text-xs font-semibold uppercase tracking-wide" style={{ color: "hsl(var(--text-secondary))", marginBottom: "12px" }}>
+              Tasks
+            </h2>
+            <div>
+              <DashboardRow
                 icon={<TasksIcon className="w-5 h-5" />}
                 label="Tasks"
-                description="Action items that need your attention"
+                description={counts.tasks > 0 ? "Action items that need your attention" : "Check your tasks"}
                 count={counts.tasks}
                 href="/portal/tasks"
-                isLast={!hasUnreadMessages}
+                isLast={true}
               />
-            )}
-            {hasUnreadMessages && (
-              <SummaryRow
+            </div>
+          </section>
+
+          {/* Messages Section */}
+          <section>
+            <h2 className="text-xs font-semibold uppercase tracking-wide" style={{ color: "hsl(var(--text-secondary))", marginBottom: "12px" }}>
+              Messages
+            </h2>
+            <div>
+              <DashboardRow
                 icon={<MessagesIcon className="w-5 h-5" />}
                 label="Messages"
-                description="Unread conversations with your breeder"
+                description={counts.unreadMessages > 0 ? "Unread conversations with your breeder" : "View your messages"}
                 count={counts.unreadMessages}
                 href="/portal/messages"
                 isLast={true}
               />
-            )}
-          </div>
-        </section>
-      )}
+            </div>
+          </section>
 
-      {/* Secondary Section: Recent updates */}
-      {showSecondarySection && (
-        <section style={{ marginBottom: "32px" }}>
-          <h2 className="text-xs font-semibold uppercase tracking-wide" style={{ color: "hsl(var(--text-secondary))", marginBottom: "12px" }}>
-            Recent updates
-          </h2>
-          <div style={{ display: "flex", flexDirection: "column", gap: "0" }}>
-            <SummaryRow
-              icon={<NotificationsIcon className="w-5 h-5" />}
-              label="Notifications"
-              description="Recent updates that may need your attention"
-              count={counts.notifications}
-              href="/portal/notifications"
-              isLast={true}
-            />
-          </div>
-        </section>
-      )}
+          {/* Notifications Section */}
+          <section>
+            <h2 className="text-xs font-semibold uppercase tracking-wide" style={{ color: "hsl(var(--text-secondary))", marginBottom: "12px" }}>
+              Notifications
+            </h2>
+            <div>
+              <DashboardRow
+                icon={<NotificationsIcon className="w-5 h-5" />}
+                label="Notifications"
+                description={counts.notifications > 0 ? "Recent updates that may need your attention" : "View recent updates"}
+                count={counts.notifications}
+                href="/portal/notifications"
+                isLast={true}
+              />
+            </div>
+          </section>
 
-      {/* Empty State */}
-      {showEmptyState && (
-        <div style={{ marginTop: "24px" }}>
-          <div style={{ width: "100%", height: "1px", backgroundColor: "rgba(255, 255, 255, 0.1)", marginBottom: "20px" }} />
-          <h3 className="text-xl font-semibold" style={{ color: "hsl(var(--text-primary))" }}>
-            You're all set.
-          </h3>
-          <p className="text-sm" style={{ color: "hsl(var(--text-secondary))", marginTop: "8px", opacity: 0.9 }}>
-            We'll surface tasks, messages, and updates here when they need your attention.
-          </p>
+          {/* Empty State Message - Additive */}
+          {allZero && (
+            <div style={{ marginTop: "16px", paddingTop: "24px", borderTop: "1px solid rgba(255, 255, 255, 0.05)" }}>
+              <h3 className="text-lg font-semibold" style={{ color: "hsl(var(--text-primary))" }}>
+                You're all set.
+              </h3>
+              <p className="text-sm" style={{ color: "hsl(var(--text-secondary))", marginTop: "8px" }}>
+                When you have items that need attention, they'll appear above.
+              </p>
+            </div>
+          )}
         </div>
       )}
     </div>
