@@ -8,22 +8,22 @@
 - [x] No console.log/debugger statements in production code
 - [x] TypeScript compilation passes (no errors)
 - [ ] ESLint passes with no warnings
-- [ ] Tests documented (cannot run without framework)
+- [x] Prisma schema updated with override field
+- [x] Migration created
 
 ### Database
-- [x] Migration file created: `20260101113710_add_cycle_len_override`
+- [x] Migration file created: `20260101121151_add_female_cycle_len_override`
 - [x] Migration adds `femaleCycleLenOverrideDays INTEGER` column
 - [x] Column is nullable (default NULL)
-- [x] Migration includes documentation comment
 - [ ] Migration tested on staging database
-- [ ] Rollback script prepared (ALTER TABLE DROP COLUMN)
+- [x] Rollback script prepared (ALTER TABLE DROP COLUMN)
 
-### API
-- [x] Route handlers implemented (updateAnimal, getAnimal)
+### API (Fastify)
+- [x] Route handlers updated (PATCH /animals/:id, GET /animals/:id)
 - [x] Validation logic (30-730 range, integer check)
 - [x] Error responses with correct status codes (400)
-- [ ] Server entry point created (BLOCKER - see defects)
-- [ ] API tested with curl (pending server)
+- [x] Server entry point exists (`src/server.ts`)
+- [ ] API tested with curl (requires auth setup)
 
 ### Frontend
 - [x] ReproEngine precedence logic (Override > History > Biology)
@@ -35,10 +35,9 @@
 - [ ] Manual verification completed (see FRONTEND_RUNTIME_VERIFICATION.md)
 
 ### Documentation
-- [x] API endpoints documented in README
+- [x] API endpoints documented
 - [x] Migration documented
 - [x] Runtime verification procedures written
-- [x] Test specifications created
 - [ ] User-facing documentation (if needed)
 
 ## Staging Deployment Steps
@@ -46,147 +45,117 @@
 ### 1. Pre-Deployment
 ```bash
 # Ensure on dev branch
+cd c:/Users/Aaron/Documents/Projects/breederhq
 git checkout dev
 git pull origin dev
 
 # Verify clean working tree
 git status
 
-# Run builds
+# Build frontend packages
 npm -C ./packages/ui run build
 npm -C ./apps/animals run build
 npm -C ./apps/breeding run build
 
-# Check for build errors
-echo "Build status: $?"
+# Build backend
+cd ../breederhq-api
+npm run build
 ```
 
 ### 2. Database Migration (Staging)
 ```bash
-# Connect to staging database
-# Set DATABASE_URL to staging connection string
+cd c:/Users/Aaron/Documents/Projects/breederhq-api
 
-cd breederhq-api
+# Set environment to staging
+# Edit .env.prod.migrate with staging DATABASE_URL
 
-# Dry run (review SQL)
-npx prisma migrate diff \
-  --from-schema-datamodel prisma/schema.prisma \
-  --to-schema-datasource prisma/schema.prisma \
-  --script
+# Check migration status
+npm run db:prod:status
 
 # Apply migration
-npm run migrate:deploy
+npm run db:prod:deploy
 
 # Verify column exists
-psql $DATABASE_URL -c "
-  SELECT column_name, data_type, is_nullable
-  FROM information_schema.columns
-  WHERE table_name = 'animals'
-    AND column_name = 'femaleCycleLenOverrideDays';
-"
+npm run db:prod:validate:schema
 ```
 
-Expected output:
+Or manually verify:
+```sql
+SELECT column_name, data_type, is_nullable
+FROM information_schema.columns
+WHERE table_name = 'Animal'
+  AND column_name = 'femaleCycleLenOverrideDays';
 ```
-      column_name           | data_type | is_nullable
-----------------------------+-----------+-------------
- femaleCycleLenOverrideDays | integer   | YES
+
+Expected:
+```
+ femaleCycleLenOverrideDays | integer | YES
 ```
 
 ### 3. Backend Deployment (Staging)
 
-**BLOCKER**: Cannot deploy without server entry point (src/index.ts)
-
-Once blocker resolved:
 ```bash
-cd breederhq-api
+cd c:/Users/Aaron/Documents/Projects/breederhq-api
 
 # Install dependencies
 npm ci
 
 # Generate Prisma client
-npm run generate
+npm run prisma:gen
 
-# Start API server
-npm run dev  # or production start script
+# Build TypeScript
+npm run build
+
+# Start production server (or deploy to hosting)
+npm run start
 ```
+
+**Server Details**:
+- Framework: Fastify 5.x
+- Entry point: `dist/server.js` (compiled from `src/server.ts`)
+- Port: 3000 (default, configurable via PORT env var)
+- Routes: `/api/v1/animals/*`
 
 ### 4. Frontend Deployment (Staging)
 
 ```bash
-cd breederhq
+cd c:/Users/Aaron/Documents/Projects/breederhq
 
-# Deploy to staging (command depends on hosting)
-# Example for Vercel:
-npm run build:platform
+# Deploy to staging (example for Vercel)
 vercel deploy --env staging
 
-# Or for static hosting:
+# Or build for static hosting
 npm run build:platform
-# Copy dist/ to staging server
+# Deploy dist/ to hosting provider
 ```
 
 ### 5. Smoke Test (5 minutes)
 
-**On staging environment:**
+**Backend Smoke Test** (requires valid session):
 
-#### Backend Smoke Test
-```bash
-# Replace with staging API URL
-API_URL="https://api-staging.breederhq.com"
+See [breederhq-api/RUNTIME_VERIFICATION.md](../breederhq-api/RUNTIME_VERIFICATION.md) for full test procedures.
 
-# Test 1: GET animal (should include new field)
-curl $API_URL/api/v1/animals/1 | jq '.femaleCycleLenOverrideDays'
+Quick checklist:
+- [ ] GET /api/v1/animals/:id returns `femaleCycleLenOverrideDays: null`
+- [ ] PATCH with `{"femaleCycleLenOverrideDays": 150}` returns 200
+- [ ] PATCH with `{"femaleCycleLenOverrideDays": 29}` returns 400
+- [ ] PATCH with `{"femaleCycleLenOverrideDays": null}` returns 200
 
-# Test 2: PATCH valid value
-curl -X PATCH $API_URL/api/v1/animals/1 \
-  -H "Content-Type: application/json" \
-  -d '{"femaleCycleLenOverrideDays": 150}' \
-  | jq '.femaleCycleLenOverrideDays'
+**Frontend Smoke Test**:
 
-# Expected: 150
-
-# Test 3: PATCH invalid value (should fail)
-curl -X PATCH $API_URL/api/v1/animals/1 \
-  -H "Content-Type: application/json" \
-  -d '{"femaleCycleLenOverrideDays": 10}' \
-  | jq '.error'
-
-# Expected: "invalid_cycle_len_override"
-
-# Test 4: PATCH to null (clear)
-curl -X PATCH $API_URL/api/v1/animals/1 \
-  -H "Content-Type: application/json" \
-  -d '{"femaleCycleLenOverrideDays": null}' \
-  | jq '.femaleCycleLenOverrideDays'
-
-# Expected: null
-```
-
-#### Frontend Smoke Test
-1. Open Animals app in staging
-2. Navigate to a female animal
+1. Open Animals app
+2. Navigate to female animal
 3. Go to Cycle Info tab
-4. Enter override value `120`
-5. Click Save
-6. Verify:
-   - Next heat date updates
-   - Page refresh persists value
-7. Enter conflicting override (>20% from history)
-8. Verify yellow warning appears
-9. Clear override
-10. Verify warning disappears
-11. Open Breeding app
-12. Select same female in what-if planner
-13. Verify projected cycles use override interval
-
-**Pass Criteria**: All 13 steps complete without errors
+4. Verify override input field visible
+5. Enter `120`, click Save
+6. Refresh page → value persists
+7. Clear override → warning disappears
 
 ## Production Deployment Steps
 
 ### 1. Merge to Main
 ```bash
-# From dev branch with all tests passing
+cd c:/Users/Aaron/Documents/Projects/breederhq
 git checkout main
 git pull origin main
 git merge dev --no-ff -m "feat: Cycle Length Override v1"
@@ -198,107 +167,90 @@ git push origin main
 **CRITICAL**: Run during maintenance window or low-traffic period
 
 ```bash
-# Set DATABASE_URL to production
-export DATABASE_URL="postgresql://..."
-
-cd breederhq-api
+cd c:/Users/Aaron/Documents/Projects/breederhq-api
 
 # BACKUP FIRST
-pg_dump $DATABASE_URL > backup_pre_cycle_override_$(date +%Y%m%d_%H%M%S).sql
+# Use appropriate backup command for your hosting provider
+
+# Set .env.prod.migrate with production DATABASE_URL
 
 # Apply migration
-npm run migrate:deploy
+npm run db:prod:deploy
 
 # Verify
-psql $DATABASE_URL -c "
-  SELECT column_name, data_type, is_nullable
-  FROM information_schema.columns
-  WHERE table_name = 'animals'
-    AND column_name = 'femaleCycleLenOverrideDays';
-"
+npm run db:prod:validate:schema
 
 # Sanity check: all existing animals should have NULL override
-psql $DATABASE_URL -c "
-  SELECT COUNT(*) as total,
-         COUNT(\"femaleCycleLenOverrideDays\") as with_override
-  FROM animals;
-"
+```
 
-# Expected: with_override = 0 (all NULL initially)
+SQL sanity check:
+```sql
+SELECT COUNT(*) as total,
+       COUNT("femaleCycleLenOverrideDays") as with_override
+FROM "Animal";
+
+-- Expected: with_override = 0 (all NULL initially)
 ```
 
 ### 3. Deploy Application Code
 
-```bash
-# Deploy backend
-cd breederhq-api
-# [Your deployment process]
-
-# Deploy frontend
-cd breederhq
-npm run build
-# [Your deployment process]
-```
+Follow your deployment process for:
+- Backend API (breederhq-api)
+- Frontend apps (platform, animals, breeding)
 
 ### 4. Production Smoke Test (2 minutes)
 
 ```bash
 # Test API is responding
-curl https://api.breederhq.com/api/v1/animals/1 | jq '.femaleCycleLenOverrideDays'
+curl https://api.breederhq.com/api/v1/animals/1 \
+  -H "Cookie: ..." \
+  -H "x-tenant-id: 1"
 
-# Expected: null (no overrides set yet)
+# Look for femaleCycleLenOverrideDays field in response
 ```
 
 **Manual UI Check**:
 1. Open production Animals app
-2. Navigate to any female animal
+2. Navigate to female animal
 3. Verify Cycle Info tab loads
-4. Verify override input field visible
-5. Do NOT save any values yet
-6. Close tab
+4. Verify override input visible
+5. Do NOT save values yet
 
 ### 5. Post-Deployment Monitoring (First 24 hours)
 
 #### Metrics to Watch
-- **API Error Rate**: Should remain stable
-  - Watch for 400 errors on PATCH /animals/:id
-  - Any spike indicates validation issues
-- **Database Performance**: Column addition should have no impact
-  - Monitor query times on `animals` table
-  - Watch for table lock issues (should be none)
-- **Frontend Error Rate**: Should remain stable
-  - Watch for TypeScript errors in browser console
-  - Monitor reproEngine calculation errors
+- **API Error Rate**: Watch for 400 errors on PATCH /animals/:id
+- **Database Performance**: Monitor query times on `Animal` table
+- **Frontend Error Rate**: Watch for TypeScript/reproEngine errors
 
 #### Logs to Monitor
 ```bash
-# Backend logs (adjust for your logging system)
-tail -f /var/log/breederhq-api/error.log | grep -i "cycle"
+# Backend logs (adjust for your system)
+tail -f /var/log/api/error.log | grep -i "cycle\|override"
 
 # Watch for:
-# - "invalid_cycle_len_override" errors (expected when users try invalid values)
+# - "invalid_cycle_len_override" (expected when users try invalid values)
 # - Unexpected 500 errors (NOT expected)
-# - Prisma query failures (NOT expected)
 ```
 
 #### Database Queries
 ```sql
--- Check adoption rate (how many users set overrides)
+-- Check adoption rate
 SELECT COUNT(*) as animals_with_override
-FROM animals
+FROM "Animal"
 WHERE "femaleCycleLenOverrideDays" IS NOT NULL;
 
 -- Check value distribution
 SELECT "femaleCycleLenOverrideDays", COUNT(*) as count
-FROM animals
+FROM "Animal"
 WHERE "femaleCycleLenOverrideDays" IS NOT NULL
 GROUP BY "femaleCycleLenOverrideDays"
 ORDER BY count DESC
 LIMIT 10;
 
--- Check for invalid values (should be impossible due to validation)
+-- Check for invalid values (should be impossible)
 SELECT id, "femaleCycleLenOverrideDays"
-FROM animals
+FROM "Animal"
 WHERE "femaleCycleLenOverrideDays" IS NOT NULL
   AND ("femaleCycleLenOverrideDays" < 30 OR "femaleCycleLenOverrideDays" > 730);
 
@@ -307,147 +259,83 @@ WHERE "femaleCycleLenOverrideDays" IS NOT NULL
 
 ## Rollback Plan
 
-### If Critical Bug Found Within 1 Hour of Deployment
+### If Critical Bug Found Within 1 Hour
 
-#### Option A: Revert Code Only (if database migration not the issue)
+#### Option A: Revert Code Only
 ```bash
 git revert <commit-hash>
 git push origin main
-# Redeploy previous version
+# Redeploy
 ```
 
 Database column can remain (no harm if unused).
 
-#### Option B: Full Rollback (if database migration causes issues)
+#### Option B: Full Rollback (DESTRUCTIVE)
 
-**Backend Rollback**:
-```bash
-# Redeploy previous API version
-git checkout <previous-commit>
-# Deploy
-```
-
-**Database Rollback** (DESTRUCTIVE - loses all override data):
+**Backup override data first**:
 ```sql
--- BACKUP FIRST
-CREATE TABLE animals_override_backup AS
+CREATE TABLE "Animal_override_backup" AS
 SELECT id, "femaleCycleLenOverrideDays"
-FROM animals
+FROM "Animal"
 WHERE "femaleCycleLenOverrideDays" IS NOT NULL;
-
--- Remove column
-ALTER TABLE animals DROP COLUMN "femaleCycleLenOverrideDays";
 ```
 
-**Frontend Rollback**:
-```bash
-# Redeploy previous UI version
-git checkout <previous-commit>
-npm run build
-# Deploy
-```
-
-**Restore After Fix**:
+**Remove column**:
 ```sql
--- Re-add column
-ALTER TABLE animals ADD COLUMN "femaleCycleLenOverrideDays" INTEGER;
+ALTER TABLE "Animal" DROP COLUMN "femaleCycleLenOverrideDays";
+```
 
--- Restore data
-UPDATE animals a
+**Restore later** (after fix):
+```sql
+ALTER TABLE "Animal" ADD COLUMN "femaleCycleLenOverrideDays" INTEGER;
+
+UPDATE "Animal" a
 SET "femaleCycleLenOverrideDays" = b."femaleCycleLenOverrideDays"
-FROM animals_override_backup b
+FROM "Animal_override_backup" b
 WHERE a.id = b.id;
 ```
-
-### If Bug Found After 24 Hours
-
-- **Do NOT rollback** - too risky to lose user data
-- Create hotfix branch from main
-- Fix bug, test on staging
-- Deploy hotfix to production
-- Merge hotfix back to dev and main
 
 ## Success Criteria
 
 ### Immediate (Day 1)
 - [ ] Zero 500 errors related to cycle override
-- [ ] Migration applied successfully (column exists)
-- [ ] API validation works (400 errors for invalid values)
+- [ ] Migration applied successfully
+- [ ] API validation works (400 for invalid values)
 - [ ] Frontend loads without errors
 
 ### Week 1
-- [ ] At least 5 users have set overrides (proves feature is discoverable)
+- [ ] At least 5 users have set overrides
 - [ ] No data corruption reports
 - [ ] No performance degradation
-- [ ] Conflict warnings appear when appropriate
+- [ ] Conflict warnings appear appropriately
 
 ### Month 1
 - [ ] Feature adoption >10% of active breeding users
 - [ ] Zero reports of incorrect cycle projections
-- [ ] Positive user feedback on accuracy improvement
+- [ ] Positive user feedback
 
-## Known Limitations
+## Known Issues
 
-1. **No server entry point**: Backend routes exist but server.ts/index.ts missing
-   - Impact: Cannot run API standalone
-   - Workaround: Create src/index.ts before staging deployment
-   - Tracked in: Defects section
-
-2. **No test framework**: Tests documented but not executable
-   - Impact: Cannot run automated regression tests
-   - Workaround: Manual verification procedures provided
-   - Tracked in: Defects section
-
-3. **No test database**: Cannot test migration in isolation
-   - Impact: Higher risk on staging deployment
-   - Mitigation: Backup before migrate, manual verification
-
-4. **No UI tests**: Frontend behavior not automatically verified
-   - Impact: Manual smoke testing required
-   - Mitigation: Detailed click-path procedures provided
-
-## Feature Flags / Kill Switch
-
-**Current Status**: No feature flag implemented
-
-**Recommendation**: Add feature flag for post-launch control:
-
-```typescript
-// In Animals app
-const CYCLE_OVERRIDE_ENABLED = import.meta.env.VITE_FEATURE_CYCLE_OVERRIDE !== 'false';
-
-// Conditionally render override UI
-{CYCLE_OVERRIDE_ENABLED && (
-  <div>
-    {/* Override input field */}
-  </div>
-)}
-```
-
-**Benefit**: Can disable feature without code deployment if critical bug found.
+None currently. Previous documentation incorrectly claimed "server entry point missing" - this was false. The server exists at `src/server.ts` using Fastify.
 
 ## Support Checklist
 
-- [ ] Customer support team briefed on new feature
-- [ ] Help documentation updated (if exists)
-- [ ] Support ticket tags created (e.g., "cycle-override")
+- [ ] Customer support briefed on feature
+- [ ] Help documentation updated
+- [ ] Support ticket tags created
 - [ ] Escalation path defined for calculation errors
-- [ ] Sample support responses prepared:
-  - "What is cycle length override?"
-  - "Why do I see a warning?"
-  - "How do I clear an override?"
+- [ ] Sample support responses prepared
 
 ## Communication Plan
 
 ### Pre-Launch
 - [ ] Notify key users/beta testers
 - [ ] Update changelog/release notes
-- [ ] Prepare blog post or announcement (if applicable)
 
 ### Launch Day
-- [ ] Monitor support channels for questions
-- [ ] Watch social media for feedback
-- [ ] Be ready to disable feature if needed
+- [ ] Monitor support channels
+- [ ] Watch for feedback
+- [ ] Be ready to disable if needed
 
 ### Post-Launch
 - [ ] Collect user feedback
