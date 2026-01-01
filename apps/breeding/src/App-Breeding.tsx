@@ -164,7 +164,6 @@ function normalizeExpectedMilestones(
     day(milestones?.breeding_likely?.start) ?? // reproEngine format: { start, end }
     day(milestones?.breeding_full?.[0]) ?? // legacy array format
     day(milestones?.breeding_likely?.[0]) ?? // legacy array format
-    day(milestones?.breeding_expected) ??
     day(milestones?.ovulation_center) ?? // reproEngine milestone
     day(milestones?.ovulation) ??
     null;
@@ -175,18 +174,15 @@ function normalizeExpectedMilestones(
     day(milestones?.whelping_likely?.start) ?? // reproEngine format: { start, end }
     day(milestones?.whelping_full?.[0]) ?? // legacy array format
     day(milestones?.whelping_likely?.[0]) ?? // legacy array format
-    day(milestones?.birth_expected) ??
     null;
 
   const weanedDate =
-    day(milestones?.expectedWeanedDate) ??
+    day(milestones?.expectedWeaned) ??
     day(milestones?.puppy_care_full?.end) ?? // reproEngine format: end of puppy care
     day(milestones?.go_home_normal_full?.start) ?? // reproEngine format: { start, end }
     day(milestones?.go_home_normal_likely?.start) ?? // reproEngine format: { start, end }
     day(milestones?.go_home_normal_full?.[0]) ?? // legacy array format
     day(milestones?.go_home_normal_likely?.[0]) ?? // legacy array format
-    day(milestones?.weaning_expected) ??
-    day(milestones?.weaned_expected) ??
     day(milestones?.post_birth_care_likely?.[0]) ??
     null;
 
@@ -327,7 +323,7 @@ const EDITABLE_PLAN_FIELDS: Array<keyof PlanRow> = [
   "expectedHormoneTestingStart",
   "expectedBreedDate",
   "expectedBirthDate",
-  "expectedWeanedDate",
+  "expectedWeaned",
   "expectedPlacementStartDate",
   "expectedPlacementCompletedDate",
   "cycleStartDateActual",
@@ -356,7 +352,7 @@ const PLAN_DATE_FIELDS = new Set<keyof PlanRow>([
   "expectedHormoneTestingStart",
   "expectedBreedDate",
   "expectedBirthDate",
-  "expectedWeanedDate",
+  "expectedWeaned",
   "expectedPlacementStartDate",
   "expectedPlacementCompletedDate",
   "cycleStartDateActual",
@@ -434,7 +430,7 @@ type PlanRow = {
   expectedHormoneTestingStart?: string | null;
   expectedBreedDate?: string | null;
   expectedBirthDate?: string | null;
-  expectedWeanedDate?: string | null;
+  expectedWeaned?: string | null;
   expectedPlacementStartDate?: string | null;
   expectedPlacementCompletedDate?: string | null;
 
@@ -490,7 +486,7 @@ const COLUMNS: Array<{ key: keyof PlanRow & string; label: string; default?: boo
   { key: "expectedHormoneTestingStart", label: "Hormone Testing Start (Exp)", default: false },
   { key: "expectedBreedDate", label: "Breeding (Exp)", default: false },
   { key: "expectedBirthDate", label: "Birth (Exp)", default: false },
-  { key: "expectedWeanedDate", label: "Weaned (Exp)", default: false },
+  { key: "expectedWeaned", label: "Weaned (Exp)", default: false },
   { key: "expectedPlacementStartDate", label: "Placement Start (Exp)", default: false },
   { key: "expectedPlacementCompletedDate", label: "Placement Completed (Exp)", default: false },
 
@@ -799,7 +795,7 @@ function planToRow(p: any): PlanRow {
     expectedHormoneTestingStart: p.expectedHormoneTestingStart ?? null,
     expectedBreedDate: p.lockedOvulationDate ?? null,
     expectedBirthDate: p.lockedDueDate ?? null,
-    expectedWeanedDate: p.expectedWeanedDate ?? null,
+    expectedWeaned: p.expectedWeaned ?? null,
     expectedPlacementStartDate: p.expectedPlacementStartDate ?? null,
     expectedPlacementCompletedDate: (pickPlacementCompletedAny(p) as any) ?? null,
 
@@ -1578,7 +1574,7 @@ export default function AppBreeding() {
           expectedHormoneTestingStart: normalized.hormoneTestingStart,
           expectedBreedDate: normalized.breedDate,
           expectedBirthDate: normalized.birthDate,
-          expectedWeanedDate: normalized.weanedDate,
+          expectedWeaned: normalized.weanedDate,
           expectedPlacementStartDate: normalized.placementStart,
           expectedPlacementCompleted: normalized.placementCompleted,
           placementCompletedDateExpected: normalized.placementCompleted,
@@ -1672,7 +1668,7 @@ export default function AppBreeding() {
       "expectedHormoneTestingStart",
       "expectedBreedDate",
       "expectedBirthDate",
-      "expectedWeanedDate",
+      "expectedWeaned",
       "expectedPlacementStartDate",
       "expectedPlacementCompletedDate",
 
@@ -1745,7 +1741,7 @@ export default function AppBreeding() {
     "expectedHormoneTestingStart",
     "expectedBreedDate",
     "expectedBirthDate",
-    "expectedWeanedDate",
+    "expectedWeaned",
     "expectedPlacementStartDate",
     "expectedPlacementCompletedDate",
 
@@ -2142,7 +2138,7 @@ export default function AppBreeding() {
           expectedHormoneTestingStart: expected.expectedHormoneTestingStart,
           expectedBreedDate: expected.expectedBreedDate,
           expectedBirthDate: expected.expectedBirthDate,
-          expectedWeanedDate: expected.expectedWeanedDate,
+          expectedWeaned: expected.expectedWeaned,
           expectedPlacementStartDate: expected.expectedPlacementStartDate,
           expectedPlacementCompletedDate: expected.expectedPlacementCompletedDate,
         };
@@ -3762,7 +3758,7 @@ function PlanDetailsView(props: {
       expectedHormoneTestingStart: testingStart ?? null,
       expectedBreedDate: expected.breedDate,
       expectedBirthDate: expected.birthDate,
-      expectedWeanedDate: expected.weanedDate,
+      expectedWeaned: expected.weanedDate,
       expectedPlacementStartDate: expected.placementStart,
       expectedPlacementCompletedDate: expected.placementCompleted,
     };
@@ -3807,7 +3803,7 @@ function PlanDetailsView(props: {
         expectedHormoneTestingStart: testingStart ?? null,
         expectedBreedDate: expected.breedDate,
         expectedBirthDate: expected.birthDate,
-        expectedWeanedDate: expected.weanedDate,
+        expectedWeaned: expected.weanedDate,
         expectedPlacementStartDate: expected.placementStart,
         expectedPlacementCompletedDate: expected.placementCompleted,
       });
@@ -3832,7 +3828,7 @@ function PlanDetailsView(props: {
       expectedHormoneTestingStart: null,
       expectedBreedDate: null,
       expectedBirthDate: null,
-      expectedWeanedDate: null,
+      expectedWeaned: null,
 
       expectedPlacementStartDate: null,
       expectedPlacementCompletedDate: null,
