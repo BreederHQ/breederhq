@@ -5,7 +5,12 @@ import { OrgProvider } from "./context/OrgContext";
 import { PortalShell } from "./components/PortalShell";
 import { AuthGate } from "./components/AuthGate";
 
-// Pages - reuse from @bhq/portal where possible
+// Auth pages - local to client-portal
+import PortalLoginPage from "./pages/PortalLoginPage";
+import PortalForgotPage from "./pages/PortalForgotPage";
+import PortalResetPage from "./pages/PortalResetPage";
+
+// Other pages - reuse from @bhq/portal where possible
 import PortalDashboard from "@bhq/portal/pages/PortalDashboard";
 import PortalTasksPage from "@bhq/portal/pages/PortalTasksPage";
 import PortalBillingPage from "@bhq/portal/pages/PortalBillingPage";
@@ -15,11 +20,10 @@ import PortalOffspringPage from "@bhq/portal/pages/PortalOffspringPage";
 import PortalWaitlistPage from "@bhq/portal/pages/PortalWaitlistPage";
 import PortalProfilePage from "@bhq/portal/pages/PortalProfilePage";
 import PortalActivatePage from "@bhq/portal/pages/PortalActivatePage";
-import PortalLoginPage from "@bhq/portal/pages/PortalLoginPage";
 import MessagesPage from "@bhq/marketing/pages/MessagesPage";
 
 // Public routes that don't require authentication
-const PUBLIC_PATHS = ["login", "activate"];
+const PUBLIC_PATHS = ["login", "forgot", "reset", "activate"];
 
 type ViewRoute =
   | "dashboard"
@@ -33,6 +37,8 @@ type ViewRoute =
   | "profile"
   | "activate"
   | "login"
+  | "forgot"
+  | "reset"
   | "not_found";
 
 interface RouteInfo {
@@ -60,6 +66,12 @@ function parseRoute(pathname: string): RouteInfo | null {
   switch (viewSegment) {
     case "login":
       view = "login";
+      break;
+    case "forgot":
+      view = "forgot";
+      break;
+    case "reset":
+      view = "reset";
       break;
     case "activate":
       view = "activate";
@@ -134,13 +146,28 @@ export default function App() {
   }
 
   const { orgSlug, view } = routeInfo;
-  const isPublic = PUBLIC_PATHS.includes(view);
 
   // Public routes render without shell or auth
   if (view === "login") {
     return (
       <OrgProvider orgSlug={orgSlug}>
         <PortalLoginPage />
+      </OrgProvider>
+    );
+  }
+
+  if (view === "forgot") {
+    return (
+      <OrgProvider orgSlug={orgSlug}>
+        <PortalForgotPage />
+      </OrgProvider>
+    );
+  }
+
+  if (view === "reset") {
+    return (
+      <OrgProvider orgSlug={orgSlug}>
+        <PortalResetPage />
       </OrgProvider>
     );
   }
