@@ -1196,10 +1196,12 @@ function CycleTab({
   animal,
   api,
   onSaved,
+  onOverrideSaved,
 }: {
   animal: AnimalRow;
   api: any;
   onSaved: (dates: string[]) => void;
+  onOverrideSaved?: (overrideValue: number | null) => void;
 }) {
   // Sorted copy of current dates from the server
   const [dates, setDates] = React.useState<string[]>(() =>
@@ -1274,16 +1276,17 @@ function CycleTab({
       toast.success(parsedValue === null ? "Override cleared" : "Override saved");
       // Update local animal object
       (animal as any).femaleCycleLenOverrideDays = parsedValue;
-      // Notify parent about the change - pass dates to keep onSaved signature compatible
-      // The onSaved callback will update rows which triggers DetailsHost to refetch
-      onSaved(dates);
+      // Notify parent about the change
+      if (onOverrideSaved) {
+        onOverrideSaved(parsedValue);
+      }
     } catch (err) {
       console.error("[Animals] save override failed", err);
       toast.error("Could not save override. Please try again.");
     } finally {
       setOverrideSaving(false);
     }
-  }, [api, animal, overrideInput, onSaved, dates]);
+  }, [api, animal, overrideInput, onOverrideSaved]);
 
   const clearOverride = React.useCallback(async () => {
     setOverrideInput("");
@@ -1301,15 +1304,17 @@ function CycleTab({
       await updateFn(id, { femaleCycleLenOverrideDays: null });
       toast.success("Override cleared");
       (animal as any).femaleCycleLenOverrideDays = null;
-      // Notify parent about the change - triggers DetailsHost refetch
-      onSaved(dates);
+      // Notify parent about the change
+      if (onOverrideSaved) {
+        onOverrideSaved(null);
+      }
     } catch (err) {
       console.error("[Animals] clear override failed", err);
       toast.error("Could not clear override. Please try again.");
     } finally {
       setOverrideSaving(false);
     }
-  }, [api, animal, onSaved, dates]);
+  }, [api, animal, onOverrideSaved]);
 
   const handleConfirmRemove = async () => {
     if (!confirmDeleteIso) return;
@@ -4927,11 +4932,15 @@ export default function AppAnimals() {
                 // "unsaved changes" warning even though data is already saved.
                 setRows((prev) =>
                   prev.map((r) =>
-                    r.id === row.id ? {
-                      ...r,
-                      cycleStartDates: dates,
-                      femaleCycleLenOverrideDays: row.femaleCycleLenOverrideDays
-                    } : r
+                    r.id === row.id ? { ...r, cycleStartDates: dates } : r
+                  )
+                );
+              }}
+              onOverrideSaved={(overrideValue) => {
+                // Update rows with the new override value to trigger drawer refetch
+                setRows((prev) =>
+                  prev.map((r) =>
+                    r.id === row.id ? { ...r, femaleCycleLenOverrideDays: overrideValue } : r
                   )
                 );
               }}
