@@ -267,11 +267,47 @@ function Section({ title, children }: SectionProps) {
 
 export default function ClientDashboard() {
   const { counts, loading } = useDashboardCounts();
+  const [showWelcomeBanner, setShowWelcomeBanner] = React.useState(false);
+
+  // Check if this is the first login by looking for a flag in sessionStorage
+  React.useEffect(() => {
+    const isFirstLogin = sessionStorage.getItem("portal_first_login");
+    if (isFirstLogin === "true") {
+      setShowWelcomeBanner(true);
+      // Clear the flag so it only shows once
+      sessionStorage.removeItem("portal_first_login");
+    }
+  }, []);
+
+  function dismissBanner() {
+    setShowWelcomeBanner(false);
+  }
 
   return (
     <div className="min-h-screen bg-page">
       {/* Centered container with max width */}
       <div className="max-w-[1140px] mx-auto px-6 py-8">
+        {/* First Login Welcome Banner */}
+        {showWelcomeBanner && (
+          <div className="mb-6 p-4 rounded-xl bg-[hsl(var(--brand-orange))]/10 border border-[hsl(var(--brand-orange))]/30 flex items-start justify-between">
+            <div className="flex-1">
+              <h2 className="font-semibold text-primary mb-1">Welcome to your portal!</h2>
+              <p className="text-sm text-secondary">
+                Next steps are available below. Check your tasks and messages to get started.
+              </p>
+            </div>
+            <button
+              onClick={dismissBanner}
+              className="ml-4 text-secondary hover:text-primary transition-colors"
+              aria-label="Dismiss"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        )}
+
         {/* Header */}
         <div className="mb-10">
           <h1 className="text-2xl font-semibold text-primary">Welcome back</h1>

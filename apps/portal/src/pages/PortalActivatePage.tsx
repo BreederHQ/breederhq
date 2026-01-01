@@ -12,6 +12,8 @@ interface InviteInfo {
   maskedEmail: string;
   partyName: string;
   expiresAt: string;
+  contextType?: "INQUIRY" | "WAITLIST" | "INVOICE" | null;
+  contextId?: number | null;
 }
 
 interface ActivateState {
@@ -124,6 +126,8 @@ export default function PortalActivatePage() {
           error: null,
           tenantSlug: data.tenantSlug,
         }));
+        // Set first login flag for welcome banner
+        sessionStorage.setItem("portal_first_login", "true");
         // Redirect to portal dashboard after short delay
         setTimeout(() => {
           window.location.href = `/t/${data.tenantSlug}/dashboard`;
@@ -168,6 +172,21 @@ export default function PortalActivatePage() {
         return "Could not validate this link. Please try again.";
       default:
         return "Activation failed. Please try again or contact support.";
+    }
+  }
+
+  function getContextMessage(invite: InviteInfo | null): string | null {
+    if (!invite || !invite.contextType) return null;
+
+    switch (invite.contextType) {
+      case "INQUIRY":
+        return `You are here because you contacted ${invite.orgName}.`;
+      case "WAITLIST":
+        return `You are here because you joined ${invite.orgName}'s waitlist.`;
+      case "INVOICE":
+        return `You are here to complete a transaction with ${invite.orgName}.`;
+      default:
+        return null;
     }
   }
 
@@ -233,15 +252,22 @@ export default function PortalActivatePage() {
           </div>
           <h1 className="text-xl font-semibold text-primary mb-2">Activate Your Portal Account</h1>
           {state.invite && (
-            <div className="mt-3 p-3 rounded-lg bg-page border border-hairline text-sm">
-              <p className="text-secondary">
-                You have been invited to join the client portal for:
-              </p>
-              <p className="font-medium text-primary mt-1">{state.invite.orgName}</p>
-              <p className="text-tertiary text-xs mt-1">
-                Invitation for: {state.invite.maskedEmail}
-              </p>
-            </div>
+            <>
+              {getContextMessage(state.invite) && (
+                <div className="mt-3 p-3 rounded-lg bg-[hsl(var(--brand-orange))]/10 border border-[hsl(var(--brand-orange))]/30 text-sm">
+                  <p className="text-primary">{getContextMessage(state.invite)}</p>
+                </div>
+              )}
+              <div className="mt-3 p-3 rounded-lg bg-page border border-hairline text-sm">
+                <p className="text-secondary">
+                  You have been invited to join the client portal for:
+                </p>
+                <p className="font-medium text-primary mt-1">{state.invite.orgName}</p>
+                <p className="text-tertiary text-xs mt-1">
+                  Invitation for: {state.invite.maskedEmail}
+                </p>
+              </div>
+            </>
           )}
           <p className="text-secondary text-sm mt-4">
             Set a password to complete your account setup.
