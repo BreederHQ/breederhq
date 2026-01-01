@@ -23,6 +23,7 @@ function TaskCardRow({ task }: { task: TaskCard }) {
     contract: "Contract",
     appointment: "Appointment",
     document: "Document",
+    offspring: "Offspring",
   };
 
   const handleClick = () => {
@@ -148,42 +149,52 @@ function SourceStatus({
 /* ───────────────── Grouped Tasks ───────────────── */
 
 function GroupedTasks({ tasks }: { tasks: TaskCard[] }) {
-  // Group by type
+  // Group by urgency
   const grouped = tasks.reduce(
     (acc, task) => {
-      if (!acc[task.type]) acc[task.type] = [];
-      acc[task.type].push(task);
+      if (!acc[task.urgency]) acc[task.urgency] = [];
+      acc[task.urgency].push(task);
       return acc;
     },
     {} as Record<string, TaskCard[]>
   );
 
-  const typeOrder: TaskCard["type"][] = [
-    "invoice",
-    "contract",
-    "appointment",
-    "document",
+  const urgencyOrder: Array<TaskCard["urgency"]> = [
+    "action_required",
+    "upcoming",
+    "completed",
   ];
-  const typeLabels: Record<TaskCard["type"], string> = {
-    invoice: "Invoices",
-    contract: "Contracts",
-    appointment: "Appointments",
-    document: "Documents",
+
+  const urgencyLabels: Record<TaskCard["urgency"], string> = {
+    action_required: "Action Required",
+    upcoming: "Upcoming",
+    completed: "Completed",
+  };
+
+  const urgencyDescriptions: Record<TaskCard["urgency"], string> = {
+    action_required: "These items need your immediate attention",
+    upcoming: "These items are coming up soon",
+    completed: "These items have been completed",
   };
 
   return (
     <div className="space-y-8">
-      {typeOrder.map((type) => {
-        const typeTasks = grouped[type];
-        if (!typeTasks || typeTasks.length === 0) return null;
+      {urgencyOrder.map((urgency) => {
+        const urgencyTasks = grouped[urgency];
+        if (!urgencyTasks || urgencyTasks.length === 0) return null;
 
         return (
-          <div key={type}>
-            <h3 className="text-sm font-semibold text-secondary uppercase tracking-wider mb-3">
-              {typeLabels[type]} ({typeTasks.length})
-            </h3>
+          <div key={urgency}>
+            <div className="mb-3">
+              <h3 className="text-sm font-semibold text-secondary uppercase tracking-wider">
+                {urgencyLabels[urgency]} ({urgencyTasks.length})
+              </h3>
+              <p className="text-xs text-secondary/70 mt-1">
+                {urgencyDescriptions[urgency]}
+              </p>
+            </div>
             <div className="space-y-3">
-              {typeTasks.map((task) => (
+              {urgencyTasks.map((task) => (
                 <TaskCardRow key={task.id} task={task} />
               ))}
             </div>

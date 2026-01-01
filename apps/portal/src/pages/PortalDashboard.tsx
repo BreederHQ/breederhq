@@ -78,9 +78,10 @@ function useDashboardCounts() {
         }
       }
 
-      // Process tasks result
+      // Process tasks result - count only action_required tasks
       if (tasksResult.status === "fulfilled") {
-        taskCount = tasksResult.value?.tasks?.length || 0;
+        const allTasks = tasksResult.value?.tasks || [];
+        taskCount = allTasks.filter(t => t.urgency === "action_required").length;
       } else {
         // Tasks failures are non-blocking, just log
         console.error("[PortalDashboard] Failed to fetch tasks:", tasksResult.reason);
@@ -412,7 +413,7 @@ export default function PortalDashboard() {
             href="/portal/tasks"
             icon={<TasksIcon className="w-24 h-24" />}
             badge={loading ? "live" : counts.tasks > 0 ? "active" : "live"}
-            count={loading ? undefined : counts.tasks}
+            count={loading ? undefined : counts.tasks > 0 ? counts.tasks : undefined}
           />
           <PrimaryTile
             title="Messages"
