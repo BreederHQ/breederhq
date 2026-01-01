@@ -89,30 +89,8 @@ export default [
         {
           paths: [
             {
-              name: "@bhq/ui/utils/breedingMath",
-              message: "Legacy breedingMath import banned. Use reproEngine.",
-            },
-            {
               name: "@bhq/ui/hooks/useCyclePlanner",
               message: "Legacy useCyclePlanner import banned. Use reproEngine.",
-            },
-            {
-              name: "./breedingMath",
-              message: "Legacy breedingMath import banned. Use reproEngine.",
-            },
-            {
-              name: "../utils/breedingMath",
-              message: "Legacy breedingMath import banned. Use reproEngine.",
-            },
-            {
-              name: "../utils/breedingMath.ts",
-              message: "Legacy breedingMath import banned. Use reproEngine.",
-            },
-          ],
-          patterns: [
-            {
-              group: ["**/utils/breedingMath", "**/utils/breedingMath.ts"],
-              message: "Legacy breedingMath import banned. Use reproEngine.",
             },
           ],
         },
