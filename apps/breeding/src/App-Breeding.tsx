@@ -822,7 +822,7 @@ function planToRow(p: any): PlanRow {
     code: p.code ?? null,
 
     /* Canonical expected timeline (strict, breedingMath-driven) */
-    expectedCycleStart: (p.expectedCycleStart ?? p.expected_cycle_start ?? p.lockedCycleStart) ?? null,
+    expectedCycleStart: (p.expectedCycleStart ?? p.lockedCycleStart) ?? null,
     expectedHormoneTestingStart: p.expectedHormoneTestingStart ?? null,
     expectedBreedDate: p.lockedOvulationDate ?? null,
     expectedBirthDate: p.lockedDueDate ?? null,

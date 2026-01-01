@@ -33,7 +33,7 @@ type PlanLike = {
   expectedBreedingDate?: string | Date | null;         // alias
 
   expectedBirthDate?: string | Date | null;
-  expectedWeanedDate?: string | Date | null;
+  expectedWeaned?: string | Date | null;
 
   expectedPlacementStartDate?: string | Date | null;   // canonical here
   placementStartDateExpected?: string | Date | null;   // alias
@@ -183,7 +183,7 @@ function resolveExpected(plan: PlanLike): PlanExpected {
     testing: parseAnyDate(plan.expectedHormoneTestingStart),
     breeding: parseAnyDate(breedingAny),
     birth: parseAnyDate(plan.expectedBirthDate),
-    weaned: parseAnyDate(plan.expectedWeanedDate),
+    weaned: parseAnyDate(plan.expectedWeaned),
     placementStart: parseAnyDate(placementStartAny),
     placementCompleted: parseAnyDate(placementCompletedAny),
   };

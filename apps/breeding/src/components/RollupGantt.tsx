@@ -35,7 +35,7 @@ type PlanLike = {
   expectedBreedingDate?: string | Date | null;
 
   expectedBirthDate?: string | Date | null;
-  expectedWeanedDate?: string | Date | null;
+  expectedWeaned?: string | Date | null;
 
   expectedPlacementStartDate?: string | Date | null;
   placementStartDateExpected?: string | Date | null;
@@ -190,9 +190,8 @@ function resolveExpected(plan: PlanLike): PlanExpected {
     null;
 
   const weanedAny =
-    plan.expectedWeanedDate ??
+    plan.expectedWeaned ??
     (plan as any).expectedWeaningDate ??
-    (plan as any).expectedWeaned ??
     (plan as any).weanedDateExpected ??
     null;
   const planExp: PlanExpected = {
