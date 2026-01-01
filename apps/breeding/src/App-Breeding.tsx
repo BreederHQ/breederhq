@@ -801,8 +801,14 @@ function DisplayValue({ value }: { value?: string | null }) {
 function fmt(d?: string | null) {
   if (!d) return "";
   const s = String(d);
-  // If it's date-only, parse as UTC midnight to avoid TZ drift + invalid parsing
-  const dt = /^\d{4}-\d{2}-\d{2}$/.test(s) ? new Date(`${s}T00:00:00Z`) : new Date(s);
+  // If it's date-only (YYYY-MM-DD), parse as local midnight to avoid timezone shifts
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+    const [y, m, day] = s.split("-").map(Number);
+    const dt = new Date(y, m - 1, day); // Local timezone, months are 0-indexed
+    return Number.isFinite(dt.getTime()) ? dt.toLocaleDateString() : "";
+  }
+  // For other formats, parse normally
+  const dt = new Date(s);
   return Number.isFinite(dt.getTime()) ? dt.toLocaleDateString() : "";
 }
 
