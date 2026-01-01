@@ -4,6 +4,7 @@ import { PageHeader, Button } from "@bhq/ui";
 import { makeApi } from "@bhq/api";
 import { PORTAL_FEATURE_FLAGS } from "../mock";
 import { fetchAllTasks } from "../tasks/taskSources";
+import { fetchAllNotifications } from "../notifications/notificationSources";
 
 // Resolve API base URL (same pattern as MessagesPage)
 function getApiBase(): string {
@@ -35,12 +36,14 @@ const api = makeApi(getApiBase());
 interface DashboardCounts {
   unreadMessages: number;
   tasks: number;
+  notifications: number;
 }
 
 function useDashboardCounts() {
   const [counts, setCounts] = React.useState<DashboardCounts>({
     unreadMessages: 0,
     tasks: 0,
+    notifications: 0,
   });
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);

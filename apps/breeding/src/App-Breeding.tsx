@@ -3841,11 +3841,23 @@ function PlanDetailsView(props: {
     if (!pendingCycle || !String(pendingCycle).trim()) return;
     if (!api) return;
 
+    console.log("[plan] lockCycle called", {
+      pendingCycle,
+      species: row.species,
+      liveOverride,
+    });
+
     const expectedRaw = computeExpectedForPlan({
       species: row.species as any,
       lockedCycleStart: pendingCycle,
+      femaleCycleLenOverrideDays: liveOverride,
     });
+
+    console.log("[plan] lockCycle expectedRaw", { expectedRaw });
+
     const expected = normalizeExpectedMilestones(expectedRaw, pendingCycle);
+
+    console.log("[plan] lockCycle normalized", { expected });
     const testingStart =
       expected.hormoneTestingStart ?? pickExpectedTestingStart(expectedRaw, pendingCycle);
 
@@ -3869,8 +3881,12 @@ function PlanDetailsView(props: {
     setLockedPreview(true);
     setDraftLive(payload);
 
+    console.log("[plan] lockCycle payload", { payload });
+
     try {
+      console.log("[plan] calling api.updatePlan", { planId: row.id, payload });
       await api.updatePlan(Number(row.id), payload as any);
+      console.log("[plan] updatePlan succeeded");
 
       await api.createEvent(Number(row.id), {
         type: "CYCLE_LOCKED",
@@ -3889,10 +3905,16 @@ function PlanDetailsView(props: {
         },
       });
 
+      console.log("[plan] lockCycle complete");
       // Don't call onPlanUpdated here - stay in edit mode
       // The changes are already persisted and local state is updated via setDraftLive
-    } catch (e) {
-      console.error("[Breeding] lockCycle persist or audit failed", e);
+    } catch (e: any) {
+      console.error("[Breeding] lockCycle persist or audit failed", {
+        error: e,
+        message: e?.message,
+        response: e?.response,
+        status: e?.status,
+      });
       setExpectedPreview(null);
       setLockedPreview(false);
       setDraftLive({

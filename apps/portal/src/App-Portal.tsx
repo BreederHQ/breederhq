@@ -12,6 +12,7 @@ import PortalWaitlistPage from "./pages/PortalWaitlistPage";
 import PortalProfilePage from "./pages/PortalProfilePage";
 import PortalActivatePage from "./pages/PortalActivatePage";
 import PortalLoginPage from "./pages/PortalLoginPage";
+import PortalNotificationsPage from "./pages/PortalNotificationsPage";
 
 // Public routes that don't require authentication
 const PUBLIC_PATHS = ["/login", "/activate", "/logout"];
@@ -20,6 +21,7 @@ type ViewRoute =
   | "dashboard"
   | "messages"
   | "tasks"
+  | "notifications"
   | "billing"
   | "agreements"
   | "documents"
@@ -45,6 +47,9 @@ function getViewFromPath(pathname: string): ViewRoute {
   }
   if (path === "/portal/tasks" || path.startsWith("/portal/tasks/")) {
     return "tasks";
+  }
+  if (path === "/portal/notifications" || path.startsWith("/portal/notifications/")) {
+    return "notifications";
   }
   if (path === "/portal/billing" || path.startsWith("/portal/billing/")) {
     return "billing";
@@ -111,6 +116,8 @@ export default function AppPortal() {
             return <MessagesPage />;
           case "tasks":
             return <PortalTasksPage />;
+          case "notifications":
+            return <PortalNotificationsPage />;
           case "billing":
             return <PortalBillingPage />;
           case "agreements":
