@@ -1621,7 +1621,147 @@ function WaitlistDrawerBody({
           </label>
         </div>
       </SectionCard>
+
+      {/* Portal Access Section */}
+      <PortalInviteSection
+        api={api}
+        clientPartyId={row?.clientPartyId}
+        contactEmail={row?.contact?.email}
+        orgEmail={row?.organization?.email}
+        entryId={row?.id}
+      />
     </div>
+  );
+}
+
+// Portal Invite Component
+function PortalInviteSection({
+  api,
+  clientPartyId,
+  contactEmail,
+  orgEmail,
+  entryId,
+}: {
+  api: OffspringApi | null;
+  clientPartyId?: number;
+  contactEmail?: string;
+  orgEmail?: string;
+  entryId?: number;
+}) {
+  const { showToast } = useToast();
+  const [portalStatus, setPortalStatus] = React.useState<string | null>(null);
+  const [loading, setLoading] = React.useState(false);
+  const [checkingStatus, setCheckingStatus] = React.useState(true);
+
+  const partyEmail = contactEmail || orgEmail;
+  const hasEmail = Boolean(partyEmail);
+  const hasParty = Boolean(clientPartyId);
+
+  // Check portal access status on mount
+  React.useEffect(() => {
+    if (!clientPartyId || !api) {
+      setCheckingStatus(false);
+      return;
+    }
+
+    async function checkStatus() {
+      try {
+        const res = await fetch(`/api/v1/portal-access/${clientPartyId}`, {
+          credentials: "include",
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setPortalStatus(data.portalAccess?.status || "NO_ACCESS");
+        }
+      } catch (err) {
+        console.error("Failed to check portal status:", err);
+      } finally {
+        setCheckingStatus(false);
+      }
+    }
+
+    checkStatus();
+  }, [clientPartyId, api]);
+
+  async function handleInvite() {
+    if (!clientPartyId || !api) return;
+
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/v1/portal-access/${clientPartyId}/enable`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          contextType: "WAITLIST",
+          contextId: entryId,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (res.ok) {
+        showToast({ message: "Client portal invite sent.", variant: "success" });
+        setPortalStatus("INVITED");
+      } else {
+        if (data.error === "already_active") {
+          showToast({ message: "Client portal already active.", variant: "info" });
+          setPortalStatus("ACTIVE");
+        } else if (data.error === "already_invited") {
+          showToast({ message: "Invite already sent.", variant: "info" });
+          setPortalStatus("INVITED");
+        } else {
+          showToast({ message: data.error || "Failed to send invite.", variant: "error" });
+        }
+      }
+    } catch (err) {
+      console.error("Failed to send portal invite:", err);
+      showToast({ message: "Network error. Please try again.", variant: "error" });
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  if (!hasParty || !hasEmail) {
+    return null; // Don't show section if no party or email
+  }
+
+  if (checkingStatus) {
+    return (
+      <SectionCard title="Client Portal">
+        <div className="p-4 text-sm text-secondary">Checking status...</div>
+      </SectionCard>
+    );
+  }
+
+  // Hide button if already active
+  if (portalStatus === "ACTIVE") {
+    return (
+      <SectionCard title="Client Portal">
+        <div className="p-4 text-sm text-secondary">
+          Client portal active.
+        </div>
+      </SectionCard>
+    );
+  }
+
+  // Show button for NO_ACCESS or INVITED states
+  return (
+    <SectionCard title="Client Portal">
+      <div className="p-4 space-y-3">
+        {portalStatus === "INVITED" && (
+          <div className="text-sm text-secondary">Invite already sent.</div>
+        )}
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={handleInvite}
+          disabled={loading || portalStatus === "INVITED"}
+        >
+          {loading ? "Sending..." : "Invite to Client Portal"}
+        </Button>
+      </div>
+    </SectionCard>
   );
 }
 
