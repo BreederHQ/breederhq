@@ -3662,6 +3662,7 @@ function PlanDetailsView(props: {
 
         if (cancelled) return;
 
+        const reproRaw: WhatIfDamReproEvent[] = Array.isArray(data?.repro)
           ? (data.repro as WhatIfDamReproEvent[])
           : [];
 
