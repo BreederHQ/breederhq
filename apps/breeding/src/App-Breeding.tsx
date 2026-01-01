@@ -3358,8 +3358,9 @@ function PlanDetailsView(props: {
 
   // Show Actual Dates once the plan is COMMITTED or later.
   // Allow editing while in Edit mode for COMMITTED and later statuses.
-  const showActualDates = committedOrLater;
-  const canEditDates = isEdit && committedOrLater && !isReadOnly;
+  // CRITICAL: Must explicitly exclude PLANNING status
+  const showActualDates = committedOrLater && statusU !== "PLANNING";
+  const canEditDates = isEdit && committedOrLater && statusU !== "PLANNING" && !isReadOnly;
 
 
   // live draft overlay
