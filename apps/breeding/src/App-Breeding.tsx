@@ -2631,7 +2631,11 @@ export default function AppBreeding() {
                         !error &&
                         pageRows.length > 0 &&
                         pageRows.map((r) => (
-                          <TableRow key={r.id} detailsRow={r}>
+                          <TableRow
+                            key={r.id}
+                            detailsRow={r}
+                            className={r.archived || r.archivedAt ? "opacity-60 bg-neutral-50 dark:bg-neutral-900/30" : undefined}
+                          >
                             {visibleSafe.map((c) => {
                               let v = (r as any)[c.key] as any;
                               if (DATE_KEYS.has(c.key as any)) v = fmt(v);
@@ -3765,17 +3769,26 @@ function PlanDetailsView(props: {
 
   // ===== Auto-recalculate expected dates when override changes for locked plans =====
   const prevOverrideRef = React.useRef<number | null>(liveOverride);
+  const isRecalculating = React.useRef(false);
   React.useEffect(() => {
     const isLocked = Boolean((effective.lockedCycleStart ?? "").toString().trim());
     const overrideChanged = prevOverrideRef.current !== liveOverride;
 
-    if (isLocked && overrideChanged && prevOverrideRef.current !== undefined) {
+    // Only recalculate if:
+    // 1. Override actually changed
+    // 2. Cycle is locked
+    // 3. Not currently in a recalculation
+    // 4. This isn't the initial mount (prevOverrideRef.current !== null means we've seen at least one value)
+    if (isLocked && overrideChanged && !isRecalculating.current && prevOverrideRef.current !== null) {
       console.log("[plan] override changed for locked plan, recalculating expected dates", {
         old: prevOverrideRef.current,
         new: liveOverride,
         lockedCycleStart: effective.lockedCycleStart,
       });
-      recalculateExpectedDates();
+      isRecalculating.current = true;
+      recalculateExpectedDates().finally(() => {
+        isRecalculating.current = false;
+      });
     }
 
     prevOverrideRef.current = liveOverride;
