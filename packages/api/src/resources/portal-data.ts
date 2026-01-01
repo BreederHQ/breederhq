@@ -4,7 +4,8 @@
 import type { Http } from "../http";
 
 // Agreements types
-export type ContractStatus = "DRAFT" | "PENDING" | "ACTIVE" | "EXPIRED" | "TERMINATED";
+// ContractStatus matches Prisma schema enum (lowercase)
+export type ContractStatus = "draft" | "sent" | "viewed" | "signed" | "declined" | "voided" | "expired";
 export type ContractPartyRole = "SELLER" | "BUYER" | "GUARANTOR" | "WITNESS";
 
 export interface AgreementDTO {
@@ -69,9 +70,7 @@ export interface OffspringPlacementDTO {
     id: number;
     name: string;
     sex: string | null;
-    color: string | null;
-    microchipId: string | null;
-    registrationNumber: string | null;
+    // Note: Offspring model does not have color, microchipId, or registrationNumber fields
   } | null;
   placementStatus: PlacementStatus;
   depositPaidAt: string | null;
