@@ -3772,6 +3772,17 @@ function PlanDetailsView(props: {
 
     if (!speciesWire) return [];
 
+    console.log("[plan] projectedCycles calculation", {
+      damId: row.damId,
+      damName: row.damName,
+      speciesWire,
+      cycleStartsAsc,
+      override: row.femaleCycleLenOverrideDays,
+      damReproKeys: damRepro ? Object.keys(damRepro) : null,
+      damReproCycleStartDates: (damRepro as any)?.cycleStartDates,
+      damReproLastHeat: (damRepro as any)?.last_heat,
+    });
+
     const summary: ReproSummary = {
       species: speciesWire,
       cycleStartsAsc,
@@ -3785,10 +3796,14 @@ function PlanDetailsView(props: {
       maxCount: 12,
     });
 
-    return projected
+    const result = projected
       .map((p: any) => asISODateOnly(p?.date) ?? String(p?.date ?? "").slice(0, 10))
       .filter((d: any) => !!d);
-  }, [speciesWire, cycleStartsAsc, row.femaleCycleLenOverrideDays]);
+
+    console.log("[plan] projectedCycles result", { result });
+
+    return result;
+  }, [speciesWire, cycleStartsAsc, row.femaleCycleLenOverrideDays, damRepro]);
 
   const initialCycle = (row.lockedCycleStart ?? row.expectedCycleStart ?? row.cycleStartDateActual ?? null) as string | null;
   const [pendingCycle, setPendingCycle] = React.useState<string | null>(initialCycle);
@@ -4617,7 +4632,10 @@ function PlanDetailsView(props: {
                             }}
                             onFocus={() => {
                               if (row.damId) {
-                                console.log("[plan] cycle dropdown focused, refreshing override");
+                                console.log("[plan] cycle dropdown focused, refreshing override and cycle data", {
+                                  damId: row.damId,
+                                  currentRefreshTrigger: refreshTrigger,
+                                });
                                 setRefreshTrigger((prev) => prev + 1);
                               }
                             }}
