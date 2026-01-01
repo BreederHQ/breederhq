@@ -214,6 +214,7 @@ function animalToRow(p: any): AnimalRow {
     updated_at: p.updated_at ?? p.updatedAt ?? null,
     lastCycle: p.lastCycle ?? null,
     cycleStartDates: Array.isArray(p.cycleStartDates) ? p.cycleStartDates : [],
+    femaleCycleLenOverrideDays: p.femaleCycleLenOverrideDays ?? null,
   };
 }
 
