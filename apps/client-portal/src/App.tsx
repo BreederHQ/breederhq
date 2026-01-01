@@ -10,8 +10,10 @@ import PortalLoginPage from "./pages/PortalLoginPage";
 import PortalForgotPage from "./pages/PortalForgotPage";
 import PortalResetPage from "./pages/PortalResetPage";
 
+// Dashboard - local to client-portal with redesigned layout
+import ClientDashboard from "./pages/ClientDashboard";
+
 // Other pages - reuse from @bhq/portal where possible
-import PortalDashboard from "@bhq/portal/pages/PortalDashboard";
 import PortalTasksPage from "@bhq/portal/pages/PortalTasksPage";
 import PortalBillingPage from "@bhq/portal/pages/PortalBillingPage";
 import PortalAgreementsPage from "@bhq/portal/pages/PortalAgreementsPage";
@@ -220,6 +222,6 @@ function renderView(view: ViewRoute): React.ReactNode {
         </div>
       );
     default:
-      return <PortalDashboard />;
+      return <ClientDashboard />;
   }
 }
