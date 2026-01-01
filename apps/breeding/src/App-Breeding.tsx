@@ -84,6 +84,7 @@ type WhatIfRow = {
   species: SpeciesWire | null;
   cycleStartIso: string | null;
   showOnChart: boolean;
+  femaleCycleLenOverrideDays?: number | null;
 };
 
 type BHQDateFieldProps = {
@@ -242,16 +243,46 @@ function pickExpectedTestingStart(preview: any, lockedCycleStart?: string | null
 }
 
 
-function computeExpectedForPlan(plan: { species?: string; lockedCycleStart?: string | null }): PlannerExpected | null {
+function computeExpectedForPlan(plan: {
+  species?: string;
+  lockedCycleStart?: string | null;
+  femaleCycleLenOverrideDays?: number | null;
+}): PlannerExpected | null {
   const locked = (plan.lockedCycleStart || "").slice(0, 10) || null;
   const speciesWire = typeof plan.species === "string" ? plan.species : "";
 
   if (!locked || !speciesWire) return null;
 
   try {
-    return (reproEngine.expectedMilestonesFromLocked(locked, speciesWire) as any) ?? null;
+    // expectedMilestonesFromLocked doesn't support override yet, so we need to call buildTimelineFromSeed directly
+    const timeline = (reproEngine as any).buildTimelineFromSeed?.(
+      {
+        animalId: "",
+        species: speciesWire,
+        cycleStartsAsc: [],
+        today: new Date().toISOString().slice(0, 10),
+        femaleCycleLenOverrideDays: plan.femaleCycleLenOverrideDays,
+      },
+      locked
+    );
+
+    if (!timeline) {
+      return (reproEngine.expectedMilestonesFromLocked(locked, speciesWire) as any) ?? null;
+    }
+
+    // Convert timeline to legacy expected format
+    return {
+      ovulation: timeline.milestones?.ovulation_center ?? null,
+      breeding_expected: timeline.windows?.breeding?.likely?.[0] ?? null,
+      birth_expected: timeline.windows?.whelping?.likely?.[0] ?? null,
+      weaning_expected: timeline.windows?.puppy_care?.likely?.[1] ?? null,
+      placement_expected: timeline.windows?.go_home_normal?.likely?.[0] ?? null,
+      placement_expected_end: timeline.windows?.go_home_normal?.likely?.[1] ?? null,
+      ...timeline.windows,
+      ...timeline.milestones,
+    };
   } catch (e) {
-    console.error("[Breeding] expectedMilestonesFromLocked failed", { locked, speciesWire, e });
+    console.error("[Breeding] computeExpectedForPlan failed", { locked, speciesWire, e });
     return null;
   }
 }
@@ -1222,6 +1253,7 @@ function WhatIfRowEditor(props: WhatIfRowEditorProps) {
       damName: female?.name ?? null,
       species: female?.species ?? null,
       cycleStartIso: null,
+      femaleCycleLenOverrideDays: female?.femaleCycleLenOverrideDays ?? null,
     };
 
     console.log("[whatif] female select changed", { selectedId: id, nextRow: next });
@@ -1248,10 +1280,16 @@ function WhatIfRowEditor(props: WhatIfRowEditorProps) {
   const projectedCycles = React.useMemo(() => {
     if (!speciesWire) return [] as string[];
     const today = new Date().toISOString().slice(0, 10);
-    const summary: any = { species: speciesWire, cycleStartsAsc, dob: null, today };
+    const summary: any = {
+      species: speciesWire,
+      cycleStartsAsc,
+      dob: null,
+      today,
+      femaleCycleLenOverrideDays: row.femaleCycleLenOverrideDays,
+    };
     const { projected } = reproEngine.projectUpcomingCycleStarts(summary, { horizonMonths: 36, maxCount: 36 } as any) as any;
     return Array.isArray(projected) ? projected.map((p: any) => p.date).filter(Boolean) : [];
-  }, [speciesWire, cycleStartsAsc]);
+  }, [speciesWire, cycleStartsAsc, row.femaleCycleLenOverrideDays]);
 
   return (
     <div className="rounded-lg border border-hairline bg-surface p-2">
@@ -1464,7 +1502,7 @@ export default function AppBreeding() {
 
   // All active females for current planner species filter
   const [whatIfFemales, setWhatIfFemales] = React.useState<
-    { id: ID; name: string; species: SpeciesWire | null }[]
+    { id: ID; name: string; species: SpeciesWire | null; femaleCycleLenOverrideDays?: number | null }[]
   >([]);
 
   // Species filter used for Rollup and What If planner
@@ -1509,6 +1547,7 @@ export default function AppBreeding() {
             id: a.id,
             name: a.name,
             species: (a.species as SpeciesWire) ?? null,
+            femaleCycleLenOverrideDays: (a as any).femaleCycleLenOverrideDays ?? null,
           }));
 
         setWhatIfFemales(mapped);
@@ -1557,6 +1596,7 @@ export default function AppBreeding() {
         const expectedDates = computeExpectedForPlan({
           species: speciesUi,
           lockedCycleStart: r.cycleStartIso,
+          femaleCycleLenOverrideDays: r.femaleCycleLenOverrideDays,
         });
 
         // Normalize the expected dates for RollupGantt
