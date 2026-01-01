@@ -189,16 +189,20 @@ function normalizeExpectedMilestones(
 
   const placementStart =
     day(milestones?.expectedPlacementStartDate) ??
-    day(milestones?.go_home_normal_full?.start) ?? // reproEngine format: { start, end }
-    day(milestones?.placement_expected) ??
+    day(milestones?.placement_expected) ?? // legacy format from computeExpectedForPlan
+    day(milestones?.go_home_normal?.likely?.start) ?? // reproEngine nested format
+    day(milestones?.go_home_normal_full?.start) ?? // reproEngine flat format
+    day(milestones?.go_home_normal?.likely?.[0]) ?? // reproEngine nested array format
     day(milestones?.placement_start_expected) ??
     null;
 
   const placementCompleted =
     day(milestones?.expectedPlacementCompletedDate) ??
-    day(milestones?.go_home_extended_full?.end) ?? // reproEngine format: end of extended window
+    day(milestones?.placement_expected_end) ?? // legacy format from computeExpectedForPlan
+    day(milestones?.go_home_extended?.full?.end) ?? // reproEngine nested format: end of extended window
+    day(milestones?.go_home_extended_full?.end) ?? // reproEngine flat format: end of extended window
+    day(milestones?.go_home_extended?.full?.[1]) ?? // reproEngine nested array format
     day(milestones?.placement_extended_end) ??
-    day(milestones?.placement_expected_end) ??
     day(milestones?.placement_extended_full?.[1]) ?? // legacy array format
     null;
 
