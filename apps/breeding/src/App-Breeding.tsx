@@ -844,8 +844,8 @@ function planToRow(p: any): PlanRow {
     /* Canonical expected timeline (strict, breedingMath-driven) */
     expectedCycleStart: (p.expectedCycleStart ?? p.lockedCycleStart) ?? null,
     expectedHormoneTestingStart: p.expectedHormoneTestingStart ?? null,
-    expectedBreedDate: p.lockedOvulationDate ?? null,
-    expectedBirthDate: p.lockedDueDate ?? null,
+    expectedBreedDate: (p.expectedBreedDate ?? p.lockedOvulationDate) ?? null,
+    expectedBirthDate: (p.expectedBirthDate ?? p.lockedDueDate) ?? null,
     expectedWeaned: p.expectedWeaned ?? null,
     expectedPlacementStartDate: p.expectedPlacementStartDate ?? null,
     expectedPlacementCompletedDate: (pickPlacementCompletedAny(p) as any) ?? null,
