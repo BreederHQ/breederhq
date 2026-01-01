@@ -8,6 +8,7 @@ function parseDay(d: string): number {
 
 export function computeEffectiveCycleLenDays(input: CycleLenInputs): EffectiveCycleLenResult {
   const bio = getSpeciesDefaults(input.species).cycleLenDays;
+  const override = input.femaleCycleLenOverrideDays;
 
   const s = input.cycleStartsAsc;
   const gaps: number[] = [];
@@ -21,21 +22,50 @@ export function computeEffectiveCycleLenDays(input: CycleLenInputs): EffectiveCy
   const recent = gaps.slice(-3);
   const n = recent.length;
 
-  if (n === 0) {
-    return { effectiveCycleLenDays: bio, gapsUsedDays: [], weighting: { observed: 0, biology: 1 } };
+  // Calculate history-based value for conflict detection
+  let historyBased: number | null = null;
+  if (n > 0) {
+    const obs = Math.round(recent.reduce((x, y) => x + y, 0) / n);
+    const wObs =
+      n >= 3 ? 1 :
+      n === 2 ? 0.67 :
+      0.50;
+    historyBased = Math.round(obs * wObs + bio * (1 - wObs));
   }
 
-  const obs = Math.round(recent.reduce((x, y) => x + y, 0) / n);
+  // Precedence: Override > History > Biology
+  if (override != null && override > 0) {
+    // Check for conflict: override differs >20% from history
+    const warningConflict = historyBased != null && Math.abs(override - historyBased) / historyBased > 0.20;
 
-  const wObs =
-    n >= 3 ? 1 :
-    n === 2 ? 0.67 :
-    0.50;
+    return {
+      effectiveCycleLenDays: override,
+      gapsUsedDays: recent,
+      weighting: { observed: n > 0 ? 1 : 0, biology: n > 0 ? 0 : 1 }, // Preserve observed weighting for display
+      source: "OVERRIDE",
+      warningConflict,
+    };
+  }
 
-  const eff = Math.round(obs * wObs + bio * (1 - wObs));
+  if (historyBased != null) {
+    const obs = Math.round(recent.reduce((x, y) => x + y, 0) / n);
+    const wObs =
+      n >= 3 ? 1 :
+      n === 2 ? 0.67 :
+      0.50;
+
+    return {
+      effectiveCycleLenDays: historyBased,
+      gapsUsedDays: recent,
+      weighting: { observed: wObs, biology: 1 - wObs },
+      source: "HISTORY",
+    };
+  }
+
   return {
-    effectiveCycleLenDays: eff,
-    gapsUsedDays: recent,
-    weighting: { observed: wObs, biology: 1 - wObs },
+    effectiveCycleLenDays: bio,
+    gapsUsedDays: [],
+    weighting: { observed: 0, biology: 1 },
+    source: "BIOLOGY",
   };
 }

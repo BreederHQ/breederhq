@@ -18,19 +18,25 @@ export type ReproSummary = {
   lastBirthedAt?: ISODate | null; // species neutral, maps to whelping/foaling/kitting
   lastOutcome?: ReproOutcome | null;
 
-  // Deterministic “today”, passed in by caller.
+  // Animal-level override for cycle length (female only)
+  femaleCycleLenOverrideDays?: number | null;
+
+  // Deterministic "today", passed in by caller.
   today: ISODate;
 };
 
 export type CycleLenInputs = {
   species: SpeciesCode;
   cycleStartsAsc: ISODate[];
+  femaleCycleLenOverrideDays?: number | null; // Animal-level override
 };
 
 export type EffectiveCycleLenResult = {
   effectiveCycleLenDays: number;
   gapsUsedDays: number[];        // last 3 gaps used
   weighting: { observed: number; biology: number };
+  source: "OVERRIDE" | "HISTORY" | "BIOLOGY"; // Precedence winner
+  warningConflict?: boolean;     // True if override differs >20% from history
 };
 
 export type ProjectUpcomingCyclesOpts = {
