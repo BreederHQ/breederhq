@@ -155,6 +155,165 @@ function MessageBubble({ message, isOwn }: MessageBubbleProps) {
   );
 }
 
+/* ────────────────────────────────────────────────────────────────────────────
+ * Portal Invite Action Component
+ * ────────────────────────────────────────────────────────────────────────── */
+
+interface PortalInviteActionProps {
+  threadId: number;
+  buyerParticipant: { partyId: number; party: { email?: string } } | null;
+  hasMultipleRecipients: boolean;
+}
+
+function PortalInviteAction({
+  threadId,
+  buyerParticipant,
+  hasMultipleRecipients,
+}: PortalInviteActionProps) {
+  const [portalStatus, setPortalStatus] = React.useState<string | null>(null);
+  const [loading, setLoading] = React.useState(false);
+  const [checkingStatus, setCheckingStatus] = React.useState(true);
+  const [toastMessage, setToastMessage] = React.useState<{
+    text: string;
+    type: "success" | "error" | "info";
+  } | null>(null);
+
+  const buyerPartyId = buyerParticipant?.partyId;
+  const buyerEmail = buyerParticipant?.party?.email;
+  const hasEmail = Boolean(buyerEmail);
+
+  // Check portal access status on mount
+  React.useEffect(() => {
+    if (!buyerPartyId) {
+      setCheckingStatus(false);
+      return;
+    }
+
+    async function checkStatus() {
+      try {
+        const res = await fetch(`/api/v1/portal-access/${buyerPartyId}`, {
+          credentials: "include",
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setPortalStatus(data.portalAccess?.status || "NO_ACCESS");
+        }
+      } catch (err) {
+        console.error("Failed to check portal status:", err);
+      } finally {
+        setCheckingStatus(false);
+      }
+    }
+
+    checkStatus();
+  }, [buyerPartyId]);
+
+  async function handleInvite() {
+    if (!buyerPartyId) return;
+
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/v1/portal-access/${buyerPartyId}/enable`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          contextType: "INQUIRY",
+          contextId: threadId,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (res.ok) {
+        setToastMessage({ text: "Client portal invite sent.", type: "success" });
+        setPortalStatus("INVITED");
+        setTimeout(() => setToastMessage(null), 3000);
+      } else {
+        if (data.error === "already_active") {
+          setToastMessage({ text: "Client portal already active.", type: "info" });
+          setPortalStatus("ACTIVE");
+        } else if (data.error === "already_invited") {
+          setToastMessage({ text: "Invite already sent.", type: "info" });
+          setPortalStatus("INVITED");
+        } else {
+          setToastMessage({
+            text: data.error || "Failed to send invite.",
+            type: "error",
+          });
+        }
+        setTimeout(() => setToastMessage(null), 3000);
+      }
+    } catch (err) {
+      console.error("Failed to send portal invite:", err);
+      setToastMessage({ text: "Network error. Please try again.", type: "error" });
+      setTimeout(() => setToastMessage(null), 3000);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // Hide if multiple recipients
+  if (hasMultipleRecipients) {
+    return (
+      <div className="text-xs text-secondary ml-4">
+        Multiple recipients not supported yet.
+      </div>
+    );
+  }
+
+  // Hide if no buyer or no email
+  if (!buyerParticipant || !hasEmail) {
+    return null;
+  }
+
+  if (checkingStatus) {
+    return (
+      <div className="text-xs text-secondary ml-4">Checking status...</div>
+    );
+  }
+
+  // Hide if already active
+  if (portalStatus === "ACTIVE") {
+    return null;
+  }
+
+  const isInvited = portalStatus === "INVITED";
+
+  return (
+    <div className="ml-4 flex flex-col items-end gap-2">
+      {toastMessage && (
+        <div
+          className={`text-xs px-3 py-1 rounded-md ${
+            toastMessage.type === "success"
+              ? "bg-green-500/20 text-green-400 border border-green-500/30"
+              : toastMessage.type === "info"
+              ? "bg-blue-500/20 text-blue-400 border border-blue-500/30"
+              : "bg-red-500/20 text-red-400 border border-red-500/30"
+          }`}
+        >
+          {toastMessage.text}
+        </div>
+      )}
+      <button
+        onClick={handleInvite}
+        disabled={loading || isInvited}
+        className={`text-xs px-3 py-1.5 rounded-md font-medium transition-colors ${
+          isInvited
+            ? "bg-surface-strong text-secondary cursor-not-allowed"
+            : "bg-[hsl(var(--brand-orange))] text-black hover:brightness-110"
+        }`}
+      >
+        {loading
+          ? "Sending..."
+          : isInvited
+          ? "Invite already sent"
+          : "Invite to Client Portal"}
+      </button>
+    </div>
+  );
+}
+
 interface ThreadViewProps {
   thread: MessageThread;
   onSendMessage: (body: string) => Promise<void>;
@@ -192,13 +351,29 @@ function ThreadView({ thread, onSendMessage }: ThreadViewProps) {
   const otherParticipant = thread.participants?.find((p) => p.partyId !== currentOrgId);
   const otherName = otherParticipant?.party?.name || "Unknown contact";
 
+  // Count non-staff participants (exclude current org)
+  const nonStaffParticipants = thread.participants?.filter((p) => p.partyId !== currentOrgId) || [];
+  const hasMultipleRecipients = nonStaffParticipants.length > 1;
+  const singleBuyerParticipant = nonStaffParticipants.length === 1 ? nonStaffParticipants[0] : null;
+
   return (
     <div className="flex flex-col h-full">
       <div className="border-b border-hairline p-4 bg-surface">
-        <div className="font-semibold text-primary">
-          {thread.subject || `Conversation with ${otherName}`}
+        <div className="flex items-start justify-between">
+          <div className="flex-1">
+            <div className="font-semibold text-primary">
+              {thread.subject || `Conversation with ${otherName}`}
+            </div>
+            <div className="text-xs text-secondary mt-1">{otherName}</div>
+          </div>
+
+          {/* Portal Invite Action */}
+          <PortalInviteAction
+            threadId={thread.id}
+            buyerParticipant={singleBuyerParticipant}
+            hasMultipleRecipients={hasMultipleRecipients}
+          />
         </div>
-        <div className="text-xs text-secondary mt-1">{otherName}</div>
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-1">
