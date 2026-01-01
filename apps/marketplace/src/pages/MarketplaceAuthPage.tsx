@@ -108,11 +108,52 @@ const styles = {
 export function MarketplaceAuthPage({ mode, onModeChange, onSuccess }: Props) {
   const emailRef = React.useRef<HTMLInputElement>(null);
   const pwRef = React.useRef<HTMLInputElement>(null);
-  const nameRef = React.useRef<HTMLInputElement>(null);
+  const firstNameRef = React.useRef<HTMLInputElement>(null);
+  const lastNameRef = React.useRef<HTMLInputElement>(null);
   const [err, setErr] = React.useState<string | null>(null);
   const [working, setWorking] = React.useState(false);
+  const [formValid, setFormValid] = React.useState(false);
 
   const isRegister = mode === "register";
+
+  // Validate form on input change
+  React.useEffect(() => {
+    const validateForm = () => {
+      const email = emailRef.current?.value?.trim() || "";
+      const password = pwRef.current?.value || "";
+
+      if (isRegister) {
+        const firstName = firstNameRef.current?.value?.trim() || "";
+        const lastName = lastNameRef.current?.value?.trim() || "";
+        setFormValid(
+          email.length > 0 &&
+          password.length >= 8 &&
+          firstName.length > 0 &&
+          lastName.length > 0
+        );
+      } else {
+        setFormValid(email.length > 0 && password.length > 0);
+      }
+    };
+
+    validateForm();
+
+    // Set up listeners
+    const inputs = [emailRef.current, pwRef.current, firstNameRef.current, lastNameRef.current];
+    inputs.forEach(input => {
+      if (input) {
+        input.addEventListener('input', validateForm);
+      }
+    });
+
+    return () => {
+      inputs.forEach(input => {
+        if (input) {
+          input.removeEventListener('input', validateForm);
+        }
+      });
+    };
+  }, [isRegister]);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -122,7 +163,8 @@ export function MarketplaceAuthPage({ mode, onModeChange, onSuccess }: Props) {
     try {
       const email = emailRef.current?.value?.trim() || "";
       const password = pwRef.current?.value || "";
-      const name = nameRef.current?.value?.trim() || undefined;
+      const firstName = firstNameRef.current?.value?.trim() || "";
+      const lastName = lastNameRef.current?.value?.trim() || "";
 
       // Get CSRF token from cookie
       const xsrf = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]+)/)?.[1];
@@ -139,14 +181,17 @@ export function MarketplaceAuthPage({ mode, onModeChange, onSuccess }: Props) {
           method: "POST",
           credentials: "include",
           headers,
-          body: JSON.stringify({ email, password, name }),
+          body: JSON.stringify({ email, password, firstName, lastName }),
         });
 
         if (!res.ok) {
-          let msg = "Registration failed";
+          let msg = "Registration failed. Try again.";
           try {
             const j = await res.json();
-            if (j?.error === "password_too_short") msg = "Password must be at least 8 characters";
+            if (j?.error === "first_name_required") msg = "First name is required.";
+            else if (j?.error === "last_name_required") msg = "Last name is required.";
+            else if (j?.error === "email_and_password_required") msg = "Email and password are required.";
+            else if (j?.error === "password_too_short") msg = "Password must be at least 8 characters.";
             else if (j?.message) msg = j.message;
             else if (j?.error) msg = j.error;
           } catch { /* ignore */ }
@@ -211,17 +256,33 @@ export function MarketplaceAuthPage({ mode, onModeChange, onSuccess }: Props) {
         </p>
 
         {isRegister && (
-          <label style={styles.label}>
-            <span style={styles.labelText}>Name (optional)</span>
-            <input
-              ref={nameRef}
-              type="text"
-              defaultValue=""
-              style={styles.input}
-              autoComplete="name"
-              placeholder="Your name"
-            />
-          </label>
+          <>
+            <label style={styles.label}>
+              <span style={styles.labelText}>First name</span>
+              <input
+                ref={firstNameRef}
+                type="text"
+                defaultValue=""
+                style={styles.input}
+                autoComplete="given-name"
+                placeholder="First name"
+                required
+              />
+            </label>
+
+            <label style={styles.label}>
+              <span style={styles.labelText}>Last name</span>
+              <input
+                ref={lastNameRef}
+                type="text"
+                defaultValue=""
+                style={styles.input}
+                autoComplete="family-name"
+                placeholder="Last name"
+                required
+              />
+            </label>
+          </>
         )}
 
         <label style={styles.label}>
@@ -255,10 +316,10 @@ export function MarketplaceAuthPage({ mode, onModeChange, onSuccess }: Props) {
 
         <button
           type="submit"
-          disabled={working}
+          disabled={working || !formValid}
           style={{
             ...styles.button,
-            ...(working ? styles.buttonDisabled : {}),
+            ...((working || !formValid) ? styles.buttonDisabled : {}),
           }}
         >
           {working
