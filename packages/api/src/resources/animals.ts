@@ -16,6 +16,9 @@ export function makeAnimals(http: Http) {
     list(limit = 50) {
       return http.get<AnimalRow[]>(`/api/v1/animals?limit=${limit}`);
     },
+    get(id: number | string) {
+      return http.get<any>(`/api/v1/animals/${id}`);
+    },
     update(id: number | string, payload: AnimalUpdatePayload) {
       return http.patch<any>(`/api/v1/animals/${id}`, payload);
     },
