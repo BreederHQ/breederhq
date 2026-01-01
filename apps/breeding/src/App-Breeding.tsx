@@ -916,6 +916,7 @@ type AnimalLite = {
   species: SpeciesWire;
   sex: "FEMALE" | "MALE";
   organization?: { name: string } | null;
+  femaleCycleLenOverrideDays?: number | null;
 };
 
 function normalizeSex(x: any): "FEMALE" | "MALE" | undefined {
@@ -980,6 +981,7 @@ async function fetchAnimals(opts: {
     species: normalizeSpecies(a.species) ?? (opts.species ?? "DOG"),
     sex: normalizeSex(a.sex) ?? (opts.sexHint ?? "FEMALE"),
     organization: a.organization?.name ? { name: String(a.organization.name) } : null,
+    femaleCycleLenOverrideDays: a.femaleCycleLenOverrideDays ?? null,
   }));
 
   return normalized;
