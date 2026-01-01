@@ -3762,6 +3762,24 @@ function PlanDetailsView(props: {
     };
   }, [row.damId, tenantId, refreshTrigger]);
 
+  // ===== Auto-recalculate expected dates when override changes for locked plans =====
+  const prevOverrideRef = React.useRef<number | null>(liveOverride);
+  React.useEffect(() => {
+    const isLocked = Boolean((effective.lockedCycleStart ?? "").toString().trim());
+    const overrideChanged = prevOverrideRef.current !== liveOverride;
+
+    if (isLocked && overrideChanged && prevOverrideRef.current !== undefined) {
+      console.log("[plan] override changed for locked plan, recalculating expected dates", {
+        old: prevOverrideRef.current,
+        new: liveOverride,
+        lockedCycleStart: effective.lockedCycleStart,
+      });
+      recalculateExpectedDates();
+    }
+
+    prevOverrideRef.current = liveOverride;
+  }, [liveOverride, effective.lockedCycleStart]);
+
   // ===== Cycle math + projections =====
   const speciesWire = normalizeSpeciesWire(row.species);
 
@@ -3910,6 +3928,57 @@ function PlanDetailsView(props: {
         expectedPlacementCompletedDate: expected.placementCompleted,
       });
       utils.toast?.error?.("Failed to lock cycle. Please try again.");
+    }
+  }
+
+  async function recalculateExpectedDates() {
+    if (isArchived) return;
+    if (!api) return;
+
+    const lockedStart = effective.lockedCycleStart;
+    if (!lockedStart || !String(lockedStart).trim()) {
+      return; // Can't recalculate if there's no locked cycle
+    }
+
+    const expectedRaw = computeExpectedForPlan({
+      species: row.species as any,
+      lockedCycleStart: lockedStart,
+      femaleCycleLenOverrideDays: liveOverride,
+    });
+
+    const expected = normalizeExpectedMilestones(expectedRaw, lockedStart);
+    const testingStart =
+      expected.hormoneTestingStart ?? pickExpectedTestingStart(expectedRaw, lockedStart);
+
+    // Only update EXPECTED dates, NOT locked dates
+    const payload = {
+      expectedCycleStart: expected.cycleStart,
+      expectedHormoneTestingStart: testingStart ?? null,
+      expectedBreedDate: expected.breedDate,
+      expectedBirthDate: expected.birthDate,
+      expectedWeaned: expected.weanedDate,
+      expectedPlacementStartDate: expected.placementStart,
+      expectedPlacementCompletedDate: expected.placementCompleted,
+    };
+
+    try {
+      await api.updatePlan(Number(row.id), payload as any);
+      setDraftLive(payload);
+
+      await api.createEvent(Number(row.id), {
+        type: "EXPECTED_DATES_RECALCULATED",
+        occurredAt: new Date().toISOString(),
+        label: "Expected dates recalculated",
+        data: {
+          reason: "Cycle length override changed",
+          femaleCycleLenOverrideDays: liveOverride,
+          lockedCycleStart: lockedStart,
+          ...expected,
+        },
+      });
+    } catch (e) {
+      console.error("[Breeding] recalculateExpectedDates failed", e);
+      utils.toast?.error?.("Failed to recalculate expected dates. Please try again.");
     }
   }
 
