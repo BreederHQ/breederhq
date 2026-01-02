@@ -77,6 +77,23 @@ export interface SchedulingEventResponse {
   eventStatus: SchedulingEventStatus;
 }
 
+// Discovery endpoint types
+export interface DiscoveryEventItem {
+  eventId: string;
+  eventType: string;
+  label: string;
+  mode: "in_person" | "virtual" | "mixed" | null;
+  locationSummary: string | null;
+  bookingRules: BookingRules;
+  existingBooking: ConfirmedBooking | null;
+}
+
+export interface DiscoveryResponse {
+  offspringGroupId: number;
+  offspringGroupName: string | null;
+  events: DiscoveryEventItem[];
+}
+
 /* ────────────────────────────────────────────────────────────────────────────
  * API Base URL (same pattern as taskSources.ts)
  * ──────────────────────────────────────────────────────────────────────────── */
@@ -146,13 +163,24 @@ async function apiFetch<T>(
 /* ────────────────────────────────────────────────────────────────────────────
  * Scheduling API Functions
  *
- * PLACEHOLDER ENDPOINTS - Backend will implement these:
+ * Endpoints:
+ * - GET  /api/v1/portal/scheduling/offspring-groups/:offspringGroupId/events (discovery)
  * - GET  /api/v1/portal/scheduling/events/:eventId
  * - GET  /api/v1/portal/scheduling/events/:eventId/slots
  * - POST /api/v1/portal/scheduling/events/:eventId/book
  * - POST /api/v1/portal/scheduling/events/:eventId/cancel
  * - POST /api/v1/portal/scheduling/events/:eventId/reschedule
  * ──────────────────────────────────────────────────────────────────────────── */
+
+/**
+ * Discover available scheduling events for an offspring group.
+ * Returns list of bookable events with context and existing bookings.
+ */
+export async function discoverSchedulingEvents(
+  offspringGroupId: number
+): Promise<{ ok: true; data: DiscoveryResponse } | { ok: false; status: number; message: string }> {
+  return apiFetch<DiscoveryResponse>(`/api/v1/portal/scheduling/offspring-groups/${offspringGroupId}/events`);
+}
 
 /**
  * Get scheduling event details, rules, and current status.
