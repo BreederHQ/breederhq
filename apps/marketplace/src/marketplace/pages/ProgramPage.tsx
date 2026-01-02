@@ -4,6 +4,7 @@ import { useParams, Link } from "react-router-dom";
 import { useProgramQuery } from "../hooks/useProgramQuery";
 import { useProgramListingsQuery } from "../hooks/useProgramListingsQuery";
 import { getUserMessage } from "../../api/errors";
+import { Breadcrumb } from "../components/Breadcrumb";
 import type { PublicOffspringGroupListingDTO } from "../../api/types";
 
 /**
@@ -40,12 +41,12 @@ export function ProgramPage() {
   // Profile error - full page error
   if (profileError) {
     return (
-      <div className="rounded-xl border border-white/10 bg-white/5 p-8 text-center">
-        <p className="text-white/70 mb-4">{getUserMessage(profileError)}</p>
+      <div className="rounded-lg border border-white/10 bg-white/5 p-6 text-center">
+        <p className="text-white/70 text-sm mb-3">{getUserMessage(profileError)}</p>
         <button
           type="button"
           onClick={refetchProfile}
-          className="px-4 py-2 rounded-lg bg-white/10 border border-white/10 text-sm font-medium text-white hover:bg-white/15 transition-colors"
+          className="px-4 py-1.5 rounded-md bg-white/10 border border-white/10 text-sm font-medium text-white hover:bg-white/15 transition-colors"
         >
           Try again
         </button>
@@ -56,14 +57,13 @@ export function ProgramPage() {
   // Profile loading
   if (profileLoading || !profile) {
     return (
-      <div className="space-y-6">
+      <div className="space-y-4">
+        {/* Breadcrumb skeleton */}
+        <div className="h-4 bg-white/10 rounded animate-pulse w-32" />
         {/* Header skeleton */}
-        <div className="space-y-3">
-          <div className="h-8 bg-white/10 rounded animate-pulse w-1/3" />
-          <div className="h-4 bg-white/10 rounded animate-pulse w-1/4" />
-        </div>
+        <div className="h-7 bg-white/10 rounded animate-pulse w-1/3" />
         {/* Bio skeleton */}
-        <div className="rounded-xl border border-white/10 bg-white/5 p-6 space-y-3">
+        <div className="rounded-lg border border-white/10 bg-white/5 p-4 space-y-2">
           <div className="h-4 bg-white/10 rounded animate-pulse w-full" />
           <div className="h-4 bg-white/10 rounded animate-pulse w-3/4" />
         </div>
@@ -76,66 +76,77 @@ export function ProgramPage() {
   const shouldClampBio = bioText.length > 300;
   const displayBio = bioExpanded || !shouldClampBio ? bioText : bioText.slice(0, 300) + "...";
 
+  const listingsCount = listingsData?.items.length ?? 0;
+  const singleListing = listingsCount === 1;
+
   return (
-    <div className="space-y-8">
-      {/* Back link */}
-      <Link
-        to="/"
-        className="inline-flex items-center text-sm text-white/60 hover:text-white transition-colors"
-      >
-        <span className="mr-1">&larr;</span> All programs
-      </Link>
+    <div className="space-y-5">
+      {/* Breadcrumb */}
+      <Breadcrumb
+        items={[
+          { label: "All programs", href: "/" },
+          { label: profile.name },
+        ]}
+      />
 
       {/* Header */}
-      <div>
-        <h1 className="text-3xl sm:text-4xl font-bold text-white tracking-tight">
-          {profile.name}
-        </h1>
-      </div>
+      <h1 className="text-2xl font-bold text-white tracking-tight">
+        {profile.name}
+      </h1>
 
       {/* Profile info card */}
-      <div className="rounded-xl border border-white/10 bg-white/5 p-6 space-y-4">
-        {bioText && (
-          <div>
-            <p className="text-white/80 leading-relaxed">{displayBio}</p>
-            {shouldClampBio && (
-              <button
-                type="button"
-                onClick={() => setBioExpanded(!bioExpanded)}
-                className="text-sm text-orange-400 hover:text-orange-300 mt-2 transition-colors"
-              >
-                {bioExpanded ? "Show less" : "Read more"}
-              </button>
-            )}
-          </div>
-        )}
+      {(bioText || profile.website) && (
+        <div className="rounded-lg border border-white/10 bg-white/5 p-4 space-y-3">
+          {bioText && (
+            <div>
+              <p className="text-sm text-white/80 leading-relaxed">{displayBio}</p>
+              {shouldClampBio && (
+                <button
+                  type="button"
+                  onClick={() => setBioExpanded(!bioExpanded)}
+                  className="text-xs text-orange-400 hover:text-orange-300 mt-1 transition-colors"
+                >
+                  {bioExpanded ? "Show less" : "Read more"}
+                </button>
+              )}
+            </div>
+          )}
 
-        {profile.website && (
-          <div className="pt-2 border-t border-white/10">
-            <a
-              href={profile.website}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-sm text-orange-400 hover:text-orange-300 transition-colors"
-            >
-              Visit website &rarr;
-            </a>
-          </div>
-        )}
-      </div>
+          {profile.website && (
+            <div className={bioText ? "pt-2 border-t border-white/10" : ""}>
+              <a
+                href={profile.website}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-sm text-orange-400 hover:text-orange-300 transition-colors"
+              >
+                Visit website &rarr;
+              </a>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Listings section */}
-      <div className="space-y-4">
-        <h2 className="text-xl font-semibold text-white">Available Listings</h2>
+      <div className="space-y-3">
+        {/* Section header with count badge */}
+        <div className="flex items-center gap-2">
+          <h2 className="text-lg font-semibold text-white">Available Listings</h2>
+          {!listingsLoading && !listingsError && (
+            <span className="px-1.5 py-0.5 rounded text-xs font-medium bg-white/10 text-white/60">
+              {listingsCount}
+            </span>
+          )}
+        </div>
 
         {/* Listings error - inline, does not break profile */}
         {listingsError && (
-          <div className="rounded-xl border border-white/10 bg-white/5 p-6 text-center">
-            <p className="text-white/70 mb-4">{getUserMessage(listingsError)}</p>
+          <div className="rounded-lg border border-white/10 bg-white/5 p-4 text-center">
+            <p className="text-white/70 text-sm mb-2">{getUserMessage(listingsError)}</p>
             <button
               type="button"
               onClick={refetchListings}
-              className="px-4 py-2 rounded-lg bg-white/10 border border-white/10 text-sm font-medium text-white hover:bg-white/15 transition-colors"
+              className="px-4 py-1.5 rounded-md bg-white/10 border border-white/10 text-sm font-medium text-white hover:bg-white/15 transition-colors"
             >
               Try again
             </button>
@@ -152,20 +163,24 @@ export function ProgramPage() {
         )}
 
         {/* Listings empty */}
-        {!listingsLoading && !listingsError && listingsData?.items.length === 0 && (
-          <div className="rounded-xl border border-white/10 bg-white/5 p-6 text-center">
-            <p className="text-white/70">No listings available at this time.</p>
+        {!listingsLoading && !listingsError && listingsCount === 0 && (
+          <div className="rounded-lg border border-white/10 bg-white/5 p-5 text-center">
+            <p className="text-sm font-medium text-white mb-1">No listings published</p>
+            <p className="text-xs text-white/50">
+              This program hasn&apos;t published any listings yet. Check back later.
+            </p>
           </div>
         )}
 
         {/* Listings grid */}
-        {!listingsLoading && !listingsError && listingsData && listingsData.items.length > 0 && (
+        {!listingsLoading && !listingsError && listingsData && listingsCount > 0 && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             {listingsData.items.map((listing) => (
               <ListingCard
                 key={listing.slug}
                 listing={listing}
                 programSlug={programSlug}
+                spanTwo={singleListing}
               />
             ))}
           </div>
@@ -180,33 +195,29 @@ export function ProgramPage() {
  */
 function ListingCardSkeleton() {
   return (
-    <div className="flex flex-col min-h-[240px] rounded-xl border border-white/10 bg-white/5 p-5">
+    <div className="flex flex-col min-h-[200px] rounded-lg border border-white/10 bg-white/5 p-4">
       {/* Header row */}
-      <div className="flex items-start justify-between gap-4 mb-3">
+      <div className="flex items-start justify-between gap-4 mb-2">
         <div className="h-5 bg-white/10 rounded animate-pulse w-2/3" />
-        <div className="h-5 bg-white/10 rounded animate-pulse w-20" />
+        <div className="h-5 bg-white/10 rounded animate-pulse w-16" />
       </div>
       {/* Description */}
-      <div className="h-4 bg-white/10 rounded animate-pulse w-full mb-2" />
-      <div className="h-4 bg-white/10 rounded animate-pulse w-3/4 mb-4" />
+      <div className="h-4 bg-white/10 rounded animate-pulse w-full mb-1.5" />
+      <div className="h-4 bg-white/10 rounded animate-pulse w-3/4 mb-3" />
       {/* Metadata grid */}
-      <div className="grid grid-cols-2 gap-3 mt-auto">
+      <div className="grid grid-cols-2 gap-2 mt-auto">
+        <div className="space-y-1">
+          <div className="h-3 bg-white/10 rounded animate-pulse w-10" />
+          <div className="h-4 bg-white/10 rounded animate-pulse w-14" />
+        </div>
         <div className="space-y-1">
           <div className="h-3 bg-white/10 rounded animate-pulse w-12" />
           <div className="h-4 bg-white/10 rounded animate-pulse w-16" />
         </div>
-        <div className="space-y-1">
-          <div className="h-3 bg-white/10 rounded animate-pulse w-14" />
-          <div className="h-4 bg-white/10 rounded animate-pulse w-20" />
-        </div>
-        <div className="space-y-1">
-          <div className="h-3 bg-white/10 rounded animate-pulse w-16" />
-          <div className="h-4 bg-white/10 rounded animate-pulse w-10" />
-        </div>
       </div>
       {/* Footer */}
-      <div className="mt-4 pt-3 border-t border-white/10">
-        <div className="h-4 bg-white/10 rounded animate-pulse w-24" />
+      <div className="mt-3 pt-2 border-t border-white/10">
+        <div className="h-4 bg-white/10 rounded animate-pulse w-20" />
       </div>
     </div>
   );
@@ -218,9 +229,11 @@ function ListingCardSkeleton() {
 function ListingCard({
   listing,
   programSlug,
+  spanTwo = false,
 }: {
   listing: PublicOffspringGroupListingDTO;
   programSlug: string;
+  spanTwo?: boolean;
 }) {
   // Format price display from priceRange (cents)
   const priceText = listing.priceRange
@@ -254,31 +267,31 @@ function ListingCard({
   return (
     <Link
       to={`/programs/${programSlug}/offspring-groups/${listing.slug}`}
-      className="group flex flex-col min-h-[240px] rounded-xl border border-white/10 bg-white/5 p-5 transition-all hover:border-white/20 hover:bg-white/[0.08] hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-500/60"
+      className={`group flex flex-col min-h-[200px] rounded-lg border border-white/10 bg-white/5 p-4 transition-all hover:border-white/20 hover:bg-white/[0.08] hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-500/60 ${spanTwo ? "lg:col-span-2 lg:max-w-xl" : ""}`}
     >
       {/* Header row: Title left, Price right */}
-      <div className="flex items-start justify-between gap-4">
-        <h3 className="text-lg font-semibold text-white line-clamp-1 flex-1">
+      <div className="flex items-start justify-between gap-3">
+        <h3 className="text-base font-semibold text-white line-clamp-1 flex-1">
           {listing.title || "Untitled Listing"}
         </h3>
         {priceText ? (
-          <span className="text-base font-semibold text-orange-400 whitespace-nowrap">
+          <span className="text-sm font-semibold text-orange-400 whitespace-nowrap">
             {priceText}
           </span>
         ) : (
-          <span className="text-sm text-white/40 whitespace-nowrap">Contact for price</span>
+          <span className="text-xs text-white/40 whitespace-nowrap">Contact for price</span>
         )}
       </div>
 
       {/* Description snippet */}
       {listing.description && (
-        <p className="text-sm text-white/50 mt-2 line-clamp-2 leading-relaxed">
+        <p className="text-sm text-white/50 mt-1.5 line-clamp-2 leading-relaxed">
           {listing.description}
         </p>
       )}
 
-      {/* Metadata grid - 2x2 on desktop, stacked on mobile */}
-      <div className="grid grid-cols-2 gap-x-4 gap-y-3 mt-auto pt-4">
+      {/* Metadata grid - 2x2 */}
+      <div className="grid grid-cols-2 gap-x-4 gap-y-2 mt-auto pt-3">
         {metadataCells.map((cell) => (
           <div key={cell.label}>
             <span className="text-xs text-white/40 block">{cell.label}</span>
@@ -288,11 +301,11 @@ function ListingCard({
       </div>
 
       {/* Footer row */}
-      <div className="flex items-center justify-between mt-4 pt-3 border-t border-white/10">
-        <span className="text-sm text-orange-400 group-hover:text-orange-300 transition-colors">
+      <div className="flex items-center justify-between mt-3 pt-2 border-t border-white/10">
+        <span className="text-xs text-orange-400 group-hover:text-orange-300 transition-colors">
           View listing
         </span>
-        <span className="text-orange-400 group-hover:text-orange-300 transition-colors">
+        <span className="text-xs text-orange-400 group-hover:text-orange-300 transition-colors">
           &rarr;
         </span>
       </div>
