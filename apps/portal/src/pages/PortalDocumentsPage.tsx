@@ -4,6 +4,9 @@ import { PageContainer } from "../design/PageContainer";
 import { PortalEmptyState } from "../design/PortalEmptyState";
 import { makeApi } from "@bhq/api";
 import type { DocumentDTO, DocumentCategory } from "@bhq/api";
+import { isPortalMockEnabled } from "../dev/mockFlag";
+import { DemoBanner } from "../dev/DemoBanner";
+import { mockDocuments } from "../dev/mockData";
 
 // Resolve API base URL (same pattern as taskSources)
 function getApiBase(): string {
@@ -177,20 +180,34 @@ export default function PortalDocumentsPage() {
   const [documents, setDocuments] = React.useState<DocumentDTO[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
+  const mockEnabled = isPortalMockEnabled();
 
   const fetchDocuments = React.useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
       const data = await api.portalData.getDocuments();
-      setDocuments(data.documents);
+      const fetchedDocs = data.documents;
+
+      // Use mock data if real data is empty and demo mode enabled
+      if (fetchedDocs.length === 0 && mockEnabled) {
+        setDocuments(mockDocuments() as any);
+      } else {
+        setDocuments(fetchedDocs);
+      }
     } catch (err: any) {
       console.error("[PortalDocumentsPage] Failed to fetch documents:", err);
-      setError("Failed to load documents");
+
+      // If error and demo mode, use mock data
+      if (mockEnabled) {
+        setDocuments(mockDocuments() as any);
+      } else {
+        setError("Failed to load documents");
+      }
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [mockEnabled]);
 
   React.useEffect(() => {
     fetchDocuments();
@@ -293,6 +310,12 @@ export default function PortalDocumentsPage() {
   // List view
   return (
     <PageContainer>
+      {mockEnabled && (
+        <div style={{ marginBottom: "var(--portal-space-3)" }}>
+          <DemoBanner />
+        </div>
+      )}
+
       <div style={{ display: "flex", flexDirection: "column", gap: "var(--portal-space-4)" }}>
         {/* Page header with download notice */}
         <div>

@@ -3,6 +3,9 @@ import * as React from "react";
 import { PageContainer } from "../design/PageContainer";
 import { PortalModal } from "../design/PortalModal";
 import { usePortalContext } from "../hooks/usePortalContext";
+import { isPortalMockEnabled } from "../dev/mockFlag";
+import { DemoBanner } from "../dev/DemoBanner";
+import { mockProfile } from "../dev/mockData";
 
 /* ────────────────────────────────────────────────────────────────────────────
  * Loading State
@@ -333,7 +336,9 @@ function ActionLink({ label, onClick, subtitle }: ActionLinkProps) {
 
 export default function PortalProfilePage() {
   const { userEmail, orgName, loading, error } = usePortalContext();
-  const [localName, setLocalName] = React.useState<string>("—");
+  const mockEnabled = isPortalMockEnabled();
+  const mock = mockEnabled && !userEmail && !orgName ? mockProfile() : null;
+  const [localName, setLocalName] = React.useState<string>(mock?.name || "—");
   const [showNameUpdateNote, setShowNameUpdateNote] = React.useState(false);
   const [isEditNameModalOpen, setIsEditNameModalOpen] = React.useState(false);
 
@@ -382,6 +387,12 @@ export default function PortalProfilePage() {
   // Main view
   return (
     <PageContainer>
+      {mockEnabled && (
+        <div style={{ marginBottom: "var(--portal-space-3)" }}>
+          <DemoBanner />
+        </div>
+      )}
+
       <div style={{ display: "flex", flexDirection: "column", gap: "var(--portal-space-4)" }}>
         {/* Page header */}
         <h1
@@ -445,7 +456,7 @@ export default function PortalProfilePage() {
                   Name updates are not available yet.
                 </p>
               )}
-              <FieldRow label="Email" value={userEmail || "—"} />
+              <FieldRow label="Email" value={(mock?.email || userEmail) || "—"} />
             </div>
           </SectionCard>
 
@@ -471,7 +482,7 @@ export default function PortalProfilePage() {
                   fontWeight: "var(--portal-font-weight-medium)",
                 }}
               >
-                {orgName || "—"}
+                {(mock?.orgName || orgName) || "—"}
               </div>
               <p
                 style={{

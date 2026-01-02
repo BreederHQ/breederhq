@@ -4,6 +4,9 @@ import { PageContainer } from "../design/PageContainer";
 import { PortalEmptyState } from "../design/PortalEmptyState";
 import { makeApi } from "@bhq/api";
 import type { OffspringPlacementDTO } from "@bhq/api";
+import { isPortalMockEnabled } from "../dev/mockFlag";
+import { DemoBanner } from "../dev/DemoBanner";
+import { mockOffspring } from "../dev/mockData";
 
 // Resolve API base URL
 function getApiBase(): string {
@@ -219,6 +222,7 @@ export default function PortalOffspringPage() {
   const [placements, setPlacements] = React.useState<OffspringPlacementDTO[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState(false);
+  const mockEnabled = isPortalMockEnabled();
 
   // Check if we're viewing offspring detail
   const isDetailView = window.location.pathname.match(/\/portal\/offspring\/\d+/);
@@ -238,14 +242,27 @@ export default function PortalOffspringPage() {
     setError(false);
     try {
       const data = await api.portalData.getOffspringPlacements();
-      setPlacements(data.placements);
+      const fetchedPlacements = data.placements;
+
+      // Use mock data if real data is empty and demo mode enabled
+      if (fetchedPlacements.length === 0 && mockEnabled) {
+        setPlacements(mockOffspring() as any);
+      } else {
+        setPlacements(fetchedPlacements);
+      }
     } catch (err: any) {
       console.error("[PortalOffspringPage] Failed to fetch placements:", err);
-      setError(true);
+
+      // If error and demo mode, use mock data
+      if (mockEnabled) {
+        setPlacements(mockOffspring() as any);
+      } else {
+        setError(true);
+      }
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [mockEnabled]);
 
   React.useEffect(() => {
     fetchPlacements();
@@ -292,6 +309,12 @@ export default function PortalOffspringPage() {
   // List view
   return (
     <PageContainer>
+      {mockEnabled && (
+        <div style={{ marginBottom: "var(--portal-space-3)" }}>
+          <DemoBanner />
+        </div>
+      )}
+
       <div style={{ display: "flex", flexDirection: "column", gap: "var(--portal-space-4)" }}>
         <h1
           style={{

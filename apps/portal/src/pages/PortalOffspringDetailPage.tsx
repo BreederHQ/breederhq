@@ -3,6 +3,9 @@ import * as React from "react";
 import { PageContainer } from "../design/PageContainer";
 import { makeApi } from "@bhq/api";
 import type { OffspringDetailDTO } from "@bhq/api";
+import { isPortalMockEnabled } from "../dev/mockFlag";
+import { DemoBanner } from "../dev/DemoBanner";
+import { mockOffspringDetail } from "../dev/mockData";
 
 // Resolve API base URL
 function getApiBase(): string {
@@ -225,6 +228,7 @@ export default function PortalOffspringDetailPage() {
   const [offspring, setOffspring] = React.useState<OffspringDetailDTO | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState(false);
+  const mockEnabled = isPortalMockEnabled();
 
   // Extract offspring ID from URL path
   const offspringId = React.useMemo(() => {
@@ -247,11 +251,17 @@ export default function PortalOffspringDetailPage() {
       setOffspring(data.offspring);
     } catch (err: any) {
       console.error("[PortalOffspringDetailPage] Failed to fetch offspring:", err);
-      setError(true);
+
+      // If error and demo mode, use mock data
+      if (mockEnabled) {
+        setOffspring(mockOffspringDetail(offspringId));
+      } else {
+        setError(true);
+      }
     } finally {
       setLoading(false);
     }
-  }, [offspringId]);
+  }, [offspringId, mockEnabled]);
 
   React.useEffect(() => {
     fetchOffspring();
@@ -309,6 +319,12 @@ export default function PortalOffspringDetailPage() {
   // Detail view
   return (
     <PageContainer>
+      {mockEnabled && (
+        <div style={{ marginBottom: "var(--portal-space-3)" }}>
+          <DemoBanner />
+        </div>
+      )}
+
       <div style={{ display: "flex", flexDirection: "column", gap: "var(--portal-space-4)" }}>
         {/* Back button */}
         <button
