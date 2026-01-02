@@ -1,7 +1,7 @@
 // apps/marketplace/src/marketplace/pages/HomePage.tsx
-// Marketplace home page - 3-section layout with hero cards and featured rows
+// Marketplace home page - Intent router with featured section
 import * as React from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { isDemoMode, setDemoMode } from "../../demo/demoMode";
 import {
   getAllMockListings,
@@ -16,25 +16,21 @@ import type {
   PublicProgramSummaryDTO,
 } from "../../api/types";
 
+type FeaturedCategory = "animals" | "breeders" | "services";
+
 /**
- * Marketplace home page - 3 stacked sections.
- * Each section has a hero card + row of featured cards.
+ * Marketplace home page - Intent router.
+ * Section A: Three intent cards (Animals, Breeders, Services)
+ * Section B: Featured items (rotates category in demo mode)
  */
 export function HomePage() {
-  const navigate = useNavigate();
-  const [searchValue, setSearchValue] = React.useState("");
   const demoMode = isDemoMode();
 
-  // Handle search submit
-  const handleSearchSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const q = searchValue.trim();
-    if (q) {
-      navigate(`/animals?q=${encodeURIComponent(q)}`);
-    } else {
-      navigate("/animals");
-    }
-  };
+  // Rotate featured category on each page load in demo mode
+  const [featuredCategory] = React.useState<FeaturedCategory>(() => {
+    const categories: FeaturedCategory[] = ["animals", "breeders", "services"];
+    return categories[Math.floor(Math.random() * categories.length)];
+  });
 
   // Handle enabling demo mode
   const handleEnableDemo = () => {
@@ -43,30 +39,91 @@ export function HomePage() {
   };
 
   return (
-    <div className="space-y-10">
-      {/* Hero section */}
-      <div className="space-y-5">
-        <div>
+    <div className="space-y-16">
+      {/* Section A: Intent Selection */}
+      <section className="space-y-6">
+        <div className="text-center max-w-xl mx-auto">
           <h1 className="text-[28px] font-bold text-white tracking-tight leading-tight">
-            Marketplace
+            What are you looking for?
           </h1>
-          <p className="text-sm text-text-tertiary mt-1">
-            Browse animals, explore breeders, and request information.
+          <p className="text-sm text-text-tertiary mt-2">
+            Choose where to start your search.
           </p>
         </div>
 
-        {/* Search input */}
-        <form onSubmit={handleSearchSubmit} className="max-w-2xl">
-          <div className="relative">
-            <input
-              type="text"
-              value={searchValue}
-              onChange={(e) => setSearchValue(e.target.value)}
-              placeholder="Search breed, breeder, or location..."
-              className="w-full h-12 pl-12 pr-4 rounded-portal-sm bg-portal-card border border-border-subtle text-sm text-white placeholder-text-muted focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30 transition-colors"
-            />
+        {/* Intent Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <IntentCard
+            title="Animals"
+            description="Find available animals by species and breed."
+            ctaLabel="Browse animals"
+            href="/animals"
+            icon={<AnimalIcon />}
+          />
+          <IntentCard
+            title="Breeders"
+            description="Explore breeding programs and join waitlists."
+            ctaLabel="Browse breeders"
+            href="/breeders"
+            icon={<BreederIcon />}
+          />
+          <IntentCard
+            title="Services"
+            description="Stud, training, delivery, and breeder services."
+            ctaLabel="Browse services"
+            href="/services"
+            icon={<ServiceIcon />}
+          />
+        </div>
+      </section>
+
+      {/* Section B: Featured */}
+      <FeaturedSection
+        demoMode={demoMode}
+        category={featuredCategory}
+        onEnableDemo={handleEnableDemo}
+      />
+    </div>
+  );
+}
+
+// ============================================================================
+// INTENT CARDS
+// ============================================================================
+
+function IntentCard({
+  title,
+  description,
+  ctaLabel,
+  href,
+  icon,
+}: {
+  title: string;
+  description: string;
+  ctaLabel: string;
+  href: string;
+  icon: React.ReactNode;
+}) {
+  return (
+    <Link to={href} className="block group">
+      <div className="rounded-portal border border-border-subtle bg-portal-card p-6 h-full transition-all hover:bg-portal-card-hover hover:border-border-default hover:-translate-y-0.5">
+        <div className="flex flex-col h-full">
+          {/* Icon */}
+          <div className="w-10 h-10 rounded-full bg-border-default flex items-center justify-center mb-4 group-hover:bg-accent/10 transition-colors">
+            {icon}
+          </div>
+
+          {/* Content */}
+          <h2 className="text-lg font-semibold text-white mb-2">{title}</h2>
+          <p className="text-sm text-text-tertiary mb-4 flex-grow">
+            {description}
+          </p>
+
+          {/* CTA */}
+          <div className="flex items-center gap-2 text-sm text-accent font-medium group-hover:text-accent-hover transition-colors">
+            <span>{ctaLabel}</span>
             <svg
-              className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-text-muted"
+              className="w-4 h-4 transition-transform group-hover:translate-x-0.5"
               fill="none"
               viewBox="0 0 24 24"
               stroke="currentColor"
@@ -74,38 +131,89 @@ export function HomePage() {
               <path
                 strokeLinecap="round"
                 strokeLinejoin="round"
-                strokeWidth={1.5}
-                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                strokeWidth={2}
+                d="M9 5l7 7-7 7"
               />
             </svg>
           </div>
-        </form>
+        </div>
       </div>
-
-      {/* Animals Section */}
-      <AnimalsSection demoMode={demoMode} onEnableDemo={handleEnableDemo} />
-
-      {/* Breeders Section */}
-      <BreedersSection demoMode={demoMode} onEnableDemo={handleEnableDemo} />
-
-      {/* Services Section */}
-      <ServicesSection demoMode={demoMode} onEnableDemo={handleEnableDemo} />
-    </div>
+    </Link>
   );
 }
 
 // ============================================================================
-// ANIMALS SECTION
+// ICONS
 // ============================================================================
 
-function AnimalsSection({
+function AnimalIcon() {
+  return (
+    <svg
+      className="w-5 h-5 text-text-secondary"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={1.5}
+        d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"
+      />
+    </svg>
+  );
+}
+
+function BreederIcon() {
+  return (
+    <svg
+      className="w-5 h-5 text-text-secondary"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={1.5}
+        d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"
+      />
+    </svg>
+  );
+}
+
+function ServiceIcon() {
+  return (
+    <svg
+      className="w-5 h-5 text-text-secondary"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={1.5}
+        d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
+      />
+    </svg>
+  );
+}
+
+// ============================================================================
+// FEATURED SECTION
+// ============================================================================
+
+function FeaturedSection({
   demoMode,
+  category,
   onEnableDemo,
 }: {
   demoMode: boolean;
+  category: FeaturedCategory;
   onEnableDemo: () => void;
 }) {
-  const [listings, setListings] = React.useState<PublicOffspringGroupListingDTO[]>([]);
+  const [items, setItems] = React.useState<FeaturedItem[]>([]);
   const [loading, setLoading] = React.useState(true);
 
   React.useEffect(() => {
@@ -117,579 +225,145 @@ function AnimalsSection({
     const fetchData = async () => {
       setLoading(true);
       await simulateDelay(200);
-      const all = getAllMockListings().filter((l) => l.countAvailable > 0);
-      setListings(all.slice(0, 7)); // 1 hero + 6 row cards
+
+      let featured: FeaturedItem[] = [];
+
+      if (category === "animals") {
+        const listings = getAllMockListings().filter((l) => l.countAvailable > 0);
+        featured = listings.slice(0, 4).map((l) => ({
+          id: `${l.programSlug}-${l.slug}`,
+          type: "animal" as const,
+          title: l.title || "Untitled",
+          subtitle: l.breed || l.species,
+          href: `/programs/${l.programSlug}/offspring-groups/${l.slug}`,
+          price: l.priceRange ? formatCents(l.priceRange.min) : null,
+        }));
+      } else if (category === "breeders") {
+        const { items: breeders } = getMockPrograms({ limit: 4 });
+        featured = breeders.map((b) => ({
+          id: b.slug,
+          type: "breeder" as const,
+          title: b.name,
+          subtitle: `${b.breed} · ${b.location}`,
+          href: `/programs/${b.slug}`,
+          price: null,
+        }));
+      } else {
+        const services = getMockServices().slice(0, 4);
+        featured = services.map((s) => ({
+          id: s.id,
+          type: "service" as const,
+          title: s.name,
+          subtitle: s.programName,
+          href: `/programs/${s.programSlug}`,
+          price: s.priceRange ? formatCents(s.priceRange.min) : null,
+        }));
+      }
+
+      setItems(featured);
       setLoading(false);
     };
+
     fetchData();
-  }, [demoMode]);
+  }, [demoMode, category]);
 
-  const hero = listings[0] || null;
-  const row = listings.slice(1, 7);
-
+  // Non-demo mode: show subtle placeholder
   if (!demoMode) {
     return (
-      <SectionWrapper
-        title="Animals"
-        description="Find your perfect companion from health-tested breeders."
-        viewAllHref="/animals"
-        viewAllLabel="View all animals"
-      >
-        <ComingSoonCard
-          title="Animals browse is coming soon"
-          description="We're building a unified marketplace experience. In the meantime, browse animals through individual breeders."
-          ctaHref="/breeders"
-          ctaLabel="Browse breeders"
-          onEnableDemo={onEnableDemo}
-        />
-      </SectionWrapper>
+      <section className="space-y-4">
+        <h2 className="text-lg font-semibold text-white">Featured right now</h2>
+        <div className="rounded-portal border border-border-subtle bg-portal-card p-6 text-center">
+          <p className="text-sm text-text-tertiary mb-4">
+            Featured listings will appear here once the marketplace is live.
+          </p>
+          <button
+            type="button"
+            onClick={onEnableDemo}
+            className="text-sm text-text-secondary hover:text-white transition-colors"
+          >
+            Preview with demo data
+          </button>
+        </div>
+      </section>
     );
   }
 
-  return (
-    <SectionWrapper
-      title="Animals"
-      description="Find your perfect companion from health-tested breeders."
-      viewAllHref="/animals"
-      viewAllLabel="View all animals"
-    >
-      {loading ? (
-        <LoadingState heroCard rowCards={6} />
-      ) : (
-        <>
-          {/* Hero card */}
-          {hero && <AnimalHeroCard listing={hero} />}
+  const categoryLabel =
+    category === "animals"
+      ? "Animals"
+      : category === "breeders"
+      ? "Breeders"
+      : "Services";
 
-          {/* Row of cards */}
-          {row.length > 0 && (
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mt-4">
-              {row.map((listing, idx) => (
-                <AnimalRowCard
-                  key={`${listing.programSlug}-${listing.slug}`}
-                  listing={listing}
-                  boosted={demoMode && idx === 0}
-                />
-              ))}
-            </div>
-          )}
-        </>
-      )}
-    </SectionWrapper>
-  );
-}
-
-function AnimalHeroCard({ listing }: { listing: PublicOffspringGroupListingDTO }) {
-  const priceText = listing.priceRange
-    ? listing.priceRange.min === listing.priceRange.max
-      ? formatCents(listing.priceRange.min)
-      : `${formatCents(listing.priceRange.min)} - ${formatCents(listing.priceRange.max)}`
-    : null;
-
-  return (
-    <Link
-      to={`/programs/${listing.programSlug}/offspring-groups/${listing.slug}`}
-      className="block"
-    >
-      <div className="rounded-portal border border-border-subtle bg-portal-card p-6 transition-colors hover:bg-portal-card-hover hover:border-border-default">
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-          <div className="flex-1 min-w-0">
-            <h3 className="text-lg font-semibold text-white mb-1">
-              {listing.title || "Untitled Listing"}
-            </h3>
-            <p className="text-sm text-text-secondary mb-2">
-              {listing.breed || listing.species} · {listing.programName}
-            </p>
-            <p className="text-[13px] text-text-tertiary line-clamp-2">
-              {listing.description}
-            </p>
-          </div>
-          <div className="flex items-center gap-4 flex-shrink-0">
-            <div className="text-right">
-              <div className="text-[13px] text-text-tertiary mb-1">
-                {listing.countAvailable} available
-              </div>
-              {priceText && (
-                <div className="text-lg text-accent font-semibold">{priceText}</div>
-              )}
-            </div>
-            <svg
-              className="w-5 h-5 text-text-muted"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={1.5}
-                d="M9 5l7 7-7 7"
-              />
-            </svg>
-          </div>
-        </div>
-      </div>
-    </Link>
-  );
-}
-
-function AnimalRowCard({
-  listing,
-  boosted,
-}: {
-  listing: PublicOffspringGroupListingDTO;
-  boosted?: boolean;
-}) {
-  const priceText = listing.priceRange
-    ? formatCents(listing.priceRange.min)
-    : null;
-
-  return (
-    <Link
-      to={`/programs/${listing.programSlug}/offspring-groups/${listing.slug}`}
-      className="block"
-    >
-      <div className="rounded-portal border border-border-subtle bg-portal-card p-4 h-full transition-colors hover:bg-portal-card-hover hover:border-border-default">
-        {boosted && <BoostedBadge />}
-        <h4 className="text-sm font-semibold text-white mb-1 line-clamp-1">
-          {listing.title || "Untitled"}
-        </h4>
-        <p className="text-xs text-text-tertiary mb-2 line-clamp-1">
-          {listing.breed || listing.species}
-        </p>
-        <div className="flex items-center justify-between text-xs">
-          <span className="text-text-secondary">{listing.countAvailable} avail</span>
-          {priceText && <span className="text-accent font-medium">{priceText}</span>}
-        </div>
-      </div>
-    </Link>
-  );
-}
-
-// ============================================================================
-// BREEDERS SECTION
-// ============================================================================
-
-function BreedersSection({
-  demoMode,
-  onEnableDemo,
-}: {
-  demoMode: boolean;
-  onEnableDemo: () => void;
-}) {
-  const [breeders, setBreeders] = React.useState<PublicProgramSummaryDTO[]>([]);
-  const [loading, setLoading] = React.useState(true);
-
-  React.useEffect(() => {
-    if (!demoMode) {
-      setLoading(false);
-      return;
-    }
-
-    const fetchData = async () => {
-      setLoading(true);
-      await simulateDelay(250);
-      const { items } = getMockPrograms({ limit: 7 });
-      setBreeders(items);
-      setLoading(false);
-    };
-    fetchData();
-  }, [demoMode]);
-
-  const hero = breeders[0] || null;
-  const row = breeders.slice(1, 7);
-
-  if (!demoMode) {
-    return (
-      <SectionWrapper
-        title="Breeders"
-        description="Connect with reputable breeders in your area."
-        viewAllHref="/breeders"
-        viewAllLabel="View all breeders"
-      >
-        <ComingSoonCard
-          title="Discover trusted breeders"
-          description="Browse verified breeder profiles, view their programs, and reach out directly."
-          ctaHref="/breeders"
-          ctaLabel="Browse breeders"
-          onEnableDemo={onEnableDemo}
-        />
-      </SectionWrapper>
-    );
-  }
-
-  return (
-    <SectionWrapper
-      title="Breeders"
-      description="Connect with reputable breeders in your area."
-      viewAllHref="/breeders"
-      viewAllLabel="View all breeders"
-    >
-      {loading ? (
-        <LoadingState heroCard rowCards={6} />
-      ) : (
-        <>
-          {/* Hero card */}
-          {hero && <BreederHeroCard breeder={hero} />}
-
-          {/* Row of cards */}
-          {row.length > 0 && (
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mt-4">
-              {row.map((breeder, idx) => (
-                <BreederRowCard
-                  key={breeder.slug}
-                  breeder={breeder}
-                  boosted={demoMode && idx === 0}
-                />
-              ))}
-            </div>
-          )}
-        </>
-      )}
-    </SectionWrapper>
-  );
-}
-
-function BreederHeroCard({ breeder }: { breeder: PublicProgramSummaryDTO }) {
-  return (
-    <Link to={`/programs/${breeder.slug}`} className="block">
-      <div className="rounded-portal border border-border-subtle bg-portal-card p-6 transition-colors hover:bg-portal-card-hover hover:border-border-default">
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-          <div className="flex-1 min-w-0">
-            <h3 className="text-lg font-semibold text-white mb-1">{breeder.name}</h3>
-            <p className="text-sm text-text-secondary mb-2">
-              {breeder.breed} · {breeder.location}
-            </p>
-            <p className="text-[13px] text-text-tertiary">
-              View profile to learn about their breeding program and available animals.
-            </p>
-          </div>
-          <div className="flex items-center gap-4 flex-shrink-0">
-            <span className="text-sm text-accent font-medium">View profile</span>
-            <svg
-              className="w-5 h-5 text-text-muted"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={1.5}
-                d="M9 5l7 7-7 7"
-              />
-            </svg>
-          </div>
-        </div>
-      </div>
-    </Link>
-  );
-}
-
-function BreederRowCard({
-  breeder,
-  boosted,
-}: {
-  breeder: PublicProgramSummaryDTO;
-  boosted?: boolean;
-}) {
-  return (
-    <Link to={`/programs/${breeder.slug}`} className="block">
-      <div className="rounded-portal border border-border-subtle bg-portal-card p-4 h-full transition-colors hover:bg-portal-card-hover hover:border-border-default">
-        {boosted && <BoostedBadge />}
-        <h4 className="text-sm font-semibold text-white mb-1 line-clamp-1">
-          {breeder.name}
-        </h4>
-        <p className="text-xs text-text-tertiary mb-1 line-clamp-1">{breeder.breed}</p>
-        <p className="text-xs text-text-secondary">{breeder.location}</p>
-      </div>
-    </Link>
-  );
-}
-
-// ============================================================================
-// SERVICES SECTION
-// ============================================================================
-
-function ServicesSection({
-  demoMode,
-  onEnableDemo,
-}: {
-  demoMode: boolean;
-  onEnableDemo: () => void;
-}) {
-  const [services, setServices] = React.useState<MockService[]>([]);
-  const [loading, setLoading] = React.useState(true);
-
-  React.useEffect(() => {
-    if (!demoMode) {
-      setLoading(false);
-      return;
-    }
-
-    const fetchData = async () => {
-      setLoading(true);
-      await simulateDelay(180);
-      const all = getMockServices();
-      setServices(all.slice(0, 7)); // 1 hero + 6 row
-      setLoading(false);
-    };
-    fetchData();
-  }, [demoMode]);
-
-  const hero = services[0] || null;
-  const row = services.slice(1, 7);
-
-  if (!demoMode) {
-    return (
-      <SectionWrapper
-        title="Services"
-        description="Stud services, training, delivery, and more from trusted providers."
-        viewAllHref="/services"
-        viewAllLabel="View all services"
-      >
-        <ComingSoonCard
-          title="Services browse is coming soon"
-          description="Services are published by breeders. Browse breeder profiles to learn about their offerings."
-          ctaHref="/breeders"
-          ctaLabel="Browse breeders"
-          onEnableDemo={onEnableDemo}
-        />
-      </SectionWrapper>
-    );
-  }
-
-  return (
-    <SectionWrapper
-      title="Services"
-      description="Stud services, training, delivery, and more from trusted providers."
-      viewAllHref="/services"
-      viewAllLabel="View all services"
-    >
-      {loading ? (
-        <LoadingState heroCard rowCards={6} />
-      ) : (
-        <>
-          {/* Hero card */}
-          {hero && <ServiceHeroCard service={hero} />}
-
-          {/* Row of cards */}
-          {row.length > 0 && (
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mt-4">
-              {row.map((service, idx) => (
-                <ServiceRowCard
-                  key={service.id}
-                  service={service}
-                  boosted={demoMode && idx === 0}
-                />
-              ))}
-            </div>
-          )}
-        </>
-      )}
-    </SectionWrapper>
-  );
-}
-
-const SERVICE_TYPE_LABELS: Record<string, string> = {
-  stud: "Stud Service",
-  guardianship: "Guardianship",
-  training: "Training",
-  delivery: "Delivery",
-  grooming: "Grooming",
-  boarding: "Boarding",
-};
-
-function ServiceHeroCard({ service }: { service: MockService }) {
-  const priceText = service.priceRange
-    ? service.priceRange.min === service.priceRange.max
-      ? formatCents(service.priceRange.min)
-      : `${formatCents(service.priceRange.min)} - ${formatCents(service.priceRange.max)}`
-    : "Contact for pricing";
-
-  return (
-    <Link to={`/programs/${service.programSlug}`} className="block">
-      <div className="rounded-portal border border-border-subtle bg-portal-card p-6 transition-colors hover:bg-portal-card-hover hover:border-border-default">
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-          <div className="flex-1 min-w-0">
-            <div className="mb-2">
-              <span className="inline-block px-2 py-0.5 text-xs font-medium rounded bg-border-default text-text-secondary">
-                {SERVICE_TYPE_LABELS[service.type] || service.type}
-              </span>
-            </div>
-            <h3 className="text-lg font-semibold text-white mb-1">{service.name}</h3>
-            <p className="text-sm text-text-secondary mb-2">
-              {service.programName} · {service.location}
-            </p>
-            <p className="text-[13px] text-text-tertiary line-clamp-2">
-              {service.description}
-            </p>
-          </div>
-          <div className="flex items-center gap-4 flex-shrink-0">
-            <div className="text-right">
-              <div className="text-lg text-accent font-semibold">{priceText}</div>
-            </div>
-            <svg
-              className="w-5 h-5 text-text-muted"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={1.5}
-                d="M9 5l7 7-7 7"
-              />
-            </svg>
-          </div>
-        </div>
-      </div>
-    </Link>
-  );
-}
-
-function ServiceRowCard({
-  service,
-  boosted,
-}: {
-  service: MockService;
-  boosted?: boolean;
-}) {
-  const priceText = service.priceRange
-    ? formatCents(service.priceRange.min)
-    : "Contact";
-
-  return (
-    <Link to={`/programs/${service.programSlug}`} className="block">
-      <div className="rounded-portal border border-border-subtle bg-portal-card p-4 h-full transition-colors hover:bg-portal-card-hover hover:border-border-default">
-        {boosted && <BoostedBadge />}
-        <div className="mb-1">
-          <span className="inline-block px-1.5 py-0.5 text-[10px] font-medium rounded bg-border-default text-text-secondary">
-            {SERVICE_TYPE_LABELS[service.type] || service.type}
-          </span>
-        </div>
-        <h4 className="text-sm font-semibold text-white mb-1 line-clamp-1">
-          {service.name}
-        </h4>
-        <p className="text-xs text-text-tertiary mb-2 line-clamp-1">
-          {service.programName}
-        </p>
-        <div className="text-xs text-accent font-medium">{priceText}</div>
-      </div>
-    </Link>
-  );
-}
-
-// ============================================================================
-// SHARED COMPONENTS
-// ============================================================================
-
-function SectionWrapper({
-  title,
-  description,
-  viewAllHref,
-  viewAllLabel,
-  children,
-}: {
-  title: string;
-  description: string;
-  viewAllHref: string;
-  viewAllLabel: string;
-  children: React.ReactNode;
-}) {
   return (
     <section className="space-y-4">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h2 className="text-lg font-semibold text-white">{title}</h2>
-          <p className="text-sm text-text-tertiary mt-0.5">{description}</p>
-        </div>
-        <Link
-          to={viewAllHref}
-          className="text-sm text-accent hover:text-accent-hover transition-colors flex-shrink-0"
-        >
-          {viewAllLabel}
-        </Link>
+      <div className="flex items-center gap-3">
+        <h2 className="text-lg font-semibold text-white">Featured right now</h2>
+        <span className="text-xs text-text-muted">· {categoryLabel}</span>
       </div>
-      {children}
+
+      {loading ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {[1, 2, 3, 4].map((i) => (
+            <div
+              key={i}
+              className="rounded-portal border border-border-subtle bg-portal-card p-5 animate-pulse"
+            >
+              <div className="h-4 bg-border-default rounded w-3/4 mb-3" />
+              <div className="h-3 bg-border-default rounded w-1/2" />
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {items.map((item, idx) => (
+            <FeaturedCard key={item.id} item={item} featured={idx === 0} />
+          ))}
+        </div>
+      )}
     </section>
   );
 }
 
-function ComingSoonCard({
-  title,
-  description,
-  ctaHref,
-  ctaLabel,
-  onEnableDemo,
-}: {
+interface FeaturedItem {
+  id: string;
+  type: "animal" | "breeder" | "service";
   title: string;
-  description: string;
-  ctaHref: string;
-  ctaLabel: string;
-  onEnableDemo: () => void;
-}) {
-  return (
-    <div className="rounded-portal border border-border-subtle bg-portal-card p-6 text-center">
-      <h3 className="text-[15px] font-semibold text-white mb-2">{title}</h3>
-      <p className="text-sm text-text-tertiary mb-4 max-w-md mx-auto">{description}</p>
-      <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-        <Link
-          to={ctaHref}
-          className="inline-flex items-center px-4 py-2 rounded-portal-xs bg-accent text-white text-sm font-medium hover:bg-accent-hover transition-colors"
-        >
-          {ctaLabel}
-        </Link>
-        <button
-          type="button"
-          onClick={onEnableDemo}
-          className="text-sm text-text-tertiary hover:text-white transition-colors"
-        >
-          Preview with demo data
-        </button>
-      </div>
-    </div>
-  );
+  subtitle: string;
+  href: string;
+  price: string | null;
 }
 
-function LoadingState({
-  heroCard,
-  rowCards,
+function FeaturedCard({
+  item,
+  featured,
 }: {
-  heroCard?: boolean;
-  rowCards?: number;
+  item: FeaturedItem;
+  featured?: boolean;
 }) {
   return (
-    <>
-      {heroCard && (
-        <div className="rounded-portal border border-border-subtle bg-portal-card p-6 animate-pulse">
-          <div className="h-5 bg-border-default rounded w-1/3 mb-3" />
-          <div className="h-4 bg-border-default rounded w-1/2 mb-2" />
-          <div className="h-4 bg-border-default rounded w-2/3" />
-        </div>
-      )}
-      {rowCards && rowCards > 0 && (
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mt-4">
-          {Array.from({ length: rowCards }).map((_, i) => (
-            <div
-              key={i}
-              className="rounded-portal border border-border-subtle bg-portal-card p-4 animate-pulse"
-            >
-              <div className="h-4 bg-border-default rounded w-3/4 mb-2" />
-              <div className="h-3 bg-border-default rounded w-1/2 mb-2" />
-              <div className="h-3 bg-border-default rounded w-1/3" />
-            </div>
-          ))}
-        </div>
-      )}
-    </>
-  );
-}
+    <Link to={item.href} className="block group">
+      <div className="rounded-portal border border-border-subtle bg-portal-card p-5 h-full transition-colors hover:bg-portal-card-hover hover:border-border-default">
+        {/* Featured badge - only on first item */}
+        {featured && (
+          <span className="inline-block px-1.5 py-0.5 mb-3 text-[10px] font-semibold rounded bg-amber-500/20 text-amber-400 uppercase tracking-wide">
+            Featured
+          </span>
+        )}
 
-function BoostedBadge() {
-  return (
-    <span className="inline-block px-1.5 py-0.5 mb-2 text-[10px] font-semibold rounded bg-amber-500/20 text-amber-400 uppercase tracking-wide">
-      Boosted
-    </span>
+        {/* Title */}
+        <h3 className="text-[15px] font-semibold text-white mb-1 line-clamp-1 group-hover:text-accent transition-colors">
+          {item.title}
+        </h3>
+
+        {/* Subtitle */}
+        <p className="text-sm text-text-tertiary line-clamp-1">{item.subtitle}</p>
+
+        {/* Price (only shown in Featured section) */}
+        {item.price && (
+          <p className="text-sm text-accent font-medium mt-3">{item.price}</p>
+        )}
+      </div>
+    </Link>
   );
 }
