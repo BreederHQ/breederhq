@@ -13,13 +13,14 @@ import {
 
 export default function PortalDebugPage() {
   const mockEnabled = isPortalMockEnabled();
+  const [showCopied, setShowCopied] = React.useState(false);
 
   // Get query params
   const params = new URLSearchParams(window.location.search);
   const mockQueryValue = params.get("mock");
 
   // Get localStorage value
-  let localStorageValue = "N/A";
+  let localStorageValue = "null";
   try {
     localStorageValue = localStorage.getItem("portal_mock") || "null";
   } catch {
@@ -32,6 +33,50 @@ export default function PortalDebugPage() {
     agreements: mockAgreements().length,
     documents: mockDocuments().length,
     offspring: mockOffspring().length,
+  };
+
+  const handleEnableDemoMode = () => {
+    try {
+      localStorage.setItem("portal_mock", "1");
+    } catch {
+      // Ignore localStorage errors
+    }
+    window.location.reload();
+  };
+
+  const handleDisableDemoMode = () => {
+    try {
+      localStorage.removeItem("portal_mock");
+    } catch {
+      // Ignore localStorage errors
+    }
+    // Remove mock=1 from URL if present
+    const url = new URL(window.location.href);
+    url.searchParams.delete("mock");
+    window.location.href = url.toString();
+  };
+
+  const handleCopyDebugInfo = async () => {
+    const debugText = `Build: ${getBuildStamp()}
+Location: ${window.location.href}
+Search: ${window.location.search || "(empty)"}
+Query param 'mock': ${mockQueryValue || "null"}
+localStorage.portal_mock: ${localStorageValue}
+isPortalMockEnabled(): ${mockEnabled}
+Demo mode active: ${mockEnabled ? "YES" : "NO"}
+${mockEnabled ? `Mock counts:
+  mockThreads(): ${mockCounts.threads}
+  mockAgreements(): ${mockCounts.agreements}
+  mockDocuments(): ${mockCounts.documents}
+  mockOffspring(): ${mockCounts.offspring}` : ""}`;
+
+    try {
+      await navigator.clipboard.writeText(debugText);
+      setShowCopied(true);
+      setTimeout(() => setShowCopied(false), 1500);
+    } catch (err) {
+      console.error("Failed to copy debug info:", err);
+    }
   };
 
   return (
@@ -54,6 +99,120 @@ export default function PortalDebugPage() {
           Debug
         </h1>
 
+        {/* Demo Mode Controls */}
+        <div
+          style={{
+            display: "flex",
+            gap: "var(--portal-space-2)",
+            flexWrap: "wrap",
+          }}
+        >
+          <button
+            onClick={handleEnableDemoMode}
+            disabled={mockEnabled}
+            style={{
+              padding: "var(--portal-space-2) var(--portal-space-3)",
+              fontSize: "var(--portal-font-size-sm)",
+              fontWeight: "var(--portal-font-weight-medium)",
+              color: mockEnabled ? "var(--portal-text-tertiary)" : "var(--portal-text-primary)",
+              background: mockEnabled ? "var(--portal-bg-elevated)" : "var(--portal-accent)",
+              border: "1px solid var(--portal-border)",
+              borderRadius: "var(--portal-radius-md)",
+              cursor: mockEnabled ? "not-allowed" : "pointer",
+              transition: "background-color 0.15s ease",
+            }}
+          >
+            Enable demo mode
+          </button>
+          <button
+            onClick={handleDisableDemoMode}
+            disabled={!mockEnabled}
+            style={{
+              padding: "var(--portal-space-2) var(--portal-space-3)",
+              fontSize: "var(--portal-font-size-sm)",
+              fontWeight: "var(--portal-font-weight-medium)",
+              color: !mockEnabled ? "var(--portal-text-tertiary)" : "var(--portal-text-primary)",
+              background: "transparent",
+              border: "1px solid var(--portal-border)",
+              borderRadius: "var(--portal-radius-md)",
+              cursor: !mockEnabled ? "not-allowed" : "pointer",
+              transition: "background-color 0.15s ease",
+            }}
+            onMouseEnter={(e) => {
+              if (mockEnabled) {
+                e.currentTarget.style.backgroundColor = "var(--portal-bg-elevated)";
+              }
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = "transparent";
+            }}
+          >
+            Disable demo mode
+          </button>
+          <button
+            onClick={handleCopyDebugInfo}
+            style={{
+              padding: "var(--portal-space-2) var(--portal-space-3)",
+              fontSize: "var(--portal-font-size-sm)",
+              fontWeight: "var(--portal-font-weight-medium)",
+              color: "var(--portal-text-primary)",
+              background: "transparent",
+              border: "1px solid var(--portal-border)",
+              borderRadius: "var(--portal-radius-md)",
+              cursor: "pointer",
+              transition: "background-color 0.15s ease",
+              display: "flex",
+              alignItems: "center",
+              gap: "var(--portal-space-1)",
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = "var(--portal-bg-elevated)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = "transparent";
+            }}
+          >
+            Copy debug info
+            {showCopied && (
+              <span style={{ color: "var(--portal-accent)", fontSize: "var(--portal-font-size-xs)" }}>
+                ✓
+              </span>
+            )}
+          </button>
+        </div>
+
+        {/* Demo Mode Status - Explicit YES/NO */}
+        <div
+          style={{
+            background: "var(--portal-bg-elevated)",
+            border: "1px solid var(--portal-border-subtle)",
+            borderRadius: "var(--portal-radius-lg)",
+            padding: "var(--portal-space-4)",
+          }}
+        >
+          <h2
+            style={{
+              fontSize: "var(--portal-font-size-base)",
+              fontWeight: "var(--portal-font-weight-semibold)",
+              color: "var(--portal-text-primary)",
+              marginBottom: "var(--portal-space-3)",
+              margin: 0,
+            }}
+          >
+            Demo Mode Status
+          </h2>
+          <div
+            style={{
+              fontSize: "var(--portal-font-size-lg)",
+              fontWeight: "var(--portal-font-weight-semibold)",
+              color: mockEnabled ? "var(--portal-accent)" : "var(--portal-text-primary)",
+              marginTop: "var(--portal-space-2)",
+            }}
+          >
+            Demo mode active: {mockEnabled ? "YES" : "NO"}
+          </div>
+        </div>
+
         {/* Build Info */}
         <div
           style={{
@@ -69,11 +228,19 @@ export default function PortalDebugPage() {
               fontWeight: "var(--portal-font-weight-semibold)",
               color: "var(--portal-text-primary)",
               marginBottom: "var(--portal-space-3)",
+              margin: 0,
             }}
           >
             Build Info
           </h2>
-          <div style={{ fontSize: "var(--portal-font-size-sm)", color: "var(--portal-text-secondary)", fontFamily: "monospace" }}>
+          <div
+            style={{
+              fontSize: "var(--portal-font-size-sm)",
+              color: "var(--portal-text-primary)",
+              fontFamily: "monospace",
+              marginTop: "var(--portal-space-2)",
+            }}
+          >
             {getBuildStamp()}
           </div>
         </div>
@@ -93,17 +260,20 @@ export default function PortalDebugPage() {
               fontWeight: "var(--portal-font-weight-semibold)",
               color: "var(--portal-text-primary)",
               marginBottom: "var(--portal-space-3)",
+              margin: 0,
             }}
           >
             Location
           </h2>
-          <dl style={{ margin: 0 }}>
-            <DebugRow label="location.href" value={window.location.href} />
-            <DebugRow label="location.search" value={window.location.search || "(empty)"} />
-          </dl>
+          <table style={{ width: "100%", borderCollapse: "collapse", marginTop: "var(--portal-space-2)" }}>
+            <tbody>
+              <DebugRow label="location.href" value={window.location.href} />
+              <DebugRow label="location.search" value={window.location.search || "(empty)"} />
+            </tbody>
+          </table>
         </div>
 
-        {/* Mock Mode Info */}
+        {/* Mock Mode Evaluation */}
         <div
           style={{
             background: "var(--portal-bg-elevated)",
@@ -118,47 +288,55 @@ export default function PortalDebugPage() {
               fontWeight: "var(--portal-font-weight-semibold)",
               color: "var(--portal-text-primary)",
               marginBottom: "var(--portal-space-3)",
+              margin: 0,
             }}
           >
-            Mock Mode
+            Mock Mode Evaluation
           </h2>
-          <dl style={{ margin: 0 }}>
-            <DebugRow label="Query param 'mock'" value={mockQueryValue || "null"} />
-            <DebugRow label="localStorage.portal_mock" value={localStorageValue} />
-            <DebugRow
-              label="isPortalMockEnabled()"
-              value={mockEnabled ? "true" : "false"}
-              highlight={mockEnabled}
-            />
-          </dl>
+          <table style={{ width: "100%", borderCollapse: "collapse", marginTop: "var(--portal-space-2)" }}>
+            <tbody>
+              <DebugRow label="Query param 'mock'" value={mockQueryValue || "null"} />
+              <DebugRow label="localStorage.portal_mock" value={localStorageValue} />
+              <DebugRow
+                label="isPortalMockEnabled()"
+                value={mockEnabled ? "true" : "false"}
+                highlight={mockEnabled}
+              />
+            </tbody>
+          </table>
         </div>
 
-        {/* Mock Data Counts */}
-        <div
-          style={{
-            background: "var(--portal-bg-elevated)",
-            border: "1px solid var(--portal-border-subtle)",
-            borderRadius: "var(--portal-radius-lg)",
-            padding: "var(--portal-space-4)",
-          }}
-        >
-          <h2
+        {/* Mock Data Counts - Only show if mock is enabled */}
+        {mockEnabled && (
+          <div
             style={{
-              fontSize: "var(--portal-font-size-base)",
-              fontWeight: "var(--portal-font-weight-semibold)",
-              color: "var(--portal-text-primary)",
-              marginBottom: "var(--portal-space-3)",
+              background: "var(--portal-bg-elevated)",
+              border: "1px solid var(--portal-border-subtle)",
+              borderRadius: "var(--portal-radius-lg)",
+              padding: "var(--portal-space-4)",
             }}
           >
-            Mock Data Counts
-          </h2>
-          <dl style={{ margin: 0 }}>
-            <DebugRow label="mockThreads()" value={String(mockCounts.threads)} />
-            <DebugRow label="mockAgreements()" value={String(mockCounts.agreements)} />
-            <DebugRow label="mockDocuments()" value={String(mockCounts.documents)} />
-            <DebugRow label="mockOffspring()" value={String(mockCounts.offspring)} />
-          </dl>
-        </div>
+            <h2
+              style={{
+                fontSize: "var(--portal-font-size-base)",
+                fontWeight: "var(--portal-font-weight-semibold)",
+                color: "var(--portal-text-primary)",
+                marginBottom: "var(--portal-space-3)",
+                margin: 0,
+              }}
+            >
+              Mock Data Counts
+            </h2>
+            <table style={{ width: "100%", borderCollapse: "collapse", marginTop: "var(--portal-space-2)" }}>
+              <tbody>
+                <DebugRow label="mockThreads()" value={String(mockCounts.threads)} />
+                <DebugRow label="mockAgreements()" value={String(mockCounts.agreements)} />
+                <DebugRow label="mockDocuments()" value={String(mockCounts.documents)} />
+                <DebugRow label="mockOffspring()" value={String(mockCounts.offspring)} />
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </PageContainer>
   );
@@ -172,36 +350,35 @@ interface DebugRowProps {
 
 function DebugRow({ label, value, highlight }: DebugRowProps) {
   return (
-    <div
+    <tr
       style={{
-        display: "grid",
-        gridTemplateColumns: "220px 1fr",
-        gap: "var(--portal-space-3)",
-        padding: "var(--portal-space-2) 0",
         borderBottom: "1px solid var(--portal-border-subtle)",
       }}
     >
-      <dt
+      <td
         style={{
           fontSize: "var(--portal-font-size-sm)",
           color: "var(--portal-text-secondary)",
           fontFamily: "monospace",
+          padding: "var(--portal-space-2) var(--portal-space-2) var(--portal-space-2) 0",
+          verticalAlign: "top",
+          width: "220px",
         }}
       >
         {label}
-      </dt>
-      <dd
+      </td>
+      <td
         style={{
           fontSize: "var(--portal-font-size-sm)",
           color: highlight ? "var(--portal-accent)" : "var(--portal-text-primary)",
           fontFamily: "monospace",
           fontWeight: highlight ? "var(--portal-font-weight-semibold)" : "normal",
-          margin: 0,
+          padding: "var(--portal-space-2) 0",
           wordBreak: "break-all",
         }}
       >
         {value}
-      </dd>
-    </div>
+      </td>
+    </tr>
   );
 }
