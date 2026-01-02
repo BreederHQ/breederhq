@@ -4,6 +4,7 @@
 
 import { makeApi } from "@bhq/api";
 import type { InvoiceDTO, AgreementDTO, OffspringPlacementDTO } from "@bhq/api";
+import { getCapability, setCapability, capabilityKeys } from "../derived/capabilities";
 
 // Notification types derived from existing data
 export type NotificationType =
@@ -57,10 +58,26 @@ function isWithinDays(timestamp: string | null, days: number): boolean {
   return diffDays <= days;
 }
 
+// Single-flight promise cache for invoice notifications
+let invoiceNotificationsPromise: Promise<Notification[]> | null = null;
+
 // Fetch invoice notifications (issued or overdue in last 7 days)
 async function fetchInvoiceNotifications(): Promise<Notification[]> {
-  try {
-    const res = await api.finance.invoices.list({ limit: 100 });
+  // Check capability gate first
+  if (!getCapability(capabilityKeys.invoices_enabled)) {
+    // Capability disabled, short-circuit without network request
+    return [];
+  }
+
+  // Single-flight: if already fetching, return existing promise
+  if (invoiceNotificationsPromise) {
+    return invoiceNotificationsPromise;
+  }
+
+  // Create new promise
+  invoiceNotificationsPromise = (async () => {
+    try {
+      const res = await api.finance.invoices.list({ limit: 100 });
     const invoices = res?.items || [];
     const notifications: Notification[] = [];
 
@@ -90,19 +107,28 @@ async function fetchInvoiceNotifications(): Promise<Notification[]> {
       }
     }
 
-    return notifications;
-  } catch (err: any) {
-    // Gracefully handle 401/403 (actor context issues in portal CLIENT context)
-    const status = err?.response?.status || err?.status;
-    const errorCode = err?.response?.data?.error?.code || err?.code;
-    if (status === 401 || status === 403 || errorCode === "ACTOR_CONTEXT_UNRESOLVABLE") {
-      // Source unavailable in this context, return empty silently
+      return notifications;
+    } catch (err: any) {
+      // Gracefully handle 401/403 (actor context issues in portal CLIENT context)
+      const status = err?.response?.status || err?.status;
+      const errorCode = err?.response?.data?.error?.code || err?.code;
+      if (status === 401 || status === 403 || errorCode === "ACTOR_CONTEXT_UNRESOLVABLE") {
+        // Disable capability to prevent future attempts
+        setCapability(capabilityKeys.invoices_enabled, false);
+        // Log once, then silent
+        console.warn("[notificationSources] Invoice endpoint unavailable in CLIENT context, disabling for session");
+        return [];
+      }
+      // Log other errors but don't break
+      console.warn("[notificationSources] Invoice source error:", err.message || err);
       return [];
+    } finally {
+      // Clear single-flight cache after request completes
+      invoiceNotificationsPromise = null;
     }
-    // Log other errors but don't break
-    console.warn("[notificationSources] Invoice source unavailable:", err.message || err);
-    return [];
-  }
+  })();
+
+  return invoiceNotificationsPromise;
 }
 
 // Fetch agreement notifications (sent or signed in last 7 days)

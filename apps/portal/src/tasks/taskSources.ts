@@ -5,6 +5,7 @@
 import { makeApi } from "@bhq/api";
 import type { InvoiceDTO, AgreementDTO, OffspringPlacementDTO, ContractStatus, PlacementStatus } from "@bhq/api";
 import { buildInvoiceHref } from "../links";
+import { getCapability, setCapability, capabilityKeys } from "../derived/capabilities";
 
 // Secondary action for task cards (e.g., Message CTA)
 export interface TaskSecondaryAction {
@@ -72,12 +73,28 @@ function isOverdue(dateStr: string | null): boolean {
   return due < now;
 }
 
+// Single-flight promise cache for invoice tasks
+let invoiceTasksPromise: Promise<TaskCard[]> | null = null;
+
 // Invoice task source
 // Fetches invoices with status ISSUED, PARTIALLY_PAID, or OVERDUE
 async function fetchInvoiceTasks(): Promise<TaskCard[]> {
-  try {
-    // Fetch all invoices and filter client-side for actionable ones
-    const res = await api.finance.invoices.list({ limit: 100 });
+  // Check capability gate first
+  if (!getCapability(capabilityKeys.invoices_enabled)) {
+    // Capability disabled, short-circuit without network request
+    return [];
+  }
+
+  // Single-flight: if already fetching, return existing promise
+  if (invoiceTasksPromise) {
+    return invoiceTasksPromise;
+  }
+
+  // Create new promise
+  invoiceTasksPromise = (async () => {
+    try {
+      // Fetch all invoices and filter client-side for actionable ones
+      const res = await api.finance.invoices.list({ limit: 100 });
     const invoices = res?.items || [];
 
     // Filter to actionable statuses (unpaid invoices that need attention)
@@ -85,63 +102,74 @@ async function fetchInvoiceTasks(): Promise<TaskCard[]> {
       ["ISSUED", "PARTIALLY_PAID", "OVERDUE"].includes(inv.status)
     );
 
-    return actionable.map((inv: InvoiceDTO): TaskCard => {
-      const overdue = inv.status === "OVERDUE" || isOverdue(inv.dueAt);
-      const remaining = inv.balanceCents ?? (inv.totalCents - inv.paidCents);
+      const tasks = actionable.map((inv: InvoiceDTO): TaskCard => {
+        const overdue = inv.status === "OVERDUE" || isOverdue(inv.dueAt);
+        const remaining = inv.balanceCents ?? (inv.totalCents - inv.paidCents);
 
-      // Calculate days to due for note
-      let noteText: string | null = null;
-      if (inv.dueAt) {
-        const due = new Date(inv.dueAt);
-        const now = new Date();
-        const diffMs = due.getTime() - now.getTime();
-        const daysToDue = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+        // Calculate days to due for note
+        let noteText: string | null = null;
+        if (inv.dueAt) {
+          const due = new Date(inv.dueAt);
+          const now = new Date();
+          const diffMs = due.getTime() - now.getTime();
+          const daysToDue = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
 
-        if (daysToDue < 0) {
-          const daysOverdue = Math.abs(daysToDue);
-          noteText = `Past due by ${daysOverdue} day${daysOverdue !== 1 ? "s" : ""}`;
-        } else if (daysToDue === 0) {
-          noteText = "Due today";
-        } else if (daysToDue === 1) {
-          noteText = "Due tomorrow";
-        } else if (daysToDue <= 7) {
-          noteText = `Due in ${daysToDue} days`;
+          if (daysToDue < 0) {
+            const daysOverdue = Math.abs(daysToDue);
+            noteText = `Past due by ${daysOverdue} day${daysOverdue !== 1 ? "s" : ""}`;
+          } else if (daysToDue === 0) {
+            noteText = "Due today";
+          } else if (daysToDue === 1) {
+            noteText = "Due tomorrow";
+          } else if (daysToDue <= 7) {
+            noteText = `Due in ${daysToDue} days`;
+          }
         }
+
+        // Check for linked message thread (not yet available in API)
+        // When InvoiceDTO gains a threadId field, use buildThreadHref() here
+        const hasThreadLink = false; // Placeholder: (inv as any).threadId != null
+        const secondaryAction = hasThreadLink
+          ? { label: "Message", href: "/marketing/messages" } // Will use buildThreadHref(inv.threadId) when available
+          : null;
+
+        return {
+          id: `invoice-${inv.id}`,
+          type: "invoice",
+          title: `Invoice #${inv.invoiceNumber}`,
+          subtitle: `${formatCurrency(remaining)} due`,
+          dueAt: inv.dueAt,
+          status: overdue ? "overdue" : "pending",
+          ctaLabel: "View Invoice",
+          href: buildInvoiceHref(inv.id),
+          secondaryAction,
+          note: noteText,
+          urgency: overdue ? "action_required" : "upcoming",
+        };
+      });
+
+      return tasks;
+    } catch (err: any) {
+      // Gracefully handle 401/403 (actor context issues in portal CLIENT context)
+      const status = err?.response?.status || err?.status;
+      const errorCode = err?.response?.data?.error?.code || err?.code;
+      if (status === 401 || status === 403 || errorCode === "ACTOR_CONTEXT_UNRESOLVABLE") {
+        // Disable capability to prevent future attempts
+        setCapability(capabilityKeys.invoices_enabled, false);
+        // Log once, then silent
+        console.warn("[taskSources] Invoice endpoint unavailable in CLIENT context, disabling for session");
+        return [];
       }
-
-      // Check for linked message thread (not yet available in API)
-      // When InvoiceDTO gains a threadId field, use buildThreadHref() here
-      const hasThreadLink = false; // Placeholder: (inv as any).threadId != null
-      const secondaryAction = hasThreadLink
-        ? { label: "Message", href: "/marketing/messages" } // Will use buildThreadHref(inv.threadId) when available
-        : null;
-
-      return {
-        id: `invoice-${inv.id}`,
-        type: "invoice",
-        title: `Invoice #${inv.invoiceNumber}`,
-        subtitle: `${formatCurrency(remaining)} due`,
-        dueAt: inv.dueAt,
-        status: overdue ? "overdue" : "pending",
-        ctaLabel: "View Invoice",
-        href: buildInvoiceHref(inv.id),
-        secondaryAction,
-        note: noteText,
-        urgency: overdue ? "action_required" : "upcoming",
-      };
-    });
-  } catch (err: any) {
-    // Gracefully handle 401/403 (actor context issues in portal CLIENT context)
-    const status = err?.response?.status || err?.status;
-    const errorCode = err?.response?.data?.error?.code || err?.code;
-    if (status === 401 || status === 403 || errorCode === "ACTOR_CONTEXT_UNRESOLVABLE") {
-      // Source unavailable in this context, return empty silently
+      // Log other errors but don't break
+      console.warn("[taskSources] Invoice source error:", err.message || err);
       return [];
+    } finally {
+      // Clear single-flight cache after request completes
+      invoiceTasksPromise = null;
     }
-    // Log other errors but don't break
-    console.warn("[taskSources] Invoice source unavailable:", err.message || err);
-    return [];
-  }
+  })();
+
+  return invoiceTasksPromise;
 }
 
 // Agreement task source
