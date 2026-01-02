@@ -24,7 +24,7 @@ export function ProgramCard({ slug, name, location, photoUrl }: Props) {
   return (
     <Link
       to={`/programs/${slug}`}
-      className="block rounded-lg border border-hairline bg-surface-1 overflow-hidden transition-shadow hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-orange focus-visible:ring-offset-2"
+      className="group block bhq-card overflow-hidden transition-all hover:scale-[1.01] focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-orange"
     >
       {/* Photo or placeholder */}
       <div className="aspect-[4/3] bg-surface-2 flex items-center justify-center overflow-hidden">
@@ -32,7 +32,10 @@ export function ProgramCard({ slug, name, location, photoUrl }: Props) {
           <img
             src={photoUrl}
             alt={name}
-            className="w-full h-full object-cover"
+            className="w-full h-full object-cover transition-transform group-hover:scale-105"
+            onError={(e) => {
+              e.currentTarget.style.display = "none";
+            }}
           />
         ) : (
           <span className="text-3xl font-semibold text-secondary select-none">
@@ -43,7 +46,7 @@ export function ProgramCard({ slug, name, location, photoUrl }: Props) {
 
       {/* Text content */}
       <div className="p-4">
-        <h3 className="text-base font-semibold text-primary truncate">{name}</h3>
+        <h3 className="text-base font-semibold text-primary line-clamp-2">{name}</h3>
         {location && (
           <p className="text-sm text-secondary mt-1 truncate">{location}</p>
         )}

@@ -3,7 +3,10 @@ import * as React from "react";
 import { useSearchParams } from "react-router-dom";
 import { usePrograms } from "../hooks/usePrograms";
 import { ProgramCard } from "../components/ProgramCard";
-import { SectionSkeleton } from "../../shared/ui/SectionSkeleton";
+import { PageHeader } from "../../shared/ui/PageHeader";
+import { Card } from "../../shared/ui/Card";
+import { Input } from "../../shared/ui/Input";
+import { Button } from "../../shared/ui/Button";
 import { EmptyState } from "../../shared/ui/EmptyState";
 import { InlineErrorState } from "../../shared/ui/InlineErrorState";
 import { getUserFacingMessage } from "../../shared/errors/userMessages";
@@ -115,46 +118,56 @@ export function ProgramsIndexPage() {
   return (
     <div className="space-y-6">
       {/* Page header */}
-      <div>
-        <h1 className="text-2xl font-semibold text-primary">Programs</h1>
-        <p className="text-secondary mt-1">Browse breeder programs</p>
-      </div>
+      <PageHeader
+        title="Programs"
+        subtitle="Browse breeder programs"
+      />
 
-      {/* Controls row */}
-      <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-        {/* Search input */}
-        <input
-          type="text"
-          placeholder="Search programs"
-          value={searchInput}
-          onChange={(e) => setSearchInput(e.target.value)}
-          className="flex-1 px-3 py-2 rounded-md border border-hairline bg-surface-1 text-primary placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-brand-orange focus:border-transparent"
-        />
+      {/* Filters card */}
+      <Card>
+        <div className="flex flex-col sm:flex-row gap-3">
+          <div className="flex-1">
+            <Input
+              type="text"
+              placeholder="Search programs"
+              label="Search programs"
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+            />
+          </div>
+          <div className="sm:w-48">
+            <Input
+              type="text"
+              placeholder="Location"
+              label="Location"
+              value={locationInput}
+              onChange={(e) => setLocationInput(e.target.value)}
+            />
+          </div>
+        </div>
+      </Card>
 
-        {/* Location input */}
-        <input
-          type="text"
-          placeholder="Location"
-          value={locationInput}
-          onChange={(e) => setLocationInput(e.target.value)}
-          className="flex-1 sm:max-w-[200px] px-3 py-2 rounded-md border border-hairline bg-surface-1 text-primary placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-brand-orange focus:border-transparent"
-        />
-
-        {/* Results count (desktop) */}
-        {data && !loading && (
-          <span className="hidden sm:block text-sm text-secondary whitespace-nowrap">
-            {resultsText}
-          </span>
-        )}
-      </div>
-
-      {/* Results count (mobile) */}
+      {/* Results meta row */}
       {data && !loading && (
-        <div className="sm:hidden text-sm text-secondary">{resultsText}</div>
+        <div className="text-sm text-secondary">
+          {resultsText}
+        </div>
       )}
 
-      {/* Main content */}
-      {loading && <SectionSkeleton rows={6} />}
+      {/* Loading state - skeleton cards matching grid */}
+      {loading && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className="bhq-card overflow-hidden">
+              <div className="aspect-[4/3] bg-surface-2 animate-pulse" />
+              <div className="p-4 space-y-2">
+                <div className="h-5 bg-surface-2 rounded animate-pulse w-3/4" />
+                <div className="h-4 bg-surface-2 rounded animate-pulse w-1/2" />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {!loading && error != null && (
         <InlineErrorState
@@ -187,29 +200,31 @@ export function ProgramsIndexPage() {
             ))}
           </div>
 
-          {/* Pagination footer */}
+          {/* Pagination */}
           {totalPages > 1 && (
-            <div className="flex items-center justify-center gap-4 pt-4">
-              <button
-                type="button"
-                onClick={goToPrev}
-                disabled={!hasPrev}
-                className="px-4 py-2 rounded-md border border-hairline bg-surface-1 text-primary text-sm font-medium hover:bg-surface-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Previous
-              </button>
-              <span className="text-sm text-secondary">
-                Page {page} of {totalPages}
-              </span>
-              <button
-                type="button"
-                onClick={goToNext}
-                disabled={!hasNext}
-                className="px-4 py-2 rounded-md border border-hairline bg-surface-1 text-primary text-sm font-medium hover:bg-surface-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Next
-              </button>
-            </div>
+            <Card className="!p-4">
+              <div className="flex items-center justify-center gap-4">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={goToPrev}
+                  disabled={!hasPrev}
+                >
+                  Previous
+                </Button>
+                <span className="text-sm text-secondary">
+                  Page {page} of {totalPages}
+                </span>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={goToNext}
+                  disabled={!hasNext}
+                >
+                  Next
+                </Button>
+              </div>
+            </Card>
           )}
         </>
       )}
