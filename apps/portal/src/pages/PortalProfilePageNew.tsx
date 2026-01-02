@@ -2,6 +2,9 @@
 import * as React from "react";
 import { PageContainer } from "../design/PageContainer";
 import { SectionCard } from "../design/SectionCard";
+import { SubjectHeader } from "../components/SubjectHeader";
+import { isPortalMockEnabled } from "../dev/mockFlag";
+import { mockOffspring } from "../dev/mockData";
 
 interface ProfileData {
   name: string;
@@ -14,6 +17,14 @@ interface ProfileData {
 export default function PortalProfilePageNew() {
   const [profile, setProfile] = React.useState<ProfileData | null>(null);
   const [loading, setLoading] = React.useState(true);
+  const mockEnabled = isPortalMockEnabled();
+
+  // Get primary animal for context (species-aware)
+  const offspring = mockEnabled ? mockOffspring() : [];
+  const primaryAnimal = offspring[0];
+  const animalName = primaryAnimal?.offspring?.name || "your puppy";
+  const species = primaryAnimal?.offspring?.species || null;
+  const breed = primaryAnimal?.offspring?.breed || null;
 
   React.useEffect(() => {
     async function loadProfile() {
@@ -82,6 +93,15 @@ export default function PortalProfilePageNew() {
       >
         Profile
       </h1>
+
+      {/* Subject Header - Species-aware context */}
+      <div style={{ marginBottom: "var(--portal-space-4)" }}>
+        <SubjectHeader
+          name={animalName}
+          species={species}
+          breed={breed}
+        />
+      </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: "var(--portal-space-3)" }}>
         {profile ? (

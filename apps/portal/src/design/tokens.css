@@ -56,9 +56,9 @@
   /* Species accent colors - minimal highlight for species awareness */
   --portal-species-dog: #ff6b35;      /* warm orange (matches portal accent) */
   --portal-species-cat: #a78bfa;      /* soft purple */
-  --portal-species-bird: #38bdf8;     /* sky blue */
-  --portal-species-rabbit: #f472b6;   /* pink */
   --portal-species-horse: #fbbf24;    /* amber */
+  --portal-species-sheep: #94a3b8;    /* slate blue-gray */
+  --portal-species-rabbit: #f472b6;   /* pink */
   --portal-species-unknown: #6b7280;  /* neutral gray */
 
   /* Typography */

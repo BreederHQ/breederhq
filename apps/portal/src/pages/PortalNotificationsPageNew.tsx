@@ -5,8 +5,8 @@ import { PortalHero } from "../design/PortalHero";
 import { PortalCard, CardRow } from "../design/PortalCard";
 import { usePortalNotifications, type Notification } from "../notifications/notificationSources";
 import { isPortalMockEnabled } from "../dev/mockFlag";
-import { DemoBanner } from "../dev/DemoBanner";
 import { mockOffspring } from "../dev/mockData";
+import { SubjectHeader } from "../components/SubjectHeader";
 
 /* ────────────────────────────────────────────────────────────────────────────
  * Notification Type Icon
@@ -384,10 +384,12 @@ export default function PortalNotificationsPageNew() {
   const { notifications, loading, error } = usePortalNotifications();
   const mockEnabled = isPortalMockEnabled();
 
-  // Get primary animal name for context
+  // Get primary animal for context (species-aware)
   const offspring = mockEnabled ? mockOffspring() : [];
   const primaryAnimal = offspring[0];
   const animalName = primaryAnimal?.offspring?.name || "your puppy";
+  const species = primaryAnimal?.offspring?.species || null;
+  const breed = primaryAnimal?.offspring?.breed || null;
 
   const handleRetry = () => {
     window.location.reload();
@@ -419,12 +421,6 @@ export default function PortalNotificationsPageNew() {
 
   return (
     <PageContainer>
-      {mockEnabled && (
-        <div style={{ marginBottom: "var(--portal-space-3)" }}>
-          <DemoBanner />
-        </div>
-      )}
-
       <div style={{ display: "flex", flexDirection: "column", gap: "var(--portal-space-4)" }}>
         {/* Hero */}
         <PortalHero
@@ -434,6 +430,15 @@ export default function PortalNotificationsPageNew() {
           animalContext={animalName}
           status={unreadCount > 0 ? "action" : "info"}
           statusLabel={unreadCount > 0 ? `${unreadCount} new` : "All read"}
+        />
+
+        {/* Subject Header - Species-aware context */}
+        <SubjectHeader
+          name={animalName}
+          species={species}
+          breed={breed}
+          statusLabel={unreadCount > 0 ? `${unreadCount} new` : "All read"}
+          statusVariant={unreadCount > 0 ? "action" : "neutral"}
         />
 
         {/* Notification Groups */}

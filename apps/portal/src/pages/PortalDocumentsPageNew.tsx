@@ -6,8 +6,8 @@ import { PortalCard, CardRow } from "../design/PortalCard";
 import { makeApi } from "@bhq/api";
 import type { DocumentDTO, DocumentCategory } from "@bhq/api";
 import { isPortalMockEnabled } from "../dev/mockFlag";
-import { DemoBanner } from "../dev/DemoBanner";
 import { mockDocuments, mockOffspring } from "../dev/mockData";
+import { SubjectHeader } from "../components/SubjectHeader";
 
 // Resolve API base URL (same pattern as taskSources)
 function getApiBase(): string {
@@ -455,10 +455,12 @@ export default function PortalDocumentsPageNew() {
   const [error, setError] = React.useState<string | null>(null);
   const mockEnabled = isPortalMockEnabled();
 
-  // Get primary animal name for context
+  // Get primary animal for context (species-aware)
   const offspring = mockEnabled ? mockOffspring() : [];
   const primaryAnimal = offspring[0];
   const animalName = primaryAnimal?.offspring?.name || "your puppy";
+  const species = primaryAnimal?.offspring?.species || null;
+  const breed = primaryAnimal?.offspring?.breed || null;
 
   const fetchDocuments = React.useCallback(async () => {
     setLoading(true);
@@ -518,12 +520,6 @@ export default function PortalDocumentsPageNew() {
 
   return (
     <PageContainer>
-      {mockEnabled && (
-        <div style={{ marginBottom: "var(--portal-space-3)" }}>
-          <DemoBanner />
-        </div>
-      )}
-
       <div style={{ display: "flex", flexDirection: "column", gap: "var(--portal-space-4)" }}>
         {/* Hero */}
         <PortalHero
@@ -533,6 +529,15 @@ export default function PortalDocumentsPageNew() {
           animalContext={animalName}
           status="info"
           statusLabel={`${documents.length} files`}
+        />
+
+        {/* Subject Header - Species-aware context */}
+        <SubjectHeader
+          name={animalName}
+          species={species}
+          breed={breed}
+          statusLabel={`${documents.length} files`}
+          statusVariant="neutral"
         />
 
         {/* Download notice */}

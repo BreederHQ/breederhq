@@ -5,8 +5,8 @@ import { PortalHero } from "../design/PortalHero";
 import { PortalCard, CardRow } from "../design/PortalCard";
 import { usePortalTasks, type TaskCard } from "../tasks/taskSources";
 import { isPortalMockEnabled } from "../dev/mockFlag";
-import { DemoBanner } from "../dev/DemoBanner";
 import { mockOffspring } from "../dev/mockData";
+import { SubjectHeader, type StatusVariant } from "../components/SubjectHeader";
 
 /* ────────────────────────────────────────────────────────────────────────────
  * Task Type Icon
@@ -512,10 +512,12 @@ export default function PortalTasksPageNew() {
   const { tasks, loading, error } = usePortalTasks();
   const mockEnabled = isPortalMockEnabled();
 
-  // Get primary animal name for context
+  // Get primary animal for context (species-aware)
   const offspring = mockEnabled ? mockOffspring() : [];
   const primaryAnimal = offspring[0];
   const animalName = primaryAnimal?.offspring?.name || "your puppy";
+  const species = primaryAnimal?.offspring?.species || null;
+  const breed = primaryAnimal?.offspring?.breed || null;
 
   const handleRetry = () => {
     window.location.reload();
@@ -565,6 +567,15 @@ export default function PortalTasksPageNew() {
           statusLabel={actionCount > 0 ? `${actionCount} need attention` : "All caught up"}
           actionCount={actionCount > 0 ? actionCount : undefined}
           actionLabel={actionCount === 1 ? "task needs attention" : "tasks need attention"}
+        />
+
+        {/* Subject Header - Species-aware context */}
+        <SubjectHeader
+          name={animalName}
+          species={species}
+          breed={breed}
+          statusLabel={actionCount > 0 ? `${actionCount} pending` : "All complete"}
+          statusVariant={actionCount > 0 ? "action" : "success"}
         />
 
         {/* Task Groups */}

@@ -6,8 +6,8 @@ import { PortalCard, CardRow } from "../design/PortalCard";
 import { makeApi } from "@bhq/api";
 import type { MessageThread, Message } from "@bhq/api";
 import { isPortalMockEnabled } from "../dev/mockFlag";
-import { DemoBanner } from "../dev/DemoBanner";
 import { mockThreads, mockThreadDetail, mockOffspring } from "../dev/mockData";
+import { SubjectHeader } from "../components/SubjectHeader";
 
 // Resolve API base URL
 function getApiBase(): string {
@@ -536,10 +536,12 @@ export default function PortalMessagesPage() {
   const currentPartyId = getCurrentPartyId();
   const mockEnabled = isPortalMockEnabled();
 
-  // Get primary animal name for context
+  // Get primary animal for context (species-aware)
   const offspring = mockEnabled ? mockOffspring() : [];
   const primaryAnimal = offspring[0];
   const animalName = primaryAnimal?.offspring?.name || "your puppy";
+  const species = primaryAnimal?.offspring?.species || null;
+  const breed = primaryAnimal?.offspring?.breed || null;
 
   const loadThreads = React.useCallback(async () => {
     setLoading(true);
@@ -685,11 +687,6 @@ export default function PortalMessagesPage() {
 
     return (
       <PageContainer>
-        {mockEnabled && (
-          <div style={{ marginBottom: "var(--portal-space-3)" }}>
-            <DemoBanner />
-          </div>
-        )}
         <ThreadDetail
           thread={selectedThread}
           currentPartyId={currentPartyId}
@@ -703,12 +700,6 @@ export default function PortalMessagesPage() {
   // Thread list view
   return (
     <PageContainer>
-      {mockEnabled && (
-        <div style={{ marginBottom: "var(--portal-space-3)" }}>
-          <DemoBanner />
-        </div>
-      )}
-
       <div style={{ display: "flex", flexDirection: "column", gap: "var(--portal-space-4)" }}>
         {/* Hero */}
         <PortalHero
@@ -718,6 +709,15 @@ export default function PortalMessagesPage() {
           animalContext={animalName}
           status={unreadCount > 0 ? "action" : undefined}
           statusLabel={unreadCount > 0 ? `${unreadCount} unread` : undefined}
+        />
+
+        {/* Subject Header - Species-aware context */}
+        <SubjectHeader
+          name={animalName}
+          species={species}
+          breed={breed}
+          statusLabel={unreadCount > 0 ? `${unreadCount} unread` : "All read"}
+          statusVariant={unreadCount > 0 ? "action" : "success"}
         />
 
         {/* Thread List */}

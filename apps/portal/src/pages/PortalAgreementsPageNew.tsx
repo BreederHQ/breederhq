@@ -5,8 +5,8 @@ import { PortalHero } from "../design/PortalHero";
 import { PortalCard, CardRow } from "../design/PortalCard";
 import { makeApi, type AgreementDTO, type ContractStatus } from "@bhq/api";
 import { isPortalMockEnabled } from "../dev/mockFlag";
-import { DemoBanner } from "../dev/DemoBanner";
 import { mockAgreements, mockOffspring } from "../dev/mockData";
+import { SubjectHeader } from "../components/SubjectHeader";
 
 // Resolve API base URL
 function getApiBase(): string {
@@ -473,10 +473,12 @@ export default function PortalAgreementsPageNew() {
   const [error, setError] = React.useState(false);
   const mockEnabled = isPortalMockEnabled();
 
-  // Get primary animal name for context
+  // Get primary animal for context (species-aware)
   const offspring = mockEnabled ? mockOffspring() : [];
   const primaryAnimal = offspring[0];
   const animalName = primaryAnimal?.offspring?.name || "your puppy";
+  const species = primaryAnimal?.offspring?.species || null;
+  const breed = primaryAnimal?.offspring?.breed || null;
 
   const fetchAgreements = React.useCallback(async () => {
     setLoading(true);
@@ -538,12 +540,6 @@ export default function PortalAgreementsPageNew() {
 
   return (
     <PageContainer>
-      {mockEnabled && (
-        <div style={{ marginBottom: "var(--portal-space-3)" }}>
-          <DemoBanner />
-        </div>
-      )}
-
       <div style={{ display: "flex", flexDirection: "column", gap: "var(--portal-space-4)" }}>
         {/* Hero */}
         <PortalHero
@@ -555,6 +551,15 @@ export default function PortalAgreementsPageNew() {
           statusLabel={pendingCount > 0 ? `${pendingCount} pending` : "All signed"}
           actionCount={pendingCount > 0 ? pendingCount : undefined}
           actionLabel={pendingCount === 1 ? "needs your signature" : "need your signature"}
+        />
+
+        {/* Subject Header - Species-aware context */}
+        <SubjectHeader
+          name={animalName}
+          species={species}
+          breed={breed}
+          statusLabel={pendingCount > 0 ? `${pendingCount} pending` : "All signed"}
+          statusVariant={pendingCount > 0 ? "warning" : "success"}
         />
 
         {/* Agreement Groups */}

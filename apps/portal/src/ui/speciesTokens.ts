@@ -6,7 +6,7 @@
  * Supported species types.
  * These map to CSS variables: --portal-species-{lowercase}
  */
-export type Species = "Dog" | "Cat" | "Bird" | "Rabbit" | "Horse" | "unknown";
+export type Species = "Dog" | "Cat" | "Horse" | "Sheep" | "Rabbit" | "unknown";
 
 /**
  * Map of species to their CSS variable names.
@@ -14,33 +14,64 @@ export type Species = "Dog" | "Cat" | "Bird" | "Rabbit" | "Horse" | "unknown";
 const speciesVarMap: Record<Species, string> = {
   Dog: "var(--portal-species-dog)",
   Cat: "var(--portal-species-cat)",
-  Bird: "var(--portal-species-bird)",
-  Rabbit: "var(--portal-species-rabbit)",
   Horse: "var(--portal-species-horse)",
+  Sheep: "var(--portal-species-sheep)",
+  Rabbit: "var(--portal-species-rabbit)",
   unknown: "var(--portal-species-unknown)",
 };
 
 /**
+ * Maps common input variants to normalized species values.
+ * Handles plurals, case variations, and common aliases.
+ */
+const speciesAliasMap: Record<string, Species> = {
+  // Dog variants
+  dog: "Dog",
+  dogs: "Dog",
+  canine: "Dog",
+  // Cat variants
+  cat: "Cat",
+  cats: "Cat",
+  feline: "Cat",
+  // Horse variants
+  horse: "Horse",
+  horses: "Horse",
+  equine: "Horse",
+  // Sheep variants
+  sheep: "Sheep",
+  lamb: "Sheep",
+  lambs: "Sheep",
+  // Rabbit variants
+  rabbit: "Rabbit",
+  rabbits: "Rabbit",
+  bunny: "Rabbit",
+  bunnies: "Rabbit",
+};
+
+/**
  * Normalizes species input to a valid Species type.
- * Handles case-insensitivity and null/undefined values.
+ * Handles case-insensitivity, plurals, and common variants.
  *
  * @param input - Raw species string from API or user data
  * @returns Normalized Species value
  *
  * @example
  * normalizeSpecies("dog")     // "Dog"
+ * normalizeSpecies("dogs")    // "Dog"
  * normalizeSpecies("DOG")     // "Dog"
  * normalizeSpecies("Cat")     // "Cat"
+ * normalizeSpecies("sheep")   // "Sheep"
  * normalizeSpecies(null)      // "unknown"
  * normalizeSpecies("Hamster") // "unknown"
  */
 export function normalizeSpecies(input: string | null | undefined): Species {
   if (!input) return "unknown";
 
-  const normalized = input.charAt(0).toUpperCase() + input.slice(1).toLowerCase();
+  const lowered = input.toLowerCase().trim();
 
-  if (normalized in speciesVarMap) {
-    return normalized as Species;
+  // Check alias map first (handles plurals and variants)
+  if (lowered in speciesAliasMap) {
+    return speciesAliasMap[lowered];
   }
 
   return "unknown";

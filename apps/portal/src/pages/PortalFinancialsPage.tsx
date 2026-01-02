@@ -7,11 +7,13 @@ import { isPortalMockEnabled } from "../dev/mockFlag";
 import {
   mockInvoices,
   mockTransactions,
+  mockOffspring,
   type Invoice,
   type Transaction,
   type FinancialSummary,
   type InvoiceStatus,
 } from "../dev/mockData";
+import { SubjectHeader } from "../components/SubjectHeader";
 
 /* ────────────────────────────────────────────────────────────────────────────
  * Currency Formatter
@@ -1578,6 +1580,13 @@ export default function PortalFinancialsPage() {
 
   const mockEnabled = isPortalMockEnabled();
 
+  // Get primary animal for context (species-aware)
+  const offspring = mockEnabled ? mockOffspring() : [];
+  const primaryAnimal = offspring[0];
+  const animalName = primaryAnimal?.offspring?.name || "your puppy";
+  const species = primaryAnimal?.offspring?.species || null;
+  const breed = primaryAnimal?.offspring?.breed || null;
+
   // Simulate loading
   React.useEffect(() => {
     const timer = setTimeout(() => setLoading(false), 300);
@@ -1725,6 +1734,21 @@ export default function PortalFinancialsPage() {
                 ? `${dueCount} due`
                 : "All paid"
           }
+        />
+
+        {/* Subject Header - Species-aware context */}
+        <SubjectHeader
+          name={animalName}
+          species={species}
+          breed={breed}
+          statusLabel={
+            overdueCount > 0
+              ? `${overdueCount} overdue`
+              : dueCount > 0
+                ? `${dueCount} due`
+                : "All paid"
+          }
+          statusVariant={overdueCount > 0 ? "error" : dueCount > 0 ? "warning" : "success"}
         />
 
         {/* Summary Card */}
