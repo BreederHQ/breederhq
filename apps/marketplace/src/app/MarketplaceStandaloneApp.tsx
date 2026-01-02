@@ -12,7 +12,7 @@ import { AuthRegisterPage } from "../core/pages/AuthRegisterPage";
  */
 export function MarketplaceStandaloneApp() {
   return (
-    <BrowserRouter>
+    <BrowserRouter future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
       <Routes>
         {/* Auth routes are outside the gate - accessible without authentication */}
         <Route path="/auth/login" element={<AuthLoginPage />} />

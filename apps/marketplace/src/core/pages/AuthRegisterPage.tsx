@@ -134,10 +134,13 @@ function mapRegisterError(json: { error?: string; message?: string }): string {
 
 /**
  * Determine if user is authenticated from /me response body.
- * Tolerant of different response shapes.
+ * Backend returns userId if authenticated.
  */
 function isAuthenticated(body: any): boolean {
   if (!body) return false;
+  // Backend returns userId if authenticated
+  if (body.userId != null) return true;
+  // Fallback for tolerant parsing
   if (body.authenticated === true || body.authenticated === "true") return true;
   if (body.user != null) return true;
   if (body.session != null) return true;
