@@ -82,13 +82,10 @@ function AgreementRow({ agreement }: { agreement: AgreementDTO }) {
 
 function EmptyAgreements() {
   return (
-    <div className="text-center py-16">
-      <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-surface-strong flex items-center justify-center text-3xl">
-        📝
-      </div>
-      <h3 className="text-lg font-medium text-primary mb-2">No agreements</h3>
-      <p className="text-sm text-secondary max-w-sm mx-auto">
-        When you have agreements to review or sign, they will appear here.
+    <div className="flex flex-col items-center justify-center text-center min-h-[60vh] max-w-[480px] mx-auto px-4">
+      <h3 className="text-xl font-semibold text-primary mb-2">No agreements yet</h3>
+      <p className="text-base text-secondary leading-relaxed">
+        Agreements shared with you will appear here.
       </p>
     </div>
   );

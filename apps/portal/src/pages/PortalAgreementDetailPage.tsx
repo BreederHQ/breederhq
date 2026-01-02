@@ -480,25 +480,18 @@ export default function PortalAgreementDetailPage() {
           </div>
         </div>
 
-        {/* Download Notice */}
-        <div
+        {/* Download Notice - calm inline */}
+        <p
           style={{
-            padding: "var(--portal-space-3)",
-            background: "var(--portal-bg-elevated)",
-            border: "1px solid var(--portal-border-subtle)",
-            borderRadius: "var(--portal-radius-lg)",
+            fontSize: "var(--portal-font-size-sm)",
+            color: "var(--portal-text-tertiary)",
+            margin: 0,
+            paddingTop: "var(--portal-space-2)",
+            borderTop: "1px solid var(--portal-border-subtle)",
           }}
         >
-          <p
-            style={{
-              fontSize: "var(--portal-font-size-sm)",
-              color: "var(--portal-text-secondary)",
-              margin: 0,
-            }}
-          >
-            Downloads are not available in the client portal.
-          </p>
-        </div>
+          Downloads are not available in the client portal.
+        </p>
       </div>
     </PageContainer>
   );

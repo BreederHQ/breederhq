@@ -1,6 +1,7 @@
 // apps/portal/src/pages/PortalDocumentsPage.tsx
 import * as React from "react";
 import { PageContainer } from "../design/PageContainer";
+import { PortalEmptyState } from "../design/PortalEmptyState";
 import { makeApi } from "@bhq/api";
 import type { DocumentDTO, DocumentCategory } from "@bhq/api";
 
@@ -281,37 +282,10 @@ export default function PortalDocumentsPage() {
   if (documents.length === 0) {
     return (
       <PageContainer>
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            justifyContent: "center",
-            textAlign: "center",
-            minHeight: "60vh",
-            gap: "var(--portal-space-2)",
-          }}
-        >
-          <h1
-            style={{
-              fontSize: "var(--portal-font-size-xl)",
-              fontWeight: "var(--portal-font-weight-semibold)",
-              color: "var(--portal-text-primary)",
-              margin: 0,
-            }}
-          >
-            No documents
-          </h1>
-          <p
-            style={{
-              fontSize: "var(--portal-font-size-base)",
-              color: "var(--portal-text-secondary)",
-              margin: 0,
-            }}
-          >
-            Documents shared with you will appear here.
-          </p>
-        </div>
+        <PortalEmptyState
+          title="No documents"
+          body="Documents shared with you will appear here."
+        />
       </PageContainer>
     );
   }
@@ -320,19 +294,23 @@ export default function PortalDocumentsPage() {
   return (
     <PageContainer>
       <div style={{ display: "flex", flexDirection: "column", gap: "var(--portal-space-4)" }}>
-        {/* Download Notice */}
-        <div
-          style={{
-            padding: "var(--portal-space-3)",
-            background: "var(--portal-bg-elevated)",
-            border: "1px solid var(--portal-border-subtle)",
-            borderRadius: "var(--portal-radius-lg)",
-          }}
-        >
+        {/* Page header with download notice */}
+        <div>
+          <h1
+            style={{
+              fontSize: "var(--portal-font-size-2xl)",
+              fontWeight: "var(--portal-font-weight-semibold)",
+              color: "var(--portal-text-primary)",
+              margin: 0,
+              marginBottom: "var(--portal-space-1)",
+            }}
+          >
+            Documents
+          </h1>
           <p
             style={{
               fontSize: "var(--portal-font-size-sm)",
-              color: "var(--portal-text-secondary)",
+              color: "var(--portal-text-tertiary)",
               margin: 0,
             }}
           >

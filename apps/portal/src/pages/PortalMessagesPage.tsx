@@ -1,6 +1,7 @@
 // apps/portal/src/pages/PortalMessagesPage.tsx
 import * as React from "react";
 import { PageContainer } from "../design/PageContainer";
+import { PortalEmptyState } from "../design/PortalEmptyState";
 import { makeApi } from "@bhq/api";
 import type { MessageThread, Message } from "@bhq/api";
 
@@ -137,12 +138,30 @@ function ThreadListItem({ thread, isActive, onClick, currentPartyId }: ThreadLis
             position: "absolute",
             top: "var(--portal-space-3)",
             right: "var(--portal-space-3)",
-            width: "8px",
-            height: "8px",
-            borderRadius: "var(--portal-radius-full)",
-            background: "var(--portal-accent)",
+            display: "flex",
+            alignItems: "center",
+            gap: "var(--portal-space-1)",
           }}
-        />
+        >
+          <span
+            style={{
+              fontSize: "10px",
+              color: "var(--portal-text-tertiary)",
+              fontWeight: "var(--portal-font-weight-medium)",
+            }}
+          >
+            New
+          </span>
+          <div
+            style={{
+              width: "6px",
+              height: "6px",
+              borderRadius: "var(--portal-radius-full)",
+              background: "rgba(211, 134, 91, 0.7)",
+            }}
+            aria-label="Unread"
+          />
+        </div>
       )}
       <div style={{ display: "flex", flexDirection: "column", gap: "var(--portal-space-1)" }}>
         <div
@@ -562,37 +581,10 @@ export default function PortalMessagesPage() {
   if (threads.length === 0) {
     return (
       <PageContainer>
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            justifyContent: "center",
-            textAlign: "center",
-            minHeight: "60vh",
-            gap: "var(--portal-space-2)",
-          }}
-        >
-          <h1
-            style={{
-              fontSize: "var(--portal-font-size-xl)",
-              fontWeight: "var(--portal-font-weight-semibold)",
-              color: "var(--portal-text-primary)",
-              margin: 0,
-            }}
-          >
-            No messages
-          </h1>
-          <p
-            style={{
-              fontSize: "var(--portal-font-size-base)",
-              color: "var(--portal-text-secondary)",
-              margin: 0,
-            }}
-          >
-            Messages from the breeder will appear here.
-          </p>
-        </div>
+        <PortalEmptyState
+          title="No messages"
+          body="Messages from the breeder will appear here."
+        />
       </PageContainer>
     );
   }
