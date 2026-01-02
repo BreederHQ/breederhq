@@ -1,6 +1,7 @@
 // apps/marketplace/src/layout/MarketplaceLayout.tsx
 // Marketplace-appropriate layout: solid elevated header, no Portal gradient
 import * as React from "react";
+import { Link, useLocation } from "react-router-dom";
 import { joinApi } from "../api/client";
 import { useDemoMode } from "../demo/demoMode";
 
@@ -14,8 +15,15 @@ interface Props {
  * Solid elevated header (no Portal gradient/blur), 64px height, max-width 1200px.
  */
 export function MarketplaceLayout({ authenticated, children }: Props) {
+  const location = useLocation();
   const [loggingOut, setLoggingOut] = React.useState(false);
   const { demoMode, enable: enableDemo, disable: disableDemo } = useDemoMode();
+
+  // Check if current path matches a nav item
+  const isActive = (path: string) => {
+    if (path === "/") return location.pathname === "/";
+    return location.pathname.startsWith(path);
+  };
 
   const handleLogout = async () => {
     setLoggingOut(true);
@@ -42,10 +50,52 @@ export function MarketplaceLayout({ authenticated, children }: Props) {
       {/* Solid header - Marketplace-appropriate, no Portal gradient/blur */}
       <header className="sticky top-0 z-40 h-header border-b border-border-subtle bg-portal-elevated">
         <div className="h-full w-full max-w-portal mx-auto px-6 flex items-center justify-between">
-          {/* Left: Marketplace brand */}
-          <a href="/" className="text-base font-semibold tracking-tight text-white hover:text-white/90 transition-colors">
-            BreederHQ Marketplace
-          </a>
+          {/* Left: Marketplace brand + nav */}
+          <div className="flex items-center gap-6">
+            <Link to="/" className="text-base font-semibold tracking-tight text-white hover:text-white/90 transition-colors">
+              BreederHQ Marketplace
+            </Link>
+
+            {/* Nav links */}
+            <nav className="hidden sm:flex items-center gap-1">
+              <Link
+                to="/"
+                className={`px-3 py-1.5 text-sm font-medium rounded-portal-xs transition-colors ${
+                  isActive("/") && !isActive("/litters") && !isActive("/breeders")
+                    ? "text-white bg-border-default"
+                    : "text-text-secondary hover:text-white hover:bg-portal-card-hover"
+                }`}
+              >
+                Home
+              </Link>
+              <Link
+                to="/litters"
+                className={`px-3 py-1.5 text-sm font-medium rounded-portal-xs transition-colors ${
+                  isActive("/litters")
+                    ? "text-white bg-border-default"
+                    : "text-text-secondary hover:text-white hover:bg-portal-card-hover"
+                }`}
+              >
+                Litters
+              </Link>
+              <Link
+                to="/breeders"
+                className={`px-3 py-1.5 text-sm font-medium rounded-portal-xs transition-colors ${
+                  isActive("/breeders") || isActive("/programs")
+                    ? "text-white bg-border-default"
+                    : "text-text-secondary hover:text-white hover:bg-portal-card-hover"
+                }`}
+              >
+                Breeders
+              </Link>
+              <span
+                className="px-3 py-1.5 text-sm font-medium rounded-portal-xs text-text-muted cursor-not-allowed"
+                title="Coming soon"
+              >
+                Services
+              </span>
+            </nav>
+          </div>
 
           {/* Right: Demo mode controls + Account actions */}
           <div className="flex items-center gap-3">

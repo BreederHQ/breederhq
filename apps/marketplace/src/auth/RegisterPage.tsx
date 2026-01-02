@@ -161,7 +161,7 @@ export function RegisterPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 font-sans antialiased bg-gradient-to-b from-gray-900 to-black">
+    <div className="min-h-screen flex items-center justify-center p-4 font-sans antialiased bg-portal-bg">
       <div className="w-full max-w-md">
         <div className="rounded-xl border border-white/10 bg-white/5 backdrop-blur-sm p-8">
           <h1 className="text-2xl font-semibold text-white mb-2">

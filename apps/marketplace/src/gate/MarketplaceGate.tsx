@@ -1,12 +1,14 @@
 // apps/marketplace/src/gate/MarketplaceGate.tsx
 import * as React from "react";
-import { Routes, Route, useLocation } from "react-router-dom";
+import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { apiGet, ApiError } from "../api/client";
 import { getUserMessage } from "../api/errors";
 import { AuthPage } from "../auth/AuthPage";
 import { MarketplaceLayout } from "../layout/MarketplaceLayout";
 import { AccessNotAvailable } from "./AccessNotAvailable";
-import { ProgramsPage } from "../marketplace/pages/ProgramsPage";
+import { HomePage } from "../marketplace/pages/HomePage";
+import { LittersIndexPage } from "../marketplace/pages/LittersIndexPage";
+import { BreedersIndexPage } from "../marketplace/pages/BreedersIndexPage";
 import { ProgramPage } from "../marketplace/pages/ProgramPage";
 import { ListingPage } from "../marketplace/pages/ListingPage";
 
@@ -38,10 +40,10 @@ interface MarketplaceMeResponse {
  */
 function GateLoadingSkeleton() {
   return (
-    <div className="min-h-screen bg-gradient-to-b from-gray-900 to-black flex items-center justify-center">
+    <div className="min-h-screen bg-portal-bg flex items-center justify-center">
       <div className="space-y-4 w-full max-w-md px-4">
-        <div className="h-8 bg-white/10 rounded animate-pulse w-1/2 mx-auto" />
-        <div className="h-4 bg-white/10 rounded animate-pulse w-3/4 mx-auto" />
+        <div className="h-8 bg-border-default rounded animate-pulse w-1/2 mx-auto" />
+        <div className="h-4 bg-border-default rounded animate-pulse w-3/4 mx-auto" />
       </div>
     </div>
   );
@@ -52,13 +54,13 @@ function GateLoadingSkeleton() {
  */
 function GateError({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
-    <div className="min-h-screen bg-gradient-to-b from-gray-900 to-black flex items-center justify-center">
+    <div className="min-h-screen bg-portal-bg flex items-center justify-center">
       <div className="text-center px-4">
-        <p className="text-white/70 mb-4">{message}</p>
+        <p className="text-text-secondary mb-4">{message}</p>
         <button
           type="button"
           onClick={onRetry}
-          className="px-4 py-2 rounded-lg bg-white/10 border border-white/10 text-sm font-medium text-white hover:bg-white/15 transition-colors"
+          className="px-4 py-2 rounded-portal-xs bg-border-default border border-border-subtle text-sm font-medium text-white hover:bg-portal-card-hover transition-colors"
         >
           Try again
         </button>
@@ -73,7 +75,17 @@ function GateError({ message, onRetry }: { message: string; onRetry: () => void 
 function MarketplaceRoutes() {
   return (
     <Routes>
-      <Route path="/" element={<ProgramsPage />} />
+      {/* Home - Marketplace entry point */}
+      <Route path="/" element={<HomePage />} />
+
+      {/* Litters and Breeders index pages */}
+      <Route path="/litters" element={<LittersIndexPage />} />
+      <Route path="/breeders" element={<BreedersIndexPage />} />
+
+      {/* Legacy /programs redirect to /breeders */}
+      <Route path="/programs" element={<Navigate to="/breeders" replace />} />
+
+      {/* Program detail pages (preserve existing deep links) */}
       <Route path="/programs/:programSlug" element={<ProgramPage />} />
       <Route
         path="/programs/:programSlug/offspring-groups/:listingSlug"

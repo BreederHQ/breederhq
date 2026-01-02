@@ -1,13 +1,12 @@
-// apps/marketplace/src/marketplace/pages/ProgramsPage.tsx
-// Legacy route - redirects or shows litters view
+// apps/marketplace/src/marketplace/pages/LittersIndexPage.tsx
+// Litters entry point with litter-centric framing
 import * as React from "react";
 import { ProgramsListView } from "../components/ProgramsListView";
 
 /**
- * Programs page - kept for backward compatibility with existing deep links.
- * Uses litters framing as the default.
+ * Litters index page - browse litters from breeders.
  */
-export function ProgramsPage() {
+export function LittersIndexPage() {
   return (
     <ProgramsListView
       title="Litters"
