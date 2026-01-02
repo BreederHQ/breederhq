@@ -7,6 +7,13 @@ import { getUserMessage } from "../../api/errors";
 import type { PublicOffspringGroupListingDTO } from "../../api/types";
 
 /**
+ * Format cents to dollars display string
+ */
+function formatCents(cents: number): string {
+  return `$${(cents / 100).toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+}
+
+/**
  * Program profile page with listings.
  * Profile and listings load independently.
  */
@@ -135,26 +142,11 @@ export function ProgramPage() {
           </div>
         )}
 
-        {/* Listings loading - 3 skeleton tiles matching final geometry */}
+        {/* Listings loading - skeleton tiles */}
         {listingsLoading && !listingsError && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {Array.from({ length: 3 }).map((_, i) => (
-              <div
-                key={i}
-                className="rounded-xl border border-white/10 bg-white/5 p-4 space-y-3"
-              >
-                <div className="h-5 bg-white/10 rounded animate-pulse w-3/4" />
-                <div className="h-4 bg-white/10 rounded animate-pulse w-full" />
-                <div className="flex gap-2">
-                  <div className="h-5 bg-white/10 rounded animate-pulse w-16" />
-                  <div className="h-5 bg-white/10 rounded animate-pulse w-20" />
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="h-8 bg-white/10 rounded animate-pulse" />
-                  <div className="h-8 bg-white/10 rounded animate-pulse" />
-                </div>
-                <div className="h-4 bg-white/10 rounded animate-pulse w-24 mt-2" />
-              </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {Array.from({ length: 2 }).map((_, i) => (
+              <ListingCardSkeleton key={i} />
             ))}
           </div>
         )}
@@ -168,9 +160,9 @@ export function ProgramPage() {
 
         {/* Listings grid */}
         {!listingsLoading && !listingsError && listingsData && listingsData.items.length > 0 && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             {listingsData.items.map((listing) => (
-              <ListingRowCard
+              <ListingCard
                 key={listing.slug}
                 listing={listing}
                 programSlug={programSlug}
@@ -184,16 +176,46 @@ export function ProgramPage() {
 }
 
 /**
- * Format cents to dollars display string
+ * Skeleton for listing card loading state.
  */
-function formatCents(cents: number): string {
-  return `$${(cents / 100).toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+function ListingCardSkeleton() {
+  return (
+    <div className="flex flex-col min-h-[240px] rounded-xl border border-white/10 bg-white/5 p-5">
+      {/* Header row */}
+      <div className="flex items-start justify-between gap-4 mb-3">
+        <div className="h-5 bg-white/10 rounded animate-pulse w-2/3" />
+        <div className="h-5 bg-white/10 rounded animate-pulse w-20" />
+      </div>
+      {/* Description */}
+      <div className="h-4 bg-white/10 rounded animate-pulse w-full mb-2" />
+      <div className="h-4 bg-white/10 rounded animate-pulse w-3/4 mb-4" />
+      {/* Metadata grid */}
+      <div className="grid grid-cols-2 gap-3 mt-auto">
+        <div className="space-y-1">
+          <div className="h-3 bg-white/10 rounded animate-pulse w-12" />
+          <div className="h-4 bg-white/10 rounded animate-pulse w-16" />
+        </div>
+        <div className="space-y-1">
+          <div className="h-3 bg-white/10 rounded animate-pulse w-14" />
+          <div className="h-4 bg-white/10 rounded animate-pulse w-20" />
+        </div>
+        <div className="space-y-1">
+          <div className="h-3 bg-white/10 rounded animate-pulse w-16" />
+          <div className="h-4 bg-white/10 rounded animate-pulse w-10" />
+        </div>
+      </div>
+      {/* Footer */}
+      <div className="mt-4 pt-3 border-t border-white/10">
+        <div className="h-4 bg-white/10 rounded animate-pulse w-24" />
+      </div>
+    </div>
+  );
 }
 
 /**
- * Listing card for program page showing all required fields.
+ * Catalog-style listing card for program page.
  */
-function ListingRowCard({
+function ListingCard({
   listing,
   programSlug,
 }: {
@@ -205,65 +227,73 @@ function ListingRowCard({
     ? listing.priceRange.min === listing.priceRange.max
       ? formatCents(listing.priceRange.min)
       : `${formatCents(listing.priceRange.min)} – ${formatCents(listing.priceRange.max)}`
-    : "Contact breeder";
+    : null;
 
   // Use actual birth date if available, otherwise expected
   const birthDateLabel = listing.actualBirthOn ? "Born" : "Expected";
   const birthDateValue = listing.actualBirthOn || listing.expectedBirthOn;
 
+  // Build metadata cells - only include cells with values
+  const metadataCells: Array<{ label: string; value: string }> = [
+    { label: "Species", value: listing.species.toLowerCase() },
+  ];
+
+  if (listing.breed) {
+    metadataCells.push({ label: "Breed", value: listing.breed });
+  }
+
+  if (birthDateValue) {
+    metadataCells.push({ label: birthDateLabel, value: birthDateValue });
+  }
+
+  metadataCells.push({
+    label: "Available",
+    value: listing.countAvailable > 0 ? String(listing.countAvailable) : "Contact breeder",
+  });
+
   return (
     <Link
       to={`/programs/${programSlug}/offspring-groups/${listing.slug}`}
-      className="group block rounded-xl border border-white/10 bg-white/5 p-4 transition-all hover:border-white/20 hover:bg-white/[0.08] focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-500/60"
+      className="group flex flex-col min-h-[240px] rounded-xl border border-white/10 bg-white/5 p-5 transition-all hover:border-white/20 hover:bg-white/[0.08] hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-500/60"
     >
-      {/* Title */}
-      <h3 className="text-base font-semibold text-white line-clamp-1">
-        {listing.title || "Untitled Listing"}
-      </h3>
+      {/* Header row: Title left, Price right */}
+      <div className="flex items-start justify-between gap-4">
+        <h3 className="text-lg font-semibold text-white line-clamp-1 flex-1">
+          {listing.title || "Untitled Listing"}
+        </h3>
+        {priceText ? (
+          <span className="text-base font-semibold text-orange-400 whitespace-nowrap">
+            {priceText}
+          </span>
+        ) : (
+          <span className="text-sm text-white/40 whitespace-nowrap">Contact for price</span>
+        )}
+      </div>
 
-      {/* Description */}
+      {/* Description snippet */}
       {listing.description && (
-        <p className="text-sm text-white/50 mt-1 line-clamp-2">
+        <p className="text-sm text-white/50 mt-2 line-clamp-2 leading-relaxed">
           {listing.description}
         </p>
       )}
 
-      {/* Pills row: Species, Breed (only if available) */}
-      <div className="flex flex-wrap items-center gap-2 mt-3">
-        <span className="text-xs bg-white/10 text-white/70 px-2 py-0.5 rounded capitalize">
-          {listing.species.toLowerCase()}
+      {/* Metadata grid - 2x2 on desktop, stacked on mobile */}
+      <div className="grid grid-cols-2 gap-x-4 gap-y-3 mt-auto pt-4">
+        {metadataCells.map((cell) => (
+          <div key={cell.label}>
+            <span className="text-xs text-white/40 block">{cell.label}</span>
+            <span className="text-sm text-white/80 capitalize">{cell.value}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Footer row */}
+      <div className="flex items-center justify-between mt-4 pt-3 border-t border-white/10">
+        <span className="text-sm text-orange-400 group-hover:text-orange-300 transition-colors">
+          View listing
         </span>
-        {listing.breed && (
-          <span className="text-xs bg-white/10 text-white/70 px-2 py-0.5 rounded">
-            {listing.breed}
-          </span>
-        )}
-      </div>
-
-      {/* Info grid: Date, Availability, Price */}
-      <div className="grid grid-cols-2 gap-x-4 gap-y-2 mt-3 text-sm">
-        <div>
-          <span className="text-white/40 text-xs block">{birthDateLabel}</span>
-          <span className="text-white/70">
-            {birthDateValue || "Contact breeder"}
-          </span>
-        </div>
-        <div>
-          <span className="text-white/40 text-xs block">Available</span>
-          <span className="text-white/70">
-            {listing.countAvailable > 0 ? listing.countAvailable : "Contact breeder"}
-          </span>
-        </div>
-        <div className="col-span-2">
-          <span className="text-white/40 text-xs block">Price</span>
-          <span className="text-orange-400 font-medium">{priceText}</span>
-        </div>
-      </div>
-
-      {/* View affordance */}
-      <div className="mt-3 pt-3 border-t border-white/10">
-        <span className="text-xs text-orange-400 group-hover:text-orange-300 transition-colors">
-          View listing &rarr;
+        <span className="text-orange-400 group-hover:text-orange-300 transition-colors">
+          &rarr;
         </span>
       </div>
     </Link>
