@@ -1,15 +1,24 @@
 // apps/marketplace/src/marketplace/pages/HomePage.tsx
-// Marketplace home page - browse-first entry with search and Available now section
+// Marketplace home page - 3-section layout with hero cards and featured rows
 import * as React from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { isDemoMode, setDemoMode } from "../../demo/demoMode";
-import { getAllMockListings, simulateDelay } from "../../demo/mockData";
+import {
+  getAllMockListings,
+  getMockPrograms,
+  getMockServices,
+  simulateDelay,
+  type MockService,
+} from "../../demo/mockData";
 import { formatCents } from "../../utils/format";
-import type { PublicOffspringGroupListingDTO } from "../../api/types";
+import type {
+  PublicOffspringGroupListingDTO,
+  PublicProgramSummaryDTO,
+} from "../../api/types";
 
 /**
- * Marketplace home page - browse-first entry point.
- * Shows search, and "Available now" section with real or demo data.
+ * Marketplace home page - 3 stacked sections.
+ * Each section has a hero card + row of featured cards.
  */
 export function HomePage() {
   const navigate = useNavigate();
@@ -73,158 +82,563 @@ export function HomePage() {
         </form>
       </div>
 
-      {/* Available now section */}
-      <section className="space-y-4">
-        <h2 className="text-lg font-semibold text-white">Available now</h2>
+      {/* Animals Section */}
+      <AnimalsSection demoMode={demoMode} onEnableDemo={handleEnableDemo} />
 
-        {demoMode ? (
-          <AvailableNowGrid />
-        ) : (
-          <ComingSoonBlock onEnableDemo={handleEnableDemo} />
-        )}
-      </section>
+      {/* Breeders Section */}
+      <BreedersSection demoMode={demoMode} onEnableDemo={handleEnableDemo} />
+
+      {/* Services Section */}
+      <ServicesSection demoMode={demoMode} onEnableDemo={handleEnableDemo} />
     </div>
   );
 }
 
-/**
- * Grid of available animals (demo mode ON).
- */
-function AvailableNowGrid() {
+// ============================================================================
+// ANIMALS SECTION
+// ============================================================================
+
+function AnimalsSection({
+  demoMode,
+  onEnableDemo,
+}: {
+  demoMode: boolean;
+  onEnableDemo: () => void;
+}) {
   const [listings, setListings] = React.useState<PublicOffspringGroupListingDTO[]>([]);
   const [loading, setLoading] = React.useState(true);
 
   React.useEffect(() => {
+    if (!demoMode) {
+      setLoading(false);
+      return;
+    }
+
     const fetchData = async () => {
       setLoading(true);
-      await simulateDelay(300);
-      // Get all listings and take first 6 with available animals
+      await simulateDelay(200);
       const all = getAllMockListings().filter((l) => l.countAvailable > 0);
-      setListings(all.slice(0, 6));
+      setListings(all.slice(0, 7)); // 1 hero + 6 row cards
       setLoading(false);
     };
     fetchData();
-  }, []);
+  }, [demoMode]);
 
-  if (loading) {
-    return (
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-        {[1, 2, 3, 4, 5, 6].map((i) => (
-          <div
-            key={i}
-            className="rounded-portal border border-border-subtle bg-portal-card p-5 animate-pulse"
-          >
-            <div className="h-5 bg-border-default rounded w-3/4 mb-3" />
-            <div className="h-4 bg-border-default rounded w-1/2 mb-2" />
-            <div className="h-4 bg-border-default rounded w-2/3 mb-3" />
-            <div className="h-4 bg-border-default rounded w-1/3" />
-          </div>
-        ))}
-      </div>
-    );
-  }
+  const hero = listings[0] || null;
+  const row = listings.slice(1, 7);
 
-  if (listings.length === 0) {
+  if (!demoMode) {
     return (
-      <div className="rounded-portal border border-border-subtle bg-portal-card p-8 text-center">
-        <p className="text-sm text-text-tertiary">No animals available at this time.</p>
-      </div>
+      <SectionWrapper
+        title="Animals"
+        description="Find your perfect companion from health-tested breeders."
+        viewAllHref="/animals"
+        viewAllLabel="View all animals"
+      >
+        <ComingSoonCard
+          title="Animals browse is coming soon"
+          description="We're building a unified marketplace experience. In the meantime, browse animals through individual breeders."
+          ctaHref="/breeders"
+          ctaLabel="Browse breeders"
+          onEnableDemo={onEnableDemo}
+        />
+      </SectionWrapper>
     );
   }
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-      {listings.map((listing) => (
-        <AnimalCard key={`${listing.programSlug}-${listing.slug}`} listing={listing} />
-      ))}
-    </div>
+    <SectionWrapper
+      title="Animals"
+      description="Find your perfect companion from health-tested breeders."
+      viewAllHref="/animals"
+      viewAllLabel="View all animals"
+    >
+      {loading ? (
+        <LoadingState heroCard rowCards={6} />
+      ) : (
+        <>
+          {/* Hero card */}
+          {hero && <AnimalHeroCard listing={hero} />}
+
+          {/* Row of cards */}
+          {row.length > 0 && (
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mt-4">
+              {row.map((listing, idx) => (
+                <AnimalRowCard
+                  key={`${listing.programSlug}-${listing.slug}`}
+                  listing={listing}
+                  boosted={demoMode && idx === 0}
+                />
+              ))}
+            </div>
+          )}
+        </>
+      )}
+    </SectionWrapper>
   );
 }
 
-/**
- * Animal card for the Available now grid.
- */
-function AnimalCard({ listing }: { listing: PublicOffspringGroupListingDTO }) {
+function AnimalHeroCard({ listing }: { listing: PublicOffspringGroupListingDTO }) {
   const priceText = listing.priceRange
     ? listing.priceRange.min === listing.priceRange.max
       ? formatCents(listing.priceRange.min)
       : `${formatCents(listing.priceRange.min)} - ${formatCents(listing.priceRange.max)}`
     : null;
 
-  // Extract location from program name pattern or use placeholder
-  const location = getLocationFromProgram(listing.programSlug);
+  return (
+    <Link
+      to={`/programs/${listing.programSlug}/offspring-groups/${listing.slug}`}
+      className="block"
+    >
+      <div className="rounded-portal border border-border-subtle bg-portal-card p-6 transition-colors hover:bg-portal-card-hover hover:border-border-default">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+          <div className="flex-1 min-w-0">
+            <h3 className="text-lg font-semibold text-white mb-1">
+              {listing.title || "Untitled Listing"}
+            </h3>
+            <p className="text-sm text-text-secondary mb-2">
+              {listing.breed || listing.species} · {listing.programName}
+            </p>
+            <p className="text-[13px] text-text-tertiary line-clamp-2">
+              {listing.description}
+            </p>
+          </div>
+          <div className="flex items-center gap-4 flex-shrink-0">
+            <div className="text-right">
+              <div className="text-[13px] text-text-tertiary mb-1">
+                {listing.countAvailable} available
+              </div>
+              {priceText && (
+                <div className="text-lg text-accent font-semibold">{priceText}</div>
+              )}
+            </div>
+            <svg
+              className="w-5 h-5 text-text-muted"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={1.5}
+                d="M9 5l7 7-7 7"
+              />
+            </svg>
+          </div>
+        </div>
+      </div>
+    </Link>
+  );
+}
+
+function AnimalRowCard({
+  listing,
+  boosted,
+}: {
+  listing: PublicOffspringGroupListingDTO;
+  boosted?: boolean;
+}) {
+  const priceText = listing.priceRange
+    ? formatCents(listing.priceRange.min)
+    : null;
 
   return (
     <Link
       to={`/programs/${listing.programSlug}/offspring-groups/${listing.slug}`}
       className="block"
     >
-      <div className="rounded-portal border border-border-subtle bg-portal-card p-5 h-full transition-colors hover:bg-portal-card-hover hover:border-border-default">
-        {/* Title */}
-        <h3 className="text-[15px] font-semibold text-white mb-2 line-clamp-1">
-          {listing.title || "Untitled Listing"}
-        </h3>
-
-        {/* Breed */}
-        <div className="text-sm text-text-secondary mb-1">
+      <div className="rounded-portal border border-border-subtle bg-portal-card p-4 h-full transition-colors hover:bg-portal-card-hover hover:border-border-default">
+        {boosted && <BoostedBadge />}
+        <h4 className="text-sm font-semibold text-white mb-1 line-clamp-1">
+          {listing.title || "Untitled"}
+        </h4>
+        <p className="text-xs text-text-tertiary mb-2 line-clamp-1">
           {listing.breed || listing.species}
+        </p>
+        <div className="flex items-center justify-between text-xs">
+          <span className="text-text-secondary">{listing.countAvailable} avail</span>
+          {priceText && <span className="text-accent font-medium">{priceText}</span>}
         </div>
-
-        {/* Breeder and location */}
-        <div className="text-[13px] text-text-tertiary mb-3">
-          {listing.programName}
-          {location && <span className="ml-1">· {location}</span>}
-        </div>
-
-        {/* Availability */}
-        <div className="text-[13px] text-text-secondary mb-3">
-          {listing.countAvailable} available
-        </div>
-
-        {/* Price */}
-        {priceText && (
-          <div className="pt-3 border-t border-border-subtle">
-            <span className="text-[15px] text-accent font-semibold">{priceText}</span>
-          </div>
-        )}
       </div>
     </Link>
   );
 }
 
-/**
- * Coming soon block (demo mode OFF).
- */
-function ComingSoonBlock({ onEnableDemo }: { onEnableDemo: () => void }) {
+// ============================================================================
+// BREEDERS SECTION
+// ============================================================================
+
+function BreedersSection({
+  demoMode,
+  onEnableDemo,
+}: {
+  demoMode: boolean;
+  onEnableDemo: () => void;
+}) {
+  const [breeders, setBreeders] = React.useState<PublicProgramSummaryDTO[]>([]);
+  const [loading, setLoading] = React.useState(true);
+
+  React.useEffect(() => {
+    if (!demoMode) {
+      setLoading(false);
+      return;
+    }
+
+    const fetchData = async () => {
+      setLoading(true);
+      await simulateDelay(250);
+      const { items } = getMockPrograms({ limit: 7 });
+      setBreeders(items);
+      setLoading(false);
+    };
+    fetchData();
+  }, [demoMode]);
+
+  const hero = breeders[0] || null;
+  const row = breeders.slice(1, 7);
+
+  if (!demoMode) {
+    return (
+      <SectionWrapper
+        title="Breeders"
+        description="Connect with reputable breeders in your area."
+        viewAllHref="/breeders"
+        viewAllLabel="View all breeders"
+      >
+        <ComingSoonCard
+          title="Discover trusted breeders"
+          description="Browse verified breeder profiles, view their programs, and reach out directly."
+          ctaHref="/breeders"
+          ctaLabel="Browse breeders"
+          onEnableDemo={onEnableDemo}
+        />
+      </SectionWrapper>
+    );
+  }
+
   return (
-    <div className="rounded-portal border border-border-subtle bg-portal-card p-8 text-center">
-      <div className="w-12 h-12 mx-auto mb-4 rounded-full bg-border-default flex items-center justify-center">
-        <svg
-          className="w-6 h-6 text-text-muted"
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={1.5}
-            d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"
-          />
-        </svg>
+    <SectionWrapper
+      title="Breeders"
+      description="Connect with reputable breeders in your area."
+      viewAllHref="/breeders"
+      viewAllLabel="View all breeders"
+    >
+      {loading ? (
+        <LoadingState heroCard rowCards={6} />
+      ) : (
+        <>
+          {/* Hero card */}
+          {hero && <BreederHeroCard breeder={hero} />}
+
+          {/* Row of cards */}
+          {row.length > 0 && (
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mt-4">
+              {row.map((breeder, idx) => (
+                <BreederRowCard
+                  key={breeder.slug}
+                  breeder={breeder}
+                  boosted={demoMode && idx === 0}
+                />
+              ))}
+            </div>
+          )}
+        </>
+      )}
+    </SectionWrapper>
+  );
+}
+
+function BreederHeroCard({ breeder }: { breeder: PublicProgramSummaryDTO }) {
+  return (
+    <Link to={`/programs/${breeder.slug}`} className="block">
+      <div className="rounded-portal border border-border-subtle bg-portal-card p-6 transition-colors hover:bg-portal-card-hover hover:border-border-default">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+          <div className="flex-1 min-w-0">
+            <h3 className="text-lg font-semibold text-white mb-1">{breeder.name}</h3>
+            <p className="text-sm text-text-secondary mb-2">
+              {breeder.breed} · {breeder.location}
+            </p>
+            <p className="text-[13px] text-text-tertiary">
+              View profile to learn about their breeding program and available animals.
+            </p>
+          </div>
+          <div className="flex items-center gap-4 flex-shrink-0">
+            <span className="text-sm text-accent font-medium">View profile</span>
+            <svg
+              className="w-5 h-5 text-text-muted"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={1.5}
+                d="M9 5l7 7-7 7"
+              />
+            </svg>
+          </div>
+        </div>
       </div>
-      <h3 className="text-lg font-semibold text-white mb-2">
-        Animals browse is coming soon
-      </h3>
-      <p className="text-sm text-text-tertiary mb-6 max-w-md mx-auto">
-        We're building a unified marketplace experience. In the meantime, browse animals through individual breeders.
-      </p>
-      <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+    </Link>
+  );
+}
+
+function BreederRowCard({
+  breeder,
+  boosted,
+}: {
+  breeder: PublicProgramSummaryDTO;
+  boosted?: boolean;
+}) {
+  return (
+    <Link to={`/programs/${breeder.slug}`} className="block">
+      <div className="rounded-portal border border-border-subtle bg-portal-card p-4 h-full transition-colors hover:bg-portal-card-hover hover:border-border-default">
+        {boosted && <BoostedBadge />}
+        <h4 className="text-sm font-semibold text-white mb-1 line-clamp-1">
+          {breeder.name}
+        </h4>
+        <p className="text-xs text-text-tertiary mb-1 line-clamp-1">{breeder.breed}</p>
+        <p className="text-xs text-text-secondary">{breeder.location}</p>
+      </div>
+    </Link>
+  );
+}
+
+// ============================================================================
+// SERVICES SECTION
+// ============================================================================
+
+function ServicesSection({
+  demoMode,
+  onEnableDemo,
+}: {
+  demoMode: boolean;
+  onEnableDemo: () => void;
+}) {
+  const [services, setServices] = React.useState<MockService[]>([]);
+  const [loading, setLoading] = React.useState(true);
+
+  React.useEffect(() => {
+    if (!demoMode) {
+      setLoading(false);
+      return;
+    }
+
+    const fetchData = async () => {
+      setLoading(true);
+      await simulateDelay(180);
+      const all = getMockServices();
+      setServices(all.slice(0, 7)); // 1 hero + 6 row
+      setLoading(false);
+    };
+    fetchData();
+  }, [demoMode]);
+
+  const hero = services[0] || null;
+  const row = services.slice(1, 7);
+
+  if (!demoMode) {
+    return (
+      <SectionWrapper
+        title="Services"
+        description="Stud services, training, delivery, and more from trusted providers."
+        viewAllHref="/services"
+        viewAllLabel="View all services"
+      >
+        <ComingSoonCard
+          title="Services browse is coming soon"
+          description="Services are published by breeders. Browse breeder profiles to learn about their offerings."
+          ctaHref="/breeders"
+          ctaLabel="Browse breeders"
+          onEnableDemo={onEnableDemo}
+        />
+      </SectionWrapper>
+    );
+  }
+
+  return (
+    <SectionWrapper
+      title="Services"
+      description="Stud services, training, delivery, and more from trusted providers."
+      viewAllHref="/services"
+      viewAllLabel="View all services"
+    >
+      {loading ? (
+        <LoadingState heroCard rowCards={6} />
+      ) : (
+        <>
+          {/* Hero card */}
+          {hero && <ServiceHeroCard service={hero} />}
+
+          {/* Row of cards */}
+          {row.length > 0 && (
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mt-4">
+              {row.map((service, idx) => (
+                <ServiceRowCard
+                  key={service.id}
+                  service={service}
+                  boosted={demoMode && idx === 0}
+                />
+              ))}
+            </div>
+          )}
+        </>
+      )}
+    </SectionWrapper>
+  );
+}
+
+const SERVICE_TYPE_LABELS: Record<string, string> = {
+  stud: "Stud Service",
+  guardianship: "Guardianship",
+  training: "Training",
+  delivery: "Delivery",
+  grooming: "Grooming",
+  boarding: "Boarding",
+};
+
+function ServiceHeroCard({ service }: { service: MockService }) {
+  const priceText = service.priceRange
+    ? service.priceRange.min === service.priceRange.max
+      ? formatCents(service.priceRange.min)
+      : `${formatCents(service.priceRange.min)} - ${formatCents(service.priceRange.max)}`
+    : "Contact for pricing";
+
+  return (
+    <Link to={`/programs/${service.programSlug}`} className="block">
+      <div className="rounded-portal border border-border-subtle bg-portal-card p-6 transition-colors hover:bg-portal-card-hover hover:border-border-default">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+          <div className="flex-1 min-w-0">
+            <div className="mb-2">
+              <span className="inline-block px-2 py-0.5 text-xs font-medium rounded bg-border-default text-text-secondary">
+                {SERVICE_TYPE_LABELS[service.type] || service.type}
+              </span>
+            </div>
+            <h3 className="text-lg font-semibold text-white mb-1">{service.name}</h3>
+            <p className="text-sm text-text-secondary mb-2">
+              {service.programName} · {service.location}
+            </p>
+            <p className="text-[13px] text-text-tertiary line-clamp-2">
+              {service.description}
+            </p>
+          </div>
+          <div className="flex items-center gap-4 flex-shrink-0">
+            <div className="text-right">
+              <div className="text-lg text-accent font-semibold">{priceText}</div>
+            </div>
+            <svg
+              className="w-5 h-5 text-text-muted"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={1.5}
+                d="M9 5l7 7-7 7"
+              />
+            </svg>
+          </div>
+        </div>
+      </div>
+    </Link>
+  );
+}
+
+function ServiceRowCard({
+  service,
+  boosted,
+}: {
+  service: MockService;
+  boosted?: boolean;
+}) {
+  const priceText = service.priceRange
+    ? formatCents(service.priceRange.min)
+    : "Contact";
+
+  return (
+    <Link to={`/programs/${service.programSlug}`} className="block">
+      <div className="rounded-portal border border-border-subtle bg-portal-card p-4 h-full transition-colors hover:bg-portal-card-hover hover:border-border-default">
+        {boosted && <BoostedBadge />}
+        <div className="mb-1">
+          <span className="inline-block px-1.5 py-0.5 text-[10px] font-medium rounded bg-border-default text-text-secondary">
+            {SERVICE_TYPE_LABELS[service.type] || service.type}
+          </span>
+        </div>
+        <h4 className="text-sm font-semibold text-white mb-1 line-clamp-1">
+          {service.name}
+        </h4>
+        <p className="text-xs text-text-tertiary mb-2 line-clamp-1">
+          {service.programName}
+        </p>
+        <div className="text-xs text-accent font-medium">{priceText}</div>
+      </div>
+    </Link>
+  );
+}
+
+// ============================================================================
+// SHARED COMPONENTS
+// ============================================================================
+
+function SectionWrapper({
+  title,
+  description,
+  viewAllHref,
+  viewAllLabel,
+  children,
+}: {
+  title: string;
+  description: string;
+  viewAllHref: string;
+  viewAllLabel: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="space-y-4">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h2 className="text-lg font-semibold text-white">{title}</h2>
+          <p className="text-sm text-text-tertiary mt-0.5">{description}</p>
+        </div>
         <Link
-          to="/breeders"
-          className="inline-flex items-center px-5 py-2.5 rounded-portal-xs bg-accent text-white text-sm font-medium hover:bg-accent-hover transition-colors"
+          to={viewAllHref}
+          className="text-sm text-accent hover:text-accent-hover transition-colors flex-shrink-0"
         >
-          Browse breeders
+          {viewAllLabel}
+        </Link>
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function ComingSoonCard({
+  title,
+  description,
+  ctaHref,
+  ctaLabel,
+  onEnableDemo,
+}: {
+  title: string;
+  description: string;
+  ctaHref: string;
+  ctaLabel: string;
+  onEnableDemo: () => void;
+}) {
+  return (
+    <div className="rounded-portal border border-border-subtle bg-portal-card p-6 text-center">
+      <h3 className="text-[15px] font-semibold text-white mb-2">{title}</h3>
+      <p className="text-sm text-text-tertiary mb-4 max-w-md mx-auto">{description}</p>
+      <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+        <Link
+          to={ctaHref}
+          className="inline-flex items-center px-4 py-2 rounded-portal-xs bg-accent text-white text-sm font-medium hover:bg-accent-hover transition-colors"
+        >
+          {ctaLabel}
         </Link>
         <button
           type="button"
@@ -238,19 +652,44 @@ function ComingSoonBlock({ onEnableDemo }: { onEnableDemo: () => void }) {
   );
 }
 
-/**
- * Helper to extract location from mock program data.
- */
-function getLocationFromProgram(programSlug: string): string | null {
-  const locationMap: Record<string, string> = {
-    "sunny-meadows-goldens": "Austin, TX",
-    "riverside-shepherds": "Denver, CO",
-    "maple-leaf-doodles": "Seattle, WA",
-    "blue-ribbon-labs": "Nashville, TN",
-    "heartland-cavaliers": "Kansas City, MO",
-    "pacific-poodles": "San Diego, CA",
-    "mountain-view-aussies": "Boulder, CO",
-    "southern-charm-frenchies": "Charleston, SC",
-  };
-  return locationMap[programSlug] || null;
+function LoadingState({
+  heroCard,
+  rowCards,
+}: {
+  heroCard?: boolean;
+  rowCards?: number;
+}) {
+  return (
+    <>
+      {heroCard && (
+        <div className="rounded-portal border border-border-subtle bg-portal-card p-6 animate-pulse">
+          <div className="h-5 bg-border-default rounded w-1/3 mb-3" />
+          <div className="h-4 bg-border-default rounded w-1/2 mb-2" />
+          <div className="h-4 bg-border-default rounded w-2/3" />
+        </div>
+      )}
+      {rowCards && rowCards > 0 && (
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mt-4">
+          {Array.from({ length: rowCards }).map((_, i) => (
+            <div
+              key={i}
+              className="rounded-portal border border-border-subtle bg-portal-card p-4 animate-pulse"
+            >
+              <div className="h-4 bg-border-default rounded w-3/4 mb-2" />
+              <div className="h-3 bg-border-default rounded w-1/2 mb-2" />
+              <div className="h-3 bg-border-default rounded w-1/3" />
+            </div>
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+
+function BoostedBadge() {
+  return (
+    <span className="inline-block px-1.5 py-0.5 mb-2 text-[10px] font-semibold rounded bg-amber-500/20 text-amber-400 uppercase tracking-wide">
+      Boosted
+    </span>
+  );
 }

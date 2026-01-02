@@ -1,12 +1,12 @@
 // apps/marketplace/src/marketplace/pages/ListingPage.tsx
-// Litter listing page with buyer language and clear inquiry flow
+// Litter listing page with buyer language and messaging integration
 import * as React from "react";
-import { useParams, Link } from "react-router-dom";
+import { useParams, Link, useNavigate } from "react-router-dom";
 import { getListing, submitInquiry } from "../../api/client";
 import { getUserMessage } from "../../api/errors";
 import { isDemoMode } from "../../demo/demoMode";
 import { getMockListing, simulateDelay } from "../../demo/mockData";
-import { addInquiry } from "../../demo/inquiryOutbox";
+import { useStartConversation } from "../../messages/hooks";
 import { Breadcrumb } from "../components/Breadcrumb";
 import { formatCents } from "../../utils/format";
 import type { ListingDetailDTO, PublicOffspringDTO } from "../../api/types";
@@ -15,6 +15,7 @@ import type { ListingDetailDTO, PublicOffspringDTO } from "../../api/types";
  * Litter detail page with buyer-facing language.
  */
 export function ListingPage() {
+  const navigate = useNavigate();
   const { programSlug = "", listingSlug = "" } = useParams<{
     programSlug: string;
     listingSlug: string;
@@ -29,6 +30,9 @@ export function ListingPage() {
   const [inquirySending, setInquirySending] = React.useState(false);
   const [inquiryError, setInquiryError] = React.useState<string | null>(null);
   const [inquirySuccess, setInquirySuccess] = React.useState(false);
+
+  // Messaging hook
+  const { startConversation, loading: starting } = useStartConversation();
 
   const fetchData = React.useCallback(async () => {
     if (!programSlug || !listingSlug) return;
@@ -60,7 +64,7 @@ export function ListingPage() {
     fetchData();
   }, [fetchData]);
 
-  // Handle inquiry submission
+  // Handle inquiry submission - creates conversation and redirects to Inquiries
   const handleInquirySubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!inquiryMessage.trim() || !data) return;
@@ -70,42 +74,74 @@ export function ListingPage() {
 
     const messageText = inquiryMessage.trim();
 
-    // Demo mode: simulate success without hitting backend
+    // Demo mode: create conversation in messaging system
     if (isDemoMode()) {
-      await simulateDelay(300);
+      try {
+        const conv = await startConversation({
+          context: {
+            type: "listing",
+            programSlug,
+            programName: data.programName,
+            listingSlug,
+            listingTitle: data.title || "Untitled Listing",
+          },
+          participant: {
+            name: data.programName,
+            type: "breeder",
+            slug: programSlug,
+          },
+          initialMessage: messageText,
+        });
 
-      // Persist to inquiry outbox
-      addInquiry({
-        breederName: data.programName,
-        breederSlug: programSlug,
-        listingTitle: data.title || "Untitled Listing",
-        listingSlug: listingSlug,
-        message: messageText,
-      });
+        setInquirySuccess(true);
+        setInquiryMessage("");
+        setInquirySending(false);
 
-      setInquirySuccess(true);
-      setInquiryMessage("");
-      setInquirySending(false);
+        // Navigate to conversation after short delay
+        if (conv) {
+          setTimeout(() => {
+            navigate(`/inquiries?c=${conv.conversation.id}`);
+          }, 1500);
+        }
+      } catch (err) {
+        setInquiryError("Failed to send message. Please try again.");
+        setInquirySending(false);
+      }
       return;
     }
 
-    // Real API mode
+    // Real API mode - also create local conversation for tracking
     try {
       await submitInquiry(programSlug, listingSlug, {
         message: messageText,
       });
 
-      // Also persist to outbox for tracking (even in real mode)
-      addInquiry({
-        breederName: data.programName,
-        breederSlug: programSlug,
-        listingTitle: data.title || "Untitled Listing",
-        listingSlug: listingSlug,
-        message: messageText,
+      // Create local conversation for UI tracking
+      const result = await startConversation({
+        context: {
+          type: "listing",
+          programSlug,
+          programName: data.programName,
+          listingSlug,
+          listingTitle: data.title || "Untitled Listing",
+        },
+        participant: {
+          name: data.programName,
+          type: "breeder",
+          slug: programSlug,
+        },
+        initialMessage: messageText,
       });
 
       setInquirySuccess(true);
       setInquiryMessage("");
+
+      // Navigate to conversation after short delay
+      if (result) {
+        setTimeout(() => {
+          navigate(`/inquiries?c=${result.conversation.id}`);
+        }, 1500);
+      }
     } catch (err) {
       setInquiryError(getUserMessage(err));
     } finally {
@@ -254,7 +290,7 @@ export function ListingPage() {
       <div className="max-w-xl">
         <div className="rounded-portal border border-border-subtle bg-portal-card shadow-portal p-5">
           {inquirySuccess ? (
-            // Success state - clear confirmation
+            // Success state - show redirect message
             <div className="flex items-center justify-between gap-4">
               <div className="flex items-center gap-3">
                 <div className="w-7 h-7 rounded-full bg-green-500/15 flex items-center justify-center flex-shrink-0">
@@ -273,27 +309,26 @@ export function ListingPage() {
                   </svg>
                 </div>
                 <div>
-                  <p className="text-[15px] font-semibold text-white">Inquiry sent</p>
+                  <p className="text-[15px] font-semibold text-white">Message sent</p>
                   <p className="text-[13px] text-text-tertiary mt-0.5">
-                    The breeder will respond directly.
+                    Opening conversation...
                   </p>
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={handleSendAnother}
+              <Link
+                to="/inquiries"
                 className="text-[13px] text-accent font-medium hover:text-accent-hover transition-colors whitespace-nowrap"
               >
-                Send another
-              </button>
+                View all messages
+              </Link>
             </div>
           ) : (
             // Form state
             <>
               <div className="mb-3">
-                <h3 className="text-base font-semibold text-white">Send an Inquiry</h3>
+                <h3 className="text-base font-semibold text-white">Message {data.programName}</h3>
                 <p className="text-[13px] text-text-tertiary mt-1">
-                  Your message is sent to the breeder. Your email stays private.
+                  Start a conversation about this litter. Your email stays private.
                 </p>
               </div>
 
@@ -315,7 +350,7 @@ export function ListingPage() {
                     rows={4}
                     className="w-full px-3.5 py-3 rounded-portal-sm bg-portal-elevated border border-border-subtle text-sm text-white placeholder-text-muted focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30 disabled:opacity-50 resize-none transition-colors"
                     placeholder="Introduce yourself and ask any questions..."
-                    disabled={inquirySending}
+                    disabled={inquirySending || starting}
                     required
                   />
                 </label>
@@ -323,10 +358,10 @@ export function ListingPage() {
                 <div className="flex justify-end">
                   <button
                     type="submit"
-                    disabled={inquirySending || !inquiryMessage.trim()}
+                    disabled={inquirySending || starting || !inquiryMessage.trim()}
                     className="w-full sm:w-auto px-5 py-2.5 rounded-portal-xs bg-accent text-white text-sm font-semibold hover:bg-accent-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
                   >
-                    {inquirySending ? "Sending..." : "Send inquiry"}
+                    {inquirySending || starting ? "Sending..." : "Send message"}
                   </button>
                 </div>
               </form>
