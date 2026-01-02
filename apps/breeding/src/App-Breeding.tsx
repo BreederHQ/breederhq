@@ -46,6 +46,10 @@ import { reproEngine } from "@bhq/ui/utils";
 // ── Calendar / Planning wiring ─────────────────────────────
 import BreedingCalendar from "./components/BreedingCalendar";
 
+// ── Planner pages ─────────────────────────────────────────
+import { YourBreedingPlansPage, WhatIfPlanningPage } from "./pages/planner";
+import type { WhatIfFemale } from "./pages/planner/whatIfTypes";
+
 
 /* Cycle math */
 import {
@@ -161,27 +165,37 @@ function normalizeExpectedMilestones(
 
   const breedDate =
     day(milestones?.expectedBreedDate) ??
-    day(milestones?.breeding_full?.start) ?? // reproEngine format: { start, end }
-    day(milestones?.breeding_likely?.start) ?? // reproEngine format: { start, end }
-    day(milestones?.breeding_full?.[0]) ?? // legacy array format
-    day(milestones?.breeding_likely?.[0]) ?? // legacy array format
+    day(milestones?.breeding_expected) ?? // legacy format from computeExpectedForPlan
     day(milestones?.ovulation_center) ?? // reproEngine milestone
     day(milestones?.ovulation) ??
+    day(milestones?.breeding?.likely?.start) ?? // reproEngine nested format
+    day(milestones?.breeding_full?.start) ?? // reproEngine flat format
+    day(milestones?.breeding_likely?.start) ?? // reproEngine flat format
+    day(milestones?.breeding?.likely?.[0]) ?? // reproEngine nested array format
+    day(milestones?.breeding_full?.[0]) ?? // legacy array format
+    day(milestones?.breeding_likely?.[0]) ?? // legacy array format
     null;
 
   const birthDate =
     day(milestones?.expectedBirthDate) ??
-    day(milestones?.whelping_full?.start) ?? // reproEngine format: { start, end }
-    day(milestones?.whelping_likely?.start) ?? // reproEngine format: { start, end }
+    day(milestones?.birth_expected) ?? // legacy format from computeExpectedForPlan
+    day(milestones?.whelping?.likely?.start) ?? // reproEngine nested format
+    day(milestones?.whelping_full?.start) ?? // reproEngine flat format
+    day(milestones?.whelping_likely?.start) ?? // reproEngine flat format
+    day(milestones?.whelping?.likely?.[0]) ?? // reproEngine nested array format
     day(milestones?.whelping_full?.[0]) ?? // legacy array format
     day(milestones?.whelping_likely?.[0]) ?? // legacy array format
     null;
 
   const weanedDate =
     day(milestones?.expectedWeaned) ??
-    day(milestones?.puppy_care_full?.end) ?? // reproEngine format: end of puppy care
-    day(milestones?.go_home_normal_full?.start) ?? // reproEngine format: { start, end }
-    day(milestones?.go_home_normal_likely?.start) ?? // reproEngine format: { start, end }
+    day(milestones?.weaning_expected) ?? // legacy format from computeExpectedForPlan
+    day(milestones?.puppy_care?.full?.end) ?? // reproEngine nested format: end of puppy care
+    day(milestones?.puppy_care_full?.end) ?? // reproEngine flat format: end of puppy care
+    day(milestones?.go_home_normal?.likely?.start) ?? // reproEngine nested format
+    day(milestones?.go_home_normal_full?.start) ?? // reproEngine flat format
+    day(milestones?.go_home_normal_likely?.start) ?? // reproEngine flat format
+    day(milestones?.go_home_normal?.likely?.[0]) ?? // reproEngine nested array format
     day(milestones?.go_home_normal_full?.[0]) ?? // legacy array format
     day(milestones?.go_home_normal_likely?.[0]) ?? // legacy array format
     day(milestones?.post_birth_care_likely?.[0]) ??
@@ -189,16 +203,20 @@ function normalizeExpectedMilestones(
 
   const placementStart =
     day(milestones?.expectedPlacementStartDate) ??
-    day(milestones?.go_home_normal_full?.start) ?? // reproEngine format: { start, end }
-    day(milestones?.placement_expected) ??
+    day(milestones?.placement_expected) ?? // legacy format from computeExpectedForPlan
+    day(milestones?.go_home_normal?.likely?.start) ?? // reproEngine nested format
+    day(milestones?.go_home_normal_full?.start) ?? // reproEngine flat format
+    day(milestones?.go_home_normal?.likely?.[0]) ?? // reproEngine nested array format
     day(milestones?.placement_start_expected) ??
     null;
 
   const placementCompleted =
     day(milestones?.expectedPlacementCompletedDate) ??
-    day(milestones?.go_home_extended_full?.end) ?? // reproEngine format: end of extended window
+    day(milestones?.placement_expected_end) ?? // legacy format from computeExpectedForPlan
+    day(milestones?.go_home_extended?.full?.end) ?? // reproEngine nested format: end of extended window
+    day(milestones?.go_home_extended_full?.end) ?? // reproEngine flat format: end of extended window
+    day(milestones?.go_home_extended?.full?.[1]) ?? // reproEngine nested array format
     day(milestones?.placement_extended_end) ??
-    day(milestones?.placement_expected_end) ??
     day(milestones?.placement_extended_full?.[1]) ?? // legacy array format
     null;
 
@@ -801,8 +819,14 @@ function DisplayValue({ value }: { value?: string | null }) {
 function fmt(d?: string | null) {
   if (!d) return "";
   const s = String(d);
-  // If it's date-only, parse as UTC midnight to avoid TZ drift + invalid parsing
-  const dt = /^\d{4}-\d{2}-\d{2}$/.test(s) ? new Date(`${s}T00:00:00Z`) : new Date(s);
+  // If it's date-only (YYYY-MM-DD), parse as local midnight to avoid timezone shifts
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+    const [y, m, day] = s.split("-").map(Number);
+    const dt = new Date(y, m - 1, day); // Local timezone, months are 0-indexed
+    return Number.isFinite(dt.getTime()) ? dt.toLocaleDateString() : "";
+  }
+  // For other formats, parse normally
+  const dt = new Date(s);
   return Number.isFinite(dt.getTime()) ? dt.toLocaleDateString() : "";
 }
 
@@ -824,8 +848,8 @@ function planToRow(p: any): PlanRow {
     /* Canonical expected timeline (strict, breedingMath-driven) */
     expectedCycleStart: (p.expectedCycleStart ?? p.lockedCycleStart) ?? null,
     expectedHormoneTestingStart: p.expectedHormoneTestingStart ?? null,
-    expectedBreedDate: p.lockedOvulationDate ?? null,
-    expectedBirthDate: p.lockedDueDate ?? null,
+    expectedBreedDate: (p.expectedBreedDate ?? p.lockedOvulationDate) ?? null,
+    expectedBirthDate: (p.expectedBirthDate ?? p.lockedDueDate) ?? null,
     expectedWeaned: p.expectedWeaned ?? null,
     expectedPlacementStartDate: p.expectedPlacementStartDate ?? null,
     expectedPlacementCompletedDate: (pickPlacementCompletedAny(p) as any) ?? null,
@@ -916,6 +940,7 @@ type AnimalLite = {
   species: SpeciesWire;
   sex: "FEMALE" | "MALE";
   organization?: { name: string } | null;
+  femaleCycleLenOverrideDays?: number | null;
 };
 
 function normalizeSex(x: any): "FEMALE" | "MALE" | undefined {
@@ -980,6 +1005,7 @@ async function fetchAnimals(opts: {
     species: normalizeSpecies(a.species) ?? (opts.species ?? "DOG"),
     sex: normalizeSex(a.sex) ?? (opts.sexHint ?? "FEMALE"),
     organization: a.organization?.name ? { name: String(a.organization.name) } : null,
+    femaleCycleLenOverrideDays: a.femaleCycleLenOverrideDays ?? null,
   }));
 
   return normalized;
@@ -1127,9 +1153,9 @@ function WhatIfRowEditor(props: WhatIfRowEditorProps) {
 
   const [damRepro, setDamRepro] = React.useState<WhatIfDamReproData | null>(null);
   const [damLoadError, setDamLoadError] = React.useState<string | null>(null);
+  const [refreshTrigger, setRefreshTrigger] = React.useState(0);
 
   React.useEffect(() => {
-    console.log("[whatif] dam repro effect run", { damId: row.damId });
 
     let cancelled = false;
 
@@ -1144,7 +1170,6 @@ function WhatIfRowEditor(props: WhatIfRowEditorProps) {
 
     (async () => {
       try {
-        console.log("[whatif] fetch url", url);
 
         const res = await fetch(url, {
           method: "GET",
@@ -1156,8 +1181,6 @@ function WhatIfRowEditor(props: WhatIfRowEditorProps) {
         });
         const bodyText = await res.text();
 
-        console.log("[whatif] fetch status", res.status);
-        console.log("[whatif] fetch body head", bodyText.slice(0, 200));
 
         if (!res.ok) {
           throw new Error(`Dam repro fetch failed: ${res.status} ${bodyText.slice(0, 200)}`);
@@ -1223,12 +1246,12 @@ function WhatIfRowEditor(props: WhatIfRowEditorProps) {
 
         setDamRepro(parsed);
 
-        console.log("[whatif] damRepro set", {
-          reproLen: parsed.repro.length,
-          cycleStartDatesLen: parsed.cycleStartDates.length,
-          lastCycle: parsed.lastCycle,
-          last_heat: parsed.last_heat,
-        });
+        // Update the row's femaleCycleLenOverrideDays with fresh data from server
+        // This ensures we always use the latest override value when recalculating projected cycles
+        const freshOverride = data?.femaleCycleLenOverrideDays ?? null;
+        if (freshOverride !== row.femaleCycleLenOverrideDays) {
+          onChange({ ...row, femaleCycleLenOverrideDays: freshOverride });
+        }
       } catch (e: any) {
         if (cancelled) return;
         console.error("[whatif] dam repro load failed", e);
@@ -1240,7 +1263,7 @@ function WhatIfRowEditor(props: WhatIfRowEditorProps) {
     return () => {
       cancelled = true;
     };
-  }, [row.damId]);
+  }, [row.damId, refreshTrigger]);
 
   const handleDamChange: React.ChangeEventHandler<HTMLSelectElement> = (e) => {
     const val = e.currentTarget.value;
@@ -1256,7 +1279,6 @@ function WhatIfRowEditor(props: WhatIfRowEditorProps) {
       femaleCycleLenOverrideDays: female?.femaleCycleLenOverrideDays ?? null,
     };
 
-    console.log("[whatif] female select changed", { selectedId: id, nextRow: next });
     onChange(next);
   };
 
@@ -1316,6 +1338,11 @@ function WhatIfRowEditor(props: WhatIfRowEditorProps) {
             className="h-8 w-full rounded-md border border-hairline bg-surface-subtle px-2 text-sm text-primary"
             value={row.cycleStartIso ?? ""}
             onChange={handleCycleChange}
+            onFocus={() => {
+              if (row.damId) {
+                setRefreshTrigger((prev) => prev + 1);
+              }
+            }}
             disabled={!row.damId || projectedCycles.length === 0}
           >
             <option value="">
@@ -1926,6 +1953,10 @@ export default function AppBreeding() {
 
   // ── Planner view state ─────────────────────────────────────
   const [plannerMode, setPlannerMode] = React.useState<"per-plan" | "rollup">("per-plan");
+
+  // Planner page tabs: "your-plans" (default) or "what-if"
+  type PlannerPage = "your-plans" | "what-if";
+  const [plannerPage, setPlannerPage] = React.useState<PlannerPage>("your-plans");
 
   // Planner inner content sizing (scroll only inside the card body)
   const plannerContentRef = React.useRef<HTMLDivElement | null>(null);
@@ -2591,7 +2622,11 @@ export default function AppBreeding() {
                         !error &&
                         pageRows.length > 0 &&
                         pageRows.map((r) => (
-                          <TableRow key={r.id} detailsRow={r}>
+                          <TableRow
+                            key={r.id}
+                            detailsRow={r}
+                            className={r.archived || r.archivedAt ? "bhq-row-archived" : undefined}
+                          >
                             {visibleSafe.map((c) => {
                               let v = (r as any)[c.key] as any;
                               if (DATE_KEYS.has(c.key as any)) v = fmt(v);
@@ -2664,140 +2699,40 @@ export default function AppBreeding() {
 
         {/* PLANNER VIEW */}
         {currentView === "planner" && (
-          <div className="p-2">
-            <SectionCard
-              title="Planner"
-              className="flex flex-col"
-            >
-              <div className="flex items-center justify-between mb-3 flex-none">
-                <PlannerSwitch mode={plannerMode} onChange={setPlannerMode} />
-                <div className="text-sm text-secondary">Planner view</div>
-              </div>
-
-              <div
-                ref={plannerContentRef}
-                className="flex-1 min-h-0 overflow-y-auto pr-2"
-                style={
-                  plannerContentMaxHeight != null
-                    ? { maxHeight: plannerContentMaxHeight }
-                    : undefined
-                }
-              >
-                {plannerMode === "per-plan" ? (
-                  <PerPlanGantt
-                    plans={normalized}
-                    className="w-full"
-                  />
-                ) : (
-                  <RollupGantt
-                    items={rollupItemsWithWhatIf}
-                    prefsOverride={{ defaultExactBandsVisible: availabilityOn }}
-                    selected={selectedKeysWithWhatIf as any}
-                    onSelectedChange={(next) => {
-                      setSelectionTouched(true);
-                      const baseOnly = Array.from(next ?? []).map(String).filter((k) => !k.startsWith("whatif-"));
-                      setSelectedKeys(new Set(baseOnly) as any);
+          <div className="p-4">
+            {/* Page-level tabs: Your Breeding Plans | What If Planning */}
+            <nav className="inline-flex items-end gap-6 mb-4" role="tablist" aria-label="Planner pages">
+              {(["your-plans", "what-if"] as const).map((tabKey) => {
+                const isActive = plannerPage === tabKey;
+                const label = tabKey === "your-plans" ? "Your Breeding Plans" : "What If Planning";
+                return (
+                  <button
+                    key={tabKey}
+                    type="button"
+                    role="tab"
+                    aria-selected={isActive}
+                    onClick={() => setPlannerPage(tabKey)}
+                    className={[
+                      "pb-1 text-sm font-medium transition-colors select-none",
+                      isActive
+                        ? "text-neutral-900 dark:text-neutral-50"
+                        : "text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-100",
+                    ].join(" ")}
+                    style={{
+                      borderBottom: isActive ? "2px solid #f97316" : "2px solid transparent",
                     }}
-                  />
-                )}
-              </div>
-            </SectionCard>
-
-            {plannerMode === "rollup" && (
-              <SectionCard title="What If Planner" className="mt-4">
-                <div className="mb-2 flex items-center justify-between gap-2">
-                  <div className="text-xs text-secondary">
-                    Add hypothetical cycles for active females and preview them
-                    on the Rollup planner.
-                  </div>
-                  <Button
-                    size="xs"
-                    variant="primary"
-                    onClick={() => {
-                      setWhatIfRows((prev) => {
-                        const nextId = `whatif-${prev.length + 1}-${Date.now()}`;
-                        return [
-                          ...prev,
-                          {
-                            id: nextId,
-                            damId: null,
-                            damName: null,
-                            species:
-                              speciesFilterRollup === "ALL"
-                                ? null
-                                : (speciesFilterRollup as SpeciesWire),
-                            cycleStartIso: null,
-                            showOnChart: true,
-                          },
-                        ];
-                      });
-                    }}
-                    className="inline-flex items-center gap-1.5"
                   >
-                    <Plus className="h-4 w-4" />
-                    <span>Add Female</span>
-                  </Button>
-                </div>
+                    {label}
+                  </button>
+                );
+              })}
+            </nav>
 
-                <div className="flex flex-col gap-2">
-                  {whatIfRows.map((row) => (
-                    <WhatIfRowEditor
-                      key={row.id}
-                      row={row}
-                      females={whatIfFemales}
-                      api={api}
-                      tenantId={tenantId}
-                      onChange={(next) => {
-                        // existing onChange logic, unchanged
-                        setWhatIfRows((prev) =>
-                          prev.map((r) => (r.id === row.id ? next : r))
-                        );
-
-                        const syntheticId = `whatif-${next.id}` as ID;
-                        const ready =
-                          next.showOnChart &&
-                          next.damId != null &&
-                          !!next.cycleStartIso;
-
-                        setSelectedKeys((prev) => {
-                          const copy = new Set(prev);
-                          if (ready) {
-                            copy.add(syntheticId);
-                          } else {
-                            copy.delete(syntheticId);
-                          }
-                          return copy;
-                        });
-                      }}
-                      onConvertToPlan={() => convertWhatIfRowToPlan(row)}
-                      onRemove={() => {
-                        setWhatIfRows((prev) => {
-                          if (prev.length <= 1) {
-                            return prev.map((r) =>
-                              r.id === row.id
-                                ? {
-                                  ...r,
-                                  damId: null,
-                                  damName: null,
-                                  species: null,
-                                  cycleStartIso: null,
-                                }
-                                : r
-                            );
-                          }
-                          return prev.filter((r) => r.id !== row.id);
-                        });
-                      }}
-                    />
-                  ))}
-
-                  {whatIfRows.length === 0 && (
-                    <div className="text-xs text-secondary">
-                      No What If rows yet. Use "Add row" to start.
-                    </div>
-                  )}
-                </div>
-              </SectionCard>
+            {/* Page content */}
+            {plannerPage === "your-plans" ? (
+              <YourBreedingPlansPage plans={normalized as any} initialMode="rollup" />
+            ) : (
+              <WhatIfPlanningPage plans={normalized as any} females={whatIfFemales as WhatIfFemale[]} />
             )}
           </div>
         )}
@@ -3318,8 +3253,9 @@ function PlanDetailsView(props: {
 
   // Show Actual Dates once the plan is COMMITTED or later.
   // Allow editing while in Edit mode for COMMITTED and later statuses.
-  const showActualDates = committedOrLater;
-  const canEditDates = isEdit && committedOrLater && !isReadOnly;
+  // CRITICAL: Must explicitly exclude PLANNING status
+  const showActualDates = committedOrLater && statusU !== "PLANNING";
+  const canEditDates = isEdit && committedOrLater && statusU !== "PLANNING" && !isReadOnly;
 
 
   // live draft overlay
@@ -3576,9 +3512,30 @@ function PlanDetailsView(props: {
 
   const [damRepro, setDamRepro] = React.useState<DamReproData | null>(null);
   const [damLoadError, setDamLoadError] = React.useState<string | null>(null);
+  const [refreshTrigger, setRefreshTrigger] = React.useState(0);
+  const [liveOverride, setLiveOverride] = React.useState<number | null>(row.femaleCycleLenOverrideDays ?? null);
+
+  // Sync liveOverride when damId changes (new female selected)
+  React.useEffect(() => {
+    setLiveOverride(row.femaleCycleLenOverrideDays ?? null);
+  }, [row.damId, row.femaleCycleLenOverrideDays]);
+
+  const prevDamIdRef = React.useRef<number | null>(null);
+  const fetchedDamIds = React.useRef<Set<number>>(new Set());
 
   React.useEffect(() => {
     let cancelled = false;
+
+    // Only refetch if damId actually changed (not just row object reference)
+    if (prevDamIdRef.current === row.damId && row.damId != null) {
+      return;
+    }
+
+    const isInitialFetch = row.damId != null && !fetchedDamIds.current.has(row.damId);
+    if (row.damId != null) {
+      fetchedDamIds.current.add(row.damId);
+    }
+    prevDamIdRef.current = row.damId ?? null;
 
     setDamRepro(null);
     setDamLoadError(null);
@@ -3599,7 +3556,6 @@ function PlanDetailsView(props: {
         const qs = new URLSearchParams({ include });
         const url = `/api/v1/animals/${row.damId}?${qs.toString()}`;
 
-        console.log("[whatif] dam repro fetch", { damId: row.damId, tenantId, url });
 
         const res = await fetch(url, {
           method: "GET",
@@ -3627,18 +3583,6 @@ function PlanDetailsView(props: {
 
 
         if (cancelled) return;
-
-        console.warn("[BHQ reproEngine][whatif raw animal payload]", {
-          damId: row.damId,
-          topLevelKeys: data ? Object.keys(data) : null,
-          reproType: typeof (data as any)?.repro,
-          reproLen: Array.isArray((data as any)?.repro) ? (data as any).repro.length : null,
-          cycleStartDatesLen: Array.isArray((data as any)?.cycleStartDates)
-            ? (data as any).cycleStartDates.length
-            : null,
-          lastCycle: (data as any)?.lastCycle ?? (data as any)?.last_cycle ?? null,
-          lastHeat: (data as any)?.last_heat ?? (data as any)?.lastHeat ?? null,
-        });
 
         const reproRaw: WhatIfDamReproEvent[] = Array.isArray(data?.repro)
           ? (data.repro as WhatIfDamReproEvent[])
@@ -3689,6 +3633,15 @@ function PlanDetailsView(props: {
           ...(lastCycle != null ? ({ lastCycle } as any) : {}),
           ...(cycleStartDates.length ? ({ cycleStartDates } as any) : {}),
         });
+
+        // Update the row's femaleCycleLenOverrideDays with fresh data from server
+        // This ensures we always use the latest override value when recalculating projected cycles
+        const freshOverride = data?.femaleCycleLenOverrideDays ?? null;
+        if (freshOverride !== liveOverride) {
+          setLiveOverride(freshOverride);
+          // NEVER call setDraft from animal fetch - the override is already in the row
+          // and calling setDraft here causes spurious "unsaved changes" warnings
+        }
       } catch (e: any) {
         if (!cancelled) {
           setDamLoadError(e?.message || "Unable to load cycle history for this female.");
@@ -3701,7 +3654,40 @@ function PlanDetailsView(props: {
       cancelled = true;
       controller.abort();
     };
-  }, [row.damId, tenantId]);
+  }, [row.damId, tenantId, refreshTrigger]);
+
+  // ===== Auto-recalculate expected dates when override changes for locked plans =====
+  const prevOverrideRef = React.useRef<number | null | undefined>(undefined);
+  const isRecalculating = React.useRef(false);
+  const hasMountedRef = React.useRef(false);
+  const lastRecalcTimestamp = React.useRef<number>(0);
+
+  React.useEffect(() => {
+    const isLocked = Boolean((row.lockedCycleStart ?? "").toString().trim());
+    const overrideChanged = prevOverrideRef.current !== liveOverride;
+
+    // Prevent infinite loop: don't recalculate if we just did one within the last 2 seconds
+    const now = Date.now();
+    const timeSinceLastRecalc = now - lastRecalcTimestamp.current;
+    const tooSoon = timeSinceLastRecalc < 2000;
+
+    // Only recalculate if:
+    // 1. Override actually changed
+    // 2. Cycle is locked
+    // 3. Not currently in a recalculation
+    // 4. Component has mounted at least once (skip initial mount)
+    // 5. Hasn't been recalculated in the last 2 seconds (prevents loop from refetch)
+    if (isLocked && overrideChanged && !isRecalculating.current && hasMountedRef.current && !tooSoon) {
+      isRecalculating.current = true;
+      lastRecalcTimestamp.current = now;
+      recalculateExpectedDates().finally(() => {
+        isRecalculating.current = false;
+      });
+    }
+
+    prevOverrideRef.current = liveOverride;
+    hasMountedRef.current = true;
+  }, [liveOverride]);
 
   // ===== Cycle math + projections =====
   const speciesWire = normalizeSpeciesWire(row.species);
@@ -3745,6 +3731,7 @@ function PlanDetailsView(props: {
       cycleStartsAsc,
       dob: null,
       today,
+      femaleCycleLenOverrideDays: liveOverride,
     };
 
     const { projected } = reproEngine.projectUpcomingCycleStarts(summary, {
@@ -3755,7 +3742,7 @@ function PlanDetailsView(props: {
     return projected
       .map((p: any) => asISODateOnly(p?.date) ?? String(p?.date ?? "").slice(0, 10))
       .filter((d: any) => !!d);
-  }, [speciesWire, cycleStartsAsc]);
+  }, [speciesWire, cycleStartsAsc, liveOverride, damRepro]);
 
   const initialCycle = (row.lockedCycleStart ?? row.expectedCycleStart ?? row.cycleStartDateActual ?? null) as string | null;
   const [pendingCycle, setPendingCycle] = React.useState<string | null>(initialCycle);
@@ -3782,7 +3769,9 @@ function PlanDetailsView(props: {
     const expectedRaw = computeExpectedForPlan({
       species: row.species as any,
       lockedCycleStart: pendingCycle,
+      femaleCycleLenOverrideDays: liveOverride,
     });
+
     const expected = normalizeExpectedMilestones(expectedRaw, pendingCycle);
     const testingStart =
       expected.hormoneTestingStart ?? pickExpectedTestingStart(expectedRaw, pendingCycle);
@@ -3829,7 +3818,7 @@ function PlanDetailsView(props: {
 
       // Don't call onPlanUpdated here - stay in edit mode
       // The changes are already persisted and local state is updated via setDraftLive
-    } catch (e) {
+    } catch (e: any) {
       console.error("[Breeding] lockCycle persist or audit failed", e);
       setExpectedPreview(null);
       setLockedPreview(false);
@@ -3848,6 +3837,64 @@ function PlanDetailsView(props: {
         expectedPlacementCompletedDate: expected.placementCompleted,
       });
       utils.toast?.error?.("Failed to lock cycle. Please try again.");
+    }
+  }
+
+  async function recalculateExpectedDates() {
+    if (isArchived) return;
+    if (!api) return;
+
+    const lockedStart = effective.lockedCycleStart;
+    if (!lockedStart || !String(lockedStart).trim()) {
+      return; // Can't recalculate if there's no locked cycle
+    }
+
+    const expectedRaw = computeExpectedForPlan({
+      species: row.species as any,
+      lockedCycleStart: lockedStart,
+      femaleCycleLenOverrideDays: liveOverride,
+    });
+
+    const expected = normalizeExpectedMilestones(expectedRaw, lockedStart);
+    const testingStart =
+      expected.hormoneTestingStart ?? pickExpectedTestingStart(expectedRaw, lockedStart);
+
+    // Only update EXPECTED dates, NOT locked dates
+    const payload = {
+      expectedCycleStart: expected.cycleStart,
+      expectedHormoneTestingStart: testingStart ?? null,
+      expectedBreedDate: expected.breedDate,
+      expectedBirthDate: expected.birthDate,
+      expectedWeaned: expected.weanedDate,
+      expectedPlacementStartDate: expected.placementStart,
+      expectedPlacementCompletedDate: expected.placementCompleted,
+    };
+
+    try {
+      const updated = await api.updatePlan(Number(row.id), payload as any);
+
+      await api.createEvent(Number(row.id), {
+        type: "EXPECTED_DATES_RECALCULATED",
+        occurredAt: new Date().toISOString(),
+        label: "Expected dates recalculated",
+        data: {
+          reason: "Cycle length override changed",
+          femaleCycleLenOverrideDays: liveOverride,
+          lockedCycleStart: lockedStart,
+          ...expected,
+        },
+      });
+
+      // Update the parent list and refresh local state without marking as dirty
+      if (onPlanUpdated && updated) {
+        onPlanUpdated(row.id, updated);
+      }
+
+      // Update persisted snapshot to reflect the new saved state
+      setPersistedSnapshot(buildPlanSnapshot(updated || { ...row, ...payload }));
+    } catch (e) {
+      console.error("[Breeding] recalculateExpectedDates failed", e);
+      utils.toast?.error?.("Failed to recalculate expected dates. Please try again.");
     }
   }
 
@@ -4581,6 +4628,10 @@ function PlanDetailsView(props: {
                               );
                               // Persist selection as the plan's expected cycle start while in edit mode
                               setDraft({ expectedCycleStart: next });
+                            }}
+                            onFocus={() => {
+                              if (row.damId) {
+                              }
                             }}
                             disabled={!hasDam || !editable}
                           >

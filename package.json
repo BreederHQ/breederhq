@@ -15,12 +15,10 @@
     "dev": "npm -C ./apps/platform run dev",
     "dev:platform": "npm -C ./apps/platform run dev",
     "dev:portal": "npm -C ./apps/portal run dev",
-    "dev:client-portal": "npm -C ./apps/client-portal run dev",
     "dev:marketplace": "npm -C ./apps/marketplace run dev",
     "dev:api": "npm -C ../breederhq-api run dev",
     "dev:all": "concurrently -n platform,portal,marketplace,caddy \"npm run dev:platform\" \"npm run dev:portal\" \"npm run dev:marketplace\" \"\\\"C:\\\\Users\\\\Aaron\\\\AppData\\\\Local\\\\Microsoft\\\\WinGet\\\\Packages\\\\CaddyServer.Caddy_Microsoft.Winget.Source_8wekyb3d8bbwe\\\\caddy.exe\\\" run --config Caddyfile --adapter caddyfile\"",
     "build": "npm -C ./apps/platform run build",
-    "build:client-portal": "npm -C ./apps/client-portal run build",
     "lint": "eslint . --ext .ts,.tsx --max-warnings=0",
     "format": "prettier --write \"**/*.{ts,.tsx,js,json,css,md}\"",
     "postinstall": "echo \"root postinstall: no builds here\""

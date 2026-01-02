@@ -247,6 +247,8 @@ type Props = {
   className?: string;
   selected?: Set<ID> | ID[];
   onSelectedChange?: (next: Set<ID>) => void;
+  /** When true, hides the built-in plan selection UI (for v2 wrapper usage) */
+  hideSelection?: boolean;
 };
 
 export default function RollupGantt({
@@ -256,6 +258,7 @@ export default function RollupGantt({
   className = "",
   selected: selectedProp,
   onSelectedChange,
+  hideSelection = false,
 }: Props) {
   const incoming = plans ?? items ?? [];
   const rawPlans = Array.isArray(incoming) ? incoming : [];
@@ -664,7 +667,7 @@ export default function RollupGantt({
   const ganttCommon = {
     horizon,
     today,
-    heightPerRow: 32,
+    heightPerRow: 48,
     showToday: true,
     showAvailability: false,
     className: "bhq-gantt planner",
@@ -758,36 +761,38 @@ export default function RollupGantt({
         </div>
       </section>
 
-      {/* Plan selection */}
-      <div className="px-3 pb-6">
-        <div className="rounded-xl bg-black/15 p-3">
-          <div className="flex items-center gap-3 mb-2">
-            <div className="text-xs font-medium text-secondary">Plans</div>
-            <label className="text-xs inline-flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                onChange={(e) => setAll(e.target.checked)}
-              />
-              Toggle All Plans
-            </label>
-          </div>
-          <div className="grid grid-cols-1 gap-2 text-xs">
-            {selectablePlans.map(p => (
-              <label key={String(p.id)} className="inline-flex items-center gap-2 cursor-pointer">
+      {/* Plan selection - hidden when v2 wrapper provides Phase Visibility + Individual Plans */}
+      {!hideSelection && (
+        <div className="px-3 pb-6">
+          <div className="rounded-xl bg-black/15 p-3">
+            <div className="flex items-center gap-3 mb-2">
+              <div className="text-xs font-medium text-secondary">Plans</div>
+              <label className="text-xs inline-flex items-center gap-2 cursor-pointer">
                 <input
                   type="checkbox"
-                  checked={selectedKeys.has(idKey(p.id))}
-                  onChange={() => toggleOne(p.id)}
+                  onChange={(e) => setAll(e.target.checked)}
                 />
-                <span className="truncate">{p.name || String(p.id)}</span>
+                Toggle All Plans
               </label>
-            ))}
-            {selectablePlans.length === 0 && (
-              <div className="text-xs text-secondary">No plans available.</div>
-            )}
+            </div>
+            <div className="grid grid-cols-1 gap-2 text-xs">
+              {selectablePlans.map(p => (
+                <label key={String(p.id)} className="inline-flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={selectedKeys.has(idKey(p.id))}
+                    onChange={() => toggleOne(p.id)}
+                  />
+                  <span className="truncate">{p.name || String(p.id)}</span>
+                </label>
+              ))}
+              {selectablePlans.length === 0 && (
+                <div className="text-xs text-secondary">No plans available.</div>
+              )}
+            </div>
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

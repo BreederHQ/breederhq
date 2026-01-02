@@ -1,17 +1,20 @@
 // apps/portal/src/components/AuthGate.tsx
 // Hard auth gate for Portal. Blocks ALL render until session is verified.
-// Unauthenticated users are redirected to /login with returnUrl.
+// Enforces CLIENT role. Redirects unauthenticated users to /login.
+// Blocks non-CLIENT users at /blocked.
 
 import * as React from "react";
+import { Skeleton } from "../design/Skeleton";
+import { HeaderBar } from "../design/HeaderBar";
+import { PageContainer } from "../design/PageContainer";
 
 interface AuthGateProps {
   children: React.ReactNode;
-  /** Routes that don't require auth (e.g., /activate, /login) */
   publicPaths?: string[];
 }
 
 interface SessionCheckResult {
-  status: "loading" | "authenticated" | "unauthenticated";
+  status: "loading" | "authenticated" | "unauthenticated" | "blocked";
   error?: string;
 }
 
@@ -36,13 +39,8 @@ function isPublicPath(pathname: string, publicPaths: string[]): boolean {
   return false;
 }
 
-/**
- * Verify session with the API.
- * Returns authenticated if session is valid, unauthenticated if 401/403.
- */
 async function checkSession(): Promise<SessionCheckResult> {
   try {
-    // Add cache-busting timestamp to prevent any caching
     const res = await fetch(`/api/v1/session?_=${Date.now()}`, {
       credentials: "include",
       cache: "no-store",
@@ -54,55 +52,78 @@ async function checkSession(): Promise<SessionCheckResult> {
 
     if (res.ok) {
       const data = await res.json().catch(() => null);
-      // Verify we got actual user data, not just an empty response
-      if (data?.user?.id) {
-        return { status: "authenticated" };
+
+      if (!data?.user?.id) {
+        return { status: "unauthenticated", error: "no_user" };
       }
-      // Session endpoint returned OK but no user - treat as unauthenticated
-      return { status: "unauthenticated", error: "no_user" };
+
+      // Check for CLIENT role in memberships
+      // Use membershipRole (new field) instead of role (legacy field)
+      const memberships = data.memberships || [];
+      const hasClientRole = memberships.some(
+        (m: any) => m.membershipRole?.toUpperCase() === "CLIENT" && m.membershipStatus?.toUpperCase() === "ACTIVE"
+      );
+
+      if (!hasClientRole) {
+        return { status: "blocked", error: "not_client" };
+      }
+
+      return { status: "authenticated" };
     }
 
     if (res.status === 401 || res.status === 403) {
       return { status: "unauthenticated", error: `http_${res.status}` };
     }
 
-    // Other errors - treat as unauthenticated to be safe
     return { status: "unauthenticated", error: `http_${res.status}` };
   } catch (err: any) {
     console.error("[AuthGate] Session check failed:", err);
-    // Network errors - treat as unauthenticated to be safe
     return { status: "unauthenticated", error: "network_error" };
   }
 }
 
-/**
- * Redirect to login with returnUrl preserved.
- */
 function redirectToLogin(): void {
   const currentPath = window.location.pathname + window.location.search;
   const returnUrl = encodeURIComponent(currentPath);
   window.location.replace(`/login?returnUrl=${returnUrl}`);
 }
 
-/**
- * AuthGate: Blocks render until session is verified.
- *
- * - On public paths: renders children immediately
- * - On protected paths: shows loading, then either children (authenticated) or redirects to /login
- */
+function redirectToBlocked(): void {
+  window.location.replace("/blocked");
+}
+
+function LoadingSkeleton() {
+  return (
+    <div style={{ minHeight: "100vh", background: "var(--portal-bg)" }}>
+      <HeaderBar>
+        <Skeleton width="120px" height="24px" />
+        <div style={{ flex: 1 }} />
+        <Skeleton width="80px" height="24px" />
+      </HeaderBar>
+      <PageContainer>
+        <Skeleton width="200px" height="32px" />
+        <div style={{ marginTop: "var(--portal-space-4)" }}>
+          <Skeleton width="100%" height="120px" />
+        </div>
+        <div style={{ marginTop: "var(--portal-space-3)" }}>
+          <Skeleton width="100%" height="120px" />
+        </div>
+      </PageContainer>
+    </div>
+  );
+}
+
 export function AuthGate({ children, publicPaths = [] }: AuthGateProps) {
   const [sessionState, setSessionState] = React.useState<SessionCheckResult>({
     status: "loading",
   });
 
-  // Determine if current path is public
   const pathname = typeof window !== "undefined" ? window.location.pathname : "/";
   const isPublic = isPublicPath(pathname, publicPaths);
 
   React.useEffect(() => {
-    // Skip auth check for public paths
     if (isPublic) {
-      setSessionState({ status: "authenticated" }); // Allow render
+      setSessionState({ status: "authenticated" });
       return;
     }
 
@@ -124,35 +145,24 @@ export function AuthGate({ children, publicPaths = [] }: AuthGateProps) {
     return <>{children}</>;
   }
 
-  // Loading state - show minimal spinner
+  // Loading state - show skeleton
   if (sessionState.status === "loading") {
-    return (
-      <div className="min-h-screen grid place-items-center bg-page text-primary">
-        <div className="flex flex-col items-center gap-4">
-          <div className="w-8 h-8 border-2 border-[hsl(var(--brand-orange))] border-t-transparent rounded-full animate-spin" />
-          <span className="text-sm text-secondary">Verifying session...</span>
-        </div>
-      </div>
-    );
+    return <LoadingSkeleton />;
+  }
+
+  // Blocked (non-CLIENT role) - redirect to /blocked
+  if (sessionState.status === "blocked") {
+    redirectToBlocked();
+    return <LoadingSkeleton />;
   }
 
   // Unauthenticated - redirect to login
   if (sessionState.status === "unauthenticated") {
-    // Use effect to redirect to avoid render issues
     redirectToLogin();
-
-    // Show brief message while redirecting
-    return (
-      <div className="min-h-screen grid place-items-center bg-page text-primary">
-        <div className="flex flex-col items-center gap-4">
-          <div className="w-8 h-8 border-2 border-[hsl(var(--brand-orange))] border-t-transparent rounded-full animate-spin" />
-          <span className="text-sm text-secondary">Redirecting to login...</span>
-        </div>
-      </div>
-    );
+    return <LoadingSkeleton />;
   }
 
-  // Authenticated - render children
+  // Authenticated CLIENT - render children
   return <>{children}</>;
 }
 

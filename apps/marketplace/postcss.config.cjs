@@ -1,7 +1,7 @@
-// apps/<app>/postcss.config.cjs
+// apps/marketplace/postcss.config.cjs
 module.exports = {
   plugins: {
-    "@tailwindcss/postcss": {},
+    tailwindcss: {},
     autoprefixer: {},
   },
 };

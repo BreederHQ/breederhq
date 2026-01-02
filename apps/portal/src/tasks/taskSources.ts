@@ -3,8 +3,9 @@
 // Each source is a pure function that fetches and transforms data.
 
 import { makeApi } from "@bhq/api";
-import type { InvoiceDTO } from "@bhq/api";
+import type { InvoiceDTO, AgreementDTO, OffspringPlacementDTO, ContractStatus, PlacementStatus } from "@bhq/api";
 import { buildInvoiceHref } from "../links";
+import { getCapability, setCapability, capabilityKeys } from "../derived/capabilities";
 
 // Secondary action for task cards (e.g., Message CTA)
 export interface TaskSecondaryAction {
@@ -15,7 +16,7 @@ export interface TaskSecondaryAction {
 // Task card interface for unified display
 export interface TaskCard {
   id: string;
-  type: "invoice" | "contract" | "appointment" | "document";
+  type: "invoice" | "contract" | "appointment" | "document" | "offspring";
   title: string;
   subtitle: string;
   dueAt: string | null;
@@ -26,6 +27,8 @@ export interface TaskCard {
   secondaryAction?: TaskSecondaryAction | null;
   // Optional note shown below subtitle
   note?: string | null;
+  // Urgency level for grouping
+  urgency: "action_required" | "upcoming" | "completed";
 }
 
 // Resolve API base URL (same pattern as MessagesPage/PortalDashboard)
@@ -70,12 +73,28 @@ function isOverdue(dateStr: string | null): boolean {
   return due < now;
 }
 
+// Single-flight promise cache for invoice tasks
+let invoiceTasksPromise: Promise<TaskCard[]> | null = null;
+
 // Invoice task source
 // Fetches invoices with status ISSUED, PARTIALLY_PAID, or OVERDUE
 async function fetchInvoiceTasks(): Promise<TaskCard[]> {
-  try {
-    // Fetch all invoices and filter client-side for actionable ones
-    const res = await api.finance.invoices.list({ limit: 100 });
+  // Check capability gate first
+  if (!getCapability(capabilityKeys.invoices_enabled)) {
+    // Capability disabled, short-circuit without network request
+    return [];
+  }
+
+  // Single-flight: if already fetching, return existing promise
+  if (invoiceTasksPromise) {
+    return invoiceTasksPromise;
+  }
+
+  // Create new promise
+  invoiceTasksPromise = (async () => {
+    try {
+      // Fetch all invoices and filter client-side for actionable ones
+      const res = await api.finance.invoices.list({ limit: 100 });
     const invoices = res?.items || [];
 
     // Filter to actionable statuses (unpaid invoices that need attention)
@@ -83,40 +102,136 @@ async function fetchInvoiceTasks(): Promise<TaskCard[]> {
       ["ISSUED", "PARTIALLY_PAID", "OVERDUE"].includes(inv.status)
     );
 
-    return actionable.map((inv: InvoiceDTO): TaskCard => {
-      const overdue = inv.status === "OVERDUE" || isOverdue(inv.dueAt);
-      const remaining = inv.balanceCents ?? (inv.totalCents - inv.paidCents);
+      const tasks = actionable.map((inv: InvoiceDTO): TaskCard => {
+        const overdue = inv.status === "OVERDUE" || isOverdue(inv.dueAt);
+        const remaining = inv.balanceCents ?? (inv.totalCents - inv.paidCents);
 
-      // Check for linked message thread (not yet available in API)
-      // When InvoiceDTO gains a threadId field, use buildThreadHref() here
-      const hasThreadLink = false; // Placeholder: (inv as any).threadId != null
-      const secondaryAction = hasThreadLink
-        ? { label: "Message", href: "/marketing/messages" } // Will use buildThreadHref(inv.threadId) when available
-        : null;
+        // Calculate days to due for note
+        let noteText: string | null = null;
+        if (inv.dueAt) {
+          const due = new Date(inv.dueAt);
+          const now = new Date();
+          const diffMs = due.getTime() - now.getTime();
+          const daysToDue = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+
+          if (daysToDue < 0) {
+            const daysOverdue = Math.abs(daysToDue);
+            noteText = `Past due by ${daysOverdue} day${daysOverdue !== 1 ? "s" : ""}`;
+          } else if (daysToDue === 0) {
+            noteText = "Due today";
+          } else if (daysToDue === 1) {
+            noteText = "Due tomorrow";
+          } else if (daysToDue <= 7) {
+            noteText = `Due in ${daysToDue} days`;
+          }
+        }
+
+        // Check for linked message thread (not yet available in API)
+        // When InvoiceDTO gains a threadId field, use buildThreadHref() here
+        const hasThreadLink = false; // Placeholder: (inv as any).threadId != null
+        const secondaryAction = hasThreadLink
+          ? { label: "Message", href: "/marketing/messages" } // Will use buildThreadHref(inv.threadId) when available
+          : null;
+
+        return {
+          id: `invoice-${inv.id}`,
+          type: "invoice",
+          title: `Invoice #${inv.invoiceNumber}`,
+          subtitle: `${formatCurrency(remaining)} due`,
+          dueAt: inv.dueAt,
+          status: overdue ? "overdue" : "pending",
+          ctaLabel: "View Invoice",
+          href: buildInvoiceHref(inv.id),
+          secondaryAction,
+          note: noteText,
+          urgency: overdue ? "action_required" : "upcoming",
+        };
+      });
+
+      return tasks;
+    } catch (err: any) {
+      // Gracefully handle 401/403 (actor context issues in portal CLIENT context)
+      const status = err?.response?.status || err?.status;
+      const errorCode = err?.response?.data?.error?.code || err?.code;
+      if (status === 401 || status === 403 || errorCode === "ACTOR_CONTEXT_UNRESOLVABLE") {
+        // Disable capability to prevent future attempts
+        setCapability(capabilityKeys.invoices_enabled, false);
+        // Log once, then silent
+        console.warn("[taskSources] Invoice endpoint unavailable in CLIENT context, disabling for session");
+        return [];
+      }
+      // Log other errors but don't break
+      console.warn("[taskSources] Invoice source error:", err.message || err);
+      return [];
+    } finally {
+      // Clear single-flight cache after request completes
+      invoiceTasksPromise = null;
+    }
+  })();
+
+  return invoiceTasksPromise;
+}
+
+// Agreement task source
+// Fetches agreements with status "sent" or "viewed" (unsigned/pending)
+async function fetchContractTasks(): Promise<TaskCard[]> {
+  try {
+    const res = await api.portalData.getAgreements();
+    const agreements = res?.agreements || [];
+
+    // Filter to actionable statuses (unsigned agreements that need attention)
+    const actionable = agreements.filter((agr: AgreementDTO) =>
+      ["sent", "viewed"].includes(agr.status)
+    );
+
+    return actionable.map((agr: AgreementDTO): TaskCard => {
+      const overdue = isOverdue(agr.expirationDate);
+
+      // Calculate days until expiration for note
+      let noteText: string | null = null;
+      if (agr.expirationDate) {
+        const exp = new Date(agr.expirationDate);
+        const now = new Date();
+        const diffMs = exp.getTime() - now.getTime();
+        const daysToExp = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+
+        if (daysToExp < 0) {
+          noteText = "Agreement has expired";
+        } else if (daysToExp === 0) {
+          noteText = "Expires today";
+        } else if (daysToExp === 1) {
+          noteText = "Expires tomorrow";
+        } else if (daysToExp <= 7) {
+          noteText = `Expires in ${daysToExp} days`;
+        } else if (agr.status === "viewed") {
+          noteText = "You have viewed this agreement";
+        } else if (agr.status === "sent") {
+          noteText = "Waiting for your review";
+        }
+      } else if (agr.status === "viewed") {
+        noteText = "You have viewed this agreement";
+      } else if (agr.status === "sent") {
+        noteText = "Waiting for your review";
+      }
 
       return {
-        id: `invoice-${inv.id}`,
-        type: "invoice",
-        title: `Invoice #${inv.invoiceNumber}`,
-        subtitle: `${formatCurrency(remaining)} due`,
-        dueAt: inv.dueAt,
+        id: `agreement-${agr.id}`,
+        type: "contract",
+        title: agr.name,
+        subtitle: `${agr.role} - ${agr.status}`,
+        dueAt: agr.expirationDate,
         status: overdue ? "overdue" : "pending",
-        ctaLabel: "View Invoice",
-        href: buildInvoiceHref(inv.id),
-        secondaryAction,
-        note: null,
+        ctaLabel: "View Agreement",
+        href: `/portal/agreements/${agr.id}`,
+        secondaryAction: null,
+        note: noteText,
+        urgency: overdue ? "action_required" : "upcoming",
       };
     });
   } catch (err: any) {
-    console.error("[taskSources] Failed to fetch invoice tasks:", err);
+    console.error("[taskSources] Failed to fetch agreement tasks:", err);
     return [];
   }
-}
-
-// Contract/Agreement task source (placeholder, no endpoint exists yet)
-async function fetchContractTasks(): Promise<TaskCard[]> {
-  // No contracts/agreements endpoint exists yet
-  return [];
 }
 
 // Appointment task source (placeholder, no endpoint exists yet)
@@ -131,18 +246,70 @@ async function fetchDocumentTasks(): Promise<TaskCard[]> {
   return [];
 }
 
+// Offspring task source
+// Fetches offspring with placement status READY_FOR_PICKUP or FULLY_PAID
+async function fetchOffspringTasks(): Promise<TaskCard[]> {
+  try {
+    const res = await api.portalData.getOffspringPlacements();
+    const placements = res?.placements || [];
+
+    // Filter to actionable statuses (ready for pickup or fully paid awaiting pickup)
+    const actionable = placements.filter((pl: OffspringPlacementDTO) =>
+      ["READY_FOR_PICKUP", "FULLY_PAID"].includes(pl.placementStatus)
+    );
+
+    return actionable.map((pl: OffspringPlacementDTO): TaskCard => {
+      const isReadyForPickup = pl.placementStatus === "READY_FOR_PICKUP";
+      const offspringName = pl.offspring?.name || "Unnamed offspring";
+      const offspringLabel = pl.offspringGroupLabel || pl.offspringGroupCode;
+
+      // Build descriptive subtitle
+      let subtitle = offspringLabel;
+      if (pl.offspring?.sex) {
+        subtitle += ` - ${pl.offspring.sex}`;
+      }
+
+      // Build contextual note
+      let noteText: string | null = null;
+      if (isReadyForPickup) {
+        noteText = "Ready for pickup - schedule with us";
+      } else if (pl.placementStatus === "FULLY_PAID") {
+        noteText = "Fully paid - awaiting pickup schedule";
+      }
+
+      return {
+        id: `offspring-${pl.id}`,
+        type: "offspring",
+        title: offspringName,
+        subtitle,
+        dueAt: null, // Offspring don't have strict due dates
+        status: "upcoming",
+        ctaLabel: "View Details",
+        href: `/portal/offspring/${pl.offspring?.id || pl.id}`,
+        secondaryAction: null,
+        note: noteText,
+        urgency: isReadyForPickup ? "action_required" : "upcoming",
+      };
+    });
+  } catch (err: any) {
+    console.error("[taskSources] Failed to fetch offspring tasks:", err);
+    return [];
+  }
+}
+
 // Aggregate all task sources
 export async function fetchAllTasks(): Promise<{
   tasks: TaskCard[];
   sources: { name: string; available: boolean }[];
 }> {
   // Run all sources in parallel, each handles its own errors
-  const [invoiceTasks, contractTasks, appointmentTasks, documentTasks] =
+  const [invoiceTasks, contractTasks, appointmentTasks, documentTasks, offspringTasks] =
     await Promise.all([
       fetchInvoiceTasks(),
       fetchContractTasks(),
       fetchAppointmentTasks(),
       fetchDocumentTasks(),
+      fetchOffspringTasks(),
     ]);
 
   const allTasks = [
@@ -150,11 +317,17 @@ export async function fetchAllTasks(): Promise<{
     ...contractTasks,
     ...appointmentTasks,
     ...documentTasks,
+    ...offspringTasks,
   ];
 
-  // Sort by status (overdue first), then by dueAt
+  // Sort by urgency first, then by status (overdue first), then by dueAt
   allTasks.sort((a, b) => {
-    // Overdue items first
+    // Priority order: action_required > upcoming > completed
+    const urgencyOrder = { action_required: 0, upcoming: 1, completed: 2 };
+    const urgencyDiff = urgencyOrder[a.urgency] - urgencyOrder[b.urgency];
+    if (urgencyDiff !== 0) return urgencyDiff;
+
+    // Within same urgency, overdue items first
     if (a.status === "overdue" && b.status !== "overdue") return -1;
     if (b.status === "overdue" && a.status !== "overdue") return 1;
 
@@ -172,11 +345,96 @@ export async function fetchAllTasks(): Promise<{
     tasks: allTasks,
     sources: [
       { name: "Invoices", available: true },
-      { name: "Contracts", available: false },
+      { name: "Contracts", available: true },
       { name: "Appointments", available: false },
       { name: "Documents", available: false },
+      { name: "Offspring", available: true },
     ],
   };
+}
+
+// Demo mode mock tasks
+function getMockTasks(): TaskCard[] {
+  return [
+    {
+      id: "mock-task-1",
+      type: "contract",
+      title: "Sign Health Guarantee",
+      subtitle: "Review and sign the health guarantee agreement",
+      dueAt: "2026-01-11T00:00:00Z",
+      status: "pending",
+      ctaLabel: "View Agreement",
+      href: "/portal/agreements/2",
+      secondaryAction: null,
+      note: "Expires in 9 days",
+      urgency: "action_required",
+    },
+    {
+      id: "mock-task-2",
+      type: "invoice",
+      title: "Complete final payment",
+      subtitle: "$2,000 due",
+      dueAt: "2026-01-04T00:00:00Z",
+      status: "pending",
+      ctaLabel: "View Invoice",
+      href: "/portal/billing",
+      secondaryAction: null,
+      note: "Due in 2 days",
+      urgency: "action_required",
+    },
+    {
+      id: "mock-task-3",
+      type: "appointment",
+      title: "Schedule pickup appointment",
+      subtitle: "Confirm your pickup time",
+      dueAt: "2026-01-05T00:00:00Z",
+      status: "pending",
+      ctaLabel: "Message Breeder",
+      href: "/portal/messages",
+      secondaryAction: null,
+      note: "Pickup available Jan 15-17",
+      urgency: "action_required",
+    },
+    {
+      id: "mock-task-4",
+      type: "document",
+      title: "Review vaccination schedule",
+      subtitle: "Review the vaccination schedule for Bella",
+      dueAt: "2026-01-15T00:00:00Z",
+      status: "upcoming",
+      ctaLabel: "View Documents",
+      href: "/portal/documents",
+      secondaryAction: null,
+      note: null,
+      urgency: "upcoming",
+    },
+    {
+      id: "mock-task-5",
+      type: "offspring",
+      title: "Prepare carrier for transport",
+      subtitle: "Get a secure carrier ready for pickup day",
+      dueAt: "2026-01-03T00:00:00Z",
+      status: "upcoming",
+      ctaLabel: "View Guide",
+      href: "/portal/documents",
+      secondaryAction: null,
+      note: null,
+      urgency: "upcoming",
+    },
+    {
+      id: "mock-task-6",
+      type: "contract",
+      title: "Puppy Purchase Agreement",
+      subtitle: "Signed December 12, 2025",
+      dueAt: null,
+      status: "pending",
+      ctaLabel: "View Agreement",
+      href: "/portal/agreements/1",
+      secondaryAction: null,
+      note: "Completed",
+      urgency: "completed",
+    },
+  ];
 }
 
 // Hook for use in React components
@@ -198,12 +456,27 @@ export function usePortalTasks() {
       try {
         const result = await fetchAllTasks();
         if (cancelled) return;
-        setTasks(result.tasks);
+
+        // If no real tasks and demo mode enabled, use mock data
+        const { isPortalMockEnabled } = await import("../dev/mockFlag");
+        if (result.tasks.length === 0 && isPortalMockEnabled()) {
+          setTasks(getMockTasks());
+        } else {
+          setTasks(result.tasks);
+        }
         setSources(result.sources);
       } catch (err: any) {
         if (cancelled) return;
         console.error("[usePortalTasks] Failed to fetch tasks:", err);
-        setError(err?.message || "Failed to load tasks");
+
+        // On error in demo mode, use mock data
+        const { isPortalMockEnabled } = await import("../dev/mockFlag");
+        if (isPortalMockEnabled()) {
+          setTasks(getMockTasks());
+          setError(null);
+        } else {
+          setError(err?.message || "Failed to load tasks");
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }

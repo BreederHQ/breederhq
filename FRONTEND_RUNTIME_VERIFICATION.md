@@ -3,7 +3,7 @@
 ## Prerequisites
 - Node.js 20.19.0+
 - npm 10.8.0+
-- Backend API running (see breederhq-api/RUNTIME_VERIFICATION.md)
+- Backend API running (see RUNTIME_VERIFICATION.md in the separate breederhq-api repository)
 - Test animals seeded in database
 
 ## Setup

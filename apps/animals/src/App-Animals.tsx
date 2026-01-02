@@ -214,6 +214,7 @@ function animalToRow(p: any): AnimalRow {
     updated_at: p.updated_at ?? p.updatedAt ?? null,
     lastCycle: p.lastCycle ?? null,
     cycleStartDates: Array.isArray(p.cycleStartDates) ? p.cycleStartDates : [],
+    femaleCycleLenOverrideDays: p.femaleCycleLenOverrideDays ?? null,
   };
 }
 
@@ -1196,10 +1197,12 @@ function CycleTab({
   animal,
   api,
   onSaved,
+  onOverrideSaved,
 }: {
   animal: AnimalRow;
   api: any;
   onSaved: (dates: string[]) => void;
+  onOverrideSaved?: (overrideValue: number | null) => void;
 }) {
   // Sorted copy of current dates from the server
   const [dates, setDates] = React.useState<string[]>(() =>
@@ -1215,6 +1218,10 @@ function CycleTab({
   );
   const [overrideSaving, setOverrideSaving] = React.useState(false);
 
+  // Sync override input when animal data changes (e.g., after refetch)
+  React.useEffect(() => {
+    setOverrideInput(animal.femaleCycleLenOverrideDays ? String(animal.femaleCycleLenOverrideDays) : "");
+  }, [animal.femaleCycleLenOverrideDays]);
 
   const species = (String(animal.species || "DOG").toUpperCase() || "DOG") as string;
 
@@ -1270,13 +1277,17 @@ function CycleTab({
       toast.success(parsedValue === null ? "Override cleared" : "Override saved");
       // Update local animal object
       (animal as any).femaleCycleLenOverrideDays = parsedValue;
+      // Notify parent about the change
+      if (onOverrideSaved) {
+        onOverrideSaved(parsedValue);
+      }
     } catch (err) {
       console.error("[Animals] save override failed", err);
       toast.error("Could not save override. Please try again.");
     } finally {
       setOverrideSaving(false);
     }
-  }, [api, animal, overrideInput]);
+  }, [api, animal, overrideInput, onOverrideSaved]);
 
   const clearOverride = React.useCallback(async () => {
     setOverrideInput("");
@@ -1294,13 +1305,17 @@ function CycleTab({
       await updateFn(id, { femaleCycleLenOverrideDays: null });
       toast.success("Override cleared");
       (animal as any).femaleCycleLenOverrideDays = null;
+      // Notify parent about the change
+      if (onOverrideSaved) {
+        onOverrideSaved(null);
+      }
     } catch (err) {
       console.error("[Animals] clear override failed", err);
       toast.error("Could not clear override. Please try again.");
     } finally {
       setOverrideSaving(false);
     }
-  }, [api, animal]);
+  }, [api, animal, onOverrideSaved]);
 
   const handleConfirmRemove = async () => {
     if (!confirmDeleteIso) return;
@@ -4919,6 +4934,14 @@ export default function AppAnimals() {
                 setRows((prev) =>
                   prev.map((r) =>
                     r.id === row.id ? { ...r, cycleStartDates: dates } : r
+                  )
+                );
+              }}
+              onOverrideSaved={(overrideValue) => {
+                // Update rows with the new override value to trigger drawer refetch
+                setRows((prev) =>
+                  prev.map((r) =>
+                    r.id === row.id ? { ...r, femaleCycleLenOverrideDays: overrideValue } : r
                   )
                 );
               }}

@@ -2,12 +2,11 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
 
-// 1) Load design system + Tailwind + app overrides
-import "./theme.css";
+// 1) Load Tailwind CSS
 import "./index.css";
 
 // 2) App
-import AppMarketplace from "./App-Marketplace";
+import { MarketplaceStandaloneApp } from "./app/MarketplaceStandaloneApp";
 
 /** Ensure a single global overlays root that sits at the top of the viewport. */
 function ensureOverlaysRoot(): HTMLElement {
@@ -41,7 +40,7 @@ function start() {
   const root = createRoot(mount);
   root.render(
     <React.StrictMode>
-      <AppMarketplace />
+      <MarketplaceStandaloneApp />
     </React.StrictMode>
   );
   (window as any).__getOverlaysRoot = ensureOverlaysRoot;

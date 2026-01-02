@@ -12,6 +12,7 @@ export type NavItem = {
 export type NavShellProps = {
   title?: string;
   items?: NavItem[];
+  navItems?: NavItem[]; // alias for items
   brand?: {
     name?: string;
     logoSrc?: string;
@@ -78,6 +79,7 @@ function emojiFor(label: string) {
   if (k.includes("animal")) return "🐾";
   if (k.includes("admin")) return "🛠️";
   if (k.includes("offspring")) return "🍼";
+  if (k.includes("waitlist")) return "📋";
   if (k.includes("finance")) return "💰";
   if (k.includes("marketplace")) return "🛒";
   if (k.includes("marketing")) return "📣";
@@ -98,6 +100,7 @@ function normPath(s: string) {
 export const NavShell: React.FC<NavShellProps> = ({
   title = "BreederHQ",
   items,
+  navItems: navItemsProp,
   brand,
   envBadge,
   actions,
@@ -141,6 +144,7 @@ export const NavShell: React.FC<NavShellProps> = ({
     { key: "dashboard", label: "Dashboard", href: "/" },
     { key: "contacts", label: "Contacts", href: "/contacts/" },
     { key: "animals", label: "Animals", href: "/animals/" },
+    { key: "waitlist", label: "Waitlist", href: "/waitlist/" },
     { key: "breeding", label: "Breeding", href: "/breeding/" },
     { key: "offspring", label: "Offspring", href: "/offspring/" },
     { key: "marketing", label: "Marketing", href: "/marketing/" },
@@ -148,7 +152,7 @@ export const NavShell: React.FC<NavShellProps> = ({
     { key: "finance", label: "Finance", href: "/finance/" },
     { key: "admin", label: "Admin", href: "/admin/" },
   ];
-  const navItems = items && items.length ? items : defaultItems;
+  const navItems = (navItemsProp ?? items)?.length ? (navItemsProp ?? items) : defaultItems;
 
   // INITIAL title bootstrap from URL, but **ignore "/"** so Dashboard doesn't claim everything.
   React.useEffect(() => {

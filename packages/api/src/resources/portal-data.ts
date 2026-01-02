@@ -4,7 +4,8 @@
 import type { Http } from "../http";
 
 // Agreements types
-export type ContractStatus = "DRAFT" | "PENDING" | "ACTIVE" | "EXPIRED" | "TERMINATED";
+// ContractStatus matches Prisma schema enum (lowercase)
+export type ContractStatus = "draft" | "sent" | "viewed" | "signed" | "declined" | "voided" | "expired";
 export type ContractPartyRole = "SELLER" | "BUYER" | "GUARANTOR" | "WITNESS";
 
 export interface AgreementDTO {
@@ -21,6 +22,29 @@ export interface AgreementDTO {
 
 export interface AgreementsResponse {
   agreements: AgreementDTO[];
+}
+
+export interface AgreementPartyDTO {
+  role: string;
+  name: string;
+  signedAt: string | null;
+}
+
+export interface AgreementDetailDTO {
+  id: number;
+  title: string;
+  status: ContractStatus;
+  issuedAt: string | null;
+  signedAt: string | null;
+  voidedAt: string | null;
+  expiresAt: string | null;
+  createdAt: string;
+  clientParty: AgreementPartyDTO;
+  counterparties: AgreementPartyDTO[];
+}
+
+export interface AgreementDetailResponse {
+  agreement: AgreementDetailDTO;
 }
 
 // Documents types
@@ -69,9 +93,7 @@ export interface OffspringPlacementDTO {
     id: number;
     name: string;
     sex: string | null;
-    color: string | null;
-    microchipId: string | null;
-    registrationNumber: string | null;
+    // Note: Offspring model does not have color, microchipId, or registrationNumber fields
   } | null;
   placementStatus: PlacementStatus;
   depositPaidAt: string | null;
@@ -83,11 +105,36 @@ export interface OffspringPlacementDTO {
 export interface OffspringPlacementsResponse {
   placements: OffspringPlacementDTO[];
 }
+export interface OffspringDetailDTO {
+  id: number;
+  name: string;
+  sex: string | null;
+  breed: string | null;
+  species: string;
+  birthDate: string | null;
+  placementStatus: PlacementStatus;
+  dam: { id: number; name: string } | null;
+  sire: { id: number; name: string } | null;
+  groupId: number;
+  groupName: string | null;
+  contractSignedAt: string | null;
+  paidInFullAt: string | null;
+  pickupAt: string | null;
+  placedAt: string | null;
+  createdAt: string;
+}
+
+export interface OffspringDetailResponse {
+  offspring: OffspringDetailDTO;
+}
+
 
 export type PortalDataResource = {
   getAgreements(): Promise<AgreementsResponse>;
+  getAgreementDetail(id: number): Promise<AgreementDetailResponse>;
   getDocuments(): Promise<DocumentsResponse>;
   getOffspringPlacements(): Promise<OffspringPlacementsResponse>;
+  getOffspringDetail(id: number): Promise<OffspringDetailResponse>;
 };
 
 export function makePortalData(http: Http): PortalDataResource {
@@ -95,6 +142,11 @@ export function makePortalData(http: Http): PortalDataResource {
     async getAgreements(): Promise<AgreementsResponse> {
       const res = await http.get("/portal/agreements");
       return res as AgreementsResponse;
+    },
+
+    async getAgreementDetail(id: number): Promise<AgreementDetailResponse> {
+      const res = await http.get(`/portal/agreements/${id}`);
+      return res as AgreementDetailResponse;
     },
 
     async getDocuments(): Promise<DocumentsResponse> {
@@ -105,6 +157,11 @@ export function makePortalData(http: Http): PortalDataResource {
     async getOffspringPlacements(): Promise<OffspringPlacementsResponse> {
       const res = await http.get("/portal/offspring");
       return res as OffspringPlacementsResponse;
+    },
+
+    async getOffspringDetail(id: number): Promise<OffspringDetailResponse> {
+      const res = await http.get(`/portal/offspring/${id}`);
+      return res as OffspringDetailResponse;
     },
   };
 }

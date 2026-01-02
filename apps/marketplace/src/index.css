@@ -1,32 +1,17 @@
-/* All @import statements must come first (CSS spec requirement) */
-@import "@bhq/ui/bhq.css";
-@import "@bhq/ui/styles/table.css";
-@import "@bhq/ui/styles/table-footer.css";
+/* apps/marketplace/src/index.css */
 
-/* Tailwind directives */
+/* Tailwind v3 directives */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* Ensure the app's mount has sane height, and body can scroll */
-html, body { min-height: 100%; background-color: hsl(0 0% 7%); }
-#marketplace-root, #root, #app { min-height: 100vh; display: block; }
-
-/* ===== Overlay layer (for all portals) ===== */
-#overlays-root {
-  position: fixed;
-  inset: 0;
-  z-index: 2147483647; /* max */
-  pointer-events: none; /* toggled to 'auto' while overlays are open */
-}
-
-/* The shared table layout helpers used by Contacts also work here */
-.bhq-page {
-  display: flex;
-  flex-direction: column;
+/* Basic dark background for body */
+html, body {
   min-height: 100%;
+  background-color: #0a0a0f;
+  color: #fff;
 }
 
-.bhq-section-fixed {
-  flex: 0 0 auto;
+#marketplace-root, #root, #app {
+  min-height: 100vh;
 }

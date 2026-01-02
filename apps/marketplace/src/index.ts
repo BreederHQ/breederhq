@@ -1,1 +1,1 @@
-export { default } from "./App-Marketplace";
+export { MarketplaceStandaloneApp, default } from "./app/MarketplaceStandaloneApp";

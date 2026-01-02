@@ -10,6 +10,9 @@ dist/
 build/
 *.tsbuildinfo
 
+# Vercel local config
+.vercel/
+
 # Local env files (never commit secrets)
 .env
 .env.local
