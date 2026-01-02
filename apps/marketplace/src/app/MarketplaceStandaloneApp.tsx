@@ -2,8 +2,8 @@
 import * as React from "react";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { MarketplaceGate } from "../gate/MarketplaceGate";
-import { AuthLoginPlaceholderPage } from "../core/pages/AuthLoginPlaceholderPage";
-import { AuthRegisterPlaceholderPage } from "../core/pages/AuthRegisterPlaceholderPage";
+import { AuthLoginPage } from "../core/pages/AuthLoginPage";
+import { AuthRegisterPage } from "../core/pages/AuthRegisterPage";
 
 /**
  * Root component for standalone Marketplace app.
@@ -15,8 +15,8 @@ export function MarketplaceStandaloneApp() {
     <BrowserRouter>
       <Routes>
         {/* Auth routes are outside the gate - accessible without authentication */}
-        <Route path="/auth/login" element={<AuthLoginPlaceholderPage />} />
-        <Route path="/auth/register" element={<AuthRegisterPlaceholderPage />} />
+        <Route path="/auth/login" element={<AuthLoginPage />} />
+        <Route path="/auth/register" element={<AuthRegisterPage />} />
         {/* All other routes go through the gate */}
         <Route path="*" element={<MarketplaceGate />} />
       </Routes>
