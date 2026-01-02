@@ -1,38 +1,17 @@
 // apps/portal/src/pages/PortalNotificationsPage.tsx
 import * as React from "react";
-import { PageHeader, Button, Badge } from "@bhq/ui";
-import { usePortalNotifications, type Notification, type NotificationType } from "../notifications/notificationSources";
+import { PageContainer } from "../design/PageContainer";
+import { usePortalNotifications, type Notification } from "../notifications/notificationSources";
 
 /* ───────────────── Notification Row Component ───────────────── */
 
 function NotificationRow({ notification }: { notification: Notification }) {
-  const typeVariants: Record<NotificationType, "blue" | "green" | "red" | "amber" | "neutral"> = {
-    message_received: "blue",
-    invoice_issued: "neutral",
-    invoice_overdue: "red",
-    agreement_sent: "amber",
-    agreement_signed: "green",
-    offspring_ready: "green",
-  };
+  const [isHovered, setIsHovered] = React.useState(false);
 
-  const typeIcons: Record<NotificationType, string> = {
-    message_received: "💬",
-    invoice_issued: "📄",
-    invoice_overdue: "⚠️",
-    agreement_sent: "📝",
-    agreement_signed: "✅",
-    offspring_ready: "🐾",
-  };
-
-  const handleClick = () => {
-    // Cross-module links (e.g., /finance/*) require full page navigation
-    // Intra-portal links (e.g., /portal/*) use SPA navigation
-    if (notification.href.startsWith("/portal")) {
-      window.history.pushState(null, "", notification.href);
-      window.dispatchEvent(new PopStateEvent("popstate"));
-    } else {
-      window.location.href = notification.href;
-    }
+  const handleClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    // Click navigates to source
+    window.location.href = notification.href;
   };
 
   const formatTimestamp = (timestamp: string) => {
@@ -61,21 +40,41 @@ function NotificationRow({ notification }: { notification: Notification }) {
   };
 
   return (
-    <div
-      className="p-4 rounded-lg border border-hairline bg-surface/50 hover:bg-surface transition-colors cursor-pointer"
+    <a
+      href={notification.href}
       onClick={handleClick}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: "var(--portal-space-1)",
+        padding: "var(--portal-space-3) 0",
+        borderBottom: "1px solid var(--portal-border-subtle)",
+        textDecoration: "none",
+        cursor: "pointer",
+        transition: "background var(--portal-transition)",
+        background: isHovered ? "var(--portal-bg-elevated)" : "transparent",
+      }}
     >
-      <div className="flex items-start gap-3">
-        <div className="text-2xl flex-shrink-0">{typeIcons[notification.type]}</div>
-        <div className="flex-1 min-w-0">
-          <div className="font-medium text-primary">{notification.title}</div>
-          <p className="text-xs text-secondary mt-1">{formatTimestamp(notification.timestamp)}</p>
-        </div>
-        <Badge variant={typeVariants[notification.type]} className="flex-shrink-0">
-          {notification.type.replace(/_/g, " ")}
-        </Badge>
+      <div
+        style={{
+          fontSize: "var(--portal-font-size-base)",
+          fontWeight: "var(--portal-font-weight-medium)",
+          color: "var(--portal-text-primary)",
+        }}
+      >
+        {notification.title}
       </div>
-    </div>
+      <div
+        style={{
+          fontSize: "var(--portal-font-size-sm)",
+          color: "var(--portal-text-secondary)",
+        }}
+      >
+        {formatTimestamp(notification.timestamp)}
+      </div>
+    </a>
   );
 }
 
@@ -83,14 +82,35 @@ function NotificationRow({ notification }: { notification: Notification }) {
 
 function EmptyNotifications() {
   return (
-    <div className="text-center py-16">
-      <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-surface-strong flex items-center justify-center text-3xl">
-        🔔
-      </div>
-      <h3 className="text-lg font-medium text-primary mb-2">No recent activity</h3>
-      <p className="text-sm text-secondary max-w-sm mx-auto">
-        Notifications from the last 7 days will appear here. This includes new messages,
-        invoices, agreements, and offspring updates.
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        textAlign: "center",
+        minHeight: "60vh",
+        gap: "var(--portal-space-2)",
+      }}
+    >
+      <h1
+        style={{
+          fontSize: "var(--portal-font-size-xl)",
+          fontWeight: "var(--portal-font-weight-semibold)",
+          color: "var(--portal-text-primary)",
+          margin: 0,
+        }}
+      >
+        No recent updates
+      </h1>
+      <p
+        style={{
+          fontSize: "var(--portal-font-size-base)",
+          color: "var(--portal-text-secondary)",
+          margin: 0,
+        }}
+      >
+        Updates from the last 7 days will appear here.
       </p>
     </div>
   );
@@ -98,14 +118,75 @@ function EmptyNotifications() {
 
 /* ───────────────── Loading State ───────────────── */
 
-function LoadingNotifications() {
+function LoadingSkeleton() {
   return (
-    <div className="text-center py-16">
-      <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-surface-strong flex items-center justify-center text-2xl animate-pulse">
-        🔔
-      </div>
-      <h3 className="text-lg font-medium text-primary mb-2">Loading notifications...</h3>
-      <p className="text-sm text-secondary">Checking for recent activity</p>
+    <div style={{ display: "flex", flexDirection: "column", gap: "var(--portal-space-3)" }}>
+      {[1, 2, 3, 4, 5].map((i) => (
+        <div
+          key={i}
+          style={{
+            height: "60px",
+            background: "var(--portal-bg-elevated)",
+            borderRadius: "var(--portal-radius-md)",
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+
+/* ───────────────── Error State ───────────────── */
+
+function ErrorState({ error, onRetry }: { error: string; onRetry: () => void }) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        textAlign: "center",
+        minHeight: "60vh",
+        gap: "var(--portal-space-3)",
+      }}
+    >
+      <h1
+        style={{
+          fontSize: "var(--portal-font-size-xl)",
+          fontWeight: "var(--portal-font-weight-semibold)",
+          color: "var(--portal-text-primary)",
+          margin: 0,
+        }}
+      >
+        Something went wrong
+      </h1>
+      <p
+        style={{
+          fontSize: "var(--portal-font-size-base)",
+          color: "var(--portal-text-secondary)",
+          margin: 0,
+        }}
+      >
+        {error}
+      </p>
+      <button
+        onClick={onRetry}
+        style={{
+          fontSize: "var(--portal-font-size-base)",
+          fontWeight: "var(--portal-font-weight-medium)",
+          padding: "var(--portal-space-2) var(--portal-space-3)",
+          background: "var(--portal-accent)",
+          color: "var(--portal-text-primary)",
+          borderWidth: "1px",
+          borderStyle: "solid",
+          borderColor: "var(--portal-accent)",
+          borderRadius: "var(--portal-radius-md)",
+          cursor: "pointer",
+          transition: "all var(--portal-transition)",
+        }}
+      >
+        Retry
+      </button>
     </div>
   );
 }
@@ -115,48 +196,38 @@ function LoadingNotifications() {
 export default function PortalNotificationsPage() {
   const { notifications, loading, error } = usePortalNotifications();
 
-  const handleBackClick = () => {
-    window.history.pushState(null, "", "/portal");
-    window.dispatchEvent(new PopStateEvent("popstate"));
+  const handleRetry = () => {
+    window.location.reload();
   };
 
   return (
-    <div className="p-6">
-      <PageHeader
-        title="Notifications"
-        subtitle={
-          loading
-            ? "Loading..."
-            : notifications.length === 0
-            ? "No recent activity"
-            : `${notifications.length} notification${notifications.length !== 1 ? "s" : ""} in the last 7 days`
-        }
-        actions={
-          <Button variant="secondary" onClick={handleBackClick}>
-            Back to Portal
-          </Button>
-        }
-      />
+    <PageContainer>
+      <h1
+        style={{
+          fontSize: "var(--portal-font-size-xl)",
+          fontWeight: "var(--portal-font-weight-semibold)",
+          color: "var(--portal-text-primary)",
+          marginBottom: "var(--portal-space-4)",
+        }}
+      >
+        Notifications
+      </h1>
 
-      {error && (
-        <div className="mt-4 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-400">
-          {error}
-        </div>
-      )}
+      {loading && <LoadingSkeleton />}
 
-      <div className="mt-8">
-        {loading ? (
-          <LoadingNotifications />
-        ) : notifications.length === 0 ? (
+      {!loading && error && <ErrorState error={error} onRetry={handleRetry} />}
+
+      {!loading && !error && (
+        notifications.length === 0 ? (
           <EmptyNotifications />
         ) : (
-          <div className="space-y-3">
+          <div style={{ display: "flex", flexDirection: "column" }}>
             {notifications.map((notification) => (
               <NotificationRow key={notification.id} notification={notification} />
             ))}
           </div>
-        )}
-      </div>
-    </div>
+        )
+      )}
+    </PageContainer>
   );
 }

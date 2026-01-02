@@ -4,6 +4,8 @@ import { HeaderBar } from "../design/HeaderBar";
 import { TopNav } from "../design/TopNav";
 import { Footer } from "../design/Footer";
 import { usePortalContext } from "../hooks/usePortalContext";
+import { usePortalTasks } from "../tasks/taskSources";
+import { usePortalNotifications } from "../notifications/notificationSources";
 
 interface PortalLayoutProps {
   children: React.ReactNode;
@@ -48,15 +50,37 @@ function OrgIdentity({ orgName, orgInitial }: { orgName: string | null; orgIniti
 
 export function PortalLayout({ children, currentPath }: PortalLayoutProps) {
   const { orgName, loading } = usePortalContext();
+  const { tasks } = usePortalTasks();
+  const { notifications } = usePortalNotifications();
 
   // Derive org initial from org name
   const orgInitial = orgName ? orgName.charAt(0).toUpperCase() : null;
 
+  // Calculate badge counts
+  const actionRequiredCount = tasks.filter((t) => t.urgency === "action_required").length;
+  const unreadMessagesCount = 0; // Placeholder - would come from messages API when available
+  const notificationsCount = notifications.length;
+
   const navItems = [
     { label: "Dashboard", href: "/", active: currentPath === "/" },
-    { label: "Messages", href: "/messages", active: currentPath.startsWith("/messages") },
-    { label: "Tasks", href: "/tasks", active: currentPath.startsWith("/tasks") },
-    { label: "Notifications", href: "/notifications", active: currentPath.startsWith("/notifications") },
+    {
+      label: "Messages",
+      href: "/messages",
+      active: currentPath.startsWith("/messages"),
+      badge: unreadMessagesCount > 0 ? unreadMessagesCount : undefined,
+    },
+    {
+      label: "Tasks",
+      href: "/tasks",
+      active: currentPath.startsWith("/tasks"),
+      badge: actionRequiredCount > 0 ? actionRequiredCount : undefined,
+    },
+    {
+      label: "Notifications",
+      href: "/notifications",
+      active: currentPath.startsWith("/notifications"),
+      badge: notificationsCount > 0 ? notificationsCount : undefined,
+    },
     { label: "Agreements", href: "/agreements", active: currentPath.startsWith("/agreements") },
     { label: "Documents", href: "/documents", active: currentPath.startsWith("/documents") },
     { label: "Offspring", href: "/offspring", active: currentPath.startsWith("/offspring") },

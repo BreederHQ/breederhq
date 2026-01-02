@@ -6,6 +6,7 @@ interface TopNavProps {
     label: string;
     href: string;
     active?: boolean;
+    badge?: number; // Subtle count badge
   }>;
   onNavigate?: (href: string) => void;
 }
@@ -37,6 +38,9 @@ export function TopNav({ items, onNavigate }: TopNavProps) {
           href={item.href}
           onClick={(e) => handleClick(e, item.href)}
           style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "var(--portal-space-1)",
             fontSize: "var(--portal-font-size-sm)",
             fontWeight: item.active
               ? "var(--portal-font-weight-semibold)"
@@ -63,7 +67,23 @@ export function TopNav({ items, onNavigate }: TopNavProps) {
             }
           }}
         >
-          {item.label}
+          <span>{item.label}</span>
+          {item.badge != null && item.badge > 0 && (
+            <span
+              style={{
+                fontSize: "var(--portal-font-size-xs)",
+                fontWeight: "var(--portal-font-weight-semibold)",
+                color: "var(--portal-text-primary)",
+                background: "var(--portal-bg-elevated)",
+                padding: "2px 6px",
+                borderRadius: "var(--portal-radius-full)",
+                minWidth: "20px",
+                textAlign: "center",
+              }}
+            >
+              {item.badge}
+            </span>
+          )}
         </a>
       ))}
     </nav>
