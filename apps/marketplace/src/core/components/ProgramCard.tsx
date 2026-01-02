@@ -26,8 +26,8 @@ export function ProgramCard({ slug, name, location, photoUrl }: Props) {
       to={`/programs/${slug}`}
       className="group block bhq-card overflow-hidden transition-all hover:scale-[1.01] focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-orange"
     >
-      {/* Photo or placeholder */}
-      <div className="aspect-[4/3] bg-surface-2 flex items-center justify-center overflow-hidden">
+      {/* Photo or placeholder - fixed height for consistent card sizing */}
+      <div className="h-36 sm:h-32 bg-surface-2 flex items-center justify-center overflow-hidden">
         {photoUrl ? (
           <img
             src={photoUrl}
@@ -45,7 +45,7 @@ export function ProgramCard({ slug, name, location, photoUrl }: Props) {
       </div>
 
       {/* Text content */}
-      <div className="p-4">
+      <div className="p-3 sm:p-4">
         <h3 className="text-base font-semibold text-primary line-clamp-2">{name}</h3>
         {location && (
           <p className="text-sm text-secondary mt-1 truncate">{location}</p>
