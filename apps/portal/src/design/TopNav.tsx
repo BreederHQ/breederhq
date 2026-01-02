@@ -48,6 +48,7 @@ export function TopNav({ items, onNavigate }: TopNavProps) {
         overflowX: "auto",
         overflowY: "hidden",
         flex: 1,
+        minWidth: 0, // Allow shrinking below content size for proper scroll
         scrollbarWidth: "none", // Firefox
         msOverflowStyle: "none", // IE/Edge
         position: "relative",
