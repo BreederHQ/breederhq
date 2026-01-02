@@ -22,6 +22,11 @@ import AppFinance from "@bhq/finance/App-Finance";
 import AdminModule from "@bhq/admin/App-Admin";
 import DashboardPage from "./pages/Dashboard";
 
+// Dev-only imports (tree-shaken in production builds)
+const PlannerV2DevPreview = import.meta.env.DEV
+  ? React.lazy(() => import("@bhq/breeding/pages/plannerV2/DevPreview"))
+  : null;
+
 // Support Pages
 import SettingsPanel from "./pages/SettingsPanel";
 
@@ -149,6 +154,16 @@ function RouteView() {
   if (p === "/marketing" || p.startsWith("/marketing")) return <AppMarketing />;
   if (p === "/finance" || p.startsWith("/finance")) return <AppFinance />;
   if (p === "/admin" || p.startsWith("/admin")) return <AdminModule />;
+
+  // Dev-only routes (gated by import.meta.env.DEV)
+  if (import.meta.env.DEV && PlannerV2DevPreview && p === "/__dev/planner-v2") {
+    return (
+      <React.Suspense fallback={<div className="p-4">Loading Planner V2 Preview...</div>}>
+        <PlannerV2DevPreview />
+      </React.Suspense>
+    );
+  }
+
   return <DashboardPage />;
 }
 
