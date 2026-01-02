@@ -8,6 +8,8 @@ import { useIndeterminate } from "@bhq/ui/hooks";
 import { deriveBreedingStatus, STATUS_ORDER, STATUS_LABELS, type Status } from "./deriveBreedingStatus.v2";
 import { useRollupSelection, type ID } from "./rollupSelection.v2";
 
+export type { ID };
+
 type PlanLike = {
   id: ID;
   name: string;
@@ -28,20 +30,36 @@ type PlanLike = {
 };
 
 type Props = {
+  /** Plans for selection UI (Phase Visibility + Individual Plans list) */
   plans: PlanLike[];
+  /**
+   * Items to render on the chart. If not provided, defaults to `plans`.
+   * Use this to include synthetic What If items on the chart while keeping
+   * them out of the selection UI.
+   */
+  itemsForChart?: PlanLike[];
   /** If true, synthetic (What If) items are allowed in selection */
   allowSynthetic?: boolean;
+  /** External control of selection state - if provided, component becomes controlled */
+  selected?: Set<ID>;
+  onSelectedChange?: (next: Set<ID>) => void;
   prefsOverride?: any;
   className?: string;
 };
 
 export default function RollupWithPhaseTogglesV2({
   plans,
+  itemsForChart,
   allowSynthetic = false,
+  selected: externalSelected,
+  onSelectedChange,
   prefsOverride,
   className = "",
 }: Props) {
-  // Filter out synthetic items unless allowed
+  // Determine if component is controlled externally
+  const isControlled = externalSelected !== undefined && onSelectedChange !== undefined;
+
+  // Filter out synthetic items from selection list unless allowed
   const realPlans = React.useMemo(
     () => (allowSynthetic ? plans : plans.filter(p => !p.isSynthetic)),
     [plans, allowSynthetic]
@@ -57,14 +75,41 @@ export default function RollupWithPhaseTogglesV2({
     [realPlans, allowSynthetic]
   );
 
-  // Selection state
-  const {
-    selectedKeys,
-    setSelectedKeys,
-    setSelectionTouched,
-    toggleOne,
-    setAll,
-  } = useRollupSelection(selectablePlans);
+  // Items for chart: use itemsForChart if provided, otherwise use realPlans
+  const chartItems = React.useMemo(
+    () => itemsForChart ?? realPlans,
+    [itemsForChart, realPlans]
+  );
+
+  // Internal selection state (used when uncontrolled)
+  const internalSelection = useRollupSelection(selectablePlans);
+
+  // Unified selection interface
+  const selectedKeys = isControlled ? externalSelected : internalSelection.selectedKeys;
+  const setSelectedKeys = isControlled
+    ? onSelectedChange
+    : internalSelection.setSelectedKeys;
+  const setSelectionTouched = isControlled
+    ? () => {} // No-op for controlled mode
+    : internalSelection.setSelectionTouched;
+  const toggleOne = React.useCallback((id: ID) => {
+    setSelectedKeys(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }, [setSelectedKeys]);
+  const setAll = React.useCallback((checked: boolean, items: PlanLike[]) => {
+    if (checked) {
+      setSelectedKeys(new Set(items.map(p => p.id)));
+    } else {
+      setSelectedKeys(new Set());
+    }
+  }, [setSelectedKeys]);
 
   // Group plans by status
   const plansByStatus = React.useMemo(() => {
@@ -142,24 +187,20 @@ export default function RollupWithPhaseTogglesV2({
     <div className={className}>
       {/* Rollup Chart - now first */}
       <RollupGantt
-        items={realPlans}
+        items={chartItems}
         prefsOverride={prefsOverride}
         selected={selectedKeys}
         onSelectedChange={(next) => {
           setSelectionTouched(true);
-          // Filter out synthetic if not allowed
-          if (!allowSynthetic) {
-            const filtered = new Set<ID>();
-            next.forEach(id => {
-              const plan = realPlans.find(p => p.id === id);
-              if (plan && !plan.isSynthetic) {
-                filtered.add(id);
-              }
-            });
-            setSelectedKeys(filtered);
-          } else {
-            setSelectedKeys(next);
-          }
+          // Filter out synthetic IDs - selection only operates on real plans
+          const filtered = new Set<ID>();
+          next.forEach(id => {
+            const plan = selectablePlans.find(p => p.id === id);
+            if (plan) {
+              filtered.add(id);
+            }
+          });
+          setSelectedKeys(filtered);
         }}
         className="w-full"
       />

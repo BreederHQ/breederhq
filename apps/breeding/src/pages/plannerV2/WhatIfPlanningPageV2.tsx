@@ -4,50 +4,103 @@
 
 import * as React from "react";
 import { SectionCard } from "@bhq/ui";
-import RollupGantt from "../../components/RollupGantt";
-
-type ID = string | number;
+import RollupWithPhaseTogglesV2, { type ID } from "./RollupWithPhaseTogglesV2";
+import { useRollupSelection } from "./rollupSelection.v2";
+import type { WhatIfRow, WhatIfFemale, NormalizedPlan } from "./whatIfTypes.v2";
 
 // Minimal plan shape for the page props
 type PlanLike = {
   id: ID;
   name: string;
   lockedCycleStart?: string | null;
+  isSynthetic?: boolean;
   [key: string]: any;
 };
 
 type Props = {
   /** Plans data - if not provided, shows empty state */
   plans?: PlanLike[];
+  /** Available females for What If rows */
+  females?: WhatIfFemale[];
 };
 
-export default function WhatIfPlanningPageV2({ plans }: Props) {
-  // Local selection state for Rollup - default to all selected
-  const [selectedKeys, setSelectedKeys] = React.useState<Set<ID>>(() => {
-    if (!plans?.length) return new Set();
-    return new Set(plans.map((p) => p.id));
-  });
+// Generate unique ID for What If rows
+let whatIfCounter = 0;
+function generateWhatIfId(): string {
+  return `what-if-${++whatIfCounter}`;
+}
 
-  // Sync selection when plans change
-  React.useEffect(() => {
-    if (!plans?.length) {
-      setSelectedKeys(new Set());
-      return;
-    }
-    setSelectedKeys((prev) => {
-      if (prev.size === 0) {
-        return new Set(plans.map((p) => p.id));
-      }
-      const valid = new Set(plans.map((p) => p.id));
-      const next = new Set<ID>();
-      prev.forEach((k) => {
-        if (valid.has(k)) next.add(k);
-      });
-      return next;
-    });
-  }, [plans]);
+export default function WhatIfPlanningPageV2({ plans = [], females = [] }: Props) {
+  // What If rows state
+  const [whatIfRows, setWhatIfRows] = React.useState<WhatIfRow[]>([]);
 
-  const hasPlans = plans && plans.length > 0;
+  // Real plans only (for selection UI)
+  const realPlans = React.useMemo(
+    () => plans.filter(p => !p.isSynthetic),
+    [plans]
+  );
+
+  // Selection state for real plans only
+  const {
+    selectedKeys,
+    setSelectedKeys,
+  } = useRollupSelection(realPlans);
+
+  // Convert What If rows to synthetic plans for the chart
+  const syntheticPlans = React.useMemo<PlanLike[]>(() => {
+    return whatIfRows
+      .filter(row => row.showOnChart && row.cycleStartIso)
+      .map(row => ({
+        id: row.id,
+        name: row.damName ? `What If: ${row.damName}` : `What If: ${row.id}`,
+        species: row.species ?? "Dog",
+        lockedCycleStart: row.cycleStartIso,
+        expectedCycleStart: row.cycleStartIso,
+        // Compute expected dates based on species defaults (simplified)
+        expectedBreedDate: row.cycleStartIso ? addDays(row.cycleStartIso, 10) : null,
+        expectedBirthDate: row.cycleStartIso ? addDays(row.cycleStartIso, 73) : null,
+        expectedPlacementStartDate: row.cycleStartIso ? addDays(row.cycleStartIso, 129) : null,
+        expectedPlacementCompleted: row.cycleStartIso ? addDays(row.cycleStartIso, 143) : null,
+        isSynthetic: true,
+        damId: row.damId,
+        sireId: null,
+      }));
+  }, [whatIfRows]);
+
+  // Combined items for chart: selected real plans + synthetic plans with showOnChart
+  const itemsForChart = React.useMemo<PlanLike[]>(() => {
+    const selectedRealPlans = realPlans.filter(p => selectedKeys.has(p.id));
+    return [...selectedRealPlans, ...syntheticPlans];
+  }, [realPlans, selectedKeys, syntheticPlans]);
+
+  // Add a new What If row
+  const handleAddRow = React.useCallback(() => {
+    setWhatIfRows(prev => [
+      ...prev,
+      {
+        id: generateWhatIfId(),
+        damId: null,
+        damName: null,
+        species: null,
+        cycleStartIso: null,
+        showOnChart: true,
+      },
+    ]);
+  }, []);
+
+  // Update a What If row
+  const handleUpdateRow = React.useCallback((id: string, updates: Partial<WhatIfRow>) => {
+    setWhatIfRows(prev =>
+      prev.map(row => (row.id === id ? { ...row, ...updates } : row))
+    );
+  }, []);
+
+  // Remove a What If row
+  const handleRemoveRow = React.useCallback((id: string) => {
+    setWhatIfRows(prev => prev.filter(row => row.id !== id));
+  }, []);
+
+  const hasPlans = realPlans.length > 0;
 
   return (
     <div className="p-4 max-w-7xl mx-auto">
@@ -59,9 +112,9 @@ export default function WhatIfPlanningPageV2({ plans }: Props) {
         </p>
       </div>
 
-      {/* Rollup Chart Section */}
-      <SectionCard title="Timeline Rollup" className="mb-4">
-        {!hasPlans ? (
+      {/* Rollup Section - uses same layout as Your Breeding Plans */}
+      <SectionCard title={<span><span>Timeline Rollup</span></span>} className="mb-4">
+        {!hasPlans && syntheticPlans.length === 0 ? (
           <EmptyState context="rollup" />
         ) : (
           <div className="space-y-4">
@@ -73,9 +126,10 @@ export default function WhatIfPlanningPageV2({ plans }: Props) {
               </div>
             </div>
 
-            {/* Rollup Chart */}
-            <RollupGantt
-              items={plans}
+            {/* Rollup with Phase Toggles - same layout as Your Breeding Plans */}
+            <RollupWithPhaseTogglesV2
+              plans={realPlans}
+              itemsForChart={itemsForChart}
               selected={selectedKeys}
               onSelectedChange={setSelectedKeys}
               className="w-full"
@@ -85,17 +139,38 @@ export default function WhatIfPlanningPageV2({ plans }: Props) {
       </SectionCard>
 
       {/* What If Planner Section */}
-      <SectionCard title="What If Planner (v2)">
-        <WhatIfPlannerPlaceholder />
+      <SectionCard title={<span><span>What If Planner</span></span>}>
+        <WhatIfPlanner
+          rows={whatIfRows}
+          females={females}
+          onAddRow={handleAddRow}
+          onUpdateRow={handleUpdateRow}
+          onRemoveRow={handleRemoveRow}
+        />
       </SectionCard>
     </div>
   );
 }
 
+// Simple date helper
+function addDays(isoDate: string, days: number): string {
+  const d = new Date(isoDate);
+  d.setDate(d.getDate() + days);
+  return d.toISOString().split("T")[0];
+}
+
 /* ─────────────────────────────────────────────────────────────────────────────
- * What If Planner Placeholder
+ * What If Planner
  * ───────────────────────────────────────────────────────────────────────────── */
-function WhatIfPlannerPlaceholder() {
+type WhatIfPlannerProps = {
+  rows: WhatIfRow[];
+  females: WhatIfFemale[];
+  onAddRow: () => void;
+  onUpdateRow: (id: string, updates: Partial<WhatIfRow>) => void;
+  onRemoveRow: (id: string) => void;
+};
+
+function WhatIfPlanner({ rows, females, onAddRow, onUpdateRow, onRemoveRow }: WhatIfPlannerProps) {
   return (
     <div className="space-y-4">
       {/* Description */}
@@ -103,64 +178,125 @@ function WhatIfPlannerPlaceholder() {
         Add hypothetical cycles for active females and preview them on the Rollup timeline above.
       </div>
 
-      {/* Placeholder for What If rows */}
-      <div className="rounded-lg border border-dashed border-neutral-300 dark:border-neutral-600 bg-neutral-50 dark:bg-neutral-800/50 p-4">
-        <div className="text-xs font-medium text-secondary uppercase tracking-wide mb-2">
-          Coming in v2
+      {/* What If rows */}
+      {rows.length === 0 ? (
+        <div className="rounded-lg border border-dashed border-neutral-300 dark:border-neutral-600 bg-neutral-50 dark:bg-neutral-800/50 p-4 text-center">
+          <p className="text-sm text-secondary">
+            No What If scenarios yet. Click "Add Female" to create one.
+          </p>
         </div>
-        <div className="text-sm text-primary space-y-2">
-          <p>The What If Planner will include:</p>
-          <ul className="list-disc list-inside text-secondary space-y-1 ml-2">
-            <li>Female selection dropdown (from active females in your roster)</li>
-            <li>Cycle start date picker with projected dates from repro history</li>
-            <li>"Show on chart" toggle for each What If row</li>
-            <li>Computed timeline projection using reproEngine</li>
-            <li>"Convert to Plan" action to make a What If into a real plan</li>
-          </ul>
+      ) : (
+        <div className="space-y-2">
+          {rows.map(row => (
+            <WhatIfRowEditor
+              key={row.id}
+              row={row}
+              females={females}
+              onUpdate={(updates) => onUpdateRow(row.id, updates)}
+              onRemove={() => onRemoveRow(row.id)}
+            />
+          ))}
         </div>
+      )}
 
-        {/* Mock row to show UI intent */}
-        <div className="mt-4 p-3 bg-white dark:bg-neutral-900 rounded-md border border-neutral-200 dark:border-neutral-700">
-          <div className="flex items-center gap-4 text-sm">
-            <div className="flex-1">
-              <div className="text-xs text-secondary mb-1">Female</div>
-              <div className="h-8 bg-neutral-100 dark:bg-neutral-800 rounded px-2 flex items-center text-secondary">
-                Select a female...
-              </div>
-            </div>
-            <div className="flex-1">
-              <div className="text-xs text-secondary mb-1">Cycle Start</div>
-              <div className="h-8 bg-neutral-100 dark:bg-neutral-800 rounded px-2 flex items-center text-secondary">
-                Select date...
-              </div>
-            </div>
-            <div className="flex items-end gap-2">
-              <label className="flex items-center gap-1.5 text-sm">
-                <input type="checkbox" disabled checked className="rounded" />
-                <span className="text-secondary">Show</span>
-              </label>
-              <button
-                disabled
-                className="h-8 px-3 text-xs font-medium bg-neutral-100 dark:bg-neutral-800 text-secondary rounded"
-              >
-                Convert to Plan
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Add row button placeholder */}
+      {/* Add row button */}
       <div className="flex justify-end">
         <button
-          disabled
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-neutral-100 dark:bg-neutral-800 text-secondary rounded-md cursor-not-allowed"
+          onClick={onAddRow}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-primary rounded-md transition-colors"
         >
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
           </svg>
           Add Female
         </button>
+      </div>
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * What If Row Editor
+ * ───────────────────────────────────────────────────────────────────────────── */
+type WhatIfRowEditorProps = {
+  row: WhatIfRow;
+  females: WhatIfFemale[];
+  onUpdate: (updates: Partial<WhatIfRow>) => void;
+  onRemove: () => void;
+};
+
+function WhatIfRowEditor({ row, females, onUpdate, onRemove }: WhatIfRowEditorProps) {
+  const handleFemaleChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const femaleId = e.target.value;
+    if (!femaleId) {
+      onUpdate({ damId: null, damName: null, species: null });
+      return;
+    }
+    const female = females.find(f => String(f.id) === femaleId);
+    if (female) {
+      onUpdate({
+        damId: female.id,
+        damName: female.name,
+        species: female.species,
+        femaleCycleLenOverrideDays: female.femaleCycleLenOverrideDays,
+      });
+    }
+  };
+
+  return (
+    <div className="p-3 bg-white dark:bg-neutral-900 rounded-md border border-neutral-200 dark:border-neutral-700">
+      <div className="flex items-center gap-4 text-sm">
+        {/* Female select */}
+        <div className="flex-1">
+          <div className="text-xs text-secondary mb-1">Female</div>
+          <select
+            value={row.damId ? String(row.damId) : ""}
+            onChange={handleFemaleChange}
+            className="w-full h-8 bg-neutral-100 dark:bg-neutral-800 rounded px-2 text-sm border-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="">Select a female...</option>
+            {females.map(female => (
+              <option key={String(female.id)} value={String(female.id)}>
+                {female.name} ({female.species})
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Cycle start date */}
+        <div className="flex-1">
+          <div className="text-xs text-secondary mb-1">Cycle Start</div>
+          <input
+            type="date"
+            value={row.cycleStartIso ?? ""}
+            onChange={(e) => onUpdate({ cycleStartIso: e.target.value || null })}
+            className="w-full h-8 bg-neutral-100 dark:bg-neutral-800 rounded px-2 text-sm border-none focus:ring-2 focus:ring-blue-500"
+          />
+        </div>
+
+        {/* Show on chart toggle */}
+        <div className="flex items-end gap-2">
+          <label className="flex items-center gap-1.5 text-sm cursor-pointer">
+            <input
+              type="checkbox"
+              checked={row.showOnChart}
+              onChange={(e) => onUpdate({ showOnChart: e.target.checked })}
+              className="rounded"
+            />
+            <span className="text-secondary">Show</span>
+          </label>
+
+          {/* Remove button */}
+          <button
+            onClick={onRemove}
+            className="h-8 px-2 text-xs font-medium text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors"
+            title="Remove this What If"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
       </div>
     </div>
   );
