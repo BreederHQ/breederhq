@@ -26,6 +26,7 @@ export function HeaderBar({ children }: HeaderBarProps) {
           alignItems: "center",
           padding: "0 var(--portal-space-2)",
           gap: "var(--portal-space-4)",
+          overflow: "hidden", // Critical: contain flex children so TopNav can scroll
         }}
       >
         {children}

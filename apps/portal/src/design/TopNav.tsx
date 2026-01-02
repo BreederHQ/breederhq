@@ -47,13 +47,10 @@ export function TopNav({ items, onNavigate }: TopNavProps) {
         alignItems: "center",
         overflowX: "auto",
         overflowY: "hidden",
-        flex: 1,
+        flex: "1 1 0%", // Explicit flex-grow, flex-shrink, flex-basis for proper shrinking
         minWidth: 0, // Allow shrinking below content size for proper scroll
-        paddingRight: "var(--portal-space-2)", // Ensure last items are visible when scrolled
         scrollbarWidth: "none", // Firefox
-        msOverflowStyle: "none", // IE/Edge
-        position: "relative",
-        zIndex: 10,
+        msOverflowStyle: "none" as any, // IE/Edge
       }}
     >
       {items.map((item) => (
