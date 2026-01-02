@@ -197,7 +197,7 @@ function WhatIfPlanner({ rows, females, onAddRow, onUpdateRow, onRemoveRow }: Wh
           </p>
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-4">
           {rows.map(row => (
             <WhatIfRowEditor
               key={row.id}
@@ -242,7 +242,10 @@ function WhatIfRowEditor({ row, females, onUpdate, onRemove }: WhatIfRowEditorPr
   };
 
   return (
-    <div className="p-3 bg-neutral-800/50 dark:bg-neutral-800/50 rounded-lg border-l-4 border-l-orange-500 border border-neutral-700/30">
+    <div
+      className="p-3 bg-neutral-800/50 dark:bg-neutral-800/50 rounded-lg"
+      style={{ border: "1px solid rgba(115, 115, 115, 0.3)", borderLeft: "4px solid #f97316" }}
+    >
       <div className="flex items-center gap-4 text-sm">
         {/* Female select */}
         <div className="flex-1">
