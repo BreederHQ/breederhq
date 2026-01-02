@@ -12,17 +12,23 @@ const variantStyles: Record<ButtonVariant, React.CSSProperties> = {
   primary: {
     background: "var(--portal-accent)",
     color: "var(--portal-text-primary)",
-    border: "1px solid var(--portal-accent)",
+    borderWidth: "1px",
+    borderStyle: "solid",
+    borderColor: "var(--portal-accent)",
   },
   secondary: {
     background: "transparent",
     color: "var(--portal-text-primary)",
-    border: "1px solid var(--portal-border)",
+    borderWidth: "1px",
+    borderStyle: "solid",
+    borderColor: "var(--portal-border)",
   },
   ghost: {
     background: "transparent",
     color: "var(--portal-text-secondary)",
-    border: "1px solid transparent",
+    borderWidth: "1px",
+    borderStyle: "solid",
+    borderColor: "transparent",
   },
 };
 

@@ -4,6 +4,7 @@ import { PageContainer } from "../design/PageContainer";
 import { SectionCard } from "../design/SectionCard";
 import { TextInput } from "../design/TextInput";
 import { Button } from "../design/Button";
+import { OrgBranding } from "../components/OrgBranding";
 
 export default function PortalForgotPasswordPage() {
   const [email, setEmail] = React.useState("");
@@ -114,17 +115,7 @@ export default function PortalForgotPasswordPage() {
           }}
         >
           <div style={{ width: "100%", maxWidth: "420px" }}>
-            <h1
-              style={{
-                fontSize: "var(--portal-font-size-xl)",
-                fontWeight: "var(--portal-font-weight-semibold)",
-                color: "var(--portal-text-primary)",
-                marginBottom: "var(--portal-space-4)",
-                textAlign: "center",
-              }}
-            >
-              Forgot password
-            </h1>
+            <OrgBranding />
             <SectionCard>
               <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "var(--portal-space-3)" }}>
                 <TextInput

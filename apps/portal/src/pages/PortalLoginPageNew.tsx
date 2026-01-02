@@ -6,6 +6,7 @@ import { TextInput } from "../design/TextInput";
 import { PasswordInput } from "../design/PasswordInput";
 import { Button } from "../design/Button";
 import { InlineNotice } from "../design/InlineNotice";
+import { OrgBranding } from "../components/OrgBranding";
 
 export default function PortalLoginPageNew() {
   const [email, setEmail] = React.useState("");
@@ -64,17 +65,7 @@ export default function PortalLoginPageNew() {
           }}
         >
           <div style={{ width: "100%", maxWidth: "420px" }}>
-            <h1
-              style={{
-                fontSize: "var(--portal-font-size-xl)",
-                fontWeight: "var(--portal-font-weight-semibold)",
-                color: "var(--portal-text-primary)",
-                marginBottom: "var(--portal-space-4)",
-                textAlign: "center",
-              }}
-            >
-              Client Portal
-            </h1>
+            <OrgBranding />
             <SectionCard>
               <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "var(--portal-space-3)" }}>
                 {error && (
@@ -119,7 +110,7 @@ export default function PortalLoginPageNew() {
                     e.currentTarget.style.color = "var(--portal-text-secondary)";
                   }}
                 >
-                  Forgot password?
+                  Forgot password
                 </a>
               </form>
             </SectionCard>
