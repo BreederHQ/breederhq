@@ -1,5 +1,5 @@
-// apps/breeding/src/pages/plannerV2/usePlanToggles.v2.ts
-// Per-plan toggles hook for v2 - copied from PerPlanGantt.tsx
+// apps/breeding/src/pages/planner/usePlanToggles.ts
+// Per-plan toggles hook for planner components
 
 import * as React from "react";
 

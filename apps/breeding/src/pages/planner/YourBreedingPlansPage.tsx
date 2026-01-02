@@ -1,12 +1,11 @@
-// apps/breeding/src/pages/plannerV2/YourBreedingPlansPageV2.tsx
-// V2 Planner page - "Your Breeding Plans" with Rollup/Per Plan toggle
-// This is a parallel implementation for review - does not modify existing planner
+// apps/breeding/src/pages/planner/YourBreedingPlansPage.tsx
+// "Your Breeding Plans" page with Rollup/Per Plan toggle
 
 import * as React from "react";
 import { SectionCard } from "@bhq/ui";
-import PlannerModeToggleV2, { type PlannerModeV2 } from "./PlannerModeToggleV2";
-import RollupWithPhaseTogglesV2 from "./RollupWithPhaseTogglesV2";
-import PhaseGroupedPerPlanV2 from "./PhaseGroupedPerPlanV2";
+import PlannerModeToggle, { type PlannerMode } from "./PlannerModeToggle";
+import RollupWithPhaseToggles from "./RollupWithPhaseToggles";
+import PhaseGroupedPerPlan from "./PhaseGroupedPerPlan";
 
 type ID = string | number;
 
@@ -33,25 +32,19 @@ type Props = {
   /** Plans data - if not provided, shows empty state */
   plans?: PlanLike[];
   /** Optional initial mode */
-  initialMode?: PlannerModeV2;
+  initialMode?: PlannerMode;
 };
 
-export default function YourBreedingPlansPageV2({ plans = [], initialMode = "rollup" }: Props) {
-  const [mode, setMode] = React.useState<PlannerModeV2>(initialMode);
+export default function YourBreedingPlansPage({ plans = [], initialMode = "rollup" }: Props) {
+  const [mode, setMode] = React.useState<PlannerMode>(initialMode);
 
   const hasPlans = plans.length > 0;
 
   return (
-    <div className="p-4 max-w-7xl mx-auto">
-      {/* Page Header with mode toggle */}
-      <div className="mb-4 flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-semibold text-primary">Your Breeding Plans</h1>
-          <p className="text-sm text-secondary mt-1">
-            Plan and track your breeding program timeline
-          </p>
-        </div>
-        <PlannerModeToggleV2 mode={mode} onChange={setMode} />
+    <>
+      {/* Mode toggle row */}
+      <div className="mb-4 flex items-center justify-end">
+        <PlannerModeToggle mode={mode} onChange={setMode} />
       </div>
 
       {/* Content - conditional wrapper based on mode */}
@@ -62,7 +55,7 @@ export default function YourBreedingPlansPageV2({ plans = [], initialMode = "rol
       ) : mode === "rollup" ? (
         // Rollup mode: keep the outer SectionCard wrapper
         <SectionCard title={<span><span>Planner</span></span>}>
-          <RollupWithPhaseTogglesV2
+          <RollupWithPhaseToggles
             plans={plans}
             allowSynthetic={false}
             className="w-full"
@@ -70,12 +63,12 @@ export default function YourBreedingPlansPageV2({ plans = [], initialMode = "rol
         </SectionCard>
       ) : (
         // Per Plan mode: no outer wrapper - phase cards are the primary surfaces
-        <PhaseGroupedPerPlanV2
+        <PhaseGroupedPerPlan
           plans={plans}
           className="w-full"
         />
       )}
-    </div>
+    </>
   );
 }
 

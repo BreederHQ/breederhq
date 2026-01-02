@@ -1,12 +1,11 @@
-// apps/breeding/src/pages/plannerV2/WhatIfPlanningPageV2.tsx
-// V2 Planner page - "What If Planning" with Rollup + What If controls
-// This is a parallel implementation for review - does not modify existing planner
+// apps/breeding/src/pages/planner/WhatIfPlanningPage.tsx
+// "What If Planning" page with Rollup + What If controls
 
 import * as React from "react";
 import { SectionCard } from "@bhq/ui";
-import RollupWithPhaseTogglesV2, { type ID } from "./RollupWithPhaseTogglesV2";
-import { useRollupSelection } from "./rollupSelection.v2";
-import type { WhatIfRow, WhatIfFemale, NormalizedPlan } from "./whatIfTypes.v2";
+import RollupWithPhaseToggles, { type ID } from "./RollupWithPhaseToggles";
+import { useRollupSelection } from "./rollupSelection";
+import type { WhatIfRow, WhatIfFemale } from "./whatIfTypes";
 
 // Minimal plan shape for the page props
 type PlanLike = {
@@ -30,7 +29,7 @@ function generateWhatIfId(): string {
   return `what-if-${++whatIfCounter}`;
 }
 
-export default function WhatIfPlanningPageV2({ plans = [], females = [] }: Props) {
+export default function WhatIfPlanningPage({ plans = [], females = [] }: Props) {
   // What If rows state
   const [whatIfRows, setWhatIfRows] = React.useState<WhatIfRow[]>([]);
 
@@ -103,16 +102,8 @@ export default function WhatIfPlanningPageV2({ plans = [], females = [] }: Props
   const hasPlans = realPlans.length > 0;
 
   return (
-    <div className="p-4 max-w-7xl mx-auto">
-      {/* Page Header */}
-      <div className="mb-4">
-        <h1 className="text-xl font-semibold text-primary">What If Planning</h1>
-        <p className="text-sm text-secondary mt-1">
-          Explore hypothetical breeding scenarios and project timelines
-        </p>
-      </div>
-
-      {/* Rollup Section - uses same layout as Your Breeding Plans */}
+    <>
+      {/* Rollup Section */}
       <SectionCard title={<span><span>Timeline Rollup</span></span>} className="mb-4">
         {!hasPlans && syntheticPlans.length === 0 ? (
           <EmptyState context="rollup" />
@@ -126,8 +117,8 @@ export default function WhatIfPlanningPageV2({ plans = [], females = [] }: Props
               </div>
             </div>
 
-            {/* Rollup with Phase Toggles - same layout as Your Breeding Plans */}
-            <RollupWithPhaseTogglesV2
+            {/* Rollup with Phase Toggles */}
+            <RollupWithPhaseToggles
               plans={realPlans}
               itemsForChart={itemsForChart}
               selected={selectedKeys}
@@ -148,7 +139,7 @@ export default function WhatIfPlanningPageV2({ plans = [], females = [] }: Props
           onRemoveRow={handleRemoveRow}
         />
       </SectionCard>
-    </div>
+    </>
   );
 }
 
@@ -326,9 +317,7 @@ function EmptyState({ context }: { context: "rollup" }) {
       </div>
       <h3 className="text-sm font-medium text-primary mb-1">No plans to display</h3>
       <p className="text-sm text-secondary max-w-sm mx-auto">
-        {context === "rollup"
-          ? "No plans provided to v2 page yet. Wire this in Phase 2 cutover."
-          : "Add What If scenarios to see projected timelines."}
+        Add What If scenarios to see projected timelines.
       </p>
     </div>
   );

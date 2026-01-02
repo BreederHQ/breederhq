@@ -1,7 +1,7 @@
-// apps/breeding/src/pages/plannerV2/whatIfLogic.v2.ts
-// What If logic for v2 - synthetic plan composition
+// apps/breeding/src/pages/planner/whatIfLogic.ts
+// What If logic - synthetic plan composition
 
-import type { ID, WhatIfRow, SpeciesUi, NormalizedPlan } from "./whatIfTypes.v2";
+import type { ID, WhatIfRow, SpeciesUi, NormalizedPlan } from "./whatIfTypes";
 
 /**
  * Convert wire species to UI species

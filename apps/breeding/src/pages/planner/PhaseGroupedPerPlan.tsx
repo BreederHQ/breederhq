@@ -1,5 +1,5 @@
-// apps/breeding/src/pages/plannerV2/PhaseGroupedPerPlanV2.tsx
-// Phase-grouped Per Plan view for v2 - cloned from PerPlanGantt.tsx with phase grouping
+// apps/breeding/src/pages/planner/PhaseGroupedPerPlan.tsx
+// Phase-grouped Per Plan view
 
 import * as React from "react";
 import Gantt from "@bhq/ui/components/Gantt";
@@ -8,8 +8,8 @@ import { readTenantIdFast } from "@bhq/ui/utils/tenant";
 import { useAvailabilityPrefs } from "@bhq/ui/hooks";
 import { mapTenantPrefs, hasAnyExactValues } from "@bhq/ui/utils/availability";
 import { pickPlacementCompletedAny } from "@bhq/ui/utils";
-import { deriveBreedingStatus, STATUS_ORDER, STATUS_LABELS, type Status } from "./deriveBreedingStatus.v2";
-import { usePlanToggles, type PlanTogglesState } from "./usePlanToggles.v2";
+import { deriveBreedingStatus, STATUS_ORDER, STATUS_LABELS, type Status } from "./deriveBreedingStatus";
+import { usePlanToggles, type PlanTogglesState } from "./usePlanToggles";
 
 /* ---------- color util ---------- */
 function shade(hex: string, pct: number): string {

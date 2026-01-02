@@ -1,5 +1,5 @@
-// apps/breeding/src/pages/plannerV2/rollupSelection.v2.ts
-// Selection state hook for v2 Rollup - copied behavior from App-Breeding.tsx
+// apps/breeding/src/pages/planner/rollupSelection.ts
+// Selection state hook for Rollup
 
 import * as React from "react";
 

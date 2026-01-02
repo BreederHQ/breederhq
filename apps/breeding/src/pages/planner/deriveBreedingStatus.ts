@@ -1,5 +1,5 @@
-// apps/breeding/src/pages/plannerV2/deriveBreedingStatus.v2.ts
-// Copied from App-Breeding.tsx for v2 pages - do not modify original
+// apps/breeding/src/pages/planner/deriveBreedingStatus.ts
+// Status derivation logic for planner components
 
 export type Status =
   | "PLANNING"

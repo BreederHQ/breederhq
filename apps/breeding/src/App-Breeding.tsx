@@ -46,9 +46,9 @@ import { reproEngine } from "@bhq/ui/utils";
 // ── Calendar / Planning wiring ─────────────────────────────
 import BreedingCalendar from "./components/BreedingCalendar";
 
-// ── Planner V2 pages ─────────────────────────────────────────
-import { YourBreedingPlansPageV2, WhatIfPlanningPageV2 } from "./pages/plannerV2";
-import type { WhatIfFemale as WhatIfFemaleV2 } from "./pages/plannerV2/whatIfTypes.v2";
+// ── Planner pages ─────────────────────────────────────────
+import { YourBreedingPlansPage, WhatIfPlanningPage } from "./pages/planner";
+import type { WhatIfFemale } from "./pages/planner/whatIfTypes";
 
 
 /* Cycle math */
@@ -1954,9 +1954,9 @@ export default function AppBreeding() {
   // ── Planner view state ─────────────────────────────────────
   const [plannerMode, setPlannerMode] = React.useState<"per-plan" | "rollup">("per-plan");
 
-  // V2 Planner page tabs: "your-plans" (default) or "what-if"
-  type PlannerPageV2 = "your-plans" | "what-if";
-  const [plannerPageV2, setPlannerPageV2] = React.useState<PlannerPageV2>("your-plans");
+  // Planner page tabs: "your-plans" (default) or "what-if"
+  type PlannerPage = "your-plans" | "what-if";
+  const [plannerPage, setPlannerPage] = React.useState<PlannerPage>("your-plans");
 
   // Planner inner content sizing (scroll only inside the card body)
   const plannerContentRef = React.useRef<HTMLDivElement | null>(null);
@@ -2697,13 +2697,13 @@ export default function AppBreeding() {
           </div>
         )}
 
-        {/* PLANNER VIEW - V2 */}
+        {/* PLANNER VIEW */}
         {currentView === "planner" && (
           <div className="p-4 max-w-7xl mx-auto">
             {/* Page-level tabs: Your Breeding Plans | What If Planning */}
             <nav className="inline-flex items-end gap-6 mb-4" role="tablist" aria-label="Planner pages">
               {(["your-plans", "what-if"] as const).map((tabKey) => {
-                const isActive = plannerPageV2 === tabKey;
+                const isActive = plannerPage === tabKey;
                 const label = tabKey === "your-plans" ? "Your Breeding Plans" : "What If Planning";
                 return (
                   <button
@@ -2711,7 +2711,7 @@ export default function AppBreeding() {
                     type="button"
                     role="tab"
                     aria-selected={isActive}
-                    onClick={() => setPlannerPageV2(tabKey)}
+                    onClick={() => setPlannerPage(tabKey)}
                     className={[
                       "pb-1 text-sm font-medium transition-colors select-none",
                       isActive
@@ -2728,11 +2728,11 @@ export default function AppBreeding() {
               })}
             </nav>
 
-            {/* V2 Page content */}
-            {plannerPageV2 === "your-plans" ? (
-              <YourBreedingPlansPageV2 plans={normalized as any} initialMode="rollup" />
+            {/* Page content */}
+            {plannerPage === "your-plans" ? (
+              <YourBreedingPlansPage plans={normalized as any} initialMode="rollup" />
             ) : (
-              <WhatIfPlanningPageV2 plans={normalized as any} females={whatIfFemales as WhatIfFemaleV2[]} />
+              <WhatIfPlanningPage plans={normalized as any} females={whatIfFemales as WhatIfFemale[]} />
             )}
           </div>
         )}

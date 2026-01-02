@@ -1,5 +1,5 @@
-// apps/breeding/src/pages/plannerV2/whatIfTypes.v2.ts
-// What If types for v2 - copied from App-Breeding.tsx
+// apps/breeding/src/pages/planner/whatIfTypes.ts
+// What If types for planner components
 
 export type ID = number | string;
 

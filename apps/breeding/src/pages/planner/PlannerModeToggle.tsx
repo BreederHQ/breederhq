@@ -1,19 +1,19 @@
-// apps/breeding/src/pages/plannerV2/PlannerModeToggleV2.tsx
-// Local toggle component for v2 planner pages - does not modify existing PlannerSwitch.tsx
-// Uses underline-style tabs matching legacy Planner design
+// apps/breeding/src/pages/planner/PlannerModeToggle.tsx
+// Toggle component for planner view modes (Rollup vs Per Plan)
+// Uses underline-style tabs
 
 import * as React from "react";
 
-export type PlannerModeV2 = "rollup" | "per-plan";
+export type PlannerMode = "rollup" | "per-plan";
 
 type Props = {
-  mode: PlannerModeV2;
-  onChange: (m: PlannerModeV2) => void;
+  mode: PlannerMode;
+  onChange: (m: PlannerMode) => void;
   className?: string;
 };
 
-export default function PlannerModeToggleV2({ mode, onChange, className = "" }: Props) {
-  const tabs: { key: PlannerModeV2; label: string }[] = [
+export default function PlannerModeToggle({ mode, onChange, className = "" }: Props) {
+  const tabs: { key: PlannerMode; label: string }[] = [
     { key: "rollup", label: "Rollup" },
     { key: "per-plan", label: "Per Plan" },
   ];

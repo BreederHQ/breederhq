@@ -1,12 +1,12 @@
-// apps/breeding/src/pages/plannerV2/RollupWithPhaseTogglesV2.tsx
-// Rollup view with phase-level tri-state toggles for v2
+// apps/breeding/src/pages/planner/RollupWithPhaseToggles.tsx
+// Rollup view with phase-level tri-state toggles
 // Uses RollupGantt for chart rendering, adds phase toggle UI
 
 import * as React from "react";
 import RollupGantt from "../../components/RollupGantt";
 import { useIndeterminate } from "@bhq/ui/hooks";
-import { deriveBreedingStatus, STATUS_ORDER, STATUS_LABELS, type Status } from "./deriveBreedingStatus.v2";
-import { useRollupSelection, type ID } from "./rollupSelection.v2";
+import { deriveBreedingStatus, STATUS_ORDER, STATUS_LABELS, type Status } from "./deriveBreedingStatus";
+import { useRollupSelection, type ID } from "./rollupSelection";
 
 export type { ID };
 
