@@ -8,7 +8,7 @@ interface Props {
 }
 
 /**
- * Main marketplace layout with top bar and content area.
+ * Main marketplace layout with slim top bar and consistent content frame.
  * Premium dark gradient background with subtle radial highlight.
  */
 export function MarketplaceLayout({ authenticated, children }: Props) {
@@ -47,11 +47,11 @@ export function MarketplaceLayout({ authenticated, children }: Props) {
         }}
       />
 
-      {/* Top bar */}
-      <header className="sticky top-0 z-40 h-14 border-b border-white/10 bg-black/40 backdrop-blur-md">
-        <div className="h-full w-full max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between">
+      {/* Slim top bar */}
+      <header className="sticky top-0 z-40 h-12 border-b border-white/10 bg-black/50 backdrop-blur-md">
+        <div className="h-full w-full max-w-6xl mx-auto px-6 flex items-center justify-between">
           {/* Left: Marketplace brand */}
-          <a href="/" className="text-lg font-semibold tracking-tight text-white hover:text-white/90 transition-colors">
+          <a href="/" className="text-base font-semibold tracking-tight text-white hover:text-white/90 transition-colors">
             Marketplace
           </a>
 
@@ -61,7 +61,7 @@ export function MarketplaceLayout({ authenticated, children }: Props) {
               type="button"
               onClick={handleLogout}
               disabled={loggingOut}
-              className="px-3 py-1.5 text-sm rounded-lg bg-white/10 border border-white/10 text-white/80 hover:text-white hover:bg-white/15 transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-500/50"
+              className="px-3 py-1 text-sm rounded-md bg-white/10 border border-white/10 text-white/80 hover:text-white hover:bg-white/15 transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-500/50"
             >
               {loggingOut ? "..." : "Logout"}
             </button>
@@ -69,7 +69,8 @@ export function MarketplaceLayout({ authenticated, children }: Props) {
         </div>
       </header>
 
-      <main className="w-full max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      {/* Content frame with consistent padding */}
+      <main className="w-full max-w-6xl mx-auto px-6 pt-8 pb-16">
         {children}
       </main>
     </div>

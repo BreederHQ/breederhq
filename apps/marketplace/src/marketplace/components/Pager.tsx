@@ -1,5 +1,4 @@
 // apps/marketplace/src/marketplace/components/Pager.tsx
-import * as React from "react";
 
 interface PagerProps {
   page: number;
@@ -13,7 +12,7 @@ interface PagerProps {
 }
 
 /**
- * Pagination controls with Previous/Next and "Showing X-Y of Z".
+ * Compact pagination controls with Previous/Next and "X–Y of Z".
  */
 export function Pager({
   page,
@@ -30,27 +29,27 @@ export function Pager({
   // Calculate showing range
   const start = (page - 1) * limit + 1;
   const end = Math.min(page * limit, total);
-  const showingText = total > 0 ? `Showing ${start}–${end} of ${total}` : "";
+  const showingText = total > 0 ? `${start}–${end} of ${total}` : "";
 
   const content = (
-    <div className="flex items-center gap-3">
+    <div className="flex items-center gap-2">
       <button
         type="button"
         onClick={onPrev}
         disabled={!hasPrev}
-        className="px-3 py-1.5 rounded-lg bg-white/10 border border-white/10 text-sm font-medium text-white hover:bg-white/15 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+        className="px-2.5 py-1 rounded-md bg-white/10 border border-white/10 text-xs font-medium text-white hover:bg-white/15 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
         aria-label="Previous page"
       >
         Prev
       </button>
-      <span className="text-sm text-white/60 whitespace-nowrap">
+      <span className="text-xs text-white/50 whitespace-nowrap">
         {showingText}
       </span>
       <button
         type="button"
         onClick={onNext}
         disabled={!hasNext}
-        className="px-3 py-1.5 rounded-lg bg-white/10 border border-white/10 text-sm font-medium text-white hover:bg-white/15 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+        className="px-2.5 py-1 rounded-md bg-white/10 border border-white/10 text-xs font-medium text-white hover:bg-white/15 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
         aria-label="Next page"
       >
         Next
@@ -63,7 +62,7 @@ export function Pager({
   }
 
   return (
-    <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+    <div className="rounded-lg border border-white/10 bg-white/5 p-3">
       <div className="flex items-center justify-center">{content}</div>
     </div>
   );

@@ -74,26 +74,17 @@ export function ProgramsPage() {
   const totalPages = total > 0 ? Math.ceil(total / LIMIT) : 0;
   const hasFilters = search.trim() !== "" || location.trim() !== "";
 
-  // Results text
-  const resultsText = React.useMemo(() => {
-    if (!data) return "";
-    if (hasFilters) {
-      return `${total} result${total === 1 ? "" : "s"}`;
-    }
-    return `${total} program${total === 1 ? "" : "s"}`;
-  }, [data, total, hasFilters]);
-
   // Show pager when there are results (even if only 1 page, to show count)
   const showPager = !loading && !error && data && total > 0;
 
   return (
-    <div className="space-y-6">
-      {/* Page header */}
+    <div className="space-y-4">
+      {/* Page header - tighter */}
       <div>
-        <h1 className="text-3xl sm:text-4xl font-bold text-white tracking-tight">
+        <h1 className="text-2xl font-bold text-white tracking-tight">
           Programs
         </h1>
-        <p className="text-white/60 mt-2">Browse breeder programs</p>
+        <p className="text-sm text-white/50 mt-0.5">Browse breeder programs</p>
       </div>
 
       {/* Filters */}
@@ -105,28 +96,26 @@ export function ProgramsPage() {
       />
 
       {/* Results header row: count on left, pager on right */}
-      {(showPager || loading) && (
-        <div className="flex items-center justify-between flex-wrap gap-4">
-          <div className="text-sm text-white/60">
-            {loading ? (
-              <span className="inline-block h-4 w-20 bg-white/10 rounded animate-pulse" />
-            ) : (
-              resultsText
-            )}
-          </div>
-          {showPager && totalPages > 1 && (
-            <Pager
-              page={page}
-              totalPages={totalPages}
-              total={total}
-              limit={LIMIT}
-              onPrev={handlePrevPage}
-              onNext={handleNextPage}
-              inline
-            />
-          )}
+      <div className="flex items-center justify-between flex-wrap gap-2 py-1">
+        <div className="text-xs text-white/50">
+          {loading ? (
+            <span className="inline-block h-3 w-16 bg-white/10 rounded animate-pulse" />
+          ) : total > 0 ? (
+            `${total} ${hasFilters ? "result" : "program"}${total === 1 ? "" : "s"}`
+          ) : null}
         </div>
-      )}
+        {showPager && totalPages > 1 && (
+          <Pager
+            page={page}
+            totalPages={totalPages}
+            total={total}
+            limit={LIMIT}
+            onPrev={handlePrevPage}
+            onNext={handleNextPage}
+            inline
+          />
+        )}
+      </div>
 
       {/* Grid */}
       <ProgramsGrid
