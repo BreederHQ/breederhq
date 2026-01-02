@@ -58,9 +58,10 @@ async function checkSession(): Promise<SessionCheckResult> {
       }
 
       // Check for CLIENT role in memberships
+      // Use membershipRole (new field) instead of role (legacy field)
       const memberships = data.memberships || [];
       const hasClientRole = memberships.some(
-        (m: any) => m.role?.toLowerCase() === "client"
+        (m: any) => m.membershipRole?.toUpperCase() === "CLIENT" && m.membershipStatus?.toUpperCase() === "ACTIVE"
       );
 
       if (!hasClientRole) {
