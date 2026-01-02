@@ -667,7 +667,7 @@ export default function RollupGantt({
   const ganttCommon = {
     horizon,
     today,
-    heightPerRow: 32,
+    heightPerRow: 48,
     showToday: true,
     showAvailability: false,
     className: "bhq-gantt planner",
