@@ -2,72 +2,9 @@
 import * as React from "react";
 import { joinApi } from "../api/client";
 
-// Inline styles matching @bhq/ui LoginPage for consistent auth-card styling
-const fontStack =
-  'Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
-
-const styles = {
-  container: {
-    minHeight: "calc(100vh - 3.5rem)", // Account for top bar height
-    display: "grid",
-    placeItems: "center",
-    backgroundColor: "hsl(var(--page))",
-    color: "hsl(var(--primary))",
-    fontFamily: fontStack,
-    padding: "1rem",
-  } as React.CSSProperties,
-  card: {
-    borderRadius: "0.75rem",
-    border: "1px solid hsl(var(--hairline))",
-    backgroundColor: "hsl(var(--surface))",
-    padding: "1.5rem",
-    width: "100%",
-    maxWidth: "28rem",
-    boxSizing: "border-box",
-    textAlign: "center",
-  } as React.CSSProperties,
-  heading: {
-    fontSize: "1.25rem",
-    fontWeight: 600,
-    marginBottom: "0.75rem",
-  } as React.CSSProperties,
-  body: {
-    fontSize: "0.875rem",
-    color: "hsl(var(--secondary))",
-    marginBottom: "1.5rem",
-  } as React.CSSProperties,
-  actions: {
-    display: "flex",
-    flexDirection: "column",
-    gap: "0.75rem",
-  } as React.CSSProperties,
-  primaryButton: {
-    height: "2.5rem",
-    padding: "0 1rem",
-    borderRadius: "0.375rem",
-    backgroundColor: "hsl(var(--brand-orange))",
-    color: "black",
-    width: "100%",
-    border: "none",
-    cursor: "pointer",
-    fontWeight: 500,
-    fontSize: "1rem",
-  } as React.CSSProperties,
-  primaryButtonDisabled: {
-    opacity: 0.6,
-    cursor: "not-allowed",
-  } as React.CSSProperties,
-  secondaryLink: {
-    fontSize: "0.875rem",
-    color: "hsl(var(--secondary))",
-    textDecoration: "none",
-    textAlign: "center",
-  } as React.CSSProperties,
-};
-
 /**
  * Shown when user is authenticated but not entitled to access marketplace.
- * Styled like portal auth cards - centered card with title, body, and actions.
+ * Styled with Tailwind - centered card with title, body, and actions.
  */
 export function AccessNotAvailable() {
   const [loggingOut, setLoggingOut] = React.useState(false);
@@ -91,36 +28,49 @@ export function AccessNotAvailable() {
   };
 
   return (
-    <div style={styles.container}>
-      <div style={styles.card}>
-        <h1 style={styles.heading}>Marketplace access not available</h1>
-        <p style={styles.body}>
-          This account is signed in, but Marketplace access is not enabled.
-        </p>
-        <div style={styles.actions}>
-          <button
-            type="button"
-            onClick={handleLogout}
-            disabled={loggingOut}
-            style={{
-              ...styles.primaryButton,
-              ...(loggingOut ? styles.primaryButtonDisabled : {}),
-            }}
-          >
-            {loggingOut ? "Logging out..." : "Logout"}
-          </button>
-          <a
-            href="/auth/login"
-            style={styles.secondaryLink}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.color = "hsl(var(--brand-orange))";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.color = "hsl(var(--secondary))";
-            }}
-          >
-            Back to sign in
-          </a>
+    <div className="flex items-center justify-center py-16">
+      <div className="w-full max-w-md">
+        <div className="rounded-xl border border-white/10 bg-white/5 backdrop-blur-sm p-8 text-center">
+          <div className="w-12 h-12 mx-auto mb-4 rounded-full bg-yellow-500/20 flex items-center justify-center">
+            <svg
+              className="w-6 h-6 text-yellow-400"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+              />
+            </svg>
+          </div>
+
+          <h1 className="text-xl font-semibold text-white mb-3">
+            Marketplace access not available
+          </h1>
+          <p className="text-white/60 text-sm mb-6">
+            This account is signed in, but Marketplace access is not enabled.
+            Please contact support if you believe this is an error.
+          </p>
+
+          <div className="space-y-3">
+            <button
+              type="button"
+              onClick={handleLogout}
+              disabled={loggingOut}
+              className="w-full h-10 rounded-lg bg-orange-500 text-white font-medium hover:bg-orange-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-500/50"
+            >
+              {loggingOut ? "Logging out..." : "Sign out"}
+            </button>
+            <a
+              href="/auth/login"
+              className="block text-sm text-white/50 hover:text-orange-400 transition-colors"
+            >
+              Back to sign in
+            </a>
+          </div>
         </div>
       </div>
     </div>

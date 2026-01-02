@@ -136,3 +136,52 @@ export async function getListing(
   const { data } = await apiGet<ListingDetailDTO>(path);
   return data;
 }
+
+export interface InquiryPayload {
+  message: string;
+}
+
+export interface InquiryResponse {
+  success: boolean;
+  inquiryId?: string;
+}
+
+/**
+ * Submit an inquiry for a listing. Requires authentication.
+ */
+export async function submitInquiry(
+  programSlug: string,
+  listingSlug: string,
+  payload: InquiryPayload
+): Promise<InquiryResponse> {
+  const path = `/api/v1/marketplace/programs/${encodeURIComponent(programSlug)}/offspring-groups/${encodeURIComponent(listingSlug)}/inquiries`;
+  const url = joinApi(path);
+
+  // Get CSRF token from cookie (XSRF-TOKEN)
+  const xsrf = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]+)/)?.[1];
+
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+  if (xsrf) {
+    headers["x-csrf-token"] = decodeURIComponent(xsrf);
+  }
+
+  const response = await fetch(url, {
+    method: "POST",
+    credentials: "include",
+    headers,
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    const body = await safeReadJson<{ message?: string }>(response);
+    throw new ApiError(
+      body?.message || `Request failed with status ${response.status}`,
+      response.status
+    );
+  }
+
+  const data = await safeReadJson<InquiryResponse>(response);
+  return data || { success: true };
+}

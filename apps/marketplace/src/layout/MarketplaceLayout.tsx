@@ -35,7 +35,7 @@ export function MarketplaceLayout({ authenticated, children }: Props) {
   };
 
   return (
-    <div className="min-h-screen text-white relative">
+    <div className="min-h-screen text-white relative font-sans antialiased">
       {/* Background with gradient and radial highlight */}
       <div
         className="fixed inset-0 -z-10"
@@ -48,32 +48,32 @@ export function MarketplaceLayout({ authenticated, children }: Props) {
       />
 
       {/* Top bar */}
-      <header className="sticky top-0 z-40 h-14 border-b border-white/10 bg-black/20 backdrop-blur">
+      <header className="sticky top-0 z-40 h-14 border-b border-white/10 bg-black/40 backdrop-blur-md">
         <div className="h-full w-full max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between">
-          {/* Left: Marketplace label */}
-          <span className="text-base font-semibold tracking-tight text-white">
+          {/* Left: Marketplace brand */}
+          <a href="/" className="text-lg font-semibold tracking-tight text-white hover:text-white/90 transition-colors">
             Marketplace
-          </span>
+          </a>
 
-          {/* Right: Reset badge + Account status */}
-          <div className="flex items-center gap-3">
-            {/* RESET VERIFIED badge - confirms new structure is active */}
-            <span className="bg-green-600 text-white px-2 py-1 rounded text-xs font-semibold">
-              RESET VERIFIED
+          {/* Right: Account status */}
+          <div className="flex items-center gap-4">
+            {/* Subtle version indicator */}
+            <span className="hidden sm:inline-block text-[10px] text-white/30 font-mono uppercase tracking-wider">
+              v3
             </span>
 
             {authenticated && (
-              <>
-                <span className="text-sm text-white/70">Signed in</span>
+              <div className="flex items-center gap-3">
+                <span className="hidden sm:inline text-sm text-white/50">Signed in</span>
                 <button
                   type="button"
                   onClick={handleLogout}
                   disabled={loggingOut}
-                  className="px-3 py-1.5 text-sm rounded-lg bg-white/10 border border-white/10 text-white hover:bg-white/15 transition-colors disabled:opacity-50"
+                  className="px-3 py-1.5 text-sm rounded-lg bg-white/10 border border-white/10 text-white/80 hover:text-white hover:bg-white/15 transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-500/50"
                 >
-                  {loggingOut ? "Logging out..." : "Logout"}
+                  {loggingOut ? "..." : "Logout"}
                 </button>
-              </>
+              </div>
             )}
           </div>
         </div>
