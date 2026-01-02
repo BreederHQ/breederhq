@@ -20,13 +20,14 @@ import AppOffspring from "@bhq/offspring/App-Offspring";
 import AppMarketing from "@bhq/marketing/App-Marketing";
 import AppFinance from "@bhq/finance/App-Finance";
 import AdminModule from "@bhq/admin/App-Admin";
+import AppWaitlist from "@bhq/waitlist/App-Waitlist";
 import DashboardPage from "./pages/Dashboard";
 
 // Support Pages
 import SettingsPanel from "./pages/SettingsPanel";
 
 // Lightweight "current module" state (key + label)
-type ActiveModule = { key: "dashboard" | "contacts" | "animals" | "breeding" | "offspring" | "marketing" | "finance" | "admin"; label: string };
+type ActiveModule = { key: "dashboard" | "contacts" | "animals" | "breeding" | "offspring" | "waitlist" | "marketing" | "finance" | "admin"; label: string };
 const DEFAULT_MODULE: ActiveModule = { key: "dashboard", label: "Dashboard" };
 
 type AuthState = {
@@ -146,6 +147,7 @@ function RouteView() {
   if (p === "/animals" || p.startsWith("/animals")) return <AppAnimals />;
   if (p === "/breeding" || p.startsWith("/breeding")) return <AppBreeding />;
   if (p === "/offspring" || p.startsWith("/offspring")) return <AppOffspring />;
+  if (p === "/waitlist" || p.startsWith("/waitlist")) return <AppWaitlist />;
   if (p === "/marketing" || p.startsWith("/marketing")) return <AppMarketing />;
   if (p === "/finance" || p.startsWith("/finance")) return <AppFinance />;
   if (p === "/admin" || p.startsWith("/admin")) return <AdminModule />;
@@ -354,6 +356,7 @@ export default function AppPlatform() {
               { key: "animals", label: "Animals", href: "/animals", icon: "animals" },
               { key: "breeding", label: "Breeding", href: "/breeding", icon: "breeding" },
               { key: "offspring", label: "Offspring", href: "/offspring", icon: "offspring" },
+              { key: "waitlist", label: "Waitlist", href: "/waitlist", icon: "waitlist" },
               { key: "marketing", label: "Marketing", href: "/marketing" },
               { key: "marketplace", label: "Marketplace", href: (import.meta as any)?.env?.VITE_MARKETPLACE_URL || "https://marketplace.breederhq.com" },
               { key: "finance", label: "Finance", href: "/finance", icon: "finance" },

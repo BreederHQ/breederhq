@@ -78,6 +78,7 @@ function emojiFor(label: string) {
   if (k.includes("animal")) return "🐾";
   if (k.includes("admin")) return "🛠️";
   if (k.includes("offspring")) return "🍼";
+  if (k.includes("waitlist")) return "📋";
   if (k.includes("finance")) return "💰";
   if (k.includes("marketplace")) return "🛒";
   if (k.includes("marketing")) return "📣";
