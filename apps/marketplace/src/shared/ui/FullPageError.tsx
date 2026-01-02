@@ -3,13 +3,14 @@ import * as React from "react";
 
 interface Props {
   onRetry: () => void;
+  message?: string;
 }
 
 /**
  * Full-page error state with retry button.
  * Shows friendly message without raw error details.
  */
-export function FullPageError({ onRetry }: Props) {
+export function FullPageError({ onRetry, message }: Props) {
   return (
     <div
       className="min-h-screen flex items-center justify-center bg-page"
@@ -19,7 +20,9 @@ export function FullPageError({ onRetry }: Props) {
         <div className="text-4xl text-secondary" aria-hidden="true">
           ⚠
         </div>
-        <p className="text-primary text-base">Unable to verify access. Try again.</p>
+        <p className="text-primary text-base">
+          {message ?? "Unable to verify access. Try again."}
+        </p>
         <button
           type="button"
           onClick={onRetry}

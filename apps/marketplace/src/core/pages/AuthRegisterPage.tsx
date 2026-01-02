@@ -1,9 +1,11 @@
 // apps/marketplace/src/core/pages/AuthRegisterPage.tsx
-// Real registration page matching Client Portal auth UX.
+// Real registration page matching @bhq/ui LoginPage styling.
 // Uses same API endpoint: POST /api/v1/auth/register
-// After registration, auto-logs in and lets MarketplaceGate handle entitlement.
+// Post-auth verification: calls GET /api/v1/marketplace/me to confirm session
 import * as React from "react";
 import { useSearchParams } from "react-router-dom";
+import { joinApi } from "../../shared/http/baseUrl";
+import { safeReadJson } from "../../shared/http/safeJson";
 
 // Inline styles matching @bhq/ui LoginPage for consistent rendering
 const fontStack =
@@ -70,7 +72,6 @@ const styles = {
     backgroundColor: "hsl(0 70% 50% / 0.1)",
     borderLeft: "3px solid hsl(0 70% 50%)",
     fontSize: "0.875rem",
-    color: "hsl(var(--primary))",
   } as React.CSSProperties,
   button: {
     height: "2.5rem",
@@ -103,7 +104,6 @@ const styles = {
     fontSize: "0.75rem",
     color: "hsl(var(--secondary))",
     textAlign: "center",
-    opacity: 0.8,
   } as React.CSSProperties,
 };
 
@@ -133,8 +133,21 @@ function mapRegisterError(json: { error?: string; message?: string }): string {
 }
 
 /**
+ * Determine if user is authenticated from /me response body.
+ * Tolerant of different response shapes.
+ */
+function isAuthenticated(body: any): boolean {
+  if (!body) return false;
+  if (body.authenticated === true || body.authenticated === "true") return true;
+  if (body.user != null) return true;
+  if (body.session != null) return true;
+  return false;
+}
+
+/**
  * Real registration page with form submission.
- * Matches portal UX and uses same API endpoint.
+ * After successful registration, verifies session via /marketplace/me before navigating.
+ * On any login success (200), always navigates away - never leaves user stuck.
  */
 export function AuthRegisterPage() {
   const [searchParams] = useSearchParams();
@@ -170,7 +183,7 @@ export function AuthRegisterPage() {
       }
 
       // Step 1: Register
-      const registerRes = await fetch("/api/v1/auth/register", {
+      const registerRes = await fetch(joinApi("/api/v1/auth/register"), {
         method: "POST",
         credentials: "include",
         headers,
@@ -195,8 +208,11 @@ export function AuthRegisterPage() {
         return;
       }
 
+      // Registration succeeded - clear any error
+      setError(null);
+
       // Step 2: Auto-login after successful registration
-      const loginRes = await fetch("/api/v1/auth/login", {
+      const loginRes = await fetch(joinApi("/api/v1/auth/login"), {
         method: "POST",
         credentials: "include",
         headers,
@@ -205,13 +221,49 @@ export function AuthRegisterPage() {
 
       if (!loginRes.ok) {
         // Registration succeeded but login failed
-        // Redirect to login page with a message
+        // Redirect to login page
         window.location.assign(`/auth/login?returnTo=${encodeURIComponent(returnTo)}`);
         return;
       }
 
-      // Success - navigate to returnTo, let MarketplaceGate handle entitlement
-      window.location.assign(returnTo);
+      // Login succeeded - clear any error
+      setError(null);
+
+      // Step 3: Post-auth verification - confirm session is valid
+      // Even if this fails, we navigate away because login succeeded
+      const meRes = await fetch(joinApi("/api/v1/marketplace/me"), {
+        method: "GET",
+        credentials: "include",
+        headers: { "Cache-Control": "no-cache" },
+      });
+
+      // If verification fails (non-2xx), still navigate to "/" - Gate will handle
+      if (!meRes.ok) {
+        window.location.assign("/");
+        return;
+      }
+
+      // Parse response defensively
+      const meData = await safeReadJson(meRes);
+
+      // If we couldn't parse JSON, navigate anyway - Gate will handle
+      if (!meData) {
+        window.location.assign("/");
+        return;
+      }
+
+      // Determine auth state tolerantly
+      const authenticated = isAuthenticated(meData);
+
+      // Always navigate away - login succeeded
+      if (authenticated) {
+        // Navigate to returnTo or "/" - Gate will check entitlement
+        window.location.assign(returnTo);
+      } else {
+        // Edge case: login returned 200 but /me says not authenticated
+        // Still navigate to "/" - Gate will show auth selector if needed
+        window.location.assign("/");
+      }
     } catch {
       setError("Network error. Please try again.");
       setLoading(false);
@@ -320,7 +372,7 @@ export function AuthRegisterPage() {
           </div>
 
           <p style={styles.note}>
-            Marketplace access may require approval by a breeder program.
+            Create an account to browse programs and listings.
           </p>
         </form>
       </div>

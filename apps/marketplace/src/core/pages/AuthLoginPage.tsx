@@ -1,8 +1,11 @@
 // apps/marketplace/src/core/pages/AuthLoginPage.tsx
-// Real login page matching Client Portal auth UX.
+// Real login page matching @bhq/ui LoginPage styling.
 // Uses same API endpoint: POST /api/v1/auth/login
+// Post-auth verification: calls GET /api/v1/marketplace/me to confirm session
 import * as React from "react";
 import { useSearchParams } from "react-router-dom";
+import { joinApi } from "../../shared/http/baseUrl";
+import { safeReadJson } from "../../shared/http/safeJson";
 
 // Inline styles matching @bhq/ui LoginPage for consistent rendering
 const fontStack =
@@ -69,7 +72,6 @@ const styles = {
     backgroundColor: "hsl(0 70% 50% / 0.1)",
     borderLeft: "3px solid hsl(0 70% 50%)",
     fontSize: "0.875rem",
-    color: "hsl(var(--primary))",
   } as React.CSSProperties,
   button: {
     height: "2.5rem",
@@ -112,8 +114,21 @@ function getSafeReturnTo(searchParams: URLSearchParams): string {
 }
 
 /**
+ * Determine if user is authenticated from /me response body.
+ * Tolerant of different response shapes.
+ */
+function isAuthenticated(body: any): boolean {
+  if (!body) return false;
+  if (body.authenticated === true || body.authenticated === "true") return true;
+  if (body.user != null) return true;
+  if (body.session != null) return true;
+  return false;
+}
+
+/**
  * Real login page with form submission.
- * Matches portal UX and uses same API endpoint.
+ * After successful login, verifies session via /marketplace/me before navigating.
+ * On any login success (200), always navigates away - never leaves user stuck.
  */
 export function AuthLoginPage() {
   const [searchParams] = useSearchParams();
@@ -135,24 +150,66 @@ export function AuthLoginPage() {
 
     try {
       const xsrf = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]+)/)?.[1];
-      const res = await fetch("/api/v1/auth/login", {
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+      if (xsrf) {
+        headers["x-csrf-token"] = decodeURIComponent(xsrf);
+      }
+
+      // Step 1: Login
+      const loginRes = await fetch(joinApi("/api/v1/auth/login"), {
         method: "POST",
         credentials: "include",
-        headers: {
-          "Content-Type": "application/json",
-          ...(xsrf ? { "x-csrf-token": decodeURIComponent(xsrf) } : {}),
-        },
+        headers,
         body: JSON.stringify({ email: email.trim(), password }),
       });
 
-      if (!res.ok) {
+      // If login fails (non-2xx), show error and stop
+      if (!loginRes.ok) {
         setError("We couldn't sign you in with that email and password.");
         setLoading(false);
         return;
       }
 
-      // Success - navigate to returnTo, let MarketplaceGate handle entitlement
-      window.location.assign(returnTo);
+      // Login succeeded (2xx) - clear any previous error immediately
+      setError(null);
+
+      // Step 2: Post-auth verification - confirm session is valid
+      // Even if this fails, we navigate away because login succeeded
+      const meRes = await fetch(joinApi("/api/v1/marketplace/me"), {
+        method: "GET",
+        credentials: "include",
+        headers: { "Cache-Control": "no-cache" },
+      });
+
+      // If verification fails (non-2xx), still navigate to "/" - Gate will handle
+      if (!meRes.ok) {
+        window.location.assign("/");
+        return;
+      }
+
+      // Parse response defensively
+      const meData = await safeReadJson(meRes);
+
+      // If we couldn't parse JSON, navigate anyway - Gate will handle
+      if (!meData) {
+        window.location.assign("/");
+        return;
+      }
+
+      // Determine auth state tolerantly
+      const authenticated = isAuthenticated(meData);
+
+      // Always navigate away - login succeeded
+      if (authenticated) {
+        // Navigate to returnTo or "/" - Gate will check entitlement
+        window.location.assign(returnTo);
+      } else {
+        // Edge case: login returned 200 but /me says not authenticated
+        // Still navigate to "/" - Gate will show auth selector if needed
+        window.location.assign("/");
+      }
     } catch {
       setError("We couldn't sign you in with that email and password.");
       setLoading(false);

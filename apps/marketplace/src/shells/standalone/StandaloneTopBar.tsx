@@ -1,5 +1,6 @@
 // apps/marketplace/src/shells/standalone/StandaloneTopBar.tsx
 import * as React from "react";
+import { joinApi } from "../../shared/http/baseUrl";
 
 interface Props {
   authenticated: boolean;
@@ -16,7 +17,7 @@ export function StandaloneTopBar({ authenticated }: Props) {
     setLoggingOut(true);
     try {
       const xsrf = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]+)/)?.[1];
-      await fetch("/api/v1/auth/logout", {
+      await fetch(joinApi("/api/v1/auth/logout"), {
         method: "POST",
         credentials: "include",
         headers: {

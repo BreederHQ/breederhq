@@ -1,6 +1,8 @@
 // apps/marketplace/src/gate/MarketplaceGate.tsx
 import * as React from "react";
 import { useLocation } from "react-router-dom";
+import { joinApi } from "../shared/http/baseUrl";
+import { safeReadJson } from "../shared/http/safeJson";
 import { FullPageSkeleton } from "../shared/ui/FullPageSkeleton";
 import { FullPageError } from "../shared/ui/FullPageError";
 import { MarketplaceAuthPage } from "../shells/standalone/MarketplaceAuthPage";
@@ -13,12 +15,28 @@ type GateState =
   | { status: "unauthenticated" }
   | { status: "not_entitled" }
   | { status: "entitled" }
-  | { status: "error" };
+  | { status: "error"; message?: string };
 
-interface MeResponse {
-  authenticated: boolean;
-  entitled: boolean;
-  entitlementSource: "platform" | "marketplace" | "none";
+/**
+ * Determine if user is authenticated from /me response body.
+ * Tolerant of different response shapes.
+ */
+function isAuthenticated(body: any): boolean {
+  if (!body) return false;
+  if (body.authenticated === true || body.authenticated === "true") return true;
+  if (body.user != null) return true;
+  if (body.session != null) return true;
+  return false;
+}
+
+/**
+ * Determine if user is entitled from /me response body.
+ * Tolerant of different response shapes.
+ */
+function isEntitled(body: any): boolean {
+  if (!body) return false;
+  if (body.entitled === true || body.entitled === "true") return true;
+  return false;
 }
 
 /**
@@ -36,7 +54,7 @@ export function MarketplaceGate() {
     setState({ status: "loading" });
 
     try {
-      const res = await fetch("/api/v1/marketplace/me", {
+      const res = await fetch(joinApi("/api/v1/marketplace/me"), {
         method: "GET",
         credentials: "include",
         headers: { "Cache-Control": "no-cache" },
@@ -56,27 +74,27 @@ export function MarketplaceGate() {
 
       // 5xx = server error
       if (res.status >= 500) {
-        setState({ status: "error" });
+        setState({ status: "error", message: "Unable to verify access. Try again." });
         return;
       }
 
-      // Try to parse response body
-      let data: MeResponse | undefined;
-      try {
-        data = await res.json();
-      } catch {
-        setState({ status: "error" });
+      // Try to parse response body defensively
+      const data = await safeReadJson(res);
+
+      // If we couldn't parse JSON or body is null/undefined, treat as error (not unauthenticated)
+      if (!data) {
+        setState({ status: "error", message: "Unable to verify access. Try again." });
         return;
       }
 
-      // Check authentication from body
-      if (!data?.authenticated) {
+      // Check authentication from body tolerantly
+      if (!isAuthenticated(data)) {
         setState({ status: "unauthenticated" });
         return;
       }
 
-      // Check entitlement from body
-      if (!data?.entitled) {
+      // Check entitlement from body tolerantly
+      if (!isEntitled(data)) {
         setState({ status: "not_entitled" });
         return;
       }
@@ -85,7 +103,7 @@ export function MarketplaceGate() {
       setState({ status: "entitled" });
     } catch {
       // Network error
-      setState({ status: "error" });
+      setState({ status: "error", message: "Unable to verify access. Try again." });
     }
   }, []);
 
@@ -100,7 +118,7 @@ export function MarketplaceGate() {
 
   // Error state with retry
   if (state.status === "error") {
-    return <FullPageError onRetry={checkAccess} />;
+    return <FullPageError onRetry={checkAccess} message={state.message} />;
   }
 
   // Unauthenticated - show auth page with returnTo path
