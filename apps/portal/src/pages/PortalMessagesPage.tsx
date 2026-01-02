@@ -1,8 +1,10 @@
 // apps/portal/src/pages/PortalMessagesPage.tsx
 import * as React from "react";
 import { PageContainer } from "../design/PageContainer";
+import { PageScaffold } from "../design/PageScaffold";
 import { PortalHero } from "../design/PortalHero";
 import { PortalCard, CardRow } from "../design/PortalCard";
+import { Button } from "../design/Button";
 import { makeApi } from "@bhq/api";
 import type { MessageThread, Message } from "@bhq/api";
 import { isPortalMockEnabled } from "../dev/mockFlag";
@@ -68,11 +70,27 @@ function formatRelativeTime(dateStr: string): string {
 
 function formatMessageTime(dateStr: string): string {
   return new Date(dateStr).toLocaleString("en-US", {
-    month: "short",
-    day: "numeric",
     hour: "numeric",
     minute: "2-digit",
   });
+}
+
+function formatDateSeparator(dateStr: string): string {
+  const date = new Date(dateStr);
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const yesterday = new Date(today.getTime() - 24 * 60 * 60 * 1000);
+  const messageDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+
+  if (messageDate.getTime() === today.getTime()) return "Today";
+  if (messageDate.getTime() === yesterday.getTime()) return "Yesterday";
+
+  return date.toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" });
+}
+
+function getDateKey(dateStr: string): string {
+  const date = new Date(dateStr);
+  return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
 }
 
 /* ────────────────────────────────────────────────────────────────────────────
@@ -104,19 +122,20 @@ function ThreadListItem({ thread, onClick, currentPartyId }: ThreadListItemProps
   return (
     <CardRow onClick={onClick}>
       <div style={{ display: "flex", alignItems: "flex-start", gap: "var(--portal-space-3)" }}>
-        {/* Avatar */}
+        {/* Avatar - flat design */}
         <div
           style={{
-            width: "48px",
-            height: "48px",
+            width: "44px",
+            height: "44px",
             borderRadius: "50%",
-            background: "var(--portal-gradient-status-reserved)",
+            background: "var(--portal-bg-elevated)",
+            border: "1px solid var(--portal-border-subtle)",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            fontSize: "var(--portal-font-size-lg)",
-            fontWeight: "var(--portal-font-weight-bold)",
-            color: "white",
+            fontSize: "var(--portal-font-size-base)",
+            fontWeight: "var(--portal-font-weight-semibold)",
+            color: "var(--portal-text-secondary)",
             flexShrink: 0,
           }}
         >
@@ -149,7 +168,6 @@ function ThreadListItem({ thread, onClick, currentPartyId }: ThreadListItemProps
                   height: "8px",
                   borderRadius: "50%",
                   background: "var(--portal-accent)",
-                  boxShadow: "0 0 8px var(--portal-accent)",
                   flexShrink: 0,
                 }}
               />
@@ -215,64 +233,89 @@ function ThreadListItem({ thread, onClick, currentPartyId }: ThreadListItemProps
 }
 
 /* ────────────────────────────────────────────────────────────────────────────
- * Message Bubble
+ * Date Separator
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+function DateSeparator({ date }: { date: string }) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: "var(--portal-space-3)",
+        margin: "var(--portal-space-3) 0",
+      }}
+    >
+      <div style={{ flex: 1, height: "1px", background: "var(--portal-border-subtle)" }} />
+      <span
+        style={{
+          fontSize: "var(--portal-font-size-xs)",
+          color: "var(--portal-text-tertiary)",
+          textTransform: "uppercase",
+          letterSpacing: "0.05em",
+        }}
+      >
+        {formatDateSeparator(date)}
+      </span>
+      <div style={{ flex: 1, height: "1px", background: "var(--portal-border-subtle)" }} />
+    </div>
+  );
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
+ * Message Bubble - Flat design, no gradients
  * ──────────────────────────────────────────────────────────────────────────── */
 
 interface MessageBubbleProps {
   message: any;
   isOwn: boolean;
+  senderName: string;
 }
 
-function MessageBubble({ message, isOwn }: MessageBubbleProps) {
+function MessageBubble({ message, isOwn, senderName }: MessageBubbleProps) {
   const timeStr = formatMessageTime(message.sentAt || message.createdAt);
-  const senderName = message.senderName || message.senderParty?.name || "Unknown";
 
   return (
     <div
       style={{
         display: "flex",
-        justifyContent: isOwn ? "flex-end" : "flex-start",
-        marginBottom: "var(--portal-space-3)",
+        justifyContent: isOwn ? "flex-start" : "flex-end",
+        marginBottom: "var(--portal-space-2)",
       }}
     >
       <div
         style={{
-          maxWidth: "75%",
+          maxWidth: "80%",
           display: "flex",
           flexDirection: "column",
-          alignItems: isOwn ? "flex-end" : "flex-start",
-          gap: "var(--portal-space-1)",
+          alignItems: isOwn ? "flex-start" : "flex-end",
         }}
       >
         <div
           style={{
-            fontSize: "var(--portal-font-size-xs)",
-            color: "var(--portal-text-tertiary)",
-            paddingLeft: "var(--portal-space-2)",
-            paddingRight: "var(--portal-space-2)",
-          }}
-        >
-          {isOwn ? "You" : senderName} · {timeStr}
-        </div>
-        <div
-          style={{
-            padding: "var(--portal-space-3) var(--portal-space-4)",
-            borderRadius: isOwn
-              ? "var(--portal-radius-xl) var(--portal-radius-xl) var(--portal-radius-sm) var(--portal-radius-xl)"
-              : "var(--portal-radius-xl) var(--portal-radius-xl) var(--portal-radius-xl) var(--portal-radius-sm)",
+            padding: "var(--portal-space-2) var(--portal-space-3)",
+            borderRadius: "var(--portal-radius-lg)",
             fontSize: "var(--portal-font-size-sm)",
             whiteSpace: "pre-wrap",
             wordBreak: "break-word",
             lineHeight: "1.5",
-            background: isOwn
-              ? "var(--portal-gradient-status-reserved)"
-              : "var(--portal-bg-elevated)",
-            border: isOwn ? "none" : "1px solid var(--portal-border-subtle)",
-            color: isOwn ? "white" : "var(--portal-text-primary)",
-            boxShadow: isOwn ? "var(--portal-shadow-md)" : "none",
+            background: isOwn ? "var(--portal-bg-elevated)" : "var(--portal-accent-muted)",
+            border: "1px solid var(--portal-border-subtle)",
+            color: "var(--portal-text-primary)",
           }}
         >
           {message.body}
+        </div>
+        <div
+          style={{
+            fontSize: "var(--portal-font-size-xs)",
+            color: "var(--portal-text-tertiary)",
+            marginTop: "2px",
+            paddingLeft: "var(--portal-space-1)",
+            paddingRight: "var(--portal-space-1)",
+          }}
+        >
+          {isOwn ? "You" : senderName} · {timeStr}
         </div>
       </div>
     </div>
@@ -280,7 +323,7 @@ function MessageBubble({ message, isOwn }: MessageBubbleProps) {
 }
 
 /* ────────────────────────────────────────────────────────────────────────────
- * Thread Detail View
+ * Thread Detail View - Flat, structured, action-oriented
  * ──────────────────────────────────────────────────────────────────────────── */
 
 interface ThreadDetailProps {
@@ -288,13 +331,19 @@ interface ThreadDetailProps {
   currentPartyId: number | null;
   onBack: () => void;
   animalName: string;
+  species: string | null;
+  breed: string | null;
 }
 
-function ThreadDetail({ thread, currentPartyId, onBack, animalName }: ThreadDetailProps) {
+function ThreadDetail({ thread, currentPartyId, onBack, animalName, species, breed }: ThreadDetailProps) {
   const messagesEndRef = React.useRef<HTMLDivElement>(null);
+  const messagesContainerRef = React.useRef<HTMLDivElement>(null);
 
+  // Scroll to bottom on mount (show latest message)
   React.useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (messagesContainerRef.current) {
+      messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
+    }
   }, [thread.messages]);
 
   const otherParticipant = thread.participants?.find(
@@ -302,139 +351,129 @@ function ThreadDetail({ thread, currentPartyId, onBack, animalName }: ThreadDeta
   );
   const otherName = otherParticipant?.name || otherParticipant?.party?.name || "Breeder";
 
-  return (
-    <div style={{ display: "flex", flexDirection: "column", minHeight: "70vh" }}>
-      {/* Header */}
-      <div style={{ marginBottom: "var(--portal-space-4)" }}>
-        <button
-          onClick={onBack}
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: "0.5rem",
-            padding: "var(--portal-space-1) var(--portal-space-2)",
-            background: "rgba(255, 255, 255, 0.05)",
-            border: "1px solid var(--portal-border-subtle)",
-            borderRadius: "var(--portal-radius-md)",
-            color: "var(--portal-text-secondary)",
-            fontSize: "var(--portal-font-size-sm)",
-            cursor: "pointer",
-            marginBottom: "var(--portal-space-3)",
-            transition: "background-color 0.15s ease, color 0.15s ease",
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.backgroundColor = "rgba(255, 255, 255, 0.08)";
-            e.currentTarget.style.color = "var(--portal-text-primary)";
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.backgroundColor = "rgba(255, 255, 255, 0.05)";
-            e.currentTarget.style.color = "var(--portal-text-secondary)";
-          }}
-        >
-          ← Back to messages
-        </button>
+  // Build messages with date separators
+  const messagesWithSeparators: Array<{ type: "date"; date: string } | { type: "message"; msg: any; isOwn: boolean }> = [];
+  let lastDateKey: string | null = null;
 
-        <PortalCard variant="elevated">
-          <div style={{ display: "flex", alignItems: "center", gap: "var(--portal-space-3)" }}>
+  for (const msg of thread.messages) {
+    const dateKey = getDateKey(msg.sentAt || msg.createdAt);
+    if (dateKey !== lastDateKey) {
+      messagesWithSeparators.push({ type: "date", date: msg.sentAt || msg.createdAt });
+      lastDateKey = dateKey;
+    }
+    const isOwn = msg.isFromClient || msg.senderPartyId === currentPartyId || msg.fromPartyId === currentPartyId;
+    messagesWithSeparators.push({ type: "message", msg, isOwn });
+  }
+
+  // Handle contact breeder action
+  const handleContactBreeder = () => {
+    // Could open email client, navigate to contact form, etc.
+    // For now, we'll use a generic mailto if email is available
+    const breederEmail = otherParticipant?.email || otherParticipant?.party?.email;
+    if (breederEmail) {
+      window.location.href = `mailto:${breederEmail}?subject=Re: ${thread.subject || animalName}`;
+    } else {
+      // Fallback: scroll to show the thread info
+      alert(`Please contact ${otherName} to continue this conversation.`);
+    }
+  };
+
+  return (
+    <PageScaffold
+      title={thread.subject || `Conversation with ${otherName}`}
+      backLabel="Messages"
+      onBack={onBack}
+    >
+      {/* Subject Header - Species-aware context */}
+      <SubjectHeader
+        name={animalName}
+        species={species}
+        breed={breed}
+        statusLabel={`with ${otherName}`}
+        statusVariant="neutral"
+        size="compact"
+      />
+
+      {/* Messages Timeline */}
+      <PortalCard variant="flat" padding="md">
+        <div
+          ref={messagesContainerRef}
+          style={{
+            maxHeight: "50vh",
+            overflowY: "auto",
+            paddingRight: "var(--portal-space-2)",
+          }}
+          role="log"
+          aria-label="Message history"
+        >
+          {thread.messages.length === 0 ? (
             <div
               style={{
-                width: "56px",
-                height: "56px",
-                borderRadius: "50%",
-                background: "var(--portal-gradient-status-reserved)",
                 display: "flex",
+                flexDirection: "column",
                 alignItems: "center",
                 justifyContent: "center",
-                fontSize: "var(--portal-font-size-xl)",
-                fontWeight: "var(--portal-font-weight-bold)",
-                color: "white",
-                boxShadow: "0 0 20px rgba(255, 107, 53, 0.2)",
+                textAlign: "center",
+                padding: "var(--portal-space-6)",
               }}
             >
-              {otherName[0]?.toUpperCase() || "B"}
-            </div>
-            <div>
-              <h1
-                style={{
-                  fontSize: "var(--portal-font-size-xl)",
-                  fontWeight: "var(--portal-font-weight-semibold)",
-                  color: "var(--portal-text-primary)",
-                  margin: 0,
-                }}
-              >
-                {thread.subject || `Conversation with ${otherName}`}
-              </h1>
               <div
                 style={{
                   fontSize: "var(--portal-font-size-sm)",
                   color: "var(--portal-text-secondary)",
-                  marginTop: "2px",
                 }}
               >
-                {otherName} · About {animalName}
+                No messages in this conversation yet.
               </div>
             </div>
-          </div>
-        </PortalCard>
-      </div>
-
-      {/* Messages */}
-      <PortalCard variant="flat" padding="lg" style={{ flex: 1 }}>
-        {thread.messages.length === 0 ? (
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              justifyContent: "center",
-              textAlign: "center",
-              minHeight: "200px",
-              gap: "var(--portal-space-2)",
-            }}
-          >
-            <div
-              style={{
-                fontSize: "var(--portal-font-size-base)",
-                color: "var(--portal-text-secondary)",
-              }}
-            >
-              No messages yet
-            </div>
-          </div>
-        ) : (
-          <>
-            {thread.messages.map((msg: any) => (
-              <MessageBubble
-                key={msg.id}
-                message={msg}
-                isOwn={msg.isFromClient || msg.senderPartyId === currentPartyId || msg.fromPartyId === currentPartyId}
-              />
-            ))}
-            <div ref={messagesEndRef} />
-          </>
-        )}
+          ) : (
+            <>
+              {messagesWithSeparators.map((item, idx) => {
+                if (item.type === "date") {
+                  return <DateSeparator key={`date-${idx}`} date={item.date} />;
+                }
+                return (
+                  <MessageBubble
+                    key={item.msg.id}
+                    message={item.msg}
+                    isOwn={item.isOwn}
+                    senderName={otherName}
+                  />
+                );
+              })}
+              <div ref={messagesEndRef} />
+            </>
+          )}
+        </div>
       </PortalCard>
 
-      {/* Footer - Read-only notice */}
+      {/* Action Footer - Sticky */}
       <div
         style={{
           marginTop: "var(--portal-space-3)",
           padding: "var(--portal-space-3)",
-          background: "var(--portal-bg-elevated)",
+          background: "var(--portal-bg-card)",
+          border: "1px solid var(--portal-border-subtle)",
           borderRadius: "var(--portal-radius-lg)",
-          textAlign: "center",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: "var(--portal-space-3)",
         }}
       >
-        <div
+        <span
           style={{
             fontSize: "var(--portal-font-size-sm)",
             color: "var(--portal-text-secondary)",
           }}
         >
-          To reply, please contact {otherName} directly
-        </div>
+          Need to reply?
+        </span>
+        <Button variant="primary" onClick={handleContactBreeder}>
+          Contact {otherName}
+        </Button>
       </div>
-    </div>
+    </PageScaffold>
   );
 }
 
@@ -686,14 +725,14 @@ export default function PortalMessagesPage() {
     }
 
     return (
-      <PageContainer>
-        <ThreadDetail
-          thread={selectedThread}
-          currentPartyId={currentPartyId}
-          onBack={handleBack}
-          animalName={animalName}
-        />
-      </PageContainer>
+      <ThreadDetail
+        thread={selectedThread}
+        currentPartyId={currentPartyId}
+        onBack={handleBack}
+        animalName={animalName}
+        species={species}
+        breed={breed}
+      />
     );
   }
 
