@@ -118,6 +118,36 @@ export type OffspringGroupLinkSuggestion = {
   sireName: string | null;
 };
 
+/* Scheduling types for calendar integration */
+export type SchedulingAvailabilityBlock = {
+  id: number;
+  templateId: number | null;
+  templateName: string | null;
+  eventType: string | null;
+  startAt: string;
+  endAt: string;
+  timezone: string;
+  status: string;
+  location: string | null;
+  slotCount: number;
+  bookedSlotCount: number;
+};
+
+export type SchedulingBooking = {
+  id: number;
+  eventId: string;
+  eventType: string | null;
+  partyId: number;
+  partyName: string;
+  slotId: number;
+  startsAt: string;
+  endsAt: string;
+  location: string | null;
+  mode: "in_person" | "virtual" | null;
+  status: string;
+  bookedAt: string;
+};
+
 /** Response for plan commit that ensures a group */
 export type CommitPlanEnsureResp = {
   planId: number;
@@ -492,6 +522,26 @@ export function makeBreedingApi(opts: ApiOpts) {
         delete(id: number) {
           return del<any>(`/expenses/${id}`).then(() => ({ success: true }));
         },
+      },
+    },
+
+    /* Scheduling namespace for calendar integration */
+    scheduling: {
+      listBlocks(params?: { from?: string; to?: string }) {
+        const qs = new URLSearchParams();
+        if (params?.from) qs.set("from", params.from);
+        if (params?.to) qs.set("to", params.to);
+        const query = qs.toString();
+        const path = `/scheduling/blocks${query ? `?${query}` : ""}`;
+        return get<{ blocks: SchedulingAvailabilityBlock[] }>(path).then(res => res.blocks || []);
+      },
+      listBookings(params?: { from?: string; to?: string }) {
+        const qs = new URLSearchParams();
+        if (params?.from) qs.set("from", params.from);
+        if (params?.to) qs.set("to", params.to);
+        const query = qs.toString();
+        const path = `/scheduling/bookings${query ? `?${query}` : ""}`;
+        return get<{ bookings: SchedulingBooking[] }>(path).then(res => res.bookings || []);
       },
     },
   };
