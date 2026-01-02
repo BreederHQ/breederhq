@@ -251,8 +251,8 @@ export function PlannerV2DevPreview() {
         </div>
       </div>
 
-      {/* Tab navigation - styled like app navigation tabs */}
-      <div className="border-b border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800">
+      {/* Tab navigation - dark theme consistent */}
+      <div className="border-b border-neutral-700 bg-neutral-800">
         <div className="max-w-7xl mx-auto px-4">
           <nav className="flex gap-1" aria-label="Planner tabs">
             {TABS.map((tab) => {
@@ -264,8 +264,8 @@ export function PlannerV2DevPreview() {
                   className={[
                     "relative px-4 py-3 text-sm font-medium transition-colors",
                     isActive
-                      ? "text-primary"
-                      : "text-secondary hover:text-primary",
+                      ? "text-neutral-100"
+                      : "text-neutral-400 hover:text-neutral-200",
                   ].join(" ")}
                 >
                   {tab.label}

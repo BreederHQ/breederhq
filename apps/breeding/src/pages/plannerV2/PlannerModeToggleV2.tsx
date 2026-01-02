@@ -19,7 +19,7 @@ export default function PlannerModeToggleV2({ mode, onChange, className = "" }: 
 
   return (
     <div
-      className={`inline-flex items-center gap-1 rounded-lg bg-black/10 p-1 ${className}`}
+      className={`inline-flex items-center gap-0.5 rounded-lg bg-neutral-800 p-1 ${className}`}
       role="tablist"
       aria-label="Planner view mode"
     >
@@ -35,8 +35,8 @@ export default function PlannerModeToggleV2({ mode, onChange, className = "" }: 
             className={[
               "px-3 py-1.5 text-sm font-medium rounded-md transition-all",
               isActive
-                ? "bg-white dark:bg-neutral-800 text-primary shadow-sm"
-                : "text-secondary hover:text-primary hover:bg-white/50 dark:hover:bg-neutral-700/50",
+                ? "bg-neutral-700 text-neutral-100 shadow-sm border-b-2 border-[hsl(var(--brand-orange,24_94%_50%))]"
+                : "text-neutral-400 hover:text-neutral-200 hover:bg-neutral-700/50",
             ].join(" ")}
           >
             {tab.label}
