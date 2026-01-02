@@ -6,6 +6,7 @@ import { Footer } from "../design/Footer";
 import { usePortalContext } from "../hooks/usePortalContext";
 import { usePortalTasks } from "../tasks/taskSources";
 import { usePortalNotifications } from "../notifications/notificationSources";
+import { BuildStamp } from "../dev/BuildStamp.tsx";
 
 interface PortalLayoutProps {
   children: React.ReactNode;
@@ -94,6 +95,7 @@ export function PortalLayout({ children, currentPath }: PortalLayoutProps) {
       </HeaderBar>
       <main style={{ flex: 1 }}>{children}</main>
       <Footer />
+      <BuildStamp />
     </div>
   );
 }
