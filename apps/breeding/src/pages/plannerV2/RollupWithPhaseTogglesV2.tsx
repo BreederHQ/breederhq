@@ -186,6 +186,7 @@ export default function RollupWithPhaseTogglesV2({
   return (
     <div className={className}>
       {/* Rollup Chart - now first */}
+      {/* No legacy single-column plan list; only Phase Visibility + Individual Plans below. */}
       <RollupGantt
         items={chartItems}
         prefsOverride={prefsOverride}
@@ -203,6 +204,7 @@ export default function RollupWithPhaseTogglesV2({
           setSelectedKeys(filtered);
         }}
         className="w-full"
+        hideSelection
       />
 
       {/* Phase Visibility - now below chart */}

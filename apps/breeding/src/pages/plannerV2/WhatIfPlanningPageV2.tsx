@@ -244,7 +244,7 @@ function WhatIfRowEditor({ row, females, onUpdate, onRemove }: WhatIfRowEditorPr
   };
 
   return (
-    <div className="p-3 bg-neutral-900 rounded-md border border-neutral-700">
+    <div className="p-3 bg-neutral-800/50 dark:bg-neutral-800/50 rounded-md border border-neutral-700/50">
       <div className="flex items-center gap-4 text-sm">
         {/* Female select */}
         <div className="flex-1">
@@ -252,7 +252,7 @@ function WhatIfRowEditor({ row, females, onUpdate, onRemove }: WhatIfRowEditorPr
           <select
             value={row.damId ? String(row.damId) : ""}
             onChange={handleFemaleChange}
-            className="w-full h-8 bg-neutral-800 rounded px-2 text-sm border border-neutral-600 focus:ring-2 focus:ring-orange-500/50 focus:border-orange-500/50"
+            className="w-full h-8 bg-neutral-900 dark:bg-neutral-900 text-neutral-100 rounded px-2 text-sm border border-neutral-600 focus:ring-2 focus:ring-orange-500/50 focus:border-orange-500/50 focus:outline-none"
           >
             <option value="">Select a female...</option>
             {females.map(female => (
@@ -270,7 +270,7 @@ function WhatIfRowEditor({ row, females, onUpdate, onRemove }: WhatIfRowEditorPr
             type="date"
             value={row.cycleStartIso ?? ""}
             onChange={(e) => onUpdate({ cycleStartIso: e.target.value || null })}
-            className="w-full h-8 bg-neutral-800 rounded px-2 text-sm border border-neutral-600 focus:ring-2 focus:ring-orange-500/50 focus:border-orange-500/50"
+            className="w-full h-8 bg-neutral-900 dark:bg-neutral-900 text-neutral-100 rounded px-2 text-sm border border-neutral-600 focus:ring-2 focus:ring-orange-500/50 focus:border-orange-500/50 focus:outline-none [color-scheme:dark]"
           />
         </div>
 
@@ -281,7 +281,7 @@ function WhatIfRowEditor({ row, females, onUpdate, onRemove }: WhatIfRowEditorPr
               type="checkbox"
               checked={row.showOnChart}
               onChange={(e) => onUpdate({ showOnChart: e.target.checked })}
-              className="rounded"
+              className="rounded border-neutral-600 bg-neutral-900 text-orange-500 focus:ring-orange-500/50"
             />
             <span className="text-secondary">Show</span>
           </label>
@@ -289,7 +289,7 @@ function WhatIfRowEditor({ row, females, onUpdate, onRemove }: WhatIfRowEditorPr
           {/* Remove button */}
           <button
             onClick={onRemove}
-            className="h-8 px-2 text-xs font-medium text-red-600 hover:bg-red-900/20 rounded transition-colors"
+            className="h-8 px-2 text-xs font-medium text-red-500 hover:bg-red-900/20 rounded transition-colors"
             title="Remove this What If"
           >
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
