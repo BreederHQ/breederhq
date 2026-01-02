@@ -1,7 +1,17 @@
 // apps/waitlist/src/App-Waitlist.tsx
 // Standalone Waitlist module with Approved/Pending tabs
 import * as React from "react";
-import { PageHeader } from "@bhq/ui";
+import {
+  PageHeader,
+  Card,
+  Table,
+  TableHeader,
+  TableRow,
+  TableCell,
+  ColumnsPopover,
+  hooks,
+  SearchBar,
+} from "@bhq/ui";
 import { ToastViewport } from "@bhq/ui/atoms/Toast";
 import { OverlayMount } from "@bhq/ui/overlay/OverlayMount";
 import "@bhq/ui/bhq.css";
@@ -10,7 +20,7 @@ import "@bhq/ui/styles/details.css";
 import { readTenantIdFast, resolveTenantId } from "@bhq/ui/utils/tenant";
 import { makeWaitlistApiClient, WaitlistApi } from "./api";
 
-// Import the WaitlistTab component (which is the core content)
+// Import the WaitlistTab component (which is the core content for Approved)
 import WaitlistTab from "./pages/WaitlistTab";
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -114,7 +124,8 @@ export default function AppWaitlist() {
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
- * Pending Waitlist Tab (placeholder - identical structure, different data source)
+ * Pending Waitlist Tab
+ * Shows informational card at top, then the same table UI as Approved (empty)
  * TODO: wire pending waitlist sources (marketplace inquiries, portal actions, etc.)
  * ───────────────────────────────────────────────────────────────────────────── */
 function PendingWaitlistTab({
@@ -126,36 +137,136 @@ function PendingWaitlistTab({
   tenantId: number | null;
   readOnlyGlobal: boolean;
 }) {
-  // TODO: wire pending waitlist sources (marketplace inquiries, portal actions, etc.)
-  // For now, render the same WaitlistTab structure but with empty data placeholder
-  // Actions that would mutate Approved data are disabled in Pending view
+  return (
+    <div className="space-y-4">
+      {/* Informational card - kept exactly as before */}
+      <div className="rounded-lg border border-hairline bg-surface p-6 text-center">
+        <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-neutral-100 dark:bg-neutral-800 mb-3">
+          <svg
+            className="w-6 h-6 text-neutral-400"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={1.5}
+              d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+            />
+          </svg>
+        </div>
+        <h3 className="text-sm font-medium text-primary mb-1">Pending Waitlist</h3>
+        <p className="text-sm text-secondary max-w-sm mx-auto">
+          Marketplace inquiries and portal requests will appear here for your review before being added to the approved waitlist.
+        </p>
+      </div>
+
+      {/* Same table surface as Approved - renders with empty data */}
+      <PendingWaitlistTable />
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * Pending Waitlist Table - Empty table with same structure as Approved
+ * Uses same column config and rendering as WaitlistTab but with static empty data
+ * ───────────────────────────────────────────────────────────────────────────── */
+const WAITLIST_COLS: Array<{ key: string; label: string; default?: boolean }> = [
+  { key: "contactLabel", label: "Contact", default: true },
+  { key: "orgLabel", label: "Org", default: true },
+  { key: "speciesPref", label: "Species", default: true },
+  { key: "breedPrefText", label: "Breeds", default: true },
+  { key: "damPrefName", label: "Dam", default: true },
+  { key: "sirePrefName", label: "Sire", default: true },
+  { key: "depositPaidAt", label: "Deposit Paid On", default: true },
+  { key: "status", label: "Status", default: false },
+  { key: "priority", label: "Priority", default: false },
+  { key: "skipCount", label: "Skips", default: false },
+  { key: "lastActivityAt", label: "Activity", default: false },
+];
+
+const PENDING_WAITLIST_STORAGE_KEY = "bhq_pending_waitlist_cols_v1";
+
+function PendingWaitlistTable() {
+  const [q, setQ] = React.useState("");
+  const [sorts, setSorts] = React.useState<Array<{ key: string; dir: "asc" | "desc" }>>([]);
+
+  const onToggleSort = (key: string) => {
+    setSorts((prev) => {
+      const f = prev.find((s) => s.key === key);
+      if (!f) return [{ key, dir: "asc" }];
+      if (f.dir === "asc") return prev.map((s) => (s.key === key ? { ...s, dir: "desc" } : s));
+      return prev.filter((s) => s.key !== key);
+    });
+  };
+
+  const cols = hooks.useColumns(WAITLIST_COLS, PENDING_WAITLIST_STORAGE_KEY);
+  const visibleSafe = cols.visible?.length ? cols.visible : WAITLIST_COLS;
+
+  // Empty data - will be wired to pending sources later
+  const rows: any[] = [];
+  const loading = false;
+  const error: string | null = null;
 
   return (
-    <div className="rounded-lg border border-hairline bg-surface p-8 text-center">
-      <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-neutral-100 dark:bg-neutral-800 mb-4">
-        <svg
-          className="w-6 h-6 text-neutral-400"
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
+    <Card>
+      <div className="relative">
+        <div className="absolute right-0 top-0 h-10 flex items-center gap-2 pr-2" style={{ zIndex: 50, pointerEvents: "auto" }}>
+          <span className="text-xs text-secondary">Pending review</span>
+        </div>
+
+        <Table
+          columns={WAITLIST_COLS}
+          columnState={cols.map}
+          onColumnStateChange={cols.setAll}
+          getRowId={(r: any) => r.id}
+          pageSize={25}
+          renderStickyRight={() => (
+            <ColumnsPopover
+              columns={cols.map}
+              onToggle={cols.toggle}
+              onSet={cols.setAll}
+              allColumns={WAITLIST_COLS}
+              triggerClassName="bhq-columns-trigger"
+            />
+          )}
+          stickyRightWidthPx={40}
         >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={1.5}
-            d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
-          />
-        </svg>
+          <div className="bhq-table__toolbar px-2 pt-2 pb-3 relative z-30 flex items-center justify-between">
+            <SearchBar value={q} onChange={(v) => setQ(v)} placeholder="Search pending..." widthPx={520} />
+            <div />
+          </div>
+
+          <table className="min-w-max w-full text-sm">
+            <TableHeader columns={visibleSafe} sorts={sorts} onToggleSort={onToggleSort} />
+            <tbody>
+              {loading && (
+                <TableRow>
+                  <TableCell colSpan={visibleSafe.length}>
+                    <div className="py-8 text-center text-sm text-secondary">Loading...</div>
+                  </TableCell>
+                </TableRow>
+              )}
+              {!loading && error && (
+                <TableRow>
+                  <TableCell colSpan={visibleSafe.length}>
+                    <div className="py-8 text-center text-sm text-red-600">Error: {error}</div>
+                  </TableCell>
+                </TableRow>
+              )}
+              {!loading && !error && rows.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={visibleSafe.length}>
+                    <div className="py-8 text-center text-sm text-secondary">No pending entries.</div>
+                  </TableCell>
+                </TableRow>
+              )}
+            </tbody>
+          </table>
+        </Table>
       </div>
-      <h3 className="text-sm font-medium text-primary mb-1">Pending Waitlist</h3>
-      <p className="text-sm text-secondary max-w-sm mx-auto mb-4">
-        Marketplace inquiries and portal requests will appear here for your review before being added to the approved waitlist.
-      </p>
-      <p className="text-xs text-secondary/70">
-        {/* TODO: wire pending waitlist sources (marketplace inquiries, portal actions, etc.) */}
-        Coming soon - this view will show entries awaiting breeder approval.
-      </p>
-    </div>
+    </Card>
   );
 }
 
