@@ -1,8 +1,9 @@
 // apps/portal/src/pages/PortalOffspringPageNew.tsx
 import * as React from "react";
-import { PageContainer } from "../design/PageContainer";
+import { PageScaffold } from "../design/PageScaffold";
 import { EmptyStatePanel } from "../design/EmptyStatePanel";
-import { SectionCard } from "../design/SectionCard";
+import { getSpeciesAccent } from "../ui/speciesTokens";
+import { StatusBadge, type StatusVariant } from "../components/SubjectHeader";
 
 // Format date
 function formatDate(dateStr: string): string {
@@ -13,31 +14,18 @@ function formatDate(dateStr: string): string {
   });
 }
 
-// Status badge component
-function StatusBadge({ status }: { status: string }) {
-  const colors: Record<string, { bg: string; text: string }> = {
-    reserved: { bg: "rgba(211, 134, 91, 0.15)", text: "rgb(211, 134, 91)" },
-    placed: { bg: "rgba(129, 179, 96, 0.15)", text: "rgb(129, 179, 96)" },
-    available: { bg: "rgba(163, 163, 163, 0.15)", text: "rgb(163, 163, 163)" },
-  };
-
-  const color = colors[status] || colors.available;
-
-  return (
-    <span
-      style={{
-        padding: "2px 8px",
-        borderRadius: "var(--portal-radius-full)",
-        fontSize: "var(--portal-font-size-xs)",
-        fontWeight: "var(--portal-font-weight-medium)",
-        background: color.bg,
-        color: color.text,
-        textTransform: "capitalize",
-      }}
-    >
-      {status}
-    </span>
-  );
+// Map placement status to StatusVariant
+function getStatusVariant(status: string): StatusVariant {
+  switch (status) {
+    case "reserved":
+      return "action";
+    case "placed":
+      return "success";
+    case "pending":
+      return "warning";
+    default:
+      return "neutral";
+  }
 }
 
 export default function PortalOffspringPageNew() {
@@ -67,17 +55,7 @@ export default function PortalOffspringPageNew() {
 
   if (loading) {
     return (
-      <PageContainer>
-        <h1
-          style={{
-            fontSize: "var(--portal-font-size-xl)",
-            fontWeight: "var(--portal-font-weight-semibold)",
-            color: "var(--portal-text-primary)",
-            marginBottom: "var(--portal-space-4)",
-          }}
-        >
-          Offspring
-        </h1>
+      <PageScaffold title="Offspring">
         <div style={{ display: "flex", flexDirection: "column", gap: "var(--portal-space-3)" }}>
           {[1, 2, 3].map((i) => (
             <div
@@ -90,95 +68,99 @@ export default function PortalOffspringPageNew() {
             />
           ))}
         </div>
-      </PageContainer>
+      </PageScaffold>
     );
   }
 
   if (offspring.length === 0) {
     return (
-      <PageContainer>
-        <h1
-          style={{
-            fontSize: "var(--portal-font-size-xl)",
-            fontWeight: "var(--portal-font-weight-semibold)",
-            color: "var(--portal-text-primary)",
-            marginBottom: "var(--portal-space-4)",
-          }}
-        >
-          Offspring
-        </h1>
+      <PageScaffold title="Offspring">
         <EmptyStatePanel title="No offspring" description="Offspring records will appear here." />
-      </PageContainer>
+      </PageScaffold>
     );
   }
 
   return (
-    <PageContainer>
-      <h1
-        style={{
-          fontSize: "var(--portal-font-size-xl)",
-          fontWeight: "var(--portal-font-weight-semibold)",
-          color: "var(--portal-text-primary)",
-          marginBottom: "var(--portal-space-4)",
-        }}
-      >
-        Offspring
-      </h1>
-
+    <PageScaffold title="Offspring" subtitle={`${offspring.length} record${offspring.length !== 1 ? "s" : ""}`}>
       <div style={{ display: "flex", flexDirection: "column", gap: "var(--portal-space-3)" }}>
-        {offspring.map((item) => (
-          <a
-            key={item.id}
-            href={`/offspring/${item.offspring?.id || item.id}`}
-            onClick={(e) => {
-              e.preventDefault();
-              window.history.pushState({}, "", `/offspring/${item.offspring?.id || item.id}`);
-              window.dispatchEvent(new PopStateEvent("popstate"));
-            }}
-            style={{
-              textDecoration: "none",
-              display: "block",
-            }}
-          >
-            <SectionCard>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "var(--portal-space-3)" }}>
-                <div style={{ flex: 1 }}>
-                  <div
-                    style={{
-                      fontSize: "var(--portal-font-size-base)",
-                      fontWeight: "var(--portal-font-weight-semibold)",
-                      color: "var(--portal-text-primary)",
-                      marginBottom: "var(--portal-space-1)",
-                    }}
-                  >
-                    {item.offspring?.name || "Unnamed"} ({item.offspring?.sex || "Unknown"})
+        {offspring.map((item) => {
+          const accent = getSpeciesAccent(item.species);
+          const statusVariant = getStatusVariant(item.placementStatus);
+
+          return (
+            <a
+              key={item.id}
+              href={`/offspring/${item.offspring?.id || item.id}`}
+              onClick={(e) => {
+                e.preventDefault();
+                window.history.pushState({}, "", `/offspring/${item.offspring?.id || item.id}`);
+                window.dispatchEvent(new PopStateEvent("popstate"));
+              }}
+              style={{
+                textDecoration: "none",
+                display: "block",
+              }}
+            >
+              <div
+                style={{
+                  background: "var(--portal-bg-card)",
+                  border: "1px solid var(--portal-border-subtle)",
+                  borderLeft: `3px solid ${accent}`,
+                  borderRadius: "var(--portal-radius-lg)",
+                  padding: "var(--portal-space-3)",
+                  transition: "border-color var(--portal-transition)",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.borderColor = "var(--portal-border)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.borderColor = "var(--portal-border-subtle)";
+                  e.currentTarget.style.borderLeftColor = accent;
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "var(--portal-space-3)" }}>
+                  <div style={{ flex: 1 }}>
+                    <div
+                      style={{
+                        fontSize: "var(--portal-font-size-base)",
+                        fontWeight: "var(--portal-font-weight-semibold)",
+                        color: "var(--portal-text-primary)",
+                        marginBottom: "2px",
+                      }}
+                    >
+                      {item.offspring?.name || "Unnamed"} ({item.offspring?.sex || "Unknown"})
+                    </div>
+                    <div
+                      style={{
+                        fontSize: "var(--portal-font-size-xs)",
+                        color: "var(--portal-text-tertiary)",
+                        marginBottom: "var(--portal-space-2)",
+                      }}
+                    >
+                      {item.species ? `${item.species} · ` : ""}{item.breed} · {item.offspringGroupLabel}
+                    </div>
+                    <div
+                      style={{
+                        fontSize: "var(--portal-font-size-xs)",
+                        color: "var(--portal-text-tertiary)",
+                      }}
+                    >
+                      Born {formatDate(item.birthDate)}
+                      {item.dam && ` · Dam: ${item.dam.name}`}
+                      {item.sire && ` · Sire: ${item.sire.name}`}
+                    </div>
                   </div>
-                  <div
-                    style={{
-                      fontSize: "var(--portal-font-size-sm)",
-                      color: "var(--portal-text-secondary)",
-                      marginBottom: "var(--portal-space-1)",
-                    }}
-                  >
-                    {item.breed} • {item.offspringGroupLabel}
-                  </div>
-                  <div
-                    style={{
-                      fontSize: "var(--portal-font-size-xs)",
-                      color: "var(--portal-text-tertiary)",
-                    }}
-                  >
-                    Born {formatDate(item.birthDate)}
-                    {item.dam && ` • Dam: ${item.dam.name}`}
-                    {item.sire && ` • Sire: ${item.sire.name}`}
-                  </div>
+                  <StatusBadge
+                    label={item.placementStatus}
+                    variant={statusVariant}
+                    speciesAccent={accent}
+                  />
                 </div>
-                <StatusBadge status={item.placementStatus} />
               </div>
-            </SectionCard>
-          </a>
-        ))}
+            </a>
+          );
+        })}
       </div>
-    </PageContainer>
+    </PageScaffold>
   );
 }

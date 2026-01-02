@@ -8,27 +8,8 @@ import { usePortalTasks } from "../tasks/taskSources";
 import { usePortalNotifications } from "../notifications/notificationSources";
 import { isPortalMockEnabled } from "../dev/mockFlag";
 import { mockOffspring, mockFinancialSummary, mockAgreements } from "../dev/mockData";
-
-/* ────────────────────────────────────────────────────────────────────────────
- * Species Token Map
- * Minimal accent styling per species - applied only to left border and status dot
- * ──────────────────────────────────────────────────────────────────────────── */
-
-type Species = "Dog" | "Cat" | "Bird" | "Rabbit" | "Horse" | "unknown";
-
-const speciesAccents: Record<Species, string> = {
-  Dog: "#ff6b35", // warm orange (portal accent)
-  Cat: "#a78bfa", // soft purple
-  Bird: "#38bdf8", // sky blue
-  Rabbit: "#f472b6", // pink
-  Horse: "#fbbf24", // amber
-  unknown: "#6b7280", // neutral gray
-};
-
-function getSpeciesAccent(species: string | undefined | null): string {
-  if (!species) return speciesAccents.unknown;
-  return speciesAccents[species as Species] || speciesAccents.unknown;
-}
+import { getSpeciesAccent } from "../ui/speciesTokens";
+import { SubjectHeader, StatusBadge, type StatusVariant } from "../components/SubjectHeader";
 
 /* ────────────────────────────────────────────────────────────────────────────
  * Utilities
@@ -65,58 +46,6 @@ function getStatusLabel(status: string): { label: string; variant: "action" | "s
     default:
       return { label: status, variant: "neutral" };
   }
-}
-
-/* ────────────────────────────────────────────────────────────────────────────
- * Status Badge (flat, subtle) with species dot
- * ──────────────────────────────────────────────────────────────────────────── */
-
-interface StatusBadgeProps {
-  label: string;
-  variant: "action" | "success" | "warning" | "error" | "neutral";
-  speciesAccent?: string;
-}
-
-function StatusBadge({ label, variant, speciesAccent }: StatusBadgeProps) {
-  const colors = {
-    action: { bg: "var(--portal-accent-muted)", color: "var(--portal-accent)" },
-    success: { bg: "var(--portal-success-soft)", color: "var(--portal-success)" },
-    warning: { bg: "var(--portal-warning-soft)", color: "var(--portal-warning)" },
-    error: { bg: "var(--portal-error-soft)", color: "var(--portal-error)" },
-    neutral: { bg: "var(--portal-bg-elevated)", color: "var(--portal-text-secondary)" },
-  };
-  const c = colors[variant] || colors.neutral;
-
-  return (
-    <span
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        gap: "6px",
-        padding: "2px 8px",
-        background: c.bg,
-        borderRadius: "var(--portal-radius-full)",
-        fontSize: "var(--portal-font-size-xs)",
-        fontWeight: "var(--portal-font-weight-semibold)",
-        color: c.color,
-        textTransform: "uppercase",
-        letterSpacing: "0.02em",
-      }}
-    >
-      {speciesAccent && (
-        <span
-          style={{
-            width: "6px",
-            height: "6px",
-            borderRadius: "50%",
-            background: speciesAccent,
-            flexShrink: 0,
-          }}
-        />
-      )}
-      {label}
-    </span>
-  );
 }
 
 /* ────────────────────────────────────────────────────────────────────────────
@@ -192,7 +121,7 @@ function ContextStrip({
               {speciesLine}
             </div>
           )}
-          <StatusBadge label={statusInfo.label} variant={statusInfo.variant} speciesAccent={accent} />
+          <StatusBadge label={statusInfo.label} variant={statusInfo.variant as StatusVariant} speciesAccent={accent} />
         </div>
 
         {/* Center: Next action */}

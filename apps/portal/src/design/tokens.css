@@ -53,6 +53,14 @@
   --portal-info: #3b82f6;
   --portal-info-soft: rgba(59, 130, 246, 0.12);
 
+  /* Species accent colors - minimal highlight for species awareness */
+  --portal-species-dog: #ff6b35;      /* warm orange (matches portal accent) */
+  --portal-species-cat: #a78bfa;      /* soft purple */
+  --portal-species-bird: #38bdf8;     /* sky blue */
+  --portal-species-rabbit: #f472b6;   /* pink */
+  --portal-species-horse: #fbbf24;    /* amber */
+  --portal-species-unknown: #6b7280;  /* neutral gray */
+
   /* Typography */
   --portal-font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   --portal-font-size-xs: 0.75rem;     /* 12px */
