@@ -1,5 +1,6 @@
 // apps/marketplace/src/gate/MarketplaceGate.tsx
 import * as React from "react";
+import { useLocation } from "react-router-dom";
 import { FullPageSkeleton } from "../shared/ui/FullPageSkeleton";
 import { FullPageError } from "../shared/ui/FullPageError";
 import { MarketplaceAuthPage } from "../shells/standalone/MarketplaceAuthPage";
@@ -25,7 +26,11 @@ interface MeResponse {
  * Checks /api/v1/marketplace/me and renders appropriate state.
  */
 export function MarketplaceGate() {
+  const location = useLocation();
   const [state, setState] = React.useState<GateState>({ status: "loading" });
+
+  // Compute the path the user was trying to access (for returnTo)
+  const attemptedPath = location.pathname + location.search + location.hash;
 
   const checkAccess = React.useCallback(async () => {
     setState({ status: "loading" });
@@ -98,9 +103,9 @@ export function MarketplaceGate() {
     return <FullPageError onRetry={checkAccess} />;
   }
 
-  // Unauthenticated - show auth page
+  // Unauthenticated - show auth page with returnTo path
   if (state.status === "unauthenticated") {
-    return <MarketplaceAuthPage />;
+    return <MarketplaceAuthPage returnToPath={attemptedPath} />;
   }
 
   // Authenticated but not entitled
