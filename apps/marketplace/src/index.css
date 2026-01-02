@@ -1,6 +1,6 @@
-/* apps/marketplace/src/index.css - RESET: minimal CSS */
+/* apps/marketplace/src/index.css */
 
-/* Tailwind directives only */
+/* Tailwind v3 directives */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -8,7 +8,7 @@
 /* Basic dark background for body */
 html, body {
   min-height: 100%;
-  background-color: #111;
+  background-color: #0a0a0f;
   color: #fff;
 }
 
