@@ -4,8 +4,6 @@ import { useLocation } from "react-router-dom";
 import { apiGet } from "../shared/http/apiClient";
 import { ApiError } from "../shared/http/ApiError";
 import { getUserFacingMessage } from "../shared/errors/userMessages";
-import { FullPageSkeleton } from "../shared/ui/FullPageSkeleton";
-import { FullPageError } from "../shared/ui/FullPageError";
 import { MarketplaceAuthPage } from "../shells/standalone/MarketplaceAuthPage";
 import { StandaloneShell } from "../shells/standalone/StandaloneShell";
 import { AccessNotAvailable } from "./AccessNotAvailable";
@@ -32,6 +30,40 @@ interface MarketplaceMeResponse {
   entitlements?: Array<{ key: string; status: string; grantedAt: string }>;
   error?: string;
   message?: string;
+}
+
+/**
+ * Full page loading skeleton.
+ */
+function GateLoadingSkeleton() {
+  return (
+    <div className="min-h-screen bg-gradient-to-b from-gray-900 to-black flex items-center justify-center">
+      <div className="space-y-4 w-full max-w-md px-4">
+        <div className="h-8 bg-white/10 rounded animate-pulse w-1/2 mx-auto" />
+        <div className="h-4 bg-white/10 rounded animate-pulse w-3/4 mx-auto" />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Full page error with retry.
+ */
+function GateError({ message, onRetry }: { message: string; onRetry: () => void }) {
+  return (
+    <div className="min-h-screen bg-gradient-to-b from-gray-900 to-black flex items-center justify-center">
+      <div className="text-center px-4">
+        <p className="text-white/70 mb-4">{message}</p>
+        <button
+          type="button"
+          onClick={onRetry}
+          className="px-4 py-2 rounded-lg bg-white/10 border border-white/10 text-sm font-medium text-white hover:bg-white/15 transition-colors"
+        >
+          Try again
+        </button>
+      </div>
+    </div>
+  );
 }
 
 /**
@@ -119,12 +151,12 @@ export function MarketplaceGate() {
 
   // Loading state
   if (state.status === "loading") {
-    return <FullPageSkeleton />;
+    return <GateLoadingSkeleton />;
   }
 
   // Error state with retry
   if (state.status === "error") {
-    return <FullPageError onRetry={handleRetry} message={state.message} />;
+    return <GateError message={state.message} onRetry={handleRetry} />;
   }
 
   // Unauthenticated - show auth page with returnTo path

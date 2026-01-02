@@ -23,16 +23,225 @@ function getApiBase(): string {
 const api = makeApi(getApiBase());
 
 /* ────────────────────────────────────────────────────────────────────────────
- * Offspring Row Component
+ * Status Badge Component
  * ──────────────────────────────────────────────────────────────────────────── */
 
-interface OffspringRowProps {
+interface StatusBadgeProps {
+  status: "reserved" | "placed" | "pending";
+  size?: "sm" | "md";
+}
+
+function StatusBadge({ status, size = "md" }: StatusBadgeProps) {
+  const config = {
+    reserved: {
+      label: "Reserved",
+      bg: "var(--portal-accent-muted)",
+      color: "var(--portal-accent)",
+      dot: "var(--portal-accent)",
+    },
+    placed: {
+      label: "Home",
+      bg: "var(--portal-success-soft)",
+      color: "var(--portal-success)",
+      dot: "var(--portal-success)",
+    },
+    pending: {
+      label: "Pending",
+      bg: "var(--portal-warning-soft)",
+      color: "var(--portal-warning)",
+      dot: "var(--portal-warning)",
+    },
+  }[status];
+
+  const isSmall = size === "sm";
+
+  return (
+    <div
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: isSmall ? "0.375rem" : "0.5rem",
+        padding: isSmall ? "0.25rem 0.625rem" : "0.375rem 0.875rem",
+        background: config.bg,
+        borderRadius: "var(--portal-radius-full)",
+      }}
+    >
+      <div
+        style={{
+          width: isSmall ? "6px" : "8px",
+          height: isSmall ? "6px" : "8px",
+          borderRadius: "50%",
+          background: config.dot,
+          boxShadow: `0 0 6px ${config.dot}`,
+        }}
+      />
+      <span
+        style={{
+          fontSize: isSmall ? "var(--portal-font-size-xs)" : "var(--portal-font-size-sm)",
+          fontWeight: "var(--portal-font-weight-semibold)",
+          color: config.color,
+          textTransform: "uppercase",
+          letterSpacing: "var(--portal-letter-spacing-wide)",
+        }}
+      >
+        {config.label}
+      </span>
+    </div>
+  );
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
+ * Featured Offspring Card - Hero treatment for primary placement
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+interface FeaturedOffspringCardProps {
   placement: OffspringPlacementDTO;
   onClick: () => void;
 }
 
-function OffspringRow({ placement, onClick }: OffspringRowProps) {
-  const offspringName = placement.offspring?.name || "Pending assignment";
+function FeaturedOffspringCard({ placement, onClick }: FeaturedOffspringCardProps) {
+  const name = placement.offspring?.name || "Your puppy";
+  const sex = placement.offspring?.sex || "—";
+  const breed = placement.breed || "—";
+  const birthDate = placement.birthDate
+    ? new Date(placement.birthDate).toLocaleDateString("en-US", {
+        month: "long",
+        day: "numeric",
+        year: "numeric",
+      })
+    : null;
+
+  // Parent context
+  let parentContext = "";
+  if (placement.dam && placement.sire) {
+    parentContext = `${placement.dam.name} × ${placement.sire.name}`;
+  } else if (placement.dam) {
+    parentContext = `Dam: ${placement.dam.name}`;
+  } else if (placement.sire) {
+    parentContext = `Sire: ${placement.sire.name}`;
+  }
+
+  const status = (placement as any).placementStatus || "reserved";
+
+  return (
+    <div
+      onClick={onClick}
+      style={{
+        background: "var(--portal-gradient-hero), var(--portal-bg-card)",
+        border: "1px solid var(--portal-border-glow)",
+        borderRadius: "var(--portal-radius-2xl)",
+        boxShadow: "var(--portal-shadow-hero)",
+        padding: "var(--portal-space-6)",
+        cursor: "pointer",
+        transition: "transform var(--portal-transition), box-shadow var(--portal-transition)",
+        position: "relative",
+        overflow: "hidden",
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.transform = "translateY(-4px)";
+        e.currentTarget.style.boxShadow = "0 12px 48px rgba(0, 0, 0, 0.6), 0 0 80px rgba(255, 107, 53, 0.15)";
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.transform = "translateY(0)";
+        e.currentTarget.style.boxShadow = "var(--portal-shadow-hero)";
+      }}
+    >
+      {/* Decorative gradient orb */}
+      <div
+        style={{
+          position: "absolute",
+          top: "-40%",
+          right: "-15%",
+          width: "350px",
+          height: "350px",
+          background: "radial-gradient(circle, rgba(255, 107, 53, 0.1) 0%, transparent 70%)",
+          pointerEvents: "none",
+        }}
+      />
+
+      <div style={{ position: "relative", zIndex: 1 }}>
+        {/* Status badge */}
+        <div style={{ marginBottom: "var(--portal-space-3)" }}>
+          <StatusBadge status={status} />
+        </div>
+
+        {/* Name - hero size */}
+        <h2
+          style={{
+            fontSize: "var(--portal-font-size-3xl)",
+            fontWeight: "var(--portal-font-weight-bold)",
+            color: "var(--portal-text-primary)",
+            margin: 0,
+            marginBottom: "var(--portal-space-2)",
+            letterSpacing: "var(--portal-letter-spacing-tight)",
+            lineHeight: "var(--portal-line-height-tight)",
+          }}
+        >
+          {name}
+        </h2>
+
+        {/* Details row */}
+        <div
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            alignItems: "center",
+            gap: "var(--portal-space-3)",
+            fontSize: "var(--portal-font-size-base)",
+            color: "var(--portal-text-secondary)",
+            marginBottom: "var(--portal-space-2)",
+          }}
+        >
+          <span>{sex}</span>
+          <span style={{ color: "var(--portal-text-tertiary)" }}>•</span>
+          <span>{breed}</span>
+          {birthDate && (
+            <>
+              <span style={{ color: "var(--portal-text-tertiary)" }}>•</span>
+              <span>Born {birthDate}</span>
+            </>
+          )}
+        </div>
+
+        {/* Parent context */}
+        {parentContext && (
+          <div
+            style={{
+              fontSize: "var(--portal-font-size-sm)",
+              color: "var(--portal-text-tertiary)",
+              marginBottom: "var(--portal-space-3)",
+            }}
+          >
+            {parentContext}
+          </div>
+        )}
+
+        {/* View details prompt */}
+        <div
+          style={{
+            fontSize: "var(--portal-font-size-sm)",
+            color: "var(--portal-accent)",
+            fontWeight: "var(--portal-font-weight-medium)",
+          }}
+        >
+          View journey →
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
+ * Offspring Card - Secondary placement cards
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+interface OffspringCardProps {
+  placement: OffspringPlacementDTO;
+  onClick: () => void;
+}
+
+function OffspringCard({ placement, onClick }: OffspringCardProps) {
+  const name = placement.offspring?.name || "Pending assignment";
   const sex = placement.offspring?.sex || "—";
   const breed = placement.breed || "—";
   const birthDate = placement.birthDate
@@ -43,94 +252,72 @@ function OffspringRow({ placement, onClick }: OffspringRowProps) {
       })
     : "—";
 
-  // Build parent context string
-  let parentContext = "";
-  if (placement.dam && placement.sire) {
-    parentContext = `${placement.dam.name} × ${placement.sire.name}`;
-  } else if (placement.dam) {
-    parentContext = `Dam: ${placement.dam.name}`;
-  } else if (placement.sire) {
-    parentContext = `Sire: ${placement.sire.name}`;
-  }
-
-  // Group context
-  const groupContext = placement.offspringGroupLabel || placement.offspringGroupCode;
+  const status = (placement as any).placementStatus || "reserved";
 
   return (
     <div
       onClick={onClick}
       style={{
+        background: "var(--portal-gradient-card), var(--portal-bg-card)",
+        border: "1px solid var(--portal-border-subtle)",
+        borderRadius: "var(--portal-radius-xl)",
+        boxShadow: "var(--portal-shadow-card)",
         padding: "var(--portal-space-4)",
-        borderBottom: "1px solid var(--portal-border-subtle)",
         cursor: "pointer",
-        transition: "background-color 0.15s ease",
+        transition: "transform var(--portal-transition), box-shadow var(--portal-transition), border-color var(--portal-transition)",
       }}
       onMouseEnter={(e) => {
-        e.currentTarget.style.backgroundColor = "var(--portal-bg-elevated)";
+        e.currentTarget.style.transform = "translateY(-2px)";
+        e.currentTarget.style.boxShadow = "var(--portal-shadow-lg)";
+        e.currentTarget.style.borderColor = "var(--portal-border)";
       }}
       onMouseLeave={(e) => {
-        e.currentTarget.style.backgroundColor = "transparent";
+        e.currentTarget.style.transform = "translateY(0)";
+        e.currentTarget.style.boxShadow = "var(--portal-shadow-card)";
+        e.currentTarget.style.borderColor = "var(--portal-border-subtle)";
       }}
     >
-      <div style={{ display: "flex", alignItems: "flex-start", gap: "var(--portal-space-3)" }}>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div
-            style={{
-              fontSize: "var(--portal-font-size-base)",
-              fontWeight: "var(--portal-font-weight-semibold)",
-              color: "var(--portal-text-primary)",
-              marginBottom: "var(--portal-space-1)",
-            }}
-          >
-            {offspringName}
-          </div>
-          <div
-            style={{
-              display: "flex",
-              flexWrap: "wrap",
-              gap: "var(--portal-space-2)",
-              fontSize: "var(--portal-font-size-sm)",
-              color: "var(--portal-text-secondary)",
-            }}
-          >
-            <span>{sex}</span>
-            <span>•</span>
-            <span>{breed}</span>
-            <span>•</span>
-            <span>Born {birthDate}</span>
-          </div>
-          {parentContext && (
-            <div
-              style={{
-                fontSize: "var(--portal-font-size-xs)",
-                color: "var(--portal-text-tertiary)",
-                marginTop: "var(--portal-space-1)",
-              }}
-            >
-              {parentContext}
-            </div>
-          )}
-          {groupContext && (
-            <div
-              style={{
-                fontSize: "var(--portal-font-size-xs)",
-                color: "var(--portal-text-tertiary)",
-                marginTop: "2px",
-              }}
-            >
-              Group: {groupContext}
-            </div>
-          )}
-        </div>
-        <div
-          style={{
-            fontSize: "var(--portal-font-size-sm)",
-            color: "var(--portal-accent)",
-            flexShrink: 0,
-          }}
-        >
-          View →
-        </div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "var(--portal-space-3)" }}>
+        <StatusBadge status={status} size="sm" />
+      </div>
+
+      <h3
+        style={{
+          fontSize: "var(--portal-font-size-xl)",
+          fontWeight: "var(--portal-font-weight-semibold)",
+          color: "var(--portal-text-primary)",
+          margin: 0,
+          marginBottom: "var(--portal-space-2)",
+        }}
+      >
+        {name}
+      </h3>
+
+      <div
+        style={{
+          display: "flex",
+          flexWrap: "wrap",
+          gap: "var(--portal-space-2)",
+          fontSize: "var(--portal-font-size-sm)",
+          color: "var(--portal-text-secondary)",
+          marginBottom: "var(--portal-space-3)",
+        }}
+      >
+        <span>{sex}</span>
+        <span style={{ color: "var(--portal-text-tertiary)" }}>•</span>
+        <span>{breed}</span>
+        <span style={{ color: "var(--portal-text-tertiary)" }}>•</span>
+        <span>Born {birthDate}</span>
+      </div>
+
+      <div
+        style={{
+          fontSize: "var(--portal-font-size-sm)",
+          color: "var(--portal-accent)",
+          fontWeight: "var(--portal-font-weight-medium)",
+        }}
+      >
+        View details →
       </div>
     </div>
   );
@@ -142,17 +329,34 @@ function OffspringRow({ placement, onClick }: OffspringRowProps) {
 
 function LoadingState() {
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "var(--portal-space-3)" }}>
-      {[1, 2, 3, 4].map((i) => (
-        <div
-          key={i}
-          style={{
-            height: "100px",
-            background: "var(--portal-bg-elevated)",
-            borderRadius: "var(--portal-radius-lg)",
-          }}
-        />
-      ))}
+    <div style={{ display: "flex", flexDirection: "column", gap: "var(--portal-space-4)" }}>
+      {/* Hero skeleton */}
+      <div
+        style={{
+          height: "200px",
+          background: "var(--portal-bg-elevated)",
+          borderRadius: "var(--portal-radius-2xl)",
+        }}
+      />
+      {/* Card skeletons */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))",
+          gap: "var(--portal-space-3)",
+        }}
+      >
+        {[1, 2].map((i) => (
+          <div
+            key={i}
+            style={{
+              height: "160px",
+              background: "var(--portal-bg-elevated)",
+              borderRadius: "var(--portal-radius-xl)",
+            }}
+          />
+        ))}
+      </div>
     </div>
   );
 }
@@ -306,6 +510,9 @@ export default function PortalOffspringPage() {
     );
   }
 
+  // Split placements: first one is featured, rest are secondary
+  const [featured, ...others] = placements;
+
   // List view
   return (
     <PageContainer>
@@ -327,21 +534,30 @@ export default function PortalOffspringPage() {
           My Offspring
         </h1>
 
-        <div
-          style={{
-            border: "1px solid var(--portal-border-subtle)",
-            borderRadius: "var(--portal-radius-lg)",
-            overflow: "hidden",
-          }}
-        >
-          {placements.map((placement) => (
-            <OffspringRow
-              key={placement.id}
-              placement={placement}
-              onClick={() => handleOffspringClick(placement.id)}
-            />
-          ))}
-        </div>
+        {/* Featured Card */}
+        <FeaturedOffspringCard
+          placement={featured}
+          onClick={() => handleOffspringClick(featured.id)}
+        />
+
+        {/* Other offspring in grid */}
+        {others.length > 0 && (
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))",
+              gap: "var(--portal-space-3)",
+            }}
+          >
+            {others.map((placement) => (
+              <OffspringCard
+                key={placement.id}
+                placement={placement}
+                onClick={() => handleOffspringClick(placement.id)}
+              />
+            ))}
+          </div>
+        )}
       </div>
     </PageContainer>
   );

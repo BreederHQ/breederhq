@@ -9,19 +9,27 @@ interface Props {
 
 /**
  * Standalone shell layout for marketplace.
- * Dark gradient background with centered content column.
+ * Premium dark gradient background with subtle radial highlight.
  */
 export function StandaloneShell({ authenticated, children }: Props) {
   return (
-    <div className="min-h-screen bg-gradient-to-b from-gray-900 via-gray-900 to-black text-white">
+    <div className="min-h-screen text-white relative">
+      {/* Background with gradient and radial highlight */}
+      <div
+        className="fixed inset-0 -z-10"
+        style={{
+          background: `
+            radial-gradient(ellipse 80% 50% at 50% -20%, rgba(120, 80, 200, 0.15), transparent),
+            linear-gradient(to bottom, #0a0a0f, #111118, #0d0d12)
+          `,
+        }}
+      />
+
       <StandaloneTopBar authenticated={authenticated} />
-      <main className="mx-auto w-full max-w-6xl px-4 sm:px-6 py-8">
+
+      <main className="w-full max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {children}
       </main>
-      {/* Subtle footer stamp */}
-      <footer className="fixed bottom-2 right-3 text-xs opacity-60">
-        Marketplace beta
-      </footer>
     </div>
   );
 }

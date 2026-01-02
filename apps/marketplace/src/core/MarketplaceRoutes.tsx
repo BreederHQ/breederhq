@@ -3,9 +3,9 @@
 // Auth routes (/auth/login, /auth/register) are handled at the app level.
 import * as React from "react";
 import { Routes, Route } from "react-router-dom";
-import { ProgramsIndexPage } from "./pages/ProgramsIndexPage";
-import { ProgramProfilePage } from "./pages/ProgramProfilePage";
-import { OffspringGroupDetailPage } from "./pages/OffspringGroupDetailPage";
+import { ProgramsPage } from "../ui/pages/ProgramsPage";
+import { ProgramPage } from "../ui/pages/ProgramPage";
+import { ListingPage } from "../ui/pages/ListingPage";
 
 /**
  * Route tree for authenticated/entitled marketplace users.
@@ -13,11 +13,11 @@ import { OffspringGroupDetailPage } from "./pages/OffspringGroupDetailPage";
 export function MarketplaceRoutes() {
   return (
     <Routes>
-      <Route path="/" element={<ProgramsIndexPage />} />
-      <Route path="/programs/:programSlug" element={<ProgramProfilePage />} />
+      <Route path="/" element={<ProgramsPage />} />
+      <Route path="/programs/:programSlug" element={<ProgramPage />} />
       <Route
         path="/programs/:programSlug/offspring-groups/:listingSlug"
-        element={<OffspringGroupDetailPage />}
+        element={<ListingPage />}
       />
     </Routes>
   );

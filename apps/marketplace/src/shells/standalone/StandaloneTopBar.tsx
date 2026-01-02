@@ -8,7 +8,7 @@ interface Props {
 
 /**
  * Top bar for standalone marketplace shell.
- * Semi-transparent with subtle border, 56px height.
+ * Calm, minimal design with 56px height.
  */
 export function StandaloneTopBar({ authenticated }: Props) {
   const [loggingOut, setLoggingOut] = React.useState(false);
@@ -34,27 +34,28 @@ export function StandaloneTopBar({ authenticated }: Props) {
   };
 
   return (
-    <header className="sticky top-0 z-40 h-14 border-b border-white/10 bg-black/50 backdrop-blur-sm">
-      <div className="mx-auto flex h-full w-full max-w-6xl items-center justify-between px-4 sm:px-6">
+    <header className="sticky top-0 z-40 h-14 border-b border-white/10 bg-black/20 backdrop-blur">
+      <div className="h-full w-full max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between">
         {/* Left: Marketplace label */}
-        <span className="text-base font-semibold tracking-tight">
+        <span className="text-base font-semibold tracking-tight text-white">
           Marketplace
         </span>
 
-        {/* Right: Account status + reset badge */}
+        {/* Right: Reset badge + Account status */}
         <div className="flex items-center gap-3">
-          {/* TEMPORARY: Reset badge - remove after visual confirmation */}
+          {/* UI RESET ACTIVE stamp - stays until approval */}
           <span className="bg-red-600 text-white px-2 py-1 rounded text-xs font-semibold">
             UI RESET ACTIVE
           </span>
+
           {authenticated && (
             <>
-              <span className="text-sm opacity-70">Signed in</span>
+              <span className="text-sm text-white/70">Signed in</span>
               <button
                 type="button"
                 onClick={handleLogout}
                 disabled={loggingOut}
-                className="px-3 py-1.5 text-sm rounded-lg bg-white/10 border border-white/10 hover:bg-white/15 transition-colors disabled:opacity-50"
+                className="px-3 py-1.5 text-sm rounded-lg bg-white/10 border border-white/10 text-white hover:bg-white/15 transition-colors disabled:opacity-50"
               >
                 {loggingOut ? "Logging out..." : "Logout"}
               </button>

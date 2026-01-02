@@ -16,25 +16,25 @@ function LoadingState() {
     <div style={{ display: "flex", flexDirection: "column", gap: "var(--portal-space-4)" }}>
       <div
         style={{
-          height: "60px",
+          height: "180px",
           background: "var(--portal-bg-elevated)",
-          borderRadius: "var(--portal-radius-lg)",
+          borderRadius: "var(--portal-radius-2xl)",
         }}
       />
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))",
-          gap: "var(--portal-space-4)",
+          gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+          gap: "var(--portal-space-3)",
         }}
       >
         {[1, 2, 3].map((i) => (
           <div
             key={i}
             style={{
-              height: "200px",
+              height: "140px",
               background: "var(--portal-bg-elevated)",
-              borderRadius: "var(--portal-radius-lg)",
+              borderRadius: "var(--portal-radius-xl)",
             }}
           />
         ))}
@@ -210,21 +210,138 @@ function EditNameModal({ isOpen, onClose, currentName, onSave }: EditNameModalPr
 }
 
 /* ────────────────────────────────────────────────────────────────────────────
- * Section Card Component
+ * Identity Hero Card - Premium avatar and name presentation
  * ──────────────────────────────────────────────────────────────────────────── */
 
-interface SectionCardProps {
+interface IdentityHeroCardProps {
+  name: string;
+  email: string;
+  onEditName: () => void;
+}
+
+function IdentityHeroCard({ name, email, onEditName }: IdentityHeroCardProps) {
+  // Get initials for avatar
+  const initials = name
+    .split(" ")
+    .map((n) => n[0])
+    .join("")
+    .toUpperCase()
+    .slice(0, 2);
+
+  return (
+    <div
+      style={{
+        background: "var(--portal-gradient-hero), var(--portal-bg-card)",
+        border: "1px solid var(--portal-border-glow)",
+        borderRadius: "var(--portal-radius-2xl)",
+        boxShadow: "var(--portal-shadow-hero)",
+        padding: "var(--portal-space-6)",
+        position: "relative",
+        overflow: "hidden",
+      }}
+    >
+      {/* Decorative gradient orb */}
+      <div
+        style={{
+          position: "absolute",
+          top: "-40%",
+          right: "-15%",
+          width: "350px",
+          height: "350px",
+          background: "radial-gradient(circle, rgba(255, 107, 53, 0.1) 0%, transparent 70%)",
+          pointerEvents: "none",
+        }}
+      />
+
+      <div style={{ position: "relative", zIndex: 1, display: "flex", alignItems: "center", gap: "var(--portal-space-5)" }}>
+        {/* Avatar */}
+        <div
+          style={{
+            width: "80px",
+            height: "80px",
+            borderRadius: "50%",
+            background: "var(--portal-gradient-status-reserved)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontSize: "var(--portal-font-size-2xl)",
+            fontWeight: "var(--portal-font-weight-bold)",
+            color: "white",
+            boxShadow: "0 0 30px rgba(255, 107, 53, 0.3)",
+            flexShrink: 0,
+          }}
+        >
+          {initials || "?"}
+        </div>
+
+        {/* Identity info */}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "var(--portal-space-2)", marginBottom: "var(--portal-space-1)" }}>
+            <h1
+              style={{
+                fontSize: "var(--portal-font-size-2xl)",
+                fontWeight: "var(--portal-font-weight-bold)",
+                color: "var(--portal-text-primary)",
+                margin: 0,
+                letterSpacing: "var(--portal-letter-spacing-tight)",
+              }}
+            >
+              {name}
+            </h1>
+            <button
+              onClick={onEditName}
+              style={{
+                padding: "var(--portal-space-1) var(--portal-space-2)",
+                fontSize: "var(--portal-font-size-xs)",
+                fontWeight: "var(--portal-font-weight-medium)",
+                color: "var(--portal-accent)",
+                background: "rgba(255, 107, 53, 0.1)",
+                border: "none",
+                borderRadius: "var(--portal-radius-sm)",
+                cursor: "pointer",
+                transition: "background-color 0.15s ease",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = "rgba(255, 107, 53, 0.2)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = "rgba(255, 107, 53, 0.1)";
+              }}
+            >
+              Edit
+            </button>
+          </div>
+          <div
+            style={{
+              fontSize: "var(--portal-font-size-base)",
+              color: "var(--portal-text-secondary)",
+            }}
+          >
+            {email}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
+ * Action Card - For security and organization actions
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+interface ActionCardProps {
   title: string;
   children: React.ReactNode;
 }
 
-function SectionCard({ title, children }: SectionCardProps) {
+function ActionCard({ title, children }: ActionCardProps) {
   return (
     <div
       style={{
-        background: "var(--portal-bg-elevated)",
+        background: "var(--portal-gradient-card), var(--portal-bg-card)",
         border: "1px solid var(--portal-border-subtle)",
-        borderRadius: "var(--portal-radius-lg)",
+        borderRadius: "var(--portal-radius-xl)",
+        boxShadow: "var(--portal-shadow-card)",
         padding: "var(--portal-space-4)",
       }}
     >
@@ -233,7 +350,8 @@ function SectionCard({ title, children }: SectionCardProps) {
           fontSize: "var(--portal-font-size-base)",
           fontWeight: "var(--portal-font-weight-semibold)",
           color: "var(--portal-text-primary)",
-          marginBottom: "var(--portal-space-4)",
+          margin: 0,
+          marginBottom: "var(--portal-space-3)",
         }}
       >
         {title}
@@ -244,56 +362,26 @@ function SectionCard({ title, children }: SectionCardProps) {
 }
 
 /* ────────────────────────────────────────────────────────────────────────────
- * Field Row Component
- * ──────────────────────────────────────────────────────────────────────────── */
-
-interface FieldRowProps {
-  label: string;
-  value: string;
-  action?: React.ReactNode;
-}
-
-function FieldRow({ label, value, action }: FieldRowProps) {
-  return (
-    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-      <div style={{ flex: 1 }}>
-        <div
-          style={{
-            fontSize: "var(--portal-font-size-xs)",
-            color: "var(--portal-text-secondary)",
-            marginBottom: "2px",
-          }}
-        >
-          {label}
-        </div>
-        <div
-          style={{
-            fontSize: "var(--portal-font-size-sm)",
-            color: "var(--portal-text-primary)",
-            fontWeight: "var(--portal-font-weight-medium)",
-          }}
-        >
-          {value}
-        </div>
-      </div>
-      {action && <div>{action}</div>}
-    </div>
-  );
-}
-
-/* ────────────────────────────────────────────────────────────────────────────
- * Action Link Component
+ * Action Link - Clickable action within cards
  * ──────────────────────────────────────────────────────────────────────────── */
 
 interface ActionLinkProps {
   label: string;
   onClick: () => void;
   subtitle?: string;
+  variant?: "default" | "danger";
 }
 
-function ActionLink({ label, onClick, subtitle }: ActionLinkProps) {
+function ActionLink({ label, onClick, subtitle, variant = "default" }: ActionLinkProps) {
+  const color = variant === "danger" ? "var(--portal-error)" : "var(--portal-accent)";
+
   return (
-    <div>
+    <div
+      style={{
+        padding: "var(--portal-space-2) 0",
+        borderBottom: "1px solid var(--portal-border-subtle)",
+      }}
+    >
       <button
         onClick={onClick}
         style={{
@@ -301,10 +389,12 @@ function ActionLink({ label, onClick, subtitle }: ActionLinkProps) {
           border: "none",
           padding: 0,
           fontSize: "var(--portal-font-size-sm)",
-          color: "var(--portal-accent)",
+          color: color,
           cursor: "pointer",
-          textDecoration: "none",
           fontWeight: "var(--portal-font-weight-medium)",
+          display: "flex",
+          alignItems: "center",
+          gap: "var(--portal-space-2)",
         }}
         onMouseEnter={(e) => {
           e.currentTarget.style.textDecoration = "underline";
@@ -314,13 +404,14 @@ function ActionLink({ label, onClick, subtitle }: ActionLinkProps) {
         }}
       >
         {label}
+        <span style={{ opacity: 0.7 }}>→</span>
       </button>
       {subtitle && (
         <div
           style={{
             fontSize: "var(--portal-font-size-xs)",
             color: "var(--portal-text-tertiary)",
-            marginTop: "2px",
+            marginTop: "4px",
           }}
         >
           {subtitle}
@@ -341,6 +432,9 @@ export default function PortalProfilePage() {
   const [localName, setLocalName] = React.useState<string>(mock?.name || "—");
   const [showNameUpdateNote, setShowNameUpdateNote] = React.useState(false);
   const [isEditNameModalOpen, setIsEditNameModalOpen] = React.useState(false);
+
+  const displayEmail = mock?.email || userEmail || "—";
+  const displayOrg = mock?.orgName || orgName || "—";
 
   const handleRefresh = () => {
     window.location.reload();
@@ -394,7 +488,7 @@ export default function PortalProfilePage() {
       )}
 
       <div style={{ display: "flex", flexDirection: "column", gap: "var(--portal-space-4)" }}>
-        {/* Page header */}
+        {/* Page title */}
         <h1
           style={{
             fontSize: "var(--portal-font-size-2xl)",
@@ -406,96 +500,76 @@ export default function PortalProfilePage() {
           Profile
         </h1>
 
-        {/* Two-column layout on desktop, single column on mobile */}
+        {/* Identity Hero Card */}
+        <IdentityHeroCard
+          name={localName}
+          email={displayEmail}
+          onEditName={handleEditName}
+        />
+
+        {showNameUpdateNote && (
+          <div
+            style={{
+              padding: "var(--portal-space-3)",
+              background: "var(--portal-warning-soft)",
+              border: "1px solid rgba(234, 179, 8, 0.2)",
+              borderRadius: "var(--portal-radius-md)",
+              fontSize: "var(--portal-font-size-sm)",
+              color: "var(--portal-warning)",
+            }}
+          >
+            Name updates are not available yet. Your change has been saved locally only.
+          </div>
+        )}
+
+        {/* Action Cards Grid */}
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))",
-            gap: "var(--portal-space-4)",
+            gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+            gap: "var(--portal-space-3)",
           }}
         >
-          {/* Account Section */}
-          <SectionCard title="Account">
-            <div style={{ display: "flex", flexDirection: "column", gap: "var(--portal-space-3)" }}>
-              <FieldRow
-                label="Name"
-                value={localName}
-                action={
-                  <button
-                    onClick={handleEditName}
-                    style={{
-                      padding: "var(--portal-space-1) var(--portal-space-2)",
-                      fontSize: "var(--portal-font-size-xs)",
-                      fontWeight: "var(--portal-font-weight-medium)",
-                      color: "var(--portal-accent)",
-                      background: "transparent",
-                      border: "1px solid var(--portal-border)",
-                      borderRadius: "var(--portal-radius-sm)",
-                      cursor: "pointer",
-                      transition: "background-color 0.15s ease",
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.backgroundColor = "var(--portal-bg-elevated)";
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.backgroundColor = "transparent";
-                    }}
-                  >
-                    Edit name
-                  </button>
-                }
-              />
-              {showNameUpdateNote && (
-                <p
-                  style={{
-                    fontSize: "var(--portal-font-size-xs)",
-                    color: "var(--portal-text-tertiary)",
-                    margin: 0,
-                  }}
-                >
-                  Name updates are not available yet.
-                </p>
-              )}
-              <FieldRow label="Email" value={(mock?.email || userEmail) || "—"} />
-            </div>
-          </SectionCard>
-
-          {/* Security Section */}
-          <SectionCard title="Security">
-            <div style={{ display: "flex", flexDirection: "column", gap: "var(--portal-space-3)" }}>
+          {/* Security Card */}
+          <ActionCard title="Security">
+            <div style={{ display: "flex", flexDirection: "column" }}>
               <ActionLink
                 label="Change password"
                 onClick={handleChangePassword}
-                subtitle="We'll email you a reset link."
+                subtitle="We'll email you a reset link"
               />
-              <ActionLink label="Sign out" onClick={handleSignOut} />
+              <ActionLink
+                label="Sign out"
+                onClick={handleSignOut}
+                variant="danger"
+              />
             </div>
-          </SectionCard>
+          </ActionCard>
 
-          {/* Organization Section */}
-          <SectionCard title="Organization">
+          {/* Organization Card */}
+          <ActionCard title="Organization">
             <div style={{ display: "flex", flexDirection: "column", gap: "var(--portal-space-2)" }}>
               <div
                 style={{
-                  fontSize: "var(--portal-font-size-sm)",
+                  fontSize: "var(--portal-font-size-lg)",
+                  fontWeight: "var(--portal-font-weight-semibold)",
                   color: "var(--portal-text-primary)",
-                  fontWeight: "var(--portal-font-weight-medium)",
                 }}
               >
-                {(mock?.orgName || orgName) || "—"}
+                {displayOrg}
               </div>
               <p
                 style={{
-                  fontSize: "var(--portal-font-size-xs)",
+                  fontSize: "var(--portal-font-size-sm)",
                   color: "var(--portal-text-tertiary)",
                   margin: 0,
                   lineHeight: 1.5,
                 }}
               >
-                This portal is provided by your breeder. Access is linked to your email.
+                This portal is provided by your breeder. Access is linked to your email address.
               </p>
             </div>
-          </SectionCard>
+          </ActionCard>
         </div>
       </div>
 
