@@ -6,7 +6,7 @@ import { Footer } from "../design/Footer";
 import { usePortalContext } from "../hooks/usePortalContext";
 import { usePortalTasks } from "../tasks/taskSources";
 import { usePortalNotifications } from "../notifications/notificationSources";
-import { BuildStamp } from "../dev/BuildStamp.tsx";
+import { BuildStamp } from "../dev/BuildStamp";
 import { DemoModeToggle } from "../dev/DemoModeToggle";
 import { DemoBanner } from "../dev/DemoBanner";
 import { isPortalMockEnabled } from "../dev/mockFlag";

@@ -3,17 +3,20 @@ import * as React from "react";
 import { PageContainer } from "../design/PageContainer";
 import { isPortalMockEnabled } from "../dev/mockFlag";
 import { DemoBanner } from "../dev/DemoBanner";
-import { getBuildStamp } from "../dev/buildStamp";
+import { getBuildStamp } from "../dev/BuildStamp.utils";
 import {
   mockThreads,
   mockAgreements,
   mockDocuments,
   mockOffspring,
+  mockTasks,
+  mockNotifications,
 } from "../dev/mockData";
 
 export default function PortalDebugPage() {
   const mockEnabled = isPortalMockEnabled();
   const [showCopied, setShowCopied] = React.useState(false);
+  const [showUrlsCopied, setShowUrlsCopied] = React.useState(false);
 
   // Get query params
   const params = new URLSearchParams(window.location.search);
@@ -30,6 +33,8 @@ export default function PortalDebugPage() {
   // Get mock counts
   const mockCounts = {
     threads: mockThreads().length,
+    tasks: mockTasks().length,
+    notifications: mockNotifications().length,
     agreements: mockAgreements().length,
     documents: mockDocuments().length,
     offspring: mockOffspring().length,
@@ -66,6 +71,8 @@ isPortalMockEnabled(): ${mockEnabled}
 Demo mode active: ${mockEnabled ? "YES" : "NO"}
 ${mockEnabled ? `Mock counts:
   mockThreads(): ${mockCounts.threads}
+  mockTasks(): ${mockCounts.tasks}
+  mockNotifications(): ${mockCounts.notifications}
   mockAgreements(): ${mockCounts.agreements}
   mockDocuments(): ${mockCounts.documents}
   mockOffspring(): ${mockCounts.offspring}` : ""}`;
@@ -76,6 +83,31 @@ ${mockEnabled ? `Mock counts:
       setTimeout(() => setShowCopied(false), 1500);
     } catch (err) {
       console.error("Failed to copy debug info:", err);
+    }
+  };
+
+  const handleCopyDemoUrls = async () => {
+    const baseUrl = window.location.origin;
+    const demoUrls = [
+      `${baseUrl}/`,
+      `${baseUrl}/messages`,
+      `${baseUrl}/messages?threadId=1`,
+      `${baseUrl}/tasks`,
+      `${baseUrl}/notifications`,
+      `${baseUrl}/agreements`,
+      `${baseUrl}/agreements/1`,
+      `${baseUrl}/documents`,
+      `${baseUrl}/offspring`,
+      `${baseUrl}/offspring/101`,
+      `${baseUrl}/profile`,
+    ].join('\n');
+
+    try {
+      await navigator.clipboard.writeText(demoUrls);
+      setShowUrlsCopied(true);
+      setTimeout(() => setShowUrlsCopied(false), 1500);
+    } catch (err) {
+      console.error("Failed to copy demo URLs:", err);
     }
   };
 
@@ -179,6 +211,38 @@ ${mockEnabled ? `Mock counts:
               </span>
             )}
           </button>
+          {mockEnabled && (
+            <button
+              onClick={handleCopyDemoUrls}
+              style={{
+                padding: "var(--portal-space-2) var(--portal-space-3)",
+                fontSize: "var(--portal-font-size-sm)",
+                fontWeight: "var(--portal-font-weight-medium)",
+                color: "var(--portal-text-primary)",
+                background: "transparent",
+                border: "1px solid var(--portal-border)",
+                borderRadius: "var(--portal-radius-md)",
+                cursor: "pointer",
+                transition: "background-color 0.15s ease",
+                display: "flex",
+                alignItems: "center",
+                gap: "var(--portal-space-1)",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = "var(--portal-bg-elevated)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = "transparent";
+              }}
+            >
+              Copy demo URLs
+              {showUrlsCopied && (
+                <span style={{ color: "var(--portal-accent)", fontSize: "var(--portal-font-size-xs)" }}>
+                  ✓
+                </span>
+              )}
+            </button>
+          )}
         </div>
 
         {/* Demo Mode Status - Explicit YES/NO */}
@@ -330,6 +394,8 @@ ${mockEnabled ? `Mock counts:
             <table style={{ width: "100%", borderCollapse: "collapse", marginTop: "var(--portal-space-2)" }}>
               <tbody>
                 <DebugRow label="mockThreads()" value={String(mockCounts.threads)} />
+                <DebugRow label="mockTasks()" value={String(mockCounts.tasks)} />
+                <DebugRow label="mockNotifications()" value={String(mockCounts.notifications)} />
                 <DebugRow label="mockAgreements()" value={String(mockCounts.agreements)} />
                 <DebugRow label="mockDocuments()" value={String(mockCounts.documents)} />
                 <DebugRow label="mockOffspring()" value={String(mockCounts.offspring)} />

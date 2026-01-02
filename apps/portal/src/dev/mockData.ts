@@ -352,3 +352,133 @@ export function mockProfile() {
     orgName: "Thompson Golden Retrievers",
   };
 }
+
+export function mockTasks() {
+  return [
+    {
+      id: 1,
+      title: "Sign Health Guarantee",
+      description: "Review and sign the health guarantee agreement",
+      urgency: "action_required",
+      dueDate: "2026-01-11",
+      createdAt: "2025-12-28T09:00:00Z",
+    },
+    {
+      id: 2,
+      title: "Complete final payment",
+      description: "Final payment of $2,000 due before pickup",
+      urgency: "action_required",
+      dueDate: "2026-01-04",
+      createdAt: "2025-12-28T09:00:00Z",
+    },
+    {
+      id: 3,
+      title: "Schedule pickup appointment",
+      description: "Confirm your pickup time for next week",
+      urgency: "action_required",
+      dueDate: "2026-01-05",
+      createdAt: "2025-12-27T10:00:00Z",
+    },
+    {
+      id: 4,
+      title: "Review vaccination schedule",
+      description: "Review the vaccination schedule for your puppy",
+      urgency: "upcoming",
+      dueDate: "2026-01-15",
+      createdAt: "2025-12-26T14:00:00Z",
+    },
+    {
+      id: 5,
+      title: "Prepare carrier for transport",
+      description: "Get a secure carrier ready for pickup day",
+      urgency: "upcoming",
+      dueDate: "2026-01-03",
+      createdAt: "2025-12-25T11:00:00Z",
+    },
+    {
+      id: 6,
+      title: "Read care instructions",
+      description: "Review the puppy care guide we provided",
+      urgency: "upcoming",
+      dueDate: "2026-01-10",
+      createdAt: "2025-12-24T09:00:00Z",
+    },
+  ];
+}
+
+export function mockNotifications() {
+  return [
+    {
+      id: 1,
+      type: "message",
+      title: "New message from Sarah Thompson",
+      body: "Pickup schedule confirmation",
+      createdAt: "2026-01-01T10:30:00Z",
+      read: false,
+      actionUrl: "/messages?threadId=1",
+    },
+    {
+      id: 2,
+      type: "task",
+      title: "Action required: Sign Health Guarantee",
+      body: "Please review and sign the health guarantee by Jan 11",
+      createdAt: "2025-12-31T09:00:00Z",
+      read: false,
+      actionUrl: "/tasks",
+    },
+    {
+      id: 3,
+      type: "payment",
+      title: "Final payment due",
+      body: "Final payment of $2,000 is due before pickup",
+      createdAt: "2025-12-30T14:00:00Z",
+      read: false,
+      actionUrl: "/",
+    },
+    {
+      id: 4,
+      type: "offspring",
+      title: "Bella's pickup window confirmed",
+      body: "Pickup available January 15-17",
+      createdAt: "2025-12-28T11:00:00Z",
+      read: true,
+      actionUrl: "/offspring/101",
+    },
+    {
+      id: 5,
+      type: "message",
+      title: "New message from Sarah Thompson",
+      body: "Puppy photos attached!",
+      createdAt: "2025-12-27T16:20:00Z",
+      read: true,
+      actionUrl: "/messages?threadId=1",
+    },
+    {
+      id: 6,
+      type: "general",
+      title: "Welcome to the portal",
+      body: "Thanks for choosing our program",
+      createdAt: "2025-12-15T08:00:00Z",
+      read: true,
+      actionUrl: "/",
+    },
+    {
+      id: 7,
+      type: "document",
+      title: "New document uploaded",
+      body: "Vaccination Record - Bella",
+      createdAt: "2025-12-20T10:30:00Z",
+      read: true,
+      actionUrl: "/documents",
+    },
+    {
+      id: 8,
+      type: "agreement",
+      title: "Agreement signed",
+      body: "Puppy Purchase Agreement has been signed",
+      createdAt: "2025-12-12T14:30:00Z",
+      read: true,
+      actionUrl: "/agreements/1",
+    },
+  ];
+}
