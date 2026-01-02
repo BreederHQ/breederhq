@@ -92,7 +92,15 @@ async function fetchInvoiceNotifications(): Promise<Notification[]> {
 
     return notifications;
   } catch (err: any) {
-    console.error("[notificationSources] Failed to fetch invoice notifications:", err);
+    // Gracefully handle 401/403 (actor context issues in portal CLIENT context)
+    const status = err?.response?.status || err?.status;
+    const errorCode = err?.response?.data?.error?.code || err?.code;
+    if (status === 401 || status === 403 || errorCode === "ACTOR_CONTEXT_UNRESOLVABLE") {
+      // Source unavailable in this context, return empty silently
+      return [];
+    }
+    // Log other errors but don't break
+    console.warn("[notificationSources] Invoice source unavailable:", err.message || err);
     return [];
   }
 }

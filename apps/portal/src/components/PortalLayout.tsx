@@ -58,7 +58,6 @@ export function PortalLayout({ children, currentPath }: PortalLayoutProps) {
 
   // Calculate badge counts
   const actionRequiredCount = tasks.filter((t) => t.urgency === "action_required").length;
-  const unreadMessagesCount = 0; // Placeholder - would come from messages API when available
   const notificationsCount = notifications.length;
 
   const navItems = [
@@ -67,7 +66,6 @@ export function PortalLayout({ children, currentPath }: PortalLayoutProps) {
       label: "Messages",
       href: "/messages",
       active: currentPath.startsWith("/messages"),
-      badge: unreadMessagesCount > 0 ? unreadMessagesCount : undefined,
     },
     {
       label: "Tasks",

@@ -17,64 +17,61 @@ export function DashboardSummaryCard({
   const [isHovered, setIsHovered] = React.useState(false);
 
   return (
-    <a
-      href={href}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
+    <div
       style={{
-        display: "block",
-        padding: "var(--portal-space-4)",
-        background: "var(--portal-bg-surface)",
-        borderWidth: "1px",
-        borderStyle: "solid",
-        borderColor: "var(--portal-border)",
-        borderRadius: "var(--portal-radius-lg)",
-        textDecoration: "none",
-        transition: "all var(--portal-transition)",
-        borderLeftColor: isHovered ? "var(--portal-accent)" : "var(--portal-border)",
-        borderLeftWidth: isHovered ? "3px" : "1px",
-        paddingLeft: isHovered
-          ? "calc(var(--portal-space-4) - 2px)"
-          : "var(--portal-space-4)",
+        padding: "var(--portal-space-4) 0",
+        borderBottom: "1px solid var(--portal-border-subtle)",
       }}
     >
       <div
         style={{
           display: "flex",
-          flexDirection: "column",
-          gap: "var(--portal-space-2)",
+          alignItems: "baseline",
+          justifyContent: "space-between",
+          gap: "var(--portal-space-3)",
         }}
       >
         <div
           style={{
-            fontSize: "var(--portal-font-size-sm)",
-            fontWeight: "var(--portal-font-weight-semibold)",
-            color: "var(--portal-text-secondary)",
-            textTransform: "uppercase",
-            letterSpacing: "0.05em",
+            display: "flex",
+            flexDirection: "column",
+            gap: "var(--portal-space-1)",
           }}
         >
-          {title}
+          <div
+            style={{
+              fontSize: "var(--portal-font-size-sm)",
+              fontWeight: "var(--portal-font-weight-medium)",
+              color: "var(--portal-text-secondary)",
+            }}
+          >
+            {title}
+          </div>
+          <div
+            style={{
+              fontSize: "var(--portal-font-size-base)",
+              fontWeight: "var(--portal-font-weight-normal)",
+              color: "var(--portal-text-primary)",
+            }}
+          >
+            {primaryLine}
+          </div>
         </div>
-        <div
-          style={{
-            fontSize: "var(--portal-font-size-lg)",
-            fontWeight: "var(--portal-font-weight-medium)",
-            color: "var(--portal-text-primary)",
-          }}
-        >
-          {primaryLine}
-        </div>
-        <div
+        <a
+          href={href}
+          onMouseEnter={() => setIsHovered(true)}
+          onMouseLeave={() => setIsHovered(false)}
           style={{
             fontSize: "var(--portal-font-size-sm)",
             color: isHovered ? "var(--portal-accent)" : "var(--portal-text-secondary)",
+            textDecoration: "none",
+            whiteSpace: "nowrap",
             transition: "color var(--portal-transition)",
           }}
         >
           {actionLabel} →
-        </div>
+        </a>
       </div>
-    </a>
+    </div>
   );
 }

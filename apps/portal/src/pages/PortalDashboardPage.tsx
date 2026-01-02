@@ -28,16 +28,13 @@ export default function PortalDashboardPage() {
 
   // Calculate summary counts
   const actionRequiredCount = tasks.filter((t) => t.urgency === "action_required").length;
-  const unreadMessagesCount = 0; // Placeholder - would come from messages API when available
   const notificationsCount = notifications.length;
 
   // Hide sections when counts are zero
   const showTasksSummary = actionRequiredCount > 0;
-  const showMessagesSummary = unreadMessagesCount > 0 || true; // Always show messages for now
   const showNotificationsSummary = notificationsCount > 0;
 
-  const hasAnySummaries =
-    showTasksSummary || showMessagesSummary || showNotificationsSummary;
+  const hasAnySummaries = showTasksSummary || showNotificationsSummary;
 
   const isLoading = tasksLoading || notificationsLoading;
 
@@ -118,19 +115,6 @@ export default function PortalDashboardPage() {
               primaryLine={`${actionRequiredCount} need your attention`}
               actionLabel="View tasks"
               href="/tasks"
-            />
-          )}
-
-          {showMessagesSummary && (
-            <DashboardSummaryCard
-              title="Messages"
-              primaryLine={
-                unreadMessagesCount > 0
-                  ? `${unreadMessagesCount} unread`
-                  : "Unread messages"
-              }
-              actionLabel="View messages"
-              href="/messages"
             />
           )}
 
