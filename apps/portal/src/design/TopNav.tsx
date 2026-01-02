@@ -49,6 +49,7 @@ export function TopNav({ items, onNavigate }: TopNavProps) {
         overflowY: "hidden",
         flex: 1,
         minWidth: 0, // Allow shrinking below content size for proper scroll
+        paddingRight: "var(--portal-space-2)", // Ensure last items are visible when scrolled
         scrollbarWidth: "none", // Firefox
         msOverflowStyle: "none", // IE/Edge
         position: "relative",
