@@ -251,32 +251,39 @@ export function PlannerV2DevPreview() {
         </div>
       </div>
 
-      {/* Tab navigation - dark theme consistent */}
-      <div className="border-b border-neutral-700 bg-neutral-800">
-        <div className="max-w-7xl mx-auto px-4">
-          <nav className="flex gap-1" aria-label="Planner tabs">
-            {TABS.map((tab) => {
-              const isActive = currentPage === tab.key;
-              return (
-                <button
-                  key={tab.key}
-                  onClick={() => setCurrentPage(tab.key)}
-                  className={[
-                    "relative px-4 py-3 text-sm font-medium transition-colors",
-                    isActive
-                      ? "text-neutral-100"
-                      : "text-neutral-400 hover:text-neutral-200",
-                  ].join(" ")}
-                >
-                  {tab.label}
-                  {isActive && (
-                    <span className="absolute bottom-0 left-2 right-2 h-0.5 rounded-t bg-[hsl(var(--brand-orange,24_94%_50%))]" />
-                  )}
-                </button>
-              );
-            })}
-          </nav>
-        </div>
+      {/* Tab navigation - legacy style: inline tabs with underline, no boxed strip */}
+      <div className="max-w-7xl mx-auto px-4 pt-2">
+        <nav
+          className="inline-flex items-end gap-6"
+          role="tablist"
+          aria-label="Planner tabs"
+        >
+          {TABS.map((tab) => {
+            const isActive = currentPage === tab.key;
+            return (
+              <button
+                key={tab.key}
+                type="button"
+                role="tab"
+                aria-selected={isActive}
+                onClick={() => setCurrentPage(tab.key)}
+                className={[
+                  "pb-1 text-sm font-medium transition-colors select-none",
+                  isActive
+                    ? "text-neutral-900 dark:text-neutral-50"
+                    : "text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-100",
+                ].join(" ")}
+                style={{
+                  borderBottom: isActive
+                    ? "2px solid #f97316"
+                    : "2px solid transparent",
+                }}
+              >
+                {tab.label}
+              </button>
+            );
+          })}
+        </nav>
       </div>
 
       {/* Page content */}
