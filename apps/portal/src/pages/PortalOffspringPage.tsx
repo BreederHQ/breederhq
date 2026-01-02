@@ -1,8 +1,9 @@
 // apps/portal/src/pages/PortalOffspringPage.tsx
 import * as React from "react";
-import { PageHeader, Button, Badge } from "@bhq/ui";
-import { makeApi, type OffspringPlacementDTO, type PlacementStatus } from "@bhq/api";
-import PortalOffspringDetailPage from "./PortalOffspringDetailPage";
+import { PageContainer } from "../design/PageContainer";
+import { PortalEmptyState } from "../design/PortalEmptyState";
+import { makeApi } from "@bhq/api";
+import type { OffspringPlacementDTO } from "@bhq/api";
 
 // Resolve API base URL
 function getApiBase(): string {
@@ -18,134 +19,219 @@ function getApiBase(): string {
 
 const api = makeApi(getApiBase());
 
-/* ───────────────── Placement Card ───────────────── */
+/* ────────────────────────────────────────────────────────────────────────────
+ * Offspring Row Component
+ * ──────────────────────────────────────────────────────────────────────────── */
 
-function PlacementCard({ placement }: { placement: OffspringPlacementDTO }) {
-  const statusVariants: Record<PlacementStatus, "amber" | "green" | "blue" | "neutral"> = {
-    WAITLISTED: "neutral",
-    RESERVED: "amber",
-    DEPOSIT_PAID: "amber",
-    FULLY_PAID: "green",
-    READY_FOR_PICKUP: "green",
-    PLACED: "blue",
-    CANCELLED: "neutral",
-  };
+interface OffspringRowProps {
+  placement: OffspringPlacementDTO;
+  onClick: () => void;
+}
 
-  const statusLabels: Record<PlacementStatus, string> = {
-    WAITLISTED: "Waitlisted",
-    RESERVED: "Reserved",
-    DEPOSIT_PAID: "Deposit Paid",
-    FULLY_PAID: "Fully Paid",
-    READY_FOR_PICKUP: "Ready for Pickup",
-    PLACED: "Placed",
-    CANCELLED: "Cancelled",
-  };
+function OffspringRow({ placement, onClick }: OffspringRowProps) {
+  const offspringName = placement.offspring?.name || "Pending assignment";
+  const sex = placement.offspring?.sex || "—";
+  const breed = placement.breed || "—";
+  const birthDate = placement.birthDate
+    ? new Date(placement.birthDate).toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      })
+    : "—";
 
-  function formatDate(date: string | null): string {
-    if (!date) return "N/A";
-    return new Date(date).toLocaleDateString();
+  // Build parent context string
+  let parentContext = "";
+  if (placement.dam && placement.sire) {
+    parentContext = `${placement.dam.name} × ${placement.sire.name}`;
+  } else if (placement.dam) {
+    parentContext = `Dam: ${placement.dam.name}`;
+  } else if (placement.sire) {
+    parentContext = `Sire: ${placement.sire.name}`;
   }
 
-  const offspringName = placement.offspring?.name || "Pending assignment";
-  const groupLabel = placement.offspringGroupLabel || placement.offspringGroupCode;
+  // Group context
+  const groupContext = placement.offspringGroupLabel || placement.offspringGroupCode;
 
   return (
-    <div className="rounded-xl border border-hairline bg-surface/50 hover:bg-surface transition-colors overflow-hidden">
-      {/* Placeholder for photo */}
-      <div className="h-32 bg-surface-strong flex items-center justify-center text-4xl">
-        🐕
-      </div>
-      <div className="p-4">
-        <div className="flex items-center justify-between mb-2">
-          <h3 className="font-semibold text-primary">{offspringName}</h3>
-          <Badge variant={statusVariants[placement.placementStatus]}>
-            {statusLabels[placement.placementStatus]}
-          </Badge>
-        </div>
-        <p className="text-sm text-secondary">Group: {groupLabel}</p>
-        {placement.species && (
-          <p className="text-xs text-secondary mt-0.5">
-            {placement.species} {placement.breed ? `• ${placement.breed}` : ""}
-          </p>
-        )}
-        {placement.birthDate && (
-          <p className="text-xs text-secondary mt-0.5">Born: {formatDate(placement.birthDate)}</p>
-        )}
-        {placement.dam && (
-          <p className="text-xs text-secondary mt-0.5">Dam: {placement.dam.name}</p>
-        )}
-        {placement.sire && (
-          <p className="text-xs text-secondary mt-0.5">Sire: {placement.sire.name}</p>
-        )}
-        {placement.offspring?.sex && (
-          <div className="mt-2 pt-2 border-t border-hairline text-xs text-secondary">
-            <span>Sex: {placement.offspring.sex}</span>
+    <div
+      onClick={onClick}
+      style={{
+        padding: "var(--portal-space-4)",
+        borderBottom: "1px solid var(--portal-border-subtle)",
+        cursor: "pointer",
+        transition: "background-color 0.15s ease",
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.backgroundColor = "var(--portal-bg-elevated)";
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.backgroundColor = "transparent";
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "flex-start", gap: "var(--portal-space-3)" }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div
+            style={{
+              fontSize: "var(--portal-font-size-base)",
+              fontWeight: "var(--portal-font-weight-semibold)",
+              color: "var(--portal-text-primary)",
+              marginBottom: "var(--portal-space-1)",
+            }}
+          >
+            {offspringName}
           </div>
-        )}
-        <div className="mt-3">
-          <Button variant="secondary" size="sm" className="w-full">
-            View Details
-          </Button>
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              gap: "var(--portal-space-2)",
+              fontSize: "var(--portal-font-size-sm)",
+              color: "var(--portal-text-secondary)",
+            }}
+          >
+            <span>{sex}</span>
+            <span>•</span>
+            <span>{breed}</span>
+            <span>•</span>
+            <span>Born {birthDate}</span>
+          </div>
+          {parentContext && (
+            <div
+              style={{
+                fontSize: "var(--portal-font-size-xs)",
+                color: "var(--portal-text-tertiary)",
+                marginTop: "var(--portal-space-1)",
+              }}
+            >
+              {parentContext}
+            </div>
+          )}
+          {groupContext && (
+            <div
+              style={{
+                fontSize: "var(--portal-font-size-xs)",
+                color: "var(--portal-text-tertiary)",
+                marginTop: "2px",
+              }}
+            >
+              Group: {groupContext}
+            </div>
+          )}
+        </div>
+        <div
+          style={{
+            fontSize: "var(--portal-font-size-sm)",
+            color: "var(--portal-accent)",
+            flexShrink: 0,
+          }}
+        >
+          View →
         </div>
       </div>
     </div>
   );
 }
 
-/* ───────────────── Empty State ───────────────── */
-
-function EmptyPlacements() {
-  return (
-    <div className="text-center py-16">
-      <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-surface-strong flex items-center justify-center text-3xl">
-        🐾
-      </div>
-      <h3 className="text-lg font-medium text-primary mb-2">No offspring yet</h3>
-      <p className="text-sm text-secondary max-w-sm mx-auto">
-        When you have reserved or placed animals, they will appear here.
-      </p>
-    </div>
-  );
-}
-
-/* ───────────────── Loading State ───────────────── */
+/* ────────────────────────────────────────────────────────────────────────────
+ * Loading State
+ * ──────────────────────────────────────────────────────────────────────────── */
 
 function LoadingState() {
   return (
-    <div className="text-center py-16">
-      <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-surface-strong flex items-center justify-center">
-        <div className="w-6 h-6 border-2 border-[hsl(var(--brand-orange))] border-t-transparent rounded-full animate-spin" />
-      </div>
-      <p className="text-sm text-secondary">Loading offspring...</p>
+    <div style={{ display: "flex", flexDirection: "column", gap: "var(--portal-space-3)" }}>
+      {[1, 2, 3, 4].map((i) => (
+        <div
+          key={i}
+          style={{
+            height: "100px",
+            background: "var(--portal-bg-elevated)",
+            borderRadius: "var(--portal-radius-lg)",
+          }}
+        />
+      ))}
     </div>
   );
 }
 
-/* ───────────────── Error State ───────────────── */
+/* ────────────────────────────────────────────────────────────────────────────
+ * Error State
+ * ──────────────────────────────────────────────────────────────────────────── */
 
-function ErrorState({ onRetry }: { onRetry: () => void }) {
+interface ErrorStateProps {
+  onRetry: () => void;
+}
+
+function ErrorState({ onRetry }: ErrorStateProps) {
   return (
-    <div className="text-center py-16">
-      <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-red-100 flex items-center justify-center text-3xl">
-        !
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        textAlign: "center",
+        minHeight: "60vh",
+        gap: "var(--portal-space-3)",
+      }}
+    >
+      <div
+        style={{
+          fontSize: "var(--portal-font-size-xl)",
+          fontWeight: "var(--portal-font-weight-semibold)",
+          color: "var(--portal-text-primary)",
+        }}
+      >
+        Unable to load offspring
       </div>
-      <h3 className="text-lg font-medium text-primary mb-2">Could not load offspring</h3>
-      <p className="text-sm text-secondary max-w-sm mx-auto mb-4">
+      <div
+        style={{
+          fontSize: "var(--portal-font-size-base)",
+          color: "var(--portal-text-secondary)",
+        }}
+      >
         Something went wrong. Please try again.
-      </p>
-      <Button variant="secondary" onClick={onRetry}>
+      </div>
+      <button
+        onClick={onRetry}
+        style={{
+          padding: "var(--portal-space-2) var(--portal-space-4)",
+          background: "var(--portal-accent)",
+          color: "var(--portal-text-primary)",
+          border: "none",
+          borderRadius: "var(--portal-radius-md)",
+          fontSize: "var(--portal-font-size-sm)",
+          fontWeight: "var(--portal-font-weight-medium)",
+          cursor: "pointer",
+        }}
+      >
         Retry
-      </Button>
+      </button>
     </div>
   );
 }
 
-/* ───────────────── Main Component ───────────────── */
+/* ────────────────────────────────────────────────────────────────────────────
+ * Main Component
+ * ──────────────────────────────────────────────────────────────────────────── */
 
 export default function PortalOffspringPage() {
   const [placements, setPlacements] = React.useState<OffspringPlacementDTO[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState(false);
+
+  // Check if we're viewing offspring detail
+  const isDetailView = window.location.pathname.match(/\/portal\/offspring\/\d+/);
+
+  // If viewing detail, render detail page
+  if (isDetailView) {
+    const PortalOffspringDetailPage = React.lazy(() => import("./PortalOffspringDetailPage"));
+    return (
+      <React.Suspense fallback={<PageContainer><LoadingState /></PageContainer>}>
+        <PortalOffspringDetailPage />
+      </React.Suspense>
+    );
+  }
 
   const fetchPlacements = React.useCallback(async () => {
     setLoading(true);
@@ -165,44 +251,75 @@ export default function PortalOffspringPage() {
     fetchPlacements();
   }, [fetchPlacements]);
 
-  const handleBackClick = () => {
-    window.history.pushState(null, "", "/portal");
-    window.dispatchEvent(new PopStateEvent("popstate"));
+  const handleOffspringClick = (placementId: number) => {
+    const placement = placements.find((p) => p.id === placementId);
+    if (placement?.offspring?.id) {
+      window.history.pushState(null, "", `/portal/offspring/${placement.offspring.id}`);
+      window.dispatchEvent(new PopStateEvent("popstate"));
+    }
   };
 
-  return (
-    <div className="p-6">
-      <PageHeader
-        title="My Offspring"
-        subtitle={
-          loading
-            ? "Loading..."
-            : placements.length > 0
-            ? `${placements.length} placement${placements.length !== 1 ? "s" : ""}`
-            : ""
-        }
-        actions={
-          <Button variant="secondary" onClick={handleBackClick}>
-            Back to Portal
-          </Button>
-        }
-      />
+  // Loading state
+  if (loading) {
+    return (
+      <PageContainer>
+        <LoadingState />
+      </PageContainer>
+    );
+  }
 
-      <div className="mt-8">
-        {loading ? (
-          <LoadingState />
-        ) : error ? (
-          <ErrorState onRetry={fetchPlacements} />
-        ) : placements.length === 0 ? (
-          <EmptyPlacements />
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {placements.map((placement) => (
-              <PlacementCard key={placement.id} placement={placement} />
-            ))}
-          </div>
-        )}
+  // Error state
+  if (error) {
+    return (
+      <PageContainer>
+        <ErrorState onRetry={fetchPlacements} />
+      </PageContainer>
+    );
+  }
+
+  // Empty state
+  if (placements.length === 0) {
+    return (
+      <PageContainer>
+        <PortalEmptyState
+          title="No offspring yet"
+          body="When your placement is confirmed, details will appear here."
+        />
+      </PageContainer>
+    );
+  }
+
+  // List view
+  return (
+    <PageContainer>
+      <div style={{ display: "flex", flexDirection: "column", gap: "var(--portal-space-4)" }}>
+        <h1
+          style={{
+            fontSize: "var(--portal-font-size-2xl)",
+            fontWeight: "var(--portal-font-weight-semibold)",
+            color: "var(--portal-text-primary)",
+            margin: 0,
+          }}
+        >
+          My Offspring
+        </h1>
+
+        <div
+          style={{
+            border: "1px solid var(--portal-border-subtle)",
+            borderRadius: "var(--portal-radius-lg)",
+            overflow: "hidden",
+          }}
+        >
+          {placements.map((placement) => (
+            <OffspringRow
+              key={placement.id}
+              placement={placement}
+              onClick={() => handleOffspringClick(placement.id)}
+            />
+          ))}
+        </div>
       </div>
-    </div>
+    </PageContainer>
   );
 }

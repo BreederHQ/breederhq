@@ -1,7 +1,8 @@
 // apps/portal/src/pages/PortalOffspringDetailPage.tsx
 import * as React from "react";
-import { PageHeader, Button, Badge } from "@bhq/ui";
-import { makeApi, type OffspringDetailDTO, type PlacementStatus } from "@bhq/api";
+import { PageContainer } from "../design/PageContainer";
+import { makeApi } from "@bhq/api";
+import type { OffspringDetailDTO } from "@bhq/api";
 
 // Resolve API base URL
 function getApiBase(): string {
@@ -17,73 +18,208 @@ function getApiBase(): string {
 
 const api = makeApi(getApiBase());
 
-/* ───────────────── Timeline Event ───────────────── */
+/* ────────────────────────────────────────────────────────────────────────────
+ * Timeline Event Component
+ * ──────────────────────────────────────────────────────────────────────────── */
 
 interface TimelineEventProps {
   label: string;
   date: string | null;
+  note?: string;
   isLast?: boolean;
 }
 
-function TimelineEvent({ label, date, isLast }: TimelineEventProps) {
+function TimelineEvent({ label, date, note, isLast }: TimelineEventProps) {
   function formatDate(dateStr: string | null): string {
     if (!dateStr) return "Not yet";
-    return new Date(dateStr).toLocaleDateString();
+    return new Date(dateStr).toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
   }
 
+  const hasDate = Boolean(date);
+
   return (
-    <div className="flex gap-4">
-      <div className="flex flex-col items-center">
+    <div style={{ display: "flex", gap: "var(--portal-space-3)" }}>
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+        }}
+      >
         <div
-          className={`w-3 h-3 rounded-full ${
-            date ? "bg-[hsl(var(--brand-orange))]" : "bg-neutral-300"
-          }`}
+          style={{
+            width: "12px",
+            height: "12px",
+            borderRadius: "var(--portal-radius-full)",
+            background: hasDate ? "var(--portal-accent)" : "var(--portal-border)",
+          }}
         />
         {!isLast && (
-          <div className={`w-0.5 flex-1 ${date ? "bg-neutral-200" : "bg-neutral-100"}`} />
+          <div
+            style={{
+              width: "2px",
+              flex: 1,
+              background: "var(--portal-border-subtle)",
+              marginTop: "4px",
+              marginBottom: "4px",
+              minHeight: "24px",
+            }}
+          />
         )}
       </div>
-      <div className="pb-6">
-        <div className="font-medium text-primary">{label}</div>
-        <div className="text-sm text-secondary">{formatDate(date)}</div>
+      <div style={{ paddingBottom: isLast ? 0 : "var(--portal-space-4)" }}>
+        <div
+          style={{
+            fontSize: "var(--portal-font-size-sm)",
+            fontWeight: "var(--portal-font-weight-medium)",
+            color: "var(--portal-text-primary)",
+          }}
+        >
+          {label}
+        </div>
+        <div
+          style={{
+            fontSize: "var(--portal-font-size-xs)",
+            color: "var(--portal-text-secondary)",
+            marginTop: "2px",
+          }}
+        >
+          {formatDate(date)}
+        </div>
+        {note && (
+          <div
+            style={{
+              fontSize: "var(--portal-font-size-xs)",
+              color: "var(--portal-text-tertiary)",
+              marginTop: "4px",
+            }}
+          >
+            {note}
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
-/* ───────────────── Loading State ───────────────── */
+/* ────────────────────────────────────────────────────────────────────────────
+ * Loading State
+ * ──────────────────────────────────────────────────────────────────────────── */
 
 function LoadingState() {
   return (
-    <div className="text-center py-16">
-      <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-surface-strong flex items-center justify-center">
-        <div className="w-6 h-6 border-2 border-[hsl(var(--brand-orange))] border-t-transparent rounded-full animate-spin" />
+    <div style={{ display: "flex", flexDirection: "column", gap: "var(--portal-space-4)" }}>
+      <div
+        style={{
+          height: "60px",
+          background: "var(--portal-bg-elevated)",
+          borderRadius: "var(--portal-radius-lg)",
+        }}
+      />
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))",
+          gap: "var(--portal-space-4)",
+        }}
+      >
+        {[1, 2, 3].map((i) => (
+          <div
+            key={i}
+            style={{
+              height: "200px",
+              background: "var(--portal-bg-elevated)",
+              borderRadius: "var(--portal-radius-lg)",
+            }}
+          />
+        ))}
       </div>
-      <p className="text-sm text-secondary">Loading offspring details...</p>
     </div>
   );
 }
 
-/* ───────────────── Error State ───────────────── */
+/* ────────────────────────────────────────────────────────────────────────────
+ * Error State
+ * ──────────────────────────────────────────────────────────────────────────── */
 
-function ErrorState({ onRetry }: { onRetry: () => void }) {
+interface ErrorStateProps {
+  onRetry: () => void;
+  onBack: () => void;
+}
+
+function ErrorState({ onRetry, onBack }: ErrorStateProps) {
   return (
-    <div className="text-center py-16">
-      <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-red-100 flex items-center justify-center text-3xl">
-        !
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        textAlign: "center",
+        minHeight: "60vh",
+        gap: "var(--portal-space-3)",
+      }}
+    >
+      <div
+        style={{
+          fontSize: "var(--portal-font-size-xl)",
+          fontWeight: "var(--portal-font-weight-semibold)",
+          color: "var(--portal-text-primary)",
+        }}
+      >
+        Unable to load offspring
       </div>
-      <h3 className="text-lg font-medium text-primary mb-2">Could not load offspring</h3>
-      <p className="text-sm text-secondary max-w-sm mx-auto mb-4">
+      <div
+        style={{
+          fontSize: "var(--portal-font-size-base)",
+          color: "var(--portal-text-secondary)",
+        }}
+      >
         This offspring may not exist or you may not have access to view it.
-      </p>
-      <Button variant="secondary" onClick={onRetry}>
-        Retry
-      </Button>
+      </div>
+      <div style={{ display: "flex", gap: "var(--portal-space-2)" }}>
+        <button
+          onClick={onRetry}
+          style={{
+            padding: "var(--portal-space-2) var(--portal-space-4)",
+            background: "var(--portal-accent)",
+            color: "var(--portal-text-primary)",
+            border: "none",
+            borderRadius: "var(--portal-radius-md)",
+            fontSize: "var(--portal-font-size-sm)",
+            fontWeight: "var(--portal-font-weight-medium)",
+            cursor: "pointer",
+          }}
+        >
+          Retry
+        </button>
+        <button
+          onClick={onBack}
+          style={{
+            padding: "var(--portal-space-2) var(--portal-space-4)",
+            background: "transparent",
+            color: "var(--portal-text-secondary)",
+            border: "1px solid var(--portal-border)",
+            borderRadius: "var(--portal-radius-md)",
+            fontSize: "var(--portal-font-size-sm)",
+            fontWeight: "var(--portal-font-weight-medium)",
+            cursor: "pointer",
+          }}
+        >
+          Back to Offspring
+        </button>
+      </div>
     </div>
   );
 }
 
-/* ───────────────── Main Component ───────────────── */
+/* ────────────────────────────────────────────────────────────────────────────
+ * Main Component
+ * ──────────────────────────────────────────────────────────────────────────── */
 
 export default function PortalOffspringDetailPage() {
   const [offspring, setOffspring] = React.useState<OffspringDetailDTO | null>(null);
@@ -126,146 +262,279 @@ export default function PortalOffspringDetailPage() {
     window.dispatchEvent(new PopStateEvent("popstate"));
   };
 
-  const statusVariants: Record<PlacementStatus, "amber" | "green" | "blue" | "neutral"> = {
-    WAITLISTED: "neutral",
-    RESERVED: "amber",
-    DEPOSIT_PAID: "amber",
-    FULLY_PAID: "green",
-    READY_FOR_PICKUP: "green",
-    PLACED: "blue",
-    CANCELLED: "neutral",
-  };
-
-  const statusLabels: Record<PlacementStatus, string> = {
-    WAITLISTED: "Waitlisted",
-    RESERVED: "Reserved",
-    DEPOSIT_PAID: "Deposit Paid",
-    FULLY_PAID: "Fully Paid",
-    READY_FOR_PICKUP: "Ready for Pickup",
-    PLACED: "Placed",
-    CANCELLED: "Cancelled",
+  const handleDocumentsClick = () => {
+    window.history.pushState(null, "", "/portal/documents");
+    window.dispatchEvent(new PopStateEvent("popstate"));
   };
 
   function formatDate(date: string | null): string {
-    if (!date) return "N/A";
-    return new Date(date).toLocaleDateString();
+    if (!date) return "—";
+    return new Date(date).toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
   }
 
+  // Loading state
   if (loading) {
     return (
-      <div className="p-6">
+      <PageContainer>
         <LoadingState />
-      </div>
+      </PageContainer>
     );
   }
 
+  // Error state
   if (error || !offspring) {
     return (
-      <div className="p-6">
-        <ErrorState onRetry={fetchOffspring} />
-      </div>
+      <PageContainer>
+        <ErrorState onRetry={fetchOffspring} onBack={handleBackClick} />
+      </PageContainer>
     );
   }
 
+  // Build parent context string
+  let parentContext = "";
+  if (offspring.dam && offspring.sire) {
+    parentContext = `${offspring.dam.name} × ${offspring.sire.name}`;
+  } else if (offspring.dam) {
+    parentContext = `Dam: ${offspring.dam.name}`;
+  } else if (offspring.sire) {
+    parentContext = `Sire: ${offspring.sire.name}`;
+  }
+
+  const groupContext = offspring.groupName || "—";
+
+  // Detail view
   return (
-    <div className="p-6">
-      <div className="flex items-center gap-4 mb-8">
-        <div className="flex-1">
-          <h1 className="text-2xl font-bold text-primary">{offspring.name}</h1>
-          <div className="mt-2">
-            <Badge variant={statusVariants[offspring.placementStatus]}>
-              {statusLabels[offspring.placementStatus]}
-            </Badge>
-          </div>
-        </div>
-        <Button variant="secondary" onClick={handleBackClick}>
-          Back to Offspring
-        </Button>
-      </div>
+    <PageContainer>
+      <div style={{ display: "flex", flexDirection: "column", gap: "var(--portal-space-4)" }}>
+        {/* Back button */}
+        <button
+          onClick={handleBackClick}
+          style={{
+            background: "none",
+            border: "none",
+            padding: 0,
+            fontSize: "var(--portal-font-size-sm)",
+            color: "var(--portal-text-secondary)",
+            cursor: "pointer",
+            alignSelf: "flex-start",
+            transition: "color 0.15s ease",
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.color = "var(--portal-accent)";
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.color = "var(--portal-text-secondary)";
+          }}
+        >
+          ← Back to offspring
+        </button>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Timeline Section */}
-        <div className="bg-surface rounded-lg border border-hairline p-6">
-          <h3 className="text-lg font-semibold text-primary mb-6">Timeline</h3>
-          <div>
-            <TimelineEvent label="Contract Signed" date={offspring.contractSignedAt} />
-            <TimelineEvent label="Paid in Full" date={offspring.paidInFullAt} />
-            <TimelineEvent label="Pickup" date={offspring.pickupAt} />
-            <TimelineEvent label="Placed" date={offspring.placedAt} isLast />
-          </div>
-        </div>
-
-        {/* Summary Section */}
-        <div className="bg-surface rounded-lg border border-hairline p-6">
-          <h3 className="text-lg font-semibold text-primary mb-6">Summary</h3>
-          <div className="space-y-3">
-            {offspring.sex && (
-              <div className="flex justify-between">
-                <span className="text-secondary">Sex</span>
-                <span className="font-medium text-primary">{offspring.sex}</span>
-              </div>
-            )}
-            <div className="flex justify-between">
-              <span className="text-secondary">Species</span>
-              <span className="font-medium text-primary">{offspring.species}</span>
-            </div>
-            {offspring.breed && (
-              <div className="flex justify-between">
-                <span className="text-secondary">Breed</span>
-                <span className="font-medium text-primary">{offspring.breed}</span>
-              </div>
-            )}
-            {offspring.birthDate && (
-              <div className="flex justify-between">
-                <span className="text-secondary">Birth Date</span>
-                <span className="font-medium text-primary">{formatDate(offspring.birthDate)}</span>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Parents & Group Section */}
-      <div className="mt-6 bg-surface rounded-lg border border-hairline p-6">
-        <h3 className="text-lg font-semibold text-primary mb-6">Parents & Group</h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {offspring.dam && (
-            <div>
-              <div className="text-sm text-secondary mb-1">Dam</div>
-              <div className="font-medium text-primary">{offspring.dam.name}</div>
-            </div>
-          )}
-          {offspring.sire && (
-            <div>
-              <div className="text-sm text-secondary mb-1">Sire</div>
-              <div className="font-medium text-primary">{offspring.sire.name}</div>
-            </div>
-          )}
-          {offspring.groupName && (
-            <div>
-              <div className="text-sm text-secondary mb-1">Group</div>
-              <div className="font-medium text-primary">{offspring.groupName}</div>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Documents Hint */}
-      <div className="mt-6 bg-neutral-50 rounded-lg border border-hairline p-4">
-        <p className="text-sm text-secondary">
-          Related documents for this offspring can be found on the{" "}
-          <button
-            onClick={() => {
-              window.history.pushState(null, "", "/portal/documents");
-              window.dispatchEvent(new PopStateEvent("popstate"));
+        {/* Header */}
+        <div>
+          <h1
+            style={{
+              fontSize: "var(--portal-font-size-2xl)",
+              fontWeight: "var(--portal-font-weight-semibold)",
+              color: "var(--portal-text-primary)",
+              margin: 0,
+              marginBottom: "var(--portal-space-1)",
             }}
-            className="text-[hsl(var(--brand-orange))] hover:underline font-medium"
           >
-            Documents page
-          </button>
-          .
-        </p>
+            {offspring.name}
+          </h1>
+          <div
+            style={{
+              fontSize: "var(--portal-font-size-sm)",
+              color: "var(--portal-text-secondary)",
+            }}
+          >
+            {offspring.sex || "—"} • {offspring.breed || offspring.species} • Born {formatDate(offspring.birthDate)}
+          </div>
+        </div>
+
+        {/* Content sections in responsive grid */}
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))",
+            gap: "var(--portal-space-4)",
+          }}
+        >
+          {/* Placement Timeline */}
+          <div
+            style={{
+              background: "var(--portal-bg-elevated)",
+              border: "1px solid var(--portal-border-subtle)",
+              borderRadius: "var(--portal-radius-lg)",
+              padding: "var(--portal-space-4)",
+            }}
+          >
+            <h2
+              style={{
+                fontSize: "var(--portal-font-size-base)",
+                fontWeight: "var(--portal-font-weight-semibold)",
+                color: "var(--portal-text-primary)",
+                marginBottom: "var(--portal-space-4)",
+              }}
+            >
+              Placement Timeline
+            </h2>
+            <div>
+              <TimelineEvent
+                label="Contract Signed"
+                date={offspring.contractSignedAt}
+                note={offspring.contractSignedAt ? "Agreement complete" : "Pending signature"}
+              />
+              <TimelineEvent
+                label="Paid in Full"
+                date={offspring.paidInFullAt}
+                note={offspring.paidInFullAt ? "Payment complete" : "Awaiting payment"}
+              />
+              <TimelineEvent
+                label="Pickup"
+                date={offspring.pickupAt}
+                note={offspring.pickupAt ? "Pickup complete" : "Scheduled pickup"}
+              />
+              <TimelineEvent
+                label="Placed"
+                date={offspring.placedAt}
+                note={offspring.placedAt ? "Placement complete" : "In progress"}
+                isLast
+              />
+            </div>
+          </div>
+
+          {/* Basics */}
+          <div
+            style={{
+              background: "var(--portal-bg-elevated)",
+              border: "1px solid var(--portal-border-subtle)",
+              borderRadius: "var(--portal-radius-lg)",
+              padding: "var(--portal-space-4)",
+            }}
+          >
+            <h2
+              style={{
+                fontSize: "var(--portal-font-size-base)",
+                fontWeight: "var(--portal-font-weight-semibold)",
+                color: "var(--portal-text-primary)",
+                marginBottom: "var(--portal-space-4)",
+              }}
+            >
+              Basics
+            </h2>
+            <div style={{ display: "flex", flexDirection: "column", gap: "var(--portal-space-3)" }}>
+              <div style={{ display: "flex", justifyContent: "space-between" }}>
+                <span style={{ fontSize: "var(--portal-font-size-sm)", color: "var(--portal-text-secondary)" }}>
+                  Name
+                </span>
+                <span style={{ fontSize: "var(--portal-font-size-sm)", color: "var(--portal-text-primary)", fontWeight: "var(--portal-font-weight-medium)" }}>
+                  {offspring.name}
+                </span>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between" }}>
+                <span style={{ fontSize: "var(--portal-font-size-sm)", color: "var(--portal-text-secondary)" }}>
+                  Sex
+                </span>
+                <span style={{ fontSize: "var(--portal-font-size-sm)", color: "var(--portal-text-primary)", fontWeight: "var(--portal-font-weight-medium)" }}>
+                  {offspring.sex || "—"}
+                </span>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between" }}>
+                <span style={{ fontSize: "var(--portal-font-size-sm)", color: "var(--portal-text-secondary)" }}>
+                  Breed
+                </span>
+                <span style={{ fontSize: "var(--portal-font-size-sm)", color: "var(--portal-text-primary)", fontWeight: "var(--portal-font-weight-medium)" }}>
+                  {offspring.breed || offspring.species}
+                </span>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between" }}>
+                <span style={{ fontSize: "var(--portal-font-size-sm)", color: "var(--portal-text-secondary)" }}>
+                  Birth Date
+                </span>
+                <span style={{ fontSize: "var(--portal-font-size-sm)", color: "var(--portal-text-primary)", fontWeight: "var(--portal-font-weight-medium)" }}>
+                  {formatDate(offspring.birthDate)}
+                </span>
+              </div>
+              {parentContext && (
+                <div style={{ display: "flex", justifyContent: "space-between" }}>
+                  <span style={{ fontSize: "var(--portal-font-size-sm)", color: "var(--portal-text-secondary)" }}>
+                    Parents
+                  </span>
+                  <span style={{ fontSize: "var(--portal-font-size-sm)", color: "var(--portal-text-primary)", fontWeight: "var(--portal-font-weight-medium)" }}>
+                    {parentContext}
+                  </span>
+                </div>
+              )}
+              <div style={{ display: "flex", justifyContent: "space-between" }}>
+                <span style={{ fontSize: "var(--portal-font-size-sm)", color: "var(--portal-text-secondary)" }}>
+                  Group
+                </span>
+                <span style={{ fontSize: "var(--portal-font-size-sm)", color: "var(--portal-text-primary)", fontWeight: "var(--portal-font-weight-medium)" }}>
+                  {groupContext}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Documents Preview */}
+          <div
+            style={{
+              background: "var(--portal-bg-elevated)",
+              border: "1px solid var(--portal-border-subtle)",
+              borderRadius: "var(--portal-radius-lg)",
+              padding: "var(--portal-space-4)",
+            }}
+          >
+            <h2
+              style={{
+                fontSize: "var(--portal-font-size-base)",
+                fontWeight: "var(--portal-font-weight-semibold)",
+                color: "var(--portal-text-primary)",
+                marginBottom: "var(--portal-space-4)",
+              }}
+            >
+              Documents
+            </h2>
+            <div>
+              <p
+                style={{
+                  fontSize: "var(--portal-font-size-sm)",
+                  color: "var(--portal-text-secondary)",
+                  margin: 0,
+                  marginBottom: "var(--portal-space-3)",
+                }}
+              >
+                No documents shared yet.
+              </p>
+              <button
+                onClick={handleDocumentsClick}
+                style={{
+                  padding: 0,
+                  background: "none",
+                  border: "none",
+                  fontSize: "var(--portal-font-size-sm)",
+                  color: "var(--portal-accent)",
+                  cursor: "pointer",
+                  textDecoration: "none",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.textDecoration = "underline";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.textDecoration = "none";
+                }}
+              >
+                View all documents →
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
-    </div>
+    </PageContainer>
   );
 }
