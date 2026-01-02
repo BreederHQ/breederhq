@@ -7,7 +7,7 @@ import * as React from "react";
  * Status Badge - Glowing status indicator
  * ──────────────────────────────────────────────────────────────────────────── */
 
-type StatusType = "reserved" | "placed" | "pending" | "action" | "info" | "success";
+type StatusType = "reserved" | "placed" | "pending" | "action" | "info" | "success" | "error";
 
 interface StatusBadgeProps {
   status: StatusType;
@@ -51,6 +51,12 @@ function StatusBadge({ status, label }: StatusBadgeProps) {
       bg: "var(--portal-success-soft)",
       color: "var(--portal-success)",
       dot: "var(--portal-success)",
+    },
+    error: {
+      label: label || "Overdue",
+      bg: "var(--portal-error-soft)",
+      color: "var(--portal-error)",
+      dot: "var(--portal-error)",
     },
   };
 
