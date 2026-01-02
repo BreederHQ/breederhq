@@ -1,5 +1,5 @@
 // apps/portal/src/pages/PortalDashboardPage.tsx
-// Overview archetype - calm, operational, species-agnostic
+// Overview archetype - calm, operational, species-aware
 import * as React from "react";
 import { PageScaffold, SectionHeader } from "../design/PageScaffold";
 import { PortalCard } from "../design/PortalCard";
@@ -8,6 +8,27 @@ import { usePortalTasks } from "../tasks/taskSources";
 import { usePortalNotifications } from "../notifications/notificationSources";
 import { isPortalMockEnabled } from "../dev/mockFlag";
 import { mockOffspring, mockFinancialSummary, mockAgreements } from "../dev/mockData";
+
+/* ────────────────────────────────────────────────────────────────────────────
+ * Species Token Map
+ * Minimal accent styling per species - applied only to left border and status dot
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+type Species = "Dog" | "Cat" | "Bird" | "Rabbit" | "Horse" | "unknown";
+
+const speciesAccents: Record<Species, string> = {
+  Dog: "#ff6b35", // warm orange (portal accent)
+  Cat: "#a78bfa", // soft purple
+  Bird: "#38bdf8", // sky blue
+  Rabbit: "#f472b6", // pink
+  Horse: "#fbbf24", // amber
+  unknown: "#6b7280", // neutral gray
+};
+
+function getSpeciesAccent(species: string | undefined | null): string {
+  if (!species) return speciesAccents.unknown;
+  return speciesAccents[species as Species] || speciesAccents.unknown;
+}
 
 /* ────────────────────────────────────────────────────────────────────────────
  * Utilities
@@ -29,14 +50,14 @@ function getDaysUntil(dateStr: string): number {
   return Math.ceil(diff / (1000 * 60 * 60 * 24));
 }
 
-type EngagementStatus = "reserved" | "active" | "completed" | "pending";
+type PlacementStatus = "reserved" | "active" | "placed" | "pending";
 
 function getStatusLabel(status: string): { label: string; variant: "action" | "success" | "warning" | "neutral" } {
   switch (status) {
     case "reserved":
       return { label: "Reserved", variant: "action" };
     case "placed":
-      return { label: "Completed", variant: "success" };
+      return { label: "Placed", variant: "success" };
     case "active":
       return { label: "Active", variant: "action" };
     case "pending":
@@ -47,15 +68,16 @@ function getStatusLabel(status: string): { label: string; variant: "action" | "s
 }
 
 /* ────────────────────────────────────────────────────────────────────────────
- * Status Badge (flat, subtle)
+ * Status Badge (flat, subtle) with species dot
  * ──────────────────────────────────────────────────────────────────────────── */
 
 interface StatusBadgeProps {
   label: string;
   variant: "action" | "success" | "warning" | "error" | "neutral";
+  speciesAccent?: string;
 }
 
-function StatusBadge({ label, variant }: StatusBadgeProps) {
+function StatusBadge({ label, variant, speciesAccent }: StatusBadgeProps) {
   const colors = {
     action: { bg: "var(--portal-accent-muted)", color: "var(--portal-accent)" },
     success: { bg: "var(--portal-success-soft)", color: "var(--portal-success)" },
@@ -70,6 +92,7 @@ function StatusBadge({ label, variant }: StatusBadgeProps) {
       style={{
         display: "inline-flex",
         alignItems: "center",
+        gap: "6px",
         padding: "2px 8px",
         background: c.bg,
         borderRadius: "var(--portal-radius-full)",
@@ -80,29 +103,63 @@ function StatusBadge({ label, variant }: StatusBadgeProps) {
         letterSpacing: "0.02em",
       }}
     >
+      {speciesAccent && (
+        <span
+          style={{
+            width: "6px",
+            height: "6px",
+            borderRadius: "50%",
+            background: speciesAccent,
+            flexShrink: 0,
+          }}
+        />
+      )}
       {label}
     </span>
   );
 }
 
 /* ────────────────────────────────────────────────────────────────────────────
- * Primary Context Strip - The main status area
+ * Primary Context Strip - The main status area with species awareness
  * ──────────────────────────────────────────────────────────────────────────── */
 
 interface ContextStripProps {
-  engagementName: string;
-  status: EngagementStatus;
+  name: string;
+  species: string | null;
+  breed: string | null;
+  status: PlacementStatus;
   nextAction: string;
   ctaLabel: string;
   ctaPath: string;
   onNavigate: (path: string) => void;
 }
 
-function ContextStrip({ engagementName, status, nextAction, ctaLabel, ctaPath, onNavigate }: ContextStripProps) {
+function ContextStrip({
+  name,
+  species,
+  breed,
+  status,
+  nextAction,
+  ctaLabel,
+  ctaPath,
+  onNavigate,
+}: ContextStripProps) {
   const statusInfo = getStatusLabel(status);
+  const accent = getSpeciesAccent(species);
+
+  // Build species line: "Species · Breed" or just "Species"
+  const speciesLine = breed ? `${species || "Unknown"} · ${breed}` : species || null;
 
   return (
-    <PortalCard variant="flat">
+    <div
+      style={{
+        background: "var(--portal-bg-card)",
+        border: "1px solid var(--portal-border-subtle)",
+        borderLeft: `3px solid ${accent}`,
+        borderRadius: "var(--portal-radius-lg)",
+        padding: "var(--portal-space-4)",
+      }}
+    >
       <div
         style={{
           display: "flex",
@@ -112,33 +169,39 @@ function ContextStrip({ engagementName, status, nextAction, ctaLabel, ctaPath, o
           flexWrap: "wrap",
         }}
       >
-        {/* Left: Name + Status */}
-        <div style={{ display: "flex", alignItems: "center", gap: "var(--portal-space-3)", minWidth: 0 }}>
-          <div style={{ minWidth: 0 }}>
+        {/* Left: Name + Species + Status */}
+        <div style={{ minWidth: 0, flex: "1 1 200px" }}>
+          <div
+            style={{
+              fontSize: "var(--portal-font-size-lg)",
+              fontWeight: "var(--portal-font-weight-semibold)",
+              color: "var(--portal-text-primary)",
+              marginBottom: "2px",
+            }}
+          >
+            {name}
+          </div>
+          {speciesLine && (
             <div
               style={{
-                fontSize: "var(--portal-font-size-lg)",
-                fontWeight: "var(--portal-font-weight-semibold)",
-                color: "var(--portal-text-primary)",
-                marginBottom: "2px",
+                fontSize: "var(--portal-font-size-xs)",
+                color: "var(--portal-text-tertiary)",
+                marginBottom: "var(--portal-space-2)",
               }}
             >
-              {engagementName}
+              {speciesLine}
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: "var(--portal-space-2)" }}>
-              <StatusBadge label={statusInfo.label} variant={statusInfo.variant} />
-            </div>
-          </div>
+          )}
+          <StatusBadge label={statusInfo.label} variant={statusInfo.variant} speciesAccent={accent} />
         </div>
 
         {/* Center: Next action */}
         <div
           style={{
-            flex: 1,
+            flex: "1 1 150px",
             textAlign: "center",
             fontSize: "var(--portal-font-size-sm)",
             color: "var(--portal-text-secondary)",
-            minWidth: "150px",
           }}
         >
           {nextAction}
@@ -151,7 +214,7 @@ function ContextStrip({ engagementName, status, nextAction, ctaLabel, ctaPath, o
           </Button>
         </div>
       </div>
-    </PortalCard>
+    </div>
   );
 }
 
@@ -325,7 +388,7 @@ function SecondaryLinks({ onNavigate }: SecondaryLinksProps) {
 }
 
 /* ────────────────────────────────────────────────────────────────────────────
- * Empty State - When no engagement yet
+ * Empty State - When no reservation yet
  * ──────────────────────────────────────────────────────────────────────────── */
 
 interface EmptyStateProps {
@@ -377,7 +440,7 @@ function LoadingState() {
     <div style={{ display: "flex", flexDirection: "column", gap: "var(--portal-space-3)" }}>
       <div
         style={{
-          height: "80px",
+          height: "100px",
           background: "var(--portal-bg-elevated)",
           borderRadius: "var(--portal-radius-lg)",
         }}
@@ -426,13 +489,17 @@ export default function PortalDashboardPage() {
   // Calculate counts
   const actionRequiredCount = tasks.filter((t) => t.urgency === "action_required").length;
   const notificationsCount = notifications.filter((n) => !n.read).length;
-  const messagesCount = mockEnabled ? 2 : 0; // From mockThreads unread
+  const messagesCount = mockEnabled ? 2 : 0;
 
   const isLoading = tasksLoading || notificationsLoading;
 
-  // Get primary engagement
-  const engagements = mockEnabled ? mockOffspring() : [];
-  const primaryEngagement = engagements[0];
+  // Get primary placement (offspring data includes species/breed)
+  const placements = mockEnabled ? mockOffspring() : [];
+  const primaryPlacement = placements[0];
+
+  // Derive species and breed from placement data
+  const species = primaryPlacement?.species || null;
+  const breed = primaryPlacement?.breed || null;
 
   // Get financial summary
   const financialSummary = mockEnabled ? mockFinancialSummary() : null;
@@ -441,16 +508,16 @@ export default function PortalDashboardPage() {
   const agreements = mockEnabled ? mockAgreements() : [];
   const pendingAgreements = agreements.filter((a: any) => a.status === "sent");
 
-  // Determine next action and CTA
-  const getNextActionAndCTA = (engagement: any, financial: any, pendingAgreements: any[]) => {
-    if (!engagement) {
+  // Determine next action and CTA using domain-neutral language
+  const getNextActionAndCTA = (placement: any, financial: any, pendingAgreements: any[]) => {
+    if (!placement) {
       return { nextAction: "Getting started", ctaLabel: "View", ctaPath: "/" };
     }
 
     // Check for overdue payments first
     if (financial?.overdueAmount > 0) {
       return {
-        nextAction: `Payment overdue`,
+        nextAction: "Payment overdue",
         ctaLabel: "Pay now",
         ctaPath: "/financials",
       };
@@ -459,7 +526,7 @@ export default function PortalDashboardPage() {
     // Check for pending agreements
     if (pendingAgreements.length > 0) {
       return {
-        nextAction: `Agreement awaiting signature`,
+        nextAction: "Agreement awaiting signature",
         ctaLabel: "Review",
         ctaPath: "/agreements",
       };
@@ -475,33 +542,34 @@ export default function PortalDashboardPage() {
       };
     }
 
-    // Check for transfer scheduling
-    if (engagement.paidInFullAt && !engagement.pickupAt) {
+    // Check for go-home scheduling (paid in full but no pickup date)
+    if (placement.paidInFullAt && !placement.pickupAt) {
       return {
-        nextAction: "Ready to schedule transfer",
+        nextAction: "Ready to schedule go-home",
         ctaLabel: "Schedule",
         ctaPath: "/tasks",
       };
     }
 
-    // Default
-    if (engagement.placementStatus === "placed") {
+    // Placed = handoff complete
+    if (placement.placementStatus === "placed") {
       return {
-        nextAction: "Transfer complete",
+        nextAction: "Placement complete",
         ctaLabel: "View details",
-        ctaPath: `/offspring`,
+        ctaPath: "/offspring",
       };
     }
 
+    // Default = reservation confirmed
     return {
       nextAction: "Reservation confirmed",
       ctaLabel: "View details",
-      ctaPath: `/offspring`,
+      ctaPath: "/offspring",
     };
   };
 
   const { nextAction, ctaLabel, ctaPath } = getNextActionAndCTA(
-    primaryEngagement,
+    primaryPlacement,
     financialSummary,
     pendingAgreements
   );
@@ -520,19 +588,21 @@ export default function PortalDashboardPage() {
     <PageScaffold title="Dashboard" status={pageStatus} statusLabel={pageStatusLabel}>
       {isLoading && <LoadingState />}
 
-      {!isLoading && !primaryEngagement && (
+      {!isLoading && !primaryPlacement && (
         <div style={{ display: "flex", flexDirection: "column", gap: "var(--portal-space-4)" }}>
           <EmptyState onEnableDemo={handleEnableDemo} />
           <SecondaryLinks onNavigate={handleNavigate} />
         </div>
       )}
 
-      {!isLoading && primaryEngagement && (
+      {!isLoading && primaryPlacement && (
         <div style={{ display: "flex", flexDirection: "column", gap: "var(--portal-space-4)" }}>
-          {/* Primary Context Strip */}
+          {/* Primary Context Strip with species awareness */}
           <ContextStrip
-            engagementName={primaryEngagement.offspring?.name || "Your reservation"}
-            status={primaryEngagement.placementStatus as EngagementStatus}
+            name={primaryPlacement.offspring?.name || "Your reservation"}
+            species={species}
+            breed={breed}
+            status={primaryPlacement.placementStatus as PlacementStatus}
             nextAction={nextAction}
             ctaLabel={ctaLabel}
             ctaPath={ctaPath}
