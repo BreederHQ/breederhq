@@ -7,7 +7,7 @@ export function Footer() {
       style={{
         borderTop: "1px solid var(--portal-border-subtle)",
         padding: "var(--portal-space-4) var(--portal-space-2)",
-        marginTop: "var(--portal-space-8)",
+        marginTop: "auto",
       }}
     >
       <div
@@ -22,6 +22,7 @@ export function Footer() {
             fontSize: "var(--portal-font-size-sm)",
             color: "var(--portal-text-muted)",
             margin: 0,
+            opacity: 0.4,
           }}
         >
           Powered by BreederHQ

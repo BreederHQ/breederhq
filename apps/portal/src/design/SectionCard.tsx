@@ -13,9 +13,9 @@ export function SectionCard({ children, title, className = "" }: SectionCardProp
       className={`portal-section-card ${className}`}
       style={{
         background: "var(--portal-bg-card)",
-        border: "1px solid var(--portal-border)",
+        border: "1px solid var(--portal-border-subtle)",
         borderRadius: "var(--portal-radius-md)",
-        padding: "var(--portal-space-3)",
+        padding: "var(--portal-space-4)",
       }}
     >
       {title && (
@@ -23,7 +23,7 @@ export function SectionCard({ children, title, className = "" }: SectionCardProp
           style={{
             fontSize: "var(--portal-font-size-lg)",
             fontWeight: "var(--portal-font-weight-semibold)",
-            margin: "0 0 var(--portal-space-3) 0",
+            margin: "0 0 var(--portal-space-4) 0",
             color: "var(--portal-text-primary)",
           }}
         >

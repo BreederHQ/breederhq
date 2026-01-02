@@ -11,8 +11,11 @@ interface PortalLayoutProps {
 }
 
 function OrgIdentity({ orgName, orgInitial }: { orgName: string | null; orgInitial: string | null }) {
+  const displayName = orgName || "Acme Breeding Co.";
+  const displayInitial = orgInitial || "A";
+
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: "var(--portal-space-2)" }}>
+    <div style={{ display: "flex", alignItems: "center", gap: "var(--portal-space-2)", flexShrink: 0 }}>
       <div
         style={{
           width: "32px",
@@ -27,16 +30,17 @@ function OrgIdentity({ orgName, orgInitial }: { orgName: string | null; orgIniti
           fontSize: "var(--portal-font-size-base)",
         }}
       >
-        {orgInitial || "?"}
+        {displayInitial}
       </div>
       <span
         style={{
           fontSize: "var(--portal-font-size-lg)",
           fontWeight: "var(--portal-font-weight-semibold)",
           color: "var(--portal-text-primary)",
+          whiteSpace: "nowrap",
         }}
       >
-        {orgName || "Portal"}
+        {displayName}
       </span>
     </div>
   );
@@ -61,12 +65,12 @@ export function PortalLayout({ children, currentPath }: PortalLayoutProps) {
   ];
 
   return (
-    <div style={{ minHeight: "100vh", background: "var(--portal-bg)" }}>
+    <div style={{ minHeight: "100vh", background: "var(--portal-bg)", display: "flex", flexDirection: "column" }}>
       <HeaderBar>
         <OrgIdentity orgName={orgName} orgInitial={orgInitial} />
         <TopNav items={navItems} />
       </HeaderBar>
-      <main>{children}</main>
+      <main style={{ flex: 1 }}>{children}</main>
       <Footer />
     </div>
   );

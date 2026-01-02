@@ -39,17 +39,17 @@ export function TopNav({ items, onNavigate }: TopNavProps) {
           style={{
             fontSize: "var(--portal-font-size-sm)",
             fontWeight: item.active
-              ? "var(--portal-font-weight-medium)"
+              ? "var(--portal-font-weight-semibold)"
               : "var(--portal-font-weight-normal)",
             color: item.active
               ? "var(--portal-text-primary)"
               : "var(--portal-text-secondary)",
             textDecoration: "none",
             whiteSpace: "nowrap",
-            padding: "var(--portal-space-1) 0",
+            padding: "var(--portal-space-2) var(--portal-space-1)",
             borderBottom: item.active
-              ? "2px solid var(--portal-accent)"
-              : "2px solid transparent",
+              ? "1px solid var(--portal-border)"
+              : "1px solid transparent",
             transition: "color var(--portal-transition), border-color var(--portal-transition)",
           }}
           onMouseEnter={(e) => {
