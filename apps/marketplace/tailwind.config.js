@@ -1,12 +1,23 @@
 /** @type {import('tailwindcss').Config} */
-const preset = require("../../packages/config/dist/tailwind-preset.js");
 
+// RESET: Pure Tailwind, no preset dependencies
 module.exports = {
-  presets: [preset],
-  darkMode: ["class", '[data-theme="dark"]'],
+  darkMode: "class",
   content: [
     "./index.html",
     "./src/**/*.{ts,tsx,js,jsx}",
-    "../../packages/ui/src/**/*.{ts,tsx,js,jsx,css}",
   ],
+  theme: {
+    extend: {
+      // Only essentials for marketplace
+      colors: {
+        // Orange accent
+        orange: {
+          500: "#f97316",
+          600: "#ea580c",
+        },
+      },
+    },
+  },
+  plugins: [],
 };

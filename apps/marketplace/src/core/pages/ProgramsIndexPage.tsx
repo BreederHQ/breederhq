@@ -3,12 +3,6 @@ import * as React from "react";
 import { useSearchParams } from "react-router-dom";
 import { usePrograms } from "../hooks/usePrograms";
 import { ProgramCard } from "../components/ProgramCard";
-import { PageHeader } from "../../shared/ui/PageHeader";
-import { Card } from "../../shared/ui/Card";
-import { Input } from "../../shared/ui/Input";
-import { Button } from "../../shared/ui/Button";
-import { EmptyState } from "../../shared/ui/EmptyState";
-import { InlineErrorState } from "../../shared/ui/InlineErrorState";
 import { getUserFacingMessage } from "../../shared/errors/userMessages";
 
 const LIMIT = 24;
@@ -42,7 +36,7 @@ export function ProgramsIndexPage() {
     const timer = setTimeout(() => {
       if (searchInput !== debouncedSearch) {
         setDebouncedSearch(searchInput);
-        setPage(1); // Reset page when search changes
+        setPage(1);
       }
     }, DEBOUNCE_MS);
     return () => clearTimeout(timer);
@@ -53,20 +47,18 @@ export function ProgramsIndexPage() {
     const timer = setTimeout(() => {
       if (locationInput !== debouncedLocation) {
         setDebouncedLocation(locationInput);
-        setPage(1); // Reset page when location changes
+        setPage(1);
       }
     }, DEBOUNCE_MS);
     return () => clearTimeout(timer);
   }, [locationInput, debouncedLocation]);
 
-  // Sync URL with debounced values (replaceState for typing, to avoid back button spam)
+  // Sync URL with debounced values
   React.useEffect(() => {
     const newParams = new URLSearchParams();
     if (debouncedSearch) newParams.set("q", debouncedSearch);
     if (debouncedLocation) newParams.set("loc", debouncedLocation);
     if (page > 1) newParams.set("page", String(page));
-
-    // Use replace to avoid polluting history during typing
     setSearchParams(newParams, { replace: true });
   }, [debouncedSearch, debouncedLocation, page, setSearchParams]);
 
@@ -104,7 +96,8 @@ export function ProgramsIndexPage() {
   };
 
   // Determine if filters are active
-  const hasFilters = debouncedSearch.trim() !== "" || debouncedLocation.trim() !== "";
+  const hasFilters =
+    debouncedSearch.trim() !== "" || debouncedLocation.trim() !== "";
 
   // Results count text
   const resultsText = React.useMemo(() => {
@@ -116,79 +109,107 @@ export function ProgramsIndexPage() {
   }, [data, hasFilters]);
 
   return (
-    <div className="space-y-6">
+    <div>
       {/* Page header */}
-      <PageHeader
-        title="Programs"
-        subtitle="Browse breeder programs"
-      />
+      <div>
+        <h1 className="text-4xl font-semibold tracking-tight">Programs</h1>
+        <p className="text-sm opacity-70 mt-2">Browse breeder programs</p>
+      </div>
 
-      {/* Filters card */}
-      <Card>
+      {/* Filters */}
+      <div className="rounded-xl border border-white/10 bg-white/5 backdrop-blur px-4 py-4 mt-6">
         <div className="flex flex-col sm:flex-row gap-3">
           <div className="flex-1">
-            <Input
+            <label htmlFor="search-input" className="sr-only">
+              Search programs
+            </label>
+            <input
+              id="search-input"
               type="text"
-              placeholder="Search programs"
-              label="Search programs"
+              placeholder="Search programs..."
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
+              className="w-full px-4 py-2.5 rounded-lg bg-black/30 border border-white/10 placeholder:opacity-60 focus:outline-none focus:ring-2 focus:ring-orange-500/50"
             />
           </div>
           <div className="sm:w-48">
-            <Input
+            <label htmlFor="location-input" className="sr-only">
+              Location
+            </label>
+            <input
+              id="location-input"
               type="text"
               placeholder="Location"
-              label="Location"
               value={locationInput}
               onChange={(e) => setLocationInput(e.target.value)}
+              className="w-full px-4 py-2.5 rounded-lg bg-black/30 border border-white/10 placeholder:opacity-60 focus:outline-none focus:ring-2 focus:ring-orange-500/50"
             />
           </div>
         </div>
-      </Card>
+      </div>
 
       {/* Results meta row */}
       {data && !loading && (
-        <div className="text-sm text-secondary">
-          {resultsText}
-        </div>
+        <div className="text-sm opacity-70 mt-4">{resultsText}</div>
       )}
 
-      {/* Loading state - skeleton cards matching grid */}
+      {/* Loading state - skeleton cards */}
       {loading && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mt-4">
           {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className="bhq-card overflow-hidden">
-              <div className="aspect-[4/3] bg-surface-2 animate-pulse" />
+            <div
+              key={i}
+              className="rounded-xl border border-white/10 bg-white/5 overflow-hidden"
+            >
+              <div className="h-36 bg-black/30 animate-pulse" />
               <div className="p-4 space-y-2">
-                <div className="h-5 bg-surface-2 rounded animate-pulse w-3/4" />
-                <div className="h-4 bg-surface-2 rounded animate-pulse w-1/2" />
+                <div className="h-5 bg-white/10 rounded animate-pulse w-3/4" />
+                <div className="h-4 bg-white/10 rounded animate-pulse w-1/2" />
               </div>
             </div>
           ))}
         </div>
       )}
 
+      {/* Error state */}
       {!loading && error != null && (
-        <InlineErrorState
-          message={getUserFacingMessage(error, "Unable to load programs.")}
-          onRetry={refetch}
-        />
+        <div className="rounded-xl border border-white/10 bg-white/5 p-8 mt-4 text-center">
+          <p className="text-sm opacity-70 mb-4">
+            {getUserFacingMessage(error, "Unable to load programs.")}
+          </p>
+          <button
+            type="button"
+            onClick={refetch}
+            className="px-4 py-2 rounded-lg bg-white/10 border border-white/10 text-sm font-medium hover:bg-white/15 transition-colors"
+          >
+            Try again
+          </button>
+        </div>
       )}
 
+      {/* Empty state */}
       {!loading && !error && data && data.items.length === 0 && (
-        <EmptyState
-          title="No programs found"
-          body="Try a different search or clear filters."
-          actionLabel={hasFilters ? "Clear filters" : undefined}
-          onAction={hasFilters ? clearFilters : undefined}
-        />
+        <div className="rounded-xl border border-white/10 bg-white/5 p-8 mt-4 text-center">
+          <h2 className="text-lg font-semibold mb-2">No programs found</h2>
+          <p className="text-sm opacity-70 mb-4">
+            Try a different search or clear filters.
+          </p>
+          {hasFilters && (
+            <button
+              type="button"
+              onClick={clearFilters}
+              className="px-4 py-2 rounded-lg bg-orange-500 text-white text-sm font-medium hover:bg-orange-600 transition-colors"
+            >
+              Clear filters
+            </button>
+          )}
+        </div>
       )}
 
+      {/* Results grid */}
       {!loading && !error && data && data.items.length > 0 && (
         <>
-          {/* Programs grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mt-4">
             {data.items.map((program) => (
               <ProgramCard
                 key={program.slug}
@@ -202,29 +223,29 @@ export function ProgramsIndexPage() {
 
           {/* Pagination */}
           {totalPages > 1 && (
-            <Card className="!p-4">
+            <div className="rounded-xl border border-white/10 bg-white/5 p-4 mt-6">
               <div className="flex items-center justify-center gap-4">
-                <Button
-                  variant="secondary"
-                  size="sm"
+                <button
+                  type="button"
                   onClick={goToPrev}
                   disabled={!hasPrev}
+                  className="px-4 py-2 rounded-lg bg-white/10 border border-white/10 text-sm font-medium hover:bg-white/15 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   Previous
-                </Button>
-                <span className="text-sm text-secondary">
+                </button>
+                <span className="text-sm opacity-70">
                   Page {page} of {totalPages}
                 </span>
-                <Button
-                  variant="secondary"
-                  size="sm"
+                <button
+                  type="button"
                   onClick={goToNext}
                   disabled={!hasNext}
+                  className="px-4 py-2 rounded-lg bg-white/10 border border-white/10 text-sm font-medium hover:bg-white/15 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   Next
-                </Button>
+                </button>
               </div>
-            </Card>
+            </div>
           )}
         </>
       )}

@@ -8,7 +8,7 @@ interface Props {
 
 /**
  * Top bar for standalone marketplace shell.
- * Shows "Marketplace" label on left, account status on right.
+ * Semi-transparent with subtle border, 56px height.
  */
 export function StandaloneTopBar({ authenticated }: Props) {
   const [loggingOut, setLoggingOut] = React.useState(false);
@@ -29,31 +29,32 @@ export function StandaloneTopBar({ authenticated }: Props) {
         console.warn("Logout request failed:", err);
       }
     } finally {
-      // Reload to trigger re-auth check
       window.location.reload();
     }
   };
 
   return (
-    <header className="sticky top-0 z-40 border-b border-hairline bg-surface/80 backdrop-blur">
-      <div className="mx-auto flex h-14 w-full max-w-5xl items-center justify-between px-4">
+    <header className="sticky top-0 z-40 h-14 border-b border-white/10 bg-black/50 backdrop-blur-sm">
+      <div className="mx-auto flex h-full w-full max-w-6xl items-center justify-between px-4 sm:px-6">
         {/* Left: Marketplace label */}
-        <div className="flex items-center gap-3">
-          <span className="text-base font-semibold text-primary tracking-tight">
-            Marketplace
-          </span>
-        </div>
+        <span className="text-base font-semibold tracking-tight">
+          Marketplace
+        </span>
 
-        {/* Right: Account status */}
+        {/* Right: Account status + reset badge */}
         <div className="flex items-center gap-3">
+          {/* TEMPORARY: Reset badge - remove after visual confirmation */}
+          <span className="bg-red-600 text-white px-2 py-1 rounded text-xs font-semibold">
+            UI RESET ACTIVE
+          </span>
           {authenticated && (
             <>
-              <span className="text-sm text-secondary">Signed in</span>
+              <span className="text-sm opacity-70">Signed in</span>
               <button
                 type="button"
                 onClick={handleLogout}
                 disabled={loggingOut}
-                className="px-3 py-1.5 text-sm rounded-md bg-surface-2 border border-hairline text-primary hover:bg-surface-3 transition-colors disabled:opacity-50"
+                className="px-3 py-1.5 text-sm rounded-lg bg-white/10 border border-white/10 hover:bg-white/15 transition-colors disabled:opacity-50"
               >
                 {loggingOut ? "Logging out..." : "Logout"}
               </button>

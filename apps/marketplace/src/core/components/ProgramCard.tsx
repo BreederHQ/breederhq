@@ -12,43 +12,39 @@ interface Props {
 /**
  * Card component for a program in the Programs Index grid.
  * Entire card is clickable and links to the program profile.
+ * Uses standard Tailwind classes only - no design system dependencies.
  */
 export function ProgramCard({ slug, name, location, photoUrl }: Props) {
-  // Generate initials for placeholder
-  const initials = name
-    .split(/\s+/)
-    .slice(0, 2)
-    .map((word) => word.charAt(0).toUpperCase())
-    .join("");
-
   return (
     <Link
       to={`/programs/${slug}`}
-      className="group block bhq-card overflow-hidden transition-all hover:scale-[1.01] focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-orange"
+      className="block rounded-xl border border-white/10 bg-white/5 overflow-hidden hover:bg-white/10 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-500/60"
     >
-      {/* Photo or placeholder - fixed height for consistent card sizing */}
-      <div className="h-36 sm:h-32 bg-surface-2 flex items-center justify-center overflow-hidden">
+      {/* Image area - fixed height */}
+      <div className="h-36 bg-black/30 overflow-hidden">
         {photoUrl ? (
           <img
             src={photoUrl}
             alt={name}
-            className="w-full h-full object-cover transition-transform group-hover:scale-105"
+            className="w-full h-full object-cover"
             onError={(e) => {
               e.currentTarget.style.display = "none";
             }}
           />
         ) : (
-          <span className="text-3xl font-semibold text-secondary select-none">
-            {initials || "?"}
-          </span>
+          <div className="w-full h-full flex items-center justify-center">
+            <span className="text-sm opacity-40">Program</span>
+          </div>
         )}
       </div>
 
-      {/* Text content */}
-      <div className="p-3 sm:p-4">
-        <h3 className="text-base font-semibold text-primary line-clamp-2">{name}</h3>
+      {/* Content */}
+      <div className="p-4">
+        <h3 className="text-lg font-semibold leading-snug line-clamp-2">
+          {name}
+        </h3>
         {location && (
-          <p className="text-sm text-secondary mt-1 truncate">{location}</p>
+          <p className="text-sm opacity-70 mt-1 truncate">{location}</p>
         )}
       </div>
     </Link>
