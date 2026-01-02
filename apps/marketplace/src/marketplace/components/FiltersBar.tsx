@@ -1,4 +1,5 @@
 // apps/marketplace/src/marketplace/components/FiltersBar.tsx
+// Portal-aligned input styling
 
 interface FiltersBarProps {
   search: string;
@@ -8,7 +9,7 @@ interface FiltersBarProps {
 }
 
 /**
- * Compact filters bar with search and location inputs.
+ * Filters bar with Portal-aligned input styling.
  */
 export function FiltersBar({
   search,
@@ -17,7 +18,7 @@ export function FiltersBar({
   onLocationChange,
 }: FiltersBarProps) {
   return (
-    <div className="flex flex-col sm:flex-row gap-2">
+    <div className="flex flex-col sm:flex-row gap-3">
       <div className="flex-1">
         <label htmlFor="filter-search" className="sr-only">
           Search programs
@@ -28,7 +29,7 @@ export function FiltersBar({
           placeholder="Search programs..."
           value={search}
           onChange={(e) => onSearchChange(e.target.value)}
-          className="w-full h-10 px-3 rounded-lg bg-white/5 border border-white/10 text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-orange-500/50 focus:border-transparent transition-colors"
+          className="w-full h-11 px-3.5 rounded-portal-sm bg-portal-elevated border border-border-subtle text-sm text-white placeholder:text-text-muted focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30 transition-colors"
         />
       </div>
       <div className="sm:w-48">
@@ -41,7 +42,7 @@ export function FiltersBar({
           placeholder="Location"
           value={location}
           onChange={(e) => onLocationChange(e.target.value)}
-          className="w-full h-10 px-3 rounded-lg bg-white/5 border border-white/10 text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-orange-500/50 focus:border-transparent transition-colors"
+          className="w-full h-11 px-3.5 rounded-portal-sm bg-portal-elevated border border-border-subtle text-sm text-white placeholder:text-text-muted focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30 transition-colors"
         />
       </div>
     </div>

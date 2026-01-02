@@ -1,4 +1,5 @@
 // apps/marketplace/src/marketplace/components/ProgramTile.tsx
+// Portal-aligned card: unified bg, border, radius, shadow
 import { Link } from "react-router-dom";
 
 interface ProgramTileProps {
@@ -9,17 +10,17 @@ interface ProgramTileProps {
 }
 
 /**
- * Compact program card for the programs grid.
- * Entire card is a link to program profile.
+ * Program card with Portal-aligned styling.
+ * Unified card system: bg #141618, border #1a1c1e, radius 16px.
  */
 export function ProgramTile({ slug, name, location, photoUrl }: ProgramTileProps) {
   return (
     <Link
       to={`/programs/${slug}`}
-      className="group flex flex-col min-h-[180px] rounded-lg border border-white/10 bg-white/5 overflow-hidden transition-all hover:border-white/20 hover:bg-white/[0.08] hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-500/60"
+      className="group flex flex-col min-h-[200px] rounded-portal border border-border-subtle bg-portal-card overflow-hidden shadow-portal transition-all hover:border-border-default hover:bg-portal-card-hover hover:-translate-y-0.5 hover:shadow-portal-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
     >
-      {/* Image area - shorter */}
-      <div className="h-24 bg-gradient-to-br from-gray-800 to-gray-900 overflow-hidden flex-shrink-0">
+      {/* Image area */}
+      <div className="h-[100px] bg-gradient-to-br from-portal-card-hover to-border-default overflow-hidden flex-shrink-0">
         {photoUrl ? (
           <img
             src={photoUrl}
@@ -31,24 +32,24 @@ export function ProgramTile({ slug, name, location, photoUrl }: ProgramTileProps
           />
         ) : (
           <div className="w-full h-full flex items-center justify-center">
-            <span className="text-xl font-semibold text-white/20">
+            <span className="text-2xl font-semibold text-text-tertiary">
               {name.charAt(0).toUpperCase()}
             </span>
           </div>
         )}
       </div>
 
-      {/* Content - tighter padding */}
-      <div className="p-3 flex flex-col flex-grow">
-        <h3 className="text-sm font-semibold text-white leading-snug line-clamp-2">
+      {/* Content */}
+      <div className="p-4 flex flex-col flex-grow">
+        <h3 className="text-[15px] font-semibold text-white leading-snug line-clamp-2">
           {name}
         </h3>
-        <p className="text-xs text-white/50 mt-0.5 truncate">
+        <p className="text-[13px] text-text-tertiary mt-1 truncate">
           {location || "Location not specified"}
         </p>
-        <div className="mt-auto pt-2">
-          <span className="text-xs text-orange-400 group-hover:text-orange-300 transition-colors">
-            View &rarr;
+        <div className="mt-auto pt-3">
+          <span className="text-[13px] font-medium text-accent group-hover:text-accent-hover transition-colors">
+            View program →
           </span>
         </div>
       </div>

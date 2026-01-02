@@ -1,4 +1,5 @@
 // apps/marketplace/src/marketplace/pages/ProgramsPage.tsx
+// Portal-aligned typography and spacing
 import * as React from "react";
 import { useSearchParams } from "react-router-dom";
 import { useProgramsQuery } from "../hooks/useProgramsQuery";
@@ -9,7 +10,7 @@ import { Pager } from "../components/Pager";
 const LIMIT = 24;
 
 /**
- * Programs Index page - browse breeder programs.
+ * Programs Index page with Portal-aligned styling.
  * URL params: q (search), loc (location), page (pagination)
  */
 export function ProgramsPage() {
@@ -78,13 +79,13 @@ export function ProgramsPage() {
   const showPager = !loading && !error && data && total > 0;
 
   return (
-    <div className="space-y-4">
-      {/* Page header - tighter */}
+    <div className="space-y-5">
+      {/* Page header - Portal typography */}
       <div>
-        <h1 className="text-2xl font-bold text-white tracking-tight">
+        <h1 className="text-[28px] font-bold text-white tracking-tight leading-tight">
           Programs
         </h1>
-        <p className="text-sm text-white/50 mt-0.5">Browse breeder programs</p>
+        <p className="text-sm text-text-tertiary mt-1">Browse breeder programs</p>
       </div>
 
       {/* Filters */}
@@ -96,10 +97,10 @@ export function ProgramsPage() {
       />
 
       {/* Results header row: count on left, pager on right */}
-      <div className="flex items-center justify-between flex-wrap gap-2 py-1">
-        <div className="text-xs text-white/50">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div className="text-[13px] text-text-tertiary">
           {loading ? (
-            <span className="inline-block h-3 w-16 bg-white/10 rounded animate-pulse" />
+            <span className="inline-block h-3.5 w-20 bg-border-default rounded animate-pulse" />
           ) : total > 0 ? (
             `${total} ${hasFilters ? "result" : "program"}${total === 1 ? "" : "s"}`
           ) : null}

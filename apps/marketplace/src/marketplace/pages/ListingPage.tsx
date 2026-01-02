@@ -1,4 +1,5 @@
 // apps/marketplace/src/marketplace/pages/ListingPage.tsx
+// Portal-aligned page hierarchy, card styling, and inquiry panel
 import * as React from "react";
 import { useParams, Link } from "react-router-dom";
 import { getListing, submitInquiry } from "../../api/client";
@@ -14,7 +15,7 @@ function formatCents(cents: number): string {
 }
 
 /**
- * Listing detail page with offspring cards and inline inquiry panel.
+ * Listing detail page with Portal-aligned styling.
  */
 export function ListingPage() {
   const { programSlug = "", listingSlug = "" } = useParams<{
@@ -79,15 +80,15 @@ export function ListingPage() {
     setInquiryError(null);
   };
 
-  // Error state
+  // Error state - Portal styling
   if (error) {
     return (
-      <div className="rounded-lg border border-white/10 bg-white/5 p-6 text-center">
-        <p className="text-white/70 text-sm mb-3">Unable to load listing.</p>
+      <div className="rounded-portal border border-border-subtle bg-portal-card shadow-portal p-8 text-center">
+        <p className="text-text-secondary text-sm mb-4">Unable to load listing.</p>
         <button
           type="button"
           onClick={fetchData}
-          className="px-4 py-1.5 rounded-md bg-white/10 border border-white/10 text-sm font-medium text-white hover:bg-white/15 transition-colors"
+          className="px-4 py-2 rounded-portal-xs bg-border-default border border-border-subtle text-sm font-medium text-white hover:bg-portal-card-hover transition-colors"
         >
           Try again
         </button>
@@ -95,16 +96,16 @@ export function ListingPage() {
     );
   }
 
-  // Loading state
+  // Loading state - Portal styling
   if (loading || !data) {
     return (
       <div className="space-y-4">
-        <div className="h-4 bg-white/10 rounded animate-pulse w-40" />
+        <div className="h-4 bg-border-default rounded animate-pulse w-40" />
         <div className="space-y-2">
-          <div className="h-7 bg-white/10 rounded animate-pulse w-2/3" />
-          <div className="h-4 bg-white/10 rounded animate-pulse w-32" />
+          <div className="h-8 bg-border-default rounded animate-pulse w-2/3" />
+          <div className="h-4 bg-border-default rounded animate-pulse w-32" />
         </div>
-        <div className="h-10 bg-white/10 rounded-lg animate-pulse w-full" />
+        <div className="h-12 bg-border-default rounded-portal-sm animate-pulse w-full" />
       </div>
     );
   }
@@ -133,7 +134,7 @@ export function ListingPage() {
   const hasOffspring = data.offspring && data.offspring.length > 0;
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
       {/* Breadcrumb */}
       <Breadcrumb
         items={[
@@ -142,37 +143,37 @@ export function ListingPage() {
         ]}
       />
 
-      {/* Listing hero - tighter */}
+      {/* Listing hero */}
       <div>
         {/* Title row with price */}
-        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-1 sm:gap-4">
-          <h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight">
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 sm:gap-6">
+          <h1 className="text-[28px] font-bold text-white tracking-tight leading-tight">
             {data.title || "Untitled Listing"}
           </h1>
           {priceText && (
-            <span className="text-lg sm:text-xl font-semibold text-orange-400 whitespace-nowrap">
+            <span className="text-2xl font-semibold text-accent whitespace-nowrap">
               {priceText}
             </span>
           )}
         </div>
 
         {/* Byline */}
-        <p className="text-sm text-white/50 mt-0.5">
+        <p className="text-sm text-text-tertiary mt-2">
           by{" "}
           <Link
             to={`/programs/${programSlug}`}
-            className="text-orange-400 hover:text-orange-300 transition-colors"
+            className="text-accent font-medium hover:text-accent-hover transition-colors"
           >
             {data.programName}
           </Link>
         </p>
 
-        {/* Metadata strip - styled as subtle row */}
-        <div className="mt-3 py-2 px-3 rounded-lg bg-white/5 border border-white/10">
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-white/60">
+        {/* Metadata strip - Portal card styling */}
+        <div className="mt-4 py-3 px-4 rounded-portal-sm bg-portal-card border border-border-subtle">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-text-secondary">
             {metadataItems.map((item, i) => (
               <React.Fragment key={item}>
-                {i > 0 && <span className="text-white/20">|</span>}
+                {i > 0 && <span className="text-text-muted">•</span>}
                 <span>{item}</span>
               </React.Fragment>
             ))}
@@ -180,10 +181,10 @@ export function ListingPage() {
         </div>
       </div>
 
-      {/* Description card - only if there's content */}
+      {/* Description card - Portal styling */}
       {data.description && (
-        <div className="rounded-lg border border-white/10 bg-white/5 p-4">
-          <p className="text-sm text-white/80 leading-relaxed max-w-prose">
+        <div className="rounded-portal border border-border-subtle bg-portal-card shadow-portal p-5">
+          <p className="text-[15px] text-text-secondary leading-relaxed max-w-prose">
             {data.description}
           </p>
         </div>
@@ -191,33 +192,33 @@ export function ListingPage() {
 
       {/* Offspring section */}
       {hasOffspring ? (
-        <div className="space-y-2">
-          <div className="flex items-center gap-2">
-            <h2 className="text-base font-semibold text-white">Offspring</h2>
-            <span className="px-1.5 py-0.5 rounded text-xs font-medium bg-white/10 text-white/60">
+        <div className="space-y-3">
+          <div className="flex items-center gap-3">
+            <h2 className="text-lg font-semibold text-white">Offspring</h2>
+            <span className="px-2.5 py-1 rounded-portal-xs text-[13px] font-medium bg-border-default text-text-secondary">
               {data.offspring.length}
             </span>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {data.offspring.map((offspring) => (
               <OffspringCard key={offspring.id} offspring={offspring} />
             ))}
           </div>
         </div>
       ) : (
-        <div className="rounded-lg border border-white/10 bg-white/5 p-4 text-center">
-          <p className="text-xs text-white/50">No offspring listed yet.</p>
+        <div className="rounded-portal border border-border-subtle bg-portal-card p-6 text-center">
+          <p className="text-[13px] text-text-tertiary">No offspring listed yet.</p>
         </div>
       )}
 
-      {/* Inquiry panel - constrained width */}
+      {/* Inquiry panel - Portal action panel styling */}
       <div className="max-w-xl">
-        <div className="rounded-lg border border-white/10 bg-white/5 p-4">
+        <div className="rounded-portal border border-border-subtle bg-portal-card shadow-portal p-5">
           {inquirySuccess ? (
             // Compact success state
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2">
-                <div className="w-6 h-6 rounded-full bg-green-500/20 flex items-center justify-center flex-shrink-0">
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="w-7 h-7 rounded-full bg-green-500/15 flex items-center justify-center flex-shrink-0">
                   <svg
                     className="w-3.5 h-3.5 text-green-400"
                     fill="none"
@@ -233,14 +234,14 @@ export function ListingPage() {
                   </svg>
                 </div>
                 <div>
-                  <p className="text-sm font-medium text-white">Inquiry sent</p>
-                  <p className="text-xs text-white/50">The breeder will respond via email.</p>
+                  <p className="text-[15px] font-semibold text-white">Inquiry sent</p>
+                  <p className="text-[13px] text-text-tertiary mt-0.5">The breeder will respond via email.</p>
                 </div>
               </div>
               <button
                 type="button"
                 onClick={handleSendAnother}
-                className="text-xs text-orange-400 hover:text-orange-300 transition-colors whitespace-nowrap"
+                className="text-[13px] text-accent font-medium hover:text-accent-hover transition-colors whitespace-nowrap"
               >
                 Send another
               </button>
@@ -248,18 +249,18 @@ export function ListingPage() {
           ) : (
             // Form state
             <>
-              <div className="mb-2">
-                <h3 className="text-sm font-semibold text-white">Interested?</h3>
-                <p className="text-xs text-white/40 mt-0.5">
+              <div className="mb-3">
+                <h3 className="text-base font-semibold text-white">Interested?</h3>
+                <p className="text-[13px] text-text-tertiary mt-1">
                   Your message is sent to the breeder, your email stays private.
                 </p>
               </div>
 
-              <form onSubmit={handleInquirySubmit} className="space-y-2">
+              <form onSubmit={handleInquirySubmit} className="space-y-3">
                 {inquiryError && (
                   <div
                     role="alert"
-                    className="p-2 rounded-md bg-red-500/10 border-l-2 border-red-500 text-red-300 text-xs"
+                    className="p-3 rounded-portal-xs bg-red-500/10 border-l-3 border-red-500 text-red-300 text-[13px]"
                   >
                     {inquiryError}
                   </div>
@@ -271,7 +272,7 @@ export function ListingPage() {
                     value={inquiryMessage}
                     onChange={(e) => setInquiryMessage(e.target.value)}
                     rows={4}
-                    className="w-full px-3 py-2 rounded-md bg-white/5 border border-white/10 text-sm text-white placeholder-white/30 focus:outline-none focus:border-white/20 focus:ring-1 focus:ring-white/10 disabled:opacity-50 resize-none"
+                    className="w-full px-3.5 py-3 rounded-portal-sm bg-portal-elevated border border-border-subtle text-sm text-white placeholder-text-muted focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30 disabled:opacity-50 resize-none transition-colors"
                     placeholder="Introduce yourself and ask any questions..."
                     disabled={inquirySending}
                     required
@@ -282,7 +283,7 @@ export function ListingPage() {
                   <button
                     type="submit"
                     disabled={inquirySending || !inquiryMessage.trim()}
-                    className="w-full sm:w-auto px-4 py-1.5 rounded-md bg-orange-500 text-white text-sm font-medium hover:bg-orange-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-500/50"
+                    className="w-full sm:w-auto px-5 py-2.5 rounded-portal-xs bg-accent text-white text-sm font-semibold hover:bg-accent-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
                   >
                     {inquirySending ? "Sending..." : "Send inquiry"}
                   </button>
@@ -297,41 +298,41 @@ export function ListingPage() {
 }
 
 /**
- * Offspring card component.
+ * Offspring card with Portal card styling.
  */
 function OffspringCard({ offspring }: { offspring: PublicOffspringDTO }) {
   const priceText = offspring.priceCents != null ? formatCents(offspring.priceCents) : null;
 
-  // Status styling
+  // Status styling - Portal status colors
   const statusStyles: Record<string, string> = {
-    available: "bg-green-500/20 text-green-400",
-    reserved: "bg-yellow-500/20 text-yellow-400",
-    placed: "bg-white/10 text-white/50",
+    available: "bg-green-500/15 text-green-400",
+    reserved: "bg-accent-muted text-accent",
+    placed: "bg-border-default text-text-tertiary",
   };
 
   return (
-    <div className="rounded-lg border border-white/10 bg-white/5 p-3">
+    <div className="rounded-portal-sm border border-border-subtle bg-portal-card shadow-portal p-4">
       {/* Header row: Name + Status badge */}
-      <div className="flex items-start justify-between gap-2">
-        <h4 className="text-sm font-semibold text-white line-clamp-1">
+      <div className="flex items-start justify-between gap-3">
+        <h4 className="text-[15px] font-semibold text-white line-clamp-1">
           {offspring.name || "Unnamed"}
         </h4>
         <span
-          className={`px-1.5 py-0.5 rounded text-xs font-medium capitalize flex-shrink-0 ${statusStyles[offspring.status] || statusStyles.available}`}
+          className={`px-2.5 py-1 rounded-portal-xs text-[12px] font-semibold capitalize flex-shrink-0 ${statusStyles[offspring.status] || statusStyles.available}`}
         >
           {offspring.status}
         </span>
       </div>
 
       {/* Info row: Sex and collar */}
-      <div className="flex items-center gap-2 mt-1.5 text-xs">
+      <div className="flex items-center gap-3 mt-2 text-[13px]">
         {offspring.sex && (
-          <span className="text-white/60">{offspring.sex}</span>
+          <span className="text-text-secondary">{offspring.sex}</span>
         )}
         {offspring.collarColorName && (
-          <span className="flex items-center gap-1 text-white/60">
+          <span className="flex items-center gap-1.5 text-text-secondary">
             <span
-              className="w-2 h-2 rounded-full border border-white/20"
+              className="w-2.5 h-2.5 rounded-full border border-border-subtle"
               style={{
                 backgroundColor: offspring.collarColorHex || "#888888",
               }}
@@ -343,8 +344,8 @@ function OffspringCard({ offspring }: { offspring: PublicOffspringDTO }) {
 
       {/* Price row */}
       {priceText && (
-        <div className="mt-2 pt-1.5 border-t border-white/10 flex justify-end">
-          <span className="text-sm text-orange-400 font-medium">{priceText}</span>
+        <div className="mt-3 pt-3 border-t border-border-subtle flex justify-end">
+          <span className="text-[15px] text-accent font-semibold">{priceText}</span>
         </div>
       )}
     </div>

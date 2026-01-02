@@ -1,4 +1,5 @@
 // apps/marketplace/src/layout/MarketplaceLayout.tsx
+// Portal-aligned layout: 64px header, Portal gradient, max-width 1200px
 import * as React from "react";
 import { joinApi } from "../api/client";
 
@@ -8,8 +9,8 @@ interface Props {
 }
 
 /**
- * Main marketplace layout with slim top bar and consistent content frame.
- * Premium dark gradient background with subtle radial highlight.
+ * Main marketplace layout with Portal-aligned styling.
+ * 64px header height, Portal gradient background, max-width 1200px.
  */
 export function MarketplaceLayout({ authenticated, children }: Props) {
   const [loggingOut, setLoggingOut] = React.useState(false);
@@ -36,20 +37,21 @@ export function MarketplaceLayout({ authenticated, children }: Props) {
 
   return (
     <div className="min-h-screen text-white relative font-sans antialiased">
-      {/* Background with gradient and radial highlight */}
+      {/* Portal gradient background */}
       <div
         className="fixed inset-0 -z-10"
         style={{
           background: `
-            radial-gradient(ellipse 80% 50% at 50% -20%, rgba(120, 80, 200, 0.15), transparent),
-            linear-gradient(to bottom, #0a0a0f, #111118, #0d0d12)
+            radial-gradient(ellipse 80% 50% at 50% -20%, rgba(255, 107, 53, 0.08) 0%, transparent 60%),
+            radial-gradient(ellipse 60% 40% at 100% 100%, rgba(139, 92, 246, 0.04) 0%, transparent 50%),
+            linear-gradient(180deg, #08090a 0%, #0a0b0c 100%)
           `,
         }}
       />
 
-      {/* Slim top bar */}
-      <header className="sticky top-0 z-40 h-12 border-b border-white/10 bg-black/50 backdrop-blur-md">
-        <div className="h-full w-full max-w-6xl mx-auto px-6 flex items-center justify-between">
+      {/* Portal-aligned header - 64px height */}
+      <header className="sticky top-0 z-40 h-header border-b border-border-subtle bg-portal-bg/85 backdrop-blur-xl">
+        <div className="h-full w-full max-w-portal mx-auto px-6 flex items-center justify-between">
           {/* Left: Marketplace brand */}
           <a href="/" className="text-base font-semibold tracking-tight text-white hover:text-white/90 transition-colors">
             Marketplace
@@ -61,7 +63,7 @@ export function MarketplaceLayout({ authenticated, children }: Props) {
               type="button"
               onClick={handleLogout}
               disabled={loggingOut}
-              className="px-3 py-1 text-sm rounded-md bg-white/10 border border-white/10 text-white/80 hover:text-white hover:bg-white/15 transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-500/50"
+              className="px-3.5 py-2 text-sm font-medium rounded-portal-xs bg-border-default border border-border-subtle text-text-secondary hover:text-white hover:bg-portal-card-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
             >
               {loggingOut ? "..." : "Logout"}
             </button>
@@ -69,8 +71,8 @@ export function MarketplaceLayout({ authenticated, children }: Props) {
         </div>
       </header>
 
-      {/* Content frame with consistent padding */}
-      <main className="w-full max-w-6xl mx-auto px-6 pt-8 pb-16">
+      {/* Content frame - Portal max-width 1200px */}
+      <main className="w-full max-w-portal mx-auto px-6 pt-8 pb-16">
         {children}
       </main>
     </div>

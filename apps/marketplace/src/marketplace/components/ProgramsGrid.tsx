@@ -1,4 +1,5 @@
 // apps/marketplace/src/marketplace/components/ProgramsGrid.tsx
+// Portal-aligned grid: 2-col minimum at desktop, Portal card styling
 import { ProgramTile } from "./ProgramTile";
 import { getUserMessage } from "../../api/errors";
 import type { PublicProgramSummaryDTO } from "../../api/types";
@@ -13,17 +14,17 @@ interface ProgramsGridProps {
 }
 
 /**
- * Skeleton tile matching compact ProgramTile geometry.
+ * Skeleton tile matching Portal ProgramTile geometry.
  */
 function SkeletonTile() {
   return (
-    <div className="flex flex-col min-h-[180px] rounded-lg border border-white/10 bg-white/5 overflow-hidden">
-      <div className="h-24 bg-gradient-to-br from-gray-800 to-gray-900 animate-pulse flex-shrink-0" />
-      <div className="p-3 flex flex-col flex-grow space-y-1.5">
-        <div className="h-4 bg-white/10 rounded animate-pulse w-3/4" />
-        <div className="h-3 bg-white/10 rounded animate-pulse w-1/2" />
-        <div className="mt-auto pt-2">
-          <div className="h-3 bg-white/10 rounded animate-pulse w-12" />
+    <div className="flex flex-col min-h-[200px] rounded-portal border border-border-subtle bg-portal-card overflow-hidden">
+      <div className="h-[100px] bg-gradient-to-br from-portal-card-hover to-border-default animate-pulse flex-shrink-0" />
+      <div className="p-4 flex flex-col flex-grow space-y-2">
+        <div className="h-4 bg-border-default rounded animate-pulse w-3/4" />
+        <div className="h-3.5 bg-border-default rounded animate-pulse w-1/2" />
+        <div className="mt-auto pt-3">
+          <div className="h-3.5 bg-border-default rounded animate-pulse w-20" />
         </div>
       </div>
     </div>
@@ -31,14 +32,14 @@ function SkeletonTile() {
 }
 
 /**
- * Compact tip card for low result counts.
+ * Guidance card for sparse grids - Portal styling.
  */
-function SearchTipCard() {
+function GuidanceCard() {
   return (
-    <div className="flex flex-col min-h-[180px] max-w-xs rounded-lg border border-dashed border-white/10 bg-white/[0.02] p-4">
+    <div className="flex flex-col min-h-[200px] rounded-portal border border-dashed border-border-subtle bg-portal-card p-6">
       <div className="flex-grow flex flex-col justify-center text-center">
-        <p className="text-xs text-white/40 leading-relaxed">
-          Use filters to find specific programs.
+        <p className="text-[13px] text-text-tertiary leading-relaxed">
+          Use filters to find specific programs by name or location.
         </p>
       </div>
     </div>
@@ -46,7 +47,8 @@ function SearchTipCard() {
 }
 
 /**
- * Grid display for programs with loading, error, and empty states.
+ * Grid display with Portal-aligned styling.
+ * 2-col minimum at desktop to prevent floating single cards.
  */
 export function ProgramsGrid({
   programs,
@@ -56,7 +58,7 @@ export function ProgramsGrid({
   onClearFilters,
   hasFilters,
 }: ProgramsGridProps) {
-  // Loading skeleton - 6 tiles
+  // Loading skeleton - 6 tiles, 2-col min at desktop
   if (loading) {
     return (
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -67,16 +69,16 @@ export function ProgramsGrid({
     );
   }
 
-  // Error state
+  // Error state - Portal card styling
   if (error) {
     return (
-      <div className="rounded-lg border border-white/10 bg-white/5 p-6 text-center">
-        <p className="text-white/70 text-sm mb-3">{getUserMessage(error)}</p>
+      <div className="rounded-portal border border-border-subtle bg-portal-card shadow-portal p-8 text-center">
+        <p className="text-text-secondary text-sm mb-4">{getUserMessage(error)}</p>
         {onRetry && (
           <button
             type="button"
             onClick={onRetry}
-            className="px-4 py-1.5 rounded-md bg-white/10 border border-white/10 text-sm font-medium text-white hover:bg-white/15 transition-colors"
+            className="px-4 py-2 rounded-portal-xs bg-border-default border border-border-subtle text-sm font-medium text-white hover:bg-portal-card-hover transition-colors"
           >
             Try again
           </button>
@@ -85,21 +87,21 @@ export function ProgramsGrid({
     );
   }
 
-  // Empty state
+  // Empty state - Portal card styling
   if (!programs || programs.length === 0) {
     return (
-      <div className="rounded-lg border border-white/10 bg-white/5 p-6 text-center">
-        <p className="text-sm font-medium text-white mb-1">
+      <div className="rounded-portal border border-border-subtle bg-portal-card shadow-portal p-8 text-center">
+        <p className="text-[15px] font-semibold text-white mb-1">
           No programs match your search
         </p>
-        <p className="text-xs text-white/60 mb-3">
+        <p className="text-[13px] text-text-tertiary mb-4">
           Clear filters to see all programs.
         </p>
         {hasFilters && onClearFilters && (
           <button
             type="button"
             onClick={onClearFilters}
-            className="px-4 py-1.5 rounded-md bg-orange-500 text-white text-sm font-medium hover:bg-orange-600 transition-colors"
+            className="px-5 py-2.5 rounded-portal-xs bg-accent text-white text-sm font-semibold hover:bg-accent-hover transition-colors"
           >
             Clear filters
           </button>
@@ -108,10 +110,10 @@ export function ProgramsGrid({
     );
   }
 
-  // Show tip card when result count is very low (1-2) to fill the grid
-  const showTip = programs.length <= 2 && !hasFilters;
+  // Show guidance card when result count is 1 to fill the grid
+  const showGuidance = programs.length === 1 && !hasFilters;
 
-  // Programs grid - 1 col mobile, 2 col sm, 3 col lg
+  // Programs grid - 1 col mobile, 2 col sm (minimum at desktop), 3 col lg
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
       {programs.map((program) => (
@@ -123,7 +125,7 @@ export function ProgramsGrid({
           photoUrl={program.photoUrl}
         />
       ))}
-      {showTip && <SearchTipCard />}
+      {showGuidance && <GuidanceCard />}
     </div>
   );
 }

@@ -1,4 +1,5 @@
 // apps/marketplace/src/marketplace/pages/ProgramPage.tsx
+// Portal-aligned page hierarchy, card styling
 import * as React from "react";
 import { useParams, Link } from "react-router-dom";
 import { useProgramQuery } from "../hooks/useProgramQuery";
@@ -15,7 +16,7 @@ function formatCents(cents: number): string {
 }
 
 /**
- * Program profile page with listings.
+ * Program profile page with Portal-aligned styling.
  * Profile and listings load independently.
  */
 export function ProgramPage() {
@@ -41,12 +42,12 @@ export function ProgramPage() {
   // Profile error - full page error
   if (profileError) {
     return (
-      <div className="rounded-lg border border-white/10 bg-white/5 p-6 text-center">
-        <p className="text-white/70 text-sm mb-3">{getUserMessage(profileError)}</p>
+      <div className="rounded-portal border border-border-subtle bg-portal-card shadow-portal p-8 text-center">
+        <p className="text-text-secondary text-sm mb-4">{getUserMessage(profileError)}</p>
         <button
           type="button"
           onClick={refetchProfile}
-          className="px-4 py-1.5 rounded-md bg-white/10 border border-white/10 text-sm font-medium text-white hover:bg-white/15 transition-colors"
+          className="px-4 py-2 rounded-portal-xs bg-border-default border border-border-subtle text-sm font-medium text-white hover:bg-portal-card-hover transition-colors"
         >
           Try again
         </button>
@@ -59,13 +60,13 @@ export function ProgramPage() {
     return (
       <div className="space-y-4">
         {/* Breadcrumb skeleton */}
-        <div className="h-4 bg-white/10 rounded animate-pulse w-32" />
+        <div className="h-4 bg-border-default rounded animate-pulse w-32" />
         {/* Header skeleton */}
-        <div className="h-7 bg-white/10 rounded animate-pulse w-1/3" />
+        <div className="h-8 bg-border-default rounded animate-pulse w-1/3" />
         {/* Bio skeleton */}
-        <div className="rounded-lg border border-white/10 bg-white/5 p-4 space-y-2">
-          <div className="h-4 bg-white/10 rounded animate-pulse w-full" />
-          <div className="h-4 bg-white/10 rounded animate-pulse w-3/4" />
+        <div className="rounded-portal border border-border-subtle bg-portal-card p-5 space-y-2">
+          <div className="h-4 bg-border-default rounded animate-pulse w-full" />
+          <div className="h-4 bg-border-default rounded animate-pulse w-3/4" />
         </div>
       </div>
     );
@@ -80,7 +81,7 @@ export function ProgramPage() {
   const singleListing = listingsCount === 1;
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
       {/* Breadcrumb */}
       <Breadcrumb
         items={[
@@ -89,22 +90,22 @@ export function ProgramPage() {
         ]}
       />
 
-      {/* Header */}
-      <h1 className="text-2xl font-bold text-white tracking-tight">
+      {/* Header - Portal typography */}
+      <h1 className="text-[28px] font-bold text-white tracking-tight leading-tight">
         {profile.name}
       </h1>
 
-      {/* Profile info card */}
+      {/* Profile info card - Portal styling */}
       {(bioText || profile.website) && (
-        <div className="rounded-lg border border-white/10 bg-white/5 p-4 space-y-3">
+        <div className="rounded-portal border border-border-subtle bg-portal-card shadow-portal p-5 space-y-4">
           {bioText && (
             <div>
-              <p className="text-sm text-white/80 leading-relaxed">{displayBio}</p>
+              <p className="text-[15px] text-text-secondary leading-relaxed">{displayBio}</p>
               {shouldClampBio && (
                 <button
                   type="button"
                   onClick={() => setBioExpanded(!bioExpanded)}
-                  className="text-xs text-orange-400 hover:text-orange-300 mt-1 transition-colors"
+                  className="text-[13px] text-accent hover:text-accent-hover mt-2 transition-colors"
                 >
                   {bioExpanded ? "Show less" : "Read more"}
                 </button>
@@ -113,14 +114,14 @@ export function ProgramPage() {
           )}
 
           {profile.website && (
-            <div className={bioText ? "pt-2 border-t border-white/10" : ""}>
+            <div className={bioText ? "pt-3 border-t border-border-subtle" : ""}>
               <a
                 href={profile.website}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-sm text-orange-400 hover:text-orange-300 transition-colors"
+                className="text-sm text-accent hover:text-accent-hover transition-colors"
               >
-                Visit website &rarr;
+                Visit website →
               </a>
             </div>
           )}
@@ -130,10 +131,10 @@ export function ProgramPage() {
       {/* Listings section */}
       <div className="space-y-3">
         {/* Section header with count badge */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
           <h2 className="text-lg font-semibold text-white">Available Listings</h2>
           {!listingsLoading && !listingsError && (
-            <span className="px-1.5 py-0.5 rounded text-xs font-medium bg-white/10 text-white/60">
+            <span className="px-2.5 py-1 rounded-portal-xs text-[13px] font-medium bg-border-default text-text-secondary">
               {listingsCount}
             </span>
           )}
@@ -141,12 +142,12 @@ export function ProgramPage() {
 
         {/* Listings error - inline, does not break profile */}
         {listingsError && (
-          <div className="rounded-lg border border-white/10 bg-white/5 p-4 text-center">
-            <p className="text-white/70 text-sm mb-2">{getUserMessage(listingsError)}</p>
+          <div className="rounded-portal border border-border-subtle bg-portal-card p-5 text-center">
+            <p className="text-text-secondary text-sm mb-3">{getUserMessage(listingsError)}</p>
             <button
               type="button"
               onClick={refetchListings}
-              className="px-4 py-1.5 rounded-md bg-white/10 border border-white/10 text-sm font-medium text-white hover:bg-white/15 transition-colors"
+              className="px-4 py-2 rounded-portal-xs bg-border-default border border-border-subtle text-sm font-medium text-white hover:bg-portal-card-hover transition-colors"
             >
               Try again
             </button>
@@ -164,9 +165,9 @@ export function ProgramPage() {
 
         {/* Listings empty */}
         {!listingsLoading && !listingsError && listingsCount === 0 && (
-          <div className="rounded-lg border border-white/10 bg-white/5 p-5 text-center">
-            <p className="text-sm font-medium text-white mb-1">No listings published</p>
-            <p className="text-xs text-white/50">
+          <div className="rounded-portal border border-border-subtle bg-portal-card p-6 text-center">
+            <p className="text-[15px] font-semibold text-white mb-1">No listings published</p>
+            <p className="text-[13px] text-text-tertiary">
               This program hasn&apos;t published any listings yet. Check back later.
             </p>
           </div>
@@ -191,40 +192,40 @@ export function ProgramPage() {
 }
 
 /**
- * Skeleton for listing card loading state.
+ * Skeleton for listing card loading state - Portal styling.
  */
 function ListingCardSkeleton() {
   return (
-    <div className="flex flex-col min-h-[200px] rounded-lg border border-white/10 bg-white/5 p-4">
+    <div className="flex flex-col min-h-[200px] rounded-portal border border-border-subtle bg-portal-card p-5">
       {/* Header row */}
-      <div className="flex items-start justify-between gap-4 mb-2">
-        <div className="h-5 bg-white/10 rounded animate-pulse w-2/3" />
-        <div className="h-5 bg-white/10 rounded animate-pulse w-16" />
+      <div className="flex items-start justify-between gap-4 mb-3">
+        <div className="h-5 bg-border-default rounded animate-pulse w-2/3" />
+        <div className="h-5 bg-border-default rounded animate-pulse w-16" />
       </div>
       {/* Description */}
-      <div className="h-4 bg-white/10 rounded animate-pulse w-full mb-1.5" />
-      <div className="h-4 bg-white/10 rounded animate-pulse w-3/4 mb-3" />
+      <div className="h-4 bg-border-default rounded animate-pulse w-full mb-2" />
+      <div className="h-4 bg-border-default rounded animate-pulse w-3/4 mb-4" />
       {/* Metadata grid */}
-      <div className="grid grid-cols-2 gap-2 mt-auto">
+      <div className="grid grid-cols-2 gap-3 mt-auto">
         <div className="space-y-1">
-          <div className="h-3 bg-white/10 rounded animate-pulse w-10" />
-          <div className="h-4 bg-white/10 rounded animate-pulse w-14" />
+          <div className="h-3 bg-border-default rounded animate-pulse w-10" />
+          <div className="h-4 bg-border-default rounded animate-pulse w-14" />
         </div>
         <div className="space-y-1">
-          <div className="h-3 bg-white/10 rounded animate-pulse w-12" />
-          <div className="h-4 bg-white/10 rounded animate-pulse w-16" />
+          <div className="h-3 bg-border-default rounded animate-pulse w-12" />
+          <div className="h-4 bg-border-default rounded animate-pulse w-16" />
         </div>
       </div>
       {/* Footer */}
-      <div className="mt-3 pt-2 border-t border-white/10">
-        <div className="h-4 bg-white/10 rounded animate-pulse w-20" />
+      <div className="mt-4 pt-3 border-t border-border-subtle">
+        <div className="h-4 bg-border-default rounded animate-pulse w-20" />
       </div>
     </div>
   );
 }
 
 /**
- * Catalog-style listing card for program page.
+ * Catalog-style listing card with Portal styling.
  */
 function ListingCard({
   listing,
@@ -267,7 +268,7 @@ function ListingCard({
   return (
     <Link
       to={`/programs/${programSlug}/offspring-groups/${listing.slug}`}
-      className={`group flex flex-col min-h-[200px] rounded-lg border border-white/10 bg-white/5 p-4 transition-all hover:border-white/20 hover:bg-white/[0.08] hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-500/60 ${spanTwo ? "lg:col-span-2 lg:max-w-xl" : ""}`}
+      className={`group flex flex-col min-h-[200px] rounded-portal border border-border-subtle bg-portal-card p-5 shadow-portal transition-all hover:border-border-default hover:bg-portal-card-hover hover:-translate-y-0.5 hover:shadow-portal-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 ${spanTwo ? "lg:col-span-2 lg:max-w-xl" : ""}`}
     >
       {/* Header row: Title left, Price right */}
       <div className="flex items-start justify-between gap-3">
@@ -275,38 +276,38 @@ function ListingCard({
           {listing.title || "Untitled Listing"}
         </h3>
         {priceText ? (
-          <span className="text-sm font-semibold text-orange-400 whitespace-nowrap">
+          <span className="text-sm font-semibold text-accent whitespace-nowrap">
             {priceText}
           </span>
         ) : (
-          <span className="text-xs text-white/40 whitespace-nowrap">Contact for price</span>
+          <span className="text-[13px] text-text-muted whitespace-nowrap">Contact for price</span>
         )}
       </div>
 
       {/* Description snippet */}
       {listing.description && (
-        <p className="text-sm text-white/50 mt-1.5 line-clamp-2 leading-relaxed">
+        <p className="text-sm text-text-tertiary mt-2 line-clamp-2 leading-relaxed">
           {listing.description}
         </p>
       )}
 
       {/* Metadata grid - 2x2 */}
-      <div className="grid grid-cols-2 gap-x-4 gap-y-2 mt-auto pt-3">
+      <div className="grid grid-cols-2 gap-x-4 gap-y-2 mt-auto pt-4">
         {metadataCells.map((cell) => (
           <div key={cell.label}>
-            <span className="text-xs text-white/40 block">{cell.label}</span>
-            <span className="text-sm text-white/80 capitalize">{cell.value}</span>
+            <span className="text-[12px] text-text-muted block">{cell.label}</span>
+            <span className="text-sm text-text-secondary capitalize">{cell.value}</span>
           </div>
         ))}
       </div>
 
       {/* Footer row */}
-      <div className="flex items-center justify-between mt-3 pt-2 border-t border-white/10">
-        <span className="text-xs text-orange-400 group-hover:text-orange-300 transition-colors">
+      <div className="flex items-center justify-between mt-4 pt-3 border-t border-border-subtle">
+        <span className="text-[13px] text-accent group-hover:text-accent-hover transition-colors">
           View listing
         </span>
-        <span className="text-xs text-orange-400 group-hover:text-orange-300 transition-colors">
-          &rarr;
+        <span className="text-[13px] text-accent group-hover:text-accent-hover transition-colors">
+          →
         </span>
       </div>
     </Link>
