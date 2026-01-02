@@ -1,26 +1,18 @@
 {
+  "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "target": "ES2020",
-    "useDefineForClassFields": true,
-    "lib": ["ES2020", "DOM", "DOM.Iterable"],
-    "module": "ESNext",
-    "skipLibCheck": true,
-    "moduleResolution": "bundler",
-    "allowImportingTsExtensions": true,
-    "resolveJsonModule": true,
-    "isolatedModules": true,
-    "noEmit": true,
     "jsx": "react-jsx",
-    "strict": true,
-    "noUnusedLocals": false,
-    "noUnusedParameters": false,
-    "noFallthroughCasesInSwitch": true,
+    "baseUrl": ".",
     "paths": {
-      "@bhq/ui": ["../../packages/ui/src"],
+      "@bhq/ui": ["../../packages/ui/src/index.ts"],
       "@bhq/ui/*": ["../../packages/ui/src/*"],
-      "@bhq/api": ["../../packages/api/src"],
-      "@bhq/api/*": ["../../packages/api/src/*"]
-    }
+      "@bhq/ui/layouts": ["../../packages/ui/src/layouts"],
+      "@bhq/ui/styles": ["../../packages/ui/src"],
+      "@bhq/config": ["../../packages/config"],
+      "@bhq/api/*": ["../../packages/api/src/*"],
+      "@bhq/waitlist/*": ["./src/*"]
+    },
+    "types": ["vite/client"]
   },
   "include": ["src"]
 }
