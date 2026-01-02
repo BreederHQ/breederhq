@@ -10,9 +10,17 @@ import {
   windowsFromPlan,
   colorFromId,
   type NormalizedPlan,
-  type Range,
   type PlanStageWindows,
 } from "../adapters/planToGantt";
+
+// Local type - Range was missing from planToGantt exports
+type Range = { start: Date; end: Date };
+
+import {
+  makeBreedingApi,
+  type SchedulingAvailabilityBlock,
+  type SchedulingBooking,
+} from "../api";
 
 type StageLike = {
   id: string;
@@ -144,6 +152,36 @@ export default function BreedingCalendar({
     return selectedPlanIds instanceof Set ? selectedPlanIds : new Set(selectedPlanIds);
   }, [selectedPlanIds]);
 
+  // Scheduling data for appointments calendar group
+  const [schedulingBlocks, setSchedulingBlocks] = React.useState<SchedulingAvailabilityBlock[]>([]);
+  const [schedulingBookings, setSchedulingBookings] = React.useState<SchedulingBooking[]>([]);
+
+  React.useEffect(() => {
+    if (!tenantId) return;
+
+    const api = makeBreedingApi({ baseUrl: "/api/v1", tenantId, withCsrf: true });
+
+    // Determine date range - use horizon if provided, otherwise default to 3 months around today
+    const now = new Date();
+    const fromDate = horizon?.start ?? new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const toDate = horizon?.end ?? new Date(now.getFullYear(), now.getMonth() + 2, 0);
+
+    const from = fromDate.toISOString().slice(0, 10);
+    const to = toDate.toISOString().slice(0, 10);
+
+    Promise.all([
+      api.scheduling.listBlocks({ from, to }),
+      api.scheduling.listBookings({ from, to }),
+    ])
+      .then(([blocks, bookings]) => {
+        setSchedulingBlocks(blocks);
+        setSchedulingBookings(bookings);
+      })
+      .catch((err) => {
+        console.error("[BreedingCalendar] Failed to load scheduling data", err);
+      });
+  }, [tenantId, horizon]);
+
   const planGroup = React.useMemo(() => {
     // Only show plans with a cycle date - no seed date means no timeline to plot
     const plottablePlans = (items || []).filter((p) => {
@@ -186,7 +224,37 @@ export default function BreedingCalendar({
     []
   );
 
-  const groups = React.useMemo(() => [planGroup, overlayGroup], [planGroup, overlayGroup]);
+  // Appointments group for scheduling blocks and bookings
+  const appointmentsGroup = React.useMemo(() => {
+    const items: { id: string; label: string; color: string; defaultOn: boolean }[] = [];
+
+    // Add availability blocks as toggleable items
+    for (const block of schedulingBlocks) {
+      items.push({
+        id: `block:${block.id}`,
+        label: block.templateName || `Availability ${block.id}`,
+        color: "#10B981", // green for availability
+        defaultOn: true,
+      });
+    }
+
+    // Add a single toggle for all bookings
+    if (schedulingBookings.length > 0) {
+      items.push({
+        id: "scheduling:bookings",
+        label: "Confirmed Bookings",
+        color: "#6366F1", // indigo for bookings
+        defaultOn: true,
+      });
+    }
+
+    return { id: "scheduling:appointments", label: "Appointments", items };
+  }, [schedulingBlocks, schedulingBookings]);
+
+  const groups = React.useMemo(
+    () => [planGroup, appointmentsGroup, overlayGroup],
+    [planGroup, appointmentsGroup, overlayGroup]
+  );
 
   const events = React.useMemo(() => {
     if (!Array.isArray(items) || items.length === 0) return [] as any[];
@@ -369,7 +437,54 @@ export default function BreedingCalendar({
       }
     }
 
-    const all = [...pointEvents, ...overlayEvents, ...userEvents];
+    // Scheduling events: availability blocks (as all-day ranges)
+    const schedulingEvents: any[] = [];
+    for (const block of schedulingBlocks) {
+      schedulingEvents.push({
+        id: `scheduling:block:${block.id}`,
+        title: block.templateName || `Availability`,
+        start: new Date(block.startAt),
+        end: new Date(block.endAt),
+        allDay: true,
+        calendarId: `block:${block.id}`,
+        color: "#10B981",
+        extendedProps: {
+          variant: "scheduling",
+          schedulingType: "block",
+          blockId: block.id,
+          eventType: block.eventType,
+          location: block.location,
+          slotCount: block.slotCount,
+          bookedSlotCount: block.bookedSlotCount,
+        },
+      });
+    }
+
+    // Scheduling events: confirmed bookings (as timed events)
+    for (const booking of schedulingBookings) {
+      schedulingEvents.push({
+        id: `scheduling:booking:${booking.id}`,
+        title: `${booking.partyName} - ${booking.eventType || "Appointment"}`,
+        start: new Date(booking.startsAt),
+        end: new Date(booking.endsAt),
+        allDay: false,
+        calendarId: "scheduling:bookings",
+        color: "#6366F1",
+        extendedProps: {
+          variant: "scheduling",
+          schedulingType: "booking",
+          bookingId: booking.id,
+          partyId: booking.partyId,
+          partyName: booking.partyName,
+          eventId: booking.eventId,
+          eventType: booking.eventType,
+          location: booking.location,
+          mode: booking.mode,
+        },
+      });
+    }
+
+    const all = [...pointEvents, ...overlayEvents, ...schedulingEvents, ...userEvents];
 
     if (!horizon) return all;
 
@@ -381,7 +496,7 @@ export default function BreedingCalendar({
       const en = (e.end ? (e.end instanceof Date ? e.end : new Date(e.end)) : e.start).getTime();
       return en >= hs && s <= he;
     });
-  }, [items, selectedSet, horizon, prefs, userEvents]);
+  }, [items, selectedSet, horizon, prefs, userEvents, schedulingBlocks, schedulingBookings]);
 
   return (
     <BHQCalendar
