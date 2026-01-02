@@ -660,6 +660,282 @@ function TransactionRow({ transaction }: { transaction: Transaction }) {
 }
 
 /* ────────────────────────────────────────────────────────────────────────────
+ * Receipt Modal - Shows payment details for paid invoices
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+interface ReceiptModalProps {
+  invoice: Invoice;
+  onClose: () => void;
+}
+
+function ReceiptModal({ invoice, onClose }: ReceiptModalProps) {
+  const [animationStage, setAnimationStage] = React.useState<"entering" | "visible" | "exiting">("entering");
+
+  React.useEffect(() => {
+    const enterTimer = setTimeout(() => setAnimationStage("visible"), 50);
+    return () => clearTimeout(enterTimer);
+  }, []);
+
+  const handleClose = React.useCallback(() => {
+    setAnimationStage("exiting");
+    setTimeout(onClose, 200);
+  }, [onClose]);
+
+  // Handle escape key
+  React.useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === "Escape") handleClose();
+    };
+    window.addEventListener("keydown", handleEscape);
+    return () => window.removeEventListener("keydown", handleEscape);
+  }, [handleClose]);
+
+  // Mock payment details
+  const paymentMethod = "Visa ending in 4242";
+  const referenceId = `PAY-${invoice.invoiceNumber.replace("INV-", "")}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="receipt-title"
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 1000,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        background: animationStage === "entering" ? "rgba(0, 0, 0, 0)" : "rgba(0, 0, 0, 0.6)",
+        transition: "background 200ms ease-out",
+      }}
+      onClick={handleClose}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: "var(--portal-bg-card)",
+          borderRadius: "var(--portal-radius-2xl)",
+          padding: "var(--portal-space-5)",
+          maxWidth: "420px",
+          width: "90%",
+          transform: animationStage === "visible" ? "scale(1)" : "scale(0.95)",
+          opacity: animationStage === "visible" ? 1 : 0,
+          transition: "transform 200ms ease-out, opacity 200ms ease-out",
+          boxShadow: "0 24px 80px rgba(0, 0, 0, 0.5)",
+        }}
+      >
+        {/* Header */}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "flex-start",
+            justifyContent: "space-between",
+            marginBottom: "var(--portal-space-4)",
+          }}
+        >
+          <div>
+            <div
+              style={{
+                fontSize: "var(--portal-font-size-xs)",
+                fontWeight: "var(--portal-font-weight-semibold)",
+                textTransform: "uppercase",
+                letterSpacing: "var(--portal-letter-spacing-wide)",
+                color: "var(--portal-text-tertiary)",
+                marginBottom: "4px",
+              }}
+            >
+              Payment Receipt
+            </div>
+            <h2
+              id="receipt-title"
+              style={{
+                fontSize: "var(--portal-font-size-lg)",
+                fontWeight: "var(--portal-font-weight-bold)",
+                color: "var(--portal-text-primary)",
+                margin: 0,
+              }}
+            >
+              {invoice.invoiceNumber}
+            </h2>
+          </div>
+          <button
+            onClick={handleClose}
+            aria-label="Close receipt"
+            style={{
+              all: "unset",
+              width: "32px",
+              height: "32px",
+              borderRadius: "var(--portal-radius-md)",
+              background: "var(--portal-bg-elevated)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              cursor: "pointer",
+              color: "var(--portal-text-secondary)",
+              fontSize: "1rem",
+            }}
+          >
+            ✕
+          </button>
+        </div>
+
+        {/* Success indicator */}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "var(--portal-space-2)",
+            padding: "var(--portal-space-3)",
+            background: "var(--portal-success-soft)",
+            borderRadius: "var(--portal-radius-lg)",
+            marginBottom: "var(--portal-space-4)",
+          }}
+        >
+          <div
+            style={{
+              width: "32px",
+              height: "32px",
+              borderRadius: "50%",
+              background: "var(--portal-success)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              color: "white",
+              fontSize: "1rem",
+              flexShrink: 0,
+            }}
+          >
+            ✓
+          </div>
+          <div>
+            <div
+              style={{
+                fontSize: "var(--portal-font-size-base)",
+                fontWeight: "var(--portal-font-weight-semibold)",
+                color: "var(--portal-success)",
+              }}
+            >
+              Payment Successful
+            </div>
+            <div style={{ fontSize: "var(--portal-font-size-sm)", color: "var(--portal-text-secondary)" }}>
+              {formatDate(invoice.paidAt!)}
+            </div>
+          </div>
+        </div>
+
+        {/* Details */}
+        <div style={{ display: "flex", flexDirection: "column", gap: "var(--portal-space-3)" }}>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              padding: "var(--portal-space-2) 0",
+              borderBottom: "1px solid var(--portal-border-subtle)",
+            }}
+          >
+            <span style={{ fontSize: "var(--portal-font-size-sm)", color: "var(--portal-text-secondary)" }}>
+              Description
+            </span>
+            <span
+              style={{
+                fontSize: "var(--portal-font-size-sm)",
+                color: "var(--portal-text-primary)",
+                textAlign: "right",
+              }}
+            >
+              {invoice.description}
+            </span>
+          </div>
+
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              padding: "var(--portal-space-2) 0",
+              borderBottom: "1px solid var(--portal-border-subtle)",
+            }}
+          >
+            <span style={{ fontSize: "var(--portal-font-size-sm)", color: "var(--portal-text-secondary)" }}>
+              Amount Paid
+            </span>
+            <span
+              style={{
+                fontSize: "var(--portal-font-size-base)",
+                fontWeight: "var(--portal-font-weight-semibold)",
+                color: "var(--portal-success)",
+              }}
+            >
+              {formatCurrencyPrecise(invoice.total)}
+            </span>
+          </div>
+
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              padding: "var(--portal-space-2) 0",
+              borderBottom: "1px solid var(--portal-border-subtle)",
+            }}
+          >
+            <span style={{ fontSize: "var(--portal-font-size-sm)", color: "var(--portal-text-secondary)" }}>
+              Payment Method
+            </span>
+            <span style={{ fontSize: "var(--portal-font-size-sm)", color: "var(--portal-text-primary)" }}>
+              {paymentMethod}
+            </span>
+          </div>
+
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              padding: "var(--portal-space-2) 0",
+            }}
+          >
+            <span style={{ fontSize: "var(--portal-font-size-sm)", color: "var(--portal-text-secondary)" }}>
+              Reference ID
+            </span>
+            <span
+              style={{
+                fontSize: "var(--portal-font-size-xs)",
+                fontFamily: "monospace",
+                color: "var(--portal-text-tertiary)",
+              }}
+            >
+              {referenceId}
+            </span>
+          </div>
+        </div>
+
+        {/* Close button */}
+        <button
+          onClick={handleClose}
+          style={{
+            all: "unset",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            width: "100%",
+            padding: "var(--portal-space-3)",
+            marginTop: "var(--portal-space-4)",
+            background: "var(--portal-bg-elevated)",
+            borderRadius: "var(--portal-radius-md)",
+            fontSize: "var(--portal-font-size-sm)",
+            fontWeight: "var(--portal-font-weight-medium)",
+            color: "var(--portal-text-secondary)",
+            cursor: "pointer",
+            transition: "background var(--portal-transition)",
+          }}
+        >
+          Close
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
  * Invoice Detail View
  * ──────────────────────────────────────────────────────────────────────────── */
 
@@ -667,10 +943,12 @@ interface InvoiceDetailProps {
   invoice: Invoice;
   onBack: () => void;
   onPayNow?: () => void;
+  onViewReceipt?: () => void;
 }
 
-function InvoiceDetail({ invoice, onBack, onPayNow }: InvoiceDetailProps) {
+function InvoiceDetail({ invoice, onBack, onPayNow, onViewReceipt }: InvoiceDetailProps) {
   const showPayButton = (invoice.status === "due" || invoice.status === "overdue") && onPayNow;
+  const showReceiptButton = invoice.status === "paid" && onViewReceipt;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "var(--portal-space-4)" }}>
@@ -990,6 +1268,26 @@ function InvoiceDetail({ invoice, onBack, onPayNow }: InvoiceDetailProps) {
           </div>
           {showPayButton ? (
             <PayNowButton amount={invoice.amountDue} onClick={() => onPayNow?.()} />
+          ) : showReceiptButton ? (
+            <button
+              onClick={() => onViewReceipt?.()}
+              style={{
+                all: "unset",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "var(--portal-space-2)",
+                padding: "var(--portal-space-2) var(--portal-space-3)",
+                background: "var(--portal-bg-elevated)",
+                borderRadius: "var(--portal-radius-md)",
+                fontSize: "var(--portal-font-size-sm)",
+                fontWeight: "var(--portal-font-weight-medium)",
+                color: "var(--portal-text-primary)",
+                cursor: "pointer",
+                transition: "background var(--portal-transition)",
+              }}
+            >
+              View Receipt
+            </button>
           ) : invoice.status !== "paid" ? (
             <div
               style={{
@@ -1276,6 +1574,7 @@ export default function PortalFinancialsPage() {
   const [loading, setLoading] = React.useState(true);
   const [paidInvoiceIds, setPaidInvoiceIds] = React.useState<Set<number>>(new Set());
   const [successModal, setSuccessModal] = React.useState<Invoice | null>(null);
+  const [receiptModal, setReceiptModal] = React.useState<Invoice | null>(null);
 
   const mockEnabled = isPortalMockEnabled();
 
@@ -1379,8 +1678,10 @@ export default function PortalFinancialsPage() {
             invoice={invoice}
             onBack={handleBack}
             onPayNow={mockEnabled ? () => handlePayInvoice(selectedInvoiceId) : undefined}
+            onViewReceipt={invoice.status === "paid" ? () => setReceiptModal(invoice) : undefined}
           />
           {successModal && <PaymentSuccessModal invoice={successModal} onClose={handleCloseSuccessModal} />}
+          {receiptModal && <ReceiptModal invoice={receiptModal} onClose={() => setReceiptModal(null)} />}
         </PageContainer>
       );
     }

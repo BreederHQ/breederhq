@@ -7,7 +7,6 @@ import { usePortalContext } from "../hooks/usePortalContext";
 import { usePortalTasks } from "../tasks/taskSources";
 import { usePortalNotifications } from "../notifications/notificationSources";
 import { BuildStamp } from "../dev/BuildStamp";
-import { DemoModeToggle } from "../dev/DemoModeToggle";
 
 interface PortalLayoutProps {
   children: React.ReactNode;
@@ -94,7 +93,6 @@ export function PortalLayout({ children, currentPath }: PortalLayoutProps) {
       <HeaderBar>
         <OrgIdentity orgName={orgName} orgInitial={orgInitial} />
         <TopNav items={navItems} />
-        <DemoModeToggle />
       </HeaderBar>
       <main style={{ flex: 1 }}>{children}</main>
       <Footer />
