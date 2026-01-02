@@ -2,13 +2,11 @@
 import * as React from "react";
 import { PageContainer } from "../design/PageContainer";
 import { PortalHero } from "../design/PortalHero";
-import { PortalCard, CardRow } from "../design/PortalCard";
+import { PortalCard } from "../design/PortalCard";
 import { isPortalMockEnabled } from "../dev/mockFlag";
 import {
   mockInvoices,
   mockTransactions,
-  mockFinancialSummary,
-  mockInvoiceDetail,
   type Invoice,
   type Transaction,
   type FinancialSummary,
@@ -66,11 +64,11 @@ function getDaysUntil(dateStr: string): number {
 }
 
 /* ────────────────────────────────────────────────────────────────────────────
- * Status Badge
+ * Status Badge - with safe defaults
  * ──────────────────────────────────────────────────────────────────────────── */
 
-function InvoiceStatusBadge({ status }: { status: InvoiceStatus }) {
-  const config: Record<InvoiceStatus, { label: string; bg: string; color: string; dot: string }> = {
+function InvoiceStatusBadge({ status }: { status: InvoiceStatus | string }) {
+  const config: Record<string, { label: string; bg: string; color: string; dot: string }> = {
     paid: {
       label: "Paid",
       bg: "var(--portal-success-soft)",
@@ -97,7 +95,13 @@ function InvoiceStatusBadge({ status }: { status: InvoiceStatus }) {
     },
   };
 
-  const c = config[status];
+  // Safe default for unknown status
+  const c = config[status] || {
+    label: String(status || "Unknown"),
+    bg: "var(--portal-bg-elevated)",
+    color: "var(--portal-text-secondary)",
+    dot: "var(--portal-text-tertiary)",
+  };
 
   return (
     <div
@@ -130,6 +134,176 @@ function InvoiceStatusBadge({ status }: { status: InvoiceStatus }) {
       >
         {c.label}
       </span>
+    </div>
+  );
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
+ * Pay Now Button
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+interface PayNowButtonProps {
+  amount: number;
+  variant?: "primary" | "compact";
+  onClick: (e: React.MouseEvent) => void;
+  disabled?: boolean;
+}
+
+function PayNowButton({ amount, variant = "primary", onClick, disabled }: PayNowButtonProps) {
+  const [isHovered, setIsHovered] = React.useState(false);
+
+  const isPrimary = variant === "primary";
+
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+      style={{
+        all: "unset",
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: "var(--portal-space-2)",
+        padding: isPrimary ? "var(--portal-space-3) var(--portal-space-4)" : "var(--portal-space-2) var(--portal-space-3)",
+        background: isHovered ? "var(--portal-accent-hover)" : "var(--portal-accent)",
+        color: "white",
+        borderRadius: "var(--portal-radius-md)",
+        fontSize: isPrimary ? "var(--portal-font-size-base)" : "var(--portal-font-size-sm)",
+        fontWeight: "var(--portal-font-weight-semibold)",
+        cursor: disabled ? "not-allowed" : "pointer",
+        opacity: disabled ? 0.5 : 1,
+        transition: "all var(--portal-transition)",
+        transform: isHovered && !disabled ? "translateY(-1px)" : "translateY(0)",
+        boxShadow: isHovered && !disabled
+          ? "0 4px 12px rgba(255, 107, 53, 0.4)"
+          : "0 2px 8px rgba(255, 107, 53, 0.3)",
+        whiteSpace: "nowrap",
+      }}
+    >
+      <span>Pay {formatCurrency(amount)}</span>
+      <span style={{ fontSize: isPrimary ? "1rem" : "0.875rem" }}>→</span>
+    </button>
+  );
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
+ * Payment Success Modal
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+interface PaymentSuccessModalProps {
+  invoice: Invoice;
+  onClose: () => void;
+}
+
+function PaymentSuccessModal({ invoice, onClose }: PaymentSuccessModalProps) {
+  const [animationStage, setAnimationStage] = React.useState<"entering" | "visible" | "exiting">("entering");
+
+  React.useEffect(() => {
+    // Enter animation
+    const enterTimer = setTimeout(() => setAnimationStage("visible"), 50);
+    return () => clearTimeout(enterTimer);
+  }, []);
+
+  const handleClose = React.useCallback(() => {
+    setAnimationStage("exiting");
+    setTimeout(onClose, 200);
+  }, [onClose]);
+
+  // Auto-close after 3 seconds
+  React.useEffect(() => {
+    const timer = setTimeout(handleClose, 3000);
+    return () => clearTimeout(timer);
+  }, [handleClose]);
+
+  return (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 1000,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        background: animationStage === "entering" ? "rgba(0, 0, 0, 0)" : "rgba(0, 0, 0, 0.6)",
+        transition: "background 200ms ease-out",
+      }}
+      onClick={handleClose}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: "var(--portal-bg-card)",
+          borderRadius: "var(--portal-radius-2xl)",
+          padding: "var(--portal-space-6)",
+          maxWidth: "400px",
+          width: "90%",
+          textAlign: "center",
+          transform: animationStage === "visible" ? "scale(1)" : "scale(0.9)",
+          opacity: animationStage === "visible" ? 1 : 0,
+          transition: "transform 200ms ease-out, opacity 200ms ease-out",
+          boxShadow: "0 24px 80px rgba(0, 0, 0, 0.5)",
+        }}
+      >
+        {/* Success checkmark */}
+        <div
+          style={{
+            width: "72px",
+            height: "72px",
+            borderRadius: "50%",
+            background: "var(--portal-success)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            margin: "0 auto var(--portal-space-4)",
+            fontSize: "2rem",
+            color: "white",
+            boxShadow: "0 0 32px rgba(34, 197, 94, 0.4)",
+          }}
+        >
+          ✓
+        </div>
+
+        <h2
+          style={{
+            fontSize: "var(--portal-font-size-xl)",
+            fontWeight: "var(--portal-font-weight-bold)",
+            color: "var(--portal-text-primary)",
+            margin: 0,
+            marginBottom: "var(--portal-space-2)",
+          }}
+        >
+          Payment Complete
+        </h2>
+
+        <p
+          style={{
+            fontSize: "var(--portal-font-size-base)",
+            color: "var(--portal-text-secondary)",
+            margin: 0,
+            marginBottom: "var(--portal-space-4)",
+          }}
+        >
+          {formatCurrency(invoice.amountDue)} paid for {invoice.description}
+        </p>
+
+        <div
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "var(--portal-space-2)",
+            padding: "var(--portal-space-2) var(--portal-space-3)",
+            background: "var(--portal-success-soft)",
+            borderRadius: "var(--portal-radius-md)",
+            fontSize: "var(--portal-font-size-sm)",
+            color: "var(--portal-success)",
+          }}
+        >
+          <span>✓</span>
+          <span>Invoice {invoice.invoiceNumber} marked as paid</span>
+        </div>
+      </div>
     </div>
   );
 }
@@ -256,106 +430,152 @@ function FinancialSummaryCard({ summary }: { summary: FinancialSummary }) {
 }
 
 /* ────────────────────────────────────────────────────────────────────────────
- * Invoice Row
+ * Invoice Row - Fully clickable with hover states
  * ──────────────────────────────────────────────────────────────────────────── */
 
 interface InvoiceRowProps {
   invoice: Invoice;
   onClick: () => void;
+  onPayNow?: () => void;
 }
 
-function InvoiceRow({ invoice, onClick }: InvoiceRowProps) {
+function InvoiceRow({ invoice, onClick, onPayNow }: InvoiceRowProps) {
+  const [isHovered, setIsHovered] = React.useState(false);
+  const [isFocused, setIsFocused] = React.useState(false);
+  const showPayButton = (invoice.status === "due" || invoice.status === "overdue") && onPayNow;
+
+  const handlePayClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onPayNow?.();
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      onClick();
+    }
+  };
+
   return (
-    <CardRow onClick={onClick}>
-      <div style={{ display: "flex", alignItems: "center", gap: "var(--portal-space-3)" }}>
-        {/* Invoice icon */}
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onClick}
+      onKeyDown={handleKeyDown}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+      onFocus={() => setIsFocused(true)}
+      onBlur={() => setIsFocused(false)}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: "var(--portal-space-3)",
+        padding: "var(--portal-space-3) var(--portal-space-4)",
+        borderBottom: "1px solid var(--portal-border-subtle)",
+        cursor: "pointer",
+        background: isHovered || isFocused ? "var(--portal-bg-elevated)" : "transparent",
+        transition: "background var(--portal-transition), transform var(--portal-transition)",
+        transform: isHovered ? "translateX(2px)" : "translateX(0)",
+        outline: isFocused ? "2px solid var(--portal-accent)" : "none",
+        outlineOffset: "-2px",
+      }}
+    >
+      {/* Invoice icon */}
+      <div
+        style={{
+          width: "44px",
+          height: "44px",
+          borderRadius: "var(--portal-radius-lg)",
+          background:
+            invoice.status === "overdue"
+              ? "var(--portal-error-soft)"
+              : invoice.status === "due"
+                ? "var(--portal-accent-soft)"
+                : "var(--portal-success-soft)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          fontSize: "1.25rem",
+          flexShrink: 0,
+          transition: "transform var(--portal-transition)",
+          transform: isHovered ? "scale(1.05)" : "scale(1)",
+        }}
+      >
+        {invoice.status === "paid" ? "✓" : "📄"}
+      </div>
+
+      <div style={{ flex: 1, minWidth: 0 }}>
         <div
           style={{
-            width: "44px",
-            height: "44px",
-            borderRadius: "var(--portal-radius-lg)",
-            background:
-              invoice.status === "overdue"
-                ? "var(--portal-error-soft)"
-                : invoice.status === "due"
-                  ? "var(--portal-accent-soft)"
-                  : "var(--portal-success-soft)",
             display: "flex",
             alignItems: "center",
-            justifyContent: "center",
-            fontSize: "1.25rem",
-            flexShrink: 0,
+            justifyContent: "space-between",
+            gap: "var(--portal-space-2)",
+            marginBottom: "4px",
           }}
         >
-          {invoice.status === "paid" ? "✓" : "📄"}
-        </div>
-
-        <div style={{ flex: 1, minWidth: 0 }}>
           <div
             style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: "var(--portal-space-2)",
-              marginBottom: "4px",
+              fontSize: "var(--portal-font-size-base)",
+              fontWeight: "var(--portal-font-weight-semibold)",
+              color: "var(--portal-text-primary)",
             }}
           >
-            <div
-              style={{
-                fontSize: "var(--portal-font-size-base)",
-                fontWeight: "var(--portal-font-weight-semibold)",
-                color: "var(--portal-text-primary)",
-              }}
-            >
-              {invoice.description}
-            </div>
-            <InvoiceStatusBadge status={invoice.status} />
+            {invoice.description}
           </div>
-
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: "var(--portal-space-2)",
-            }}
-          >
-            <div
-              style={{
-                fontSize: "var(--portal-font-size-sm)",
-                color: "var(--portal-text-secondary)",
-              }}
-            >
-              {invoice.invoiceNumber} • {invoice.status === "paid" ? `Paid ${formatShortDate(invoice.paidAt!)}` : `Due ${formatShortDate(invoice.dueAt)}`}
-            </div>
-            <div
-              style={{
-                fontSize: "var(--portal-font-size-base)",
-                fontWeight: "var(--portal-font-weight-semibold)",
-                color:
-                  invoice.status === "overdue"
-                    ? "var(--portal-error)"
-                    : invoice.status === "due"
-                      ? "var(--portal-accent)"
-                      : "var(--portal-text-primary)",
-              }}
-            >
-              {formatCurrency(invoice.total)}
-            </div>
-          </div>
+          <InvoiceStatusBadge status={invoice.status} />
         </div>
 
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: "var(--portal-space-2)",
+          }}
+        >
+          <div
+            style={{
+              fontSize: "var(--portal-font-size-sm)",
+              color: "var(--portal-text-secondary)",
+            }}
+          >
+            {invoice.invoiceNumber} • {invoice.status === "paid" ? `Paid ${formatShortDate(invoice.paidAt!)}` : `Due ${formatShortDate(invoice.dueAt)}`}
+          </div>
+          <div
+            style={{
+              fontSize: "var(--portal-font-size-base)",
+              fontWeight: "var(--portal-font-weight-semibold)",
+              color:
+                invoice.status === "overdue"
+                  ? "var(--portal-error)"
+                  : invoice.status === "due"
+                    ? "var(--portal-accent)"
+                    : "var(--portal-text-primary)",
+            }}
+          >
+            {formatCurrency(invoice.total)}
+          </div>
+        </div>
+      </div>
+
+      {/* Pay Now button or chevron */}
+      {showPayButton ? (
+        <PayNowButton amount={invoice.amountDue} variant="compact" onClick={handlePayClick} />
+      ) : (
         <div
           style={{
             fontSize: "var(--portal-font-size-sm)",
             color: "var(--portal-accent)",
             flexShrink: 0,
+            transition: "transform var(--portal-transition)",
+            transform: isHovered ? "translateX(2px)" : "translateX(0)",
           }}
         >
           →
         </div>
-      </div>
-    </CardRow>
+      )}
+    </div>
   );
 }
 
@@ -364,13 +584,13 @@ function InvoiceRow({ invoice, onClick }: InvoiceRowProps) {
  * ──────────────────────────────────────────────────────────────────────────── */
 
 function TransactionRow({ transaction }: { transaction: Transaction }) {
-  const iconMap = {
+  const iconMap: Record<string, string> = {
     payment: "💳",
     refund: "↩️",
     adjustment: "📝",
   };
 
-  const methodLabel = {
+  const methodLabel: Record<string, string> = {
     card: "Card",
     bank_transfer: "Bank Transfer",
     cash: "Cash",
@@ -378,58 +598,64 @@ function TransactionRow({ transaction }: { transaction: Transaction }) {
   };
 
   return (
-    <CardRow>
-      <div style={{ display: "flex", alignItems: "center", gap: "var(--portal-space-3)" }}>
-        <div
-          style={{
-            width: "40px",
-            height: "40px",
-            borderRadius: "var(--portal-radius-md)",
-            background: "var(--portal-success-soft)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            fontSize: "1rem",
-            flexShrink: 0,
-          }}
-        >
-          {iconMap[transaction.type]}
-        </div>
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: "var(--portal-space-3)",
+        padding: "var(--portal-space-3) var(--portal-space-4)",
+        borderBottom: "1px solid var(--portal-border-subtle)",
+      }}
+    >
+      <div
+        style={{
+          width: "40px",
+          height: "40px",
+          borderRadius: "var(--portal-radius-md)",
+          background: "var(--portal-success-soft)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          fontSize: "1rem",
+          flexShrink: 0,
+        }}
+      >
+        {iconMap[transaction.type] || "💰"}
+      </div>
 
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div
-            style={{
-              fontSize: "var(--portal-font-size-base)",
-              fontWeight: "var(--portal-font-weight-medium)",
-              color: "var(--portal-text-primary)",
-              marginBottom: "2px",
-            }}
-          >
-            {transaction.description}
-          </div>
-          <div
-            style={{
-              fontSize: "var(--portal-font-size-sm)",
-              color: "var(--portal-text-tertiary)",
-            }}
-          >
-            {formatDate(transaction.createdAt)}
-            {transaction.paymentMethod && ` • ${methodLabel[transaction.paymentMethod]}`}
-          </div>
-        </div>
-
+      <div style={{ flex: 1, minWidth: 0 }}>
         <div
           style={{
             fontSize: "var(--portal-font-size-base)",
-            fontWeight: "var(--portal-font-weight-semibold)",
-            color: transaction.type === "refund" ? "var(--portal-error)" : "var(--portal-success)",
+            fontWeight: "var(--portal-font-weight-medium)",
+            color: "var(--portal-text-primary)",
+            marginBottom: "2px",
           }}
         >
-          {transaction.type === "refund" ? "-" : "+"}
-          {formatCurrency(transaction.amount)}
+          {transaction.description}
+        </div>
+        <div
+          style={{
+            fontSize: "var(--portal-font-size-sm)",
+            color: "var(--portal-text-tertiary)",
+          }}
+        >
+          {formatDate(transaction.createdAt)}
+          {transaction.paymentMethod && ` • ${methodLabel[transaction.paymentMethod] || transaction.paymentMethod}`}
         </div>
       </div>
-    </CardRow>
+
+      <div
+        style={{
+          fontSize: "var(--portal-font-size-base)",
+          fontWeight: "var(--portal-font-weight-semibold)",
+          color: transaction.type === "refund" ? "var(--portal-error)" : "var(--portal-success)",
+        }}
+      >
+        {transaction.type === "refund" ? "-" : "+"}
+        {formatCurrency(transaction.amount)}
+      </div>
+    </div>
   );
 }
 
@@ -440,9 +666,12 @@ function TransactionRow({ transaction }: { transaction: Transaction }) {
 interface InvoiceDetailProps {
   invoice: Invoice;
   onBack: () => void;
+  onPayNow?: () => void;
 }
 
-function InvoiceDetail({ invoice, onBack }: InvoiceDetailProps) {
+function InvoiceDetail({ invoice, onBack, onPayNow }: InvoiceDetailProps) {
+  const showPayButton = (invoice.status === "due" || invoice.status === "overdue") && onPayNow;
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "var(--portal-space-4)" }}>
       {/* Back button */}
@@ -588,7 +817,7 @@ function InvoiceDetail({ invoice, onBack }: InvoiceDetailProps) {
           </h3>
         </div>
 
-        {invoice.lineItems.map((item, index) => (
+        {invoice.lineItems.map((item) => (
           <div
             key={item.id}
             style={{
@@ -692,17 +921,18 @@ function InvoiceDetail({ invoice, onBack }: InvoiceDetailProps) {
         </div>
       </PortalCard>
 
-      {/* Payment Status */}
+      {/* Payment Action Card */}
       <PortalCard
-        variant={invoice.status === "paid" ? "flat" : "interactive"}
+        variant={invoice.status === "paid" ? "flat" : "elevated"}
         padding="lg"
         style={{
           background:
             invoice.status === "paid"
               ? "var(--portal-success-soft)"
               : invoice.status === "overdue"
-                ? "var(--portal-error-soft)"
+                ? "linear-gradient(135deg, rgba(239, 68, 68, 0.1) 0%, rgba(239, 68, 68, 0.05) 100%), var(--portal-bg-card)"
                 : undefined,
+          border: invoice.status === "overdue" ? "1px solid rgba(239, 68, 68, 0.3)" : undefined,
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: "var(--portal-space-3)" }}>
@@ -711,12 +941,13 @@ function InvoiceDetail({ invoice, onBack }: InvoiceDetailProps) {
               width: "48px",
               height: "48px",
               borderRadius: "50%",
-              background: invoice.status === "paid" ? "var(--portal-success)" : "var(--portal-bg-card)",
+              background: invoice.status === "paid" ? "var(--portal-success)" : "var(--portal-bg-elevated)",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
               fontSize: "1.5rem",
               color: invoice.status === "paid" ? "white" : "var(--portal-accent)",
+              flexShrink: 0,
             }}
           >
             {invoice.status === "paid" ? "✓" : "💳"}
@@ -757,7 +988,9 @@ function InvoiceDetail({ invoice, onBack }: InvoiceDetailProps) {
                 : `${formatCurrency(invoice.amountDue)} due by ${formatDate(invoice.dueAt)}`}
             </div>
           </div>
-          {invoice.status !== "paid" && (
+          {showPayButton ? (
+            <PayNowButton amount={invoice.amountDue} onClick={() => onPayNow?.()} />
+          ) : invoice.status !== "paid" ? (
             <div
               style={{
                 fontSize: "var(--portal-font-size-2xl)",
@@ -767,7 +1000,7 @@ function InvoiceDetail({ invoice, onBack }: InvoiceDetailProps) {
             >
               {formatCurrency(invoice.amountDue)}
             </div>
-          )}
+          ) : null}
         </div>
       </PortalCard>
     </div>
@@ -781,9 +1014,10 @@ function InvoiceDetail({ invoice, onBack }: InvoiceDetailProps) {
 interface InvoicesListProps {
   invoices: Invoice[];
   onSelectInvoice: (id: number) => void;
+  onPayInvoice?: (id: number) => void;
 }
 
-function InvoicesList({ invoices, onSelectInvoice }: InvoicesListProps) {
+function InvoicesList({ invoices, onSelectInvoice, onPayInvoice }: InvoicesListProps) {
   // Group invoices by status
   const overdueInvoices = invoices.filter((inv) => inv.status === "overdue");
   const dueInvoices = invoices.filter((inv) => inv.status === "due");
@@ -808,7 +1042,12 @@ function InvoicesList({ invoices, onSelectInvoice }: InvoicesListProps) {
           </h2>
           <PortalCard variant="elevated" padding="none">
             {overdueInvoices.map((invoice) => (
-              <InvoiceRow key={invoice.id} invoice={invoice} onClick={() => onSelectInvoice(invoice.id)} />
+              <InvoiceRow
+                key={invoice.id}
+                invoice={invoice}
+                onClick={() => onSelectInvoice(invoice.id)}
+                onPayNow={onPayInvoice ? () => onPayInvoice(invoice.id) : undefined}
+              />
             ))}
           </PortalCard>
         </div>
@@ -831,7 +1070,12 @@ function InvoicesList({ invoices, onSelectInvoice }: InvoicesListProps) {
           </h2>
           <PortalCard variant="elevated" padding="none">
             {dueInvoices.map((invoice) => (
-              <InvoiceRow key={invoice.id} invoice={invoice} onClick={() => onSelectInvoice(invoice.id)} />
+              <InvoiceRow
+                key={invoice.id}
+                invoice={invoice}
+                onClick={() => onSelectInvoice(invoice.id)}
+                onPayNow={onPayInvoice ? () => onPayInvoice(invoice.id) : undefined}
+              />
             ))}
           </PortalCard>
         </div>
@@ -1030,6 +1274,8 @@ export default function PortalFinancialsPage() {
   const [viewMode, setViewMode] = React.useState<ViewMode>("overview");
   const [selectedInvoiceId, setSelectedInvoiceId] = React.useState<number | null>(null);
   const [loading, setLoading] = React.useState(true);
+  const [paidInvoiceIds, setPaidInvoiceIds] = React.useState<Set<number>>(new Set());
+  const [successModal, setSuccessModal] = React.useState<Invoice | null>(null);
 
   const mockEnabled = isPortalMockEnabled();
 
@@ -1039,10 +1285,42 @@ export default function PortalFinancialsPage() {
     return () => clearTimeout(timer);
   }, []);
 
-  // Get mock data
-  const invoices = mockEnabled ? mockInvoices() : [];
+  // Get mock data and apply local payment state
+  const baseInvoices = mockEnabled ? mockInvoices() : [];
+  const invoices = baseInvoices.map((inv) => {
+    if (paidInvoiceIds.has(inv.id) && inv.status !== "paid") {
+      return {
+        ...inv,
+        status: "paid" as const,
+        paidAt: new Date().toISOString(),
+        amountPaid: inv.total,
+        amountDue: 0,
+      };
+    }
+    return inv;
+  });
+
   const transactions = mockEnabled ? mockTransactions() : [];
-  const summary = mockEnabled ? mockFinancialSummary() : null;
+
+  // Calculate summary with local state
+  const summary: FinancialSummary | null = mockEnabled
+    ? {
+        totalPaid: invoices.reduce((sum, inv) => sum + inv.amountPaid, 0),
+        totalDue: invoices.reduce((sum, inv) => sum + inv.amountDue, 0),
+        overdueAmount: invoices
+          .filter((inv) => inv.status === "overdue")
+          .reduce((sum, inv) => sum + inv.amountDue, 0),
+        nextPaymentAmount:
+          invoices
+            .filter((inv) => inv.status === "due")
+            .sort((a, b) => new Date(a.dueAt).getTime() - new Date(b.dueAt).getTime())[0]?.amountDue || null,
+        nextPaymentDueAt:
+          invoices
+            .filter((inv) => inv.status === "due")
+            .sort((a, b) => new Date(a.dueAt).getTime() - new Date(b.dueAt).getTime())[0]?.dueAt || null,
+        invoiceCount: invoices.length,
+      }
+    : null;
 
   // Handle URL-based invoice detail
   React.useEffect(() => {
@@ -1063,6 +1341,25 @@ export default function PortalFinancialsPage() {
     window.history.pushState(null, "", "/financials");
   };
 
+  const handlePayInvoice = (id: number) => {
+    // Find the invoice to show in success modal
+    const invoice = invoices.find((inv) => inv.id === id);
+    if (invoice) {
+      // Mark as paid
+      setPaidInvoiceIds((prev) => new Set([...prev, id]));
+      // Show success modal
+      setSuccessModal(invoice);
+      // If we're in detail view, go back to list
+      if (selectedInvoiceId === id) {
+        handleBack();
+      }
+    }
+  };
+
+  const handleCloseSuccessModal = () => {
+    setSuccessModal(null);
+  };
+
   // Loading state
   if (loading) {
     return (
@@ -1074,11 +1371,16 @@ export default function PortalFinancialsPage() {
 
   // Invoice detail view
   if (selectedInvoiceId !== null) {
-    const invoice = mockEnabled ? mockInvoiceDetail(selectedInvoiceId) : null;
+    const invoice = invoices.find((inv) => inv.id === selectedInvoiceId);
     if (invoice) {
       return (
         <PageContainer>
-          <InvoiceDetail invoice={invoice} onBack={handleBack} />
+          <InvoiceDetail
+            invoice={invoice}
+            onBack={handleBack}
+            onPayNow={mockEnabled ? () => handlePayInvoice(selectedInvoiceId) : undefined}
+          />
+          {successModal && <PaymentSuccessModal invoice={successModal} onClose={handleCloseSuccessModal} />}
         </PageContainer>
       );
     }
@@ -1136,19 +1438,27 @@ export default function PortalFinancialsPage() {
         {viewMode === "overview" ? (
           <div style={{ display: "flex", flexDirection: "column", gap: "var(--portal-space-5)" }}>
             {/* Active invoices (due + overdue) */}
-            {(invoices.filter((inv) => inv.status === "due" || inv.status === "overdue").length > 0) && (
+            {invoices.filter((inv) => inv.status === "due" || inv.status === "overdue").length > 0 && (
               <InvoicesList
                 invoices={invoices.filter((inv) => inv.status === "due" || inv.status === "overdue")}
                 onSelectInvoice={handleSelectInvoice}
+                onPayInvoice={mockEnabled ? handlePayInvoice : undefined}
               />
             )}
             {/* Recent transactions */}
             {transactions.length > 0 && <RecentTransactions transactions={transactions} />}
           </div>
         ) : (
-          <InvoicesList invoices={invoices} onSelectInvoice={handleSelectInvoice} />
+          <InvoicesList
+            invoices={invoices}
+            onSelectInvoice={handleSelectInvoice}
+            onPayInvoice={mockEnabled ? handlePayInvoice : undefined}
+          />
         )}
       </div>
+
+      {/* Success Modal */}
+      {successModal && <PaymentSuccessModal invoice={successModal} onClose={handleCloseSuccessModal} />}
     </PageContainer>
   );
 }

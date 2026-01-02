@@ -10,12 +10,12 @@ import * as React from "react";
 type StatusType = "reserved" | "placed" | "pending" | "action" | "info" | "success" | "error";
 
 interface StatusBadgeProps {
-  status: StatusType;
+  status: StatusType | string;
   label?: string;
 }
 
 function StatusBadge({ status, label }: StatusBadgeProps) {
-  const config: Record<StatusType, { label: string; bg: string; color: string; dot: string }> = {
+  const config: Record<string, { label: string; bg: string; color: string; dot: string }> = {
     reserved: {
       label: label || "Reserved",
       bg: "var(--portal-accent-muted)",
@@ -60,7 +60,13 @@ function StatusBadge({ status, label }: StatusBadgeProps) {
     },
   };
 
-  const c = config[status];
+  // Safe default for unknown status - never throw
+  const c = config[status] || {
+    label: label || String(status || "Unknown"),
+    bg: "var(--portal-bg-elevated)",
+    color: "var(--portal-text-secondary)",
+    dot: "var(--portal-text-tertiary)",
+  };
 
   return (
     <div
