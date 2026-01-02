@@ -45,7 +45,7 @@ export function ProgramsPage() {
     setPage(1);
   };
 
-  // Page changes use pushState (via setPage then sync effect)
+  // Page changes
   const handlePrevPage = () => {
     if (page > 1) {
       setPage((p) => p - 1);
@@ -70,21 +70,25 @@ export function ProgramsPage() {
     page,
   });
 
-  const totalPages = data ? Math.ceil(data.total / LIMIT) : 0;
+  const total = data?.total ?? 0;
+  const totalPages = total > 0 ? Math.ceil(total / LIMIT) : 0;
   const hasFilters = search.trim() !== "" || location.trim() !== "";
 
   // Results text
   const resultsText = React.useMemo(() => {
     if (!data) return "";
     if (hasFilters) {
-      return `${data.total} result${data.total === 1 ? "" : "s"}`;
+      return `${total} result${total === 1 ? "" : "s"}`;
     }
-    return `${data.total} program${data.total === 1 ? "" : "s"}`;
-  }, [data, hasFilters]);
+    return `${total} program${total === 1 ? "" : "s"}`;
+  }, [data, total, hasFilters]);
+
+  // Show pager when there are results (even if only 1 page, to show count)
+  const showPager = !loading && !error && data && total > 0;
 
   return (
     <div className="space-y-6">
-      {/* Header */}
+      {/* Page header */}
       <div>
         <h1 className="text-3xl sm:text-4xl font-bold text-white tracking-tight">
           Programs
@@ -100,9 +104,28 @@ export function ProgramsPage() {
         onLocationChange={handleLocationChange}
       />
 
-      {/* Results meta */}
-      {data && !loading && (
-        <div className="text-sm text-white/60">{resultsText}</div>
+      {/* Results header row: count on left, pager on right */}
+      {(showPager || loading) && (
+        <div className="flex items-center justify-between flex-wrap gap-4">
+          <div className="text-sm text-white/60">
+            {loading ? (
+              <span className="inline-block h-4 w-20 bg-white/10 rounded animate-pulse" />
+            ) : (
+              resultsText
+            )}
+          </div>
+          {showPager && totalPages > 1 && (
+            <Pager
+              page={page}
+              totalPages={totalPages}
+              total={total}
+              limit={LIMIT}
+              onPrev={handlePrevPage}
+              onNext={handleNextPage}
+              inline
+            />
+          )}
+        </div>
       )}
 
       {/* Grid */}
@@ -115,11 +138,13 @@ export function ProgramsPage() {
         hasFilters={hasFilters}
       />
 
-      {/* Pagination */}
-      {!loading && !error && data && data.items.length > 0 && (
+      {/* Bottom pagination for convenience on long pages */}
+      {showPager && totalPages > 1 && (
         <Pager
           page={page}
           totalPages={totalPages}
+          total={total}
+          limit={LIMIT}
           onPrev={handlePrevPage}
           onNext={handleNextPage}
         />

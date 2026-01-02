@@ -3,6 +3,7 @@ import * as React from "react";
 import { useParams, Link } from "react-router-dom";
 import { useProgramQuery } from "../hooks/useProgramQuery";
 import { useProgramListingsQuery } from "../hooks/useProgramListingsQuery";
+import { getUserMessage } from "../../api/errors";
 import type { PublicOffspringGroupListingDTO } from "../../api/types";
 
 /**
@@ -33,7 +34,7 @@ export function ProgramPage() {
   if (profileError) {
     return (
       <div className="rounded-xl border border-white/10 bg-white/5 p-8 text-center">
-        <p className="text-white/70 mb-4">Unable to load program.</p>
+        <p className="text-white/70 mb-4">{getUserMessage(profileError)}</p>
         <button
           type="button"
           onClick={refetchProfile}
@@ -123,10 +124,10 @@ export function ProgramPage() {
       <div className="space-y-4">
         <h2 className="text-xl font-semibold text-white">Available Listings</h2>
 
-        {/* Listings error - inline */}
+        {/* Listings error - inline, does not break profile */}
         {listingsError && (
           <div className="rounded-xl border border-white/10 bg-white/5 p-6 text-center">
-            <p className="text-white/70 mb-4">Unable to load listings.</p>
+            <p className="text-white/70 mb-4">{getUserMessage(listingsError)}</p>
             <button
               type="button"
               onClick={refetchListings}
@@ -137,16 +138,25 @@ export function ProgramPage() {
           </div>
         )}
 
-        {/* Listings loading */}
+        {/* Listings loading - 3 skeleton tiles matching final geometry */}
         {listingsLoading && !listingsError && (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {Array.from({ length: 4 }).map((_, i) => (
+            {Array.from({ length: 3 }).map((_, i) => (
               <div
                 key={i}
                 className="rounded-xl border border-white/10 bg-white/5 p-4 space-y-3"
               >
                 <div className="h-5 bg-white/10 rounded animate-pulse w-3/4" />
-                <div className="h-4 bg-white/10 rounded animate-pulse w-1/2" />
+                <div className="h-4 bg-white/10 rounded animate-pulse w-full" />
+                <div className="flex gap-2">
+                  <div className="h-5 bg-white/10 rounded animate-pulse w-16" />
+                  <div className="h-5 bg-white/10 rounded animate-pulse w-20" />
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="h-8 bg-white/10 rounded animate-pulse" />
+                  <div className="h-8 bg-white/10 rounded animate-pulse" />
+                </div>
+                <div className="h-4 bg-white/10 rounded animate-pulse w-24 mt-2" />
               </div>
             ))}
           </div>
@@ -177,7 +187,7 @@ export function ProgramPage() {
 }
 
 /**
- * Listing card for program page.
+ * Listing card for program page showing all required fields.
  */
 function ListingRowCard({
   listing,
@@ -186,45 +196,67 @@ function ListingRowCard({
   listing: PublicOffspringGroupListingDTO;
   programSlug: string;
 }) {
+  // Format price display
   const priceText =
     listing.priceMin != null && listing.priceMax != null
       ? listing.priceMin === listing.priceMax
         ? `${listing.currency || "$"}${listing.priceMin}`
-        : `${listing.currency || "$"}${listing.priceMin} - ${listing.currency || "$"}${listing.priceMax}`
+        : `${listing.currency || "$"}${listing.priceMin} – ${listing.currency || "$"}${listing.priceMax}`
       : listing.priceMin != null
-      ? `From ${listing.currency || "$"}${listing.priceMin}`
-      : null;
+        ? `From ${listing.currency || "$"}${listing.priceMin}`
+        : "Not specified";
 
   return (
     <Link
       to={`/programs/${programSlug}/offspring-groups/${listing.slug}`}
-      className="block rounded-xl border border-white/10 bg-white/5 p-4 transition-all hover:border-white/20 hover:bg-white/8 focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-500/60"
+      className="group block rounded-xl border border-white/10 bg-white/5 p-4 transition-all hover:border-white/20 hover:bg-white/[0.08] focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-500/60"
     >
+      {/* Title */}
       <h3 className="text-base font-semibold text-white line-clamp-1">
         {listing.title}
       </h3>
+
+      {/* Description */}
       {listing.description && (
-        <p className="text-sm text-white/60 mt-1 line-clamp-2">
+        <p className="text-sm text-white/50 mt-1 line-clamp-2">
           {listing.description}
         </p>
       )}
+
+      {/* Pills row: Species, Breed */}
       <div className="flex flex-wrap items-center gap-2 mt-3">
-        {listing.species && (
-          <span className="text-xs text-white/50 bg-white/10 px-2 py-0.5 rounded">
-            {listing.species}
-          </span>
-        )}
-        {listing.expectedDate && (
-          <span className="text-xs text-white/50">
-            Expected {listing.expectedDate}
-          </span>
-        )}
+        <span className="text-xs bg-white/10 text-white/70 px-2 py-0.5 rounded">
+          {listing.species || "Species not specified"}
+        </span>
+        <span className="text-xs bg-white/10 text-white/70 px-2 py-0.5 rounded">
+          Breed not specified
+        </span>
       </div>
-      {priceText && (
-        <div className="mt-2">
-          <span className="text-sm font-medium text-orange-400">{priceText}</span>
+
+      {/* Info grid: Date, Availability, Price */}
+      <div className="grid grid-cols-2 gap-x-4 gap-y-2 mt-3 text-sm">
+        <div>
+          <span className="text-white/40 text-xs block">Expected</span>
+          <span className="text-white/70">
+            {listing.expectedDate || "Not specified"}
+          </span>
         </div>
-      )}
+        <div>
+          <span className="text-white/40 text-xs block">Available</span>
+          <span className="text-white/70">–</span>
+        </div>
+        <div className="col-span-2">
+          <span className="text-white/40 text-xs block">Price</span>
+          <span className="text-orange-400 font-medium">{priceText}</span>
+        </div>
+      </div>
+
+      {/* View affordance */}
+      <div className="mt-3 pt-3 border-t border-white/10">
+        <span className="text-xs text-orange-400 group-hover:text-orange-300 transition-colors">
+          View listing &rarr;
+        </span>
+      </div>
     </Link>
   );
 }
