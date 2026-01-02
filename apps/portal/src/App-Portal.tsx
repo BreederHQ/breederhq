@@ -63,7 +63,7 @@ function getViewFromPath(pathname: string): ViewRoute {
   if (path.startsWith("/offspring/")) return "offspring-detail";
   if (path === "/offspring") return "offspring";
   if (path === "/profile") return "profile";
-  if (path === "/debug") return "debug";
+  if (path === "/debug" || path === "/portal/debug") return "debug";
 
   return "dashboard";
 }
