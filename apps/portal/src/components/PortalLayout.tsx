@@ -13,24 +13,26 @@ interface PortalLayoutProps {
   currentPath: string;
 }
 
-function OrgIdentity({ orgInitial, onClick }: { orgInitial: string | null; onClick: () => void }) {
+function OrgIdentity({
+  orgName,
+  orgInitial,
+  onClick,
+}: {
+  orgName: string | null;
+  orgInitial: string | null;
+  onClick: () => void;
+}) {
   const displayInitial = orgInitial || "A";
+  const displayName = orgName || "Portal";
 
   return (
     <button
       onClick={onClick}
       style={{
         all: "unset",
-        width: "32px",
-        height: "32px",
-        borderRadius: "var(--portal-radius-md)",
-        background: "var(--portal-accent)",
-        color: "var(--portal-text-primary)",
         display: "flex",
         alignItems: "center",
-        justifyContent: "center",
-        fontWeight: "var(--portal-font-weight-semibold)",
-        fontSize: "var(--portal-font-size-base)",
+        gap: "var(--portal-space-2)",
         flexShrink: 0,
         cursor: "pointer",
         transition: "opacity var(--portal-transition)",
@@ -43,7 +45,32 @@ function OrgIdentity({ orgInitial, onClick }: { orgInitial: string | null; onCli
         e.currentTarget.style.opacity = "1";
       }}
     >
-      {displayInitial}
+      <div
+        style={{
+          width: "32px",
+          height: "32px",
+          borderRadius: "var(--portal-radius-md)",
+          background: "var(--portal-accent)",
+          color: "var(--portal-text-primary)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          fontWeight: "var(--portal-font-weight-semibold)",
+          fontSize: "var(--portal-font-size-base)",
+        }}
+      >
+        {displayInitial}
+      </div>
+      <span
+        style={{
+          fontSize: "var(--portal-font-size-base)",
+          fontWeight: "var(--portal-font-weight-semibold)",
+          color: "var(--portal-text-primary)",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {displayName}
+      </span>
     </button>
   );
 }
@@ -91,7 +118,7 @@ export function PortalLayout({ children, currentPath }: PortalLayoutProps) {
   return (
     <div style={{ minHeight: "100vh", background: "var(--portal-bg)", display: "flex", flexDirection: "column" }}>
       <HeaderBar>
-        <OrgIdentity orgInitial={orgInitial} onClick={handleNavigateHome} />
+        <OrgIdentity orgName={orgName} orgInitial={orgInitial} onClick={handleNavigateHome} />
         {/* Wrapper constrains TopNav so it can scroll horizontally */}
         <div style={{ flex: "1 1 0%", minWidth: 0, overflow: "hidden" }}>
           <TopNav items={navItems} />
