@@ -404,11 +404,22 @@ function LoadingState() {
 export default function PortalDashboardPage() {
   const { tasks, loading: tasksLoading } = usePortalTasks();
   const { notifications, loading: notificationsLoading } = usePortalNotifications();
-  const { orgName } = usePortalContext();
+  const { orgName, userEmail } = usePortalContext();
   const mockEnabled = isPortalMockEnabled();
 
-  // Page title: org name or fallback
-  const pageTitle = orgName || "Welcome";
+  // Derive user's first name from email (before @ or +) or use mock name in demo mode
+  const getUserFirstName = (): string | null => {
+    if (mockEnabled) return "Emily";
+    if (!userEmail) return null;
+    const localPart = userEmail.split("@")[0];
+    // Handle email+tag format
+    const name = localPart.split("+")[0];
+    // Capitalize first letter
+    return name.charAt(0).toUpperCase() + name.slice(1).toLowerCase();
+  };
+
+  const firstName = getUserFirstName();
+  const pageTitle = firstName ? `Welcome, ${firstName}` : "Welcome";
 
   const handleNavigate = (path: string) => {
     window.history.pushState(null, "", path);
