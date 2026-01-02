@@ -6,6 +6,7 @@ import { getListing, submitInquiry } from "../../api/client";
 import { getUserMessage } from "../../api/errors";
 import { isDemoMode } from "../../demo/demoMode";
 import { getMockListing, simulateDelay } from "../../demo/mockData";
+import { addInquiry } from "../../demo/inquiryOutbox";
 import { Breadcrumb } from "../components/Breadcrumb";
 import { formatCents } from "../../utils/format";
 import type { ListingDetailDTO, PublicOffspringDTO } from "../../api/types";
@@ -62,14 +63,26 @@ export function ListingPage() {
   // Handle inquiry submission
   const handleInquirySubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!inquiryMessage.trim()) return;
+    if (!inquiryMessage.trim() || !data) return;
 
     setInquirySending(true);
     setInquiryError(null);
 
+    const messageText = inquiryMessage.trim();
+
     // Demo mode: simulate success without hitting backend
     if (isDemoMode()) {
       await simulateDelay(300);
+
+      // Persist to inquiry outbox
+      addInquiry({
+        breederName: data.programName,
+        breederSlug: programSlug,
+        listingTitle: data.title || "Untitled Listing",
+        listingSlug: listingSlug,
+        message: messageText,
+      });
+
       setInquirySuccess(true);
       setInquiryMessage("");
       setInquirySending(false);
@@ -79,8 +92,18 @@ export function ListingPage() {
     // Real API mode
     try {
       await submitInquiry(programSlug, listingSlug, {
-        message: inquiryMessage.trim(),
+        message: messageText,
       });
+
+      // Also persist to outbox for tracking (even in real mode)
+      addInquiry({
+        breederName: data.programName,
+        breederSlug: programSlug,
+        listingTitle: data.title || "Untitled Listing",
+        listingSlug: listingSlug,
+        message: messageText,
+      });
+
       setInquirySuccess(true);
       setInquiryMessage("");
     } catch (err) {

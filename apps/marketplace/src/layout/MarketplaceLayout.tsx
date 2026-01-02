@@ -57,11 +57,11 @@ export function MarketplaceLayout({ authenticated, children }: Props) {
             </Link>
 
             {/* Nav links */}
-            <nav className="hidden sm:flex items-center gap-1">
+            <nav className="hidden md:flex items-center gap-1">
               <Link
                 to="/"
-                className={`px-3 py-1.5 text-sm font-medium rounded-portal-xs transition-colors ${
-                  isActive("/") && !isActive("/litters") && !isActive("/breeders")
+                className={`px-2.5 py-1.5 text-sm font-medium rounded-portal-xs transition-colors ${
+                  isActive("/") && !isActive("/animals") && !isActive("/breeders") && !isActive("/services") && !isActive("/inquiries") && !isActive("/updates") && !isActive("/programs")
                     ? "text-white bg-border-default"
                     : "text-text-secondary hover:text-white hover:bg-portal-card-hover"
                 }`}
@@ -69,18 +69,18 @@ export function MarketplaceLayout({ authenticated, children }: Props) {
                 Home
               </Link>
               <Link
-                to="/litters"
-                className={`px-3 py-1.5 text-sm font-medium rounded-portal-xs transition-colors ${
-                  isActive("/litters")
+                to="/animals"
+                className={`px-2.5 py-1.5 text-sm font-medium rounded-portal-xs transition-colors ${
+                  isActive("/animals")
                     ? "text-white bg-border-default"
                     : "text-text-secondary hover:text-white hover:bg-portal-card-hover"
                 }`}
               >
-                Litters
+                Animals
               </Link>
               <Link
                 to="/breeders"
-                className={`px-3 py-1.5 text-sm font-medium rounded-portal-xs transition-colors ${
+                className={`px-2.5 py-1.5 text-sm font-medium rounded-portal-xs transition-colors ${
                   isActive("/breeders") || isActive("/programs")
                     ? "text-white bg-border-default"
                     : "text-text-secondary hover:text-white hover:bg-portal-card-hover"
@@ -88,12 +88,36 @@ export function MarketplaceLayout({ authenticated, children }: Props) {
               >
                 Breeders
               </Link>
-              <span
-                className="px-3 py-1.5 text-sm font-medium rounded-portal-xs text-text-muted cursor-not-allowed"
-                title="Coming soon"
+              <Link
+                to="/services"
+                className={`px-2.5 py-1.5 text-sm font-medium rounded-portal-xs transition-colors ${
+                  isActive("/services")
+                    ? "text-white bg-border-default"
+                    : "text-text-secondary hover:text-white hover:bg-portal-card-hover"
+                }`}
               >
                 Services
-              </span>
+              </Link>
+              <Link
+                to="/inquiries"
+                className={`px-2.5 py-1.5 text-sm font-medium rounded-portal-xs transition-colors ${
+                  isActive("/inquiries")
+                    ? "text-white bg-border-default"
+                    : "text-text-secondary hover:text-white hover:bg-portal-card-hover"
+                }`}
+              >
+                Inquiries
+              </Link>
+              <Link
+                to="/updates"
+                className={`px-2.5 py-1.5 text-sm font-medium rounded-portal-xs transition-colors ${
+                  isActive("/updates")
+                    ? "text-white bg-border-default"
+                    : "text-text-secondary hover:text-white hover:bg-portal-card-hover"
+                }`}
+              >
+                Updates
+              </Link>
             </nav>
           </div>
 

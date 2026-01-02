@@ -498,3 +498,145 @@ export function getMockListing(
 export function simulateDelay(ms: number = 200): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
+
+/**
+ * Get all mock listings across all programs (for Animals browse).
+ */
+export function getAllMockListings(): PublicOffspringGroupListingDTO[] {
+  const all: PublicOffspringGroupListingDTO[] = [];
+  for (const programSlug of Object.keys(MOCK_LISTINGS_BY_PROGRAM)) {
+    all.push(...MOCK_LISTINGS_BY_PROGRAM[programSlug]);
+  }
+  // Sort by most recent birth date
+  all.sort((a, b) => {
+    const dateA = a.actualBirthOn || a.expectedBirthOn || "";
+    const dateB = b.actualBirthOn || b.expectedBirthOn || "";
+    return dateB.localeCompare(dateA);
+  });
+  return all;
+}
+
+// ============================================================================
+// MOCK SERVICES
+// ============================================================================
+
+export interface MockService {
+  id: string;
+  name: string;
+  type: "stud" | "guardianship" | "training" | "delivery" | "grooming" | "boarding";
+  description: string;
+  programSlug: string;
+  programName: string;
+  location: string;
+  priceRange?: { min: number; max: number } | null;
+}
+
+export const MOCK_SERVICES: MockService[] = [
+  {
+    id: "svc-1",
+    name: "Champion Stud Service",
+    type: "stud",
+    description: "AKC Champion Golden Retriever available for stud. OFA hips and elbows excellent.",
+    programSlug: "sunny-meadows-goldens",
+    programName: "Sunny Meadows Goldens",
+    location: "Austin, TX",
+    priceRange: { min: 150000, max: 200000 },
+  },
+  {
+    id: "svc-2",
+    name: "Guardian Home Program",
+    type: "guardianship",
+    description: "Looking for guardian homes for breeding dogs. Full veterinary support provided.",
+    programSlug: "riverside-shepherds",
+    programName: "Riverside German Shepherds",
+    location: "Denver, CO",
+    priceRange: null,
+  },
+  {
+    id: "svc-3",
+    name: "Puppy Delivery Service",
+    type: "delivery",
+    description: "Safe ground transport to approved homes within 500 miles.",
+    programSlug: "maple-leaf-doodles",
+    programName: "Maple Leaf Doodles",
+    location: "Seattle, WA",
+    priceRange: { min: 30000, max: 50000 },
+  },
+  {
+    id: "svc-4",
+    name: "Early Puppy Training",
+    type: "training",
+    description: "4-week foundation training for puppies before going home.",
+    programSlug: "blue-ribbon-labs",
+    programName: "Blue Ribbon Labradors",
+    location: "Nashville, TN",
+    priceRange: { min: 75000, max: 75000 },
+  },
+  {
+    id: "svc-5",
+    name: "Stud Service - Blenheim",
+    type: "stud",
+    description: "Health-tested Cavalier stud with excellent heart clearances.",
+    programSlug: "heartland-cavaliers",
+    programName: "Heartland Cavaliers",
+    location: "Kansas City, MO",
+    priceRange: { min: 100000, max: 150000 },
+  },
+  {
+    id: "svc-6",
+    name: "Show Grooming",
+    type: "grooming",
+    description: "Professional show grooming for Standard Poodles. Ring-ready styling.",
+    programSlug: "pacific-poodles",
+    programName: "Pacific Standard Poodles",
+    location: "San Diego, CA",
+    priceRange: { min: 15000, max: 25000 },
+  },
+  {
+    id: "svc-7",
+    name: "Herding Instinct Testing",
+    type: "training",
+    description: "Herding instinct evaluation for Australian Shepherds.",
+    programSlug: "mountain-view-aussies",
+    programName: "Mountain View Aussies",
+    location: "Boulder, CO",
+    priceRange: { min: 7500, max: 7500 },
+  },
+  {
+    id: "svc-8",
+    name: "Puppy Boarding",
+    type: "boarding",
+    description: "Short-term boarding for puppies from our program. In-home care.",
+    programSlug: "southern-charm-frenchies",
+    programName: "Southern Charm Frenchies",
+    location: "Charleston, SC",
+    priceRange: { min: 5000, max: 7500 },
+  },
+  {
+    id: "svc-9",
+    name: "Trained Puppy Package",
+    type: "training",
+    description: "Take home a puppy with 8 weeks of professional training.",
+    programSlug: "sunny-meadows-goldens",
+    programName: "Sunny Meadows Goldens",
+    location: "Austin, TX",
+    priceRange: { min: 150000, max: 150000 },
+  },
+  {
+    id: "svc-10",
+    name: "Flight Nanny Service",
+    type: "delivery",
+    description: "In-cabin flight escort for puppies to your nearest airport.",
+    programSlug: "heartland-cavaliers",
+    programName: "Heartland Cavaliers",
+    location: "Kansas City, MO",
+    priceRange: { min: 40000, max: 60000 },
+  },
+];
+
+/**
+ * Get all mock services.
+ */
+export function getMockServices(): MockService[] {
+  return MOCK_SERVICES;
+}
