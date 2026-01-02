@@ -4,9 +4,9 @@
 
 import * as React from "react";
 import { SectionCard } from "@bhq/ui";
-import RollupGantt from "../../components/RollupGantt";
-import PerPlanGantt from "../../components/PerPlanGantt";
 import PlannerModeToggleV2, { type PlannerModeV2 } from "./PlannerModeToggleV2";
+import RollupWithPhaseTogglesV2 from "./RollupWithPhaseTogglesV2";
+import PhaseGroupedPerPlanV2 from "./PhaseGroupedPerPlanV2";
 
 type ID = string | number;
 
@@ -15,6 +15,17 @@ type PlanLike = {
   id: ID;
   name: string;
   lockedCycleStart?: string | null;
+  // Status derivation fields
+  species?: string | null;
+  damId?: number | null;
+  sireId?: number | null;
+  breedDateActual?: string | null;
+  birthDateActual?: string | null;
+  weanedDateActual?: string | null;
+  placementStartDateActual?: string | null;
+  placementCompletedDateActual?: string | null;
+  completedDateActual?: string | null;
+  status?: string | null;
   [key: string]: any;
 };
 
@@ -25,37 +36,10 @@ type Props = {
   initialMode?: PlannerModeV2;
 };
 
-export default function YourBreedingPlansPageV2({ plans, initialMode = "rollup" }: Props) {
+export default function YourBreedingPlansPageV2({ plans = [], initialMode = "rollup" }: Props) {
   const [mode, setMode] = React.useState<PlannerModeV2>(initialMode);
 
-  // Local selection state for Rollup - default to all selected
-  const [selectedKeys, setSelectedKeys] = React.useState<Set<ID>>(() => {
-    if (!plans?.length) return new Set();
-    return new Set(plans.map((p) => p.id));
-  });
-
-  // Sync selection when plans change
-  React.useEffect(() => {
-    if (!plans?.length) {
-      setSelectedKeys(new Set());
-      return;
-    }
-    // Auto-select all on first load
-    setSelectedKeys((prev) => {
-      if (prev.size === 0) {
-        return new Set(plans.map((p) => p.id));
-      }
-      // Prune removed plans
-      const valid = new Set(plans.map((p) => p.id));
-      const next = new Set<ID>();
-      prev.forEach((k) => {
-        if (valid.has(k)) next.add(k);
-      });
-      return next;
-    });
-  }, [plans]);
-
-  const hasPlans = plans && plans.length > 0;
+  const hasPlans = plans.length > 0;
 
   return (
     <div className="p-4 max-w-7xl mx-auto">
@@ -75,74 +59,18 @@ export default function YourBreedingPlansPageV2({ plans, initialMode = "rollup" 
         {!hasPlans ? (
           <EmptyState />
         ) : mode === "rollup" ? (
-          <RollupView
+          <RollupWithPhaseTogglesV2
             plans={plans}
-            selectedKeys={selectedKeys}
-            onSelectedChange={setSelectedKeys}
+            allowSynthetic={false}
+            className="w-full"
           />
         ) : (
-          <PerPlanView plans={plans} />
+          <PhaseGroupedPerPlanV2
+            plans={plans}
+            className="w-full"
+          />
         )}
       </SectionCard>
-    </div>
-  );
-}
-
-/* ─────────────────────────────────────────────────────────────────────────────
- * Rollup View
- * ───────────────────────────────────────────────────────────────────────────── */
-function RollupView({
-  plans,
-  selectedKeys,
-  onSelectedChange,
-}: {
-  plans: PlanLike[];
-  selectedKeys: Set<ID>;
-  onSelectedChange: (s: Set<ID>) => void;
-}) {
-  return (
-    <div className="space-y-4">
-      {/* Phase toggles placeholder */}
-      <div className="rounded-lg border border-dashed border-neutral-300 dark:border-neutral-600 bg-neutral-50 dark:bg-neutral-800/50 p-3">
-        <div className="text-xs font-medium text-secondary uppercase tracking-wide mb-1">
-          Coming in v2
-        </div>
-        <div className="text-sm text-primary">
-          Phase toggles will appear here in v2 - tri-state checkboxes to show/hide plans by phase
-          (Planning, Committed, Bred, Birthed, etc.)
-        </div>
-      </div>
-
-      {/* Rollup Chart */}
-      <RollupGantt
-        items={plans}
-        selected={selectedKeys}
-        onSelectedChange={onSelectedChange}
-        className="w-full"
-      />
-    </div>
-  );
-}
-
-/* ─────────────────────────────────────────────────────────────────────────────
- * Per Plan View
- * ───────────────────────────────────────────────────────────────────────────── */
-function PerPlanView({ plans }: { plans: PlanLike[] }) {
-  return (
-    <div className="space-y-4">
-      {/* Phase grouping placeholder */}
-      <div className="rounded-lg border border-dashed border-neutral-300 dark:border-neutral-600 bg-neutral-50 dark:bg-neutral-800/50 p-3">
-        <div className="text-xs font-medium text-secondary uppercase tracking-wide mb-1">
-          Coming in v2
-        </div>
-        <div className="text-sm text-primary">
-          Phase SectionCards will be applied here in v2 - plans grouped into collapsible sections
-          by their current phase (Planning, Committed, Bred, etc.)
-        </div>
-      </div>
-
-      {/* Per Plan Chart (ungrouped for now) */}
-      <PerPlanGantt plans={plans} className="w-full" />
     </div>
   );
 }
@@ -168,9 +96,9 @@ function EmptyState() {
           />
         </svg>
       </div>
-      <h3 className="text-sm font-medium text-primary mb-1">No plans provided</h3>
+      <h3 className="text-sm font-medium text-primary mb-1">No breeding plans</h3>
       <p className="text-sm text-secondary max-w-sm mx-auto">
-        No plans provided to v2 page yet. Wire this in Phase 2 cutover.
+        Create breeding plans to see them displayed here with timeline visualization.
       </p>
     </div>
   );
