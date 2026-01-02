@@ -1,6 +1,8 @@
 // apps/marketplace/src/marketplace/hooks/useProgramsQuery.ts
 import * as React from "react";
 import { getPrograms } from "../../api/client";
+import { isDemoMode } from "../../demo/demoMode";
+import { getMockPrograms, simulateDelay } from "../../demo/mockData";
 import type { ProgramsResponse } from "../../api/types";
 
 const LIMIT = 24;
@@ -58,6 +60,23 @@ export function useProgramsQuery({
 
     const offset = (page - 1) * LIMIT;
 
+    // Demo mode: use mock data
+    if (isDemoMode()) {
+      await simulateDelay(180);
+      if (fetchId !== fetchCounterRef.current) return;
+
+      const result = getMockPrograms({
+        search: debouncedSearch || undefined,
+        location: debouncedLocation || undefined,
+        limit: LIMIT,
+        offset,
+      });
+      setData(result);
+      setLoading(false);
+      return;
+    }
+
+    // Real API mode
     try {
       const result = await getPrograms({
         search: debouncedSearch || undefined,

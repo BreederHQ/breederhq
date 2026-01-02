@@ -2,6 +2,7 @@
 // Marketplace-appropriate layout: solid elevated header, no Portal gradient
 import * as React from "react";
 import { joinApi } from "../api/client";
+import { useDemoMode } from "../demo/demoMode";
 
 interface Props {
   authenticated: boolean;
@@ -14,6 +15,7 @@ interface Props {
  */
 export function MarketplaceLayout({ authenticated, children }: Props) {
   const [loggingOut, setLoggingOut] = React.useState(false);
+  const { demoMode, enable: enableDemo, disable: disableDemo } = useDemoMode();
 
   const handleLogout = async () => {
     setLoggingOut(true);
@@ -45,17 +47,44 @@ export function MarketplaceLayout({ authenticated, children }: Props) {
             BreederHQ Marketplace
           </a>
 
-          {/* Right: Account actions */}
-          {authenticated && (
-            <button
-              type="button"
-              onClick={handleLogout}
-              disabled={loggingOut}
-              className="px-3.5 py-2 text-sm font-medium rounded-portal-xs bg-border-default border border-border-subtle text-text-secondary hover:text-white hover:bg-portal-card-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
-            >
-              {loggingOut ? "..." : "Logout"}
-            </button>
-          )}
+          {/* Right: Demo mode controls + Account actions */}
+          <div className="flex items-center gap-3">
+            {/* Demo mode controls */}
+            {demoMode ? (
+              <>
+                <span className="px-2 py-1 text-xs font-medium rounded bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                  Demo mode
+                </span>
+                <button
+                  type="button"
+                  onClick={disableDemo}
+                  className="text-sm text-text-tertiary hover:text-white transition-colors"
+                >
+                  Turn off
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                onClick={enableDemo}
+                className="px-3 py-1.5 text-sm font-medium rounded-portal-xs bg-border-default border border-border-subtle text-text-secondary hover:text-white hover:bg-portal-card-hover transition-colors"
+              >
+                Preview with demo data
+              </button>
+            )}
+
+            {/* Logout button */}
+            {authenticated && (
+              <button
+                type="button"
+                onClick={handleLogout}
+                disabled={loggingOut}
+                className="px-3.5 py-2 text-sm font-medium rounded-portal-xs bg-border-default border border-border-subtle text-text-secondary hover:text-white hover:bg-portal-card-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
+              >
+                {loggingOut ? "..." : "Logout"}
+              </button>
+            )}
+          </div>
         </div>
       </header>
 

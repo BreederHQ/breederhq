@@ -4,6 +4,8 @@ import * as React from "react";
 import { useParams, Link } from "react-router-dom";
 import { getListing, submitInquiry } from "../../api/client";
 import { getUserMessage } from "../../api/errors";
+import { isDemoMode } from "../../demo/demoMode";
+import { getMockListing, simulateDelay } from "../../demo/mockData";
 import { Breadcrumb } from "../components/Breadcrumb";
 import { formatCents } from "../../utils/format";
 import type { ListingDetailDTO, PublicOffspringDTO } from "../../api/types";
@@ -33,6 +35,16 @@ export function ListingPage() {
     setLoading(true);
     setError(null);
 
+    // Demo mode: use mock data
+    if (isDemoMode()) {
+      await simulateDelay(150);
+      const result = getMockListing(programSlug, listingSlug);
+      setData(result);
+      setLoading(false);
+      return;
+    }
+
+    // Real API mode
     try {
       const result = await getListing(programSlug, listingSlug);
       setData(result);
@@ -55,6 +67,16 @@ export function ListingPage() {
     setInquirySending(true);
     setInquiryError(null);
 
+    // Demo mode: simulate success without hitting backend
+    if (isDemoMode()) {
+      await simulateDelay(300);
+      setInquirySuccess(true);
+      setInquiryMessage("");
+      setInquirySending(false);
+      return;
+    }
+
+    // Real API mode
     try {
       await submitInquiry(programSlug, listingSlug, {
         message: inquiryMessage.trim(),
