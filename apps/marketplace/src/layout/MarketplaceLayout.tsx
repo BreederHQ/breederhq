@@ -55,27 +55,17 @@ export function MarketplaceLayout({ authenticated, children }: Props) {
             Marketplace
           </a>
 
-          {/* Right: Account status */}
-          <div className="flex items-center gap-4">
-            {/* Subtle version indicator */}
-            <span className="hidden sm:inline-block text-[10px] text-white/30 font-mono uppercase tracking-wider">
-              v3
-            </span>
-
-            {authenticated && (
-              <div className="flex items-center gap-3">
-                <span className="hidden sm:inline text-sm text-white/50">Signed in</span>
-                <button
-                  type="button"
-                  onClick={handleLogout}
-                  disabled={loggingOut}
-                  className="px-3 py-1.5 text-sm rounded-lg bg-white/10 border border-white/10 text-white/80 hover:text-white hover:bg-white/15 transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-500/50"
-                >
-                  {loggingOut ? "..." : "Logout"}
-                </button>
-              </div>
-            )}
-          </div>
+          {/* Right: Account actions */}
+          {authenticated && (
+            <button
+              type="button"
+              onClick={handleLogout}
+              disabled={loggingOut}
+              className="px-3 py-1.5 text-sm rounded-lg bg-white/10 border border-white/10 text-white/80 hover:text-white hover:bg-white/15 transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-500/50"
+            >
+              {loggingOut ? "..." : "Logout"}
+            </button>
+          )}
         </div>
       </header>
 

@@ -2,10 +2,11 @@
 import * as React from "react";
 import { useParams, Link } from "react-router-dom";
 import { getListing, submitInquiry, ApiError } from "../../api/client";
+import { getUserMessage } from "../../api/errors";
 import type { ListingDetailDTO, PublicOffspringDTO } from "../../api/types";
 
 /**
- * Listing detail page with offspring cards and inquiry modal.
+ * Listing detail page with offspring cards and inline inquiry panel.
  */
 export function ListingPage() {
   const { programSlug = "", listingSlug = "" } = useParams<{
@@ -17,8 +18,7 @@ export function ListingPage() {
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<Error | null>(null);
 
-  // Inquiry modal state
-  const [inquiryOpen, setInquiryOpen] = React.useState(false);
+  // Inline inquiry panel state
   const [inquiryMessage, setInquiryMessage] = React.useState("");
   const [inquirySending, setInquirySending] = React.useState(false);
   const [inquiryError, setInquiryError] = React.useState<string | null>(null);
@@ -59,26 +59,16 @@ export function ListingPage() {
       setInquirySuccess(true);
       setInquiryMessage("");
     } catch (err) {
-      if (err instanceof ApiError) {
-        if (err.status === 401) {
-          setInquiryError("Please sign in to send an inquiry.");
-        } else {
-          setInquiryError(err.message || "Failed to send inquiry.");
-        }
-      } else {
-        setInquiryError("Failed to send inquiry. Please try again.");
-      }
+      setInquiryError(getUserMessage(err));
     } finally {
       setInquirySending(false);
     }
   };
 
-  // Close modal and reset state
-  const closeInquiryModal = () => {
-    setInquiryOpen(false);
-    setInquiryMessage("");
-    setInquiryError(null);
+  // Reset inquiry panel to send another
+  const handleSendAnother = () => {
     setInquirySuccess(false);
+    setInquiryError(null);
   };
 
   // Error state
@@ -197,147 +187,81 @@ export function ListingPage() {
         )}
       </div>
 
-      {/* Inquiry CTA */}
-      <div className="rounded-xl border border-orange-500/30 bg-orange-500/10 p-6">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div>
-            <h3 className="text-lg font-semibold text-white">Interested?</h3>
-            <p className="text-white/70 text-sm mt-1">
-              Contact the breeder to learn more about this listing.
+      {/* Inline Inquiry Panel */}
+      <div className="rounded-xl border border-white/10 bg-white/5 p-6">
+        {inquirySuccess ? (
+          // Success state
+          <div className="text-center py-4">
+            <div className="w-12 h-12 mx-auto mb-4 rounded-full bg-green-500/20 flex items-center justify-center">
+              <svg
+                className="w-6 h-6 text-green-400"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M5 13l4 4L19 7"
+                />
+              </svg>
+            </div>
+            <h3 className="text-xl font-semibold text-white mb-2">
+              Inquiry Sent
+            </h3>
+            <p className="text-white/70 mb-6">
+              The breeder will receive your message and respond via email.
             </p>
+            <button
+              type="button"
+              onClick={handleSendAnother}
+              className="px-6 py-2 rounded-lg bg-white/10 border border-white/10 text-white font-medium hover:bg-white/15 transition-colors"
+            >
+              Send another inquiry
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={() => setInquiryOpen(true)}
-            className="px-6 py-3 rounded-lg bg-orange-500 text-white font-medium hover:bg-orange-600 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-500/50"
-          >
-            Send Inquiry
-          </button>
-        </div>
-      </div>
+        ) : (
+          // Form state
+          <>
+            <h3 className="text-lg font-semibold text-white mb-4">
+              Interested?
+            </h3>
 
-      {/* Inquiry Modal */}
-      {inquiryOpen && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) closeInquiryModal();
-          }}
-        >
-          <div className="w-full max-w-lg rounded-xl border border-white/10 bg-gray-900 p-6 shadow-2xl">
-            {inquirySuccess ? (
-              // Success state
-              <div className="text-center py-4">
-                <div className="w-12 h-12 mx-auto mb-4 rounded-full bg-green-500/20 flex items-center justify-center">
-                  <svg
-                    className="w-6 h-6 text-green-400"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M5 13l4 4L19 7"
-                    />
-                  </svg>
-                </div>
-                <h3 className="text-xl font-semibold text-white mb-2">
-                  Inquiry Sent
-                </h3>
-                <p className="text-white/70 mb-6">
-                  The breeder will receive your message and respond via email.
-                </p>
-                <button
-                  type="button"
-                  onClick={closeInquiryModal}
-                  className="px-6 py-2 rounded-lg bg-white/10 border border-white/10 text-white font-medium hover:bg-white/15 transition-colors"
+            <form onSubmit={handleInquirySubmit} className="space-y-4">
+              {inquiryError && (
+                <div
+                  role="alert"
+                  className="p-3 rounded-lg bg-red-500/10 border-l-2 border-red-500 text-red-300 text-sm"
                 >
-                  Close
-                </button>
-              </div>
-            ) : (
-              // Form state
-              <>
-                <div className="flex items-center justify-between mb-6">
-                  <h3 className="text-xl font-semibold text-white">
-                    Send Inquiry
-                  </h3>
-                  <button
-                    type="button"
-                    onClick={closeInquiryModal}
-                    className="text-white/50 hover:text-white transition-colors"
-                    aria-label="Close"
-                  >
-                    <svg
-                      className="w-5 h-5"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M6 18L18 6M6 6l12 12"
-                      />
-                    </svg>
-                  </button>
+                  {inquiryError}
                 </div>
+              )}
 
-                <p className="text-white/70 text-sm mb-4">
-                  Ask the breeder about <strong>{data.title}</strong>
-                </p>
+              <label className="block">
+                <span className="sr-only">Your message</span>
+                <textarea
+                  value={inquiryMessage}
+                  onChange={(e) => setInquiryMessage(e.target.value)}
+                  rows={4}
+                  className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white placeholder-white/30 focus:outline-none focus:border-white/30 focus:ring-1 focus:ring-white/20 disabled:opacity-50 resize-none"
+                  placeholder="Introduce yourself and ask any questions about this listing..."
+                  disabled={inquirySending}
+                  required
+                />
+              </label>
 
-                <form onSubmit={handleInquirySubmit} className="space-y-4">
-                  {inquiryError && (
-                    <div
-                      role="alert"
-                      className="p-3 rounded-lg bg-red-500/10 border-l-2 border-red-500 text-red-300 text-sm"
-                    >
-                      {inquiryError}
-                    </div>
-                  )}
-
-                  <label className="block">
-                    <span className="block text-sm text-white/60 mb-1">
-                      Your message
-                    </span>
-                    <textarea
-                      value={inquiryMessage}
-                      onChange={(e) => setInquiryMessage(e.target.value)}
-                      rows={5}
-                      className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white placeholder-white/30 focus:outline-none focus:border-white/30 focus:ring-1 focus:ring-white/20 disabled:opacity-50 resize-none"
-                      placeholder="Introduce yourself and ask any questions..."
-                      disabled={inquirySending}
-                      required
-                    />
-                  </label>
-
-                  <div className="flex justify-end gap-3">
-                    <button
-                      type="button"
-                      onClick={closeInquiryModal}
-                      className="px-4 py-2 rounded-lg bg-white/10 border border-white/10 text-white font-medium hover:bg-white/15 transition-colors"
-                      disabled={inquirySending}
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="submit"
-                      disabled={inquirySending || !inquiryMessage.trim()}
-                      className="px-4 py-2 rounded-lg bg-orange-500 text-white font-medium hover:bg-orange-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {inquirySending ? "Sending..." : "Send Inquiry"}
-                    </button>
-                  </div>
-                </form>
-              </>
-            )}
-          </div>
-        </div>
-      )}
+              <button
+                type="submit"
+                disabled={inquirySending || !inquiryMessage.trim()}
+                className="w-full sm:w-auto px-6 py-2 rounded-lg bg-orange-500 text-white font-medium hover:bg-orange-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-500/50"
+              >
+                {inquirySending ? "Sending..." : "Send inquiry"}
+              </button>
+            </form>
+          </>
+        )}
+      </div>
     </div>
   );
 }

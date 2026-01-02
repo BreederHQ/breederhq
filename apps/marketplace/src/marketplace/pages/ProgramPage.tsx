@@ -208,16 +208,23 @@ function ListingRowCard({
           {listing.description}
         </p>
       )}
-      <div className="flex items-center gap-3 mt-3">
+      <div className="flex flex-wrap items-center gap-2 mt-3">
         {listing.species && (
           <span className="text-xs text-white/50 bg-white/10 px-2 py-0.5 rounded">
             {listing.species}
           </span>
         )}
-        {priceText && (
-          <span className="text-sm font-medium text-orange-400">{priceText}</span>
+        {listing.expectedDate && (
+          <span className="text-xs text-white/50">
+            Expected {listing.expectedDate}
+          </span>
         )}
       </div>
+      {priceText && (
+        <div className="mt-2">
+          <span className="text-sm font-medium text-orange-400">{priceText}</span>
+        </div>
+      )}
     </Link>
   );
 }
