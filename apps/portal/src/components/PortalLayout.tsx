@@ -23,7 +23,7 @@ function OrgIdentity({
   onClick: () => void;
 }) {
   const displayInitial = orgInitial || "A";
-  const displayName = orgName || "Portal";
+  const displayName = orgName || "Acme Breeding Co.";
 
   return (
     <button
