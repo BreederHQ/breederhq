@@ -47,7 +47,7 @@ type Props = {
   className?: string;
 };
 
-export default function RollupWithPhaseTogglesV2({
+export default function RollupWithPhaseToggles({
   plans,
   itemsForChart,
   allowSynthetic = false,

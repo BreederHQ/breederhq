@@ -2699,7 +2699,7 @@ export default function AppBreeding() {
 
         {/* PLANNER VIEW */}
         {currentView === "planner" && (
-          <div className="p-4 max-w-7xl mx-auto">
+          <div className="p-4">
             {/* Page-level tabs: Your Breeding Plans | What If Planning */}
             <nav className="inline-flex items-end gap-6 mb-4" role="tablist" aria-label="Planner pages">
               {(["your-plans", "what-if"] as const).map((tabKey) => {
