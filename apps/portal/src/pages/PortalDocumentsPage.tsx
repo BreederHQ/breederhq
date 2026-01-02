@@ -1,12 +1,13 @@
 // apps/portal/src/pages/PortalDocumentsPage.tsx
 import * as React from "react";
 import { PageContainer } from "../design/PageContainer";
-import { PortalEmptyState } from "../design/PortalEmptyState";
+import { PortalHero } from "../design/PortalHero";
+import { PortalCard, CardRow } from "../design/PortalCard";
 import { makeApi } from "@bhq/api";
 import type { DocumentDTO, DocumentCategory } from "@bhq/api";
 import { isPortalMockEnabled } from "../dev/mockFlag";
 import { DemoBanner } from "../dev/DemoBanner";
-import { mockDocuments } from "../dev/mockData";
+import { mockDocuments, mockOffspring } from "../dev/mockData";
 
 // Resolve API base URL (same pattern as taskSources)
 function getApiBase(): string {
@@ -32,6 +33,90 @@ function normalizeBase(base: string): string {
 const api = makeApi(getApiBase());
 
 /* ────────────────────────────────────────────────────────────────────────────
+ * Document Category Config
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+const categoryConfig: Record<DocumentCategory, { label: string; emoji: string; bg: string }> = {
+  CONTRACT: { label: "Contract", emoji: "📝", bg: "var(--portal-info-soft)" },
+  HEALTH: { label: "Health", emoji: "💉", bg: "var(--portal-success-soft)" },
+  PEDIGREE: { label: "Pedigree", emoji: "🏆", bg: "var(--portal-warning-soft)" },
+  PHOTO: { label: "Photo", emoji: "📷", bg: "var(--portal-accent-soft)" },
+  OTHER: { label: "Other", emoji: "📄", bg: "var(--portal-bg-elevated)" },
+};
+
+/* ────────────────────────────────────────────────────────────────────────────
+ * Document Icon
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+function DocumentIcon({ category }: { category: DocumentCategory | undefined }) {
+  const config = category ? categoryConfig[category] : categoryConfig.OTHER;
+
+  return (
+    <div
+      style={{
+        width: "44px",
+        height: "44px",
+        borderRadius: "var(--portal-radius-lg)",
+        background: config.bg,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        fontSize: "1.25rem",
+        flexShrink: 0,
+      }}
+    >
+      {config.emoji}
+    </div>
+  );
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
+ * Category Badge
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+function CategoryBadge({ category }: { category: DocumentCategory | undefined }) {
+  if (!category) return null;
+
+  const config = categoryConfig[category];
+
+  return (
+    <div
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        padding: "2px 8px",
+        background: config.bg,
+        borderRadius: "var(--portal-radius-full)",
+        fontSize: "var(--portal-font-size-xs)",
+        fontWeight: "var(--portal-font-weight-medium)",
+        color: "var(--portal-text-secondary)",
+      }}
+    >
+      {config.label}
+    </div>
+  );
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
+ * Format Helpers
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+function formatSize(bytes: number | null): string {
+  if (!bytes) return "";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function formatDate(date: string): string {
+  return new Date(date).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
  * Document Row Component
  * ──────────────────────────────────────────────────────────────────────────── */
 
@@ -40,147 +125,340 @@ interface DocumentRowProps {
 }
 
 function DocumentRow({ document }: DocumentRowProps) {
-  const categoryLabels: Record<DocumentCategory, string> = {
-    CONTRACT: "Contract",
-    HEALTH: "Health",
-    PEDIGREE: "Pedigree",
-    PHOTO: "Photo",
-    OTHER: "Other",
-  };
+  // Documents are read-only in the portal, no click action
+  // But we can style them nicely
 
-  function formatSize(bytes: number | null): string {
-    if (!bytes) return "Unknown size";
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  }
-
-  function formatDate(date: string): string {
-    return new Date(date).toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-    });
-  }
+  const sizeStr = formatSize(document.fileSizeBytes);
+  const dateStr = formatDate(document.uploadedAt);
 
   return (
-    <div
-      style={{
-        padding: "var(--portal-space-3)",
-        borderBottom: "1px solid var(--portal-border-subtle)",
-      }}
-    >
-      <div
-        style={{
-          display: "flex",
-          alignItems: "flex-start",
-          gap: "var(--portal-space-3)",
-        }}
-      >
-        <div
-          style={{
-            width: "40px",
-            height: "40px",
-            flexShrink: 0,
-            background: "var(--portal-bg-elevated)",
-            border: "1px solid var(--portal-border-subtle)",
-            borderRadius: "var(--portal-radius-md)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            fontSize: "20px",
-          }}
-        >
-          📄
-        </div>
+    <CardRow>
+      <div style={{ display: "flex", alignItems: "flex-start", gap: "var(--portal-space-3)" }}>
+        <DocumentIcon category={document.category} />
+
         <div style={{ flex: 1, minWidth: 0 }}>
           <div
             style={{
-              fontSize: "var(--portal-font-size-sm)",
-              fontWeight: "var(--portal-font-weight-medium)",
-              color: "var(--portal-text-primary)",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: "var(--portal-space-2)",
+              marginBottom: "4px",
             }}
           >
-            {document.name}
-          </div>
-          {document.description && (
             <div
               style={{
-                fontSize: "var(--portal-font-size-xs)",
-                color: "var(--portal-text-secondary)",
-                marginTop: "2px",
+                fontSize: "var(--portal-font-size-base)",
+                fontWeight: "var(--portal-font-weight-semibold)",
+                color: "var(--portal-text-primary)",
                 overflow: "hidden",
                 textOverflow: "ellipsis",
                 whiteSpace: "nowrap",
               }}
             >
-              {document.description}
+              {document.name}
             </div>
-          )}
+            <CategoryBadge category={document.category} />
+          </div>
+
           <div
             style={{
               display: "flex",
               alignItems: "center",
-              gap: "var(--portal-space-2)",
-              marginTop: "var(--portal-space-1)",
+              gap: "var(--portal-space-3)",
               flexWrap: "wrap",
             }}
           >
-            {document.category && (
+            {document.description && (
+              <div
+                style={{
+                  fontSize: "var(--portal-font-size-sm)",
+                  color: "var(--portal-text-secondary)",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                  flex: 1,
+                  minWidth: 0,
+                }}
+              >
+                {document.description}
+              </div>
+            )}
+
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "var(--portal-space-2)",
+                flexShrink: 0,
+              }}
+            >
+              {document.offspringName && (
+                <span
+                  style={{
+                    fontSize: "var(--portal-font-size-xs)",
+                    color: "var(--portal-accent)",
+                    fontWeight: "var(--portal-font-weight-medium)",
+                  }}
+                >
+                  {document.offspringName}
+                </span>
+              )}
+              {sizeStr && (
+                <span
+                  style={{
+                    fontSize: "var(--portal-font-size-xs)",
+                    color: "var(--portal-text-tertiary)",
+                  }}
+                >
+                  {sizeStr}
+                </span>
+              )}
               <span
                 style={{
                   fontSize: "var(--portal-font-size-xs)",
                   color: "var(--portal-text-tertiary)",
                 }}
               >
-                {categoryLabels[document.category]}
+                {dateStr}
               </span>
-            )}
-            {document.source === "offspring" && document.offspringName && (
-              <span
-                style={{
-                  fontSize: "var(--portal-font-size-xs)",
-                  color: "var(--portal-accent)",
-                }}
-              >
-                {document.offspringName}
-              </span>
-            )}
-            <span
-              style={{
-                fontSize: "var(--portal-font-size-xs)",
-                color: "var(--portal-text-tertiary)",
-              }}
-            >
-              {formatSize(document.fileSizeBytes)}
-            </span>
-            <span
-              style={{
-                fontSize: "var(--portal-font-size-xs)",
-                color: "var(--portal-text-tertiary)",
-              }}
-            >
-              {formatDate(document.uploadedAt)}
-            </span>
+            </div>
           </div>
         </div>
       </div>
+    </CardRow>
+  );
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
+ * Document Group Section
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+interface DocumentGroupProps {
+  title: string;
+  documents: DocumentDTO[];
+}
+
+function DocumentGroup({ title, documents }: DocumentGroupProps) {
+  if (documents.length === 0) return null;
+
+  return (
+    <div style={{ marginBottom: "var(--portal-space-5)" }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "var(--portal-space-2)",
+          marginBottom: "var(--portal-space-3)",
+        }}
+      >
+        <h2
+          style={{
+            fontSize: "var(--portal-font-size-sm)",
+            fontWeight: "var(--portal-font-weight-semibold)",
+            textTransform: "uppercase",
+            letterSpacing: "var(--portal-letter-spacing-wide)",
+            color: "var(--portal-text-tertiary)",
+            margin: 0,
+          }}
+        >
+          {title}
+        </h2>
+        <span
+          style={{
+            fontSize: "var(--portal-font-size-xs)",
+            color: "var(--portal-text-tertiary)",
+            background: "var(--portal-bg-elevated)",
+            padding: "2px 8px",
+            borderRadius: "var(--portal-radius-full)",
+          }}
+        >
+          {documents.length}
+        </span>
+      </div>
+      <PortalCard variant="elevated" padding="none">
+        {documents.map((doc) => (
+          <DocumentRow key={doc.id} document={doc} />
+        ))}
+      </PortalCard>
     </div>
   );
 }
 
 /* ────────────────────────────────────────────────────────────────────────────
+ * Empty State
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+function EmptyDocuments({ animalName }: { animalName: string }) {
+  return (
+    <PortalCard variant="flat" padding="lg">
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          textAlign: "center",
+          padding: "var(--portal-space-6)",
+          gap: "var(--portal-space-3)",
+        }}
+      >
+        <div
+          style={{
+            width: "64px",
+            height: "64px",
+            borderRadius: "50%",
+            background: "var(--portal-bg-elevated)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontSize: "1.5rem",
+          }}
+        >
+          📁
+        </div>
+        <h3
+          style={{
+            fontSize: "var(--portal-font-size-lg)",
+            fontWeight: "var(--portal-font-weight-semibold)",
+            color: "var(--portal-text-primary)",
+            margin: 0,
+          }}
+        >
+          No documents yet
+        </h3>
+        <p
+          style={{
+            fontSize: "var(--portal-font-size-base)",
+            color: "var(--portal-text-secondary)",
+            margin: 0,
+            maxWidth: "320px",
+          }}
+        >
+          Documents about {animalName} will appear here when shared by your breeder.
+        </p>
+      </div>
+    </PortalCard>
+  );
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
+ * Loading State
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+function LoadingState() {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "var(--portal-space-4)" }}>
+      <div
+        style={{
+          height: "120px",
+          background: "var(--portal-bg-elevated)",
+          borderRadius: "var(--portal-radius-xl)",
+        }}
+      />
+      {[1, 2, 3, 4].map((i) => (
+        <div
+          key={i}
+          style={{
+            height: "80px",
+            background: "var(--portal-bg-elevated)",
+            borderRadius: "var(--portal-radius-lg)",
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
+ * Error State
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+function ErrorState({ error, onRetry }: { error: string; onRetry: () => void }) {
+  return (
+    <PortalCard variant="flat" padding="lg">
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          textAlign: "center",
+          padding: "var(--portal-space-6)",
+          gap: "var(--portal-space-3)",
+        }}
+      >
+        <div
+          style={{
+            width: "64px",
+            height: "64px",
+            borderRadius: "50%",
+            background: "var(--portal-error-soft)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontSize: "1.5rem",
+            color: "var(--portal-error)",
+          }}
+        >
+          !
+        </div>
+        <h3
+          style={{
+            fontSize: "var(--portal-font-size-lg)",
+            fontWeight: "var(--portal-font-weight-semibold)",
+            color: "var(--portal-text-primary)",
+            margin: 0,
+          }}
+        >
+          Unable to load documents
+        </h3>
+        <p
+          style={{
+            fontSize: "var(--portal-font-size-base)",
+            color: "var(--portal-text-secondary)",
+            margin: 0,
+          }}
+        >
+          {error}
+        </p>
+        <button
+          onClick={onRetry}
+          style={{
+            padding: "var(--portal-space-2) var(--portal-space-4)",
+            background: "var(--portal-accent)",
+            color: "white",
+            border: "none",
+            borderRadius: "var(--portal-radius-md)",
+            fontSize: "var(--portal-font-size-sm)",
+            fontWeight: "var(--portal-font-weight-medium)",
+            cursor: "pointer",
+            transition: "opacity var(--portal-transition)",
+          }}
+          onMouseEnter={(e) => (e.currentTarget.style.opacity = "0.9")}
+          onMouseLeave={(e) => (e.currentTarget.style.opacity = "1")}
+        >
+          Try Again
+        </button>
+      </div>
+    </PortalCard>
+  );
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
  * Main Component
- * ────────────────────────────────────────────────────────────────────────── */
+ * ──────────────────────────────────────────────────────────────────────────── */
 
 export default function PortalDocumentsPage() {
   const [documents, setDocuments] = React.useState<DocumentDTO[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const mockEnabled = isPortalMockEnabled();
+
+  // Get primary animal name for context
+  const offspring = mockEnabled ? mockOffspring() : [];
+  const primaryAnimal = offspring[0];
+  const animalName = primaryAnimal?.offspring?.name || "your puppy";
 
   const fetchDocuments = React.useCallback(async () => {
     setLoading(true);
@@ -213,32 +491,18 @@ export default function PortalDocumentsPage() {
     fetchDocuments();
   }, [fetchDocuments]);
 
-  const handleRetry = () => {
-    fetchDocuments();
-  };
+  // Group documents by category
+  const healthDocs = documents.filter((d) => d.category === "HEALTH");
+  const pedigreeDocs = documents.filter((d) => d.category === "PEDIGREE");
+  const contractDocs = documents.filter((d) => d.category === "CONTRACT");
+  const photoDocs = documents.filter((d) => d.category === "PHOTO");
+  const otherDocs = documents.filter((d) => !d.category || d.category === "OTHER");
 
   // Loading state
   if (loading) {
     return (
       <PageContainer>
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            gap: "var(--portal-space-3)",
-          }}
-        >
-          {[1, 2, 3, 4].map((i) => (
-            <div
-              key={i}
-              style={{
-                height: "80px",
-                background: "var(--portal-bg-elevated)",
-                borderRadius: "var(--portal-radius-lg)",
-              }}
-            />
-          ))}
-        </div>
+        <LoadingState />
       </PageContainer>
     );
   }
@@ -247,67 +511,11 @@ export default function PortalDocumentsPage() {
   if (error) {
     return (
       <PageContainer>
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            justifyContent: "center",
-            textAlign: "center",
-            minHeight: "60vh",
-            gap: "var(--portal-space-3)",
-          }}
-        >
-          <div
-            style={{
-              fontSize: "var(--portal-font-size-xl)",
-              fontWeight: "var(--portal-font-weight-semibold)",
-              color: "var(--portal-text-primary)",
-            }}
-          >
-            Unable to load documents
-          </div>
-          <div
-            style={{
-              fontSize: "var(--portal-font-size-base)",
-              color: "var(--portal-text-secondary)",
-            }}
-          >
-            {error}
-          </div>
-          <button
-            onClick={handleRetry}
-            style={{
-              padding: "var(--portal-space-2) var(--portal-space-4)",
-              background: "var(--portal-accent)",
-              color: "var(--portal-text-primary)",
-              border: "none",
-              borderRadius: "var(--portal-radius-md)",
-              fontSize: "var(--portal-font-size-sm)",
-              fontWeight: "var(--portal-font-weight-medium)",
-              cursor: "pointer",
-            }}
-          >
-            Retry
-          </button>
-        </div>
+        <ErrorState error={error} onRetry={fetchDocuments} />
       </PageContainer>
     );
   }
 
-  // Empty state
-  if (documents.length === 0) {
-    return (
-      <PageContainer>
-        <PortalEmptyState
-          title="No documents"
-          body="Documents shared with you will appear here."
-        />
-      </PageContainer>
-    );
-  }
-
-  // List view
   return (
     <PageContainer>
       {mockEnabled && (
@@ -317,41 +525,42 @@ export default function PortalDocumentsPage() {
       )}
 
       <div style={{ display: "flex", flexDirection: "column", gap: "var(--portal-space-4)" }}>
-        {/* Page header with download notice */}
-        <div>
-          <h1
-            style={{
-              fontSize: "var(--portal-font-size-2xl)",
-              fontWeight: "var(--portal-font-weight-semibold)",
-              color: "var(--portal-text-primary)",
-              margin: 0,
-              marginBottom: "var(--portal-space-1)",
-            }}
-          >
-            Documents
-          </h1>
-          <p
-            style={{
-              fontSize: "var(--portal-font-size-sm)",
-              color: "var(--portal-text-tertiary)",
-              margin: 0,
-            }}
-          >
-            Downloads are not available in the client portal.
-          </p>
-        </div>
+        {/* Hero */}
+        <PortalHero
+          variant="page"
+          title="Documents"
+          subtitle={`Important files for ${animalName}'s journey`}
+          animalContext={animalName}
+          status="info"
+          statusLabel={`${documents.length} files`}
+        />
 
-        {/* Document List */}
+        {/* Download notice */}
         <div
           style={{
-            display: "flex",
-            flexDirection: "column",
+            padding: "var(--portal-space-3)",
+            background: "var(--portal-bg-elevated)",
+            borderRadius: "var(--portal-radius-lg)",
+            fontSize: "var(--portal-font-size-sm)",
+            color: "var(--portal-text-secondary)",
+            textAlign: "center",
           }}
         >
-          {documents.map((document) => (
-            <DocumentRow key={document.id} document={document} />
-          ))}
+          Documents are view-only. Contact your breeder for download access.
         </div>
+
+        {/* Document Groups */}
+        {documents.length === 0 ? (
+          <EmptyDocuments animalName={animalName} />
+        ) : (
+          <>
+            <DocumentGroup title="Health Records" documents={healthDocs} />
+            <DocumentGroup title="Pedigree" documents={pedigreeDocs} />
+            <DocumentGroup title="Contracts" documents={contractDocs} />
+            <DocumentGroup title="Photos" documents={photoDocs} />
+            <DocumentGroup title="Other Documents" documents={otherDocs} />
+          </>
+        )}
       </div>
     </PageContainer>
   );

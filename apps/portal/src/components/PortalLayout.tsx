@@ -86,6 +86,7 @@ export function PortalLayout({ children, currentPath }: PortalLayoutProps) {
     },
     { label: "Agreements", href: "/agreements", active: currentPath.startsWith("/agreements") },
     { label: "Documents", href: "/documents", active: currentPath.startsWith("/documents") },
+    { label: "Financials", href: "/financials", active: currentPath.startsWith("/financials") },
     { label: "Offspring", href: "/offspring", active: currentPath.startsWith("/offspring") },
     { label: "Profile", href: "/profile", active: currentPath.startsWith("/profile") },
     { label: "Logout", href: "/logout", active: currentPath === "/logout" },

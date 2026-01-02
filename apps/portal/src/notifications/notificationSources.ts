@@ -265,9 +265,73 @@ export async function fetchAllNotifications(): Promise<Notification[]> {
   return deduplicated;
 }
 
+// Demo mode mock notifications
+interface MockNotification extends Notification {
+  read: boolean;
+}
+
+function getMockNotifications(): MockNotification[] {
+  return [
+    {
+      id: "mock-notif-1",
+      type: "message_received",
+      title: "New message from Sarah Thompson",
+      timestamp: "2026-01-01T10:30:00Z",
+      href: "/portal/messages?threadId=1",
+      sourceId: 1,
+      read: false,
+    },
+    {
+      id: "mock-notif-2",
+      type: "agreement_sent",
+      title: "Action required: Sign Health Guarantee",
+      timestamp: "2025-12-31T09:00:00Z",
+      href: "/portal/agreements/2",
+      sourceId: 2,
+      read: false,
+    },
+    {
+      id: "mock-notif-3",
+      type: "invoice_issued",
+      title: "Final payment due: $2,000",
+      timestamp: "2025-12-30T14:00:00Z",
+      href: "/portal/billing",
+      sourceId: 1,
+      read: false,
+    },
+    {
+      id: "mock-notif-4",
+      type: "offspring_ready",
+      title: "Bella's pickup window confirmed",
+      timestamp: "2025-12-28T11:00:00Z",
+      href: "/portal/offspring/101",
+      sourceId: 101,
+      read: true,
+    },
+    {
+      id: "mock-notif-5",
+      type: "message_received",
+      title: "New photos of Bella uploaded",
+      timestamp: "2025-12-27T16:20:00Z",
+      href: "/portal/messages?threadId=1",
+      sourceId: 1,
+      read: true,
+    },
+    {
+      id: "mock-notif-6",
+      type: "agreement_signed",
+      title: "Contract signed successfully",
+      timestamp: "2025-12-12T14:30:00Z",
+      href: "/portal/agreements/1",
+      sourceId: 1,
+      read: true,
+    },
+  ];
+}
+
 // Hook for use in React components
 export function usePortalNotifications() {
-  const [notifications, setNotifications] = React.useState<Notification[]>([]);
+  const [notifications, setNotifications] = React.useState<(Notification & { read?: boolean })[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
 
@@ -281,11 +345,26 @@ export function usePortalNotifications() {
       try {
         const result = await fetchAllNotifications();
         if (cancelled) return;
-        setNotifications(result);
+
+        // If no real notifications and demo mode enabled, use mock data
+        const { isPortalMockEnabled } = await import("../dev/mockFlag");
+        if (result.length === 0 && isPortalMockEnabled()) {
+          setNotifications(getMockNotifications());
+        } else {
+          setNotifications(result);
+        }
       } catch (err: any) {
         if (cancelled) return;
         console.error("[usePortalNotifications] Failed to fetch notifications:", err);
-        setError(err?.message || "Failed to load notifications");
+
+        // On error in demo mode, use mock data
+        const { isPortalMockEnabled } = await import("../dev/mockFlag");
+        if (isPortalMockEnabled()) {
+          setNotifications(getMockNotifications());
+          setError(null);
+        } else {
+          setError(err?.message || "Failed to load notifications");
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }

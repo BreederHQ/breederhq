@@ -14,6 +14,7 @@ import PortalOffspringPageNew from "./pages/PortalOffspringPageNew";
 import PortalOffspringDetailPageNew from "./pages/PortalOffspringDetailPageNew";
 import PortalProfilePageNew from "./pages/PortalProfilePageNew";
 import PortalDebugPage from "./pages/PortalDebugPage";
+import PortalFinancialsPage from "./pages/PortalFinancialsPage";
 import PortalLoginPageNew from "./pages/PortalLoginPageNew";
 import PortalForgotPasswordPage from "./pages/PortalForgotPasswordPage";
 import PortalActivatePage from "./pages/PortalActivatePage";
@@ -32,6 +33,7 @@ type ViewRoute =
   | "agreements"
   | "agreement-detail"
   | "documents"
+  | "financials"
   | "offspring"
   | "offspring-detail"
   | "profile"
@@ -60,6 +62,7 @@ function getViewFromPath(pathname: string): ViewRoute {
   if (path.startsWith("/agreements/")) return "agreement-detail";
   if (path === "/agreements") return "agreements";
   if (path === "/documents") return "documents";
+  if (path.startsWith("/financials")) return "financials";
   if (path.startsWith("/offspring/")) return "offspring-detail";
   if (path === "/offspring") return "offspring";
   if (path === "/profile") return "profile";
@@ -132,6 +135,8 @@ export default function AppPortal() {
               return <PortalAgreementDetailPageNew />;
             case "documents":
               return <PortalDocumentsPageNew />;
+            case "financials":
+              return <PortalFinancialsPage />;
             case "offspring":
               return <PortalOffspringPageNew />;
             case "offspring-detail":

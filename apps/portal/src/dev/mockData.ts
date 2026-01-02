@@ -406,6 +406,274 @@ export function mockTasks() {
   ];
 }
 
+/* ────────────────────────────────────────────────────────────────────────────
+ * Financial Data
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+export type InvoiceStatus = "paid" | "due" | "overdue" | "draft";
+export type PaymentMethod = "card" | "bank_transfer" | "cash" | "check";
+
+export interface InvoiceLineItem {
+  id: number;
+  description: string;
+  quantity: number;
+  unitPrice: number;
+  total: number;
+}
+
+export interface Invoice {
+  id: number;
+  invoiceNumber: string;
+  status: InvoiceStatus;
+  issuedAt: string;
+  dueAt: string;
+  paidAt: string | null;
+  subtotal: number;
+  tax: number;
+  total: number;
+  amountPaid: number;
+  amountDue: number;
+  description: string;
+  lineItems: InvoiceLineItem[];
+  relatedOffspringId: number | null;
+  relatedOffspringName: string | null;
+  paymentMethod: PaymentMethod | null;
+}
+
+export interface Transaction {
+  id: number;
+  type: "payment" | "refund" | "adjustment";
+  amount: number;
+  description: string;
+  createdAt: string;
+  invoiceId: number | null;
+  invoiceNumber: string | null;
+  paymentMethod: PaymentMethod | null;
+}
+
+export interface FinancialSummary {
+  totalDue: number;
+  totalPaid: number;
+  nextPaymentAmount: number | null;
+  nextPaymentDueAt: string | null;
+  overdueAmount: number;
+  invoiceCount: number;
+}
+
+export function mockInvoices(): Invoice[] {
+  return [
+    {
+      id: 1,
+      invoiceNumber: "INV-2025-001",
+      status: "paid",
+      issuedAt: "2025-12-10T10:00:00Z",
+      dueAt: "2025-12-17T23:59:59Z",
+      paidAt: "2025-12-12T14:30:00Z",
+      subtotal: 500,
+      tax: 0,
+      total: 500,
+      amountPaid: 500,
+      amountDue: 0,
+      description: "Reservation Deposit - Bella",
+      lineItems: [
+        {
+          id: 1,
+          description: "Reservation Deposit",
+          quantity: 1,
+          unitPrice: 500,
+          total: 500,
+        },
+      ],
+      relatedOffspringId: 101,
+      relatedOffspringName: "Bella",
+      paymentMethod: "card",
+    },
+    {
+      id: 2,
+      invoiceNumber: "INV-2025-002",
+      status: "due",
+      issuedAt: "2025-12-28T09:00:00Z",
+      dueAt: "2026-01-04T23:59:59Z",
+      paidAt: null,
+      subtotal: 2000,
+      tax: 0,
+      total: 2000,
+      amountPaid: 0,
+      amountDue: 2000,
+      description: "Final Payment - Bella",
+      lineItems: [
+        {
+          id: 2,
+          description: "Puppy Purchase - Remaining Balance",
+          quantity: 1,
+          unitPrice: 1800,
+          total: 1800,
+        },
+        {
+          id: 3,
+          description: "Microchip Registration",
+          quantity: 1,
+          unitPrice: 50,
+          total: 50,
+        },
+        {
+          id: 4,
+          description: "Starter Kit (food, toys, crate)",
+          quantity: 1,
+          unitPrice: 150,
+          total: 150,
+        },
+      ],
+      relatedOffspringId: 101,
+      relatedOffspringName: "Bella",
+      paymentMethod: null,
+    },
+    {
+      id: 3,
+      invoiceNumber: "INV-2025-003",
+      status: "overdue",
+      issuedAt: "2025-11-05T10:00:00Z",
+      dueAt: "2025-12-15T23:59:59Z",
+      paidAt: null,
+      subtotal: 500,
+      tax: 0,
+      total: 500,
+      amountPaid: 0,
+      amountDue: 500,
+      description: "Reservation Deposit - Max",
+      lineItems: [
+        {
+          id: 5,
+          description: "Reservation Deposit",
+          quantity: 1,
+          unitPrice: 500,
+          total: 500,
+        },
+      ],
+      relatedOffspringId: 102,
+      relatedOffspringName: "Max",
+      paymentMethod: null,
+    },
+    {
+      id: 4,
+      invoiceNumber: "INV-2025-004",
+      status: "paid",
+      issuedAt: "2025-09-25T10:00:00Z",
+      dueAt: "2025-10-02T23:59:59Z",
+      paidAt: "2025-09-27T11:00:00Z",
+      subtotal: 500,
+      tax: 0,
+      total: 500,
+      amountPaid: 500,
+      amountDue: 0,
+      description: "Reservation Deposit - Charlie",
+      lineItems: [
+        {
+          id: 6,
+          description: "Reservation Deposit",
+          quantity: 1,
+          unitPrice: 500,
+          total: 500,
+        },
+      ],
+      relatedOffspringId: 103,
+      relatedOffspringName: "Charlie",
+      paymentMethod: "bank_transfer",
+    },
+    {
+      id: 5,
+      invoiceNumber: "INV-2025-005",
+      status: "paid",
+      issuedAt: "2025-10-10T10:00:00Z",
+      dueAt: "2025-10-17T23:59:59Z",
+      paidAt: "2025-10-15T14:00:00Z",
+      subtotal: 2000,
+      tax: 0,
+      total: 2000,
+      amountPaid: 2000,
+      amountDue: 0,
+      description: "Final Payment - Charlie",
+      lineItems: [
+        {
+          id: 7,
+          description: "Puppy Purchase - Remaining Balance",
+          quantity: 1,
+          unitPrice: 2000,
+          total: 2000,
+        },
+      ],
+      relatedOffspringId: 103,
+      relatedOffspringName: "Charlie",
+      paymentMethod: "card",
+    },
+  ];
+}
+
+export function mockInvoiceDetail(id: number): Invoice | null {
+  const invoices = mockInvoices();
+  return invoices.find((inv) => inv.id === id) || null;
+}
+
+export function mockTransactions(): Transaction[] {
+  return [
+    {
+      id: 1,
+      type: "payment",
+      amount: 500,
+      description: "Deposit payment for Bella",
+      createdAt: "2025-12-12T14:30:00Z",
+      invoiceId: 1,
+      invoiceNumber: "INV-2025-001",
+      paymentMethod: "card",
+    },
+    {
+      id: 2,
+      type: "payment",
+      amount: 500,
+      description: "Deposit payment for Charlie",
+      createdAt: "2025-09-27T11:00:00Z",
+      invoiceId: 4,
+      invoiceNumber: "INV-2025-004",
+      paymentMethod: "bank_transfer",
+    },
+    {
+      id: 3,
+      type: "payment",
+      amount: 2000,
+      description: "Final payment for Charlie",
+      createdAt: "2025-10-15T14:00:00Z",
+      invoiceId: 5,
+      invoiceNumber: "INV-2025-005",
+      paymentMethod: "card",
+    },
+  ];
+}
+
+export function mockFinancialSummary(): FinancialSummary {
+  const invoices = mockInvoices();
+  const totalPaid = invoices.reduce((sum, inv) => sum + inv.amountPaid, 0);
+  const totalDue = invoices.reduce((sum, inv) => sum + inv.amountDue, 0);
+  const overdueAmount = invoices
+    .filter((inv) => inv.status === "overdue")
+    .reduce((sum, inv) => sum + inv.amountDue, 0);
+
+  // Find next due invoice
+  const dueInvoices = invoices
+    .filter((inv) => inv.status === "due")
+    .sort((a, b) => new Date(a.dueAt).getTime() - new Date(b.dueAt).getTime());
+
+  const nextDue = dueInvoices[0];
+
+  return {
+    totalDue,
+    totalPaid,
+    nextPaymentAmount: nextDue?.amountDue || null,
+    nextPaymentDueAt: nextDue?.dueAt || null,
+    overdueAmount,
+    invoiceCount: invoices.length,
+  };
+}
+
 export function mockNotifications() {
   return [
     {

@@ -1,20 +1,19 @@
 // apps/portal/src/pages/PortalMessagesPage.tsx
 import * as React from "react";
 import { PageContainer } from "../design/PageContainer";
-import { PortalEmptyState } from "../design/PortalEmptyState";
+import { PortalHero } from "../design/PortalHero";
+import { PortalCard, CardRow } from "../design/PortalCard";
 import { makeApi } from "@bhq/api";
 import type { MessageThread, Message } from "@bhq/api";
+import { isPortalMockEnabled } from "../dev/mockFlag";
+import { DemoBanner } from "../dev/DemoBanner";
+import { mockThreads, mockThreadDetail, mockOffspring } from "../dev/mockData";
 
-// Resolve API base URL (same pattern as taskSources)
+// Resolve API base URL
 function getApiBase(): string {
   const envBase = (import.meta.env.VITE_API_BASE_URL as string) || "";
   if (envBase.trim()) {
     return normalizeBase(envBase);
-  }
-  const w = window as any;
-  const windowBase = String(w.__BHQ_API_BASE__ || "").trim();
-  if (windowBase) {
-    return normalizeBase(windowBase);
   }
   if (import.meta.env.DEV) {
     return "";
@@ -28,18 +27,14 @@ function normalizeBase(base: string): string {
 
 const api = makeApi(getApiBase());
 
-// Get current party ID from window context
 function getCurrentPartyId(): number | null {
   const w = window as any;
-  return w.platform?.currentOrgId || null;
+  return w.platform?.currentOrgId || 200; // Default to mock party ID in demo
 }
-
-// URL param handling
-const THREAD_ID_PARAM = "threadId";
 
 function getThreadIdFromUrl(): number | null {
   const params = new URLSearchParams(window.location.search);
-  const val = params.get(THREAD_ID_PARAM);
+  const val = params.get("threadId");
   if (!val) return null;
   const parsed = parseInt(val, 10);
   return Number.isFinite(parsed) ? parsed : null;
@@ -48,14 +43,13 @@ function getThreadIdFromUrl(): number | null {
 function setThreadIdInUrl(threadId: number | null): void {
   const url = new URL(window.location.href);
   if (threadId != null) {
-    url.searchParams.set(THREAD_ID_PARAM, String(threadId));
+    url.searchParams.set("threadId", String(threadId));
   } else {
-    url.searchParams.delete(THREAD_ID_PARAM);
+    url.searchParams.delete("threadId");
   }
   window.history.replaceState({}, "", url.toString());
 }
 
-// Format relative time
 function formatRelativeTime(dateStr: string): string {
   const date = new Date(dateStr);
   const now = new Date();
@@ -69,13 +63,9 @@ function formatRelativeTime(dateStr: string): string {
   if (diffHours < 24) return `${diffHours}h ago`;
   if (diffDays < 7) return `${diffDays}d ago`;
 
-  return date.toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-  });
+  return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
-// Format message timestamp
 function formatMessageTime(dateStr: string): string {
   return new Date(dateStr).toLocaleString("en-US", {
     month: "short",
@@ -86,148 +76,156 @@ function formatMessageTime(dateStr: string): string {
 }
 
 /* ────────────────────────────────────────────────────────────────────────────
- * Thread List Item Component
- * ────────────────────────────────────────────────────────────────────────── */
+ * Thread List Item
+ * ──────────────────────────────────────────────────────────────────────────── */
 
 interface ThreadListItemProps {
-  thread: MessageThread;
-  isActive: boolean;
+  thread: any;
   onClick: () => void;
   currentPartyId: number | null;
 }
 
-function ThreadListItem({ thread, isActive, onClick, currentPartyId }: ThreadListItemProps) {
+function ThreadListItem({ thread, onClick, currentPartyId }: ThreadListItemProps) {
   const otherParticipant = thread.participants?.find(
-    (p) => p.partyId !== currentPartyId
+    (p: any) => p.partyId !== currentPartyId
   );
-  const otherName = otherParticipant?.party?.name || "Unknown contact";
+  const otherName = otherParticipant?.name || otherParticipant?.party?.name || "Breeder";
   const lastMessage = thread.messages?.[thread.messages.length - 1];
   const preview = lastMessage?.body
-    ? lastMessage.body.length > 80
-      ? `${lastMessage.body.slice(0, 80)}...`
+    ? lastMessage.body.length > 60
+      ? `${lastMessage.body.slice(0, 60)}...`
       : lastMessage.body
     : "No messages yet";
   const hasUnread = (thread.unreadCount ?? 0) > 0;
-  const timeStr = lastMessage ? formatRelativeTime(lastMessage.createdAt) : "";
+  const timeStr = thread.lastMessageAt
+    ? formatRelativeTime(thread.lastMessageAt)
+    : "";
 
   return (
-    <div
-      onClick={onClick}
-      style={{
-        padding: "var(--portal-space-3)",
-        borderBottom: "1px solid var(--portal-border-subtle)",
-        cursor: "pointer",
-        background: isActive ? "var(--portal-bg-elevated)" : "transparent",
-        transition: "background var(--portal-transition)",
-        position: "relative",
-      }}
-      onMouseEnter={(e) => {
-        if (!isActive) {
-          e.currentTarget.style.background = "var(--portal-bg-elevated)";
-        }
-      }}
-      onMouseLeave={(e) => {
-        if (!isActive) {
-          e.currentTarget.style.background = "transparent";
-        }
-      }}
-    >
-      {hasUnread && (
+    <CardRow onClick={onClick}>
+      <div style={{ display: "flex", alignItems: "flex-start", gap: "var(--portal-space-3)" }}>
+        {/* Avatar */}
         <div
           style={{
-            position: "absolute",
-            top: "var(--portal-space-3)",
-            right: "var(--portal-space-3)",
+            width: "48px",
+            height: "48px",
+            borderRadius: "50%",
+            background: "var(--portal-gradient-status-reserved)",
             display: "flex",
             alignItems: "center",
-            gap: "var(--portal-space-1)",
+            justifyContent: "center",
+            fontSize: "var(--portal-font-size-lg)",
+            fontWeight: "var(--portal-font-weight-bold)",
+            color: "white",
+            flexShrink: 0,
           }}
         >
-          <span
-            style={{
-              fontSize: "10px",
-              color: "var(--portal-text-tertiary)",
-              fontWeight: "var(--portal-font-weight-medium)",
-            }}
-          >
-            New
-          </span>
+          {otherName[0]?.toUpperCase() || "B"}
+        </div>
+
+        <div style={{ flex: 1, minWidth: 0 }}>
           <div
             style={{
-              width: "6px",
-              height: "6px",
-              borderRadius: "var(--portal-radius-full)",
-              background: "rgba(211, 134, 91, 0.7)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: "var(--portal-space-2)",
+              marginBottom: "2px",
             }}
-            aria-label="Unread"
-          />
-        </div>
-      )}
-      <div style={{ display: "flex", flexDirection: "column", gap: "var(--portal-space-1)" }}>
-        <div
-          style={{
-            display: "flex",
-            alignItems: "baseline",
-            justifyContent: "space-between",
-            gap: "var(--portal-space-2)",
-          }}
-        >
+          >
+            <div
+              style={{
+                fontSize: "var(--portal-font-size-base)",
+                fontWeight: "var(--portal-font-weight-semibold)",
+                color: "var(--portal-text-primary)",
+              }}
+            >
+              {thread.subject || `Conversation with ${otherName}`}
+            </div>
+            {hasUnread && (
+              <div
+                style={{
+                  width: "8px",
+                  height: "8px",
+                  borderRadius: "50%",
+                  background: "var(--portal-accent)",
+                  boxShadow: "0 0 8px var(--portal-accent)",
+                  flexShrink: 0,
+                }}
+              />
+            )}
+          </div>
+
           <div
             style={{
               fontSize: "var(--portal-font-size-sm)",
-              fontWeight: "var(--portal-font-weight-semibold)",
-              color: "var(--portal-text-primary)",
+              color: "var(--portal-text-secondary)",
+              marginBottom: "4px",
             }}
           >
-            {thread.subject || `Conversation with ${otherName}`}
+            {otherName}
           </div>
-          {timeStr && (
+
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              gap: "var(--portal-space-2)",
+            }}
+          >
             <div
               style={{
-                fontSize: "var(--portal-font-size-xs)",
+                fontSize: "var(--portal-font-size-sm)",
                 color: "var(--portal-text-tertiary)",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
                 whiteSpace: "nowrap",
               }}
             >
-              {timeStr}
+              {preview}
             </div>
-          )}
+            {timeStr && (
+              <div
+                style={{
+                  fontSize: "var(--portal-font-size-xs)",
+                  color: "var(--portal-text-tertiary)",
+                  whiteSpace: "nowrap",
+                  flexShrink: 0,
+                }}
+              >
+                {timeStr}
+              </div>
+            )}
+          </div>
         </div>
-        <div
-          style={{
-            fontSize: "var(--portal-font-size-xs)",
-            color: "var(--portal-text-secondary)",
-          }}
-        >
-          {otherName}
-        </div>
+
         <div
           style={{
             fontSize: "var(--portal-font-size-sm)",
-            color: "var(--portal-text-tertiary)",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
+            color: "var(--portal-accent)",
+            alignSelf: "center",
           }}
         >
-          {preview}
+          →
         </div>
       </div>
-    </div>
+    </CardRow>
   );
 }
 
 /* ────────────────────────────────────────────────────────────────────────────
- * Message Bubble Component
- * ────────────────────────────────────────────────────────────────────────── */
+ * Message Bubble
+ * ──────────────────────────────────────────────────────────────────────────── */
 
 interface MessageBubbleProps {
-  message: Message;
+  message: any;
   isOwn: boolean;
 }
 
 function MessageBubble({ message, isOwn }: MessageBubbleProps) {
-  const timeStr = formatMessageTime(message.createdAt);
+  const timeStr = formatMessageTime(message.sentAt || message.createdAt);
+  const senderName = message.senderName || message.senderParty?.name || "Unknown";
 
   return (
     <div
@@ -239,7 +237,7 @@ function MessageBubble({ message, isOwn }: MessageBubbleProps) {
     >
       <div
         style={{
-          maxWidth: "70%",
+          maxWidth: "75%",
           display: "flex",
           flexDirection: "column",
           alignItems: isOwn ? "flex-end" : "flex-start",
@@ -254,22 +252,24 @@ function MessageBubble({ message, isOwn }: MessageBubbleProps) {
             paddingRight: "var(--portal-space-2)",
           }}
         >
-          {isOwn ? "You" : message.senderParty?.name || "Unknown"} · {timeStr}
+          {isOwn ? "You" : senderName} · {timeStr}
         </div>
         <div
           style={{
-            padding: "var(--portal-space-2) var(--portal-space-3)",
-            borderRadius: "var(--portal-radius-lg)",
+            padding: "var(--portal-space-3) var(--portal-space-4)",
+            borderRadius: isOwn
+              ? "var(--portal-radius-xl) var(--portal-radius-xl) var(--portal-radius-sm) var(--portal-radius-xl)"
+              : "var(--portal-radius-xl) var(--portal-radius-xl) var(--portal-radius-xl) var(--portal-radius-sm)",
             fontSize: "var(--portal-font-size-sm)",
             whiteSpace: "pre-wrap",
             wordBreak: "break-word",
+            lineHeight: "1.5",
             background: isOwn
-              ? "rgba(211, 134, 91, 0.15)"
+              ? "var(--portal-gradient-status-reserved)"
               : "var(--portal-bg-elevated)",
-            border: `1px solid ${
-              isOwn ? "rgba(211, 134, 91, 0.3)" : "var(--portal-border-subtle)"
-            }`,
-            color: "var(--portal-text-primary)",
+            border: isOwn ? "none" : "1px solid var(--portal-border-subtle)",
+            color: isOwn ? "white" : "var(--portal-text-primary)",
+            boxShadow: isOwn ? "var(--portal-shadow-md)" : "none",
           }}
         >
           {message.body}
@@ -281,15 +281,16 @@ function MessageBubble({ message, isOwn }: MessageBubbleProps) {
 
 /* ────────────────────────────────────────────────────────────────────────────
  * Thread Detail View
- * ────────────────────────────────────────────────────────────────────────── */
+ * ──────────────────────────────────────────────────────────────────────────── */
 
 interface ThreadDetailProps {
-  thread: MessageThread;
+  thread: any;
   currentPartyId: number | null;
   onBack: () => void;
+  animalName: string;
 }
 
-function ThreadDetail({ thread, currentPartyId, onBack }: ThreadDetailProps) {
+function ThreadDetail({ thread, currentPartyId, onBack, animalName }: ThreadDetailProps) {
   const messagesEndRef = React.useRef<HTMLDivElement>(null);
 
   React.useEffect(() => {
@@ -297,74 +298,88 @@ function ThreadDetail({ thread, currentPartyId, onBack }: ThreadDetailProps) {
   }, [thread.messages]);
 
   const otherParticipant = thread.participants?.find(
-    (p) => p.partyId !== currentPartyId
+    (p: any) => p.partyId !== currentPartyId
   );
-  const otherName = otherParticipant?.party?.name || "Unknown contact";
+  const otherName = otherParticipant?.name || otherParticipant?.party?.name || "Breeder";
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+    <div style={{ display: "flex", flexDirection: "column", minHeight: "70vh" }}>
       {/* Header */}
-      <div
-        style={{
-          padding: "var(--portal-space-4)",
-          borderBottom: "1px solid var(--portal-border-subtle)",
-          display: "flex",
-          flexDirection: "column",
-          gap: "var(--portal-space-2)",
-        }}
-      >
+      <div style={{ marginBottom: "var(--portal-space-4)" }}>
         <button
           onClick={onBack}
           style={{
-            background: "none",
-            border: "none",
-            padding: 0,
-            fontSize: "var(--portal-font-size-sm)",
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "0.5rem",
+            padding: "var(--portal-space-1) var(--portal-space-2)",
+            background: "rgba(255, 255, 255, 0.05)",
+            border: "1px solid var(--portal-border-subtle)",
+            borderRadius: "var(--portal-radius-md)",
             color: "var(--portal-text-secondary)",
+            fontSize: "var(--portal-font-size-sm)",
             cursor: "pointer",
-            alignSelf: "flex-start",
-            transition: "color var(--portal-transition)",
+            marginBottom: "var(--portal-space-3)",
+            transition: "background-color 0.15s ease, color 0.15s ease",
           }}
           onMouseEnter={(e) => {
-            e.currentTarget.style.color = "var(--portal-accent)";
+            e.currentTarget.style.backgroundColor = "rgba(255, 255, 255, 0.08)";
+            e.currentTarget.style.color = "var(--portal-text-primary)";
           }}
           onMouseLeave={(e) => {
+            e.currentTarget.style.backgroundColor = "rgba(255, 255, 255, 0.05)";
             e.currentTarget.style.color = "var(--portal-text-secondary)";
           }}
         >
           ← Back to messages
         </button>
-        <div>
-          <h1
-            style={{
-              fontSize: "var(--portal-font-size-xl)",
-              fontWeight: "var(--portal-font-weight-semibold)",
-              color: "var(--portal-text-primary)",
-              margin: 0,
-            }}
-          >
-            {thread.subject || `Conversation with ${otherName}`}
-          </h1>
-          <div
-            style={{
-              fontSize: "var(--portal-font-size-sm)",
-              color: "var(--portal-text-secondary)",
-              marginTop: "var(--portal-space-1)",
-            }}
-          >
-            {otherName}
+
+        <PortalCard variant="elevated">
+          <div style={{ display: "flex", alignItems: "center", gap: "var(--portal-space-3)" }}>
+            <div
+              style={{
+                width: "56px",
+                height: "56px",
+                borderRadius: "50%",
+                background: "var(--portal-gradient-status-reserved)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: "var(--portal-font-size-xl)",
+                fontWeight: "var(--portal-font-weight-bold)",
+                color: "white",
+                boxShadow: "0 0 20px rgba(255, 107, 53, 0.2)",
+              }}
+            >
+              {otherName[0]?.toUpperCase() || "B"}
+            </div>
+            <div>
+              <h1
+                style={{
+                  fontSize: "var(--portal-font-size-xl)",
+                  fontWeight: "var(--portal-font-weight-semibold)",
+                  color: "var(--portal-text-primary)",
+                  margin: 0,
+                }}
+              >
+                {thread.subject || `Conversation with ${otherName}`}
+              </h1>
+              <div
+                style={{
+                  fontSize: "var(--portal-font-size-sm)",
+                  color: "var(--portal-text-secondary)",
+                  marginTop: "2px",
+                }}
+              >
+                {otherName} · About {animalName}
+              </div>
+            </div>
           </div>
-        </div>
+        </PortalCard>
       </div>
 
       {/* Messages */}
-      <div
-        style={{
-          flex: 1,
-          overflowY: "auto",
-          padding: "var(--portal-space-4)",
-        }}
-      >
+      <PortalCard variant="flat" padding="lg" style={{ flex: 1 }}>
         {thread.messages.length === 0 ? (
           <div
             style={{
@@ -388,34 +403,35 @@ function ThreadDetail({ thread, currentPartyId, onBack }: ThreadDetailProps) {
           </div>
         ) : (
           <>
-            {thread.messages.map((msg) => (
+            {thread.messages.map((msg: any) => (
               <MessageBubble
                 key={msg.id}
                 message={msg}
-                isOwn={msg.senderPartyId === currentPartyId}
+                isOwn={msg.isFromClient || msg.senderPartyId === currentPartyId || msg.fromPartyId === currentPartyId}
               />
             ))}
             <div ref={messagesEndRef} />
           </>
         )}
-      </div>
+      </PortalCard>
 
       {/* Footer - Read-only notice */}
       <div
         style={{
-          padding: "var(--portal-space-4)",
-          borderTop: "1px solid var(--portal-border-subtle)",
+          marginTop: "var(--portal-space-3)",
+          padding: "var(--portal-space-3)",
           background: "var(--portal-bg-elevated)",
+          borderRadius: "var(--portal-radius-lg)",
+          textAlign: "center",
         }}
       >
         <div
           style={{
             fontSize: "var(--portal-font-size-sm)",
             color: "var(--portal-text-secondary)",
-            textAlign: "center",
           }}
         >
-          To reply to this message, please contact us directly
+          To reply, please contact {otherName} directly
         </div>
       </div>
     </div>
@@ -423,30 +439,127 @@ function ThreadDetail({ thread, currentPartyId, onBack }: ThreadDetailProps) {
 }
 
 /* ────────────────────────────────────────────────────────────────────────────
- * Main Messages Page
- * ────────────────────────────────────────────────────────────────────────── */
+ * Loading State
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+function LoadingState() {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "var(--portal-space-4)" }}>
+      <div
+        style={{
+          height: "120px",
+          background: "var(--portal-bg-elevated)",
+          borderRadius: "var(--portal-radius-xl)",
+        }}
+      />
+      {[1, 2, 3].map((i) => (
+        <div
+          key={i}
+          style={{
+            height: "100px",
+            background: "var(--portal-bg-elevated)",
+            borderRadius: "var(--portal-radius-lg)",
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
+ * Empty State
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+function EmptyMessages({ animalName }: { animalName: string }) {
+  return (
+    <PortalCard variant="flat" padding="lg">
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          textAlign: "center",
+          padding: "var(--portal-space-6)",
+          gap: "var(--portal-space-3)",
+        }}
+      >
+        <div
+          style={{
+            width: "64px",
+            height: "64px",
+            borderRadius: "50%",
+            background: "var(--portal-accent-soft)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontSize: "1.5rem",
+          }}
+        >
+          💬
+        </div>
+        <h3
+          style={{
+            fontSize: "var(--portal-font-size-lg)",
+            fontWeight: "var(--portal-font-weight-semibold)",
+            color: "var(--portal-text-primary)",
+            margin: 0,
+          }}
+        >
+          No messages yet
+        </h3>
+        <p
+          style={{
+            fontSize: "var(--portal-font-size-base)",
+            color: "var(--portal-text-secondary)",
+            margin: 0,
+            maxWidth: "320px",
+          }}
+        >
+          Messages about {animalName}'s journey will appear here when the breeder contacts you.
+        </p>
+      </div>
+    </PortalCard>
+  );
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
+ * Main Component
+ * ──────────────────────────────────────────────────────────────────────────── */
 
 export default function PortalMessagesPage() {
-  const [threads, setThreads] = React.useState<MessageThread[]>([]);
-  const [selectedThread, setSelectedThread] = React.useState<MessageThread | null>(null);
+  const [threads, setThreads] = React.useState<any[]>([]);
+  const [selectedThread, setSelectedThread] = React.useState<any | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [threadLoading, setThreadLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const currentPartyId = getCurrentPartyId();
+  const mockEnabled = isPortalMockEnabled();
 
-  // Load threads list
+  // Get primary animal name for context
+  const offspring = mockEnabled ? mockOffspring() : [];
+  const primaryAnimal = offspring[0];
+  const animalName = primaryAnimal?.offspring?.name || "your puppy";
+
   const loadThreads = React.useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
       const res = await api.messages.threads.list();
       const fetchedThreads = res?.threads || [];
-      setThreads(fetchedThreads);
 
-      // If URL has threadId, select it
+      // Use mock data if empty and demo mode enabled
+      if (fetchedThreads.length === 0 && mockEnabled) {
+        setThreads(mockThreads());
+      } else {
+        setThreads(fetchedThreads);
+      }
+
+      // Handle URL thread ID
       const urlThreadId = getThreadIdFromUrl();
       if (urlThreadId) {
-        const threadInList = fetchedThreads.find((t) => t.id === urlThreadId);
+        const allThreads = fetchedThreads.length === 0 && mockEnabled ? mockThreads() : fetchedThreads;
+        const threadInList = allThreads.find((t: any) => t.id === urlThreadId);
         if (threadInList) {
           loadThread(urlThreadId);
         } else {
@@ -455,37 +568,48 @@ export default function PortalMessagesPage() {
       }
     } catch (err: any) {
       console.error("[PortalMessagesPage] Failed to load threads:", err);
-      setError("Failed to load messages");
+      if (mockEnabled) {
+        setThreads(mockThreads());
+      } else {
+        setError("Failed to load messages");
+      }
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [mockEnabled]);
 
-  // Load single thread detail
   const loadThread = React.useCallback(async (id: number) => {
     setThreadLoading(true);
     try {
       const res = await api.messages.threads.get(id);
       if (!res?.thread) {
-        throw new Error("Thread not found");
+        if (mockEnabled) {
+          setSelectedThread(mockThreadDetail(id));
+        } else {
+          throw new Error("Thread not found");
+        }
+      } else {
+        setSelectedThread(res.thread);
       }
-      setSelectedThread(res.thread);
       setThreadIdInUrl(id);
     } catch (err: any) {
       console.error("[PortalMessagesPage] Failed to load thread:", err);
-      setError("Failed to load conversation");
+      if (mockEnabled) {
+        setSelectedThread(mockThreadDetail(id));
+        setThreadIdInUrl(id);
+      } else {
+        setError("Failed to load conversation");
+      }
     } finally {
       setThreadLoading(false);
     }
-  }, []);
+  }, [mockEnabled]);
 
-  // Initial load
   React.useEffect(() => {
     loadThreads();
   }, [loadThreads]);
 
-  // Handle thread selection
-  const handleSelectThread = (thread: MessageThread) => {
+  const handleSelectThread = (thread: any) => {
     loadThread(thread.id);
   };
 
@@ -494,33 +618,13 @@ export default function PortalMessagesPage() {
     setThreadIdInUrl(null);
   };
 
-  const handleRetry = () => {
-    setError(null);
-    loadThreads();
-  };
+  const unreadCount = threads.filter((t) => (t.unreadCount || 0) > 0).length;
 
   // Loading state
   if (loading) {
     return (
       <PageContainer>
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            gap: "var(--portal-space-3)",
-          }}
-        >
-          {[1, 2, 3, 4, 5].map((i) => (
-            <div
-              key={i}
-              style={{
-                height: "80px",
-                background: "var(--portal-bg-elevated)",
-                borderRadius: "var(--portal-radius-lg)",
-              }}
-            />
-          ))}
-        </div>
+        <LoadingState />
       </PageContainer>
     );
   }
@@ -549,16 +653,8 @@ export default function PortalMessagesPage() {
           >
             Unable to load messages
           </div>
-          <div
-            style={{
-              fontSize: "var(--portal-font-size-base)",
-              color: "var(--portal-text-secondary)",
-            }}
-          >
-            {error}
-          </div>
           <button
-            onClick={handleRetry}
+            onClick={loadThreads}
             style={{
               padding: "var(--portal-space-2) var(--portal-space-4)",
               background: "var(--portal-accent)",
@@ -577,51 +673,28 @@ export default function PortalMessagesPage() {
     );
   }
 
-  // Empty state
-  if (threads.length === 0) {
-    return (
-      <PageContainer>
-        <PortalEmptyState
-          title="No messages"
-          body="Messages from the breeder will appear here."
-        />
-      </PageContainer>
-    );
-  }
-
-  // Show thread detail if selected
+  // Thread detail view
   if (selectedThread) {
     if (threadLoading) {
       return (
         <PageContainer>
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: "var(--portal-space-3)",
-            }}
-          >
-            {[1, 2, 3].map((i) => (
-              <div
-                key={i}
-                style={{
-                  height: "60px",
-                  background: "var(--portal-bg-elevated)",
-                  borderRadius: "var(--portal-radius-lg)",
-                }}
-              />
-            ))}
-          </div>
+          <LoadingState />
         </PageContainer>
       );
     }
 
     return (
       <PageContainer>
+        {mockEnabled && (
+          <div style={{ marginBottom: "var(--portal-space-3)" }}>
+            <DemoBanner />
+          </div>
+        )}
         <ThreadDetail
           thread={selectedThread}
           currentPartyId={currentPartyId}
           onBack={handleBack}
+          animalName={animalName}
         />
       </PageContainer>
     );
@@ -630,21 +703,38 @@ export default function PortalMessagesPage() {
   // Thread list view
   return (
     <PageContainer>
-      <div
-        style={{
-          display: "flex",
-          flexDirection: "column",
-        }}
-      >
-        {threads.map((thread) => (
-          <ThreadListItem
-            key={thread.id}
-            thread={thread}
-            isActive={false}
-            onClick={() => handleSelectThread(thread)}
-            currentPartyId={currentPartyId}
-          />
-        ))}
+      {mockEnabled && (
+        <div style={{ marginBottom: "var(--portal-space-3)" }}>
+          <DemoBanner />
+        </div>
+      )}
+
+      <div style={{ display: "flex", flexDirection: "column", gap: "var(--portal-space-4)" }}>
+        {/* Hero */}
+        <PortalHero
+          variant="page"
+          title="Messages"
+          subtitle={`Stay connected about ${animalName}'s journey`}
+          animalContext={animalName}
+          status={unreadCount > 0 ? "action" : undefined}
+          statusLabel={unreadCount > 0 ? `${unreadCount} unread` : undefined}
+        />
+
+        {/* Thread List */}
+        {threads.length === 0 ? (
+          <EmptyMessages animalName={animalName} />
+        ) : (
+          <PortalCard variant="elevated" padding="none">
+            {threads.map((thread, index) => (
+              <ThreadListItem
+                key={thread.id}
+                thread={thread}
+                onClick={() => handleSelectThread(thread)}
+                currentPartyId={currentPartyId}
+              />
+            ))}
+          </PortalCard>
+        )}
       </div>
     </PageContainer>
   );

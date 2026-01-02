@@ -353,6 +353,90 @@ export async function fetchAllTasks(): Promise<{
   };
 }
 
+// Demo mode mock tasks
+function getMockTasks(): TaskCard[] {
+  return [
+    {
+      id: "mock-task-1",
+      type: "contract",
+      title: "Sign Health Guarantee",
+      subtitle: "Review and sign the health guarantee agreement",
+      dueAt: "2026-01-11T00:00:00Z",
+      status: "pending",
+      ctaLabel: "View Agreement",
+      href: "/portal/agreements/2",
+      secondaryAction: null,
+      note: "Expires in 9 days",
+      urgency: "action_required",
+    },
+    {
+      id: "mock-task-2",
+      type: "invoice",
+      title: "Complete final payment",
+      subtitle: "$2,000 due",
+      dueAt: "2026-01-04T00:00:00Z",
+      status: "pending",
+      ctaLabel: "View Invoice",
+      href: "/portal/billing",
+      secondaryAction: null,
+      note: "Due in 2 days",
+      urgency: "action_required",
+    },
+    {
+      id: "mock-task-3",
+      type: "appointment",
+      title: "Schedule pickup appointment",
+      subtitle: "Confirm your pickup time",
+      dueAt: "2026-01-05T00:00:00Z",
+      status: "pending",
+      ctaLabel: "Message Breeder",
+      href: "/portal/messages",
+      secondaryAction: null,
+      note: "Pickup available Jan 15-17",
+      urgency: "action_required",
+    },
+    {
+      id: "mock-task-4",
+      type: "document",
+      title: "Review vaccination schedule",
+      subtitle: "Review the vaccination schedule for Bella",
+      dueAt: "2026-01-15T00:00:00Z",
+      status: "upcoming",
+      ctaLabel: "View Documents",
+      href: "/portal/documents",
+      secondaryAction: null,
+      note: null,
+      urgency: "upcoming",
+    },
+    {
+      id: "mock-task-5",
+      type: "offspring",
+      title: "Prepare carrier for transport",
+      subtitle: "Get a secure carrier ready for pickup day",
+      dueAt: "2026-01-03T00:00:00Z",
+      status: "upcoming",
+      ctaLabel: "View Guide",
+      href: "/portal/documents",
+      secondaryAction: null,
+      note: null,
+      urgency: "upcoming",
+    },
+    {
+      id: "mock-task-6",
+      type: "contract",
+      title: "Puppy Purchase Agreement",
+      subtitle: "Signed December 12, 2025",
+      dueAt: null,
+      status: "pending",
+      ctaLabel: "View Agreement",
+      href: "/portal/agreements/1",
+      secondaryAction: null,
+      note: "Completed",
+      urgency: "completed",
+    },
+  ];
+}
+
 // Hook for use in React components
 export function usePortalTasks() {
   const [tasks, setTasks] = React.useState<TaskCard[]>([]);
@@ -372,12 +456,27 @@ export function usePortalTasks() {
       try {
         const result = await fetchAllTasks();
         if (cancelled) return;
-        setTasks(result.tasks);
+
+        // If no real tasks and demo mode enabled, use mock data
+        const { isPortalMockEnabled } = await import("../dev/mockFlag");
+        if (result.tasks.length === 0 && isPortalMockEnabled()) {
+          setTasks(getMockTasks());
+        } else {
+          setTasks(result.tasks);
+        }
         setSources(result.sources);
       } catch (err: any) {
         if (cancelled) return;
         console.error("[usePortalTasks] Failed to fetch tasks:", err);
-        setError(err?.message || "Failed to load tasks");
+
+        // On error in demo mode, use mock data
+        const { isPortalMockEnabled } = await import("../dev/mockFlag");
+        if (isPortalMockEnabled()) {
+          setTasks(getMockTasks());
+          setError(null);
+        } else {
+          setError(err?.message || "Failed to load tasks");
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
