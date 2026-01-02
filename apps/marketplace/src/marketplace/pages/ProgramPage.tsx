@@ -1,23 +1,17 @@
 // apps/marketplace/src/marketplace/pages/ProgramPage.tsx
-// Portal-aligned page hierarchy, card styling
+// Breeder profile page with "Available Litters" emphasis
 import * as React from "react";
 import { useParams, Link } from "react-router-dom";
 import { useProgramQuery } from "../hooks/useProgramQuery";
 import { useProgramListingsQuery } from "../hooks/useProgramListingsQuery";
 import { getUserMessage } from "../../api/errors";
 import { Breadcrumb } from "../components/Breadcrumb";
+import { formatCents } from "../../utils/format";
 import type { PublicOffspringGroupListingDTO } from "../../api/types";
 
 /**
- * Format cents to dollars display string
- */
-function formatCents(cents: number): string {
-  return `$${(cents / 100).toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
-}
-
-/**
- * Program profile page with Portal-aligned styling.
- * Profile and listings load independently.
+ * Breeder profile page.
+ * Shows breeder info with bio toggle, then "Available Litters" section.
  */
 export function ProgramPage() {
   const { programSlug = "" } = useParams<{ programSlug: string }>();
@@ -36,7 +30,7 @@ export function ProgramPage() {
     refetch: refetchListings,
   } = useProgramListingsQuery(programSlug);
 
-  // Bio expanded state
+  // Bio disclosure state - collapsed by default for long bios
   const [bioExpanded, setBioExpanded] = React.useState(false);
 
   // Profile error - full page error
@@ -72,54 +66,65 @@ export function ProgramPage() {
     );
   }
 
-  // Bio with read more
+  // Bio with disclosure toggle for long content
   const bioText = profile.bio || "";
-  const shouldClampBio = bioText.length > 300;
-  const displayBio = bioExpanded || !shouldClampBio ? bioText : bioText.slice(0, 300) + "...";
+  const shouldClampBio = bioText.length > 200;
+  const displayBio = bioExpanded || !shouldClampBio ? bioText : bioText.slice(0, 200) + "...";
 
   const listingsCount = listingsData?.items.length ?? 0;
   const singleListing = listingsCount === 1;
 
   return (
     <div className="space-y-6">
-      {/* Breadcrumb */}
+      {/* Breadcrumb - buyer language */}
       <Breadcrumb
         items={[
-          { label: "All programs", href: "/" },
+          { label: "All breeders", href: "/" },
           { label: profile.name },
         ]}
       />
 
-      {/* Header - Portal typography */}
+      {/* Header */}
       <h1 className="text-[28px] font-bold text-white tracking-tight leading-tight">
         {profile.name}
       </h1>
 
-      {/* Profile info card - Portal styling */}
+      {/* About this breeder - demoted, collapsible for long bios */}
       {(bioText || profile.website) && (
-        <div className="rounded-portal border border-border-subtle bg-portal-card shadow-portal p-5 space-y-4">
+        <div className="rounded-portal border border-border-subtle bg-portal-card p-5 space-y-3">
           {bioText && (
             <div>
-              <p className="text-[15px] text-text-secondary leading-relaxed">{displayBio}</p>
-              {shouldClampBio && (
-                <button
-                  type="button"
-                  onClick={() => setBioExpanded(!bioExpanded)}
-                  className="text-[13px] text-accent hover:text-accent-hover mt-2 transition-colors"
+              <button
+                type="button"
+                onClick={() => setBioExpanded(!bioExpanded)}
+                className="flex items-center gap-2 text-[13px] text-text-tertiary hover:text-text-secondary transition-colors mb-2"
+              >
+                <span className="font-medium">About this breeder</span>
+                <svg
+                  className={`w-3.5 h-3.5 transition-transform ${bioExpanded ? "rotate-180" : ""}`}
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
                 >
-                  {bioExpanded ? "Show less" : "Read more"}
-                </button>
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+              {(bioExpanded || !shouldClampBio) && (
+                <p className="text-[15px] text-text-secondary leading-relaxed">{displayBio}</p>
+              )}
+              {!bioExpanded && shouldClampBio && (
+                <p className="text-[15px] text-text-secondary leading-relaxed">{displayBio}</p>
               )}
             </div>
           )}
 
           {profile.website && (
-            <div className={bioText ? "pt-3 border-t border-border-subtle" : ""}>
+            <div className={bioText ? "pt-2 border-t border-border-subtle" : ""}>
               <a
                 href={profile.website}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-sm text-accent hover:text-accent-hover transition-colors"
+                className="text-sm text-text-tertiary hover:text-text-secondary transition-colors"
               >
                 Visit website →
               </a>
@@ -128,14 +133,14 @@ export function ProgramPage() {
         </div>
       )}
 
-      {/* Listings section */}
+      {/* Available Litters section - emphasized */}
       <div className="space-y-3">
-        {/* Section header with count badge */}
-        <div className="flex items-center gap-3">
-          <h2 className="text-lg font-semibold text-white">Available Listings</h2>
+        {/* Section header with plain text count */}
+        <div className="flex items-center gap-2">
+          <h2 className="text-lg font-semibold text-white">Available Litters</h2>
           {!listingsLoading && !listingsError && (
-            <span className="px-2.5 py-1 rounded-portal-xs text-[13px] font-medium bg-border-default text-text-secondary">
-              {listingsCount}
+            <span className="text-[13px] text-text-tertiary">
+              ({listingsCount})
             </span>
           )}
         </div>
@@ -163,12 +168,12 @@ export function ProgramPage() {
           </div>
         )}
 
-        {/* Listings empty */}
+        {/* Listings empty - buyer-facing */}
         {!listingsLoading && !listingsError && listingsCount === 0 && (
           <div className="rounded-portal border border-border-subtle bg-portal-card p-6 text-center">
-            <p className="text-[15px] font-semibold text-white mb-1">No listings published</p>
+            <p className="text-[15px] font-semibold text-white mb-1">No litters available</p>
             <p className="text-[13px] text-text-tertiary">
-              This program hasn&apos;t published any listings yet. Check back later.
+              This breeder hasn&apos;t listed any litters yet. Check back later.
             </p>
           </div>
         )}
@@ -192,7 +197,7 @@ export function ProgramPage() {
 }
 
 /**
- * Skeleton for listing card loading state - Portal styling.
+ * Skeleton for listing card loading state.
  */
 function ListingCardSkeleton() {
   return (
@@ -225,7 +230,7 @@ function ListingCardSkeleton() {
 }
 
 /**
- * Catalog-style listing card with Portal styling.
+ * Litter card with buyer-facing language.
  */
 function ListingCard({
   listing,
@@ -247,7 +252,7 @@ function ListingCard({
   const birthDateLabel = listing.actualBirthOn ? "Born" : "Expected";
   const birthDateValue = listing.actualBirthOn || listing.expectedBirthOn;
 
-  // Build metadata cells - only include cells with values
+  // Build metadata cells - buyer language
   const metadataCells: Array<{ label: string; value: string }> = [
     { label: "Species", value: listing.species.toLowerCase() },
   ];
@@ -262,7 +267,7 @@ function ListingCard({
 
   metadataCells.push({
     label: "Available",
-    value: listing.countAvailable > 0 ? String(listing.countAvailable) : "Contact breeder",
+    value: listing.countAvailable > 0 ? String(listing.countAvailable) : "None available",
   });
 
   return (
@@ -273,7 +278,7 @@ function ListingCard({
       {/* Header row: Title left, Price right */}
       <div className="flex items-start justify-between gap-3">
         <h3 className="text-base font-semibold text-white line-clamp-1 flex-1">
-          {listing.title || "Untitled Listing"}
+          {listing.title || "Untitled Litter"}
         </h3>
         {priceText ? (
           <span className="text-sm font-semibold text-accent whitespace-nowrap">
@@ -304,7 +309,7 @@ function ListingCard({
       {/* Footer row */}
       <div className="flex items-center justify-between mt-4 pt-3 border-t border-border-subtle">
         <span className="text-[13px] text-accent group-hover:text-accent-hover transition-colors">
-          View listing
+          View litter
         </span>
         <span className="text-[13px] text-accent group-hover:text-accent-hover transition-colors">
           →

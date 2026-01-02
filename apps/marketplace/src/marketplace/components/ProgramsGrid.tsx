@@ -1,5 +1,5 @@
 // apps/marketplace/src/marketplace/components/ProgramsGrid.tsx
-// Portal-aligned grid: 2-col minimum at desktop, Portal card styling
+// Buyer-facing grid with breeder language
 import { ProgramTile } from "./ProgramTile";
 import { getUserMessage } from "../../api/errors";
 import type { PublicProgramSummaryDTO } from "../../api/types";
@@ -14,7 +14,7 @@ interface ProgramsGridProps {
 }
 
 /**
- * Skeleton tile matching Portal ProgramTile geometry.
+ * Skeleton tile matching breeder tile geometry.
  */
 function SkeletonTile() {
   return (
@@ -32,14 +32,14 @@ function SkeletonTile() {
 }
 
 /**
- * Guidance card for sparse grids - Portal styling.
+ * Guidance card for sparse grids - buyer-facing tip.
  */
 function GuidanceCard() {
   return (
     <div className="flex flex-col min-h-[200px] rounded-portal border border-dashed border-border-subtle bg-portal-card p-6">
       <div className="flex-grow flex flex-col justify-center text-center">
         <p className="text-[13px] text-text-tertiary leading-relaxed">
-          Use filters to find specific programs by name or location.
+          Tip: search by breed name or your city to find nearby breeders.
         </p>
       </div>
     </div>
@@ -47,7 +47,7 @@ function GuidanceCard() {
 }
 
 /**
- * Grid display with Portal-aligned styling.
+ * Grid display with buyer-facing empty states.
  * 2-col minimum at desktop to prevent floating single cards.
  */
 export function ProgramsGrid({
@@ -69,7 +69,7 @@ export function ProgramsGrid({
     );
   }
 
-  // Error state - Portal card styling
+  // Error state
   if (error) {
     return (
       <div className="rounded-portal border border-border-subtle bg-portal-card shadow-portal p-8 text-center">
@@ -87,15 +87,15 @@ export function ProgramsGrid({
     );
   }
 
-  // Empty state - Portal card styling
+  // Empty state - buyer-facing language
   if (!programs || programs.length === 0) {
     return (
       <div className="rounded-portal border border-border-subtle bg-portal-card shadow-portal p-8 text-center">
         <p className="text-[15px] font-semibold text-white mb-1">
-          No programs match your search
+          No breeders match your search
         </p>
         <p className="text-[13px] text-text-tertiary mb-4">
-          Clear filters to see all programs.
+          Try adjusting your filters or search terms.
         </p>
         {hasFilters && onClearFilters && (
           <button
@@ -113,7 +113,7 @@ export function ProgramsGrid({
   // Show guidance card when result count is 1 to fill the grid
   const showGuidance = programs.length === 1 && !hasFilters;
 
-  // Programs grid - 1 col mobile, 2 col sm (minimum at desktop), 3 col lg
+  // Grid - 1 col mobile, 2 col sm (minimum at desktop), 3 col lg
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
       {programs.map((program) => (

@@ -1,21 +1,15 @@
 // apps/marketplace/src/marketplace/pages/ListingPage.tsx
-// Portal-aligned page hierarchy, card styling, and inquiry panel
+// Litter listing page with buyer language and clear inquiry flow
 import * as React from "react";
 import { useParams, Link } from "react-router-dom";
 import { getListing, submitInquiry } from "../../api/client";
 import { getUserMessage } from "../../api/errors";
 import { Breadcrumb } from "../components/Breadcrumb";
+import { formatCents } from "../../utils/format";
 import type { ListingDetailDTO, PublicOffspringDTO } from "../../api/types";
 
 /**
- * Format cents to dollars display string
- */
-function formatCents(cents: number): string {
-  return `$${(cents / 100).toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
-}
-
-/**
- * Listing detail page with Portal-aligned styling.
+ * Litter detail page with buyer-facing language.
  */
 export function ListingPage() {
   const { programSlug = "", listingSlug = "" } = useParams<{
@@ -80,11 +74,11 @@ export function ListingPage() {
     setInquiryError(null);
   };
 
-  // Error state - Portal styling
+  // Error state
   if (error) {
     return (
       <div className="rounded-portal border border-border-subtle bg-portal-card shadow-portal p-8 text-center">
-        <p className="text-text-secondary text-sm mb-4">Unable to load listing.</p>
+        <p className="text-text-secondary text-sm mb-4">Unable to load litter details.</p>
         <button
           type="button"
           onClick={fetchData}
@@ -96,7 +90,7 @@ export function ListingPage() {
     );
   }
 
-  // Loading state - Portal styling
+  // Loading state
   if (loading || !data) {
     return (
       <div className="space-y-4">
@@ -121,34 +115,34 @@ export function ListingPage() {
   const birthDateLabel = data.actualBirthOn ? "Born" : "Expected";
   const birthDateValue = data.actualBirthOn || data.expectedBirthOn;
 
-  // Build metadata items for the strip
+  // Build metadata items for the strip - buyer language
   const metadataItems: string[] = [
     data.species.charAt(0).toUpperCase() + data.species.slice(1).toLowerCase(),
   ];
   if (data.breed) metadataItems.push(data.breed);
   if (birthDateValue) metadataItems.push(`${birthDateLabel} ${birthDateValue}`);
   metadataItems.push(
-    data.countAvailable > 0 ? `${data.countAvailable} available` : "Contact breeder"
+    data.countAvailable > 0 ? `${data.countAvailable} available` : "None available"
   );
 
   const hasOffspring = data.offspring && data.offspring.length > 0;
 
   return (
     <div className="space-y-6">
-      {/* Breadcrumb */}
+      {/* Breadcrumb - buyer language */}
       <Breadcrumb
         items={[
-          { label: "All programs", href: "/" },
+          { label: "All breeders", href: "/" },
           { label: data.programName, href: `/programs/${programSlug}` },
         ]}
       />
 
-      {/* Listing hero */}
+      {/* Litter hero */}
       <div>
         {/* Title row with price */}
         <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 sm:gap-6">
           <h1 className="text-[28px] font-bold text-white tracking-tight leading-tight">
-            {data.title || "Untitled Listing"}
+            {data.title || "Untitled Litter"}
           </h1>
           {priceText && (
             <span className="text-2xl font-semibold text-accent whitespace-nowrap">
@@ -157,9 +151,9 @@ export function ListingPage() {
           )}
         </div>
 
-        {/* Byline */}
+        {/* Breeder attribution */}
         <p className="text-sm text-text-tertiary mt-2">
-          by{" "}
+          Breeder:{" "}
           <Link
             to={`/programs/${programSlug}`}
             className="text-accent font-medium hover:text-accent-hover transition-colors"
@@ -168,7 +162,7 @@ export function ListingPage() {
           </Link>
         </p>
 
-        {/* Metadata strip - Portal card styling */}
+        {/* Metadata strip */}
         <div className="mt-4 py-3 px-4 rounded-portal-sm bg-portal-card border border-border-subtle">
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-text-secondary">
             {metadataItems.map((item, i) => (
@@ -181,7 +175,7 @@ export function ListingPage() {
         </div>
       </div>
 
-      {/* Description card - Portal styling */}
+      {/* Description card */}
       {data.description && (
         <div className="rounded-portal border border-border-subtle bg-portal-card shadow-portal p-5">
           <p className="text-[15px] text-text-secondary leading-relaxed max-w-prose">
@@ -193,10 +187,10 @@ export function ListingPage() {
       {/* Offspring section */}
       {hasOffspring ? (
         <div className="space-y-3">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
             <h2 className="text-lg font-semibold text-white">Offspring</h2>
-            <span className="px-2.5 py-1 rounded-portal-xs text-[13px] font-medium bg-border-default text-text-secondary">
-              {data.offspring.length}
+            <span className="text-[13px] text-text-tertiary">
+              ({data.offspring.length})
             </span>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
@@ -211,11 +205,11 @@ export function ListingPage() {
         </div>
       )}
 
-      {/* Inquiry panel - Portal action panel styling */}
+      {/* Inquiry panel */}
       <div className="max-w-xl">
         <div className="rounded-portal border border-border-subtle bg-portal-card shadow-portal p-5">
           {inquirySuccess ? (
-            // Compact success state
+            // Success state - clear confirmation
             <div className="flex items-center justify-between gap-4">
               <div className="flex items-center gap-3">
                 <div className="w-7 h-7 rounded-full bg-green-500/15 flex items-center justify-center flex-shrink-0">
@@ -235,7 +229,9 @@ export function ListingPage() {
                 </div>
                 <div>
                   <p className="text-[15px] font-semibold text-white">Inquiry sent</p>
-                  <p className="text-[13px] text-text-tertiary mt-0.5">The breeder will respond via email.</p>
+                  <p className="text-[13px] text-text-tertiary mt-0.5">
+                    The breeder will respond directly.
+                  </p>
                 </div>
               </div>
               <button
@@ -250,9 +246,9 @@ export function ListingPage() {
             // Form state
             <>
               <div className="mb-3">
-                <h3 className="text-base font-semibold text-white">Interested?</h3>
+                <h3 className="text-base font-semibold text-white">Send an Inquiry</h3>
                 <p className="text-[13px] text-text-tertiary mt-1">
-                  Your message is sent to the breeder, your email stays private.
+                  Your message is sent to the breeder. Your email stays private.
                 </p>
               </div>
 
@@ -298,29 +294,42 @@ export function ListingPage() {
 }
 
 /**
- * Offspring card with Portal card styling.
+ * Offspring card with status indicator dot.
+ * No hover elevation since cards are not clickable.
  */
 function OffspringCard({ offspring }: { offspring: PublicOffspringDTO }) {
   const priceText = offspring.priceCents != null ? formatCents(offspring.priceCents) : null;
 
-  // Status styling - Portal status colors
-  const statusStyles: Record<string, string> = {
-    available: "bg-green-500/15 text-green-400",
-    reserved: "bg-accent-muted text-accent",
-    placed: "bg-border-default text-text-tertiary",
+  // Status dot colors
+  const statusDotColors: Record<string, string> = {
+    available: "bg-green-400",
+    reserved: "bg-amber-400",
+    placed: "bg-text-muted",
+  };
+
+  // Status text colors (muted, no bright pills)
+  const statusTextColors: Record<string, string> = {
+    available: "text-green-400",
+    reserved: "text-amber-400",
+    placed: "text-text-muted",
   };
 
   return (
-    <div className="rounded-portal-sm border border-border-subtle bg-portal-card shadow-portal p-4">
-      {/* Header row: Name + Status badge */}
+    <div className="rounded-portal-sm border border-border-subtle bg-portal-card p-4">
+      {/* Header row: Name + Status with dot */}
       <div className="flex items-start justify-between gap-3">
         <h4 className="text-[15px] font-semibold text-white line-clamp-1">
           {offspring.name || "Unnamed"}
         </h4>
-        <span
-          className={`px-2.5 py-1 rounded-portal-xs text-[12px] font-semibold capitalize flex-shrink-0 ${statusStyles[offspring.status] || statusStyles.available}`}
-        >
-          {offspring.status}
+        <span className="flex items-center gap-1.5 flex-shrink-0">
+          <span
+            className={`w-2 h-2 rounded-full ${statusDotColors[offspring.status] || statusDotColors.available}`}
+          />
+          <span
+            className={`text-[12px] font-medium capitalize ${statusTextColors[offspring.status] || statusTextColors.available}`}
+          >
+            {offspring.status}
+          </span>
         </span>
       </div>
 

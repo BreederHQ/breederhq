@@ -1,5 +1,5 @@
 // apps/marketplace/src/marketplace/pages/ProgramsPage.tsx
-// Portal-aligned typography and spacing
+// Marketplace front door: "Available Litters" with buyer-centric framing
 import * as React from "react";
 import { useSearchParams } from "react-router-dom";
 import { useProgramsQuery } from "../hooks/useProgramsQuery";
@@ -10,8 +10,8 @@ import { Pager } from "../components/Pager";
 const LIMIT = 24;
 
 /**
- * Programs Index page with Portal-aligned styling.
- * URL params: q (search), loc (location), page (pagination)
+ * Marketplace home page - animal-centric front door.
+ * Headline: "Available Litters", framed for buyers.
  */
 export function ProgramsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -80,12 +80,14 @@ export function ProgramsPage() {
 
   return (
     <div className="space-y-5">
-      {/* Page header - Portal typography */}
+      {/* Page header - buyer-centric framing */}
       <div>
         <h1 className="text-[28px] font-bold text-white tracking-tight leading-tight">
-          Programs
+          Available Litters
         </h1>
-        <p className="text-sm text-text-tertiary mt-1">Browse breeder programs</p>
+        <p className="text-sm text-text-tertiary mt-1">
+          Browse litters from verified breeders, view details, and send an inquiry.
+        </p>
       </div>
 
       {/* Filters */}
@@ -102,7 +104,7 @@ export function ProgramsPage() {
           {loading ? (
             <span className="inline-block h-3.5 w-20 bg-border-default rounded animate-pulse" />
           ) : total > 0 ? (
-            `${total} ${hasFilters ? "result" : "program"}${total === 1 ? "" : "s"}`
+            `${total} ${hasFilters ? "result" : "breeder"}${total === 1 ? "" : "s"}`
           ) : null}
         </div>
         {showPager && totalPages > 1 && (

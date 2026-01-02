@@ -1,5 +1,5 @@
 // apps/marketplace/src/marketplace/components/ProgramTile.tsx
-// Portal-aligned card: unified bg, border, radius, shadow
+// Buyer-facing breeder tile with "View litters" CTA
 import { Link } from "react-router-dom";
 
 interface ProgramTileProps {
@@ -10,8 +10,8 @@ interface ProgramTileProps {
 }
 
 /**
- * Program card with Portal-aligned styling.
- * Unified card system: bg #141618, border #1a1c1e, radius 16px.
+ * Breeder card with buyer-facing language.
+ * Shows breeder name, location, and "View litters" CTA.
  */
 export function ProgramTile({ slug, name, location, photoUrl }: ProgramTileProps) {
   return (
@@ -49,7 +49,7 @@ export function ProgramTile({ slug, name, location, photoUrl }: ProgramTileProps
         </p>
         <div className="mt-auto pt-3">
           <span className="text-[13px] font-medium text-accent group-hover:text-accent-hover transition-colors">
-            View program →
+            View litters →
           </span>
         </div>
       </div>
