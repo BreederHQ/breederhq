@@ -1,25 +1,41 @@
 // apps/portal/src/pages/PortalDocumentsPage.tsx
 import * as React from "react";
-import { PageHeader, Button, Badge } from "@bhq/ui";
-import { makeApi, type DocumentDTO, type DocumentCategory } from "@bhq/api";
+import { PageContainer } from "../design/PageContainer";
+import { makeApi } from "@bhq/api";
+import type { DocumentDTO, DocumentCategory } from "@bhq/api";
 
-// Resolve API base URL
+// Resolve API base URL (same pattern as taskSources)
 function getApiBase(): string {
   const envBase = (import.meta.env.VITE_API_BASE_URL as string) || "";
   if (envBase.trim()) {
-    return envBase.replace(/\/+$/, "").replace(/\/api\/v1$/i, "");
+    return normalizeBase(envBase);
+  }
+  const w = window as any;
+  const windowBase = String(w.__BHQ_API_BASE__ || "").trim();
+  if (windowBase) {
+    return normalizeBase(windowBase);
   }
   if (import.meta.env.DEV) {
     return "";
   }
-  return window.location.origin.replace(/\/+$/, "");
+  return normalizeBase(window.location.origin);
+}
+
+function normalizeBase(base: string): string {
+  return base.replace(/\/+$/, "").replace(/\/api\/v1$/i, "");
 }
 
 const api = makeApi(getApiBase());
 
-/* ───────────────── Document Row ───────────────── */
+/* ────────────────────────────────────────────────────────────────────────────
+ * Document Row Component
+ * ──────────────────────────────────────────────────────────────────────────── */
 
-function DocumentRow({ document }: { document: DocumentDTO }) {
+interface DocumentRowProps {
+  document: DocumentDTO;
+}
+
+function DocumentRow({ document }: DocumentRowProps) {
   const categoryLabels: Record<DocumentCategory, string> = {
     CONTRACT: "Contract",
     HEALTH: "Health",
@@ -36,102 +52,140 @@ function DocumentRow({ document }: { document: DocumentDTO }) {
   }
 
   function formatDate(date: string): string {
-    return new Date(date).toLocaleDateString();
+    return new Date(date).toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
   }
 
   return (
-    <div className="p-4 rounded-lg border border-hairline bg-surface/50 hover:bg-surface transition-colors">
-      <div className="flex items-start justify-between gap-4">
-        <div className="flex items-center gap-3 flex-1 min-w-0">
-          <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-surface-strong border border-hairline flex items-center justify-center text-lg">
-            📄
+    <div
+      style={{
+        padding: "var(--portal-space-3)",
+        borderBottom: "1px solid var(--portal-border-subtle)",
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          alignItems: "flex-start",
+          gap: "var(--portal-space-3)",
+        }}
+      >
+        <div
+          style={{
+            width: "40px",
+            height: "40px",
+            flexShrink: 0,
+            background: "var(--portal-bg-elevated)",
+            border: "1px solid var(--portal-border-subtle)",
+            borderRadius: "var(--portal-radius-md)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontSize: "20px",
+          }}
+        >
+          📄
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div
+            style={{
+              fontSize: "var(--portal-font-size-sm)",
+              fontWeight: "var(--portal-font-weight-medium)",
+              color: "var(--portal-text-primary)",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {document.name}
           </div>
-          <div className="flex-1 min-w-0">
-            <div className="font-medium text-primary truncate">{document.name}</div>
-            {document.description && (
-              <div className="text-xs text-secondary mt-0.5 truncate">{document.description}</div>
-            )}
-            <div className="flex items-center gap-2 mt-1">
-              {document.category && <Badge variant="neutral">{categoryLabels[document.category]}</Badge>}
-              {document.source === "offspring" && document.offspringName && (
-                <Badge variant="blue">Offspring: {document.offspringName}</Badge>
-              )}
-              <span className="text-xs text-secondary">{formatSize(document.fileSizeBytes)}</span>
-              <span className="text-xs text-secondary">Uploaded {formatDate(document.uploadedAt)}</span>
+          {document.description && (
+            <div
+              style={{
+                fontSize: "var(--portal-font-size-xs)",
+                color: "var(--portal-text-secondary)",
+                marginTop: "2px",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {document.description}
             </div>
+          )}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "var(--portal-space-2)",
+              marginTop: "var(--portal-space-1)",
+              flexWrap: "wrap",
+            }}
+          >
+            {document.category && (
+              <span
+                style={{
+                  fontSize: "var(--portal-font-size-xs)",
+                  color: "var(--portal-text-tertiary)",
+                }}
+              >
+                {categoryLabels[document.category]}
+              </span>
+            )}
+            {document.source === "offspring" && document.offspringName && (
+              <span
+                style={{
+                  fontSize: "var(--portal-font-size-xs)",
+                  color: "var(--portal-accent)",
+                }}
+              >
+                {document.offspringName}
+              </span>
+            )}
+            <span
+              style={{
+                fontSize: "var(--portal-font-size-xs)",
+                color: "var(--portal-text-tertiary)",
+              }}
+            >
+              {formatSize(document.fileSizeBytes)}
+            </span>
+            <span
+              style={{
+                fontSize: "var(--portal-font-size-xs)",
+                color: "var(--portal-text-tertiary)",
+              }}
+            >
+              {formatDate(document.uploadedAt)}
+            </span>
           </div>
         </div>
-        {/* Download button removed until file storage is configured */}
-        {/* When storage is ready, use: /api/v1/portal/documents/{id}/download */}
       </div>
     </div>
   );
 }
 
-/* ───────────────── Empty State ───────────────── */
-
-function EmptyDocuments() {
-  return (
-    <div className="text-center py-16">
-      <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-surface-strong flex items-center justify-center text-3xl">
-        📁
-      </div>
-      <h3 className="text-lg font-medium text-primary mb-2">No documents</h3>
-      <p className="text-sm text-secondary max-w-sm mx-auto">
-        When your breeder shares documents with you, they will appear here.
-      </p>
-    </div>
-  );
-}
-
-/* ───────────────── Loading State ───────────────── */
-
-function LoadingState() {
-  return (
-    <div className="text-center py-16">
-      <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-surface-strong flex items-center justify-center">
-        <div className="w-6 h-6 border-2 border-[hsl(var(--brand-orange))] border-t-transparent rounded-full animate-spin" />
-      </div>
-      <p className="text-sm text-secondary">Loading documents...</p>
-    </div>
-  );
-}
-
-/* ───────────────── Error State ───────────────── */
-
-function ErrorState({ onRetry }: { onRetry: () => void }) {
-  return (
-    <div className="text-center py-16">
-      <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-red-100 flex items-center justify-center text-3xl">
-        !
-      </div>
-      <h3 className="text-lg font-medium text-primary mb-2">Could not load documents</h3>
-      <p className="text-sm text-secondary max-w-sm mx-auto mb-4">
-        Something went wrong. Please try again.
-      </p>
-      <Button variant="secondary" onClick={onRetry}>
-        Retry
-      </Button>
-    </div>
-  );
-}
-
-/* ───────────────── Main Component ───────────────── */
+/* ────────────────────────────────────────────────────────────────────────────
+ * Main Component
+ * ────────────────────────────────────────────────────────────────────────── */
 
 export default function PortalDocumentsPage() {
   const [documents, setDocuments] = React.useState<DocumentDTO[]>([]);
   const [loading, setLoading] = React.useState(true);
-  const [error, setError] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
 
   const fetchDocuments = React.useCallback(async () => {
     setLoading(true);
-    setError(false);
+    setError(null);
     try {
       const data = await api.portalData.getDocuments();
       setDocuments(data.documents);
     } catch (err: any) {
       console.error("[PortalDocumentsPage] Failed to fetch documents:", err);
-      setError(true);
+      setError("Failed to load documents");
     } finally {
       setLoading(false);
     }
@@ -141,44 +195,163 @@ export default function PortalDocumentsPage() {
     fetchDocuments();
   }, [fetchDocuments]);
 
-  const handleBackClick = () => {
-    window.history.pushState(null, "", "/portal");
-    window.dispatchEvent(new PopStateEvent("popstate"));
+  const handleRetry = () => {
+    fetchDocuments();
   };
 
-  return (
-    <div className="p-6">
-      <PageHeader
-        title="Documents"
-        subtitle={
-          loading
-            ? "Loading..."
-            : documents.length > 0
-            ? `${documents.length} document${documents.length !== 1 ? "s" : ""} available`
-            : ""
-        }
-        actions={
-          <Button variant="secondary" onClick={handleBackClick}>
-            Back to Portal
-          </Button>
-        }
-      />
+  // Loading state
+  if (loading) {
+    return (
+      <PageContainer>
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: "var(--portal-space-3)",
+          }}
+        >
+          {[1, 2, 3, 4].map((i) => (
+            <div
+              key={i}
+              style={{
+                height: "80px",
+                background: "var(--portal-bg-elevated)",
+                borderRadius: "var(--portal-radius-lg)",
+              }}
+            />
+          ))}
+        </div>
+      </PageContainer>
+    );
+  }
 
-      <div className="mt-8">
-        {loading ? (
-          <LoadingState />
-        ) : error ? (
-          <ErrorState onRetry={fetchDocuments} />
-        ) : documents.length === 0 ? (
-          <EmptyDocuments />
-        ) : (
-          <div className="space-y-3">
-            {documents.map((document) => (
-              <DocumentRow key={document.id} document={document} />
-            ))}
+  // Error state
+  if (error) {
+    return (
+      <PageContainer>
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            textAlign: "center",
+            minHeight: "60vh",
+            gap: "var(--portal-space-3)",
+          }}
+        >
+          <div
+            style={{
+              fontSize: "var(--portal-font-size-xl)",
+              fontWeight: "var(--portal-font-weight-semibold)",
+              color: "var(--portal-text-primary)",
+            }}
+          >
+            Unable to load documents
           </div>
-        )}
+          <div
+            style={{
+              fontSize: "var(--portal-font-size-base)",
+              color: "var(--portal-text-secondary)",
+            }}
+          >
+            {error}
+          </div>
+          <button
+            onClick={handleRetry}
+            style={{
+              padding: "var(--portal-space-2) var(--portal-space-4)",
+              background: "var(--portal-accent)",
+              color: "var(--portal-text-primary)",
+              border: "none",
+              borderRadius: "var(--portal-radius-md)",
+              fontSize: "var(--portal-font-size-sm)",
+              fontWeight: "var(--portal-font-weight-medium)",
+              cursor: "pointer",
+            }}
+          >
+            Retry
+          </button>
+        </div>
+      </PageContainer>
+    );
+  }
+
+  // Empty state
+  if (documents.length === 0) {
+    return (
+      <PageContainer>
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            textAlign: "center",
+            minHeight: "60vh",
+            gap: "var(--portal-space-2)",
+          }}
+        >
+          <h1
+            style={{
+              fontSize: "var(--portal-font-size-xl)",
+              fontWeight: "var(--portal-font-weight-semibold)",
+              color: "var(--portal-text-primary)",
+              margin: 0,
+            }}
+          >
+            No documents
+          </h1>
+          <p
+            style={{
+              fontSize: "var(--portal-font-size-base)",
+              color: "var(--portal-text-secondary)",
+              margin: 0,
+            }}
+          >
+            Documents shared with you will appear here.
+          </p>
+        </div>
+      </PageContainer>
+    );
+  }
+
+  // List view
+  return (
+    <PageContainer>
+      <div style={{ display: "flex", flexDirection: "column", gap: "var(--portal-space-4)" }}>
+        {/* Download Notice */}
+        <div
+          style={{
+            padding: "var(--portal-space-3)",
+            background: "var(--portal-bg-elevated)",
+            border: "1px solid var(--portal-border-subtle)",
+            borderRadius: "var(--portal-radius-lg)",
+          }}
+        >
+          <p
+            style={{
+              fontSize: "var(--portal-font-size-sm)",
+              color: "var(--portal-text-secondary)",
+              margin: 0,
+            }}
+          >
+            Downloads are not available in the client portal.
+          </p>
+        </div>
+
+        {/* Document List */}
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+          }}
+        >
+          {documents.map((document) => (
+            <DocumentRow key={document.id} document={document} />
+          ))}
+        </div>
       </div>
-    </div>
+    </PageContainer>
   );
 }

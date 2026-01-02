@@ -21,7 +21,7 @@ export { makeBreeding } from "./resources/breeding";
 export { makeOffspring } from "./resources/offspring";
 export { makeFinance, type FinanceResource, type InvoicesResource, type PaymentsResource, type ExpensesResource } from "./resources/finance";
 export { makeMarketing, type MarketingResource } from "./resources/marketing";
-export { makeMessages, type MessagesResource } from "./resources/messages";
+export { makeMessages, type MessagesResource, type MessageThread, type Message, type MessageParticipant } from "./resources/messages";
 export { makePortalAccess, type PortalAccessResource, type PortalAccessDTO, type PortalAccessStatus, type PortalAccessResponse } from "./resources/portal-access";
 export {
   makePortalData,
