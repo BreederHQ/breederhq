@@ -550,12 +550,6 @@ export default function PortalTasksPageNew() {
 
   return (
     <PageContainer>
-      {mockEnabled && (
-        <div style={{ marginBottom: "var(--portal-space-3)" }}>
-          <DemoBanner />
-        </div>
-      )}
-
       <div style={{ display: "flex", flexDirection: "column", gap: "var(--portal-space-4)" }}>
         {/* Hero */}
         <PortalHero
