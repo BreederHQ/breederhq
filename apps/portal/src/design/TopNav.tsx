@@ -22,14 +22,36 @@ export function TopNav({ items, onNavigate }: TopNavProps) {
     }
   };
 
+  // Hide scrollbar using a ref and style injection
+  const navRef = React.useRef<HTMLElement>(null);
+  React.useEffect(() => {
+    // Inject scrollbar-hiding styles once
+    const styleId = "portal-topnav-scrollbar-hide";
+    if (!document.getElementById(styleId)) {
+      const style = document.createElement("style");
+      style.id = styleId;
+      style.textContent = `
+        .portal-topnav-scroll::-webkit-scrollbar { display: none; }
+      `;
+      document.head.appendChild(style);
+    }
+  }, []);
+
   return (
     <nav
+      ref={navRef}
+      className="portal-topnav-scroll"
       style={{
         display: "flex",
         gap: "var(--portal-space-3)",
         alignItems: "center",
-        overflow: "auto",
+        overflowX: "auto",
+        overflowY: "hidden",
         flex: 1,
+        scrollbarWidth: "none", // Firefox
+        msOverflowStyle: "none", // IE/Edge
+        position: "relative",
+        zIndex: 10,
       }}
     >
       {items.map((item) => (

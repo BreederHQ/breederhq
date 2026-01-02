@@ -8,8 +8,6 @@ import { usePortalTasks } from "../tasks/taskSources";
 import { usePortalNotifications } from "../notifications/notificationSources";
 import { BuildStamp } from "../dev/BuildStamp";
 import { DemoModeToggle } from "../dev/DemoModeToggle";
-import { DemoBanner } from "../dev/DemoBanner";
-import { isPortalMockEnabled } from "../dev/mockFlag";
 
 interface PortalLayoutProps {
   children: React.ReactNode;
@@ -56,7 +54,6 @@ export function PortalLayout({ children, currentPath }: PortalLayoutProps) {
   const { orgName, loading } = usePortalContext();
   const { tasks } = usePortalTasks();
   const { notifications } = usePortalNotifications();
-  const mockEnabled = isPortalMockEnabled();
 
   // Derive org initial from org name
   const orgInitial = orgName ? orgName.charAt(0).toUpperCase() : null;
@@ -99,18 +96,6 @@ export function PortalLayout({ children, currentPath }: PortalLayoutProps) {
         <TopNav items={navItems} />
         <DemoModeToggle />
       </HeaderBar>
-      {mockEnabled && (
-        <div
-          style={{
-            maxWidth: "var(--portal-max-width)",
-            margin: "0 auto",
-            padding: "var(--portal-space-3) var(--portal-space-2) 0",
-            width: "100%",
-          }}
-        >
-          <DemoBanner />
-        </div>
-      )}
       <main style={{ flex: 1 }}>{children}</main>
       <Footer />
       <BuildStamp />
