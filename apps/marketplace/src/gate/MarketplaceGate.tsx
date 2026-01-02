@@ -90,7 +90,6 @@ function MarketplaceRoutes() {
 export function MarketplaceGate() {
   const location = useLocation();
   const [state, setState] = React.useState<GateState>({ status: "loading" });
-  const hasLoggedRef = React.useRef(false);
 
   // Compute the path the user was trying to access (for returnTo)
   const attemptedPath = location.pathname + location.search + location.hash;
@@ -102,12 +101,6 @@ export function MarketplaceGate() {
       const { data } = await apiGet<MarketplaceMeResponse>(
         "/api/v1/marketplace/me"
       );
-
-      // DEV-only diagnostic trace (once per page load / retry)
-      if (import.meta.env.DEV && !hasLoggedRef.current) {
-        console.log("[marketplace/me]", { body: data });
-        hasLoggedRef.current = true;
-      }
 
       // Check authentication from body (userId present = authenticated)
       const authenticated = !!data?.userId;
@@ -128,14 +121,6 @@ export function MarketplaceGate() {
       // All good
       setState({ status: "entitled" });
     } catch (err) {
-      // DEV-only diagnostic trace for errors
-      if (import.meta.env.DEV && !hasLoggedRef.current) {
-        if (err instanceof ApiError) {
-          console.log("[marketplace/me]", { status: err.status, body: null });
-        }
-        hasLoggedRef.current = true;
-      }
-
       if (err instanceof ApiError) {
         // 401 = unauthenticated
         if (err.status === 401) {
@@ -160,9 +145,7 @@ export function MarketplaceGate() {
     checkAccess();
   }, [checkAccess]);
 
-  // Reset log flag on retry
   const handleRetry = React.useCallback(() => {
-    hasLoggedRef.current = false;
     checkAccess();
   }, [checkAccess]);
 
