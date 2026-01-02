@@ -173,9 +173,20 @@ type WhatIfPlannerProps = {
 function WhatIfPlanner({ rows, females, onAddRow, onUpdateRow, onRemoveRow }: WhatIfPlannerProps) {
   return (
     <div className="space-y-4">
-      {/* Description */}
-      <div className="text-sm text-secondary">
-        Add hypothetical cycles for active females and preview them on the Rollup timeline above.
+      {/* Header with description and add button */}
+      <div className="flex items-center justify-between">
+        <div className="text-sm text-secondary">
+          Add hypothetical cycles for active females and preview them on the Rollup timeline above.
+        </div>
+        <button
+          onClick={onAddRow}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-primary rounded-md transition-colors"
+        >
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+          </svg>
+          Add Female
+        </button>
       </div>
 
       {/* What If rows */}
@@ -186,7 +197,7 @@ function WhatIfPlanner({ rows, females, onAddRow, onUpdateRow, onRemoveRow }: Wh
           </p>
         </div>
       ) : (
-        <div className="space-y-2">
+        <div className="space-y-3">
           {rows.map(row => (
             <WhatIfRowEditor
               key={row.id}
@@ -198,19 +209,6 @@ function WhatIfPlanner({ rows, females, onAddRow, onUpdateRow, onRemoveRow }: Wh
           ))}
         </div>
       )}
-
-      {/* Add row button */}
-      <div className="flex justify-end">
-        <button
-          onClick={onAddRow}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-primary rounded-md transition-colors"
-        >
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-          </svg>
-          Add Female
-        </button>
-      </div>
     </div>
   );
 }
@@ -244,7 +242,7 @@ function WhatIfRowEditor({ row, females, onUpdate, onRemove }: WhatIfRowEditorPr
   };
 
   return (
-    <div className="p-3 bg-neutral-800/50 dark:bg-neutral-800/50 rounded-md border border-neutral-700/50">
+    <div className="p-3 bg-neutral-800/50 dark:bg-neutral-800/50 rounded-lg border-l-4 border-l-orange-500 border border-neutral-700/30">
       <div className="flex items-center gap-4 text-sm">
         {/* Female select */}
         <div className="flex-1">
