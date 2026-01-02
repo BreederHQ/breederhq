@@ -144,6 +144,7 @@ export const NavShell: React.FC<NavShellProps> = ({
     { key: "dashboard", label: "Dashboard", href: "/" },
     { key: "contacts", label: "Contacts", href: "/contacts/" },
     { key: "animals", label: "Animals", href: "/animals/" },
+    { key: "waitlist", label: "Waitlist", href: "/waitlist/" },
     { key: "breeding", label: "Breeding", href: "/breeding/" },
     { key: "offspring", label: "Offspring", href: "/offspring/" },
     { key: "marketing", label: "Marketing", href: "/marketing/" },
