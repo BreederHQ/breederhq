@@ -1,0 +1,87 @@
+/* apps/portal/src/design/tokens.css
+ * Portal-local design system tokens
+ * Dark theme only, minimal, focused on typography and spacing
+ */
+
+:root {
+  /* Colors - Dark theme palette */
+  --portal-bg: #0a0a0a;
+  --portal-bg-elevated: #141414;
+  --portal-bg-card: #1a1a1a;
+  --portal-border: #2a2a2a;
+  --portal-border-subtle: #1f1f1f;
+
+  /* Text colors */
+  --portal-text-primary: #ffffff;
+  --portal-text-secondary: #a0a0a0;
+  --portal-text-tertiary: #6a6a6a;
+  --portal-text-muted: #4a4a4a;
+
+  /* Accent color */
+  --portal-accent: #ff6b35;
+  --portal-accent-hover: #ff8555;
+  --portal-accent-muted: #ff6b3520;
+
+  /* Status colors */
+  --portal-success: #22c55e;
+  --portal-warning: #eab308;
+  --portal-error: #ef4444;
+  --portal-info: #3b82f6;
+
+  /* Typography */
+  --portal-font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --portal-font-size-sm: 0.875rem;    /* 14px */
+  --portal-font-size-base: 1rem;       /* 16px */
+  --portal-font-size-lg: 1.25rem;      /* 20px */
+  --portal-font-size-xl: 1.5rem;       /* 24px */
+
+  --portal-font-weight-normal: 400;
+  --portal-font-weight-medium: 500;
+  --portal-font-weight-semibold: 600;
+
+  --portal-line-height-tight: 1.25;
+  --portal-line-height-normal: 1.5;
+  --portal-line-height-relaxed: 1.75;
+
+  /* Spacing (8px rhythm) */
+  --portal-space-1: 0.5rem;   /* 8px */
+  --portal-space-2: 1rem;     /* 16px */
+  --portal-space-3: 1.5rem;   /* 24px */
+  --portal-space-4: 2rem;     /* 32px */
+  --portal-space-6: 3rem;     /* 48px */
+  --portal-space-8: 4rem;     /* 64px */
+
+  /* Border radius */
+  --portal-radius-sm: 0.25rem;  /* 4px */
+  --portal-radius-md: 0.5rem;   /* 8px */
+  --portal-radius-lg: 0.75rem;  /* 12px */
+
+  /* Layout constraints */
+  --portal-max-width: 1200px;
+  --portal-header-height: 64px;
+
+  /* Transitions */
+  --portal-transition: 150ms ease;
+}
+
+/* Base styles */
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  font-family: var(--portal-font-family);
+  font-size: var(--portal-font-size-base);
+  font-weight: var(--portal-font-weight-normal);
+  line-height: var(--portal-line-height-normal);
+  color: var(--portal-text-primary);
+  background: var(--portal-bg);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+button {
+  font-family: inherit;
+}

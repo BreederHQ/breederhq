@@ -1,74 +1,67 @@
 // apps/portal/src/App-Portal.tsx
 import * as React from "react";
 import { AuthGate } from "./components/AuthGate";
-import PortalDashboard from "./pages/PortalDashboard";
-import MessagesPage from "@bhq/marketing/pages/MessagesPage";
-import PortalTasksPage from "./pages/PortalTasksPage";
-import PortalBillingPage from "./pages/PortalBillingPage";
-import PortalAgreementsPage from "./pages/PortalAgreementsPage";
-import PortalDocumentsPage from "./pages/PortalDocumentsPage";
-import PortalOffspringPage from "./pages/PortalOffspringPage";
-import PortalWaitlistPage from "./pages/PortalWaitlistPage";
-import PortalProfilePage from "./pages/PortalProfilePage";
+import { PortalLayout } from "./components/PortalLayout";
+import PortalDashboardPage from "./pages/PortalDashboardPage";
+import PortalMessagesPage from "./pages/PortalMessagesPage";
+import PortalMessageThreadPage from "./pages/PortalMessageThreadPage";
+import PortalTasksPageNew from "./pages/PortalTasksPageNew";
+import PortalNotificationsPageNew from "./pages/PortalNotificationsPageNew";
+import PortalAgreementsPageNew from "./pages/PortalAgreementsPageNew";
+import PortalAgreementDetailPageNew from "./pages/PortalAgreementDetailPageNew";
+import PortalDocumentsPageNew from "./pages/PortalDocumentsPageNew";
+import PortalOffspringPageNew from "./pages/PortalOffspringPageNew";
+import PortalOffspringDetailPageNew from "./pages/PortalOffspringDetailPageNew";
+import PortalProfilePageNew from "./pages/PortalProfilePageNew";
+import PortalLoginPageNew from "./pages/PortalLoginPageNew";
+import PortalForgotPasswordPage from "./pages/PortalForgotPasswordPage";
 import PortalActivatePage from "./pages/PortalActivatePage";
-import PortalLoginPage from "./pages/PortalLoginPage";
-import PortalNotificationsPage from "./pages/PortalNotificationsPage";
+import PortalBlockedPage from "./pages/PortalBlockedPage";
+import PortalLogoutPage from "./pages/PortalLogoutPage";
+import "./design/tokens.css";
 
-// Public routes that don't require authentication
-const PUBLIC_PATHS = ["/login", "/activate", "/logout"];
+const PUBLIC_PATHS = ["/login", "/forgot-password", "/activate", "/blocked", "/logout"];
 
 type ViewRoute =
   | "dashboard"
   | "messages"
+  | "message-thread"
   | "tasks"
   | "notifications"
-  | "billing"
   | "agreements"
+  | "agreement-detail"
   | "documents"
   | "offspring"
-  | "waitlist"
+  | "offspring-detail"
   | "profile"
+  | "login"
+  | "forgot-password"
   | "activate"
-  | "login";
+  | "blocked"
+  | "logout";
 
 function getViewFromPath(pathname: string): ViewRoute {
   const path = pathname.toLowerCase().replace(/\/+$/, "");
 
-  // Public routes first
-  if (path === "/login" || path.startsWith("/login?")) {
-    return "login";
-  }
-  if (path === "/activate" || path.startsWith("/activate?")) {
-    return "activate";
-  }
+  // Public routes
+  if (path === "/login" || path.startsWith("/login?")) return "login";
+  if (path === "/forgot-password" || path.startsWith("/forgot-password?")) return "forgot-password";
+  if (path === "/activate" || path.startsWith("/activate?")) return "activate";
+  if (path === "/blocked") return "blocked";
+  if (path === "/logout") return "logout";
+
   // Protected routes
-  if (path === "/portal/messages" || path.startsWith("/portal/messages/")) {
-    return "messages";
-  }
-  if (path === "/portal/tasks" || path.startsWith("/portal/tasks/")) {
-    return "tasks";
-  }
-  if (path === "/portal/notifications" || path.startsWith("/portal/notifications/")) {
-    return "notifications";
-  }
-  if (path === "/portal/billing" || path.startsWith("/portal/billing/")) {
-    return "billing";
-  }
-  if (path === "/portal/agreements" || path.startsWith("/portal/agreements/")) {
-    return "agreements";
-  }
-  if (path === "/portal/documents" || path.startsWith("/portal/documents/")) {
-    return "documents";
-  }
-  if (path === "/portal/offspring" || path.startsWith("/portal/offspring/")) {
-    return "offspring";
-  }
-  if (path === "/portal/waitlist" || path.startsWith("/portal/waitlist/")) {
-    return "waitlist";
-  }
-  if (path === "/portal/profile" || path.startsWith("/portal/profile/")) {
-    return "profile";
-  }
+  if (path.startsWith("/messages/")) return "message-thread";
+  if (path === "/messages") return "messages";
+  if (path === "/tasks") return "tasks";
+  if (path === "/notifications") return "notifications";
+  if (path.startsWith("/agreements/")) return "agreement-detail";
+  if (path === "/agreements") return "agreements";
+  if (path === "/documents") return "documents";
+  if (path.startsWith("/offspring/")) return "offspring-detail";
+  if (path === "/offspring") return "offspring";
+  if (path === "/profile") return "profile";
+
   return "dashboard";
 }
 
@@ -101,39 +94,52 @@ export default function AppPortal() {
 
   // Render public routes outside AuthGate
   if (currentView === "login") {
-    return <PortalLoginPage />;
+    return <PortalLoginPageNew />;
+  }
+  if (currentView === "forgot-password") {
+    return <PortalForgotPasswordPage />;
   }
   if (currentView === "activate") {
     return <PortalActivatePage />;
   }
+  if (currentView === "blocked") {
+    return <PortalBlockedPage />;
+  }
+  if (currentView === "logout") {
+    return <PortalLogoutPage />;
+  }
 
-  // All other routes require authentication
+  // All other routes require authentication and CLIENT role
   return (
     <AuthGate publicPaths={PUBLIC_PATHS}>
-      {(() => {
-        switch (currentView) {
-          case "messages":
-            return <MessagesPage />;
-          case "tasks":
-            return <PortalTasksPage />;
-          case "notifications":
-            return <PortalNotificationsPage />;
-          case "billing":
-            return <PortalBillingPage />;
-          case "agreements":
-            return <PortalAgreementsPage />;
-          case "documents":
-            return <PortalDocumentsPage />;
-          case "offspring":
-            return <PortalOffspringPage />;
-          case "waitlist":
-            return <PortalWaitlistPage />;
-          case "profile":
-            return <PortalProfilePage />;
-          default:
-            return <PortalDashboard />;
-        }
-      })()}
+      <PortalLayout currentPath={window.location.pathname}>
+        {(() => {
+          switch (currentView) {
+            case "messages":
+              return <PortalMessagesPage />;
+            case "message-thread":
+              return <PortalMessageThreadPage />;
+            case "tasks":
+              return <PortalTasksPageNew />;
+            case "notifications":
+              return <PortalNotificationsPageNew />;
+            case "agreements":
+              return <PortalAgreementsPageNew />;
+            case "agreement-detail":
+              return <PortalAgreementDetailPageNew />;
+            case "documents":
+              return <PortalDocumentsPageNew />;
+            case "offspring":
+              return <PortalOffspringPageNew />;
+            case "offspring-detail":
+              return <PortalOffspringDetailPageNew />;
+            case "profile":
+              return <PortalProfilePageNew />;
+            default:
+              return <PortalDashboardPage />;
+          }
+        })()}
+      </PortalLayout>
     </AuthGate>
   );
 }
