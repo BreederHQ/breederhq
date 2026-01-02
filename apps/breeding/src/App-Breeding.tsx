@@ -46,6 +46,10 @@ import { reproEngine } from "@bhq/ui/utils";
 // ── Calendar / Planning wiring ─────────────────────────────
 import BreedingCalendar from "./components/BreedingCalendar";
 
+// ── Planner V2 pages ─────────────────────────────────────────
+import { YourBreedingPlansPageV2, WhatIfPlanningPageV2 } from "./pages/plannerV2";
+import type { WhatIfFemale as WhatIfFemaleV2 } from "./pages/plannerV2/whatIfTypes.v2";
+
 
 /* Cycle math */
 import {
@@ -1950,6 +1954,10 @@ export default function AppBreeding() {
   // ── Planner view state ─────────────────────────────────────
   const [plannerMode, setPlannerMode] = React.useState<"per-plan" | "rollup">("per-plan");
 
+  // V2 Planner page tabs: "your-plans" (default) or "what-if"
+  type PlannerPageV2 = "your-plans" | "what-if";
+  const [plannerPageV2, setPlannerPageV2] = React.useState<PlannerPageV2>("your-plans");
+
   // Planner inner content sizing (scroll only inside the card body)
   const plannerContentRef = React.useRef<HTMLDivElement | null>(null);
   const [plannerContentMaxHeight, setPlannerContentMaxHeight] = React.useState<number | null>(null);
@@ -2689,142 +2697,42 @@ export default function AppBreeding() {
           </div>
         )}
 
-        {/* PLANNER VIEW */}
+        {/* PLANNER VIEW - V2 */}
         {currentView === "planner" && (
-          <div className="p-2">
-            <SectionCard
-              title="Planner"
-              className="flex flex-col"
-            >
-              <div className="flex items-center justify-between mb-3 flex-none">
-                <PlannerSwitch mode={plannerMode} onChange={setPlannerMode} />
-                <div className="text-sm text-secondary">Planner view</div>
-              </div>
-
-              <div
-                ref={plannerContentRef}
-                className="flex-1 min-h-0 overflow-y-auto pr-2"
-                style={
-                  plannerContentMaxHeight != null
-                    ? { maxHeight: plannerContentMaxHeight }
-                    : undefined
-                }
-              >
-                {plannerMode === "per-plan" ? (
-                  <PerPlanGantt
-                    plans={normalized}
-                    className="w-full"
-                  />
-                ) : (
-                  <RollupGantt
-                    items={rollupItemsWithWhatIf}
-                    prefsOverride={{ defaultExactBandsVisible: availabilityOn }}
-                    selected={selectedKeysWithWhatIf as any}
-                    onSelectedChange={(next) => {
-                      setSelectionTouched(true);
-                      const baseOnly = Array.from(next ?? []).map(String).filter((k) => !k.startsWith("whatif-"));
-                      setSelectedKeys(new Set(baseOnly) as any);
+          <div className="p-4 max-w-7xl mx-auto">
+            {/* Page-level tabs: Your Breeding Plans | What If Planning */}
+            <nav className="inline-flex items-end gap-6 mb-4" role="tablist" aria-label="Planner pages">
+              {(["your-plans", "what-if"] as const).map((tabKey) => {
+                const isActive = plannerPageV2 === tabKey;
+                const label = tabKey === "your-plans" ? "Your Breeding Plans" : "What If Planning";
+                return (
+                  <button
+                    key={tabKey}
+                    type="button"
+                    role="tab"
+                    aria-selected={isActive}
+                    onClick={() => setPlannerPageV2(tabKey)}
+                    className={[
+                      "pb-1 text-sm font-medium transition-colors select-none",
+                      isActive
+                        ? "text-neutral-900 dark:text-neutral-50"
+                        : "text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-100",
+                    ].join(" ")}
+                    style={{
+                      borderBottom: isActive ? "2px solid #f97316" : "2px solid transparent",
                     }}
-                  />
-                )}
-              </div>
-            </SectionCard>
-
-            {plannerMode === "rollup" && (
-              <SectionCard title="What If Planner" className="mt-4">
-                <div className="mb-2 flex items-center justify-between gap-2">
-                  <div className="text-xs text-secondary">
-                    Add hypothetical cycles for active females and preview them
-                    on the Rollup planner.
-                  </div>
-                  <Button
-                    size="xs"
-                    variant="primary"
-                    onClick={() => {
-                      setWhatIfRows((prev) => {
-                        const nextId = `whatif-${prev.length + 1}-${Date.now()}`;
-                        return [
-                          ...prev,
-                          {
-                            id: nextId,
-                            damId: null,
-                            damName: null,
-                            species:
-                              speciesFilterRollup === "ALL"
-                                ? null
-                                : (speciesFilterRollup as SpeciesWire),
-                            cycleStartIso: null,
-                            showOnChart: true,
-                          },
-                        ];
-                      });
-                    }}
-                    className="inline-flex items-center gap-1.5"
                   >
-                    <Plus className="h-4 w-4" />
-                    <span>Add Female</span>
-                  </Button>
-                </div>
+                    {label}
+                  </button>
+                );
+              })}
+            </nav>
 
-                <div className="flex flex-col gap-2">
-                  {whatIfRows.map((row) => (
-                    <WhatIfRowEditor
-                      key={row.id}
-                      row={row}
-                      females={whatIfFemales}
-                      api={api}
-                      tenantId={tenantId}
-                      onChange={(next) => {
-                        // existing onChange logic, unchanged
-                        setWhatIfRows((prev) =>
-                          prev.map((r) => (r.id === row.id ? next : r))
-                        );
-
-                        const syntheticId = `whatif-${next.id}` as ID;
-                        const ready =
-                          next.showOnChart &&
-                          next.damId != null &&
-                          !!next.cycleStartIso;
-
-                        setSelectedKeys((prev) => {
-                          const copy = new Set(prev);
-                          if (ready) {
-                            copy.add(syntheticId);
-                          } else {
-                            copy.delete(syntheticId);
-                          }
-                          return copy;
-                        });
-                      }}
-                      onConvertToPlan={() => convertWhatIfRowToPlan(row)}
-                      onRemove={() => {
-                        setWhatIfRows((prev) => {
-                          if (prev.length <= 1) {
-                            return prev.map((r) =>
-                              r.id === row.id
-                                ? {
-                                  ...r,
-                                  damId: null,
-                                  damName: null,
-                                  species: null,
-                                  cycleStartIso: null,
-                                }
-                                : r
-                            );
-                          }
-                          return prev.filter((r) => r.id !== row.id);
-                        });
-                      }}
-                    />
-                  ))}
-
-                  {whatIfRows.length === 0 && (
-                    <div className="text-xs text-secondary">
-                      No What If rows yet. Use "Add row" to start.
-                    </div>
-                  )}
-                </div>
-              </SectionCard>
+            {/* V2 Page content */}
+            {plannerPageV2 === "your-plans" ? (
+              <YourBreedingPlansPageV2 plans={normalized as any} initialMode="rollup" />
+            ) : (
+              <WhatIfPlanningPageV2 plans={normalized as any} females={whatIfFemales as WhatIfFemaleV2[]} />
             )}
           </div>
         )}
