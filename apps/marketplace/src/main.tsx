@@ -2,8 +2,7 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
 
-// 1) Load design system + Tailwind + app overrides
-import "./theme.css";
+// 1) Load Tailwind CSS
 import "./index.css";
 
 // 2) App
