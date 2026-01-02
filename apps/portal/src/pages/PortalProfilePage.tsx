@@ -1,237 +1,500 @@
 // apps/portal/src/pages/PortalProfilePage.tsx
 import * as React from "react";
-import { PageHeader, Button, Badge } from "@bhq/ui";
-import { mockAppointments, type PortalAppointment } from "../mock";
+import { PageContainer } from "../design/PageContainer";
+import { PortalModal } from "../design/PortalModal";
 import { usePortalContext } from "../hooks/usePortalContext";
 
-/* ───────────────── Appointment Row ───────────────── */
+/* ────────────────────────────────────────────────────────────────────────────
+ * Loading State
+ * ──────────────────────────────────────────────────────────────────────────── */
 
-function AppointmentRow({ appointment }: { appointment: PortalAppointment }) {
-  const statusVariants: Record<PortalAppointment["status"], "green" | "neutral" | "red"> = {
-    scheduled: "green",
-    completed: "neutral",
-    cancelled: "red",
+function LoadingState() {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "var(--portal-space-4)" }}>
+      <div
+        style={{
+          height: "60px",
+          background: "var(--portal-bg-elevated)",
+          borderRadius: "var(--portal-radius-lg)",
+        }}
+      />
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))",
+          gap: "var(--portal-space-4)",
+        }}
+      >
+        {[1, 2, 3].map((i) => (
+          <div
+            key={i}
+            style={{
+              height: "200px",
+              background: "var(--portal-bg-elevated)",
+              borderRadius: "var(--portal-radius-lg)",
+            }}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
+ * Error State
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+interface ErrorStateProps {
+  onRetry: () => void;
+}
+
+function ErrorState({ onRetry }: ErrorStateProps) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        textAlign: "center",
+        minHeight: "60vh",
+        gap: "var(--portal-space-3)",
+      }}
+    >
+      <div
+        style={{
+          fontSize: "var(--portal-font-size-xl)",
+          fontWeight: "var(--portal-font-weight-semibold)",
+          color: "var(--portal-text-primary)",
+        }}
+      >
+        Unable to load profile
+      </div>
+      <div
+        style={{
+          fontSize: "var(--portal-font-size-base)",
+          color: "var(--portal-text-secondary)",
+        }}
+      >
+        Something went wrong. Please try again.
+      </div>
+      <button
+        onClick={onRetry}
+        style={{
+          padding: "var(--portal-space-2) var(--portal-space-4)",
+          background: "var(--portal-accent)",
+          color: "var(--portal-text-primary)",
+          border: "none",
+          borderRadius: "var(--portal-radius-md)",
+          fontSize: "var(--portal-font-size-sm)",
+          fontWeight: "var(--portal-font-weight-medium)",
+          cursor: "pointer",
+        }}
+      >
+        Retry
+      </button>
+    </div>
+  );
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
+ * Edit Name Modal
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+interface EditNameModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  currentName: string;
+  onSave: (name: string) => void;
+}
+
+function EditNameModal({ isOpen, onClose, currentName, onSave }: EditNameModalProps) {
+  const [name, setName] = React.useState(currentName);
+
+  React.useEffect(() => {
+    if (isOpen) {
+      setName(currentName);
+    }
+  }, [isOpen, currentName]);
+
+  const handleSave = () => {
+    onSave(name);
+    onClose();
   };
 
-  const statusLabels: Record<PortalAppointment["status"], string> = {
-    scheduled: "Scheduled",
-    completed: "Completed",
-    cancelled: "Cancelled",
-  };
-
   return (
-    <div className="p-4 rounded-lg border border-hairline bg-surface/50 hover:bg-surface transition-colors">
-      <div className="flex items-start justify-between gap-4">
-        <div className="flex items-center gap-3 flex-1 min-w-0">
-          <div className="flex-shrink-0 w-12 h-12 rounded-lg bg-[hsl(var(--brand-orange))]/10 border border-[hsl(var(--brand-orange))]/30 flex flex-col items-center justify-center">
-            <span className="text-xs text-secondary">{appointment.date.split("-")[1]}</span>
-            <span className="text-lg font-bold text-[hsl(var(--brand-orange))]">{appointment.date.split("-")[2]}</span>
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="font-medium text-primary">{appointment.title}</div>
-            <div className="flex items-center gap-2 mt-1">
-              <Badge variant={statusVariants[appointment.status]}>
-                {statusLabels[appointment.status]}
-              </Badge>
-              <span className="text-xs text-secondary">{appointment.time}</span>
-            </div>
-            <p className="text-xs text-secondary mt-1">{appointment.location}</p>
-          </div>
+    <PortalModal isOpen={isOpen} onClose={onClose} title="Edit name">
+      <div style={{ display: "flex", flexDirection: "column", gap: "var(--portal-space-3)" }}>
+        <div>
+          <label
+            htmlFor="name-input"
+            style={{
+              display: "block",
+              fontSize: "var(--portal-font-size-sm)",
+              fontWeight: "var(--portal-font-weight-medium)",
+              color: "var(--portal-text-primary)",
+              marginBottom: "var(--portal-space-1)",
+            }}
+          >
+            Name
+          </label>
+          <input
+            id="name-input"
+            type="text"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            style={{
+              width: "100%",
+              padding: "var(--portal-space-2)",
+              fontSize: "var(--portal-font-size-base)",
+              color: "var(--portal-text-primary)",
+              background: "var(--portal-bg-elevated)",
+              border: "1px solid var(--portal-border)",
+              borderRadius: "var(--portal-radius-md)",
+              outline: "none",
+            }}
+            onFocus={(e) => {
+              e.currentTarget.style.borderColor = "var(--portal-accent)";
+            }}
+            onBlur={(e) => {
+              e.currentTarget.style.borderColor = "var(--portal-border)";
+            }}
+          />
         </div>
-        {appointment.status === "scheduled" && (
-          <Button variant="secondary" size="sm">
-            Reschedule
-          </Button>
-        )}
-      </div>
-    </div>
-  );
-}
 
-/* ───────────────── Empty Appointments ───────────────── */
-
-function EmptyAppointments() {
-  return (
-    <div className="text-center py-12">
-      <div className="w-12 h-12 mx-auto mb-3 rounded-full bg-surface-strong flex items-center justify-center text-2xl">
-        📅
-      </div>
-      <h3 className="text-base font-medium text-primary mb-1">No appointments</h3>
-      <p className="text-sm text-secondary max-w-xs mx-auto">
-        When you have scheduled appointments, they will appear here.
-      </p>
-    </div>
-  );
-}
-
-/* ───────────────── Profile Section ───────────────── */
-
-interface ProfileSectionProps {
-  email: string | null;
-  orgName: string | null;
-  loading: boolean;
-}
-
-function ProfileSection({ email, orgName, loading }: ProfileSectionProps) {
-  // Get initials from email for avatar
-  const initials = email ? email.charAt(0).toUpperCase() : "?";
-
-  return (
-    <div className="rounded-xl border border-hairline bg-surface/50 p-6">
-      <div className="flex items-start gap-4">
-        <div className="flex-shrink-0 w-16 h-16 rounded-full bg-[hsl(var(--brand-orange))]/10 border border-[hsl(var(--brand-orange))]/30 flex items-center justify-center text-2xl font-semibold text-[hsl(var(--brand-orange))]">
-          {loading ? "..." : initials}
-        </div>
-        <div className="flex-1">
-          <h3 className="font-semibold text-lg text-primary">Your Profile</h3>
-          {loading ? (
-            <p className="text-sm text-secondary mt-1 animate-pulse">Loading...</p>
-          ) : (
-            <>
-              <p className="text-sm text-primary mt-1">{email || "No email"}</p>
-              {orgName && (
-                <p className="text-xs text-secondary mt-0.5">{orgName}</p>
-              )}
-            </>
-          )}
-          <div className="mt-4 flex flex-wrap gap-2">
-            <Button variant="secondary" size="sm" disabled>
-              Edit Profile
-            </Button>
-            <Button variant="ghost" size="sm" disabled>
-              Change Password
-            </Button>
-          </div>
-          <p className="text-xs text-secondary/70 mt-2 italic">
-            Not available yet.
-          </p>
+        <div style={{ display: "flex", gap: "var(--portal-space-2)", justifyContent: "flex-end" }}>
+          <button
+            onClick={onClose}
+            style={{
+              padding: "var(--portal-space-2) var(--portal-space-3)",
+              fontSize: "var(--portal-font-size-sm)",
+              fontWeight: "var(--portal-font-weight-medium)",
+              color: "var(--portal-text-secondary)",
+              background: "transparent",
+              border: "1px solid var(--portal-border)",
+              borderRadius: "var(--portal-radius-md)",
+              cursor: "pointer",
+              transition: "background-color 0.15s ease",
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = "var(--portal-bg-elevated)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = "transparent";
+            }}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSave}
+            style={{
+              padding: "var(--portal-space-2) var(--portal-space-3)",
+              fontSize: "var(--portal-font-size-sm)",
+              fontWeight: "var(--portal-font-weight-medium)",
+              color: "var(--portal-text-primary)",
+              background: "var(--portal-accent)",
+              border: "none",
+              borderRadius: "var(--portal-radius-md)",
+              cursor: "pointer",
+            }}
+          >
+            Save
+          </button>
         </div>
       </div>
-    </div>
+    </PortalModal>
   );
 }
 
-/* ───────────────── Preferences Section ───────────────── */
+/* ────────────────────────────────────────────────────────────────────────────
+ * Section Card Component
+ * ──────────────────────────────────────────────────────────────────────────── */
 
-function PreferencesSection() {
+interface SectionCardProps {
+  title: string;
+  children: React.ReactNode;
+}
+
+function SectionCard({ title, children }: SectionCardProps) {
   return (
-    <div className="rounded-xl border border-hairline bg-surface/50 p-6 opacity-60">
-      <div className="flex items-center gap-2 mb-4">
-        <h3 className="font-semibold text-primary">Communication Preferences</h3>
-        <Badge variant="neutral">Not Available</Badge>
-      </div>
-      <div className="space-y-3">
-        <label className="flex items-center gap-3 cursor-not-allowed">
-          <input
-            type="checkbox"
-            defaultChecked
-            disabled
-            className="w-4 h-4 rounded border-hairline bg-surface accent-[hsl(var(--brand-orange))] cursor-not-allowed"
-          />
-          <span className="text-sm text-secondary">Email notifications for messages</span>
-        </label>
-        <label className="flex items-center gap-3 cursor-not-allowed">
-          <input
-            type="checkbox"
-            defaultChecked
-            disabled
-            className="w-4 h-4 rounded border-hairline bg-surface accent-[hsl(var(--brand-orange))] cursor-not-allowed"
-          />
-          <span className="text-sm text-secondary">Email reminders for tasks</span>
-        </label>
-        <label className="flex items-center gap-3 cursor-not-allowed">
-          <input
-            type="checkbox"
-            disabled
-            className="w-4 h-4 rounded border-hairline bg-surface accent-[hsl(var(--brand-orange))] cursor-not-allowed"
-          />
-          <span className="text-sm text-secondary">News and updates</span>
-        </label>
-      </div>
-      <div className="mt-4">
-        <Button variant="secondary" size="sm" disabled>
-          Save Preferences
-        </Button>
-      </div>
+    <div
+      style={{
+        background: "var(--portal-bg-elevated)",
+        border: "1px solid var(--portal-border-subtle)",
+        borderRadius: "var(--portal-radius-lg)",
+        padding: "var(--portal-space-4)",
+      }}
+    >
+      <h2
+        style={{
+          fontSize: "var(--portal-font-size-base)",
+          fontWeight: "var(--portal-font-weight-semibold)",
+          color: "var(--portal-text-primary)",
+          marginBottom: "var(--portal-space-4)",
+        }}
+      >
+        {title}
+      </h2>
+      {children}
     </div>
   );
 }
 
-/* ───────────────── Main Component ───────────────── */
+/* ────────────────────────────────────────────────────────────────────────────
+ * Field Row Component
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+interface FieldRowProps {
+  label: string;
+  value: string;
+  action?: React.ReactNode;
+}
+
+function FieldRow({ label, value, action }: FieldRowProps) {
+  return (
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+      <div style={{ flex: 1 }}>
+        <div
+          style={{
+            fontSize: "var(--portal-font-size-xs)",
+            color: "var(--portal-text-secondary)",
+            marginBottom: "2px",
+          }}
+        >
+          {label}
+        </div>
+        <div
+          style={{
+            fontSize: "var(--portal-font-size-sm)",
+            color: "var(--portal-text-primary)",
+            fontWeight: "var(--portal-font-weight-medium)",
+          }}
+        >
+          {value}
+        </div>
+      </div>
+      {action && <div>{action}</div>}
+    </div>
+  );
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
+ * Action Link Component
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+interface ActionLinkProps {
+  label: string;
+  onClick: () => void;
+  subtitle?: string;
+}
+
+function ActionLink({ label, onClick, subtitle }: ActionLinkProps) {
+  return (
+    <div>
+      <button
+        onClick={onClick}
+        style={{
+          background: "none",
+          border: "none",
+          padding: 0,
+          fontSize: "var(--portal-font-size-sm)",
+          color: "var(--portal-accent)",
+          cursor: "pointer",
+          textDecoration: "none",
+          fontWeight: "var(--portal-font-weight-medium)",
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.textDecoration = "underline";
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.textDecoration = "none";
+        }}
+      >
+        {label}
+      </button>
+      {subtitle && (
+        <div
+          style={{
+            fontSize: "var(--portal-font-size-xs)",
+            color: "var(--portal-text-tertiary)",
+            marginTop: "2px",
+          }}
+        >
+          {subtitle}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
+ * Main Component
+ * ──────────────────────────────────────────────────────────────────────────── */
 
 export default function PortalProfilePage() {
-  const [activeTab, setActiveTab] = React.useState<"profile" | "appointments">("profile");
-  const { userEmail, userInitial, orgName, loading } = usePortalContext();
+  const { userEmail, orgName, loading, error } = usePortalContext();
+  const [localName, setLocalName] = React.useState<string>("—");
+  const [showNameUpdateNote, setShowNameUpdateNote] = React.useState(false);
+  const [isEditNameModalOpen, setIsEditNameModalOpen] = React.useState(false);
 
-  // Check URL for tab param
-  React.useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    if (params.get("tab") === "appointments") {
-      setActiveTab("appointments");
-    }
-  }, []);
+  const handleRefresh = () => {
+    window.location.reload();
+  };
 
-  const handleBackClick = () => {
-    window.history.pushState(null, "", "/portal");
+  const handleEditName = () => {
+    setIsEditNameModalOpen(true);
+  };
+
+  const handleSaveName = (name: string) => {
+    // UI-only - no endpoint exists
+    setLocalName(name);
+    setShowNameUpdateNote(true);
+  };
+
+  const handleChangePassword = () => {
+    window.history.pushState(null, "", "/forgot-password");
     window.dispatchEvent(new PopStateEvent("popstate"));
   };
 
-  return (
-    <div className="p-6">
-      <PageHeader
-        title="Profile"
-        subtitle="Manage your account and preferences"
-        actions={
-          <Button variant="secondary" onClick={handleBackClick}>
-            Back to Portal
-          </Button>
-        }
-      />
+  const handleSignOut = () => {
+    window.history.pushState(null, "", "/logout");
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  };
 
-      {/* Tabs */}
-      <div className="mt-6 flex border-b border-hairline">
-        <button
-          className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
-            activeTab === "profile"
-              ? "border-[hsl(var(--brand-orange))] text-primary"
-              : "border-transparent text-secondary hover:text-primary"
-          }`}
-          onClick={() => setActiveTab("profile")}
+  // Loading state
+  if (loading) {
+    return (
+      <PageContainer>
+        <LoadingState />
+      </PageContainer>
+    );
+  }
+
+  // Error state
+  if (error) {
+    return (
+      <PageContainer>
+        <ErrorState onRetry={handleRefresh} />
+      </PageContainer>
+    );
+  }
+
+  // Main view
+  return (
+    <PageContainer>
+      <div style={{ display: "flex", flexDirection: "column", gap: "var(--portal-space-4)" }}>
+        {/* Page header */}
+        <h1
+          style={{
+            fontSize: "var(--portal-font-size-2xl)",
+            fontWeight: "var(--portal-font-weight-semibold)",
+            color: "var(--portal-text-primary)",
+            margin: 0,
+          }}
         >
           Profile
-        </button>
-        <button
-          className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
-            activeTab === "appointments"
-              ? "border-[hsl(var(--brand-orange))] text-primary"
-              : "border-transparent text-secondary hover:text-primary"
-          }`}
-          onClick={() => setActiveTab("appointments")}
+        </h1>
+
+        {/* Two-column layout on desktop, single column on mobile */}
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))",
+            gap: "var(--portal-space-4)",
+          }}
         >
-          Appointments
-        </button>
+          {/* Account Section */}
+          <SectionCard title="Account">
+            <div style={{ display: "flex", flexDirection: "column", gap: "var(--portal-space-3)" }}>
+              <FieldRow
+                label="Name"
+                value={localName}
+                action={
+                  <button
+                    onClick={handleEditName}
+                    style={{
+                      padding: "var(--portal-space-1) var(--portal-space-2)",
+                      fontSize: "var(--portal-font-size-xs)",
+                      fontWeight: "var(--portal-font-weight-medium)",
+                      color: "var(--portal-accent)",
+                      background: "transparent",
+                      border: "1px solid var(--portal-border)",
+                      borderRadius: "var(--portal-radius-sm)",
+                      cursor: "pointer",
+                      transition: "background-color 0.15s ease",
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.backgroundColor = "var(--portal-bg-elevated)";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.backgroundColor = "transparent";
+                    }}
+                  >
+                    Edit name
+                  </button>
+                }
+              />
+              {showNameUpdateNote && (
+                <p
+                  style={{
+                    fontSize: "var(--portal-font-size-xs)",
+                    color: "var(--portal-text-tertiary)",
+                    margin: 0,
+                  }}
+                >
+                  Name updates are not available yet.
+                </p>
+              )}
+              <FieldRow label="Email" value={userEmail || "—"} />
+            </div>
+          </SectionCard>
+
+          {/* Security Section */}
+          <SectionCard title="Security">
+            <div style={{ display: "flex", flexDirection: "column", gap: "var(--portal-space-3)" }}>
+              <ActionLink
+                label="Change password"
+                onClick={handleChangePassword}
+                subtitle="We'll email you a reset link."
+              />
+              <ActionLink label="Sign out" onClick={handleSignOut} />
+            </div>
+          </SectionCard>
+
+          {/* Organization Section */}
+          <SectionCard title="Organization">
+            <div style={{ display: "flex", flexDirection: "column", gap: "var(--portal-space-2)" }}>
+              <div
+                style={{
+                  fontSize: "var(--portal-font-size-sm)",
+                  color: "var(--portal-text-primary)",
+                  fontWeight: "var(--portal-font-weight-medium)",
+                }}
+              >
+                {orgName || "—"}
+              </div>
+              <p
+                style={{
+                  fontSize: "var(--portal-font-size-xs)",
+                  color: "var(--portal-text-tertiary)",
+                  margin: 0,
+                  lineHeight: 1.5,
+                }}
+              >
+                This portal is provided by your breeder. Access is linked to your email.
+              </p>
+            </div>
+          </SectionCard>
+        </div>
       </div>
 
-      <div className="mt-6">
-        {activeTab === "profile" ? (
-          <div className="space-y-6">
-            <ProfileSection email={userEmail} orgName={orgName} loading={loading} />
-            <PreferencesSection />
-          </div>
-        ) : (
-          <>
-            {mockAppointments.length === 0 ? (
-              <EmptyAppointments />
-            ) : (
-              <div className="space-y-3">
-                {mockAppointments.map((appointment) => (
-                  <AppointmentRow key={appointment.id} appointment={appointment} />
-                ))}
-              </div>
-            )}
-          </>
-        )}
-      </div>
-    </div>
+      {/* Edit Name Modal */}
+      <EditNameModal
+        isOpen={isEditNameModalOpen}
+        onClose={() => setIsEditNameModalOpen(false)}
+        currentName={localName}
+        onSave={handleSaveName}
+      />
+    </PageContainer>
   );
 }
