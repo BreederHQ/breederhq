@@ -449,7 +449,7 @@ export default function PhaseGroupedPerPlanV2({ plans, prefsOverride, className 
         return (
           <SectionCard
             key={status}
-            title={<span><span>Phase: {STATUS_LABELS[status]}</span></span>}
+            title={<span className="text-base font-semibold">Phase: {STATUS_LABELS[status]}</span>}
             className="mb-4"
           >
             <div className="text-xs text-secondary mb-3">

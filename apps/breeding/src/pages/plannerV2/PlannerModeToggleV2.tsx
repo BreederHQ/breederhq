@@ -1,5 +1,6 @@
 // apps/breeding/src/pages/plannerV2/PlannerModeToggleV2.tsx
 // Local toggle component for v2 planner pages - does not modify existing PlannerSwitch.tsx
+// Uses underline-style tabs matching legacy Planner design
 
 import * as React from "react";
 
@@ -18,8 +19,8 @@ export default function PlannerModeToggleV2({ mode, onChange, className = "" }: 
   ];
 
   return (
-    <div
-      className={`inline-flex items-center gap-0.5 rounded-lg bg-neutral-800 p-1 ${className}`}
+    <nav
+      className={`inline-flex items-end gap-6 ${className}`}
       role="tablist"
       aria-label="Planner view mode"
     >
@@ -33,16 +34,21 @@ export default function PlannerModeToggleV2({ mode, onChange, className = "" }: 
             aria-selected={isActive}
             onClick={() => onChange(tab.key)}
             className={[
-              "px-3 py-1.5 text-sm font-medium rounded-md transition-all",
+              "pb-1 text-sm font-medium transition-colors select-none",
               isActive
-                ? "bg-neutral-700 text-neutral-100 shadow-sm border-b-2 border-[hsl(var(--brand-orange,24_94%_50%))]"
-                : "text-neutral-400 hover:text-neutral-200 hover:bg-neutral-700/50",
+                ? "text-neutral-900 dark:text-neutral-50"
+                : "text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-100",
             ].join(" ")}
+            style={{
+              borderBottom: isActive
+                ? "2px solid #f97316"
+                : "2px solid transparent",
+            }}
           >
             {tab.label}
           </button>
         );
       })}
-    </div>
+    </nav>
   );
 }
