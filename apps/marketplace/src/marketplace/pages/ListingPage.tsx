@@ -1,9 +1,16 @@
 // apps/marketplace/src/marketplace/pages/ListingPage.tsx
 import * as React from "react";
 import { useParams, Link } from "react-router-dom";
-import { getListing, submitInquiry, ApiError } from "../../api/client";
+import { getListing, submitInquiry } from "../../api/client";
 import { getUserMessage } from "../../api/errors";
 import type { ListingDetailDTO, PublicOffspringDTO } from "../../api/types";
+
+/**
+ * Format cents to dollars display string
+ */
+function formatCents(cents: number): string {
+  return `$${(cents / 100).toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+}
 
 /**
  * Listing detail page with offspring cards and inline inquiry panel.
@@ -101,14 +108,16 @@ export function ListingPage() {
     );
   }
 
-  const priceText =
-    data.priceMin != null && data.priceMax != null
-      ? data.priceMin === data.priceMax
-        ? `${data.currency || "$"}${data.priceMin}`
-        : `${data.currency || "$"}${data.priceMin} - ${data.currency || "$"}${data.priceMax}`
-      : data.priceMin != null
-      ? `From ${data.currency || "$"}${data.priceMin}`
-      : null;
+  // Format price display from priceRange (cents)
+  const priceText = data.priceRange
+    ? data.priceRange.min === data.priceRange.max
+      ? formatCents(data.priceRange.min)
+      : `${formatCents(data.priceRange.min)} – ${formatCents(data.priceRange.max)}`
+    : null;
+
+  // Use actual birth date if available, otherwise expected
+  const birthDateLabel = data.actualBirthOn ? "Born" : "Expected";
+  const birthDateValue = data.actualBirthOn || data.expectedBirthOn;
 
   return (
     <div className="space-y-8">
@@ -123,7 +132,7 @@ export function ListingPage() {
       {/* Header */}
       <div>
         <h1 className="text-3xl sm:text-4xl font-bold text-white tracking-tight">
-          {data.title}
+          {data.title || "Untitled Listing"}
         </h1>
         <p className="text-white/60 mt-2">
           by{" "}
@@ -143,18 +152,28 @@ export function ListingPage() {
         )}
 
         <div className="flex flex-wrap gap-4 pt-2 border-t border-white/10">
-          {data.species && (
+          <div>
+            <span className="text-xs text-white/50 block">Species</span>
+            <span className="text-sm text-white capitalize">{data.species.toLowerCase()}</span>
+          </div>
+          {data.breed && (
             <div>
-              <span className="text-xs text-white/50 block">Species</span>
-              <span className="text-sm text-white">{data.species}</span>
+              <span className="text-xs text-white/50 block">Breed</span>
+              <span className="text-sm text-white">{data.breed}</span>
             </div>
           )}
-          {data.expectedDate && (
+          {birthDateValue && (
             <div>
-              <span className="text-xs text-white/50 block">Expected</span>
-              <span className="text-sm text-white">{data.expectedDate}</span>
+              <span className="text-xs text-white/50 block">{birthDateLabel}</span>
+              <span className="text-sm text-white">{birthDateValue}</span>
             </div>
           )}
+          <div>
+            <span className="text-xs text-white/50 block">Available</span>
+            <span className="text-sm text-white">
+              {data.countAvailable > 0 ? data.countAvailable : "Contact breeder"}
+            </span>
+          </div>
           {priceText && (
             <div>
               <span className="text-xs text-white/50 block">Price</span>
@@ -270,26 +289,24 @@ export function ListingPage() {
  * Offspring card component.
  */
 function OffspringCard({ offspring }: { offspring: PublicOffspringDTO }) {
-  const priceText =
-    offspring.price != null
-      ? `${offspring.currency || "$"}${offspring.price}`
-      : null;
+  const priceText = offspring.priceCents != null ? formatCents(offspring.priceCents) : null;
+
+  // Status styling
+  const statusStyles: Record<string, string> = {
+    available: "bg-green-500/20 text-green-400",
+    reserved: "bg-yellow-500/20 text-yellow-400",
+    placed: "bg-white/10 text-white/60",
+  };
 
   return (
     <div className="rounded-xl border border-white/10 bg-white/5 overflow-hidden">
-      {/* Image or placeholder */}
+      {/* Placeholder - no photo field in PublicOffspringDTO */}
       <div className="h-32 bg-gradient-to-br from-gray-800 to-gray-900">
-        {offspring.photoUrl ? (
-          <img
-            src={offspring.photoUrl}
-            alt={offspring.name || "Offspring"}
-            className="w-full h-full object-cover"
-          />
-        ) : (
-          <div className="w-full h-full flex items-center justify-center">
-            <span className="text-white/30 text-sm">No photo</span>
-          </div>
-        )}
+        <div className="w-full h-full flex items-center justify-center">
+          <span className="text-white/20 text-2xl font-semibold">
+            {offspring.name?.charAt(0)?.toUpperCase() || "?"}
+          </span>
+        </div>
       </div>
 
       {/* Content */}
@@ -298,15 +315,17 @@ function OffspringCard({ offspring }: { offspring: PublicOffspringDTO }) {
           <h4 className="text-base font-semibold text-white">
             {offspring.name || "Unnamed"}
           </h4>
-          {offspring.collarColor && (
+          {offspring.collarColorName && (
             <span
-              className="text-xs px-2 py-0.5 rounded-full font-medium"
+              className="text-xs px-2 py-0.5 rounded-full font-medium border border-white/20"
               style={{
-                backgroundColor: getCollarColorBg(offspring.collarColor),
-                color: getCollarColorText(offspring.collarColor),
+                backgroundColor: offspring.collarColorHex
+                  ? `${offspring.collarColorHex}20`
+                  : "rgba(255, 255, 255, 0.1)",
+                color: offspring.collarColorHex || "#ffffff",
               }}
             >
-              {offspring.collarColor}
+              {offspring.collarColorName}
             </span>
           )}
         </div>
@@ -316,13 +335,7 @@ function OffspringCard({ offspring }: { offspring: PublicOffspringDTO }) {
             <span className="text-white/60">{offspring.sex}</span>
           )}
           <span
-            className={`px-2 py-0.5 rounded text-xs font-medium ${
-              offspring.status === "available"
-                ? "bg-green-500/20 text-green-400"
-                : offspring.status === "reserved"
-                ? "bg-yellow-500/20 text-yellow-400"
-                : "bg-white/10 text-white/60"
-            }`}
+            className={`px-2 py-0.5 rounded text-xs font-medium capitalize ${statusStyles[offspring.status] || statusStyles.available}`}
           >
             {offspring.status}
           </span>
@@ -334,40 +347,4 @@ function OffspringCard({ offspring }: { offspring: PublicOffspringDTO }) {
       </div>
     </div>
   );
-}
-
-/**
- * Get background color for collar color chip.
- */
-function getCollarColorBg(color: string): string {
-  const colorMap: Record<string, string> = {
-    red: "rgba(239, 68, 68, 0.2)",
-    blue: "rgba(59, 130, 246, 0.2)",
-    green: "rgba(34, 197, 94, 0.2)",
-    yellow: "rgba(234, 179, 8, 0.2)",
-    purple: "rgba(168, 85, 247, 0.2)",
-    pink: "rgba(236, 72, 153, 0.2)",
-    orange: "rgba(249, 115, 22, 0.2)",
-    black: "rgba(0, 0, 0, 0.4)",
-    white: "rgba(255, 255, 255, 0.2)",
-  };
-  return colorMap[color.toLowerCase()] || "rgba(255, 255, 255, 0.1)";
-}
-
-/**
- * Get text color for collar color chip.
- */
-function getCollarColorText(color: string): string {
-  const colorMap: Record<string, string> = {
-    red: "#f87171",
-    blue: "#60a5fa",
-    green: "#4ade80",
-    yellow: "#facc15",
-    purple: "#c084fc",
-    pink: "#f472b6",
-    orange: "#fb923c",
-    black: "#a3a3a3",
-    white: "#ffffff",
-  };
-  return colorMap[color.toLowerCase()] || "#ffffff";
 }

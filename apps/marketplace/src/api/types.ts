@@ -1,10 +1,12 @@
 // apps/marketplace/src/api/types.ts
-// Minimal DTO types matching backend contract for marketplace UI
+// DTO types matching backend public-marketplace.ts contract
 
 export interface PublicProgramSummaryDTO {
   slug: string;
   name: string;
   location: string | null;
+  species: string[];
+  breed: string | null;
   photoUrl: string | null;
 }
 
@@ -14,34 +16,49 @@ export interface PublicProgramDTO {
   bio: string | null;
   website: string | null;
   publicContactEmail: string | null;
-  location: string | null;
-  photoUrl: string | null;
 }
 
+/**
+ * Parent animal info (dam or sire)
+ */
+export interface ParentAnimalDTO {
+  name: string;
+  photoUrl: string | null;
+  breed: string | null;
+}
+
+/**
+ * Offspring group listing - matches backend toPublicOffspringGroupListingDTO
+ */
 export interface PublicOffspringGroupListingDTO {
   slug: string;
-  title: string;
+  title: string | null;
   description: string | null;
-  status: string;
-  species: string | null;
-  expectedDate: string | null;
-  priceMin: number | null;
-  priceMax: number | null;
-  currency: string | null;
-  photoUrl: string | null;
+  species: string;
+  breed: string | null;
+  expectedBirthOn: string | null;
+  actualBirthOn: string | null;
+  countAvailable: number;
+  dam: ParentAnimalDTO | null;
+  sire: ParentAnimalDTO | null;
+  coverImageUrl: string | null;
+  priceRange: { min: number; max: number } | null;
   programSlug: string;
   programName: string;
 }
 
+/**
+ * Individual offspring - matches backend toPublicOffspringDTO
+ * Note: priceCents is in cents, status is derived from keeperIntent/placementState
+ */
 export interface PublicOffspringDTO {
-  id: string;
+  id: number;
   name: string | null;
-  status: string;
-  collarColor: string | null;
   sex: string | null;
-  price: number | null;
-  currency: string | null;
-  photoUrl: string | null;
+  collarColorName: string | null;
+  collarColorHex: string | null;
+  priceCents: number | null;
+  status: "available" | "reserved" | "placed";
 }
 
 export interface ListingDetailDTO extends PublicOffspringGroupListingDTO {

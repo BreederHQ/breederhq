@@ -84,9 +84,6 @@ export function ProgramPage() {
         <h1 className="text-3xl sm:text-4xl font-bold text-white tracking-tight">
           {profile.name}
         </h1>
-        {profile.location && (
-          <p className="text-white/60 mt-2">{profile.location}</p>
-        )}
       </div>
 
       {/* Profile info card */}
@@ -187,6 +184,13 @@ export function ProgramPage() {
 }
 
 /**
+ * Format cents to dollars display string
+ */
+function formatCents(cents: number): string {
+  return `$${(cents / 100).toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+}
+
+/**
  * Listing card for program page showing all required fields.
  */
 function ListingRowCard({
@@ -196,15 +200,16 @@ function ListingRowCard({
   listing: PublicOffspringGroupListingDTO;
   programSlug: string;
 }) {
-  // Format price display
-  const priceText =
-    listing.priceMin != null && listing.priceMax != null
-      ? listing.priceMin === listing.priceMax
-        ? `${listing.currency || "$"}${listing.priceMin}`
-        : `${listing.currency || "$"}${listing.priceMin} – ${listing.currency || "$"}${listing.priceMax}`
-      : listing.priceMin != null
-        ? `From ${listing.currency || "$"}${listing.priceMin}`
-        : "Not specified";
+  // Format price display from priceRange (cents)
+  const priceText = listing.priceRange
+    ? listing.priceRange.min === listing.priceRange.max
+      ? formatCents(listing.priceRange.min)
+      : `${formatCents(listing.priceRange.min)} – ${formatCents(listing.priceRange.max)}`
+    : "Contact breeder";
+
+  // Use actual birth date if available, otherwise expected
+  const birthDateLabel = listing.actualBirthOn ? "Born" : "Expected";
+  const birthDateValue = listing.actualBirthOn || listing.expectedBirthOn;
 
   return (
     <Link
@@ -213,7 +218,7 @@ function ListingRowCard({
     >
       {/* Title */}
       <h3 className="text-base font-semibold text-white line-clamp-1">
-        {listing.title}
+        {listing.title || "Untitled Listing"}
       </h3>
 
       {/* Description */}
@@ -223,27 +228,31 @@ function ListingRowCard({
         </p>
       )}
 
-      {/* Pills row: Species, Breed */}
+      {/* Pills row: Species, Breed (only if available) */}
       <div className="flex flex-wrap items-center gap-2 mt-3">
-        <span className="text-xs bg-white/10 text-white/70 px-2 py-0.5 rounded">
-          {listing.species || "Species not specified"}
+        <span className="text-xs bg-white/10 text-white/70 px-2 py-0.5 rounded capitalize">
+          {listing.species.toLowerCase()}
         </span>
-        <span className="text-xs bg-white/10 text-white/70 px-2 py-0.5 rounded">
-          Breed not specified
-        </span>
+        {listing.breed && (
+          <span className="text-xs bg-white/10 text-white/70 px-2 py-0.5 rounded">
+            {listing.breed}
+          </span>
+        )}
       </div>
 
       {/* Info grid: Date, Availability, Price */}
       <div className="grid grid-cols-2 gap-x-4 gap-y-2 mt-3 text-sm">
         <div>
-          <span className="text-white/40 text-xs block">Expected</span>
+          <span className="text-white/40 text-xs block">{birthDateLabel}</span>
           <span className="text-white/70">
-            {listing.expectedDate || "Not specified"}
+            {birthDateValue || "Contact breeder"}
           </span>
         </div>
         <div>
           <span className="text-white/40 text-xs block">Available</span>
-          <span className="text-white/70">–</span>
+          <span className="text-white/70">
+            {listing.countAvailable > 0 ? listing.countAvailable : "Contact breeder"}
+          </span>
         </div>
         <div className="col-span-2">
           <span className="text-white/40 text-xs block">Price</span>
