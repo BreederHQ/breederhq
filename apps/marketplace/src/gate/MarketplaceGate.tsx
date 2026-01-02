@@ -1,8 +1,9 @@
 // apps/marketplace/src/gate/MarketplaceGate.tsx
 import * as React from "react";
 import { useLocation } from "react-router-dom";
-import { joinApi } from "../shared/http/baseUrl";
-import { safeReadJson } from "../shared/http/safeJson";
+import { apiGet } from "../shared/http/apiClient";
+import { ApiError } from "../shared/http/ApiError";
+import { getUserFacingMessage } from "../shared/errors/userMessages";
 import { FullPageSkeleton } from "../shared/ui/FullPageSkeleton";
 import { FullPageError } from "../shared/ui/FullPageError";
 import { MarketplaceAuthPage } from "../shells/standalone/MarketplaceAuthPage";
@@ -15,48 +16,22 @@ type GateState =
   | { status: "unauthenticated" }
   | { status: "not_entitled" }
   | { status: "entitled" }
-  | { status: "error"; message?: string };
+  | { status: "error"; message: string };
 
 /**
- * Backend response shape from GET /api/v1/marketplace/me:
- * {
- *   userId: string,
- *   email: string,
- *   name: string | null,
- *   actorContext: string,
- *   surface: string,
- *   entitlements: Array<{ key: string, status: string, grantedAt: Date }>,
- *   marketplaceEntitled: boolean,
- *   entitlementSource: "SUPER_ADMIN" | "ENTITLEMENT" | "STAFF_POLICY" | null
- * }
+ * Backend response shape from GET /api/v1/marketplace/me.
  */
-
-/**
- * Determine if user is authenticated from /me response body.
- * Backend returns userId if authenticated.
- */
-function isAuthenticated(body: any): boolean {
-  if (!body) return false;
-  // Backend returns userId if authenticated
-  if (body.userId != null) return true;
-  // Fallback for tolerant parsing
-  if (body.authenticated === true || body.authenticated === "true") return true;
-  if (body.user != null) return true;
-  if (body.session != null) return true;
-  return false;
-}
-
-/**
- * Determine if user is entitled from /me response body.
- * Backend returns `marketplaceEntitled` (not `entitled`).
- */
-function isEntitled(body: any): boolean {
-  if (!body) return false;
-  // Backend uses marketplaceEntitled
-  if (body.marketplaceEntitled === true) return true;
-  // Fallback for tolerant parsing
-  if (body.entitled === true || body.entitled === "true") return true;
-  return false;
+interface MarketplaceMeResponse {
+  userId?: string;
+  marketplaceEntitled?: boolean;
+  entitlementSource?: string | null;
+  email?: string;
+  name?: string | null;
+  surface?: string;
+  actorContext?: string;
+  entitlements?: Array<{ key: string; status: string; grantedAt: string }>;
+  error?: string;
+  message?: string;
 }
 
 /**
@@ -75,74 +50,60 @@ export function MarketplaceGate() {
     setState({ status: "loading" });
 
     try {
-      const res = await fetch(joinApi("/api/v1/marketplace/me"), {
-        method: "GET",
-        credentials: "include",
-        headers: { "Cache-Control": "no-cache" },
-      });
-
-      // 401 = unauthenticated
-      if (res.status === 401) {
-        if (import.meta.env.DEV && !hasLoggedRef.current) {
-          console.log("[marketplace/me]", { status: 401, body: null });
-          hasLoggedRef.current = true;
-        }
-        setState({ status: "unauthenticated" });
-        return;
-      }
-
-      // 403 = authenticated but not entitled
-      if (res.status === 403) {
-        if (import.meta.env.DEV && !hasLoggedRef.current) {
-          console.log("[marketplace/me]", { status: 403, body: null });
-          hasLoggedRef.current = true;
-        }
-        setState({ status: "not_entitled" });
-        return;
-      }
-
-      // 5xx = server error
-      if (res.status >= 500) {
-        if (import.meta.env.DEV && !hasLoggedRef.current) {
-          console.log("[marketplace/me]", { status: res.status, body: null });
-          hasLoggedRef.current = true;
-        }
-        setState({ status: "error", message: "Unable to verify access. Try again." });
-        return;
-      }
-
-      // Try to parse response body defensively
-      const data = await safeReadJson(res);
+      const { data, status } = await apiGet<MarketplaceMeResponse>(
+        "/api/v1/marketplace/me"
+      );
 
       // DEV-only diagnostic trace (once per page load / retry)
       if (import.meta.env.DEV && !hasLoggedRef.current) {
-        console.log("[marketplace/me]", { status: res.status, body: data });
+        console.log("[marketplace/me]", { status, body: data });
         hasLoggedRef.current = true;
       }
 
-      // If we couldn't parse JSON or body is null/undefined, treat as error (not unauthenticated)
-      if (!data) {
-        setState({ status: "error", message: "Unable to verify access. Try again." });
-        return;
-      }
+      // Check authentication from body (userId present = authenticated)
+      const authenticated = !!data?.userId;
 
-      // Check authentication from body
-      if (!isAuthenticated(data)) {
+      if (!authenticated) {
         setState({ status: "unauthenticated" });
         return;
       }
 
       // Check entitlement from body (uses marketplaceEntitled from backend)
-      if (!isEntitled(data)) {
+      const entitled = data?.marketplaceEntitled === true;
+
+      if (!entitled) {
         setState({ status: "not_entitled" });
         return;
       }
 
       // All good
       setState({ status: "entitled" });
-    } catch {
-      // Network error
-      setState({ status: "error", message: "Unable to verify access. Try again." });
+    } catch (err) {
+      // DEV-only diagnostic trace for errors
+      if (import.meta.env.DEV && !hasLoggedRef.current) {
+        if (err instanceof ApiError) {
+          console.log("[marketplace/me]", { status: err.status, body: null, error: err.code });
+        }
+        hasLoggedRef.current = true;
+      }
+
+      if (err instanceof ApiError) {
+        // 401 = unauthenticated
+        if (err.status === 401) {
+          setState({ status: "unauthenticated" });
+          return;
+        }
+
+        // 403 = authenticated but not entitled (blocked)
+        if (err.status === 403) {
+          setState({ status: "not_entitled" });
+          return;
+        }
+      }
+
+      // Other errors - show error state with user-facing message
+      const message = getUserFacingMessage(err, "Unable to verify access. Try again.");
+      setState({ status: "error", message });
     }
   }, []);
 
