@@ -62,21 +62,15 @@ export function PortalLayout({ children, currentPath }: PortalLayoutProps) {
 
   const navItems = [
     {
-      label: "Messages",
-      href: "/messages",
-      active: currentPath.startsWith("/messages"),
-    },
-    {
       label: "Tasks",
       href: "/tasks",
       active: currentPath.startsWith("/tasks"),
       badge: actionRequiredCount > 0 ? actionRequiredCount : undefined,
     },
     {
-      label: "Notifications",
-      href: "/notifications",
-      active: currentPath.startsWith("/notifications"),
-      badge: notificationsCount > 0 ? notificationsCount : undefined,
+      label: "Messages",
+      href: "/messages",
+      active: currentPath.startsWith("/messages"),
     },
     { label: "Agreements", href: "/agreements", active: currentPath.startsWith("/agreements") },
     { label: "Documents", href: "/documents", active: currentPath.startsWith("/documents") },
@@ -102,6 +96,67 @@ export function PortalLayout({ children, currentPath }: PortalLayoutProps) {
         <div style={{ flex: "1 1 0%", minWidth: 0, overflow: "hidden" }}>
           <TopNav items={navItems} />
         </div>
+        {/* Notifications bell icon */}
+        <button
+          onClick={() => {
+            window.history.pushState({}, "", "/notifications");
+            window.dispatchEvent(new PopStateEvent("popstate"));
+          }}
+          style={{
+            all: "unset",
+            position: "relative",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            width: "32px",
+            height: "32px",
+            cursor: "pointer",
+            flexShrink: 0,
+            color: currentPath.startsWith("/notifications")
+              ? "var(--portal-text-primary)"
+              : "var(--portal-text-secondary)",
+            transition: "color var(--portal-transition)",
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.color = "var(--portal-text-primary)";
+          }}
+          onMouseLeave={(e) => {
+            if (!currentPath.startsWith("/notifications")) {
+              e.currentTarget.style.color = "var(--portal-text-secondary)";
+            }
+          }}
+          title="Notifications"
+          aria-label={`Notifications${notificationsCount > 0 ? ` (${notificationsCount} new)` : ""}`}
+        >
+          <svg
+            width="20"
+            height="20"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+            <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+          </svg>
+          {/* Notification dot */}
+          {notificationsCount > 0 && (
+            <span
+              style={{
+                position: "absolute",
+                top: "2px",
+                right: "2px",
+                width: "8px",
+                height: "8px",
+                background: "var(--portal-accent)",
+                borderRadius: "50%",
+                border: "2px solid var(--portal-bg-elevated)",
+              }}
+            />
+          )}
+        </button>
         {/* Sign out button - always visible on right side */}
         <button
           onClick={handleLogout}
