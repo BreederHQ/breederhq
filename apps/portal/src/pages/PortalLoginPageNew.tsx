@@ -6,7 +6,9 @@ import { TextInput } from "../design/TextInput";
 import { PasswordInput } from "../design/PasswordInput";
 import { Button } from "../design/Button";
 import { InlineNotice } from "../design/InlineNotice";
-import { OrgBranding } from "../components/OrgBranding";
+
+// BreederHQ logo - same asset used by app.breederhq.com
+import logoUrl from "@bhq/ui/assets/logo.png";
 
 export default function PortalLoginPageNew() {
   const [email, setEmail] = React.useState("");
@@ -65,7 +67,59 @@ export default function PortalLoginPageNew() {
           }}
         >
           <div style={{ width: "100%", maxWidth: "420px" }}>
-            <OrgBranding />
+            {/* BreederHQ branding - static, platform-owned */}
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                gap: "var(--portal-space-2)",
+                marginBottom: "var(--portal-space-4)",
+              }}
+            >
+              <img
+                src={logoUrl}
+                alt="BreederHQ"
+                style={{
+                  width: "64px",
+                  height: "64px",
+                  objectFit: "contain",
+                }}
+              />
+              <h1
+                style={{
+                  fontSize: "var(--portal-font-size-xl)",
+                  fontWeight: "var(--portal-font-weight-semibold)",
+                  color: "var(--portal-text-primary)",
+                  margin: 0,
+                  textAlign: "center",
+                }}
+              >
+                BreederHQ
+              </h1>
+              <h2
+                style={{
+                  fontSize: "var(--portal-font-size-base)",
+                  fontWeight: "var(--portal-font-weight-medium)",
+                  color: "var(--portal-text-secondary)",
+                  margin: 0,
+                  textAlign: "center",
+                }}
+              >
+                Client Portal
+              </h2>
+              <p
+                style={{
+                  fontSize: "var(--portal-font-size-sm)",
+                  color: "var(--portal-text-tertiary)",
+                  margin: 0,
+                  textAlign: "center",
+                  maxWidth: "300px",
+                }}
+              >
+                Access your placements, messages, documents, and scheduling.
+              </p>
+            </div>
             <SectionCard>
               <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "var(--portal-space-3)" }}>
                 {error && (

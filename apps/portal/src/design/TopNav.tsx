@@ -47,11 +47,9 @@ export function TopNav({ items, onNavigate }: TopNavProps) {
         alignItems: "center",
         overflowX: "auto",
         overflowY: "hidden",
-        flex: 1,
         scrollbarWidth: "none", // Firefox
-        msOverflowStyle: "none", // IE/Edge
-        position: "relative",
-        zIndex: 10,
+        msOverflowStyle: "none" as any, // IE/Edge
+        paddingRight: "var(--portal-space-2)", // Ensure last item is fully visible when scrolled
       }}
     >
       {items.map((item) => (

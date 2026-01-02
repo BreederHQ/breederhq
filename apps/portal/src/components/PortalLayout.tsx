@@ -85,14 +85,67 @@ export function PortalLayout({ children, currentPath }: PortalLayoutProps) {
     { label: "Financials", href: "/financials", active: currentPath.startsWith("/financials") },
     { label: "Offspring", href: "/offspring", active: currentPath.startsWith("/offspring") },
     { label: "Profile", href: "/profile", active: currentPath.startsWith("/profile") },
-    { label: "Logout", href: "/logout", active: currentPath === "/logout" },
   ];
+
+  const handleLogout = () => {
+    window.location.href = "/logout";
+  };
 
   return (
     <div style={{ minHeight: "100vh", background: "var(--portal-bg)", display: "flex", flexDirection: "column" }}>
       <HeaderBar>
         <OrgIdentity orgName={orgName} orgInitial={orgInitial} />
-        <TopNav items={navItems} />
+        {/* Wrapper constrains TopNav so it can scroll horizontally */}
+        <div style={{ flex: "1 1 0%", minWidth: 0, overflow: "hidden" }}>
+          <TopNav items={navItems} />
+        </div>
+        {/* Sign out button - always visible on right side */}
+        <button
+          onClick={handleLogout}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "var(--portal-space-1)",
+            padding: "var(--portal-space-1) var(--portal-space-2)",
+            fontSize: "var(--portal-font-size-sm)",
+            fontWeight: "var(--portal-font-weight-medium)",
+            color: "var(--portal-text-secondary)",
+            background: "transparent",
+            border: "1px solid var(--portal-border-subtle)",
+            borderRadius: "var(--portal-radius-md)",
+            cursor: "pointer",
+            whiteSpace: "nowrap",
+            flexShrink: 0,
+            transition: "all var(--portal-transition)",
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.color = "var(--portal-text-primary)";
+            e.currentTarget.style.borderColor = "var(--portal-border)";
+            e.currentTarget.style.background = "var(--portal-bg-elevated)";
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.color = "var(--portal-text-secondary)";
+            e.currentTarget.style.borderColor = "var(--portal-border-subtle)";
+            e.currentTarget.style.background = "transparent";
+          }}
+          aria-label="Sign out"
+        >
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+            <polyline points="16 17 21 12 16 7" />
+            <line x1="21" y1="12" x2="9" y2="12" />
+          </svg>
+          <span>Sign out</span>
+        </button>
       </HeaderBar>
       <main style={{ flex: 1 }}>{children}</main>
       <Footer />

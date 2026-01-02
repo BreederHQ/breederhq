@@ -22,6 +22,8 @@ import {
   type SchedulingBooking,
 } from "../api";
 
+import { CreateAvailabilityBlockDialog } from "./CreateAvailabilityBlockDialog";
+
 type StageLike = {
   id: string;
   label: string;
@@ -155,6 +157,15 @@ export default function BreedingCalendar({
   // Scheduling data for appointments calendar group
   const [schedulingBlocks, setSchedulingBlocks] = React.useState<SchedulingAvailabilityBlock[]>([]);
   const [schedulingBookings, setSchedulingBookings] = React.useState<SchedulingBooking[]>([]);
+  const [schedulingRefreshKey, setSchedulingRefreshKey] = React.useState(0);
+
+  // Create availability block dialog state
+  const [createBlockDialogOpen, setCreateBlockDialogOpen] = React.useState(false);
+  const [createBlockInitialDate, setCreateBlockInitialDate] = React.useState<Date | undefined>(undefined);
+
+  const refreshSchedulingData = React.useCallback(() => {
+    setSchedulingRefreshKey((k) => k + 1);
+  }, []);
 
   React.useEffect(() => {
     if (!tenantId) return;
@@ -180,7 +191,7 @@ export default function BreedingCalendar({
       .catch((err) => {
         console.error("[BreedingCalendar] Failed to load scheduling data", err);
       });
-  }, [tenantId, horizon]);
+  }, [tenantId, horizon, schedulingRefreshKey]);
 
   const planGroup = React.useMemo(() => {
     // Only show plans with a cycle date - no seed date means no timeline to plot
@@ -437,7 +448,7 @@ export default function BreedingCalendar({
       }
     }
 
-    // Scheduling events: availability blocks (as all-day ranges)
+    // Scheduling events: availability blocks (as timed ranges, not all-day)
     const schedulingEvents: any[] = [];
     for (const block of schedulingBlocks) {
       schedulingEvents.push({
@@ -445,7 +456,7 @@ export default function BreedingCalendar({
         title: block.templateName || `Availability`,
         start: new Date(block.startAt),
         end: new Date(block.endAt),
-        allDay: true,
+        allDay: false,
         calendarId: `block:${block.id}`,
         color: "#10B981",
         extendedProps: {
@@ -498,18 +509,39 @@ export default function BreedingCalendar({
     });
   }, [items, selectedSet, horizon, prefs, userEvents, schedulingBlocks, schedulingBookings]);
 
+  // Handle date selection to open block creation dialog
+  const handleDateSelect = React.useCallback((info: { start: Date; end: Date }) => {
+    setCreateBlockInitialDate(info.start);
+    setCreateBlockDialogOpen(true);
+  }, []);
+
+  // Handle block created - refresh scheduling data
+  const handleBlockCreated = React.useCallback((_blockId: number, slotCount: number) => {
+    console.log(`[BreedingCalendar] Block created with ${slotCount} slots`);
+    refreshSchedulingData();
+  }, [refreshSchedulingData]);
+
   return (
-    <BHQCalendar
-      className={className}
-      headerTitle="Breeding Calendar"
-      groups={groups}
-      events={events}
-      storageKey="bhq_calendar_breeding_v2"
-      onEventClick={(ev) => {
-        const planId = String((ev as any)?.extendedProps?.planId ?? "");
-        if (planId) navigateToPlan?.(planId);
-      }}
-      onEventCreate={handleEventCreate}
-    />
+    <>
+      <BHQCalendar
+        className={className}
+        headerTitle="Breeding Calendar"
+        groups={groups}
+        events={events}
+        storageKey="bhq_calendar_breeding_v2"
+        onEventClick={(ev) => {
+          const planId = String((ev as any)?.extendedProps?.planId ?? "");
+          if (planId) navigateToPlan?.(planId);
+        }}
+        onEventCreate={handleEventCreate}
+        onDateSelect={handleDateSelect}
+      />
+      <CreateAvailabilityBlockDialog
+        open={createBlockDialogOpen}
+        onClose={() => setCreateBlockDialogOpen(false)}
+        onCreated={handleBlockCreated}
+        initialDate={createBlockInitialDate}
+      />
+    </>
   );
 }

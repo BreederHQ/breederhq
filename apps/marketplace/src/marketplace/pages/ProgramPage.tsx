@@ -1,19 +1,22 @@
 // apps/marketplace/src/marketplace/pages/ProgramPage.tsx
-// Breeder profile page with "Available Litters" emphasis
+// Breeder profile page with "Available Litters" emphasis and Message button
 import * as React from "react";
-import { useParams, Link } from "react-router-dom";
+import { useParams, Link, useNavigate } from "react-router-dom";
 import { useProgramQuery } from "../hooks/useProgramQuery";
 import { useProgramListingsQuery } from "../hooks/useProgramListingsQuery";
 import { getUserMessage } from "../../api/errors";
+import { isDemoMode } from "../../demo/demoMode";
+import { useStartConversation } from "../../messages/hooks";
 import { Breadcrumb } from "../components/Breadcrumb";
 import { formatCents } from "../../utils/format";
 import type { PublicOffspringGroupListingDTO } from "../../api/types";
 
 /**
  * Breeder profile page.
- * Shows breeder info with bio toggle, then "Available Litters" section.
+ * Shows breeder info with bio toggle, Message button, then "Available Litters" section.
  */
 export function ProgramPage() {
+  const navigate = useNavigate();
   const { programSlug = "" } = useParams<{ programSlug: string }>();
 
   const {
@@ -30,8 +33,33 @@ export function ProgramPage() {
     refetch: refetchListings,
   } = useProgramListingsQuery(programSlug);
 
+  // Messaging hook
+  const { startConversation, loading: starting } = useStartConversation();
+
   // Bio disclosure state - collapsed by default for long bios
   const [bioExpanded, setBioExpanded] = React.useState(false);
+
+  // Handle message breeder button
+  const handleMessageBreeder = async () => {
+    if (!profile || starting) return;
+
+    const result = await startConversation({
+      context: {
+        type: "general",
+        programSlug,
+        programName: profile.name,
+      },
+      participant: {
+        name: profile.name,
+        type: "breeder",
+        slug: programSlug,
+      },
+    });
+
+    if (result) {
+      navigate(`/inquiries?c=${result.conversation.id}`);
+    }
+  };
 
   // Profile error - full page error
   if (profileError) {
@@ -73,6 +101,7 @@ export function ProgramPage() {
 
   const listingsCount = listingsData?.items.length ?? 0;
   const singleListing = listingsCount === 1;
+  const demoMode = isDemoMode();
 
   return (
     <div className="space-y-6">
@@ -84,10 +113,32 @@ export function ProgramPage() {
         ]}
       />
 
-      {/* Header */}
-      <h1 className="text-[28px] font-bold text-white tracking-tight leading-tight">
-        {profile.name}
-      </h1>
+      {/* Header with Message button */}
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+        <h1 className="text-[28px] font-bold text-white tracking-tight leading-tight">
+          {profile.name}
+        </h1>
+
+        {/* Message button - shown in demo mode or when messaging backend available */}
+        {demoMode && (
+          <button
+            type="button"
+            onClick={handleMessageBreeder}
+            disabled={starting}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-portal-xs bg-accent text-white text-sm font-medium hover:bg-accent-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={1.5}
+                d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
+              />
+            </svg>
+            {starting ? "Opening..." : "Message breeder"}
+          </button>
+        )}
+      </div>
 
       {/* About this breeder - demoted, collapsible for long bios */}
       {(bioText || profile.website) && (

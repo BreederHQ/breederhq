@@ -17,6 +17,7 @@ import PortalDebugPage from "./pages/PortalDebugPage";
 import PortalDiagnosticsPage from "./pages/PortalDiagnosticsPage";
 import PortalFinancialsPage from "./pages/PortalFinancialsPage";
 import PortalSchedulePage from "./pages/PortalSchedulePage";
+import PortalScheduleDiscoveryPage from "./pages/PortalScheduleDiscoveryPage";
 import PortalLoginPageNew from "./pages/PortalLoginPageNew";
 import PortalForgotPasswordPage from "./pages/PortalForgotPasswordPage";
 import PortalActivatePage from "./pages/PortalActivatePage";
@@ -42,6 +43,7 @@ type ViewRoute =
   | "debug"
   | "diagnostics"
   | "schedule"
+  | "schedule-discovery"
   | "login"
   | "forgot-password"
   | "activate"
@@ -72,6 +74,7 @@ function getViewFromPath(pathname: string): ViewRoute {
   if (path === "/profile") return "profile";
   if (path === "/debug" || path === "/portal/debug") return "debug";
   if (path === "/__diagnostics") return "diagnostics";
+  if (path.startsWith("/schedule/group/")) return "schedule-discovery";
   if (path.startsWith("/schedule/")) return "schedule";
 
   return "dashboard";
@@ -153,6 +156,8 @@ export default function AppPortal() {
               return <PortalDebugPage />;
             case "diagnostics":
               return <PortalDiagnosticsPage />;
+            case "schedule-discovery":
+              return <PortalScheduleDiscoveryPage />;
             case "schedule":
               return <PortalSchedulePage />;
             default:
