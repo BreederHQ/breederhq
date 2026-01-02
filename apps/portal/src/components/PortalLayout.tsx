@@ -95,7 +95,10 @@ export function PortalLayout({ children, currentPath }: PortalLayoutProps) {
     <div style={{ minHeight: "100vh", background: "var(--portal-bg)", display: "flex", flexDirection: "column" }}>
       <HeaderBar>
         <OrgIdentity orgName={orgName} orgInitial={orgInitial} />
-        <TopNav items={navItems} />
+        {/* Wrapper constrains TopNav so it can scroll horizontally */}
+        <div style={{ flex: "1 1 0%", minWidth: 0, overflow: "hidden" }}>
+          <TopNav items={navItems} />
+        </div>
         {/* Sign out button - always visible on right side */}
         <button
           onClick={handleLogout}

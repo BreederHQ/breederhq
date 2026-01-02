@@ -47,10 +47,9 @@ export function TopNav({ items, onNavigate }: TopNavProps) {
         alignItems: "center",
         overflowX: "auto",
         overflowY: "hidden",
-        flex: "1 1 0%", // Explicit flex-grow, flex-shrink, flex-basis for proper shrinking
-        minWidth: 0, // Allow shrinking below content size for proper scroll
         scrollbarWidth: "none", // Firefox
         msOverflowStyle: "none" as any, // IE/Edge
+        paddingRight: "var(--portal-space-2)", // Ensure last item is fully visible when scrolled
       }}
     >
       {items.map((item) => (
