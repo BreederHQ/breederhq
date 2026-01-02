@@ -13,38 +13,27 @@ interface PortalLayoutProps {
   currentPath: string;
 }
 
-function OrgIdentity({ orgName, orgInitial }: { orgName: string | null; orgInitial: string | null }) {
-  const displayName = orgName || "Acme Breeding Co.";
+function OrgIdentity({ orgInitial }: { orgInitial: string | null }) {
   const displayInitial = orgInitial || "A";
 
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: "var(--portal-space-2)", flexShrink: 0 }}>
-      <div
-        style={{
-          width: "32px",
-          height: "32px",
-          borderRadius: "var(--portal-radius-md)",
-          background: "var(--portal-accent)",
-          color: "var(--portal-text-primary)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          fontWeight: "var(--portal-font-weight-semibold)",
-          fontSize: "var(--portal-font-size-base)",
-        }}
-      >
-        {displayInitial}
-      </div>
-      <span
-        style={{
-          fontSize: "var(--portal-font-size-lg)",
-          fontWeight: "var(--portal-font-weight-semibold)",
-          color: "var(--portal-text-primary)",
-          whiteSpace: "nowrap",
-        }}
-      >
-        {displayName}
-      </span>
+    <div
+      style={{
+        width: "32px",
+        height: "32px",
+        borderRadius: "var(--portal-radius-md)",
+        background: "var(--portal-accent)",
+        color: "var(--portal-text-primary)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        fontWeight: "var(--portal-font-weight-semibold)",
+        fontSize: "var(--portal-font-size-base)",
+        flexShrink: 0,
+      }}
+      title={`Organization`}
+    >
+      {displayInitial}
     </div>
   );
 }
@@ -94,7 +83,7 @@ export function PortalLayout({ children, currentPath }: PortalLayoutProps) {
   return (
     <div style={{ minHeight: "100vh", background: "var(--portal-bg)", display: "flex", flexDirection: "column" }}>
       <HeaderBar>
-        <OrgIdentity orgName={orgName} orgInitial={orgInitial} />
+        <OrgIdentity orgInitial={orgInitial} />
         {/* Wrapper constrains TopNav so it can scroll horizontally */}
         <div style={{ flex: "1 1 0%", minWidth: 0, overflow: "hidden" }}>
           <TopNav items={navItems} />
