@@ -6,6 +6,7 @@ import { PortalCard } from "../design/PortalCard";
 import { Button } from "../design/Button";
 import { usePortalTasks } from "../tasks/taskSources";
 import { usePortalNotifications } from "../notifications/notificationSources";
+import { usePortalContext } from "../hooks/usePortalContext";
 import { isPortalMockEnabled } from "../dev/mockFlag";
 import { mockOffspring, mockFinancialSummary, mockAgreements } from "../dev/mockData";
 import { getSpeciesAccent } from "../ui/speciesTokens";
@@ -403,7 +404,11 @@ function LoadingState() {
 export default function PortalDashboardPage() {
   const { tasks, loading: tasksLoading } = usePortalTasks();
   const { notifications, loading: notificationsLoading } = usePortalNotifications();
+  const { orgName } = usePortalContext();
   const mockEnabled = isPortalMockEnabled();
+
+  // Page title: org name or fallback
+  const pageTitle = orgName || "Welcome";
 
   const handleNavigate = (path: string) => {
     window.history.pushState(null, "", path);
@@ -514,7 +519,7 @@ export default function PortalDashboardPage() {
       : undefined;
 
   return (
-    <PageScaffold title="Dashboard" status={pageStatus} statusLabel={pageStatusLabel}>
+    <PageScaffold title={pageTitle} status={pageStatus} statusLabel={pageStatusLabel}>
       {isLoading && <LoadingState />}
 
       {!isLoading && !primaryPlacement && (

@@ -13,12 +13,14 @@ interface PortalLayoutProps {
   currentPath: string;
 }
 
-function OrgIdentity({ orgInitial }: { orgInitial: string | null }) {
+function OrgIdentity({ orgInitial, onClick }: { orgInitial: string | null; onClick: () => void }) {
   const displayInitial = orgInitial || "A";
 
   return (
-    <div
+    <button
+      onClick={onClick}
       style={{
+        all: "unset",
         width: "32px",
         height: "32px",
         borderRadius: "var(--portal-radius-md)",
@@ -30,11 +32,19 @@ function OrgIdentity({ orgInitial }: { orgInitial: string | null }) {
         fontWeight: "var(--portal-font-weight-semibold)",
         fontSize: "var(--portal-font-size-base)",
         flexShrink: 0,
+        cursor: "pointer",
+        transition: "opacity var(--portal-transition)",
       }}
-      title={`Organization`}
+      title="Home"
+      onMouseEnter={(e) => {
+        e.currentTarget.style.opacity = "0.8";
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.opacity = "1";
+      }}
     >
       {displayInitial}
-    </div>
+    </button>
   );
 }
 
@@ -51,7 +61,6 @@ export function PortalLayout({ children, currentPath }: PortalLayoutProps) {
   const notificationsCount = notifications.length;
 
   const navItems = [
-    { label: "Dashboard", href: "/", active: currentPath === "/" },
     {
       label: "Messages",
       href: "/messages",
@@ -76,6 +85,11 @@ export function PortalLayout({ children, currentPath }: PortalLayoutProps) {
     { label: "Profile", href: "/profile", active: currentPath.startsWith("/profile") },
   ];
 
+  const handleNavigateHome = () => {
+    window.history.pushState({}, "", "/");
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  };
+
   const handleLogout = () => {
     window.location.href = "/logout";
   };
@@ -83,7 +97,7 @@ export function PortalLayout({ children, currentPath }: PortalLayoutProps) {
   return (
     <div style={{ minHeight: "100vh", background: "var(--portal-bg)", display: "flex", flexDirection: "column" }}>
       <HeaderBar>
-        <OrgIdentity orgInitial={orgInitial} />
+        <OrgIdentity orgInitial={orgInitial} onClick={handleNavigateHome} />
         {/* Wrapper constrains TopNav so it can scroll horizontally */}
         <div style={{ flex: "1 1 0%", minWidth: 0, overflow: "hidden" }}>
           <TopNav items={navItems} />
