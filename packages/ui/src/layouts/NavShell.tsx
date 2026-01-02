@@ -12,6 +12,7 @@ export type NavItem = {
 export type NavShellProps = {
   title?: string;
   items?: NavItem[];
+  navItems?: NavItem[]; // alias for items
   brand?: {
     name?: string;
     logoSrc?: string;
@@ -99,6 +100,7 @@ function normPath(s: string) {
 export const NavShell: React.FC<NavShellProps> = ({
   title = "BreederHQ",
   items,
+  navItems: navItemsProp,
   brand,
   envBadge,
   actions,
@@ -149,7 +151,7 @@ export const NavShell: React.FC<NavShellProps> = ({
     { key: "finance", label: "Finance", href: "/finance/" },
     { key: "admin", label: "Admin", href: "/admin/" },
   ];
-  const navItems = items && items.length ? items : defaultItems;
+  const navItems = (navItemsProp ?? items)?.length ? (navItemsProp ?? items) : defaultItems;
 
   // INITIAL title bootstrap from URL, but **ignore "/"** so Dashboard doesn't claim everything.
   React.useEffect(() => {
