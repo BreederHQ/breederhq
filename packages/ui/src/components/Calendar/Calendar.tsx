@@ -34,6 +34,7 @@ export type BHQCalendarProps = {
   headerTitle?: string;
   onEventClick?: (ev: CalendarEvent) => void;
   onEventCreate?: (ev: Partial<CalendarEvent>) => void;
+  onDateSelect?: (info: { start: Date; end: Date; allDay: boolean }) => void;
   className?: string;
 };
 
@@ -47,6 +48,7 @@ export default function BHQCalendar({
   headerTitle,
   onEventClick,
   onEventCreate,
+  onDateSelect,
   className,
 }: BHQCalendarProps) {
   const allIds = React.useMemo(
@@ -94,6 +96,16 @@ export default function BHQCalendar({
   }
 
   function handleDateSelect(selectInfo: any) {
+    // If external handler provided, use that instead of internal editor
+    if (onDateSelect) {
+      onDateSelect({
+        start: selectInfo.start,
+        end: selectInfo.end,
+        allDay: selectInfo.allDay,
+      });
+      return;
+    }
+    // Otherwise use internal event editor
     setEditingEvent({
       start: selectInfo.start,
       end: selectInfo.end,
@@ -355,7 +367,7 @@ export default function BHQCalendar({
           buttonText={{ today: "today", month: "month", week: "week" }}
           dayMaxEvents={3}
           events={visibleEvents}
-          selectable={!!onEventCreate}
+          selectable={!!(onEventCreate || onDateSelect)}
           select={handleDateSelect}
           eventClick={(arg) => {
             const e = arg.event;

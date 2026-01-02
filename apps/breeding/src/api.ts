@@ -148,6 +148,55 @@ export type SchedulingBooking = {
   bookedAt: string;
 };
 
+export type CreateBlockInput = {
+  templateId?: number;
+  startAt: string;
+  endAt: string;
+  timezone: string;
+  slotIntervalMinutes: number;
+  slotDurationMinutes: number;
+  capacity: number;
+  bufferBeforeMinutes?: number;
+  bufferAfterMinutes?: number;
+  mode: "IN_PERSON" | "VIRTUAL";
+  location?: string;
+  nextStepsText?: string;
+};
+
+export type CreateBlockResponse = {
+  block: {
+    id: number;
+    startAt: string;
+    endAt: string;
+    timezone: string;
+    status: string;
+    location: string | null;
+  };
+  slotCount: number;
+};
+
+export type SchedulingSlot = {
+  id: number;
+  startsAt: string;
+  endsAt: string;
+  capacity: number;
+  bookedCount: number;
+  status: string;
+  mode: "in_person" | "virtual" | null;
+  location: string | null;
+};
+
+export type BlockDetailResponse = SchedulingAvailabilityBlock & {
+  slotIntervalMinutes: number | null;
+  slotDurationMinutes: number | null;
+  mode: "in_person" | "virtual" | null;
+  bufferBeforeMinutes: number | null;
+  bufferAfterMinutes: number | null;
+  nextStepsText: string | null;
+  canCancel: boolean | null;
+  canReschedule: boolean | null;
+};
+
 /** Response for plan commit that ensures a group */
 export type CommitPlanEnsureResp = {
   planId: number;
@@ -542,6 +591,18 @@ export function makeBreedingApi(opts: ApiOpts) {
         const query = qs.toString();
         const path = `/scheduling/bookings${query ? `?${query}` : ""}`;
         return get<{ bookings: SchedulingBooking[] }>(path).then(res => res.bookings || []);
+      },
+      createBlock(input: CreateBlockInput) {
+        return post<CreateBlockResponse>("/scheduling/blocks", input);
+      },
+      getBlock(blockId: number) {
+        return get<BlockDetailResponse>(`/scheduling/blocks/${blockId}`);
+      },
+      getBlockSlots(blockId: number) {
+        return get<{ slots: SchedulingSlot[] }>(`/scheduling/blocks/${blockId}/slots`).then(res => res.slots || []);
+      },
+      getBlockBookings(blockId: number) {
+        return get<{ bookings: SchedulingBooking[] }>(`/scheduling/blocks/${blockId}/bookings`).then(res => res.bookings || []);
       },
     },
   };
