@@ -3,11 +3,51 @@
 import * as React from "react";
 import { Link, useLocation } from "react-router-dom";
 import { joinApi } from "../api/client";
-import { useDemoMode } from "../demo/demoMode";
+import { useDemoMode, isDemoMode } from "../demo/demoMode";
 
 interface Props {
   authenticated: boolean;
   children: React.ReactNode;
+}
+
+/**
+ * Nav link that can be disabled with tooltip.
+ */
+interface NavLinkProps {
+  to: string;
+  active: boolean;
+  disabled?: boolean;
+  disabledTitle?: string;
+  children: React.ReactNode;
+}
+
+function NavLink({ to, active, disabled, disabledTitle, children }: NavLinkProps) {
+  const baseClasses = "px-2.5 py-1.5 text-sm font-medium rounded-portal-xs transition-colors";
+
+  if (disabled) {
+    return (
+      <span
+        className={`${baseClasses} text-text-muted cursor-not-allowed`}
+        aria-disabled="true"
+        title={disabledTitle}
+      >
+        {children}
+      </span>
+    );
+  }
+
+  return (
+    <Link
+      to={to}
+      className={`${baseClasses} ${
+        active
+          ? "text-white bg-border-default"
+          : "text-text-secondary hover:text-white hover:bg-portal-card-hover"
+      }`}
+    >
+      {children}
+    </Link>
+  );
 }
 
 /**
@@ -45,6 +85,10 @@ export function MarketplaceLayout({ authenticated, children }: Props) {
     }
   };
 
+  // Demo-only surfaces: Services, Inquiries, Updates
+  const demoOnlyDisabled = !demoMode;
+  const comingSoonTitle = "Coming soon - Preview with demo data";
+
   return (
     <div className="min-h-screen bg-portal-bg text-white relative font-sans antialiased">
       {/* Solid header - Marketplace-appropriate, no Portal gradient/blur */}
@@ -58,66 +102,48 @@ export function MarketplaceLayout({ authenticated, children }: Props) {
 
             {/* Nav links */}
             <nav className="hidden md:flex items-center gap-1">
-              <Link
+              <NavLink
                 to="/"
-                className={`px-2.5 py-1.5 text-sm font-medium rounded-portal-xs transition-colors ${
-                  isActive("/") && !isActive("/animals") && !isActive("/breeders") && !isActive("/services") && !isActive("/inquiries") && !isActive("/updates") && !isActive("/programs")
-                    ? "text-white bg-border-default"
-                    : "text-text-secondary hover:text-white hover:bg-portal-card-hover"
-                }`}
+                active={isActive("/") && !isActive("/animals") && !isActive("/breeders") && !isActive("/services") && !isActive("/inquiries") && !isActive("/updates") && !isActive("/programs")}
               >
                 Home
-              </Link>
-              <Link
+              </NavLink>
+              <NavLink
                 to="/animals"
-                className={`px-2.5 py-1.5 text-sm font-medium rounded-portal-xs transition-colors ${
-                  isActive("/animals")
-                    ? "text-white bg-border-default"
-                    : "text-text-secondary hover:text-white hover:bg-portal-card-hover"
-                }`}
+                active={isActive("/animals")}
               >
                 Animals
-              </Link>
-              <Link
+              </NavLink>
+              <NavLink
                 to="/breeders"
-                className={`px-2.5 py-1.5 text-sm font-medium rounded-portal-xs transition-colors ${
-                  isActive("/breeders") || isActive("/programs")
-                    ? "text-white bg-border-default"
-                    : "text-text-secondary hover:text-white hover:bg-portal-card-hover"
-                }`}
+                active={isActive("/breeders") || isActive("/programs")}
               >
                 Breeders
-              </Link>
-              <Link
+              </NavLink>
+              <NavLink
                 to="/services"
-                className={`px-2.5 py-1.5 text-sm font-medium rounded-portal-xs transition-colors ${
-                  isActive("/services")
-                    ? "text-white bg-border-default"
-                    : "text-text-secondary hover:text-white hover:bg-portal-card-hover"
-                }`}
+                active={isActive("/services")}
+                disabled={demoOnlyDisabled}
+                disabledTitle={comingSoonTitle}
               >
                 Services
-              </Link>
-              <Link
+              </NavLink>
+              <NavLink
                 to="/inquiries"
-                className={`px-2.5 py-1.5 text-sm font-medium rounded-portal-xs transition-colors ${
-                  isActive("/inquiries")
-                    ? "text-white bg-border-default"
-                    : "text-text-secondary hover:text-white hover:bg-portal-card-hover"
-                }`}
+                active={isActive("/inquiries")}
+                disabled={demoOnlyDisabled}
+                disabledTitle={comingSoonTitle}
               >
                 Inquiries
-              </Link>
-              <Link
+              </NavLink>
+              <NavLink
                 to="/updates"
-                className={`px-2.5 py-1.5 text-sm font-medium rounded-portal-xs transition-colors ${
-                  isActive("/updates")
-                    ? "text-white bg-border-default"
-                    : "text-text-secondary hover:text-white hover:bg-portal-card-hover"
-                }`}
+                active={isActive("/updates")}
+                disabled={demoOnlyDisabled}
+                disabledTitle={comingSoonTitle}
               >
                 Updates
-              </Link>
+              </NavLink>
             </nav>
           </div>
 

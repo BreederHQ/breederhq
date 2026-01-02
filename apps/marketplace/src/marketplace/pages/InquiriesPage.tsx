@@ -2,6 +2,7 @@
 // Buyer activity surface for sent inquiries
 import * as React from "react";
 import { Link } from "react-router-dom";
+import { isDemoMode, setDemoMode } from "../../demo/demoMode";
 import { getInquiries, type InquiryEntry, type InquiryStatus } from "../../demo/inquiryOutbox";
 
 const STATUS_LABELS: Record<InquiryStatus, string> = {
@@ -18,20 +19,74 @@ const STATUS_COLORS: Record<InquiryStatus, string> = {
 
 /**
  * Inquiries page - view sent inquiries and their status.
+ * In demo mode: shows localStorage-backed inquiry outbox.
+ * In real mode: shows coming soon state.
  */
 export function InquiriesPage() {
   const [inquiries, setInquiries] = React.useState<InquiryEntry[]>([]);
   const [filter, setFilter] = React.useState<InquiryStatus | "all">("all");
+  const demoMode = isDemoMode();
 
-  // Load inquiries and poll for updates
+  // Load inquiries and poll for updates (demo mode only)
   React.useEffect(() => {
+    if (!demoMode) return;
+
     const load = () => setInquiries(getInquiries());
     load();
 
     // Poll every 2 seconds to catch status updates
     const interval = setInterval(load, 2000);
     return () => clearInterval(interval);
-  }, []);
+  }, [demoMode]);
+
+  // Handle enabling demo mode
+  const handleEnableDemo = () => {
+    setDemoMode(true);
+    window.location.reload();
+  };
+
+  // Real mode: show coming soon state
+  if (!demoMode) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-[28px] font-bold text-white tracking-tight leading-tight">
+            Inquiries
+          </h1>
+          <p className="text-sm text-text-tertiary mt-1">
+            View your sent inquiries and responses.
+          </p>
+        </div>
+
+        <div className="rounded-portal border border-border-subtle bg-portal-card p-8 text-center">
+          <div className="w-12 h-12 mx-auto mb-4 rounded-full bg-border-default flex items-center justify-center">
+            <svg className="w-6 h-6 text-text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+            </svg>
+          </div>
+          <h2 className="text-lg font-semibold text-white mb-2">Inquiry tracking is coming soon</h2>
+          <p className="text-sm text-text-tertiary mb-6 max-w-md mx-auto">
+            When you send inquiries to breeders, they will appear here. In the meantime, browse breeders to find animals.
+          </p>
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+            <Link
+              to="/breeders"
+              className="inline-flex items-center px-5 py-2.5 rounded-portal-xs bg-accent text-white text-sm font-medium hover:bg-accent-hover transition-colors"
+            >
+              Browse breeders
+            </Link>
+            <button
+              type="button"
+              onClick={handleEnableDemo}
+              className="text-sm text-text-tertiary hover:text-white transition-colors"
+            >
+              Preview with demo data
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // Filter inquiries
   const filteredInquiries = filter === "all"
@@ -55,7 +110,7 @@ export function InquiriesPage() {
       </div>
 
       {inquiries.length === 0 ? (
-        // Empty state
+        // Empty state (demo mode but no inquiries sent yet)
         <div className="rounded-portal border border-border-subtle bg-portal-card p-8 text-center">
           <div className="w-12 h-12 mx-auto mb-4 rounded-full bg-border-default flex items-center justify-center">
             <svg className="w-6 h-6 text-text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor">

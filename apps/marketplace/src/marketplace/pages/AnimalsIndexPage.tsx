@@ -2,7 +2,7 @@
 // Animals browse page - listing-centric view with demo mode support
 import * as React from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { isDemoMode } from "../../demo/demoMode";
+import { isDemoMode, setDemoMode } from "../../demo/demoMode";
 import { getAllMockListings, simulateDelay } from "../../demo/mockData";
 import { formatCents } from "../../utils/format";
 import type { PublicOffspringGroupListingDTO } from "../../api/types";
@@ -10,7 +10,7 @@ import type { PublicOffspringGroupListingDTO } from "../../api/types";
 /**
  * Animals index page - browse available animals.
  * In demo mode: shows aggregated listings from all mock breeders.
- * In real mode: shows empty state (API not yet available).
+ * In real mode: shows coming soon state with CTA to breeders.
  */
 export function AnimalsIndexPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -59,7 +59,13 @@ export function AnimalsIndexPage() {
     fetchData();
   }, [demoMode, search]);
 
-  // Real mode: show empty state
+  // Handle enabling demo mode
+  const handleEnableDemo = () => {
+    setDemoMode(true);
+    window.location.reload();
+  };
+
+  // Real mode: show coming soon state
   if (!demoMode) {
     return (
       <div className="space-y-6">
@@ -78,16 +84,25 @@ export function AnimalsIndexPage() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
             </svg>
           </div>
-          <h2 className="text-lg font-semibold text-white mb-2">Animals browse connects when enabled</h2>
+          <h2 className="text-lg font-semibold text-white mb-2">Animals browse is coming soon</h2>
           <p className="text-sm text-text-tertiary mb-6 max-w-md mx-auto">
-            The Marketplace Listings Index API will power this view. Until then, browse animals through individual breeders.
+            We're building a unified marketplace experience. In the meantime, browse animals through individual breeders.
           </p>
-          <Link
-            to="/breeders"
-            className="inline-flex items-center px-5 py-2.5 rounded-portal-xs bg-accent text-white text-sm font-medium hover:bg-accent-hover transition-colors"
-          >
-            Browse breeders
-          </Link>
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+            <Link
+              to="/breeders"
+              className="inline-flex items-center px-5 py-2.5 rounded-portal-xs bg-accent text-white text-sm font-medium hover:bg-accent-hover transition-colors"
+            >
+              Browse breeders
+            </Link>
+            <button
+              type="button"
+              onClick={handleEnableDemo}
+              className="text-sm text-text-tertiary hover:text-white transition-colors"
+            >
+              Preview with demo data
+            </button>
+          </div>
         </div>
       </div>
     );
