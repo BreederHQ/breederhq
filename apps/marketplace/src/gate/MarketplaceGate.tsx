@@ -1,13 +1,14 @@
 // apps/marketplace/src/gate/MarketplaceGate.tsx
 import * as React from "react";
-import { useLocation } from "react-router-dom";
-import { apiGet } from "../shared/http/apiClient";
-import { ApiError } from "../shared/http/ApiError";
-import { getUserFacingMessage } from "../shared/errors/userMessages";
-import { MarketplaceAuthPage } from "../shells/standalone/MarketplaceAuthPage";
-import { StandaloneShell } from "../shells/standalone/StandaloneShell";
+import { Routes, Route, useLocation } from "react-router-dom";
+import { apiGet, ApiError } from "../api/client";
+import { getUserMessage } from "../api/errors";
+import { AuthPage } from "../auth/AuthPage";
+import { MarketplaceLayout } from "../layout/MarketplaceLayout";
 import { AccessNotAvailable } from "./AccessNotAvailable";
-import { MarketplaceRoutes } from "../core/MarketplaceRoutes";
+import { ProgramsPage } from "../marketplace/pages/ProgramsPage";
+import { ProgramPage } from "../marketplace/pages/ProgramPage";
+import { ListingPage } from "../marketplace/pages/ListingPage";
 
 type GateState =
   | { status: "loading" }
@@ -67,6 +68,22 @@ function GateError({ message, onRetry }: { message: string; onRetry: () => void 
 }
 
 /**
+ * Route tree for authenticated/entitled marketplace users.
+ */
+function MarketplaceRoutes() {
+  return (
+    <Routes>
+      <Route path="/" element={<ProgramsPage />} />
+      <Route path="/programs/:programSlug" element={<ProgramPage />} />
+      <Route
+        path="/programs/:programSlug/offspring-groups/:listingSlug"
+        element={<ListingPage />}
+      />
+    </Routes>
+  );
+}
+
+/**
  * Single source of truth for marketplace access gating.
  * Checks /api/v1/marketplace/me and renders appropriate state.
  */
@@ -82,13 +99,13 @@ export function MarketplaceGate() {
     setState({ status: "loading" });
 
     try {
-      const { data, status } = await apiGet<MarketplaceMeResponse>(
+      const { data } = await apiGet<MarketplaceMeResponse>(
         "/api/v1/marketplace/me"
       );
 
       // DEV-only diagnostic trace (once per page load / retry)
       if (import.meta.env.DEV && !hasLoggedRef.current) {
-        console.log("[marketplace/me]", { status, body: data });
+        console.log("[marketplace/me]", { body: data });
         hasLoggedRef.current = true;
       }
 
@@ -114,7 +131,7 @@ export function MarketplaceGate() {
       // DEV-only diagnostic trace for errors
       if (import.meta.env.DEV && !hasLoggedRef.current) {
         if (err instanceof ApiError) {
-          console.log("[marketplace/me]", { status: err.status, body: null, error: err.code });
+          console.log("[marketplace/me]", { status: err.status, body: null });
         }
         hasLoggedRef.current = true;
       }
@@ -134,7 +151,7 @@ export function MarketplaceGate() {
       }
 
       // Other errors - show error state with user-facing message
-      const message = getUserFacingMessage(err, "Unable to verify access. Try again.");
+      const message = getUserMessage(err);
       setState({ status: "error", message });
     }
   }, []);
@@ -161,22 +178,22 @@ export function MarketplaceGate() {
 
   // Unauthenticated - show auth page with returnTo path
   if (state.status === "unauthenticated") {
-    return <MarketplaceAuthPage returnToPath={attemptedPath} />;
+    return <AuthPage returnToPath={attemptedPath} />;
   }
 
   // Authenticated but not entitled
   if (state.status === "not_entitled") {
     return (
-      <StandaloneShell authenticated={true}>
+      <MarketplaceLayout authenticated={true}>
         <AccessNotAvailable />
-      </StandaloneShell>
+      </MarketplaceLayout>
     );
   }
 
   // Entitled - show routes inside shell
   return (
-    <StandaloneShell authenticated={true}>
+    <MarketplaceLayout authenticated={true}>
       <MarketplaceRoutes />
-    </StandaloneShell>
+    </MarketplaceLayout>
   );
 }

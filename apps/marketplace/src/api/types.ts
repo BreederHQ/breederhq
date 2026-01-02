@@ -1,4 +1,4 @@
-// apps/marketplace/src/ui/types.ts
+// apps/marketplace/src/api/types.ts
 // Minimal DTO types matching backend contract for marketplace UI
 
 export interface PublicProgramSummaryDTO {
@@ -58,4 +58,9 @@ export interface ListingsResponse {
   total: number;
   page: number;
   limit: number;
+}
+
+export interface MarketplaceMeResponse {
+  userId: string | null;
+  marketplaceEntitled: boolean;
 }

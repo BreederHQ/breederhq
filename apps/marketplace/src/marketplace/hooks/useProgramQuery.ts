@@ -1,7 +1,7 @@
-// apps/marketplace/src/ui/hooks/useProgramQuery.ts
+// apps/marketplace/src/marketplace/hooks/useProgramQuery.ts
 import * as React from "react";
-import { getProgram } from "../api";
-import type { PublicProgramDTO } from "../types";
+import { getProgram } from "../../api/client";
+import type { PublicProgramDTO } from "../../api/types";
 
 interface UseProgramQueryResult {
   data: PublicProgramDTO | null;

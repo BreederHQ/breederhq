@@ -1,8 +1,8 @@
-// apps/marketplace/src/ui/pages/ListingPage.tsx
+// apps/marketplace/src/marketplace/pages/ListingPage.tsx
 import * as React from "react";
 import { useParams, Link } from "react-router-dom";
-import { getListing } from "../api";
-import type { ListingDetailDTO, PublicOffspringDTO } from "../types";
+import { getListing } from "../../api/client";
+import type { ListingDetailDTO, PublicOffspringDTO } from "../../api/types";
 
 /**
  * Listing detail page with offspring cards.

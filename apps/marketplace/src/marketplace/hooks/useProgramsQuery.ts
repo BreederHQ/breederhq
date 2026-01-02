@@ -1,7 +1,7 @@
-// apps/marketplace/src/ui/hooks/useProgramsQuery.ts
+// apps/marketplace/src/marketplace/hooks/useProgramsQuery.ts
 import * as React from "react";
-import { getPrograms } from "../api";
-import type { ProgramsResponse } from "../types";
+import { getPrograms } from "../../api/client";
+import type { ProgramsResponse } from "../../api/types";
 
 const LIMIT = 24;
 const DEBOUNCE_MS = 300;

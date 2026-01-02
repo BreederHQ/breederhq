@@ -1,7 +1,7 @@
-// apps/marketplace/src/ui/hooks/useProgramListingsQuery.ts
+// apps/marketplace/src/marketplace/hooks/useProgramListingsQuery.ts
 import * as React from "react";
-import { getProgramListings } from "../api";
-import type { ListingsResponse } from "../types";
+import { getProgramListings } from "../../api/client";
+import type { ListingsResponse } from "../../api/types";
 
 interface UseProgramListingsQueryResult {
   data: ListingsResponse | null;

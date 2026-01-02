@@ -23,6 +23,7 @@
   },
   "scripts": {
     "dev": "vite",
+    "prebuild": "node scripts/check-no-legacy-imports.cjs",
     "build": "vite build",
     "preview": "vite preview --port 5178"
   }

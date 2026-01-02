@@ -1,4 +1,4 @@
-// apps/marketplace/src/shells/standalone/MarketplaceAuthPage.tsx
+// apps/marketplace/src/auth/AuthPage.tsx
 // Auth landing page for marketplace access. Matches @bhq/ui LoginPage styling.
 import * as React from "react";
 
@@ -85,7 +85,7 @@ const styles = {
  * Auth landing page shown when user is not authenticated.
  * Provides links to login/register with returnTo preserved.
  */
-export function MarketplaceAuthPage({ returnToPath }: Props) {
+export function AuthPage({ returnToPath }: Props) {
   const encodedReturnTo = encodeURIComponent(returnToPath);
 
   const signInUrl = `/auth/login?returnTo=${encodedReturnTo}`;

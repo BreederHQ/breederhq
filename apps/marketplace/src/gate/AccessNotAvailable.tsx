@@ -1,6 +1,6 @@
 // apps/marketplace/src/gate/AccessNotAvailable.tsx
 import * as React from "react";
-import { joinApi } from "../shared/http/baseUrl";
+import { joinApi } from "../api/client";
 
 // Inline styles matching @bhq/ui LoginPage for consistent auth-card styling
 const fontStack =

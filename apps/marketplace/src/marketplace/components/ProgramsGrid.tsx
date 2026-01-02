@@ -1,7 +1,7 @@
-// apps/marketplace/src/ui/components/ProgramsGrid.tsx
+// apps/marketplace/src/marketplace/components/ProgramsGrid.tsx
 import * as React from "react";
 import { ProgramTile } from "./ProgramTile";
-import type { PublicProgramSummaryDTO } from "../types";
+import type { PublicProgramSummaryDTO } from "../../api/types";
 
 interface ProgramsGridProps {
   programs: PublicProgramSummaryDTO[] | null;

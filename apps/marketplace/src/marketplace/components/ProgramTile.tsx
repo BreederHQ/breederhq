@@ -1,4 +1,4 @@
-// apps/marketplace/src/ui/components/ProgramTile.tsx
+// apps/marketplace/src/marketplace/components/ProgramTile.tsx
 import * as React from "react";
 import { Link } from "react-router-dom";
 

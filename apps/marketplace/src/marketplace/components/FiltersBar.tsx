@@ -1,4 +1,4 @@
-// apps/marketplace/src/ui/components/FiltersBar.tsx
+// apps/marketplace/src/marketplace/components/FiltersBar.tsx
 import * as React from "react";
 
 interface FiltersBarProps {

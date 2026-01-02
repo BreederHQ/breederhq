@@ -1,4 +1,4 @@
-// apps/marketplace/src/ui/components/Pager.tsx
+// apps/marketplace/src/marketplace/components/Pager.tsx
 import * as React from "react";
 
 interface PagerProps {

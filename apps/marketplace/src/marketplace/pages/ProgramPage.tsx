@@ -1,9 +1,9 @@
-// apps/marketplace/src/ui/pages/ProgramPage.tsx
+// apps/marketplace/src/marketplace/pages/ProgramPage.tsx
 import * as React from "react";
 import { useParams, Link } from "react-router-dom";
 import { useProgramQuery } from "../hooks/useProgramQuery";
 import { useProgramListingsQuery } from "../hooks/useProgramListingsQuery";
-import type { PublicOffspringGroupListingDTO } from "../types";
+import type { PublicOffspringGroupListingDTO } from "../../api/types";
 
 /**
  * Program profile page with listings.

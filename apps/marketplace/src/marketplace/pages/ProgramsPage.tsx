@@ -1,4 +1,4 @@
-// apps/marketplace/src/ui/pages/ProgramsPage.tsx
+// apps/marketplace/src/marketplace/pages/ProgramsPage.tsx
 import * as React from "react";
 import { useSearchParams } from "react-router-dom";
 import { useProgramsQuery } from "../hooks/useProgramsQuery";

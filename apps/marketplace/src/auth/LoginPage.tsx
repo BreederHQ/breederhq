@@ -1,11 +1,10 @@
-// apps/marketplace/src/core/pages/AuthRegisterPage.tsx
-// Real registration page matching @bhq/ui LoginPage styling.
-// Uses same API endpoint: POST /api/v1/auth/register
+// apps/marketplace/src/auth/LoginPage.tsx
+// Real login page matching @bhq/ui LoginPage styling.
+// Uses same API endpoint: POST /api/v1/auth/login
 // Post-auth verification: calls GET /api/v1/marketplace/me to confirm session
 import * as React from "react";
 import { useSearchParams } from "react-router-dom";
-import { joinApi } from "../../shared/http/baseUrl";
-import { safeReadJson } from "../../shared/http/safeJson";
+import { joinApi, safeReadJson } from "../api/client";
 
 // Inline styles matching @bhq/ui LoginPage for consistent rendering
 const fontStack =
@@ -99,12 +98,6 @@ const styles = {
     color: "hsl(var(--secondary))",
     textDecoration: "none",
   } as React.CSSProperties,
-  note: {
-    marginTop: "1rem",
-    fontSize: "0.75rem",
-    color: "hsl(var(--secondary))",
-    textAlign: "center",
-  } as React.CSSProperties,
 };
 
 /**
@@ -117,19 +110,6 @@ function getSafeReturnTo(searchParams: URLSearchParams): string {
     return returnTo;
   }
   return "/";
-}
-
-/**
- * Map backend error codes to user-friendly messages.
- */
-function mapRegisterError(json: { error?: string; message?: string }): string {
-  if (json?.error === "first_name_required") return "First name is required.";
-  if (json?.error === "last_name_required") return "Last name is required.";
-  if (json?.error === "email_and_password_required") return "Email and password are required.";
-  if (json?.error === "password_too_short") return "Password must be at least 8 characters.";
-  if (json?.message) return json.message;
-  if (json?.error) return json.error;
-  return "Registration failed. Please try again.";
 }
 
 /**
@@ -148,26 +128,20 @@ function isAuthenticated(body: any): boolean {
 }
 
 /**
- * Real registration page with form submission.
- * After successful registration, verifies session via /marketplace/me before navigating.
+ * Real login page with form submission.
+ * After successful login, verifies session via /marketplace/me before navigating.
  * On any login success (200), always navigates away - never leaves user stuck.
  */
-export function AuthRegisterPage() {
+export function LoginPage() {
   const [searchParams] = useSearchParams();
   const returnTo = getSafeReturnTo(searchParams);
 
-  const [firstName, setFirstName] = React.useState("");
-  const [lastName, setLastName] = React.useState("");
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
   const [error, setError] = React.useState<string | null>(null);
   const [loading, setLoading] = React.useState(false);
 
-  const formValid =
-    firstName.trim().length > 0 &&
-    lastName.trim().length > 0 &&
-    email.trim().length > 0 &&
-    password.length >= 8;
+  const formValid = email.trim().length > 0 && password.length > 0;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -185,36 +159,7 @@ export function AuthRegisterPage() {
         headers["x-csrf-token"] = decodeURIComponent(xsrf);
       }
 
-      // Step 1: Register
-      const registerRes = await fetch(joinApi("/api/v1/auth/register"), {
-        method: "POST",
-        credentials: "include",
-        headers,
-        body: JSON.stringify({
-          email: email.trim(),
-          password,
-          firstName: firstName.trim(),
-          lastName: lastName.trim(),
-        }),
-      });
-
-      if (!registerRes.ok) {
-        let msg = "Registration failed. Please try again.";
-        try {
-          const json = await registerRes.json();
-          msg = mapRegisterError(json);
-        } catch {
-          // ignore parse error
-        }
-        setError(msg);
-        setLoading(false);
-        return;
-      }
-
-      // Registration succeeded - clear any error
-      setError(null);
-
-      // Step 2: Auto-login after successful registration
+      // Step 1: Login
       const loginRes = await fetch(joinApi("/api/v1/auth/login"), {
         method: "POST",
         credentials: "include",
@@ -222,17 +167,17 @@ export function AuthRegisterPage() {
         body: JSON.stringify({ email: email.trim(), password }),
       });
 
+      // If login fails (non-2xx), show error and stop
       if (!loginRes.ok) {
-        // Registration succeeded but login failed
-        // Redirect to login page
-        window.location.assign(`/auth/login?returnTo=${encodeURIComponent(returnTo)}`);
+        setError("We couldn't sign you in with that email and password.");
+        setLoading(false);
         return;
       }
 
-      // Login succeeded - clear any error
+      // Login succeeded (2xx) - clear any previous error immediately
       setError(null);
 
-      // Step 3: Post-auth verification - confirm session is valid
+      // Step 2: Post-auth verification - confirm session is valid
       // Even if this fails, we navigate away because login succeeded
       const meRes = await fetch(joinApi("/api/v1/marketplace/me"), {
         method: "GET",
@@ -268,7 +213,7 @@ export function AuthRegisterPage() {
         window.location.assign("/");
       }
     } catch {
-      setError("Network error. Please try again.");
+      setError("We couldn't sign you in with that email and password.");
       setLoading(false);
     }
   };
@@ -276,8 +221,8 @@ export function AuthRegisterPage() {
   return (
     <div style={styles.page}>
       <div style={styles.card}>
-        <h1 style={styles.heading}>Create Account</h1>
-        <p style={styles.subtitle}>Join the Marketplace to browse breeding programs</p>
+        <h1 style={styles.heading}>Sign In</h1>
+        <p style={styles.subtitle}>Sign in to access the Marketplace</p>
 
         <form onSubmit={handleSubmit} style={styles.form}>
           {error && (
@@ -285,36 +230,6 @@ export function AuthRegisterPage() {
               {error}
             </div>
           )}
-
-          <label style={styles.label}>
-            <span style={styles.labelText}>First name</span>
-            <input
-              type="text"
-              value={firstName}
-              onChange={(e) => setFirstName(e.target.value)}
-              style={styles.input}
-              placeholder="First name"
-              autoComplete="given-name"
-              required
-              disabled={loading}
-              aria-label="First name"
-            />
-          </label>
-
-          <label style={styles.label}>
-            <span style={styles.labelText}>Last name</span>
-            <input
-              type="text"
-              value={lastName}
-              onChange={(e) => setLastName(e.target.value)}
-              style={styles.input}
-              placeholder="Last name"
-              autoComplete="family-name"
-              required
-              disabled={loading}
-              aria-label="Last name"
-            />
-          </label>
 
           <label style={styles.label}>
             <span style={styles.labelText}>Email</span>
@@ -338,9 +253,8 @@ export function AuthRegisterPage() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               style={styles.input}
-              placeholder="At least 8 characters"
-              autoComplete="new-password"
-              minLength={8}
+              placeholder="Your password"
+              autoComplete="current-password"
               required
               disabled={loading}
               aria-label="Password"
@@ -356,12 +270,12 @@ export function AuthRegisterPage() {
             }}
             aria-busy={loading}
           >
-            {loading ? "Creating account..." : "Create account"}
+            {loading ? "Signing in..." : "Sign in"}
           </button>
 
           <div style={styles.linkRow}>
             <a
-              href={`/auth/login?returnTo=${encodeURIComponent(returnTo)}`}
+              href={`/auth/register?returnTo=${encodeURIComponent(returnTo)}`}
               style={styles.link}
               onMouseEnter={(e) => {
                 e.currentTarget.style.color = "hsl(var(--brand-orange))";
@@ -370,13 +284,9 @@ export function AuthRegisterPage() {
                 e.currentTarget.style.color = "hsl(var(--secondary))";
               }}
             >
-              Already have an account? Sign in
+              Don't have an account? Create one
             </a>
           </div>
-
-          <p style={styles.note}>
-            Create an account to browse programs and listings.
-          </p>
         </form>
       </div>
     </div>
