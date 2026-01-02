@@ -6,9 +6,13 @@ export default function PortalLogoutPage() {
   React.useEffect(() => {
     async function logout() {
       try {
+        const xsrf = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]+)/)?.[1];
         await fetch("/api/v1/auth/logout", {
           method: "POST",
           credentials: "include",
+          headers: {
+            ...(xsrf ? { "x-csrf-token": decodeURIComponent(xsrf) } : {}),
+          },
         });
       } catch (err) {
         console.error("Logout error:", err);

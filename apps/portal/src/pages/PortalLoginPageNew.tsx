@@ -40,19 +40,14 @@ export default function PortalLoginPageNew() {
       });
 
       if (!res.ok) {
-        let msg = "Invalid credentials";
-        try {
-          const j = await res.json();
-          if (j?.message) msg = j.message;
-        } catch {}
-        setError(msg);
+        setError("We couldn't sign you in with that email and password.");
+        setLoading(false);
         return;
       }
 
       window.location.assign(returnUrl);
     } catch {
-      setError("Network error");
-    } finally {
+      setError("We couldn't sign you in with that email and password.");
       setLoading(false);
     }
   };
@@ -68,7 +63,7 @@ export default function PortalLoginPageNew() {
             minHeight: "80vh",
           }}
         >
-          <div style={{ width: "100%", maxWidth: "400px" }}>
+          <div style={{ width: "100%", maxWidth: "420px" }}>
             <h1
               style={{
                 fontSize: "var(--portal-font-size-xl)",
@@ -82,24 +77,32 @@ export default function PortalLoginPageNew() {
             </h1>
             <SectionCard>
               <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "var(--portal-space-3)" }}>
-                {error && <InlineNotice type="error">{error}</InlineNotice>}
+                {error && (
+                  <div role="alert" aria-live="polite">
+                    <InlineNotice type="error">{error}</InlineNotice>
+                  </div>
+                )}
                 <TextInput
                   label="Email"
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="you@example.com"
+                  autoComplete="email"
                   required
+                  aria-label="Email address"
                 />
                 <PasswordInput
                   label="Password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="Your password"
+                  autoComplete="current-password"
                   required
+                  aria-label="Password"
                 />
-                <Button type="submit" disabled={loading} style={{ width: "100%" }}>
-                  {loading ? "Signing in..." : "Sign In"}
+                <Button type="submit" disabled={loading} style={{ width: "100%" }} aria-busy={loading}>
+                  {loading ? "Signing in..." : "Sign in"}
                 </Button>
                 <a
                   href="/forgot-password"
