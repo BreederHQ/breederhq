@@ -140,29 +140,7 @@ export default function RollupWithPhaseTogglesV2({
 
   return (
     <div className={className}>
-      {/* Phase Toggles Section */}
-      <div className="mb-4 rounded-xl bg-black/10 p-3">
-        <div className="text-xs font-medium text-secondary mb-2">Phase Visibility</div>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-          {STATUS_ORDER.map(status => {
-            const state = phaseStates[status];
-            if (state.total === 0) return null;
-            return (
-              <PhaseToggleCheckbox
-                key={status}
-                label={STATUS_LABELS[status]}
-                checked={state.checked}
-                indeterminate={state.indeterminate}
-                count={state.count}
-                total={state.total}
-                onChange={() => handlePhaseToggle(status)}
-              />
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Rollup Chart */}
+      {/* Rollup Chart - now first */}
       <RollupGantt
         items={realPlans}
         prefsOverride={prefsOverride}
@@ -186,7 +164,29 @@ export default function RollupWithPhaseTogglesV2({
         className="w-full"
       />
 
-      {/* Extended Plan Selection UI */}
+      {/* Phase Visibility - now below chart */}
+      <div className="mt-4 rounded-xl bg-black/10 p-3">
+        <div className="text-xs font-medium text-secondary mb-2">Phase Visibility</div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+          {STATUS_ORDER.map(status => {
+            const state = phaseStates[status];
+            if (state.total === 0) return null;
+            return (
+              <PhaseToggleCheckbox
+                key={status}
+                label={STATUS_LABELS[status]}
+                checked={state.checked}
+                indeterminate={state.indeterminate}
+                count={state.count}
+                total={state.total}
+                onChange={() => handlePhaseToggle(status)}
+              />
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Individual Plans - two-column list only (removed single-column duplicate) */}
       <div className="mt-4 rounded-xl bg-black/10 p-3">
         <div className="flex items-center gap-3 mb-2">
           <div className="text-xs font-medium text-secondary">Individual Plans</div>

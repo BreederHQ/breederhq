@@ -43,34 +43,38 @@ export default function YourBreedingPlansPageV2({ plans = [], initialMode = "rol
 
   return (
     <div className="p-4 max-w-7xl mx-auto">
-      {/* Page Header */}
-      <div className="mb-4">
-        <h1 className="text-xl font-semibold text-primary">Your Breeding Plans</h1>
-        <p className="text-sm text-secondary mt-1">
-          Plan and track your breeding program timeline
-        </p>
+      {/* Page Header with mode toggle */}
+      <div className="mb-4 flex items-center justify-between">
+        <div>
+          <h1 className="text-xl font-semibold text-primary">Your Breeding Plans</h1>
+          <p className="text-sm text-secondary mt-1">
+            Plan and track your breeding program timeline
+          </p>
+        </div>
+        <PlannerModeToggleV2 mode={mode} onChange={setMode} />
       </div>
 
-      {/* Main Content Card */}
-      <SectionCard
-        title="Planner"
-        right={<PlannerModeToggleV2 mode={mode} onChange={setMode} />}
-      >
-        {!hasPlans ? (
+      {/* Content - conditional wrapper based on mode */}
+      {!hasPlans ? (
+        <SectionCard title={<span><span>Planner</span></span>}>
           <EmptyState />
-        ) : mode === "rollup" ? (
+        </SectionCard>
+      ) : mode === "rollup" ? (
+        // Rollup mode: keep the outer SectionCard wrapper
+        <SectionCard title={<span><span>Planner</span></span>}>
           <RollupWithPhaseTogglesV2
             plans={plans}
             allowSynthetic={false}
             className="w-full"
           />
-        ) : (
-          <PhaseGroupedPerPlanV2
-            plans={plans}
-            className="w-full"
-          />
-        )}
-      </SectionCard>
+        </SectionCard>
+      ) : (
+        // Per Plan mode: no outer wrapper - phase cards are the primary surfaces
+        <PhaseGroupedPerPlanV2
+          plans={plans}
+          className="w-full"
+        />
+      )}
     </div>
   );
 }

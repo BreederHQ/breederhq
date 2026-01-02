@@ -182,6 +182,11 @@ const MOCK_FEMALES: WhatIfFemale[] = [
   { id: 112, name: "Mittens", species: "Cat", femaleCycleLenOverrideDays: 14 },
 ];
 
+const TABS: { key: PreviewPage; label: string }[] = [
+  { key: "breeding-plans", label: "Your Breeding Plans" },
+  { key: "what-if", label: "What If Planning" },
+];
+
 export function PlannerV2DevPreview() {
   const [currentPage, setCurrentPage] = React.useState<PreviewPage>("breeding-plans");
   const [useMockData, setUseMockData] = React.useState(true);
@@ -229,35 +234,48 @@ export function PlannerV2DevPreview() {
               DEV PREVIEW
             </span>
             <span className="text-sm font-medium text-amber-800 dark:text-amber-200">
-              Planner V2 Pages
+              Planner V2
             </span>
           </div>
 
-          <div className="flex items-center gap-4">
-            {/* Page selector */}
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-amber-700 dark:text-amber-300">Page:</span>
-              <select
-                value={currentPage}
-                onChange={(e) => setCurrentPage(e.target.value as PreviewPage)}
-                className="text-sm bg-white dark:bg-neutral-800 border border-amber-300 dark:border-amber-700 rounded px-2 py-1"
-              >
-                <option value="breeding-plans">Your Breeding Plans</option>
-                <option value="what-if">What If Planning</option>
-              </select>
-            </div>
+          {/* Mock data toggle */}
+          <label className="flex items-center gap-1.5 text-sm text-amber-700 dark:text-amber-300">
+            <input
+              type="checkbox"
+              checked={useMockData}
+              onChange={(e) => setUseMockData(e.target.checked)}
+              className="rounded"
+            />
+            Mock data
+          </label>
+        </div>
+      </div>
 
-            {/* Mock data toggle */}
-            <label className="flex items-center gap-1.5 text-sm text-amber-700 dark:text-amber-300">
-              <input
-                type="checkbox"
-                checked={useMockData}
-                onChange={(e) => setUseMockData(e.target.checked)}
-                className="rounded"
-              />
-              Mock data
-            </label>
-          </div>
+      {/* Tab navigation - styled like app navigation tabs */}
+      <div className="border-b border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800">
+        <div className="max-w-7xl mx-auto px-4">
+          <nav className="flex gap-1" aria-label="Planner tabs">
+            {TABS.map((tab) => {
+              const isActive = currentPage === tab.key;
+              return (
+                <button
+                  key={tab.key}
+                  onClick={() => setCurrentPage(tab.key)}
+                  className={[
+                    "relative px-4 py-3 text-sm font-medium transition-colors",
+                    isActive
+                      ? "text-primary"
+                      : "text-secondary hover:text-primary",
+                  ].join(" ")}
+                >
+                  {tab.label}
+                  {isActive && (
+                    <span className="absolute bottom-0 left-2 right-2 h-0.5 rounded-t bg-[hsl(var(--brand-orange,24_94%_50%))]" />
+                  )}
+                </button>
+              );
+            })}
+          </nav>
         </div>
       </div>
 
