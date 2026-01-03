@@ -15,12 +15,42 @@ import { UpdatesPage } from "../marketplace/pages/UpdatesPage";
 import { ProgramPage } from "../marketplace/pages/ProgramPage";
 import { ListingPage } from "../marketplace/pages/ListingPage";
 
+type GateStatus = "loading" | "unauthenticated" | "not_entitled" | "entitled" | "error";
+
 type GateState =
   | { status: "loading" }
   | { status: "unauthenticated" }
   | { status: "not_entitled" }
   | { status: "entitled" }
   | { status: "error"; message: string };
+
+/**
+ * Context for gate state - allows components to check if they're inside an entitled gate.
+ * This is used for DEV-only warnings and ensuring demo mode requires entitlement.
+ */
+interface GateContextValue {
+  status: GateStatus;
+  isEntitled: boolean;
+}
+
+const GateContext = React.createContext<GateContextValue | null>(null);
+
+/**
+ * Hook to get the current gate status.
+ * Returns null if not inside a MarketplaceGate.
+ */
+export function useGateStatus(): GateContextValue | null {
+  return React.useContext(GateContext);
+}
+
+/**
+ * Hook to check if user is entitled.
+ * For use in hooks/components that should only run when entitled.
+ */
+export function useIsEntitled(): boolean {
+  const ctx = React.useContext(GateContext);
+  return ctx?.isEntitled ?? false;
+}
 
 /**
  * Backend response shape from GET /api/v1/marketplace/me.
@@ -170,7 +200,16 @@ export function MarketplaceGate() {
     checkAccess();
   }, [checkAccess]);
 
-  // Loading state
+  // Compute context value
+  const contextValue = React.useMemo<GateContextValue>(
+    () => ({
+      status: state.status,
+      isEntitled: state.status === "entitled",
+    }),
+    [state.status]
+  );
+
+  // Loading state - no context provided, no routes rendered, no data fetches
   if (state.status === "loading") {
     return <GateLoadingSkeleton />;
   }
@@ -181,6 +220,7 @@ export function MarketplaceGate() {
   }
 
   // Unauthenticated - show auth page with returnTo path
+  // Note: AuthPage is outside the context as it shouldn't access protected data
   if (state.status === "unauthenticated") {
     return <AuthPage returnToPath={attemptedPath} />;
   }
@@ -188,16 +228,51 @@ export function MarketplaceGate() {
   // Authenticated but not entitled
   if (state.status === "not_entitled") {
     return (
-      <MarketplaceLayout authenticated={true}>
-        <AccessNotAvailable />
-      </MarketplaceLayout>
+      <GateContext.Provider value={contextValue}>
+        <MarketplaceLayout authenticated={true}>
+          <DevGateBanner status={state.status} />
+          <AccessNotAvailable />
+        </MarketplaceLayout>
+      </GateContext.Provider>
     );
   }
 
-  // Entitled - show routes inside shell
+  // Entitled - show routes inside shell with context
   return (
-    <MarketplaceLayout authenticated={true}>
-      <MarketplaceRoutes />
-    </MarketplaceLayout>
+    <GateContext.Provider value={contextValue}>
+      <MarketplaceLayout authenticated={true}>
+        <DevGateBanner status={state.status} />
+        <MarketplaceRoutes />
+      </MarketplaceLayout>
+    </GateContext.Provider>
+  );
+}
+
+/**
+ * DEV-only banner showing gate status for debugging.
+ * Only renders in development mode.
+ * Also adds a data-gate-status attribute used by the API client for DEV warnings.
+ */
+function DevGateBanner({ status }: { status: GateStatus }) {
+  // Only show in development
+  if (import.meta.env.PROD) {
+    return null;
+  }
+
+  const statusColors: Record<GateStatus, string> = {
+    loading: "bg-yellow-500/20 text-yellow-300 border-yellow-500/30",
+    unauthenticated: "bg-red-500/20 text-red-300 border-red-500/30",
+    not_entitled: "bg-orange-500/20 text-orange-300 border-orange-500/30",
+    entitled: "bg-green-500/20 text-green-300 border-green-500/30",
+    error: "bg-red-500/20 text-red-300 border-red-500/30",
+  };
+
+  return (
+    <div
+      data-gate-status={status}
+      className={`fixed top-0 right-0 z-50 px-3 py-1 text-xs font-mono border-l border-b rounded-bl ${statusColors[status]}`}
+    >
+      DEV: gate={status}
+    </div>
   );
 }

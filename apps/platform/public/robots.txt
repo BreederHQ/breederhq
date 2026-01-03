@@ -1,0 +1,5 @@
+User-agent: *
+Disallow: /
+Allow: /auth/
+Allow: /auth/login
+Crawl-delay: 10

@@ -152,6 +152,7 @@ async function request(url: string, init: RequestInit = {}) {
   if (!res.ok) {
     const err: any = new Error((json as any)?.message || (json as any)?.error || text || `HTTP ${res.status}`);
     err.status = res.status;
+    err.code = (json as any)?.code;
     err.body = json ?? text;
     throw err;
   }
@@ -224,8 +225,16 @@ export function makeApi(base?: string) {
     },
 
     tags: {
-      list: (type: "contact" = "contact") =>
-        request(`${root}/tags` + qs({ type }), { method: "GET" }),
+      list: (params: { module?: string; q?: string; page?: number; limit?: number; includeArchived?: boolean } = {}) =>
+        request(`${root}/tags` + qs(params), { method: "GET" }),
+      stats: (params: { includeArchived?: boolean } = {}) =>
+        request(`${root}/tags/stats` + qs(params), { method: "GET" }),
+      create: (data: { name: string; module: string; color?: string | null }) =>
+        request(`${root}/tags`, { method: "POST", body: JSON.stringify(data) }),
+      update: (id: ID, data: { name?: string; color?: string | null; isArchived?: boolean }) =>
+        request(`${root}/tags/${enc(id)}`, { method: "PATCH", body: JSON.stringify(data) }),
+      delete: (id: ID) =>
+        request(`${root}/tags/${enc(id)}`, { method: "DELETE" }),
     },
 
     organizations: {

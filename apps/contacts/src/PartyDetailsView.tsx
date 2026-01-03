@@ -10,6 +10,8 @@ import {
   PillToggle,
   Badge,
   Button,
+  TagPicker,
+  type TagOption,
 } from "@bhq/ui";
 import { FinanceTab } from "@bhq/ui/components/Finance";
 import { PortalAccessTab } from "@bhq/ui/components/PortalAccess";
@@ -517,6 +519,12 @@ export function PartyDetailsView({
   const [animals, setAnimals] = React.useState<AnimalRow[] | null>(null);
   const [animalsErr, setAnimalsErr] = React.useState<string | null>(null);
 
+  // Tags state
+  const [availableTags, setAvailableTags] = React.useState<TagOption[]>([]);
+  const [selectedTags, setSelectedTags] = React.useState<TagOption[]>([]);
+  const [tagsLoading, setTagsLoading] = React.useState(false);
+  const [tagsError, setTagsError] = React.useState<string | null>(null);
+
   React.useEffect(() => {
     if (activeTab !== "animals") {
       setAnimals(null);
@@ -575,6 +583,100 @@ export function PartyDetailsView({
     if (activeTab !== "animals" || animals !== null) return;
     loadAnimals();
   }, [activeTab, animals, loadAnimals]);
+
+  // Load tags when component mounts or entity changes
+  const loadTags = React.useCallback(async () => {
+    const module = row.kind === "CONTACT" ? "CONTACT" : "ORGANIZATION";
+    const entityId = row.kind === "CONTACT" ? row.contactId : row.organizationId;
+    if (!entityId) return;
+
+    setTagsLoading(true);
+    setTagsError(null);
+    try {
+      // Load available tags for this module
+      const availableRes = await api.tags.list({ module, limit: 200 });
+      const available = (availableRes?.items || []).map((t: any) => ({
+        id: Number(t.id),
+        name: String(t.name),
+        color: t.color ?? null,
+      }));
+      setAvailableTags(available);
+
+      // Load currently assigned tags using unified tags API
+      const target = row.kind === "CONTACT"
+        ? { contactId: entityId }
+        : { organizationId: entityId };
+      const assignedRes = await api.tags.listForEntity(target);
+      const assigned = (assignedRes || []).map((t: any) => ({
+        id: Number(t.id),
+        name: String(t.name),
+        color: t.color ?? null,
+      }));
+      setSelectedTags(assigned);
+    } catch (e: any) {
+      setTagsError(e?.message || "Failed to load tags");
+    } finally {
+      setTagsLoading(false);
+    }
+  }, [api, row.kind, row.contactId, row.organizationId]);
+
+  React.useEffect(() => {
+    loadTags();
+  }, [loadTags]);
+
+  // Tag assignment handlers
+  const handleTagSelect = React.useCallback(async (tag: TagOption) => {
+    const entityId = row.kind === "CONTACT" ? row.contactId : row.organizationId;
+    if (!entityId) return;
+
+    // Optimistic update
+    setSelectedTags((prev) => [...prev, tag]);
+    setTagsError(null);
+
+    try {
+      const target = row.kind === "CONTACT"
+        ? { contactId: entityId }
+        : { organizationId: entityId };
+      await api.tags.assign(tag.id, target);
+    } catch (e: any) {
+      // Rollback on error
+      setSelectedTags((prev) => prev.filter((t) => t.id !== tag.id));
+      setTagsError(e?.message || "Failed to assign tag");
+    }
+  }, [api, row.kind, row.contactId, row.organizationId]);
+
+  const handleTagRemove = React.useCallback(async (tag: TagOption) => {
+    const entityId = row.kind === "CONTACT" ? row.contactId : row.organizationId;
+    if (!entityId) return;
+
+    // Optimistic update
+    setSelectedTags((prev) => prev.filter((t) => t.id !== tag.id));
+    setTagsError(null);
+
+    try {
+      const target = row.kind === "CONTACT"
+        ? { contactId: entityId }
+        : { organizationId: entityId };
+      await api.tags.unassign(tag.id, target);
+    } catch (e: any) {
+      // Rollback on error
+      setSelectedTags((prev) => [...prev, tag]);
+      setTagsError(e?.message || "Failed to remove tag");
+    }
+  }, [api, row.kind, row.contactId, row.organizationId]);
+
+  const handleTagCreate = React.useCallback(async (name: string): Promise<TagOption> => {
+    const module = row.kind === "CONTACT" ? "CONTACT" : "ORGANIZATION";
+    const created = await api.tags.create({ name, module });
+    const newTag: TagOption = {
+      id: Number(created.id),
+      name: String(created.name),
+      color: created.color ?? null,
+    };
+    // Add to available tags list
+    setAvailableTags((prev) => [...prev, newTag]);
+    return newTag;
+  }, [api, row.kind]);
 
   // Compliance confirmation modal
   const [confirmReset, setConfirmReset] = React.useState<
@@ -762,6 +864,21 @@ export function PartyDetailsView({
                 </div>
               </SectionCard>
             )}
+
+            {/* Tags */}
+            <SectionCard title="Tags">
+              <TagPicker
+                availableTags={availableTags}
+                selectedTags={selectedTags}
+                onSelect={handleTagSelect}
+                onRemove={handleTagRemove}
+                onCreate={handleTagCreate}
+                loading={tagsLoading}
+                error={tagsError}
+                placeholder="Add tags..."
+                disabled={mode === "view"}
+              />
+            </SectionCard>
 
             {/* Address */}
             <SectionCard title="Address">

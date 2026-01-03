@@ -12,6 +12,35 @@ import type {
  */
 
 /**
+ * DEV-only warning tracker to prevent spam.
+ * Tracks which fetch URLs have already warned.
+ */
+const devWarnedFetches = new Set<string>();
+
+/**
+ * DEV-only: Log when a marketplace data fetch is attempted.
+ * This helps debug if data is being fetched before gate resolves.
+ */
+function devLogFetch(path: string): void {
+  if (import.meta.env.PROD) return;
+
+  // Only log once per path to avoid console spam
+  if (devWarnedFetches.has(path)) return;
+  devWarnedFetches.add(path);
+
+  // Check if gate context exists by looking for marker
+  const gateMarker = document.querySelector("[data-gate-status]");
+  const gateStatus = gateMarker?.getAttribute("data-gate-status") || "unknown";
+
+  if (gateStatus !== "entitled" && gateStatus !== "unknown") {
+    console.warn(
+      `[MarketplaceGate] DEV WARNING: Marketplace API fetch while gate=${gateStatus}: ${path}`,
+      "\nThis may indicate a data fetch before authentication/entitlement was confirmed."
+    );
+  }
+}
+
+/**
  * Get API base URL from environment or use relative path.
  */
 export function getApiBase(): string {
@@ -112,18 +141,21 @@ export async function getPrograms(params: GetProgramsParams): Promise<ProgramsRe
   const queryStr = query.toString();
   const path = `/api/v1/public/marketplace/programs${queryStr ? `?${queryStr}` : ""}`;
 
+  devLogFetch(path);
   const { data } = await apiGet<ProgramsResponse>(path);
   return data;
 }
 
 export async function getProgram(programSlug: string): Promise<PublicProgramDTO> {
   const path = `/api/v1/public/marketplace/programs/${encodeURIComponent(programSlug)}`;
+  devLogFetch(path);
   const { data } = await apiGet<PublicProgramDTO>(path);
   return data;
 }
 
 export async function getProgramListings(programSlug: string): Promise<ListingsResponse> {
   const path = `/api/v1/public/marketplace/programs/${encodeURIComponent(programSlug)}/offspring-groups`;
+  devLogFetch(path);
   const { data } = await apiGet<ListingsResponse>(path);
   return data;
 }
@@ -133,6 +165,7 @@ export async function getListing(
   listingSlug: string
 ): Promise<ListingDetailDTO> {
   const path = `/api/v1/public/marketplace/programs/${encodeURIComponent(programSlug)}/offspring-groups/${encodeURIComponent(listingSlug)}`;
+  devLogFetch(path);
   const { data } = await apiGet<ListingDetailDTO>(path);
   return data;
 }

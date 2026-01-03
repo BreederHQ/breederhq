@@ -23,9 +23,10 @@ import PortalForgotPasswordPage from "./pages/PortalForgotPasswordPage";
 import PortalActivatePage from "./pages/PortalActivatePage";
 import PortalBlockedPage from "./pages/PortalBlockedPage";
 import PortalLogoutPage from "./pages/PortalLogoutPage";
+import PortalTermsPage from "./pages/PortalTermsPage";
 import "./design/tokens.css";
 
-const PUBLIC_PATHS = ["/login", "/forgot-password", "/activate", "/blocked", "/logout"];
+const PUBLIC_PATHS = ["/login", "/forgot-password", "/activate", "/blocked", "/logout", "/terms"];
 
 type ViewRoute =
   | "dashboard"
@@ -48,7 +49,8 @@ type ViewRoute =
   | "forgot-password"
   | "activate"
   | "blocked"
-  | "logout";
+  | "logout"
+  | "terms";
 
 function getViewFromPath(pathname: string): ViewRoute {
   const path = pathname.toLowerCase().replace(/\/+$/, "");
@@ -59,6 +61,7 @@ function getViewFromPath(pathname: string): ViewRoute {
   if (path === "/activate" || path.startsWith("/activate?")) return "activate";
   if (path === "/blocked") return "blocked";
   if (path === "/logout") return "logout";
+  if (path === "/terms") return "terms";
 
   // Protected routes
   if (path.startsWith("/messages/")) return "message-thread";
@@ -122,6 +125,9 @@ export default function AppPortal() {
   }
   if (currentView === "logout") {
     return <PortalLogoutPage />;
+  }
+  if (currentView === "terms") {
+    return <PortalTermsPage />;
   }
 
   // All other routes require authentication and CLIENT role

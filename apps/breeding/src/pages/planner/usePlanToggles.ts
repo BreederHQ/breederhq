@@ -27,6 +27,22 @@ export function usePlanToggles(
     return { showPhases: true, showExact: true, showExactBands: !!defaultExactBandsVisible };
   });
 
+  // Track if this is the first load (before any user interaction)
+  const [hasLoadedFromStorage] = React.useState(() => {
+    try {
+      return !!localStorage.getItem(key);
+    } catch {
+      return false;
+    }
+  });
+
+  // Update showExactBands when preferences change, but only if user hasn't manually set it
+  React.useEffect(() => {
+    if (!hasLoadedFromStorage) {
+      set(prev => ({ ...prev, showExactBands: !!defaultExactBandsVisible }));
+    }
+  }, [defaultExactBandsVisible, hasLoadedFromStorage]);
+
   React.useEffect(() => {
     try {
       localStorage.setItem(key, JSON.stringify(state));

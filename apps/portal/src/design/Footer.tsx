@@ -65,6 +65,13 @@ function DemoToggle() {
   );
 }
 
+const linkStyle: React.CSSProperties = {
+  fontSize: "var(--portal-font-size-sm)",
+  color: "var(--portal-text-muted)",
+  textDecoration: "none",
+  opacity: 0.6,
+};
+
 export function Footer() {
   return (
     <footer
@@ -82,18 +89,26 @@ export function Footer() {
           alignItems: "center",
           justifyContent: "space-between",
           gap: "var(--portal-space-2)",
+          flexWrap: "wrap",
         }}
       >
-        <p
-          style={{
-            fontSize: "var(--portal-font-size-sm)",
-            color: "var(--portal-text-muted)",
-            margin: 0,
-            opacity: 0.4,
-          }}
-        >
-          Powered by BreederHQ
-        </p>
+        <div style={{ display: "flex", alignItems: "center", gap: "var(--portal-space-3)" }}>
+          <p
+            style={{
+              fontSize: "var(--portal-font-size-sm)",
+              color: "var(--portal-text-muted)",
+              margin: 0,
+              opacity: 0.4,
+            }}
+          >
+            Powered by BreederHQ
+          </p>
+          <nav style={{ display: "flex", alignItems: "center", gap: "var(--portal-space-2)" }}>
+            <a href="/terms" style={linkStyle}>
+              Terms of Service
+            </a>
+          </nav>
+        </div>
         <DemoToggle />
       </div>
     </footer>

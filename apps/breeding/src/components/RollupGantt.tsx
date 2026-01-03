@@ -319,6 +319,11 @@ export default function RollupGantt({
     lockScroll: false,
   }));
 
+  // Update showBands when preferences load (on initial load or settings change)
+  React.useEffect(() => {
+    setToggles(prev => ({ ...prev, showBands: defaultBandsVisible }));
+  }, [defaultBandsVisible]);
+
   /* selection, allow empty */
   const controlled = selectedProp instanceof Set ? selectedProp : selectedProp ? new Set(selectedProp) : undefined;
   const [internalSel, setInternalSel] = React.useState<Set<ID>>(() => new Set<ID>());

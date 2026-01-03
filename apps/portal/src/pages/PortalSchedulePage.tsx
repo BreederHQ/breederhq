@@ -16,11 +16,18 @@ import {
   getMockSchedulingEvent,
   getMockSlots,
   getMockConfirmedBooking,
+  downloadBookingIcs,
   type SchedulingEventResponse,
   type SchedulingSlot,
   type ConfirmedBooking,
   type BookingRules,
+  type IcsCalendarData,
+  type BlockedResponse,
 } from "../api/scheduling";
+import {
+  PlacementWindowBanner,
+  isPlacementWindowBlock,
+} from "../design/PlacementWindowBanner";
 
 /* ────────────────────────────────────────────────────────────────────────────
  * State Machine Definition
@@ -69,6 +76,8 @@ interface SchedulePageState {
   confirmedBooking: ConfirmedBooking | null;
   errorMessage: string | null;
   rules: BookingRules | null;
+  // Phase 6: Placement blocking info (from slots endpoint 403)
+  placementBlocked: BlockedResponse | null;
 }
 
 /* ────────────────────────────────────────────────────────────────────────────
@@ -413,6 +422,7 @@ interface ConfirmedViewProps {
   rules: BookingRules;
   onCancel?: () => void;
   onReschedule?: () => void;
+  onAddToCalendar?: () => void;
   cancelInProgress?: boolean;
 }
 
@@ -422,6 +432,7 @@ function ConfirmedView({
   rules,
   onCancel,
   onReschedule,
+  onAddToCalendar,
   cancelInProgress,
 }: ConfirmedViewProps) {
   const date = formatSlotDate(booking.startsAt);
@@ -557,6 +568,19 @@ function ConfirmedView({
             </div>
           </div>
         </div>
+
+        {/* Add to Calendar button */}
+        {onAddToCalendar && (
+          <div style={{ marginTop: "var(--portal-space-3)" }}>
+            <Button
+              variant="secondary"
+              onClick={onAddToCalendar}
+              style={{ width: "100%" }}
+            >
+              Add to Calendar
+            </Button>
+          </div>
+        )}
       </PortalCard>
 
       {/* Next steps */}
@@ -598,7 +622,24 @@ function ConfirmedView({
               </Button>
             )}
           </div>
-          {rules.cancellationDeadlineHours && (
+          {/* Show deadline info with computed timestamp if available */}
+          {rules.cancelDeadlineAt ? (
+            <p
+              style={{
+                fontSize: "var(--portal-font-size-xs)",
+                color: "var(--portal-text-tertiary)",
+                margin: "var(--portal-space-2) 0 0 0",
+              }}
+            >
+              Cancellation deadline: {new Date(rules.cancelDeadlineAt).toLocaleString(undefined, {
+                weekday: "short",
+                month: "short",
+                day: "numeric",
+                hour: "numeric",
+                minute: "2-digit",
+              })}
+            </p>
+          ) : rules.cancellationDeadlineHours ? (
             <p
               style={{
                 fontSize: "var(--portal-font-size-xs)",
@@ -608,7 +649,7 @@ function ConfirmedView({
             >
               Cancellation must be made at least {rules.cancellationDeadlineHours} hours before the appointment.
             </p>
-          )}
+          ) : null}
         </PortalCard>
       )}
 
@@ -762,6 +803,7 @@ export default function PortalSchedulePage() {
     confirmedBooking: null,
     errorMessage: null,
     rules: null,
+    placementBlocked: null,
   });
 
   // Transition helper
@@ -847,6 +889,16 @@ export default function PortalSchedulePage() {
     // Load available slots
     const slotsResult = await listAvailableSlots(eventId);
     if (!slotsResult.ok) {
+      // Phase 6: Check for placement blocking on 403
+      if (slotsResult.status === 403 && slotsResult.placementBlocked) {
+        transition("ELIGIBLE_SELECT_SLOT", {
+          eventData,
+          slots: [],
+          rules: eventData.rules,
+          placementBlocked: slotsResult.placementBlocked,
+        });
+        return;
+      }
       if (slotsResult.status === 0) {
         transition("ERROR_NETWORK", { errorMessage: slotsResult.message, eventData });
       } else {
@@ -859,6 +911,7 @@ export default function PortalSchedulePage() {
       eventData,
       slots: slotsResult.data.slots,
       rules: eventData.rules,
+      placementBlocked: null,
     });
   }, [eventId, mockEnabled]);
 
@@ -940,8 +993,26 @@ export default function PortalSchedulePage() {
     }));
   };
 
+  // Handle add to calendar (download ICS file)
+  const handleAddToCalendar = () => {
+    if (!confirmedBooking || !eventData) return;
+
+    const icsData: IcsCalendarData = {
+      eventType: eventData.context.eventType,
+      breederName: eventData.context.breederName,
+      startsAt: confirmedBooking.startsAt,
+      endsAt: confirmedBooking.endsAt,
+      location: confirmedBooking.location,
+      mode: confirmedBooking.mode,
+      nextSteps: confirmedBooking.nextSteps,
+      bookingId: confirmedBooking.bookingId,
+    };
+
+    downloadBookingIcs(icsData);
+  };
+
   // Render based on state
-  const { state, eventData, slots, selectedSlotId, confirmedBooking, errorMessage, rules } = pageState;
+  const { state, eventData, slots, selectedSlotId, confirmedBooking, errorMessage, rules, placementBlocked } = pageState;
 
   // Determine page title and status
   const getPageTitle = () => {
@@ -1031,13 +1102,20 @@ export default function PortalSchedulePage() {
               breederName={eventData.context.breederName}
               subjectName={eventData.context.subjectName}
             />
-            <SlotSelectionView
-              slots={slots}
-              selectedSlotId={selectedSlotId}
-              onSelectSlot={handleSelectSlot}
-              onConfirm={handleConfirmBooking}
-              isBooking={state === "BOOKING_IN_PROGRESS"}
-            />
+            {/* Phase 6: Placement window blocking banner */}
+            {placementBlocked && isPlacementWindowBlock(placementBlocked) && (
+              <PlacementWindowBanner blocked={placementBlocked} />
+            )}
+            {/* Only show slot selection if not placement blocked */}
+            {!placementBlocked && (
+              <SlotSelectionView
+                slots={slots}
+                selectedSlotId={selectedSlotId}
+                onSelectSlot={handleSelectSlot}
+                onConfirm={handleConfirmBooking}
+                isBooking={state === "BOOKING_IN_PROGRESS"}
+              />
+            )}
           </>
         )}
 
@@ -1055,6 +1133,7 @@ export default function PortalSchedulePage() {
               rules={rules}
               onCancel={rules.canCancel ? handleCancel : undefined}
               onReschedule={rules.canReschedule ? handleReschedule : undefined}
+              onAddToCalendar={handleAddToCalendar}
             />
           </>
         )}

@@ -13,12 +13,38 @@ interface PortalLayoutProps {
   currentPath: string;
 }
 
-function OrgIdentity({ orgName, orgInitial }: { orgName: string | null; orgInitial: string | null }) {
-  const displayName = orgName || "Acme Breeding Co.";
+function OrgIdentity({
+  orgName,
+  orgInitial,
+  onClick,
+}: {
+  orgName: string | null;
+  orgInitial: string | null;
+  onClick: () => void;
+}) {
   const displayInitial = orgInitial || "A";
+  const displayName = orgName || "Acme Breeding Co.";
 
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: "var(--portal-space-2)", flexShrink: 0 }}>
+    <button
+      onClick={onClick}
+      style={{
+        all: "unset",
+        display: "flex",
+        alignItems: "center",
+        gap: "var(--portal-space-2)",
+        flexShrink: 0,
+        cursor: "pointer",
+        transition: "opacity var(--portal-transition)",
+      }}
+      title="Home"
+      onMouseEnter={(e) => {
+        e.currentTarget.style.opacity = "0.8";
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.opacity = "1";
+      }}
+    >
       <div
         style={{
           width: "32px",
@@ -37,7 +63,7 @@ function OrgIdentity({ orgName, orgInitial }: { orgName: string | null; orgIniti
       </div>
       <span
         style={{
-          fontSize: "var(--portal-font-size-lg)",
+          fontSize: "var(--portal-font-size-base)",
           fontWeight: "var(--portal-font-weight-semibold)",
           color: "var(--portal-text-primary)",
           whiteSpace: "nowrap",
@@ -45,7 +71,7 @@ function OrgIdentity({ orgName, orgInitial }: { orgName: string | null; orgIniti
       >
         {displayName}
       </span>
-    </div>
+    </button>
   );
 }
 
@@ -62,12 +88,6 @@ export function PortalLayout({ children, currentPath }: PortalLayoutProps) {
   const notificationsCount = notifications.length;
 
   const navItems = [
-    { label: "Dashboard", href: "/", active: currentPath === "/" },
-    {
-      label: "Messages",
-      href: "/messages",
-      active: currentPath.startsWith("/messages"),
-    },
     {
       label: "Tasks",
       href: "/tasks",
@@ -75,10 +95,9 @@ export function PortalLayout({ children, currentPath }: PortalLayoutProps) {
       badge: actionRequiredCount > 0 ? actionRequiredCount : undefined,
     },
     {
-      label: "Notifications",
-      href: "/notifications",
-      active: currentPath.startsWith("/notifications"),
-      badge: notificationsCount > 0 ? notificationsCount : undefined,
+      label: "Messages",
+      href: "/messages",
+      active: currentPath.startsWith("/messages"),
     },
     { label: "Agreements", href: "/agreements", active: currentPath.startsWith("/agreements") },
     { label: "Documents", href: "/documents", active: currentPath.startsWith("/documents") },
@@ -87,6 +106,11 @@ export function PortalLayout({ children, currentPath }: PortalLayoutProps) {
     { label: "Profile", href: "/profile", active: currentPath.startsWith("/profile") },
   ];
 
+  const handleNavigateHome = () => {
+    window.history.pushState({}, "", "/");
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  };
+
   const handleLogout = () => {
     window.location.href = "/logout";
   };
@@ -94,11 +118,72 @@ export function PortalLayout({ children, currentPath }: PortalLayoutProps) {
   return (
     <div style={{ minHeight: "100vh", background: "var(--portal-bg)", display: "flex", flexDirection: "column" }}>
       <HeaderBar>
-        <OrgIdentity orgName={orgName} orgInitial={orgInitial} />
+        <OrgIdentity orgName={orgName} orgInitial={orgInitial} onClick={handleNavigateHome} />
         {/* Wrapper constrains TopNav so it can scroll horizontally */}
         <div style={{ flex: "1 1 0%", minWidth: 0, overflow: "hidden" }}>
           <TopNav items={navItems} />
         </div>
+        {/* Notifications bell icon */}
+        <button
+          onClick={() => {
+            window.history.pushState({}, "", "/notifications");
+            window.dispatchEvent(new PopStateEvent("popstate"));
+          }}
+          style={{
+            all: "unset",
+            position: "relative",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            width: "32px",
+            height: "32px",
+            cursor: "pointer",
+            flexShrink: 0,
+            color: currentPath.startsWith("/notifications")
+              ? "var(--portal-text-primary)"
+              : "var(--portal-text-secondary)",
+            transition: "color var(--portal-transition)",
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.color = "var(--portal-text-primary)";
+          }}
+          onMouseLeave={(e) => {
+            if (!currentPath.startsWith("/notifications")) {
+              e.currentTarget.style.color = "var(--portal-text-secondary)";
+            }
+          }}
+          title="Notifications"
+          aria-label={`Notifications${notificationsCount > 0 ? ` (${notificationsCount} new)` : ""}`}
+        >
+          <svg
+            width="20"
+            height="20"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+            <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+          </svg>
+          {/* Notification dot */}
+          {notificationsCount > 0 && (
+            <span
+              style={{
+                position: "absolute",
+                top: "2px",
+                right: "2px",
+                width: "8px",
+                height: "8px",
+                background: "var(--portal-accent)",
+                borderRadius: "50%",
+                border: "2px solid var(--portal-bg-elevated)",
+              }}
+            />
+          )}
+        </button>
         {/* Sign out button - always visible on right side */}
         <button
           onClick={handleLogout}

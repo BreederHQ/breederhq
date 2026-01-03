@@ -22,6 +22,15 @@ export const MOCK_PROGRAMS: PublicProgramSummaryDTO[] = [
     species: ["dog"],
     breed: "Golden Retriever",
     photoUrl: null,
+    // Boosted breeder
+    boosted: true,
+    boostCategory: "breeders",
+    boostWeight: 100,
+    featured: true,
+    featuredWeight: 90,
+    isSponsored: true,
+    sponsorshipType: "boosted",
+    sponsorDisclosureText: "This breeder is a premium partner who has boosted their visibility on the marketplace.",
   },
   {
     slug: "riverside-shepherds",
@@ -30,6 +39,8 @@ export const MOCK_PROGRAMS: PublicProgramSummaryDTO[] = [
     species: ["dog"],
     breed: "German Shepherd",
     photoUrl: null,
+    featured: true,
+    featuredWeight: 80,
   },
   {
     slug: "maple-leaf-doodles",
@@ -38,6 +49,8 @@ export const MOCK_PROGRAMS: PublicProgramSummaryDTO[] = [
     species: ["dog"],
     breed: "Goldendoodle",
     photoUrl: null,
+    featured: true,
+    featuredWeight: 70,
   },
   {
     slug: "blue-ribbon-labs",
@@ -161,6 +174,15 @@ const MOCK_LISTINGS_BY_PROGRAM: Record<string, PublicOffspringGroupListingDTO[]>
       priceRange: { min: 250000, max: 300000 },
       programSlug: "sunny-meadows-goldens",
       programName: "Sunny Meadows Goldens",
+      // Boosted listing
+      boosted: true,
+      boostCategory: "animals",
+      boostWeight: 100,
+      featured: true,
+      featuredWeight: 95,
+      isSponsored: true,
+      sponsorshipType: "boosted",
+      sponsorDisclosureText: "This listing is boosted by the breeder to increase visibility.",
     },
     {
       slug: "summer-2024-planned",
@@ -529,6 +551,16 @@ export interface MockService {
   programName: string;
   location: string;
   priceRange?: { min: number; max: number } | null;
+  // Monetization fields
+  boosted?: boolean;
+  boostCategory?: "animals" | "breeders" | "services";
+  boostWeight?: number;
+  boostExpiresAt?: string;
+  featured?: boolean;
+  featuredWeight?: number;
+  isSponsored?: boolean;
+  sponsorshipType?: "boosted" | "featured" | "sponsored-card" | "sponsored-content";
+  sponsorDisclosureText?: string;
 }
 
 export const MOCK_SERVICES: MockService[] = [
@@ -541,6 +573,15 @@ export const MOCK_SERVICES: MockService[] = [
     programName: "Sunny Meadows Goldens",
     location: "Austin, TX",
     priceRange: { min: 150000, max: 200000 },
+    // Boosted service
+    boosted: true,
+    boostCategory: "services",
+    boostWeight: 100,
+    featured: true,
+    featuredWeight: 90,
+    isSponsored: true,
+    sponsorshipType: "boosted",
+    sponsorDisclosureText: "This service is boosted by the breeder to increase visibility.",
   },
   {
     id: "svc-2",
@@ -639,4 +680,84 @@ export const MOCK_SERVICES: MockService[] = [
  */
 export function getMockServices(): MockService[] {
   return MOCK_SERVICES;
+}
+
+// ============================================================================
+// MONETIZATION HELPERS
+// ============================================================================
+
+/**
+ * Check if a boost is currently active (not expired).
+ */
+export function isBoostActive(item: { boostExpiresAt?: string }): boolean {
+  if (!item.boostExpiresAt) return true; // No expiry = always active
+  return new Date(item.boostExpiresAt) > new Date();
+}
+
+/**
+ * Get the single boosted item for a category.
+ * Returns the item with highest boostWeight that matches the category and is not expired.
+ * Tie-breaker: alphabetical by slug/id.
+ */
+export function getBoostedItem<T extends {
+  slug?: string;
+  id?: string;
+  boosted?: boolean;
+  boostCategory?: string;
+  boostWeight?: number;
+  boostExpiresAt?: string;
+}>(
+  items: T[],
+  category: "animals" | "breeders" | "services"
+): T | null {
+  const boostedItems = items.filter(
+    (item) =>
+      item.boosted &&
+      item.boostCategory === category &&
+      isBoostActive(item)
+  );
+
+  if (boostedItems.length === 0) return null;
+
+  // Sort by weight descending, then by slug/id ascending for tie-breaker
+  boostedItems.sort((a, b) => {
+    const weightDiff = (b.boostWeight ?? 0) - (a.boostWeight ?? 0);
+    if (weightDiff !== 0) return weightDiff;
+    const aKey = a.slug ?? a.id ?? "";
+    const bKey = b.slug ?? b.id ?? "";
+    return aKey.localeCompare(bKey);
+  });
+
+  return boostedItems[0];
+}
+
+/**
+ * Get featured items, sorted by featuredWeight.
+ * Returns up to `limit` items that have featured=true.
+ */
+export function getFeaturedItems<T extends {
+  featured?: boolean;
+  featuredWeight?: number;
+}>(
+  items: T[],
+  limit: number = 4
+): T[] {
+  const featuredItems = items.filter((item) => item.featured);
+
+  // Sort by weight descending
+  featuredItems.sort((a, b) => (b.featuredWeight ?? 0) - (a.featuredWeight ?? 0));
+
+  return featuredItems.slice(0, limit);
+}
+
+/**
+ * Remove the boosted item from a list (for displaying in regular grid).
+ */
+export function removeBoostedItem<T extends { slug?: string; id?: string }>(
+  items: T[],
+  boostedItem: T | null
+): T[] {
+  if (!boostedItem) return items;
+  const boostedKey = boostedItem.slug ?? boostedItem.id;
+  return items.filter((item) => (item.slug ?? item.id) !== boostedKey);
 }

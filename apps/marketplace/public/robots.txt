@@ -1,0 +1,3 @@
+# BreederHQ Marketplace - no indexing
+User-agent: *
+Disallow: /

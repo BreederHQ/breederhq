@@ -3,8 +3,10 @@
 import * as React from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { isDemoMode, setDemoMode } from "../../demo/demoMode";
-import { getAllMockListings, simulateDelay } from "../../demo/mockData";
+import { getAllMockListings, simulateDelay, getBoostedItem, removeBoostedItem } from "../../demo/mockData";
+import { SponsorDisclosure } from "../components/SponsorDisclosure";
 import { formatCents } from "../../utils/format";
+
 import type { PublicOffspringGroupListingDTO } from "../../api/types";
 
 /**
@@ -15,6 +17,7 @@ import type { PublicOffspringGroupListingDTO } from "../../api/types";
 export function AnimalsIndexPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [listings, setListings] = React.useState<PublicOffspringGroupListingDTO[]>([]);
+  const [boostedListing, setBoostedListing] = React.useState<PublicOffspringGroupListingDTO | null>(null);
   const [loading, setLoading] = React.useState(true);
   const demoMode = isDemoMode();
 
@@ -41,6 +44,13 @@ export function AnimalsIndexPage() {
       await simulateDelay(200);
       let all = getAllMockListings();
 
+      // Get boosted item (before filtering)
+      const boosted = getBoostedItem(all, "animals");
+      setBoostedListing(boosted);
+
+      // Remove boosted from regular list
+      all = removeBoostedItem(all, boosted);
+
       // Filter by search
       if (search) {
         const q = search.toLowerCase();
@@ -65,10 +75,13 @@ export function AnimalsIndexPage() {
     window.location.reload();
   };
 
+  // SEO component (rendered regardless of demo mode)
+
   // Real mode: show coming soon state
   if (!demoMode) {
     return (
       <div className="space-y-6">
+        
         <div>
           <h1 className="text-[28px] font-bold text-white tracking-tight leading-tight">
             Animals
@@ -111,6 +124,7 @@ export function AnimalsIndexPage() {
   // Demo mode: show listings grid
   return (
     <div className="space-y-5">
+      
       <div>
         <h1 className="text-[28px] font-bold text-white tracking-tight leading-tight">
           Animals
@@ -139,6 +153,13 @@ export function AnimalsIndexPage() {
           `${listings.length} listing${listings.length === 1 ? "" : "s"}`
         )}
       </div>
+
+      {/* Boosted listing - pinned at top when not searching */}
+      {!loading && boostedListing && !search && (
+        <div className="mb-4">
+          <ListingCard listing={boostedListing} isBoosted />
+        </div>
+      )}
 
       {/* Listings grid */}
       {loading ? (
@@ -169,7 +190,7 @@ export function AnimalsIndexPage() {
 /**
  * Listing card for the animals browse grid.
  */
-function ListingCard({ listing }: { listing: PublicOffspringGroupListingDTO }) {
+function ListingCard({ listing, isBoosted = false }: { listing: PublicOffspringGroupListingDTO; isBoosted?: boolean }) {
   const priceText = listing.priceRange
     ? listing.priceRange.min === listing.priceRange.max
       ? formatCents(listing.priceRange.min)
@@ -184,7 +205,23 @@ function ListingCard({ listing }: { listing: PublicOffspringGroupListingDTO }) {
       to={`/programs/${listing.programSlug}/offspring-groups/${listing.slug}`}
       className="block"
     >
-      <div className="rounded-portal border border-border-subtle bg-portal-card p-5 h-full transition-colors hover:bg-portal-card-hover hover:border-border-default">
+      <div className={`rounded-portal border bg-portal-card p-5 h-full transition-colors hover:bg-portal-card-hover hover:border-border-default ${
+        isBoosted ? "border-accent/30" : "border-border-subtle"
+      }`}>
+        {/* Boosted badge and disclosure */}
+        {isBoosted && (
+          <div className="flex items-center justify-between gap-2 mb-3">
+            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-accent/15 text-accent">
+              Boosted
+            </span>
+            {listing.sponsorDisclosureText && (
+              <div onClick={(e) => e.preventDefault()}>
+                <SponsorDisclosure disclosureText={listing.sponsorDisclosureText} />
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Title */}
         <h3 className="text-[15px] font-semibold text-white mb-2 line-clamp-1">
           {listing.title}

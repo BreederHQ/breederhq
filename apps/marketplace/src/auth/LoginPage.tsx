@@ -1,10 +1,14 @@
 // apps/marketplace/src/auth/LoginPage.tsx
-// Real login page with Tailwind styling.
+// Login page matching Portal design with BreederHQ branding.
 // Uses API endpoint: POST /api/v1/auth/login
 // Post-auth verification: calls GET /api/v1/marketplace/me to confirm session
 import * as React from "react";
 import { useSearchParams } from "react-router-dom";
 import { joinApi, safeReadJson } from "../api/client";
+
+
+// BreederHQ logo - same asset used by portal
+import logoUrl from "@bhq/ui/assets/logo.png";
 
 /**
  * Safely decode and validate returnTo parameter.
@@ -32,9 +36,8 @@ function isAuthenticated(body: any): boolean {
 }
 
 /**
- * Real login page with form submission.
- * After successful login, verifies session via /marketplace/me before navigating.
- * On any login success (200), always navigates away - never leaves user stuck.
+ * Login page matching Portal design.
+ * Shows BreederHQ branding, then card with email/password form.
  */
 export function LoginPage() {
   const [searchParams] = useSearchParams();
@@ -113,31 +116,45 @@ export function LoginPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4 font-sans antialiased bg-portal-bg">
-      <div className="w-full max-w-md">
-        <div className="rounded-xl border border-white/10 bg-white/5 backdrop-blur-sm p-8">
-          <h1 className="text-2xl font-semibold text-white mb-2">Sign In</h1>
-          <p className="text-white/60 text-sm mb-6">
-            Sign in to access the Marketplace
+      <div className="w-full max-w-[420px]">
+        {/* BreederHQ branding - matches Portal */}
+        <div className="flex flex-col items-center gap-2 mb-6">
+          <img
+            src={logoUrl}
+            alt="BreederHQ"
+            className="w-16 h-16 object-contain"
+          />
+          <h1 className="text-xl font-semibold text-white text-center">
+            BreederHQ
+          </h1>
+          <h2 className="text-base font-medium text-text-secondary text-center">
+            Marketplace
+          </h2>
+          <p className="text-sm text-text-tertiary text-center max-w-[300px]">
+            Browse animals, connect with breeders, and find services.
           </p>
+        </div>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
+        {/* Login card */}
+        <div className="rounded-portal border border-border-subtle bg-portal-card p-6">
+          <form onSubmit={handleSubmit} className="flex flex-col gap-4">
             {error && (
               <div
                 role="alert"
                 aria-live="polite"
-                className="p-3 rounded-lg bg-red-500/10 border-l-2 border-red-500 text-red-300 text-sm"
+                className="p-3 rounded-portal-xs bg-red-500/10 border-l-[3px] border-red-500 text-red-300 text-sm"
               >
                 {error}
               </div>
             )}
 
             <label className="block">
-              <span className="block text-sm text-white/60 mb-1">Email</span>
+              <span className="block text-sm text-text-secondary mb-1">Email</span>
               <input
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full h-10 px-3 rounded-lg bg-white/5 border border-white/10 text-white placeholder-white/30 focus:outline-none focus:border-white/30 focus:ring-1 focus:ring-white/20 disabled:opacity-50"
+                className="w-full h-10 px-3 rounded-portal-xs bg-portal-elevated border border-border-subtle text-white placeholder-text-muted focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30 disabled:opacity-50 transition-colors"
                 placeholder="you@example.com"
                 autoComplete="email"
                 required
@@ -147,12 +164,12 @@ export function LoginPage() {
             </label>
 
             <label className="block">
-              <span className="block text-sm text-white/60 mb-1">Password</span>
+              <span className="block text-sm text-text-secondary mb-1">Password</span>
               <input
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full h-10 px-3 rounded-lg bg-white/5 border border-white/10 text-white placeholder-white/30 focus:outline-none focus:border-white/30 focus:ring-1 focus:ring-white/20 disabled:opacity-50"
+                className="w-full h-10 px-3 rounded-portal-xs bg-portal-elevated border border-border-subtle text-white placeholder-text-muted focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30 disabled:opacity-50 transition-colors"
                 placeholder="Your password"
                 autoComplete="current-password"
                 required
@@ -164,18 +181,26 @@ export function LoginPage() {
             <button
               type="submit"
               disabled={loading || !formValid}
-              className="w-full h-10 rounded-lg bg-orange-500 text-white font-medium hover:bg-orange-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-500/50 mt-2"
+              className="w-full h-10 rounded-portal-xs bg-accent text-white font-medium hover:bg-accent-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 border border-accent"
               aria-busy={loading}
             >
               {loading ? "Signing in..." : "Sign in"}
             </button>
 
-            <div className="text-center text-sm pt-2">
+            <a
+              href="/auth/forgot-password"
+              className="text-sm text-text-secondary text-center hover:text-accent transition-colors"
+            >
+              Forgot password
+            </a>
+
+            <div className="text-center text-sm pt-2 border-t border-border-subtle mt-2">
+              <span className="text-text-tertiary">Don't have an account? </span>
               <a
                 href={`/auth/register?returnTo=${encodeURIComponent(returnTo)}`}
-                className="text-white/50 hover:text-orange-400 transition-colors"
+                className="text-accent hover:text-accent-hover transition-colors font-medium"
               >
-                Don't have an account? Create one
+                Create one
               </a>
             </div>
           </form>

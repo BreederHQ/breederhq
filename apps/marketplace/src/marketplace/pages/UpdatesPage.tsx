@@ -8,6 +8,7 @@ import { getConversations, getMessages } from "../../messages/store";
 import { generateDemoActivity, seedDemoConversations } from "../../messages/demoData";
 import type { Conversation } from "../../messages/types";
 
+
 interface NotificationItem {
   id: string;
   conversationId: string;
@@ -122,6 +123,7 @@ export function UpdatesPage() {
   if (!demoMode) {
     return (
       <div className="space-y-6">
+        <Seo title="Updates" />
         <div>
           <h1 className="text-[28px] font-bold text-white tracking-tight leading-tight">
             Updates
@@ -164,6 +166,7 @@ export function UpdatesPage() {
   // Demo mode: show notifications
   return (
     <div className="space-y-6">
+      <Seo title="Updates" />
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-[28px] font-bold text-white tracking-tight leading-tight">

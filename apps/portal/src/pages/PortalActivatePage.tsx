@@ -4,7 +4,7 @@
 // Uses POST /api/v1/portal/invites/:token/accept to accept the invite
 
 import * as React from "react";
-import { Button } from "@bhq/ui";
+import { Button, createTosAcceptancePayload } from "@bhq/ui";
 
 interface InviteInfo {
   valid: boolean;
@@ -26,6 +26,7 @@ interface ActivateState {
 export default function PortalActivatePage() {
   const [password, setPassword] = React.useState("");
   const [confirmPassword, setConfirmPassword] = React.useState("");
+  const [tosAccepted, setTosAccepted] = React.useState(false);
   const [state, setState] = React.useState<ActivateState>({
     status: "validating",
     error: null,
@@ -100,6 +101,7 @@ export default function PortalActivatePage() {
     token &&
     password.length >= 8 &&
     password === confirmPassword &&
+    tosAccepted &&
     state.status === "ready";
 
   async function handleActivate(e: React.FormEvent) {
@@ -110,11 +112,12 @@ export default function PortalActivatePage() {
     setState((prev) => ({ ...prev, status: "submitting", error: null }));
 
     try {
+      const tosPayload = createTosAcceptancePayload("portal", "portal_activate");
       const res = await fetch(`/api/v1/portal/invites/${encodeURIComponent(token)}/accept`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ password }),
+        body: JSON.stringify({ password, tosAcceptance: tosPayload }),
       });
 
       const data = await res.json().catch(() => ({}));
@@ -311,6 +314,28 @@ export default function PortalActivatePage() {
           </div>
 
           {passwordError && <div className="text-sm text-red-500">{passwordError}</div>}
+
+          {/* Terms of Service acceptance */}
+          <label className="flex items-start gap-3 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={tosAccepted}
+              onChange={(e) => setTosAccepted(e.target.checked)}
+              disabled={state.status === "submitting"}
+              className="mt-1 h-4 w-4 rounded border-hairline bg-surface cursor-pointer"
+            />
+            <span className="text-sm text-secondary">
+              I agree to the{" "}
+              <a
+                href="/terms"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[hsl(var(--brand-orange))] hover:underline"
+              >
+                Terms of Service
+              </a>
+            </span>
+          </label>
 
           {state.error && (
             <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-sm text-red-700">

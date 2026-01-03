@@ -9,6 +9,7 @@ import { isDemoMode } from "../../demo/demoMode";
 import { useStartConversation } from "../../messages/hooks";
 import { Breadcrumb } from "../components/Breadcrumb";
 import { formatCents } from "../../utils/format";
+
 import type { PublicOffspringGroupListingDTO } from "../../api/types";
 
 /**
@@ -103,8 +104,13 @@ export function ProgramPage() {
   const singleListing = listingsCount === 1;
   const demoMode = isDemoMode();
 
+  // AI-quotable summary
+  const aiSummary = `${profile.name} publishes available litters and breeder services in the BreederHQ Marketplace.`;
+
   return (
     <div className="space-y-6">
+      <Seo title={profile.name} />
+
       {/* Breadcrumb - buyer language */}
       <Breadcrumb
         items={[
@@ -139,6 +145,11 @@ export function ProgramPage() {
           </button>
         )}
       </div>
+
+      {/* AI-quotable summary paragraph */}
+      <p className="text-sm text-text-secondary leading-relaxed">
+        {aiSummary}
+      </p>
 
       {/* About this breeder - demoted, collapsible for long bios */}
       {(bioText || profile.website) && (

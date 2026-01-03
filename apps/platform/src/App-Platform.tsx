@@ -25,6 +25,7 @@ import DashboardPage from "./pages/Dashboard";
 
 // Support Pages
 import SettingsPanel from "./pages/SettingsPanel";
+import TermsPage from "./pages/TermsPage";
 
 // Lightweight "current module" state (key + label)
 type ActiveModule = { key: "dashboard" | "contacts" | "animals" | "breeding" | "offspring" | "waitlist" | "marketing" | "finance" | "admin"; label: string };
@@ -181,6 +182,7 @@ export default function AppPlatform() {
   // Public routes short-circuit before any shell
   const isInvite = pathname.startsWith("/invite");
   const isVerify = pathname.startsWith("/verify");
+  const isTerms = pathname === "/terms";
 
   // Hooks
   const [auth, setAuth] = useState<AuthState>(null);
@@ -340,6 +342,8 @@ export default function AppPlatform() {
         <InviteSignupPage />
       ) : isVerify ? (
         <VerifyPage />
+      ) : isTerms ? (
+        <TermsPage />
       ) : loading || !tenantReady ? (
         <div className="min-h-screen grid place-items-center text-primary bg-page">Loading…</div>
       ) : !auth ? (
@@ -384,6 +388,16 @@ export default function AppPlatform() {
 
           {/* Toast system renders here */}
           <ToastViewport />
+
+          {/* Footer with legal links */}
+          <footer className="border-t border-hairline py-4 px-6 mt-auto">
+            <div className="flex items-center justify-between text-xs text-secondary">
+              <span>&copy; {new Date().getFullYear()} BreederHQ LLC</span>
+              <a href="/terms" className="hover:text-primary transition-colors">
+                Terms of Service
+              </a>
+            </div>
+          </footer>
         </div>
       )}
     </UiScaleProvider>

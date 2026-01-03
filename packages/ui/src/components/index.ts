@@ -37,5 +37,7 @@ export * from "./StatCard";
 export * from "./TabButton";
 export * from "./Table";
 export * from "./TagsPopover";
+export * from "./TagChip";
+export * from "./TagPicker";
 export * from "./ThemeToggle";
 export * from "./Tabs";

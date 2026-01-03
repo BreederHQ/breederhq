@@ -10,6 +10,9 @@ import { DEFAULT_AVAILABILITY_PREFS } from "@bhq/ui/utils/availability";
 import { resolveTenantId } from "@bhq/ui/utils/tenant";
 import type { BreedingProgramProfile } from "@bhq/ui/utils/breedingProgram";
 import ProgramProfileSnapshot from "../components/ProgramProfileSnapshot";
+import DateValidationSettingsTab from "../components/DateValidationSettingsTab";
+import { TagsManagerTab } from "../components/TagsManagerTab";
+import MarketplaceSettingsTab from "../components/MarketplaceSettingsTab";
 import { api } from "../api";
 
 /** ───────── Tenant helpers ───────── */
@@ -462,7 +465,8 @@ type Tab =
   | "users"
   | "groups"
   | "tags"
-  | "accessibility";
+  | "accessibility"
+  | "marketplace";
 
 type Props = { open: boolean; dirty: boolean; onDirtyChange: (v: boolean) => void; onClose: () => void; };
 
@@ -485,7 +489,10 @@ const NAV: NavSection[] = [
   },
   {
     title: "Modules",
-    items: [{ key: "breeding", label: "Breeding" }],
+    items: [
+      { key: "breeding", label: "Breeding" },
+      { key: "marketplace", label: "Marketplace" },
+    ],
   },
   {
     title: "Platform Management",
@@ -513,7 +520,7 @@ export default function SettingsPanel({ open, dirty, onDirtyChange, onClose }: P
   const [active, setActive] = React.useState<Tab>("profile");
   const [dirtyMap, setDirtyMap] = React.useState<Record<Tab, boolean>>({
     profile: false, security: false, subscription: false, payments: false, transactions: false,
-    breeding: false, programProfile: false, platformSnapshot: false, users: false, groups: false, tags: false, breeds: false, accessibility: false,
+    breeding: false, programProfile: false, platformSnapshot: false, users: false, groups: false, tags: false, breeds: false, accessibility: false, marketplace: false,
   });
   const profileRef = React.useRef<ProfileHandle>(null);
   const breedingRef = React.useRef<BreedingHandle>(null);
@@ -667,8 +674,9 @@ export default function SettingsPanel({ open, dirty, onDirtyChange, onClose }: P
                 {active === "breeds" && <BreedsTab onDirty={(v) => markDirty("breeds", v)} />}
                 {active === "users" && <UsersTab dirty={dirtyMap.users} onDirty={(v) => markDirty("users", v)} />}
                 {active === "groups" && <GroupsTab dirty={dirtyMap.groups} onDirty={(v) => markDirty("groups", v)} />}
-                {active === "tags" && <TagsTab dirty={dirtyMap.tags} onDirty={(v) => markDirty("tags", v)} />}
+                {active === "tags" && <TagsManagerTab dirty={dirtyMap.tags} onDirty={(v) => markDirty("tags", v)} />}
                 {active === "accessibility" && <AccessibilityTab />}
+                {active === "marketplace" && <MarketplaceSettingsTab dirty={dirtyMap.marketplace} onDirty={(v) => markDirty("marketplace", v)} />}
               </div>
             </main>
           </div>
@@ -1030,11 +1038,12 @@ type BreedingHandle = {
   goto: (sub: BreedingSubTab) => void;
 };
 
-type BreedingSubTab = "general" | "phases" | "dates";
+type BreedingSubTab = "general" | "phases" | "dates" | "validation";
 const BREEDING_SUBTABS: Array<{ key: BreedingSubTab; label: string }> = [
   { key: "general", label: "General" },
   { key: "phases", label: "Timeline Phases" },
   { key: "dates", label: "Exact Dates" },
+  { key: "validation", label: "Date Validation" },
 ];
 
 const BreedingTab = React.forwardRef<BreedingHandle, { dirty: boolean; onDirty: (v: boolean) => void }>(
@@ -1207,13 +1216,32 @@ const BreedingTab = React.forwardRef<BreedingHandle, { dirty: boolean; onDirty: 
         try {
           const tenantId = await resolveTenantIdSafe();
           if (!tenantId) return;
+
+          // Load from availability preferences first (new location)
+          let ganttDefault: boolean | undefined;
+          let calendarDefault: boolean | undefined;
+
+          try {
+            const av = await fetchJson(`/api/v1/tenants/${encodeURIComponent(tenantId)}/availability`);
+            const avData = (av?.data ?? av) as Partial<AvailabilityPrefs> | undefined;
+            if (avData) {
+              if (typeof avData.gantt_perplan_default_exact_bands_visible === "boolean") {
+                ganttDefault = avData.gantt_perplan_default_exact_bands_visible;
+              } else if (typeof avData.gantt_master_default_exact_bands_visible === "boolean") {
+                ganttDefault = avData.gantt_master_default_exact_bands_visible;
+              }
+              // Note: Calendar bands don't have an equivalent in availability prefs yet
+            }
+          } catch { /* ignore */ }
+
+          // Fall back to breeding program preferences (legacy location)
           try {
             const pr = await api.breeding.program.getForTenant(Number(tenantId));
             const prof = (pr?.data ?? pr) as any;
             const bands = prof?.preferences?.bands || {};
             if (!ignore) {
-              const g = typeof bands.showInGantt === "boolean" ? bands.showInGantt : true;
-              const c = typeof bands.showInCalendar === "boolean" ? bands.showInCalendar : true;
+              const g = ganttDefault !== undefined ? ganttDefault : (typeof bands.showInGantt === "boolean" ? bands.showInGantt : true);
+              const c = calendarDefault !== undefined ? calendarDefault : (typeof bands.showInCalendar === "boolean" ? bands.showInCalendar : true);
               setShowGanttBands(g);
               setShowCalendarBands(c);
               setInitialBands({ showInGantt: g, showInCalendar: c });
@@ -1230,8 +1258,16 @@ const BreedingTab = React.forwardRef<BreedingHandle, { dirty: boolean; onDirty: 
         const tenantId = await resolveTenantIdSafe();
         if (!tenantId) throw new Error("Missing tenant id");
 
-        // Save availability if changed
+        // Save availability if changed (including band visibility defaults)
         const avChanged = Object.fromEntries(Object.entries(form).filter(([k, v]) => (initial as any)[k] !== v));
+
+        // Also include the gantt band visibility setting if it changed
+        const ganttBandsChanged = showGanttBands !== initialBands.showInGantt;
+        if (ganttBandsChanged) {
+          avChanged.gantt_perplan_default_exact_bands_visible = !!showGanttBands;
+          avChanged.gantt_master_default_exact_bands_visible = !!showGanttBands;
+        }
+
         if (Object.keys(avChanged).length > 0) {
           const avRes = await fetchJson(`/api/v1/tenants/${encodeURIComponent(tenantId)}/availability`, {
             method: "PATCH", body: JSON.stringify(avChanged),
@@ -1416,7 +1452,7 @@ const BreedingTab = React.forwardRef<BreedingHandle, { dirty: boolean; onDirty: 
           <div className="text-sm font-medium">Default bands visibility</div>
           <label className="flex items-center gap-2">
             <input type="checkbox" checked={showGanttBands} onChange={(e) => setShowGanttBands(e.currentTarget.checked)} />
-            <span className="text-sm">Show bands in Gantt</span>
+            <span className="text-sm">Show Bands in Planning Charts by Default</span>
           </label>
           <label className="flex items-center gap-2">
             <input type="checkbox" checked={showCalendarBands} onChange={(e) => setShowCalendarBands(e.currentTarget.checked)} />
@@ -1637,6 +1673,7 @@ const BreedingTab = React.forwardRef<BreedingHandle, { dirty: boolean; onDirty: 
         {activeSub === "general" && GeneralTab}
         {activeSub === "phases" && PhasesTab}
         {activeSub === "dates" && DatesTab}
+        {activeSub === "validation" && <DateValidationSettingsTab ref={null} dirty={false} onDirty={() => {}} />}
       </div>
     );
   }
@@ -2156,19 +2193,6 @@ function GroupsTab({ onDirty }: { dirty: boolean; onDirty: (v: boolean) => void 
     </Card>
   );
 }
-function TagsTab({ onDirty }: { dirty: boolean; onDirty: (v: boolean) => void }) {
-  return (
-    <Card className="p-4 space-y-3">
-      <h4 className="font-medium">Tag Manager</h4>
-      <p className="text-sm text-secondary">Add, rename, and delete tags used across the platform (placeholder).</p>
-      <div className="flex gap-2">
-        <input className={`bhq-input ${INPUT_CLS} flex-1`} placeholder="New tag" onChange={() => onDirty(true)} />
-        <Button size="sm" onClick={() => onDirty(true)}>Add tag</Button>
-      </div>
-    </Card>
-  );
-}
-
 /** ───────── Small UI helpers ───────── */
 function Chk({ label, checked, onChange }: { label: string; checked: boolean; onChange: (c: boolean) => void }) {
   return (

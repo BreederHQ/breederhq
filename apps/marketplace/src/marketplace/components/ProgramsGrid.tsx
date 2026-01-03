@@ -6,6 +6,7 @@ import type { PublicProgramSummaryDTO } from "../../api/types";
 
 interface ProgramsGridProps {
   programs: PublicProgramSummaryDTO[] | null;
+  boostedItem?: PublicProgramSummaryDTO | null;
   loading: boolean;
   error: Error | null;
   onRetry?: () => void;
@@ -52,6 +53,7 @@ function GuidanceCard() {
  */
 export function ProgramsGrid({
   programs,
+  boostedItem,
   loading,
   error,
   onRetry,
@@ -111,11 +113,23 @@ export function ProgramsGrid({
   }
 
   // Show guidance card when result count is 1 to fill the grid
-  const showGuidance = programs.length === 1 && !hasFilters;
+  const showGuidance = programs.length === 1 && !hasFilters && !boostedItem;
 
   // Grid - 1 col mobile, 2 col sm (minimum at desktop), 3 col lg
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      {/* Boosted item first */}
+      {boostedItem && (
+        <ProgramTile
+          key={boostedItem.slug}
+          slug={boostedItem.slug}
+          name={boostedItem.name}
+          location={boostedItem.location}
+          photoUrl={boostedItem.photoUrl}
+          isBoosted
+          sponsorDisclosureText={boostedItem.sponsorDisclosureText}
+        />
+      )}
       {programs.map((program) => (
         <ProgramTile
           key={program.slug}

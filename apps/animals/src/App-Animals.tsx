@@ -28,6 +28,8 @@ import {
   exportToCsv,
   Popover,
   Dialog,
+  TagPicker,
+  type TagOption,
 } from "@bhq/ui";
 import { FinanceTab } from "@bhq/ui/components/Finance";
 import type { OwnershipRow } from "@bhq/ui/utils/ownership";
@@ -1186,6 +1188,116 @@ function OwnershipDetailsEditor({
         </div>
       </div>
     </SectionCard>
+  );
+}
+
+
+/** ────────────────────────────────────────────────────────────────────────
+ * Animal Tags Section - rich multi-select tag picker for animal detail view
+ * ─────────────────────────────────────────────────────────────────────── */
+function AnimalTagsSection({
+  animalId,
+  api,
+  disabled = false,
+}: {
+  animalId: number | string;
+  api: any;
+  disabled?: boolean;
+}) {
+  const [availableTags, setAvailableTags] = React.useState<TagOption[]>([]);
+  const [selectedTags, setSelectedTags] = React.useState<TagOption[]>([]);
+  const [loading, setLoading] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+
+  // Load tags on mount
+  React.useEffect(() => {
+    let cancelled = false;
+
+    const load = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        // Load available tags for ANIMAL module
+        const availableRes = await api.tags.list({ module: "ANIMAL", limit: 200 });
+        const available = ((availableRes?.items) || []).map((t: any) => ({
+          id: Number(t.id),
+          name: String(t.name),
+          color: t.color ?? null,
+        }));
+        if (!cancelled) setAvailableTags(available);
+
+        // Load currently assigned tags via unified api.tags
+        const assignedRes = await api.tags.listForAnimal(Number(animalId));
+        const assignedItems = Array.isArray(assignedRes) ? assignedRes : (assignedRes?.items || []);
+        const assigned = assignedItems.map((t: any) => ({
+          id: Number(t.id),
+          name: String(t.name),
+          color: t.color ?? null,
+        }));
+        if (!cancelled) setSelectedTags(assigned);
+      } catch (e: any) {
+        if (!cancelled) setError(e?.message || "Failed to load tags");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+
+    load();
+    return () => { cancelled = true; };
+  }, [api, animalId]);
+
+  const handleSelect = React.useCallback(async (tag: TagOption) => {
+    // Optimistic update
+    setSelectedTags((prev) => [...prev, tag]);
+    setError(null);
+
+    try {
+      await api.tags.assign(tag.id, { animalId: Number(animalId) });
+    } catch (e: any) {
+      // Rollback on error
+      setSelectedTags((prev) => prev.filter((t) => t.id !== tag.id));
+      setError(e?.message || "Failed to assign tag");
+    }
+  }, [api, animalId]);
+
+  const handleRemove = React.useCallback(async (tag: TagOption) => {
+    // Optimistic update
+    setSelectedTags((prev) => prev.filter((t) => t.id !== tag.id));
+    setError(null);
+
+    try {
+      await api.tags.unassign(tag.id, { animalId: Number(animalId) });
+    } catch (e: any) {
+      // Rollback on error
+      setSelectedTags((prev) => [...prev, tag]);
+      setError(e?.message || "Failed to remove tag");
+    }
+  }, [api, animalId]);
+
+  const handleCreate = React.useCallback(async (name: string): Promise<TagOption> => {
+    const created = await api.tags.create({ name, module: "ANIMAL" });
+    const newTag: TagOption = {
+      id: Number(created.id),
+      name: String(created.name),
+      color: created.color ?? null,
+    };
+    // Add to available tags list
+    setAvailableTags((prev) => [...prev, newTag]);
+    return newTag;
+  }, [api]);
+
+  return (
+    <TagPicker
+      availableTags={availableTags}
+      selectedTags={selectedTags}
+      onSelect={handleSelect}
+      onRemove={handleRemove}
+      onCreate={handleCreate}
+      loading={loading}
+      error={error}
+      placeholder="Add tags..."
+      disabled={disabled}
+    />
   );
 }
 
@@ -4881,43 +4993,29 @@ export default function AppAnimals() {
                 />
               )}
 
-              <SectionCard title="Notes & Tags">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <LV label="Tags">
-                    {mode === "view" ? (
-                      (row.tags || []).join(", ") || "—"
-                    ) : (
-                      <Input
-                        size="sm"
-                        defaultValue={(row.tags || []).join(", ")}
-                        onChange={(e) => {
-                          const tags = (e.currentTarget.value || "")
-                            .split(",")
-                            .map((s) => s.trim())
-                            .filter(Boolean);
-                          setDraft({ tags });
-                        }}
-                      />
-                    )}
-                  </LV>
+              <SectionCard title="Tags">
+                <AnimalTagsSection
+                  animalId={row.id}
+                  api={api}
+                  disabled={mode === "view"}
+                />
+              </SectionCard>
 
-                  <LV label="Notes">
-                    {mode === "view" ? (
-                      row.notes || "—"
-                    ) : (
-                      <textarea
-                        className="h-24 w-full rounded-md bg-surface border border-hairline px-3 text-sm text-primary outline-none"
-                        defaultValue={row.notes ?? ""}
-                        onChange={(e) =>
-                          setDraft({
-                            notes: (e.currentTarget as HTMLTextAreaElement)
-                              .value,
-                          })
-                        }
-                      />
-                    )}
-                  </LV>
-                </div>
+              <SectionCard title="Notes">
+                {mode === "view" ? (
+                  <div className="text-sm">{row.notes || "—"}</div>
+                ) : (
+                  <textarea
+                    className="h-24 w-full rounded-md bg-surface border border-hairline px-3 py-2 text-sm text-primary outline-none"
+                    defaultValue={row.notes ?? ""}
+                    onChange={(e) =>
+                      setDraft({
+                        notes: (e.currentTarget as HTMLTextAreaElement)
+                          .value,
+                      })
+                    }
+                  />
+                )}
               </SectionCard>
             </div>
           )}

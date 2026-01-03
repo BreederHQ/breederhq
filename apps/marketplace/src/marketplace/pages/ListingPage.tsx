@@ -9,6 +9,7 @@ import { getMockListing, simulateDelay } from "../../demo/mockData";
 import { useStartConversation } from "../../messages/hooks";
 import { Breadcrumb } from "../components/Breadcrumb";
 import { formatCents } from "../../utils/format";
+
 import type { ListingDetailDTO, PublicOffspringDTO } from "../../api/types";
 
 /**
@@ -208,8 +209,15 @@ export function ListingPage() {
 
   const hasOffspring = data.offspring && data.offspring.length > 0;
 
+  const listingTitle = data.title || "Untitled Litter";
+
+  // AI-quotable summary
+  const aiSummary = `This ${data.species}${data.breed ? ` (${data.breed})` : ""} litter from ${data.programName} includes ${data.countAvailable} animal${data.countAvailable === 1 ? "" : "s"} currently listed${priceText ? `, with pricing ${data.priceRange?.min === data.priceRange?.max ? `at ${priceText}` : `ranging from ${priceText}`}` : ""}.`;
+
   return (
     <div className="space-y-6">
+      <Seo title={listingTitle} />
+
       {/* Breadcrumb - buyer language */}
       <Breadcrumb
         items={[
@@ -223,7 +231,7 @@ export function ListingPage() {
         {/* Title row with price */}
         <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 sm:gap-6">
           <h1 className="text-[28px] font-bold text-white tracking-tight leading-tight">
-            {data.title || "Untitled Litter"}
+            {listingTitle}
           </h1>
           {priceText && (
             <span className="text-2xl font-semibold text-accent whitespace-nowrap">
@@ -255,6 +263,11 @@ export function ListingPage() {
           </div>
         </div>
       </div>
+
+      {/* AI-quotable summary paragraph */}
+      <p className="text-sm text-text-secondary leading-relaxed">
+        {aiSummary}
+      </p>
 
       {/* Description card */}
       {data.description && (

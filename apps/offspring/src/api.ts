@@ -1,4 +1,5 @@
 import { readTenantIdFast, resolveTenantId } from "@bhq/ui/utils/tenant";
+import { createHttp, makeTags, type TagsResource } from "@bhq/api";
 
 /* ───────────────────────── shared enums and primitives ───────────────────────── */
 
@@ -792,6 +793,9 @@ export type OffspringApi = {
   breeds: {
     listCanonical(params?: { species?: string; q?: string; limit?: number }): Promise<any>;
   };
+
+  /* Tags from unified @bhq/api */
+  tags: TagsResource;
 };
 
 export function makeOffspringApiClient(opts?: MakeOpts): OffspringApi {
@@ -984,5 +988,8 @@ export function makeOffspringApiClient(opts?: MakeOpts): OffspringApi {
           core.raw.del<any>(`/expenses/${id}`, {}).then(() => ({ success: true })),
       },
     },
+
+    // Wire up unified tags from @bhq/api
+    tags: makeTags(createHttp(typeof opts === "string" ? opts : opts?.baseUrl || "/api/v1")),
   };
 }

@@ -1,5 +1,6 @@
 // apps/contacts/src/api.ts
 import { readTenantIdFast } from "@bhq/ui/utils/tenant";
+import { createHttp, makeTags } from "@bhq/api";
 
 export type ID = string | number;
 
@@ -291,68 +292,8 @@ export function makeApi(baseOrigin: string = "", authHeaderFn?: () => Record<str
   };
 
   /* ----------------------------------- TAGS ---------------------------------- */
-  const tags = {
-    async list(module: Module, opts: { q?: string; page?: number; limit?: number } = {}) {
-      const p = new URLSearchParams();
-      if (module) p.set("module", module);
-      if (opts.q) p.set("q", opts.q);
-      if (opts.page != null) p.set("page", String(opts.page));
-      if (opts.limit != null) p.set("limit", String(opts.limit));
-      const url = joinUrl(v1, "tags") + (p.toString() ? `?${p.toString()}` : "");
-      return fetchJson<{ items: any[]; total: number; page: number; limit: number }>(
-        url,
-        { method: "GET" },
-        withAuth()
-      );
-    },
-    async create(payload: { name: string; module: Module; color?: string | null }) {
-      const url = joinUrl(v1, "tags");
-      return fetchJson<any>(url, { method: "POST", body: JSON.stringify(payload) }, withAuth());
-    },
-    async get(id: ID) {
-      const url = joinUrl(v1, "tags", String(id));
-      return fetchJson<any>(url, { method: "GET" }, withAuth());
-    },
-    async update(id: ID, payload: { name?: string; color?: string | null }) {
-      const url = joinUrl(v1, "tags", String(id));
-      return fetchJson<any>(url, { method: "PATCH", body: JSON.stringify(payload) }, withAuth());
-    },
-    async remove(id: ID) {
-      const url = joinUrl(v1, "tags", String(id));
-      return fetchJson<void>(url, { method: "DELETE" }, withAuth());
-    },
-    async assign(tagId: ID, entityId: ID, kind: Module = "CONTACT") {
-      const url = joinUrl(v1, "tags", String(tagId), "assign");
-      const body =
-        kind === "CONTACT"
-          ? { contactId: Number(entityId) }
-          : kind === "ORGANIZATION"
-            ? { organizationId: Number(entityId) }
-            : { animalId: Number(entityId) };
-      return fetchJson<any>(url, { method: "POST", body: JSON.stringify(body) }, withAuth());
-    },
-    async unassign(tagId: ID, entityId: ID, kind: Module = "CONTACT") {
-      const url = joinUrl(v1, "tags", String(tagId), "unassign");
-      const body =
-        kind === "CONTACT"
-          ? { contactId: Number(entityId) }
-          : kind === "ORGANIZATION"
-            ? { organizationId: Number(entityId) }
-            : { animalId: Number(entityId) };
-      return fetchJson<any>(url, { method: "POST", body: JSON.stringify(body) }, withAuth());
-    },
-    async listForContact(contactId: ID): Promise<Array<{ id: number; name: string }>> {
-      const url = joinUrl(v1, "contacts", String(contactId), "tags");
-      try {
-        const res = await fetchJson<any>(url, { method: "GET" }, withAuth());
-        const arr = Array.isArray(res?.items) ? res.items : Array.isArray(res) ? res : [];
-        return arr.map((t: any) => ({ id: Number(t.id), name: String(t.name) }));
-      } catch (e: any) {
-        if (e?.status === 404) return [];
-        throw e;
-      }
-    },
-  };
+  // Wire up unified tags from @bhq/api
+  const tags = makeTags(createHttp(v1));
 
   /* ------------------------------- ORGANIZATIONS ----------------------------- */
   const organizations = {

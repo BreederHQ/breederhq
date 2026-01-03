@@ -353,7 +353,8 @@ function PlanBlock({ plan, prefs }: { plan: PlanLike; prefs: AvailabilityPrefs }
 
   return (
     <div className="rounded-xl border mb-4" style={{ borderColor: "hsl(0 0% 40%)" }}>
-      <div className="flex items-center justify-between px-4 py-3">
+      {/* Fixed header with plan name and toggles */}
+      <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: "hsl(0 0% 40%)" }}>
         <div className="font-semibold">{plan.name}</div>
         <div className="flex items-center gap-3 text-xs">
           <label className="inline-flex items-center gap-1 cursor-pointer">
@@ -371,23 +372,26 @@ function PlanBlock({ plan, prefs }: { plan: PlanLike; prefs: AvailabilityPrefs }
         </div>
       </div>
 
-      {toggles.showPhases && (
-        <section className="px-3 pt-3 pb-3">
-          <div className="px-1 pb-2 text-xs font-medium text-secondary">Timeline Phases</div>
-          <div className="rounded-xl bg-black/20 p-2 overflow-hidden mb-2" style={{ border: "none" }}>
-            <Gantt {...ganttCommon} stages={toStages(phases.rows)} data={toStageData(phases.rows)} />
-          </div>
-        </section>
-      )}
+      {/* Scrollable phase sections container */}
+      <div style={{ maxHeight: "500px", overflowY: "auto" }}>
+        {toggles.showPhases && (
+          <section className="px-3 pt-3 pb-3">
+            <div className="px-1 pb-2 text-xs font-medium text-secondary">Timeline Phases</div>
+            <div className="rounded-xl bg-black/20 p-2 overflow-hidden mb-2" style={{ border: "none" }}>
+              <Gantt {...ganttCommon} stages={toStages(phases.rows)} data={toStageData(phases.rows)} />
+            </div>
+          </section>
+        )}
 
-      {toggles.showExact && (
-        <section className="px-3 pt-2 pb-3">
-          <div className="px-1 pb-2 text-xs font-medium text-secondary">Expected Dates</div>
-          <div className="rounded-xl bg-black/20 p-2 overflow-hidden" style={{ border: "none" }}>
-            <Gantt {...ganttCommon} stages={toStages(exact.rows)} data={toStageData(exact.rows)} />
-          </div>
-        </section>
-      )}
+        {toggles.showExact && (
+          <section className="px-3 pt-2 pb-3">
+            <div className="px-1 pb-2 text-xs font-medium text-secondary">Expected Dates</div>
+            <div className="rounded-xl bg-black/20 p-2 overflow-hidden" style={{ border: "none" }}>
+              <Gantt {...ganttCommon} stages={toStages(exact.rows)} data={toStageData(exact.rows)} />
+            </div>
+          </section>
+        )}
+      </div>
     </div>
   );
 }

@@ -1,7 +1,23 @@
 // apps/marketplace/src/api/types.ts
 // DTO types matching backend public-marketplace.ts contract
 
-export interface PublicProgramSummaryDTO {
+/**
+ * Monetization fields for boosted/featured/sponsored items.
+ * These are optional fields that can be added to any listing or program.
+ */
+export interface MonetizationFields {
+  boosted?: boolean;
+  boostCategory?: "animals" | "breeders" | "services";
+  boostWeight?: number;
+  boostExpiresAt?: string;
+  featured?: boolean;
+  featuredWeight?: number;
+  isSponsored?: boolean;
+  sponsorshipType?: "boosted" | "featured" | "sponsored-card" | "sponsored-content";
+  sponsorDisclosureText?: string;
+}
+
+export interface PublicProgramSummaryDTO extends MonetizationFields {
   slug: string;
   name: string;
   location: string | null;
@@ -30,7 +46,7 @@ export interface ParentAnimalDTO {
 /**
  * Offspring group listing - matches backend toPublicOffspringGroupListingDTO
  */
-export interface PublicOffspringGroupListingDTO {
+export interface PublicOffspringGroupListingDTO extends MonetizationFields {
   slug: string;
   title: string | null;
   description: string | null;

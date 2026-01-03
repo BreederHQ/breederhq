@@ -1,26 +1,31 @@
 // apps/marketplace/src/marketplace/components/ProgramTile.tsx
 // Buyer-facing breeder tile with "View litters" CTA
 import { Link } from "react-router-dom";
+import { SponsorDisclosure } from "./SponsorDisclosure";
 
 interface ProgramTileProps {
   slug: string;
   name: string;
   location: string | null;
   photoUrl: string | null;
+  isBoosted?: boolean;
+  sponsorDisclosureText?: string;
 }
 
 /**
  * Breeder card with buyer-facing language.
  * Shows breeder name, location, and "View litters" CTA.
  */
-export function ProgramTile({ slug, name, location, photoUrl }: ProgramTileProps) {
+export function ProgramTile({ slug, name, location, photoUrl, isBoosted = false, sponsorDisclosureText }: ProgramTileProps) {
   return (
     <Link
       to={`/programs/${slug}`}
-      className="group flex flex-col min-h-[200px] rounded-portal border border-border-subtle bg-portal-card overflow-hidden shadow-portal transition-all hover:border-border-default hover:bg-portal-card-hover hover:-translate-y-0.5 hover:shadow-portal-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
+      className={`group flex flex-col min-h-[200px] rounded-portal border bg-portal-card overflow-hidden shadow-portal transition-all hover:border-border-default hover:bg-portal-card-hover hover:-translate-y-0.5 hover:shadow-portal-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 ${
+        isBoosted ? "border-accent/30" : "border-border-subtle"
+      }`}
     >
       {/* Image area */}
-      <div className="h-[100px] bg-gradient-to-br from-portal-card-hover to-border-default overflow-hidden flex-shrink-0">
+      <div className="h-[100px] bg-gradient-to-br from-portal-card-hover to-border-default overflow-hidden flex-shrink-0 relative">
         {photoUrl ? (
           <img
             src={photoUrl}
@@ -37,6 +42,14 @@ export function ProgramTile({ slug, name, location, photoUrl }: ProgramTileProps
             </span>
           </div>
         )}
+        {/* Boosted badge */}
+        {isBoosted && (
+          <div className="absolute top-2 left-2">
+            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-accent/90 text-white">
+              Boosted
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Content */}
@@ -47,10 +60,15 @@ export function ProgramTile({ slug, name, location, photoUrl }: ProgramTileProps
         <p className="text-[13px] text-text-tertiary mt-1 truncate">
           {location || "Location not specified"}
         </p>
-        <div className="mt-auto pt-3">
+        <div className="mt-auto pt-3 flex items-center justify-between">
           <span className="text-[13px] font-medium text-accent group-hover:text-accent-hover transition-colors">
             View litters →
           </span>
+          {isBoosted && sponsorDisclosureText && (
+            <div onClick={(e) => e.preventDefault()}>
+              <SponsorDisclosure disclosureText={sponsorDisclosureText} />
+            </div>
+          )}
         </div>
       </div>
     </Link>

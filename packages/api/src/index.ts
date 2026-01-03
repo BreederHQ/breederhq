@@ -11,6 +11,7 @@ import { makeMarketing, type MarketingResource } from "./resources/marketing";
 import { makeMessages, type MessagesResource } from "./resources/messages";
 import { makePortalAccess, type PortalAccessResource } from "./resources/portal-access";
 import { makePortalData, type PortalDataResource } from "./resources/portal-data";
+import { makeTags, type TagsResource } from "./resources/tags";
 
 export { createHttp, type Http, type MakeAuthHeader } from "./http";
 
@@ -43,6 +44,17 @@ export {
   type OffspringDetailDTO,
   type OffspringDetailResponse,
 } from "./resources/portal-data";
+export {
+  makeTags,
+  type TagsResource,
+  type TagModule,
+  type TagDTO,
+  type TagListParams,
+  type TagListResponse,
+  type CreateTagInput,
+  type UpdateTagInput,
+  type TagAssignmentTarget,
+} from "./resources/tags";
 
 // Re-export shared types - common types first (ID, ListParams, ListResponse)
 export * from "./types/contacts";
@@ -83,5 +95,6 @@ export function makeApi(baseURL: string, makeAuth?: MakeAuthHeader) {
     messages:  makeMessages(http),
     portalAccess: makePortalAccess(http),
     portalData: makePortalData(http),
+    tags:      makeTags(http),
   };
 }

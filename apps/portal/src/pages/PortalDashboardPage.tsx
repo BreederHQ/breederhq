@@ -6,6 +6,7 @@ import { PortalCard } from "../design/PortalCard";
 import { Button } from "../design/Button";
 import { usePortalTasks } from "../tasks/taskSources";
 import { usePortalNotifications } from "../notifications/notificationSources";
+import { usePortalContext } from "../hooks/usePortalContext";
 import { isPortalMockEnabled } from "../dev/mockFlag";
 import { mockOffspring, mockFinancialSummary, mockAgreements } from "../dev/mockData";
 import { getSpeciesAccent } from "../ui/speciesTokens";
@@ -403,7 +404,22 @@ function LoadingState() {
 export default function PortalDashboardPage() {
   const { tasks, loading: tasksLoading } = usePortalTasks();
   const { notifications, loading: notificationsLoading } = usePortalNotifications();
+  const { orgName, userEmail } = usePortalContext();
   const mockEnabled = isPortalMockEnabled();
+
+  // Derive user's first name from email (before @ or +) or use mock name in demo mode
+  const getUserFirstName = (): string | null => {
+    if (mockEnabled) return "Emily";
+    if (!userEmail) return null;
+    const localPart = userEmail.split("@")[0];
+    // Handle email+tag format
+    const name = localPart.split("+")[0];
+    // Capitalize first letter
+    return name.charAt(0).toUpperCase() + name.slice(1).toLowerCase();
+  };
+
+  const firstName = getUserFirstName();
+  const pageTitle = firstName ? `Welcome, ${firstName}` : "Welcome";
 
   const handleNavigate = (path: string) => {
     window.history.pushState(null, "", path);
@@ -514,7 +530,7 @@ export default function PortalDashboardPage() {
       : undefined;
 
   return (
-    <PageScaffold title="Dashboard" status={pageStatus} statusLabel={pageStatusLabel}>
+    <PageScaffold title={pageTitle} status={pageStatus} statusLabel={pageStatusLabel}>
       {isLoading && <LoadingState />}
 
       {!isLoading && !primaryPlacement && (
