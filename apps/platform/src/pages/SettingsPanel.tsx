@@ -11,6 +11,7 @@ import { resolveTenantId } from "@bhq/ui/utils/tenant";
 import type { BreedingProgramProfile } from "@bhq/ui/utils/breedingProgram";
 import ProgramProfileSnapshot from "../components/ProgramProfileSnapshot";
 import DateValidationSettingsTab from "../components/DateValidationSettingsTab";
+import { TagsManagerTab } from "../components/TagsManagerTab";
 import { api } from "../api";
 
 /** ───────── Tenant helpers ───────── */
@@ -670,7 +671,7 @@ export default function SettingsPanel({ open, dirty, onDirtyChange, onClose }: P
                 {active === "breeds" && <BreedsTab onDirty={(v) => markDirty("breeds", v)} />}
                 {active === "users" && <UsersTab dirty={dirtyMap.users} onDirty={(v) => markDirty("users", v)} />}
                 {active === "groups" && <GroupsTab dirty={dirtyMap.groups} onDirty={(v) => markDirty("groups", v)} />}
-                {active === "tags" && <TagsTab dirty={dirtyMap.tags} onDirty={(v) => markDirty("tags", v)} />}
+                {active === "tags" && <TagsManagerTab dirty={dirtyMap.tags} onDirty={(v) => markDirty("tags", v)} />}
                 {active === "accessibility" && <AccessibilityTab />}
               </div>
             </main>
@@ -2188,19 +2189,6 @@ function GroupsTab({ onDirty }: { dirty: boolean; onDirty: (v: boolean) => void 
     </Card>
   );
 }
-function TagsTab({ onDirty }: { dirty: boolean; onDirty: (v: boolean) => void }) {
-  return (
-    <Card className="p-4 space-y-3">
-      <h4 className="font-medium">Tag Manager</h4>
-      <p className="text-sm text-secondary">Add, rename, and delete tags used across the platform (placeholder).</p>
-      <div className="flex gap-2">
-        <input className={`bhq-input ${INPUT_CLS} flex-1`} placeholder="New tag" onChange={() => onDirty(true)} />
-        <Button size="sm" onClick={() => onDirty(true)}>Add tag</Button>
-      </div>
-    </Card>
-  );
-}
-
 /** ───────── Small UI helpers ───────── */
 function Chk({ label, checked, onChange }: { label: string; checked: boolean; onChange: (c: boolean) => void }) {
   return (
