@@ -913,6 +913,24 @@ export function makeOffspringApiClient(opts?: MakeOpts): OffspringApi {
 
     /* Finance namespace for invoices, payments, expenses */
     finance: {
+      parties: {
+        search: async (query: string, opts?: { limit?: number }) => {
+          const qs = new URLSearchParams();
+          qs.set("q", query);
+          qs.set("dir", "asc");
+          if (opts?.limit) qs.set("limit", String(opts.limit));
+          const res = await core.raw.get<{ items?: any[]; total?: number } | any[]>(`/parties?${qs.toString()}`, {});
+          return Array.isArray(res) ? res : (res?.items || []);
+        },
+      },
+      contacts: {
+        create: (input: { first_name?: string; last_name?: string; display_name?: string; email?: string; phone_e164?: string }) =>
+          core.raw.post<any>("/contacts", input, {}),
+      },
+      organizations: {
+        create: (input: { name: string; website?: string | null }) =>
+          core.raw.post<any>("/organizations", input, {}),
+      },
       invoices: {
         list: (params?: any) => {
           const qs = new URLSearchParams();

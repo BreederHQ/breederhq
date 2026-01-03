@@ -4630,6 +4630,8 @@ export default function AppAnimals() {
         activeTab,
         setActiveTab,
         requestSave,
+        close,
+        hasPendingChanges,
       }: any) => (
         <>
           <DetailsScaffold
@@ -4638,6 +4640,8 @@ export default function AppAnimals() {
             mode={mode}
             onEdit={() => setMode("edit")}
             onCancel={() => setMode("view")}
+            onClose={close}
+            hasPendingChanges={hasPendingChanges}
             onSave={async () => {
               const currentTab = activeTab;
               await Promise.resolve(requestSave());

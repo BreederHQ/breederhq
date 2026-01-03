@@ -590,6 +590,35 @@ export function makeApi(baseOrigin: string = "", authHeaderFn?: () => Record<str
 
   /* --------------------------------- FINANCE --------------------------------- */
   const finance = {
+    parties: {
+      async search(query: string, opts?: { limit?: number }) {
+        const p = new URLSearchParams();
+        p.set("q", query);
+        p.set("dir", "asc");
+        if (opts?.limit) p.set("limit", String(opts.limit));
+        const url = joinUrl(v1, "parties") + `?${p.toString()}`;
+        const res = await fetchJson<{ items?: any[]; total?: number } | any[]>(url, { method: "GET" }, withAuth());
+        return Array.isArray(res) ? res : (res?.items || []);
+      },
+    },
+    contacts: {
+      async create(input: {
+        first_name?: string;
+        last_name?: string;
+        display_name?: string;
+        email?: string;
+        phone_e164?: string;
+      }) {
+        const url = joinUrl(v1, "contacts");
+        return fetchJson<any>(url, { method: "POST", body: JSON.stringify(input) }, withAuth());
+      },
+    },
+    organizations: {
+      async create(input: { name: string; website?: string | null }) {
+        const url = joinUrl(v1, "organizations");
+        return fetchJson<any>(url, { method: "POST", body: JSON.stringify(input) }, withAuth());
+      },
+    },
     invoices: {
       async list(params: any = {}) {
         const p = new URLSearchParams();

@@ -155,21 +155,3 @@
   border-color: var(--cal-grid);
 }
 
-/* Light mode refinement if you ever flip themes */
-@media (prefers-color-scheme: light) {
-  .bhq-cal {
-    --cal-bg: #fff;
-    --cal-panel: #fff;
-    --cal-border: rgba(0,0,0,0.12);
-    --cal-grid: rgba(0,0,0,0.10);
-    --cal-grid-week: rgba(0,0,0,0.14);
-    --cal-text: #111;
-    --cal-muted: #6b7280;
-    --cal-today: rgba(255, 221, 0, 0.12);
-    --cal-today-ring: #111;
-    --cal-btn-bg: #f3f4f6;
-    --cal-btn-bg-hover: #e5e7eb;
-    --cal-btn-text: #111;
-    --cal-chip-bg: #f7f7f7;
-  }
-}

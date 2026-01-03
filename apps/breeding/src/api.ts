@@ -617,6 +617,27 @@ export function makeBreedingApi(opts: ApiOpts) {
           return del<any>(`/expenses/${id}`).then(() => ({ success: true }));
         },
       },
+      parties: {
+        async search(query: string, opts?: { limit?: number; typeFilter?: string }) {
+          const qs = new URLSearchParams();
+          qs.set("q", query);
+          qs.set("dir", "asc");
+          if (opts?.limit) qs.set("limit", String(opts.limit));
+          if (opts?.typeFilter) qs.set("type", opts.typeFilter);
+          const res = await get<{ items?: any[]; total?: number } | any[]>(`/parties?${qs.toString()}`);
+          return Array.isArray(res) ? res : (res?.items || []);
+        },
+      },
+      contacts: {
+        create(input: { first_name?: string; last_name?: string; display_name?: string; email?: string; phone_e164?: string }) {
+          return post<any>("/contacts", input);
+        },
+      },
+      organizations: {
+        create(input: { name: string; website?: string | null }) {
+          return post<any>("/organizations", input);
+        },
+      },
     },
 
     /* Scheduling namespace for calendar integration */
