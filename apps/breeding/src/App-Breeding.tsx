@@ -3183,6 +3183,326 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
+/* ───────── Placement Scheduling Section (Phase 6) ───────── */
+
+type PlacementSchedulingSectionProps = {
+  offspringGroupId: number;
+  api: ReturnType<typeof makeBreedingApi>;
+  isEdit: boolean;
+  editable: boolean;
+};
+
+function PlacementSchedulingSection({
+  offspringGroupId,
+  api,
+  isEdit,
+  editable,
+}: PlacementSchedulingSectionProps) {
+  const [policy, setPolicy] = React.useState<{
+    enabled: boolean;
+    timezone: string | null;
+    startAt: string | null;
+    windowMinutes: number | null;
+    gapMinutes: number | null;
+    graceMinutes: number | null;
+    allowOverlap: boolean;
+  } | null>(null);
+
+  const [status, setStatus] = React.useState<{
+    rankedBuyersCount: number;
+    bookedCount: number;
+    pendingCount: number;
+    missedCount: number;
+    buyers: Array<{
+      buyerId: number;
+      buyerName: string;
+      placementRank: number | null;
+      bookingStatus: "booked" | "pending" | "missed" | null;
+    }>;
+  } | null>(null);
+
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
+  const [saving, setSaving] = React.useState(false);
+  const [draft, setDraft] = React.useState<typeof policy>(null);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+
+    Promise.all([
+      api.offspringGroups.getPlacementPolicy(offspringGroupId),
+      api.offspringGroups.getPlacementStatus(offspringGroupId),
+    ])
+      .then(([policyRes, statusRes]) => {
+        if (cancelled) return;
+        setPolicy(policyRes);
+        setDraft(policyRes);
+        setStatus(statusRes);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setError(err?.message || "Failed to load placement scheduling");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => { cancelled = true; };
+  }, [offspringGroupId, api]);
+
+  const handleSave = React.useCallback(async () => {
+    if (!draft) return;
+    setSaving(true);
+    try {
+      const updated = await api.offspringGroups.updatePlacementPolicy(offspringGroupId, draft);
+      setPolicy(updated);
+      setDraft(updated);
+    } catch (err: any) {
+      setError(err?.message || "Failed to save policy");
+    } finally {
+      setSaving(false);
+    }
+  }, [api, offspringGroupId, draft]);
+
+  const handleRankChange = React.useCallback(
+    async (buyerId: number, rank: number | null) => {
+      try {
+        await api.offspringGroups.updateBuyerPlacementRank(offspringGroupId, buyerId, rank);
+        const statusRes = await api.offspringGroups.getPlacementStatus(offspringGroupId);
+        setStatus(statusRes);
+      } catch (err: any) {
+        setError(err?.message || "Failed to update buyer rank");
+      }
+    },
+    [api, offspringGroupId]
+  );
+
+  const hasChanges = React.useMemo(() => {
+    if (!policy || !draft) return false;
+    return (
+      policy.enabled !== draft.enabled ||
+      policy.timezone !== draft.timezone ||
+      policy.startAt !== draft.startAt ||
+      policy.windowMinutes !== draft.windowMinutes ||
+      policy.gapMinutes !== draft.gapMinutes ||
+      policy.graceMinutes !== draft.graceMinutes ||
+      policy.allowOverlap !== draft.allowOverlap
+    );
+  }, [policy, draft]);
+
+  if (loading) {
+    return (
+      <SectionCard title="Placement Scheduling">
+        <div className="text-sm text-secondary">Loading...</div>
+      </SectionCard>
+    );
+  }
+
+  if (error) {
+    return (
+      <SectionCard title="Placement Scheduling">
+        <div className="text-sm text-red-600">{error}</div>
+      </SectionCard>
+    );
+  }
+
+  return (
+    <SectionCard title="Placement Scheduling">
+      <div className="space-y-4">
+        <div className="flex items-center gap-3">
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={draft?.enabled ?? false}
+              onChange={(e) => setDraft((d) => d ? { ...d, enabled: e.target.checked } : d)}
+              disabled={!isEdit || !editable}
+              className="h-4 w-4 rounded border-hairline"
+            />
+            <span className="text-sm">Enable placement scheduling fairness</span>
+          </label>
+        </div>
+
+        {draft?.enabled && (
+          <>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div>
+                <div className="text-xs text-secondary mb-1">Timezone</div>
+                {isEdit ? (
+                  <select
+                    className="w-full h-9 rounded-md border border-hairline bg-surface px-2 text-sm text-primary"
+                    value={draft?.timezone || ""}
+                    onChange={(e) => setDraft((d) => d ? { ...d, timezone: e.target.value || null } : d)}
+                    disabled={!editable}
+                  >
+                    <option value="">Select timezone</option>
+                    <option value="America/New_York">Eastern (ET)</option>
+                    <option value="America/Chicago">Central (CT)</option>
+                    <option value="America/Denver">Mountain (MT)</option>
+                    <option value="America/Los_Angeles">Pacific (PT)</option>
+                  </select>
+                ) : (
+                  <div className="text-sm">{policy?.timezone || "-"}</div>
+                )}
+              </div>
+
+              <div>
+                <div className="text-xs text-secondary mb-1">Start Date/Time</div>
+                {isEdit ? (
+                  <Input
+                    type="datetime-local"
+                    value={draft?.startAt?.slice(0, 16) || ""}
+                    onChange={(e) =>
+                      setDraft((d) => d ? { ...d, startAt: e.target.value ? new Date(e.target.value).toISOString() : null } : d)
+                    }
+                    disabled={!editable}
+                    className="h-9"
+                  />
+                ) : (
+                  <div className="text-sm">{policy?.startAt ? new Date(policy.startAt).toLocaleString() : "-"}</div>
+                )}
+              </div>
+
+              <div>
+                <div className="text-xs text-secondary mb-1">Window (minutes)</div>
+                {isEdit ? (
+                  <Input
+                    type="number"
+                    min={1}
+                    value={draft?.windowMinutes ?? ""}
+                    onChange={(e) => setDraft((d) => d ? { ...d, windowMinutes: e.target.value ? Number(e.target.value) : null } : d)}
+                    disabled={!editable}
+                    className="h-9"
+                  />
+                ) : (
+                  <div className="text-sm">{policy?.windowMinutes ?? "-"}</div>
+                )}
+              </div>
+
+              <div>
+                <div className="text-xs text-secondary mb-1">Gap (minutes)</div>
+                {isEdit ? (
+                  <Input
+                    type="number"
+                    min={0}
+                    value={draft?.gapMinutes ?? ""}
+                    onChange={(e) => setDraft((d) => d ? { ...d, gapMinutes: e.target.value ? Number(e.target.value) : null } : d)}
+                    disabled={!editable}
+                    className="h-9"
+                  />
+                ) : (
+                  <div className="text-sm">{policy?.gapMinutes ?? "-"}</div>
+                )}
+              </div>
+
+              <div>
+                <div className="text-xs text-secondary mb-1">Grace (minutes)</div>
+                {isEdit ? (
+                  <Input
+                    type="number"
+                    min={0}
+                    value={draft?.graceMinutes ?? ""}
+                    onChange={(e) => setDraft((d) => d ? { ...d, graceMinutes: e.target.value ? Number(e.target.value) : null } : d)}
+                    disabled={!editable}
+                    className="h-9"
+                  />
+                ) : (
+                  <div className="text-sm">{policy?.graceMinutes ?? "-"}</div>
+                )}
+              </div>
+
+              <div className="flex items-end">
+                <label className="flex items-center gap-2 cursor-pointer h-9">
+                  <input
+                    type="checkbox"
+                    checked={draft?.allowOverlap ?? false}
+                    onChange={(e) => setDraft((d) => d ? { ...d, allowOverlap: e.target.checked } : d)}
+                    disabled={!isEdit || !editable}
+                    className="h-4 w-4 rounded border-hairline"
+                  />
+                  <span className="text-sm">Allow overlap</span>
+                </label>
+              </div>
+            </div>
+
+            {isEdit && hasChanges && (
+              <div className="flex justify-end">
+                <Button variant="default" size="sm" onClick={handleSave} disabled={saving || !editable}>
+                  {saving ? "Saving..." : "Save Policy"}
+                </Button>
+              </div>
+            )}
+
+            {status && (
+              <div className="mt-4 pt-4 border-t border-hairline">
+                <div className="text-xs text-secondary mb-2 font-medium">Status</div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4">
+                  <div className="text-center p-2 rounded-md bg-surface-raised">
+                    <div className="text-lg font-semibold">{status.rankedBuyersCount}</div>
+                    <div className="text-xs text-secondary">Ranked</div>
+                  </div>
+                  <div className="text-center p-2 rounded-md bg-surface-raised">
+                    <div className="text-lg font-semibold text-green-600">{status.bookedCount}</div>
+                    <div className="text-xs text-secondary">Booked</div>
+                  </div>
+                  <div className="text-center p-2 rounded-md bg-surface-raised">
+                    <div className="text-lg font-semibold text-amber-600">{status.pendingCount}</div>
+                    <div className="text-xs text-secondary">Pending</div>
+                  </div>
+                  <div className="text-center p-2 rounded-md bg-surface-raised">
+                    <div className="text-lg font-semibold text-red-600">{status.missedCount}</div>
+                    <div className="text-xs text-secondary">Missed</div>
+                  </div>
+                </div>
+
+                {status.buyers.length > 0 && (
+                  <div>
+                    <div className="text-xs text-secondary mb-2 font-medium">Buyer Placement Order</div>
+                    <div className="space-y-2">
+                      {status.buyers.map((buyer) => (
+                        <div key={buyer.buyerId} className="flex items-center gap-3 p-2 rounded-md bg-surface-raised">
+                          <div className="w-16">
+                            {isEdit && editable ? (
+                              <Input
+                                type="number"
+                                min={1}
+                                value={buyer.placementRank ?? ""}
+                                onChange={(e) => handleRankChange(buyer.buyerId, e.target.value ? Number(e.target.value) : null)}
+                                className="h-8 text-center"
+                                placeholder="#"
+                              />
+                            ) : (
+                              <div className="text-sm text-center font-medium">{buyer.placementRank ?? "-"}</div>
+                            )}
+                          </div>
+                          <div className="flex-1 text-sm">{buyer.buyerName}</div>
+                          <div className="text-xs">
+                            {buyer.bookingStatus === "booked" && <span className="text-green-600">Booked</span>}
+                            {buyer.bookingStatus === "pending" && <span className="text-amber-600">Pending</span>}
+                            {buyer.bookingStatus === "missed" && <span className="text-red-600">Missed</span>}
+                            {!buyer.bookingStatus && <span className="text-secondary">-</span>}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </>
+        )}
+
+        {!draft?.enabled && (
+          <div className="text-sm text-secondary">
+            When enabled, buyers will be assigned time windows in rank order to ensure fair access to scheduling.
+          </div>
+        )}
+      </div>
+    </SectionCard>
+  );
+}
+
 /* ───────── Details View ───────── */
 
 function PlanDetailsView(props: {
@@ -4776,6 +5096,16 @@ function PlanDetailsView(props: {
                 )}
               </div>
             </SectionCard>
+
+            {/* Placement Scheduling (Phase 6) - only show if plan has linked offspring group */}
+            {row.offspringGroupId && api && (
+              <PlacementSchedulingSection
+                offspringGroupId={row.offspringGroupId}
+                api={api}
+                isEdit={isEdit}
+                editable={editable}
+              />
+            )}
 
             {/* Sticky footer Close button for Overview */}
             <div className="sticky bottom-0 pt-4 mt-8 bg-gradient-to-t from-[rgba(0,0,0,0.04)] to-transparent">

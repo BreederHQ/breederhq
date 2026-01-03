@@ -118,6 +118,38 @@ export type OffspringGroupLinkSuggestion = {
   sireName: string | null;
 };
 
+/* Placement Scheduling Policy types (Phase 6) */
+export type PlacementSchedulingPolicy = {
+  enabled: boolean;
+  timezone: string | null;
+  startAt: string | null;
+  windowMinutes: number | null;
+  gapMinutes: number | null;
+  graceMinutes: number | null;
+  allowOverlap: boolean;
+};
+
+export type PlacementSchedulingPolicyInput = Partial<PlacementSchedulingPolicy>;
+
+export type PlacementStatusBuyer = {
+  buyerId: number;
+  buyerName: string;
+  placementRank: number | null;
+  bookingStatus: "booked" | "pending" | "missed" | null;
+  bookedAt: string | null;
+  eventType: string | null;
+};
+
+export type PlacementStatus = {
+  offspringGroupId: number;
+  policyEnabled: boolean;
+  rankedBuyersCount: number;
+  bookedCount: number;
+  pendingCount: number;
+  missedCount: number;
+  buyers: PlacementStatusBuyer[];
+};
+
 /* Scheduling types for calendar integration */
 export type SchedulingAvailabilityBlock = {
   id: number;
@@ -479,6 +511,19 @@ export function makeBreedingApi(opts: ApiOpts) {
         return get<OffspringGroupLinkSuggestion[]>(
           `/offspring/groups/${groupId}/link-suggestions${query}`
         );
+      },
+      /* Phase 6: Placement Scheduling */
+      getPlacementPolicy(groupId: number) {
+        return get<PlacementSchedulingPolicy>(`/offspring/${groupId}/placement-scheduling-policy`);
+      },
+      updatePlacementPolicy(groupId: number, body: PlacementSchedulingPolicyInput) {
+        return put<PlacementSchedulingPolicy>(`/offspring/${groupId}/placement-scheduling-policy`, body);
+      },
+      getPlacementStatus(groupId: number) {
+        return get<PlacementStatus>(`/offspring/${groupId}/placement-status`);
+      },
+      updateBuyerPlacementRank(groupId: number, buyerId: number, placementRank: number | null) {
+        return patch<{ ok: true }>(`/offspring/${groupId}/buyers/${buyerId}/placement-rank`, { placementRank });
       },
     },
 
