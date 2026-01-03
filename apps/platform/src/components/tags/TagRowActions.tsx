@@ -10,10 +10,13 @@ type Tag = {
 
 type Props = {
   tag: Tag;
+  usageCount: number;
   onEdit: () => void;
+  onDelete: () => void;
 };
 
-export function TagRowActions({ tag, onEdit }: Props) {
+export function TagRowActions({ tag, usageCount, onEdit, onDelete }: Props) {
+  const canDelete = usageCount === 0;
   const [open, setOpen] = React.useState(false);
   const menuRef = React.useRef<HTMLDivElement>(null);
 
@@ -57,9 +60,17 @@ export function TagRowActions({ tag, onEdit }: Props) {
             Edit
           </button>
           <button
-            disabled
-            className="w-full px-3 py-1.5 text-left text-sm text-secondary opacity-50 cursor-not-allowed"
-            title="Delete disabled until tag usage counts are available"
+            disabled={!canDelete}
+            onClick={canDelete ? () => {
+              setOpen(false);
+              onDelete();
+            } : undefined}
+            className={`w-full px-3 py-1.5 text-left text-sm ${
+              canDelete
+                ? "text-red-400 hover:bg-surface-hover transition-colors"
+                : "text-secondary opacity-50 cursor-not-allowed"
+            }`}
+            title={canDelete ? "Delete this tag" : `Cannot delete: tag is used ${usageCount} time${usageCount === 1 ? "" : "s"}`}
           >
             Delete
           </button>

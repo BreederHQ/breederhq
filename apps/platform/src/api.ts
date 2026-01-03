@@ -226,6 +226,8 @@ export function makeApi(base?: string) {
     tags: {
       list: (params: { module?: string; q?: string; page?: number; limit?: number } = {}) =>
         request(`${root}/tags` + qs(params), { method: "GET" }),
+      stats: () =>
+        request(`${root}/tags/stats`, { method: "GET" }),
       create: (data: { name: string; module: string; color?: string | null }) =>
         request(`${root}/tags`, { method: "POST", body: JSON.stringify(data) }),
       update: (id: ID, data: { name?: string; color?: string | null }) =>

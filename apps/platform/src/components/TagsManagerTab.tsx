@@ -4,6 +4,7 @@ import { Card, Button, Input } from "@bhq/ui";
 import { api } from "../api";
 import { TagCreateEditModal } from "./tags/TagCreateEditModal";
 import { TagRowActions } from "./tags/TagRowActions";
+import { TagDeleteConfirm } from "./tags/TagDeleteConfirm";
 
 type TagModule = "CONTACT" | "ORGANIZATION" | "ANIMAL" | "WAITLIST_ENTRY" | "OFFSPRING_GROUP" | "OFFSPRING";
 
@@ -41,23 +42,38 @@ export function TagsManagerTab({ onDirty }: { dirty: boolean; onDirty: (v: boole
   const [searchQuery, setSearchQuery] = React.useState("");
   const [collapsedModules, setCollapsedModules] = React.useState<Set<TagModule>>(new Set());
 
+  // Usage counts from stats endpoint
+  const [usageCounts, setUsageCounts] = React.useState<Map<number, number>>(new Map());
+
   // Modal states
   const [createModalOpen, setCreateModalOpen] = React.useState(false);
   const [editModalOpen, setEditModalOpen] = React.useState(false);
+  const [deleteModalOpen, setDeleteModalOpen] = React.useState(false);
   const [selectedTag, setSelectedTag] = React.useState<Tag | null>(null);
 
-  // Fetch all tags across all modules
+  // Fetch all tags and usage stats
   const fetchTags = React.useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      // Fetch all tags by omitting module param (backend returns all when module is empty)
-      const response = await api.tags.list({ limit: 1000 });
-      const items = response.items || [];
+      // Fetch tags and stats in parallel
+      const [tagsResponse, statsResponse] = await Promise.all([
+        api.tags.list({ limit: 1000 }),
+        api.tags.stats(),
+      ]);
+      const items = tagsResponse.items || [];
       setTags(items);
+
+      // Build usage counts map
+      const counts = new Map<number, number>();
+      for (const stat of statsResponse.items || []) {
+        counts.set(stat.tagId, stat.usageCount);
+      }
+      setUsageCounts(counts);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to fetch tags");
       setTags([]);
+      setUsageCounts(new Map());
     } finally {
       setLoading(false);
     }
@@ -122,6 +138,22 @@ export function TagsManagerTab({ onDirty }: { dirty: boolean; onDirty: (v: boole
   const openEditModal = (tag: Tag) => {
     setSelectedTag(tag);
     setEditModalOpen(true);
+  };
+
+  const openDeleteModal = (tag: Tag) => {
+    setSelectedTag(tag);
+    setDeleteModalOpen(true);
+  };
+
+  const handleDeleteTag = async () => {
+    if (!selectedTag) return;
+    await api.tags.delete(selectedTag.id);
+    await fetchTags();
+  };
+
+  // Helper to get usage count for a tag
+  const getUsageCount = (tagId: number): number => {
+    return usageCounts.get(tagId) ?? 0;
   };
 
   return (
@@ -225,37 +257,46 @@ export function TagsManagerTab({ onDirty }: { dirty: boolean; onDirty: (v: boole
                             <th className="pb-2 font-medium w-8"></th>
                             <th className="pb-2 font-medium">Name</th>
                             <th className="pb-2 font-medium">Module</th>
+                            <th className="pb-2 font-medium">Usage</th>
                             <th className="pb-2 font-medium">Created</th>
                             <th className="pb-2 font-medium w-12"></th>
                           </tr>
                         </thead>
                         <tbody>
-                          {moduleTags.map((tag) => (
-                            <tr key={tag.id} className="border-b border-hairline last:border-0">
-                              <td className="py-2">
-                                <div
-                                  className="w-3 h-3 rounded-full border border-hairline"
-                                  style={{
-                                    backgroundColor: tag.color || "#888",
-                                  }}
-                                  title={tag.color || "No color set"}
-                                />
-                              </td>
-                              <td className="py-2 font-medium">{tag.name}</td>
-                              <td className="py-2 text-sm text-secondary">
-                                {MODULE_LABELS[tag.module] || tag.module}
-                              </td>
-                              <td className="py-2 text-sm text-secondary">
-                                {new Date(tag.createdAt).toLocaleDateString()}
-                              </td>
-                              <td className="py-2 text-right">
-                                <TagRowActions
-                                  tag={tag}
-                                  onEdit={() => openEditModal(tag)}
-                                />
-                              </td>
-                            </tr>
-                          ))}
+                          {moduleTags.map((tag) => {
+                            const usage = getUsageCount(tag.id);
+                            return (
+                              <tr key={tag.id} className="border-b border-hairline last:border-0">
+                                <td className="py-2">
+                                  <div
+                                    className="w-3 h-3 rounded-full border border-hairline"
+                                    style={{
+                                      backgroundColor: tag.color || "#888",
+                                    }}
+                                    title={tag.color || "No color set"}
+                                  />
+                                </td>
+                                <td className="py-2 font-medium">{tag.name}</td>
+                                <td className="py-2 text-sm text-secondary">
+                                  {MODULE_LABELS[tag.module] || tag.module}
+                                </td>
+                                <td className="py-2 text-sm text-secondary">
+                                  {usage}
+                                </td>
+                                <td className="py-2 text-sm text-secondary">
+                                  {new Date(tag.createdAt).toLocaleDateString()}
+                                </td>
+                                <td className="py-2 text-right">
+                                  <TagRowActions
+                                    tag={tag}
+                                    usageCount={usage}
+                                    onEdit={() => openEditModal(tag)}
+                                    onDelete={() => openDeleteModal(tag)}
+                                  />
+                                </td>
+                              </tr>
+                            );
+                          })}
                         </tbody>
                       </table>
                     )}
@@ -281,6 +322,13 @@ export function TagsManagerTab({ onDirty }: { dirty: boolean; onDirty: (v: boole
         mode="edit"
         tag={selectedTag || undefined}
         onSubmit={handleEditTag}
+      />
+
+      <TagDeleteConfirm
+        open={deleteModalOpen}
+        onOpenChange={setDeleteModalOpen}
+        tag={selectedTag}
+        onConfirm={handleDeleteTag}
       />
     </div>
   );
