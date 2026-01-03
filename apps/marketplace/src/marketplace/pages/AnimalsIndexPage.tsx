@@ -6,7 +6,7 @@ import { isDemoMode, setDemoMode } from "../../demo/demoMode";
 import { getAllMockListings, simulateDelay, getBoostedItem, removeBoostedItem } from "../../demo/mockData";
 import { SponsorDisclosure } from "../components/SponsorDisclosure";
 import { formatCents } from "../../utils/format";
-import { Seo } from "../../seo";
+
 import type { PublicOffspringGroupListingDTO } from "../../api/types";
 
 /**
@@ -76,13 +76,12 @@ export function AnimalsIndexPage() {
   };
 
   // SEO component (rendered regardless of demo mode)
-  const seoComponent = <Seo title="Animals" />;
 
   // Real mode: show coming soon state
   if (!demoMode) {
     return (
       <div className="space-y-6">
-        {seoComponent}
+        
         <div>
           <h1 className="text-[28px] font-bold text-white tracking-tight leading-tight">
             Animals
@@ -125,7 +124,7 @@ export function AnimalsIndexPage() {
   // Demo mode: show listings grid
   return (
     <div className="space-y-5">
-      {seoComponent}
+      
       <div>
         <h1 className="text-[28px] font-bold text-white tracking-tight leading-tight">
           Animals

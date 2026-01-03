@@ -9,7 +9,7 @@ import { isDemoMode } from "../../demo/demoMode";
 import { useStartConversation } from "../../messages/hooks";
 import { Breadcrumb } from "../components/Breadcrumb";
 import { formatCents } from "../../utils/format";
-import { Seo } from "../../seo";
+
 import type { PublicOffspringGroupListingDTO } from "../../api/types";
 
 /**

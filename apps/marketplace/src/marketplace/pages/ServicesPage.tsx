@@ -6,7 +6,7 @@ import { isDemoMode, setDemoMode } from "../../demo/demoMode";
 import { getMockServices, simulateDelay, getBoostedItem, removeBoostedItem, type MockService } from "../../demo/mockData";
 import { SponsorDisclosure } from "../components/SponsorDisclosure";
 import { formatCents } from "../../utils/format";
-import { Seo } from "../../seo";
+
 
 const SERVICE_TYPE_LABELS: Record<string, string> = {
   stud: "Stud Service",
@@ -68,13 +68,12 @@ export function ServicesPage() {
   };
 
   // SEO component (rendered regardless of demo mode)
-  const seoComponent = <Seo title="Services" />;
 
   // Real mode: show coming soon state
   if (!demoMode) {
     return (
       <div className="space-y-6">
-        {seoComponent}
+        
         <div>
           <h1 className="text-[28px] font-bold text-white tracking-tight leading-tight">
             Services
@@ -117,7 +116,7 @@ export function ServicesPage() {
   // Demo mode: show services grid
   return (
     <div className="space-y-5">
-      {seoComponent}
+      
       <div>
         <h1 className="text-[28px] font-bold text-white tracking-tight leading-tight">
           Services

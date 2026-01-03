@@ -3,7 +3,7 @@
 import * as React from "react";
 import { Link } from "react-router-dom";
 import { TermsContent } from "@bhq/ui";
-import { Seo } from "../seo";
+
 import logoUrl from "@bhq/ui/assets/logo.png";
 
 export function TermsPage() {

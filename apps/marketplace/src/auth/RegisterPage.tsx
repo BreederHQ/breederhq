@@ -5,7 +5,7 @@
 import * as React from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { joinApi, safeReadJson } from "../api/client";
-import { Seo } from "../seo";
+
 import { createTosAcceptancePayload } from "@bhq/ui";
 
 // BreederHQ logo - same asset used by portal
@@ -171,12 +171,6 @@ export function RegisterPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4 font-sans antialiased bg-portal-bg">
-      <Seo
-        title="Create Account"
-        description="Create a BreederHQ Marketplace account to browse animals, connect with breeders, and manage your inquiries."
-        path="/auth/register"
-        index={true}
-      />
       <div className="w-full max-w-[420px]">
         {/* BreederHQ branding - matches Portal */}
         <div className="flex flex-col items-center gap-2 mb-6">

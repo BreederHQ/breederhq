@@ -3,7 +3,7 @@
 import * as React from "react";
 import { Link } from "react-router-dom";
 import { isDemoMode, setDemoMode } from "../../demo/demoMode";
-import { Seo } from "../../seo";
+
 import {
   getAllMockListings,
   getMockPrograms,

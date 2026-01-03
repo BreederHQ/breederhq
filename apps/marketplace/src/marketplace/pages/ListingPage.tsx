@@ -9,7 +9,7 @@ import { getMockListing, simulateDelay } from "../../demo/mockData";
 import { useStartConversation } from "../../messages/hooks";
 import { Breadcrumb } from "../components/Breadcrumb";
 import { formatCents } from "../../utils/format";
-import { Seo } from "../../seo";
+
 import type { ListingDetailDTO, PublicOffspringDTO } from "../../api/types";
 
 /**

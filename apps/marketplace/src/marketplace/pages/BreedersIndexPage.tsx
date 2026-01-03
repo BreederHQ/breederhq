@@ -2,7 +2,7 @@
 // Breeders entry point with breeder-centric framing
 import * as React from "react";
 import { ProgramsListView } from "../components/ProgramsListView";
-import { Seo } from "../../seo";
+
 
 /**
  * Breeders index page - explore breeders and their listings.

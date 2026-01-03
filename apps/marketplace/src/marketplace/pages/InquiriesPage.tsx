@@ -8,7 +8,7 @@ import { useConversations, useConversation, useSendMessage } from "../../message
 import { seedDemoConversations } from "../../messages/demoData";
 import { ConversationList, ThreadView } from "../../messages/components";
 import { isMessagingBackendAvailable } from "../../messages/adapter";
-import { Seo } from "../../seo";
+
 
 /**
  * Inquiries page - full messaging experience.

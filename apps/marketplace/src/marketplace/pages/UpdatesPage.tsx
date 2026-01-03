@@ -7,7 +7,7 @@ import { useUnreadCounts, useMarkRead } from "../../messages/hooks";
 import { getConversations, getMessages } from "../../messages/store";
 import { generateDemoActivity, seedDemoConversations } from "../../messages/demoData";
 import type { Conversation } from "../../messages/types";
-import { Seo } from "../../seo";
+
 
 interface NotificationItem {
   id: string;
