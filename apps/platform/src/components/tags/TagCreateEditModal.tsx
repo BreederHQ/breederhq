@@ -126,6 +126,11 @@ export function TagCreateEditModal({ open, onOpenChange, mode, tag, onSubmit }: 
               </label>
               <Input
                 type="text"
+                name="tag_name"
+                autoComplete="off"
+                data-1p-ignore="true"
+                data-lpignore="true"
+                data-form-type="other"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="Enter tag name"

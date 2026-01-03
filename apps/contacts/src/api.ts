@@ -19,6 +19,15 @@ type AnimalStatus =
  * Shared helpers
  * ------------------------------------------------------------------------- */
 
+/** Normalize API base: ensure exactly one /api/v1 suffix, never doubled */
+function normBase(base?: string): string {
+  let b = String(base || "").trim();
+  if (!b) b = typeof window !== "undefined" ? window.location.origin : "";
+  // Strip trailing slashes and any existing /api/v1 suffix
+  b = b.replace(/\/+$/g, "").replace(/\/api\/v1$/i, "");
+  return `${b}/api/v1`;
+}
+
 function joinUrl(...parts: (string | number | undefined | null)[]) {
   return parts
     .filter((p) => p !== undefined && p !== null)
@@ -205,8 +214,7 @@ export const apiUtils = {
  * ------------------------------------------------------------------------- */
 
 export function makeApi(baseOrigin: string = "", authHeaderFn?: () => Record<string, string>) {
-  const origin = baseOrigin || "";
-  const v1 = joinUrl(origin, "/api/v1");
+  const v1 = normBase(baseOrigin);
   const withAuth = () => (authHeaderFn ? authHeaderFn() : {});
 
   /* --------------------------------- CONTACTS -------------------------------- */
