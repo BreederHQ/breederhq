@@ -70,7 +70,7 @@ export function ProgramsListView({ title, subtitle }: ProgramsListViewProps) {
   };
 
   // Query
-  const { data, loading, error, refetch } = useProgramsQuery({
+  const { data, boostedItem, loading, error, refetch } = useProgramsQuery({
     search,
     location,
     page,
@@ -126,6 +126,7 @@ export function ProgramsListView({ title, subtitle }: ProgramsListViewProps) {
       {/* Grid */}
       <ProgramsGrid
         programs={data?.items ?? null}
+        boostedItem={boostedItem}
         loading={loading}
         error={error}
         onRetry={refetch}

@@ -2,8 +2,8 @@
 import * as React from "react";
 import { getPrograms } from "../../api/client";
 import { isDemoMode } from "../../demo/demoMode";
-import { getMockPrograms, simulateDelay } from "../../demo/mockData";
-import type { ProgramsResponse } from "../../api/types";
+import { getMockPrograms, simulateDelay, getBoostedItem, removeBoostedItem } from "../../demo/mockData";
+import type { ProgramsResponse, PublicProgramSummaryDTO } from "../../api/types";
 
 const LIMIT = 24;
 const DEBOUNCE_MS = 300;
@@ -16,6 +16,7 @@ interface UseProgramsQueryParams {
 
 interface UseProgramsQueryResult {
   data: ProgramsResponse | null;
+  boostedItem: PublicProgramSummaryDTO | null;
   loading: boolean;
   error: Error | null;
   refetch: () => void;
@@ -27,6 +28,7 @@ export function useProgramsQuery({
   page,
 }: UseProgramsQueryParams): UseProgramsQueryResult {
   const [data, setData] = React.useState<ProgramsResponse | null>(null);
+  const [boostedItem, setBoostedItem] = React.useState<PublicProgramSummaryDTO | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<Error | null>(null);
 
@@ -71,7 +73,19 @@ export function useProgramsQuery({
         limit: LIMIT,
         offset,
       });
-      setData(result);
+
+      // Extract boosted item only on first page with no filters
+      const isFirstPageNoFilters = page === 1 && !debouncedSearch && !debouncedLocation;
+      if (isFirstPageNoFilters) {
+        const boosted = getBoostedItem(result.items, "breeders");
+        setBoostedItem(boosted);
+        // Remove boosted from regular list
+        const remaining = removeBoostedItem(result.items, boosted);
+        setData({ ...result, items: remaining });
+      } else {
+        setBoostedItem(null);
+        setData(result);
+      }
       setLoading(false);
       return;
     }
@@ -111,5 +125,5 @@ export function useProgramsQuery({
     fetchData();
   }, [fetchData]);
 
-  return { data, loading, error, refetch };
+  return { data, boostedItem, loading, error, refetch };
 }

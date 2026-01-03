@@ -3,7 +3,8 @@
 import * as React from "react";
 import { Link } from "react-router-dom";
 import { isDemoMode, setDemoMode } from "../../demo/demoMode";
-import { getMockServices, simulateDelay, type MockService } from "../../demo/mockData";
+import { getMockServices, simulateDelay, getBoostedItem, removeBoostedItem, type MockService } from "../../demo/mockData";
+import { SponsorDisclosure } from "../components/SponsorDisclosure";
 import { formatCents } from "../../utils/format";
 import { Seo } from "../../seo";
 
@@ -23,6 +24,7 @@ const SERVICE_TYPE_LABELS: Record<string, string> = {
  */
 export function ServicesPage() {
   const [services, setServices] = React.useState<MockService[]>([]);
+  const [boostedService, setBoostedService] = React.useState<MockService | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [filter, setFilter] = React.useState<string>("all");
   const demoMode = isDemoMode();
@@ -36,7 +38,15 @@ export function ServicesPage() {
     const fetchData = async () => {
       setLoading(true);
       await simulateDelay(180);
-      setServices(getMockServices());
+      const all = getMockServices();
+
+      // Get boosted item
+      const boosted = getBoostedItem(all, "services");
+      setBoostedService(boosted);
+
+      // Remove boosted from regular list
+      const remaining = removeBoostedItem(all, boosted);
+      setServices(remaining);
       setLoading(false);
     };
 
@@ -164,6 +174,13 @@ export function ServicesPage() {
         )}
       </div>
 
+      {/* Boosted service - pinned at top */}
+      {!loading && boostedService && filter === "all" && (
+        <div className="mb-4">
+          <ServiceCard service={boostedService} isBoosted />
+        </div>
+      )}
+
       {/* Services grid */}
       {loading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
@@ -194,7 +211,7 @@ export function ServicesPage() {
 /**
  * Service card component.
  */
-function ServiceCard({ service }: { service: MockService }) {
+function ServiceCard({ service, isBoosted = false }: { service: MockService; isBoosted?: boolean }) {
   const priceText = service.priceRange
     ? service.priceRange.min === service.priceRange.max
       ? formatCents(service.priceRange.min)
@@ -202,12 +219,24 @@ function ServiceCard({ service }: { service: MockService }) {
     : "Contact for pricing";
 
   return (
-    <div className="rounded-portal border border-border-subtle bg-portal-card p-5 h-full flex flex-col">
-      {/* Service type badge */}
-      <div className="mb-2">
+    <div className={`rounded-portal border bg-portal-card p-5 h-full flex flex-col ${
+      isBoosted ? "border-accent/30" : "border-border-subtle"
+    }`}>
+      {/* Badges row */}
+      <div className="flex items-center gap-2 mb-2">
+        {isBoosted && (
+          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-accent/15 text-accent">
+            Boosted
+          </span>
+        )}
         <span className="inline-block px-2 py-0.5 text-xs font-medium rounded bg-border-default text-text-secondary">
           {SERVICE_TYPE_LABELS[service.type] || service.type}
         </span>
+        {isBoosted && service.sponsorDisclosureText && (
+          <div className="ml-auto">
+            <SponsorDisclosure disclosureText={service.sponsorDisclosureText} />
+          </div>
+        )}
       </div>
 
       {/* Service name */}
