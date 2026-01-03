@@ -14,10 +14,6 @@ type Tag = {
   updatedAt: string;
 };
 
-type TagWithUsage = Tag & {
-  usageCount: number;
-};
-
 const MODULE_LABELS: Record<TagModule, string> = {
   CONTACT: "Contacts",
   ORGANIZATION: "Organizations",
@@ -36,63 +32,45 @@ const MODULE_ORDER: TagModule[] = [
   "OFFSPRING",
 ];
 
-type FilterMode = "active" | "archived" | "all";
-
 export function TagsManagerTab({ onDirty }: { dirty: boolean; onDirty: (v: boolean) => void }) {
-  const [tags, setTags] = React.useState<TagWithUsage[]>([]);
+  const [tags, setTags] = React.useState<Tag[]>([]);
   const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
   const [searchQuery, setSearchQuery] = React.useState("");
-  const [filterMode, setFilterMode] = React.useState<FilterMode>("active");
   const [collapsedModules, setCollapsedModules] = React.useState<Set<TagModule>>(new Set());
 
-  // Fetch all tags on mount
-  React.useEffect(() => {
-    const fetchTags = async () => {
-      setLoading(true);
-      try {
-        // Fetch all tags without module filter to get everything
-        const response = await api.tags.list({ limit: 1000 });
-        const items = response.items || [];
-
-        // For now, usage count is set to 0 (will be populated from assignments API in future)
-        // Note: API returns { items: Tag[], total: number, page: number, limit: number }
-        const tagsWithUsage: TagWithUsage[] = items.map((tag: Tag) => ({
-          ...tag,
-          usageCount: 0, // TODO: Fetch from assignments when available
-        }));
-
-        setTags(tagsWithUsage);
-      } catch (error) {
-        console.error("Failed to fetch tags:", error);
-        setTags([]);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchTags();
+  // Fetch all tags
+  const fetchTags = React.useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      // Note: API currently only supports fetching by type="contact"
+      // This is a known limitation - we fetch what we can and note the gap
+      const response = await api.tags.list("contact");
+      const items = response.items || [];
+      setTags(items);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to fetch tags");
+      setTags([]);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  // Filter tags based on search and filter mode
+  React.useEffect(() => {
+    fetchTags();
+  }, [fetchTags]);
+
+  // Filter tags based on search
   const filteredTags = React.useMemo(() => {
-    let filtered = tags;
-
-    // Search filter
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      filtered = filtered.filter((tag) => tag.name.toLowerCase().includes(q));
-    }
-
-    // Archive filter (placeholder - currently no archived field in API response)
-    // For now, show all tags regardless of filterMode
-    // TODO: Filter by archived status when API supports it
-
-    return filtered;
-  }, [tags, searchQuery, filterMode]);
+    if (!searchQuery.trim()) return tags;
+    const q = searchQuery.toLowerCase();
+    return tags.filter((tag) => tag.name.toLowerCase().includes(q));
+  }, [tags, searchQuery]);
 
   // Group tags by module
   const tagsByModule = React.useMemo(() => {
-    const groups: Record<TagModule, TagWithUsage[]> = {
+    const groups: Record<TagModule, Tag[]> = {
       CONTACT: [],
       ORGANIZATION: [],
       ANIMAL: [],
@@ -130,12 +108,12 @@ export function TagsManagerTab({ onDirty }: { dirty: boolean; onDirty: (v: boole
           <div>
             <h3 className="text-lg font-semibold">Tags Manager</h3>
             <p className="text-sm text-secondary">
-              View and manage tags used across modules (read-only for now)
+              View tags used across modules (read-only)
             </p>
           </div>
         </div>
 
-        {/* Search and filter controls */}
+        {/* Search control */}
         <div className="flex gap-3 items-center">
           <div className="flex-1 max-w-md">
             <Input
@@ -145,30 +123,6 @@ export function TagsManagerTab({ onDirty }: { dirty: boolean; onDirty: (v: boole
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full"
             />
-          </div>
-
-          <div className="flex gap-2">
-            <Button
-              size="sm"
-              variant={filterMode === "active" ? "default" : "outline"}
-              onClick={() => setFilterMode("active")}
-            >
-              Active
-            </Button>
-            <Button
-              size="sm"
-              variant={filterMode === "archived" ? "default" : "outline"}
-              onClick={() => setFilterMode("archived")}
-            >
-              Archived
-            </Button>
-            <Button
-              size="sm"
-              variant={filterMode === "all" ? "default" : "outline"}
-              onClick={() => setFilterMode("all")}
-            >
-              All
-            </Button>
           </div>
         </div>
       </Card>
@@ -180,8 +134,18 @@ export function TagsManagerTab({ onDirty }: { dirty: boolean; onDirty: (v: boole
         </Card>
       )}
 
+      {/* Error state */}
+      {!loading && error && (
+        <Card className="p-8 text-center space-y-4">
+          <div className="text-red-400">Error: {error}</div>
+          <Button onClick={fetchTags} size="sm">
+            Retry
+          </Button>
+        </Card>
+      )}
+
       {/* Empty state */}
-      {!loading && filteredTags.length === 0 && (
+      {!loading && !error && filteredTags.length === 0 && (
         <Card className="p-8 text-center">
           <div className="text-secondary">
             {searchQuery.trim() ? "No tags match your search." : "No tags found."}
@@ -190,7 +154,7 @@ export function TagsManagerTab({ onDirty }: { dirty: boolean; onDirty: (v: boole
       )}
 
       {/* Tags grouped by module */}
-      {!loading && filteredTags.length > 0 && (
+      {!loading && !error && filteredTags.length > 0 && (
         <div className="space-y-3">
           {MODULE_ORDER.map((module) => {
             const moduleTags = tagsByModule[module] || [];
@@ -233,9 +197,7 @@ export function TagsManagerTab({ onDirty }: { dirty: boolean; onDirty: (v: boole
                           <tr className="text-left text-xs text-secondary border-b border-hairline">
                             <th className="pb-2 font-medium w-8"></th>
                             <th className="pb-2 font-medium">Name</th>
-                            <th className="pb-2 font-medium">Usage</th>
                             <th className="pb-2 font-medium">Created</th>
-                            <th className="pb-2 font-medium">Status</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -252,14 +214,7 @@ export function TagsManagerTab({ onDirty }: { dirty: boolean; onDirty: (v: boole
                               </td>
                               <td className="py-2 font-medium">{tag.name}</td>
                               <td className="py-2 text-sm text-secondary">
-                                {tag.usageCount > 0 ? `${tag.usageCount} items` : "—"}
-                              </td>
-                              <td className="py-2 text-sm text-secondary">
                                 {new Date(tag.createdAt).toLocaleDateString()}
-                              </td>
-                              <td className="py-2 text-sm text-secondary">
-                                Active
-                                {/* TODO: Show archived badge when API supports it */}
                               </td>
                             </tr>
                           ))}

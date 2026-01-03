@@ -224,10 +224,8 @@ export function makeApi(base?: string) {
     },
 
     tags: {
-      list: (params: { module?: string; q?: string; page?: number; limit?: number } = {}) =>
-        request(`${root}/tags` + qs(params), { method: "GET" }),
-      get: (id: ID) =>
-        request(`${root}/tags/${enc(id)}`, { method: "GET" }),
+      list: (type: "contact" = "contact") =>
+        request(`${root}/tags` + qs({ type }), { method: "GET" }),
     },
 
     organizations: {
