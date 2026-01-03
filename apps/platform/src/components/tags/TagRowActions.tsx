@@ -11,10 +11,9 @@ type Tag = {
 type Props = {
   tag: Tag;
   onEdit: () => void;
-  onDelete: () => void;
 };
 
-export function TagRowActions({ tag, onEdit, onDelete }: Props) {
+export function TagRowActions({ tag, onEdit }: Props) {
   const [open, setOpen] = React.useState(false);
   const menuRef = React.useRef<HTMLDivElement>(null);
 
@@ -58,12 +57,9 @@ export function TagRowActions({ tag, onEdit, onDelete }: Props) {
             Edit
           </button>
           <button
-            onClick={() => {
-              setOpen(false);
-              onDelete();
-            }}
-            className="w-full px-3 py-1.5 text-left text-sm text-red-400 hover:bg-surface-hover transition-colors"
-            title="Delete disabled until usage counts are available"
+            disabled
+            className="w-full px-3 py-1.5 text-left text-sm text-secondary opacity-50 cursor-not-allowed"
+            title="Delete disabled until tag usage counts are available"
           >
             Delete
           </button>

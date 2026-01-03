@@ -4,7 +4,6 @@ import { Card, Button, Input } from "@bhq/ui";
 import { api } from "../api";
 import { TagCreateEditModal } from "./tags/TagCreateEditModal";
 import { TagRowActions } from "./tags/TagRowActions";
-import { TagDeleteConfirm } from "./tags/TagDeleteConfirm";
 
 type TagModule = "CONTACT" | "ORGANIZATION" | "ANIMAL" | "WAITLIST_ENTRY" | "OFFSPRING_GROUP" | "OFFSPRING";
 
@@ -45,7 +44,6 @@ export function TagsManagerTab({ onDirty }: { dirty: boolean; onDirty: (v: boole
   // Modal states
   const [createModalOpen, setCreateModalOpen] = React.useState(false);
   const [editModalOpen, setEditModalOpen] = React.useState(false);
-  const [deleteModalOpen, setDeleteModalOpen] = React.useState(false);
   const [selectedTag, setSelectedTag] = React.useState<Tag | null>(null);
 
   // Fetch all tags across all modules
@@ -121,20 +119,9 @@ export function TagsManagerTab({ onDirty }: { dirty: boolean; onDirty: (v: boole
     await fetchTags();
   };
 
-  const handleDeleteTag = async () => {
-    if (!selectedTag) return;
-    await api.tags.delete(selectedTag.id);
-    await fetchTags();
-  };
-
   const openEditModal = (tag: Tag) => {
     setSelectedTag(tag);
     setEditModalOpen(true);
-  };
-
-  const openDeleteModal = (tag: Tag) => {
-    setSelectedTag(tag);
-    setDeleteModalOpen(true);
   };
 
   return (
@@ -265,7 +252,6 @@ export function TagsManagerTab({ onDirty }: { dirty: boolean; onDirty: (v: boole
                                 <TagRowActions
                                   tag={tag}
                                   onEdit={() => openEditModal(tag)}
-                                  onDelete={() => openDeleteModal(tag)}
                                 />
                               </td>
                             </tr>
@@ -295,13 +281,6 @@ export function TagsManagerTab({ onDirty }: { dirty: boolean; onDirty: (v: boole
         mode="edit"
         tag={selectedTag || undefined}
         onSubmit={handleEditTag}
-      />
-
-      <TagDeleteConfirm
-        open={deleteModalOpen}
-        onOpenChange={setDeleteModalOpen}
-        tag={selectedTag}
-        onConfirm={handleDeleteTag}
       />
     </div>
   );
