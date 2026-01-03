@@ -11,6 +11,10 @@ import {
   type DiscoveryResponse,
   type DiscoveryEventItem,
 } from "../api/scheduling";
+import {
+  PlacementWindowBanner,
+  isPlacementWindowBlock,
+} from "../design/PlacementWindowBanner";
 
 /* ────────────────────────────────────────────────────────────────────────────
  * State Machine
@@ -332,6 +336,11 @@ export default function PortalScheduleDiscoveryPage() {
         {/* LOADED */}
         {state === "LOADED" && discovery && (
           <>
+            {/* Phase 6: Placement window blocking banner */}
+            {discovery.placementBlocked && isPlacementWindowBlock(discovery.placementBlocked) && (
+              <PlacementWindowBanner blocked={discovery.placementBlocked} />
+            )}
+
             {discovery.events.length === 0 ? (
               <EmptyState />
             ) : (

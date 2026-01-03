@@ -35,7 +35,11 @@ export type BlockedReasonCode =
   | "FULLY_BOOKED"
   | "DEADLINE_PASSED"
   | "EVENT_CANCELLED"
-  | "ALREADY_BOOKED";
+  | "ALREADY_BOOKED"
+  // Phase 6: Placement order gating
+  | "PLACEMENT_WINDOW_NOT_OPEN"
+  | "PLACEMENT_WINDOW_CLOSED"
+  | "NO_PLACEMENT_RANK";
 
 export interface BlockedResponse {
   code: BlockedReasonCode;
@@ -45,6 +49,12 @@ export interface BlockedResponse {
     slotId?: string;
     opensAt?: string;
     deadlineAt?: string;
+    // Phase 6: Placement window context
+    offspringGroupId?: number;
+    placementWindowStartAt?: string;
+    placementWindowEndAt?: string;
+    serverNow?: string;
+    timezone?: string;
   };
 }
 
@@ -117,6 +127,8 @@ export interface DiscoveryResponse {
   offspringGroupId: number;
   offspringGroupName: string | null;
   events: DiscoveryEventItem[];
+  // Phase 6: Placement blocking info (null if not blocked)
+  placementBlocked: BlockedResponse | null;
 }
 
 /* ────────────────────────────────────────────────────────────────────────────
@@ -220,11 +232,63 @@ export async function getSchedulingEvent(
 /**
  * List available slots for booking.
  * Only returns slots the current user can book (server filters by eligibility and capacity).
+ * Returns placementBlocked on 403 if placement window gating applies.
  */
 export async function listAvailableSlots(
   eventId: string
-): Promise<{ ok: true; data: { slots: SchedulingSlot[] } } | { ok: false; status: number; message: string }> {
-  return apiFetch<{ slots: SchedulingSlot[] }>(`/api/v1/portal/scheduling/events/${eventId}/slots`);
+): Promise<
+  | { ok: true; data: { slots: SchedulingSlot[] } }
+  | { ok: false; status: number; message: string; placementBlocked?: BlockedResponse }
+> {
+  const base = getApiBase();
+  const url = `${base}/api/v1/portal/scheduling/events/${eventId}/slots`;
+
+  try {
+    const res = await fetch(url, {
+      credentials: "include",
+      headers: { Accept: "application/json" },
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      return { ok: true, data };
+    }
+
+    // Handle 403 with placement blocking info
+    if (res.status === 403) {
+      try {
+        const errorData = await res.json();
+        if (
+          errorData?.code &&
+          (errorData.code === "PLACEMENT_WINDOW_NOT_OPEN" ||
+            errorData.code === "PLACEMENT_WINDOW_CLOSED" ||
+            errorData.code === "NO_PLACEMENT_RANK")
+        ) {
+          return {
+            ok: false,
+            status: 403,
+            message: errorData.message || "Placement window not available",
+            placementBlocked: errorData as BlockedResponse,
+          };
+        }
+        return { ok: false, status: 403, message: errorData?.message || "Not authorized" };
+      } catch {
+        return { ok: false, status: 403, message: "Not authorized" };
+      }
+    }
+
+    let message = `HTTP ${res.status}`;
+    try {
+      const errorData = await res.json();
+      message = errorData?.message || message;
+    } catch {
+      // Ignore parse errors
+    }
+    return { ok: false, status: res.status, message };
+  } catch (err: unknown) {
+    const errMessage = err instanceof Error ? err.message : "Network error";
+    return { ok: false, status: 0, message: errMessage };
+  }
 }
 
 /**
@@ -343,6 +407,10 @@ export function getBlockedMessage(blocked: BlockedResponse | null): string | nul
       : "The booking deadline has passed.",
     EVENT_CANCELLED: "This event has been cancelled.",
     ALREADY_BOOKED: "You already have a booking for this event.",
+    // Phase 6: Placement order gating
+    PLACEMENT_WINDOW_NOT_OPEN: "Your scheduling window hasn't opened yet. Please wait until your turn.",
+    PLACEMENT_WINDOW_CLOSED: "Your scheduling window has closed.",
+    NO_PLACEMENT_RANK: "You don't have a placement rank for this litter. Please contact your breeder.",
   };
 
   return messages[blocked.code] || blocked.message;
@@ -588,4 +656,40 @@ export function downloadBookingIcs(data: IcsCalendarData): void {
   link.click();
   document.body.removeChild(link);
   URL.revokeObjectURL(url);
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
+ * Phase 6: Placement Window Formatting
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+/**
+ * Format placement window timestamps for display.
+ * Returns times in user's local timezone with policy timezone label.
+ */
+export function formatPlacementWindow(
+  startAt: string | undefined,
+  endAt: string | undefined,
+  timezone: string | undefined
+): { startLocal: string | null; endLocal: string | null; policyTimezone: string | null } {
+  const formatTime = (iso: string | undefined): string | null => {
+    if (!iso) return null;
+    try {
+      const date = new Date(iso);
+      return date.toLocaleString(undefined, {
+        weekday: "short",
+        month: "short",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+      });
+    } catch {
+      return null;
+    }
+  };
+
+  return {
+    startLocal: formatTime(startAt),
+    endLocal: formatTime(endAt),
+    policyTimezone: timezone || null,
+  };
 }

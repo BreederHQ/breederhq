@@ -22,7 +22,12 @@ import {
   type ConfirmedBooking,
   type BookingRules,
   type IcsCalendarData,
+  type BlockedResponse,
 } from "../api/scheduling";
+import {
+  PlacementWindowBanner,
+  isPlacementWindowBlock,
+} from "../design/PlacementWindowBanner";
 
 /* ────────────────────────────────────────────────────────────────────────────
  * State Machine Definition
@@ -71,6 +76,8 @@ interface SchedulePageState {
   confirmedBooking: ConfirmedBooking | null;
   errorMessage: string | null;
   rules: BookingRules | null;
+  // Phase 6: Placement blocking info (from slots endpoint 403)
+  placementBlocked: BlockedResponse | null;
 }
 
 /* ────────────────────────────────────────────────────────────────────────────
@@ -796,6 +803,7 @@ export default function PortalSchedulePage() {
     confirmedBooking: null,
     errorMessage: null,
     rules: null,
+    placementBlocked: null,
   });
 
   // Transition helper
@@ -881,6 +889,16 @@ export default function PortalSchedulePage() {
     // Load available slots
     const slotsResult = await listAvailableSlots(eventId);
     if (!slotsResult.ok) {
+      // Phase 6: Check for placement blocking on 403
+      if (slotsResult.status === 403 && slotsResult.placementBlocked) {
+        transition("ELIGIBLE_SELECT_SLOT", {
+          eventData,
+          slots: [],
+          rules: eventData.rules,
+          placementBlocked: slotsResult.placementBlocked,
+        });
+        return;
+      }
       if (slotsResult.status === 0) {
         transition("ERROR_NETWORK", { errorMessage: slotsResult.message, eventData });
       } else {
@@ -893,6 +911,7 @@ export default function PortalSchedulePage() {
       eventData,
       slots: slotsResult.data.slots,
       rules: eventData.rules,
+      placementBlocked: null,
     });
   }, [eventId, mockEnabled]);
 
@@ -993,7 +1012,7 @@ export default function PortalSchedulePage() {
   };
 
   // Render based on state
-  const { state, eventData, slots, selectedSlotId, confirmedBooking, errorMessage, rules } = pageState;
+  const { state, eventData, slots, selectedSlotId, confirmedBooking, errorMessage, rules, placementBlocked } = pageState;
 
   // Determine page title and status
   const getPageTitle = () => {
@@ -1083,13 +1102,20 @@ export default function PortalSchedulePage() {
               breederName={eventData.context.breederName}
               subjectName={eventData.context.subjectName}
             />
-            <SlotSelectionView
-              slots={slots}
-              selectedSlotId={selectedSlotId}
-              onSelectSlot={handleSelectSlot}
-              onConfirm={handleConfirmBooking}
-              isBooking={state === "BOOKING_IN_PROGRESS"}
-            />
+            {/* Phase 6: Placement window blocking banner */}
+            {placementBlocked && isPlacementWindowBlock(placementBlocked) && (
+              <PlacementWindowBanner blocked={placementBlocked} />
+            )}
+            {/* Only show slot selection if not placement blocked */}
+            {!placementBlocked && (
+              <SlotSelectionView
+                slots={slots}
+                selectedSlotId={selectedSlotId}
+                onSelectSlot={handleSelectSlot}
+                onConfirm={handleConfirmBooking}
+                isBooking={state === "BOOKING_IN_PROGRESS"}
+              />
+            )}
           </>
         )}
 
