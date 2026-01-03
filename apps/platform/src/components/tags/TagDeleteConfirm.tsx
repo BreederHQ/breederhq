@@ -57,7 +57,7 @@ export function TagDeleteConfirm({ open, onOpenChange, tag, onConfirm }: Props) 
             Are you sure you want to delete the tag <span className="font-semibold">"{tag.name}"</span>?
           </p>
           <p className="text-sm text-secondary">
-            This action cannot be undone. All assignments of this tag will be removed.
+            This action cannot be undone.
           </p>
 
           {error && (
