@@ -226,6 +226,12 @@ export function makeApi(base?: string) {
     tags: {
       list: (params: { module?: string; q?: string; page?: number; limit?: number } = {}) =>
         request(`${root}/tags` + qs(params), { method: "GET" }),
+      create: (data: { name: string; module: string; color?: string | null }) =>
+        request(`${root}/tags`, { method: "POST", body: JSON.stringify(data) }),
+      update: (id: ID, data: { name?: string; color?: string | null }) =>
+        request(`${root}/tags/${enc(id)}`, { method: "PATCH", body: JSON.stringify(data) }),
+      delete: (id: ID) =>
+        request(`${root}/tags/${enc(id)}`, { method: "DELETE" }),
     },
 
     organizations: {

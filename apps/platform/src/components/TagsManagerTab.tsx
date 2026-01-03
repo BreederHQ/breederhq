@@ -2,6 +2,9 @@
 import React from "react";
 import { Card, Button, Input } from "@bhq/ui";
 import { api } from "../api";
+import { TagCreateEditModal } from "./tags/TagCreateEditModal";
+import { TagRowActions } from "./tags/TagRowActions";
+import { TagDeleteConfirm } from "./tags/TagDeleteConfirm";
 
 type TagModule = "CONTACT" | "ORGANIZATION" | "ANIMAL" | "WAITLIST_ENTRY" | "OFFSPRING_GROUP" | "OFFSPRING";
 
@@ -38,6 +41,12 @@ export function TagsManagerTab({ onDirty }: { dirty: boolean; onDirty: (v: boole
   const [error, setError] = React.useState<string | null>(null);
   const [searchQuery, setSearchQuery] = React.useState("");
   const [collapsedModules, setCollapsedModules] = React.useState<Set<TagModule>>(new Set());
+
+  // Modal states
+  const [createModalOpen, setCreateModalOpen] = React.useState(false);
+  const [editModalOpen, setEditModalOpen] = React.useState(false);
+  const [deleteModalOpen, setDeleteModalOpen] = React.useState(false);
+  const [selectedTag, setSelectedTag] = React.useState<Tag | null>(null);
 
   // Fetch all tags across all modules
   const fetchTags = React.useCallback(async () => {
@@ -99,6 +108,35 @@ export function TagsManagerTab({ onDirty }: { dirty: boolean; onDirty: (v: boole
     });
   };
 
+  // Mutation handlers
+  const handleCreateTag = async (data: { name: string; module: TagModule; color: string | null }) => {
+    await api.tags.create(data);
+    await fetchTags();
+  };
+
+  const handleEditTag = async (data: { name: string; module: TagModule; color: string | null }) => {
+    if (!selectedTag) return;
+    // Module is immutable, only send name and color
+    await api.tags.update(selectedTag.id, { name: data.name, color: data.color });
+    await fetchTags();
+  };
+
+  const handleDeleteTag = async () => {
+    if (!selectedTag) return;
+    await api.tags.delete(selectedTag.id);
+    await fetchTags();
+  };
+
+  const openEditModal = (tag: Tag) => {
+    setSelectedTag(tag);
+    setEditModalOpen(true);
+  };
+
+  const openDeleteModal = (tag: Tag) => {
+    setSelectedTag(tag);
+    setDeleteModalOpen(true);
+  };
+
   return (
     <div className="space-y-4">
       {/* Header with controls */}
@@ -107,9 +145,12 @@ export function TagsManagerTab({ onDirty }: { dirty: boolean; onDirty: (v: boole
           <div>
             <h3 className="text-lg font-semibold">Tags Manager</h3>
             <p className="text-sm text-secondary">
-              View tags used across modules (read-only)
+              Manage tags used across modules
             </p>
           </div>
+          <Button onClick={() => setCreateModalOpen(true)} size="sm">
+            New Tag
+          </Button>
         </div>
 
         {/* Search control */}
@@ -198,6 +239,7 @@ export function TagsManagerTab({ onDirty }: { dirty: boolean; onDirty: (v: boole
                             <th className="pb-2 font-medium">Name</th>
                             <th className="pb-2 font-medium">Module</th>
                             <th className="pb-2 font-medium">Created</th>
+                            <th className="pb-2 font-medium w-12"></th>
                           </tr>
                         </thead>
                         <tbody>
@@ -219,6 +261,13 @@ export function TagsManagerTab({ onDirty }: { dirty: boolean; onDirty: (v: boole
                               <td className="py-2 text-sm text-secondary">
                                 {new Date(tag.createdAt).toLocaleDateString()}
                               </td>
+                              <td className="py-2 text-right">
+                                <TagRowActions
+                                  tag={tag}
+                                  onEdit={() => openEditModal(tag)}
+                                  onDelete={() => openDeleteModal(tag)}
+                                />
+                              </td>
                             </tr>
                           ))}
                         </tbody>
@@ -231,6 +280,29 @@ export function TagsManagerTab({ onDirty }: { dirty: boolean; onDirty: (v: boole
           })}
         </div>
       )}
+
+      {/* Modals */}
+      <TagCreateEditModal
+        open={createModalOpen}
+        onOpenChange={setCreateModalOpen}
+        mode="create"
+        onSubmit={handleCreateTag}
+      />
+
+      <TagCreateEditModal
+        open={editModalOpen}
+        onOpenChange={setEditModalOpen}
+        mode="edit"
+        tag={selectedTag || undefined}
+        onSubmit={handleEditTag}
+      />
+
+      <TagDeleteConfirm
+        open={deleteModalOpen}
+        onOpenChange={setDeleteModalOpen}
+        tag={selectedTag}
+        onConfirm={handleDeleteTag}
+      />
     </div>
   );
 }
