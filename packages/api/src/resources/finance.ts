@@ -41,6 +41,55 @@ export type ExpensesResource = {
   delete(id: ID): Promise<{ success: true }>;
 };
 
+export type PartySearchResult = {
+  partyId: number;
+  party_id?: number;
+  id?: number;
+  displayName?: string;
+  organizationName?: string;
+  email?: string;
+};
+
+export type PartiesResource = {
+  search(query: string, options?: { limit?: number }): Promise<PartySearchResult[]>;
+};
+
+export type ContactCreateInput = {
+  first_name?: string;
+  last_name?: string;
+  display_name?: string;
+  email?: string;
+  phone_e164?: string;
+};
+
+export type ContactCreateResult = {
+  partyId?: number;
+  party_id?: number;
+  id?: number;
+  display_name?: string;
+  email?: string;
+};
+
+export type FinanceContactsResource = {
+  create(input: ContactCreateInput): Promise<ContactCreateResult>;
+};
+
+export type OrganizationCreateInput = {
+  name: string;
+  website?: string | null;
+};
+
+export type OrganizationCreateResult = {
+  partyId?: number;
+  party_id?: number;
+  id?: number;
+  name?: string;
+};
+
+export type FinanceOrganizationsResource = {
+  create(input: OrganizationCreateInput): Promise<OrganizationCreateResult>;
+};
+
 export type FinanceSummary = {
   outstandingTotalCents: number;
   invoicedMtdCents: number;
@@ -53,6 +102,9 @@ export type FinanceResource = {
   invoices: InvoicesResource;
   payments: PaymentsResource;
   expenses: ExpensesResource;
+  parties: PartiesResource;
+  contacts: FinanceContactsResource;
+  organizations: FinanceOrganizationsResource;
   summary(): Promise<FinanceSummary>;
 };
 
@@ -200,6 +252,47 @@ function makeExpenses(http: Http): ExpensesResource {
   };
 }
 
+// ─────────────────── PARTIES ───────────────────
+
+function makeParties(http: Http): PartiesResource {
+  return {
+    async search(query: string, options?: { limit?: number }): Promise<PartySearchResult[]> {
+      const sp = new URLSearchParams();
+      sp.set("q", query);
+      if (options?.limit != null) sp.set("limit", String(options.limit));
+      const res = await http.get(`/api/v1/parties?${sp.toString()}`);
+      // Handle various response shapes
+      if (Array.isArray(res)) return res;
+      if (res && typeof res === "object") {
+        if ("items" in res) return res.items;
+        if ("results" in res) return res.results;
+        if ("data" in res && Array.isArray(res.data)) return res.data;
+      }
+      return [];
+    },
+  };
+}
+
+// ─────────────────── FINANCE CONTACTS ───────────────────
+
+function makeFinanceContacts(http: Http): FinanceContactsResource {
+  return {
+    async create(input: ContactCreateInput): Promise<ContactCreateResult> {
+      return http.post(`/api/v1/contacts`, input);
+    },
+  };
+}
+
+// ─────────────────── FINANCE ORGANIZATIONS ───────────────────
+
+function makeFinanceOrganizations(http: Http): FinanceOrganizationsResource {
+  return {
+    async create(input: OrganizationCreateInput): Promise<OrganizationCreateResult> {
+      return http.post(`/api/v1/organizations`, input);
+    },
+  };
+}
+
 // ─────────────────── MAIN FACTORY ───────────────────
 
 export function makeFinance(http: Http): FinanceResource {
@@ -207,6 +300,9 @@ export function makeFinance(http: Http): FinanceResource {
     invoices: makeInvoices(http),
     payments: makePayments(http),
     expenses: makeExpenses(http),
+    parties: makeParties(http),
+    contacts: makeFinanceContacts(http),
+    organizations: makeFinanceOrganizations(http),
 
     async summary(): Promise<FinanceSummary> {
       return http.get(`/api/v1/finance/summary`);

@@ -43,6 +43,22 @@ interface LineItemRow {
   unitPrice: string;
 }
 
+/**
+ * Context for offspring group scoped invoice creation.
+ * When provided, restricts party selection to allowed buyers only.
+ */
+export interface OffspringGroupContext {
+  offspringGroupId: string;
+  /** List of parties (buyers) allowed for this offspring group */
+  allowedParties: AutocompleteOption[];
+  /**
+   * Callback to open the Add Buyer modal.
+   * The caller must handle this since AddBuyerToGroupModal is at app level.
+   * After adding a buyer, caller must refresh allowedParties upstream.
+   */
+  onAddBuyer?: () => void;
+}
+
 export interface InvoiceCreateModalProps {
   open: boolean;
   onClose: () => void;
@@ -59,6 +75,11 @@ export interface InvoiceCreateModalProps {
   };
   /** Pre-fill and lock the client party (e.g., when creating from Organization/Contact page) */
   defaultClientParty?: AutocompleteOption | null;
+  /**
+   * When provided, restricts party selection to offspring group buyers only.
+   * Enables buyer-scoped invoice creation mode.
+   */
+  offspringGroupContext?: OffspringGroupContext;
 }
 
 type AnchorType = "animal" | "offspringGroup" | "breedingPlan" | "serviceCode" | null;
@@ -92,12 +113,16 @@ export function InvoiceCreateModal({
   api,
   defaultAnchor,
   defaultClientParty,
+  offspringGroupContext,
 }: InvoiceCreateModalProps) {
   const { toast } = useToast();
   const [submitting, setSubmitting] = React.useState(false);
   const [errors, setErrors] = React.useState<Errors>({});
   const idempotencyKeyRef = React.useRef<string>("");
   const [confirmCloseOpen, setConfirmCloseOpen] = React.useState(false);
+
+  // Determine if we're in offspring group scoped mode
+  const isOffspringGroupScoped = !!offspringGroupContext;
 
   // Determine if anchor is locked (from entity tab) or requires user selection (from Party tab)
   const anchorLocked = !!(
@@ -372,6 +397,8 @@ export function InvoiceCreateModal({
         }
       }
 
+      // Backend must validate that selected party is a buyer of offspringGroupId
+      // when offspringGroupContext is provided.
       await api.finance.invoices.create(input, idempotencyKeyRef.current);
 
       onSuccess();
@@ -395,14 +422,34 @@ export function InvoiceCreateModal({
   return (
     <Dialog open={open} onClose={handleRequestClose} title="Create Invoice" size="lg">
       <div className="space-y-4">
-        <PartyAutocomplete
-          value={form.clientParty}
-          onChange={(val) => setForm((f) => ({ ...f, clientParty: val }))}
-          api={api}
-          label="Client Contact / Organization *"
-          error={errors.clientParty}
-          disabled={clientPartyLocked}
-        />
+        {/* Party Selection - restricted when offspringGroupContext is provided */}
+        <div>
+          <PartyAutocomplete
+            value={form.clientParty}
+            onChange={(val) => setForm((f) => ({ ...f, clientParty: val }))}
+            api={api}
+            label={isOffspringGroupScoped ? "Buyer *" : "Client Contact / Organization *"}
+            placeholder={isOffspringGroupScoped ? "Search buyers..." : undefined}
+            error={errors.clientParty}
+            disabled={clientPartyLocked}
+            allowedParties={offspringGroupContext?.allowedParties}
+          />
+
+          {/* Add Buyer action - only shown in offspring group scoped mode */}
+          {isOffspringGroupScoped && offspringGroupContext?.onAddBuyer && !form.clientParty && (
+            <div className="mt-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={offspringGroupContext.onAddBuyer}
+              >
+                + Add buyer
+              </Button>
+              {/* Note: After adding a buyer, caller must refresh allowedParties upstream */}
+            </div>
+          )}
+        </div>
 
         {/* Line Items Section */}
         <div className="space-y-3">

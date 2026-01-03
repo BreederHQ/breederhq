@@ -206,6 +206,46 @@ export function makeApi(base?: string) {
 
     /* ──── Finance namespace for invoices, payments, expenses ──── */
     finance: {
+      parties: {
+        async search(query: string, opts?: { limit?: number }) {
+          const ctx = await getCtx(root);
+          const qs = new URLSearchParams();
+          qs.set("q", query);
+          qs.set("dir", "asc");
+          if (opts?.limit) qs.set("limit", String(opts.limit));
+          const res = await fetch(`${root}/parties?${qs.toString()}`, {
+            method: "GET",
+            credentials: "include",
+            headers: headersFor(ctx, { method: "GET" }),
+          });
+          const data = await parse<{ items?: any[]; total?: number } | any[]>(res);
+          return Array.isArray(data) ? data : (data?.items || []);
+        },
+      },
+      contacts: {
+        async create(input: { first_name?: string; last_name?: string; display_name?: string; email?: string; phone_e164?: string }) {
+          const ctx = await getCtx(root);
+          const res = await fetch(`${root}/contacts`, {
+            method: "POST",
+            credentials: "include",
+            headers: headersFor(ctx, { method: "POST" }),
+            body: JSON.stringify(input),
+          });
+          return parse<any>(res);
+        },
+      },
+      organizations: {
+        async create(input: { name: string; website?: string | null }) {
+          const ctx = await getCtx(root);
+          const res = await fetch(`${root}/organizations`, {
+            method: "POST",
+            credentials: "include",
+            headers: headersFor(ctx, { method: "POST" }),
+            body: JSON.stringify(input),
+          });
+          return parse<any>(res);
+        },
+      },
       invoices: {
         async list(params?: any) {
           const ctx = await getCtx(root);

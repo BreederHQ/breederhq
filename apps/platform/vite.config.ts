@@ -9,6 +9,7 @@ export default defineConfig({
     alias: {
       "@bhq/ui": fileURLToPath(new URL("../../packages/ui/src", import.meta.url)),
       "@bhq/ui/layouts": fileURLToPath(new URL("../../packages/ui/src/layouts", import.meta.url)),
+      "@bhq/api": fileURLToPath(new URL("../../packages/api/src", import.meta.url)),
       "@bhq/contacts": fileURLToPath(new URL("../contacts/src", import.meta.url)),
       "@bhq/animals": fileURLToPath(new URL("../animals/src", import.meta.url)),
       "@bhq/breeding": fileURLToPath(new URL("../breeding/src", import.meta.url)),

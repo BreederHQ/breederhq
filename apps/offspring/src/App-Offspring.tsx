@@ -25,7 +25,7 @@ import {
   exportToCsv,
   Popover,
 } from "@bhq/ui";
-import { FinanceTab } from "@bhq/ui/components/Finance";
+import { FinanceTab, type OffspringGroupContext } from "@bhq/ui/components/Finance";
 
 import { Overlay } from "@bhq/ui/overlay";
 import "@bhq/ui/styles/table.css";
@@ -1094,11 +1094,20 @@ const groupSections = (mode: "view" | "edit") => [
 ];
 
 /* ───────────────────────── Directory/Animals helpers ───────────────────────── */
-type SpeciesWire = "DOG" | "CAT" | "HORSE";
-type SpeciesUi = "Dog" | "Cat" | "Horse";
-const SPECIES_UI_ALL: SpeciesUi[] = ["Dog", "Cat", "Horse"];
-const toWireSpecies = (s: SpeciesUi | ""): SpeciesWire | undefined =>
-  s === "Dog" ? "DOG" : s === "Cat" ? "CAT" : s === "Horse" ? "HORSE" : undefined;
+type SpeciesWire = "DOG" | "CAT" | "HORSE" | "GOAT" | "RABBIT" | "SHEEP";
+type SpeciesUi = "Dog" | "Cat" | "Horse" | "Goat" | "Rabbit" | "Sheep";
+const SPECIES_UI_ALL: SpeciesUi[] = ["Dog", "Cat", "Horse", "Goat", "Rabbit", "Sheep"];
+const toWireSpecies = (s: SpeciesUi | ""): SpeciesWire | undefined => {
+  const map: Record<SpeciesUi, SpeciesWire> = {
+    Dog: "DOG",
+    Cat: "CAT",
+    Horse: "HORSE",
+    Goat: "GOAT",
+    Rabbit: "RABBIT",
+    Sheep: "SHEEP",
+  };
+  return s ? map[s] : undefined;
+};
 
 async function searchDirectory(
   api: OffspringApi | null,
@@ -1222,21 +1231,6 @@ async function fetchAnimals(
     species: String(a.species ?? "DOG").toUpperCase() as SpeciesWire,
     sex: String(a.sex ?? "FEMALE").toUpperCase() as "FEMALE" | "MALE",
   })) as AnimalLite[];
-}
-
-/* ───────────────────────── Plan fetch (COMMITTED only; GET) ───────────────────────── */
-type PlanOption = { id: number; code: string | null; name: string; species: string; breedText: string | null };
-async function fetchCommittedPlans(api: ReturnType<typeof makeOffspringApi> | null): Promise<PlanOption[]> {
-  if (!api) return [];
-  const qs = new URLSearchParams({ status: "COMMITTED", include: "parents", limit: "100" }).toString();
-  let res: any;
-  try {
-    res = await api.raw.get<any>(`/breeding/plans?${qs}`);
-  } catch {
-    res = await api.raw.get<any>(`/plans?${qs}`);
-  }
-  const items = Array.isArray(res) ? res : res?.items ?? [];
-  return items.map((p: any) => ({ id: p.id, code: p.code ?? null, name: p.name, species: p.species, breedText: p.breedText ?? null }));
 }
 
 type ParentResultsProps = {
@@ -1399,60 +1393,34 @@ function CreateGroupForm({
   onCreated: () => void;
   onCancel: () => void;
 }) {
-  const [plans, setPlans] = React.useState<PlanOption[]>([]);
-  const [loading, setLoading] = React.useState(true);
-  const [error, setError] = React.useState<string | null>(null);
-
-  const [planId, setPlanId] = React.useState<number | "">("");
+  const [species, setSpecies] = React.useState<SpeciesUi | "">("");
   const [identifier, setIdentifier] = React.useState<string>("");
   const [weanedAt, setWeanedAt] = React.useState<string>("");
   const [placementStartAt, setPlacementStartAt] = React.useState<string>("");
   const [placementCompletedAt, setPlacementCompletedAt] = React.useState<string>("");
 
-  /** NEW: override and counts */
-  const [statusOverride, setStatusOverride] = React.useState<string>("");
-  const [statusOverrideReason, setStatusOverrideReason] = React.useState<string>("");
   const [countWeaned, setCountWeaned] = React.useState<string>("");
   const [countPlaced, setCountPlaced] = React.useState<string>("");
-
-  React.useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const list = await fetchCommittedPlans(api);
-        if (!cancelled) setPlans(list);
-      } catch (e: any) {
-        if (!cancelled) setError(e?.message || "Failed to load committed plans");
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [api]);
 
   const [submitting, setSubmitting] = React.useState(false);
   const [submitErr, setSubmitErr] = React.useState<string | null>(null);
 
-  const { toast } = useToast();
-
   const handleSubmit = async () => {
     if (!api) return;
-    if (planId === "" || !Number(planId)) {
-      setSubmitErr("Please choose a committed plan.");
+    if (!identifier.trim()) {
+      setSubmitErr("Please enter a group name.");
+      return;
+    }
+    if (!species) {
+      setSubmitErr("Please select a species.");
       return;
     }
     setSubmitting(true);
     setSubmitErr(null);
     try {
       const created = await api.offspring.create({
-        planId: Number(planId),
-        identifier: identifier.trim() || null,
-        statusOverride: statusOverride.trim() || null,
-        statusOverrideReason: statusOverrideReason.trim() || null,
+        species: toWireSpecies(species),
+        identifier: identifier.trim(),
         counts:
           countWeaned || countPlaced
             ? {
@@ -1466,7 +1434,6 @@ function CreateGroupForm({
           placementCompletedAt: placementCompletedAt || null,
         },
       });
-      toast?.({ title: "Group created" });
 
       try {
         if (created && created.id != null) {
@@ -1483,95 +1450,83 @@ function CreateGroupForm({
       onCreated();
     } catch (e: any) {
       setSubmitErr(e?.message || "Failed to create offspring group");
-      toast?.({ title: "Create failed", description: String(e?.message || e), variant: "destructive" });
     } finally {
       setSubmitting(false);
     }
   };
 
   return (
-    <div className="w-[820px] max-w-[94vw]">
-      <Card>
-        <div className="p-4 space-y-4">
-          <div className="text-lg font-semibold">New offspring group</div>
-          <div className="text-sm text-secondary">Choose a committed plan, add identifiers, date(s), and optional overrides.</div>
+    <div className="space-y-4">
+      <div className="text-lg font-semibold">New Offspring Group</div>
+      <div className="text-sm text-secondary">Manually create an offspring group not linked to a breeding plan.</div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <label className="flex flex-col gap-1">
-              <span className={labelClass}>
-                Committed Plan <span className="text-[hsl(var(--brand-orange))]">*</span>
-              </span>
-              <select
-                className={inputClass}
-                value={planId}
-                onChange={(e) => setPlanId(e.target.value ? Number(e.target.value) : "")}
-                disabled={loading}
-              >
-                <option value="">Select a plan...</option>
-                {plans.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.code ? `${p.code} - ` : ""}
-                    {p.name} ({p.species}
-                    {p.breedText ? ` · ${p.breedText}` : ""})
-                  </option>
-                ))}
-              </select>
-            </label>
+      {/* Warning callout */}
+      <div className="p-3 rounded-md bg-amber-500/10 border border-amber-500/30">
+        <p className="text-sm text-amber-200">
+          <strong>Note:</strong> Offspring groups are typically created automatically when a breeding plan is committed.
+          Use this form only for special cases, such as managing offspring inherited from outside your breeding program.
+        </p>
+      </div>
 
-            <label className="flex flex-col gap-1">
-              <span className={labelClass}>Identifier (optional)</span>
-              <input className={inputClass} value={identifier} onChange={(e) => setIdentifier(e.target.value)} placeholder="e.g., A Litter" />
-            </label>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <label className="flex flex-col gap-1">
+          <span className={labelClass}>
+            Group Name <span className="text-[hsl(var(--brand-orange))]">*</span>
+          </span>
+          <input className={inputClass} value={identifier} onChange={(e) => setIdentifier(e.target.value)} placeholder="e.g., A Litter" />
+        </label>
 
-            <label className="flex flex-col gap-1">
-              <span className={labelClass}>Weaned At (optional)</span>
-              <input className={inputClass} type="date" value={weanedAt} onChange={(e) => setWeanedAt(e.target.value)} />
-            </label>
+        <label className="flex flex-col gap-1">
+          <span className={labelClass}>
+            Species <span className="text-[hsl(var(--brand-orange))]">*</span>
+          </span>
+          <select
+            className={inputClass}
+            value={species}
+            onChange={(e) => setSpecies(e.target.value as SpeciesUi | "")}
+          >
+            <option value="">Select species...</option>
+            {SPECIES_UI_ALL.map((s) => (
+              <option key={s} value={s}>{s}</option>
+            ))}
+          </select>
+        </label>
 
-            <label className="flex flex-col gap-1">
-              <span className={labelClass}>Placement Start (optional)</span>
-              <input className={inputClass} type="date" value={placementStartAt} onChange={(e) => setPlacementStartAt(e.target.value)} />
-            </label>
+        <label className="flex flex-col gap-1">
+          <span className={labelClass}>Weaned At (optional)</span>
+          <input className={inputClass} type="date" value={weanedAt} onChange={(e) => setWeanedAt(e.target.value)} />
+        </label>
 
-            <label className="flex flex-col gap-1">
-              <span className={labelClass}>Placement Completed (optional)</span>
-              <input className={inputClass} type="date" value={placementCompletedAt} onChange={(e) => setPlacementCompletedAt(e.target.value)} />
-            </label>
+        <label className="flex flex-col gap-1">
+          <span className={labelClass}>Placement Start (optional)</span>
+          <input className={inputClass} type="date" value={placementStartAt} onChange={(e) => setPlacementStartAt(e.target.value)} />
+        </label>
 
-            {/* NEW: status override + reason */}
-            <label className="flex flex-col gap-1">
-              <span className={labelClass}>Status Override (optional)</span>
-              <input className={inputClass} value={statusOverride} onChange={(e) => setStatusOverride(e.target.value)} placeholder="e.g., Pause Homing" />
-            </label>
-            <label className="flex flex-col gap-1">
-              <span className={labelClass}>Override Reason (optional)</span>
-              <input className={inputClass} value={statusOverrideReason} onChange={(e) => setStatusOverrideReason(e.target.value)} placeholder="Short explanation..." />
-            </label>
+        <label className="flex flex-col gap-1">
+          <span className={labelClass}>Placement Completed (optional)</span>
+          <input className={inputClass} type="date" value={placementCompletedAt} onChange={(e) => setPlacementCompletedAt(e.target.value)} />
+        </label>
 
-            {/* NEW: counts weaned/placed */}
-            <label className="flex flex-col gap-1">
-              <span className={labelClass}>Weaned Count (optional)</span>
-              <input className={inputClass} type="number" value={countWeaned} onChange={(e) => setCountWeaned(e.target.value)} />
-            </label>
-            <label className="flex flex-col gap-1">
-              <span className={labelClass}>Placed Count (optional)</span>
-              <input className={inputClass} type="number" value={countPlaced} onChange={(e) => setCountPlaced(e.target.value)} />
-            </label>
-          </div>
+        <label className="flex flex-col gap-1">
+          <span className={labelClass}>Weaned Count (optional)</span>
+          <input className={inputClass} type="number" value={countWeaned} onChange={(e) => setCountWeaned(e.target.value)} />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className={labelClass}>Placed Count (optional)</span>
+          <input className={inputClass} type="number" value={countPlaced} onChange={(e) => setCountPlaced(e.target.value)} />
+        </label>
+      </div>
 
-          {error && <div className="text-sm text-red-600">{error}</div>}
-          {submitErr && <div className="text-sm text-red-600">{submitErr}</div>}
+      {submitErr && <div className="text-sm text-red-600">{submitErr}</div>}
 
-          <div className="flex gap-2 justify-end">
-            <Button variant="outline" onClick={onCancel} disabled={submitting}>
-              Cancel
-            </Button>
-            <Button onClick={handleSubmit} disabled={submitting || !planId || !api}>
-              {submitting ? "Creating..." : "Create group"}
-            </Button>
-          </div>
-        </div>
-      </Card>
+      <div className="flex gap-2 justify-end">
+        <Button variant="outline" onClick={onCancel} disabled={submitting}>
+          Cancel
+        </Button>
+        <Button onClick={handleSubmit} disabled={submitting || !api || !species || !identifier.trim()}>
+          {submitting ? "Creating..." : "Create group"}
+        </Button>
+      </div>
     </div>
   );
 }
@@ -5062,6 +5017,14 @@ function OffspringGroupsTab(
                       expenseFilters={{ offspringGroupId: groupId }}
                       api={api}
                       defaultAnchor={{ offspringGroupId: groupId, offspringGroupName: tblRow.groupName || tblRow.planCode || `Group #${groupId}` }}
+                      offspringGroupContext={groupId ? {
+                        offspringGroupId: String(groupId),
+                        allowedParties: (row.buyers || []).map((b: BuyerLink) => ({
+                          id: b.contactId ?? b.organizationId ?? b.id,
+                          label: b.contactLabel || b.orgLabel || `Buyer #${b.id}`,
+                        })),
+                        onAddBuyer: () => setBuyerModalGroup(row),
+                      } satisfies OffspringGroupContext : undefined}
                     />
                   )}
 
@@ -5652,55 +5615,17 @@ function OffspringGroupsTab(
         ariaLabel="Create Offspring Group"
         closeOnEscape
         closeOnOutsideClick
+        size="lg"
       >
-        {(() => {
-          const handleRootMouseDownCapture: React.MouseEventHandler<HTMLDivElement> = (e) => {
-            e.stopPropagation();
-          };
-
-          const handleRootClickCapture: React.MouseEventHandler<HTMLDivElement> = (e) => {
-            e.stopPropagation();
-          };
-
-          const handleBackdropClick: React.MouseEventHandler<HTMLDivElement> = (e) => {
-            e.stopPropagation();
+        <CreateGroupForm
+          api={api}
+          tenantId={tenantId}
+          onCreated={async () => {
             setCreateOpen(false);
-          };
-
-          return (
-            <div
-              className="fixed inset-0"
-              style={{ zIndex: MODAL_Z + 1, isolation: "isolate" }}
-              onMouseDownCapture={handleRootMouseDownCapture}
-              onClickCapture={handleRootClickCapture}
-            >
-              {/* Backdrop */}
-              <div
-                className="absolute inset-0 bg-black/50"
-                onClick={handleBackdropClick}
-              />
-
-              {/* Centered panel */}
-              <div className="absolute inset-0 flex items-center justify-center">
-                <div
-                  role="dialog"
-                  aria-modal="true"
-                  className="pointer-events-auto"
-                >
-                  <CreateGroupForm
-                    api={api}
-                    tenantId={tenantId}
-                    onCreated={async () => {
-                      setCreateOpen(false);
-                      await load();
-                    }}
-                    onCancel={() => setCreateOpen(false)}
-                  />
-                </div>
-              </div>
-            </div>
-          );
-        })()}
+            await load();
+          }}
+          onCancel={() => setCreateOpen(false)}
+        />
       </Overlay>
     </Card >
   );

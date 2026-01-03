@@ -8,7 +8,7 @@ import { Button } from "../Button";
 import { Download } from "lucide-react";
 import { formatCents } from "../../utils/money";
 import { InvoiceDetailDrawer } from "./InvoiceDetailDrawer";
-import { InvoiceCreateModal } from "./InvoiceCreateModal";
+import { InvoiceCreateModal, type OffspringGroupContext } from "./InvoiceCreateModal";
 import { ExpenseModal } from "./ExpenseModal";
 import { BreedingPlanFinancialSummary } from "./BreedingPlanFinancialSummary";
 import type { Invoice, Payment, OffspringGroup, Offspring } from "../../utils/financeRollups";
@@ -36,6 +36,10 @@ export interface FinanceTabProps {
   showBreedingPlanSummary?: boolean;
   offspringGroups?: OffspringGroup[];
   offspring?: Offspring[];
+  /**
+   * When provided, restricts party selection in InvoiceCreateModal to offspring group buyers only.
+   */
+  offspringGroupContext?: OffspringGroupContext;
 }
 
 export function FinanceTab({
@@ -50,6 +54,7 @@ export function FinanceTab({
   showBreedingPlanSummary = false,
   offspringGroups = [],
   offspring = [],
+  offspringGroupContext,
 }: FinanceTabProps) {
   const [invoices, setInvoices] = React.useState<any[]>([]);
   const [expenses, setExpenses] = React.useState<any[]>([]);
@@ -352,6 +357,7 @@ export function FinanceTab({
         api={api}
         defaultAnchor={defaultAnchor}
         defaultClientParty={defaultClientParty}
+        offspringGroupContext={offspringGroupContext}
       />
 
       {/* Expense Modal (Create/Edit) */}

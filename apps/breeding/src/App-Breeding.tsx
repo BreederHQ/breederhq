@@ -103,7 +103,11 @@ function asISODateOnly(v: unknown): string | null {
   if (!v) return null;
 
   if (v instanceof Date && !isNaN(v.getTime())) {
-    return v.toISOString().slice(0, 10);
+    // Use local date components to avoid UTC timezone shift
+    const y = v.getFullYear();
+    const m = String(v.getMonth() + 1).padStart(2, "0");
+    const d = String(v.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
   }
 
   if (typeof v === "string") {
@@ -113,9 +117,13 @@ function asISODateOnly(v: unknown): string | null {
     // Already YYYY-MM-DD
     if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
 
-    const d = new Date(s);
-    if (!isNaN(d.getTime())) {
-      return d.toISOString().slice(0, 10);
+    // Parse as local date to avoid timezone issues
+    const dt = new Date(s);
+    if (!isNaN(dt.getTime())) {
+      const y = dt.getFullYear();
+      const m = String(dt.getMonth() + 1).padStart(2, "0");
+      const d = String(dt.getDate()).padStart(2, "0");
+      return `${y}-${m}-${d}`;
     }
   }
   return null;
@@ -2354,8 +2362,20 @@ export default function AppBreeding() {
         // Respect an explicit status in the draft (e.g., "CANCELED"); else fall back to derived.
         const status = draft.status ?? derived;
 
-        const updated = await api.updatePlan(Number(id), { ...draft, status } as any);
-        setRows((prev) => prev.map((r) => (r.id === id ? planToRow(updated) : r)));
+        // Normalize draft: convert empty strings to null so backend clears the field
+        const normalizedDraft: Record<string, any> = { status };
+        for (const [key, value] of Object.entries(draft)) {
+          if (typeof value === "string" && value.trim() === "") {
+            normalizedDraft[key] = null;
+          } else {
+            normalizedDraft[key] = value;
+          }
+        }
+
+        await api.updatePlan(Number(id), normalizedDraft as any);
+        // Fetch fresh plan with includes to get full nested data (sire, dam, org)
+        const fresh = await api.getPlan(Number(id), "parents,org");
+        setRows((prev) => prev.map((r) => (r.id === id ? planToRow(fresh) : r)));
       },
       header: (r: PlanRow) => ({ title: r.name, subtitle: r.status || "" }),
       customChrome: true,
@@ -2699,7 +2719,11 @@ export default function AppBreeding() {
 
         {/* PLANNER VIEW */}
         {currentView === "planner" && (
-          <div className="p-4">
+          <div
+            ref={plannerContentRef}
+            className="p-4 overflow-y-auto"
+            style={{ maxHeight: plannerContentMaxHeight ?? undefined }}
+          >
             {/* Page-level tabs: Your Breeding Plans | What If Planning */}
             <nav className="inline-flex items-end gap-6 mb-4" role="tablist" aria-label="Planner pages">
               {(["your-plans", "what-if"] as const).map((tabKey) => {
@@ -3571,6 +3595,10 @@ function PlanDetailsView(props: {
   // Editable gate: archived or deleted plans cannot be edited
   const editable = !isArchived && !isDeleted;
 
+  // Once a plan is COMMITTED (or later), certain core fields cannot be changed:
+  // Dam, Sire, Breed, and Cycle Lock Date
+  const coreFieldsLocked = committedOrLater;
+
   // Show Actual Dates once the plan is COMMITTED or later.
   // Allow editing while in Edit mode for COMMITTED and later statuses.
   // CRITICAL: Must explicitly exclude PLANNING status
@@ -4136,8 +4164,12 @@ function PlanDetailsView(props: {
         },
       });
 
-      // Don't call onPlanUpdated here - stay in edit mode
-      // The changes are already persisted and local state is updated via setDraftLive
+      // Clear draft entries for persisted fields and update snapshot (prevents false "unsaved changes" prompt)
+      for (const key of Object.keys(payload)) {
+        delete (draftRef.current as any)[key];
+      }
+      setPersistedSnapshot(buildPlanSnapshot({ ...row, ...payload }));
+      setDraftTick((t) => t + 1);
     } catch (e: any) {
       console.error("[Breeding] lockCycle persist or audit failed", e);
       setExpectedPreview(null);
@@ -4252,8 +4284,12 @@ function PlanDetailsView(props: {
         data: {},
       });
 
-      // Don't call onPlanUpdated here - stay in edit mode
-      // The changes are already persisted and local state is updated via setDraftLive
+      // Clear draft entries for persisted fields and update snapshot (prevents false "unsaved changes" prompt)
+      for (const key of Object.keys(payload)) {
+        delete (draftRef.current as any)[key];
+      }
+      setPersistedSnapshot(buildPlanSnapshot({ ...row, ...payload }));
+      setDraftTick((t) => t + 1);
     } catch (e) {
       console.error("[Breeding] unlockCycle persist or audit failed", e);
       const expected = pendingCycle ? computeExpectedForPlan({ species: row.species as any, lockedCycleStart: pendingCycle }) : null;
@@ -4397,8 +4433,10 @@ function PlanDetailsView(props: {
     setPendingSave(true);
     try {
       await requestSave();
-      // On successful save, update the persisted snapshot and clear pending state
+      // On successful save, update the persisted snapshot, clear draft, and clear pending state
       setPersistedSnapshot(buildPlanSnapshot({ ...row, ...draftRef.current }));
+      draftRef.current = {};
+      setDraftTick((t) => t + 1);
       setPendingSave(false);
     } catch (error) {
       // On error, clear pending but keep isDirty true
@@ -4682,7 +4720,7 @@ function PlanDetailsView(props: {
 
                 <div className="min-w-0 sm:col-span-2">
                   <div className="text-xs text-secondary mb-1">Breed</div>
-                  {isEdit ? (
+                  {isEdit && !coreFieldsLocked ? (
                     <div className="flex items-center gap-2">
                       <div className="flex-1 min-w-0">
                         <BreedCombo
@@ -4744,6 +4782,8 @@ function PlanDetailsView(props: {
                 <Field label="Dam">
                   {!isEdit ? (
                     <div className="text-sm">{row.damName || "—"}</div>
+                  ) : coreFieldsLocked ? (
+                    <div className="text-sm text-secondary">{row.damName || "—"}</div>
                   ) : (
                     <>
                       <div className="relative">
@@ -4822,6 +4862,8 @@ function PlanDetailsView(props: {
                 <Field label="Sire">
                   {!isEdit ? (
                     <div className="text-sm">{row.sireName || "—"}</div>
+                  ) : coreFieldsLocked ? (
+                    <div className="text-sm text-secondary">{row.sireName || "—"}</div>
                   ) : (
                     <>
                       <div className="relative">
@@ -4907,7 +4949,7 @@ function PlanDetailsView(props: {
                 {/* Left column: selector */}
                 <div>
                   <div className="text-xs text-secondary mb-1">
-                    Upcoming Cycles (Projected Start Dates)
+                    Cycle Selection - Choose from the last cycle start or expected future cycle start dates
                   </div>
 
                   {isLocked ? (
@@ -4915,9 +4957,15 @@ function PlanDetailsView(props: {
                   ) : isEdit ? (
                     (() => {
                       const hasSelection = !!pendingCycle;
+                      // Include the last recorded cycle (most recent from history) plus projected future cycles
+                      const lastRecordedCycle = cycleStartsAsc.length > 0 ? cycleStartsAsc[cycleStartsAsc.length - 1] : null;
                       const options = [...projectedCycles]
                         .map((d) => asISODateOnly(d) ?? String(d).slice(0, 10))
                         .filter(Boolean) as string[];
+                      // Add the last recorded cycle at the beginning if it exists and isn't already in the list
+                      if (lastRecordedCycle && !options.includes(lastRecordedCycle)) {
+                        options.unshift(lastRecordedCycle);
+                      }
                       if (pendingCycle && !options.includes(pendingCycle)) {
                         options.unshift(pendingCycle);
                       }
@@ -5002,7 +5050,7 @@ function PlanDetailsView(props: {
                       className="rounded-md"
                       style={{
                         padding: 2,
-                        background: "#10b981", // neon green border
+                        background: coreFieldsLocked ? "#6b7280" : "#10b981", // gray when committed, neon green otherwise
                       }}
                     >
                       <button
@@ -5010,11 +5058,13 @@ function PlanDetailsView(props: {
                         onClick={unlockCycle}
                         className="h-9 px-3 rounded-[6px] text-sm font-medium flex items-center gap-2"
                         style={{
-                          backgroundColor: "#16a34a", // GREEN background
-                          color: "#ffffff"
+                          backgroundColor: coreFieldsLocked ? "#4b5563" : "#16a34a", // gray when committed, GREEN otherwise
+                          color: "#ffffff",
+                          cursor: coreFieldsLocked ? "not-allowed" : undefined,
+                          opacity: coreFieldsLocked ? 0.7 : undefined,
                         }}
-                        title="Unlock cycle"
-                        disabled={!editable}
+                        title={coreFieldsLocked ? "Cycle cannot be unlocked after plan is committed" : "Unlock cycle"}
+                        disabled={!editable || coreFieldsLocked}
                       >
                         <svg
                           viewBox="0 0 24 24"

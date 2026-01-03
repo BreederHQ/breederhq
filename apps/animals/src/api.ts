@@ -499,6 +499,26 @@ export function makeApi(base?: string, extraHeadersFn?: () => Record<string, str
   /* ───────── Finance namespace for invoices, payments, expenses ───────── */
 
   const finance = {
+    parties: {
+      async search(query: string, opts?: { limit?: number }) {
+        const qs = new URLSearchParams();
+        qs.set("q", query);
+        qs.set("dir", "asc");
+        if (opts?.limit) qs.set("limit", String(opts.limit));
+        const res = await reqWithExtra<{ items?: any[]; total?: number } | any[]>(`/parties?${qs.toString()}`);
+        return Array.isArray(res) ? res : (res?.items || []);
+      },
+    },
+    contacts: {
+      async create(input: { first_name?: string; last_name?: string; display_name?: string; email?: string; phone_e164?: string }) {
+        return reqWithExtra<any>("/contacts", { method: "POST", json: input });
+      },
+    },
+    organizations: {
+      async create(input: { name: string; website?: string | null }) {
+        return reqWithExtra<any>("/organizations", { method: "POST", json: input });
+      },
+    },
     invoices: {
       async list(params?: any) {
         const qs = new URLSearchParams();

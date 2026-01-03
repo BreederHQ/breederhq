@@ -32,6 +32,5 @@ module.exports = {
     { pattern: /shadow-\[[^\]]+\]/ },
     { pattern: /bg-\[[^\]]+\](\/\d+)?/ },
     { pattern: /from-\[[^\]]+\]/ },
-    { pattern: /to-\[[^\]]+\]/ },
   ],
 };

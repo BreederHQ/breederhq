@@ -1,14 +1,14 @@
 app.breederhq.test {
-  tls internal
-  reverse_proxy localhost:6170
+	tls internal
+	reverse_proxy localhost:6170
 }
 
 portal.breederhq.test {
-  tls internal
-  reverse_proxy localhost:6171
+	tls internal
+	reverse_proxy localhost:6171
 }
 
 marketplace.breederhq.test {
-  tls internal
-  reverse_proxy localhost:6172
+	tls internal
+	reverse_proxy localhost:6172
 }

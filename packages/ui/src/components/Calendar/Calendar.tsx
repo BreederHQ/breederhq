@@ -125,7 +125,18 @@ export default function BHQCalendar({
 
   const visibleEvents = React.useMemo(() => {
     return events
-      .filter((e) => !e.calendarId || enabled.has(e.calendarId))
+      .filter((e) => {
+        // Basic calendarId check
+        if (e.calendarId && !enabled.has(e.calendarId)) return false;
+
+        // Availability bands should only show if their associated plan is also visible
+        if (e.calendarId === "overlay:availability" && e.extendedProps?.planId) {
+          const planCalendarId = `plan:${e.extendedProps.planId}`;
+          if (!enabled.has(planCalendarId)) return false;
+        }
+
+        return true;
+      })
       .map((e) => ({
         id: e.id,
         title: e.title,

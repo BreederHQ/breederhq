@@ -158,6 +158,11 @@ export function TagPicker({
         <input
           ref={inputRef}
           type="text"
+          name="tag_search"
+          autoComplete="off"
+          data-1p-ignore="true"
+          data-lpignore="true"
+          data-form-type="other"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onFocus={() => setOpen(true)}
