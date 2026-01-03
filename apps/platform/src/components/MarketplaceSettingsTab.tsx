@@ -268,7 +268,7 @@ export default function MarketplaceSettingsTab({ onDirty }: MarketplaceSettingsT
 
   // Species and breeds
   const [selectedSpecies, setSelectedSpecies] = React.useState<string[]>(["Dog"]);
-  const speciesOptions = ["Dog", "Cat", "Horse"];
+  const speciesOptions = ["Dog", "Cat", "Horse", "Goat", "Sheep", "Rabbit"];
 
   // Programs (static mock)
   const [programs, setPrograms] = React.useState([
