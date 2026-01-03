@@ -25,7 +25,7 @@ import {
   exportToCsv,
   Popover,
 } from "@bhq/ui";
-import { FinanceTab } from "@bhq/ui/components/Finance";
+import { FinanceTab, type OffspringGroupContext } from "@bhq/ui/components/Finance";
 
 import { Overlay } from "@bhq/ui/overlay";
 import "@bhq/ui/styles/table.css";
@@ -5017,6 +5017,14 @@ function OffspringGroupsTab(
                       expenseFilters={{ offspringGroupId: groupId }}
                       api={api}
                       defaultAnchor={{ offspringGroupId: groupId, offspringGroupName: tblRow.groupName || tblRow.planCode || `Group #${groupId}` }}
+                      offspringGroupContext={groupId ? {
+                        offspringGroupId: String(groupId),
+                        allowedParties: (row.buyers || []).map((b: BuyerLink) => ({
+                          id: b.contactId ?? b.organizationId ?? b.id,
+                          label: b.contactLabel || b.orgLabel || `Buyer #${b.id}`,
+                        })),
+                        onAddBuyer: () => setBuyerModalGroup(row),
+                      } satisfies OffspringGroupContext : undefined}
                     />
                   )}
 
