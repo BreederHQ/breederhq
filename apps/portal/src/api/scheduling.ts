@@ -480,3 +480,112 @@ export function getMockConfirmedBooking(slotId: string, slot: SchedulingSlot): C
     nextSteps: "Please arrive 10 minutes early. Bring a secure carrier for safe transport. If you have any questions, contact us through the Messages page.",
   };
 }
+
+/* ────────────────────────────────────────────────────────────────────────────
+ * ICS Calendar Generation (client-side)
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+export interface IcsCalendarData {
+  eventType: string;
+  breederName: string;
+  startsAt: string; // ISO 8601
+  endsAt: string; // ISO 8601
+  location: string | null;
+  mode: "in_person" | "virtual" | null;
+  nextSteps: string | null;
+  bookingId: string;
+}
+
+function escapeIcsText(text: string): string {
+  return text
+    .replace(/\\/g, "\\\\")
+    .replace(/;/g, "\\;")
+    .replace(/,/g, "\\,")
+    .replace(/\n/g, "\\n");
+}
+
+function formatIcsDateTime(date: Date): string {
+  return date.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
+}
+
+function buildIcsLocation(location: string | null, mode: "in_person" | "virtual" | null): string {
+  if (mode === "virtual") return "Virtual Meeting";
+  return location || "Location to be confirmed";
+}
+
+function buildIcsDescription(data: IcsCalendarData): string {
+  const parts: string[] = [];
+  parts.push(`Your ${data.eventType} appointment is confirmed.`);
+  parts.push("");
+  parts.push(`With: ${data.breederName}`);
+  if (data.mode === "virtual") {
+    parts.push("Mode: Virtual Meeting");
+  } else if (data.location) {
+    parts.push(`Location: ${data.location}`);
+  }
+  if (data.nextSteps) {
+    parts.push("");
+    parts.push("Next Steps:");
+    parts.push(data.nextSteps);
+  }
+  parts.push("");
+  parts.push("Managed via BreederHQ Client Portal");
+  return parts.join("\n");
+}
+
+/**
+ * Generate ICS calendar content for a booking.
+ */
+export function generateBookingIcs(data: IcsCalendarData): string {
+  const uid = `booking-${data.bookingId}@breederhq.com`;
+  const dtstamp = formatIcsDateTime(new Date());
+  const dtstart = formatIcsDateTime(new Date(data.startsAt));
+  const dtend = formatIcsDateTime(new Date(data.endsAt));
+  const location = escapeIcsText(buildIcsLocation(data.location, data.mode));
+  const description = escapeIcsText(buildIcsDescription(data));
+  const summary = escapeIcsText(`${data.eventType} with ${data.breederName}`);
+
+  const lines: string[] = [
+    "BEGIN:VCALENDAR",
+    "VERSION:2.0",
+    "PRODID:-//BreederHQ//Client Portal//EN",
+    "METHOD:PUBLISH",
+    "CALSCALE:GREGORIAN",
+    "BEGIN:VEVENT",
+    `UID:${uid}`,
+    `DTSTAMP:${dtstamp}`,
+    `DTSTART:${dtstart}`,
+    `DTEND:${dtend}`,
+    `SUMMARY:${summary}`,
+    `DESCRIPTION:${description}`,
+    `LOCATION:${location}`,
+    "STATUS:CONFIRMED",
+    "SEQUENCE:0",
+    "BEGIN:VALARM",
+    "ACTION:DISPLAY",
+    `DESCRIPTION:Reminder: ${data.eventType} with ${data.breederName}`,
+    "TRIGGER:-PT15M",
+    "END:VALARM",
+    "END:VEVENT",
+    "END:VCALENDAR",
+  ];
+
+  return lines.join("\r\n");
+}
+
+/**
+ * Download ICS file for a booking.
+ */
+export function downloadBookingIcs(data: IcsCalendarData): void {
+  const icsContent = generateBookingIcs(data);
+  const blob = new Blob([icsContent], { type: "text/calendar;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `appointment-${data.bookingId}.ics`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}

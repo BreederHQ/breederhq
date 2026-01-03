@@ -16,10 +16,12 @@ import {
   getMockSchedulingEvent,
   getMockSlots,
   getMockConfirmedBooking,
+  downloadBookingIcs,
   type SchedulingEventResponse,
   type SchedulingSlot,
   type ConfirmedBooking,
   type BookingRules,
+  type IcsCalendarData,
 } from "../api/scheduling";
 
 /* ────────────────────────────────────────────────────────────────────────────
@@ -413,6 +415,7 @@ interface ConfirmedViewProps {
   rules: BookingRules;
   onCancel?: () => void;
   onReschedule?: () => void;
+  onAddToCalendar?: () => void;
   cancelInProgress?: boolean;
 }
 
@@ -422,6 +425,7 @@ function ConfirmedView({
   rules,
   onCancel,
   onReschedule,
+  onAddToCalendar,
   cancelInProgress,
 }: ConfirmedViewProps) {
   const date = formatSlotDate(booking.startsAt);
@@ -557,6 +561,19 @@ function ConfirmedView({
             </div>
           </div>
         </div>
+
+        {/* Add to Calendar button */}
+        {onAddToCalendar && (
+          <div style={{ marginTop: "var(--portal-space-3)" }}>
+            <Button
+              variant="secondary"
+              onClick={onAddToCalendar}
+              style={{ width: "100%" }}
+            >
+              Add to Calendar
+            </Button>
+          </div>
+        )}
       </PortalCard>
 
       {/* Next steps */}
@@ -957,6 +974,24 @@ export default function PortalSchedulePage() {
     }));
   };
 
+  // Handle add to calendar (download ICS file)
+  const handleAddToCalendar = () => {
+    if (!confirmedBooking || !eventData) return;
+
+    const icsData: IcsCalendarData = {
+      eventType: eventData.context.eventType,
+      breederName: eventData.context.breederName,
+      startsAt: confirmedBooking.startsAt,
+      endsAt: confirmedBooking.endsAt,
+      location: confirmedBooking.location,
+      mode: confirmedBooking.mode,
+      nextSteps: confirmedBooking.nextSteps,
+      bookingId: confirmedBooking.bookingId,
+    };
+
+    downloadBookingIcs(icsData);
+  };
+
   // Render based on state
   const { state, eventData, slots, selectedSlotId, confirmedBooking, errorMessage, rules } = pageState;
 
@@ -1072,6 +1107,7 @@ export default function PortalSchedulePage() {
               rules={rules}
               onCancel={rules.canCancel ? handleCancel : undefined}
               onReschedule={rules.canReschedule ? handleReschedule : undefined}
+              onAddToCalendar={handleAddToCalendar}
             />
           </>
         )}
