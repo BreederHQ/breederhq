@@ -15,6 +15,8 @@ import {
   Button,
   BreedCombo,
   Badge,
+  TagPicker,
+  type TagOption,
 } from "@bhq/ui";
 import type { BadgeProps } from "@bhq/ui";
 
@@ -1366,6 +1368,116 @@ if (isDevRuntime) {
     console.warn("[Offspring] Placement badge regression detected for PLACED state.");
   }
 }
+
+/** ---------- Offspring Tags Section ---------- */
+
+function OffspringTagsSection({
+  offspringId,
+  api,
+  disabled = false,
+}: {
+  offspringId: number;
+  api: any;
+  disabled?: boolean;
+}) {
+  const [availableTags, setAvailableTags] = React.useState<TagOption[]>([]);
+  const [selectedTags, setSelectedTags] = React.useState<TagOption[]>([]);
+  const [loading, setLoading] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+
+  // Load tags on mount
+  React.useEffect(() => {
+    let cancelled = false;
+
+    const load = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        // Load available tags for OFFSPRING module
+        const availableRes = await api.tags.list({ module: "OFFSPRING", limit: 200 });
+        const availableItems = availableRes?.items || [];
+        const available = availableItems.map((t: any) => ({
+          id: Number(t.id),
+          name: String(t.name),
+          color: t.color ?? null,
+        }));
+        if (!cancelled) setAvailableTags(available);
+
+        // Load currently assigned tags
+        const assignedRes = await api.tags.listForOffspring(offspringId);
+        const assignedItems = Array.isArray(assignedRes) ? assignedRes : (assignedRes?.items || []);
+        const assigned = assignedItems.map((t: any) => ({
+          id: Number(t.id),
+          name: String(t.name),
+          color: t.color ?? null,
+        }));
+        if (!cancelled) setSelectedTags(assigned);
+      } catch (e: any) {
+        if (!cancelled) setError(e?.message || "Failed to load tags");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+
+    load();
+    return () => { cancelled = true; };
+  }, [api, offspringId]);
+
+  const handleSelect = React.useCallback(async (tag: TagOption) => {
+    // Optimistic update
+    setSelectedTags((prev) => [...prev, tag]);
+    setError(null);
+
+    try {
+      await api.tags.assign(tag.id, { offspringId });
+    } catch (e: any) {
+      // Rollback on error
+      setSelectedTags((prev) => prev.filter((t) => t.id !== tag.id));
+      setError(e?.message || "Failed to assign tag");
+    }
+  }, [api, offspringId]);
+
+  const handleRemove = React.useCallback(async (tag: TagOption) => {
+    // Optimistic update
+    setSelectedTags((prev) => prev.filter((t) => t.id !== tag.id));
+    setError(null);
+
+    try {
+      await api.tags.unassign(tag.id, { offspringId });
+    } catch (e: any) {
+      // Rollback on error
+      setSelectedTags((prev) => [...prev, tag]);
+      setError(e?.message || "Failed to remove tag");
+    }
+  }, [api, offspringId]);
+
+  const handleCreate = React.useCallback(async (name: string): Promise<TagOption> => {
+    const created = await api.tags.create({ name, module: "OFFSPRING" });
+    const newTag: TagOption = {
+      id: Number(created.id),
+      name: String(created.name),
+      color: created.color ?? null,
+    };
+    // Add to available tags list
+    setAvailableTags((prev) => [...prev, newTag]);
+    return newTag;
+  }, [api]);
+
+  return (
+    <TagPicker
+      availableTags={availableTags}
+      selectedTags={selectedTags}
+      onSelect={handleSelect}
+      onRemove={handleRemove}
+      onCreate={handleCreate}
+      loading={loading}
+      error={error}
+      placeholder="Add tags..."
+      disabled={disabled}
+    />
+  );
+}
+
 
 /** ---------- Create Offspring overlay ---------- */
 
@@ -3885,6 +3997,15 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
                                   </dd>
                                 </div>
                               </dl>
+                            </SectionCard>
+
+                            {/* Tags */}
+                            <SectionCard title="Tags">
+                              <OffspringTagsSection
+                                offspringId={drawer.id}
+                                api={rootApi}
+                                disabled={drawerMode === "view"}
+                              />
                             </SectionCard>
 
                             {/* Buyer card - CONSOLIDATED */}

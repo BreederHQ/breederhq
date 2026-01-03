@@ -1,6 +1,7 @@
 // apps/animals/src/api.ts
 import { readTenantIdFast, resolveTenantId } from "@bhq/ui/utils/tenant";
 import type { BreedHit } from "@bhq/ui";
+import { createHttp, makeTags } from "@bhq/api";
 
 /* ───────── base + cookies ───────── */
 
@@ -338,24 +339,6 @@ export function makeApi(base?: string, extraHeadersFn?: () => Record<string, str
       },
     },
 
-    /* tags parity */
-    tags: {
-      async list(id: string | number) {
-        return reqWithExtra<any>(`/animals/${encodeURIComponent(String(id))}/tags`);
-      },
-      async add(id: string | number, tagId: number) {
-        return reqWithExtra<any>(`/animals/${encodeURIComponent(String(id))}/tags`, {
-          method: "POST",
-          json: { tagId },
-        });
-      },
-      async remove(id: string | number, tagId: number) {
-        return reqWithExtra<any>(`/animals/${encodeURIComponent(String(id))}/tags/${encodeURIComponent(String(tagId))}`, {
-          method: "DELETE",
-        });
-      },
-    },
-
     /* registries parity */
     registries: {
       async list(id: string | number) {
@@ -626,5 +609,9 @@ export function makeApi(base?: string, extraHeadersFn?: () => Record<string, str
     },
   };
 
-  return { animals, lookups, breeds, registries, finance };
+  // Wire up unified tags from @bhq/api
+  const http = createHttp(root);
+  const tags = makeTags(http);
+
+  return { animals, lookups, breeds, registries, finance, tags };
 }
