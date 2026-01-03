@@ -6,6 +6,7 @@ export type TagOption = {
   id: number;
   name: string;
   color: string | null;
+  isArchived?: boolean;
 };
 
 export type TagPickerProps = {
@@ -56,9 +57,9 @@ export function TagPicker({
     [selectedTags]
   );
 
-  // Filter available tags by query and exclude already selected
+  // Filter available tags by query, exclude already selected, exclude archived
   const filteredTags = React.useMemo(() => {
-    const unselected = availableTags.filter((t) => !selectedIds.has(t.id));
+    const unselected = availableTags.filter((t) => !selectedIds.has(t.id) && !t.isArchived);
     if (!query.trim()) return unselected;
     const q = query.toLowerCase();
     return unselected.filter((t) => t.name.toLowerCase().includes(q));
@@ -101,9 +102,14 @@ export function TagPicker({
       const newTag = await onCreate(query.trim());
       onSelect(newTag);
       setQuery("");
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Failed to create tag";
-      setCreateError(msg);
+    } catch (err: any) {
+      // Handle 409 tag_archived error
+      if (err?.status === 409 && err?.code === "tag_archived") {
+        setCreateError("This tag is archived. Unarchive it in Settings to assign.");
+      } else {
+        const msg = err instanceof Error ? err.message : "Failed to create tag";
+        setCreateError(msg);
+      }
     } finally {
       setCreating(false);
     }
@@ -128,6 +134,7 @@ export function TagPicker({
             key={tag.id}
             name={tag.name}
             color={tag.color}
+            isArchived={tag.isArchived}
             onRemove={disabled ? undefined : () => onRemove(tag)}
           />
         ))}

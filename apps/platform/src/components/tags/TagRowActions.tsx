@@ -6,6 +6,7 @@ type Tag = {
   name: string;
   module: string;
   color: string | null;
+  isArchived?: boolean;
 };
 
 type Props = {
@@ -13,10 +14,13 @@ type Props = {
   usageCount: number;
   onEdit: () => void;
   onDelete: () => void;
+  onArchive: () => void;
+  onUnarchive: () => void;
 };
 
-export function TagRowActions({ tag, usageCount, onEdit, onDelete }: Props) {
+export function TagRowActions({ tag, usageCount, onEdit, onDelete, onArchive, onUnarchive }: Props) {
   const canDelete = usageCount === 0;
+  const isArchived = tag.isArchived ?? false;
   const [open, setOpen] = React.useState(false);
   const menuRef = React.useRef<HTMLDivElement>(null);
 
@@ -59,6 +63,29 @@ export function TagRowActions({ tag, usageCount, onEdit, onDelete }: Props) {
           >
             Edit
           </button>
+
+          {isArchived ? (
+            <button
+              onClick={() => {
+                setOpen(false);
+                onUnarchive();
+              }}
+              className="w-full px-3 py-1.5 text-left text-sm text-brand hover:bg-surface-hover transition-colors"
+            >
+              Unarchive
+            </button>
+          ) : (
+            <button
+              onClick={() => {
+                setOpen(false);
+                onArchive();
+              }}
+              className="w-full px-3 py-1.5 text-left text-sm text-amber-400 hover:bg-surface-hover transition-colors"
+            >
+              Archive
+            </button>
+          )}
+
           <button
             disabled={!canDelete}
             onClick={canDelete ? () => {

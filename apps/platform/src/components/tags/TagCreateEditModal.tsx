@@ -109,19 +109,19 @@ export function TagCreateEditModal({ open, onOpenChange, mode, tag, onSubmit }: 
   };
 
   return (
-    <Overlay open={open} onOpenChange={onOpenChange} size="sm" ariaLabel={mode === "create" ? "Create Tag" : "Edit Tag"}>
-      <div className="bg-surface rounded-lg shadow-xl max-h-[90vh] overflow-hidden flex flex-col">
-        {/* Header */}
-        <div className="px-6 py-4 border-b border-hairline">
-          <h2 className="text-lg font-semibold">{mode === "create" ? "Create Tag" : "Edit Tag"}</h2>
+    <Overlay open={open} onClose={() => onOpenChange(false)} width={440}>
+      <div>
+        {/* Header - compact */}
+        <div className="px-4 py-3 border-b border-hairline">
+          <h2 className="text-base font-semibold">{mode === "create" ? "Create Tag" : "Edit Tag"}</h2>
         </div>
 
-        {/* Body */}
-        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto">
-          <div className="px-6 py-4 space-y-4">
+        {/* Body - tight spacing */}
+        <form onSubmit={handleSubmit}>
+          <div className="px-4 py-3 space-y-3">
             {/* Name */}
             <div>
-              <label className="block text-sm font-medium mb-1.5">
+              <label className="block text-sm font-medium mb-1">
                 Name <span className="text-red-400">*</span>
               </label>
               <Input
@@ -136,14 +136,14 @@ export function TagCreateEditModal({ open, onOpenChange, mode, tag, onSubmit }: 
 
             {/* Module */}
             <div>
-              <label className="block text-sm font-medium mb-1.5">
+              <label className="block text-sm font-medium mb-1">
                 Module <span className="text-red-400">*</span>
               </label>
               <select
                 value={module}
                 onChange={(e) => setModule(e.target.value as TagModule)}
-                disabled={mode === "edit"} // Module is immutable after creation
-                className="w-full px-3 py-2 bg-surface border border-hairline rounded-md text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={mode === "edit"}
+                className="w-full px-3 py-1.5 bg-surface border border-hairline rounded-md text-sm disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {MODULE_OPTIONS.map((mod) => (
                   <option key={mod} value={mod}>
@@ -152,22 +152,20 @@ export function TagCreateEditModal({ open, onOpenChange, mode, tag, onSubmit }: 
                 ))}
               </select>
               {mode === "edit" && (
-                <p className="text-xs text-secondary mt-1">Module cannot be changed after creation</p>
+                <p className="text-xs text-secondary mt-0.5">Module cannot be changed</p>
               )}
             </div>
 
-            {/* Color */}
+            {/* Color - compact grid */}
             <div>
-              <label className="block text-sm font-medium mb-1.5">
-                Color <span className="text-red-400">*</span>
-              </label>
-              <div className="grid grid-cols-9 gap-2">
+              <label className="block text-sm font-medium mb-1">Color</label>
+              <div className="grid grid-cols-9 gap-1">
                 {COLOR_PALETTE.map((c) => (
                   <button
                     key={c}
                     type="button"
                     onClick={() => setColor(c)}
-                    className={`w-8 h-8 rounded-md border-2 transition-all ${
+                    className={`w-6 h-6 rounded border-2 transition-all ${
                       color === c ? "border-white scale-110" : "border-transparent hover:border-hairline"
                     }`}
                     style={{ backgroundColor: c }}
@@ -175,23 +173,18 @@ export function TagCreateEditModal({ open, onOpenChange, mode, tag, onSubmit }: 
                   />
                 ))}
               </div>
-              {color && (
-                <div className="mt-2 text-xs text-secondary">
-                  Selected: <span className="font-mono">{color}</span>
-                </div>
-              )}
             </div>
 
             {/* Error */}
             {error && (
-              <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-md">
+              <div className="p-2 bg-red-500/10 border border-red-500/20 rounded-md">
                 <p className="text-sm text-red-400">{error}</p>
               </div>
             )}
           </div>
 
-          {/* Footer */}
-          <div className="px-6 py-4 border-t border-hairline flex justify-end gap-3">
+          {/* Footer - compact */}
+          <div className="px-4 py-3 border-t border-hairline flex justify-end gap-2">
             <Button
               type="button"
               onClick={() => onOpenChange(false)}
@@ -202,7 +195,7 @@ export function TagCreateEditModal({ open, onOpenChange, mode, tag, onSubmit }: 
               Cancel
             </Button>
             <Button type="submit" disabled={submitting} size="sm">
-              {submitting ? "Saving..." : mode === "create" ? "Create Tag" : "Save Changes"}
+              {submitting ? "Saving..." : mode === "create" ? "Create" : "Save"}
             </Button>
           </div>
         </form>
