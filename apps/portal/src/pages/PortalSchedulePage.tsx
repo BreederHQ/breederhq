@@ -598,7 +598,24 @@ function ConfirmedView({
               </Button>
             )}
           </div>
-          {rules.cancellationDeadlineHours && (
+          {/* Show deadline info with computed timestamp if available */}
+          {rules.cancelDeadlineAt ? (
+            <p
+              style={{
+                fontSize: "var(--portal-font-size-xs)",
+                color: "var(--portal-text-tertiary)",
+                margin: "var(--portal-space-2) 0 0 0",
+              }}
+            >
+              Cancellation deadline: {new Date(rules.cancelDeadlineAt).toLocaleString(undefined, {
+                weekday: "short",
+                month: "short",
+                day: "numeric",
+                hour: "numeric",
+                minute: "2-digit",
+              })}
+            </p>
+          ) : rules.cancellationDeadlineHours ? (
             <p
               style={{
                 fontSize: "var(--portal-font-size-xs)",
@@ -608,7 +625,7 @@ function ConfirmedView({
             >
               Cancellation must be made at least {rules.cancellationDeadlineHours} hours before the appointment.
             </p>
-          )}
+          ) : null}
         </PortalCard>
       )}
 
