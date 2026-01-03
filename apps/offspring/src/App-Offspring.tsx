@@ -1094,11 +1094,20 @@ const groupSections = (mode: "view" | "edit") => [
 ];
 
 /* ───────────────────────── Directory/Animals helpers ───────────────────────── */
-type SpeciesWire = "DOG" | "CAT" | "HORSE";
-type SpeciesUi = "Dog" | "Cat" | "Horse";
-const SPECIES_UI_ALL: SpeciesUi[] = ["Dog", "Cat", "Horse"];
-const toWireSpecies = (s: SpeciesUi | ""): SpeciesWire | undefined =>
-  s === "Dog" ? "DOG" : s === "Cat" ? "CAT" : s === "Horse" ? "HORSE" : undefined;
+type SpeciesWire = "DOG" | "CAT" | "HORSE" | "GOAT" | "RABBIT" | "SHEEP";
+type SpeciesUi = "Dog" | "Cat" | "Horse" | "Goat" | "Rabbit" | "Sheep";
+const SPECIES_UI_ALL: SpeciesUi[] = ["Dog", "Cat", "Horse", "Goat", "Rabbit", "Sheep"];
+const toWireSpecies = (s: SpeciesUi | ""): SpeciesWire | undefined => {
+  const map: Record<SpeciesUi, SpeciesWire> = {
+    Dog: "DOG",
+    Cat: "CAT",
+    Horse: "HORSE",
+    Goat: "GOAT",
+    Rabbit: "RABBIT",
+    Sheep: "SHEEP",
+  };
+  return s ? map[s] : undefined;
+};
 
 async function searchDirectory(
   api: OffspringApi | null,
@@ -1396,8 +1405,6 @@ function CreateGroupForm({
   const [submitting, setSubmitting] = React.useState(false);
   const [submitErr, setSubmitErr] = React.useState<string | null>(null);
 
-  const { toast } = useToast();
-
   const handleSubmit = async () => {
     if (!api) return;
     if (!identifier.trim()) {
@@ -1427,7 +1434,6 @@ function CreateGroupForm({
           placementCompletedAt: placementCompletedAt || null,
         },
       });
-      toast?.({ title: "Group created" });
 
       try {
         if (created && created.id != null) {
@@ -1444,7 +1450,6 @@ function CreateGroupForm({
       onCreated();
     } catch (e: any) {
       setSubmitErr(e?.message || "Failed to create offspring group");
-      toast?.({ title: "Create failed", description: String(e?.message || e), variant: "destructive" });
     } finally {
       setSubmitting(false);
     }
