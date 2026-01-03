@@ -219,7 +219,7 @@ export function ListingPage() {
   const jsonLd = generateListingJsonLd({
     title: listingTitle,
     description: seoDescription,
-    url: `${typeof window !== "undefined" ? window.location.origin : "https://marketplace.breederhq.com"}${pageUrl}`,
+    url: `https://marketplace.breederhq.com${pageUrl}`,
     breederName: data.programName,
     species: data.species,
     breed: data.breed ?? undefined,

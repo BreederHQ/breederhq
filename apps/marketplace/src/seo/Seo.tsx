@@ -21,12 +21,11 @@ export interface SeoProps {
 
 /**
  * Get clean canonical URL without query params or demo indicators.
+ * Always uses production origin to ensure consistency across environments.
  */
 function getCanonicalUrl(path: string): string {
-  // Use production origin for consistency, fallback to current origin
-  const origin = typeof window !== "undefined"
-    ? window.location.origin
-    : "https://marketplace.breederhq.com";
+  // Always use production origin for canonical URLs
+  const origin = "https://marketplace.breederhq.com";
 
   // Ensure path starts with /
   const cleanPath = path.startsWith("/") ? path : `/${path}`;

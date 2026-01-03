@@ -113,7 +113,7 @@ export function ProgramPage() {
   const jsonLd = generateBreederJsonLd({
     name: profile.name,
     description: seoDescription,
-    url: `${typeof window !== "undefined" ? window.location.origin : "https://marketplace.breederhq.com"}${pageUrl}`,
+    url: `https://marketplace.breederhq.com${pageUrl}`,
     website: profile.website ?? undefined,
   });
 
