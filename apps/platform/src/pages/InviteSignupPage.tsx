@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import { createTosAcceptancePayload } from "@bhq/ui";
 
 export default function InviteSignupPage() {
   // token from URL, read once
@@ -13,6 +14,7 @@ export default function InviteSignupPage() {
   const [password, setPassword] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [phone, setPhone] = useState("");
+  const [tosAccepted, setTosAccepted] = useState(false);
 
   // submit state
   const [submitting, setSubmitting] = useState(false);
@@ -59,14 +61,16 @@ export default function InviteSignupPage() {
     if (!token) return setSubmitMsg("Missing invite token.");
     if (!firstName || !lastName || !email || !password) return setSubmitMsg("All required fields must be filled.");
     if (!strongPassword(password)) return setSubmitMsg("Password must be 12+ chars with upper, lower, number, and symbol.");
+    if (!tosAccepted) return setSubmitMsg("You must accept the Terms of Service to continue.");
 
     setSubmitting(true);
     try {
+      const tosPayload = createTosAcceptancePayload("platform", "invite_signup");
       const r = await fetch("/api/v1/auth/register", {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token, captchaToken: null, firstName, lastName, email, password, displayName, phone }),
+        body: JSON.stringify({ token, captchaToken: null, firstName, lastName, email, password, displayName, phone, tosAcceptance: tosPayload }),
       });
       if (!r.ok) {
         const j = await r.json().catch(() => ({}));
@@ -177,9 +181,25 @@ export default function InviteSignupPage() {
               />
             </label>
 
+            {/* Terms of Service acceptance */}
+            <label style={{ display: "flex", alignItems: "flex-start", gap: 10, fontSize: 12, cursor: "pointer", marginTop: 4 }}>
+              <input
+                type="checkbox"
+                checked={tosAccepted}
+                onChange={(e) => setTosAccepted(e.target.checked)}
+                style={{ marginTop: 2, width: 16, height: 16, cursor: "pointer" }}
+              />
+              <span style={{ color: "#bbb" }}>
+                I agree to the{" "}
+                <a href="/terms" target="_blank" rel="noopener noreferrer" style={{ color: "#ff8a00", textDecoration: "underline" }}>
+                  Terms of Service
+                </a>
+              </span>
+            </label>
+
             {submitMsg && <div style={{ fontSize: 12, color: "#ff6b6b" }}>Error: {submitMsg}</div>}
 
-            <button type="submit" disabled={submitting} style={{ height: 40, borderRadius: 8, background: "#ff8a00", color: "#000" }}>
+            <button type="submit" disabled={submitting || !tosAccepted} style={{ height: 40, borderRadius: 8, background: tosAccepted ? "#ff8a00" : "#555", color: tosAccepted ? "#000" : "#888", cursor: tosAccepted ? "pointer" : "not-allowed" }}>
               {submitting ? "Creating…" : "Accept invite and create account"}
             </button>
           </form>

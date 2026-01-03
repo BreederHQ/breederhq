@@ -192,6 +192,18 @@ export function MarketplaceLayout({ authenticated, children }: Props) {
       <main className="w-full max-w-portal mx-auto px-6 pt-8 pb-16">
         {children}
       </main>
+
+      {/* Footer with legal links */}
+      <footer className="border-t border-border-subtle py-6">
+        <div className="max-w-portal mx-auto px-6 flex items-center justify-between text-sm text-text-tertiary">
+          <p>&copy; {new Date().getFullYear()} BreederHQ LLC. All rights reserved.</p>
+          <nav className="flex items-center gap-4">
+            <Link to="/terms" className="hover:text-white transition-colors">
+              Terms of Service
+            </Link>
+          </nav>
+        </div>
+      </footer>
     </div>
   );
 }

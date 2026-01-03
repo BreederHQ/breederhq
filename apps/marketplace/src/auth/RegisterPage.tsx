@@ -3,9 +3,10 @@
 // Uses API endpoint: POST /api/v1/auth/register
 // Post-auth verification: calls GET /api/v1/marketplace/me to confirm session
 import * as React from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { joinApi, safeReadJson } from "../api/client";
 import { Seo } from "../seo";
+import { createTosAcceptancePayload } from "@bhq/ui";
 
 // BreederHQ logo - same asset used by portal
 import logoUrl from "@bhq/ui/assets/logo.png";
@@ -62,6 +63,7 @@ export function RegisterPage() {
   const [lastName, setLastName] = React.useState("");
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
+  const [tosAccepted, setTosAccepted] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [loading, setLoading] = React.useState(false);
 
@@ -69,7 +71,8 @@ export function RegisterPage() {
     firstName.trim().length > 0 &&
     lastName.trim().length > 0 &&
     email.trim().length > 0 &&
-    password.length >= 8;
+    password.length >= 8 &&
+    tosAccepted;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -87,7 +90,8 @@ export function RegisterPage() {
         headers["x-csrf-token"] = decodeURIComponent(xsrf);
       }
 
-      // Step 1: Register
+      // Step 1: Register (include ToS acceptance)
+      const tosPayload = createTosAcceptancePayload("marketplace", "register");
       const registerRes = await fetch(joinApi("/api/v1/auth/register"), {
         method: "POST",
         credentials: "include",
@@ -97,6 +101,7 @@ export function RegisterPage() {
           password,
           firstName: firstName.trim(),
           lastName: lastName.trim(),
+          tosAcceptance: tosPayload,
         }),
       });
 
@@ -264,6 +269,29 @@ export function RegisterPage() {
                 disabled={loading}
                 aria-label="Password"
               />
+            </label>
+
+            {/* Terms of Service acceptance */}
+            <label className="flex items-start gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={tosAccepted}
+                onChange={(e) => setTosAccepted(e.target.checked)}
+                disabled={loading}
+                className="mt-1 h-4 w-4 rounded border-border-subtle bg-portal-elevated text-accent focus:ring-accent/30 focus:ring-offset-0 cursor-pointer"
+                aria-label="Accept Terms of Service"
+              />
+              <span className="text-sm text-text-secondary">
+                I agree to the{" "}
+                <Link
+                  to="/terms"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-accent hover:text-accent-hover underline"
+                >
+                  Terms of Service
+                </Link>
+              </span>
             </label>
 
             <button
