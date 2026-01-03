@@ -9,7 +9,7 @@ import logoUrl from "@bhq/ui/assets/logo.png";
 export function TermsPage() {
   return (
     <div className="min-h-screen bg-portal-bg text-white font-sans antialiased">
-      <Seo title="Terms of Service" description="BreederHQ Terms of Service" />
+      <Seo title="Terms of Service" />
 
       {/* Simple header */}
       <header className="border-b border-border-subtle bg-portal-elevated">

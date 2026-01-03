@@ -9,7 +9,7 @@ import { getMockListing, simulateDelay } from "../../demo/mockData";
 import { useStartConversation } from "../../messages/hooks";
 import { Breadcrumb } from "../components/Breadcrumb";
 import { formatCents } from "../../utils/format";
-import { Seo, generateListingJsonLd } from "../../seo";
+import { Seo } from "../../seo";
 import type { ListingDetailDTO, PublicOffspringDTO } from "../../api/types";
 
 /**
@@ -209,37 +209,14 @@ export function ListingPage() {
 
   const hasOffspring = data.offspring && data.offspring.length > 0;
 
-  // Generate SEO data
-  const pageUrl = `/programs/${programSlug}/offspring-groups/${listingSlug}`;
   const listingTitle = data.title || "Untitled Litter";
-  const seoDescription = data.description
-    ? data.description.slice(0, 155) + (data.description.length > 155 ? "..." : "")
-    : `${listingTitle} - ${data.breed || data.species} litter from ${data.programName}. ${data.countAvailable} animals currently available.`;
-
-  const jsonLd = generateListingJsonLd({
-    title: listingTitle,
-    description: seoDescription,
-    url: `https://marketplace.breederhq.com${pageUrl}`,
-    breederName: data.programName,
-    species: data.species,
-    breed: data.breed ?? undefined,
-    priceMin: data.priceRange?.min,
-    priceMax: data.priceRange?.max,
-    countAvailable: data.countAvailable,
-  });
 
   // AI-quotable summary
   const aiSummary = `This ${data.species}${data.breed ? ` (${data.breed})` : ""} litter from ${data.programName} includes ${data.countAvailable} animal${data.countAvailable === 1 ? "" : "s"} currently listed${priceText ? `, with pricing ${data.priceRange?.min === data.priceRange?.max ? `at ${priceText}` : `ranging from ${priceText}`}` : ""}.`;
 
   return (
     <div className="space-y-6">
-      <Seo
-        title={listingTitle}
-        description={seoDescription}
-        path={pageUrl}
-        ogType="article"
-        jsonLd={jsonLd}
-      />
+      <Seo title={listingTitle} />
 
       {/* Breadcrumb - buyer language */}
       <Breadcrumb

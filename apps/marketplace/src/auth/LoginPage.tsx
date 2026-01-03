@@ -116,7 +116,12 @@ export function LoginPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4 font-sans antialiased bg-portal-bg">
-      <Seo title="Sign In" robots="noindex, nofollow" />
+      <Seo
+        title="Sign In"
+        description="Sign in to BreederHQ Marketplace to browse animals, connect with breeders, and manage your inquiries."
+        path="/auth/login"
+        index={true}
+      />
       <div className="w-full max-w-[420px]">
         {/* BreederHQ branding - matches Portal */}
         <div className="flex flex-col items-center gap-2 mb-6">

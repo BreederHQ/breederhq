@@ -9,13 +9,13 @@ export interface SeoProps {
   description?: string;
   /** Path for canonical URL (without origin, e.g., "/animals") - optional for noindex pages */
   path?: string;
-  /** Whether the page should be indexed (default: true) */
+  /** Whether the page should be indexed (default: false - marketplace is noindex except auth) */
   index?: boolean;
   /** Robots directive string (e.g., "noindex, nofollow") - overrides index prop */
   robots?: string;
   /** OG type: "website" for index pages, "article" for detail pages */
   ogType?: "website" | "article";
-  /** JSON-LD structured data object */
+  /** JSON-LD structured data object - only rendered for indexable pages */
   jsonLd?: object;
 }
 
@@ -99,7 +99,7 @@ export function Seo({
   title,
   description,
   path,
-  index = true,
+  index = false,
   robots,
   ogType = "website",
   jsonLd,
@@ -112,8 +112,8 @@ export function Seo({
     // Determine if page should be indexed (robots string overrides index boolean)
     const shouldIndex = robots ? !robots.includes("noindex") : index;
 
-    // Set robots directive
-    const robotsContent = robots || (shouldIndex ? "index,follow" : "noindex,nofollow");
+    // Set robots directive - use full noindex directive for non-indexable pages
+    const robotsContent = robots || (shouldIndex ? "index,follow" : "noindex,nofollow,noarchive,nosnippet");
     setMetaTag("robots", robotsContent);
 
     // Set meta description (only if provided)
@@ -136,8 +136,9 @@ export function Seo({
       }
     }
 
-    // Set JSON-LD structured data
-    setJsonLd(jsonLd || null);
+    // Set JSON-LD structured data - only for indexable pages
+    // Non-indexable pages must not include JSON-LD that references private routes
+    setJsonLd(shouldIndex && jsonLd ? jsonLd : null);
 
     // Cleanup function to remove JSON-LD when component unmounts
     return () => {

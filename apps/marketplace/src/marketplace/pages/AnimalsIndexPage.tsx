@@ -76,14 +76,7 @@ export function AnimalsIndexPage() {
   };
 
   // SEO component (rendered regardless of demo mode)
-  const seoComponent = (
-    <Seo
-      title="Animals"
-      description="Browse available animals by species and breed on the BreederHQ Marketplace. Find puppies, kittens, and other pets from verified breeders."
-      path="/animals"
-      ogType="website"
-    />
-  );
+  const seoComponent = <Seo title="Animals" />;
 
   // Real mode: show coming soon state
   if (!demoMode) {

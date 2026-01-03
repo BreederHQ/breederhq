@@ -68,14 +68,7 @@ export function ServicesPage() {
   };
 
   // SEO component (rendered regardless of demo mode)
-  const seoComponent = (
-    <Seo
-      title="Services"
-      description="Browse breeder services on the BreederHQ Marketplace. Find stud services, training, delivery, grooming, and more from verified breeders."
-      path="/services"
-      ogType="website"
-    />
-  );
+  const seoComponent = <Seo title="Services" />;
 
   // Real mode: show coming soon state
   if (!demoMode) {

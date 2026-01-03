@@ -41,12 +41,7 @@ export function HomePage() {
 
   return (
     <div className="space-y-16">
-      <Seo
-        title="Home"
-        description="Browse animals, connect with breeders, and find services on the BreederHQ Marketplace."
-        path="/"
-        ogType="website"
-      />
+      <Seo title="Home" />
 
       {/* Section A: Intent Selection */}
       <section className="space-y-6">
