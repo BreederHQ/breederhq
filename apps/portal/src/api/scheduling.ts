@@ -23,6 +23,29 @@ export interface BookingRules {
   canReschedule: boolean;
   cancellationDeadlineHours: number | null;
   rescheduleDeadlineHours: number | null;
+  // Computed deadline timestamps (ISO 8601, relative to slot start)
+  cancelDeadlineAt: string | null;
+  rescheduleDeadlineAt: string | null;
+}
+
+// Machine-readable reason codes for blocked states
+export type BlockedReasonCode =
+  | "NOT_ELIGIBLE"
+  | "WINDOW_NOT_OPEN"
+  | "FULLY_BOOKED"
+  | "DEADLINE_PASSED"
+  | "EVENT_CANCELLED"
+  | "ALREADY_BOOKED";
+
+export interface BlockedResponse {
+  code: BlockedReasonCode;
+  message: string;
+  context: {
+    eventId?: string;
+    slotId?: string;
+    opensAt?: string;
+    deadlineAt?: string;
+  };
 }
 
 export interface SchedulingEventStatus {
@@ -31,6 +54,8 @@ export interface SchedulingEventStatus {
   eligibilityReason: string | null; // null if eligible, reason string if not
   hasExistingBooking: boolean;
   existingBooking: ConfirmedBooking | null;
+  // Blocked state with machine-readable code (null if not blocked)
+  blocked: BlockedResponse | null;
 }
 
 export interface SchedulingSlot {
@@ -297,10 +322,76 @@ export async function rescheduleBooking(
 }
 
 /* ────────────────────────────────────────────────────────────────────────────
+ * UI Message Helpers
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+/**
+ * Maps backend reason codes to deterministic UI messages.
+ * Use this for displaying blocked states to users.
+ */
+export function getBlockedMessage(blocked: BlockedResponse | null): string | null {
+  if (!blocked) return null;
+
+  const messages: Record<BlockedReasonCode, string> = {
+    NOT_ELIGIBLE: "You are not eligible for this appointment.",
+    WINDOW_NOT_OPEN: blocked.context.opensAt
+      ? `Booking opens ${formatDeadlineForDisplay(blocked.context.opensAt)}.`
+      : "Booking is not yet open for this event.",
+    FULLY_BOOKED: "All available time slots have been filled.",
+    DEADLINE_PASSED: blocked.context.deadlineAt
+      ? `The booking deadline was ${formatDeadlineForDisplay(blocked.context.deadlineAt)}.`
+      : "The booking deadline has passed.",
+    EVENT_CANCELLED: "This event has been cancelled.",
+    ALREADY_BOOKED: "You already have a booking for this event.",
+  };
+
+  return messages[blocked.code] || blocked.message;
+}
+
+/**
+ * Formats a deadline timestamp for display in the user's local timezone.
+ */
+export function formatDeadlineForDisplay(isoTimestamp: string): string {
+  try {
+    const date = new Date(isoTimestamp);
+    const now = new Date();
+    const diffMs = date.getTime() - now.getTime();
+    const diffHours = Math.round(diffMs / (1000 * 60 * 60));
+
+    // If within 24 hours, show relative time
+    if (diffHours > 0 && diffHours <= 24) {
+      return `in ${diffHours} hour${diffHours === 1 ? "" : "s"}`;
+    }
+    if (diffHours < 0 && diffHours >= -24) {
+      const absHours = Math.abs(diffHours);
+      return `${absHours} hour${absHours === 1 ? "" : "s"} ago`;
+    }
+
+    // Otherwise show formatted date/time in local timezone
+    return date.toLocaleString(undefined, {
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    });
+  } catch {
+    return isoTimestamp;
+  }
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
  * Mock Data (for demo mode only)
  * ──────────────────────────────────────────────────────────────────────────── */
 
 export function getMockSchedulingEvent(eventId: string): SchedulingEventResponse {
+  // Compute mock deadline timestamps (24 hours before a hypothetical slot 3 days from now)
+  const mockSlotStart = new Date();
+  mockSlotStart.setDate(mockSlotStart.getDate() + 3);
+  mockSlotStart.setHours(10, 0, 0, 0);
+  const cancelDeadline = new Date(mockSlotStart.getTime() - 24 * 60 * 60 * 1000);
+  const rescheduleDeadline = new Date(mockSlotStart.getTime() - 24 * 60 * 60 * 1000);
+
   return {
     context: {
       eventId,
@@ -316,6 +407,8 @@ export function getMockSchedulingEvent(eventId: string): SchedulingEventResponse
       canReschedule: true,
       cancellationDeadlineHours: 24,
       rescheduleDeadlineHours: 24,
+      cancelDeadlineAt: cancelDeadline.toISOString(),
+      rescheduleDeadlineAt: rescheduleDeadline.toISOString(),
     },
     eventStatus: {
       isOpen: true,
@@ -323,6 +416,7 @@ export function getMockSchedulingEvent(eventId: string): SchedulingEventResponse
       eligibilityReason: null,
       hasExistingBooking: false,
       existingBooking: null,
+      blocked: null,
     },
   };
 }
