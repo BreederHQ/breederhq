@@ -5,6 +5,7 @@
 import * as React from "react";
 import { useSearchParams } from "react-router-dom";
 import { joinApi, safeReadJson } from "../api/client";
+import { Seo } from "../seo";
 
 // BreederHQ logo - same asset used by portal
 import logoUrl from "@bhq/ui/assets/logo.png";
@@ -165,6 +166,7 @@ export function RegisterPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4 font-sans antialiased bg-portal-bg">
+      <Seo title="Create Account" robots="noindex, nofollow" />
       <div className="w-full max-w-[420px]">
         {/* BreederHQ branding - matches Portal */}
         <div className="flex flex-col items-center gap-2 mb-6">

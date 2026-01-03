@@ -3,6 +3,7 @@
 import * as React from "react";
 import { Link } from "react-router-dom";
 import { isDemoMode, setDemoMode } from "../../demo/demoMode";
+import { Seo } from "../../seo";
 import {
   getAllMockListings,
   getMockPrograms,
@@ -40,6 +41,13 @@ export function HomePage() {
 
   return (
     <div className="space-y-16">
+      <Seo
+        title="Home"
+        description="Browse animals, connect with breeders, and find services on the BreederHQ Marketplace."
+        path="/"
+        ogType="website"
+      />
+
       {/* Section A: Intent Selection */}
       <section className="space-y-6">
         <div className="text-center max-w-xl mx-auto">

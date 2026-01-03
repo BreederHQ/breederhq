@@ -2,6 +2,7 @@
 // Auth page for marketplace - matches Portal login design with BreederHQ branding.
 import * as React from "react";
 import { joinApi, safeReadJson } from "../api/client";
+import { Seo } from "../seo";
 
 // BreederHQ logo - same asset used by portal
 import logoUrl from "@bhq/ui/assets/logo.png";
@@ -102,6 +103,7 @@ export function AuthPage({ returnToPath }: Props) {
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4 font-sans antialiased bg-portal-bg">
+      <Seo title="Sign In" robots="noindex, nofollow" />
       <div className="w-full max-w-[420px]">
         {/* BreederHQ branding - matches Portal */}
         <div className="flex flex-col items-center gap-2 mb-6">

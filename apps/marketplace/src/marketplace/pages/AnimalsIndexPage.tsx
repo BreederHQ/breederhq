@@ -5,6 +5,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { isDemoMode, setDemoMode } from "../../demo/demoMode";
 import { getAllMockListings, simulateDelay } from "../../demo/mockData";
 import { formatCents } from "../../utils/format";
+import { Seo } from "../../seo";
 import type { PublicOffspringGroupListingDTO } from "../../api/types";
 
 /**
@@ -65,10 +66,21 @@ export function AnimalsIndexPage() {
     window.location.reload();
   };
 
+  // SEO component (rendered regardless of demo mode)
+  const seoComponent = (
+    <Seo
+      title="Animals"
+      description="Browse available animals by species and breed on the BreederHQ Marketplace. Find puppies, kittens, and other pets from verified breeders."
+      path="/animals"
+      ogType="website"
+    />
+  );
+
   // Real mode: show coming soon state
   if (!demoMode) {
     return (
       <div className="space-y-6">
+        {seoComponent}
         <div>
           <h1 className="text-[28px] font-bold text-white tracking-tight leading-tight">
             Animals
@@ -111,6 +123,7 @@ export function AnimalsIndexPage() {
   // Demo mode: show listings grid
   return (
     <div className="space-y-5">
+      {seoComponent}
       <div>
         <h1 className="text-[28px] font-bold text-white tracking-tight leading-tight">
           Animals

@@ -8,6 +8,7 @@ import { useConversations, useConversation, useSendMessage } from "../../message
 import { seedDemoConversations } from "../../messages/demoData";
 import { ConversationList, ThreadView } from "../../messages/components";
 import { isMessagingBackendAvailable } from "../../messages/adapter";
+import { Seo } from "../../seo";
 
 /**
  * Inquiries page - full messaging experience.
@@ -69,6 +70,7 @@ export function InquiriesPage() {
   if (!demoMode && !backendAvailable) {
     return (
       <div className="space-y-6">
+        <Seo title="Inquiries" robots="noindex, nofollow" />
         <div>
           <h1 className="text-[28px] font-bold text-white tracking-tight leading-tight">
             Inquiries
@@ -122,6 +124,7 @@ export function InquiriesPage() {
 
   return (
     <div className="h-[calc(100vh-theme(spacing.header)-theme(spacing.16))] -mx-6 -mt-8 flex">
+      <Seo title="Inquiries" robots="noindex, nofollow" />
       {/* Left sidebar - conversation list */}
       <div className="w-80 flex-shrink-0">
         <ConversationList

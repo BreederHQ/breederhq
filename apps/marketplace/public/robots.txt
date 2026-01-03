@@ -1,0 +1,17 @@
+# BreederHQ Marketplace robots.txt
+# Allow indexing of public marketplace content
+# Disallow private/auth routes
+
+User-agent: *
+Allow: /
+Allow: /animals
+Allow: /breeders
+Allow: /services
+Allow: /programs/
+
+Disallow: /auth/
+Disallow: /inquiries
+Disallow: /updates
+
+# Sitemap location
+Sitemap: https://marketplace.breederhq.com/sitemap.xml
