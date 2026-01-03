@@ -12,6 +12,7 @@ import type { BreedingProgramProfile } from "@bhq/ui/utils/breedingProgram";
 import ProgramProfileSnapshot from "../components/ProgramProfileSnapshot";
 import DateValidationSettingsTab from "../components/DateValidationSettingsTab";
 import { TagsManagerTab } from "../components/TagsManagerTab";
+import MarketplaceSettingsTab from "../components/MarketplaceSettingsTab";
 import { api } from "../api";
 
 /** ───────── Tenant helpers ───────── */
@@ -464,7 +465,8 @@ type Tab =
   | "users"
   | "groups"
   | "tags"
-  | "accessibility";
+  | "accessibility"
+  | "marketplace";
 
 type Props = { open: boolean; dirty: boolean; onDirtyChange: (v: boolean) => void; onClose: () => void; };
 
@@ -489,6 +491,7 @@ const NAV: NavSection[] = [
     title: "Modules",
     items: [
       { key: "breeding", label: "Breeding" },
+      { key: "marketplace", label: "Marketplace" },
     ],
   },
   {
@@ -517,7 +520,7 @@ export default function SettingsPanel({ open, dirty, onDirtyChange, onClose }: P
   const [active, setActive] = React.useState<Tab>("profile");
   const [dirtyMap, setDirtyMap] = React.useState<Record<Tab, boolean>>({
     profile: false, security: false, subscription: false, payments: false, transactions: false,
-    breeding: false, programProfile: false, platformSnapshot: false, users: false, groups: false, tags: false, breeds: false, accessibility: false,
+    breeding: false, programProfile: false, platformSnapshot: false, users: false, groups: false, tags: false, breeds: false, accessibility: false, marketplace: false,
   });
   const profileRef = React.useRef<ProfileHandle>(null);
   const breedingRef = React.useRef<BreedingHandle>(null);
@@ -673,6 +676,7 @@ export default function SettingsPanel({ open, dirty, onDirtyChange, onClose }: P
                 {active === "groups" && <GroupsTab dirty={dirtyMap.groups} onDirty={(v) => markDirty("groups", v)} />}
                 {active === "tags" && <TagsManagerTab dirty={dirtyMap.tags} onDirty={(v) => markDirty("tags", v)} />}
                 {active === "accessibility" && <AccessibilityTab />}
+                {active === "marketplace" && <MarketplaceSettingsTab dirty={dirtyMap.marketplace} onDirty={(v) => markDirty("marketplace", v)} />}
               </div>
             </main>
           </div>
