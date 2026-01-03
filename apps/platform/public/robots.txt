@@ -1,3 +1,0 @@
-# BreederHQ Platform - no indexing
-User-agent: *
-Disallow: /
