@@ -17,6 +17,12 @@ export interface PartyAutocompleteProps {
   error?: string;
   /** Show quick add buttons (default: true) */
   showQuickAdd?: boolean;
+  /**
+   * When provided, restricts search results strictly to this list of parties.
+   * Also disables Quick Add Contact and Quick Add Organization buttons.
+   * Use this for scoped contexts like offspring group buyers.
+   */
+  allowedParties?: AutocompleteOption[];
 }
 
 export { type AutocompleteOption };
@@ -31,7 +37,11 @@ export function PartyAutocomplete({
   label = "Contact / Organization",
   error,
   showQuickAdd = true,
+  allowedParties,
 }: PartyAutocompleteProps) {
+  // When allowedParties is provided, we're in restricted mode
+  const isRestrictedMode = allowedParties !== undefined;
+
   // Quick add state
   const [quickAddMode, setQuickAddMode] = React.useState<null | "contact" | "organization">(null);
   const [creating, setCreating] = React.useState(false);
@@ -51,8 +61,18 @@ export function PartyAutocomplete({
     website: "",
   });
 
+  // Search handler that either filters allowedParties or calls the API
   const handleSearch = React.useCallback(
     async (query: string): Promise<AutocompleteOption[]> => {
+      // When in restricted mode, filter from allowedParties list only
+      if (isRestrictedMode && allowedParties) {
+        const lowerQuery = query.toLowerCase();
+        return allowedParties.filter((party) =>
+          party.label.toLowerCase().includes(lowerQuery)
+        );
+      }
+
+      // Default behavior: search via API
       try {
         const response = await api.finance.parties.search(query, { limit: 20 });
         return (response || []).map((party: any) => {
@@ -68,7 +88,7 @@ export function PartyAutocomplete({
         return [];
       }
     },
-    [api]
+    [api, isRestrictedMode, allowedParties]
   );
 
   const resetForms = () => {
@@ -162,20 +182,25 @@ export function PartyAutocomplete({
     setQuickAddMode(null);
   };
 
+  // Determine if Quick Add buttons should be shown
+  // When in restricted mode, Quick Add Contact/Organization are disabled
+  const showQuickAddButtons = showQuickAdd && !isRestrictedMode;
+
   return (
     <div className={className}>
       <AsyncAutocomplete
         value={value}
         onChange={onChange}
         onSearch={handleSearch}
-        placeholder={placeholder}
+        placeholder={isRestrictedMode ? "Search buyers..." : placeholder}
         disabled={disabled || quickAddMode !== null}
         label={label}
         error={error}
       />
 
       {/* Quick Add Buttons - show when no value selected and not in quick add mode */}
-      {showQuickAdd && !disabled && !value && quickAddMode === null && (
+      {/* Disabled when in restricted mode (allowedParties provided) */}
+      {showQuickAddButtons && !disabled && !value && quickAddMode === null && (
         <div className="mt-2 flex items-center gap-3">
           <Button
             type="button"
