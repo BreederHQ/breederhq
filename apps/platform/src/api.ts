@@ -224,8 +224,8 @@ export function makeApi(base?: string) {
     },
 
     tags: {
-      list: (type: "contact" = "contact") =>
-        request(`${root}/tags` + qs({ type }), { method: "GET" }),
+      list: (params: { module?: string; q?: string; page?: number; limit?: number } = {}) =>
+        request(`${root}/tags` + qs(params), { method: "GET" }),
     },
 
     organizations: {

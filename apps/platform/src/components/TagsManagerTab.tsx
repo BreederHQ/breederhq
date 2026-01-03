@@ -39,14 +39,13 @@ export function TagsManagerTab({ onDirty }: { dirty: boolean; onDirty: (v: boole
   const [searchQuery, setSearchQuery] = React.useState("");
   const [collapsedModules, setCollapsedModules] = React.useState<Set<TagModule>>(new Set());
 
-  // Fetch all tags
+  // Fetch all tags across all modules
   const fetchTags = React.useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      // Note: API currently only supports fetching by type="contact"
-      // This is a known limitation - we fetch what we can and note the gap
-      const response = await api.tags.list("contact");
+      // Fetch all tags by omitting module param (backend returns all when module is empty)
+      const response = await api.tags.list({ limit: 1000 });
       const items = response.items || [];
       setTags(items);
     } catch (err) {
@@ -197,6 +196,7 @@ export function TagsManagerTab({ onDirty }: { dirty: boolean; onDirty: (v: boole
                           <tr className="text-left text-xs text-secondary border-b border-hairline">
                             <th className="pb-2 font-medium w-8"></th>
                             <th className="pb-2 font-medium">Name</th>
+                            <th className="pb-2 font-medium">Module</th>
                             <th className="pb-2 font-medium">Created</th>
                           </tr>
                         </thead>
@@ -213,6 +213,9 @@ export function TagsManagerTab({ onDirty }: { dirty: boolean; onDirty: (v: boole
                                 />
                               </td>
                               <td className="py-2 font-medium">{tag.name}</td>
+                              <td className="py-2 text-sm text-secondary">
+                                {MODULE_LABELS[tag.module] || tag.module}
+                              </td>
                               <td className="py-2 text-sm text-secondary">
                                 {new Date(tag.createdAt).toLocaleDateString()}
                               </td>
