@@ -636,7 +636,7 @@ export function makeApi(base?: string, extraHeadersFn?: () => Record<string, str
   /* ───────── Animal Public Listing API ───────── */
 
   type AnimalListingStatus = "DRAFT" | "LIVE" | "PAUSED";
-  type AnimalListingIntent = "STUD" | "BROOD_PLACEMENT" | "REHOME" | "SHOWCASE";
+  type AnimalListingIntent = "STUD" | "BROOD_PLACEMENT" | "REHOME" | "GUARDIAN_PLACEMENT";
 
   interface AnimalPublicListingDTO {
     id: number;

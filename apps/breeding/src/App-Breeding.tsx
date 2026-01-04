@@ -1083,6 +1083,47 @@ function confirmModal(
   });
 }
 
+function infoModal(opts: {
+  title: string;
+  message: string | React.ReactNode;
+  closeText?: string;
+}): Promise<void> {
+  const { title, message, closeText = "Close" } = opts;
+
+  const rootEl = getOverlayRoot();
+  const host = document.createElement("div");
+  host.style.pointerEvents = "auto";
+  rootEl.appendChild(host);
+
+  return new Promise((resolve) => {
+    const close = () => {
+      resolve();
+      try {
+        r.unmount();
+      } catch { }
+      host.remove();
+    };
+
+    const r = createRoot(host);
+    r.render(
+      <div className="fixed inset-0 z-[2147483647]">
+        <div className="absolute inset-0 bg-black/50" onClick={close} />
+        <div className="absolute inset-0 flex items-center justify-center">
+          <div className="relative w-[420px] max-w-[92vw] rounded-xl border border-hairline bg-surface shadow-xl p-4">
+            <div className="text-base font-semibold mb-2">{title}</div>
+            <div className="text-sm text-secondary mb-4">{message}</div>
+            <div className="flex justify-end gap-2">
+              <Button onClick={close}>
+                {closeText}
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  });
+}
+
 /* ───────────────────────── Component ───────────────────────── */
 
 function SafeNavLink({
@@ -2344,26 +2385,9 @@ export default function AppBreeding() {
         const current = rows.find((r) => r.id === id);
         const merged = { ...current, ...draft };
 
-        const derived = deriveBreedingStatus({
-          name: merged.name,
-          species: merged.species,
-          damId: merged.damId as any,
-          sireId: merged.sireId as any,
-          lockedCycleStart: merged.lockedCycleStart as any,
-          breedDateActual: merged.breedDateActual as any,
-          birthDateActual: merged.birthDateActual as any,
-          weanedDateActual: merged.weanedDateActual as any,
-          placementStartDateActual: merged.placementStartDateActual as any,
-          placementCompletedDateActual: merged.placementCompletedDateActual as any,
-          completedDateActual: merged.completedDateActual as any,
-          status: merged.status as any, // pass-through
-        });
-
-        // Respect an explicit status in the draft (e.g., "CANCELED"); else fall back to derived.
-        const status = draft.status ?? derived;
-
         // Normalize draft: convert empty strings to null so backend clears the field
-        const normalizedDraft: Record<string, any> = { status };
+        // IMPORTANT: Only send status if explicitly provided in draft to avoid auto-committing
+        const normalizedDraft: Record<string, any> = {};
         for (const [key, value] of Object.entries(draft)) {
           if (typeof value === "string" && value.trim() === "") {
             normalizedDraft[key] = null;
@@ -2756,7 +2780,15 @@ export default function AppBreeding() {
             {plannerPage === "your-plans" ? (
               <YourBreedingPlansPage plans={normalized as any} initialMode="rollup" />
             ) : (
-              <WhatIfPlanningPage plans={normalized as any} females={whatIfFemales as WhatIfFemale[]} />
+              <WhatIfPlanningPage
+                plans={normalized as any}
+                females={whatIfFemales as WhatIfFemale[]}
+                api={api}
+                onPlanCreated={(plan) => {
+                  // Add new plan to the beginning of the rows list
+                  setRows((prev) => [planToRow(plan), ...prev]);
+                }}
+              />
             )}
           </div>
         )}
@@ -3614,6 +3646,7 @@ function PlanDetailsView(props: {
   // Unsaved changes tracking
   const [persistedSnapshot, setPersistedSnapshot] = React.useState<Partial<PlanRow>>(() => buildPlanSnapshot(row));
   const [pendingSave, setPendingSave] = React.useState(false);
+  const [uncommitting, setUncommitting] = React.useState(false);
 
   // Reset persisted snapshot when row.id changes (switching to a different plan)
   React.useEffect(() => {
@@ -4492,11 +4525,67 @@ function PlanDetailsView(props: {
       hasPendingChanges={hasPendingChangesLocal}
       rightActions={
         <div className="flex gap-2 items-center" data-bhq-details>
-          {row.status === "COMMITTED" ? (
-            <Button size="sm" variant="outline" disabled>
-              Committed
+          {mode === "edit" && row.status === "COMMITTED" ? (
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={uncommitting}
+              onClick={async () => {
+                if (!api || uncommitting) return;
+
+                setUncommitting(true);
+                try {
+                  const actorId =
+                    (utils as any)?.session?.currentUserId?.() ??
+                    (utils as any)?.currentUser?.id ??
+                    "ui";
+
+                  await (api as any).uncommitPlan(Number(row.id), { actorId });
+
+                  // Refresh the plan
+                  const fresh = await api.getPlan(Number(row.id), "parents,org");
+                  if (onPlanUpdated) {
+                    onPlanUpdated(row.id, fresh);
+                  }
+
+                  utils.toast?.success?.("Plan uncommitted successfully.");
+                } catch (e: any) {
+                  // Handle 409 Conflict with blockers
+                  if (e?.status === 409 || e?.payload?.blockers) {
+                    const blockers = e?.payload?.blockers || {};
+                    const blockerList: string[] = [];
+
+                    if (blockers.hasOffspring) blockerList.push("Offspring exist in the linked group");
+                    if (blockers.hasBuyers) blockerList.push("Buyers are assigned");
+                    if (blockers.hasInvoices) blockerList.push("Invoices exist");
+                    if (blockers.hasDocuments) blockerList.push("Documents or contracts are attached");
+                    if (blockers.hasContracts) blockerList.push("Contracts are linked");
+                    if (blockers.other && Array.isArray(blockers.other)) {
+                      blockerList.push(...blockers.other);
+                    }
+
+                    // Show info-only dialog with blockers
+                    await infoModal({
+                      title: "Cannot uncommit this plan",
+                      message: blockerList.length > 0 ? (
+                        <ul className="list-disc list-inside space-y-1">
+                          {blockerList.map((b, i) => <li key={i}>{b}</li>)}
+                        </ul>
+                      ) : "This plan cannot be uncommitted at this time.",
+                    });
+                  } else {
+                    const msg = e?.payload?.error || e?.message || "Uncommit failed";
+                    utils.toast?.error?.(msg);
+                    console.error("[Breeding] uncommit failed", e);
+                  }
+                } finally {
+                  setUncommitting(false);
+                }
+              }}
+            >
+              {uncommitting ? "Uncommitting..." : "Uncommit"}
             </Button>
-          ) : (
+          ) : mode === "edit" && row.status !== "COMMITTED" ? (
             <span title={commitTooltip} style={{ display: 'inline-block' }}>
               <Button
                 size="sm"
@@ -4550,8 +4639,8 @@ function PlanDetailsView(props: {
                 Commit Plan
               </Button>
             </span>
-          )}
-          {(() => {
+          ) : null}
+          {mode === "edit" && (() => {
             const isArchived = !!row.archived;
             return (
               <Button
@@ -4586,7 +4675,7 @@ function PlanDetailsView(props: {
               </Button>
             );
           })()}
-          {!isDeleted && (
+          {mode === "edit" && !isDeleted && (
             <Button
               size="sm"
               variant="outline"

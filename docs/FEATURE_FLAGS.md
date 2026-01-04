@@ -2,22 +2,14 @@
 
 This document lists feature flags used in the breederhq frontend monorepo.
 
-## BHQ_FEATURE_ANIMAL_MARKETPLACE
+## Currently Active Flags
 
-**Purpose:** Gates the Marketplace tab in Animal details (Animals module).
+None.
 
-**Default state:** OFF (disabled)
+## Retired Flags
 
-**Enablement methods:**
-- Environment variable: `VITE_FEATURE_ANIMAL_MARKETPLACE=true`
-- localStorage: `localStorage.setItem("BHQ_FEATURE_ANIMAL_MARKETPLACE", "true")`
+### BHQ_FEATURE_ANIMAL_MARKETPLACE (Retired)
 
-**Notes:**
-- URL param enablement is intentionally not supported (security/support risk)
-- When enabled via localStorage, an "Internal Feature" badge is shown to prevent screenshot confusion
-- Feature allows breeders to create marketplace listings for individual program animals (stud, brood placement, rehome, showcase)
+**Retired:** This flag has been removed. The Animal Marketplace tab is now always enabled for all breeders.
 
-**Rollout plan:**
-- Internal testing via localStorage
-- Controlled environments via env variable
-- Production rollout: remove flag and enable unconditionally
+**Original purpose:** Gated the Marketplace tab in Animal details (Animals module) during internal testing.

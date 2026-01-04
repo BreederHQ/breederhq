@@ -415,6 +415,11 @@ export function makeBreedingApi(opts: ApiOpts) {
       return post<CommitPlanEnsureResp>(`/breeding/plans/${id}/commit`, body);
     },
 
+    /* Breeding Plans, uncommit (revert COMMITTED back to PLANNING) */
+    uncommitPlan(id: number, body: { actorId: string }) {
+      return post<{ ok: true; blockers?: string[] }>(`/breeding/plans/${id}/uncommit`, body);
+    },
+
     archivePlan(id: number) {
       return post<{ ok: true }>(`/breeding/plans/${id}/archive`, {});
     },

@@ -408,8 +408,8 @@ export default function RollupGantt({
           likelyRange: { start: uStart, end: uEnd },
           __tooltip: `[${p.name}] Cycle → Breeding${whatIfTag}, Unlikely: ${fmtNice.format(uStart)} → ${fmtNice.format(uEnd)}`,
           __z: 1,
-          // make What If bands a unique color, real plans use default stage color
-          color: isSynthetic ? WHATIF_PHASE_COLOR : undefined,
+          // For What If plans, use risky color for both unlikely and risky bands
+          color: isSynthetic ? WHATIF_PHASE_RISKY_COLOR : undefined,
         });
 
         // Risky (distinct tint)
@@ -497,7 +497,8 @@ export default function RollupGantt({
           likelyRange: { start: uStart, end: uEnd },
           __tooltip: `[${p.name}] Birth → Placement${whatIfTag}, Unlikely: ${fmtNice.format(uStart)} → ${fmtNice.format(uEnd)}`,
           __z: 1,
-          color: isSynthetic ? WHATIF_PHASE_COLOR : undefined,
+          // For What If plans, use risky color for both unlikely and risky bands
+          color: isSynthetic ? WHATIF_PHASE_RISKY_COLOR : undefined,
         });
 
         // Risky (distinct tint)
@@ -578,7 +579,8 @@ export default function RollupGantt({
       if (!anchor) return;
 
       // Separate colors for What If bands vs exact line
-      const bandLikelyColor = isSynthetic ? WHATIF_PHASE_COLOR : undefined;
+      // For What If plans, use risky color for both unlikely and risky bands
+      const bandLikelyColor = isSynthetic ? WHATIF_PHASE_RISKY_COLOR : undefined;
       const bandRiskyColor = isSynthetic ? WHATIF_PHASE_RISKY_COLOR : undefined;
       const lineColor = isSynthetic ? WHATIF_EXACT_COLOR : undefined;
 
@@ -634,13 +636,16 @@ export default function RollupGantt({
       }
     };
 
-    pushExact("exact_cycle", exp.cycle, prefs.date_cycle_risky_from, prefs.date_cycle_risky_to, prefs.date_cycle_unlikely_from, prefs.date_cycle_unlikely_to, "Cycle Start");
-    pushExact("exact_testing", exp.testing, prefs.date_testing_risky_from, prefs.date_testing_risky_to, prefs.date_testing_unlikely_from, prefs.date_testing_unlikely_to, "Hormone Testing");
-    pushExact("exact_breeding", exp.breeding, prefs.date_breeding_risky_from, prefs.date_breeding_risky_to, prefs.date_breeding_unlikely_from, prefs.date_breeding_unlikely_to, "Breeding");
-    pushExact("exact_birth", exp.birth, prefs.date_birth_risky_from, prefs.date_birth_risky_to, prefs.date_birth_unlikely_from, prefs.date_birth_unlikely_to, "Birth");
-    pushExact("exact_weaning", exp.weaned, prefs.date_weaned_risky_from, prefs.date_weaned_risky_to, prefs.date_weaned_unlikely_from, prefs.date_weaned_unlikely_to, "Weaning");
-    pushExact("exact_ps", exp.placementStart, prefs.date_placement_start_risky_from, prefs.date_placement_start_risky_to, prefs.date_placement_start_unlikely_from, prefs.date_placement_start_unlikely_to, "Placement Start");
-    pushExact("exact_pc", exp.placementCompleted, prefs.date_placement_completed_risky_from, prefs.date_placement_completed_risky_to, prefs.date_placement_completed_unlikely_from, prefs.date_placement_completed_unlikely_to, "Placement Completed");
+    // Only populate Expected Dates if Cycle Lock is true
+    if (p.lockedCycleStart) {
+      pushExact("exact_cycle", exp.cycle, prefs.date_cycle_risky_from, prefs.date_cycle_risky_to, prefs.date_cycle_unlikely_from, prefs.date_cycle_unlikely_to, "Cycle Start");
+      pushExact("exact_testing", exp.testing, prefs.date_testing_risky_from, prefs.date_testing_risky_to, prefs.date_testing_unlikely_from, prefs.date_testing_unlikely_to, "Hormone Testing");
+      pushExact("exact_breeding", exp.breeding, prefs.date_breeding_risky_from, prefs.date_breeding_risky_to, prefs.date_breeding_unlikely_from, prefs.date_breeding_unlikely_to, "Breeding");
+      pushExact("exact_birth", exp.birth, prefs.date_birth_risky_from, prefs.date_birth_risky_to, prefs.date_birth_unlikely_from, prefs.date_birth_unlikely_to, "Birth");
+      pushExact("exact_weaning", exp.weaned, prefs.date_weaned_risky_from, prefs.date_weaned_risky_to, prefs.date_weaned_unlikely_from, prefs.date_weaned_unlikely_to, "Weaning");
+      pushExact("exact_ps", exp.placementStart, prefs.date_placement_start_risky_from, prefs.date_placement_start_risky_to, prefs.date_placement_start_unlikely_from, prefs.date_placement_start_unlikely_to, "Placement Start");
+      pushExact("exact_pc", exp.placementCompleted, prefs.date_placement_completed_risky_from, prefs.date_placement_completed_risky_to, prefs.date_placement_completed_unlikely_from, prefs.date_placement_completed_unlikely_to, "Placement Completed");
+    }
   }
 
   const visibleExactStages = exactStages();
