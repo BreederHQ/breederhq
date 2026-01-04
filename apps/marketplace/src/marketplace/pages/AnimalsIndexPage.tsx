@@ -6,18 +6,11 @@ import { Link, useSearchParams } from "react-router-dom";
 import { isDemoMode, setDemoMode } from "../../demo/demoMode";
 import { getAllMockListings, simulateDelay, getBoostedItem, removeBoostedItem } from "../../demo/mockData";
 import { SponsorDisclosure } from "../components/SponsorDisclosure";
+import { AnimalListingCard } from "../components/AnimalListingCard";
 import { formatCents } from "../../utils/format";
 import { getAnimalListings } from "../../api/client";
 
-import type { PublicOffspringGroupListingDTO, PublicAnimalListingDTO, AnimalListingIntent } from "../../api/types";
-
-// Intent display labels
-const INTENT_LABELS: Record<AnimalListingIntent, string> = {
-  STUD: "Stud Service",
-  BROOD_PLACEMENT: "Brood Placement",
-  REHOME: "Rehome",
-  SHOWCASE: "Showcase",
-};
+import type { PublicOffspringGroupListingDTO, PublicAnimalListingDTO } from "../../api/types";
 
 // View type for tab switching
 type ViewType = "all" | "litters" | "animals";
@@ -337,105 +330,6 @@ function LitterListingCard({ listing, isBoosted = false }: { listing: PublicOffs
         {priceText && (
           <div className="mt-3 pt-3 border-t border-border-subtle">
             <span className="text-[15px] text-accent font-semibold">{priceText}</span>
-          </div>
-        )}
-      </div>
-    </Link>
-  );
-}
-
-/**
- * Program animal listing card for individual animal listings.
- */
-function AnimalListingCard({ listing }: { listing: PublicAnimalListingDTO }) {
-  // Format price based on price model
-  let priceDisplay: string | null = null;
-  if (listing.priceModel === "fixed" && listing.priceCents != null) {
-    priceDisplay = formatCents(listing.priceCents);
-  } else if (listing.priceModel === "range" && listing.priceMinCents != null && listing.priceMaxCents != null) {
-    priceDisplay = `${formatCents(listing.priceMinCents)} - ${formatCents(listing.priceMaxCents)}`;
-  } else if (listing.priceModel === "inquire") {
-    priceDisplay = listing.priceText || "Contact for pricing";
-  }
-
-  // Format location
-  const locationParts = [listing.locationCity, listing.locationRegion, listing.locationCountry].filter(Boolean);
-  const locationText = locationParts.length > 0 ? locationParts.join(", ") : null;
-
-  // Intent label
-  const intentLabel = listing.intent ? INTENT_LABELS[listing.intent] : null;
-
-  return (
-    <Link
-      to={`/programs/${listing.programSlug}/animals/${listing.urlSlug}`}
-      className="block"
-    >
-      <div className="rounded-portal border border-border-subtle bg-portal-card p-5 h-full transition-colors hover:bg-portal-card-hover hover:border-border-default">
-        {/* Intent badge */}
-        {intentLabel && (
-          <div className="mb-2">
-            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium ${
-              listing.intent === "STUD"
-                ? "bg-purple-500/15 text-purple-400"
-                : listing.intent === "BROOD_PLACEMENT"
-                  ? "bg-pink-500/15 text-pink-400"
-                  : listing.intent === "REHOME"
-                    ? "bg-green-500/15 text-green-400"
-                    : "bg-gray-500/15 text-gray-400"
-            }`}>
-              {intentLabel}
-            </span>
-          </div>
-        )}
-
-        {/* Photo and title row */}
-        <div className="flex gap-3 mb-3">
-          {listing.primaryPhotoUrl && (
-            <div className="w-16 h-16 flex-shrink-0 rounded-portal-sm overflow-hidden bg-border-default">
-              <img
-                src={listing.primaryPhotoUrl}
-                alt={listing.animalName}
-                className="w-full h-full object-cover"
-              />
-            </div>
-          )}
-          <div className="flex-1 min-w-0">
-            {/* Title */}
-            <h3 className="text-[15px] font-semibold text-white mb-1 line-clamp-1">
-              {listing.title || listing.animalName}
-            </h3>
-
-            {/* Headline */}
-            {listing.headline && (
-              <p className="text-sm text-text-secondary line-clamp-2">
-                {listing.headline}
-              </p>
-            )}
-          </div>
-        </div>
-
-        {/* Breed and species */}
-        <div className="text-sm text-text-secondary mb-1">
-          {listing.animalBreed || listing.animalSpecies}
-          {listing.animalSex && ` · ${listing.animalSex}`}
-        </div>
-
-        {/* Breeder attribution */}
-        <div className="text-[13px] text-text-tertiary mb-3">
-          {listing.programName}
-        </div>
-
-        {/* Location */}
-        {locationText && (
-          <div className="text-[13px] text-text-secondary mb-2">
-            {locationText}
-          </div>
-        )}
-
-        {/* Price */}
-        {priceDisplay && (
-          <div className="mt-3 pt-3 border-t border-border-subtle">
-            <span className="text-[15px] text-accent font-semibold">{priceDisplay}</span>
           </div>
         )}
       </div>

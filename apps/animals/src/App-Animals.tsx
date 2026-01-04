@@ -72,6 +72,38 @@ function getPlaceholderForSpecies(species?: string | null): string {
 }
 
 /** ────────────────────────────────────────────────────────────────────────
+ * Feature Flags
+ * ─────────────────────────────────────────────────────────────────────── */
+
+/**
+ * Check if animal marketplace listings feature is enabled.
+ * Defaults to OFF for production. Enable via:
+ * - Environment variable: VITE_FEATURE_ANIMAL_MARKETPLACE=true
+ * - localStorage: BHQ_FEATURE_ANIMAL_MARKETPLACE=true
+ * - URL param: ?feature_animal_marketplace=true (for testing)
+ */
+function isAnimalMarketplaceEnabled(): boolean {
+  // Environment variable (Vite)
+  try {
+    const envFlag = (import.meta as any)?.env?.VITE_FEATURE_ANIMAL_MARKETPLACE;
+    if (envFlag === "true" || envFlag === true) return true;
+  } catch { /* ignore */ }
+
+  // localStorage override (persists for session)
+  try {
+    if (localStorage.getItem("BHQ_FEATURE_ANIMAL_MARKETPLACE") === "true") return true;
+  } catch { /* ignore */ }
+
+  // URL param (for one-off testing)
+  try {
+    const url = new URL(window.location.href);
+    if (url.searchParams.get("feature_animal_marketplace") === "true") return true;
+  } catch { /* ignore */ }
+
+  return false;
+}
+
+/** ────────────────────────────────────────────────────────────────────────
  * Types & utils
  * ─────────────────────────────────────────────────────────────────────── */
 // NOTE: OwnershipRow is imported from @bhq/ui/utils/ownership at top of file
@@ -5253,7 +5285,7 @@ export default function AppAnimals() {
     () => ({
       idParam: "animalId",
       getRowId: (r: AnimalRow) => r.id,
-      width: 720,
+      width: 800,
       placement: "center" as const,
       align: "top" as const,
       fetchRow: async (id: string | number) => {
@@ -5358,7 +5390,10 @@ export default function AppAnimals() {
         if ((r.sex || "").toLowerCase().startsWith("f"))
           tabs.push({ key: "cycle", label: "Cycle Info" } as any);
         tabs.push({ key: "program", label: "Program" } as any);
-        tabs.push({ key: "marketplace", label: "Marketplace" } as any);
+        // Feature-flagged: Marketplace tab (default OFF until rollout)
+        if (isAnimalMarketplaceEnabled()) {
+          tabs.push({ key: "marketplace", label: "Marketplace" } as any);
+        }
         tabs.push({ key: "health", label: "Health" } as any);
         tabs.push({ key: "registry", label: "Registry" } as any);
         tabs.push({ key: "documents", label: "Documents" } as any);
