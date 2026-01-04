@@ -173,14 +173,15 @@ export function useBreedSearch({
               (it as any)?.custom_breed_id != null;
 
             const isCustom = !!(forceCustom || isCustomApi);
+            const canonicalId = (it as any).canonicalBreedId ?? (it as any).canonical_breed_id ?? null;
 
             return {
-              id: (it as any).id,
+              // For canonical breeds, use canonicalBreedId as id; for custom breeds use id
+              id: (it as any).id ?? canonicalId,
               name: (it as any).name,
               species: toUiSpecies((it as any).species || species),
               source: (isCustom ? "custom" : ((it as any).source || "canonical")) as "canonical" | "custom",
-              canonicalBreedId:
-                (it as any).canonicalBreedId ?? (it as any).canonical_breed_id ?? null,
+              canonicalBreedId: canonicalId,
               registries: isCustom ? [] : (Array.isArray((it as any).registries) ? (it as any).registries : []),
               _isCustom: isCustom ? true : undefined,
             };

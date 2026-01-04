@@ -14,10 +14,6 @@ export type BreedSelectProps = {
 
 const SERVER_MAX = 200;
 
-function looksLikeCrossbreed(name: string): boolean {
-  const s = String(name || "");
-  return /doodle|(?:^|[\s-])(?:.*poo|poodle)\b|(?:^|[\s-])mix\b|cross|crossbreed/i.test(s);
-}
 
 export function BreedSelect({
   orgId,
@@ -65,13 +61,21 @@ export function BreedSelect({
   React.useEffect(() => { setVisibleLimit(initialLimit); }, [initialLimit, speciesParam, orgForSearch]);
   React.useEffect(() => { if (open) setVisibleLimit(initialLimit); }, [open, initialLimit]);
 
+  // Clear internal query when species changes (prevents stale breed name from previous species)
+  React.useEffect(() => { setQ(""); }, [speciesParam]);
+
+  // Clear internal query when value is cleared externally (e.g., after adding to list)
+  React.useEffect(() => { if (!value) setQ(""); }, [value]);
+
   const showHits = open && (loading || hits.length > 0 || effectiveQ.length >= minChars);
 
   function commitSelection(hit: BreedHit | null) {
     onChange(hit);
     setOpen(false);
     setHi(-1);
-    if (hit) setQ(hit.name);
+    // Don't set q here - let the parent control via value prop
+    // If parent keeps the value, the input will show value.name
+    // If parent clears value (e.g., after adding to list), the effect will clear q
   }
 
   function onListScroll(e: React.UIEvent<HTMLDivElement>) {
@@ -134,13 +138,11 @@ export function BreedSelect({
           )}
 
           {hits.map((h, idx) => {
-            // Declare custom with ironclad rules
+            // Declare custom based on API source, not name patterns
             const forced = (h as any)._isCustom === true;
             const derivedCustom =
               forced ||
-              h.source === "custom" ||
-              !((h as any).canonicalBreedId > 0) ||
-              looksLikeCrossbreed(h.name);
+              h.source === "custom";
 
             const regs = Array.isArray((h as any).registries) ? (h as any).registries : [];
             const first = regs[0] || {};
