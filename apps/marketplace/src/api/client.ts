@@ -5,6 +5,8 @@ import type {
   PublicProgramDTO,
   ListingsResponse,
   ListingDetailDTO,
+  AnimalListingsResponse,
+  PublicAnimalListingDTO,
 } from "./types";
 
 /**
@@ -188,6 +190,92 @@ export async function submitInquiry(
   payload: InquiryPayload
 ): Promise<InquiryResponse> {
   const path = `/api/v1/marketplace/programs/${encodeURIComponent(programSlug)}/offspring-groups/${encodeURIComponent(listingSlug)}/inquiries`;
+  const url = joinApi(path);
+
+  // Get CSRF token from cookie (XSRF-TOKEN)
+  const xsrf = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]+)/)?.[1];
+
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+  if (xsrf) {
+    headers["x-csrf-token"] = decodeURIComponent(xsrf);
+  }
+
+  const response = await fetch(url, {
+    method: "POST",
+    credentials: "include",
+    headers,
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    const body = await safeReadJson<{ message?: string }>(response);
+    throw new ApiError(
+      body?.message || `Request failed with status ${response.status}`,
+      response.status
+    );
+  }
+
+  const data = await safeReadJson<InquiryResponse>(response);
+  return data || { success: true };
+}
+
+// =====================================
+// Animal Listings API (Program Animals)
+// =====================================
+
+export interface GetAnimalListingsParams {
+  search?: string;
+  intent?: string;
+  species?: string;
+  breed?: string;
+  limit?: number;
+  offset?: number;
+}
+
+/**
+ * Get all LIVE animal listings across all programs.
+ */
+export async function getAnimalListings(params: GetAnimalListingsParams = {}): Promise<AnimalListingsResponse> {
+  const query = new URLSearchParams();
+  if (params.search) query.set("search", params.search);
+  if (params.intent) query.set("intent", params.intent);
+  if (params.species) query.set("species", params.species);
+  if (params.breed) query.set("breed", params.breed);
+  if (params.limit != null) query.set("limit", String(params.limit));
+  if (params.offset != null) query.set("offset", String(params.offset));
+
+  const queryStr = query.toString();
+  const path = `/api/v1/public/marketplace/animals${queryStr ? `?${queryStr}` : ""}`;
+
+  devLogFetch(path);
+  const { data } = await apiGet<AnimalListingsResponse>(path);
+  return data;
+}
+
+/**
+ * Get a single animal listing by program and slug.
+ */
+export async function getAnimalListing(
+  programSlug: string,
+  listingSlug: string
+): Promise<PublicAnimalListingDTO> {
+  const path = `/api/v1/public/marketplace/programs/${encodeURIComponent(programSlug)}/animals/${encodeURIComponent(listingSlug)}`;
+  devLogFetch(path);
+  const { data } = await apiGet<PublicAnimalListingDTO>(path);
+  return data;
+}
+
+/**
+ * Submit an inquiry for an animal listing. Requires authentication.
+ */
+export async function submitAnimalInquiry(
+  programSlug: string,
+  listingSlug: string,
+  payload: InquiryPayload
+): Promise<InquiryResponse> {
+  const path = `/api/v1/marketplace/programs/${encodeURIComponent(programSlug)}/animals/${encodeURIComponent(listingSlug)}/inquiries`;
   const url = joinApi(path);
 
   // Get CSRF token from cookie (XSRF-TOKEN)

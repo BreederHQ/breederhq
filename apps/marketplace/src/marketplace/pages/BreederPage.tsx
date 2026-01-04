@@ -36,6 +36,65 @@ interface BreederProfileResponse {
 }
 
 /**
+ * Not found state with "How to publish" collapsible panel.
+ */
+function NotFoundState() {
+  const [showHowTo, setShowHowTo] = React.useState(false);
+
+  return (
+    <div className="space-y-4 max-w-md mx-auto">
+      <Breadcrumb
+        items={[
+          { label: "All breeders", href: "/breeders" },
+          { label: "Not found" },
+        ]}
+      />
+      <div className="rounded-portal border border-border-subtle bg-portal-card shadow-portal p-8 text-center">
+        <h2 className="text-lg font-semibold text-white mb-2">Breeder not found</h2>
+        <p className="text-text-secondary text-sm mb-4">
+          This breeder profile does not exist, or it has not been published yet.
+        </p>
+        <div className="flex flex-col items-center gap-3">
+          <Link
+            to="/breeders"
+            className="inline-block px-4 py-2 rounded-portal-xs bg-accent text-white text-sm font-medium hover:bg-accent-hover transition-colors"
+          >
+            Browse breeders
+          </Link>
+          <button
+            type="button"
+            onClick={() => setShowHowTo(!showHowTo)}
+            className="text-sm text-text-tertiary hover:text-text-secondary transition-colors flex items-center gap-1"
+          >
+            How to publish
+            <svg
+              className={`w-4 h-4 transition-transform ${showHowTo ? "rotate-180" : ""}`}
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+        </div>
+
+        {/* How to publish panel */}
+        {showHowTo && (
+          <div className="mt-4 pt-4 border-t border-border-subtle text-left">
+            <ol className="text-sm text-text-secondary space-y-2 list-decimal list-inside">
+              <li>Go to Platform Settings → Marketplace</li>
+              <li>Fill out your breeder profile</li>
+              <li>Ensure at least one breed and one listed program</li>
+              <li>Click Publish to Marketplace</li>
+            </ol>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/**
  * Build a display string for location based on mode.
  */
 function buildLocationDisplay(
@@ -119,28 +178,7 @@ export function BreederPage() {
 
   // Not published state
   if (notPublished) {
-    return (
-      <div className="space-y-4 max-w-md mx-auto">
-        <Breadcrumb
-          items={[
-            { label: "All breeders", href: "/breeders" },
-            { label: "Not found" },
-          ]}
-        />
-        <div className="rounded-portal border border-border-subtle bg-portal-card shadow-portal p-8 text-center">
-          <h2 className="text-lg font-semibold text-white mb-2">Breeder not found</h2>
-          <p className="text-text-secondary text-sm mb-4">
-            This breeder profile doesn&apos;t exist or hasn&apos;t been published yet.
-          </p>
-          <Link
-            to="/breeders"
-            className="inline-block px-4 py-2 rounded-portal-xs bg-accent text-white text-sm font-medium hover:bg-accent-hover transition-colors"
-          >
-            Browse breeders
-          </Link>
-        </div>
-      </div>
-    );
+    return <NotFoundState />;
   }
 
   // Error state

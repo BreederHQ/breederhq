@@ -633,5 +633,110 @@ export function makeApi(base?: string, extraHeadersFn?: () => Record<string, str
   const http = createHttp(root);
   const tags = makeTags(http);
 
-  return { animals, lookups, breeds, registries, finance, tags };
+  /* ───────── Animal Public Listing API ───────── */
+
+  type AnimalListingStatus = "DRAFT" | "LIVE" | "PAUSED";
+  type AnimalListingIntent = "STUD" | "BROOD_PLACEMENT" | "REHOME" | "SHOWCASE";
+
+  interface AnimalPublicListingDTO {
+    id: number;
+    animalId: number;
+    tenantId: number;
+    urlSlug: string;
+    intent: AnimalListingIntent | null;
+    status: AnimalListingStatus;
+    headline: string | null;
+    title: string | null;
+    summary: string | null;
+    description: string | null;
+    priceCents: number | null;
+    priceMinCents: number | null;
+    priceMaxCents: number | null;
+    priceText: string | null;
+    priceModel: "fixed" | "range" | "inquire" | null;
+    locationCity: string | null;
+    locationRegion: string | null;
+    locationCountry: string | null;
+    detailsJson: Record<string, any> | null;
+    primaryPhotoUrl: string | null;
+    publishedAt: string | null;
+    pausedAt: string | null;
+    createdAt: string;
+    updatedAt: string;
+  }
+
+  interface UpsertAnimalPublicListingPayload {
+    intent?: AnimalListingIntent | null;
+    headline?: string | null;
+    title?: string | null;
+    summary?: string | null;
+    description?: string | null;
+    priceCents?: number | null;
+    priceMinCents?: number | null;
+    priceMaxCents?: number | null;
+    priceText?: string | null;
+    priceModel?: "fixed" | "range" | "inquire" | null;
+    locationCity?: string | null;
+    locationRegion?: string | null;
+    locationCountry?: string | null;
+    detailsJson?: Record<string, any> | null;
+    primaryPhotoUrl?: string | null;
+  }
+
+  const animalPublicListing = {
+    /**
+     * Get the public listing for an animal.
+     * Returns null if no listing exists (404).
+     */
+    async get(animalId: string | number): Promise<AnimalPublicListingDTO | null> {
+      try {
+        return await reqWithExtra<AnimalPublicListingDTO>(
+          `/animals/${encodeURIComponent(String(animalId))}/public-listing`
+        );
+      } catch (err: any) {
+        if (err?.status === 404) return null;
+        throw err;
+      }
+    },
+
+    /**
+     * Upsert (create or update) the public listing for an animal.
+     * Always creates in DRAFT status - use setStatus to publish.
+     */
+    async upsert(
+      animalId: string | number,
+      payload: UpsertAnimalPublicListingPayload
+    ): Promise<AnimalPublicListingDTO> {
+      return reqWithExtra<AnimalPublicListingDTO>(
+        `/animals/${encodeURIComponent(String(animalId))}/public-listing`,
+        { method: "PUT", json: payload }
+      );
+    },
+
+    /**
+     * Set the status of an animal's public listing.
+     * Use this to publish (LIVE), pause (PAUSED), or unpublish (DRAFT).
+     */
+    async setStatus(
+      animalId: string | number,
+      status: AnimalListingStatus
+    ): Promise<AnimalPublicListingDTO> {
+      return reqWithExtra<AnimalPublicListingDTO>(
+        `/animals/${encodeURIComponent(String(animalId))}/public-listing/status`,
+        { method: "PATCH", json: { status } }
+      );
+    },
+
+    /**
+     * Delete the public listing for an animal.
+     */
+    async delete(animalId: string | number): Promise<void> {
+      await reqWithExtra<void>(
+        `/animals/${encodeURIComponent(String(animalId))}/public-listing`,
+        { method: "DELETE" }
+      );
+    },
+  };
+
+  return { animals, lookups, breeds, registries, finance, tags, animalPublicListing };
 }

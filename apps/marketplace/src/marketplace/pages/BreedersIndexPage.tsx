@@ -2,7 +2,7 @@
 // Breeders index page - lists published breeders from the API
 import * as React from "react";
 import { Link } from "react-router-dom";
-import { apiGet, ApiError } from "../../api/client";
+import { apiGet } from "../../api/client";
 
 // ============================================================================
 // Types
@@ -11,7 +11,13 @@ import { apiGet, ApiError } from "../../api/client";
 interface BreederSummary {
   tenantSlug: string;
   businessName: string;
+  // Formatted location string
   location: string | null;
+  // Raw location fields for filtering/custom formatting
+  publicLocationMode: string | null;
+  city: string | null;
+  state: string | null;
+  zip: string | null;
   breeds: Array<{ name: string }>;
   logoAssetId: string | null;
 }
@@ -28,8 +34,38 @@ interface BreedersListResponse {
 const MAX_VISIBLE_BREEDS = 3;
 
 // ============================================================================
+// Helpers
+// ============================================================================
+
+/**
+ * Extract initials from business name (first letter of first two words).
+ */
+function getInitials(name: string): string {
+  const words = name.trim().split(/\s+/);
+  if (words.length === 1) {
+    return words[0].substring(0, 2).toUpperCase();
+  }
+  return (words[0][0] + words[1][0]).toUpperCase();
+}
+
+// ============================================================================
 // Components
 // ============================================================================
+
+/**
+ * Avatar component - shows logo if available, otherwise initials.
+ */
+function BreederAvatar({ breeder }: { breeder: BreederSummary }) {
+  // TODO: When asset URLs are available, render actual logo image
+  // For now, always show initials
+  const initials = getInitials(breeder.businessName);
+
+  return (
+    <div className="w-10 h-10 rounded-full bg-accent/20 border border-accent/30 flex items-center justify-center flex-shrink-0">
+      <span className="text-sm font-semibold text-accent">{initials}</span>
+    </div>
+  );
+}
 
 /**
  * Loading skeleton for the breeders grid.
@@ -58,20 +94,29 @@ function BreedersGridSkeleton() {
  * Single breeder card in the grid.
  */
 function BreederCard({ breeder }: { breeder: BreederSummary }) {
-  const visibleBreeds = breeder.breeds.slice(0, MAX_VISIBLE_BREEDS);
-  const extraCount = breeder.breeds.length - MAX_VISIBLE_BREEDS;
+  const visibleBreeds = (breeder.breeds ?? []).slice(0, MAX_VISIBLE_BREEDS);
+  const extraCount = (breeder.breeds?.length ?? 0) - MAX_VISIBLE_BREEDS;
+
+  // Only show location if mode is not hidden and location string exists
+  const showLocation =
+    breeder.publicLocationMode !== "hidden" && breeder.location;
 
   return (
     <Link
       to={`/breeders/${breeder.tenantSlug}`}
-      className="block rounded-portal border border-border-subtle bg-portal-card p-5 hover:border-border-default hover:bg-portal-card-hover transition-colors group"
+      className="block rounded-portal border border-border-subtle bg-portal-card p-4 hover:border-border-default hover:bg-portal-card-hover transition-colors group"
     >
-      <h3 className="text-base font-semibold text-white group-hover:text-accent transition-colors truncate">
-        {breeder.businessName}
-      </h3>
-      {breeder.location && (
-        <p className="text-sm text-text-tertiary mt-1 truncate">{breeder.location}</p>
-      )}
+      <div className="flex items-start gap-3">
+        <BreederAvatar breeder={breeder} />
+        <div className="flex-1 min-w-0">
+          <h3 className="text-base font-semibold text-white group-hover:text-accent transition-colors truncate">
+            {breeder.businessName}
+          </h3>
+          {showLocation && (
+            <p className="text-sm text-text-tertiary mt-0.5 truncate">{breeder.location}</p>
+          )}
+        </div>
+      </div>
       {visibleBreeds.length > 0 && (
         <div className="flex flex-wrap gap-1.5 mt-3">
           {visibleBreeds.map((breed) => (
@@ -98,10 +143,28 @@ function BreederCard({ breeder }: { breeder: BreederSummary }) {
  */
 function EmptyState() {
   return (
-    <div className="rounded-portal border border-border-subtle bg-portal-card shadow-portal p-8 text-center max-w-md mx-auto">
-      <h2 className="text-lg font-semibold text-white mb-2">No breeders yet</h2>
-      <p className="text-text-secondary text-sm">
-        There are no published breeder profiles at this time. Check back later!
+    <div className="rounded-portal border border-border-subtle bg-portal-card shadow-portal p-8 text-center max-w-lg mx-auto">
+      <div className="w-12 h-12 rounded-full bg-border-default mx-auto mb-4 flex items-center justify-center">
+        <svg
+          className="w-6 h-6 text-text-tertiary"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={1.5}
+            d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"
+          />
+        </svg>
+      </div>
+      <h2 className="text-lg font-semibold text-white mb-2">No published breeders yet</h2>
+      <p className="text-text-secondary text-sm mb-1">
+        There are no published breeder profiles at this time.
+      </p>
+      <p className="text-text-tertiary text-xs">
+        Publish your breeder profile in Platform Settings → Marketplace.
       </p>
     </div>
   );
@@ -125,21 +188,6 @@ function ErrorState({ message, onRetry }: { message: string; onRetry: () => void
   );
 }
 
-/**
- * Stub state shown when the breeders list API endpoint is not yet implemented.
- */
-function ApiNotImplementedState() {
-  return (
-    <div className="rounded-portal border border-border-subtle bg-portal-card shadow-portal p-8 text-center max-w-md mx-auto">
-      <h2 className="text-lg font-semibold text-white mb-2">Coming soon</h2>
-      <p className="text-text-secondary text-sm">
-        The breeders directory is under development. Individual breeder profiles can still be
-        accessed directly by URL.
-      </p>
-    </div>
-  );
-}
-
 // ============================================================================
 // Main Component
 // ============================================================================
@@ -150,27 +198,16 @@ function ApiNotImplementedState() {
 export function BreedersIndexPage() {
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
-  const [notImplemented, setNotImplemented] = React.useState(false);
   const [breeders, setBreeders] = React.useState<BreederSummary[]>([]);
 
   const fetchBreeders = React.useCallback(async () => {
     setLoading(true);
     setError(null);
-    setNotImplemented(false);
 
     try {
-      // Attempt to fetch from the breeders list endpoint
       const { data } = await apiGet<BreedersListResponse>("/api/v1/marketplace/breeders");
       setBreeders(data?.items ?? []);
     } catch (err) {
-      if (err instanceof ApiError) {
-        // 404 means the endpoint doesn't exist yet
-        if (err.status === 404) {
-          setNotImplemented(true);
-          return;
-        }
-      }
-      // Other errors
       const message =
         err instanceof Error ? err.message : "Failed to load breeders. Please try again.";
       setError(message);
@@ -198,19 +235,16 @@ export function BreedersIndexPage() {
       {/* Loading state */}
       {loading && <BreedersGridSkeleton />}
 
-      {/* API not implemented stub */}
-      {!loading && notImplemented && <ApiNotImplementedState />}
-
       {/* Error state */}
-      {!loading && !notImplemented && error && (
+      {!loading && error && (
         <ErrorState message={error} onRetry={fetchBreeders} />
       )}
 
       {/* Empty state */}
-      {!loading && !notImplemented && !error && breeders.length === 0 && <EmptyState />}
+      {!loading && !error && breeders.length === 0 && <EmptyState />}
 
       {/* Breeders grid */}
-      {!loading && !notImplemented && !error && breeders.length > 0 && (
+      {!loading && !error && breeders.length > 0 && (
         <>
           <p className="text-[13px] text-text-tertiary">
             {breeders.length} breeder{breeders.length === 1 ? "" : "s"}

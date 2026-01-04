@@ -97,3 +97,50 @@ export interface MarketplaceMeResponse {
   userId: string | null;
   marketplaceEntitled: boolean;
 }
+
+/**
+ * Program animal listing types - for individual animals listed on marketplace
+ */
+export type AnimalListingIntent = "STUD" | "BROOD_PLACEMENT" | "REHOME" | "SHOWCASE";
+export type AnimalListingStatus = "DRAFT" | "LIVE" | "PAUSED";
+export type AnimalListingPriceModel = "fixed" | "range" | "inquire";
+
+/**
+ * Public animal listing - matches backend AnimalPublicListing
+ * Only LIVE listings are returned from public endpoints
+ */
+export interface PublicAnimalListingDTO extends MonetizationFields {
+  id: number;
+  urlSlug: string;
+  intent: AnimalListingIntent;
+  headline: string | null;
+  title: string | null;
+  summary: string | null;
+  description: string | null;
+  priceCents: number | null;
+  priceMinCents: number | null;
+  priceMaxCents: number | null;
+  priceText: string | null;
+  priceModel: AnimalListingPriceModel | null;
+  locationCity: string | null;
+  locationRegion: string | null;
+  locationCountry: string | null;
+  primaryPhotoUrl: string | null;
+  detailsJson: Record<string, any> | null;
+  // Animal details
+  animalName: string;
+  animalBreed: string | null;
+  animalSpecies: string;
+  animalSex: string | null;
+  animalDob: string | null;
+  // Program details
+  programSlug: string;
+  programName: string;
+}
+
+export interface AnimalListingsResponse {
+  items: PublicAnimalListingDTO[];
+  total: number;
+  page: number;
+  limit: number;
+}
