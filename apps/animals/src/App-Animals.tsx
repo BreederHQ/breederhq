@@ -5410,10 +5410,8 @@ export default function AppAnimals() {
         if ((r.sex || "").toLowerCase().startsWith("f"))
           tabs.push({ key: "cycle", label: "Cycle Info" } as any);
         tabs.push({ key: "program", label: "Program" } as any);
-        // Feature-flagged: Marketplace tab (default OFF until rollout)
-        if (isAnimalMarketplaceEnabled()) {
-          tabs.push({ key: "marketplace", label: "Marketplace" } as any);
-        }
+        // Marketplace tab always present - content gated by feature flag
+        tabs.push({ key: "marketplace", label: "Marketplace" } as any);
         tabs.push({ key: "health", label: "Health" } as any);
         tabs.push({ key: "registry", label: "Registry" } as any);
         tabs.push({ key: "documents", label: "Documents" } as any);
@@ -5861,10 +5859,28 @@ export default function AppAnimals() {
           )}
 
           {activeTab === "marketplace" && (
-            <MarketplaceListingTab
-              animal={row}
-              api={api}
-            />
+            isAnimalMarketplaceEnabled() ? (
+              <MarketplaceListingTab
+                animal={row}
+                api={api}
+              />
+            ) : (
+              <div className="space-y-3">
+                <SectionCard title="Marketplace">
+                  <div className="flex flex-col items-center py-6 text-center">
+                    <span className="inline-flex items-center px-2 py-0.5 mb-3 rounded text-[10px] font-bold uppercase tracking-wide bg-amber-500 text-white">
+                      Internal Feature
+                    </span>
+                    <p className="text-sm text-secondary mb-4">
+                      This feature is currently disabled.
+                    </p>
+                    <p className="text-xs text-tertiary max-w-sm">
+                      Enable via localStorage: <code className="bg-neutral-100 dark:bg-neutral-800 px-1.5 py-0.5 rounded text-[11px]">localStorage.setItem("BHQ_FEATURE_ANIMAL_MARKETPLACE", "true")</code>
+                    </p>
+                  </div>
+                </SectionCard>
+              </div>
+            )
           )}
 
           {activeTab === "health" && (
