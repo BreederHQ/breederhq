@@ -75,32 +75,40 @@ function getPlaceholderForSpecies(species?: string | null): string {
  * Feature Flags
  * ─────────────────────────────────────────────────────────────────────── */
 
+const FEATURE_FLAG_KEY = "BHQ_FEATURE_ANIMAL_MARKETPLACE";
+
 /**
  * Check if animal marketplace listings feature is enabled.
- * Defaults to OFF for production. Enable via:
+ * Defaults to OFF for production.
+ *
+ * Enablement methods (no URL params - security risk):
  * - Environment variable: VITE_FEATURE_ANIMAL_MARKETPLACE=true
- * - localStorage: BHQ_FEATURE_ANIMAL_MARKETPLACE=true
- * - URL param: ?feature_animal_marketplace=true (for testing)
+ * - localStorage: BHQ_FEATURE_ANIMAL_MARKETPLACE=true (internal testers only)
  */
 function isAnimalMarketplaceEnabled(): boolean {
-  // Environment variable (Vite)
+  // Environment variable (Vite) - controlled environments only
   try {
     const envFlag = (import.meta as any)?.env?.VITE_FEATURE_ANIMAL_MARKETPLACE;
     if (envFlag === "true" || envFlag === true) return true;
   } catch { /* ignore */ }
 
-  // localStorage override (persists for session)
+  // localStorage override - internal testers only (shows badge)
   try {
-    if (localStorage.getItem("BHQ_FEATURE_ANIMAL_MARKETPLACE") === "true") return true;
-  } catch { /* ignore */ }
-
-  // URL param (for one-off testing)
-  try {
-    const url = new URL(window.location.href);
-    if (url.searchParams.get("feature_animal_marketplace") === "true") return true;
+    if (localStorage.getItem(FEATURE_FLAG_KEY) === "true") return true;
   } catch { /* ignore */ }
 
   return false;
+}
+
+/**
+ * Check if feature was enabled via localStorage (shows "Internal Feature" badge).
+ */
+function isAnimalMarketplaceLocalStorageEnabled(): boolean {
+  try {
+    return localStorage.getItem(FEATURE_FLAG_KEY) === "true";
+  } catch {
+    return false;
+  }
 }
 
 /** ────────────────────────────────────────────────────────────────────────
@@ -2210,6 +2218,18 @@ function MarketplaceListingTab({
 
   return (
     <div className="space-y-3">
+      {/* Internal Feature badge - shown when enabled via localStorage */}
+      {isAnimalMarketplaceLocalStorageEnabled() && (
+        <div className="flex items-center gap-2 px-3 py-2 rounded-md bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700">
+          <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide bg-amber-500 text-white">
+            Internal Feature
+          </span>
+          <span className="text-xs text-amber-700 dark:text-amber-400">
+            This feature is in preview. Screenshots may not reflect production.
+          </span>
+        </div>
+      )}
+
       {/* Error banner */}
       {error && (
         <div className="rounded-md bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 p-3">
