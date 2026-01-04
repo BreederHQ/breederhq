@@ -1,6 +1,17 @@
 import { readTenantIdFast, resolveTenantId } from "@bhq/ui/utils/tenant";
 import { createHttp, makeTags, type TagsResource } from "@bhq/api";
 
+/* ───────────────────────── helpers ───────────────────────── */
+
+/** Normalize API base: ensure exactly one /api/v1 suffix, never doubled */
+function normBase(base?: string): string {
+  let b = String(base || "").trim();
+  if (!b) b = typeof window !== "undefined" ? window.location.origin : "";
+  // Strip trailing slashes and any existing /api/v1 suffix
+  b = b.replace(/\/+$/g, "").replace(/\/api\/v1$/i, "");
+  return `${b}/api/v1`;
+}
+
 /* ───────────────────────── shared enums and primitives ───────────────────────── */
 
 export type Sex = "FEMALE" | "MALE";
@@ -1008,6 +1019,6 @@ export function makeOffspringApiClient(opts?: MakeOpts): OffspringApi {
     },
 
     // Wire up unified tags from @bhq/api
-    tags: makeTags(createHttp(typeof opts === "string" ? opts : opts?.baseUrl || "/api/v1")),
+    tags: makeTags(createHttp(normBase(typeof opts === "string" ? opts : opts?.baseUrl))),
   };
 }
