@@ -87,7 +87,8 @@ function readCsrfToken(): string | null {
   if (typeof document === "undefined") return null;
   const meta = document.querySelector('meta[name="csrf-token"]') as HTMLMetaElement | null;
   if (meta?.content) return meta.content;
-  const m = document.cookie.match(/(?:^|; )csrfToken=([^;]*)/);
+  // Check for XSRF-TOKEN cookie (standard name used by API)
+  const m = document.cookie.match(/(?:^|; )XSRF-TOKEN=([^;]*)/);
   return m ? decodeURIComponent(m[1]) : null;
 }
 
