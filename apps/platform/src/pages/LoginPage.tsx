@@ -1,4 +1,7 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
+
+// BreederHQ logo - same asset used by Portal and Marketplace
+import logoUrl from "@bhq/ui/assets/logo.png";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -13,6 +16,15 @@ export default function LoginPage() {
   const [tempPassword, setTempPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+
+  const returnUrl = useMemo(() => {
+    const params = new URLSearchParams(window.location.search);
+    const url = params.get("returnUrl");
+    if (url && url.startsWith("/") && !url.startsWith("//")) {
+      return url;
+    }
+    return "/";
+  }, []);
 
   useEffect(() => {
     const p = new URLSearchParams(window.location.search);
@@ -60,7 +72,7 @@ export default function LoginPage() {
         try { const j = await res.json(); msg = j.message || msg; } catch {}
         throw new Error(msg);
       }
-      window.location.href = "/";
+      window.location.href = returnUrl;
     } catch (e: any) {
       setErr(e?.message || "Login failed.");
     } finally {
@@ -144,140 +156,207 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-black text-white px-4">
-      {!mustChangeMode ? (
-        // Normal login form
-        <form onSubmit={onSubmit} className="w-full max-w-sm bg-neutral-950 border border-neutral-800 rounded-xl p-6 space-y-4">
-          <h1 className="text-xl font-semibold">Sign in</h1>
+    <div className="min-h-screen flex items-center justify-center p-4 font-sans antialiased bg-portal-bg">
+      <div className="w-full max-w-[420px]">
+        {/* BreederHQ branding - matches Portal and Marketplace */}
+        <div className="flex flex-col items-center gap-2 mb-6">
+          <img
+            src={logoUrl}
+            alt="BreederHQ"
+            className="w-16 h-16 object-contain"
+          />
+          <h1 className="text-xl font-semibold text-white text-center">
+            BreederHQ
+          </h1>
+          <p className="text-sm text-text-tertiary text-center max-w-[300px]">
+            Breeder management software for modern breeders.
+          </p>
+        </div>
 
-          {notice && (
-            <div className="text-sm rounded-md border border-emerald-800/40 bg-emerald-950/30 p-2">{notice}</div>
-          )}
-          {err && (
-            <div className="text-sm rounded-md border border-red-800/40 bg-red-950/30 p-2">{err}</div>
-          )}
+        {!mustChangeMode ? (
+          // Normal login form
+          <div className="rounded-portal border border-border-subtle bg-portal-card p-6">
+            <form onSubmit={onSubmit} className="flex flex-col gap-4">
+              {notice && (
+                <div
+                  role="alert"
+                  aria-live="polite"
+                  className="p-3 rounded-portal-xs bg-emerald-500/10 border-l-[3px] border-emerald-500 text-emerald-300 text-sm"
+                >
+                  {notice}
+                </div>
+              )}
+              {err && (
+                <div
+                  role="alert"
+                  aria-live="polite"
+                  className="p-3 rounded-portal-xs bg-red-500/10 border-l-[3px] border-red-500 text-red-300 text-sm"
+                >
+                  {err}
+                </div>
+              )}
 
-          <label className="block text-sm">
-            Email
-            <input
-              type="email"
-              required
-              value={email}
-              onChange={e => setEmail(e.target.value)}
-              className="mt-1 w-full h-10 rounded-md border border-neutral-800 bg-neutral-900 px-3"
-              autoComplete="email"
-              placeholder="you@example.com"
-            />
-          </label>
+              <label className="block">
+                <span className="block text-sm text-text-secondary mb-1">Email</span>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="w-full h-10 px-3 rounded-portal-xs bg-portal-elevated border border-border-subtle text-white placeholder-text-muted focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30 disabled:opacity-50 transition-colors"
+                  placeholder="you@example.com"
+                  autoComplete="email"
+                  required
+                  disabled={busy}
+                  aria-label="Email address"
+                />
+              </label>
 
-          <label className="block text-sm">
-            Password
-            <input
-              type="password"
-              required
-              value={password}
-              onChange={e => setPassword(e.target.value)}
-              className="mt-1 w-full h-10 rounded-md border border-neutral-800 bg-neutral-900 px-3"
-              autoComplete="current-password"
-              placeholder="Your password"
-            />
-          </label>
+              <label className="block">
+                <span className="block text-sm text-text-secondary mb-1">Password</span>
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="w-full h-10 px-3 rounded-portal-xs bg-portal-elevated border border-border-subtle text-white placeholder-text-muted focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30 disabled:opacity-50 transition-colors"
+                  placeholder="Your password"
+                  autoComplete="current-password"
+                  required
+                  disabled={busy}
+                  aria-label="Password"
+                />
+              </label>
 
-          <button
-            type="submit"
-            disabled={busy}
-            className="w-full h-10 rounded-md bg-white text-black font-medium hover:opacity-90 disabled:opacity-60"
-          >
-            {busy ? "Signing in…" : "Sign in"}
-          </button>
+              <button
+                type="submit"
+                disabled={busy}
+                className="w-full h-10 rounded-portal-xs bg-accent text-white font-medium hover:bg-accent-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 border border-accent"
+                aria-busy={busy}
+              >
+                {busy ? "Signing in..." : "Sign In"}
+              </button>
 
-        </form>
-      ) : (
-        // Must-change password form
-        <form onSubmit={onChangePassword} className="w-full max-w-sm bg-neutral-950 border border-neutral-800 rounded-xl p-6 space-y-4">
-          <div>
-            <h1 className="text-xl font-semibold">Set your new password</h1>
-            <p className="text-sm text-neutral-400 mt-1">
-              You must change your temporary password before continuing.
-            </p>
+              <a
+                href="/forgot-password"
+                className="text-sm text-text-secondary text-center hover:text-accent transition-colors"
+              >
+                Forgot password
+              </a>
+
+              <div className="text-center text-sm pt-2 border-t border-border-subtle mt-2">
+                <span className="text-text-tertiary">Don't have an account? </span>
+                <a
+                  href="/register"
+                  className="text-accent hover:text-accent-hover transition-colors font-medium"
+                >
+                  Create one
+                </a>
+              </div>
+            </form>
           </div>
+        ) : (
+          // Must-change password form
+          <div className="rounded-portal border border-border-subtle bg-portal-card p-6">
+            <form onSubmit={onChangePassword} className="flex flex-col gap-4">
+              <div>
+                <h2 className="text-lg font-semibold text-white">Set your new password</h2>
+                <p className="text-sm text-text-tertiary mt-1">
+                  You must change your temporary password before continuing.
+                </p>
+              </div>
 
-          {notice && (
-            <div className="text-sm rounded-md border border-emerald-800/40 bg-emerald-950/30 p-2">{notice}</div>
-          )}
-          {err && (
-            <div className="text-sm rounded-md border border-red-800/40 bg-red-950/30 p-2">{err}</div>
-          )}
+              {notice && (
+                <div
+                  role="alert"
+                  aria-live="polite"
+                  className="p-3 rounded-portal-xs bg-emerald-500/10 border-l-[3px] border-emerald-500 text-emerald-300 text-sm"
+                >
+                  {notice}
+                </div>
+              )}
+              {err && (
+                <div
+                  role="alert"
+                  aria-live="polite"
+                  className="p-3 rounded-portal-xs bg-red-500/10 border-l-[3px] border-red-500 text-red-300 text-sm"
+                >
+                  {err}
+                </div>
+              )}
 
-          <div className="text-sm text-neutral-400">
-            Account: <span className="text-white font-medium">{email}</span>
+              <div className="text-sm text-text-tertiary">
+                Account: <span className="text-white font-medium">{email}</span>
+              </div>
+
+              <label className="block">
+                <span className="block text-sm text-text-secondary mb-1">Temporary Password</span>
+                <input
+                  type="password"
+                  value={tempPassword}
+                  onChange={(e) => setTempPassword(e.target.value)}
+                  className="w-full h-10 px-3 rounded-portal-xs bg-portal-elevated border border-border-subtle text-white placeholder-text-muted focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30 disabled:opacity-50 transition-colors"
+                  placeholder="Enter your temporary password"
+                  autoComplete="current-password"
+                  required
+                  disabled={busy}
+                />
+              </label>
+
+              <label className="block">
+                <span className="block text-sm text-text-secondary mb-1">New Password</span>
+                <input
+                  type="password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  className="w-full h-10 px-3 rounded-portal-xs bg-portal-elevated border border-border-subtle text-white placeholder-text-muted focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30 disabled:opacity-50 transition-colors"
+                  placeholder="At least 8 characters"
+                  autoComplete="new-password"
+                  required
+                  minLength={8}
+                  disabled={busy}
+                />
+              </label>
+
+              <label className="block">
+                <span className="block text-sm text-text-secondary mb-1">Confirm New Password</span>
+                <input
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  className="w-full h-10 px-3 rounded-portal-xs bg-portal-elevated border border-border-subtle text-white placeholder-text-muted focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30 disabled:opacity-50 transition-colors"
+                  placeholder="Re-enter new password"
+                  autoComplete="new-password"
+                  required
+                  disabled={busy}
+                />
+              </label>
+
+              <button
+                type="submit"
+                disabled={busy}
+                className="w-full h-10 rounded-portal-xs bg-accent text-white font-medium hover:bg-accent-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 border border-accent"
+                aria-busy={busy}
+              >
+                {busy ? "Updating password..." : "Set password and sign in"}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setMustChangeMode(false);
+                  setChangeToken(null);
+                  setTempPassword("");
+                  setNewPassword("");
+                  setConfirmPassword("");
+                  setErr(null);
+                }}
+                className="w-full text-sm text-text-secondary hover:text-accent transition-colors"
+              >
+                Back to sign in
+              </button>
+            </form>
           </div>
-
-          <label className="block text-sm">
-            Temporary Password
-            <input
-              type="password"
-              required
-              value={tempPassword}
-              onChange={e => setTempPassword(e.target.value)}
-              className="mt-1 w-full h-10 rounded-md border border-neutral-800 bg-neutral-900 px-3"
-              autoComplete="current-password"
-              placeholder="Enter your temporary password"
-            />
-          </label>
-
-          <label className="block text-sm">
-            New Password
-            <input
-              type="password"
-              required
-              value={newPassword}
-              onChange={e => setNewPassword(e.target.value)}
-              className="mt-1 w-full h-10 rounded-md border border-neutral-800 bg-neutral-900 px-3"
-              autoComplete="new-password"
-              placeholder="At least 8 characters"
-              minLength={8}
-            />
-          </label>
-
-          <label className="block text-sm">
-            Confirm New Password
-            <input
-              type="password"
-              required
-              value={confirmPassword}
-              onChange={e => setConfirmPassword(e.target.value)}
-              className="mt-1 w-full h-10 rounded-md border border-neutral-800 bg-neutral-900 px-3"
-              autoComplete="new-password"
-              placeholder="Re-enter new password"
-            />
-          </label>
-
-          <button
-            type="submit"
-            disabled={busy}
-            className="w-full h-10 rounded-md bg-white text-black font-medium hover:opacity-90 disabled:opacity-60"
-          >
-            {busy ? "Updating password…" : "Set password and sign in"}
-          </button>
-
-          <button
-            type="button"
-            onClick={() => {
-              setMustChangeMode(false);
-              setChangeToken(null);
-              setTempPassword("");
-              setNewPassword("");
-              setConfirmPassword("");
-              setErr(null);
-            }}
-            className="w-full text-sm text-neutral-400 hover:text-white"
-          >
-            ← Back to sign in
-          </button>
-
-        </form>
-      )}
+        )}
+      </div>
     </div>
   );
 }

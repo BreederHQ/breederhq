@@ -1,19 +1,17 @@
 // apps/marketplace/src/gate/MarketplaceGate.tsx
+// Auth/entitlement gate for marketplace access
+//
+// This component handles authentication and entitlement checks.
+// Route definitions live in routes/MarketplaceRoutes.tsx.
+
 import * as React from "react";
-import { Routes, Route, Navigate, useLocation } from "react-router-dom";
+import { useLocation } from "react-router-dom";
 import { apiGet, ApiError } from "../api/client";
 import { getUserMessage } from "../api/errors";
 import { AuthPage } from "../auth/AuthPage";
 import { MarketplaceLayout } from "../layout/MarketplaceLayout";
 import { AccessNotAvailable } from "./AccessNotAvailable";
-import { HomePage } from "../marketplace/pages/HomePage";
-import { AnimalsIndexPage } from "../marketplace/pages/AnimalsIndexPage";
-import { BreedersIndexPage } from "../marketplace/pages/BreedersIndexPage";
-import { ServicesPage } from "../marketplace/pages/ServicesPage";
-import { InquiriesPage } from "../marketplace/pages/InquiriesPage";
-import { UpdatesPage } from "../marketplace/pages/UpdatesPage";
-import { ProgramPage } from "../marketplace/pages/ProgramPage";
-import { ListingPage } from "../marketplace/pages/ListingPage";
+import { MarketplaceRoutes } from "../routes/MarketplaceRoutes";
 
 type GateStatus = "loading" | "unauthenticated" | "not_entitled" | "entitled" | "error";
 
@@ -99,38 +97,6 @@ function GateError({ message, onRetry }: { message: string; onRetry: () => void 
         </button>
       </div>
     </div>
-  );
-}
-
-/**
- * Route tree for authenticated/entitled marketplace users.
- */
-function MarketplaceRoutes() {
-  return (
-    <Routes>
-      {/* Home - Marketplace entry point */}
-      <Route path="/" element={<HomePage />} />
-
-      {/* Browse pages */}
-      <Route path="/animals" element={<AnimalsIndexPage />} />
-      <Route path="/breeders" element={<BreedersIndexPage />} />
-      <Route path="/services" element={<ServicesPage />} />
-
-      {/* Buyer activity */}
-      <Route path="/inquiries" element={<InquiriesPage />} />
-      <Route path="/updates" element={<UpdatesPage />} />
-
-      {/* Legacy redirects */}
-      <Route path="/litters" element={<Navigate to="/animals" replace />} />
-      <Route path="/programs" element={<Navigate to="/breeders" replace />} />
-
-      {/* Program detail pages (preserve existing deep links) */}
-      <Route path="/programs/:programSlug" element={<ProgramPage />} />
-      <Route
-        path="/programs/:programSlug/offspring-groups/:listingSlug"
-        element={<ListingPage />}
-      />
-    </Routes>
   );
 }
 

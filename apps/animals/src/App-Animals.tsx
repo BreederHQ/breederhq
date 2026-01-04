@@ -72,6 +72,46 @@ function getPlaceholderForSpecies(species?: string | null): string {
 }
 
 /** ────────────────────────────────────────────────────────────────────────
+ * Feature Flags
+ * ─────────────────────────────────────────────────────────────────────── */
+
+const FEATURE_FLAG_KEY = "BHQ_FEATURE_ANIMAL_MARKETPLACE";
+
+/**
+ * Check if animal marketplace listings feature is enabled.
+ * Defaults to OFF for production.
+ *
+ * Enablement methods (no URL params - security risk):
+ * - Environment variable: VITE_FEATURE_ANIMAL_MARKETPLACE=true
+ * - localStorage: BHQ_FEATURE_ANIMAL_MARKETPLACE=true (internal testers only)
+ */
+function isAnimalMarketplaceEnabled(): boolean {
+  // Environment variable (Vite) - controlled environments only
+  try {
+    const envFlag = (import.meta as any)?.env?.VITE_FEATURE_ANIMAL_MARKETPLACE;
+    if (envFlag === "true" || envFlag === true) return true;
+  } catch { /* ignore */ }
+
+  // localStorage override - internal testers only (shows badge)
+  try {
+    if (localStorage.getItem(FEATURE_FLAG_KEY) === "true") return true;
+  } catch { /* ignore */ }
+
+  return false;
+}
+
+/**
+ * Check if feature was enabled via localStorage (shows "Internal Feature" badge).
+ */
+function isAnimalMarketplaceLocalStorageEnabled(): boolean {
+  try {
+    return localStorage.getItem(FEATURE_FLAG_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
+
+/** ────────────────────────────────────────────────────────────────────────
  * Types & utils
  * ─────────────────────────────────────────────────────────────────────── */
 // NOTE: OwnershipRow is imported from @bhq/ui/utils/ownership at top of file
@@ -1923,6 +1963,764 @@ function ProgramTab({
           </div>
         )}
       </SectionCard>
+    </div>
+  );
+}
+
+/** ────────────────────────────────────────────────────────────────────────
+ * Marketplace Listing Tab — Manage public animal listing for marketplace
+ * ─────────────────────────────────────────────────────────────────────── */
+
+type ListingStatus = "DRAFT" | "LIVE" | "PAUSED";
+type ListingIntent = "STUD" | "BROOD_PLACEMENT" | "REHOME" | "SHOWCASE";
+type PriceModel = "fixed" | "range" | "inquire";
+
+interface ListingFormData {
+  intent: ListingIntent | null;
+  headline: string;
+  title: string;
+  summary: string;
+  description: string;
+  priceModel: PriceModel | null;
+  priceCents: number | null;
+  priceMinCents: number | null;
+  priceMaxCents: number | null;
+  priceText: string;
+  locationCity: string;
+  locationRegion: string;
+  locationCountry: string;
+  detailsJson: Record<string, any>;
+  primaryPhotoUrl: string | null;
+}
+
+const INTENT_OPTIONS: { value: ListingIntent; label: string; description: string }[] = [
+  { value: "STUD", label: "Stud Service", description: "Offer this male for breeding" },
+  { value: "BROOD_PLACEMENT", label: "Brood Placement", description: "Place breeding female with another program" },
+  { value: "REHOME", label: "Rehome", description: "Find a new home for this animal" },
+  { value: "SHOWCASE", label: "Showcase", description: "Display this animal without sale intent" },
+];
+
+const PRICE_MODEL_OPTIONS: { value: PriceModel; label: string }[] = [
+  { value: "fixed", label: "Fixed Price" },
+  { value: "range", label: "Price Range" },
+  { value: "inquire", label: "Contact for Pricing" },
+];
+
+function MarketplaceListingTab({
+  animal,
+  api,
+}: {
+  animal: AnimalRow;
+  api: any;
+}) {
+  const [loading, setLoading] = React.useState(true);
+  const [saving, setSaving] = React.useState(false);
+  const [listing, setListing] = React.useState<any | null>(null);
+  const [enabled, setEnabled] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+
+  const [form, setForm] = React.useState<ListingFormData>({
+    intent: null,
+    headline: "",
+    title: "",
+    summary: "",
+    description: "",
+    priceModel: null,
+    priceCents: null,
+    priceMinCents: null,
+    priceMaxCents: null,
+    priceText: "",
+    locationCity: "",
+    locationRegion: "",
+    locationCountry: "",
+    detailsJson: {},
+    primaryPhotoUrl: null,
+  });
+
+  // Load existing listing on mount
+  React.useEffect(() => {
+    let dead = false;
+    (async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        const existing = await api?.animalPublicListing?.get?.(animal.id);
+        if (!dead && existing) {
+          setListing(existing);
+          setEnabled(true);
+          setForm({
+            intent: existing.intent || null,
+            headline: existing.headline || "",
+            title: existing.title || animal.name || "",
+            summary: existing.summary || "",
+            description: existing.description || "",
+            priceModel: existing.priceModel || null,
+            priceCents: existing.priceCents ?? null,
+            priceMinCents: existing.priceMinCents ?? null,
+            priceMaxCents: existing.priceMaxCents ?? null,
+            priceText: existing.priceText || "",
+            locationCity: existing.locationCity || "",
+            locationRegion: existing.locationRegion || "",
+            locationCountry: existing.locationCountry || "",
+            detailsJson: existing.detailsJson || {},
+            primaryPhotoUrl: existing.primaryPhotoUrl || animal.photoUrl || null,
+          });
+        } else if (!dead) {
+          // No listing exists, use defaults from animal
+          setForm((f) => ({
+            ...f,
+            title: animal.name || "",
+            primaryPhotoUrl: animal.photoUrl || null,
+          }));
+        }
+      } catch (err: any) {
+        if (!dead) setError(err?.message || "Failed to load listing");
+      }
+      if (!dead) setLoading(false);
+    })();
+    return () => { dead = true; };
+  }, [api, animal.id, animal.name, animal.photoUrl]);
+
+  const status: ListingStatus | null = listing?.status || null;
+
+  // Validation for publish
+  const canPublish = enabled && form.intent != null && form.headline.trim().length > 0;
+
+  const handleSave = async () => {
+    if (!enabled) return;
+    try {
+      setSaving(true);
+      setError(null);
+      const payload = {
+        intent: form.intent,
+        headline: form.headline || null,
+        title: form.title || null,
+        summary: form.summary || null,
+        description: form.description || null,
+        priceModel: form.priceModel,
+        priceCents: form.priceModel === "fixed" ? form.priceCents : null,
+        priceMinCents: form.priceModel === "range" ? form.priceMinCents : null,
+        priceMaxCents: form.priceModel === "range" ? form.priceMaxCents : null,
+        priceText: form.priceModel === "inquire" ? form.priceText : null,
+        locationCity: form.locationCity || null,
+        locationRegion: form.locationRegion || null,
+        locationCountry: form.locationCountry || null,
+        detailsJson: Object.keys(form.detailsJson).length > 0 ? form.detailsJson : null,
+        primaryPhotoUrl: form.primaryPhotoUrl,
+      };
+      const updated = await api?.animalPublicListing?.upsert?.(animal.id, payload);
+      setListing(updated);
+    } catch (err: any) {
+      setError(err?.message || "Failed to save listing");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handlePublish = async () => {
+    if (!canPublish) return;
+    try {
+      setSaving(true);
+      setError(null);
+      // First save, then set status to LIVE
+      await handleSave();
+      const updated = await api?.animalPublicListing?.setStatus?.(animal.id, "LIVE");
+      setListing(updated);
+    } catch (err: any) {
+      setError(err?.message || "Failed to publish listing");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handlePause = async () => {
+    try {
+      setSaving(true);
+      setError(null);
+      const updated = await api?.animalPublicListing?.setStatus?.(animal.id, "PAUSED");
+      setListing(updated);
+    } catch (err: any) {
+      setError(err?.message || "Failed to pause listing");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleUnpause = async () => {
+    try {
+      setSaving(true);
+      setError(null);
+      const updated = await api?.animalPublicListing?.setStatus?.(animal.id, "LIVE");
+      setListing(updated);
+    } catch (err: any) {
+      setError(err?.message || "Failed to unpause listing");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!confirm("Are you sure you want to delete this listing? This cannot be undone.")) return;
+    try {
+      setSaving(true);
+      setError(null);
+      await api?.animalPublicListing?.delete?.(animal.id);
+      setListing(null);
+      setEnabled(false);
+      setForm({
+        intent: null,
+        headline: "",
+        title: animal.name || "",
+        summary: "",
+        description: "",
+        priceModel: null,
+        priceCents: null,
+        priceMinCents: null,
+        priceMaxCents: null,
+        priceText: "",
+        locationCity: "",
+        locationRegion: "",
+        locationCountry: "",
+        detailsJson: {},
+        primaryPhotoUrl: animal.photoUrl || null,
+      });
+    } catch (err: any) {
+      setError(err?.message || "Failed to delete listing");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleEnableToggle = async () => {
+    if (enabled) {
+      // Disabling - ask to delete listing if it exists
+      if (listing) {
+        await handleDelete();
+      } else {
+        setEnabled(false);
+      }
+    } else {
+      // Enabling - create draft listing
+      setEnabled(true);
+      // Will save on first explicit save
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="space-y-3">
+        <SectionCard title="Marketplace Listing">
+          <div className="text-sm text-secondary">Loading…</div>
+        </SectionCard>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      {/* Internal Feature badge - shown when enabled via localStorage */}
+      {isAnimalMarketplaceLocalStorageEnabled() && (
+        <div className="flex items-center gap-2 px-3 py-2 rounded-md bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700">
+          <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide bg-amber-500 text-white">
+            Internal Feature
+          </span>
+          <span className="text-xs text-amber-700 dark:text-amber-400">
+            This feature is in preview. Screenshots may not reflect production.
+          </span>
+        </div>
+      )}
+
+      {/* Error banner */}
+      {error && (
+        <div className="rounded-md bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 p-3">
+          <div className="text-sm text-red-700 dark:text-red-400">{error}</div>
+        </div>
+      )}
+
+      {/* Marketplace presence toggle and status */}
+      <SectionCard title="Marketplace Presence">
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <label className="relative inline-flex cursor-pointer items-center">
+              <input
+                type="checkbox"
+                checked={enabled}
+                onChange={handleEnableToggle}
+                disabled={saving}
+                className="peer sr-only"
+              />
+              <div className="h-6 w-11 rounded-full bg-neutral-200 dark:bg-neutral-700 peer-checked:bg-orange-500 peer-disabled:opacity-50 transition-colors after:absolute after:left-[2px] after:top-[2px] after:h-5 after:w-5 after:rounded-full after:bg-white after:transition-all peer-checked:after:translate-x-full" />
+            </label>
+            <span className="text-sm font-medium text-primary">
+              {enabled ? "Published to Marketplace" : "Not on Marketplace"}
+            </span>
+          </div>
+
+          {status && (
+            <span
+              className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                status === "LIVE"
+                  ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400"
+                  : status === "PAUSED"
+                    ? "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400"
+                    : "bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-400"
+              }`}
+            >
+              {status === "LIVE" ? "Live" : status === "PAUSED" ? "Paused" : "Draft"}
+            </span>
+          )}
+        </div>
+
+        {status === "LIVE" && listing?.publishedAt && (
+          <div className="mt-2 text-xs text-secondary">
+            Published {new Date(listing.publishedAt).toLocaleDateString()}
+          </div>
+        )}
+      </SectionCard>
+
+      {enabled && (
+        <>
+          {/* Listing Intent */}
+          <SectionCard title="Listing Intent">
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs text-secondary mb-1 block">
+                  What are you listing this animal for? {status === "LIVE" || status === "PAUSED" ? "" : "(Required to publish)"}
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {INTENT_OPTIONS.map((opt) => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => setForm((f) => ({ ...f, intent: opt.value }))}
+                      className={`flex flex-col items-start p-3 rounded-md border text-left transition-colors ${
+                        form.intent === opt.value
+                          ? "border-orange-500 bg-orange-50 dark:bg-orange-900/20"
+                          : "border-hairline hover:border-neutral-400 dark:hover:border-neutral-600"
+                      }`}
+                    >
+                      <span className="text-sm font-medium text-primary">{opt.label}</span>
+                      <span className="text-xs text-secondary mt-0.5">{opt.description}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </SectionCard>
+
+          {/* Public Card Content */}
+          <SectionCard title="Public Card Content">
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs text-secondary mb-1 block">Headline</label>
+                <Input
+                  placeholder="e.g., Champion Stud Available for Breeding"
+                  value={form.headline}
+                  onChange={(e) => setForm((f) => ({ ...f, headline: e.currentTarget.value }))}
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-secondary mb-1 block">Title</label>
+                  <Input
+                    placeholder="Animal display name"
+                    value={form.title}
+                    onChange={(e) => setForm((f) => ({ ...f, title: e.currentTarget.value }))}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-secondary mb-1 block">Primary Photo URL</label>
+                  <Input
+                    placeholder="Photo URL (uses animal photo if blank)"
+                    value={form.primaryPhotoUrl || ""}
+                    onChange={(e) => setForm((f) => ({ ...f, primaryPhotoUrl: e.currentTarget.value || null }))}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs text-secondary mb-1 block">Summary</label>
+                <Input
+                  placeholder="Short description for listing cards"
+                  value={form.summary}
+                  onChange={(e) => setForm((f) => ({ ...f, summary: e.currentTarget.value }))}
+                />
+              </div>
+
+              <div>
+                <label className="text-xs text-secondary mb-1 block">Description</label>
+                <textarea
+                  className="h-24 w-full rounded-md border border-hairline bg-surface px-3 py-2 text-sm text-primary outline-none"
+                  placeholder="Full description for listing detail page"
+                  value={form.description}
+                  onChange={(e) => setForm((f) => ({ ...f, description: e.currentTarget.value }))}
+                />
+              </div>
+            </div>
+          </SectionCard>
+
+          {/* Location */}
+          <SectionCard title="Location">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div>
+                <label className="text-xs text-secondary mb-1 block">City</label>
+                <Input
+                  placeholder="City"
+                  value={form.locationCity}
+                  onChange={(e) => setForm((f) => ({ ...f, locationCity: e.currentTarget.value }))}
+                />
+              </div>
+              <div>
+                <label className="text-xs text-secondary mb-1 block">State/Region</label>
+                <Input
+                  placeholder="State or Region"
+                  value={form.locationRegion}
+                  onChange={(e) => setForm((f) => ({ ...f, locationRegion: e.currentTarget.value }))}
+                />
+              </div>
+              <div>
+                <label className="text-xs text-secondary mb-1 block">Country</label>
+                <Input
+                  placeholder="Country"
+                  value={form.locationCountry}
+                  onChange={(e) => setForm((f) => ({ ...f, locationCountry: e.currentTarget.value }))}
+                />
+              </div>
+            </div>
+          </SectionCard>
+
+          {/* Pricing */}
+          <SectionCard title="Pricing">
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs text-secondary mb-1 block">Price Model</label>
+                <div className="flex gap-2 flex-wrap">
+                  {PRICE_MODEL_OPTIONS.map((opt) => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => setForm((f) => ({ ...f, priceModel: opt.value }))}
+                      className={`px-3 py-1.5 rounded-md text-sm border transition-colors ${
+                        form.priceModel === opt.value
+                          ? "border-orange-500 bg-orange-50 dark:bg-orange-900/20 text-orange-700 dark:text-orange-300"
+                          : "border-hairline hover:border-neutral-400 dark:hover:border-neutral-600 text-primary"
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {form.priceModel === "fixed" && (
+                <div>
+                  <label className="text-xs text-secondary mb-1 block">Price ($)</label>
+                  <Input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    placeholder="0.00"
+                    value={form.priceCents != null ? (form.priceCents / 100).toFixed(2) : ""}
+                    onChange={(e) => {
+                      const val = parseFloat(e.currentTarget.value);
+                      setForm((f) => ({
+                        ...f,
+                        priceCents: isNaN(val) ? null : Math.round(val * 100),
+                      }));
+                    }}
+                  />
+                </div>
+              )}
+
+              {form.priceModel === "range" && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs text-secondary mb-1 block">Min Price ($)</label>
+                    <Input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      placeholder="0.00"
+                      value={form.priceMinCents != null ? (form.priceMinCents / 100).toFixed(2) : ""}
+                      onChange={(e) => {
+                        const val = parseFloat(e.currentTarget.value);
+                        setForm((f) => ({
+                          ...f,
+                          priceMinCents: isNaN(val) ? null : Math.round(val * 100),
+                        }));
+                      }}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-secondary mb-1 block">Max Price ($)</label>
+                    <Input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      placeholder="0.00"
+                      value={form.priceMaxCents != null ? (form.priceMaxCents / 100).toFixed(2) : ""}
+                      onChange={(e) => {
+                        const val = parseFloat(e.currentTarget.value);
+                        setForm((f) => ({
+                          ...f,
+                          priceMaxCents: isNaN(val) ? null : Math.round(val * 100),
+                        }));
+                      }}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {form.priceModel === "inquire" && (
+                <div>
+                  <label className="text-xs text-secondary mb-1 block">Price Text</label>
+                  <Input
+                    placeholder="e.g., Contact for pricing details"
+                    value={form.priceText}
+                    onChange={(e) => setForm((f) => ({ ...f, priceText: e.currentTarget.value }))}
+                  />
+                </div>
+              )}
+            </div>
+          </SectionCard>
+
+          {/* Intent-specific details */}
+          {form.intent && (
+            <SectionCard title={`${INTENT_OPTIONS.find((o) => o.value === form.intent)?.label || ""} Details`}>
+              <div className="space-y-3">
+                {form.intent === "STUD" && (
+                  <>
+                    <div>
+                      <label className="text-xs text-secondary mb-1 block">Stud Fee Notes</label>
+                      <textarea
+                        className="h-20 w-full rounded-md border border-hairline bg-surface px-3 py-2 text-sm text-primary outline-none"
+                        placeholder="Any special terms, repeat breeding discount, etc."
+                        value={form.detailsJson.studFeeNotes || ""}
+                        onChange={(e) =>
+                          setForm((f) => ({
+                            ...f,
+                            detailsJson: { ...f.detailsJson, studFeeNotes: e.currentTarget.value },
+                          }))
+                        }
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-xs text-secondary mb-1 block">Available For</label>
+                        <select
+                          className="h-9 w-full rounded-md border border-hairline bg-surface px-2 text-sm text-primary"
+                          value={form.detailsJson.studAvailability || ""}
+                          onChange={(e) =>
+                            setForm((f) => ({
+                              ...f,
+                              detailsJson: { ...f.detailsJson, studAvailability: e.currentTarget.value || undefined },
+                            }))
+                          }
+                        >
+                          <option value="">Select…</option>
+                          <option value="natural">Natural Breeding Only</option>
+                          <option value="ai">AI Only</option>
+                          <option value="both">Natural & AI</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-xs text-secondary mb-1 block">Shipping Available</label>
+                        <select
+                          className="h-9 w-full rounded-md border border-hairline bg-surface px-2 text-sm text-primary"
+                          value={String(form.detailsJson.shippingAvailable ?? "")}
+                          onChange={(e) =>
+                            setForm((f) => ({
+                              ...f,
+                              detailsJson: {
+                                ...f.detailsJson,
+                                shippingAvailable: e.currentTarget.value === "true" ? true : e.currentTarget.value === "false" ? false : undefined,
+                              },
+                            }))
+                          }
+                        >
+                          <option value="">Select…</option>
+                          <option value="true">Yes</option>
+                          <option value="false">No</option>
+                        </select>
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {form.intent === "BROOD_PLACEMENT" && (
+                  <>
+                    <div>
+                      <label className="text-xs text-secondary mb-1 block">Placement Terms</label>
+                      <textarea
+                        className="h-20 w-full rounded-md border border-hairline bg-surface px-3 py-2 text-sm text-primary outline-none"
+                        placeholder="Co-ownership terms, breeding rights, return conditions, etc."
+                        value={form.detailsJson.placementTerms || ""}
+                        onChange={(e) =>
+                          setForm((f) => ({
+                            ...f,
+                            detailsJson: { ...f.detailsJson, placementTerms: e.currentTarget.value },
+                          }))
+                        }
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-secondary mb-1 block">Breeding Requirements</label>
+                      <Input
+                        placeholder="Minimum litters, health testing requirements, etc."
+                        value={form.detailsJson.breedingRequirements || ""}
+                        onChange={(e) =>
+                          setForm((f) => ({
+                            ...f,
+                            detailsJson: { ...f.detailsJson, breedingRequirements: e.currentTarget.value },
+                          }))
+                        }
+                      />
+                    </div>
+                  </>
+                )}
+
+                {form.intent === "REHOME" && (
+                  <>
+                    <div>
+                      <label className="text-xs text-secondary mb-1 block">Reason for Rehoming</label>
+                      <textarea
+                        className="h-20 w-full rounded-md border border-hairline bg-surface px-3 py-2 text-sm text-primary outline-none"
+                        placeholder="Why is this animal being rehomed?"
+                        value={form.detailsJson.rehomeReason || ""}
+                        onChange={(e) =>
+                          setForm((f) => ({
+                            ...f,
+                            detailsJson: { ...f.detailsJson, rehomeReason: e.currentTarget.value },
+                          }))
+                        }
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-xs text-secondary mb-1 block">Good With Kids</label>
+                        <select
+                          className="h-9 w-full rounded-md border border-hairline bg-surface px-2 text-sm text-primary"
+                          value={String(form.detailsJson.goodWithKids ?? "")}
+                          onChange={(e) =>
+                            setForm((f) => ({
+                              ...f,
+                              detailsJson: {
+                                ...f.detailsJson,
+                                goodWithKids: e.currentTarget.value === "true" ? true : e.currentTarget.value === "false" ? false : undefined,
+                              },
+                            }))
+                          }
+                        >
+                          <option value="">Unknown</option>
+                          <option value="true">Yes</option>
+                          <option value="false">No</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-xs text-secondary mb-1 block">Good With Other Pets</label>
+                        <select
+                          className="h-9 w-full rounded-md border border-hairline bg-surface px-2 text-sm text-primary"
+                          value={String(form.detailsJson.goodWithPets ?? "")}
+                          onChange={(e) =>
+                            setForm((f) => ({
+                              ...f,
+                              detailsJson: {
+                                ...f.detailsJson,
+                                goodWithPets: e.currentTarget.value === "true" ? true : e.currentTarget.value === "false" ? false : undefined,
+                              },
+                            }))
+                          }
+                        >
+                          <option value="">Unknown</option>
+                          <option value="true">Yes</option>
+                          <option value="false">No</option>
+                        </select>
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {form.intent === "SHOWCASE" && (
+                  <div>
+                    <label className="text-xs text-secondary mb-1 block">Showcase Notes</label>
+                    <textarea
+                      className="h-20 w-full rounded-md border border-hairline bg-surface px-3 py-2 text-sm text-primary outline-none"
+                      placeholder="Any additional information about this animal for showcase"
+                      value={form.detailsJson.showcaseNotes || ""}
+                      onChange={(e) =>
+                        setForm((f) => ({
+                          ...f,
+                          detailsJson: { ...f.detailsJson, showcaseNotes: e.currentTarget.value },
+                        }))
+                      }
+                    />
+                  </div>
+                )}
+              </div>
+            </SectionCard>
+          )}
+
+          {/* Actions */}
+          <SectionCard title="Actions">
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                variant="outline"
+                onClick={handleSave}
+                disabled={saving}
+              >
+                {saving ? "Saving…" : "Save Draft"}
+              </Button>
+
+              {status === "DRAFT" && (
+                <Button
+                  onClick={handlePublish}
+                  disabled={saving || !canPublish}
+                  title={!canPublish ? "Intent and headline are required to publish" : ""}
+                >
+                  {saving ? "Publishing…" : "Publish"}
+                </Button>
+              )}
+
+              {status === "LIVE" && (
+                <Button
+                  variant="outline"
+                  onClick={handlePause}
+                  disabled={saving}
+                >
+                  {saving ? "Pausing…" : "Pause Listing"}
+                </Button>
+              )}
+
+              {status === "PAUSED" && (
+                <Button
+                  onClick={handleUnpause}
+                  disabled={saving}
+                >
+                  {saving ? "Resuming…" : "Resume Listing"}
+                </Button>
+              )}
+
+              {listing && (
+                <Button
+                  variant="ghost"
+                  className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20"
+                  onClick={handleDelete}
+                  disabled={saving}
+                >
+                  Delete Listing
+                </Button>
+              )}
+            </div>
+
+            {!canPublish && status === "DRAFT" && (
+              <div className="mt-2 text-xs text-secondary">
+                To publish, select a listing intent and provide a headline.
+              </div>
+            )}
+          </SectionCard>
+        </>
+      )}
     </div>
   );
 }
@@ -4507,7 +5305,7 @@ export default function AppAnimals() {
     () => ({
       idParam: "animalId",
       getRowId: (r: AnimalRow) => r.id,
-      width: 720,
+      width: 800,
       placement: "center" as const,
       align: "top" as const,
       fetchRow: async (id: string | number) => {
@@ -4612,6 +5410,8 @@ export default function AppAnimals() {
         if ((r.sex || "").toLowerCase().startsWith("f"))
           tabs.push({ key: "cycle", label: "Cycle Info" } as any);
         tabs.push({ key: "program", label: "Program" } as any);
+        // Marketplace tab always present - content gated by feature flag
+        tabs.push({ key: "marketplace", label: "Marketplace" } as any);
         tabs.push({ key: "health", label: "Health" } as any);
         tabs.push({ key: "registry", label: "Registry" } as any);
         tabs.push({ key: "documents", label: "Documents" } as any);
@@ -5056,6 +5856,31 @@ export default function AppAnimals() {
               api={api}
               onSaved={() => { }}
             />
+          )}
+
+          {activeTab === "marketplace" && (
+            isAnimalMarketplaceEnabled() ? (
+              <MarketplaceListingTab
+                animal={row}
+                api={api}
+              />
+            ) : (
+              <div className="space-y-3">
+                <SectionCard title="Marketplace">
+                  <div className="flex flex-col items-center py-6 text-center">
+                    <span className="inline-flex items-center px-2 py-0.5 mb-3 rounded text-[10px] font-bold uppercase tracking-wide bg-amber-500 text-white">
+                      Internal Feature
+                    </span>
+                    <p className="text-sm text-secondary mb-4">
+                      This feature is currently disabled.
+                    </p>
+                    <p className="text-xs text-tertiary max-w-sm">
+                      Enable via localStorage: <code className="bg-neutral-100 dark:bg-neutral-800 px-1.5 py-0.5 rounded text-[11px]">localStorage.setItem("BHQ_FEATURE_ANIMAL_MARKETPLACE", "true")</code>
+                    </p>
+                  </div>
+                </SectionCard>
+              </div>
+            )
           )}
 
           {activeTab === "health" && (

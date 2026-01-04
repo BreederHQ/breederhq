@@ -9,8 +9,6 @@ import logoUrl from "@bhq/ui/assets/logo.png";
 export function TermsPage() {
   return (
     <div className="min-h-screen bg-portal-bg text-white font-sans antialiased">
-      <Seo title="Terms of Service" />
-
       {/* Simple header */}
       <header className="border-b border-border-subtle bg-portal-elevated">
         <div className="max-w-4xl mx-auto px-6 py-4 flex items-center justify-between">

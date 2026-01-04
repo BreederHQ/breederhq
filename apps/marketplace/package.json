@@ -4,8 +4,9 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/app/MarketplaceStandaloneApp.tsx",
-    "./MarketplaceStandaloneApp": "./src/app/MarketplaceStandaloneApp.tsx"
+    ".": "./src/index.ts",
+    "./MarketplaceStandaloneApp": "./src/app/MarketplaceStandaloneApp.tsx",
+    "./MarketplaceEmbedded": "./src/embed/MarketplaceEmbedded.tsx"
   },
   "dependencies": {
     "react": "19.2.0",

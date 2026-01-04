@@ -1,6 +1,7 @@
 // apps/platform/src/pages/SettingsPanel.tsx
 import React from "react";
-import { Button, Card, SectionCard } from "@bhq/ui";
+import { Button, Card, SectionCard, BreedCombo, CustomBreedDialog } from "@bhq/ui";
+import type { BreedHit } from "@bhq/ui";
 import { createPortal } from "react-dom";
 import { getOverlayRoot } from "@bhq/ui/overlay";
 import { useUiScale } from "@bhq/ui/settings/UiScaleProvider";
@@ -12,7 +13,7 @@ import type { BreedingProgramProfile } from "@bhq/ui/utils/breedingProgram";
 import ProgramProfileSnapshot from "../components/ProgramProfileSnapshot";
 import DateValidationSettingsTab from "../components/DateValidationSettingsTab";
 import { TagsManagerTab } from "../components/TagsManagerTab";
-import MarketplaceSettingsTab from "../components/MarketplaceSettingsTab";
+import MarketplaceSettingsTab, { type MarketplaceHandle } from "../components/MarketplaceSettingsTab";
 import { api } from "../api";
 
 /** ───────── Tenant helpers ───────── */
@@ -525,6 +526,8 @@ export default function SettingsPanel({ open, dirty, onDirtyChange, onClose }: P
   const profileRef = React.useRef<ProfileHandle>(null);
   const breedingRef = React.useRef<BreedingHandle>(null);
   const programRef = React.useRef<ProgramProfileHandle>(null);
+  const breedsRef = React.useRef<BreedsHandle>(null);
+  const marketplaceRef = React.useRef<MarketplaceHandle>(null);
   const [profileTitle, setProfileTitle] = React.useState<string>("");
 
   React.useEffect(() => { onDirtyChange(!!dirtyMap[active]); }, [active, dirtyMap, onDirtyChange]);
@@ -627,6 +630,10 @@ export default function SettingsPanel({ open, dirty, onDirtyChange, onClose }: P
                             await breedingRef.current?.save(); markDirty("breeding", false);
                           } else if (active === "programProfile") {
                             await programRef.current?.save(); markDirty("programProfile", false);
+                          } else if (active === "breeds") {
+                            await breedsRef.current?.save(); markDirty("breeds", false);
+                          } else if (active === "marketplace") {
+                            await marketplaceRef.current?.save(); markDirty("marketplace", false);
                           } else {
                             await saveActive(active, markDirty);
                             markDirty(active, false);
@@ -671,12 +678,12 @@ export default function SettingsPanel({ open, dirty, onDirtyChange, onClose }: P
                     onEditExactDates={() => jumpToBreeding("dates")}
                   />
                 )}
-                {active === "breeds" && <BreedsTab onDirty={(v) => markDirty("breeds", v)} />}
+                {active === "breeds" && <BreedsTab ref={breedsRef} onDirty={(v) => markDirty("breeds", v)} />}
                 {active === "users" && <UsersTab dirty={dirtyMap.users} onDirty={(v) => markDirty("users", v)} />}
                 {active === "groups" && <GroupsTab dirty={dirtyMap.groups} onDirty={(v) => markDirty("groups", v)} />}
                 {active === "tags" && <TagsManagerTab dirty={dirtyMap.tags} onDirty={(v) => markDirty("tags", v)} />}
                 {active === "accessibility" && <AccessibilityTab />}
-                {active === "marketplace" && <MarketplaceSettingsTab dirty={dirtyMap.marketplace} onDirty={(v) => markDirty("marketplace", v)} />}
+                {active === "marketplace" && <MarketplaceSettingsTab ref={marketplaceRef} dirty={dirtyMap.marketplace} onDirty={(v) => markDirty("marketplace", v)} onNavigateToBreeds={() => setActive("breeds")} />}
               </div>
             </main>
           </div>
@@ -2002,103 +2009,276 @@ function PlatformSnapshotTab({
 }
 
 
-/** ───────── Breeds / Users / Groups / Tags (unchanged placeholders + working CRUD) ───────── */
-function BreedsTab({ onDirty }: { onDirty: (v: boolean) => void }) {
-  React.useEffect(() => onDirty(false), [onDirty]);
-  type Species = "DOG" | "CAT" | "HORSE";
-  type Canonical = { id: string; name: string; slug?: string | null; species?: Species | null; source: "canonical" };
-  type Custom = { id: number; name: string; species?: Species | null; canonicalBreedId?: string | null; source: "custom" };
+/** ───────── Breeds Tab - Breeding Program Breeds ───────── */
+type BreedsHandle = { save: () => Promise<void> };
 
-  const [species, setSpecies] = React.useState<Species>("DOG");
-  const [q, setQ] = React.useState(""); const [searching, setSearching] = React.useState(false);
-  const [canonResults, setCanonResults] = React.useState<Canonical[]>([]);
-  const [customList, setCustomList] = React.useState<Custom[]>([]);
-  const [loadingCustom, setLoadingCustom] = React.useState(false);
-  const [err, setErr] = React.useState<string>("");
+type BreedsSpecies = "DOG" | "CAT" | "HORSE" | "GOAT" | "SHEEP" | "RABBIT";
+type BreedsSpeciesUI = "Dog" | "Cat" | "Horse" | "Goat" | "Sheep" | "Rabbit";
+type SelectedBreed = {
+  id: string | number;
+  breedId?: number | null;       // For canonical breeds
+  customBreedId?: number | null; // For custom breeds
+  name: string;
+  species: BreedsSpeciesUI;
+  source: "canonical" | "custom";
+};
 
-  async function fetchJsonLocal(url: string, init?: RequestInit) { return await fetchJson(url, init); }
+function toUiSpecies(api: string): BreedsSpeciesUI {
+  const up = String(api).toUpperCase();
+  if (up === "DOG") return "Dog";
+  if (up === "CAT") return "Cat";
+  if (up === "HORSE") return "Horse";
+  if (up === "GOAT") return "Goat";
+  if (up === "SHEEP") return "Sheep";
+  if (up === "RABBIT") return "Rabbit";
+  return "Dog";
+}
 
-  async function loadCustom() {
-    try {
-      setLoadingCustom(true); setErr("");
-      const res = await fetchJsonLocal(`/api/v1/breeds/custom?species=${encodeURIComponent(species)}`);
-      const items =
-        (Array.isArray(res?.items) && res.items) ||
-        (Array.isArray(res?.data?.items) && res.data.items) ||
-        (Array.isArray(res) && res) || [];
-      setCustomList(items.map((r: any) => ({ id: Number(r.id), name: String(r.name), species: (r.species as Species) ?? null, canonicalBreedId: (r.canonicalBreedId as string) ?? null, source: "custom" })));
-    } catch (e: any) { setErr(e?.message || "Failed to load custom breeds"); } finally { setLoadingCustom(false); }
-  }
-  async function doSearch() {
-    try {
-      setSearching(true); setErr("");
-      const url = `/api/v1/breeds/search?species=${encodeURIComponent(species)}&q=${encodeURIComponent(q)}&limit=25`;
-      const res = await fetchJsonLocal(url);
-      const items =
-        (Array.isArray(res?.items) && res.items) ||
-        (Array.isArray(res?.data?.items) && res.data.items) ||
-        (Array.isArray(res) && res) || [];
-      setCanonResults(items.filter((r: any) => r.source === "canonical").map((r: any) => ({ id: String(r.id), name: String(r.name), slug: r.slug ?? null, species: (r.species as Species) ?? null, source: "canonical" })));
-    } catch (e: any) { setErr(e?.message || "Search failed"); } finally { setSearching(false); }
-  }
-  React.useEffect(() => { loadCustom(); }, [species]);
+const BreedsTab = React.forwardRef<BreedsHandle, { onDirty: (v: boolean) => void }>(
+  function BreedsTabImpl({ onDirty }, ref) {
+    const SPECIES_OPTIONS: BreedsSpeciesUI[] = ["Dog", "Cat", "Horse", "Goat", "Sheep", "Rabbit"];
 
-  async function addCustom(name: string, canonicalBreedId?: string | null) {
-    const body = { name, species, canonicalBreedId: canonicalBreedId ?? null };
-    const res = await fetchJsonLocal("/api/v1/breeds/custom", { method: "POST", body: JSON.stringify(body) });
-    if (res?.error) throw new Error(res?.message || "Create failed");
-    await loadCustom();
-  }
-  async function renameCustom(id: number, name: string) {
-    const res = await fetchJsonLocal(`/api/v1/breeds/custom/${id}`, { method: "PATCH", body: JSON.stringify({ name }) });
-    if (res?.error) throw new Error(res?.message || "Rename failed");
-    await loadCustom();
-  }
-  async function linkCanonical(id: number, canonicalBreedId: string | null) {
-    const res = await fetchJsonLocal(`/api/v1/breeds/custom/${id}`, { method: "PATCH", body: JSON.stringify({ canonicalBreedId }) });
-    if (res?.error) throw new Error(res?.message || "Link failed");
-    await loadCustom();
-  }
-  async function removeCustom(id: number) {
-    const res = await fetchJsonLocal(`/api/v1/breeds/custom/${id}`, { method: "DELETE" });
-    if (res?.error) throw new Error(res?.message || "Delete failed");
-    await loadCustom();
-  }
+    function toApiSpecies(ui: BreedsSpeciesUI): BreedsSpecies {
+      return ui.toUpperCase() as BreedsSpecies;
+    }
 
-  const [newName, setNewName] = React.useState(""); const [linkFor, setLinkFor] = React.useState<number | null>(null);
+    // State
+    const [species, setSpecies] = React.useState<BreedsSpeciesUI>("Dog");
+    const [selectedBreed, setSelectedBreed] = React.useState<BreedHit | null>(null);
+    const [selectedBreeds, setSelectedBreeds] = React.useState<SelectedBreed[]>([]);
+    const [initialBreeds, setInitialBreeds] = React.useState<SelectedBreed[]>([]);
+    const [err, setErr] = React.useState<string>("");
+    const [loading, setLoading] = React.useState(true);
+    const [saving, setSaving] = React.useState(false);
+
+    // Load initial breeds from API
+    React.useEffect(() => {
+      let alive = true;
+      (async () => {
+        try {
+          const res = await fetchJson("/api/v1/breeds/program");
+          if (!alive) return;
+          const data = (res as any)?.data || [];
+          const mapped: SelectedBreed[] = data.map((b: any) => ({
+            id: b.source === "custom" ? `custom-${b.customBreedId}` : `breed-${b.breedId}`,
+            breedId: b.breedId ?? null,
+            customBreedId: b.customBreedId ?? null,
+            name: b.name,
+            species: toUiSpecies(b.species),
+            source: b.source,
+          }));
+          setSelectedBreeds(mapped);
+          setInitialBreeds(mapped);
+        } catch (e) {
+          console.error("Failed to load program breeds:", e);
+        } finally {
+          if (alive) setLoading(false);
+        }
+      })();
+      return () => { alive = false; };
+    }, []);
+
+    // Track dirty state by comparing current breeds to initial
+    const isDirty = React.useMemo(() => {
+      if (selectedBreeds.length !== initialBreeds.length) return true;
+      const currentIds = selectedBreeds.map(b => `${b.id}-${b.species}`).sort().join(",");
+      const initialIds = initialBreeds.map(b => `${b.id}-${b.species}`).sort().join(",");
+      return currentIds !== initialIds;
+    }, [selectedBreeds, initialBreeds]);
+
+    React.useEffect(() => { onDirty(isDirty); }, [isDirty, onDirty]);
+
+    // Expose save function via ref
+    React.useImperativeHandle(ref, () => ({
+      async save() {
+        setSaving(true);
+        setErr("");
+        try {
+          const breeds = selectedBreeds.map((b) => ({
+            breedId: b.source === "canonical" ? b.breedId : null,
+            customBreedId: b.source === "custom" ? b.customBreedId : null,
+            species: toApiSpecies(b.species),
+          }));
+          const res = await fetchJson("/api/v1/breeds/program", {
+            method: "PUT",
+            body: JSON.stringify({ breeds }),
+          });
+          const data = (res as any)?.data || [];
+          const mapped: SelectedBreed[] = data.map((b: any) => ({
+            id: b.source === "custom" ? `custom-${b.customBreedId}` : `breed-${b.breedId}`,
+            breedId: b.breedId ?? null,
+            customBreedId: b.customBreedId ?? null,
+            name: b.name,
+            species: toUiSpecies(b.species),
+            source: b.source,
+          }));
+          setSelectedBreeds(mapped);
+          setInitialBreeds(mapped);
+        } catch (e: any) {
+          setErr(e?.message || "Failed to save breeds");
+          throw e;
+        } finally {
+          setSaving(false);
+        }
+      },
+    }), [selectedBreeds]);
+
+    // Custom breed dialog state
+    const [customBreedOpen, setCustomBreedOpen] = React.useState(false);
+
+  // Add a breed to the list
+    function addBreed(hit: BreedHit) {
+      const exists = selectedBreeds.some(
+        (b) => b.name.toLowerCase() === hit.name.toLowerCase() && b.species === hit.species
+      );
+      if (exists) {
+        setErr(`"${hit.name}" is already in your breeding program.`);
+        return;
+      }
+      // Determine breedId vs customBreedId based on source
+      const isCustom = hit.source === "custom";
+      const breedId = isCustom ? null : (hit.canonicalBreedId ?? (typeof hit.id === "number" ? hit.id : null));
+      const customBreedId = isCustom ? (typeof hit.id === "number" ? hit.id : null) : null;
+
+      setSelectedBreeds((prev) => [
+        ...prev,
+        {
+          id: isCustom ? `custom-${customBreedId}` : `breed-${breedId}`,
+          breedId,
+          customBreedId,
+          name: hit.name,
+          species: hit.species,
+          source: hit.source,
+        },
+      ]);
+      setSelectedBreed(null);
+      setErr("");
+    }
+
+  // Remove a breed
+    function removeBreed(id: string | number) {
+      setSelectedBreeds((prev) => prev.filter((b) => b.id !== id));
+    }
+
+    // Group breeds by species for display
+    const breedsBySpecies = SPECIES_OPTIONS.map((sp) => ({
+      species: sp,
+      breeds: selectedBreeds.filter((b) => b.species === sp),
+    })).filter((g) => g.breeds.length > 0);
+
+    if (loading) {
+      return (
+        <div className="flex items-center justify-center py-12">
+          <div className="text-secondary">Loading breeds...</div>
+        </div>
+      );
+    }
 
   return (
     <div className="space-y-6">
-      <Card className="p-4 space-y-3">
-        <h4 className="font-medium">Breeds (tenant custom and canonical lookup)</h4>
-        <p className="text-sm text-secondary">Canonical breeds are read only. Add custom breeds for your org, then optionally link to a canonical breed.</p>
-        {err && <div className="rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">{err}</div>}
+      {/* Header */}
+      <div>
+        <h3 className="text-lg font-semibold">Breeding Program Breeds</h3>
+        <p className="text-sm text-secondary mt-1">
+          Select the breeds you work with in your breeding program. These will appear on your marketplace listing.
+        </p>
+      </div>
 
-        <div className="flex flex-col md:flex-row gap-3">
-          <select className={`bhq-input ${INPUT_CLS} w-40`} value={species} onChange={(e) => setSpecies(e.currentTarget.value as any)}>
-            <option value="DOG">Dog</option><option value="CAT">Cat</option><option value="HORSE">Horse</option>
-          </select>
-          <div className="flex-1 flex gap-2">
-            <input className={`bhq-input ${INPUT_CLS} flex-1`} placeholder="Search canonical breeds…" value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === "Enter" && doSearch()} />
-            <Button size="sm" onClick={doSearch} disabled={searching}>{searching ? "Searching…" : "Search"}</Button>
+      {err && (
+        <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+          {err}
+        </div>
+      )}
+
+      {/* Add Breed Section */}
+      <Card className="p-5 space-y-4 relative z-10 overflow-visible">
+        <h4 className="font-medium">Add Breed</h4>
+
+        <div className="grid grid-cols-1 sm:grid-cols-[160px_1fr_auto] gap-3 items-end">
+          {/* Species Select */}
+          <div>
+            <div className="mb-1 text-xs text-secondary">Species</div>
+            <select
+              className="h-10 w-full rounded-md border border-hairline bg-surface px-3 text-sm text-primary"
+              value={species}
+              onChange={(e) => {
+                setSpecies(e.currentTarget.value as SpeciesUI);
+                setSelectedBreed(null);
+              }}
+            >
+              {SPECIES_OPTIONS.map((sp) => (
+                <option key={sp} value={sp}>{sp}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Breed Combo */}
+          <div className="relative">
+            <div className="mb-1 text-xs text-secondary">Breed</div>
+            <BreedCombo
+              species={species}
+              value={selectedBreed}
+              onChange={(hit) => {
+                if (hit) {
+                  addBreed(hit);
+                } else {
+                  setSelectedBreed(null);
+                }
+              }}
+            />
+          </div>
+
+          {/* New Custom Button */}
+          <div>
+            <Button
+              variant="secondary"
+              onClick={() => setCustomBreedOpen(true)}
+            >
+              New Custom
+            </Button>
           </div>
         </div>
+      </Card>
 
-        {!!canonResults.length && (
-          <div className="rounded-md border border-hairline divide-y divide-hairline">
-            {canonResults.map((b) => (
-              <div key={b.id} className="flex items-center justify-between px-3 py-2">
-                <div className="text-sm"><span className="font-medium">{b.name}</span>{b.slug ? <span className="ml-2 text-tertiary text-xs">({b.slug})</span> : null}</div>
-                <div className="flex items-center gap-2">
-                  {linkFor != null ? (
-                    <Button size="sm" variant="outline" onClick={async () => { try { await linkCanonical(linkFor, b.id); setLinkFor(null); } catch (e: any) { setErr(e?.message || "Link failed"); } }}>
-                      Link to selected custom
-                    </Button>
-                  ) : (
-                    <Button size="sm" onClick={async () => { try { await addCustom(b.name, b.id); setQ(""); setCanonResults([]); } catch (e: any) { setErr(e?.message || "Create failed"); } }}>
-                      Add as custom
-                    </Button>
-                  )}
+      {/* Selected Breeds Display */}
+      <Card className="p-5 space-y-4 relative z-0">
+        <div className="flex items-center justify-between">
+          <h4 className="font-medium">Your Breeds</h4>
+          <span className="text-sm text-secondary">{selectedBreeds.length} breed{selectedBreeds.length !== 1 ? "s" : ""}</span>
+        </div>
+
+        {selectedBreeds.length === 0 ? (
+          <div className="text-center py-8 text-secondary">
+            <p>No breeds selected yet.</p>
+            <p className="text-sm mt-1">Use the form above to add breeds to your program.</p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {breedsBySpecies.map(({ species: sp, breeds }) => (
+              <div key={sp}>
+                <div className="text-xs font-medium text-secondary uppercase tracking-wide mb-2">{sp}s</div>
+                <div className="flex flex-wrap gap-2">
+                  {breeds.map((b) => (
+                    <span
+                      key={b.id}
+                      className="inline-flex items-center gap-2 text-sm bg-surface-strong px-3 py-1.5 rounded-full border border-hairline"
+                    >
+                      {b.name}
+                      {b.source === "custom" && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-400">
+                          Custom
+                        </span>
+                      )}
+                      <button
+                        type="button"
+                        className="text-secondary hover:text-red-400 transition-colors"
+                        onClick={() => removeBreed(b.id)}
+                        title="Remove breed"
+                      >
+                        ×
+                      </button>
+                    </span>
+                  ))}
                 </div>
               </div>
             ))}
@@ -2106,54 +2286,41 @@ function BreedsTab({ onDirty }: { onDirty: (v: boolean) => void }) {
         )}
       </Card>
 
-      <Card className="p-4 space-y-3">
-        <div className="flex items-center justify-between">
-          <h4 className="font-medium">Your custom breeds ({species.toLowerCase()})</h4>
-          <Button size="sm" variant="outline" onClick={loadCustom} disabled={loadingCustom}>{loadingCustom ? "Refreshing…" : "Refresh"}</Button>
-        </div>
-
-        <div className="flex gap-2">
-          <input className={`bhq-input ${INPUT_CLS} flex-1`} placeholder={`Add custom ${species.toLowerCase()} breed…`} value={newName} onChange={(e) => setNewName(e.target.value)}
-            onKeyDown={async (e) => { if (e.key === "Enter" && newName.trim()) { try { await addCustom(newName.trim(), null); setNewName(""); } catch (e: any) { setErr(e?.message || "Create failed"); } } }} />
-          <Button size="sm" onClick={async () => { if (!newName.trim()) return; try { await addCustom(newName.trim(), null); setNewName(""); } catch (e: any) { setErr(e?.message || "Create failed"); } }}>
-            Add
-          </Button>
-        </div>
-
-        <div className="rounded-md border border-hairline divide-y divide-hairline">
-          {customList.length === 0 ? (
-            <div className="px-3 py-2 text-sm text-secondary">No custom breeds yet.</div>
-          ) : (
-            customList.map((c) => (
-              <div key={c.id} className="flex items-center justify-between px-3 py-2 gap-3">
-                <input className={`bhq-input ${INPUT_CLS} flex-1`} defaultValue={c.name}
-                  onBlur={async (e) => {
-                    const next = e.currentTarget.value.trim();
-                    if (next && next !== c.name) { try { await renameCustom(c.id, next); } catch (e: any) { setErr(e?.message || "Rename failed"); } }
-                  }}
-                />
-                <div className="flex items-center gap-2">
-                  <Button size="sm" variant={linkFor === c.id ? "outline" : "secondary"} onClick={() => setLinkFor(linkFor === c.id ? null : c.id)} title="Select this custom breed to link to a canonical result above">
-                    {linkFor === c.id ? "Selected" : "Link canonical"}
-                  </Button>
-                  {c.canonicalBreedId && (
-                    <Button size="sm" variant="outline" onClick={async () => { try { await linkCanonical(c.id, null); } catch (e: any) { setErr(e?.message || "Unlink failed"); } }}>
-                      Unlink
-                    </Button>
-                  )}
-                  <Button size="sm" variant="outline" onClick={async () => {
-                    if (!confirm(`Delete "${c.name}"?`)) return;
-                    try { await removeCustom(c.id); } catch (e: any) { setErr(e?.message || "Delete failed"); }
-                  }}>Delete</Button>
-                </div>
-              </div>
-            ))
-          )}
-        </div>
-      </Card>
+      {/* Custom Breed Dialog */}
+      {getOverlayRoot() && createPortal(
+        <CustomBreedDialog
+          open={customBreedOpen}
+          onClose={() => setCustomBreedOpen(false)}
+          api={{
+            breeds: {
+              customCreate: async (payload) => {
+                const res = await fetchJson("/api/v1/breeds/custom", {
+                  method: "POST",
+                  body: JSON.stringify(payload),
+                });
+                if (res?.error) throw new Error(res?.message || "Create failed");
+                return res;
+              },
+            },
+          }}
+          species={toApiSpecies(species)}
+          onCreated={(created) => {
+            addBreed({
+              id: created.id,
+              name: created.name,
+              species: species,
+              source: "custom",
+            });
+            setCustomBreedOpen(false);
+          }}
+        />,
+        getOverlayRoot()!
+      )}
     </div>
   );
-}
+  }
+);
+
 function UsersTab({ onDirty }: { dirty: boolean; onDirty: (v: boolean) => void }) {
   return (
     <div className="space-y-6">

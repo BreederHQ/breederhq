@@ -97,3 +97,89 @@ export interface MarketplaceMeResponse {
   userId: string | null;
   marketplaceEntitled: boolean;
 }
+
+/**
+ * Program animal listing types - for individual animals listed on marketplace
+ *
+ * @stable - These types are frozen. Do not modify without backend coordination.
+ */
+export type AnimalListingIntent = "STUD" | "BROOD_PLACEMENT" | "REHOME" | "SHOWCASE";
+export type AnimalListingStatus = "DRAFT" | "LIVE" | "PAUSED";
+export type AnimalListingPriceModel = "fixed" | "range" | "inquire";
+
+/**
+ * Intent-specific detailsJson schema definitions.
+ *
+ * @stable - These schemas are frozen. Backend validates these shapes.
+ *
+ * STUD intent:
+ *   - studFeeCents?: number        // Fixed stud fee in cents
+ *   - studFeeMinCents?: number     // Range stud fee minimum
+ *   - studFeeMaxCents?: number     // Range stud fee maximum
+ *   - healthTestingIncluded?: boolean
+ *   - contractRequired?: boolean
+ *   - availableForAI?: boolean     // Artificial insemination available
+ *
+ * BROOD_PLACEMENT intent:
+ *   - coOwnershipOffered?: boolean
+ *   - breedingRightsIncluded?: boolean
+ *   - showQuality?: boolean
+ *   - registrationTransfer?: boolean
+ *
+ * REHOME intent:
+ *   - reasonForRehome?: string
+ *   - goodWithChildren?: boolean
+ *   - goodWithOtherDogs?: boolean
+ *   - goodWithCats?: boolean
+ *   - houseTrained?: boolean
+ *   - crateTrained?: boolean
+ *   - spayNeuterRequired?: boolean
+ *
+ * SHOWCASE intent:
+ *   - achievements?: string[]      // Show wins, titles, etc.
+ *   - pedigreeHighlights?: string
+ *   - notForSale?: boolean         // Explicit "not for sale" flag
+ */
+export type AnimalListingDetailsJson = Record<string, unknown>;
+
+/**
+ * Public animal listing - matches backend AnimalPublicListing
+ * Only LIVE listings are returned from public endpoints
+ *
+ * @stable - Do not modify field names or types without backend coordination.
+ */
+export interface PublicAnimalListingDTO extends MonetizationFields {
+  id: number;
+  urlSlug: string;
+  intent: AnimalListingIntent;
+  headline: string | null;
+  title: string | null;
+  summary: string | null;
+  description: string | null;
+  priceCents: number | null;
+  priceMinCents: number | null;
+  priceMaxCents: number | null;
+  priceText: string | null;
+  priceModel: AnimalListingPriceModel | null;
+  locationCity: string | null;
+  locationRegion: string | null;
+  locationCountry: string | null;
+  primaryPhotoUrl: string | null;
+  detailsJson: AnimalListingDetailsJson | null;
+  // Animal details
+  animalName: string;
+  animalBreed: string | null;
+  animalSpecies: string;
+  animalSex: string | null;
+  animalDob: string | null;
+  // Program details
+  programSlug: string;
+  programName: string;
+}
+
+export interface AnimalListingsResponse {
+  items: PublicAnimalListingDTO[];
+  total: number;
+  page: number;
+  limit: number;
+}

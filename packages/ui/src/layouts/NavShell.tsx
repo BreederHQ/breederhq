@@ -199,9 +199,9 @@ export const NavShell: React.FC<NavShellProps> = ({
   }, [displayTitle, navItems]);
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
+    <div className="flex-1 flex flex-col min-h-0 bg-background text-foreground">
       {/* Top bar */}
-      <div className="sticky top-0 z-40">
+      <div className="shrink-0 z-40">
         <div className="backdrop-blur bg-surface/70 border-b border-hairline">
           <div className="relative">
             <div className="pointer-events-none absolute inset-x-0 -bottom-px h-px bg-gradient-to-r from-transparent via-[hsl(var(--brand-orange))/60%] to-transparent" />
@@ -323,7 +323,7 @@ export const NavShell: React.FC<NavShellProps> = ({
       </div>
 
       {/* Body */}
-      <div className="w-full px-4 sm:px-6 lg:px-8 py-4">
+      <div className="flex-1 min-h-0 overflow-y-auto w-full px-4 sm:px-6 lg:px-8 py-4">
         <div className="flex gap-4">
           <aside className={cls("shrink-0 transition-all", railOpen ? "w-56" : "w-[72px]")}>
             <nav className="rounded-2xl border border-hairline bg-surface p-1.5">
