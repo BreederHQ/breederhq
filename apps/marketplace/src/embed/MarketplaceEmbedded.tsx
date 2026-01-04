@@ -9,6 +9,7 @@ import "../index.css";
 import { HomePage } from "../marketplace/pages/HomePage";
 import { AnimalsIndexPage } from "../marketplace/pages/AnimalsIndexPage";
 import { BreedersIndexPage } from "../marketplace/pages/BreedersIndexPage";
+import { BreederPage } from "../marketplace/pages/BreederPage";
 import { ServicesPage } from "../marketplace/pages/ServicesPage";
 import { InquiriesPage } from "../marketplace/pages/InquiriesPage";
 import { UpdatesPage } from "../marketplace/pages/UpdatesPage";
@@ -18,8 +19,10 @@ import { ListingPage } from "../marketplace/pages/ListingPage";
 const BASE_PATH = "/marketplace";
 
 function getMarketplacePath(): string {
-  const full = window.location.pathname.toLowerCase();
-  if (full.startsWith(BASE_PATH)) {
+  const full = window.location.pathname;
+  const fullLower = full.toLowerCase();
+  if (fullLower.startsWith(BASE_PATH.toLowerCase())) {
+    // Preserve original casing in the returned path
     return full.slice(BASE_PATH.length) || "/";
   }
   return "/";
@@ -104,6 +107,7 @@ export function MarketplaceEmbedded() {
           <Route path="/" element={<HomePage />} />
           <Route path="/animals" element={<AnimalsIndexPage />} />
           <Route path="/breeders" element={<BreedersIndexPage />} />
+          <Route path="/breeders/:tenantSlug" element={<BreederPage />} />
           <Route path="/services" element={<ServicesPage />} />
           <Route path="/inquiries" element={<InquiriesPage />} />
           <Route path="/updates" element={<UpdatesPage />} />

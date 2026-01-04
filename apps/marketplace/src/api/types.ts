@@ -103,7 +103,7 @@ export interface MarketplaceMeResponse {
  *
  * @stable - These types are frozen. Do not modify without backend coordination.
  */
-export type AnimalListingIntent = "STUD" | "BROOD_PLACEMENT" | "REHOME" | "SHOWCASE";
+export type AnimalListingIntent = "STUD" | "BROOD_PLACEMENT" | "REHOME" | "GUARDIAN_PLACEMENT";
 export type AnimalListingStatus = "DRAFT" | "LIVE" | "PAUSED";
 export type AnimalListingPriceModel = "fixed" | "range" | "inquire";
 
@@ -135,10 +135,10 @@ export type AnimalListingPriceModel = "fixed" | "range" | "inquire";
  *   - crateTrained?: boolean
  *   - spayNeuterRequired?: boolean
  *
- * SHOWCASE intent:
- *   - achievements?: string[]      // Show wins, titles, etc.
- *   - pedigreeHighlights?: string
- *   - notForSale?: boolean         // Explicit "not for sale" flag
+ * GUARDIAN_PLACEMENT intent:
+ *   - guardianTerms?: string       // Co-ownership terms, breeding expectations
+ *   - breedingCommitment?: string  // e.g., "2-3 litters"
+ *   - vetCareProvided?: boolean    // Whether breeder covers vet expenses
  */
 export type AnimalListingDetailsJson = Record<string, unknown>;
 

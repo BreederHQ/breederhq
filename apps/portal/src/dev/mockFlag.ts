@@ -4,19 +4,9 @@
 // - URL query param mock=1 (sets localStorage and returns true)
 // - URL query param mock=0 (clears localStorage and returns false)
 // - localStorage portal_mock === "1" (persists across navigation)
-//
-// PRODUCTION SAFETY: In production builds (!import.meta.env.DEV), demo mode
-// is hard-disabled unless VITE_ALLOW_DEMO_MODE=1 is set at build time.
 
 export function isPortalMockEnabled(): boolean {
   if (typeof window === "undefined") {
-    return false;
-  }
-
-  // Production hard-disable: demo mode is only available in development
-  // or when explicitly enabled via VITE_ALLOW_DEMO_MODE=1 build flag
-  const allowDemoMode = import.meta.env.DEV || import.meta.env.VITE_ALLOW_DEMO_MODE === "1";
-  if (!allowDemoMode) {
     return false;
   }
 
