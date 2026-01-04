@@ -72,46 +72,6 @@ function getPlaceholderForSpecies(species?: string | null): string {
 }
 
 /** ────────────────────────────────────────────────────────────────────────
- * Feature Flags
- * ─────────────────────────────────────────────────────────────────────── */
-
-const FEATURE_FLAG_KEY = "BHQ_FEATURE_ANIMAL_MARKETPLACE";
-
-/**
- * Check if animal marketplace listings feature is enabled.
- * Defaults to OFF for production.
- *
- * Enablement methods (no URL params - security risk):
- * - Environment variable: VITE_FEATURE_ANIMAL_MARKETPLACE=true
- * - localStorage: BHQ_FEATURE_ANIMAL_MARKETPLACE=true (internal testers only)
- */
-function isAnimalMarketplaceEnabled(): boolean {
-  // Environment variable (Vite) - controlled environments only
-  try {
-    const envFlag = (import.meta as any)?.env?.VITE_FEATURE_ANIMAL_MARKETPLACE;
-    if (envFlag === "true" || envFlag === true) return true;
-  } catch { /* ignore */ }
-
-  // localStorage override - internal testers only (shows badge)
-  try {
-    if (localStorage.getItem(FEATURE_FLAG_KEY) === "true") return true;
-  } catch { /* ignore */ }
-
-  return false;
-}
-
-/**
- * Check if feature was enabled via localStorage (shows "Internal Feature" badge).
- */
-function isAnimalMarketplaceLocalStorageEnabled(): boolean {
-  try {
-    return localStorage.getItem(FEATURE_FLAG_KEY) === "true";
-  } catch {
-    return false;
-  }
-}
-
-/** ────────────────────────────────────────────────────────────────────────
  * Types & utils
  * ─────────────────────────────────────────────────────────────────────── */
 // NOTE: OwnershipRow is imported from @bhq/ui/utils/ownership at top of file
@@ -1972,8 +1932,24 @@ function ProgramTab({
  * ─────────────────────────────────────────────────────────────────────── */
 
 type ListingStatus = "DRAFT" | "LIVE" | "PAUSED";
-type ListingIntent = "STUD" | "BROOD_PLACEMENT" | "REHOME" | "SHOWCASE";
+type ListingIntent = "STUD" | "BROOD_PLACEMENT" | "REHOME" | "GUARDIAN_PLACEMENT";
 type PriceModel = "fixed" | "range" | "inquire";
+type PublicLocationMode = "city_state" | "zip_only" | "full" | "hidden";
+
+interface ListingLocationData {
+  useBreederDefaults: boolean;
+  street: string;
+  city: string;
+  state: string;
+  zip: string;
+  country: string;
+  publicLocationMode: PublicLocationMode;
+  searchParticipation: {
+    distanceSearch: boolean;
+    citySearch: boolean;
+    zipRadius: boolean;
+  };
+}
 
 interface ListingFormData {
   intent: ListingIntent | null;
@@ -1986,9 +1962,7 @@ interface ListingFormData {
   priceMinCents: number | null;
   priceMaxCents: number | null;
   priceText: string;
-  locationCity: string;
-  locationRegion: string;
-  locationCountry: string;
+  location: ListingLocationData;
   detailsJson: Record<string, any>;
   primaryPhotoUrl: string | null;
 }
@@ -1997,7 +1971,7 @@ const INTENT_OPTIONS: { value: ListingIntent; label: string; description: string
   { value: "STUD", label: "Stud Service", description: "Offer this male for breeding" },
   { value: "BROOD_PLACEMENT", label: "Brood Placement", description: "Place breeding female with another program" },
   { value: "REHOME", label: "Rehome", description: "Find a new home for this animal" },
-  { value: "SHOWCASE", label: "Showcase", description: "Display this animal without sale intent" },
+  { value: "GUARDIAN_PLACEMENT", label: "Guardian Placement", description: "Place with a guardian home while retaining breeding rights" },
 ];
 
 const PRICE_MODEL_OPTIONS: { value: PriceModel; label: string }[] = [
@@ -2016,7 +1990,6 @@ function MarketplaceListingTab({
   const [loading, setLoading] = React.useState(true);
   const [saving, setSaving] = React.useState(false);
   const [listing, setListing] = React.useState<any | null>(null);
-  const [enabled, setEnabled] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
   const [form, setForm] = React.useState<ListingFormData>({
@@ -2030,12 +2003,64 @@ function MarketplaceListingTab({
     priceMinCents: null,
     priceMaxCents: null,
     priceText: "",
-    locationCity: "",
-    locationRegion: "",
-    locationCountry: "",
+    location: {
+      useBreederDefaults: true,
+      street: "",
+      city: "",
+      state: "",
+      zip: "",
+      country: "",
+      publicLocationMode: "hidden",
+      searchParticipation: {
+        distanceSearch: false,
+        citySearch: false,
+        zipRadius: false,
+      },
+    },
     detailsJson: {},
     primaryPhotoUrl: null,
   });
+
+  // Breeder's published location settings (fetched once, used when useBreederDefaults is true)
+  const [breederLocation, setBreederLocation] = React.useState<ListingLocationData | null>(null);
+  const [breederLocationLoading, setBreederLocationLoading] = React.useState(false);
+
+  // Fetch breeder's published location settings
+  React.useEffect(() => {
+    let dead = false;
+    (async () => {
+      try {
+        setBreederLocationLoading(true);
+        const res = await fetch("/api/v1/marketplace/profile", { credentials: "include" });
+        if (!res.ok || dead) return;
+        const data = await res.json();
+        const profile = data?.published || data?.draft;
+        if (profile?.address && !dead) {
+          setBreederLocation({
+            useBreederDefaults: true,
+            street: profile.address.street || "",
+            city: profile.address.city || "",
+            state: profile.address.state || "",
+            zip: profile.address.zip || "",
+            country: profile.address.country || "",
+            publicLocationMode: profile.publicLocationMode || "hidden",
+            searchParticipation: profile.searchParticipation || {
+              distanceSearch: false,
+              citySearch: false,
+              zipRadius: false,
+            },
+          });
+        }
+      } catch { /* ignore */ }
+      finally { if (!dead) setBreederLocationLoading(false); }
+    })();
+    return () => { dead = true; };
+  }, []);
+
+  // The effective location to display (breeder defaults or custom)
+  const effectiveLocation = form.location.useBreederDefaults && breederLocation
+    ? breederLocation
+    : form.location;
 
   // Load existing listing on mount
   React.useEffect(() => {
@@ -2047,7 +2072,6 @@ function MarketplaceListingTab({
         const existing = await api?.animalPublicListing?.get?.(animal.id);
         if (!dead && existing) {
           setListing(existing);
-          setEnabled(true);
           setForm({
             intent: existing.intent || null,
             headline: existing.headline || "",
@@ -2059,9 +2083,20 @@ function MarketplaceListingTab({
             priceMinCents: existing.priceMinCents ?? null,
             priceMaxCents: existing.priceMaxCents ?? null,
             priceText: existing.priceText || "",
-            locationCity: existing.locationCity || "",
-            locationRegion: existing.locationRegion || "",
-            locationCountry: existing.locationCountry || "",
+            location: existing.location || {
+              useBreederDefaults: existing.useBreederLocationDefaults ?? true,
+              street: existing.locationStreet || "",
+              city: existing.locationCity || "",
+              state: existing.locationRegion || "",
+              zip: existing.locationZip || "",
+              country: existing.locationCountry || "",
+              publicLocationMode: existing.publicLocationMode || "hidden",
+              searchParticipation: existing.searchParticipation || {
+                distanceSearch: false,
+                citySearch: false,
+                zipRadius: false,
+              },
+            },
             detailsJson: existing.detailsJson || {},
             primaryPhotoUrl: existing.primaryPhotoUrl || animal.photoUrl || null,
           });
@@ -2084,13 +2119,14 @@ function MarketplaceListingTab({
   const status: ListingStatus | null = listing?.status || null;
 
   // Validation for publish
-  const canPublish = enabled && form.intent != null && form.headline.trim().length > 0;
+  const canPublish = form.intent != null && form.headline.trim().length > 0;
 
   const handleSave = async () => {
-    if (!enabled) return;
     try {
       setSaving(true);
       setError(null);
+      // Use effective location (breeder defaults or custom)
+      const loc = form.location.useBreederDefaults && breederLocation ? breederLocation : form.location;
       const payload = {
         intent: form.intent,
         headline: form.headline || null,
@@ -2102,9 +2138,15 @@ function MarketplaceListingTab({
         priceMinCents: form.priceModel === "range" ? form.priceMinCents : null,
         priceMaxCents: form.priceModel === "range" ? form.priceMaxCents : null,
         priceText: form.priceModel === "inquire" ? form.priceText : null,
-        locationCity: form.locationCity || null,
-        locationRegion: form.locationRegion || null,
-        locationCountry: form.locationCountry || null,
+        // Location data
+        useBreederLocationDefaults: form.location.useBreederDefaults,
+        locationStreet: loc.street || null,
+        locationCity: loc.city || null,
+        locationRegion: loc.state || null,
+        locationZip: loc.zip || null,
+        locationCountry: loc.country || null,
+        publicLocationMode: loc.publicLocationMode,
+        searchParticipation: loc.searchParticipation,
         detailsJson: Object.keys(form.detailsJson).length > 0 ? form.detailsJson : null,
         primaryPhotoUrl: form.primaryPhotoUrl,
       };
@@ -2166,7 +2208,6 @@ function MarketplaceListingTab({
       setError(null);
       await api?.animalPublicListing?.delete?.(animal.id);
       setListing(null);
-      setEnabled(false);
       setForm({
         intent: null,
         headline: "",
@@ -2178,9 +2219,20 @@ function MarketplaceListingTab({
         priceMinCents: null,
         priceMaxCents: null,
         priceText: "",
-        locationCity: "",
-        locationRegion: "",
-        locationCountry: "",
+        location: {
+          useBreederDefaults: true,
+          street: "",
+          city: "",
+          state: "",
+          zip: "",
+          country: "",
+          publicLocationMode: "hidden",
+          searchParticipation: {
+            distanceSearch: false,
+            citySearch: false,
+            zipRadius: false,
+          },
+        },
         detailsJson: {},
         primaryPhotoUrl: animal.photoUrl || null,
       });
@@ -2188,21 +2240,6 @@ function MarketplaceListingTab({
       setError(err?.message || "Failed to delete listing");
     } finally {
       setSaving(false);
-    }
-  };
-
-  const handleEnableToggle = async () => {
-    if (enabled) {
-      // Disabling - ask to delete listing if it exists
-      if (listing) {
-        await handleDelete();
-      } else {
-        setEnabled(false);
-      }
-    } else {
-      // Enabling - create draft listing
-      setEnabled(true);
-      // Will save on first explicit save
     }
   };
 
@@ -2218,18 +2255,6 @@ function MarketplaceListingTab({
 
   return (
     <div className="space-y-3">
-      {/* Internal Feature badge - shown when enabled via localStorage */}
-      {isAnimalMarketplaceLocalStorageEnabled() && (
-        <div className="flex items-center gap-2 px-3 py-2 rounded-md bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700">
-          <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide bg-amber-500 text-white">
-            Internal Feature
-          </span>
-          <span className="text-xs text-amber-700 dark:text-amber-400">
-            This feature is in preview. Screenshots may not reflect production.
-          </span>
-        </div>
-      )}
-
       {/* Error banner */}
       {error && (
         <div className="rounded-md bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 p-3">
@@ -2237,74 +2262,42 @@ function MarketplaceListingTab({
         </div>
       )}
 
-      {/* Marketplace presence toggle and status */}
-      <SectionCard title="Marketplace Presence">
-        <div className="flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <label className="relative inline-flex cursor-pointer items-center">
-              <input
-                type="checkbox"
-                checked={enabled}
-                onChange={handleEnableToggle}
-                disabled={saving}
-                className="peer sr-only"
-              />
-              <div className="h-6 w-11 rounded-full bg-neutral-200 dark:bg-neutral-700 peer-checked:bg-orange-500 peer-disabled:opacity-50 transition-colors after:absolute after:left-[2px] after:top-[2px] after:h-5 after:w-5 after:rounded-full after:bg-white after:transition-all peer-checked:after:translate-x-full" />
-            </label>
-            <span className="text-sm font-medium text-primary">
-              {enabled ? "Published to Marketplace" : "Not on Marketplace"}
-            </span>
-          </div>
-
-          {status && (
-            <span
-              className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                status === "LIVE"
-                  ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400"
-                  : status === "PAUSED"
-                    ? "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400"
-                    : "bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-400"
-              }`}
-            >
-              {status === "LIVE" ? "Live" : status === "PAUSED" ? "Paused" : "Draft"}
-            </span>
-          )}
-        </div>
-
-        {status === "LIVE" && listing?.publishedAt && (
-          <div className="mt-2 text-xs text-secondary">
-            Published {new Date(listing.publishedAt).toLocaleDateString()}
-          </div>
-        )}
-      </SectionCard>
-
-      {enabled && (
-        <>
-          {/* Listing Intent */}
+      {/* Listing Intent */}
           <SectionCard title="Listing Intent">
-            <div className="space-y-3">
-              <div>
-                <label className="text-xs text-secondary mb-1 block">
-                  What are you listing this animal for? {status === "LIVE" || status === "PAUSED" ? "" : "(Required to publish)"}
-                </label>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  {INTENT_OPTIONS.map((opt) => (
-                    <button
-                      key={opt.value}
-                      type="button"
-                      onClick={() => setForm((f) => ({ ...f, intent: opt.value }))}
-                      className={`flex flex-col items-start p-3 rounded-md border text-left transition-colors ${
-                        form.intent === opt.value
-                          ? "border-orange-500 bg-orange-50 dark:bg-orange-900/20"
-                          : "border-hairline hover:border-neutral-400 dark:hover:border-neutral-600"
-                      }`}
-                    >
-                      <span className="text-sm font-medium text-primary">{opt.label}</span>
-                      <span className="text-xs text-secondary mt-0.5">{opt.description}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
+            <p className="text-xs text-secondary mb-3">
+              What are you listing this animal for? {status === "LIVE" || status === "PAUSED" ? "" : "(Required to publish)"}
+            </p>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+              {INTENT_OPTIONS.map((opt) => {
+                const isSelected = form.intent === opt.value;
+                const animalSex = animal.sex?.toUpperCase();
+                // Sex gating: STUD is for males only, BROOD_PLACEMENT is for females only
+                const isDisabled =
+                  (opt.value === "STUD" && animalSex === "FEMALE") ||
+                  (opt.value === "BROOD_PLACEMENT" && animalSex === "MALE");
+                return (
+                  <div
+                    key={opt.value}
+                    onClick={() => !isDisabled && setForm((f) => ({ ...f, intent: opt.value }))}
+                    style={{
+                      padding: "16px",
+                      borderRadius: "8px",
+                      border: isSelected ? "2px solid #f97316" : "2px solid #404040",
+                      backgroundColor: isSelected ? "rgba(249, 115, 22, 0.1)" : "rgba(38, 38, 38, 0.5)",
+                      cursor: isDisabled ? "not-allowed" : "pointer",
+                      opacity: isDisabled ? 0.4 : 1,
+                    }}
+                    title={isDisabled ? `Not available for ${animalSex?.toLowerCase()} animals` : undefined}
+                  >
+                    <div style={{ fontSize: "14px", fontWeight: 600, color: "#fff", marginBottom: "4px" }}>
+                      {opt.label}
+                    </div>
+                    <div style={{ fontSize: "12px", color: "#a1a1aa", lineHeight: 1.4 }}>
+                      {opt.description}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </SectionCard>
 
@@ -2316,7 +2309,10 @@ function MarketplaceListingTab({
                 <Input
                   placeholder="e.g., Champion Stud Available for Breeding"
                   value={form.headline}
-                  onChange={(e) => setForm((f) => ({ ...f, headline: e.currentTarget.value }))}
+                  onChange={(e) => {
+                    const v = e.currentTarget.value;
+                    setForm((f) => ({ ...f, headline: v }));
+                  }}
                 />
               </div>
 
@@ -2326,7 +2322,10 @@ function MarketplaceListingTab({
                   <Input
                     placeholder="Animal display name"
                     value={form.title}
-                    onChange={(e) => setForm((f) => ({ ...f, title: e.currentTarget.value }))}
+                    onChange={(e) => {
+                      const v = e.currentTarget.value;
+                      setForm((f) => ({ ...f, title: v }));
+                    }}
                   />
                 </div>
                 <div>
@@ -2334,7 +2333,10 @@ function MarketplaceListingTab({
                   <Input
                     placeholder="Photo URL (uses animal photo if blank)"
                     value={form.primaryPhotoUrl || ""}
-                    onChange={(e) => setForm((f) => ({ ...f, primaryPhotoUrl: e.currentTarget.value || null }))}
+                    onChange={(e) => {
+                      const v = e.currentTarget.value || null;
+                      setForm((f) => ({ ...f, primaryPhotoUrl: v }));
+                    }}
                   />
                 </div>
               </div>
@@ -2344,7 +2346,10 @@ function MarketplaceListingTab({
                 <Input
                   placeholder="Short description for listing cards"
                   value={form.summary}
-                  onChange={(e) => setForm((f) => ({ ...f, summary: e.currentTarget.value }))}
+                  onChange={(e) => {
+                    const v = e.currentTarget.value;
+                    setForm((f) => ({ ...f, summary: v }));
+                  }}
                 />
               </div>
 
@@ -2354,44 +2359,263 @@ function MarketplaceListingTab({
                   className="h-24 w-full rounded-md border border-hairline bg-surface px-3 py-2 text-sm text-primary outline-none"
                   placeholder="Full description for listing detail page"
                   value={form.description}
-                  onChange={(e) => setForm((f) => ({ ...f, description: e.currentTarget.value }))}
+                  onChange={(e) => {
+                    const v = e.currentTarget.value;
+                    setForm((f) => ({ ...f, description: v }));
+                  }}
                 />
               </div>
             </div>
           </SectionCard>
 
-          {/* Location */}
-          <SectionCard title="Location">
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div>
-                <label className="text-xs text-secondary mb-1 block">City</label>
-                <Input
-                  placeholder="City"
-                  value={form.locationCity}
-                  onChange={(e) => setForm((f) => ({ ...f, locationCity: e.currentTarget.value }))}
+          {/* Location and Service Area */}
+          <SectionCard title="Location and Service Area">
+            <div className="space-y-4">
+              {/* Use Breeder Defaults Checkbox */}
+              <label className="flex items-center gap-3 p-3 rounded-lg border border-hairline bg-surface-strong cursor-pointer hover:border-orange-500/50 transition-colors">
+                <input
+                  type="checkbox"
+                  checked={form.location.useBreederDefaults}
+                  onChange={(e) => {
+                    const checked = e.target.checked;
+                    setForm((f) => ({
+                      ...f,
+                      location: { ...f.location, useBreederDefaults: checked },
+                    }));
+                  }}
+                  className="w-4 h-4 rounded border-hairline accent-orange-500"
                 />
-              </div>
-              <div>
-                <label className="text-xs text-secondary mb-1 block">State/Region</label>
-                <Input
-                  placeholder="State or Region"
-                  value={form.locationRegion}
-                  onChange={(e) => setForm((f) => ({ ...f, locationRegion: e.currentTarget.value }))}
-                />
-              </div>
-              <div>
-                <label className="text-xs text-secondary mb-1 block">Country</label>
-                <Input
-                  placeholder="Country"
-                  value={form.locationCountry}
-                  onChange={(e) => setForm((f) => ({ ...f, locationCountry: e.currentTarget.value }))}
-                />
-              </div>
+                <div className="flex-1">
+                  <span className="text-sm font-medium text-primary">Use Breeder Defaults</span>
+                  <p className="text-xs text-secondary mt-0.5">
+                    {breederLocationLoading
+                      ? "Loading breeder settings..."
+                      : breederLocation
+                        ? "Mirror your published Marketplace Profile location settings"
+                        : "No breeder profile found - configure in Settings → Marketing"}
+                  </p>
+                </div>
+              </label>
+
+              {/* Show breeder defaults preview when enabled, or editable fields when disabled */}
+              {form.location.useBreederDefaults && breederLocation ? (
+                <div className="rounded-lg border border-hairline bg-surface-strong/50 p-4 space-y-3">
+                  <p className="text-xs text-secondary">
+                    These settings mirror your Marketplace Profile. To change them, update your{" "}
+                    <span className="text-orange-500">Settings → Marketing</span> page.
+                  </p>
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div>
+                      <span className="text-xs text-secondary block mb-1">Location</span>
+                      <span className="text-primary">
+                        {[breederLocation.city, breederLocation.state, breederLocation.country].filter(Boolean).join(", ") || "Not set"}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-xs text-secondary block mb-1">Public Display</span>
+                      <span className="text-primary">
+                        {breederLocation.publicLocationMode === "city_state" && "City + State"}
+                        {breederLocation.publicLocationMode === "zip_only" && "ZIP Code only"}
+                        {breederLocation.publicLocationMode === "full" && "City + State + ZIP"}
+                        {breederLocation.publicLocationMode === "hidden" && "Hidden from public"}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap gap-2 text-xs">
+                    {breederLocation.searchParticipation.distanceSearch && (
+                      <span className="px-2 py-1 rounded-full bg-green-500/10 text-green-400 border border-green-500/20">Distance search</span>
+                    )}
+                    {breederLocation.searchParticipation.citySearch && (
+                      <span className="px-2 py-1 rounded-full bg-green-500/10 text-green-400 border border-green-500/20">City/state search</span>
+                    )}
+                    {breederLocation.searchParticipation.zipRadius && (
+                      <span className="px-2 py-1 rounded-full bg-green-500/10 text-green-400 border border-green-500/20">ZIP radius search</span>
+                    )}
+                    {!breederLocation.searchParticipation.distanceSearch && !breederLocation.searchParticipation.citySearch && !breederLocation.searchParticipation.zipRadius && (
+                      <span className="text-secondary italic">No search participation enabled</span>
+                    )}
+                  </div>
+                </div>
+              ) : !form.location.useBreederDefaults ? (
+                <>
+                  <p className="text-xs text-secondary">
+                    Your full address is kept private. Choose how much to display publicly.
+                  </p>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="col-span-2">
+                      <label className="block text-sm font-medium text-primary mb-1">Street Address (Private)</label>
+                      <Input
+                        placeholder="123 Main St"
+                        value={form.location.street}
+                        onChange={(e) => {
+                          const v = e.currentTarget.value;
+                          setForm((f) => ({
+                            ...f,
+                            location: { ...f.location, street: v },
+                          }));
+                        }}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-primary mb-1">City</label>
+                      <Input
+                        placeholder="City"
+                        value={form.location.city}
+                        onChange={(e) => {
+                          const v = e.currentTarget.value;
+                          setForm((f) => ({
+                            ...f,
+                            location: { ...f.location, city: v },
+                          }));
+                        }}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-primary mb-1">State/Province</label>
+                      <Input
+                        placeholder="State"
+                        value={form.location.state}
+                        onChange={(e) => {
+                          const v = e.currentTarget.value;
+                          setForm((f) => ({
+                            ...f,
+                            location: { ...f.location, state: v },
+                          }));
+                        }}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-primary mb-1">ZIP/Postal Code</label>
+                      <Input
+                        placeholder="12345"
+                        value={form.location.zip}
+                        onChange={(e) => {
+                          const v = e.currentTarget.value;
+                          setForm((f) => ({
+                            ...f,
+                            location: { ...f.location, zip: v },
+                          }));
+                        }}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-primary mb-1">Country</label>
+                      <Input
+                        placeholder="Country"
+                        value={form.location.country}
+                        onChange={(e) => {
+                          const v = e.currentTarget.value;
+                          setForm((f) => ({
+                            ...f,
+                            location: { ...f.location, country: v },
+                          }));
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-6">
+                    <div>
+                      <label className="block text-sm font-medium text-primary mb-2">Public Location Display</label>
+                      <div className="space-y-2">
+                        {([
+                          { value: "city_state", label: "City + State" },
+                          { value: "zip_only", label: "ZIP Code only" },
+                          { value: "full", label: "City + State + ZIP" },
+                          { value: "hidden", label: "Hidden from public" },
+                        ] as const).map((opt) => (
+                          <label key={opt.value} className="flex items-center gap-2 cursor-pointer">
+                            <input
+                              type="radio"
+                              name="publicLocationMode"
+                              value={opt.value}
+                              checked={form.location.publicLocationMode === opt.value}
+                              onChange={() => setForm((f) => ({
+                                ...f,
+                                location: { ...f.location, publicLocationMode: opt.value },
+                              }))}
+                              className="w-4 h-4 border-hairline accent-orange-500"
+                            />
+                            <span className="text-sm text-primary">{opt.label}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-primary mb-2">Search Participation</label>
+                      <div className="space-y-2">
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={form.location.searchParticipation.distanceSearch}
+                            onChange={(e) => {
+                              const checked = e.target.checked;
+                              setForm((f) => ({
+                                ...f,
+                                location: {
+                                  ...f.location,
+                                  searchParticipation: { ...f.location.searchParticipation, distanceSearch: checked },
+                                },
+                              }));
+                            }}
+                            className="w-4 h-4 rounded border-hairline accent-orange-500"
+                          />
+                          <span className="text-sm text-primary">Allow distance-based search</span>
+                        </label>
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={form.location.searchParticipation.citySearch}
+                            onChange={(e) => {
+                              const checked = e.target.checked;
+                              setForm((f) => ({
+                                ...f,
+                                location: {
+                                  ...f.location,
+                                  searchParticipation: { ...f.location.searchParticipation, citySearch: checked },
+                                },
+                              }));
+                            }}
+                            className="w-4 h-4 rounded border-hairline accent-orange-500"
+                          />
+                          <span className="text-sm text-primary">Allow city/state search</span>
+                        </label>
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={form.location.searchParticipation.zipRadius}
+                            onChange={(e) => {
+                              const checked = e.target.checked;
+                              setForm((f) => ({
+                                ...f,
+                                location: {
+                                  ...f.location,
+                                  searchParticipation: { ...f.location.searchParticipation, zipRadius: checked },
+                                },
+                              }));
+                            }}
+                            className="w-4 h-4 rounded border-hairline accent-orange-500"
+                          />
+                          <span className="text-sm text-primary">Allow ZIP radius search</span>
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+                </>
+              ) : null}
             </div>
           </SectionCard>
 
           {/* Pricing */}
-          <SectionCard title="Pricing">
+          <SectionCard title={
+            form.intent === "STUD" ? "Stud Fee" :
+            form.intent === "REHOME" ? "Adoption Fee" :
+            form.intent === "GUARDIAN_PLACEMENT" ? "Guardian Deposit" :
+            form.intent === "BROOD_PLACEMENT" ? "Placement Fee" :
+            "Pricing"
+          }>
             <div className="space-y-3">
               <div>
                 <label className="text-xs text-secondary mb-1 block">Price Model</label>
@@ -2415,7 +2639,13 @@ function MarketplaceListingTab({
 
               {form.priceModel === "fixed" && (
                 <div>
-                  <label className="text-xs text-secondary mb-1 block">Price ($)</label>
+                  <label className="text-xs text-secondary mb-1 block">
+                    {form.intent === "STUD" ? "Stud Fee" :
+                     form.intent === "REHOME" ? "Adoption Fee" :
+                     form.intent === "GUARDIAN_PLACEMENT" ? "Deposit Amount" :
+                     form.intent === "BROOD_PLACEMENT" ? "Placement Fee" :
+                     "Price"} ($)
+                  </label>
                   <Input
                     type="number"
                     min="0"
@@ -2436,7 +2666,7 @@ function MarketplaceListingTab({
               {form.priceModel === "range" && (
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="text-xs text-secondary mb-1 block">Min Price ($)</label>
+                    <label className="text-xs text-secondary mb-1 block">Min ($)</label>
                     <Input
                       type="number"
                       min="0"
@@ -2453,7 +2683,7 @@ function MarketplaceListingTab({
                     />
                   </div>
                   <div>
-                    <label className="text-xs text-secondary mb-1 block">Max Price ($)</label>
+                    <label className="text-xs text-secondary mb-1 block">Max ($)</label>
                     <Input
                       type="number"
                       min="0"
@@ -2478,7 +2708,10 @@ function MarketplaceListingTab({
                   <Input
                     placeholder="e.g., Contact for pricing details"
                     value={form.priceText}
-                    onChange={(e) => setForm((f) => ({ ...f, priceText: e.currentTarget.value }))}
+                    onChange={(e) => {
+                      const v = e.currentTarget.value;
+                      setForm((f) => ({ ...f, priceText: v }));
+                    }}
                   />
                 </div>
               )}
@@ -2497,12 +2730,13 @@ function MarketplaceListingTab({
                         className="h-20 w-full rounded-md border border-hairline bg-surface px-3 py-2 text-sm text-primary outline-none"
                         placeholder="Any special terms, repeat breeding discount, etc."
                         value={form.detailsJson.studFeeNotes || ""}
-                        onChange={(e) =>
+                        onChange={(e) => {
+                          const v = e.currentTarget.value;
                           setForm((f) => ({
                             ...f,
-                            detailsJson: { ...f.detailsJson, studFeeNotes: e.currentTarget.value },
-                          }))
-                        }
+                            detailsJson: { ...f.detailsJson, studFeeNotes: v },
+                          }));
+                        }}
                       />
                     </div>
                     <div className="grid grid-cols-2 gap-3">
@@ -2511,12 +2745,13 @@ function MarketplaceListingTab({
                         <select
                           className="h-9 w-full rounded-md border border-hairline bg-surface px-2 text-sm text-primary"
                           value={form.detailsJson.studAvailability || ""}
-                          onChange={(e) =>
+                          onChange={(e) => {
+                            const v = e.currentTarget.value || undefined;
                             setForm((f) => ({
                               ...f,
-                              detailsJson: { ...f.detailsJson, studAvailability: e.currentTarget.value || undefined },
-                            }))
-                          }
+                              detailsJson: { ...f.detailsJson, studAvailability: v },
+                            }));
+                          }}
                         >
                           <option value="">Select…</option>
                           <option value="natural">Natural Breeding Only</option>
@@ -2529,15 +2764,16 @@ function MarketplaceListingTab({
                         <select
                           className="h-9 w-full rounded-md border border-hairline bg-surface px-2 text-sm text-primary"
                           value={String(form.detailsJson.shippingAvailable ?? "")}
-                          onChange={(e) =>
+                          onChange={(e) => {
+                            const v = e.currentTarget.value === "true" ? true : e.currentTarget.value === "false" ? false : undefined;
                             setForm((f) => ({
                               ...f,
                               detailsJson: {
                                 ...f.detailsJson,
-                                shippingAvailable: e.currentTarget.value === "true" ? true : e.currentTarget.value === "false" ? false : undefined,
+                                shippingAvailable: v,
                               },
-                            }))
-                          }
+                            }));
+                          }}
                         >
                           <option value="">Select…</option>
                           <option value="true">Yes</option>
@@ -2556,12 +2792,13 @@ function MarketplaceListingTab({
                         className="h-20 w-full rounded-md border border-hairline bg-surface px-3 py-2 text-sm text-primary outline-none"
                         placeholder="Co-ownership terms, breeding rights, return conditions, etc."
                         value={form.detailsJson.placementTerms || ""}
-                        onChange={(e) =>
+                        onChange={(e) => {
+                          const v = e.currentTarget.value;
                           setForm((f) => ({
                             ...f,
-                            detailsJson: { ...f.detailsJson, placementTerms: e.currentTarget.value },
-                          }))
-                        }
+                            detailsJson: { ...f.detailsJson, placementTerms: v },
+                          }));
+                        }}
                       />
                     </div>
                     <div>
@@ -2569,12 +2806,13 @@ function MarketplaceListingTab({
                       <Input
                         placeholder="Minimum litters, health testing requirements, etc."
                         value={form.detailsJson.breedingRequirements || ""}
-                        onChange={(e) =>
+                        onChange={(e) => {
+                          const v = e.currentTarget.value;
                           setForm((f) => ({
                             ...f,
-                            detailsJson: { ...f.detailsJson, breedingRequirements: e.currentTarget.value },
-                          }))
-                        }
+                            detailsJson: { ...f.detailsJson, breedingRequirements: v },
+                          }));
+                        }}
                       />
                     </div>
                   </>
@@ -2588,12 +2826,13 @@ function MarketplaceListingTab({
                         className="h-20 w-full rounded-md border border-hairline bg-surface px-3 py-2 text-sm text-primary outline-none"
                         placeholder="Why is this animal being rehomed?"
                         value={form.detailsJson.rehomeReason || ""}
-                        onChange={(e) =>
+                        onChange={(e) => {
+                          const v = e.currentTarget.value;
                           setForm((f) => ({
                             ...f,
-                            detailsJson: { ...f.detailsJson, rehomeReason: e.currentTarget.value },
-                          }))
-                        }
+                            detailsJson: { ...f.detailsJson, rehomeReason: v },
+                          }));
+                        }}
                       />
                     </div>
                     <div className="grid grid-cols-2 gap-3">
@@ -2602,15 +2841,16 @@ function MarketplaceListingTab({
                         <select
                           className="h-9 w-full rounded-md border border-hairline bg-surface px-2 text-sm text-primary"
                           value={String(form.detailsJson.goodWithKids ?? "")}
-                          onChange={(e) =>
+                          onChange={(e) => {
+                            const v = e.currentTarget.value === "true" ? true : e.currentTarget.value === "false" ? false : undefined;
                             setForm((f) => ({
                               ...f,
                               detailsJson: {
                                 ...f.detailsJson,
-                                goodWithKids: e.currentTarget.value === "true" ? true : e.currentTarget.value === "false" ? false : undefined,
+                                goodWithKids: v,
                               },
-                            }))
-                          }
+                            }));
+                          }}
                         >
                           <option value="">Unknown</option>
                           <option value="true">Yes</option>
@@ -2622,15 +2862,16 @@ function MarketplaceListingTab({
                         <select
                           className="h-9 w-full rounded-md border border-hairline bg-surface px-2 text-sm text-primary"
                           value={String(form.detailsJson.goodWithPets ?? "")}
-                          onChange={(e) =>
+                          onChange={(e) => {
+                            const v = e.currentTarget.value === "true" ? true : e.currentTarget.value === "false" ? false : undefined;
                             setForm((f) => ({
                               ...f,
                               detailsJson: {
                                 ...f.detailsJson,
-                                goodWithPets: e.currentTarget.value === "true" ? true : e.currentTarget.value === "false" ? false : undefined,
+                                goodWithPets: v,
                               },
-                            }))
-                          }
+                            }));
+                          }}
                         >
                           <option value="">Unknown</option>
                           <option value="true">Yes</option>
@@ -2641,21 +2882,61 @@ function MarketplaceListingTab({
                   </>
                 )}
 
-                {form.intent === "SHOWCASE" && (
-                  <div>
-                    <label className="text-xs text-secondary mb-1 block">Showcase Notes</label>
-                    <textarea
-                      className="h-20 w-full rounded-md border border-hairline bg-surface px-3 py-2 text-sm text-primary outline-none"
-                      placeholder="Any additional information about this animal for showcase"
-                      value={form.detailsJson.showcaseNotes || ""}
-                      onChange={(e) =>
-                        setForm((f) => ({
-                          ...f,
-                          detailsJson: { ...f.detailsJson, showcaseNotes: e.currentTarget.value },
-                        }))
-                      }
-                    />
-                  </div>
+                {form.intent === "GUARDIAN_PLACEMENT" && (
+                  <>
+                    <div>
+                      <label className="text-xs text-secondary mb-1 block">Guardian Agreement Terms</label>
+                      <textarea
+                        className="h-20 w-full rounded-md border border-hairline bg-surface px-3 py-2 text-sm text-primary outline-none"
+                        placeholder="Co-ownership terms, breeding expectations, return conditions"
+                        value={form.detailsJson.guardianTerms || ""}
+                        onChange={(e) => {
+                          const v = e.currentTarget.value;
+                          setForm((f) => ({
+                            ...f,
+                            detailsJson: { ...f.detailsJson, guardianTerms: v },
+                          }));
+                        }}
+                      />
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+                      <div>
+                        <label className="text-xs text-secondary mb-1 block">Breeding Commitment</label>
+                        <Input
+                          placeholder="e.g., 2-3 litters"
+                          value={form.detailsJson.breedingCommitment || ""}
+                          onChange={(e) => {
+                            const v = e.currentTarget.value;
+                            setForm((f) => ({
+                              ...f,
+                              detailsJson: { ...f.detailsJson, breedingCommitment: v },
+                            }));
+                          }}
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs text-secondary mb-1 block">Vet Care Provided</label>
+                        <select
+                          className="h-9 w-full rounded-md border border-hairline bg-surface px-2 text-sm text-primary"
+                          value={String(form.detailsJson.vetCareProvided ?? "")}
+                          onChange={(e) => {
+                            const v = e.currentTarget.value === "true" ? true : e.currentTarget.value === "false" ? false : undefined;
+                            setForm((f) => ({
+                              ...f,
+                              detailsJson: {
+                                ...f.detailsJson,
+                                vetCareProvided: v,
+                              },
+                            }));
+                          }}
+                        >
+                          <option value="">Select…</option>
+                          <option value="true">Yes, breeder covers</option>
+                          <option value="false">No, guardian covers</option>
+                        </select>
+                      </div>
+                    </div>
+                  </>
                 )}
               </div>
             </SectionCard>
@@ -2713,14 +2994,12 @@ function MarketplaceListingTab({
               )}
             </div>
 
-            {!canPublish && status === "DRAFT" && (
+            {!canPublish && !status && (
               <div className="mt-2 text-xs text-secondary">
                 To publish, select a listing intent and provide a headline.
               </div>
             )}
           </SectionCard>
-        </>
-      )}
     </div>
   );
 }
@@ -2827,12 +3106,8 @@ function HealthTab({
       setError(null);
       const data = await api?.animals?.traits?.list(animal.id);
 
-      // Dev-only diagnostic logging
-      if (import.meta.env?.DEV) {
-        console.log('[HealthTab] Traits response:', data);
-      }
-
-      // Filter out non-health traits (microchip, registry numbers)
+      // Filter out non-health traits (microchip, registry numbers) but keep all categories
+      // Categories must render even when every trait is "Not provided"
       const filteredCategories = (data?.categories || []).map((cat: any) => ({
         ...cat,
         items: (cat.items || []).filter((t: any) => {
@@ -2840,7 +3115,7 @@ function HealthTab({
           // Exclude identity traits (*.id.* and *.registry.*)
           return !key.includes(".id.") && !key.includes(".registry.");
         }),
-      })).filter((cat: any) => cat.items.length > 0);
+      }));
 
       setCategories(filteredCategories);
       setCollapsedCategories((prev) => {
@@ -2953,9 +3228,9 @@ function HealthTab({
     );
   }
 
-  // Empty state
-  const hasAnyTraits = categories.some((cat) => (cat.items || []).length > 0);
-  if (!categories || categories.length === 0 || !hasAnyTraits) {
+  // Empty state - only show when NO trait definitions exist for this species
+  // Categories with all "Not provided" traits should still render
+  if (!categories || categories.length === 0) {
     return (
       <div className="space-y-3">
         <SectionCard title="Health">
@@ -2983,7 +3258,7 @@ function HealthTab({
     <div className="space-y-3">
       {categories.map((cat: any) => {
         const items = cat.items || [];
-        if (items.length === 0) return null;
+        // Render all categories from definitions, even when empty (shows "0 of 0 provided")
 
         const isCollapsed = collapsedCategories.has(cat.category);
         const completedCount = items.filter((t: any) => {
@@ -5859,28 +6134,10 @@ export default function AppAnimals() {
           )}
 
           {activeTab === "marketplace" && (
-            isAnimalMarketplaceEnabled() ? (
-              <MarketplaceListingTab
-                animal={row}
-                api={api}
-              />
-            ) : (
-              <div className="space-y-3">
-                <SectionCard title="Marketplace">
-                  <div className="flex flex-col items-center py-6 text-center">
-                    <span className="inline-flex items-center px-2 py-0.5 mb-3 rounded text-[10px] font-bold uppercase tracking-wide bg-amber-500 text-white">
-                      Internal Feature
-                    </span>
-                    <p className="text-sm text-secondary mb-4">
-                      This feature is currently disabled.
-                    </p>
-                    <p className="text-xs text-tertiary max-w-sm">
-                      Enable via localStorage: <code className="bg-neutral-100 dark:bg-neutral-800 px-1.5 py-0.5 rounded text-[11px]">localStorage.setItem("BHQ_FEATURE_ANIMAL_MARKETPLACE", "true")</code>
-                    </p>
-                  </div>
-                </SectionCard>
-              </div>
-            )
+            <MarketplaceListingTab
+              animal={row}
+              api={api}
+            />
           )}
 
           {activeTab === "health" && (

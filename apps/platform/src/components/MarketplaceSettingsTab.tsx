@@ -21,6 +21,15 @@ type MarketplaceSettingsTabProps = {
 
 type PublicLocationMode = "city_state" | "zip_only" | "full" | "hidden";
 
+type ProgramData = {
+  id: string;
+  name: string;
+  description: string;
+  status: boolean;
+  availability: string;
+  breeds?: string[];
+};
+
 type MarketplaceProfileDraft = {
   businessName: string;
   logoAssetId: string | null;
@@ -46,6 +55,8 @@ type MarketplaceProfileDraft = {
   };
   // Breeds selected for marketplace listing (by name)
   listedBreeds: string[];
+  // Programs created by the user
+  programs: ProgramData[];
   standardsAndCredentials: {
     registrations: string[];
     registrationsNote: string;
@@ -132,7 +143,7 @@ async function saveMarketplaceDraft(tenantId: string, draftData: MarketplaceProf
 async function publishMarketplaceProfile(
   tenantId: string,
   payload: Record<string, unknown>
-): Promise<{ ok: boolean; publishedAt?: string; errors?: string[] }> {
+): Promise<{ ok: boolean; publishedAt?: string; tenantSlug?: string; errors?: string[] }> {
   const csrf = readCsrfToken();
   const res = await fetch("/api/v1/marketplace/profile/publish", {
     method: "POST",
@@ -150,6 +161,28 @@ async function publishMarketplaceProfile(
     return { ok: false, errors: body.errors || [`API error: ${res.status}`] };
   }
   return body;
+}
+
+async function unpublishMarketplaceProfile(
+  tenantId: string
+): Promise<{ ok: boolean; error?: string }> {
+  const csrf = readCsrfToken();
+  const res = await fetch("/api/v1/marketplace/profile/unpublish", {
+    method: "POST",
+    credentials: "include",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      "X-Tenant-Id": tenantId,
+      ...(csrf ? { "X-CSRF-Token": csrf } : {}),
+    },
+    body: JSON.stringify({}),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    return { ok: false, error: body.error || `API error: ${res.status}` };
+  }
+  return { ok: true };
 }
 // ═══════════════════════════════════════════════════════════════════════════
 // PERSISTENCE HELPERS
@@ -191,6 +224,7 @@ function createEmptyDraft(): MarketplaceProfileDraft {
       zipRadius: false,
     },
     listedBreeds: [],
+    programs: [],
     standardsAndCredentials: {
       registrations: [],
       registrationsNote: "",
@@ -737,6 +771,7 @@ const MarketplaceSettingsTabInner = React.forwardRef<MarketplaceHandle, Marketpl
   const [published, setPublished] = React.useState<MarketplacePublishedSnapshot | null>(null);
   const [saving, setSaving] = React.useState(false);
   const [publishing, setPublishing] = React.useState(false);
+  const [unpublishing, setUnpublishing] = React.useState(false);
   const [publishErrors, setPublishErrors] = React.useState<string[]>([]);
   const [showDebugPanel, setShowDebugPanel] = React.useState(false);
   const [apiLoading, setApiLoading] = React.useState(true);
@@ -779,15 +814,14 @@ const MarketplaceSettingsTabInner = React.forwardRef<MarketplaceHandle, Marketpl
   const [selectedSpecies, setSelectedSpecies] = React.useState<string[]>([]);
   const speciesOptions = ["Dog", "Cat", "Horse", "Goat", "Sheep", "Rabbit"];
 
-  // Programs state (DO NOT MODIFY LOGIC)
-  const [programs, setPrograms] = React.useState<{
-    id: string;
-    name: string;
-    description: string;
-    status: boolean;
-    availability: string;
-    breeds?: string[];
-  }[]>([]);
+  // Programs are now stored in draft.programs for persistence
+  const programs = draft.programs;
+  const setPrograms = (updater: ProgramData[] | ((prev: ProgramData[]) => ProgramData[])) => {
+    setDraft((prev) => ({
+      ...prev,
+      programs: typeof updater === "function" ? updater(prev.programs) : updater,
+    }));
+  };
 
   // Example programs (static, can be hidden)
   const examplePrograms = [
@@ -1049,6 +1083,24 @@ const MarketplaceSettingsTabInner = React.forwardRef<MarketplaceHandle, Marketpl
       setPublishErrors([e.message || "Failed to publish"]);
     } finally {
       setPublishing(false);
+    }
+  }
+
+  async function handleUnpublish() {
+    setUnpublishing(true);
+    setPublishErrors([]);
+    try {
+      const result = await unpublishMarketplaceProfile(tenantId);
+      if (result.ok) {
+        setPublished(null);
+      } else {
+        setPublishErrors([result.error || "Failed to remove listing"]);
+      }
+    } catch (e: any) {
+      console.error("Failed to unpublish:", e);
+      setPublishErrors([e.message || "Failed to remove listing"]);
+    } finally {
+      setUnpublishing(false);
     }
   }
 
@@ -1509,7 +1561,7 @@ const MarketplaceSettingsTabInner = React.forwardRef<MarketplaceHandle, Marketpl
       {/* Section 6: Placement Policies */}
       <SectionCard title="Placement Policies">
         <div className="space-y-4">
-          <div className="space-y-2">
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
             <Checkbox
               checked={draft.placementPolicies.requireApplication}
               onChange={(v) => updatePlacement("requireApplication", v)}
@@ -1538,6 +1590,7 @@ const MarketplaceSettingsTabInner = React.forwardRef<MarketplaceHandle, Marketpl
           </div>
           <div>
             <label className={LABEL_CLS}>Additional Placement Notes</label>
+            <p className={SUBLABEL_CLS}>Describe any additional details about your placement process.</p>
             <textarea
               value={draft.placementPolicies.note}
               onChange={(e) => updatePlacement("note", e.target.value.slice(0, 300))}
@@ -1611,9 +1664,20 @@ const MarketplaceSettingsTabInner = React.forwardRef<MarketplaceHandle, Marketpl
             <Button variant="outline" onClick={handleSaveDraft} disabled={saving}>
               {saving ? "Saving..." : "Save Draft"}
             </Button>
-            <Button onClick={handlePublish} disabled={!canPublish || publishing}>
-              {publishing ? "Publishing..." : "Publish to Marketplace"}
-            </Button>
+            {isPublished ? (
+              <Button
+                variant="outline"
+                onClick={handleUnpublish}
+                disabled={unpublishing}
+                className="text-red-400 border-red-400/50 hover:bg-red-400/10"
+              >
+                {unpublishing ? "Removing..." : "Remove Marketplace Listing"}
+              </Button>
+            ) : (
+              <Button onClick={handlePublish} disabled={!canPublish || publishing}>
+                {publishing ? "Publishing..." : "Publish to Marketplace"}
+              </Button>
+            )}
           </div>
         </div>
       </SectionCard>

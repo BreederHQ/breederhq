@@ -400,6 +400,9 @@ export default function BHQGantt(props: BHQGanttProps) {
                       const localPatId = `${hatchBaseId}-${s.key}-${j}`;
                       const localClipId = `${hatchBaseId}-clip-${s.key}-${j}`;
 
+                      // Use datum color if provided, otherwise fall back to stage baseColor
+                      const hatchColor = (p as any).color || s.baseColor;
+
                       items.push(
                         <pattern
                           id={localPatId}
@@ -411,7 +414,7 @@ export default function BHQGantt(props: BHQGanttProps) {
                         >
                           <path
                             d="M0 -2 L0 10"
-                            stroke={s.baseColor}
+                            stroke={hatchColor}
                             strokeOpacity="0.55"
                             strokeWidth="2"
                             vectorEffect="non-scaling-stroke"
@@ -452,7 +455,7 @@ export default function BHQGantt(props: BHQGanttProps) {
                           rx={6}
                           ry={6}
                           fill="none"
-                          stroke={s.baseColor}
+                          stroke={hatchColor}
                           strokeWidth={1.2}
                           opacity={0.45}
                         />
