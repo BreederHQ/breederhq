@@ -212,52 +212,7 @@ function createEmptyDraft(): MarketplaceProfileDraft {
   };
 }
 
-function loadDraft(): MarketplaceProfileDraft {
-  try {
-    const stored = localStorage.getItem(getStorageKey("draft"));
-    if (stored) {
-      const parsed = JSON.parse(stored);
-      // Merge with empty draft to ensure all fields exist
-      return { ...createEmptyDraft(), ...parsed };
-    }
-  } catch (e) {
-    console.error("Failed to load marketplace draft:", e);
-  }
-  return createEmptyDraft();
-}
-
-function saveDraft(draft: MarketplaceProfileDraft): void {
-  try {
-    const toSave = { ...draft, updatedAt: new Date().toISOString() };
-    localStorage.setItem(getStorageKey("draft"), JSON.stringify(toSave));
-  } catch (e) {
-    console.error("Failed to save marketplace draft:", e);
-  }
-}
-
-function loadPublished(): MarketplacePublishedSnapshot | null {
-  try {
-    const stored = localStorage.getItem(getStorageKey("published"));
-    if (stored) return JSON.parse(stored);
-  } catch (e) {
-    console.error("Failed to load marketplace published:", e);
-  }
-  return null;
-}
-
-function savePublished(draft: MarketplaceProfileDraft): MarketplacePublishedSnapshot {
-  const snapshot: MarketplacePublishedSnapshot = {
-    ...draft,
-    updatedAt: new Date().toISOString(),
-    publishedAt: new Date().toISOString(),
-  };
-  try {
-    localStorage.setItem(getStorageKey("published"), JSON.stringify(snapshot));
-  } catch (e) {
-    console.error("Failed to save marketplace published:", e);
-  }
-  return snapshot;
-}
+// Note: localStorage functions removed - API persistence only
 
 // ═══════════════════════════════════════════════════════════════════════════
 // PUBLIC PAYLOAD BUILDER
@@ -784,6 +739,8 @@ const MarketplaceSettingsTabInner = React.forwardRef<MarketplaceHandle, Marketpl
   const [publishErrors, setPublishErrors] = React.useState<string[]>([]);
   const [showDebugPanel, setShowDebugPanel] = React.useState(false);
   const [apiLoading, setApiLoading] = React.useState(true);
+  const [apiError, setApiError] = React.useState<string | null>(null);
+  const [saveError, setSaveError] = React.useState<string | null>(null);
 
   // Track initial draft for dirty comparison
   const initialDraftRef = React.useRef<string>(JSON.stringify(createEmptyDraft()));
@@ -794,6 +751,7 @@ const MarketplaceSettingsTabInner = React.forwardRef<MarketplaceHandle, Marketpl
     let alive = true;
     (async () => {
       try {
+        setApiError(null);
         const profile = await fetchMarketplaceProfile(tenantId);
         if (!alive) return;
         if (profile.draft) {
@@ -804,14 +762,11 @@ const MarketplaceSettingsTabInner = React.forwardRef<MarketplaceHandle, Marketpl
         if (profile.published) {
           setPublished({ ...createEmptyDraft(), ...profile.published, publishedAt: profile.publishedAt || "" } as MarketplacePublishedSnapshot);
         }
-      } catch (e) {
+      } catch (e: any) {
         console.error("Failed to load marketplace profile from API:", e);
-        // Fallback to localStorage for migration
-        const localDraft = loadDraft();
-        const localPublished = loadPublished();
-        setDraft(localDraft);
-        setPublished(localPublished);
-        initialDraftRef.current = JSON.stringify(localDraft);
+        if (alive) {
+          setApiError(e.message || "Failed to load marketplace profile. Please try again.");
+        }
       } finally {
         if (alive) setApiLoading(false);
       }
@@ -873,7 +828,7 @@ const MarketplaceSettingsTabInner = React.forwardRef<MarketplaceHandle, Marketpl
             source: b.source || "canonical",
           })));
         }
-      } catch (e) {
+      } catch (e: any) {
         console.error("Failed to load program breeds:", e);
         if (alive) setTenantBreeds([]);
       } finally {
@@ -1024,6 +979,7 @@ const MarketplaceSettingsTabInner = React.forwardRef<MarketplaceHandle, Marketpl
   // ─── Save Draft (API-based) ────────────────────────────────────────────────
   async function handleSaveDraft(): Promise<void> {
     setSaving(true);
+    setSaveError(null);
     try {
       const result = await saveMarketplaceDraft(tenantId, draft);
       if (result.ok) {
@@ -1034,8 +990,7 @@ const MarketplaceSettingsTabInner = React.forwardRef<MarketplaceHandle, Marketpl
       }
     } catch (e) {
       console.error("Failed to save draft:", e);
-      // Fallback to localStorage
-      saveDraft(draft);
+      setSaveError(e.message || "Failed to save. Please try again.");
     } finally {
       setSaving(false);
     }
@@ -1118,6 +1073,20 @@ const MarketplaceSettingsTabInner = React.forwardRef<MarketplaceHandle, Marketpl
   // ─── Render ──────────────────────────────────────────────────────────────
   return (
     <div className="space-y-6">
+      {/* API Error Banner */}
+      {apiError && (
+        <div className="rounded-md bg-red-500/10 border border-red-500/30 px-4 py-3 text-sm text-red-400">
+          <strong>Error loading profile:</strong> {apiError}
+        </div>
+      )}
+
+      {/* Save Error Banner */}
+      {saveError && (
+        <div className="rounded-md bg-red-500/10 border border-red-500/30 px-4 py-3 text-sm text-red-400">
+          <strong>Error saving:</strong> {saveError}
+        </div>
+      )}
+
       {/* Header */}
       <div>
         <h2 className="text-xl font-semibold text-primary">Marketplace Profile</h2>
