@@ -70,7 +70,6 @@ export function InquiriesPage() {
   if (!demoMode && !backendAvailable) {
     return (
       <div className="space-y-6">
-        <Seo title="Inquiries" />
         <div>
           <h1 className="text-[28px] font-bold text-white tracking-tight leading-tight">
             Inquiries
@@ -124,7 +123,6 @@ export function InquiriesPage() {
 
   return (
     <div className="h-[calc(100vh-theme(spacing.header)-theme(spacing.16))] -mx-6 -mt-8 flex">
-      <Seo title="Inquiries" />
       {/* Left sidebar - conversation list */}
       <div className="w-80 flex-shrink-0">
         <ConversationList

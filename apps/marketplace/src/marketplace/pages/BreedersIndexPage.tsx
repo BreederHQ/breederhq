@@ -9,12 +9,9 @@ import { ProgramsListView } from "../components/ProgramsListView";
  */
 export function BreedersIndexPage() {
   return (
-    <>
-      <Seo title="Breeders" />
-      <ProgramsListView
-        title="Breeders"
-        subtitle="Explore breeders, then view published litters."
-      />
-    </>
+    <ProgramsListView
+      title="Breeders"
+      subtitle="Explore breeders, then view published litters."
+    />
   );
 }

@@ -41,8 +41,6 @@ export function HomePage() {
 
   return (
     <div className="space-y-16">
-      <Seo title="Home" />
-
       {/* Section A: Intent Selection */}
       <section className="space-y-6">
         <div className="text-center max-w-xl mx-auto">

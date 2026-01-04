@@ -216,8 +216,6 @@ export function ListingPage() {
 
   return (
     <div className="space-y-6">
-      <Seo title={listingTitle} />
-
       {/* Breadcrumb - buyer language */}
       <Breadcrumb
         items={[

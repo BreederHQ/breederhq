@@ -109,8 +109,6 @@ export function ProgramPage() {
 
   return (
     <div className="space-y-6">
-      <Seo title={profile.name} />
-
       {/* Breadcrumb - buyer language */}
       <Breadcrumb
         items={[

@@ -3,6 +3,9 @@
 // Uses MemoryRouter to provide React Router context while syncing with Platform's URL.
 import * as React from "react";
 import { MemoryRouter, Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
+
+// Import Marketplace styles - provides portal-* classes and dark theme
+import "../index.css";
 import { HomePage } from "../marketplace/pages/HomePage";
 import { AnimalsIndexPage } from "../marketplace/pages/AnimalsIndexPage";
 import { BreedersIndexPage } from "../marketplace/pages/BreedersIndexPage";
@@ -59,11 +62,14 @@ function UrlSync() {
 /**
  * Embedded content wrapper - renders content without MarketplaceLayout header.
  * Platform's NavShell provides the navigation.
+ * Applies Marketplace theme styles (dark background, portal colors).
  */
 function EmbeddedContent({ children }: { children: React.ReactNode }) {
   return (
-    <div className="w-full max-w-portal mx-auto px-6 pt-4 pb-16">
-      {children}
+    <div className="min-h-full bg-portal-bg text-white font-sans antialiased">
+      <div className="w-full max-w-portal mx-auto px-6 pt-8 pb-16">
+        {children}
+      </div>
     </div>
   );
 }
