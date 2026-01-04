@@ -19,6 +19,7 @@ export default defineConfig({
       "@bhq/organizations": fileURLToPath(new URL("../organizations/src", import.meta.url)),
       "@bhq/admin": fileURLToPath(new URL("../admin/src", import.meta.url)),
       "@bhq/waitlist": fileURLToPath(new URL("../waitlist/src", import.meta.url)),
+      "@bhq/marketplace": fileURLToPath(new URL("../marketplace/src", import.meta.url)),
     },
 
     dedupe: ["react", "react-dom", "lucide-react"],
