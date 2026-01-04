@@ -21,6 +21,7 @@ import AppMarketing from "@bhq/marketing/App-Marketing";
 import AppFinance from "@bhq/finance/App-Finance";
 import AdminModule from "@bhq/admin/App-Admin";
 import AppWaitlist from "@bhq/waitlist/App-Waitlist";
+import { MarketplaceEmbedded } from "@bhq/marketplace";
 import DashboardPage from "./pages/Dashboard";
 
 // Support Pages
@@ -28,7 +29,7 @@ import SettingsPanel from "./pages/SettingsPanel";
 import TermsPage from "./pages/TermsPage";
 
 // Lightweight "current module" state (key + label)
-type ActiveModule = { key: "dashboard" | "contacts" | "animals" | "breeding" | "offspring" | "waitlist" | "marketing" | "finance" | "admin"; label: string };
+type ActiveModule = { key: "dashboard" | "contacts" | "animals" | "breeding" | "offspring" | "waitlist" | "marketing" | "marketplace" | "finance" | "admin"; label: string };
 const DEFAULT_MODULE: ActiveModule = { key: "dashboard", label: "Dashboard" };
 
 type AuthState = {
@@ -150,6 +151,7 @@ function RouteView() {
   if (p === "/offspring" || p.startsWith("/offspring")) return <AppOffspring />;
   if (p === "/waitlist" || p.startsWith("/waitlist")) return <AppWaitlist />;
   if (p === "/marketing" || p.startsWith("/marketing")) return <AppMarketing />;
+  if (p === "/marketplace" || p.startsWith("/marketplace")) return <MarketplaceEmbedded />;
   if (p === "/finance" || p.startsWith("/finance")) return <AppFinance />;
   if (p === "/admin" || p.startsWith("/admin")) return <AdminModule />;
 
@@ -362,7 +364,7 @@ export default function AppPlatform() {
               { key: "offspring", label: "Offspring", href: "/offspring", icon: "offspring" },
               { key: "waitlist", label: "Waitlist", href: "/waitlist", icon: "waitlist" },
               { key: "marketing", label: "Marketing", href: "/marketing" },
-              { key: "marketplace", label: "Marketplace", href: (import.meta as any)?.env?.VITE_MARKETPLACE_URL || "https://marketplace.breederhq.com" },
+              { key: "marketplace", label: "Marketplace", href: "/marketplace", icon: "marketplace" },
               { key: "finance", label: "Finance", href: "/finance", icon: "finance" },
               { key: "admin", label: "Admin", href: "/admin", icon: "admin" },
             ]}
