@@ -9,6 +9,26 @@ import { Breadcrumb } from "../components/Breadcrumb";
 /**
  * Shape of the public breeder profile API response.
  */
+interface StandardsAndCredentials {
+  registrations: string[];
+  healthPractices: string[];
+  breedingPractices: string[];
+  carePractices: string[];
+  registrationsNote: string | null;
+  healthNote: string | null;
+  breedingNote: string | null;
+  careNote: string | null;
+}
+
+interface PlacementPolicies {
+  requireApplication: boolean;
+  requireInterview: boolean;
+  requireContract: boolean;
+  hasReturnPolicy: boolean;
+  offersSupport: boolean;
+  note: string | null;
+}
+
 interface BreederProfileResponse {
   tenantSlug: string;
   businessName: string;
@@ -32,6 +52,8 @@ interface BreederProfileResponse {
     description: string | null;
     availability: string | null;
   }>;
+  standardsAndCredentials: StandardsAndCredentials | null;
+  placementPolicies: PlacementPolicies | null;
   publishedAt: string | null;
 }
 
@@ -321,6 +343,147 @@ export function BreederPage() {
           <p className="text-text-tertiary text-sm">No programs listed yet.</p>
         </div>
       )}
+
+      {/* Standards & Credentials */}
+      {profile.standardsAndCredentials && (
+        <StandardsAndCredentialsSection data={profile.standardsAndCredentials} />
+      )}
+
+      {/* Placement Policies */}
+      {profile.placementPolicies && (
+        <PlacementPoliciesSection data={profile.placementPolicies} />
+      )}
+    </div>
+  );
+}
+
+// ============================================================================
+// Standards & Credentials Section
+// ============================================================================
+
+/**
+ * Renders a single credential group with items and optional note.
+ */
+function CredentialGroup({
+  title,
+  items,
+  note,
+}: {
+  title: string;
+  items: string[];
+  note: string | null;
+}) {
+  if (items.length === 0 && !note) return null;
+
+  return (
+    <div className="space-y-2">
+      <h3 className="text-sm font-medium text-text-tertiary">{title}</h3>
+      {items.length > 0 && (
+        <ul className="space-y-1.5">
+          {items.map((item) => (
+            <li key={item} className="flex items-start gap-2 text-sm text-text-secondary">
+              <svg
+                className="w-4 h-4 text-accent flex-shrink-0 mt-0.5"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+              <span>{item}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {note && (
+        <p className="text-sm text-text-tertiary italic mt-2">{note}</p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Standards & Credentials section.
+ */
+function StandardsAndCredentialsSection({ data }: { data: StandardsAndCredentials }) {
+  return (
+    <div className="space-y-4">
+      <h2 className="text-lg font-semibold text-white">Standards & Credentials</h2>
+      <div className="rounded-portal border border-border-subtle bg-portal-card p-5">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <CredentialGroup
+            title="Registrations"
+            items={data.registrations}
+            note={data.registrationsNote}
+          />
+          <CredentialGroup
+            title="Health Practices"
+            items={data.healthPractices}
+            note={data.healthNote}
+          />
+          <CredentialGroup
+            title="Breeding Practices"
+            items={data.breedingPractices}
+            note={data.breedingNote}
+          />
+          <CredentialGroup
+            title="Care Practices"
+            items={data.carePractices}
+            note={data.careNote}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// Placement Policies Section
+// ============================================================================
+
+const POLICY_LABELS: Record<string, string> = {
+  requireApplication: "Application Required",
+  requireInterview: "Interview Required",
+  requireContract: "Contract Required",
+  hasReturnPolicy: "Return Policy",
+  offersSupport: "Ongoing Support",
+};
+
+/**
+ * Placement Policies section.
+ */
+function PlacementPoliciesSection({ data }: { data: PlacementPolicies }) {
+  const enabledPolicies = Object.entries(POLICY_LABELS).filter(
+    ([key]) => data[key as keyof PlacementPolicies] === true
+  );
+
+  return (
+    <div className="space-y-4">
+      <h2 className="text-lg font-semibold text-white">Placement Policies</h2>
+      <div className="rounded-portal border border-border-subtle bg-portal-card p-5 space-y-4">
+        {enabledPolicies.length > 0 && (
+          <ul className="space-y-2">
+            {enabledPolicies.map(([key, label]) => (
+              <li key={key} className="flex items-center gap-2 text-sm text-text-secondary">
+                <svg
+                  className="w-4 h-4 text-accent flex-shrink-0"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+                <span>{label}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+        {data.note && (
+          <div className="pt-2 border-t border-border-subtle">
+            <p className="text-sm text-text-tertiary">{data.note}</p>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

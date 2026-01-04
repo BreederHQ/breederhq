@@ -101,6 +101,25 @@ function BreederCard({ breeder }: { breeder: BreederSummary }) {
   const showLocation =
     breeder.publicLocationMode !== "hidden" && breeder.location;
 
+  // Guard: if tenantSlug is missing or empty, render disabled card
+  const hasValidSlug = breeder.tenantSlug && breeder.tenantSlug.trim() !== "";
+
+  if (!hasValidSlug) {
+    return (
+      <div className="block rounded-portal border border-border-subtle bg-portal-card p-4 opacity-50 cursor-not-allowed">
+        <div className="flex items-start gap-3">
+          <BreederAvatar breeder={breeder} />
+          <div className="flex-1 min-w-0">
+            <h3 className="text-base font-semibold text-white truncate">
+              {breeder.businessName}
+            </h3>
+            <p className="text-sm text-red-400 mt-0.5">Missing slug</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <Link
       to={`/breeders/${breeder.tenantSlug}`}
