@@ -362,3 +362,70 @@ export async function submitWaitlistRequest(
   const data = await safeReadJson<WaitlistRequestResponse>(response);
   return data || { success: true };
 }
+
+// =====================================
+// Breeder Report API
+// =====================================
+
+export type BreederReportReason =
+  | "SPAM"
+  | "FRAUD"
+  | "HARASSMENT"
+  | "MISREPRESENTATION"
+  | "OTHER";
+
+export type BreederReportSeverity = "LIGHT" | "MEDIUM" | "HEAVY";
+
+export interface ReportBreederPayload {
+  /** Tenant ID (number) - provide either this or breederTenantSlug */
+  breederTenantId?: number;
+  /** Tenant slug (string) - provide either this or breederTenantId */
+  breederTenantSlug?: string;
+  reason: BreederReportReason;
+  severity: BreederReportSeverity;
+  description?: string;
+}
+
+export interface ReportBreederResponse {
+  success: boolean;
+  message?: string;
+}
+
+/**
+ * Submit a report against a breeder. Requires authentication.
+ * Reports are reviewed by platform admins before any action is taken.
+ */
+export async function reportBreeder(
+  payload: ReportBreederPayload
+): Promise<ReportBreederResponse> {
+  const path = `/api/v1/marketplace/report-breeder`;
+  const url = joinApi(path);
+
+  // Get CSRF token from cookie (XSRF-TOKEN)
+  const xsrf = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]+)/)?.[1];
+
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+  if (xsrf) {
+    headers["x-csrf-token"] = decodeURIComponent(xsrf);
+  }
+
+  const response = await fetch(url, {
+    method: "POST",
+    credentials: "include",
+    headers,
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    const body = await safeReadJson<{ message?: string; error?: string }>(response);
+    throw new ApiError(
+      body?.message || body?.error || `Request failed with status ${response.status}`,
+      response.status
+    );
+  }
+
+  const data = await safeReadJson<ReportBreederResponse>(response);
+  return data || { success: true };
+}

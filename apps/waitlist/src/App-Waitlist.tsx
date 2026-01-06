@@ -1001,9 +1001,10 @@ const REJECTED_COLS: Array<{ key: string; label: string; default?: boolean }> = 
   { key: "speciesPref", label: "Species", default: true },
   { key: "rejectedReason", label: "Reason", default: true },
   { key: "rejectedAt", label: "Rejected", default: true },
+  { key: "actions", label: "", default: true },
 ];
 
-const REJECTED_WAITLIST_STORAGE_KEY = "bhq_rejected_waitlist_cols_v1";
+const REJECTED_WAITLIST_STORAGE_KEY = "bhq_rejected_waitlist_cols_v2";
 
 type RejectedTableRow = {
   id: number;
@@ -1011,6 +1012,8 @@ type RejectedTableRow = {
   speciesPref: string | null;
   rejectedReason: string | null;
   rejectedAt: string | null;
+  marketplaceUserId: string | null;
+  userName: string | null;
 };
 
 function mapRejectedToTableRow(w: any): RejectedTableRow {
@@ -1028,12 +1031,17 @@ function mapRejectedToTableRow(w: any): RejectedTableRow {
     contactLabel = clientParty.email;
   }
 
+  // Get marketplace user ID for blocking capability
+  const marketplaceUserId = w.marketplaceUserId || clientParty?.externalId || null;
+
   return {
     id: Number(w.id),
     contactLabel,
     speciesPref: w.speciesPref ?? null,
     rejectedReason: w.rejectedReason ?? null,
     rejectedAt: w.rejectedAt ?? null,
+    marketplaceUserId,
+    userName: contactLabel,
   };
 }
 
@@ -1049,6 +1057,10 @@ function RejectedWaitlistTab({
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const [sorts, setSorts] = React.useState<Array<{ key: string; dir: "asc" | "desc" }>>([]);
+
+  // Block modal state
+  const [blockTarget, setBlockTarget] = React.useState<{ userId: string; userName: string } | null>(null);
+  const [blockLoading, setBlockLoading] = React.useState(false);
 
   const onToggleSort = (key: string) => {
     setSorts((prev) => {
@@ -1095,6 +1107,25 @@ function RejectedWaitlistTab({
 
   const cols = hooks.useColumns(REJECTED_COLS, REJECTED_WAITLIST_STORAGE_KEY);
   const visibleSafe = cols.visible?.length ? cols.visible : REJECTED_COLS;
+
+  // Block handler
+  const handleBlock = async (level: BlockLevel, reason: string) => {
+    if (!api || !blockTarget) return;
+
+    setBlockLoading(true);
+    try {
+      await api.marketplaceBlocks.block({
+        userId: blockTarget.userId,
+        level,
+        reason: reason || undefined,
+      });
+      toast.success("User blocked successfully");
+      setBlockTarget(null);
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to block user");
+    }
+    setBlockLoading(false);
+  };
 
   return (
     <div className="space-y-4">
@@ -1150,7 +1181,7 @@ function RejectedWaitlistTab({
             </div>
 
             <table className="min-w-max w-full text-sm">
-              <TableHeader columns={visibleSafe} sorts={sorts} onToggleSort={onToggleSort} />
+              <TableHeader columns={visibleSafe.filter((c) => c.key !== "actions")} sorts={sorts} onToggleSort={onToggleSort} />
               <tbody>
                 {loading && (
                   <TableRow>
@@ -1179,6 +1210,25 @@ function RejectedWaitlistTab({
                   rows.map((r) => (
                     <TableRow key={r.id}>
                       {visibleSafe.map((c) => {
+                        // Render block action button
+                        if (c.key === "actions") {
+                          // Only show block button if entry has a marketplace user ID
+                          if (!r.marketplaceUserId) {
+                            return <TableCell key={c.key}></TableCell>;
+                          }
+                          return (
+                            <TableCell key={c.key}>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setBlockTarget({ userId: r.marketplaceUserId!, userName: r.userName || "this user" })}
+                                className="text-xs text-orange-600 hover:text-orange-700 hover:bg-orange-50 dark:hover:bg-orange-900/20"
+                              >
+                                Block
+                              </Button>
+                            </TableCell>
+                          );
+                        }
                         let v: any = (r as any)[c.key];
                         if (c.key === "rejectedAt") v = fmtDateTime(v);
                         // Truncate reason for display
@@ -1194,6 +1244,16 @@ function RejectedWaitlistTab({
           </Table>
         </div>
       </Card>
+
+      {/* Block User Modal */}
+      {blockTarget && (
+        <BlockUserModal
+          userName={blockTarget.userName}
+          onConfirm={handleBlock}
+          onCancel={() => setBlockTarget(null)}
+          loading={blockLoading}
+        />
+      )}
     </div>
   );
 }

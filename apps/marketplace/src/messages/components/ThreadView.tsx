@@ -5,6 +5,7 @@ import * as React from "react";
 import { Link } from "react-router-dom";
 import type { Conversation, Message } from "../types";
 import { getCurrentUserId } from "../store";
+import { ReportBreederButton } from "../../marketplace/components/ReportBreederModal";
 
 interface ThreadViewProps {
   conversation: Conversation | null;
@@ -93,6 +94,15 @@ export function ThreadView({
               )}
             </div>
           </div>
+
+          {/* Report button - for breeder conversations */}
+          {otherParticipant?.type === "breeder" && otherParticipant?.slug && (
+            <ReportBreederButton
+              breederTenantSlug={otherParticipant.slug}
+              breederName={otherParticipant.name || "Unknown"}
+              variant="text"
+            />
+          )}
         </div>
       </div>
 

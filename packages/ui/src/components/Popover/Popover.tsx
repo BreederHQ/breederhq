@@ -60,14 +60,15 @@ function PopoverLegacy({ anchorRef, open, onClose, estHeight = 360, width = 320,
       <div
         role="menu"
         tabIndex={-1}
-        className="rounded-md border border-hairline bg-surface p-2 pr-3 shadow-[0_8px_30px_hsla(0,0%,0%,0.35)]"
+        className="rounded-md border border-hairline bg-surface p-2 shadow-[0_8px_30px_hsla(0,0%,0%,0.35)]"
         style={{
           position: "fixed",
           top: pos.top,
           left: pos.left,
           width: pos.widthPx,
           maxHeight: 360,
-          overflow: "auto",
+          overflowY: "auto",
+          overflowX: "hidden",
           pointerEvents: "auto",
           zIndex: 2147483647,
         }}

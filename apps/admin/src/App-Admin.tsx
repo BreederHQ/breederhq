@@ -8,6 +8,8 @@ import {
 import { getOverlayRoot } from "@bhq/ui/overlay";
 import "@bhq/ui/styles/table.css";
 import { adminApi, TenantDTO } from "./api";
+import MarketplaceAbuseAdmin from "./MarketplaceAbuseAdmin";
+import BreederReportsAdmin from "./BreederReportsAdmin";
 
 type TenantRow = TenantDTO;
 
@@ -230,7 +232,11 @@ function TenantDetailsView({
 }
 
 /* ───────────────────────── Main component ───────────────────────── */
+type AdminSection = "tenants" | "marketplace-abuse" | "breeder-reports";
+
 export default function AppAdmin() {
+  const [activeSection, setActiveSection] = React.useState<AdminSection>("tenants");
+
   React.useEffect(() => {
     window.dispatchEvent(new CustomEvent("bhq:module", { detail: { key: "admin", label: "Admin" } }));
   }, []);
@@ -683,8 +689,95 @@ export default function AppAdmin() {
     canShowNewTenant: canAdminTenants,
   });
 
+  // Super admin section tabs config
+  const superAdminTabs = [
+    { key: "tenants", label: "Tenants" },
+    { key: "marketplace-abuse", label: "Marketplace Abuse" },
+    { key: "breeder-reports", label: "Breeder Reports" },
+  ] as const;
+
+  // Render super admin section nav
+  const renderSuperAdminNav = () => (
+    <div className="px-4 pt-4 border-b border-hairline">
+      <nav className="inline-flex items-end gap-6" role="tablist">
+        {superAdminTabs.map((tab) => {
+          const isActive = activeSection === tab.key;
+          return (
+            <button
+              key={tab.key}
+              type="button"
+              role="tab"
+              aria-selected={isActive}
+              onClick={() => setActiveSection(tab.key)}
+              className={[
+                "pb-2 text-sm font-medium transition-colors select-none",
+                isActive ? "text-white" : "text-neutral-400 hover:text-white",
+              ].join(" ")}
+              style={{
+                borderBottom: isActive ? "2px solid #f97316" : "2px solid transparent",
+              }}
+            >
+              {tab.label}
+            </button>
+          );
+        })}
+      </nav>
+    </div>
+  );
+
+  // If showing Marketplace Abuse section (super admin only), render that instead
+  if (activeSection === "marketplace-abuse" && isSuper) {
+    return (
+      <div>
+        {/* Super Admin Section Nav */}
+        {renderSuperAdminNav()}
+        <MarketplaceAbuseAdmin />
+      </div>
+    );
+  }
+
+  // If showing Breeder Reports section (super admin only), render that instead
+  if (activeSection === "breeder-reports" && isSuper) {
+    return (
+      <div>
+        {/* Super Admin Section Nav */}
+        {renderSuperAdminNav()}
+        <BreederReportsAdmin />
+      </div>
+    );
+  }
+
   return (
     <div className="p-4 space-y-4">
+      {/* Super Admin Section Nav */}
+      {isSuper && (
+        <div className="border-b border-hairline -mx-4 px-4 -mt-4 pt-4 mb-4">
+          <nav className="inline-flex items-end gap-6" role="tablist">
+            {superAdminTabs.map((tab) => {
+              const isActive = activeSection === tab.key;
+              return (
+                <button
+                  key={tab.key}
+                  type="button"
+                  role="tab"
+                  aria-selected={isActive}
+                  onClick={() => setActiveSection(tab.key)}
+                  className={[
+                    "pb-2 text-sm font-medium transition-colors select-none",
+                    isActive ? "text-white" : "text-neutral-400 hover:text-white",
+                  ].join(" ")}
+                  style={{
+                    borderBottom: isActive ? "2px solid #f97316" : "2px solid transparent",
+                  }}
+                >
+                  {tab.label}
+                </button>
+              );
+            })}
+          </nav>
+        </div>
+      )}
+
       {/* Header row with absolutely-positioned right actions */}
       <div className="relative">
         <PageHeader

@@ -107,36 +107,19 @@ export function deriveBreedingStatus(p: {
   completedDateActual?: string | null;
   status?: string | null;
 }): Status {
-  const explicit = (p.status ?? "").toUpperCase();
-  if (explicit === "CANCELED") return "CANCELED";
+  // Status is NOT auto-derived from dates.
+  // User must explicitly click "Advance to X Phase" button to change status.
+  // This function now only returns the current explicit status, or derives
+  // the initial PLANNING/COMMITTED state based on prerequisites.
 
-  // Phase progression requirements:
-  // - WEANED → PLACEMENT_STARTED: requires weanedDateActual
-  // - PLACEMENT_STARTED → PLACEMENT_COMPLETED: requires placementStartDateActual
-  // - PLACEMENT_COMPLETED → COMPLETE: requires placementCompletedDateActual
-  // - COMPLETE (Done): requires completedDateActual
+  const explicit = (p.status ?? "").toUpperCase() as Status;
 
-  // COMPLETE requires completedDateActual (after placement completed)
-  if (p.completedDateActual?.trim()) return "COMPLETE";
+  // If we have an explicit status that's a valid phase, preserve it
+  if (STATUS_ORDER.includes(explicit)) {
+    return explicit;
+  }
 
-  // PLACEMENT_COMPLETED requires placementCompletedDateActual
-  if (p.placementCompletedDateActual?.trim()) return "PLACEMENT_COMPLETED";
-
-  // PLACEMENT_STARTED requires placementStartDateActual
-  if (p.placementStartDateActual?.trim()) return "PLACEMENT_STARTED";
-
-  // WEANED requires weanedDateActual
-  if (p.weanedDateActual?.trim()) return "WEANED";
-
-  // BIRTHED requires birthDateActual
-  if (p.birthDateActual?.trim()) return "BIRTHED";
-
-  // BRED requires cycleStartDateActual
-  if (p.cycleStartDateActual?.trim()) return "BRED";
-
-  // Fallback to legacy breedDateActual for BRED
-  if (p.breedDateActual?.trim()) return "BRED";
-
+  // Only derive PLANNING vs COMMITTED based on prerequisites (for new plans)
   const hasBasics = Boolean((p.name ?? "").trim() && (p.species ?? "").trim() && p.damId != null);
   const hasCommitPrereqs = hasBasics && p.sireId != null && (p.lockedCycleStart ?? "").trim();
 

@@ -24,6 +24,13 @@ type MarketplaceSettingsTabProps = {
 
 type PublicLocationMode = "city_state" | "zip_only" | "full" | "hidden";
 
+// Pricing tier for a program
+type ProgramPricingTier = {
+  tier: string;             // "Pet", "Show/Breeding", etc.
+  priceRange: string;       // "$2,000 - $2,500"
+  description?: string;     // What's included at this tier
+};
+
 type ProgramData = {
   id: string;
   name: string;
@@ -34,6 +41,14 @@ type ProgramData = {
   openWaitlist: boolean;
   comingSoon: boolean;
   breeds?: string[];
+
+  // === Program-specific enhanced fields ===
+  // (Health testing, registrations, policies are at breeder profile level)
+
+  // Pricing & What's Included (program-specific)
+  pricingTiers?: ProgramPricingTier[];
+  whatsIncluded?: string;             // 1000 char - vaccinations, microchip, etc.
+  typicalWaitTime?: string;           // "3-6 months" - waitlist timing
 };
 
 type MarketplaceProfileDraft = {
@@ -633,6 +648,11 @@ type ProgramFormData = {
   acceptInquiries: boolean;
   openWaitlist: boolean;
   comingSoon: boolean;
+
+  // === Program-specific enhanced fields ===
+  pricingTiers?: ProgramPricingTier[];
+  whatsIncluded?: string;
+  typicalWaitTime?: string;
 };
 
 function CreateProgramModal({
@@ -806,6 +826,49 @@ function CreateProgramModal({
   );
 }
 
+// Collapsible section component for EditProgramModal
+function CollapsibleSection({
+  title,
+  expanded,
+  onToggle,
+  children,
+  badge,
+}: {
+  title: string;
+  expanded: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+  badge?: string;
+}) {
+  return (
+    <div className="border border-hairline rounded-lg overflow-hidden">
+      <button
+        type="button"
+        onClick={onToggle}
+        className="w-full flex items-center justify-between px-4 py-3 bg-surface-strong hover:bg-surface-subtle transition-colors"
+      >
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-medium text-primary">{title}</span>
+          {badge && (
+            <span className="text-xs px-2 py-0.5 rounded-full bg-[hsl(var(--brand-orange))]/20 text-[hsl(var(--brand-orange))]">
+              {badge}
+            </span>
+          )}
+        </div>
+        <svg
+          className={`w-4 h-4 text-secondary transition-transform ${expanded ? "rotate-180" : ""}`}
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+      {expanded && <div className="px-4 py-4 space-y-4 border-t border-hairline">{children}</div>}
+    </div>
+  );
+}
+
 function EditProgramModal({
   open,
   program,
@@ -821,6 +884,7 @@ function EditProgramModal({
   onDelete: (id: string) => void;
   availableBreeds: string[];
 }) {
+  // Basic fields
   const [name, setName] = React.useState("");
   const [description, setDescription] = React.useState("");
   const [selectedBreeds, setSelectedBreeds] = React.useState<string[]>([]);
@@ -828,6 +892,20 @@ function EditProgramModal({
   const [acceptInquiries, setAcceptInquiries] = React.useState(true);
   const [openWaitlist, setOpenWaitlist] = React.useState(false);
   const [comingSoon, setComingSoon] = React.useState(false);
+
+  // Program-specific enhanced fields
+  const [pricingTiers, setPricingTiers] = React.useState<ProgramPricingTier[]>([]);
+  const [whatsIncluded, setWhatsIncluded] = React.useState("");
+  const [typicalWaitTime, setTypicalWaitTime] = React.useState("");
+
+  // Section expansion state
+  const [expandedSections, setExpandedSections] = React.useState<Record<string, boolean>>({
+    pricing: false,
+  });
+
+  const toggleSection = (section: string) => {
+    setExpandedSections((prev) => ({ ...prev, [section]: !prev[section] }));
+  };
 
   // Sync state when program changes
   React.useEffect(() => {
@@ -839,6 +917,9 @@ function EditProgramModal({
       setAcceptInquiries(program.acceptInquiries ?? true);
       setOpenWaitlist(program.openWaitlist ?? false);
       setComingSoon(program.comingSoon ?? false);
+      setPricingTiers(program.pricingTiers || []);
+      setWhatsIncluded(program.whatsIncluded || "");
+      setTypicalWaitTime(program.typicalWaitTime || "");
     }
   }, [program]);
 
@@ -853,13 +934,15 @@ function EditProgramModal({
       acceptInquiries,
       openWaitlist,
       comingSoon,
+      pricingTiers: pricingTiers.length > 0 ? pricingTiers : undefined,
+      whatsIncluded: whatsIncluded.trim() || undefined,
+      typicalWaitTime: typicalWaitTime.trim() || undefined,
     });
     onClose();
   }
 
   function handleDelete() {
     if (!program) return;
-    // Close the modal first, then let the parent handle deletion with its own confirmation
     onClose();
     onDelete(program.id);
   }
@@ -870,25 +953,46 @@ function EditProgramModal({
     );
   }
 
+  // Pricing tier helpers
+  function addPricingTier() {
+    setPricingTiers([...pricingTiers, { tier: "", priceRange: "" }]);
+  }
+
+  function updatePricingTier(index: number, field: keyof ProgramPricingTier, value: string) {
+    setPricingTiers((prev) =>
+      prev.map((t, i) => (i === index ? { ...t, [field]: value } : t))
+    );
+  }
+
+  function removePricingTier(index: number) {
+    setPricingTiers((prev) => prev.filter((_, i) => i !== index));
+  }
+
   if (!open || !program) return null;
+
+  // Count filled enhanced fields for badge
+  const pricingCount = [pricingTiers.length > 0, whatsIncluded, typicalWaitTime].filter(Boolean).length;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       <div className="absolute inset-0 bg-black/60" onClick={onClose} />
-      <div className="relative bg-surface-strong border border-hairline rounded-xl shadow-xl w-full max-w-lg mx-4 max-h-[90vh] overflow-auto">
-        <form onSubmit={handleSubmit}>
-          <div className="p-6 space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-lg font-semibold text-primary">Edit Program</h3>
-              <button
-                type="button"
-                onClick={onClose}
-                className="text-secondary hover:text-primary text-xl leading-none"
-              >
-                ×
-              </button>
-            </div>
+      <div className="relative bg-surface-strong border border-hairline rounded-xl shadow-xl w-full max-w-2xl mx-4 max-h-[90vh] flex flex-col">
+        <form onSubmit={handleSubmit} className="flex flex-col h-full min-h-0">
+          {/* Fixed header */}
+          <div className="flex-shrink-0 bg-surface-strong border-b border-hairline px-6 py-4 flex items-center justify-between rounded-t-xl">
+            <h3 className="text-lg font-semibold text-primary">Edit Program</h3>
+            <button
+              type="button"
+              onClick={onClose}
+              className="text-secondary hover:text-primary text-xl leading-none"
+            >
+              ×
+            </button>
+          </div>
 
+          {/* Scrollable content */}
+          <div className="flex-1 overflow-y-auto min-h-0 p-6 space-y-4">
+            {/* Program Name - always visible */}
             <div>
               <label className={LABEL_CLS}>
                 Program Name <span className="text-red-400">*</span>
@@ -903,23 +1007,102 @@ function EditProgramModal({
               />
             </div>
 
+            {/* Description */}
             <div>
               <label className={LABEL_CLS}>Description</label>
-              <p className={SUBLABEL_CLS}>
-                Describe your breeding program in detail. What makes it special? What are your goals?
-              </p>
+              <p className={SUBLABEL_CLS}>Brief overview of your program.</p>
               <textarea
                 value={description}
                 onChange={(e) => setDescription(e.target.value.slice(0, 500))}
-                placeholder="Describe your breeding program, its history, goals, and what makes it unique..."
-                rows={5}
+                placeholder="Describe your breeding program..."
+                rows={3}
                 className={TEXTAREA_CLS}
               />
-              <div className="text-xs text-secondary text-right mt-1">
-                {description.length}/500
-              </div>
+              <div className="text-xs text-secondary text-right mt-1">{description.length}/500</div>
             </div>
 
+            {/* Pricing & What's Included Section */}
+            <CollapsibleSection
+              title="Pricing & What's Included"
+              expanded={expandedSections.pricing}
+              onToggle={() => toggleSection("pricing")}
+              badge={pricingCount > 0 ? `${pricingCount} filled` : undefined}
+            >
+              <div>
+                <label className={LABEL_CLS}>Pricing Tiers</label>
+                <p className={SUBLABEL_CLS}>Add different pricing options (e.g., Pet, Show/Breeding).</p>
+                <div className="space-y-3">
+                  {pricingTiers.map((tier, index) => (
+                    <div key={index} className="flex items-start gap-2 p-3 bg-surface-subtle rounded-lg">
+                      <div className="flex-1 grid grid-cols-2 gap-2">
+                        <input
+                          type="text"
+                          value={tier.tier}
+                          onChange={(e) => updatePricingTier(index, "tier", e.target.value)}
+                          placeholder="Tier name (e.g., Pet)"
+                          className={INPUT_CLS}
+                        />
+                        <input
+                          type="text"
+                          value={tier.priceRange}
+                          onChange={(e) => updatePricingTier(index, "priceRange", e.target.value)}
+                          placeholder="Price (e.g., $2,500)"
+                          className={INPUT_CLS}
+                        />
+                        <input
+                          type="text"
+                          value={tier.description || ""}
+                          onChange={(e) => updatePricingTier(index, "description", e.target.value)}
+                          placeholder="What's included at this tier"
+                          className={`${INPUT_CLS} col-span-2`}
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => removePricingTier(index)}
+                        className="text-red-400 hover:text-red-300 p-1"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={addPricingTier}
+                    className="text-sm text-[hsl(var(--brand-orange))] hover:underline"
+                  >
+                    + Add pricing tier
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className={LABEL_CLS}>What's Included</label>
+                <p className={SUBLABEL_CLS}>What comes with each puppy/animal?</p>
+                <textarea
+                  value={whatsIncluded}
+                  onChange={(e) => setWhatsIncluded(e.target.value.slice(0, 1000))}
+                  placeholder="First vaccinations, microchip, health certificate, starter kit with food, blanket with littermates' scent, lifetime breeder support..."
+                  rows={4}
+                  className={TEXTAREA_CLS}
+                />
+                <div className="text-xs text-secondary text-right mt-1">{whatsIncluded.length}/1000</div>
+              </div>
+
+              <div>
+                <label className={LABEL_CLS}>Typical Wait Time</label>
+                <p className={SUBLABEL_CLS}>How long do buyers typically wait?</p>
+                <input
+                  type="text"
+                  value={typicalWaitTime}
+                  onChange={(e) => setTypicalWaitTime(e.target.value)}
+                  placeholder="3-6 months"
+                  className={INPUT_CLS}
+                />
+              </div>
+            </CollapsibleSection>
+
+            {/* Associated Breeds - always visible */}
             <div>
               <label className={LABEL_CLS}>Associated Breeds</label>
               <p className={SUBLABEL_CLS}>Select breeds included in this program.</p>
@@ -946,6 +1129,7 @@ function EditProgramModal({
               )}
             </div>
 
+            {/* Availability Options - always visible */}
             <div>
               <label className={LABEL_CLS}>Availability Options</label>
               <p className={SUBLABEL_CLS}>Control how visitors can interact with this program listing.</p>
@@ -974,6 +1158,7 @@ function EditProgramModal({
               </div>
             </div>
 
+            {/* List in Marketplace toggle - always visible */}
             <div className="flex items-center justify-between py-2 border-t border-hairline mt-2 pt-4">
               <div>
                 <label className="text-sm font-medium text-primary">List in Marketplace</label>
@@ -983,7 +1168,8 @@ function EditProgramModal({
             </div>
           </div>
 
-          <div className="flex items-center justify-between px-6 py-4 border-t border-hairline bg-card/50">
+          {/* Fixed footer */}
+          <div className="flex-shrink-0 flex items-center justify-between px-6 py-4 border-t border-hairline bg-surface-strong rounded-b-xl">
             <button
               type="button"
               onClick={handleDelete}
@@ -1310,6 +1496,10 @@ const MarketplaceSettingsTabInner = React.forwardRef<MarketplaceHandle, Marketpl
       openWaitlist: data.openWaitlist,
       comingSoon: data.comingSoon,
       breeds: data.breeds,
+      // Program-specific enhanced fields
+      pricingTiers: data.pricingTiers,
+      whatsIncluded: data.whatsIncluded,
+      typicalWaitTime: data.typicalWaitTime,
     };
     setPrograms((prev) => [...prev, newProgram]);
   }
@@ -1350,6 +1540,10 @@ const MarketplaceSettingsTabInner = React.forwardRef<MarketplaceHandle, Marketpl
               acceptInquiries: data.acceptInquiries,
               openWaitlist: data.openWaitlist,
               comingSoon: data.comingSoon,
+              // Program-specific enhanced fields
+              pricingTiers: data.pricingTiers,
+              whatsIncluded: data.whatsIncluded,
+              typicalWaitTime: data.typicalWaitTime,
             }
           : p
       )

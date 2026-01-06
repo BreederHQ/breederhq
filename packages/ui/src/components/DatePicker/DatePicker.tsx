@@ -12,6 +12,8 @@ export type DatePickerProps = {
   inputClassName?: string;
   readOnly?: boolean;
   showIcon?: boolean;
+  /** ISO date string to show as default month when picker opens (e.g., expected date) */
+  defaultDate?: string;
 };
 
 /**
@@ -27,6 +29,7 @@ export function DatePicker(props: DatePickerProps) {
   const value = props.value as string | undefined;
   const placeholder = props.placeholder ?? "mm/dd/yyyy";
   const showIcon = props.showIcon ?? true;
+  const defaultDate = props.defaultDate;
 
   // Any extra props intended for the visible input
   const rest: any = { ...props };
@@ -38,6 +41,7 @@ export function DatePicker(props: DatePickerProps) {
   delete rest.defaultValue;
   delete rest.placeholder;
   delete rest.showIcon;
+  delete rest.defaultDate;
 
   // ISO helpers
   const onlyISO = (s: string) => (s || "").slice(0, 10);
@@ -113,6 +117,25 @@ export function DatePicker(props: DatePickerProps) {
   };
 
   const selectedDate = parseISOToDate(value);
+  const defaultDateParsed = parseISOToDate(defaultDate);
+
+  // Priority: selected value > defaultDate prop > today
+  const initialMonth = selectedDate || defaultDateParsed || new Date();
+
+  // Track if we've ever opened to avoid re-calculating month on every render
+  const [hasOpened, setHasOpened] = React.useState(false);
+  const [displayMonth, setDisplayMonth] = React.useState(initialMonth);
+
+  React.useEffect(() => {
+    if (open && !hasOpened) {
+      setHasOpened(true);
+      // When opening for the first time, use the priority: selected > default > today
+      setDisplayMonth(selectedDate || defaultDateParsed || new Date());
+    }
+  }, [open, hasOpened, selectedDate, defaultDateParsed]);
+
+  // Suggested date: show the default date as highlighted when no value is selected
+  const suggestedDate = !value && defaultDateParsed ? defaultDateParsed : undefined;
 
   return (
     <div ref={shellRef} className={className}>
@@ -124,6 +147,12 @@ export function DatePicker(props: DatePickerProps) {
           value={textValue}
           onChange={handleTextChange}
           readOnly={readOnly}
+          onClick={(e: React.MouseEvent) => {
+            if (!readOnly) {
+              e.preventDefault();
+              setOpen(true);
+            }
+          }}
           {...rest}
         />
         {showIcon && (
@@ -156,8 +185,17 @@ export function DatePicker(props: DatePickerProps) {
             mode="single"
             selected={selectedDate}
             onSelect={handleDaySelect}
-            defaultMonth={selectedDate || new Date()}
+            defaultMonth={displayMonth}
             showOutsideDays
+            captionLayout="dropdown"
+            startMonth={new Date(2020, 0)}
+            endMonth={new Date(2035, 11)}
+            modifiers={{
+              suggested: suggestedDate ? [suggestedDate] : [],
+            }}
+            modifiersClassNames={{
+              suggested: "rdp-suggested",
+            }}
             classNames={{
               root: "rdp-root",
               months: "rdp-months",
@@ -178,6 +216,11 @@ export function DatePicker(props: DatePickerProps) {
               outside: "rdp-outside",
               disabled: "rdp-disabled",
               hidden: "rdp-hidden",
+              dropdowns: "rdp-dropdowns",
+              dropdown: "rdp-dropdown",
+              dropdown_root: "rdp-dropdown_root",
+              months_dropdown: "rdp-months_dropdown",
+              years_dropdown: "rdp-years_dropdown",
             }}
           />
         </Popover>

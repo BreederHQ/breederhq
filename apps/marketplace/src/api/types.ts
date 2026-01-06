@@ -26,12 +26,27 @@ export interface PublicProgramSummaryDTO extends MonetizationFields {
   photoUrl: string | null;
 }
 
+// Pricing tier for a program
+export interface ProgramPricingTierDTO {
+  tier: string;
+  priceRange: string;
+  description?: string;
+}
+
 export interface PublicProgramDTO {
   slug: string;
   name: string;
   bio: string | null;
   website: string | null;
   publicContactEmail: string | null;
+
+  // === Program-specific enhanced fields ===
+  // (Other breeder info like health practices, registrations, etc. comes from breeder profile)
+
+  // Pricing & What's Included
+  pricingTiers?: ProgramPricingTierDTO[] | null;
+  whatsIncluded?: string | null;
+  typicalWaitTime?: string | null;
 }
 
 /**

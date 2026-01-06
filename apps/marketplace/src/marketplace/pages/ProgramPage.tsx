@@ -1,5 +1,5 @@
 // apps/marketplace/src/marketplace/pages/ProgramPage.tsx
-// Breeder profile page with "Available Litters" emphasis and Message button
+// Breeder profile page with enhanced program details and "Available Litters" section
 import * as React from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { useProgramQuery } from "../hooks/useProgramQuery";
@@ -10,7 +10,7 @@ import { useStartConversation } from "../../messages/hooks";
 import { Breadcrumb } from "../components/Breadcrumb";
 import { formatCents } from "../../utils/format";
 
-import type { PublicOffspringGroupListingDTO } from "../../api/types";
+import type { PublicOffspringGroupListingDTO, PublicProgramDTO } from "../../api/types";
 
 /**
  * Breeder profile page.
@@ -192,6 +192,9 @@ export function ProgramPage() {
           )}
         </div>
       )}
+
+      {/* Enhanced Program Information Sections */}
+      <EnhancedProgramDetails profile={profile} />
 
       {/* Available Litters section - emphasized */}
       <div className="space-y-3">
@@ -376,5 +379,105 @@ function ListingCard({
         </span>
       </div>
     </Link>
+  );
+}
+
+// ============================================================================
+// Enhanced Program Details Components
+// ============================================================================
+
+/**
+ * Displays program-specific enhanced information (pricing, what's included, wait time)
+ * Note: Breeder-level info (health testing, registrations, credentials) comes from the breeder profile
+ */
+function EnhancedProgramDetails({ profile }: { profile: PublicProgramDTO }) {
+  // Check if any program-specific enhanced fields have data
+  const hasPricing = !!((profile.pricingTiers && profile.pricingTiers.length > 0) || profile.whatsIncluded || profile.typicalWaitTime);
+
+  // Don't render anything if no enhanced data
+  if (!hasPricing) {
+    return null;
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Pricing & What's Included Section */}
+      <ProgramInfoSection title="Pricing & What's Included">
+        {profile.pricingTiers && profile.pricingTiers.length > 0 && (
+          <div className="mb-4">
+            <h4 className="text-[13px] font-medium text-text-secondary mb-2">Pricing</h4>
+            <div className="grid gap-2">
+              {profile.pricingTiers.map((tier, idx) => (
+                <div key={idx} className="flex items-baseline justify-between p-3 rounded-lg bg-border-default/30">
+                  <div>
+                    <span className="text-sm font-medium text-white">{tier.tier}</span>
+                    {tier.description && (
+                      <p className="text-[12px] text-text-tertiary mt-0.5">{tier.description}</p>
+                    )}
+                  </div>
+                  <span className="text-sm font-semibold text-accent">{tier.priceRange}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        {profile.typicalWaitTime && (
+          <div className="mb-3">
+            <InfoBadge label="Wait Time" value={profile.typicalWaitTime} />
+          </div>
+        )}
+        {profile.whatsIncluded && (
+          <div>
+            <h4 className="text-[13px] font-medium text-text-secondary mb-1">What's Included</h4>
+            <p className="text-[14px] text-text-tertiary leading-relaxed">{profile.whatsIncluded}</p>
+          </div>
+        )}
+      </ProgramInfoSection>
+    </div>
+  );
+}
+
+/**
+ * Collapsible section wrapper for program info
+ */
+function ProgramInfoSection({ title, children }: { title: string; children: React.ReactNode }) {
+  const [expanded, setExpanded] = React.useState(true);
+
+  return (
+    <div className="rounded-portal border border-border-subtle bg-portal-card overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setExpanded(!expanded)}
+        className="w-full flex items-center justify-between px-5 py-3 hover:bg-portal-card-hover transition-colors"
+      >
+        <h3 className="text-[15px] font-semibold text-white">{title}</h3>
+        <svg
+          className={`w-4 h-4 text-text-tertiary transition-transform ${expanded ? "rotate-180" : ""}`}
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+      {expanded && (
+        <div className="px-5 pb-5 pt-2 border-t border-border-subtle">
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Small info badge for displaying key-value pairs
+ */
+function InfoBadge({ label, value, variant = "default" }: { label: string; value: string; variant?: "default" | "success" }) {
+  const bgClass = variant === "success" ? "bg-green-500/10 text-green-400" : "bg-border-default/50 text-text-secondary";
+  return (
+    <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs ${bgClass}`}>
+      <span className="font-medium">{label}:</span>
+      <span>{value}</span>
+    </div>
   );
 }
