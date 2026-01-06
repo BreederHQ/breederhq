@@ -10,6 +10,10 @@ export type SectionCardProps = {
   actions?: React.ReactNode;
   children?: React.ReactNode;
   className?: string;
+  /** Show amber highlight border to indicate attention needed */
+  highlight?: boolean;
+  /** Show green highlight border to indicate success/locked state */
+  highlightGreen?: boolean;
 };
 
 export function SectionCard({
@@ -19,13 +23,22 @@ export function SectionCard({
   actions,
   children,
   className = "",
+  highlight = false,
+  highlightGreen = false,
 }: SectionCardProps) {
   const headerRight = right ?? rightSlot ?? actions;
 
+  const baseClasses = "bhq-section-card rounded-xl bg-surface p-3";
+  const borderClasses = highlightGreen
+    ? "border-2 border-green-500/60 ring-2 ring-green-500/20"
+    : highlight
+      ? "border-2 border-amber-500/60 ring-2 ring-amber-500/20"
+      : "border border-hairline";
+
   return (
-    <div className={["bhq-section-card rounded-xl border border-hairline bg-surface p-3", className].join(" ")}>
+    <div className={[baseClasses, borderClasses, className].join(" ")}>
       {(title || headerRight) && (
-        <div className="bhq-section-header flex items-center justify-between mb-2">
+        <div className="bhq-section-header flex items-center justify-between mb-1">
           {/* remove the forced all-caps, give a stable class for global styling */}
           <div className="bhq-section-title flex-1">{title}</div>
           {headerRight}

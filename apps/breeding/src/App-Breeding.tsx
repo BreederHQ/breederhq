@@ -2,8 +2,7 @@
 import * as React from "react";
 import { createRoot } from "react-dom/client";
 import { createPortal } from "react-dom";
-import { Trash2, Plus, MoreHorizontal, Download } from "lucide-react";
-import { ToastViewport } from "@bhq/ui/atoms/Toast";
+import { Trash2, Plus, MoreHorizontal, MoreVertical, Download, Archive } from "lucide-react";
 import {
   PageHeader,
   Card,
@@ -35,6 +34,7 @@ import { NavLink, useInRouterContext } from "react-router-dom";
 import RollupGantt from "./components/RollupGantt";
 import PerPlanGantt from "./components/PerPlanGantt";
 import PlannerSwitch from "./components/PlannerSwitch";
+import PlanJourney from "./components/PlanJourney";
 import "@bhq/ui/styles/table.css";
 import "@bhq/ui/styles/details.css";
 import "@bhq/ui/styles/datefield.css";
@@ -49,6 +49,7 @@ import BreedingCalendar from "./components/BreedingCalendar";
 // ── Planner pages ─────────────────────────────────────────
 import { YourBreedingPlansPage, WhatIfPlanningPage } from "./pages/planner";
 import type { WhatIfFemale } from "./pages/planner/whatIfTypes";
+import { toBackendStatus, fromBackendStatus, deriveBreedingStatus as deriveBreedingStatusImported, type Status as PlannerStatus } from "./pages/planner/deriveBreedingStatus";
 
 
 /* Cycle math */
@@ -228,13 +229,19 @@ function normalizeExpectedMilestones(
     day(milestones?.placement_extended_full?.[1]) ?? // legacy array format
     null;
 
+  // Sanity check: placement should never be before weaning completed
+  let finalPlacementStart = placementStart;
+  if (weanedDate && placementStart && placementStart < weanedDate) {
+    finalPlacementStart = weanedDate;
+  }
+
   return {
     cycleStart: cycle,
     hormoneTestingStart,
     breedDate,
     birthDate,
     weanedDate,
-    placementStart,
+    placementStart: finalPlacementStart,
     placementCompleted,
   };
 }
@@ -543,7 +550,7 @@ const COLUMNS: Array<{ key: keyof PlanRow & string; label: string; default?: boo
   { key: "expectedHormoneTestingStart", label: "Hormone Testing Start (Exp)", default: false },
   { key: "expectedBreedDate", label: "Breeding (Exp)", default: false },
   { key: "expectedBirthDate", label: "Birth (Exp)", default: false },
-  { key: "expectedWeaned", label: "Weaned (Exp)", default: false },
+  { key: "expectedWeaned", label: "Weaning Completed (Exp)", default: false },
   { key: "expectedPlacementStartDate", label: "Placement Start (Exp)", default: false },
   { key: "expectedPlacementCompletedDate", label: "Placement Completed (Exp)", default: false },
 
@@ -553,7 +560,7 @@ const COLUMNS: Array<{ key: keyof PlanRow & string; label: string; default?: boo
   { key: "hormoneTestingStartDateActual", label: "Hormone Testing Start (Actual)", default: false },
   { key: "breedDateActual", label: "Breeding (Actual)", default: false },
   { key: "birthDateActual", label: "Birth (Actual)", default: false },
-  { key: "weanedDateActual", label: "Weaned", default: false },
+  { key: "weanedDateActual", label: "Weaning Completed", default: false },
   { key: "placementStartDateActual", label: "Placement Start (Actual)", default: false },
   { key: "placementCompletedDateActual", label: "Placement Completed (Actual)", default: false },
   { key: "completedDateActual", label: "Plan Completed (Actual)", default: false },
@@ -816,10 +823,14 @@ async function safeGetCreatingOrg(api: any) {
   return null;
 }
 
-function DisplayValue({ value }: { value?: string | null }) {
+function DisplayValue({ value, required }: { value?: string | null; required?: boolean }) {
+  const isEmpty = !value || !value.trim();
+  const showRedBorder = required && isEmpty;
   return (
-    <div className="h-8 flex items-center text-sm select-none pointer-events-none">
-      {value ? <span className="font-medium">{value}</span> : <span className="text-secondary">—</span>}
+    <div className={`h-[42px] rounded-md border bg-card px-3 flex items-center text-sm select-none pointer-events-none ${
+      showRedBorder ? "border-red-500/60 ring-1 ring-red-500/20" : "border-[#4b5563]"
+    }`}>
+      {value ? <span className="font-medium">{value}</span> : <span className={showRedBorder ? "text-red-400" : "text-secondary"}>—</span>}
     </div>
   );
 }
@@ -842,7 +853,7 @@ function planToRow(p: any): PlanRow {
   return {
     id: p.id,
     name: p.name,
-    status: p.status,
+    status: fromBackendStatus(p.status),
     species: toUiSpecies(p.species),
 
     damId: p.dam?.id ?? null,
@@ -900,46 +911,9 @@ function planToRow(p: any): PlanRow {
   } as any;
 }
 
-type Status =
-  | "PLANNING"
-  | "COMMITTED"
-  | "BRED"
-  | "BIRTHED"
-  | "WEANED"
-  | "HOMING_STARTED"
-  | "COMPLETE"
-  | "CANCELED";
-
-function deriveBreedingStatus(p: {
-  name?: string | null;
-  species?: string | null;
-  damId?: number | null;
-  sireId?: number | null;
-  lockedCycleStart?: string | null;
-  breedDateActual?: string | null;
-  birthDateActual?: string | null;
-  weanedDateActual?: string | null;
-  placementStartDateActual?: string | null;
-  placementCompletedDateActual?: string | null;
-  completedDateActual?: string | null;
-  status?: string | null; // ⟵ allow pass-through
-}): Status {
-  const explicit = (p.status ?? "").toUpperCase();
-  if (explicit === "CANCELED") return "CANCELED";
-
-  if (p.completedDateActual?.trim()) return "COMPLETE";
-  if ((p.placementCompletedDateActual ?? p.placementStartDateActual)?.trim()) return "HOMING_STARTED";
-  if (p.weanedDateActual?.trim()) return "WEANED";
-  if (p.birthDateActual?.trim()) return "BIRTHED";
-  if (p.breedDateActual?.trim()) return "BRED";
-
-  const hasBasics = Boolean((p.name ?? "").trim() && (p.species ?? "").trim() && p.damId != null);
-  const hasCommitPrereqs = hasBasics && p.sireId != null && (p.lockedCycleStart ?? "").trim();
-
-  // If you have a committedAt field in your backend, you can check it here (omitted in this POJO).
-  if (hasCommitPrereqs) return "COMMITTED";
-  return "PLANNING";
-}
+// Use the imported Status type and deriveBreedingStatus from planner module for consistency
+type Status = PlannerStatus;
+const deriveBreedingStatus = deriveBreedingStatusImported;
 
 /** Minimal animal for Dam/Sire search */
 type AnimalLite = {
@@ -1817,7 +1791,7 @@ export default function AppBreeding() {
             { label: "Bred", value: "BRED" },
             { label: "Birthed", value: "BIRTHED" },
             { label: "Weaned", value: "WEANED" },
-            { label: "Placement Started", value: "HOMING_STARTED" },
+            { label: "Placement Started", value: "PLACEMENT_STARTED" },
             { label: "Complete", value: "COMPLETE" },
             { label: "Canceled", value: "CANCELED" },
           ],
@@ -2386,7 +2360,6 @@ export default function AppBreeding() {
         const merged = { ...current, ...draft };
 
         // Normalize draft: convert empty strings to null so backend clears the field
-        // IMPORTANT: Only send status if explicitly provided in draft to avoid auto-committing
         const normalizedDraft: Record<string, any> = {};
         for (const [key, value] of Object.entries(draft)) {
           if (typeof value === "string" && value.trim() === "") {
@@ -2394,6 +2367,40 @@ export default function AppBreeding() {
           } else {
             normalizedDraft[key] = value;
           }
+        }
+
+        // Check if any actual date fields changed - if so, derive and include status
+        const actualDateFields = [
+          "cycleStartDateActual",
+          "hormoneTestingStartDateActual",
+          "breedDateActual",
+          "birthDateActual",
+          "weanedDateActual",
+          "placementStartDateActual",
+          "placementCompletedDateActual",
+          "completedDateActual",
+        ];
+        const hasActualDateChange = actualDateFields.some((f) => f in normalizedDraft);
+
+        if (hasActualDateChange) {
+          // Derive status based on merged data (current + draft changes)
+          const derivedStatus = deriveBreedingStatus({
+            name: merged.name,
+            species: merged.species,
+            damId: merged.damId,
+            sireId: merged.sireId,
+            lockedCycleStart: merged.lockedCycleStart,
+            cycleStartDateActual: normalizedDraft.cycleStartDateActual !== undefined ? normalizedDraft.cycleStartDateActual : (current?.cycleStartDateActual ?? null),
+            breedDateActual: normalizedDraft.breedDateActual !== undefined ? normalizedDraft.breedDateActual : (current?.breedDateActual ?? null),
+            birthDateActual: normalizedDraft.birthDateActual !== undefined ? normalizedDraft.birthDateActual : (current?.birthDateActual ?? null),
+            weanedDateActual: normalizedDraft.weanedDateActual !== undefined ? normalizedDraft.weanedDateActual : (current?.weanedDateActual ?? null),
+            placementStartDateActual: normalizedDraft.placementStartDateActual !== undefined ? normalizedDraft.placementStartDateActual : (current?.placementStartDateActual ?? null),
+            placementCompletedDateActual: normalizedDraft.placementCompletedDateActual !== undefined ? normalizedDraft.placementCompletedDateActual : (current?.placementCompletedDateActual ?? null),
+            completedDateActual: normalizedDraft.completedDateActual !== undefined ? normalizedDraft.completedDateActual : (current?.completedDateActual ?? null),
+          });
+          // Include derived status translated to backend format
+          normalizedDraft.status = toBackendStatus(derivedStatus);
+          console.log("[Breeding] onSave - derived status:", derivedStatus, "-> backend:", normalizedDraft.status);
         }
 
         await api.updatePlan(Number(id), normalizedDraft as any);
@@ -2438,11 +2445,7 @@ export default function AppBreeding() {
               const fresh = await api.getPlan(Number(planId), "parents,org");
               setRows((prev) => prev.map((r) => (Number(r.id) === Number(planId) ? planToRow(fresh) : r)));
 
-              // optional toast
-              utils.toast?.success?.("Plan committed, group linked.");
             } catch (e: any) {
-              const msg = e?.payload?.error || e?.message || "Commit failed";
-              utils.toast?.error?.(msg);
               console.error("[Breeding] commit failed", e);
             }
           }}
@@ -3081,6 +3084,8 @@ function CalendarInput(props: any) {
   const defaultValue = props.defaultValue as string | undefined;
   const placeholder = props.placeholder ?? "mm/dd/yyyy";
   const showIcon = props.showIcon ?? true;
+  // expectedValue: when user focuses on empty field, pre-populate with this value
+  const expectedValue = props.expectedValue as string | undefined;
 
   // any extra props intended for the visible input
   const rest: any = { ...props };
@@ -3092,6 +3097,7 @@ function CalendarInput(props: any) {
   delete rest.defaultValue;
   delete rest.placeholder;
   delete rest.showIcon;
+  delete rest.expectedValue;
 
   // ISO <-> display helpers
   const onlyISO = (s: string | undefined | null) => {
@@ -3184,6 +3190,18 @@ function CalendarInput(props: any) {
     onChange({ currentTarget: { value: iso } } as any);
   };
 
+  // Pre-populate with expected value when focusing on empty field
+  const handleFocus: React.FocusEventHandler<HTMLInputElement> = (e) => {
+    if (!textValue && expectedValue && onChange) {
+      const iso = onlyISO(expectedValue);
+      if (iso) {
+        const display = toDisplay(iso);
+        setTextValue(display);
+        onChange({ currentTarget: { value: iso } } as any);
+      }
+    }
+  };
+
   return (
     <div ref={shellRef} className={className}>
       <div className="relative">
@@ -3193,6 +3211,7 @@ function CalendarInput(props: any) {
           placeholder={placeholder}
           value={textValue}
           onChange={handleTextChange}
+          onFocus={handleFocus}
           readOnly={readOnly}
           {...rest}
         />
@@ -3617,7 +3636,7 @@ function PlanDetailsView(props: {
 
   // ---- status flags used by Dates tab and other sections ----
   const statusU = (row.status || "").toUpperCase();
-  const committedOrLater = ["COMMITTED", "BRED", "BIRTHED", "WEANED", "HOMING_STARTED", "COMPLETE"].includes(statusU);
+  const committedOrLater = ["COMMITTED", "BRED", "BIRTHED", "WEANED", "PLACEMENT_STARTED", "PLACEMENT_COMPLETED", "COMPLETE"].includes(statusU);
 
   const isCommitted = statusU === "COMMITTED";
   const isArchived = Boolean(row.archivedAt);
@@ -3643,10 +3662,14 @@ function PlanDetailsView(props: {
   const [draftTick, setDraftTick] = React.useState(0);
   const [actualDatesWarning, setActualDatesWarning] = React.useState<string | null>(null);
 
+  // Guidance card collapsed/expanded state
+  const [guidanceCollapsed, setGuidanceCollapsed] = React.useState(false);
+
   // Unsaved changes tracking
   const [persistedSnapshot, setPersistedSnapshot] = React.useState<Partial<PlanRow>>(() => buildPlanSnapshot(row));
   const [pendingSave, setPendingSave] = React.useState(false);
   const [uncommitting, setUncommitting] = React.useState(false);
+  const [overflowMenuOpen, setOverflowMenuOpen] = React.useState(false);
 
   // Reset persisted snapshot when row.id changes (switching to a different plan)
   React.useEffect(() => {
@@ -3783,6 +3806,7 @@ function PlanDetailsView(props: {
     | "hormoneTestingStartDateActual"
     | "breedDateActual"
     | "birthDateActual"
+    | "weanedDateActual"
     | "placementStartDateActual"
     | "placementCompletedDateActual"
     | "completedDateActual";
@@ -3792,6 +3816,7 @@ function PlanDetailsView(props: {
     "hormoneTestingStartDateActual",
     "breedDateActual",
     "birthDateActual",
+    "weanedDateActual",
     "placementStartDateActual",
     "placementCompletedDateActual",
     "completedDateActual",
@@ -3802,6 +3827,7 @@ function PlanDetailsView(props: {
     hormoneTestingStartDateActual: "Hormone Testing Start (Actual)",
     breedDateActual: "Breeding Date (Actual)",
     birthDateActual: "Birth Date (Actual)",
+    weanedDateActual: "Weaning Completed (Actual)",
     placementStartDateActual: "Placement Start (Actual)",
     placementCompletedDateActual: "Placement Completed (Actual)",
     completedDateActual: "Plan Completed (Actual)",
@@ -3867,6 +3893,24 @@ function PlanDetailsView(props: {
     [effective]
   );
 
+  // Clear a date and all subsequent dates in the sequence
+  const clearActualDateAndSubsequent = React.useCallback(
+    (field: ActualFieldKey) => {
+      const idx = ACTUAL_FIELD_ORDER.indexOf(field);
+      if (idx === -1) return;
+
+      // Build a patch object that clears this date and all subsequent dates
+      const patch: Record<string, null> = {};
+      for (let i = idx; i < ACTUAL_FIELD_ORDER.length; i++) {
+        patch[ACTUAL_FIELD_ORDER[i]] = null;
+      }
+
+      setDraftLive(patch as any);
+      setActualDatesWarning(null);
+    },
+    [setDraftLive]
+  );
+
   // Allow editing cycle start actual when in edit mode and committed
   const canEditCycleStartActual = canEditDates;
 
@@ -3904,24 +3948,27 @@ function PlanDetailsView(props: {
   const prevDamIdRef = React.useRef<number | null>(null);
   const fetchedDamIds = React.useRef<Set<number>>(new Set());
 
+  // Use effective.damId so we fetch cycle data when user selects a new dam in edit mode
+  const currentDamId = effective.damId;
+
   React.useEffect(() => {
     let cancelled = false;
 
     // Only refetch if damId actually changed (not just row object reference)
-    if (prevDamIdRef.current === row.damId && row.damId != null) {
+    if (prevDamIdRef.current === currentDamId && currentDamId != null) {
       return;
     }
 
-    const isInitialFetch = row.damId != null && !fetchedDamIds.current.has(row.damId);
-    if (row.damId != null) {
-      fetchedDamIds.current.add(row.damId);
+    const isInitialFetch = currentDamId != null && !fetchedDamIds.current.has(currentDamId);
+    if (currentDamId != null) {
+      fetchedDamIds.current.add(currentDamId);
     }
-    prevDamIdRef.current = row.damId ?? null;
+    prevDamIdRef.current = currentDamId ?? null;
 
     setDamRepro(null);
     setDamLoadError(null);
 
-    if (!row.damId) return;
+    if (!currentDamId) return;
 
     // Tenant header is required by backend for /animals/:id
     if (tenantId == null) {
@@ -3935,7 +3982,7 @@ function PlanDetailsView(props: {
       try {
         const include = "repro,last_heat,lastCycle,cycleStartDates";
         const qs = new URLSearchParams({ include });
-        const url = `/api/v1/animals/${row.damId}?${qs.toString()}`;
+        const url = `/api/v1/animals/${currentDamId}?${qs.toString()}`;
 
 
         const res = await fetch(url, {
@@ -4035,7 +4082,7 @@ function PlanDetailsView(props: {
       cancelled = true;
       controller.abort();
     };
-  }, [row.damId, tenantId, refreshTrigger]);
+  }, [currentDamId, tenantId, refreshTrigger]);
 
   // ===== Auto-recalculate expected dates when override changes for locked plans =====
   const prevOverrideRef = React.useRef<number | null | undefined>(undefined);
@@ -4221,7 +4268,6 @@ function PlanDetailsView(props: {
         expectedPlacementStartDate: expected.placementStart,
         expectedPlacementCompletedDate: expected.placementCompleted,
       });
-      utils.toast?.error?.("Failed to lock cycle. Please try again.");
     }
   }
 
@@ -4279,7 +4325,6 @@ function PlanDetailsView(props: {
       setPersistedSnapshot(buildPlanSnapshot(updated || { ...row, ...payload }));
     } catch (e) {
       console.error("[Breeding] recalculateExpectedDates failed", e);
-      utils.toast?.error?.("Failed to recalculate expected dates. Please try again.");
     }
   }
 
@@ -4328,7 +4373,6 @@ function PlanDetailsView(props: {
       const expected = pendingCycle ? computeExpectedForPlan({ species: row.species as any, lockedCycleStart: pendingCycle }) : null;
       setExpectedPreview(expected);
       setLockedPreview(Boolean(pendingCycle));
-      utils.toast?.error?.("Failed to unlock cycle. Please try again.");
     }
   }
 
@@ -4429,7 +4473,7 @@ function PlanDetailsView(props: {
     effective.sireId != null &&
     hasBreed &&
     ((row.lockedCycleStart ?? draftRef.current.lockedCycleStart) ?? "") &&
-    !["COMMITTED", "BRED", "BIRTHED", "WEANED", "HOMING_STARTED", "COMPLETE", "CANCELED"].includes(effective.status)
+    !["COMMITTED", "BRED", "BIRTHED", "WEANED", "PLACEMENT_STARTED", "PLACEMENT_COMPLETED", "COMPLETE", "CANCELED"].includes(effective.status)
   );
   const expectedsEnabled = Boolean(cycleForExpected && speciesWire);
 
@@ -4498,14 +4542,13 @@ function PlanDetailsView(props: {
   }, [hasPendingChangesLocal, close]);
 
   const handleCancel = React.useCallback(() => {
-    const undo: Partial<PlanRow> = {};
-    for (const k of Object.keys(draftRef.current)) {
-      (undo as any)[k] = (row as any)[k];
-    }
-    if (Object.keys(undo).length) setDraft(undo);
+    // Clear all draft state to remove "unsaved changes" indicator
     draftRef.current = {};
+    setDraftTick((t) => t + 1);
+    setDraft({});
+    setPendingSave(false);
     setMode("view");
-  }, [row, setDraft, setMode]);
+  }, [setDraft, setMode]);
 
   type ViewMode = "list" | "calendar" | "timeline";
   const [view, setView] = React.useState<ViewMode>("list");
@@ -4523,6 +4566,7 @@ function PlanDetailsView(props: {
       onTabChange={setActiveTab}
       onClose={handleClose}
       hasPendingChanges={hasPendingChangesLocal}
+      hideCloseButton
       rightActions={
         <div className="flex gap-2 items-center" data-bhq-details>
           {mode === "edit" && row.status === "COMMITTED" ? (
@@ -4547,8 +4591,6 @@ function PlanDetailsView(props: {
                   if (onPlanUpdated) {
                     onPlanUpdated(row.id, fresh);
                   }
-
-                  utils.toast?.success?.("Plan uncommitted successfully.");
                 } catch (e: any) {
                   // Handle 409 Conflict with blockers
                   if (e?.status === 409 || e?.payload?.blockers) {
@@ -4574,8 +4616,6 @@ function PlanDetailsView(props: {
                       ) : "This plan cannot be uncommitted at this time.",
                     });
                   } else {
-                    const msg = e?.payload?.error || e?.message || "Uncommit failed";
-                    utils.toast?.error?.(msg);
                     console.error("[Breeding] uncommit failed", e);
                   }
                 } finally {
@@ -4585,70 +4625,29 @@ function PlanDetailsView(props: {
             >
               {uncommitting ? "Uncommitting..." : "Uncommit"}
             </Button>
-          ) : mode === "edit" && row.status !== "COMMITTED" ? (
-            <span title={commitTooltip} style={{ display: 'inline-block' }}>
-              <Button
-                size="sm"
-                onClick={async () => {
-                  if (!api || !canCommit) return;
-
-                  // If we have a locked cycle in draft but not persisted yet, persist it first
-                  if (!row.lockedCycleStart && draftRef.current.lockedCycleStart) {
-                    const locked = String(draftRef.current.lockedCycleStart);
-                    const expected = computeExpectedForPlan({ species: row.species as any, lockedCycleStart: locked });
-                    const testingStart = pickExpectedTestingStart(expected, locked);
-
-                    const payload = {
-                      lockedCycleStart: locked,
-                      lockedOvulationDate: expected.ovulation,
-                      lockedDueDate: expected.birth_expected,
-                      lockedPlacementStartDate: expected.placement_expected,
-
-                      // Canonical expected (system-derived)
-                      expectedCycleStart: locked,
-                      expectedHormoneTestingStart: testingStart ?? null,
-                      expectedBreedDate: expected.ovulation ?? null,
-                      expectedBirthDate: expected.birth_expected ?? null,
-                    };
-
-                    try {
-                      await api.updatePlan(Number(row.id), payload as any);
-                    } catch (err) {
-                      console.error("[Breeding] commit pre-persist (lock) failed", err);
-                      return;
-                    }
-                  }
-
-                  // Ensure parents are persisted before commit
-                  const parentPatch: any = {};
-                  if (effective.damId !== row.damId) parentPatch.damId = effective.damId;
-                  if (effective.sireId !== row.sireId) parentPatch.sireId = effective.sireId;
-                  if (Object.keys(parentPatch).length) {
-                    try {
-                      await api.updatePlan(Number(row.id), parentPatch);
-                    } catch (err) {
-                      console.error("[Breeding] commit pre-persist (parents) failed", err);
-                      return;
-                    }
-                  }
-
-                  await onCommitted?.(effective.id);
-                }}
-                disabled={!canCommit || !api}
-              >
-                Commit Plan
-              </Button>
-            </span>
           ) : null}
-          {mode === "edit" && (() => {
-            const isArchived = !!row.archived;
-            return (
-              <Button
-                size="sm"
-                variant="outline"
+        </div>
+      }
+      tabsRightContent={
+        mode === "edit" && (
+          <Popover open={overflowMenuOpen} onOpenChange={setOverflowMenuOpen}>
+            <Popover.Trigger asChild>
+              <button
+                type="button"
+                className="p-1.5 rounded hover:bg-white/10 transition-colors"
+                aria-label="More actions"
+              >
+                <MoreVertical className="h-5 w-5 text-secondary" />
+              </button>
+            </Popover.Trigger>
+            <Popover.Content align="end" className="w-44 p-1">
+              {/* Archive / Unarchive */}
+              <button
+                className="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-white/5 rounded"
                 onClick={async () => {
+                  setOverflowMenuOpen(false);
                   if (!onArchive) return;
-                  const next = !isArchived;
+                  const next = !row.archived;
                   const ok = await confirmModal({
                     title: next ? "Archive plan?" : "Restore plan?",
                     message: next
@@ -4662,49 +4661,45 @@ function PlanDetailsView(props: {
 
                   try {
                     await onArchive(row.id, next);
-                    utils.toast?.success?.(next ? "Plan archived." : "Plan restored.");
                   } catch (e) {
                     console.error("[Breeding] archive toggle failed", e);
-                    const verb = next ? "archive" : "restore";
-                    utils.toast?.error?.(`Failed to ${verb} plan. Try again.`);
                   }
                 }}
-                title={isArchived ? "Unarchive" : "Archive"}
               >
-                {isArchived ? "Unarchive" : "Archive"}
-              </Button>
-            );
-          })()}
-          {mode === "edit" && !isDeleted && (
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={async () => {
-                if (!onDelete) return;
-                const ok = await confirmModal({
-                  title: "Delete this plan?",
-                  message: "This will soft delete the plan and any linked Offspring Group. This action can only be undone by an admin.",
-                  confirmText: "Delete",
-                  cancelText: "Cancel",
-                  tone: "danger",
-                });
-                if (!ok) return;
+                <Archive className="h-4 w-4" />
+                {row.archived ? "Unarchive" : "Archive"}
+              </button>
+              {/* Delete */}
+              {!isDeleted && (
+                <button
+                  className="flex w-full items-center gap-2 px-3 py-2 text-sm text-red-400 hover:bg-white/5 rounded"
+                  onClick={async () => {
+                    setOverflowMenuOpen(false);
+                    if (!onDelete) return;
+                    const ok = await confirmModal({
+                      title: "Delete this plan?",
+                      message: "This will soft delete the plan and any linked Offspring Group. This action can only be undone by an admin.",
+                      confirmText: "Delete",
+                      cancelText: "Cancel",
+                      tone: "danger",
+                    });
+                    if (!ok) return;
 
-                try {
-                  await onDelete(row.id);
-                  utils.toast?.success?.("Plan deleted.");
-                  closeDrawer();
-                } catch (e) {
-                  console.error("[Breeding] delete failed", e);
-                  utils.toast?.error?.("Failed to delete plan. Try again.");
-                }
-              }}
-              title="Delete Plan"
-            >
-              Delete
-            </Button>
-          )}
-        </div>
+                    try {
+                      await onDelete(row.id);
+                      closeDrawer();
+                    } catch (e) {
+                      console.error("[Breeding] delete failed", e);
+                    }
+                  }}
+                >
+                  <Trash2 className="h-4 w-4" />
+                  Delete
+                </button>
+              )}
+            </Popover.Content>
+          </Popover>
+        )
       }
     >
       <div className="relative overflow-x-hidden" data-bhq-details>
@@ -4728,16 +4723,83 @@ function PlanDetailsView(props: {
         {/* OVERVIEW TAB */}
         {activeTab === "overview" && (
           <div className="space-y-4 mt-2">
+            {/* Plan Journey - Phase timeline and guidance */}
+            <PlanJourney
+              status={row.status}
+              hasPlanName={Boolean(effective.name)}
+              hasSpecies={Boolean(effective.species)}
+              hasDam={Boolean(effective.damId)}
+              hasSire={Boolean(effective.sireId)}
+              hasBreed={Boolean(effective.breedText)}
+              hasLockedCycle={Boolean(effective.lockedCycleStart)}
+              hasActualCycleStart={Boolean(effective.cycleStartDateActual)}
+              hasActualBreedDate={Boolean(effective.breedDateActual)}
+              hasActualBirthDate={Boolean(effective.birthDateActual)}
+              hasActualWeanedDate={Boolean(effective.weanedDateActual)}
+              hasPlacementStarted={Boolean(effective.placementStartDateActual)}
+              hasPlacementCompleted={Boolean(effective.placementCompletedDateActual)}
+              actualCycleStartDate={effective.cycleStartDateActual}
+              actualHormoneTestingStartDate={effective.hormoneTestingStartDateActual}
+              actualBreedDate={effective.breedDateActual}
+              actualBirthDate={effective.birthDateActual}
+              actualWeanedDate={effective.weanedDateActual}
+              actualPlacementStartDate={effective.placementStartDateActual}
+              actualPlacementCompletedDate={effective.placementCompletedDateActual}
+              expectedCycleStartDate={expectedCycleStart}
+              expectedBreedDate={expectedBreed}
+              expectedBirthDate={expectedBirth}
+              expectedWeanedDate={expectedWeaned}
+              expectedPlacementStartDate={expectedPlacementStart}
+              expectedPlacementCompletedDate={expectedPlacementCompleted}
+              onDateChange={(field, value) => {
+                if (!isEdit) return;
+                if (field === "actualCycleStartDate") {
+                  setDraftLive({ cycleStartDateActual: value });
+                } else if (field === "actualHormoneTestingStartDate") {
+                  setDraftLive({ hormoneTestingStartDateActual: value });
+                } else if (field === "actualBreedDate") {
+                  setDraftLive({ breedDateActual: value });
+                } else if (field === "actualBirthDate") {
+                  setDraftLive({ birthDateActual: value });
+                } else if (field === "actualWeanedDate") {
+                  setDraftLive({ weanedDateActual: value });
+                } else if (field === "actualPlacementStartDate") {
+                  setDraftLive({ placementStartDateActual: value });
+                } else if (field === "actualPlacementCompletedDate") {
+                  setDraftLive({ placementCompletedDateActual: value });
+                }
+              }}
+              onNavigateToTab={(tab) => setActiveTab(tab as typeof activeTab)}
+              onAdvancePhase={async (toPhase) => {
+                if (!api || !isEdit) return;
+                try {
+                  // Translate frontend status to backend status
+                  const backendStatus = toBackendStatus(toPhase);
+                  console.log("[Breeding] Advancing to phase:", toPhase, "-> backend:", backendStatus, "for plan:", row.id);
+                  await api.updatePlan(Number(row.id), { status: backendStatus } as any);
+                  const fresh = await api.getPlan(Number(row.id), "parents,org");
+                  onPlanUpdated?.(row.id, fresh);
+                } catch (err) {
+                  console.error("[Breeding] advance phase failed", err);
+                }
+              }}
+              isEdit={isEdit}
+              guidanceCollapsed={guidanceCollapsed}
+              onToggleGuidance={setGuidanceCollapsed}
+              confirmModal={confirmModal}
+            />
+
             {/* Plan Info */}
             <SectionCard title="Plan Info">
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div className="min-w-0">
-                  <div className="text-xs text-secondary mb-1">Plan Name</div>
+                  <div className="text-xs text-secondary mb-1">Plan Name <span className="text-red-500">*</span></div>
                   {isEdit ? (
                     <Input
                       defaultValue={row.name}
                       onChange={(e) => setDraftLive({ name: e.currentTarget.value })}
                       disabled={!editable}
+                      style={{ height: 42, minHeight: 42 }}
                     />
                   ) : (
                     <DisplayValue value={row.name} />
@@ -4750,6 +4812,7 @@ function PlanDetailsView(props: {
                       defaultValue={row.nickname ?? ""}
                       onChange={(e) => setDraftLive({ nickname: e.currentTarget.value })}
                       disabled={!editable}
+                      style={{ height: 42, minHeight: 42 }}
                     />
                   ) : (
                     <DisplayValue value={row.nickname ?? ""} />
@@ -4764,10 +4827,15 @@ function PlanDetailsView(props: {
               {/* Species + Breed */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-4">
                 <div className="min-w-0 sm:col-span-1">
-                  <div className="text-xs text-secondary mb-1">Species</div>
+                  <div className="text-xs text-secondary mb-1">Species <span className="text-red-500">*</span></div>
                   {isEdit ? (
                     <select
-                      className="w-full h-9 rounded-md border border-hairline bg-surface px-2 text-sm text-primary"
+                      className={`w-full h-[42px] rounded-md border bg-card px-2 text-sm text-primary ${
+                        isEdit && !effective.species
+                          ? "border-amber-500/60 ring-1 ring-amber-500/20"
+                          : "border-[#4b5563]"
+                      }`}
+                      style={{ height: 42, minHeight: 42 }}
                       value={effective.species || ""}
                       disabled={!editable}
                       onChange={async (e) => {
@@ -4803,15 +4871,19 @@ function PlanDetailsView(props: {
                       <option value="Horse">Horse</option>
                     </select>
                   ) : (
-                    <DisplayValue value={row.species || ""} />
+                    <DisplayValue value={row.species || ""} required />
                   )}
                 </div>
 
                 <div className="min-w-0 sm:col-span-2">
-                  <div className="text-xs text-secondary mb-1">Breed</div>
+                  <div className="text-xs text-secondary mb-1">Breed <span className="text-red-500">*</span></div>
                   {isEdit && !coreFieldsLocked ? (
                     <div className="flex items-center gap-2">
-                      <div className="flex-1 min-w-0">
+                      <div className={`flex-1 min-w-0 rounded-md ${
+                        isEdit && !hasBreed
+                          ? "[&_input]:border-amber-500/60 [&_input]:ring-1 [&_input]:ring-amber-500/20"
+                          : ""
+                      }`}>
                         <BreedCombo
                           key={breedComboKey}
                           orgId={orgIdForBreeds ?? undefined}
@@ -4859,7 +4931,7 @@ function PlanDetailsView(props: {
                       </Button>
                     </div>
                   ) : (
-                    <DisplayValue value={row.breedText ?? ""} />
+                    <DisplayValue value={row.breedText || ""} required />
                   )}
                 </div>
               </div>
@@ -4867,12 +4939,13 @@ function PlanDetailsView(props: {
 
             {/* Parents */}
             <SectionCard title="Parents">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <Field label="Dam">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="min-w-0">
+                  <div className="text-xs text-secondary mb-1">Dam <span className="text-red-500">*</span></div>
                   {!isEdit ? (
-                    <div className="text-sm">{row.damName || "—"}</div>
+                    <DisplayValue value={row.damName || ""} required />
                   ) : coreFieldsLocked ? (
-                    <div className="text-sm text-secondary">{row.damName || "—"}</div>
+                    <DisplayValue value={row.damName || ""} required />
                   ) : (
                     <>
                       <div className="relative">
@@ -4890,6 +4963,8 @@ function PlanDetailsView(props: {
                           onBlur={() => setEditDamFocus(false)}
                           placeholder="Search Dam…"
                           disabled={!editable}
+                          className={isEdit && !effective.damId ? "!border-amber-500/60 ring-1 ring-amber-500/20" : ""}
+                          style={{ height: 42, minHeight: 42 }}
                         />
                         {effective.damId && (
                           <button
@@ -4946,13 +5021,14 @@ function PlanDetailsView(props: {
                       )}
                     </>
                   )}
-                </Field>
+                </div>
 
-                <Field label="Sire">
+                <div className="min-w-0">
+                  <div className="text-xs text-secondary mb-1">Sire <span className="text-red-500">*</span></div>
                   {!isEdit ? (
-                    <div className="text-sm">{row.sireName || "—"}</div>
+                    <DisplayValue value={row.sireName || ""} required />
                   ) : coreFieldsLocked ? (
-                    <div className="text-sm text-secondary">{row.sireName || "—"}</div>
+                    <DisplayValue value={row.sireName || ""} required />
                   ) : (
                     <>
                       <div className="relative">
@@ -4972,6 +5048,8 @@ function PlanDetailsView(props: {
                           onBlur={() => setEditSireFocus(false)}
                           placeholder="Search Sire…"
                           disabled={!editable}
+                          className={isEdit && !effective.sireId ? "!border-amber-500/60 ring-1 ring-amber-500/20" : ""}
+                          style={{ height: 42, minHeight: 42 }}
                         />
                         {effective.sireId && (
                           <button
@@ -5028,213 +5106,298 @@ function PlanDetailsView(props: {
                       )}
                     </>
                   )}
-                </Field>
+                </div>
               </div>
             </SectionCard>
 
-            {/* Cycle Selection */}
-            <SectionCard title="Breeding Cycle Selection">
-              <div className="grid grid-cols-[1fr_auto] gap-4 items-end">
-                {/* Left column: selector */}
-                <div>
-                  <div className="text-xs text-secondary mb-1">
-                    Cycle Selection - Choose from the last cycle start or expected future cycle start dates
+            {/* Next Milestone Summary - show context-aware next milestone based on status */}
+            {/* Only show when cycle has started (cycleStartDateActual entered) - not when Breeding Cycle Selection is visible */}
+            {committedOrLater && expectedsEnabled && effective.cycleStartDateActual && (() => {
+              const status = (row.status || "").toUpperCase();
+              let milestoneLabel = "";
+              let milestoneDate = "";
+              let milestoneIcon = "🏠";
+
+              if (status === "COMMITTED") {
+                milestoneLabel = "Breeding Window";
+                milestoneDate = expectedBreed;
+                milestoneIcon = "💕";
+              } else if (status === "BRED") {
+                milestoneLabel = "Expected Birth";
+                milestoneDate = expectedBirth;
+                milestoneIcon = "🐣";
+              } else if (status === "BIRTHED") {
+                milestoneLabel = "Weaning Completed";
+                milestoneDate = expectedWeaned;
+                milestoneIcon = "🍼";
+              } else if (status === "WEANED") {
+                milestoneLabel = "Placement Begins";
+                milestoneDate = expectedPlacementStart;
+                milestoneIcon = "🏠";
+              } else if (status === "PLACEMENT_STARTED") {
+                milestoneLabel = "Placement Completed";
+                milestoneDate = expectedPlacementCompleted;
+                milestoneIcon = "✅";
+              }
+
+              if (!milestoneLabel || !milestoneDate) return null;
+
+              // Calculate days away
+              const today = new Date();
+              today.setHours(0, 0, 0, 0);
+              const target = new Date(milestoneDate + "T00:00:00");
+              const diffTime = target.getTime() - today.getTime();
+              const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+              const daysText = diffDays === 0 ? "Today" : diffDays === 1 ? "1 day" : diffDays > 0 ? `${diffDays} days` : `${Math.abs(diffDays)} days ago`;
+              const isPast = diffDays < 0;
+
+              return (
+                <div className="mb-6">
+                  <div className="text-sm font-semibold text-primary mb-2">Next Milestone</div>
+                  <div className="relative rounded-lg bg-emerald-950/60 border border-emerald-600/30 overflow-hidden">
+                    <div className="flex items-center justify-between px-4 py-3">
+                      {/* Icon + Label + Date */}
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full bg-emerald-600/40 flex items-center justify-center text-xl">
+                          {milestoneIcon}
+                        </div>
+                        <div>
+                          <div className="text-sm font-medium text-emerald-400">{milestoneLabel}</div>
+                          <div className="text-sm text-secondary">
+                            {fmt(milestoneDate)} — <span className={isPast ? "text-red-400" : "text-emerald-400"}>{daysText} {isPast ? "" : "away"}</span>
+                          </div>
+                        </div>
+                      </div>
+                      {/* Days badge */}
+                      <div className="flex flex-col items-center justify-center w-16 h-16 rounded-full border-2 border-emerald-500/50 bg-emerald-950/80">
+                        <div className={`text-2xl font-bold ${isPast ? "text-red-400" : "text-emerald-400"}`}>{Math.abs(diffDays)}</div>
+                        <div className="text-[10px] uppercase tracking-wider text-emerald-500/80">Days</div>
+                      </div>
+                    </div>
                   </div>
-
-                  {isLocked ? (
-                    <DisplayValue value={fmt(effective.lockedCycleStart)} />
-                  ) : isEdit ? (
-                    (() => {
-                      const hasSelection = !!pendingCycle;
-                      // Include the last recorded cycle (most recent from history) plus projected future cycles
-                      const lastRecordedCycle = cycleStartsAsc.length > 0 ? cycleStartsAsc[cycleStartsAsc.length - 1] : null;
-                      const options = [...projectedCycles]
-                        .map((d) => asISODateOnly(d) ?? String(d).slice(0, 10))
-                        .filter(Boolean) as string[];
-                      // Add the last recorded cycle at the beginning if it exists and isn't already in the list
-                      if (lastRecordedCycle && !options.includes(lastRecordedCycle)) {
-                        options.unshift(lastRecordedCycle);
-                      }
-                      if (pendingCycle && !options.includes(pendingCycle)) {
-                        options.unshift(pendingCycle);
-                      }
-
-                      const hasDam = !!row.damId;
-                      const hasOptions = options.length > 0;
-
-                      const ringColor = !hasDam
-                        ? "hsl(var(--hairline))"
-                        : hasSelection
-                          ? "hsl(var(--green-600))"
-                          : "hsl(var(--hairline))";
-
-                      return (
-                        <div className="relative">
-                          <select
-                            className="relative z-10 w-full...-md px-2 text-sm text-primary bg-surface border border-hairline"
-                            value={pendingCycle ?? ""}
-                            onChange={(e) => {
-                              if (!isEdit) return;
-                              const v = e.currentTarget.value || "";
-                              const next = v ? (asISODateOnly(v) ?? v.slice(0, 10)) : null;
-                              setPendingCycle(next);
-                              setExpectedPreview(
-                                next
-                                  ? computeExpectedForPlan({ species: row.species as any, lockedCycleStart: next })
-                                  : null
-                              );
-                              // Persist selection as the plan's expected cycle start while in edit mode
-                              setDraft({ expectedCycleStart: next });
-                            }}
-                            onFocus={() => {
-                              if (row.damId) {
-                              }
-                            }}
-                            disabled={!hasDam || !editable}
-                          >
-                            <option value="">
-                              {!hasDam
-                                ? "Select a Dam to view cycles"
-                                : hasOptions
-                                  ? "Select cycle"
-                                  : "No projected cycles found"}
-                            </option>
-                            {options.map((d) => (
-                              <option key={d} value={d}>
-                                {fmt(d)}
-                              </option>
-                            ))}
-                          </select>
-
-                          <div
-                            aria-hidden
-                            className="pointer-events-none absolute inset-0 rounded-md"
-                            style={{ boxShadow: `0 0 0 2px ${ringColor}` }}
-                          />
-                        </div>
-                      );
-                    })()
-                  ) : (
-                    <DisplayValue
-                      value={
-                        effective.expectedCycleStart
-                          ? fmt(effective.expectedCycleStart)
-                          : "Cycle Not Yet Selected"
-                      }
-                    />
-                  )}
-
-                  {!!damLoadError && (
-                    <div className="text-xs text-red-600 mt-1">
-                      {damLoadError}
-                    </div>
-                  )}
                 </div>
+              );
+            })()}
 
-                {/* Right column: Lock / Unlock button */}
-                {isEdit && (
-                  <div className="pt-5">
-                  {isLocked ? (
-                    <div
-                      className="rounded-md"
-                      style={{
-                        padding: 2,
-                        background: coreFieldsLocked ? "#6b7280" : "#10b981", // gray when committed, neon green otherwise
-                      }}
+            {/* Cycle Selection - only show for PLANNING/COMMITTED before cycle starts */}
+            {/* Highlight when in EDIT mode, PLANNING phase, and cycle not locked */}
+            {!effective.cycleStartDateActual && (statusU === "PLANNING" || statusU === "COMMITTED") && (
+            <SectionCard title={isLocked ? "Cycle Start Date (Estimated)" : "Breeding Cycle Selection"} highlight={isEdit && statusU === "PLANNING" && !isLocked} highlightGreen={isLocked}>
+              {/* Simple compact cycle selector - matches original design */}
+              {/* Red border + glow when in view mode and cycle not locked (needs attention) */}
+              {/* Green pulsing glow when in "Ready to Lock" state */}
+              <div className={`relative rounded-xl bg-[#1e1e1e] overflow-hidden ${
+                !isEdit && !isLocked
+                  ? "border-2 border-red-500/60 ring-2 ring-red-500/20"
+                  : isEdit && !isLocked && pendingCycle
+                    ? "border-2 border-green-500/60 box-glow-pulse-green"
+                    : isLocked
+                      ? "border-2 border-green-500/60"
+                      : ""
+              }`}>
+                <div className="flex items-center gap-4 px-4 py-3">
+                  {/* Lock icon button - orange in edit mode with pulse, gray in view mode */}
+                  {/* Clicking locks the cycle (when unlocked) or unlocks it (when locked) */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!isEdit) return;
+                      if (isLocked) {
+                        unlockCycle();
+                      } else if (pendingCycle && effective.damId) {
+                        lockCycle();
+                      }
+                    }}
+                    disabled={!isEdit || (!isLocked && (!pendingCycle || !effective.damId))}
+                    title={isLocked ? "Click to unlock cycle" : (pendingCycle && effective.damId ? "Click to lock cycle" : "Select a dam and cycle first")}
+                    style={{ width: 44, height: 44, minWidth: 44, minHeight: 44 }}
+                    className={`rounded-full flex items-center justify-center flex-shrink-0 transition-all ${
+                      isLocked
+                        ? isEdit
+                          ? "bg-green-600 hover:bg-green-500 cursor-pointer"
+                          : "bg-green-600 cursor-default"
+                        : isEdit && pendingCycle
+                          ? "bg-green-500 hover:bg-green-400 hover:scale-105 cursor-pointer glow-pulse-green"
+                          : isEdit
+                            ? "bg-[hsl(var(--brand-orange))] hover:scale-105 cursor-pointer glow-pulse-orange"
+                            : "bg-red-500 cursor-default glow-pulse-red"
+                    }`}
+                  >
+                    <svg
+                      viewBox="0 0 24 24"
+                      className="h-5 w-5 text-white"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
                     >
-                      <button
-                        type="button"
-                        onClick={unlockCycle}
-                        className="h-9 px-3 rounded-[6px] text-sm font-medium flex items-center gap-2"
-                        style={{
-                          backgroundColor: coreFieldsLocked ? "#4b5563" : "#16a34a", // gray when committed, GREEN otherwise
-                          color: "#ffffff",
-                          cursor: coreFieldsLocked ? "not-allowed" : undefined,
-                          opacity: coreFieldsLocked ? 0.7 : undefined,
-                        }}
-                        title={coreFieldsLocked ? "Cycle cannot be unlocked after plan is committed" : "Unlock cycle"}
-                        disabled={!editable || coreFieldsLocked}
-                      >
-                        <svg
-                          viewBox="0 0 24 24"
-                          className="h-4 w-4"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          aria-hidden="true"
-                        >
-                          {/* CLOSED padlock icon */}
-                          <rect
-                            x="5"
-                            y="10"
-                            width="14"
-                            height="10"
-                            rx="2"
-                          />
+                      {isLocked ? (
+                        <>
+                          <rect x="5" y="10" width="14" height="10" rx="2" />
                           <path d="M7 10V7a5 5 0 0 1 10 0v3" />
-                        </svg>
-                        Cycle Locked
-                      </button>
-                    </div>
-                  ) : (
-                    (() => {
-                      const lockEnabled = !!(pendingCycle && (row.damId ?? null) != null && editable);
-                      return (
-                        <div
-                          className="rounded-md"
-                          style={{
-                            padding: 2,
-                            background: lockEnabled ? "#16a34a" : "#ffffff" // green border when enabled, white when disabled
-                          }}
-                        >
-                          <button
-                            type="button"
-                            onClick={lockCycle}
-                            disabled={!lockEnabled}
-                            className={[
-                              "h-9 px-3 rounded-[6px] text-sm font-medium flex items-center gap-2",
-                              lockEnabled
-                                ? "text-white"
-                                : "", // Remove text-secondary, use style instead
-                            ].join(" ")}
-                            style={{
-                              backgroundColor: lockEnabled ? "#dc2626" : "transparent", // RED when enabled, transparent when disabled
-                              color: lockEnabled ? undefined : "#9ca3af", // Better readable gray when disabled
-                            }}
-                            title={
-                              lockEnabled
-                                ? "Lock cycle"
-                                : "Select a dam and cycle first"
-                            }
-                          >
-                            <svg
-                              viewBox="0 0 24 24"
-                              className="h-4 w-4"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="2"
-                              aria-hidden="true"
-                            >
-                              {/* OPEN padlock icon */}
-                              <rect
-                                x="5"
-                                y="10"
-                                width="14"
-                                height="10"
-                                rx="2"
-                              />
-                              <path d="M7 10V7a5 5 0 0 1 9.9-1" />
-                            </svg>
-                            {lockEnabled ? "Lock Cycle" : "Select Dam & Cycle"}
-                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <rect x="5" y="10" width="14" height="10" rx="2" />
+                          <path d="M7 10V7a5 5 0 0 1 9.9-1" />
+                        </>
+                      )}
+                    </svg>
+                  </button>
+
+                  {/* Content - view mode shows simple text, edit mode shows label + dropdown */}
+                  {isEdit ? (
+                    <>
+                      {/* Edit mode: label text + dropdown */}
+                      {isLocked ? (
+                        <div className="flex-1">
+                          <div className="text-sm font-medium text-green-400">
+                            This breeding plan is estimated to begin on {fmt(effective.lockedCycleStart)}
+                          </div>
+                          <div className="text-xs text-secondary">
+                            If you need to change this, click the lock icon to unlock the cycle.
+                          </div>
                         </div>
-                      );
-                    })()
+                      ) : (
+                        <>
+                          <div className="flex-shrink-0">
+                            {pendingCycle ? (
+                              <>
+                                <div className="text-sm font-medium text-green-400">Ready to Lock!</div>
+                                <div className="text-xs text-secondary">{fmt(pendingCycle)}</div>
+                              </>
+                            ) : (
+                              <>
+                                <div className="text-sm font-medium text-[hsl(var(--brand-orange))]">Select a Cycle</div>
+                                <div className="text-xs text-secondary">Choose from dropdown</div>
+                              </>
+                            )}
+                          </div>
+                          <div className="flex-1">
+                            {(() => {
+                              const lastRecordedCycle = cycleStartsAsc.length > 0 ? cycleStartsAsc[cycleStartsAsc.length - 1] : null;
+                              const options = [...projectedCycles]
+                                .map((d) => asISODateOnly(d) ?? String(d).slice(0, 10))
+                                .filter(Boolean) as string[];
+                              if (lastRecordedCycle && !options.includes(lastRecordedCycle)) {
+                                options.unshift(lastRecordedCycle);
+                              }
+                              if (pendingCycle && !options.includes(pendingCycle)) {
+                                options.unshift(pendingCycle);
+                              }
+                              const hasDam = !!effective.damId;
+                              const hasOptions = options.length > 0;
+                              const hasCycleSelected = !!pendingCycle;
+
+                              return (
+                                <select
+                                  className={`w-full h-10 rounded-lg px-3 text-sm text-primary bg-[#3d3d3d] focus:outline-none focus:ring-2 ${
+                                    hasCycleSelected
+                                      ? "border-2 border-green-500 focus:ring-green-500/50"
+                                      : "border-0 focus:ring-[hsl(var(--brand-orange))]/50"
+                                  }`}
+                                  value={pendingCycle ?? ""}
+                                  onChange={(e) => {
+                                    if (!isEdit) return;
+                                    const v = e.currentTarget.value || "";
+                                    const next = v ? (asISODateOnly(v) ?? v.slice(0, 10)) : null;
+                                    setPendingCycle(next);
+                                    setExpectedPreview(
+                                      next
+                                        ? computeExpectedForPlan({ species: row.species as any, lockedCycleStart: next })
+                                        : null
+                                    );
+                                    setDraft({ expectedCycleStart: next });
+                                  }}
+                                  disabled={!hasDam || !editable}
+                                >
+                                  <option value="">
+                                    {!hasDam
+                                      ? "Select a Dam to view cycles"
+                                      : hasOptions
+                                        ? "Select cycle..."
+                                        : "No projected cycles found"}
+                                  </option>
+                                  {options.map((d) => (
+                                    <option key={d} value={d}>
+                                      {fmt(d)}
+                                    </option>
+                                  ))}
+                                </select>
+                              );
+                            })()}
+                          </div>
+                        </>
+                      )}
+                    </>
+                  ) : (
+                    /* View mode: simple text display */
+                    <div className="flex-1">
+                      {isLocked ? (
+                        <>
+                          <div className="text-sm font-medium text-green-400">
+                            This breeding plan is estimated to begin on {fmt(effective.lockedCycleStart)}
+                          </div>
+                          <div className="text-xs text-secondary">
+                            If you need to change this, enter edit mode and unlock the cycle.
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <div className="text-sm font-medium text-red-400">No Cycle Selected</div>
+                          <div className="text-xs text-secondary">Click Edit to change</div>
+                        </>
+                      )}
+                    </div>
                   )}
                 </div>
+
+                {!!damLoadError && (
+                  <div className="text-xs text-red-600 px-4 pb-2">
+                    {damLoadError}
+                  </div>
                 )}
               </div>
             </SectionCard>
+            )}
+
+            {/* Glow pulse animation for lock button */}
+            <style>{`
+              @keyframes glow-pulse-anim {
+                0%, 100% { box-shadow: 0 0 8px 2px hsl(var(--brand-orange) / 0.6); }
+                50% { box-shadow: 0 0 16px 6px hsl(var(--brand-orange) / 0.8); }
+              }
+              .glow-pulse-orange {
+                animation: glow-pulse-anim 2s ease-in-out infinite;
+              }
+              @keyframes glow-pulse-yellow-anim {
+                0%, 100% { box-shadow: 0 0 8px 2px rgba(234, 179, 8, 0.6); }
+                50% { box-shadow: 0 0 16px 6px rgba(234, 179, 8, 0.8); }
+              }
+              .glow-pulse-yellow {
+                animation: glow-pulse-yellow-anim 2s ease-in-out infinite;
+              }
+              @keyframes glow-pulse-red-anim {
+                0%, 100% { box-shadow: 0 0 8px 2px rgba(239, 68, 68, 0.5); }
+                50% { box-shadow: 0 0 14px 4px rgba(239, 68, 68, 0.7); }
+              }
+              .glow-pulse-red {
+                animation: glow-pulse-red-anim 2.5s ease-in-out infinite;
+              }
+              @keyframes box-glow-pulse-green-anim {
+                0%, 100% { box-shadow: 0 0 8px 2px rgba(34, 197, 94, 0.4); }
+                50% { box-shadow: 0 0 16px 6px rgba(34, 197, 94, 0.6); }
+              }
+              .box-glow-pulse-green {
+                animation: box-glow-pulse-green-anim 2s ease-in-out infinite;
+              }
+              @keyframes glow-pulse-green-anim {
+                0%, 100% { box-shadow: 0 0 8px 2px rgba(34, 197, 94, 0.6); }
+                50% { box-shadow: 0 0 16px 6px rgba(34, 197, 94, 0.8); }
+              }
+              .glow-pulse-green {
+                animation: glow-pulse-green-anim 2s ease-in-out infinite;
+              }
+            `}</style>
 
             {/* Placement Scheduling (Phase 6) - only show if plan has linked offspring group */}
             {row.offspringGroupId && api && (
@@ -5277,343 +5440,432 @@ function PlanDetailsView(props: {
         {/* DATES TAB */}
         {activeTab === "dates" && (
           <div className="space-y-4 mt-2 overflow-x-hidden">
-            <div
-              className={
-                "grid gap-4 " +
-                (showActualDates ? "grid-cols-1 lg:grid-cols-2" : "grid-cols-1")
-              }
-            >
-              {/* EXPECTED DATES */}
-              <div className="min-w-0">
-                <SectionCard title="EXPECTED DATES (SYSTEM CALCULATED)">
-                  {isEdit && !expectedsEnabled && (
-                    <div className="text-xs text-[hsl(var(--brand-orange))] mb-2">
-                      Select a cycle start date to see Expected Dates.
-                    </div>
-                  )}
-                  {!isEdit && committedOrLater && !expectedsEnabled && (
-                    <div className="text-xs text-secondary mb-2">
-                      Expected dates are not available for this plan.
-                    </div>
-                  )}
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <DateField
-                      label="CYCLE START (EXPECTED)"
-                      value={expectedCycleStart}
-                      readOnly
-                    />
-                    <DateField
-                      label="HORMONE TESTING START (EXPECTED)"
-                      value={expectedTestingStart}
-                      readOnly
-                    />
-                    <DateField
-                      label="BREEDING DATE (EXPECTED)"
-                      value={expectedBreed}
-                      readOnly
-                    />
-                    <DateField
-                      label="BIRTH DATE (EXPECTED)"
-                      value={expectedBirth}
-                      readOnly
-                    />
-                    <DateField
-                      label="WEANED DATE (EXPECTED)"
-                      value={expectedWeaned}
-                      readOnly
-                    />
-                    <DateField
-                      label="PLACEMENT START (EXPECTED)"
-                      value={expectedPlacementStart}
-                      readOnly
-                    />
-                    <DateField
-                      label="PLACEMENT COMPLETED (EXPECTED)"
-                      value={expectedGoHomeExtended}
-                      readOnly
-                    />
-                  </div>
-                </SectionCard>
+            {isEdit && !expectedsEnabled && (
+              <div className="text-xs text-[hsl(var(--brand-orange))] mb-3">
+                Select a cycle start date to see Expected Dates.
               </div>
+            )}
+            {!isEdit && committedOrLater && !expectedsEnabled && (
+              <div className="text-xs text-secondary mb-3">
+                Expected dates are not available for this plan.
+              </div>
+            )}
 
-              {/* ACTUAL DATES, visible for COMMITTED and later, editable only in Edit mode while COMMITTED */}
+            {actualDatesWarning && (
+              <div className="mb-4 rounded-md border border-[hsl(var(--border-subtle))] bg-[hsl(var(--surface-subtle))] px-4 py-3 text-sm leading-snug">
+                <div className="font-medium mb-1">Check actual dates</div>
+                <div className="whitespace-normal">{actualDatesWarning}</div>
+                <div className="mt-2 text-right">
+                  <button
+                    type="button"
+                    className="text-xs px-2 py-1 rounded-md border border-[hsl(var(--border-subtle))] hover:bg-[hsl(var(--surface-subtle-strong))]"
+                    onClick={() => setActualDatesWarning(null)}
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Side-by-side layout: Expected on left, Actual on right */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4" data-bhq-details-exempt>
+              {/* EXPECTED DATES (SYSTEM CALCULATED) */}
+              <SectionCard title="EXPECTED DATES (SYSTEM CALCULATED)">
+                <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+                  {/* Row 1 */}
+                  <div>
+                    <div className="text-[10px] uppercase text-secondary tracking-wide mb-1">Cycle Start (Expected)</div>
+                    <div className="text-sm text-primary font-medium">{fmt(expectedCycleStart) || "—"}</div>
+                  </div>
+                  <div>
+                    <div className="text-[10px] uppercase text-secondary tracking-wide mb-1">Hormone Testing Start (Expected)</div>
+                    <div className="text-sm text-primary font-medium">{fmt(expectedTestingStart) || "—"}</div>
+                  </div>
+
+                  {/* Row 2 */}
+                  <div>
+                    <div className="text-[10px] uppercase text-secondary tracking-wide mb-1">Breeding Date (Expected)</div>
+                    <div className="text-sm text-primary font-medium">{fmt(expectedBreed) || "—"}</div>
+                  </div>
+                  <div>
+                    <div className="text-[10px] uppercase text-secondary tracking-wide mb-1">Birth Date (Expected)</div>
+                    <div className="text-sm text-primary font-medium">{fmt(expectedBirth) || "—"}</div>
+                  </div>
+
+                  {/* Row 3 */}
+                  <div>
+                    <div className="text-[10px] uppercase text-secondary tracking-wide mb-1">Weaned Date (Expected)</div>
+                    <div className="text-sm text-primary font-medium">{fmt(expectedWeaned) || "—"}</div>
+                  </div>
+                  <div>
+                    <div className="text-[10px] uppercase text-secondary tracking-wide mb-1">Placement Start (Expected)</div>
+                    <div className="text-sm text-primary font-medium">{fmt(expectedPlacementStart) || "—"}</div>
+                  </div>
+
+                  {/* Row 4 */}
+                  <div className="col-span-2">
+                    <div className="text-[10px] uppercase text-secondary tracking-wide mb-1">Placement Completed (Expected)</div>
+                    <div className="text-sm text-primary font-medium">{fmt(expectedPlacementCompleted) || "—"}</div>
+                  </div>
+                </div>
+              </SectionCard>
+
+              {/* ACTUAL DATES - with orange/amber border */}
               {showActualDates && (
-                <div className="min-w-0">
-                  <SectionCard title="ACTUAL DATES">
-                    <div data-bhq-details-exempt className="bhq-details-exempt">
-                      {actualDatesWarning && (
-                        <div className="mb-3 max-w-3xl rounded-md border border-[hsl(var(--border-subtle))] bg-[hsl(var(--surface-subtle))] px-4 py-3 text-sm leading-snug">
-                          <div className="font-medium mb-1">
-                            Check actual dates
-                          </div>
-                          <div className="whitespace-normal">
-                            {actualDatesWarning}
-                          </div>
-                          <div className="mt-2 text-right">
-                            <button
-                              type="button"
-                              className="text-xs px-2 py-1 rounded-md border border-[hsl(var(--border-subtle))] hover:bg-[hsl(var(--surface-subtle-strong))]"
-                              onClick={() => setActualDatesWarning(null)}
-                            >
-                              Dismiss
-                            </button>
-                          </div>
-                        </div>
-                      )}
-
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
-                        {/* Cycle Start */}
-                        <div>
-                          <div className="text-xs text-secondary mb-1">
-                            CYCLE START (ACTUAL)
-                          </div>
-                          <CalendarInput
-                            value={normalizeDateISO(effective.cycleStartDateActual)}
-                            readOnly={!canEditCycleStartActual}
-                            showIcon={canEditCycleStartActual}
-                            onChange={(e) => {
-                              if (!canEditCycleStartActual) return;
-                              const raw = e.currentTarget.value;
-
-                              if (!raw) {
-                                setDraftLive({ cycleStartDateActual: null });
-                                return;
-                              }
-
-                              warnIfSequenceBroken(
-                                "cycleStartDateActual",
-                                raw
-                              );
-                              setDraftLive({ cycleStartDateActual: raw });
-                            }}
-                            className={dateFieldW}
-                            inputClassName={dateInputCls}
-                            placeholder="mm/dd/yyyy"
-                          />
-                        </div>
-
-                        {/* Hormone Testing Start */}
-                        <div>
-                          <div className="text-xs text-secondary mb-1">
-                            HORMONE TESTING START (ACTUAL)
-                          </div>
-                          <CalendarInput
-                            value={normalizeDateISO(effective.hormoneTestingStartDateActual)}
-                            readOnly={!canEditDates}
-                            showIcon={canEditDates}
-                            onChange={(e) => {
-                              if (!canEditDates) return;
-                              const raw = e.currentTarget.value;
-
-                              if (!raw) {
-                                setDraftLive({
-                                  hormoneTestingStartDateActual: null,
-                                });
-                                return;
-                              }
-
-                              warnIfSequenceBroken(
-                                "hormoneTestingStartDateActual",
-                                raw
-                              );
-                              setDraftLive({
-                                hormoneTestingStartDateActual: raw,
-                              });
-                            }}
-                            className={dateFieldW}
-                            inputClassName={dateInputCls}
-                            placeholder="mm/dd/yyyy"
-                          />
-                        </div>
-
-                        {/* Breeding Date */}
-                        <div>
-                          <div className="text-xs text-secondary mb-1">
-                            BREEDING DATE (ACTUAL)
-                          </div>
-                          <CalendarInput
-                            value={normalizeDateISO(effective.breedDateActual)}
-                            readOnly={!canEditDates}
-                            showIcon={canEditDates}
-                            onChange={(e) => {
-                              if (!canEditDates) return;
-                              const raw = e.currentTarget.value;
-
-                              if (!raw) {
-                                setDraftLive({ breedDateActual: null });
-                                return;
-                              }
-
-                              warnIfSequenceBroken("breedDateActual", raw);
-                              setDraftLive({ breedDateActual: raw });
-                            }}
-                            className={dateFieldW}
-                            inputClassName={dateInputCls}
-                            placeholder="mm/dd/yyyy"
-                          />
-                        </div>
-
-                        {/* Birth Date */}
-                        <div>
-                          <div className="text-xs text-secondary mb-1">
-                            BIRTH DATE (ACTUAL)
-                          </div>
-                          <CalendarInput
-                            value={normalizeDateISO(effective.birthDateActual)}
-                            readOnly={!canEditDates}
-                            showIcon={canEditDates}
-                            onChange={(e) => {
-                              if (!canEditDates) return;
-                              const raw = e.currentTarget.value;
-
-                              if (!raw) {
-                                setDraftLive({ birthDateActual: null });
-                                return;
-                              }
-
-                              warnIfSequenceBroken("birthDateActual", raw);
-                              setDraftLive({ birthDateActual: raw });
-                            }}
-                            className={dateFieldW}
-                            inputClassName={dateInputCls}
-                            placeholder="mm/dd/yyyy"
-                          />
-                        </div>
-
-                        {/* Placement Start */}
-                        <div>
-                          <div className="text-xs text-secondary mb-1">
-                            PLACEMENT START (ACTUAL)
-                          </div>
-                          <CalendarInput
-                            value={normalizeDateISO(effective.placementStartDateActual)}
-                            readOnly={!canEditDates}
-                            showIcon={canEditDates}
-                            onChange={(e) => {
-                              if (!canEditDates) return;
-                              const raw = e.currentTarget.value;
-
-                              if (!raw) {
-                                setDraftLive({
-                                  placementStartDateActual: null,
-                                });
-                                return;
-                              }
-
-                              warnIfSequenceBroken(
-                                "placementStartDateActual",
-                                raw
-                              );
-                              setDraftLive({
-                                placementStartDateActual: raw,
-                              });
-                            }}
-                            className={dateFieldW}
-                            inputClassName={dateInputCls}
-                            placeholder="mm/dd/yyyy"
-                          />
-                        </div>
-
-                        {/* Placement Completed */}
-                        <div>
-                          <div className="text-xs text-secondary mb-1">
-                            PLACEMENT COMPLETED (ACTUAL)
-                          </div>
-                          <CalendarInput
-                            value={normalizeDateISO(effective.placementCompletedDateActual)}
-                            readOnly={!canEditDates}
-                            showIcon={canEditDates}
-                            onChange={(e) => {
-                              if (!canEditDates) return;
-                              const raw = e.currentTarget.value;
-
-                              if (!raw) {
-                                setDraftLive({
-                                  placementCompletedDateActual: null,
-                                });
-                                return;
-                              }
-
-                              warnIfSequenceBroken(
-                                "placementCompletedDateActual",
-                                raw
-                              );
-                              setDraftLive({
-                                placementCompletedDateActual: raw,
-                              });
-                            }}
-                            className={dateFieldW}
-                            inputClassName={dateInputCls}
-                            placeholder="mm/dd/yyyy"
-                          />
-                        </div>
-
-                        {/* Plan Completed */}
-                        <div>
-                          <div className="text-xs text-secondary mb-1">
-                            PLAN COMPLETED (ACTUAL)
-                          </div>
-                          <CalendarInput
-                            value={normalizeDateISO(effective.completedDateActual)}
-                            readOnly={!canEditCompletedActual}
-                            showIcon={canEditCompletedActual}
-                            onChange={(e) => {
-                              if (!canEditCompletedActual) return;
-                              const raw = e.currentTarget.value;
-
-                              if (!raw) {
-                                setDraftLive({ completedDateActual: null });
-                                return;
-                              }
-
-                              warnIfSequenceBroken("completedDateActual", raw);
-                              setDraftLive({ completedDateActual: raw });
-                            }}
-                            className={dateFieldW}
-                            inputClassName={dateInputCls}
-                            placeholder="mm/dd/yyyy"
-                          />
-                          {canEditDates && !canEditCompletedActual && (
-                            <div className="mt-1 text-[10px] text-secondary">
-                              Enter all earlier Actual Dates before marking the
-                              plan completed.
-                            </div>
-                          )}
-                        </div>
-                      </div>
-
-                      {isEdit && (
-                        <div className="mt-4 flex flex-wrap gap-2">
-                          <Button
-                            variant="outline"
-                            disabled={!canEditDates}
-                            onClick={() => {
-                              if (!canEditDates) return;
-                              if (
-                                !window.confirm(
-                                  "Reset all actual dates for this plan back to blank?"
-                                )
-                              ) {
-                                return;
-                              }
-                              setDraftLive({
-                                cycleStartDateActual: null,
-                                hormoneTestingStartDateActual: null,
-                                breedDateActual: null,
-                                birthDateActual: null,
-                                placementStartDateActual: null,
-                                placementCompletedDateActual: null,
-                                completedDateActual: null,
-                              });
-                            }}
+                <div className="rounded-lg border-2 border-amber-500/60 bg-surface p-4">
+                  <div className="text-sm font-semibold text-primary mb-4">ACTUAL DATES</div>
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+                    {/* Row 1 */}
+                    <div>
+                      <div className="text-[10px] uppercase text-secondary tracking-wide mb-1">Cycle Start (Actual)</div>
+                      <div className="flex items-center gap-2">
+                        <CalendarInput
+                          value={normalizeDateISO(effective.cycleStartDateActual)}
+                          expectedValue={expectedCycleStart}
+                          readOnly={!canEditCycleStartActual}
+                          showIcon={canEditCycleStartActual}
+                          onChange={(e) => {
+                            if (!canEditCycleStartActual) return;
+                            const raw = e.currentTarget.value;
+                            if (!raw) {
+                              setDraftLive({ cycleStartDateActual: null });
+                              return;
+                            }
+                            warnIfSequenceBroken("cycleStartDateActual", raw);
+                            setDraftLive({ cycleStartDateActual: raw });
+                          }}
+                          className="flex-1"
+                          inputClassName={dateInputCls}
+                          placeholder="mm/dd/yyyy"
+                        />
+                        {canEditCycleStartActual && effective.cycleStartDateActual && (
+                          <button
+                            type="button"
+                            onClick={() => clearActualDateAndSubsequent("cycleStartDateActual")}
+                            className="text-xs text-secondary hover:text-primary px-2 py-1 rounded border border-hairline hover:border-primary/30"
                           >
-                            Reset Dates
-                          </Button>
+                            Clear
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] uppercase text-secondary tracking-wide mb-1">Hormone Testing Start (Actual)</div>
+                      <div className="flex items-center gap-2">
+                        <CalendarInput
+                          value={normalizeDateISO(effective.hormoneTestingStartDateActual)}
+                          expectedValue={expectedTestingStart}
+                          readOnly={!canEditDates}
+                          showIcon={canEditDates}
+                          onChange={(e) => {
+                            if (!canEditDates) return;
+                            const raw = e.currentTarget.value;
+                            if (!raw) {
+                              setDraftLive({ hormoneTestingStartDateActual: null });
+                              return;
+                            }
+                            warnIfSequenceBroken("hormoneTestingStartDateActual", raw);
+                            setDraftLive({ hormoneTestingStartDateActual: raw });
+                          }}
+                          className="flex-1"
+                          inputClassName={dateInputCls}
+                          placeholder="mm/dd/yyyy"
+                        />
+                        {canEditDates && effective.hormoneTestingStartDateActual && (
+                          <button
+                            type="button"
+                            onClick={() => clearActualDateAndSubsequent("hormoneTestingStartDateActual")}
+                            className="text-xs text-secondary hover:text-primary px-2 py-1 rounded border border-hairline hover:border-primary/30"
+                          >
+                            Clear
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Row 2 */}
+                    <div>
+                      <div className="text-[10px] uppercase text-secondary tracking-wide mb-1">Breeding Date (Actual)</div>
+                      <div className="flex items-center gap-2">
+                        <CalendarInput
+                          value={normalizeDateISO(effective.breedDateActual)}
+                          expectedValue={expectedBreed}
+                          readOnly={!canEditDates}
+                          showIcon={canEditDates}
+                          onChange={(e) => {
+                            if (!canEditDates) return;
+                            const raw = e.currentTarget.value;
+                            if (!raw) {
+                              setDraftLive({ breedDateActual: null });
+                              return;
+                            }
+                            warnIfSequenceBroken("breedDateActual", raw);
+                            setDraftLive({ breedDateActual: raw });
+                          }}
+                          className="flex-1"
+                          inputClassName={dateInputCls}
+                          placeholder="mm/dd/yyyy"
+                        />
+                        {canEditDates && effective.breedDateActual && (
+                          <button
+                            type="button"
+                            onClick={() => clearActualDateAndSubsequent("breedDateActual")}
+                            className="text-xs text-secondary hover:text-primary px-2 py-1 rounded border border-hairline hover:border-primary/30"
+                          >
+                            Clear
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] uppercase text-secondary tracking-wide mb-1">Birth Date (Actual)</div>
+                      <div className="flex items-center gap-2">
+                        <CalendarInput
+                          value={normalizeDateISO(effective.birthDateActual)}
+                          expectedValue={expectedBirth}
+                          readOnly={!canEditDates}
+                          showIcon={canEditDates}
+                          onChange={(e) => {
+                            if (!canEditDates) return;
+                            const raw = e.currentTarget.value;
+                            if (!raw) {
+                              setDraftLive({ birthDateActual: null });
+                              return;
+                            }
+                            warnIfSequenceBroken("birthDateActual", raw);
+                            setDraftLive({ birthDateActual: raw });
+                          }}
+                          className="flex-1"
+                          inputClassName={dateInputCls}
+                          placeholder="mm/dd/yyyy"
+                        />
+                        {canEditDates && effective.birthDateActual && (
+                          <button
+                            type="button"
+                            onClick={() => clearActualDateAndSubsequent("birthDateActual")}
+                            className="text-xs text-secondary hover:text-primary px-2 py-1 rounded border border-hairline hover:border-primary/30"
+                          >
+                            Clear
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Row 3 - Weaned and Placement Start */}
+                    <div>
+                      <div className="text-[10px] uppercase text-secondary tracking-wide mb-1">Weaned Date (Actual)</div>
+                      <div className="flex items-center gap-2">
+                        <CalendarInput
+                          value={normalizeDateISO(effective.weanedDateActual)}
+                          expectedValue={expectedWeaned}
+                          readOnly={!canEditDates}
+                          showIcon={canEditDates}
+                          onChange={(e) => {
+                            if (!canEditDates) return;
+                            const raw = e.currentTarget.value;
+                            if (!raw) {
+                              setDraftLive({ weanedDateActual: null });
+                              return;
+                            }
+                            warnIfSequenceBroken("weanedDateActual", raw);
+                            setDraftLive({ weanedDateActual: raw });
+                          }}
+                          className="flex-1"
+                          inputClassName={dateInputCls}
+                          placeholder="mm/dd/yyyy"
+                        />
+                        {canEditDates && effective.weanedDateActual && (
+                          <button
+                            type="button"
+                            onClick={() => clearActualDateAndSubsequent("weanedDateActual")}
+                            className="text-xs text-secondary hover:text-primary px-2 py-1 rounded border border-hairline hover:border-primary/30"
+                          >
+                            Clear
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] uppercase text-secondary tracking-wide mb-1">Placement Start (Actual)</div>
+                      <div className="flex items-center gap-2">
+                        <CalendarInput
+                          value={normalizeDateISO(effective.placementStartDateActual)}
+                          expectedValue={expectedPlacementStart}
+                          readOnly={!canEditDates}
+                          showIcon={canEditDates}
+                          onChange={(e) => {
+                            if (!canEditDates) return;
+                            const raw = e.currentTarget.value;
+                            if (!raw) {
+                              setDraftLive({ placementStartDateActual: null });
+                              return;
+                            }
+                            warnIfSequenceBroken("placementStartDateActual", raw);
+                            setDraftLive({ placementStartDateActual: raw });
+                          }}
+                          className="flex-1"
+                          inputClassName={dateInputCls}
+                          placeholder="mm/dd/yyyy"
+                        />
+                        {canEditDates && effective.placementStartDateActual && (
+                          <button
+                            type="button"
+                            onClick={() => clearActualDateAndSubsequent("placementStartDateActual")}
+                            className="text-xs text-secondary hover:text-primary px-2 py-1 rounded border border-hairline hover:border-primary/30"
+                          >
+                            Clear
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Row 4 - Placement Completed */}
+                    <div>
+                      <div className="text-[10px] uppercase text-secondary tracking-wide mb-1">Placement Completed (Actual)</div>
+                      <div className="flex items-center gap-2">
+                        <CalendarInput
+                          value={normalizeDateISO(effective.placementCompletedDateActual)}
+                          expectedValue={expectedPlacementCompleted}
+                          readOnly={!canEditDates}
+                          showIcon={canEditDates}
+                          onChange={(e) => {
+                            if (!canEditDates) return;
+                            const raw = e.currentTarget.value;
+                            if (!raw) {
+                              setDraftLive({ placementCompletedDateActual: null });
+                              return;
+                            }
+                            warnIfSequenceBroken("placementCompletedDateActual", raw);
+                            setDraftLive({ placementCompletedDateActual: raw });
+                          }}
+                          className="flex-1"
+                          inputClassName={dateInputCls}
+                          placeholder="mm/dd/yyyy"
+                        />
+                        {canEditDates && effective.placementCompletedDateActual && (
+                          <button
+                            type="button"
+                            onClick={() => clearActualDateAndSubsequent("placementCompletedDateActual")}
+                            className="text-xs text-secondary hover:text-primary px-2 py-1 rounded border border-hairline hover:border-primary/30"
+                          >
+                            Clear
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Row 4 - Plan Completed */}
+                    <div className="col-span-2">
+                      <div className="text-[10px] uppercase text-secondary tracking-wide mb-1">Plan Completed (Actual)</div>
+                      <div className="flex items-center gap-2">
+                        <CalendarInput
+                          value={normalizeDateISO(effective.completedDateActual)}
+                          readOnly={!canEditCompletedActual}
+                          showIcon={canEditCompletedActual}
+                          onChange={(e) => {
+                            if (!canEditCompletedActual) return;
+                            const raw = e.currentTarget.value;
+                            if (!raw) {
+                              setDraftLive({ completedDateActual: null });
+                              return;
+                            }
+                            warnIfSequenceBroken("completedDateActual", raw);
+                            setDraftLive({ completedDateActual: raw });
+                          }}
+                          className="max-w-[200px]"
+                          inputClassName={dateInputCls}
+                          placeholder="mm/dd/yyyy"
+                        />
+                        {canEditCompletedActual && effective.completedDateActual && (
+                          <button
+                            type="button"
+                            onClick={() => clearActualDateAndSubsequent("completedDateActual")}
+                            className="text-xs text-secondary hover:text-primary px-2 py-1 rounded border border-hairline hover:border-primary/30"
+                          >
+                            Clear
+                          </button>
+                        )}
+                      </div>
+                      {canEditDates && !canEditCompletedActual && (
+                        <div className="mt-1 text-[10px] text-secondary">
+                          Enter all earlier Actual Dates before marking the plan completed.
                         </div>
                       )}
                     </div>
-                  </SectionCard>
+                  </div>
+
+                  {/* Reset All button inside the Actual Dates frame */}
+                  {isEdit && (
+                    <div className="mt-4 pt-3 border-t border-amber-500/30">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={!canEditDates}
+                        onClick={async () => {
+                          if (!canEditDates) return;
+                          if (!window.confirm("Reset all actual dates for this plan back to blank?")) {
+                            return;
+                          }
+
+                          // Build payload with null dates
+                          const resetDates = {
+                            cycleStartDateActual: null,
+                            hormoneTestingStartDateActual: null,
+                            breedDateActual: null,
+                            birthDateActual: null,
+                            weanedDateActual: null,
+                            placementStartDateActual: null,
+                            placementCompletedDateActual: null,
+                            completedDateActual: null,
+                          };
+
+                          // Derive status with all dates cleared - should regress to COMMITTED
+                          const derivedStatus = deriveBreedingStatus({
+                            name: row.name,
+                            species: row.species,
+                            damId: row.damId,
+                            sireId: row.sireId,
+                            lockedCycleStart: row.lockedCycleStart,
+                            cycleStartDateActual: null,
+                            breedDateActual: null,
+                            birthDateActual: null,
+                            weanedDateActual: null,
+                            placementStartDateActual: null,
+                            placementCompletedDateActual: null,
+                            completedDateActual: null,
+                          });
+
+                          // Call API directly with reset dates AND derived status
+                          try {
+                            const payload = {
+                              ...resetDates,
+                              status: toBackendStatus(derivedStatus),
+                            };
+                            console.log("[Breeding] Reset dates - derived status:", derivedStatus);
+                            console.log("[Breeding] Reset dates payload:", payload);
+
+                            await api.updatePlan(Number(row.id), payload as any);
+
+                            // Fetch fresh data and update UI
+                            const fresh = await api.getPlan(Number(row.id), "parents,org");
+                            console.log("[Breeding] Fresh plan status:", fresh.status);
+
+                            onPlanUpdated?.(row.id, fresh);
+
+                            // Clear local draft state
+                            draftRef.current = {};
+                            setDraftTick((t) => t + 1);
+                            setDraft({});
+                            setMode("view");
+                          } catch (err) {
+                            console.error("[Breeding] Reset dates failed", err);
+                          }
+                        }}
+                      >
+                        Reset All Actual Dates
+                      </Button>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

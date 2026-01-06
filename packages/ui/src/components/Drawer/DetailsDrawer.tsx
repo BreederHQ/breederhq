@@ -17,6 +17,7 @@ export function DetailsDrawer({
   align = "center",
   backdrop = true,
   hasPendingChanges = false,
+  isEditing = false,
   children,
 }: {
   title?: React.ReactNode;
@@ -29,6 +30,7 @@ export function DetailsDrawer({
   align?: Align;
   backdrop?: boolean;
   hasPendingChanges?: boolean;
+  isEditing?: boolean;
   children: React.ReactNode;
 }) {
   const [mounted, setMounted] = React.useState(false);
@@ -75,6 +77,11 @@ export function DetailsDrawer({
     background: "hsl(var(--surface))",
   };
 
+  // Edit mode border color (amber/orange)
+  const editBorderColor = "#f59e0b";
+  const normalBorderColor = "hsl(var(--border))";
+  const borderColor = isEditing ? editBorderColor : normalBorderColor;
+
   const panelStyle: React.CSSProperties = isRight
     ? {
         ...basePanelStyle,
@@ -82,7 +89,7 @@ export function DetailsDrawer({
         right: 0,
         bottom: 0,
         width,
-        borderLeft: "1px solid hsl(var(--border))",
+        borderLeft: `${isEditing ? "3px" : "1px"} solid ${borderColor}`,
         overflow: "hidden", // lock shell
         display: "flex",
         flexDirection: "column",
@@ -96,9 +103,11 @@ export function DetailsDrawer({
           ? { top: "50%", transform: "translate(-50%, -50%)" }
           : { top: "6vh", transform: "translateX(-50%)" }),
         maxHeight: "88vh",
-        border: "1px solid hsl(var(--border))",
+        border: `${isEditing ? "3px" : "1px"} solid ${borderColor}`,
         borderRadius: 12,
-        boxShadow: "0 20px 48px rgba(0,0,0,.32)",
+        boxShadow: isEditing
+          ? `0 20px 48px rgba(0,0,0,.32), 0 0 0 1px ${editBorderColor}`
+          : "0 20px 48px rgba(0,0,0,.32)",
         overflow: "hidden",
         display: "flex",
         flexDirection: "column",

@@ -5,7 +5,7 @@ import * as React from "react";
 const cx = (...s: Array<string | false | null | undefined>) => s.filter(Boolean).join(" ");
 
 export function DrawerHeader({
-  title, subtitle, actions, className, onClose, hasPendingChanges,
+  title, subtitle, actions, className, onClose, hasPendingChanges, hideCloseButton,
 }: {
   title: React.ReactNode;
   subtitle?: React.ReactNode;
@@ -13,6 +13,7 @@ export function DrawerHeader({
   className?: string;
   onClose?: () => void;
   hasPendingChanges?: boolean;
+  hideCloseButton?: boolean;
 }) {
   return (
     <header className={cx("sticky top-0 z-10 bg-surface/90 backdrop-blur border-b border-hairline px-4 py-3", className)}>
@@ -30,7 +31,7 @@ export function DrawerHeader({
         </div>
         <div className="flex items-center gap-2">
           {actions}
-          {onClose && (
+          {onClose && !hideCloseButton && (
             <button
               onClick={onClose}
               className="p-1 rounded hover:bg-white/5 text-secondary hover:text-primary transition-colors"

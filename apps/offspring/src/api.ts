@@ -301,10 +301,11 @@ export type BreedingPlanStatus =
   | "PLANNING"
   | "COMMITTED"
   | "BRED"
-  | "PREGNANCY_CONFIRMED"
-  | "PREGNANCY_FAILED"
-  | "WHELPED"
-  | "HOMING_STARTED"
+  | "BIRTHED"
+  | "BIRTH_FAILED"
+  | "WEANED"
+  | "PLACEMENT_STARTED"
+  | "PLACEMENT_COMPLETED"
   | "COMPLETE"
   | "CANCELED";
 

@@ -15,12 +15,13 @@ export interface Participant {
  * Context reference - what the conversation is about
  */
 export interface ContextRef {
-  type: "listing" | "service" | "general";
+  type: "listing" | "service" | "general" | "program_inquiry";
   // For listing context
   listingSlug?: string;
   listingTitle?: string;
   programSlug?: string;
   programName?: string;
+  breederSlug?: string;
   // For service context
   serviceId?: string;
   serviceName?: string;

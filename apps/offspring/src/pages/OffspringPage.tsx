@@ -1521,7 +1521,7 @@ function CreateOffspringOverlayContent({
       .toString()
       .toLowerCase();
 
-    const match = WHELPING_COLLAR_SWATCHES.find((opt) => {
+    const match = BIRTH_COLLAR_SWATCHES.find((opt) => {
       const val = opt.value.toLowerCase();
       const label = opt.label.toLowerCase();
       return val === v || label === v;
@@ -1991,7 +1991,7 @@ function CreateOffspringOverlayContent({
                       {showWhelpPalette && (
                         <div className="absolute z-20 mt-1 w-full rounded-md border border-border bg-surface shadow-lg">
                           <ul className="max-h-48 overflow-y-auto py-1 text-xs">
-                            {WHELPING_COLLAR_SWATCHES.map((opt) => (
+                            {BIRTH_COLLAR_SWATCHES.map((opt) => (
                               <li key={opt.value}>
                                 <button
                                   type="button"
@@ -2999,7 +2999,7 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
                         } else {
                           const lower = value.toString().toLowerCase();
 
-                          const match = WHELPING_COLLAR_SWATCHES.find((opt) => {
+                          const match = BIRTH_COLLAR_SWATCHES.find((opt) => {
                             const valLower = opt.value.toLowerCase();
                             const labelLower = opt.label.toLowerCase();
                             return valLower === lower || labelLower === lower;
@@ -3444,7 +3444,7 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
                         .toString()
                         .toLowerCase();
 
-                      const match = WHELPING_COLLAR_SWATCHES.find((opt) => {
+                      const match = BIRTH_COLLAR_SWATCHES.find((opt) => {
                         const val = opt.value.toLowerCase();
                         const label = opt.label.toLowerCase();
                         return val === v || label === v;
@@ -3745,7 +3745,7 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
                                         {showWhelpPalette && (
                                           <div className="absolute z-20 mt-1 w-full rounded-md border border-border bg-surface shadow-lg">
                                             <ul className="max-h-48 overflow-y-auto py-1 text-xs">
-                                              {WHELPING_COLLAR_SWATCHES.map((opt) => (
+                                              {BIRTH_COLLAR_SWATCHES.map((opt) => (
                                                 <li key={opt.value}>
                                                   <button
                                                     type="button"

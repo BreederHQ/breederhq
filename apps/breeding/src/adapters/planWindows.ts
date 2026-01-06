@@ -80,22 +80,22 @@ function toPlanStageWindows(tl: ReturnType<typeof buildTimelineFromSeed>): PlanS
     pre_breeding_full: (w as any).pre_breeding?.full || ["", ""],
     hormone_testing_full: (w as any).hormone_testing?.full || ["", ""],
     breeding_full: (w as any).breeding?.full || ["", ""],
-    birth_full: (w as any).whelping?.full || ["", ""],  // reproEngine uses "whelping" not "birth"
-    post_birth_care_full: (w as any).puppy_care?.full || ["", ""],  // reproEngine uses "puppy_care" not "post_birth_care"
-    placement_normal_full: (w as any).go_home_normal?.full || ["", ""],  // reproEngine uses "go_home_normal" not "placement_normal"
-    placement_extended_full: (w as any).go_home_extended?.full || ["", ""],  // reproEngine uses "go_home_extended" not "placement_extended"
+    birth_full: (w as any).birth?.full || ["", ""],
+    post_birth_care_full: (w as any).puppy_care?.full || ["", ""],
+    placement_normal_full: (w as any).go_home_normal?.full || ["", ""],
+    placement_extended_full: (w as any).go_home_extended?.full || ["", ""],
 
     pre_breeding_likely: (w as any).pre_breeding?.likely || ["", ""],
     hormone_testing_likely: (w as any).hormone_testing?.likely || ["", ""],
     breeding_likely: (w as any).breeding?.likely || ["", ""],
-    birth_likely: (w as any).whelping?.likely || ["", ""],  // reproEngine uses "whelping" not "birth"
-    post_birth_care_likely: (w as any).puppy_care?.likely || ["", ""],  // reproEngine uses "puppy_care" not "post_birth_care"
-    placement_normal_likely: (w as any).go_home_normal?.likely || ["", ""],  // reproEngine uses "go_home_normal" not "placement_normal"
-    placement_extended_likely: (w as any).go_home_extended?.likely || ["", ""],  // reproEngine uses "go_home_extended" not "placement_extended"
+    birth_likely: (w as any).birth?.likely || ["", ""],
+    post_birth_care_likely: (w as any).puppy_care?.likely || ["", ""],
+    placement_normal_likely: (w as any).go_home_normal?.likely || ["", ""],
+    placement_extended_likely: (w as any).go_home_extended?.likely || ["", ""],
 
     cycle_start: (m as any).cycle_start || "",
-    ovulation: (m as any).ovulation_center || "",  // reproEngine uses "ovulation_center"
-    birth_expected: (w as any).whelping?.full?.[0] ?? null,
+    ovulation: (m as any).ovulation_center || "",
+    birth_expected: (w as any).birth?.full?.[0] ?? null,
     placement_start_expected: (w as any).go_home_normal?.full?.[0] ?? null,
     placement_completed_expected: (w as any).go_home_normal?.full?.[1] ?? null,
     placement_extended_end_expected: (w as any).go_home_extended?.full?.[1] ?? null,

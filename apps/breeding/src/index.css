@@ -12,3 +12,11 @@
 
 /* 4) Tailwind utilities */
 @tailwind utilities;
+
+/* 5) Cycle lock button hover effect - swap locked/unlocked icons */
+.cycle-lock-btn.can-unlock:hover .locked-icon {
+  opacity: 0;
+}
+.cycle-lock-btn.can-unlock:hover .unlocked-icon {
+  opacity: 1;
+}

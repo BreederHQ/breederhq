@@ -43,7 +43,7 @@ const STAGE_LABELS: Record<string, string> = {
   pre_breeding: "Pre-breeding Heat",
   hormone_testing: "Hormone Testing",
   breeding: "Breeding",
-  whelping: "Whelping",
+  birth: "Birth",
   puppy_care: "Puppy Care",
   go_home_normal: "Go Home, Normal",
   go_home_extended: "Go Home, Extended",
@@ -73,26 +73,26 @@ function computeWindowsFromSeed(species: SpeciesCode, seedCycleStart: ISODate): 
   const breedingFull = makeRangeTuple(addDays(ovulationCenter, -1), addDays(ovulationCenter, 2));
   const breedingLikely = makeRangeTuple(addDays(ovulationCenter, 0), addDays(ovulationCenter, 1));
 
-  // Whelping (±2 full, ±1 likely around gestation)
-  const whelpCenter = addDays(ovulationCenter, d.gestationDays);
-  const whelpFull = centerRangeTuple(whelpCenter, 2);
-  const whelpLikely = centerRangeTuple(whelpCenter, 1);
+  // Birth (±2 full, ±1 likely around gestation)
+  const birthCenter = addDays(ovulationCenter, d.gestationDays);
+  const birthFull = centerRangeTuple(birthCenter, 2);
+  const birthLikely = centerRangeTuple(birthCenter, 1);
 
-  // Puppy care: from whelping → +8 weeks (UI convention)
-  const puppyCareFull: RangeTuple = makeRangeTuple(whelpFull[0], addDays(whelpFull[1], 8 * 7));
-  const puppyCareLikely: RangeTuple = makeRangeTuple(whelpLikely[0], addDays(whelpLikely[0], 8 * 7));
+  // Puppy care: from birth → +8 weeks (UI convention)
+  const puppyCareFull: RangeTuple = makeRangeTuple(birthFull[0], addDays(birthFull[1], 8 * 7));
+  const puppyCareLikely: RangeTuple = makeRangeTuple(birthLikely[0], addDays(birthLikely[0], 8 * 7));
 
   // Go home windows (use species defaults)
   const goHomeWeeks = d.placementStartWeeksDefault;
-  const goHomeNormalFull: RangeTuple = makeRangeTuple(addDays(whelpFull[0], goHomeWeeks * 7), addDays(whelpFull[1], goHomeWeeks * 7));
-  const goHomeNormalLikelyCenter = addDays(whelpLikely[0], 8 * 7);
+  const goHomeNormalFull: RangeTuple = makeRangeTuple(addDays(birthFull[0], goHomeWeeks * 7), addDays(birthFull[1], goHomeWeeks * 7));
+  const goHomeNormalLikelyCenter = addDays(birthLikely[0], 8 * 7);
   const goHomeNormalLikely = centerRangeTuple(goHomeNormalLikelyCenter, 1);
 
   const goHomeExtendedFull: RangeTuple = makeRangeTuple(goHomeNormalFull[1], addDays(goHomeNormalFull[1], d.placementExtendedWeeks * 7));
 
   // Availability / travel bands (two spans)
   const travelRisky1: RangeTuple = makeRangeTuple(hormoneFull[0], breedingFull[1]);
-  const travelRisky2: RangeTuple = makeRangeTuple(whelpFull[0], goHomeExtendedFull[1]);
+  const travelRisky2: RangeTuple = makeRangeTuple(birthFull[0], goHomeExtendedFull[1]);
 
   const travelUnlikely1: RangeTuple = makeRangeTuple(hormoneLikely[0], breedingLikely[1]);
   const travelUnlikely2: RangeTuple = makeRangeTuple(puppyCareLikely[0], goHomeNormalLikely[1]);
@@ -101,7 +101,7 @@ function computeWindowsFromSeed(species: SpeciesCode, seedCycleStart: ISODate): 
     pre_breeding: { full: preBreedingFull, likely: preBreedingLikely },
     hormone_testing: { full: hormoneFull, likely: hormoneLikely },
     breeding: { full: breedingFull, likely: breedingLikely },
-    whelping: { full: whelpFull, likely: whelpLikely },
+    birth: { full: birthFull, likely: birthLikely },
     puppy_care: { full: puppyCareFull, likely: puppyCareLikely },
     go_home_normal: { full: goHomeNormalFull, likely: goHomeNormalLikely },
     // This stage intentionally has no "likely overlay" in your defaults.

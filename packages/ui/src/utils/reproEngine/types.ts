@@ -15,7 +15,7 @@ export type ReproSummary = {
 
   // Plan outcomes, for postpartum gating.
   lastBredAt?: ISODate | null;
-  lastBirthedAt?: ISODate | null; // species neutral, maps to whelping/foaling/kitting
+  lastBirthedAt?: ISODate | null; // species neutral birth date
   lastOutcome?: ReproOutcome | null;
 
   // Animal-level override for cycle length (female only)

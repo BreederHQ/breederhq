@@ -10,7 +10,6 @@ import type { AvailabilityPrefs } from "@bhq/ui/utils/availability";
 import { DEFAULT_AVAILABILITY_PREFS } from "@bhq/ui/utils/availability";
 import { resolveTenantId } from "@bhq/ui/utils/tenant";
 import type { BreedingProgramProfile } from "@bhq/ui/utils/breedingProgram";
-import ProgramProfileSnapshot from "../components/ProgramProfileSnapshot";
 import DateValidationSettingsTab from "../components/DateValidationSettingsTab";
 import { TagsManagerTab } from "../components/TagsManagerTab";
 import MarketplaceSettingsTab, { type MarketplaceHandle } from "../components/MarketplaceSettingsTab";
@@ -461,8 +460,8 @@ type Tab =
   | "transactions"
   | "breeding"
   | "programProfile"
-  | "platformSnapshot"
   | "breeds"
+  | "policies"
   | "users"
   | "groups"
   | "tags"
@@ -476,13 +475,8 @@ const NAV: NavSection[] = [
   {
     title: "Account Management",
     items: [
-      { key: "profile", label: "Profile" },
+      { key: "profile", label: "Your Profile" },
       { key: "security", label: "Security" },
-    ],
-  },
-  {
-    title: "Management",
-    items: [
       { key: "subscription", label: "Subscription" },
       { key: "payments", label: "Payment Methods" },
       { key: "transactions", label: "Transactions" },
@@ -496,11 +490,16 @@ const NAV: NavSection[] = [
     ],
   },
   {
-    title: "Platform Management",
+    title: "Breeding Program",
     items: [
-      { key: "platformSnapshot", label: "Platform Snapshot" },
       { key: "programProfile", label: "Program Profile" },
       { key: "breeds", label: "Breeds" },
+      { key: "policies", label: "Policies" },
+    ],
+  },
+  {
+    title: "Platform Management",
+    items: [
       { key: "users", label: "Users" },
       { key: "groups", label: "Groups" },
       { key: "tags", label: "Tag Manager" },
@@ -521,14 +520,21 @@ export default function SettingsPanel({ open, dirty, onDirtyChange, onClose }: P
   const [active, setActive] = React.useState<Tab>("profile");
   const [dirtyMap, setDirtyMap] = React.useState<Record<Tab, boolean>>({
     profile: false, security: false, subscription: false, payments: false, transactions: false,
-    breeding: false, programProfile: false, platformSnapshot: false, users: false, groups: false, tags: false, breeds: false, accessibility: false, marketplace: false,
+    breeding: false, programProfile: false, breeds: false, policies: false, users: false, groups: false, tags: false, accessibility: false, marketplace: false,
   });
+  // Edit mode state at panel level
+  const [editMode, setEditMode] = React.useState(false);
   const profileRef = React.useRef<ProfileHandle>(null);
   const breedingRef = React.useRef<BreedingHandle>(null);
-  const programRef = React.useRef<ProgramProfileHandle>(null);
   const breedsRef = React.useRef<BreedsHandle>(null);
+  const policiesRef = React.useRef<PoliciesHandle>(null);
+  const programRef = React.useRef<ProgramProfileHandle>(null);
   const marketplaceRef = React.useRef<MarketplaceHandle>(null);
   const [profileTitle, setProfileTitle] = React.useState<string>("");
+
+  // Tabs that support edit mode
+  const editableTabs: Tab[] = ["profile", "programProfile", "breeds", "policies", "marketplace"];
+  const isEditableTab = editableTabs.includes(active);
 
   React.useEffect(() => { onDirtyChange(!!dirtyMap[active]); }, [active, dirtyMap, onDirtyChange]);
 
@@ -558,6 +564,10 @@ export default function SettingsPanel({ open, dirty, onDirtyChange, onClose }: P
     setDirtyMap((m) => (m[tab] === isDirty ? m : { ...m, [tab]: isDirty }));
   }
   function trySwitch(next: Tab) {
+    // Block switching if in edit mode (user must Save or Cancel first)
+    if (editMode) {
+      return;
+    }
     if (dirtyMap[active]) {
       const el = document.getElementById("bhq-settings-dirty-banner");
       if (el) {
@@ -570,13 +580,54 @@ export default function SettingsPanel({ open, dirty, onDirtyChange, onClose }: P
     setActive(next);
   }
   function handleClose() {
-    if (dirty) return;
+    if (dirty || editMode) return;
     onClose();
   }
 
+  // Cancel editing - revert changes and exit edit mode
+  async function handleCancel() {
+    // For programProfile, use the cancel handler
+    if (active === "programProfile") {
+      programRef.current?.cancel();
+    }
+    // For other tabs, reload the data to revert
+    else if (active === "profile") {
+      await profileRef.current?.reload();
+    }
+    setEditMode(false);
+    markDirty(active, false);
+  }
+
+  // Save and exit edit mode
+  async function handleSave() {
+    if (active === "profile") {
+      await profileRef.current?.save(); markDirty("profile", false);
+    } else if (active === "breeding") {
+      await breedingRef.current?.save(); markDirty("breeding", false);
+    } else if (active === "programProfile") {
+      await programRef.current?.save(); markDirty("programProfile", false);
+    } else if (active === "breeds") {
+      await breedsRef.current?.save(); markDirty("breeds", false);
+    } else if (active === "policies") {
+      await policiesRef.current?.save(); markDirty("policies", false);
+    } else if (active === "marketplace") {
+      await marketplaceRef.current?.save(); markDirty("marketplace", false);
+    } else {
+      await saveActive(active, markDirty);
+      markDirty(active, false);
+    }
+    setEditMode(false);
+  }
+
   const panel = (
-    <div className="fixed inset-0 z-[60] pointer-events-none">
-      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm pointer-events-none" />
+    <div className="fixed inset-0 z-[60]">
+      <div
+        className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+        onClick={handleClose}
+        role="button"
+        tabIndex={-1}
+        aria-label="Close settings"
+      />
       <div className="absolute inset-0 pointer-events-none flex items-center justify-center p-4">
         <div className="pointer-events-auto w-[min(1200px,100%)] h-[min(90vh,100%)]">
           <div className="flex h-full bg-surface border border-hairline shadow-2xl rounded-xl overflow-hidden">
@@ -595,7 +646,7 @@ export default function SettingsPanel({ open, dirty, onDirtyChange, onClose }: P
                           className={[
                             "w-full text-left px-3 py-2 rounded-md transition",
                             active === t.key ? "bg-surface-strong text-primary" : "hover:bg-surface-strong/60 text-secondary",
-                            dirtyMap[active] && active !== t.key ? "cursor-not-allowed opacity-60" : "",
+                            (editMode || dirtyMap[active]) && active !== t.key ? "cursor-not-allowed opacity-60" : "",
                           ].join(" ")}
                         >
                           {t.label}
@@ -609,81 +660,76 @@ export default function SettingsPanel({ open, dirty, onDirtyChange, onClose }: P
 
             {/* right content */}
             <main className="flex-1 min-w-0 flex flex-col">
-              <div className="flex items-center justify-between px-6 py-4 border-b border-hairline">
+              <div className={`flex items-center justify-between px-6 py-4 border-b transition-colors ${editMode ? "bg-amber-500/5 border-amber-500/30" : "border-hairline"}`}>
                 <div className="flex items-center gap-3">
                   <h3 className="text-lg font-semibold">
                     {active === "profile" && profileTitle ? `Profile - ${profileTitle}` : getTabLabel(active)}
                   </h3>
+                  {editMode && (
+                    <span className="text-xs font-medium text-amber-400 flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+                      Editing
+                    </span>
+                  )}
+                  {editMode && dirtyMap[active] && (
+                    <span className="text-xs text-amber-300/70">· Unsaved changes</span>
+                  )}
                 </div>
-                <div className="flex items-end gap-3">
-                  <div className="flex flex-col items-end gap-1">
-                    <div className="flex items-center gap-2">
-                      <Button size="sm" variant="outline" onClick={handleClose} disabled={dirty}>
-                        Close
+                <div className="flex items-center gap-2">
+                  {/* Close button - always visible but disabled when dirty */}
+                  <Button size="sm" variant="outline" onClick={handleClose} disabled={dirty || editMode}>
+                    Close
+                  </Button>
+
+                  {/* Edit mode controls for editable tabs */}
+                  {isEditableTab && !editMode && (
+                    <Button size="sm" onClick={() => setEditMode(true)}>
+                      Edit
+                    </Button>
+                  )}
+
+                  {isEditableTab && editMode && (
+                    <>
+                      <Button size="sm" variant="outline" onClick={handleCancel}>
+                        Cancel
                       </Button>
-                      <Button
-                        size="sm"
-                        onClick={async () => {
-                          if (active === "profile") {
-                            await profileRef.current?.save(); markDirty("profile", false);
-                          } else if (active === "breeding") {
-                            await breedingRef.current?.save(); markDirty("breeding", false);
-                          } else if (active === "programProfile") {
-                            await programRef.current?.save(); markDirty("programProfile", false);
-                          } else if (active === "breeds") {
-                            await breedsRef.current?.save(); markDirty("breeds", false);
-                          } else if (active === "marketplace") {
-                            await marketplaceRef.current?.save(); markDirty("marketplace", false);
-                          } else {
-                            await saveActive(active, markDirty);
-                            markDirty(active, false);
-                          }
-                        }}
-                        disabled={!dirtyMap[active]}
-                      >
+                      <Button size="sm" onClick={handleSave} disabled={!dirtyMap[active]}>
                         Save
                       </Button>
-                    </div>
-                    <span
-                      id="bhq-settings-dirty-banner"
-                      className={[
-                        "text-xs rounded px-2 py-1 bg-amber-500/10 text-amber-300 border border-amber-500/30",
-                        dirtyMap[active] ? "opacity-100" : "opacity-0",
-                        "transition-opacity",
-                      ].join(" ")}
+                    </>
+                  )}
+
+                  {/* Non-editable tabs still get the old Save button */}
+                  {!isEditableTab && (
+                    <Button
+                      size="sm"
+                      onClick={handleSave}
+                      disabled={!dirtyMap[active]}
                     >
-                      You have unsaved changes
-                    </span>
-                  </div>
+                      Save
+                    </Button>
+                  )}
                 </div>
               </div>
 
               {/* scrollable body */}
               <div className="flex-1 overflow-auto p-6 space-y-6">
                 {active === "profile" && (
-                  <ProfileTab ref={profileRef} dirty={dirtyMap.profile} onDirty={(v) => markDirty("profile", v)} onTitle={setProfileTitle} />
+                  <ProfileTab ref={profileRef} dirty={dirtyMap.profile} onDirty={(v) => markDirty("profile", v)} onTitle={setProfileTitle} editMode={editMode} />
                 )}
                 {active === "security" && <SecurityTab dirty={dirtyMap.security} onDirty={(v) => markDirty("security", v)} />}
                 {active === "subscription" && <SubscriptionTab dirty={dirtyMap.subscription} onDirty={(v) => markDirty("subscription", v)} />}
                 {active === "payments" && <PaymentsTab dirty={dirtyMap.payments} onDirty={(v) => markDirty("payments", v)} />}
                 {active === "transactions" && <TransactionsTab dirty={dirtyMap.transactions} onDirty={(v) => markDirty("transactions", v)} />}
                 {active === "breeding" && <BreedingTab ref={breedingRef} dirty={dirtyMap.breeding} onDirty={(v) => markDirty("breeding", v)} />}
-                {active === "programProfile" && <ProgramProfileTab ref={programRef} dirty={dirtyMap.programProfile} onDirty={(v) => markDirty("programProfile", v)} />}
-                {active === "platformSnapshot" && (
-                  <PlatformSnapshotTab
-                    dirty={dirtyMap.platformSnapshot}
-                    onDirty={(v) => markDirty("platformSnapshot", v)}
-                    onEditProfile={jumpToProgramProfile}
-                    onEditPhases={() => jumpToBreeding("phases")}
-                    onEditExactDates={() => jumpToBreeding("dates")}
-                  />
-                )}
-                {active === "breeds" && <BreedsTab ref={breedsRef} onDirty={(v) => markDirty("breeds", v)} />}
+                {active === "programProfile" && <ProgramProfileTab ref={programRef} dirty={dirtyMap.programProfile} onDirty={(v) => markDirty("programProfile", v)} editMode={editMode} />}
+                {active === "breeds" && <BreedsTab ref={breedsRef} dirty={dirtyMap.breeds} onDirty={(v) => markDirty("breeds", v)} />}
+                {active === "policies" && <PoliciesTab ref={policiesRef} dirty={dirtyMap.policies} onDirty={(v) => markDirty("policies", v)} />}
                 {active === "users" && <UsersTab dirty={dirtyMap.users} onDirty={(v) => markDirty("users", v)} />}
                 {active === "groups" && <GroupsTab dirty={dirtyMap.groups} onDirty={(v) => markDirty("groups", v)} />}
                 {active === "tags" && <TagsManagerTab dirty={dirtyMap.tags} onDirty={(v) => markDirty("tags", v)} />}
                 {active === "accessibility" && <AccessibilityTab />}
-                {active === "marketplace" && <MarketplaceSettingsTab ref={marketplaceRef} dirty={dirtyMap.marketplace} onDirty={(v) => markDirty("marketplace", v)} onNavigateToBreeds={() => setActive("breeds")} />}
+                {active === "marketplace" && <MarketplaceSettingsTab ref={marketplaceRef} dirty={dirtyMap.marketplace} onDirty={(v) => markDirty("marketplace", v)} onNavigateToBreeds={() => setActive("breeds")} editMode={editMode} onExitEditMode={() => setEditMode(false)} />}
               </div>
             </main>
           </div>
@@ -720,8 +766,8 @@ function mapUserToProfileForm(u: any, countries: CountryDef[]): ProfileForm {
   };
 }
 const ProfileTab = React.forwardRef<ProfileHandle, {
-  dirty: boolean; onDirty: (v: boolean) => void; onTitle: (t: string) => void;
-}>(function ProfileTabImpl({ onDirty, onTitle }, ref) {
+  dirty: boolean; onDirty: (v: boolean) => void; onTitle: (t: string) => void; editMode?: boolean;
+}>(function ProfileTabImpl({ onDirty, onTitle, editMode = false }, ref) {
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string>("");
   const countries = useCountries();
@@ -832,63 +878,71 @@ const ProfileTab = React.forwardRef<ProfileHandle, {
     },
   }));
 
+  const disabledCls = !editMode ? "opacity-70 cursor-not-allowed" : "";
+
   return (
     <Card className="p-4 space-y-4">
       {loading ? <div className="text-sm text-secondary">Loading profile…</div> : (
         <>
           {error && <div className="rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">{error}</div>}
-          <div className="rounded-xl border border-hairline bg-surface p-3">
+          <div className={`rounded-xl border border-hairline bg-surface p-3 ${!editMode ? "pointer-events-none" : ""}`}>
             <div className="mb-2 text-xs uppercase tracking-wide text-secondary">Account</div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <label className="space-y-1">
                 <div className="text-xs text-secondary">First name</div>
-                <input className={`bhq-input ${INPUT_CLS}`} autoComplete="given-name" value={form.firstName} onChange={(e) => setForm((f) => ({ ...f, firstName: e.target.value }))} />
+                <input className={`bhq-input ${INPUT_CLS} ${disabledCls}`} disabled={!editMode} autoComplete="given-name" value={form.firstName} onChange={(e) => setForm((f) => ({ ...f, firstName: e.target.value }))} />
               </label>
               <label className="space-y-1">
                 <div className="text-xs text-secondary">Last name</div>
-                <input className={`bhq-input ${INPUT_CLS}`} autoComplete="family-name" value={form.lastName} onChange={(e) => setForm((f) => ({ ...f, lastName: e.target.value }))} />
+                <input className={`bhq-input ${INPUT_CLS} ${disabledCls}`} disabled={!editMode} autoComplete="family-name" value={form.lastName} onChange={(e) => setForm((f) => ({ ...f, lastName: e.target.value }))} />
               </label>
               <label className="space-y-1 md:col-span-2">
                 <div className="text-xs text-secondary">Nickname</div>
-                <input className={`bhq-input ${INPUT_CLS}`} autoComplete="nickname" placeholder="Optional" value={form.nickname} onChange={(e) => setForm((f) => ({ ...f, nickname: e.target.value }))} />
+                <input className={`bhq-input ${INPUT_CLS} ${disabledCls}`} disabled={!editMode} autoComplete="nickname" placeholder="Optional" value={form.nickname} onChange={(e) => setForm((f) => ({ ...f, nickname: e.target.value }))} />
               </label>
               <label className="space-y-1 md:col-span-2">
                 <div className="text-xs text-secondary">Email Address (username)</div>
                 <div className="flex items-center gap-2">
-                  <input className={`bhq-input ${INPUT_CLS} w-auto flex-1 min-w-0`} type="email" autoComplete="email" value={form.userEmail} readOnly onChange={(e) => setForm((f) => ({ ...f, userEmail: e.target.value }))} />
+                  <input className={`bhq-input ${INPUT_CLS} w-auto flex-1 min-w-0 ${disabledCls}`} disabled type="email" autoComplete="email" value={form.userEmail} readOnly onChange={(e) => setForm((f) => ({ ...f, userEmail: e.target.value }))} />
                 </div>
                 <p className="text-[11px] text-tertiary">Changing your email will require re-auth and signs you out after saving.</p>
               </label>
             </div>
           </div>
 
-          <label className="space-y-1">
-            <div className="text-xs text-secondary">Phone</div>
-            <IntlPhoneField
-              value={displayFromE164(form.phoneE164, countries)}
-              onChange={(nextDisplay) => setForm((f) => ({ ...f, phoneE164: e164FromDisplay(nextDisplay) }))}
-              inferredCountryName={countryNameFromValue(form.country, countries)} countries={countries} className="w-full"
-            />
-          </label>
+          <div className={!editMode ? "pointer-events-none" : ""}>
+            <label className="space-y-1">
+              <div className="text-xs text-secondary">Phone</div>
+              <div className={disabledCls}>
+                <IntlPhoneField
+                  value={displayFromE164(form.phoneE164, countries)}
+                  onChange={(nextDisplay) => editMode && setForm((f) => ({ ...f, phoneE164: e164FromDisplay(nextDisplay) }))}
+                  inferredCountryName={countryNameFromValue(form.country, countries)} countries={countries} className="w-full"
+                />
+              </div>
+            </label>
 
-          <label className="space-y-1 md:col-span-2">
-            <div className="text-xs text-secondary">WhatsApp</div>
-            <IntlPhoneField
-              value={displayFromE164(form.whatsappE164, countries)}
-              onChange={(nextDisplay) => setForm((f) => ({ ...f, whatsappE164: e164FromDisplay(nextDisplay) }))}
-              inferredCountryName={countryNameFromValue(form.country, countries)} countries={countries} className="w-full"
-            />
-          </label>
+            <label className="space-y-1 md:col-span-2 mt-4 block">
+              <div className="text-xs text-secondary">WhatsApp</div>
+              <div className={disabledCls}>
+                <IntlPhoneField
+                  value={displayFromE164(form.whatsappE164, countries)}
+                  onChange={(nextDisplay) => editMode && setForm((f) => ({ ...f, whatsappE164: e164FromDisplay(nextDisplay) }))}
+                  inferredCountryName={countryNameFromValue(form.country, countries)} countries={countries} className="w-full"
+                />
+              </div>
+            </label>
+          </div>
 
-          <div className="rounded-xl border border-hairline bg-surface p-3">
+          <div className={`rounded-xl border border-hairline bg-surface p-3 ${!editMode ? "pointer-events-none" : ""}`}>
             <div className="mb-2 text-xs uppercase tracking-wide text-secondary">Address</div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <input className={`bhq-input ${INPUT_CLS} md:col-span-2`} placeholder="Street" value={form.street} onChange={(e) => setForm((f) => ({ ...f, street: e.target.value }))} />
-              <input className={`bhq-input ${INPUT_CLS} md:col-span-2`} placeholder="Street 2" value={form.street2} onChange={(e) => setForm((f) => ({ ...f, street2: e.target.value }))} />
-              <input className={`bhq-input ${INPUT_CLS}`} placeholder="City" value={form.city} onChange={(e) => setForm((f) => ({ ...f, city: e.target.value }))} />
-              <input className={`bhq-input ${INPUT_CLS}`} placeholder="State / Region" value={form.state} onChange={(e) => setForm((f) => ({ ...f, state: e.target.value }))} />
-              <input className={`bhq-input ${INPUT_CLS}`} placeholder="Postal Code" value={form.postalCode} onChange={(e) => setForm((f) => ({ ...f, postalCode: e.target.value }))} />
-              <select className={["bhq-input", INPUT_CLS].join(" ")} value={asCountryCode(form.country, countries)} onChange={(e) => setForm((f) => ({ ...f, country: e.currentTarget.value || "" }))}>
+              <input className={`bhq-input ${INPUT_CLS} md:col-span-2 ${disabledCls}`} disabled={!editMode} placeholder="Street" value={form.street} onChange={(e) => setForm((f) => ({ ...f, street: e.target.value }))} />
+              <input className={`bhq-input ${INPUT_CLS} md:col-span-2 ${disabledCls}`} disabled={!editMode} placeholder="Street 2" value={form.street2} onChange={(e) => setForm((f) => ({ ...f, street2: e.target.value }))} />
+              <input className={`bhq-input ${INPUT_CLS} ${disabledCls}`} disabled={!editMode} placeholder="City" value={form.city} onChange={(e) => setForm((f) => ({ ...f, city: e.target.value }))} />
+              <input className={`bhq-input ${INPUT_CLS} ${disabledCls}`} disabled={!editMode} placeholder="State / Region" value={form.state} onChange={(e) => setForm((f) => ({ ...f, state: e.target.value }))} />
+              <input className={`bhq-input ${INPUT_CLS} ${disabledCls}`} disabled={!editMode} placeholder="Postal Code" value={form.postalCode} onChange={(e) => setForm((f) => ({ ...f, postalCode: e.target.value }))} />
+              <select className={`bhq-input ${INPUT_CLS} ${disabledCls}`} disabled={!editMode} value={asCountryCode(form.country, countries)} onChange={(e) => setForm((f) => ({ ...f, country: e.currentTarget.value || "" }))}>
                 <option value="">Country</option>
                 {countries.map((c) => <option key={c.code} value={c.code}>{c.name}</option>)}
               </select>
@@ -1688,9 +1742,121 @@ const BreedingTab = React.forwardRef<BreedingHandle, { dirty: boolean; onDirty: 
 export { BreedingTab };
 
 /** ───────── Program Profile (moved to Platform Management) ───────── */
-type ProgramProfileHandle = { save: () => Promise<void> };
-const ProgramProfileTab = React.forwardRef<ProgramProfileHandle, { dirty: boolean; onDirty: (v: boolean) => void }>(
-  function ProgramProfileImpl({ onDirty }, ref) {
+type ProgramProfileHandle = {
+  save: () => Promise<void>;
+  cancel: () => void;
+};
+
+// Business Identity types (shared with MarketplaceSettingsTab)
+type PublicLocationMode = "city_state" | "zip_only" | "full" | "hidden";
+type BusinessIdentityDraft = {
+  businessName: string;
+  logoAssetId: string | null;
+  bio: string;
+  showBusinessIdentity: boolean; // Controls visibility of name, logo, bio as a group
+  websiteUrl: string;
+  showWebsite: boolean;
+  instagram: string;
+  showInstagram: boolean;
+  facebook: string;
+  showFacebook: boolean;
+  address: { street: string; city: string; state: string; zip: string; country: string };
+  publicLocationMode: PublicLocationMode;
+  searchParticipation: { distanceSearch: boolean; citySearch: boolean; zipRadius: boolean };
+};
+
+function createEmptyBusinessIdentity(): BusinessIdentityDraft {
+  return {
+    businessName: "", logoAssetId: null, bio: "",
+    showBusinessIdentity: true,
+    websiteUrl: "", showWebsite: false,
+    instagram: "", showInstagram: false, facebook: "", showFacebook: false,
+    address: { street: "", city: "", state: "", zip: "", country: "" },
+    publicLocationMode: "city_state",
+    searchParticipation: { distanceSearch: true, citySearch: true, zipRadius: true },
+  };
+}
+
+// Visibility toggle pill button
+function VisibilityToggle({ isPublic, onChange, disabled }: { isPublic: boolean; onChange: (v: boolean) => void; disabled?: boolean }) {
+  return (
+    <button
+      type="button"
+      onClick={() => !disabled && onChange(!isPublic)}
+      disabled={disabled}
+      className={`
+        inline-flex items-center gap-1.5 text-xs px-2 py-1 rounded-full font-medium transition-all
+        ${disabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}
+        ${isPublic
+          ? "bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25"
+          : "bg-zinc-500/15 text-zinc-400 hover:bg-zinc-500/25"
+        }
+      `}
+    >
+      {isPublic ? (
+        <>
+          <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+            <path d="M10 12a2 2 0 100-4 2 2 0 000 4z" />
+            <path fillRule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clipRule="evenodd" />
+          </svg>
+          Public
+        </>
+      ) : (
+        <>
+          <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+            <path fillRule="evenodd" d="M3.707 2.293a1 1 0 00-1.414 1.414l14 14a1 1 0 001.414-1.414l-1.473-1.473A10.014 10.014 0 0019.542 10C18.268 5.943 14.478 3 10 3a9.958 9.958 0 00-4.512 1.074l-1.78-1.781zm4.261 4.26l1.514 1.515a2.003 2.003 0 012.45 2.45l1.514 1.514a4 4 0 00-5.478-5.478z" clipRule="evenodd" />
+            <path d="M12.454 16.697L9.75 13.992a4 4 0 01-3.742-3.741L2.335 6.578A9.98 9.98 0 00.458 10c1.274 4.057 5.065 7 9.542 7 .847 0 1.669-.105 2.454-.303z" />
+          </svg>
+          Unlisted
+        </>
+      )}
+    </button>
+  );
+}
+
+// Toggle component for Business Identity section
+function ProfileToggle({ checked, onChange, label, disabled }: { checked: boolean; onChange: (v: boolean) => void; label?: string; disabled?: boolean }) {
+  return (
+    <label className={["inline-flex items-center gap-2 cursor-pointer", disabled ? "opacity-50 cursor-not-allowed" : ""].join(" ")}>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={checked}
+        disabled={disabled}
+        onClick={() => !disabled && onChange(!checked)}
+        className={["relative w-10 h-5 rounded-full transition-colors", checked ? "bg-[hsl(var(--brand-orange))]" : "bg-surface-strong border border-hairline"].join(" ")}
+      >
+        <span className={["absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform", checked ? "translate-x-5" : "translate-x-0"].join(" ")} />
+      </button>
+      {label && <span className="text-sm text-secondary">{label}</span>}
+    </label>
+  );
+}
+
+function ProfileCheckbox({ checked, onChange, label, disabled }: { checked: boolean; onChange: (v: boolean) => void; label: string; disabled?: boolean }) {
+  return (
+    <label className={["flex items-center gap-2 cursor-pointer", disabled ? "opacity-50 cursor-not-allowed" : ""].join(" ")}>
+      <input type="checkbox" checked={checked} onChange={(e) => !disabled && onChange(e.target.checked)} disabled={disabled} className="w-4 h-4 rounded border-hairline bg-card accent-[hsl(var(--brand-orange))]" />
+      <span className="text-sm text-primary">{label}</span>
+    </label>
+  );
+}
+
+function ProfileRadioGroup({ value, onChange, options, name }: { value: string; onChange: (v: string) => void; options: { value: string; label: string }[]; name: string }) {
+  return (
+    <div className="space-y-2">
+      {options.map((opt) => (
+        <label key={opt.value} className="flex items-center gap-2 cursor-pointer">
+          <input type="radio" name={name} value={opt.value} checked={value === opt.value} onChange={(e) => onChange(e.target.value)} className="w-4 h-4 border-hairline bg-card accent-[hsl(var(--brand-orange))]" />
+          <span className="text-sm text-primary">{opt.label}</span>
+        </label>
+      ))}
+    </div>
+  );
+}
+
+const ProgramProfileTab = React.forwardRef<ProgramProfileHandle, { dirty: boolean; onDirty: (v: boolean) => void; editMode?: boolean }>(
+  function ProgramProfileImpl({ onDirty, editMode = false }, ref) {
     const EMPTY_PROFILE: BreedingProgramProfile & {
       cyclePolicy?: (BreedingProgramProfile["cyclePolicy"] & { retireRule?: "age_only" | "litters_only" | "either" });
       publication?: { publishInDirectory: boolean; summary?: string | null };
@@ -1715,7 +1881,15 @@ const ProgramProfileTab = React.forwardRef<ProgramProfileHandle, { dirty: boolea
     const [profileInit, setProfileInit] = React.useState<BreedingProgramProfile>(EMPTY_PROFILE);
     const [profile, setProfile] = React.useState<BreedingProgramProfile>(EMPTY_PROFILE);
 
-    const isDirty = React.useMemo(() => JSON.stringify(profile) !== JSON.stringify(profileInit), [profile, profileInit]);
+    // Business Identity state (from marketplace draft)
+    const [bizIdentity, setBizIdentity] = React.useState<BusinessIdentityDraft>(createEmptyBusinessIdentity);
+    const [bizIdentityInit, setBizIdentityInit] = React.useState<BusinessIdentityDraft>(createEmptyBusinessIdentity);
+
+    const isDirty = React.useMemo(() => {
+      const profileDirty = JSON.stringify(profile) !== JSON.stringify(profileInit);
+      const bizDirty = JSON.stringify(bizIdentity) !== JSON.stringify(bizIdentityInit);
+      return profileDirty || bizDirty;
+    }, [profile, profileInit, bizIdentity, bizIdentityInit]);
     React.useEffect(() => onDirty(isDirty), [isDirty, onDirty]);
 
     React.useEffect(() => {
@@ -1725,6 +1899,8 @@ const ProgramProfileTab = React.forwardRef<ProgramProfileHandle, { dirty: boolea
           setLoading(true); setError("");
           const tenantId = await resolveTenantIdSafe();
           if (!tenantId) throw new Error("Missing tenant id");
+
+          // Load breeding program profile
           let profMerged: BreedingProgramProfile;
           try {
             const pr = await api.breeding.program.getForTenant(Number(tenantId));
@@ -1735,7 +1911,42 @@ const ProgramProfileTab = React.forwardRef<ProgramProfileHandle, { dirty: boolea
             if (e?.status === 404) profMerged = { ...EMPTY_PROFILE };
             else { profMerged = { ...EMPTY_PROFILE }; setError(e?.message || "Program profile load failed"); }
           }
-          if (!ignore) { setProfileInit(profMerged); setProfile(profMerged); }
+
+          // Load marketplace draft for business identity
+          let bizMerged: BusinessIdentityDraft = createEmptyBusinessIdentity();
+          try {
+            const mpRes = await fetch("/api/v1/marketplace/profile", {
+              credentials: "include",
+              headers: { Accept: "application/json", "X-Tenant-Id": String(tenantId) },
+            });
+            if (mpRes.ok) {
+              const mpData = await mpRes.json();
+              if (mpData.draft) {
+                bizMerged = {
+                  businessName: mpData.draft.businessName || "",
+                  logoAssetId: mpData.draft.logoAssetId || null,
+                  bio: mpData.draft.bio || "",
+                  showBusinessIdentity: mpData.draft.showBusinessIdentity ?? true,
+                  websiteUrl: mpData.draft.websiteUrl || "",
+                  showWebsite: mpData.draft.showWebsite ?? false,
+                  instagram: mpData.draft.instagram || "",
+                  showInstagram: mpData.draft.showInstagram ?? false,
+                  facebook: mpData.draft.facebook || "",
+                  showFacebook: mpData.draft.showFacebook ?? false,
+                  address: { ...createEmptyBusinessIdentity().address, ...(mpData.draft.address || {}) },
+                  publicLocationMode: mpData.draft.publicLocationMode === "hidden" ? "city_state" : (mpData.draft.publicLocationMode || "city_state"),
+                  searchParticipation: { ...createEmptyBusinessIdentity().searchParticipation, ...(mpData.draft.searchParticipation || {}) },
+                };
+              }
+            }
+          } catch (e) {
+            console.error("Failed to load marketplace profile:", e);
+          }
+
+          if (!ignore) {
+            setProfileInit(profMerged); setProfile(profMerged);
+            setBizIdentityInit(bizMerged); setBizIdentity(bizMerged);
+          }
         } catch (e: any) {
           if (!ignore) setError(e?.message || "Failed to load Program Profile");
         } finally { if (!ignore) setLoading(false); }
@@ -1743,275 +1954,411 @@ const ProgramProfileTab = React.forwardRef<ProgramProfileHandle, { dirty: boolea
       return () => { ignore = true; };
     }, []);
 
+    // Business identity updaters
+    function updateBizIdentity<K extends keyof BusinessIdentityDraft>(key: K, value: BusinessIdentityDraft[K]) {
+      setBizIdentity((prev) => ({ ...prev, [key]: value }));
+    }
+    function updateAddress<K extends keyof BusinessIdentityDraft["address"]>(key: K, value: string) {
+      setBizIdentity((prev) => ({ ...prev, address: { ...prev.address, [key]: value } }));
+    }
+    function updateSearchParticipation<K extends keyof BusinessIdentityDraft["searchParticipation"]>(key: K, value: boolean) {
+      setBizIdentity((prev) => ({ ...prev, searchParticipation: { ...prev.searchParticipation, [key]: value } }));
+    }
+
     async function saveProfile() {
       setError("");
       try {
         const tenantRaw = await resolveTenantId();
         const tenantId = String(tenantRaw ?? "").trim();
         if (!tenantId) throw new Error("Missing tenant id");
+
+        // Save breeding program profile
         const safeBody = { ...profile, publication: profile.publication ?? { publishInDirectory: false, summary: null } };
         const prSaved = await api.breeding.program.updateForTenant(safeBody, Number(tenantId));
         const normalized = (prSaved?.data ?? prSaved) as BreedingProgramProfile;
-        setProfileInit(normalized); setProfile(normalized); onDirty(false);
+        setProfileInit(normalized); setProfile(normalized);
+
+        // Save marketplace draft (merge with existing draft to preserve other fields)
+        const mpRes = await fetch("/api/v1/marketplace/profile", {
+          credentials: "include",
+          headers: { Accept: "application/json", "X-Tenant-Id": tenantId },
+        });
+        let existingDraft: Record<string, unknown> = {};
+        let isPublished = false;
+        if (mpRes.ok) {
+          const mpData = await mpRes.json();
+          existingDraft = mpData.draft || {};
+          isPublished = !!mpData.published;
+        }
+
+        const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute("content") ||
+          (document.cookie.match(/(?:^|; )XSRF-TOKEN=([^;]*)/) || [])[1];
+        const mergedDraft = {
+          ...existingDraft,
+          businessName: bizIdentity.businessName,
+          logoAssetId: bizIdentity.logoAssetId,
+          bio: bizIdentity.bio,
+          showBusinessIdentity: bizIdentity.showBusinessIdentity,
+          websiteUrl: bizIdentity.websiteUrl,
+          showWebsite: bizIdentity.showWebsite,
+          instagram: bizIdentity.instagram,
+          showInstagram: bizIdentity.showInstagram,
+          facebook: bizIdentity.facebook,
+          showFacebook: bizIdentity.showFacebook,
+          address: bizIdentity.address,
+          publicLocationMode: bizIdentity.publicLocationMode,
+          searchParticipation: bizIdentity.searchParticipation,
+        };
+
+        // Save draft
+        await fetch("/api/v1/marketplace/profile/draft", {
+          method: "PUT",
+          credentials: "include",
+          headers: {
+            Accept: "application/json",
+            "Content-Type": "application/json",
+            "X-Tenant-Id": tenantId,
+            ...(csrf ? { "X-CSRF-Token": csrf } : {}),
+          },
+          body: JSON.stringify(mergedDraft),
+        });
+
+        // If already published, also republish to update public listing immediately
+        if (isPublished) {
+          // Build publish payload with required fields
+          const listedBreeds = Array.isArray(mergedDraft.listedBreeds) ? mergedDraft.listedBreeds : [];
+          const programs = Array.isArray(mergedDraft.programs) ? mergedDraft.programs : [];
+          const listedPrograms = programs
+            .filter((p: any) => p.status)
+            .map((p: any) => ({
+              name: p.name,
+              description: p.description,
+              acceptInquiries: p.acceptInquiries,
+              openWaitlist: p.openWaitlist,
+              comingSoon: p.comingSoon,
+            }));
+
+          const publishPayload = {
+            ...mergedDraft,
+            breeds: listedBreeds.map((name: string) => ({ name })),
+            listedPrograms,
+          };
+
+          await fetch("/api/v1/marketplace/profile/publish", {
+            method: "POST",
+            credentials: "include",
+            headers: {
+              Accept: "application/json",
+              "Content-Type": "application/json",
+              "X-Tenant-Id": tenantId,
+              ...(csrf ? { "X-CSRF-Token": csrf } : {}),
+            },
+            body: JSON.stringify(publishPayload),
+          });
+        }
+
+        setBizIdentityInit(bizIdentity);
+
+        onDirty(false);
       } catch (e: any) {
         setError(e?.message || "Program profile save failed");
       }
     }
-    React.useImperativeHandle(ref, () => ({ async save() { await saveProfile(); } }));
 
-    // Import/Export . Export both Program Profile & Availability prefs.
-    async function exportAll() {
-      try {
-        const tenantRaw = await resolveTenantId();
-        const tenantId = String(tenantRaw ?? "").trim();
-        const av = await fetchJson(`/api/v1/tenants/${encodeURIComponent(tenantId)}/availability`);
-        const avData = (av?.data ?? av) as AvailabilityPrefs;
-        const payload = {
-          programProfile: profile,
-          availability: avData,
-          meta: { exportedAt: new Date().toISOString(), tenant: TENANT_ID_CACHE || null, version: 2 },
-        };
-        const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
-        const url = URL.createObjectURL(blob); const a = document.createElement("a");
-        a.href = url; a.download = "breeding-program-export.json"; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
-      } catch (e: any) {
-        alert(e?.message || "Export failed");
-      }
+    // Cancel editing and revert to saved values
+    function cancelEdit() {
+      setProfile(profileInit);
+      setBizIdentity(bizIdentityInit);
+      onDirty(false);
     }
-    async function importAll(file: File) {
-      const text = await file.text();
-      try {
-        const data = JSON.parse(text);
-        const tenantRaw = await resolveTenantId();
-        const tenantId = String(tenantRaw ?? "").trim();
-        if (!tenantId) throw new Error("Missing tenant id");
 
-        if (data?.programProfile) {
-          const safeBody = { ...EMPTY_PROFILE, ...data.programProfile };
-          const prSaved = await api.breeding.program.updateForTenant(safeBody, Number(tenantId));
-          const normalized = (prSaved?.data ?? prSaved) as BreedingProgramProfile;
-          setProfileInit(normalized); setProfile(normalized);
-        }
-        if (data?.availability) {
-          await fetchJson(`/api/v1/tenants/${encodeURIComponent(tenantId)}/availability`, {
-            method: "PATCH", body: JSON.stringify(data.availability),
-          });
-        }
-        alert("Import complete.");
-      } catch (e: any) {
-        alert(e?.message || "Import failed");
-      }
-    }
+    React.useImperativeHandle(ref, () => ({
+      async save() { await saveProfile(); },
+      cancel() { cancelEdit(); },
+    }));
+
+    // Static badge for always-private fields
+    const PrivateBadge = () => (
+      <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-zinc-500/15 text-zinc-400 font-medium">
+        <svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" /></svg>
+        Private
+      </span>
+    );
 
     return (
-      <SectionCard title="Program Profile" subtitle="Global rules and preferences that inform every plan.">
+      <div className="space-y-4">
         {loading ? <div className="text-sm text-secondary">Loading…</div> : (
           <>
             {error && <div className="rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">{error}</div>}
 
-            <Card className="p-3 space-y-2 mb-3">
-              <div className="text-sm font-medium">Import / Export</div>
-              <div className="flex items-center gap-2">
-                <Button size="sm" onClick={exportAll}>Export (Program + Availability)</Button>
-                <label className="inline-flex items-center gap-2 text-sm">
-                  <input type="file" accept="application/json" onChange={(e) => {
-                    const f = e.currentTarget.files?.[0]; if (f) importAll(f); e.currentTarget.value = "";
-                  }} />
-                </label>
-              </div>
-              <Hint>Local display preferences live in your browser and aren’t included.</Hint>
-            </Card>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <label className="space-y-1 md:col-span-2">
-                <div className="text-xs text-secondary">Kennel name</div>
-                <input className={`bhq-input ${INPUT_CLS}`} value={profile.kennelName} onChange={(e) => setProfile(p => ({ ...p, kennelName: e.target.value }))} />
-              </label>
-
-              <label className="space-y-1">
-                <div className="text-xs text-secondary">Website</div>
-                <input className={`bhq-input ${INPUT_CLS}`} value={profile.website ?? ""} onChange={(e) => setProfile(p => ({ ...p, website: e.target.value || null }))} />
-              </label>
-
-              <label className="space-y-1">
-                <div className="text-xs text-secondary">Species</div>
-                <div className="flex flex-wrap gap-4">
-                  <Chk label="Dog" checked={profile.species.includes("DOG")} onChange={(ck) => setProfile(p => ({ ...p, species: ck ? Array.from(new Set([...(p.species || []), "DOG"])) : (p.species || []).filter(s => s !== "DOG") }))} />
-                  <Chk label="Cat" checked={profile.species.includes("CAT")} onChange={(ck) => setProfile(p => ({ ...p, species: ck ? Array.from(new Set([...(p.species || []), "CAT"])) : (p.species || []).filter(s => s !== "CAT") }))} />
-                  <Chk label="Horse" checked={profile.species.includes("HORSE")} onChange={(ck) => setProfile(p => ({ ...p, species: ck ? Array.from(new Set([...(p.species || []), "HORSE"])) : (p.species || []).filter(s => s !== "HORSE") }))} />
-                </div>
-                <Hint>Choose one or more.</Hint>
-              </label>
-
-              <label className="space-y-1">
-                <div className="text-xs text-secondary">Travel policy</div>
-                <select className={`bhq-input ${INPUT_CLS}`} value={profile.travelPolicy} onChange={(e) => setProfile(p => ({ ...p, travelPolicy: e.target.value as any }))}>
-                  <option value="none">No travel</option>
-                  <option value="limited">Limited</option>
-                  <option value="case_by_case">Case by case</option>
-                </select>
-              </label>
-
-              <div className="md:col-span-2 rounded-md border border-hairline p-3">
-                <div className="text-sm font-medium mb-2">Cycle policy</div>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                  <FieldNum label="Min dam age (mo)" value={profile.cyclePolicy!.minDamAgeMonths} onChange={(n) => setProfile(p => ({ ...p, cyclePolicy: { ...p.cyclePolicy!, minDamAgeMonths: n } }))} />
-                  <FieldNum label="Min heats between" value={profile.cyclePolicy!.minHeatsBetween} onChange={(n) => setProfile(p => ({ ...p, cyclePolicy: { ...p.cyclePolicy!, minHeatsBetween: n } }))} />
-                  <FieldNum label="Max litters lifetime" value={profile.cyclePolicy!.maxLittersLifetime} onChange={(n) => setProfile(p => ({ ...p, cyclePolicy: { ...p.cyclePolicy!, maxLittersLifetime: n } }))} />
-                  <FieldNum label="Retire after age (mo)" value={profile.cyclePolicy!.retireAfterAgeMonths ?? 0} onChange={(n) => setProfile(p => ({ ...p, cyclePolicy: { ...p.cyclePolicy!, retireAfterAgeMonths: n || null } }))} />
-                </div>
-                <label className="space-y-1 md:col-span-2">
-                  <div className="text-xs text-secondary">Retirement rule</div>
-                  <select className={`bhq-input ${INPUT_CLS} w-full`} value={profile.cyclePolicy!.retireRule || "either"} onChange={(e) => setProfile(p => ({ ...p, cyclePolicy: { ...p.cyclePolicy!, retireRule: e.currentTarget.value as any } }))}>
-                    <option value="either">After age or after X breedings</option>
-                    <option value="age_only">After age only</option>
-                    <option value="litters_only">After X breedings only</option>
-                  </select>
-                  <Hint>Uses “Retire after age (mo)” and “Max litters lifetime.” “Either” means whichever happens first.</Hint>
-                </label>
-              </div>
-
-              <div className="md:col-span-2 rounded-md border border-hairline p-3">
-                <div className="text-sm font-medium mb-2">Placement</div>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                  <FieldNum label="Earliest days from birth" value={profile.placement.earliestDaysFromBirth} onChange={(n) => setProfile(p => ({ ...p, placement: { ...p.placement, earliestDaysFromBirth: n } }))} />
-                  <FieldNum label="Standard days from birth" value={profile.placement.standardDaysFromBirth} onChange={(n) => setProfile(p => ({ ...p, placement: { ...p.placement, standardDaysFromBirth: n } }))} />
-                  <FieldNum label="Guarantee months" value={profile.placement.healthGuaranteeMonths} onChange={(n) => setProfile(p => ({ ...p, placement: { ...p.placement, healthGuaranteeMonths: n } }))} />
-                  <FieldNum label="Deposit amount USD" value={profile.placement.depositAmountUSD ?? 0} onChange={(n) => setProfile(p => ({ ...p, placement: { ...p.placement, depositAmountUSD: n || null } }))} />
-                </div>
-
-                <div className="md:col-span-2 rounded-md border border-hairline p-3 mt-3">
-                  <div className="text-sm font-medium mb-2">Public directory</div>
-                  <label className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={!!(profile.publication && profile.publication.publishInDirectory)}
-                      onChange={(e) => {
-                        const isChecked = (e.currentTarget as HTMLInputElement).checked;
-                        setProfile((p) => {
-                          const pub = p.publication ?? { publishInDirectory: false, summary: null };
-                          return { ...p, publication: { ...pub, publishInDirectory: isChecked } };
-                        });
-                      }}
+            <div className="space-y-6">
+                {/* Business Identity Section */}
+                <SectionCard
+                  title={
+                    <div className="flex items-center gap-2">
+                      <span className="text-lg">🏢</span>
+                      <div className="flex-1">
+                        <div className="text-base font-semibold text-primary">Business Identity</div>
+                        <div className="text-xs text-secondary font-normal">Your program name, logo, and description</div>
+                      </div>
+                    </div>
+                  }
+                  right={
+                    <VisibilityToggle
+                      isPublic={bizIdentity.showBusinessIdentity}
+                      onChange={(v) => updateBizIdentity("showBusinessIdentity", v)}
+                      disabled={!editMode}
                     />
-                    <span className="text-sm">Publish this program to the public breeder directory</span>
-                  </label>
-                  <Hint>Off by default. Turn on to appear in public search.</Hint>
+                  }
+                >
+                  <div className={`space-y-5 pt-2 ${!bizIdentity.showBusinessIdentity ? "opacity-60" : ""} ${!editMode ? "pointer-events-none" : ""}`}>
+                    {/* Business Name */}
+                    <div>
+                      <label className="text-sm font-medium text-primary mb-1.5 block">Business Name</label>
+                      <input
+                        type="text"
+                        value={bizIdentity.businessName}
+                        onChange={(e) => updateBizIdentity("businessName", e.target.value)}
+                        placeholder="Your breeding program name"
+                        disabled={!editMode}
+                        className={`bhq-input ${INPUT_CLS} w-full ${!editMode ? "opacity-70 cursor-not-allowed" : ""}`}
+                      />
+                    </div>
 
-                  <label className="space-y-1 mt-3">
-                    <div className="text-xs text-secondary">Directory summary (optional)</div>
-                    <textarea
-                      className={`bhq-input ${INPUT_CLS} h-24`}
-                      placeholder="Short intro that appears in the public directory…"
-                      value={profile.publication?.summary ?? ""}
-                      onChange={(e) => {
-                        const next = e.currentTarget.value || "";
-                        setProfile((p) => {
-                          const pub = p.publication ?? { publishInDirectory: !!p.publication?.publishInDirectory, summary: null };
-                          return { ...p, publication: { ...pub, summary: next || null } };
-                        });
-                      }}
-                    />
-                  </label>
-                </div>
-              </div>
+                    {/* About Your Program (Bio) */}
+                    <div>
+                      <label className="text-sm font-medium text-primary mb-1.5 block">About Your Program</label>
+                      <textarea
+                        value={bizIdentity.bio}
+                        onChange={(e) => updateBizIdentity("bio", e.target.value.slice(0, 500))}
+                        placeholder="Tell potential clients about your breeding program, your experience, and what makes you unique..."
+                        rows={4}
+                        disabled={!editMode}
+                        className={`bhq-input ${INPUT_CLS} w-full resize-none ${!editMode ? "opacity-70 cursor-not-allowed" : ""}`}
+                      />
+                      <div className="text-xs text-secondary text-right mt-1">{bizIdentity.bio.length}/500</div>
+                    </div>
+
+                    {/* Logo */}
+                    <div>
+                      <label className="text-sm font-medium text-primary mb-1.5 block">Logo</label>
+                      <div className="flex items-center gap-3">
+                        <div className="w-12 h-12 rounded-lg bg-surface-strong border-2 border-dashed border-hairline flex items-center justify-center text-xl text-secondary shrink-0">
+                          🐾
+                        </div>
+                        <div className="flex-1">
+                          <button type="button" disabled={!editMode} className={`bhq-btn bhq-btn-secondary text-xs px-3 py-1.5 ${!editMode ? "opacity-50 cursor-not-allowed" : ""}`}>Upload</button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </SectionCard>
+
+                {/* Website & Social Links Section */}
+                <SectionCard
+                  title={
+                    <div className="flex items-center gap-2">
+                      <span className="text-lg">🌐</span>
+                      <div>
+                        <div className="text-base font-semibold text-primary">Website & Social Links</div>
+                        <div className="text-xs text-secondary font-normal">Control visibility for each link individually</div>
+                      </div>
+                    </div>
+                  }
+                >
+                  <div className={`space-y-4 pt-2 ${!editMode ? "pointer-events-none" : ""}`}>
+                    {/* Website */}
+                    <div className="flex items-center gap-3">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1.5">
+                          <span className="text-sm font-medium text-primary">Website</span>
+                        </div>
+                        <input
+                          type="url"
+                          value={bizIdentity.websiteUrl}
+                          onChange={(e) => updateBizIdentity("websiteUrl", e.target.value)}
+                          placeholder="https://yoursite.com"
+                          disabled={!editMode}
+                          className={`bhq-input ${INPUT_CLS} w-full ${!editMode ? "opacity-70 cursor-not-allowed" : ""}`}
+                        />
+                      </div>
+                      <div className="pt-5">
+                        <VisibilityToggle
+                          isPublic={bizIdentity.showWebsite}
+                          onChange={(v) => updateBizIdentity("showWebsite", v)}
+                          disabled={!editMode}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Instagram & Facebook */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="flex items-center gap-2">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-1.5">
+                            <span className="text-sm font-medium text-primary">Instagram</span>
+                          </div>
+                          <input
+                            type="text"
+                            value={bizIdentity.instagram}
+                            onChange={(e) => updateBizIdentity("instagram", e.target.value)}
+                            placeholder="@yourbusiness"
+                            disabled={!editMode}
+                            className={`bhq-input ${INPUT_CLS} w-full ${!editMode ? "opacity-70 cursor-not-allowed" : ""}`}
+                          />
+                        </div>
+                        <div className="pt-5">
+                          <VisibilityToggle
+                            isPublic={bizIdentity.showInstagram}
+                            onChange={(v) => updateBizIdentity("showInstagram", v)}
+                            disabled={!editMode}
+                          />
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-1.5">
+                            <span className="text-sm font-medium text-primary">Facebook</span>
+                          </div>
+                          <input
+                            type="text"
+                            value={bizIdentity.facebook}
+                            onChange={(e) => updateBizIdentity("facebook", e.target.value)}
+                            placeholder="YourPage"
+                            disabled={!editMode}
+                            className={`bhq-input ${INPUT_CLS} w-full ${!editMode ? "opacity-70 cursor-not-allowed" : ""}`}
+                          />
+                        </div>
+                        <div className="pt-5">
+                          <VisibilityToggle
+                            isPublic={bizIdentity.showFacebook}
+                            onChange={(v) => updateBizIdentity("showFacebook", v)}
+                            disabled={!editMode}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </SectionCard>
+
+                {/* Location Section */}
+                <SectionCard
+                  title={
+                    <div className="flex items-center gap-2">
+                      <span className="text-lg">📍</span>
+                      <div>
+                        <div className="text-base font-semibold text-primary">Location</div>
+                        <div className="text-xs text-secondary font-normal">Control what location details are visible on the marketplace</div>
+                      </div>
+                    </div>
+                  }
+                >
+                  <div className={`space-y-5 pt-2 ${!editMode ? "pointer-events-none" : ""}`}>
+                    {/* Address Fields */}
+                    <div className="bg-surface-strong/50 rounded-lg p-4 border border-hairline">
+                      <div className="flex items-center justify-between mb-3">
+                        <span className="text-sm font-medium text-primary">Your Address</span>
+                        <PrivateBadge />
+                      </div>
+                      <p className="text-xs text-secondary mb-3">Your full address is never shown publicly. Use the options below to choose what location info to display.</p>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <label className="md:col-span-2">
+                          <div className="text-xs text-secondary mb-1">Street Address</div>
+                          <input
+                            type="text"
+                            value={bizIdentity.address.street}
+                            onChange={(e) => updateAddress("street", e.target.value)}
+                            placeholder="123 Main St"
+                            disabled={!editMode}
+                            className={`bhq-input ${INPUT_CLS} w-full ${!editMode ? "opacity-70 cursor-not-allowed" : ""}`}
+                          />
+                        </label>
+                        <label>
+                          <div className="text-xs text-secondary mb-1">City</div>
+                          <input
+                            type="text"
+                            value={bizIdentity.address.city}
+                            onChange={(e) => updateAddress("city", e.target.value)}
+                            placeholder="City"
+                            disabled={!editMode}
+                            className={`bhq-input ${INPUT_CLS} w-full ${!editMode ? "opacity-70 cursor-not-allowed" : ""}`}
+                          />
+                        </label>
+                        <label>
+                          <div className="text-xs text-secondary mb-1">State/Province</div>
+                          <input
+                            type="text"
+                            value={bizIdentity.address.state}
+                            onChange={(e) => updateAddress("state", e.target.value)}
+                            placeholder="State"
+                            disabled={!editMode}
+                            className={`bhq-input ${INPUT_CLS} w-full ${!editMode ? "opacity-70 cursor-not-allowed" : ""}`}
+                          />
+                        </label>
+                        <label>
+                          <div className="text-xs text-secondary mb-1">ZIP/Postal Code</div>
+                          <input
+                            type="text"
+                            value={bizIdentity.address.zip}
+                            onChange={(e) => updateAddress("zip", e.target.value)}
+                            placeholder="12345"
+                            disabled={!editMode}
+                            className={`bhq-input ${INPUT_CLS} w-full ${!editMode ? "opacity-70 cursor-not-allowed" : ""}`}
+                          />
+                        </label>
+                        <label>
+                          <div className="text-xs text-secondary mb-1">Country</div>
+                          <input
+                            type="text"
+                            value={bizIdentity.address.country}
+                            onChange={(e) => updateAddress("country", e.target.value)}
+                            placeholder="Country"
+                            disabled={!editMode}
+                            className={`bhq-input ${INPUT_CLS} w-full ${!editMode ? "opacity-70 cursor-not-allowed" : ""}`}
+                          />
+                        </label>
+                      </div>
+                    </div>
+
+                    {/* Location Visibility */}
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm font-medium text-primary">What buyers see</span>
+                      </div>
+                      <p className="text-xs text-secondary mb-3">Choose how your location appears on your marketplace profile</p>
+                      <div className="flex flex-wrap gap-2">
+                        {([
+                          { value: "city_state", label: "City + State" },
+                          { value: "full", label: "City, State + ZIP" },
+                          { value: "zip_only", label: "ZIP Code Only" },
+                        ] as const).map((opt) => (
+                          <button
+                            key={opt.value}
+                            type="button"
+                            disabled={!editMode}
+                            onClick={() => updateBizIdentity("publicLocationMode", opt.value)}
+                            className={`px-3 py-1.5 text-sm rounded-md border transition-colors ${
+                              bizIdentity.publicLocationMode === opt.value
+                                ? "bg-[hsl(var(--brand-orange))] text-white border-[hsl(var(--brand-orange))] font-medium"
+                                : "bg-surface border-hairline text-secondary hover:text-primary hover:border-[hsl(var(--brand-orange))]/50"
+                            } ${!editMode ? "opacity-70 cursor-not-allowed" : ""}`}
+                          >
+                            {opt.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </SectionCard>
             </div>
           </>
         )}
-      </SectionCard>
+      </div>
     );
   }
 );
 
-/** ───────── Platform Snapshot (read-only summary with deep links) ───────── */
-function Kv({ label, value }: { label: string; value?: React.ReactNode }) {
-  return (
-    <div className="flex items-start justify-between gap-6 py-1 text-sm">
-      <div className="text-secondary w-40 shrink-0">{label}</div>
-      <div className="flex-1">{value ?? <span className="text-tertiary">—</span>}</div>
-    </div>
-  );
-}
-function Badge({ children }: { children: React.ReactNode }) {
-  return <span className="px-2 py-0.5 rounded bg-surface-strong text-xs border border-hairline">{children}</span>;
-}
-
-function PlatformSnapshotTab({
-  dirty,
-  onDirty,
-  onEditProfile,
-  onEditPhases,
-  onEditExactDates,
-}: {
-  dirty: boolean;
-  onDirty: (v: boolean) => void;
-  onEditProfile: () => void;
-  onEditPhases: () => void;
-  onEditExactDates: () => void;
-}) {
-  React.useEffect(() => onDirty(false), [onDirty]);
-
-  const [loading, setLoading] = React.useState(true);
-  const [error, setError] = React.useState<string>("");
-  const [profile, setProfile] = React.useState<BreedingProgramProfile | null>(null);
-
-  React.useEffect(() => {
-    let ignore = false;
-    (async () => {
-      try {
-        setError("");
-        setLoading(true);
-
-        const tenantRaw = await resolveTenantId();
-        const tenantId = String(tenantRaw ?? "").trim();
-        if (!tenantId) throw new Error("Missing tenant id");
-
-        // Load Program Profile
-        const pr = await api.breeding.program.getForTenant(Number(tenantId));
-        const profileData = (pr?.data ?? pr) as BreedingProgramProfile;
-        if (!ignore) setProfile(profileData);
-
-        // Load Availability and merge with defaults
-      } catch (e: any) {
-        if (!ignore) setError(e?.message || "Failed to load Program Profile");
-      } finally {
-        if (!ignore) setLoading(false);
-      }
-    })();
-    return () => { ignore = true; };
-  }, []);
-
-  return (
-    <div className="space-y-6">
-      {error && (
-        <div className="rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
-          {error}
-        </div>
-      )}
-      {loading ? (
-        <Card className="p-3 text-sm text-secondary">Loading…</Card>
-      ) : (
-        <>
-          {profile && (
-            <Card className="p-3 space-y-3">
-              <ProgramProfileSnapshot
-                profile={profile}
-                onEditProfile={onEditProfile}
-                onEditPhases={onEditPhases}
-                onEditExactDates={onEditExactDates}
-              />
-            </Card>
-          )}
-        </>
-      )}
-    </div>
-  );
-}
-
-
-/** ───────── Breeds Tab - Breeding Program Breeds ───────── */
-type BreedsHandle = { save: () => Promise<void> };
-
+/** ───────── Breeds Types ───────── */
 type BreedsSpecies = "DOG" | "CAT" | "HORSE" | "GOAT" | "SHEEP" | "RABBIT";
 type BreedsSpeciesUI = "Dog" | "Cat" | "Horse" | "Goat" | "Sheep" | "Rabbit";
 type SelectedBreed = {
@@ -2034,32 +2381,39 @@ function toUiSpecies(api: string): BreedsSpeciesUI {
   return "Dog";
 }
 
-const BreedsTab = React.forwardRef<BreedsHandle, { onDirty: (v: boolean) => void }>(
-  function BreedsTabImpl({ onDirty }, ref) {
-    const SPECIES_OPTIONS: BreedsSpeciesUI[] = ["Dog", "Cat", "Horse", "Goat", "Sheep", "Rabbit"];
+/** ───────── Standalone BreedsTab ───────── */
+type BreedsHandle = { save: () => Promise<void> };
+const BreedsTab = React.forwardRef<BreedsHandle, { dirty: boolean; onDirty: (v: boolean) => void }>(
+  function BreedsTab({ onDirty }, ref) {
+    const [loading, setLoading] = React.useState(true);
+    const [error, setError] = React.useState<string>("");
+    const [selectedBreeds, setSelectedBreeds] = React.useState<SelectedBreed[]>([]);
+    const [initialBreeds, setInitialBreeds] = React.useState<SelectedBreed[]>([]);
+    const [breedsSpecies, setBreedsSpecies] = React.useState<BreedsSpeciesUI>("Dog");
+    const [selectedBreed, setSelectedBreed] = React.useState<BreedHit | null>(null);
+    const [customBreedOpen, setCustomBreedOpen] = React.useState(false);
 
+    const SPECIES_OPTIONS: BreedsSpeciesUI[] = ["Dog", "Cat", "Horse", "Goat", "Sheep", "Rabbit"];
     function toApiSpecies(ui: BreedsSpeciesUI): BreedsSpecies {
       return ui.toUpperCase() as BreedsSpecies;
     }
 
-    // State
-    const [species, setSpecies] = React.useState<BreedsSpeciesUI>("Dog");
-    const [selectedBreed, setSelectedBreed] = React.useState<BreedHit | null>(null);
-    const [selectedBreeds, setSelectedBreeds] = React.useState<SelectedBreed[]>([]);
-    const [initialBreeds, setInitialBreeds] = React.useState<SelectedBreed[]>([]);
-    const [err, setErr] = React.useState<string>("");
-    const [loading, setLoading] = React.useState(true);
-    const [saving, setSaving] = React.useState(false);
+    const isDirty = React.useMemo(() => {
+      const currentBreedIds = selectedBreeds.map(b => `${b.id}-${b.species}`).sort().join(",");
+      const initialBreedIds = initialBreeds.map(b => `${b.id}-${b.species}`).sort().join(",");
+      return currentBreedIds !== initialBreedIds;
+    }, [selectedBreeds, initialBreeds]);
+    React.useEffect(() => onDirty(isDirty), [isDirty, onDirty]);
 
-    // Load initial breeds from API
     React.useEffect(() => {
-      let alive = true;
+      let ignore = false;
       (async () => {
         try {
-          const res = await fetchJson("/api/v1/breeds/program");
-          if (!alive) return;
-          const data = (res as any)?.data || [];
-          const mapped: SelectedBreed[] = data.map((b: any) => ({
+          setLoading(true); setError("");
+          let breedsMapped: SelectedBreed[] = [];
+          const breedsRes = await fetchJson("/api/v1/breeds/program");
+          const breedsData = (breedsRes as any)?.data || [];
+          breedsMapped = breedsData.map((b: any) => ({
             id: b.source === "custom" ? `custom-${b.customBreedId}` : `breed-${b.breedId}`,
             breedId: b.breedId ?? null,
             customBreedId: b.customBreedId ?? null,
@@ -2067,75 +2421,25 @@ const BreedsTab = React.forwardRef<BreedsHandle, { onDirty: (v: boolean) => void
             species: toUiSpecies(b.species),
             source: b.source,
           }));
-          setSelectedBreeds(mapped);
-          setInitialBreeds(mapped);
-        } catch (e) {
-          console.error("Failed to load program breeds:", e);
-        } finally {
-          if (alive) setLoading(false);
-        }
+          if (!ignore) {
+            setSelectedBreeds(breedsMapped);
+            setInitialBreeds(breedsMapped);
+          }
+        } catch (e: any) {
+          if (!ignore) setError(e?.message || "Failed to load breeds");
+        } finally { if (!ignore) setLoading(false); }
       })();
-      return () => { alive = false; };
+      return () => { ignore = true; };
     }, []);
 
-    // Track dirty state by comparing current breeds to initial
-    const isDirty = React.useMemo(() => {
-      if (selectedBreeds.length !== initialBreeds.length) return true;
-      const currentIds = selectedBreeds.map(b => `${b.id}-${b.species}`).sort().join(",");
-      const initialIds = initialBreeds.map(b => `${b.id}-${b.species}`).sort().join(",");
-      return currentIds !== initialIds;
-    }, [selectedBreeds, initialBreeds]);
-
-    React.useEffect(() => { onDirty(isDirty); }, [isDirty, onDirty]);
-
-    // Expose save function via ref
-    React.useImperativeHandle(ref, () => ({
-      async save() {
-        setSaving(true);
-        setErr("");
-        try {
-          const breeds = selectedBreeds.map((b) => ({
-            breedId: b.source === "canonical" ? b.breedId : null,
-            customBreedId: b.source === "custom" ? b.customBreedId : null,
-            species: toApiSpecies(b.species),
-          }));
-          const res = await fetchJson("/api/v1/breeds/program", {
-            method: "PUT",
-            body: JSON.stringify({ breeds }),
-          });
-          const data = (res as any)?.data || [];
-          const mapped: SelectedBreed[] = data.map((b: any) => ({
-            id: b.source === "custom" ? `custom-${b.customBreedId}` : `breed-${b.breedId}`,
-            breedId: b.breedId ?? null,
-            customBreedId: b.customBreedId ?? null,
-            name: b.name,
-            species: toUiSpecies(b.species),
-            source: b.source,
-          }));
-          setSelectedBreeds(mapped);
-          setInitialBreeds(mapped);
-        } catch (e: any) {
-          setErr(e?.message || "Failed to save breeds");
-          throw e;
-        } finally {
-          setSaving(false);
-        }
-      },
-    }), [selectedBreeds]);
-
-    // Custom breed dialog state
-    const [customBreedOpen, setCustomBreedOpen] = React.useState(false);
-
-  // Add a breed to the list
     function addBreed(hit: BreedHit) {
       const exists = selectedBreeds.some(
         (b) => b.name.toLowerCase() === hit.name.toLowerCase() && b.species === hit.species
       );
       if (exists) {
-        setErr(`"${hit.name}" is already in your breeding program.`);
+        setError(`"${hit.name}" is already in your breeding program.`);
         return;
       }
-      // Determine breedId vs customBreedId based on source
       const isCustom = hit.source === "custom";
       const breedId = isCustom ? null : (hit.canonicalBreedId ?? (typeof hit.id === "number" ? hit.id : null));
       const customBreedId = isCustom ? (typeof hit.id === "number" ? hit.id : null) : null;
@@ -2152,172 +2456,330 @@ const BreedsTab = React.forwardRef<BreedsHandle, { onDirty: (v: boolean) => void
         },
       ]);
       setSelectedBreed(null);
-      setErr("");
+      setError("");
     }
-
-  // Remove a breed
     function removeBreed(id: string | number) {
       setSelectedBreeds((prev) => prev.filter((b) => b.id !== id));
     }
-
-    // Group breeds by species for display
     const breedsBySpecies = SPECIES_OPTIONS.map((sp) => ({
       species: sp,
       breeds: selectedBreeds.filter((b) => b.species === sp),
     })).filter((g) => g.breeds.length > 0);
 
-    if (loading) {
-      return (
-        <div className="flex items-center justify-center py-12">
-          <div className="text-secondary">Loading breeds...</div>
-        </div>
-      );
+    async function saveBreeds() {
+      setError("");
+      try {
+        const breedsPayload = selectedBreeds.map((b) => ({
+          breedId: b.source === "canonical" ? b.breedId : null,
+          customBreedId: b.source === "custom" ? b.customBreedId : null,
+          species: toApiSpecies(b.species),
+        }));
+        const breedsRes = await fetchJson("/api/v1/breeds/program", {
+          method: "PUT",
+          body: JSON.stringify({ breeds: breedsPayload }),
+        });
+        const breedsData = (breedsRes as any)?.data || [];
+        const breedsMapped: SelectedBreed[] = breedsData.map((b: any) => ({
+          id: b.source === "custom" ? `custom-${b.customBreedId}` : `breed-${b.breedId}`,
+          breedId: b.breedId ?? null,
+          customBreedId: b.customBreedId ?? null,
+          name: b.name,
+          species: toUiSpecies(b.species),
+          source: b.source,
+        }));
+        setSelectedBreeds(breedsMapped);
+        setInitialBreeds(breedsMapped);
+        onDirty(false);
+      } catch (e: any) {
+        setError(e?.message || "Breeds save failed");
+      }
     }
+    React.useImperativeHandle(ref, () => ({ async save() { await saveBreeds(); } }));
 
-  return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div>
-        <h3 className="text-lg font-semibold">Breeding Program Breeds</h3>
-        <p className="text-sm text-secondary mt-1">
-          Select the breeds you work with in your breeding program. These will appear on your marketplace listing.
-        </p>
-      </div>
+    return (
+      <div className="space-y-6">
+        {loading ? <div className="text-sm text-secondary">Loading…</div> : (
+          <>
+            {error && <div className="rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">{error}</div>}
 
-      {err && (
-        <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
-          {err}
-        </div>
-      )}
+            {/* Header */}
+            <div>
+              <h3 className="text-lg font-semibold">Breeding Program Breeds</h3>
+              <p className="text-sm text-secondary mt-1">
+                Select the breeds you work with in your breeding program. These will be available for marketplace listings.
+              </p>
+            </div>
 
-      {/* Add Breed Section */}
-      <Card className="p-5 space-y-4 relative z-10 overflow-visible">
-        <h4 className="font-medium">Add Breed</h4>
+            {/* Add Breed Section */}
+            <Card className="p-5 space-y-4 relative z-10 overflow-visible">
+              <h4 className="font-medium">Add Breed</h4>
 
-        <div className="grid grid-cols-1 sm:grid-cols-[160px_1fr_auto] gap-3 items-end">
-          {/* Species Select */}
-          <div>
-            <div className="mb-1 text-xs text-secondary">Species</div>
-            <select
-              className="h-10 w-full rounded-md border border-hairline bg-surface px-3 text-sm text-primary"
-              value={species}
-              onChange={(e) => {
-                setSpecies(e.currentTarget.value as SpeciesUI);
-                setSelectedBreed(null);
-              }}
-            >
-              {SPECIES_OPTIONS.map((sp) => (
-                <option key={sp} value={sp}>{sp}</option>
-              ))}
-            </select>
-          </div>
+              <div className="grid grid-cols-1 sm:grid-cols-[160px_1fr_auto] gap-3 items-end">
+                {/* Species Select */}
+                <div>
+                  <div className="mb-1 text-xs text-secondary">Species</div>
+                  <select
+                    className="h-10 w-full rounded-md border border-hairline bg-surface px-3 text-sm text-primary"
+                    value={breedsSpecies}
+                    onChange={(e) => {
+                      setBreedsSpecies(e.currentTarget.value as BreedsSpeciesUI);
+                      setSelectedBreed(null);
+                    }}
+                  >
+                    {SPECIES_OPTIONS.map((sp) => (
+                      <option key={sp} value={sp}>{sp}</option>
+                    ))}
+                  </select>
+                </div>
 
-          {/* Breed Combo */}
-          <div className="relative">
-            <div className="mb-1 text-xs text-secondary">Breed</div>
-            <BreedCombo
-              species={species}
-              value={selectedBreed}
-              onChange={(hit) => {
-                if (hit) {
-                  addBreed(hit);
-                } else {
-                  setSelectedBreed(null);
-                }
-              }}
-            />
-          </div>
+                {/* Breed Combo */}
+                <div className="relative">
+                  <div className="mb-1 text-xs text-secondary">Breed</div>
+                  <BreedCombo
+                    species={breedsSpecies}
+                    value={selectedBreed}
+                    onChange={(hit) => {
+                      if (hit) {
+                        addBreed(hit);
+                      } else {
+                        setSelectedBreed(null);
+                      }
+                    }}
+                  />
+                </div>
 
-          {/* New Custom Button */}
-          <div>
-            <Button
-              variant="secondary"
-              onClick={() => setCustomBreedOpen(true)}
-            >
-              New Custom
-            </Button>
-          </div>
-        </div>
-      </Card>
-
-      {/* Selected Breeds Display */}
-      <Card className="p-5 space-y-4 relative z-0">
-        <div className="flex items-center justify-between">
-          <h4 className="font-medium">Your Breeds</h4>
-          <span className="text-sm text-secondary">{selectedBreeds.length} breed{selectedBreeds.length !== 1 ? "s" : ""}</span>
-        </div>
-
-        {selectedBreeds.length === 0 ? (
-          <div className="text-center py-8 text-secondary">
-            <p>No breeds selected yet.</p>
-            <p className="text-sm mt-1">Use the form above to add breeds to your program.</p>
-          </div>
-        ) : (
-          <div className="space-y-4">
-            {breedsBySpecies.map(({ species: sp, breeds }) => (
-              <div key={sp}>
-                <div className="text-xs font-medium text-secondary uppercase tracking-wide mb-2">{sp}s</div>
-                <div className="flex flex-wrap gap-2">
-                  {breeds.map((b) => (
-                    <span
-                      key={b.id}
-                      className="inline-flex items-center gap-2 text-sm bg-surface-strong px-3 py-1.5 rounded-full border border-hairline"
-                    >
-                      {b.name}
-                      {b.source === "custom" && (
-                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-400">
-                          Custom
-                        </span>
-                      )}
-                      <button
-                        type="button"
-                        className="text-secondary hover:text-red-400 transition-colors"
-                        onClick={() => removeBreed(b.id)}
-                        title="Remove breed"
-                      >
-                        ×
-                      </button>
-                    </span>
-                  ))}
+                {/* New Custom Button */}
+                <div>
+                  <Button
+                    variant="secondary"
+                    onClick={() => setCustomBreedOpen(true)}
+                  >
+                    New Custom
+                  </Button>
                 </div>
               </div>
-            ))}
-          </div>
-        )}
-      </Card>
+            </Card>
 
-      {/* Custom Breed Dialog */}
-      {getOverlayRoot() && createPortal(
-        <CustomBreedDialog
-          open={customBreedOpen}
-          onClose={() => setCustomBreedOpen(false)}
-          api={{
-            breeds: {
-              customCreate: async (payload) => {
-                const res = await fetchJson("/api/v1/breeds/custom", {
-                  method: "POST",
-                  body: JSON.stringify(payload),
-                });
-                if (res?.error) throw new Error(res?.message || "Create failed");
-                return res;
-              },
+            {/* Selected Breeds Display */}
+            <Card className="p-5 space-y-4 relative z-0">
+              <div className="flex items-center justify-between">
+                <h4 className="font-medium">Your Breeds</h4>
+                <span className="text-sm text-secondary">{selectedBreeds.length} breed{selectedBreeds.length !== 1 ? "s" : ""}</span>
+              </div>
+
+              {selectedBreeds.length === 0 ? (
+                <div className="text-center py-8 text-secondary">
+                  <p>No breeds selected yet.</p>
+                  <p className="text-sm mt-1">Use the form above to add breeds to your program.</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {breedsBySpecies.map(({ species: sp, breeds }) => (
+                    <div key={sp}>
+                      <div className="text-xs font-medium text-secondary uppercase tracking-wide mb-2">{sp}s</div>
+                      <div className="flex flex-wrap gap-2">
+                        {breeds.map((b) => (
+                          <span
+                            key={b.id}
+                            className="inline-flex items-center gap-2 text-sm bg-surface-strong px-3 py-1.5 rounded-full border border-hairline"
+                          >
+                            {b.name}
+                            {b.source === "custom" && (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-400">
+                                Custom
+                              </span>
+                            )}
+                            <button
+                              type="button"
+                              className="text-secondary hover:text-red-400 transition-colors"
+                              onClick={() => removeBreed(b.id)}
+                              title="Remove breed"
+                            >
+                              ×
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </Card>
+
+            {/* Custom Breed Dialog */}
+            {getOverlayRoot() && createPortal(
+              <CustomBreedDialog
+                open={customBreedOpen}
+                onClose={() => setCustomBreedOpen(false)}
+                api={{
+                  breeds: {
+                    customCreate: async (payload) => {
+                      const res = await fetchJson("/api/v1/breeds/custom", {
+                        method: "POST",
+                        body: JSON.stringify(payload),
+                      });
+                      if (res?.error) throw new Error(res?.message || "Create failed");
+                      return res;
+                    },
+                  },
+                }}
+                species={toApiSpecies(breedsSpecies)}
+                onCreated={(created) => {
+                  addBreed({
+                    id: created.id,
+                    name: created.name,
+                    species: breedsSpecies,
+                    source: "custom",
+                  });
+                  setCustomBreedOpen(false);
+                }}
+              />,
+              getOverlayRoot()!
+            )}
+          </>
+        )}
+      </div>
+    );
+  }
+);
+
+/** ───────── Standalone PoliciesTab ───────── */
+type PoliciesHandle = { save: () => Promise<void> };
+type PoliciesProfile = {
+  cyclePolicy: {
+    minDamAgeMonths: number;
+    minHeatsBetween: number;
+    maxLittersLifetime: number;
+    retireAfterAgeMonths: number | null;
+    retireRule: "age_only" | "litters_only" | "either";
+  };
+  placement: {
+    earliestDaysFromBirth: number;
+    standardDaysFromBirth: number;
+    healthGuaranteeMonths: number;
+    depositAmountUSD: number | null;
+  };
+};
+const EMPTY_POLICIES: PoliciesProfile = {
+  cyclePolicy: { minDamAgeMonths: 18, minHeatsBetween: 1, maxLittersLifetime: 4, retireAfterAgeMonths: null, retireRule: "either" },
+  placement: { earliestDaysFromBirth: 56, standardDaysFromBirth: 63, healthGuaranteeMonths: 24, depositAmountUSD: 300 },
+};
+
+const PoliciesTab = React.forwardRef<PoliciesHandle, { dirty: boolean; onDirty: (v: boolean) => void }>(
+  function PoliciesTab({ onDirty }, ref) {
+    const [loading, setLoading] = React.useState(true);
+    const [error, setError] = React.useState<string>("");
+    const [profile, setProfile] = React.useState<PoliciesProfile>(EMPTY_POLICIES);
+    const [profileInit, setProfileInit] = React.useState<PoliciesProfile>(EMPTY_POLICIES);
+
+    const isDirty = React.useMemo(() => {
+      return JSON.stringify(profile) !== JSON.stringify(profileInit);
+    }, [profile, profileInit]);
+    React.useEffect(() => onDirty(isDirty), [isDirty, onDirty]);
+
+    React.useEffect(() => {
+      let ignore = false;
+      (async () => {
+        try {
+          setLoading(true); setError("");
+          const tenantId = await resolveTenantIdSafe();
+          if (!tenantId) throw new Error("Missing tenant id");
+          const pr = await api.breeding.program.getForTenant(Number(tenantId));
+          const prData = (pr?.data ?? pr) as Partial<BreedingProgramProfile> | undefined;
+          const loaded: PoliciesProfile = {
+            cyclePolicy: {
+              minDamAgeMonths: prData?.cyclePolicy?.minDamAgeMonths ?? 18,
+              minHeatsBetween: prData?.cyclePolicy?.minHeatsBetween ?? 1,
+              maxLittersLifetime: prData?.cyclePolicy?.maxLittersLifetime ?? 4,
+              retireAfterAgeMonths: prData?.cyclePolicy?.retireAfterAgeMonths ?? null,
+              retireRule: (prData?.cyclePolicy as any)?.retireRule ?? "either",
             },
-          }}
-          species={toApiSpecies(species)}
-          onCreated={(created) => {
-            addBreed({
-              id: created.id,
-              name: created.name,
-              species: species,
-              source: "custom",
-            });
-            setCustomBreedOpen(false);
-          }}
-        />,
-        getOverlayRoot()!
-      )}
-    </div>
-  );
+            placement: {
+              earliestDaysFromBirth: prData?.placement?.earliestDaysFromBirth ?? 56,
+              standardDaysFromBirth: prData?.placement?.standardDaysFromBirth ?? 63,
+              healthGuaranteeMonths: prData?.placement?.healthGuaranteeMonths ?? 24,
+              depositAmountUSD: prData?.placement?.depositAmountUSD ?? 300,
+            },
+          };
+          if (!ignore) {
+            setProfile(loaded);
+            setProfileInit(loaded);
+          }
+        } catch (e: any) {
+          if (!ignore) setError(e?.message || "Failed to load policies");
+        } finally { if (!ignore) setLoading(false); }
+      })();
+      return () => { ignore = true; };
+    }, []);
+
+    async function savePolicies() {
+      setError("");
+      try {
+        const tenantId = await resolveTenantId();
+        if (!tenantId) throw new Error("Missing tenant id");
+        // We need to merge with existing profile data, so load first
+        const existing = await api.breeding.program.getForTenant(Number(tenantId));
+        const existingData = (existing?.data ?? existing) as BreedingProgramProfile | undefined;
+        const merged = {
+          ...existingData,
+          cyclePolicy: { ...existingData?.cyclePolicy, ...profile.cyclePolicy },
+          placement: { ...existingData?.placement, ...profile.placement },
+        };
+        await api.breeding.program.updateForTenant(merged, Number(tenantId));
+        setProfileInit(profile);
+        onDirty(false);
+      } catch (e: any) {
+        setError(e?.message || "Policies save failed");
+      }
+    }
+    React.useImperativeHandle(ref, () => ({ async save() { await savePolicies(); } }));
+
+    return (
+      <div className="space-y-4">
+        {loading ? <div className="text-sm text-secondary">Loading…</div> : (
+          <>
+            {error && <div className="rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">{error}</div>}
+
+            {/* Header */}
+            <div>
+              <h3 className="text-lg font-semibold">Breeding Policies</h3>
+              <p className="text-sm text-secondary mt-1">
+                Configure your breeding program's cycle and placement policies.
+              </p>
+            </div>
+
+            <div className="rounded-md border border-hairline p-3">
+              <div className="text-sm font-medium mb-2">Cycle policy</div>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <FieldNum label="Min dam age (mo)" value={profile.cyclePolicy.minDamAgeMonths} onChange={(n) => setProfile(p => ({ ...p, cyclePolicy: { ...p.cyclePolicy, minDamAgeMonths: n } }))} />
+                <FieldNum label="Min heats between" value={profile.cyclePolicy.minHeatsBetween} onChange={(n) => setProfile(p => ({ ...p, cyclePolicy: { ...p.cyclePolicy, minHeatsBetween: n } }))} />
+                <FieldNum label="Max litters lifetime" value={profile.cyclePolicy.maxLittersLifetime} onChange={(n) => setProfile(p => ({ ...p, cyclePolicy: { ...p.cyclePolicy, maxLittersLifetime: n } }))} />
+                <FieldNum label="Retire after age (mo)" value={profile.cyclePolicy.retireAfterAgeMonths ?? 0} onChange={(n) => setProfile(p => ({ ...p, cyclePolicy: { ...p.cyclePolicy, retireAfterAgeMonths: n || null } }))} />
+              </div>
+              <label className="space-y-1 md:col-span-2">
+                <div className="text-xs text-secondary">Retirement rule</div>
+                <select className={`bhq-input ${INPUT_CLS} w-full`} value={profile.cyclePolicy.retireRule || "either"} onChange={(e) => setProfile(p => ({ ...p, cyclePolicy: { ...p.cyclePolicy, retireRule: e.currentTarget.value as any } }))}>
+                  <option value="either">After age or after X breedings</option>
+                  <option value="age_only">After age only</option>
+                  <option value="litters_only">After X breedings only</option>
+                </select>
+                <Hint>Uses "Retire after age (mo)" and "Max litters lifetime." "Either" means whichever happens first.</Hint>
+              </label>
+            </div>
+
+            <div className="rounded-md border border-hairline p-3">
+              <div className="text-sm font-medium mb-2">Placement</div>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <FieldNum label="Earliest days from birth" value={profile.placement.earliestDaysFromBirth} onChange={(n) => setProfile(p => ({ ...p, placement: { ...p.placement, earliestDaysFromBirth: n } }))} />
+                <FieldNum label="Standard days from birth" value={profile.placement.standardDaysFromBirth} onChange={(n) => setProfile(p => ({ ...p, placement: { ...p.placement, standardDaysFromBirth: n } }))} />
+                <FieldNum label="Guarantee months" value={profile.placement.healthGuaranteeMonths} onChange={(n) => setProfile(p => ({ ...p, placement: { ...p.placement, healthGuaranteeMonths: n } }))} />
+                <FieldNum label="Deposit amount USD" value={profile.placement.depositAmountUSD ?? 0} onChange={(n) => setProfile(p => ({ ...p, placement: { ...p.placement, depositAmountUSD: n || null } }))} />
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+    );
   }
 );
 

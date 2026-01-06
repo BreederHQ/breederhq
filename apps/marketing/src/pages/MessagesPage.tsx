@@ -26,9 +26,9 @@ function getApiBase(): string {
     return normalizeBase(windowBase);
   }
 
-  // 3. Dev mode: default to API server port (never use Vite origin)
+  // 3. Dev mode: use Vite proxy (same origin) to preserve cookies
   if (IS_DEV) {
-    return "http://localhost:6001/api/v1";
+    return "/api/v1";
   }
 
   // 4. Production: use origin
@@ -80,9 +80,10 @@ interface ThreadListItemProps {
 }
 
 function ThreadListItem({ thread, isActive, onClick }: ThreadListItemProps) {
-  const currentOrgId = (window as any).platform?.currentOrgId;
+  // Find the "other" participant - the one who is NOT the organization
+  // Use party type to identify org party, not window.platform.currentOrgId (which is org ID, not party ID)
   const otherParticipant = thread.participants?.find(
-    (p) => p.partyId !== currentOrgId
+    (p) => p.party?.type !== "ORGANIZATION"
   );
   const otherName = otherParticipant?.party?.name || "Unknown contact";
   const lastMessage = thread.messages?.[thread.messages.length - 1];
@@ -97,23 +98,32 @@ function ThreadListItem({ thread, isActive, onClick }: ThreadListItemProps) {
     <div
       onClick={onClick}
       className={`
-        relative p-3 rounded-lg cursor-pointer transition-colors border
+        relative p-3 rounded-lg cursor-pointer transition-all border-2
         ${
           isActive
-            ? "bg-surface-strong border-[hsl(var(--brand-orange))]/40"
-            : "bg-surface border-hairline hover:border-[hsl(var(--brand-orange))]/20 hover:bg-surface-strong/50"
+            ? "bg-surface-strong border-[hsl(var(--brand-orange))]"
+            : hasUnread
+            ? "bg-[hsl(var(--brand-orange))]/5 border-[hsl(var(--brand-orange))]/60 hover:border-[hsl(var(--brand-orange))] hover:bg-[hsl(var(--brand-orange))]/10"
+            : "bg-surface border-hairline hover:border-[hsl(var(--brand-orange))]/30 hover:bg-surface-strong/50"
         }
       `}
     >
       {hasUnread && (
-        <div className="absolute top-3 right-3 w-2 h-2 rounded-full bg-[hsl(var(--brand-orange))]" />
+        <div className="absolute top-3 right-3 flex items-center gap-1.5">
+          <span className="text-[10px] font-semibold text-[hsl(var(--brand-orange))] uppercase tracking-wide">
+            New
+          </span>
+          <div className="w-2 h-2 rounded-full bg-[hsl(var(--brand-orange))] animate-pulse" />
+        </div>
       )}
       <div className="flex flex-col gap-1">
-        <div className="font-semibold text-sm text-primary">
+        <div className={`font-semibold text-sm ${hasUnread ? "text-[hsl(var(--brand-orange))]" : "text-primary"}`}>
           {thread.subject || `Conversation with ${otherName}`}
         </div>
         <div className="text-xs text-secondary">{otherName}</div>
-        <div className="text-xs text-secondary line-clamp-2 mt-1">{preview}</div>
+        <div className={`text-xs line-clamp-2 mt-1 ${hasUnread ? "text-primary font-medium" : "text-secondary"}`}>
+          {preview}
+        </div>
       </div>
     </div>
   );
@@ -122,9 +132,10 @@ function ThreadListItem({ thread, isActive, onClick }: ThreadListItemProps) {
 interface MessageBubbleProps {
   message: Message;
   isOwn: boolean;
+  isUnread?: boolean;
 }
 
-function MessageBubble({ message, isOwn }: MessageBubbleProps) {
+function MessageBubble({ message, isOwn, isUnread }: MessageBubbleProps) {
   const timeStr = new Date(message.createdAt).toLocaleString("en-US", {
     month: "short",
     day: "numeric",
@@ -135,15 +146,22 @@ function MessageBubble({ message, isOwn }: MessageBubbleProps) {
   return (
     <div className={`flex ${isOwn ? "justify-end" : "justify-start"} mb-3`}>
       <div className={`max-w-[70%] ${isOwn ? "items-end" : "items-start"} flex flex-col gap-1`}>
-        <div className="text-xs text-secondary px-2">
-          {isOwn ? "You" : message.senderParty?.name || "Unknown contact"} · {timeStr}
+        <div className="text-xs text-secondary px-2 flex items-center gap-2">
+          <span>{isOwn ? "You" : message.senderParty?.name || "Unknown contact"} · {timeStr}</span>
+          {isUnread && (
+            <span className="text-[10px] font-semibold text-[hsl(var(--brand-orange))] uppercase tracking-wide px-1.5 py-0.5 rounded bg-[hsl(var(--brand-orange))]/10">
+              New
+            </span>
+          )}
         </div>
         <div
           className={`
-            px-3 py-2 rounded-lg text-sm whitespace-pre-wrap
+            px-3 py-2 rounded-lg text-sm whitespace-pre-wrap transition-all
             ${
               isOwn
                 ? "bg-[hsl(var(--brand-orange))]/20 border border-[hsl(var(--brand-orange))]/30 text-primary"
+                : isUnread
+                ? "bg-[hsl(var(--brand-orange))]/10 border-2 border-[hsl(var(--brand-orange))]/50 text-primary"
                 : "bg-surface-strong border border-hairline text-primary"
             }
           `}
@@ -253,16 +271,7 @@ function PortalInviteAction({
     }
   }
 
-  // Hide if multiple recipients
-  if (hasMultipleRecipients) {
-    return (
-      <div className="text-xs text-secondary ml-4">
-        Multiple recipients not supported yet.
-      </div>
-    );
-  }
-
-  // Hide if no buyer or no email
+  // Hide if multiple recipients or no buyer or no email
   if (!buyerParticipant || !hasEmail) {
     return null;
   }
@@ -314,17 +323,203 @@ function PortalInviteAction({
   );
 }
 
+/* ────────────────────────────────────────────────────────────────────────────
+ * Add to Waitlist Action Component
+ * ────────────────────────────────────────────────────────────────────────── */
+
+interface WaitlistActionProps {
+  buyerPartyId: number | null;
+  buyerName: string;
+  buyerEmail: string | null;
+}
+
+function WaitlistAction({ buyerPartyId, buyerName, buyerEmail }: WaitlistActionProps) {
+  const [loading, setLoading] = React.useState(false);
+  const [showOptions, setShowOptions] = React.useState(false);
+  const [alreadyOnWaitlist, setAlreadyOnWaitlist] = React.useState(false);
+  const [checkingStatus, setCheckingStatus] = React.useState(true);
+  const [toastMessage, setToastMessage] = React.useState<{
+    text: string;
+    type: "success" | "error" | "info";
+  } | null>(null);
+
+  // Check if already on waitlist
+  React.useEffect(() => {
+    if (!buyerPartyId) {
+      setCheckingStatus(false);
+      return;
+    }
+
+    async function checkWaitlistStatus() {
+      try {
+        // Get tenant ID from platform context
+        const tenantId = (window as any).__BHQ_TENANT_ID__ || localStorage.getItem("BHQ_TENANT_ID");
+        if (!tenantId) {
+          setCheckingStatus(false);
+          return;
+        }
+
+        // Check if this party already has a waitlist entry
+        const res = await fetch(`/api/v1/waitlist?clientPartyId=${buyerPartyId}&limit=1`, {
+          credentials: "include",
+          headers: {
+            "X-Tenant-Id": String(tenantId),
+          },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setAlreadyOnWaitlist((data.items?.length || 0) > 0);
+        }
+      } catch (err) {
+        console.error("Failed to check waitlist status:", err);
+      } finally {
+        setCheckingStatus(false);
+      }
+    }
+
+    checkWaitlistStatus();
+  }, [buyerPartyId]);
+
+  async function handleAddToWaitlist(status: "INQUIRY" | "DEPOSIT_DUE") {
+    if (!buyerPartyId) return;
+
+    setLoading(true);
+    setShowOptions(false);
+
+    // Get CSRF token and tenant ID
+    const xsrf = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]+)/)?.[1];
+    const tenantId = (window as any).__BHQ_TENANT_ID__ || localStorage.getItem("BHQ_TENANT_ID");
+
+    if (!tenantId) {
+      setToastMessage({ text: "Missing tenant context", type: "error" });
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const res = await fetch("/api/v1/waitlist", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Tenant-Id": String(tenantId),
+          ...(xsrf ? { "x-csrf-token": decodeURIComponent(xsrf) } : {}),
+        },
+        credentials: "include",
+        body: JSON.stringify({
+          clientPartyId: buyerPartyId,
+          status,
+          notes: `Added from inquiry conversation with ${buyerName}${buyerEmail ? ` (${buyerEmail})` : ""}`,
+        }),
+      });
+
+      if (res.ok) {
+        setToastMessage({
+          text: status === "INQUIRY" ? "Added to pending waitlist" : "Added to approved waitlist",
+          type: "success",
+        });
+        setAlreadyOnWaitlist(true);
+      } else {
+        const data = await res.json();
+        setToastMessage({
+          text: data.error || "Failed to add to waitlist",
+          type: "error",
+        });
+      }
+    } catch (err) {
+      console.error("Failed to add to waitlist:", err);
+      setToastMessage({ text: "Network error. Please try again.", type: "error" });
+    } finally {
+      setLoading(false);
+      setTimeout(() => setToastMessage(null), 3000);
+    }
+  }
+
+  if (!buyerPartyId || checkingStatus) {
+    return null;
+  }
+
+  if (alreadyOnWaitlist) {
+    return (
+      <div className="text-xs text-green-400 px-2 py-1 rounded bg-green-500/10 border border-green-500/20">
+        On waitlist
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative">
+      {toastMessage && (
+        <div
+          className={`absolute right-0 -top-8 whitespace-nowrap text-xs px-3 py-1 rounded-md ${
+            toastMessage.type === "success"
+              ? "bg-green-500/20 text-green-400 border border-green-500/30"
+              : toastMessage.type === "info"
+              ? "bg-blue-500/20 text-blue-400 border border-blue-500/30"
+              : "bg-red-500/20 text-red-400 border border-red-500/30"
+          }`}
+        >
+          {toastMessage.text}
+        </div>
+      )}
+
+      {showOptions ? (
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => handleAddToWaitlist("INQUIRY")}
+            disabled={loading}
+            className="text-xs px-2 py-1 rounded-md font-medium bg-amber-500/20 text-amber-400 border border-amber-500/30 hover:bg-amber-500/30 transition-colors disabled:opacity-50"
+          >
+            Pending
+          </button>
+          <button
+            onClick={() => handleAddToWaitlist("DEPOSIT_DUE")}
+            disabled={loading}
+            className="text-xs px-2 py-1 rounded-md font-medium bg-green-500/20 text-green-400 border border-green-500/30 hover:bg-green-500/30 transition-colors disabled:opacity-50"
+          >
+            Approved
+          </button>
+          <button
+            onClick={() => setShowOptions(false)}
+            className="text-xs text-secondary hover:text-primary"
+          >
+            Cancel
+          </button>
+        </div>
+      ) : (
+        <button
+          onClick={() => setShowOptions(true)}
+          disabled={loading}
+          className="text-xs px-3 py-1.5 rounded-md font-medium bg-surface-strong border border-hairline text-secondary hover:text-primary hover:border-[hsl(var(--brand-orange))]/40 transition-colors disabled:opacity-50"
+        >
+          {loading ? "Adding..." : "Add to Waitlist"}
+        </button>
+      )}
+    </div>
+  );
+}
+
 interface ThreadViewProps {
   thread: MessageThread;
   onSendMessage: (body: string) => Promise<void>;
+  unreadCount?: number;
+  onMarkAsRead?: () => void;
 }
 
-function ThreadView({ thread, onSendMessage }: ThreadViewProps) {
+function ThreadView({ thread, onSendMessage, unreadCount = 0, onMarkAsRead }: ThreadViewProps) {
   const [messageBody, setMessageBody] = React.useState("");
   const [sending, setSending] = React.useState(false);
   const [sendError, setSendError] = React.useState<string | null>(null);
   const messagesEndRef = React.useRef<HTMLDivElement>(null);
-  const currentOrgId = (window as any).platform?.currentOrgId;
+
+  // Find the current organization's PARTY ID from participants (not org ID - they are different!)
+  // The org party is the one with type='ORGANIZATION'
+  const orgParticipant = thread.participants?.find((p) => p.party?.type === "ORGANIZATION");
+  const currentOrgPartyId = orgParticipant?.partyId ?? null;
+
+  // Mark thread as read when viewing it
+  React.useEffect(() => {
+    onMarkAsRead?.();
+  }, [thread.id]);
 
   React.useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -348,31 +543,66 @@ function ThreadView({ thread, onSendMessage }: ThreadViewProps) {
     }
   }
 
-  const otherParticipant = thread.participants?.find((p) => p.partyId !== currentOrgId);
+  // Find the "other" participant - the one who is NOT the organization (breeder)
+  // Marketplace users create CONTACT parties, breeders have ORGANIZATION parties
+  const otherParticipant = thread.participants?.find(
+    (p) => p.party?.type !== "ORGANIZATION"
+  ) || thread.participants?.find((p) => p.partyId !== currentOrgPartyId);
   const otherName = otherParticipant?.party?.name || "Unknown contact";
+  const otherEmail = otherParticipant?.party?.email || null;
+  const otherPartyId = otherParticipant?.partyId || null;
 
-  // Count non-staff participants (exclude current org)
-  const nonStaffParticipants = thread.participants?.filter((p) => p.partyId !== currentOrgId) || [];
-  const hasMultipleRecipients = nonStaffParticipants.length > 1;
-  const singleBuyerParticipant = nonStaffParticipants.length === 1 ? nonStaffParticipants[0] : null;
+  // Count non-organization participants (contacts/buyers)
+  const buyerParticipants = thread.participants?.filter(
+    (p) => p.party?.type !== "ORGANIZATION"
+  ) || [];
+  const hasMultipleRecipients = buyerParticipants.length > 1;
+  const singleBuyerParticipant = buyerParticipants.length === 1 ? buyerParticipants[0] : null;
 
   return (
     <div className="flex flex-col h-full">
       <div className="border-b border-hairline p-4 bg-surface">
-        <div className="flex items-start justify-between">
-          <div className="flex-1">
+        {/* Contact info and actions row */}
+        <div className="flex items-start justify-between gap-4">
+          {/* Left: Contact details */}
+          <div className="flex-1 min-w-0">
             <div className="font-semibold text-primary">
               {thread.subject || `Conversation with ${otherName}`}
             </div>
-            <div className="text-xs text-secondary mt-1">{otherName}</div>
+            <div className="flex items-center gap-2 mt-1">
+              <span className="text-sm text-primary">{otherName}</span>
+              {otherEmail && (
+                <>
+                  <span className="text-secondary">·</span>
+                  <a
+                    href={`mailto:${otherEmail}`}
+                    className="text-xs text-[hsl(var(--brand-orange))] hover:underline"
+                  >
+                    {otherEmail}
+                  </a>
+                </>
+              )}
+            </div>
           </div>
 
-          {/* Portal Invite Action */}
-          <PortalInviteAction
-            threadId={thread.id}
-            buyerParticipant={singleBuyerParticipant}
-            hasMultipleRecipients={hasMultipleRecipients}
-          />
+          {/* Right: Action buttons */}
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {/* Add to Waitlist */}
+            {!hasMultipleRecipients && otherPartyId && (
+              <WaitlistAction
+                buyerPartyId={otherPartyId}
+                buyerName={otherName}
+                buyerEmail={otherEmail}
+              />
+            )}
+
+            {/* Portal Invite Action */}
+            <PortalInviteAction
+              threadId={thread.id}
+              buyerParticipant={singleBuyerParticipant}
+              hasMultipleRecipients={hasMultipleRecipients}
+            />
+          </div>
         </div>
       </div>
 
@@ -380,8 +610,14 @@ function ThreadView({ thread, onSendMessage }: ThreadViewProps) {
         {thread.messages?.length === 0 ? (
           <div className="text-center text-secondary text-sm py-8">No messages yet. Start the conversation!</div>
         ) : (
-          thread.messages?.map((msg) => (
-            <MessageBubble key={msg.id} message={msg} isOwn={msg.senderPartyId === currentOrgId} />
+          // Simply render all messages without NEW badges - viewing a thread means you've read it
+          thread.messages.map((msg) => (
+            <MessageBubble
+              key={msg.id}
+              message={msg}
+              isOwn={msg.senderPartyId === currentOrgPartyId}
+              isUnread={false}
+            />
           ))
         )}
         <div ref={messagesEndRef} />
@@ -763,7 +999,17 @@ export default function MessagesPage() {
                 <div className="text-sm text-secondary">Select a conversation to view messages</div>
               </div>
             ) : (
-              <ThreadView thread={selectedThread} onSendMessage={handleSendMessage} />
+              <ThreadView
+                thread={selectedThread}
+                onSendMessage={handleSendMessage}
+                unreadCount={threads.find((t) => t.id === selectedThreadId)?.unreadCount ?? 0}
+                onMarkAsRead={() => {
+                  // Update local thread state to clear unread count visually
+                  setThreads((prev) =>
+                    prev.map((t) => (t.id === selectedThreadId ? { ...t, unreadCount: 0 } : t))
+                  );
+                }}
+              />
             )}
           </SectionCard>
         </div>

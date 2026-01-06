@@ -28,6 +28,7 @@ import DashboardPage from "./pages/Dashboard";
 import SettingsPanel from "./pages/SettingsPanel";
 import TermsPage from "./pages/TermsPage";
 import LoginPage from "./pages/LoginPage";
+import NotificationsDropdown, { type Notification } from "./components/NotificationsDropdown";
 
 // Lightweight "current module" state (key + label)
 type ActiveModule = { key: "dashboard" | "contacts" | "animals" | "breeding" | "offspring" | "waitlist" | "marketing" | "marketplace" | "finance" | "admin"; label: string };
@@ -115,6 +116,8 @@ export default function AppPlatform() {
   const [tenantReady, setTenantReady] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsDirty, setSettingsDirty] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
 
   // ESC closes Settings when not dirty
   useEffect(() => {
@@ -215,6 +218,78 @@ export default function AppPlatform() {
     return () => { cancelled = true; };
   }, [loading]);
 
+  // Fetch unread message count and pending waitlist count
+  useEffect(() => {
+    if (!tenantReady || !auth?.user?.id) return;
+
+    let cancelled = false;
+    const fetchUnread = async () => {
+      try {
+        const tenantId = (window as any).__BHQ_TENANT_ID__;
+        if (!tenantId) return;
+
+        const xsrf = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]+)/)?.[1];
+        const headers = {
+          "x-tenant-id": String(tenantId),
+          ...(xsrf ? { "x-csrf-token": decodeURIComponent(xsrf) } : {}),
+        };
+
+        // Fetch messages and pending waitlist in parallel
+        const [messagesRes, waitlistRes] = await Promise.all([
+          fetch("/api/v1/messages/threads", { credentials: "include", headers }),
+          fetch("/api/v1/waitlist/pending-count", { credentials: "include", headers }),
+        ]);
+
+        if (cancelled) return;
+
+        let messageUnread = 0;
+        let waitlistPending = 0;
+
+        if (messagesRes.ok) {
+          const data = await messagesRes.json();
+          const threads = data?.threads || [];
+          messageUnread = threads.reduce((sum: number, t: any) => sum + (t.unreadCount || 0), 0);
+        }
+
+        if (waitlistRes.ok) {
+          const data = await waitlistRes.json();
+          waitlistPending = data?.count || 0;
+        }
+
+        if (cancelled) return;
+
+        // Set unread count (messages only for messages icon)
+        setUnreadCount(messageUnread);
+
+        // Create notifications for pending waitlist entries
+        const newNotifications: Notification[] = [];
+        if (waitlistPending > 0) {
+          newNotifications.push({
+            id: "pending-waitlist",
+            type: "waitlist",
+            title: `${waitlistPending} Pending Waitlist Request${waitlistPending > 1 ? "s" : ""}`,
+            body: "Review new waitlist requests from the marketplace.",
+            href: "/waitlist?tab=pending",
+            createdAt: new Date(),
+            read: false,
+          });
+        }
+        setNotifications(newNotifications);
+      } catch {
+        // Silently ignore errors for notification count
+      }
+    };
+
+    // Fetch immediately and then poll every 30 seconds
+    fetchUnread();
+    const interval = setInterval(fetchUnread, 30000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [tenantReady, auth?.user?.id]);
+
   // Logout
   async function doLogout() {
     try {
@@ -294,6 +369,24 @@ export default function AppPlatform() {
             orgName={orgName}
             onOrgClick={() => alert("Organization switcher coming soon")}
             onSettingsClick={() => setSettingsOpen(true)}
+            onMessagesClick={() => window.location.assign("/marketing/messages")}
+            unreadMessagesCount={unreadCount}
+            unreadCount={notifications.filter((n) => !n.read).length}
+            notificationsDropdownContent={
+              <NotificationsDropdown
+                notifications={notifications}
+                unreadCount={notifications.filter((n) => !n.read).length}
+                onClose={() => {/* handled by NavShell */}}
+                onMarkAllRead={() => {
+                  setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+                }}
+                onNotificationClick={(notification) => {
+                  setNotifications((prev) =>
+                    prev.map((n) => (n.id === notification.id ? { ...n, read: true } : n))
+                  );
+                }}
+              />
+            }
             auth={{
               isAuthenticated: !!auth?.user?.id,
               onLogin: () => window.location.assign("/login"),

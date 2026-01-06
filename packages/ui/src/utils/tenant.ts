@@ -3,21 +3,85 @@
 let _tenantCache: number | null = null;
 let _pending: Promise<number> | null = null;
 
-export function readTenantIdFast(): number | undefined {
-  // 1) cookie (supports JWT or plain base64 JSON)
+/**
+ * Surface-specific session cookie names.
+ * Each subdomain uses its own cookie to prevent cross-subdomain session conflicts.
+ */
+const SURFACE_COOKIE_NAMES = {
+  app: "bhq_s_app",
+  portal: "bhq_s_portal",
+  marketplace: "bhq_s_mkt",
+} as const;
+
+/**
+ * Derive current surface from hostname.
+ * Returns the cookie name suffix for this surface.
+ */
+function getCurrentSurface(): keyof typeof SURFACE_COOKIE_NAMES {
+  if (typeof window === "undefined") return "app";
+  const hostname = window.location.hostname.toLowerCase();
+  if (hostname.startsWith("portal.") || hostname.includes("portal")) return "portal";
+  if (hostname.startsWith("marketplace.") || hostname.includes("marketplace")) return "marketplace";
+  return "app";
+}
+
+/**
+ * Get the session cookie name for the current surface.
+ */
+export function getSessionCookieName(): string {
+  const surface = getCurrentSurface();
+  return SURFACE_COOKIE_NAMES[surface];
+}
+
+/**
+ * Parse session payload from a cookie value (handles both signed and unsigned formats).
+ */
+function parseSessionCookie(cookieValue: string): { tenantId?: number } | null {
   try {
-    const raw = document.cookie.match(/(?:^|; )bhq_s=([^;]*)/)?.[1];
+    // Handle signed cookie format: "s:base64payload.signature"
+    let payload = cookieValue;
+    if (payload.startsWith("s:")) {
+      // Signed cookie - extract the payload before the signature
+      const dotIndex = payload.lastIndexOf(".");
+      if (dotIndex > 2) {
+        payload = payload.slice(2, dotIndex);
+      }
+    }
+
+    // Handle JWT format or plain base64
+    const payloadB64 = payload.includes(".") ? payload.split(".")[1] : payload;
+    // Browser-only base64 decode (atob is always available in browser)
+    const json = atob(payloadB64.replace(/-/g, "+").replace(/_/g, "/"));
+    return JSON.parse(json);
+  } catch {
+    return null;
+  }
+}
+
+export function readTenantIdFast(): number | undefined {
+  // 1) Try surface-specific cookie first
+  try {
+    const cookieName = getSessionCookieName();
+    const regex = new RegExp(`(?:^|; )${cookieName}=([^;]*)`);
+    const raw = document.cookie.match(regex)?.[1];
     if (raw) {
-      const payloadB64 = raw.includes(".") ? raw.split(".")[1] : raw; // JWT payload or raw
-      // Browser-only base64 decode (atob is always available in browser)
-      const json = atob(payloadB64.replace(/-/g, "+").replace(/_/g, "/"));
-      const obj = JSON.parse(json);
-      const t = Number(obj?.tenantId ?? obj?.orgId ?? obj?.tenantID ?? obj?.tenant_id);
+      const obj = parseSessionCookie(raw);
+      const t = Number(obj?.tenantId);
       if (Number.isInteger(t) && t > 0) return t;
     }
   } catch { /* ignore */ }
 
-  // 2) platform global (both shapes)
+  // 2) Fallback: try legacy cookie name for backward compatibility
+  try {
+    const raw = document.cookie.match(/(?:^|; )bhq_s=([^;]*)/)?.[1];
+    if (raw) {
+      const obj = parseSessionCookie(raw);
+      const t = Number(obj?.tenantId);
+      if (Number.isInteger(t) && t > 0) return t;
+    }
+  } catch { /* ignore */ }
+
+  // 3) platform global (both shapes)
   try {
     const a = Number((window as any).__bhq?.tenantId);
     if (Number.isInteger(a) && a > 0) return a;

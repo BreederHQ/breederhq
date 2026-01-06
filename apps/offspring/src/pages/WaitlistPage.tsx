@@ -584,7 +584,7 @@ function CreateGroupForm({
             {/* NEW: status override + reason */}
             <label className="flex flex-col gap-1">
               <span className={cx(labelClass)}>Status Override (optional)</span>
-              <input className={cx(inputClass)} value={statusOverride} onChange={(e) => setStatusOverride(e.target.value)} placeholder="e.g., Pause Homing" />
+              <input className={cx(inputClass)} value={statusOverride} onChange={(e) => setStatusOverride(e.target.value)} placeholder="e.g., Pause Placement" />
             </label>
             <label className="flex flex-col gap-1">
               <span className={cx(labelClass)}>Override Reason (optional)</span>

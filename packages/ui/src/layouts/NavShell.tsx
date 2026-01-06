@@ -28,6 +28,11 @@ export type NavShellProps = {
   orgName?: string;
   onOrgClick?: () => void;
   onSettingsClick?: () => void;
+  onNotificationsClick?: () => void;
+  onMessagesClick?: () => void;
+  unreadCount?: number;
+  unreadMessagesCount?: number;
+  notificationsDropdownContent?: React.ReactNode;
   children?: React.ReactNode;
 };
 
@@ -61,6 +66,11 @@ const Icon = {
   Logout: (p: any) => (
     <svg viewBox="0 0 24 24" fill="none" className={p.className}>
       <path d="M9 21H7a2 2 0 0 1-2-2V5a2 2 0  1 2-2h2M16 17l5-5-5-5M21 12H9" stroke="currentColor" strokeWidth="2" />
+    </svg>
+  ),
+  Message: (p: any) => (
+    <svg viewBox="0 0 24 24" fill="none" className={p.className}>
+      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   ),
   CircleUser: (p: any) => (
@@ -110,6 +120,11 @@ export const NavShell: React.FC<NavShellProps> = ({
   orgName,
   onOrgClick,
   onSettingsClick,
+  onNotificationsClick,
+  onMessagesClick,
+  unreadCount = 0,
+  unreadMessagesCount = 0,
+  notificationsDropdownContent,
 }) => {
   const [announcedTitle, setAnnouncedTitle] = React.useState<string>();
 
@@ -126,6 +141,8 @@ export const NavShell: React.FC<NavShellProps> = ({
   }, []);
 
   const displayTitle = announcedTitle || title || "BreederHQ";
+
+  const [notificationsOpen, setNotificationsOpen] = React.useState(false);
 
   const [railOpen, setRailOpen] = React.useState<boolean>(() => {
     try {
@@ -268,11 +285,48 @@ export const NavShell: React.FC<NavShellProps> = ({
                 {actions}
 
                 <button
-                  aria-label="Notifications"
-                  className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-hairline bg-surface hover:bg-surface-strong transition"
+                  aria-label="Messages"
+                  onClick={onMessagesClick}
+                  className="relative inline-flex h-9 w-9 items-center justify-center rounded-lg border border-hairline bg-surface hover:bg-surface-strong transition"
                 >
-                  <Icon.Bell className="h-5 w-5" />
+                  <Icon.Message className="h-5 w-5" />
+                  {unreadMessagesCount > 0 && (
+                    <span className="absolute -top-1 -right-1 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-[hsl(var(--brand-orange))] px-1 text-[11px] font-semibold text-white">
+                      {unreadMessagesCount > 99 ? "99+" : unreadMessagesCount}
+                    </span>
+                  )}
                 </button>
+
+                <div className="relative">
+                  <button
+                    aria-label="Notifications"
+                    onClick={() => {
+                      if (notificationsDropdownContent) {
+                        setNotificationsOpen((v) => !v);
+                      } else {
+                        onNotificationsClick?.();
+                      }
+                    }}
+                    className={cls(
+                      "relative inline-flex h-9 w-9 items-center justify-center rounded-lg border border-hairline bg-surface hover:bg-surface-strong transition",
+                      notificationsOpen && "bg-surface-strong"
+                    )}
+                  >
+                    <Icon.Bell className="h-5 w-5" />
+                    {unreadCount > 0 && (
+                      <span className="absolute -top-1 -right-1 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-[hsl(var(--brand-orange))] px-1 text-[11px] font-semibold text-white">
+                        {unreadCount > 99 ? "99+" : unreadCount}
+                      </span>
+                    )}
+                  </button>
+                  {notificationsOpen && notificationsDropdownContent && (
+                    <div className="absolute right-0 top-full mt-2 z-50">
+                      {React.cloneElement(notificationsDropdownContent as React.ReactElement, {
+                        onClose: () => setNotificationsOpen(false),
+                      })}
+                    </div>
+                  )}
+                </div>
 
                 {orgName ? (
                   <button

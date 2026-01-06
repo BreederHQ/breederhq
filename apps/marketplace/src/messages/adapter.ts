@@ -1,11 +1,16 @@
 // apps/marketplace/src/messages/adapter.ts
-// Adapter interface for messaging - can be swapped for real API later
+// Adapter interface for messaging - supports both local storage and server backends
 
 import type { Conversation, Message, ContextRef, Participant } from "./types";
 import * as store from "./store";
+import { serverAdapter } from "./serverAdapter";
+import { isDemoMode } from "../demo/demoMode";
+
+// Track if we've cleaned up localStorage for this session
+let localStorageCleanedUp = false;
 
 /**
- * Messaging adapter interface for future API integration
+ * Messaging adapter interface for messaging backends
  */
 export interface MessagingAdapter {
   getConversations(): Promise<Conversation[]>;
@@ -24,7 +29,7 @@ export interface MessagingAdapter {
 
 /**
  * Local storage implementation of the messaging adapter
- * This is the default implementation that persists to localStorage
+ * Used as fallback in demo mode or when server is unavailable
  */
 export const localAdapter: MessagingAdapter = {
   async getConversations(): Promise<Conversation[]> {
@@ -69,13 +74,28 @@ export const localAdapter: MessagingAdapter = {
 
 /**
  * Get the current messaging adapter
- * In the future, this could check for backend availability and return a server adapter
+ * Uses server adapter for real messaging, local adapter for demo mode
  */
 export function getMessagingAdapter(): MessagingAdapter {
-  // For now, always return the local adapter
-  // When backend is ready:
-  // if (isServerAvailable()) return serverAdapter;
-  return localAdapter;
+  // In demo mode, use local storage adapter
+  if (isDemoMode()) {
+    return localAdapter;
+  }
+
+  // When NOT in demo mode, clear any leftover localStorage data once per session
+  // This prevents mixing local IDs (conv-xxx) with server IDs (numeric)
+  if (!localStorageCleanedUp) {
+    try {
+      store.clearAllMessages();
+      localStorageCleanedUp = true;
+      console.log("[messaging] Cleared localStorage data (switching to server mode)");
+    } catch {
+      // Ignore cleanup errors
+    }
+  }
+
+  // Use the real server adapter for actual messaging
+  return serverAdapter;
 }
 
 /**
@@ -83,7 +103,5 @@ export function getMessagingAdapter(): MessagingAdapter {
  * Returns true if we can use real server endpoints
  */
 export function isMessagingBackendAvailable(): boolean {
-  // For now, always return false - no backend
-  // When backend is ready, this will check for connectivity
-  return false;
+  return !isDemoMode();
 }
