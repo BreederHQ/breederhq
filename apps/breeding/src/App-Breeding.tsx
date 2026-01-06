@@ -164,8 +164,11 @@ function normalizeExpectedMilestones(
 
   const hormoneTestingStart =
     day(milestones?.expectedHormoneTestingStart) ??
+    day(milestones?.hormone_testing?.likely?.[0]) ?? // reproEngine nested array format
+    day(milestones?.hormone_testing?.full?.[0]) ?? // reproEngine nested array format
     day(milestones?.hormone_testing_full?.start) ?? // reproEngine format: { start, end }
     day(milestones?.hormone_testing_full?.[0]) ?? // legacy array format
+    day(milestones?.hormone_testing_likely?.[0]) ?? // legacy array format
     day(milestones?.hormoneTesting_full?.[0]) ??
     day(milestones?.testing_expected) ??
     day(milestones?.testing_start) ??
@@ -188,7 +191,11 @@ function normalizeExpectedMilestones(
   const birthDate =
     day(milestones?.expectedBirthDate) ??
     day(milestones?.birth_expected) ?? // legacy format from computeExpectedForPlan
-    day(milestones?.whelping?.likely?.start) ?? // reproEngine nested format
+    day(milestones?.birth?.likely?.[0]) ?? // reproEngine nested array format (birth.likely)
+    day(milestones?.birth?.full?.[0]) ?? // reproEngine nested array format (birth.full)
+    day(milestones?.birth_likely?.[0]) ?? // reproEngine flat format
+    day(milestones?.birth_full?.[0]) ?? // reproEngine flat format
+    day(milestones?.whelping?.likely?.start) ?? // reproEngine nested format (whelping)
     day(milestones?.whelping_full?.start) ?? // reproEngine flat format
     day(milestones?.whelping_likely?.start) ?? // reproEngine flat format
     day(milestones?.whelping?.likely?.[0]) ?? // reproEngine nested array format
@@ -3700,6 +3707,17 @@ function PlanDetailsView(props: {
 
   const hasPendingChangesLocal = isDirty || pendingSave;
 
+  // Ref-based dirty check for use in event handlers (avoids stale closure issues)
+  const persistedSnapshotRef = React.useRef(persistedSnapshot);
+  React.useEffect(() => { persistedSnapshotRef.current = persistedSnapshot; }, [persistedSnapshot]);
+  const pendingSaveRef = React.useRef(pendingSave);
+  React.useEffect(() => { pendingSaveRef.current = pendingSave; }, [pendingSave]);
+
+  const checkPendingChangesSync = React.useCallback(() => {
+    const changedFields = prunePlanDraft(draftRef.current, persistedSnapshotRef.current);
+    return Object.keys(changedFields).length > 0 || pendingSaveRef.current;
+  }, []);
+
   // Notify parent when pending changes state changes
   React.useEffect(() => {
     onPendingChangesChange?.(hasPendingChangesLocal);
@@ -4263,16 +4281,23 @@ function PlanDetailsView(props: {
       onPlanUpdated?.(row.id, fresh);
 
       // Update snapshot to match fresh data (prevents false "unsaved changes" prompt)
-      setPersistedSnapshot(buildPlanSnapshot(fresh || { ...row, ...payload }));
+      // IMPORTANT: Use planToRow to transform fresh data, ensuring consistency with the
+      // row prop that will be passed down from the parent after onPlanUpdated.
+      // This prevents snapshot mismatch when the rowSnapshotKey effect runs.
+      const freshAsRow = planToRow(fresh || { ...row, ...payload });
+      const newSnapshot = buildPlanSnapshot(freshAsRow);
 
-      // Also save any other pending draft changes (but stay in edit mode)
-      if (Object.keys(draftRef.current).length > 0) {
-        try {
-          await requestSave();
-        } catch (saveErr) {
-          console.error("[Breeding] lockCycle - additional save failed", saveErr);
-        }
-      }
+      setPersistedSnapshot(newSnapshot);
+      persistedSnapshotRef.current = newSnapshot; // Sync update for ref-based checks
+
+      // Clear ALL dirty state since lock operation fully persists
+      // This prevents false "unsaved changes" when closing after locking
+      draftRef.current = {};
+      setDraftTick((t) => t + 1);
+      setDraft({});
+      setPendingSave(false);
+      pendingSaveRef.current = false; // Sync update for ref-based checks
+      // Stay in edit mode - user may want to continue editing after locking
     } catch (e: any) {
       console.error("[Breeding] lockCycle persist or audit failed", e);
       setExpectedPreview(null);
@@ -4345,7 +4370,10 @@ function PlanDetailsView(props: {
       }
 
       // Update persisted snapshot to reflect the new saved state
-      setPersistedSnapshot(buildPlanSnapshot(updated || { ...row, ...payload }));
+      // IMPORTANT: Use planToRow to transform API data, ensuring consistency with the
+      // row prop that will be passed down from the parent after onPlanUpdated.
+      const updatedAsRow = planToRow(updated || { ...row, ...payload });
+      setPersistedSnapshot(buildPlanSnapshot(updatedAsRow));
     } catch (e) {
       console.error("[Breeding] recalculateExpectedDates failed", e);
     }
@@ -4390,16 +4418,22 @@ function PlanDetailsView(props: {
       onPlanUpdated?.(row.id, fresh);
 
       // Update snapshot to match fresh data (prevents false "unsaved changes" prompt)
-      setPersistedSnapshot(buildPlanSnapshot(fresh || { ...row, ...payload }));
+      // IMPORTANT: Use planToRow to transform fresh data, ensuring consistency with the
+      // row prop that will be passed down from the parent after onPlanUpdated.
+      // This prevents snapshot mismatch when the rowSnapshotKey effect runs.
+      const freshAsRow = planToRow(fresh || { ...row, ...payload });
+      const newSnapshot = buildPlanSnapshot(freshAsRow);
+      setPersistedSnapshot(newSnapshot);
+      persistedSnapshotRef.current = newSnapshot; // Sync update for ref-based checks
 
-      // Also save any other pending draft changes (but stay in edit mode)
-      if (Object.keys(draftRef.current).length > 0) {
-        try {
-          await requestSave();
-        } catch (saveErr) {
-          console.error("[Breeding] unlockCycle - additional save failed", saveErr);
-        }
-      }
+      // Clear ALL dirty state since unlock operation fully persists
+      // This prevents false "unsaved changes" when closing after unlocking
+      draftRef.current = {};
+      setDraftTick((t) => t + 1);
+      setDraft({});
+      setPendingSave(false);
+      pendingSaveRef.current = false; // Sync update for ref-based checks
+      // Stay in edit mode - user may want to continue editing after unlocking
     } catch (e) {
       console.error("[Breeding] unlockCycle persist or audit failed", e);
       const expected = pendingCycle ? computeExpectedForPlan({ species: row.species as any, lockedCycleStart: pendingCycle }) : null;
@@ -5471,10 +5505,12 @@ function PlanDetailsView(props: {
                 <Button
                   variant="outline"
                   onClick={() => {
+                    // Use sync check to avoid stale closure issues after lock/unlock
+                    const hasPending = checkPendingChangesSync();
                     // In edit mode without pending changes: just exit edit mode
                     // In edit mode with pending changes: close drawer (will prompt for unsaved changes)
                     // In view mode: close drawer
-                    if (mode === "edit" && !hasPendingChangesLocal) {
+                    if (mode === "edit" && !hasPending) {
                       handleCancel();
                       return;
                     }
@@ -5936,10 +5972,12 @@ function PlanDetailsView(props: {
                 <Button
                   variant="outline"
                   onClick={() => {
+                    // Use sync check to avoid stale closure issues after lock/unlock
+                    const hasPending = checkPendingChangesSync();
                     // In edit mode without pending changes: just exit edit mode
                     // In edit mode with pending changes: close drawer (will prompt for unsaved changes)
                     // In view mode: close drawer
-                    if (mode === "edit" && !hasPendingChangesLocal) {
+                    if (mode === "edit" && !hasPending) {
                       handleCancel();
                       return;
                     }
