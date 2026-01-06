@@ -4379,6 +4379,38 @@ function PlanDetailsView(props: {
     }
   }
 
+  // Recalculate expected dates when actual cycle start is entered
+  // This uses the ACTUAL cycle start as the seed instead of the locked/expected cycle start
+  // The original expectedCycleStart is preserved, but all other dates are recalculated
+  function recalculateExpectedDatesFromActual(actualCycleStart: string | null) {
+    if (!actualCycleStart || !String(actualCycleStart).trim()) {
+      return null; // No recalculation if no actual date
+    }
+
+    const expectedRaw = computeExpectedForPlan({
+      species: row.species as any,
+      lockedCycleStart: actualCycleStart, // Use actual as seed
+      femaleCycleLenOverrideDays: liveOverride,
+    });
+
+    if (!expectedRaw) return null;
+
+    const expected = normalizeExpectedMilestones(expectedRaw, actualCycleStart);
+    const testingStart =
+      expected.hormoneTestingStart ?? pickExpectedTestingStart(expectedRaw, actualCycleStart);
+
+    // Return the recalculated expected dates (keep original expectedCycleStart)
+    return {
+      // Don't update expectedCycleStart - keep the original
+      expectedHormoneTestingStart: testingStart ?? null,
+      expectedBreedDate: expected.breedDate,
+      expectedBirthDate: expected.birthDate,
+      expectedWeaned: expected.weanedDate,
+      expectedPlacementStartDate: expected.placementStart,
+      expectedPlacementCompletedDate: expected.placementCompleted,
+    };
+  }
+
   async function unlockCycle() {
     if (isArchived) return; // Prevent cycle unlocking for archived plans
     if (!api) return;
