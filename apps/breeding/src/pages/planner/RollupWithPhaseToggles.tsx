@@ -114,7 +114,7 @@ export default function RollupWithPhaseToggles({
   // Group plans by status
   const plansByStatus = React.useMemo(() => {
     const groups: Record<Status, PlanLike[]> = {
-      PLANNING: [], COMMITTED: [], BRED: [], BIRTHED: [], WEANED: [], HOMING_STARTED: [], COMPLETE: [], CANCELED: [],
+      PLANNING: [], COMMITTED: [], BRED: [], BIRTHED: [], WEANED: [], PLACEMENT_STARTED: [], PLACEMENT_COMPLETED: [], COMPLETE: [], CANCELED: [],
     };
     for (const plan of selectablePlans) {
       const status = deriveBreedingStatus(plan);

@@ -427,7 +427,7 @@ export default function PhaseGroupedPerPlanV2({ plans, prefsOverride, className 
   // Group by status
   const groupedByStatus = React.useMemo(() => {
     const groups: Record<Status, PlanLike[]> = {
-      PLANNING: [], COMMITTED: [], BRED: [], BIRTHED: [], WEANED: [], HOMING_STARTED: [], COMPLETE: [], CANCELED: [],
+      PLANNING: [], COMMITTED: [], BRED: [], BIRTHED: [], WEANED: [], PLACEMENT_STARTED: [], PLACEMENT_COMPLETED: [], COMPLETE: [], CANCELED: [],
     };
     for (const plan of lockedPlans) {
       const status = deriveBreedingStatus(plan);

@@ -258,7 +258,8 @@ export const adminApi = {
     tenant: { name: string; primaryEmail?: string | null };
     owner: {
       email: string;
-      name?: string | null;
+      firstName: string;
+      lastName?: string | null;
       verify?: boolean;
       makeDefault?: boolean;
       tempPassword?: string;

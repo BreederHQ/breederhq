@@ -17,7 +17,7 @@ export interface MessageParticipant {
   id: number;
   threadId: number;
   partyId: number;
-  party: { id: number; name: string; email?: string };
+  party: { id: number; name: string; email?: string; type?: "CONTACT" | "ORGANIZATION" };
   unreadCount: number;
 }
 

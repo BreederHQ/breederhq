@@ -23,6 +23,9 @@ module.exports = {
 
     // Marketplace app (embedded inside Platform)
     '../marketplace/src/**/*.{ts,tsx,js,jsx,html}',
+
+    // Breeding app (embedded inside Platform)
+    '../breeding/src/**/*.{ts,tsx,js,jsx,html}',
   ],
 
   theme: {

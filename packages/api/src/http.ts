@@ -42,6 +42,15 @@ function getTenantId(): string | null {
   return null;
 }
 
+function getCsrfToken(): string | null {
+  try {
+    const match = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]+)/);
+    return match ? decodeURIComponent(match[1]) : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function apiFetch<T = any>(
   path: string,
   init: RequestInit = {}
@@ -66,10 +75,19 @@ export async function apiFetch<T = any>(
     headers.set("X-Tenant-Id", String(Number(tenantId)));
   }
 
+  // Inject CSRF token for mutation requests (POST, PUT, PATCH, DELETE)
+  const method = (init.method || "GET").toUpperCase();
+  if (["POST", "PUT", "PATCH", "DELETE"].includes(method)) {
+    const csrfToken = getCsrfToken();
+    if (csrfToken && !headers.has("x-csrf-token")) {
+      headers.set("x-csrf-token", csrfToken);
+    }
+  }
+
   const res = await fetch(url, {
     ...init,
     headers,
-    credentials: "include",     // << send bhq_s cookie
+    credentials: "include",     // << send session cookie (bhq_s_app, bhq_s_portal, or bhq_s_mkt)
     redirect: init.redirect ?? "follow",
   });
 
@@ -134,6 +152,14 @@ export function createHttp(baseURL: string, makeAuth?: MakeAuthHeader): Http {
     const tenantId = getTenantId();
     if (Number(tenantId) > 0 && !headers.has("X-Tenant-Id")) {
       headers.set("X-Tenant-Id", String(Number(tenantId)));
+    }
+
+    // Inject CSRF token for mutation requests (POST, PUT, PATCH, DELETE)
+    if (["POST", "PUT", "PATCH", "DELETE"].includes(method)) {
+      const csrfToken = getCsrfToken();
+      if (csrfToken && !headers.has("x-csrf-token")) {
+        headers.set("x-csrf-token", csrfToken);
+      }
     }
 
     const res = await fetch(url, {

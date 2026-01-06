@@ -306,3 +306,59 @@ export async function submitAnimalInquiry(
   const data = await safeReadJson<InquiryResponse>(response);
   return data || { success: true };
 }
+
+// =====================================
+// Waitlist API (Breeder Waitlist Requests)
+// =====================================
+
+export interface WaitlistRequestPayload {
+  programName: string;
+  message?: string;
+  name: string;
+  email: string;
+  phone?: string;
+}
+
+export interface WaitlistRequestResponse {
+  success: boolean;
+  entryId?: number;
+}
+
+/**
+ * Submit a request to join a breeder's waitlist. Requires authentication.
+ */
+export async function submitWaitlistRequest(
+  tenantSlug: string,
+  payload: WaitlistRequestPayload
+): Promise<WaitlistRequestResponse> {
+  const path = `/api/v1/marketplace/waitlist/${encodeURIComponent(tenantSlug)}`;
+  const url = joinApi(path);
+
+  // Get CSRF token from cookie (XSRF-TOKEN)
+  const xsrf = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]+)/)?.[1];
+
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+  if (xsrf) {
+    headers["x-csrf-token"] = decodeURIComponent(xsrf);
+  }
+
+  const response = await fetch(url, {
+    method: "POST",
+    credentials: "include",
+    headers,
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    const body = await safeReadJson<{ message?: string; error?: string }>(response);
+    throw new ApiError(
+      body?.message || body?.error || `Request failed with status ${response.status}`,
+      response.status
+    );
+  }
+
+  const data = await safeReadJson<WaitlistRequestResponse>(response);
+  return data || { success: true };
+}

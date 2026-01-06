@@ -29,6 +29,7 @@ type GateState =
 interface GateContextValue {
   status: GateStatus;
   isEntitled: boolean;
+  userProfile: MarketplaceUserProfile | null;
 }
 
 const GateContext = React.createContext<GateContextValue | null>(null);
@@ -51,6 +52,15 @@ export function useIsEntitled(): boolean {
 }
 
 /**
+ * Hook to get the current user's profile.
+ * Returns null if not authenticated or not inside a MarketplaceGate.
+ */
+export function useUserProfile(): MarketplaceUserProfile | null {
+  const ctx = React.useContext(GateContext);
+  return ctx?.userProfile ?? null;
+}
+
+/**
  * Backend response shape from GET /api/v1/marketplace/me.
  */
 interface MarketplaceMeResponse {
@@ -59,11 +69,26 @@ interface MarketplaceMeResponse {
   entitlementSource?: string | null;
   email?: string;
   name?: string | null;
+  firstName?: string | null;
+  lastName?: string | null;
+  phone?: string | null;
   surface?: string;
   actorContext?: string;
   entitlements?: Array<{ key: string; status: string; grantedAt: string }>;
   error?: string;
   message?: string;
+}
+
+/**
+ * User profile data available to marketplace components.
+ */
+export interface MarketplaceUserProfile {
+  userId: string;
+  email: string;
+  name: string | null;
+  firstName: string | null;
+  lastName: string | null;
+  phone: string | null;
 }
 
 /**
@@ -107,12 +132,14 @@ function GateError({ message, onRetry }: { message: string; onRetry: () => void 
 export function MarketplaceGate() {
   const location = useLocation();
   const [state, setState] = React.useState<GateState>({ status: "loading" });
+  const [userProfile, setUserProfile] = React.useState<MarketplaceUserProfile | null>(null);
 
   // Compute the path the user was trying to access (for returnTo)
   const attemptedPath = location.pathname + location.search + location.hash;
 
   const checkAccess = React.useCallback(async () => {
     setState({ status: "loading" });
+    setUserProfile(null);
 
     try {
       const { data } = await apiGet<MarketplaceMeResponse>(
@@ -126,6 +153,16 @@ export function MarketplaceGate() {
         setState({ status: "unauthenticated" });
         return;
       }
+
+      // Store user profile data
+      setUserProfile({
+        userId: data.userId!,
+        email: data.email || "",
+        name: data.name || null,
+        firstName: data.firstName || null,
+        lastName: data.lastName || null,
+        phone: data.phone || null,
+      });
 
       // Check entitlement from body (uses marketplaceEntitled from backend)
       const entitled = data?.marketplaceEntitled === true;
@@ -171,8 +208,9 @@ export function MarketplaceGate() {
     () => ({
       status: state.status,
       isEntitled: state.status === "entitled",
+      userProfile,
     }),
-    [state.status]
+    [state.status, userProfile]
   );
 
   // Loading state - no context provided, no routes rendered, no data fetches

@@ -91,7 +91,8 @@ export function BreedSelect({
   return (
     <div className="relative" ref={boxRef}>
       <input
-        className="w-full h-10 rounded-md border border-hairline bg-surface px-3 text-sm text-primary outline-none focus:shadow-[0_0_0_2px_hsl(var(--hairline))]"
+        className="w-full h-[42px] rounded-md border border-hairline bg-surface px-3 text-sm text-primary outline-none focus:shadow-[0_0_0_2px_hsl(var(--hairline))]"
+        style={{ height: 42, minHeight: 42 }}
         value={value?.name ?? q}
         placeholder={placeholder}
         onChange={(e) => {

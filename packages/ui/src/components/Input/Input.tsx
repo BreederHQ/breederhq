@@ -21,11 +21,11 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(function Inp
   // belt-and-suspenders: delete if something slipped through
   if ("showIcon" in (props as any)) delete (props as any).showIcon;
 
-  const h = size === "sm" ? "h-9 text-sm rounded-md" : "h-10 text-sm rounded-md";
+  const h = size === "sm" ? "h-9 min-h-9 text-sm rounded-md" : "h-[42px] min-h-[42px] text-sm rounded-md";
 
   // Base BHQ look (uses your tokens from global.css)
   const base =
-    "w-full bg-card border border-hairline px-3 placeholder:text-secondary outline-none";
+    "w-full bg-card border border-[#4b5563] px-3 placeholder:text-secondary outline-none";
 
   // Orange focus ring just like the rest of BHQ
   const focus =

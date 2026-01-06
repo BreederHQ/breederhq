@@ -162,6 +162,10 @@ export default function WhatIfPlanningPage({ plans = [], females = [], api, onPl
       if (row.sireId != null) {
         createPayload.sireId = row.sireId;
       }
+      // Include breed if available from the What If row
+      if (row.breedText && row.breedText.trim()) {
+        createPayload.breedText = row.breedText.trim();
+      }
 
       const createdRes = await api.createPlan(createPayload);
       const createdPlan = createdRes?.plan ?? createdRes;
@@ -403,7 +407,7 @@ function WhatIfRowEditor({ row, females, onUpdate, onRemove, onConvertToPlan }: 
   const handleFemaleChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const femaleId = e.target.value;
     if (!femaleId) {
-      onUpdate({ damId: null, damName: null, species: null, cycleStartIso: null });
+      onUpdate({ damId: null, damName: null, species: null, cycleStartIso: null, breedText: null });
       return;
     }
     const female = females.find(f => String(f.id) === femaleId);
@@ -414,6 +418,7 @@ function WhatIfRowEditor({ row, females, onUpdate, onRemove, onConvertToPlan }: 
         species: female.species,
         cycleStartIso: null,
         femaleCycleLenOverrideDays: female.femaleCycleLenOverrideDays,
+        breedText: female.breedText ?? null,
       });
     }
   };

@@ -327,18 +327,19 @@ export default function AppAdmin() {
   // form fields
   const [newName, setNewName] = React.useState("");
   const [newEmail, setNewEmail] = React.useState("");
-  const [newOwnerName, setNewOwnerName] = React.useState("");
+  const [newOwnerFirstName, setNewOwnerFirstName] = React.useState("");
+  const [newOwnerLastName, setNewOwnerLastName] = React.useState("");
   const [newTempPassword, setNewTempPassword] = React.useState("");
   const [generatePassword, setGeneratePassword] = React.useState(true);
 
   // simple email check
   const isEmail = (s: string) => /\S+@\S+\.\S+/.test(s);
-  const canCreate = newName.trim().length > 0 && isEmail(newEmail.trim()) && (generatePassword || newTempPassword.trim().length >= 8);
+  const canCreate = newName.trim().length > 0 && isEmail(newEmail.trim()) && newOwnerFirstName.trim().length > 0 && (generatePassword || newTempPassword.trim().length >= 8);
 
   // create action
   const doCreateTenant = async () => {
     if (!canCreate) {
-      setCreateErr("Please enter a tenant name, valid email, and password (or enable generate).");
+      setCreateErr("Please enter a tenant name, valid email, owner first name, and password (or enable generate).");
       return;
     }
     try {
@@ -349,7 +350,8 @@ export default function AppAdmin() {
         tenant: { name: newName.trim(), primaryEmail: newEmail.trim() },
         owner: {
           email: newEmail.trim(),
-          name: newOwnerName.trim() || null,
+          firstName: newOwnerFirstName.trim(),
+          lastName: newOwnerLastName.trim() || null,
           verify: true,
           makeDefault: false,
           tempPassword: generatePassword ? undefined : newTempPassword.trim(),
@@ -365,7 +367,7 @@ export default function AppAdmin() {
 
       // Show the password
       setCreatedPassword(res.tempPassword);
-      setNewName(""); setNewEmail(""); setNewOwnerName(""); setNewTempPassword("");
+      setNewName(""); setNewEmail(""); setNewOwnerFirstName(""); setNewOwnerLastName(""); setNewTempPassword("");
     } catch (e: any) {
       setCreateErr(e?.message || "Failed to create tenant");
     } finally {
@@ -379,7 +381,8 @@ export default function AppAdmin() {
     setCreateErr(null);
     setNewName("");
     setNewEmail("");
-    setNewOwnerName("");
+    setNewOwnerFirstName("");
+    setNewOwnerLastName("");
     setNewTempPassword("");
     setGeneratePassword(true);
   };
@@ -867,15 +870,27 @@ export default function AppAdmin() {
                     />
                   </div>
 
-                  <div>
-                    <div className="text-xs text-secondary mb-1">
-                      Owner name <span className="text-muted-foreground">(optional)</span>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <div className="text-xs text-secondary mb-1">
+                        Owner first name <span className="text-[hsl(var(--brand-orange))]">*</span>
+                      </div>
+                      <Input
+                        value={newOwnerFirstName}
+                        onChange={(e) => setNewOwnerFirstName(e.currentTarget.value)}
+                        placeholder="Jane"
+                      />
                     </div>
-                    <Input
-                      value={newOwnerName}
-                      onChange={(e) => setNewOwnerName(e.currentTarget.value)}
-                      placeholder="Jane Smith"
-                    />
+                    <div>
+                      <div className="text-xs text-secondary mb-1">
+                        Owner last name <span className="text-muted-foreground">(optional)</span>
+                      </div>
+                      <Input
+                        value={newOwnerLastName}
+                        onChange={(e) => setNewOwnerLastName(e.currentTarget.value)}
+                        placeholder="Smith"
+                      />
+                    </div>
                   </div>
 
                   <div className="border-t border-hairline pt-3 mt-3">

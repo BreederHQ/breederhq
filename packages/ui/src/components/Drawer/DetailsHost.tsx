@@ -108,11 +108,14 @@ export function DetailsHost<T>({
     const isNewOpen = openIdRef.current !== idStr;
     openIdRef.current = idStr;
 
-    if (config.fetchRow) {
-      // Allow a brief undefined to show a skeleton if you want
+    if (isNewOpen && config.fetchRow) {
+      // Only fetch from API when opening a new row, not on rows updates
+      // This prevents stale API data from overwriting fresh local data
       setOpenRow(local as any);
       Promise.resolve(config.fetchRow(idStr as any)).then(setOpenRow);
     } else {
+      // For existing open row, just use the local data from rows array
+      // This ensures updates via onPlanUpdated are reflected immediately
       setOpenRow(local);
     }
     if (isNewOpen) {
@@ -161,6 +164,7 @@ export function DetailsHost<T>({
           placement={config.placement ?? "right"}
           align={config.align ?? "center"}
           hasPendingChanges={hasPendingChanges}
+          isEditing={mode === "edit"}
         >
           {/* Built-in chrome (default) */}
           {!config.customChrome && (

@@ -38,7 +38,7 @@ export type BreedingProgramProfile = {
     xrayDayFromOvulation: number; // e.g. 55
   };
 
-  whelping: {
+  birth: {
     expectedDaysFromOvulation: number; // usually 63
     interveneIfNoPupHours: number;
     emergencyVetName?: string | null;

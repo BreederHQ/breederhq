@@ -18,9 +18,11 @@ export function DetailsScaffold({
   activeTab,
   onTabChange,
   rightActions,
+  tabsRightContent,
   children,
   onClose,
   hasPendingChanges,
+  hideCloseButton,
 }: {
   title: React.ReactNode;
   subtitle?: React.ReactNode;
@@ -33,9 +35,12 @@ export function DetailsScaffold({
   activeTab: string;
   onTabChange: (key: string) => void;
   rightActions?: React.ReactNode;
+  /** Content to render on the right side of the tabs row (e.g., overflow menu) */
+  tabsRightContent?: React.ReactNode;
   children: React.ReactNode;
   onClose?: () => void;
   hasPendingChanges?: boolean;
+  hideCloseButton?: boolean;
 }) {
   return (
     <>
@@ -44,6 +49,7 @@ export function DetailsScaffold({
         subtitle={subtitle}
         onClose={onClose}
         hasPendingChanges={hasPendingChanges}
+        hideCloseButton={hideCloseButton}
         actions={
           <div className="flex items-center gap-2">
             {rightActions /* should render <Button size="sm" variant="outline">Archive</Button> */}
@@ -64,18 +70,19 @@ export function DetailsScaffold({
       {/* thin divider under header */}
       <div className="hairline/90" />
 
-      {/* Shared Tabs — pills variant to match Contacts */}
+      {/* Shared Tabs — pills variant with prominent styling */}
       {tabs?.length > 0 && (
-        <div className="px-4 pt-3 pb-2">
+        <div className="px-4 pt-3 pb-3 flex items-center justify-between border-b border-white/10">
           <Tabs
-            items={tabs.map(t => ({ value: t.key, label: t.label }))}
+            items={tabs.map(t => ({ value: t.key, label: <span className="uppercase tracking-wide">{t.label}</span> }))}
             value={activeTab}
             onValueChange={onTabChange}
             variant="pills"
-            size="xs"
+            size="md"
             showActiveUnderline
             aria-label="Details sections"
           />
+          {tabsRightContent}
         </div>
       )}
 

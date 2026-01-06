@@ -29,8 +29,8 @@ export function useConversations() {
 
   React.useEffect(() => {
     load();
-    // Poll for updates every 2 seconds
-    const interval = setInterval(load, 2000);
+    // Poll for updates every 30 seconds (reduced from 2s to avoid excessive requests)
+    const interval = setInterval(load, 30000);
     return () => clearInterval(interval);
   }, [load]);
 
@@ -77,8 +77,8 @@ export function useConversation(conversationId: string | null) {
 
   React.useEffect(() => {
     load();
-    // Poll for updates every 2 seconds
-    const interval = setInterval(load, 2000);
+    // Poll for updates every 10 seconds when viewing a specific conversation
+    const interval = setInterval(load, 10000);
     return () => clearInterval(interval);
   }, [load]);
 
@@ -171,12 +171,12 @@ export function useUnreadCounts() {
   const load = React.useCallback(async () => {
     try {
       const adapter = getMessagingAdapter();
-      const [count, convs] = await Promise.all([
-        adapter.getTotalUnreadCount(),
-        adapter.getUnreadConversations(),
-      ]);
-      setTotalUnread(count);
-      setUnreadConversations(convs);
+      // Fetch conversations once and compute both values to avoid duplicate API calls
+      const conversations = await adapter.getConversations();
+      const unread = conversations.filter((c) => c.unreadCount > 0);
+      const total = unread.reduce((sum, c) => sum + c.unreadCount, 0);
+      setTotalUnread(total);
+      setUnreadConversations(unread);
     } catch {
       // Silently fail
     }
@@ -184,8 +184,8 @@ export function useUnreadCounts() {
 
   React.useEffect(() => {
     load();
-    // Poll for updates every 2 seconds
-    const interval = setInterval(load, 2000);
+    // Poll for updates every 30 seconds (reduced from 2s to avoid excessive requests)
+    const interval = setInterval(load, 30000);
     return () => clearInterval(interval);
   }, [load]);
 
@@ -221,4 +221,68 @@ export function useAddDemoReply() {
   );
 
   return { addReply };
+}
+
+/**
+ * Waitlist request status from API
+ */
+export interface WaitlistRequest {
+  id: number;
+  status: "pending" | "approved" | "rejected";
+  statusDetail: string;
+  breederName: string | null;
+  breederSlug: string | null;
+  programName: string | null;
+  submittedAt: string;
+  approvedAt: string | null;
+  rejectedAt: string | null;
+  rejectedReason: string | null;
+}
+
+/**
+ * Hook to fetch user's waitlist requests
+ */
+export function useWaitlistRequests() {
+  const [requests, setRequests] = React.useState<WaitlistRequest[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<Error | null>(null);
+
+  const load = React.useCallback(async () => {
+    try {
+      const base = import.meta.env.DEV
+        ? "/api/v1/marketplace"
+        : `${window.location.origin}/api/v1/marketplace`;
+
+      const response = await fetch(`${base}/waitlist/my-requests`, {
+        credentials: "include",
+      });
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          // Not logged in - return empty array
+          setRequests([]);
+          setError(null);
+          return;
+        }
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const data = await response.json();
+      setRequests(data.requests || []);
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err : new Error(String(err)));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    load();
+    // Poll for updates every 60 seconds
+    const interval = setInterval(load, 60000);
+    return () => clearInterval(interval);
+  }, [load]);
+
+  return { requests, loading, error, refresh: load };
 }

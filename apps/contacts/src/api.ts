@@ -1,5 +1,5 @@
 // apps/contacts/src/api.ts
-import { readTenantIdFast } from "@bhq/ui/utils/tenant";
+import { readTenantIdFast, getSessionCookieName } from "@bhq/ui/utils/tenant";
 import { createHttp, makeTags } from "@bhq/api";
 
 export type ID = string | number;
@@ -59,17 +59,31 @@ function safeB64Json(s: string): any {
 }
 
 function tenantIdFromSessionCookie(): number | null {
-  const raw = readCookie("bhq_s");
+  // Try surface-specific cookie first, then legacy cookie
+  const cookieName = getSessionCookieName();
+  let raw = readCookie(cookieName);
+  if (!raw) {
+    // Fallback to legacy cookie for backward compatibility
+    raw = readCookie("bhq_s");
+  }
   if (!raw) return null;
   try {
-    const parts = raw.split(".");
+    // Handle signed cookie format: "s:base64payload.signature"
+    let payload = raw;
+    if (payload.startsWith("s:")) {
+      const dotIndex = payload.lastIndexOf(".");
+      if (dotIndex > 2) {
+        payload = payload.slice(2, dotIndex);
+      }
+    }
+    const parts = payload.split(".");
     const payloadB64 = parts.length === 3 ? parts[1] : parts[0];
-    const payload = safeB64Json(payloadB64) || {};
+    const parsed = safeB64Json(payloadB64) || {};
     const id =
-      Number(payload?.tenant?.id) ??
-      Number(payload?.tenantId) ??
-      Number(payload?.tenantID) ??
-      Number(payload?.tenant_id);
+      Number(parsed?.tenant?.id) ??
+      Number(parsed?.tenantId) ??
+      Number(parsed?.tenantID) ??
+      Number(parsed?.tenant_id);
     return Number.isFinite(id) && id > 0 ? id : null;
   } catch {
     return null;
@@ -104,6 +118,7 @@ export function getTenantHeaders(): Record<string, string> {
 
   if (!tenantId) {
     // one-time noisy log so you can see why the header is missing
+    const surfaceCookie = getSessionCookieName();
     console.warn("[BHQ] Missing x-tenant-id. Sources:", {
       fast,
       fromSessionCookie,
@@ -111,7 +126,8 @@ export function getTenantHeaders(): Record<string, string> {
       fromLegacyGlobal,
       fromLS,
       fromEnv,
-      cookie_bhq_s_present: !!document.cookie.match(/(?:^|; )bhq_s=/),
+      cookie_surface_present: !!document.cookie.match(new RegExp(`(?:^|; )${surfaceCookie}=`)),
+      cookie_legacy_present: !!document.cookie.match(/(?:^|; )bhq_s=/),
     });
     return {};
   }

@@ -1,0 +1,286 @@
+DATA MODELS & ERDs
+==================
+
+PURPOSE
+-------
+This section documents the entity relationship diagrams (ERDs) and data models that power BreederHQ. It provides a visual and structured way to understand how data flows across modules, how entities relate to one another, and where shared components (tags, traits, audit logs) integrate.
+
+
+SCOPE (what this section covers)
+--------------------------------
+• Master ERD (all modules together)
+• Per-module ERDs (Users/Auth, Tenants/Orgs, Animals, Breeding, Offspring, Finance, Documents, Scheduling)
+• Cross-module relationships (e.g., Party ↔ Invoice ↔ Offspring)
+• Data isolation (per tenant)
+• Notes on entity ownership and cardinality (one-to-many, many-to-many)
+
+
+SCHEMA STATISTICS
+-----------------
+[CREATE AS CONFLUENCE TABLE]
+
+Metric              Count
+------              -----
+Total Models        ~75
+Total Enums         ~50+
+Core Entity Types   User, Tenant, Party, Animal, Offspring, Invoice, Contract
+
+
+================================================================================
+MASTER ERD
+================================================================================
+
+[INSERT MERMAID MACRO HERE - paste diagram #1 from confluence-mermaid-diagrams.md]
+
+This diagram shows:
+• Users ↔ Tenants (many-to-many via TenantMembership)
+• Party as unified identity (Contact or Organization)
+• Parties ↔ Invoices (one-to-many)
+• Parties ↔ Waitlist (one-to-many)
+• BreedingPlan ↔ OffspringGroup (one-to-one)
+• Offspring ↔ Animals (promotion path)
+• Animals ↔ Breeding Plans ↔ Cycles
+• Tags, Traits, Audit Logs, Documents applied to all entities
+
+
+================================================================================
+PER-MODULE ERDs
+================================================================================
+
+
+1. USERS & AUTHENTICATION
+-------------------------
+
+[INSERT MERMAID MACRO HERE - paste diagram #2]
+
+Key Models:
+
+Model               Purpose
+-----               -------
+User                Core user account with auth credentials
+Session             Active login sessions
+Passkey             WebAuthn/FIDO2 credentials
+RecoveryCode        Backup codes for account recovery
+VerificationToken   Email verification, password reset
+TosAcceptance       Terms of Service acceptance audit
+UserEntitlement     Feature access grants (e.g., marketplace)
+
+
+2. TENANTS & ORGANIZATIONS
+--------------------------
+
+[INSERT MERMAID MACRO HERE - paste diagram #3]
+
+Key Relationships:
+
+From          To              Type           Notes
+----          --              ----           -----
+User          Tenant          Many-to-Many   Via TenantMembership
+Tenant        Organization    One-to-Many    Tenant contains orgs
+Party         Organization    One-to-One     Organization IS a Party
+Party         Contact         One-to-One     Contact IS a Party
+Organization  Contact         One-to-Many    Org has contacts
+
+Party Pattern: The Party model is a unified identity abstraction. Both Organization and Contact extend Party, allowing invoices, contracts, messages, and other entities to reference a single partyId instead of separate contact/org foreign keys.
+
+
+3. ANIMALS
+----------
+
+[INSERT MERMAID MACRO HERE - paste diagram #4]
+
+Species Supported: DOG, CAT, HORSE, GOAT, RABBIT, SHEEP
+
+Key Models:
+
+Model                     Purpose
+-----                     -------
+Animal                    Core animal record
+AnimalOwner               Ownership percentages (supports co-ownership)
+Breed                     Canonical breed definitions
+AnimalBreed               Mixed breed support (multiple breeds per animal)
+Registry                  AKC, CKC, AMHA, etc.
+AnimalRegistryIdentifier  Registration numbers per registry
+AnimalShare               Cross-tenant sharing
+AnimalPublicListing       Marketplace listings
+
+
+4. TRAITS SYSTEM
+----------------
+
+[INSERT MERMAID MACRO HERE - paste diagram #5]
+
+Trait Value Types: BOOLEAN, ENUM, NUMBER, DATE, TEXT, JSON
+
+Trait Sources: SELF_REPORTED, VET, LAB, REGISTRY
+
+
+5. BREEDING
+-----------
+
+[INSERT MERMAID MACRO HERE - paste diagram #6]
+
+Breeding Plan Status Flow:
+
+PLANNING → COMMITTED → CYCLE_EXPECTED → HORMONE_TESTING → BRED → PREGNANT → BIRTHED → WEANED → PLACEMENT → COMPLETE
+                                                                                                              ↓
+                                                                                                          CANCELED
+
+Breeding Methods: NATURAL, AI_TCI, AI_SI, AI_FROZEN
+
+
+6. OFFSPRING & LITTERS
+----------------------
+
+[INSERT MERMAID MACRO HERE - paste diagram #7]
+
+Offspring Lifecycle States:
+
+Dimension        Values
+---------        ------
+lifeState        ALIVE, DECEASED
+placementState   UNASSIGNED, OPTION_HOLD, RESERVED, PLACED, RETURNED, TRANSFERRED
+keeperIntent     AVAILABLE, UNDER_EVALUATION, WITHHELD, KEEP
+financialState   NONE, DEPOSIT_PENDING, DEPOSIT_PAID, PAID_IN_FULL, REFUNDED, CHARGEBACK
+paperworkState   NONE, SENT, SIGNED, COMPLETE
+
+Waitlist Status Flow:
+
+INQUIRY → DEPOSIT_DUE → DEPOSIT_PAID → READY → ALLOCATED → COMPLETED
+                                                    ↓
+                                                CANCELED
+
+
+7. FINANCE
+----------
+
+[INSERT MERMAID MACRO HERE - paste diagram #8]
+
+Invoice Status Flow:
+
+draft → issued → partially_paid → paid
+           ↓           ↓
+         void    uncollectible → refunded
+           ↓
+       cancelled
+
+Expense Categories: VETERINARY, FEED, SUPPLIES, BREEDING_FEE, BOARDING, TRAINING, TRANSPORT, MARKETING, ADMINISTRATIVE, FACILITIES, INSURANCE, OTHER
+
+
+8. DOCUMENTS & CONTRACTS
+------------------------
+
+[INSERT MERMAID MACRO HERE - paste diagram #9]
+
+Contract Status Flow:
+
+draft → sent → viewed → signed
+          ↓       ↓
+       expired  declined
+          ↓
+        voided
+
+Document Kinds: generic, health_certificate, registration, contract_pdf, invoice_pdf, photo, bill_of_sale, syndication_agreement, lease_agreement, insurance_policy, vet_certificate
+
+
+9. SCHEDULING
+-------------
+
+[INSERT MERMAID MACRO HERE - paste diagram #10]
+
+Slot Modes: IN_PERSON, VIRTUAL
+
+Booking Status: CONFIRMED, CANCELLED, RESCHEDULED, NO_SHOW
+
+
+10. MARKETING & MESSAGING
+-------------------------
+
+[INSERT MERMAID MACRO HERE - paste diagram #11]
+
+
+11. PORTAL ACCESS & AUDIT
+-------------------------
+
+[INSERT MERMAID MACRO HERE - paste diagram #12]
+
+Portal Access Status: NO_ACCESS, INVITED, ACTIVE, SUSPENDED
+
+Audit Surfaces: PLATFORM, PORTAL, MARKETPLACE
+
+Tag Modules: CONTACT, ORGANIZATION, ANIMAL, WAITLIST_ENTRY, OFFSPRING_GROUP, OFFSPRING
+
+
+================================================================================
+SHARED COMPONENTS (applied across entities)
+================================================================================
+
+Service             Description
+-------             -----------
+Tags                Tenant-scoped tags can be applied to Contacts, Organizations, Animals, Waitlist Entries, Offspring Groups, Offspring
+Traits              Species-specific trait definitions with typed values (boolean, enum, number, date, text, json)
+Documents           Documents/attachments can be linked to any entity via scope field
+Audit Log           Immutable event log for auth, access control, and abuse monitoring
+Portal Access       Client portal grants per Party
+
+
+================================================================================
+DATA ISOLATION
+================================================================================
+
+All tenant-scoped data is isolated by tenantId. Key isolation patterns:
+
+1. Row-level security - Every tenant-scoped table has a tenantId foreign key
+2. Unique constraints - Many unique constraints are scoped to tenant (e.g., unique on [tenantId, email])
+3. Cascading deletes - Tenant deletion cascades to all child records
+4. Cross-tenant sharing - Explicit share models (AnimalShare, BreedingPlanShare) for controlled access
+
+
+================================================================================
+KEY ENUMS REFERENCE
+================================================================================
+
+Core Enums:
+
+Enum                   Values
+----                   ------
+Species                DOG, CAT, HORSE, GOAT, RABBIT, SHEEP
+Sex                    MALE, FEMALE
+AnimalStatus           ACTIVE, BREEDING, UNAVAILABLE, RETIRED, DECEASED, PROSPECT
+TenantRole             OWNER, ADMIN, MEMBER, BILLING, VIEWER
+TenantMembershipRole   STAFF, CLIENT
+
+Status Enums:
+
+Enum                Values
+----                ------
+BreedingPlanStatus  PLANNING, COMMITTED, CYCLE_EXPECTED, HORMONE_TESTING, BRED, PREGNANT, BIRTHED, WEANED, PLACEMENT, COMPLETE, CANCELED
+WaitlistStatus      INQUIRY, DEPOSIT_DUE, DEPOSIT_PAID, READY, ALLOCATED, COMPLETED, CANCELED
+InvoiceStatus       draft, issued, partially_paid, paid, void, uncollectible, refunded, cancelled
+ContractStatus      draft, sent, viewed, signed, declined, voided, expired
+
+
+================================================================================
+OUT OF SCOPE (v1)
+================================================================================
+
+• Historical schema migrations (covered in Migrations & Versions page)
+• Advanced analytics data models
+• External system ERDs (registries, Stripe, etc.)
+
+
+================================================================================
+DEFINITION OF DONE (v1)
+================================================================================
+
+[x] Master ERD documenting all modules
+[x] Per-module ERDs (Users/Auth, Tenants/Orgs, Animals, Breeding, Offspring, Finance, Documents, Scheduling, Marketing, Portal)
+[x] Cross-module relationships documented
+[x] Shared components (Tags, Traits, Documents, Audit) clearly shown
+[x] All enums documented
+[x] Data isolation patterns documented
+
+
+---
+Last updated: January 2026
+Source: Generated from prisma/schema.prisma

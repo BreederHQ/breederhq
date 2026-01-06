@@ -14,6 +14,8 @@ export type WhatIfRow = {
   cycleStartIso: string | null;
   showOnChart: boolean;
   femaleCycleLenOverrideDays?: number | null;
+  sireId?: ID | null;
+  breedText?: string | null;
 };
 
 export type WhatIfFemale = {
@@ -21,6 +23,7 @@ export type WhatIfFemale = {
   name: string;
   species: SpeciesWire | null;
   femaleCycleLenOverrideDays?: number | null;
+  breedText?: string | null;
 };
 
 // Normalized plan shape for Rollup

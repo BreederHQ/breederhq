@@ -7,6 +7,7 @@ import { usePortalContext } from "../hooks/usePortalContext";
 import { usePortalTasks } from "../tasks/taskSources";
 import { usePortalNotifications } from "../notifications/notificationSources";
 import { BuildStamp } from "../dev/BuildStamp";
+import { useUnreadMessageCount } from "../hooks/useUnreadMessageCount";
 
 interface PortalLayoutProps {
   children: React.ReactNode;
@@ -79,6 +80,7 @@ export function PortalLayout({ children, currentPath }: PortalLayoutProps) {
   const { orgName, loading } = usePortalContext();
   const { tasks } = usePortalTasks();
   const { notifications } = usePortalNotifications();
+  const { unreadCount: unreadMessageCount } = useUnreadMessageCount();
 
   // Derive org initial from org name
   const orgInitial = orgName ? orgName.charAt(0).toUpperCase() : null;
@@ -123,6 +125,75 @@ export function PortalLayout({ children, currentPath }: PortalLayoutProps) {
         <div style={{ flex: "1 1 0%", minWidth: 0, overflow: "hidden" }}>
           <TopNav items={navItems} />
         </div>
+        {/* Messages icon */}
+        <button
+          onClick={() => {
+            window.history.pushState({}, "", "/messages");
+            window.dispatchEvent(new PopStateEvent("popstate"));
+          }}
+          style={{
+            all: "unset",
+            position: "relative",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            width: "32px",
+            height: "32px",
+            cursor: "pointer",
+            flexShrink: 0,
+            color: currentPath.startsWith("/messages")
+              ? "var(--portal-text-primary)"
+              : "var(--portal-text-secondary)",
+            transition: "color var(--portal-transition)",
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.color = "var(--portal-text-primary)";
+          }}
+          onMouseLeave={(e) => {
+            if (!currentPath.startsWith("/messages")) {
+              e.currentTarget.style.color = "var(--portal-text-secondary)";
+            }
+          }}
+          title="Messages"
+          aria-label={`Messages${unreadMessageCount > 0 ? ` (${unreadMessageCount} unread)` : ""}`}
+        >
+          <svg
+            width="20"
+            height="20"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+          </svg>
+          {/* Unread message badge */}
+          {unreadMessageCount > 0 && (
+            <span
+              style={{
+                position: "absolute",
+                top: "2px",
+                right: "2px",
+                minWidth: "16px",
+                height: "16px",
+                padding: "0 4px",
+                background: "var(--portal-accent)",
+                borderRadius: "8px",
+                border: "2px solid var(--portal-bg-elevated)",
+                fontSize: "10px",
+                fontWeight: 600,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                color: "white",
+              }}
+            >
+              {unreadMessageCount > 99 ? "99+" : unreadMessageCount}
+            </span>
+          )}
+        </button>
         {/* Notifications bell icon */}
         <button
           onClick={() => {

@@ -1,6 +1,7 @@
 // apps/platform/src/components/MarketplaceSettingsTab.tsx
 import React from "react";
 import { Button, SectionCard, Badge } from "@bhq/ui";
+import { confirmDialog } from "@bhq/ui/utils";
 
 /* ─────────────────────────────────────────────────────────────────────────────
    MarketplaceSettingsTab - Breeder Marketplace Profile Settings
@@ -17,6 +18,8 @@ type MarketplaceSettingsTabProps = {
   dirty: boolean;
   onDirty: (v: boolean) => void;
   onNavigateToBreeds?: () => void;
+  editMode?: boolean;
+  onExitEditMode?: () => void;
 };
 
 type PublicLocationMode = "city_state" | "zip_only" | "full" | "hidden";
@@ -26,7 +29,10 @@ type ProgramData = {
   name: string;
   description: string;
   status: boolean;
-  availability: string;
+  // Availability toggles (can be combined)
+  acceptInquiries: boolean;
+  openWaitlist: boolean;
+  comingSoon: boolean;
   breeds?: string[];
 };
 
@@ -267,7 +273,7 @@ type MarketplacePublicProfile = {
     zipRadius: boolean;
   };
   breeds: string[];
-  listedPrograms: { name: string; availability: string }[];
+  listedPrograms: { name: string; description: string; acceptInquiries: boolean; openWaitlist: boolean; comingSoon: boolean }[];
   standardsAndCredentials: {
     registrations: string[];
     healthPractices: string[];
@@ -305,7 +311,7 @@ function buildLocationDisplay(
 
 function buildMarketplacePublicProfile(
   published: MarketplacePublishedSnapshot | null,
-  programsState: { name: string; status: boolean; availability: string }[]
+  programsState: { name: string; description: string; status: boolean; acceptInquiries: boolean; openWaitlist: boolean; comingSoon: boolean }[]
 ): MarketplacePublicProfile | null {
   if (!published) return null;
 
@@ -324,7 +330,7 @@ function buildMarketplacePublicProfile(
     breeds: published.listedBreeds,
     listedPrograms: programsState
       .filter((p) => p.status)
-      .map((p) => ({ name: p.name, availability: p.availability })),
+      .map((p) => ({ name: p.name, description: p.description, acceptInquiries: p.acceptInquiries, openWaitlist: p.openWaitlist, comingSoon: p.comingSoon })),
     standardsAndCredentials: {
       registrations: published.standardsAndCredentials.registrations,
       healthPractices: published.standardsAndCredentials.healthPractices,
@@ -353,7 +359,7 @@ const SUBLABEL_CLS = "text-xs text-secondary mb-2";
 
 function Toggle({ checked, onChange, label, disabled }: { checked: boolean; onChange: (v: boolean) => void; label?: string; disabled?: boolean }) {
   return (
-    <label className={["inline-flex items-center gap-2 cursor-pointer", disabled ? "opacity-50 cursor-not-allowed" : ""].join(" ")}>
+    <label className={["inline-flex items-center gap-2", disabled ? "opacity-60 cursor-not-allowed" : "cursor-pointer"].join(" ")}>
       <button
         type="button"
         role="switch"
@@ -363,6 +369,7 @@ function Toggle({ checked, onChange, label, disabled }: { checked: boolean; onCh
         className={[
           "relative w-10 h-5 rounded-full transition-colors",
           checked ? "bg-[hsl(var(--brand-orange))]" : "bg-surface-strong border border-hairline",
+          disabled ? "cursor-not-allowed" : "",
         ].join(" ")}
       >
         <span
@@ -379,7 +386,7 @@ function Toggle({ checked, onChange, label, disabled }: { checked: boolean; onCh
 
 function Checkbox({ checked, onChange, label, disabled }: { checked: boolean; onChange: (v: boolean) => void; label: string; disabled?: boolean }) {
   return (
-    <label className={["flex items-center gap-2 cursor-pointer", disabled ? "opacity-50 cursor-not-allowed" : ""].join(" ")}>
+    <label className={["flex items-center gap-2", disabled ? "opacity-60 cursor-not-allowed" : "cursor-pointer"].join(" ")}>
       <input
         type="checkbox"
         checked={checked}
@@ -433,23 +440,33 @@ function ProgramCard({
   name,
   description,
   status,
-  availability,
+  acceptInquiries,
+  openWaitlist,
+  comingSoon,
   onToggle,
+  onEdit,
+  onDelete,
   isExample,
   onUseTemplate,
   onHideExample,
+  disabled = false,
 }: {
   name: string;
   description: string;
   status: boolean;
-  availability: string;
+  acceptInquiries?: boolean;
+  openWaitlist?: boolean;
+  comingSoon?: boolean;
   onToggle: () => void;
+  onEdit?: () => void;
+  onDelete?: () => void;
   isExample?: boolean;
   onUseTemplate?: () => void;
   onHideExample?: () => void;
+  disabled?: boolean;
 }) {
   return (
-    <div className="rounded-lg border border-hairline bg-card p-4 space-y-3">
+    <div className={`rounded-lg border border-hairline bg-card p-4 space-y-3 ${disabled ? "opacity-70" : ""}`}>
       <div className="flex items-start justify-between">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
@@ -461,36 +478,58 @@ function ProgramCard({
           <p className="text-sm text-secondary mt-1 line-clamp-2">{description}</p>
         </div>
         {!isExample && (
-          <Toggle checked={status} onChange={onToggle} label="Listed in Marketplace" />
+          <Toggle checked={status} onChange={onToggle} label="Listed in Marketplace" disabled={disabled} />
         )}
       </div>
-      <div className="flex items-center gap-2 text-xs">
+      <div className="flex items-center flex-wrap gap-2 text-xs">
         <Badge variant={status ? "green" : "neutral"}>
           {status ? "Listed" : "Hidden"}
         </Badge>
-        <Badge variant="neutral">{availability}</Badge>
+        {acceptInquiries && <Badge variant="neutral">Inquiries</Badge>}
+        {openWaitlist && <Badge variant="neutral">Waitlist Open</Badge>}
+        {comingSoon && <Badge variant="yellow">Coming Soon</Badge>}
+        {!acceptInquiries && !openWaitlist && !comingSoon && !isExample && (
+          <Badge variant="neutral">No Actions Enabled</Badge>
+        )}
       </div>
       {isExample ? (
-        <div className="flex items-center gap-3">
+        <div className={`flex items-center gap-3 ${disabled ? "pointer-events-none" : ""}`}>
           <button
             type="button"
             onClick={onUseTemplate}
-            className="text-xs text-[hsl(var(--brand-orange))] hover:underline"
+            disabled={disabled}
+            className={`text-xs text-[hsl(var(--brand-orange))] hover:underline ${disabled ? "cursor-not-allowed opacity-60" : ""}`}
           >
             Use this template
           </button>
           <button
             type="button"
             onClick={onHideExample}
-            className="text-xs text-secondary hover:text-primary"
+            disabled={disabled}
+            className={`text-xs text-secondary hover:text-primary ${disabled ? "cursor-not-allowed opacity-60" : ""}`}
           >
             Hide example
           </button>
         </div>
       ) : (
-        <button type="button" className="text-xs text-[hsl(var(--brand-orange))] hover:underline">
-          Preview listing →
-        </button>
+        <div className={`flex items-center gap-3 ${disabled ? "pointer-events-none" : ""}`}>
+          <button
+            type="button"
+            onClick={onEdit}
+            disabled={disabled}
+            className={`text-xs text-[hsl(var(--brand-orange))] hover:underline ${disabled ? "cursor-not-allowed opacity-60" : ""}`}
+          >
+            Edit program
+          </button>
+          <button
+            type="button"
+            onClick={onDelete}
+            disabled={disabled}
+            className={`text-xs text-secondary hover:text-red-400 ${disabled ? "cursor-not-allowed opacity-60" : ""}`}
+          >
+            Delete
+          </button>
+        </div>
       )}
     </div>
   );
@@ -504,6 +543,7 @@ function CredentialsChecklist({
   noteValue,
   onNoteChange,
   noteMaxLength = 200,
+  disabled = false,
 }: {
   title: string;
   items: string[];
@@ -512,9 +552,11 @@ function CredentialsChecklist({
   noteValue: string;
   onNoteChange: (v: string) => void;
   noteMaxLength?: number;
+  disabled?: boolean;
 }) {
+  const disabledCls = disabled ? "opacity-70 cursor-not-allowed" : "";
   return (
-    <div className="space-y-3">
+    <div className={`space-y-3 ${disabled ? "pointer-events-none" : ""}`}>
       <h4 className="text-sm font-medium text-primary">{title}</h4>
       <div className="grid grid-cols-2 gap-2">
         {items.map((item) => (
@@ -523,6 +565,7 @@ function CredentialsChecklist({
             checked={selected.includes(item)}
             onChange={() => onToggle(item)}
             label={item}
+            disabled={disabled}
           />
         ))}
       </div>
@@ -532,7 +575,8 @@ function CredentialsChecklist({
           onChange={(e) => onNoteChange(e.target.value.slice(0, noteMaxLength))}
           placeholder="Optional notes..."
           rows={2}
-          className={TEXTAREA_CLS}
+          disabled={disabled}
+          className={`${TEXTAREA_CLS} ${disabledCls}`}
         />
         <div className="text-xs text-secondary text-right mt-1">
           {noteValue.length}/{noteMaxLength}
@@ -586,7 +630,9 @@ type ProgramFormData = {
   description: string;
   breeds: string[];
   listed: boolean;
-  availability: string;
+  acceptInquiries: boolean;
+  openWaitlist: boolean;
+  comingSoon: boolean;
 };
 
 function CreateProgramModal({
@@ -604,14 +650,9 @@ function CreateProgramModal({
   const [description, setDescription] = React.useState("");
   const [selectedBreeds, setSelectedBreeds] = React.useState<string[]>([]);
   const [listed, setListed] = React.useState(false);
-  const [availability, setAvailability] = React.useState("Accepting inquiries");
-
-  const availabilityOptions = [
-    "Accepting inquiries",
-    "Waitlist only",
-    "Not accepting inquiries",
-    "Coming soon",
-  ];
+  const [acceptInquiries, setAcceptInquiries] = React.useState(true);
+  const [openWaitlist, setOpenWaitlist] = React.useState(false);
+  const [comingSoon, setComingSoon] = React.useState(false);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -621,13 +662,17 @@ function CreateProgramModal({
       description: description.trim(),
       breeds: selectedBreeds,
       listed,
-      availability,
+      acceptInquiries,
+      openWaitlist,
+      comingSoon,
     });
     setName("");
     setDescription("");
     setSelectedBreeds([]);
     setListed(false);
-    setAvailability("Accepting inquiries");
+    setAcceptInquiries(true);
+    setOpenWaitlist(false);
+    setComingSoon(false);
     onClose();
   }
 
@@ -711,19 +756,34 @@ function CreateProgramModal({
             </div>
 
             <div>
-              <label className={LABEL_CLS}>Availability Status</label>
-              <select
-                value={availability}
-                onChange={(e) => setAvailability(e.target.value)}
-                className={INPUT_CLS}
-              >
-                {availabilityOptions.map((opt) => (
-                  <option key={opt} value={opt}>{opt}</option>
-                ))}
-              </select>
+              <label className={LABEL_CLS}>Availability Options</label>
+              <p className={SUBLABEL_CLS}>Control how visitors can interact with this program listing.</p>
+              <div className="space-y-3 mt-2">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <label className="text-sm font-medium text-primary">Accept Inquiries</label>
+                    <p className="text-xs text-secondary">Allow visitors to send you messages about this program.</p>
+                  </div>
+                  <Toggle checked={acceptInquiries} onChange={setAcceptInquiries} />
+                </div>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <label className="text-sm font-medium text-primary">Open Waitlist</label>
+                    <p className="text-xs text-secondary">Allow visitors to request a spot on your waitlist.</p>
+                  </div>
+                  <Toggle checked={openWaitlist} onChange={setOpenWaitlist} />
+                </div>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <label className="text-sm font-medium text-primary">Coming Soon</label>
+                    <p className="text-xs text-secondary">Show a "Coming Soon" badge on this program.</p>
+                  </div>
+                  <Toggle checked={comingSoon} onChange={setComingSoon} />
+                </div>
+              </div>
             </div>
 
-            <div className="flex items-center justify-between py-2">
+            <div className="flex items-center justify-between py-2 border-t border-hairline mt-2 pt-4">
               <div>
                 <label className="text-sm font-medium text-primary">List in Marketplace</label>
                 <p className="text-xs text-secondary">Make this program visible to buyers.</p>
@@ -739,6 +799,206 @@ function CreateProgramModal({
             <Button type="submit" disabled={!name.trim()}>
               Create Program
             </Button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function EditProgramModal({
+  open,
+  program,
+  onClose,
+  onSave,
+  onDelete,
+  availableBreeds,
+}: {
+  open: boolean;
+  program: ProgramData | null;
+  onClose: () => void;
+  onSave: (id: string, data: ProgramFormData) => void;
+  onDelete: (id: string) => void;
+  availableBreeds: string[];
+}) {
+  const [name, setName] = React.useState("");
+  const [description, setDescription] = React.useState("");
+  const [selectedBreeds, setSelectedBreeds] = React.useState<string[]>([]);
+  const [listed, setListed] = React.useState(false);
+  const [acceptInquiries, setAcceptInquiries] = React.useState(true);
+  const [openWaitlist, setOpenWaitlist] = React.useState(false);
+  const [comingSoon, setComingSoon] = React.useState(false);
+
+  // Sync state when program changes
+  React.useEffect(() => {
+    if (program) {
+      setName(program.name);
+      setDescription(program.description);
+      setSelectedBreeds(program.breeds || []);
+      setListed(program.status);
+      setAcceptInquiries(program.acceptInquiries ?? true);
+      setOpenWaitlist(program.openWaitlist ?? false);
+      setComingSoon(program.comingSoon ?? false);
+    }
+  }, [program]);
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!name.trim() || !program) return;
+    onSave(program.id, {
+      name: name.trim(),
+      description: description.trim(),
+      breeds: selectedBreeds,
+      listed,
+      acceptInquiries,
+      openWaitlist,
+      comingSoon,
+    });
+    onClose();
+  }
+
+  function handleDelete() {
+    if (!program) return;
+    // Close the modal first, then let the parent handle deletion with its own confirmation
+    onClose();
+    onDelete(program.id);
+  }
+
+  function toggleBreed(breed: string) {
+    setSelectedBreeds((prev) =>
+      prev.includes(breed) ? prev.filter((b) => b !== breed) : [...prev, breed]
+    );
+  }
+
+  if (!open || !program) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      <div className="absolute inset-0 bg-black/60" onClick={onClose} />
+      <div className="relative bg-surface-strong border border-hairline rounded-xl shadow-xl w-full max-w-lg mx-4 max-h-[90vh] overflow-auto">
+        <form onSubmit={handleSubmit}>
+          <div className="p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-primary">Edit Program</h3>
+              <button
+                type="button"
+                onClick={onClose}
+                className="text-secondary hover:text-primary text-xl leading-none"
+              >
+                ×
+              </button>
+            </div>
+
+            <div>
+              <label className={LABEL_CLS}>
+                Program Name <span className="text-red-400">*</span>
+              </label>
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="e.g., Golden Retriever Program"
+                className={INPUT_CLS}
+                required
+              />
+            </div>
+
+            <div>
+              <label className={LABEL_CLS}>Description</label>
+              <p className={SUBLABEL_CLS}>
+                Describe your breeding program in detail. What makes it special? What are your goals?
+              </p>
+              <textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value.slice(0, 500))}
+                placeholder="Describe your breeding program, its history, goals, and what makes it unique..."
+                rows={5}
+                className={TEXTAREA_CLS}
+              />
+              <div className="text-xs text-secondary text-right mt-1">
+                {description.length}/500
+              </div>
+            </div>
+
+            <div>
+              <label className={LABEL_CLS}>Associated Breeds</label>
+              <p className={SUBLABEL_CLS}>Select breeds included in this program.</p>
+              {availableBreeds.length === 0 ? (
+                <p className="text-sm text-secondary italic">No breeds available.</p>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {availableBreeds.map((breed) => (
+                    <button
+                      key={breed}
+                      type="button"
+                      onClick={() => toggleBreed(breed)}
+                      className={[
+                        "px-3 py-1.5 rounded-full text-sm font-medium transition-colors border",
+                        selectedBreeds.includes(breed)
+                          ? "bg-[hsl(var(--brand-orange))] text-white border-transparent"
+                          : "bg-surface-strong text-secondary border-hairline hover:border-[hsl(var(--brand-orange))]/50",
+                      ].join(" ")}
+                    >
+                      {breed}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div>
+              <label className={LABEL_CLS}>Availability Options</label>
+              <p className={SUBLABEL_CLS}>Control how visitors can interact with this program listing.</p>
+              <div className="space-y-3 mt-2">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <label className="text-sm font-medium text-primary">Accept Inquiries</label>
+                    <p className="text-xs text-secondary">Allow visitors to send you messages about this program.</p>
+                  </div>
+                  <Toggle checked={acceptInquiries} onChange={setAcceptInquiries} />
+                </div>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <label className="text-sm font-medium text-primary">Open Waitlist</label>
+                    <p className="text-xs text-secondary">Allow visitors to request a spot on your waitlist.</p>
+                  </div>
+                  <Toggle checked={openWaitlist} onChange={setOpenWaitlist} />
+                </div>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <label className="text-sm font-medium text-primary">Coming Soon</label>
+                    <p className="text-xs text-secondary">Show a "Coming Soon" badge on this program.</p>
+                  </div>
+                  <Toggle checked={comingSoon} onChange={setComingSoon} />
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between py-2 border-t border-hairline mt-2 pt-4">
+              <div>
+                <label className="text-sm font-medium text-primary">List in Marketplace</label>
+                <p className="text-xs text-secondary">Make this program visible to buyers.</p>
+              </div>
+              <Toggle checked={listed} onChange={setListed} />
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between px-6 py-4 border-t border-hairline bg-card/50">
+            <button
+              type="button"
+              onClick={handleDelete}
+              className="text-sm text-red-400 hover:text-red-300"
+            >
+              Delete program
+            </button>
+            <div className="flex items-center gap-3">
+              <Button type="button" variant="outline" onClick={onClose}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={!name.trim()}>
+                Save Changes
+              </Button>
+            </div>
           </div>
         </form>
       </div>
@@ -765,7 +1025,7 @@ function PublishErrorBanner({ errors }: { errors: string[] }) {
 // ═══════════════════════════════════════════════════════════════════════════
 
 const MarketplaceSettingsTabInner = React.forwardRef<MarketplaceHandle, MarketplaceSettingsTabProps>(
-  function MarketplaceSettingsTab({ onDirty, onNavigateToBreeds }, ref) {
+  function MarketplaceSettingsTab({ onDirty, onNavigateToBreeds, editMode = false, onExitEditMode }, ref) {
   // ─── State ────────────────────────────────────────────────────────────────
   const [draft, setDraft] = React.useState<MarketplaceProfileDraft>(createEmptyDraft);
   const [published, setPublished] = React.useState<MarketplacePublishedSnapshot | null>(null);
@@ -824,9 +1084,9 @@ const MarketplaceSettingsTabInner = React.forwardRef<MarketplaceHandle, Marketpl
   };
 
   // Example programs (static, can be hidden)
-  const examplePrograms = [
-    { id: "example-1", name: "Golden Retriever Program", description: "AKC registered Goldens with OFA clearances. Family-raised with early neurological stimulation.", status: true, availability: "Accepting inquiries" },
-    { id: "example-2", name: "Labrador Program", description: "English Labs bred for temperament and conformation.", status: false, availability: "Waitlist only" },
+  const examplePrograms: ProgramData[] = [
+    { id: "example-1", name: "Golden Retriever Program", description: "AKC registered Goldens with OFA clearances. Family-raised with early neurological stimulation.", status: true, acceptInquiries: true, openWaitlist: true, comingSoon: false },
+    { id: "example-2", name: "Labrador Program", description: "English Labs bred for temperament and conformation.", status: false, acceptInquiries: false, openWaitlist: true, comingSoon: true },
   ];
 
   // Hidden examples persistence
@@ -876,6 +1136,7 @@ const MarketplaceSettingsTabInner = React.forwardRef<MarketplaceHandle, Marketpl
   const visibleExamples = examplePrograms.filter((p) => !hiddenExamples.includes(p.id));
   const realBreedNames = tenantBreeds.map((b) => b.name);
   const [createModalOpen, setCreateModalOpen] = React.useState(false);
+  const [editingProgram, setEditingProgram] = React.useState<ProgramData | null>(null);
 
   // ─── Dirty tracking ──────────────────────────────────────────────────────
   React.useEffect(() => {
@@ -960,6 +1221,14 @@ const MarketplaceSettingsTabInner = React.forwardRef<MarketplaceHandle, Marketpl
     });
   }
 
+  // Helper to map listed breeds to include species for publish payload
+  function getBreedsWithSpecies(listedBreedNames: string[]) {
+    return listedBreedNames.map((name) => {
+      const breed = tenantBreeds.find((b) => b.name === name);
+      return { name, species: breed?.species || null };
+    });
+  }
+
   // ─── Programs helpers (DO NOT MODIFY LOGIC) ──────────────────────────────
   function toggleSpecies(species: string) {
     setSelectedSpecies((prev) =>
@@ -967,19 +1236,79 @@ const MarketplaceSettingsTabInner = React.forwardRef<MarketplaceHandle, Marketpl
     );
   }
 
-  function toggleProgram(id: string) {
-    setPrograms((prev) =>
-      prev.map((p) => (p.id === id ? { ...p, status: !p.status } : p))
-    );
+  async function toggleProgram(id: string) {
+    const program = programs.find((p) => p.id === id);
+    if (!program) return;
+
+    const newStatus = !program.status;
+
+    // If published and toggling ON (making visible), prompt immediately
+    if (published && newStatus) {
+      const confirmed = await confirmDialog({
+        title: "Update Public Listing",
+        message: "Your marketplace listing is live. Saving will update your public listing immediately.",
+        confirmText: "Save & Update",
+        cancelText: "Cancel",
+      });
+      if (!confirmed) return;
+
+      // Update state and auto-save
+      const updatedPrograms = programs.map((p) => (p.id === id ? { ...p, status: newStatus } : p));
+      setPrograms(updatedPrograms);
+
+      const updatedDraft = { ...draft, programs: updatedPrograms };
+      const updatedListedPrograms = updatedPrograms.filter((p) => p.status).map((p) => ({
+        name: p.name,
+        description: p.description,
+        acceptInquiries: p.acceptInquiries,
+        openWaitlist: p.openWaitlist,
+        comingSoon: p.comingSoon,
+      }));
+
+      setSaving(true);
+      try {
+        await saveMarketplaceDraft(tenantId, updatedDraft);
+        const publishPayload = {
+          ...updatedDraft,
+          breeds: getBreedsWithSpecies(updatedDraft.listedBreeds),
+          listedPrograms: updatedListedPrograms,
+        };
+        const pubResult = await publishMarketplaceProfile(tenantId, publishPayload);
+        if (pubResult.ok && pubResult.publishedAt) {
+          const snapshot: MarketplacePublishedSnapshot = {
+            ...updatedDraft,
+            updatedAt: pubResult.publishedAt,
+            publishedAt: pubResult.publishedAt,
+          };
+          setPublished(snapshot);
+          setDraft((prev) => ({ ...prev, programs: updatedPrograms, updatedAt: pubResult.publishedAt! }));
+          initialDraftRef.current = JSON.stringify({ ...updatedDraft, updatedAt: pubResult.publishedAt });
+          onDirty(false);
+          onExitEditMode?.();
+        }
+      } catch (e) {
+        console.error("Failed to update program visibility:", e);
+        setSaveError("Failed to update listing. Please try again.");
+      } finally {
+        setSaving(false);
+      }
+    } else {
+      // Not published, or toggling OFF - just update local state
+      setPrograms((prev) =>
+        prev.map((p) => (p.id === id ? { ...p, status: newStatus } : p))
+      );
+    }
   }
 
   function handleCreateProgram(data: ProgramFormData) {
-    const newProgram = {
+    const newProgram: ProgramData = {
       id: `program-${Date.now()}`,
       name: data.name,
       description: data.description,
       status: data.listed,
-      availability: data.availability,
+      acceptInquiries: data.acceptInquiries,
+      openWaitlist: data.openWaitlist,
+      comingSoon: data.comingSoon,
       breeds: data.breeds,
     };
     setPrograms((prev) => [...prev, newProgram]);
@@ -988,12 +1317,14 @@ const MarketplaceSettingsTabInner = React.forwardRef<MarketplaceHandle, Marketpl
   function handleUseTemplate(exampleId: string) {
     const example = examplePrograms.find((p) => p.id === exampleId);
     if (!example) return;
-    const newProgram = {
+    const newProgram: ProgramData = {
       id: `program-${Date.now()}`,
       name: example.name,
       description: example.description,
       status: example.status,
-      availability: example.availability,
+      acceptInquiries: example.acceptInquiries,
+      openWaitlist: example.openWaitlist,
+      comingSoon: example.comingSoon,
       breeds: [] as string[],
     };
     setPrograms((prev) => [...prev, newProgram]);
@@ -1004,27 +1335,105 @@ const MarketplaceSettingsTabInner = React.forwardRef<MarketplaceHandle, Marketpl
     setHiddenExamples((prev) => [...prev, exampleId]);
   }
 
+  function handleEditProgram(id: string, data: ProgramFormData) {
+    // Update local state - dirty tracking will mark the form as dirty
+    // User must click Save to persist changes (consistent with other fields)
+    setPrograms((prev) =>
+      prev.map((p) =>
+        p.id === id
+          ? {
+              ...p,
+              name: data.name,
+              description: data.description,
+              breeds: data.breeds,
+              status: data.listed,
+              acceptInquiries: data.acceptInquiries,
+              openWaitlist: data.openWaitlist,
+              comingSoon: data.comingSoon,
+            }
+          : p
+      )
+    );
+  }
+
+  async function handleDeleteProgram(id: string) {
+    const program = programs.find((p) => p.id === id);
+    if (!program) return;
+
+    const confirmed = await confirmDialog({
+      title: "Delete Program",
+      message: `Are you sure you want to delete "${program.name}"? This cannot be undone.`,
+      confirmText: "Delete",
+      cancelText: "Cancel",
+      variant: "danger",
+    });
+    if (!confirmed) return;
+
+    setPrograms((prev) => prev.filter((p) => p.id !== id));
+  }
+
   const listedProgramsCount = programs.filter((p) => p.status).length;
   const listedPrograms = programs.filter((p) => p.status).map((p) => ({
     name: p.name,
     description: p.description,
-    availability: p.availability,
+    acceptInquiries: p.acceptInquiries,
+    openWaitlist: p.openWaitlist,
+    comingSoon: p.comingSoon,
   }));
 
   // ─── Save Draft (API-based) ────────────────────────────────────────────────
+  // When already published, saving also republishes to update the public listing
   async function handleSaveDraft(): Promise<void> {
+    // If already published, confirm before updating public listing
+    if (published) {
+      const confirmed = await confirmDialog({
+        title: "Update Public Listing",
+        message: "Your marketplace listing is live. Saving will update your public listing immediately.",
+        confirmText: "Save & Update",
+        cancelText: "Cancel",
+      });
+      if (!confirmed) return;
+    }
+
     setSaving(true);
     setSaveError(null);
     try {
+      // Always save the draft first
       const result = await saveMarketplaceDraft(tenantId, draft);
-      if (result.ok) {
+      if (!result.ok) {
+        throw new Error("Failed to save draft");
+      }
+
+      // If already published, also republish to update the public listing
+      if (published) {
+        const publishPayload = {
+          ...draft,
+          breeds: getBreedsWithSpecies(draft.listedBreeds),
+          listedPrograms,
+        };
+        const pubResult = await publishMarketplaceProfile(tenantId, publishPayload);
+        if (pubResult.ok && pubResult.publishedAt) {
+          const snapshot: MarketplacePublishedSnapshot = {
+            ...draft,
+            updatedAt: pubResult.publishedAt,
+            publishedAt: pubResult.publishedAt,
+          };
+          setPublished(snapshot);
+          setDraft((prev) => ({ ...prev, updatedAt: pubResult.publishedAt! }));
+          initialDraftRef.current = JSON.stringify({ ...draft, updatedAt: pubResult.publishedAt });
+          onDirty(false);
+        } else if (pubResult.errors) {
+          setPublishErrors(pubResult.errors);
+        }
+      } else {
+        // Not published yet - just update draft state
         const now = result.draftUpdatedAt || new Date().toISOString();
         initialDraftRef.current = JSON.stringify({ ...draft, updatedAt: now });
         setDraft((prev) => ({ ...prev, updatedAt: now }));
         onDirty(false);
       }
     } catch (e) {
-      console.error("Failed to save draft:", e);
+      console.error("Failed to save:", e);
       setSaveError(e.message || "Failed to save. Please try again.");
     } finally {
       setSaving(false);
@@ -1035,6 +1444,28 @@ const MarketplaceSettingsTabInner = React.forwardRef<MarketplaceHandle, Marketpl
   React.useImperativeHandle(ref, () => ({
     save: handleSaveDraft,
   }), [draft, tenantId]);
+
+  // ─── Discard Changes ─────────────────────────────────────────────────────
+  async function handleDiscardChanges(): Promise<void> {
+    const confirmed = await confirmDialog({
+      title: "Discard Changes",
+      message: "Are you sure you want to discard your unsaved changes? This cannot be undone.",
+      confirmText: "Discard",
+      cancelText: "Keep Editing",
+      variant: "danger",
+    });
+    if (!confirmed) return;
+
+    // Reset draft to initial state (what was last saved/loaded)
+    try {
+      const initialDraft = JSON.parse(initialDraftRef.current);
+      setDraft(initialDraft);
+      onDirty(false);
+    } catch {
+      // Fallback: reload from API would be ideal, but for now just reset dirty state
+      onDirty(false);
+    }
+  }
 
   // ─── Publish validation and action ───────────────────────────────────────
   function validateForPublish(): string[] {
@@ -1061,7 +1492,7 @@ const MarketplaceSettingsTabInner = React.forwardRef<MarketplaceHandle, Marketpl
       // Build the publish payload with required fields
       const publishPayload = {
         ...draft,
-        breeds: draft.listedBreeds.map((name) => ({ name })),
+        breeds: getBreedsWithSpecies(draft.listedBreeds),
         listedPrograms,
       };
       const result = await publishMarketplaceProfile(tenantId, publishPayload);
@@ -1120,7 +1551,7 @@ const MarketplaceSettingsTabInner = React.forwardRef<MarketplaceHandle, Marketpl
   // Build public payload for debug panel
   const publicPayload = buildMarketplacePublicProfile(
     published,
-    programs.map((p) => ({ name: p.name, status: p.status, availability: p.availability }))
+    programs.map((p) => ({ name: p.name, description: p.description, status: p.status, acceptInquiries: p.acceptInquiries, openWaitlist: p.openWaitlist, comingSoon: p.comingSoon }))
   );
 
   // ─── Render ──────────────────────────────────────────────────────────────
@@ -1164,288 +1595,10 @@ const MarketplaceSettingsTabInner = React.forwardRef<MarketplaceHandle, Marketpl
         </div>
       </div>
 
-      {/* Section 1: Business Identity */}
-      <SectionCard title="Business Identity">
-        <div className="space-y-4">
-          <div>
-            <label className={LABEL_CLS}>Public Business Name</label>
-            <input
-              type="text"
-              value={draft.businessName}
-              onChange={(e) => updateDraft("businessName", e.target.value)}
-              placeholder="Your breeding program name"
-              className={INPUT_CLS}
-            />
-          </div>
-
-          <div>
-            <label className={LABEL_CLS}>Logo</label>
-            <div className="flex items-start gap-4">
-              <div className="w-20 h-20 rounded-lg bg-card border-2 border-dashed border-hairline flex items-center justify-center text-3xl text-secondary">
-                🐾
-              </div>
-              <div className="flex-1">
-                <Button variant="outline" size="sm">Upload Logo</Button>
-                <p className="text-xs text-secondary mt-2">
-                  Recommended: Square image, at least 200×200px. PNG or JPG.
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <div>
-            <label className={LABEL_CLS}>Short Business Bio</label>
-            <textarea
-              value={draft.bio}
-              onChange={(e) => updateDraft("bio", e.target.value.slice(0, 500))}
-              placeholder="Describe your breeding program..."
-              rows={3}
-              className={TEXTAREA_CLS}
-            />
-            <div className="text-xs text-secondary text-right mt-1">{draft.bio.length}/500</div>
-          </div>
-
-          <div className="flex items-end gap-3">
-            <div className="flex-1">
-              <label className={LABEL_CLS}>Website URL</label>
-              <input
-                type="url"
-                value={draft.websiteUrl}
-                onChange={(e) => updateDraft("websiteUrl", e.target.value)}
-                placeholder="https://yoursite.com"
-                className={INPUT_CLS}
-              />
-            </div>
-            <Toggle checked={draft.showWebsite} onChange={(v) => updateDraft("showWebsite", v)} label="Show in Marketplace" />
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="flex items-end gap-3">
-              <div className="flex-1">
-                <label className={LABEL_CLS}>Instagram</label>
-                <input
-                  type="text"
-                  value={draft.instagram}
-                  onChange={(e) => updateDraft("instagram", e.target.value)}
-                  placeholder="@yourbusiness"
-                  className={INPUT_CLS}
-                />
-              </div>
-              <Toggle checked={draft.showInstagram} onChange={(v) => updateDraft("showInstagram", v)} />
-            </div>
-            <div className="flex items-end gap-3">
-              <div className="flex-1">
-                <label className={LABEL_CLS}>Facebook</label>
-                <input
-                  type="text"
-                  value={draft.facebook}
-                  onChange={(e) => updateDraft("facebook", e.target.value)}
-                  placeholder="YourPage"
-                  className={INPUT_CLS}
-                />
-              </div>
-              <Toggle checked={draft.showFacebook} onChange={(v) => updateDraft("showFacebook", v)} />
-            </div>
-          </div>
-        </div>
-      </SectionCard>
-
-      {/* Section 2: Location and Service Area */}
-      <SectionCard title="Location and Service Area">
-        <div className="space-y-4">
-          <p className={SUBLABEL_CLS}>
-            Your full address is kept private. Choose how much to display publicly.
-          </p>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="md:col-span-2">
-              <label className={LABEL_CLS}>Street Address (Private)</label>
-              <input
-                type="text"
-                value={draft.address.street}
-                onChange={(e) => updateAddress("street", e.target.value)}
-                placeholder="123 Main St"
-                className={INPUT_CLS}
-              />
-            </div>
-            <div>
-              <label className={LABEL_CLS}>City</label>
-              <input
-                type="text"
-                value={draft.address.city}
-                onChange={(e) => updateAddress("city", e.target.value)}
-                placeholder="City"
-                className={INPUT_CLS}
-              />
-            </div>
-            <div>
-              <label className={LABEL_CLS}>State/Province</label>
-              <input
-                type="text"
-                value={draft.address.state}
-                onChange={(e) => updateAddress("state", e.target.value)}
-                placeholder="State"
-                className={INPUT_CLS}
-              />
-            </div>
-            <div>
-              <label className={LABEL_CLS}>ZIP/Postal Code</label>
-              <input
-                type="text"
-                value={draft.address.zip}
-                onChange={(e) => updateAddress("zip", e.target.value)}
-                placeholder="12345"
-                className={INPUT_CLS}
-              />
-            </div>
-            <div>
-              <label className={LABEL_CLS}>Country</label>
-              <input
-                type="text"
-                value={draft.address.country}
-                onChange={(e) => updateAddress("country", e.target.value)}
-                placeholder="Country"
-                className={INPUT_CLS}
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-              <label className={LABEL_CLS}>Public Location Display</label>
-              <RadioGroup
-                name="locationDisplay"
-                value={draft.publicLocationMode}
-                onChange={(v) => updateDraft("publicLocationMode", v as PublicLocationMode)}
-                options={[
-                  { value: "city_state", label: "City + State" },
-                  { value: "zip_only", label: "ZIP Code only" },
-                  { value: "full", label: "City + State + ZIP" },
-                  { value: "hidden", label: "Hidden from public" },
-                ]}
-              />
-            </div>
-
-            <div>
-              <label className={LABEL_CLS}>Search Participation</label>
-              <div className="space-y-2">
-                <Checkbox
-                  checked={draft.searchParticipation.distanceSearch}
-                  onChange={(v) => updateSearchParticipation("distanceSearch", v)}
-                  label="Allow distance-based search"
-                />
-                <Checkbox
-                  checked={draft.searchParticipation.citySearch}
-                  onChange={(v) => updateSearchParticipation("citySearch", v)}
-                  label="Allow city/state search"
-                />
-                <Checkbox
-                  checked={draft.searchParticipation.zipRadius}
-                  onChange={(v) => updateSearchParticipation("zipRadius", v)}
-                  label="Allow ZIP radius search"
-                />
-              </div>
-            </div>
-          </div>
-        </div>
-      </SectionCard>
-
-      {/* Section 3: Species and Breeds (DO NOT MODIFY) */}
-      <SectionCard title="Species and Breeds">
-        <div className="space-y-4">
-          <div className="rounded-lg border border-hairline bg-surface-strong/50 p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <h4 className="font-medium text-primary">Species You Breed</h4>
-                <p className="text-sm text-secondary mt-1">
-                  Select all species in your breeding program.
-                </p>
-              </div>
-              <Badge variant="neutral">
-                {selectedSpecies.length} selected
-              </Badge>
-            </div>
-            <div className="flex flex-wrap gap-2 mt-3">
-              {speciesOptions.map((species) => (
-                <SpeciesChip
-                  key={species}
-                  label={species}
-                  selected={selectedSpecies.includes(species)}
-                  onClick={() => toggleSpecies(species)}
-                />
-              ))}
-            </div>
-          </div>
-
-          <div className="rounded-lg border border-hairline bg-surface-strong/50 p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <h4 className="font-medium text-primary">Breeds to List</h4>
-                <p className="text-sm text-secondary mt-1">
-                  Select which breeds to advertise on the Marketplace.{" "}
-                  <button
-                    type="button"
-                    className="text-[hsl(var(--brand-orange))] hover:underline"
-                    onClick={onNavigateToBreeds}
-                  >
-                    Manage breeds
-                  </button>
-                </p>
-              </div>
-              <Badge variant="neutral">
-                {breedsLoading ? "..." : `${draft.listedBreeds.length} of ${tenantBreeds.length} listed`}
-              </Badge>
-            </div>
-            {breedsLoading ? (
-              <div className="mt-3 text-sm text-secondary">Loading breeds...</div>
-            ) : tenantBreeds.length === 0 ? (
-              <div className="mt-3 text-sm text-secondary italic">
-                No breeds added yet.{" "}
-                <button
-                  type="button"
-                  className="text-[hsl(var(--brand-orange))] hover:underline"
-                  onClick={onNavigateToBreeds}
-                >
-                  Add breeds to your program
-                </button>
-              </div>
-            ) : (
-              <div className="flex flex-wrap gap-2 mt-3">
-                {tenantBreeds.map((breed) => {
-                  const isListed = draft.listedBreeds.includes(breed.name);
-                  return (
-                    <button
-                      key={breed.name}
-                      type="button"
-                      onClick={() => toggleBreedListing(breed.name)}
-                      className={[
-                        "text-sm px-3 py-1.5 rounded-full border transition-colors",
-                        isListed
-                          ? "bg-[hsl(var(--brand-orange))] text-white border-transparent"
-                          : "bg-surface-strong border-hairline text-secondary hover:border-[hsl(var(--brand-orange))]/50",
-                      ].join(" ")}
-                    >
-                      {breed.name}
-                      {breed.source === "custom" && (
-                        <span className={[
-                          "ml-1.5 text-[10px] px-1.5 py-0.5 rounded-full",
-                          isListed ? "bg-white/20 text-white" : "bg-amber-500/20 text-amber-400"
-                        ].join(" ")}>
-                          Custom
-                        </span>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        </div>
-      </SectionCard>
-
-      {/* Section 4: Programs and Listings (DO NOT MODIFY) */}
+      {/* Section: Programs and Listings */}
       <SectionCard
         title="Programs and Listings"
+        highlight={editMode}
         right={
           <div className="flex items-center gap-2">
             {realBreedNames.length === 0 && !breedsLoading && (
@@ -1463,7 +1616,7 @@ const MarketplaceSettingsTabInner = React.forwardRef<MarketplaceHandle, Marketpl
             <Button
               size="sm"
               onClick={() => setCreateModalOpen(true)}
-              disabled={realBreedNames.length === 0 && !breedsLoading}
+              disabled={!editMode || (realBreedNames.length === 0 && !breedsLoading)}
             >
               Create program
             </Button>
@@ -1488,8 +1641,13 @@ const MarketplaceSettingsTabInner = React.forwardRef<MarketplaceHandle, Marketpl
                 name={program.name}
                 description={program.description}
                 status={program.status}
-                availability={program.availability}
+                acceptInquiries={program.acceptInquiries}
+                openWaitlist={program.openWaitlist}
+                comingSoon={program.comingSoon}
                 onToggle={() => toggleProgram(program.id)}
+                onEdit={() => setEditingProgram(program)}
+                onDelete={() => handleDeleteProgram(program.id)}
+                disabled={!editMode}
               />
             ))}
 
@@ -1499,11 +1657,14 @@ const MarketplaceSettingsTabInner = React.forwardRef<MarketplaceHandle, Marketpl
                 name={example.name}
                 description={example.description}
                 status={example.status}
-                availability={example.availability}
+                acceptInquiries={true}
+                openWaitlist={false}
+                comingSoon={false}
                 onToggle={() => {}}
                 isExample
                 onUseTemplate={() => handleUseTemplate(example.id)}
                 onHideExample={() => handleHideExample(example.id)}
+                disabled={!editMode}
               />
             ))}
           </div>
@@ -1517,8 +1678,17 @@ const MarketplaceSettingsTabInner = React.forwardRef<MarketplaceHandle, Marketpl
         availableBreeds={realBreedNames}
       />
 
+      <EditProgramModal
+        open={!!editingProgram}
+        program={editingProgram}
+        onClose={() => setEditingProgram(null)}
+        onSave={handleEditProgram}
+        onDelete={handleDeleteProgram}
+        availableBreeds={realBreedNames}
+      />
+
       {/* Section 5: Standards and Credentials */}
-      <SectionCard title="Standards and Credentials">
+      <SectionCard title="Standards and Credentials" highlight={editMode}>
         <div className="space-y-6">
           <CredentialsChecklist
             title="Registrations and Affiliations"
@@ -1527,6 +1697,7 @@ const MarketplaceSettingsTabInner = React.forwardRef<MarketplaceHandle, Marketpl
             onToggle={(item) => toggleCredentialItem("registrations", item)}
             noteValue={draft.standardsAndCredentials.registrationsNote}
             onNoteChange={(v) => updateCredentials("registrationsNote", v)}
+            disabled={!editMode}
           />
 
           <CredentialsChecklist
@@ -1536,6 +1707,7 @@ const MarketplaceSettingsTabInner = React.forwardRef<MarketplaceHandle, Marketpl
             onToggle={(item) => toggleCredentialItem("healthPractices", item)}
             noteValue={draft.standardsAndCredentials.healthNote}
             onNoteChange={(v) => updateCredentials("healthNote", v)}
+            disabled={!editMode}
           />
 
           <CredentialsChecklist
@@ -1545,6 +1717,7 @@ const MarketplaceSettingsTabInner = React.forwardRef<MarketplaceHandle, Marketpl
             onToggle={(item) => toggleCredentialItem("breedingPractices", item)}
             noteValue={draft.standardsAndCredentials.breedingNote}
             onNoteChange={(v) => updateCredentials("breedingNote", v)}
+            disabled={!editMode}
           />
 
           <CredentialsChecklist
@@ -1554,38 +1727,44 @@ const MarketplaceSettingsTabInner = React.forwardRef<MarketplaceHandle, Marketpl
             onToggle={(item) => toggleCredentialItem("carePractices", item)}
             noteValue={draft.standardsAndCredentials.careNote}
             onNoteChange={(v) => updateCredentials("careNote", v)}
+            disabled={!editMode}
           />
         </div>
       </SectionCard>
 
       {/* Section 6: Placement Policies */}
-      <SectionCard title="Placement Policies">
-        <div className="space-y-4">
+      <SectionCard title="Placement Policies" highlight={editMode}>
+        <div className={`space-y-4 ${!editMode ? "pointer-events-none" : ""}`}>
           <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
             <Checkbox
               checked={draft.placementPolicies.requireApplication}
               onChange={(v) => updatePlacement("requireApplication", v)}
               label="Require application"
+              disabled={!editMode}
             />
             <Checkbox
               checked={draft.placementPolicies.requireInterview}
               onChange={(v) => updatePlacement("requireInterview", v)}
               label="Require interview/meeting"
+              disabled={!editMode}
             />
             <Checkbox
               checked={draft.placementPolicies.requireContract}
               onChange={(v) => updatePlacement("requireContract", v)}
               label="Require signed contract"
+              disabled={!editMode}
             />
             <Checkbox
               checked={draft.placementPolicies.hasReturnPolicy}
               onChange={(v) => updatePlacement("hasReturnPolicy", v)}
               label="Lifetime return policy"
+              disabled={!editMode}
             />
             <Checkbox
               checked={draft.placementPolicies.offersSupport}
               onChange={(v) => updatePlacement("offersSupport", v)}
               label="Ongoing breeder support"
+              disabled={!editMode}
             />
           </div>
           <div>
@@ -1596,7 +1775,8 @@ const MarketplaceSettingsTabInner = React.forwardRef<MarketplaceHandle, Marketpl
               onChange={(e) => updatePlacement("note", e.target.value.slice(0, 300))}
               placeholder="Describe your placement process..."
               rows={3}
-              className={TEXTAREA_CLS}
+              disabled={!editMode}
+              className={`${TEXTAREA_CLS} ${!editMode ? "opacity-70 cursor-not-allowed" : ""}`}
             />
             <div className="text-xs text-secondary text-right mt-1">{draft.placementPolicies.note.length}/300</div>
           </div>
@@ -1630,7 +1810,7 @@ const MarketplaceSettingsTabInner = React.forwardRef<MarketplaceHandle, Marketpl
       </SectionCard>
 
       {/* Section 8: Preview and Validation */}
-      <SectionCard title="Preview and Validation">
+      <SectionCard title="Preview and Validation" highlight={editMode}>
         <div className="space-y-6">
           <PublishErrorBanner errors={publishErrors} />
 
@@ -1661,20 +1841,29 @@ const MarketplaceSettingsTabInner = React.forwardRef<MarketplaceHandle, Marketpl
           </div>
 
           <div className="flex items-center gap-3 pt-4 border-t border-hairline">
-            <Button variant="outline" onClick={handleSaveDraft} disabled={saving}>
-              {saving ? "Saving..." : "Save Draft"}
+            <Button variant="outline" onClick={handleSaveDraft} disabled={!editMode || saving}>
+              {saving ? "Saving..." : isPublished ? "Save & Update Listing" : "Save Draft"}
             </Button>
+            <Button
+              variant="outline"
+              onClick={handleDiscardChanges}
+              disabled={!editMode || saving || JSON.stringify(draft) === initialDraftRef.current}
+              className="text-secondary hover:text-primary"
+            >
+              Discard Changes
+            </Button>
+            <div className="flex-1" />
             {isPublished ? (
               <Button
                 variant="outline"
                 onClick={handleUnpublish}
-                disabled={unpublishing}
+                disabled={!editMode || unpublishing}
                 className="text-red-400 border-red-400/50 hover:bg-red-400/10"
               >
                 {unpublishing ? "Removing..." : "Remove Marketplace Listing"}
               </Button>
             ) : (
-              <Button onClick={handlePublish} disabled={!canPublish || publishing}>
+              <Button onClick={handlePublish} disabled={!editMode || !canPublish || publishing}>
                 {publishing ? "Publishing..." : "Publish to Marketplace"}
               </Button>
             )}

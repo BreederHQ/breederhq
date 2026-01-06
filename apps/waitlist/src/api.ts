@@ -173,11 +173,12 @@ export function makeWaitlistApi(opts: MakeOpts = "/api/v1") {
     raw,
 
     waitlist: {
-      list: (params?: { q?: string; limit?: number; tenantId?: number | null }) => {
+      list: (params?: { q?: string; limit?: number; tenantId?: number | null; status?: string }) => {
         const qs = new URLSearchParams();
         if (params?.q) qs.set("q", params.q);
         if (params?.limit != null) qs.set("limit", String(params.limit));
         if (params?.tenantId != null) qs.set("tenantId", String(params.tenantId));
+        if (params?.status) qs.set("status", params.status);
 
         const query = qs.toString();
         const path = `/waitlist${query ? `?${query}` : ""}`;
@@ -255,8 +256,41 @@ export function makeWaitlistApi(opts: MakeOpts = "/api/v1") {
         return raw.get<any>(path, {});
       },
     },
+
+    // Marketplace block management
+    marketplaceBlocks: {
+      /** Block a marketplace user */
+      block: (body: { userId: string; level: "LIGHT" | "MEDIUM" | "HEAVY"; reason?: string }) => {
+        return raw.post<{ success: boolean; blockId: number }>("/contacts/block-marketplace-user", body, {});
+      },
+      /** Unblock a marketplace user */
+      unblock: (userId: string) => {
+        return raw.del<{ success: boolean }>(`/contacts/block-marketplace-user/${userId}`, {});
+      },
+      /** Get all blocked users for this tenant */
+      list: () => {
+        return raw.get<{ items: BlockedUserInfo[] }>("/contacts/blocked-marketplace-users", {});
+      },
+    },
   };
 }
+
+/** Blocked user info from API */
+export type BlockedUserInfo = {
+  id: number;
+  userId: string;
+  level: "LIGHT" | "MEDIUM" | "HEAVY";
+  reason: string | null;
+  createdAt: string;
+  blockedByPartyId: number | null;
+  user: {
+    id: string;
+    email: string;
+    name: string | null;
+    firstName: string;
+    lastName: string;
+  };
+};
 
 // Helper to create API client with default base URL
 export function makeWaitlistApiClient(): WaitlistApi {

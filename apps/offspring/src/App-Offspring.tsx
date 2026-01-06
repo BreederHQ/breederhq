@@ -740,7 +740,7 @@ const computeFromLocked = React.useCallback(
   const expectedCycleStart = locked;
   const expectedHormoneTestingStart = pickExpectedTestingStart(preview, locked);
   const expectedBreedDate = onlyDay(preview.milestones?.ovulation_center) || null;
-  const expectedBirthDate = onlyDay(preview.windows?.whelping?.likely?.[0]) || null;
+  const expectedBirthDate = onlyDay(preview.windows?.birth?.likely?.[0]) || null;
   const expectedWeaned =
     onlyDay(
       preview.windows?.puppy_care?.likely?.[1],
