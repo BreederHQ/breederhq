@@ -445,8 +445,8 @@ export function PlanJourney({
 
         {/* Inline date input in COLLAPSED mode for date-based requirements */}
         {guidanceCollapsed && nextPhase && requirements.length > 0 && onDateChange && isEdit && (
-          <div className={`mt-3 p-3 rounded-lg border-2 ${allRequirementsMet ? "border-green-500/60 bg-green-500/10" : "border-amber-500/60 bg-amber-500/10"}`}>
-            <div className={`text-xs font-medium mb-2 ${allRequirementsMet ? "text-green-400" : "text-amber-400"}`}>
+          <div className={`mt-2 px-2 py-1 rounded-lg border-2 ${allRequirementsMet ? "border-green-500/60 bg-green-500/10" : "border-amber-500/60 bg-amber-500/10"}`}>
+            <div className={`text-xs font-medium ${nextPhase.key !== "COMMITTED" ? "mb-1" : ""} ${allRequirementsMet ? "text-green-400" : "text-amber-400"}`}>
               {allRequirementsMet
                 ? nextPhase.key === "COMMITTED"
                   ? "All requirements met — Click Advance to Committed Phase to proceed"
@@ -466,20 +466,22 @@ export function PlanJourney({
                 : "Enter the required information below:"}
             </div>
             {nextPhase.key === "BRED" && (
-              <div className="flex items-center gap-3">
-                <label className="text-sm text-primary font-medium whitespace-nowrap">Cycle Start (Actual):</label>
+              <div className="flex items-center gap-2">
+                <label className="text-xs text-primary font-medium whitespace-nowrap">Cycle Start (Actual):</label>
                 <input
                   type="date"
                   value={actualCycleStartDate ?? ""}
                   onFocus={(e) => {
-                    // Pre-populate with expected date when empty to help user find the right date
-                    if (!actualCycleStartDate && expectedCycleStartDate && onDateChange) {
+                    const input = e.target as HTMLInputElement;
+                    // Pre-populate with expected date when empty
+                    if (!input.value && expectedCycleStartDate) {
                       const expected = String(expectedCycleStartDate).slice(0, 10);
                       if (/^\d{4}-\d{2}-\d{2}$/.test(expected)) {
-                        e.target.value = expected;
-                        onDateChange("actualCycleStartDate", expected);
-                        // Re-open picker after setting value
-                        setTimeout(() => { try { (e.target as any).showPicker?.(); } catch {} }, 0);
+                        input.value = expected;
+                        // Trigger showPicker after a micro-delay to let the value settle
+                        setTimeout(() => {
+                          try { input.showPicker(); } catch (err) { console.log('showPicker failed:', err); }
+                        }, 50);
                       }
                     }
                   }}
@@ -489,23 +491,25 @@ export function PlanJourney({
                       onDateChange("actualCycleStartDate", val || null);
                     }
                   }}
-                  className={`flex-1 px-3 py-2 text-sm rounded-lg border-2 bg-surface text-primary focus:outline-none focus:ring-2 ${hasActualCycleStart ? "border-green-500/60 focus:border-green-500 focus:ring-green-500/30" : "border-amber-500/60 focus:border-amber-500 focus:ring-amber-500/30"}`}
+                  className={`flex-1 px-2 py-1 text-sm rounded-lg border-2 bg-surface text-primary focus:outline-none focus:ring-2 ${hasActualCycleStart ? "border-green-500/60 focus:border-green-500 focus:ring-green-500/30" : "border-amber-500/60 focus:border-amber-500 focus:ring-amber-500/30"}`}
                 />
               </div>
             )}
             {nextPhase.key === "BIRTHED" && (
-              <div className="flex items-center gap-3">
-                <label className="text-sm text-primary font-medium whitespace-nowrap">Breed Date (Actual):</label>
+              <div className="flex items-center gap-2">
+                <label className="text-xs text-primary font-medium whitespace-nowrap">Breed Date (Actual):</label>
                 <input
                   type="date"
                   value={actualBreedDate ?? ""}
                   onFocus={(e) => {
-                    if (!actualBreedDate && expectedBreedDate && onDateChange) {
+                    const input = e.target as HTMLInputElement;
+                    if (!input.value && expectedBreedDate) {
                       const expected = String(expectedBreedDate).slice(0, 10);
                       if (/^\d{4}-\d{2}-\d{2}$/.test(expected)) {
-                        e.target.value = expected;
-                        onDateChange("actualBreedDate", expected);
-                        setTimeout(() => { try { (e.target as any).showPicker?.(); } catch {} }, 0);
+                        input.value = expected;
+                        setTimeout(() => {
+                          try { input.showPicker(); } catch {}
+                        }, 50);
                       }
                     }
                   }}
@@ -515,23 +519,25 @@ export function PlanJourney({
                       onDateChange("actualBreedDate", val || null);
                     }
                   }}
-                  className={`flex-1 px-3 py-2 text-sm rounded-lg border-2 bg-surface text-primary focus:outline-none focus:ring-2 ${hasActualBreedDate ? "border-green-500/60 focus:border-green-500 focus:ring-green-500/30" : "border-amber-500/60 focus:border-amber-500 focus:ring-amber-500/30"}`}
+                  className={`flex-1 px-2 py-1 text-sm rounded-lg border-2 bg-surface text-primary focus:outline-none focus:ring-2 ${hasActualBreedDate ? "border-green-500/60 focus:border-green-500 focus:ring-green-500/30" : "border-amber-500/60 focus:border-amber-500 focus:ring-amber-500/30"}`}
                 />
               </div>
             )}
             {nextPhase.key === "WEANED" && (
-              <div className="flex items-center gap-3">
-                <label className="text-sm text-primary font-medium whitespace-nowrap">Birth Date (Actual):</label>
+              <div className="flex items-center gap-2">
+                <label className="text-xs text-primary font-medium whitespace-nowrap">Birth Date (Actual):</label>
                 <input
                   type="date"
                   value={actualBirthDate ?? ""}
                   onFocus={(e) => {
-                    if (!actualBirthDate && expectedBirthDate && onDateChange) {
+                    const input = e.target as HTMLInputElement;
+                    if (!input.value && expectedBirthDate) {
                       const expected = String(expectedBirthDate).slice(0, 10);
                       if (/^\d{4}-\d{2}-\d{2}$/.test(expected)) {
-                        e.target.value = expected;
-                        onDateChange("actualBirthDate", expected);
-                        setTimeout(() => { try { (e.target as any).showPicker?.(); } catch {} }, 0);
+                        input.value = expected;
+                        setTimeout(() => {
+                          try { input.showPicker(); } catch {}
+                        }, 50);
                       }
                     }
                   }}
@@ -541,23 +547,25 @@ export function PlanJourney({
                       onDateChange("actualBirthDate", val || null);
                     }
                   }}
-                  className={`flex-1 px-3 py-2 text-sm rounded-lg border-2 bg-surface text-primary focus:outline-none focus:ring-2 ${hasActualBirthDate ? "border-green-500/60 focus:border-green-500 focus:ring-green-500/30" : "border-amber-500/60 focus:border-amber-500 focus:ring-amber-500/30"}`}
+                  className={`flex-1 px-2 py-1 text-sm rounded-lg border-2 bg-surface text-primary focus:outline-none focus:ring-2 ${hasActualBirthDate ? "border-green-500/60 focus:border-green-500 focus:ring-green-500/30" : "border-amber-500/60 focus:border-amber-500 focus:ring-amber-500/30"}`}
                 />
               </div>
             )}
             {nextPhase.key === "PLACEMENT_STARTED" && (
-              <div className="flex items-center gap-3">
-                <label className="text-sm text-primary font-medium whitespace-nowrap">Weaning Completed (Actual):</label>
+              <div className="flex items-center gap-2">
+                <label className="text-xs text-primary font-medium whitespace-nowrap">Weaning Completed (Actual):</label>
                 <input
                   type="date"
                   value={actualWeanedDate ?? ""}
                   onFocus={(e) => {
-                    if (!actualWeanedDate && expectedWeanedDate && onDateChange) {
+                    const input = e.target as HTMLInputElement;
+                    if (!input.value && expectedWeanedDate) {
                       const expected = String(expectedWeanedDate).slice(0, 10);
                       if (/^\d{4}-\d{2}-\d{2}$/.test(expected)) {
-                        e.target.value = expected;
-                        onDateChange("actualWeanedDate", expected);
-                        setTimeout(() => { try { (e.target as any).showPicker?.(); } catch {} }, 0);
+                        input.value = expected;
+                        setTimeout(() => {
+                          try { input.showPicker(); } catch {}
+                        }, 50);
                       }
                     }
                   }}
@@ -567,23 +575,25 @@ export function PlanJourney({
                       onDateChange("actualWeanedDate", val || null);
                     }
                   }}
-                  className={`flex-1 px-3 py-2 text-sm rounded-lg border-2 bg-surface text-primary focus:outline-none focus:ring-2 ${hasActualWeanedDate ? "border-green-500/60 focus:border-green-500 focus:ring-green-500/30" : "border-amber-500/60 focus:border-amber-500 focus:ring-amber-500/30"}`}
+                  className={`flex-1 px-2 py-1 text-sm rounded-lg border-2 bg-surface text-primary focus:outline-none focus:ring-2 ${hasActualWeanedDate ? "border-green-500/60 focus:border-green-500 focus:ring-green-500/30" : "border-amber-500/60 focus:border-amber-500 focus:ring-amber-500/30"}`}
                 />
               </div>
             )}
             {nextPhase.key === "PLACEMENT_COMPLETED" && (
-              <div className="flex items-center gap-3">
-                <label className="text-sm text-primary font-medium whitespace-nowrap">Placement Start Date:</label>
+              <div className="flex items-center gap-2">
+                <label className="text-xs text-primary font-medium whitespace-nowrap">Placement Start Date:</label>
                 <input
                   type="date"
                   value={actualPlacementStartDate ?? ""}
                   onFocus={(e) => {
-                    if (!actualPlacementStartDate && expectedPlacementStartDate && onDateChange) {
+                    const input = e.target as HTMLInputElement;
+                    if (!input.value && expectedPlacementStartDate) {
                       const expected = String(expectedPlacementStartDate).slice(0, 10);
                       if (/^\d{4}-\d{2}-\d{2}$/.test(expected)) {
-                        e.target.value = expected;
-                        onDateChange("actualPlacementStartDate", expected);
-                        setTimeout(() => { try { (e.target as any).showPicker?.(); } catch {} }, 0);
+                        input.value = expected;
+                        setTimeout(() => {
+                          try { input.showPicker(); } catch {}
+                        }, 50);
                       }
                     }
                   }}
@@ -593,23 +603,25 @@ export function PlanJourney({
                       onDateChange("actualPlacementStartDate", val || null);
                     }
                   }}
-                  className={`flex-1 px-3 py-2 text-sm rounded-lg border-2 bg-surface text-primary focus:outline-none focus:ring-2 ${hasPlacementStarted ? "border-green-500/60 focus:border-green-500 focus:ring-green-500/30" : "border-amber-500/60 focus:border-amber-500 focus:ring-amber-500/30"}`}
+                  className={`flex-1 px-2 py-1 text-sm rounded-lg border-2 bg-surface text-primary focus:outline-none focus:ring-2 ${hasPlacementStarted ? "border-green-500/60 focus:border-green-500 focus:ring-green-500/30" : "border-amber-500/60 focus:border-amber-500 focus:ring-amber-500/30"}`}
                 />
               </div>
             )}
             {nextPhase.key === "COMPLETE" && (
-              <div className="flex items-center gap-3">
-                <label className="text-sm text-primary font-medium whitespace-nowrap">Placement Completed Date:</label>
+              <div className="flex items-center gap-2">
+                <label className="text-xs text-primary font-medium whitespace-nowrap">Placement Completed Date:</label>
                 <input
                   type="date"
                   value={actualPlacementCompletedDate ?? ""}
                   onFocus={(e) => {
-                    if (!actualPlacementCompletedDate && expectedPlacementCompletedDate && onDateChange) {
+                    const input = e.target as HTMLInputElement;
+                    if (!input.value && expectedPlacementCompletedDate) {
                       const expected = String(expectedPlacementCompletedDate).slice(0, 10);
                       if (/^\d{4}-\d{2}-\d{2}$/.test(expected)) {
-                        e.target.value = expected;
-                        onDateChange("actualPlacementCompletedDate", expected);
-                        setTimeout(() => { try { (e.target as any).showPicker?.(); } catch {} }, 0);
+                        input.value = expected;
+                        setTimeout(() => {
+                          try { input.showPicker(); } catch {}
+                        }, 50);
                       }
                     }
                   }}
@@ -619,7 +631,7 @@ export function PlanJourney({
                       onDateChange("actualPlacementCompletedDate", val || null);
                     }
                   }}
-                  className={`flex-1 px-3 py-2 text-sm rounded-lg border-2 bg-surface text-primary focus:outline-none focus:ring-2 ${hasPlacementCompleted ? "border-green-500/60 focus:border-green-500 focus:ring-green-500/30" : "border-amber-500/60 focus:border-amber-500 focus:ring-amber-500/30"}`}
+                  className={`flex-1 px-2 py-1 text-sm rounded-lg border-2 bg-surface text-primary focus:outline-none focus:ring-2 ${hasPlacementCompleted ? "border-green-500/60 focus:border-green-500 focus:ring-green-500/30" : "border-amber-500/60 focus:border-amber-500 focus:ring-amber-500/30"}`}
                 />
               </div>
             )}
@@ -823,9 +835,10 @@ export function PlanJourney({
                 </div>
 
                 {/* Inline date input for date-based requirements - HIGHLIGHTED */}
-                {requirements.length > 0 && onDateChange && isEdit && !allRequirementsMet && (
-                  <div className="mt-4 p-3 rounded-lg border-2 ring-2 soft-pulse border-amber-500/60 bg-amber-500/10 ring-amber-500/20">
-                    <div className="text-xs font-medium mb-2 text-amber-400">
+                {/* Don't show for COMMITTED phase since it has no date input - only cycle lock is needed */}
+                {requirements.length > 0 && onDateChange && isEdit && !allRequirementsMet && nextPhase?.key !== "COMMITTED" && (
+                  <div className="mt-3 px-2 py-1 rounded-lg border-2 ring-2 soft-pulse border-amber-500/60 bg-amber-500/10 ring-amber-500/20">
+                    <div className="text-xs font-medium mb-1 text-amber-400">
                       Enter the required information below:
                     </div>
                     {nextPhase.key === "BRED" && (
@@ -835,23 +848,24 @@ export function PlanJourney({
                           type="date"
                           value={actualCycleStartDate ?? ""}
                           onFocus={(e) => {
-                            if (!actualCycleStartDate && expectedCycleStartDate && onDateChange) {
+                            const input = e.target as HTMLInputElement;
+                            if (!input.value && expectedCycleStartDate) {
                               const expected = String(expectedCycleStartDate).slice(0, 10);
                               if (/^\d{4}-\d{2}-\d{2}$/.test(expected)) {
-                                e.target.value = expected;
-                                onDateChange("actualCycleStartDate", expected);
-                                setTimeout(() => { try { (e.target as any).showPicker?.(); } catch {} }, 0);
+                                input.value = expected;
+                                setTimeout(() => {
+                                  try { input.showPicker(); } catch {}
+                                }, 50);
                               }
                             }
                           }}
                           onChange={(e) => {
                             const val = e.target.value;
-                            // Only trigger callback for complete dates (YYYY-MM-DD) or when clearing
                             if (!val || /^\d{4}-\d{2}-\d{2}$/.test(val)) {
                               onDateChange("actualCycleStartDate", val || null);
                             }
                           }}
-                          className={`flex-1 px-3 py-2 text-sm rounded-lg border-2 bg-surface text-primary focus:outline-none focus:ring-2 ${hasActualCycleStart ? "border-green-500/60 focus:border-green-500 focus:ring-green-500/30" : "border-amber-500/60 focus:border-amber-500 focus:ring-amber-500/30"}`}
+                          className={`flex-1 px-2 py-1 text-sm rounded-lg border-2 bg-surface text-primary focus:outline-none focus:ring-2 ${hasActualCycleStart ? "border-green-500/60 focus:border-green-500 focus:ring-green-500/30" : "border-amber-500/60 focus:border-amber-500 focus:ring-amber-500/30"}`}
                         />
                       </div>
                     )}
@@ -862,12 +876,14 @@ export function PlanJourney({
                           type="date"
                           value={actualBreedDate ?? ""}
                           onFocus={(e) => {
-                            if (!actualBreedDate && expectedBreedDate && onDateChange) {
+                            const input = e.target as HTMLInputElement;
+                            if (!input.value && expectedBreedDate) {
                               const expected = String(expectedBreedDate).slice(0, 10);
                               if (/^\d{4}-\d{2}-\d{2}$/.test(expected)) {
-                                e.target.value = expected;
-                                onDateChange("actualBreedDate", expected);
-                                setTimeout(() => { try { (e.target as any).showPicker?.(); } catch {} }, 0);
+                                input.value = expected;
+                                setTimeout(() => {
+                                  try { input.showPicker(); } catch {}
+                                }, 50);
                               }
                             }
                           }}
@@ -877,7 +893,7 @@ export function PlanJourney({
                               onDateChange("actualBreedDate", val || null);
                             }
                           }}
-                          className={`flex-1 px-3 py-2 text-sm rounded-lg border-2 bg-surface text-primary focus:outline-none focus:ring-2 ${hasActualBreedDate ? "border-green-500/60 focus:border-green-500 focus:ring-green-500/30" : "border-amber-500/60 focus:border-amber-500 focus:ring-amber-500/30"}`}
+                          className={`flex-1 px-2 py-1 text-sm rounded-lg border-2 bg-surface text-primary focus:outline-none focus:ring-2 ${hasActualBreedDate ? "border-green-500/60 focus:border-green-500 focus:ring-green-500/30" : "border-amber-500/60 focus:border-amber-500 focus:ring-amber-500/30"}`}
                         />
                       </div>
                     )}
@@ -888,12 +904,14 @@ export function PlanJourney({
                           type="date"
                           value={actualBirthDate ?? ""}
                           onFocus={(e) => {
-                            if (!actualBirthDate && expectedBirthDate && onDateChange) {
+                            const input = e.target as HTMLInputElement;
+                            if (!input.value && expectedBirthDate) {
                               const expected = String(expectedBirthDate).slice(0, 10);
                               if (/^\d{4}-\d{2}-\d{2}$/.test(expected)) {
-                                e.target.value = expected;
-                                onDateChange("actualBirthDate", expected);
-                                setTimeout(() => { try { (e.target as any).showPicker?.(); } catch {} }, 0);
+                                input.value = expected;
+                                setTimeout(() => {
+                                  try { input.showPicker(); } catch {}
+                                }, 50);
                               }
                             }
                           }}
@@ -903,7 +921,7 @@ export function PlanJourney({
                               onDateChange("actualBirthDate", val || null);
                             }
                           }}
-                          className={`flex-1 px-3 py-2 text-sm rounded-lg border-2 bg-surface text-primary focus:outline-none focus:ring-2 ${hasActualBirthDate ? "border-green-500/60 focus:border-green-500 focus:ring-green-500/30" : "border-amber-500/60 focus:border-amber-500 focus:ring-amber-500/30"}`}
+                          className={`flex-1 px-2 py-1 text-sm rounded-lg border-2 bg-surface text-primary focus:outline-none focus:ring-2 ${hasActualBirthDate ? "border-green-500/60 focus:border-green-500 focus:ring-green-500/30" : "border-amber-500/60 focus:border-amber-500 focus:ring-amber-500/30"}`}
                         />
                       </div>
                     )}
@@ -914,12 +932,14 @@ export function PlanJourney({
                           type="date"
                           value={actualWeanedDate ?? ""}
                           onFocus={(e) => {
-                            if (!actualWeanedDate && expectedWeanedDate && onDateChange) {
+                            const input = e.target as HTMLInputElement;
+                            if (!input.value && expectedWeanedDate) {
                               const expected = String(expectedWeanedDate).slice(0, 10);
                               if (/^\d{4}-\d{2}-\d{2}$/.test(expected)) {
-                                e.target.value = expected;
-                                onDateChange("actualWeanedDate", expected);
-                                setTimeout(() => { try { (e.target as any).showPicker?.(); } catch {} }, 0);
+                                input.value = expected;
+                                setTimeout(() => {
+                                  try { input.showPicker(); } catch {}
+                                }, 50);
                               }
                             }
                           }}
@@ -929,7 +949,7 @@ export function PlanJourney({
                               onDateChange("actualWeanedDate", val || null);
                             }
                           }}
-                          className={`flex-1 px-3 py-2 text-sm rounded-lg border-2 bg-surface text-primary focus:outline-none focus:ring-2 ${hasActualWeanedDate ? "border-green-500/60 focus:border-green-500 focus:ring-green-500/30" : "border-amber-500/60 focus:border-amber-500 focus:ring-amber-500/30"}`}
+                          className={`flex-1 px-2 py-1 text-sm rounded-lg border-2 bg-surface text-primary focus:outline-none focus:ring-2 ${hasActualWeanedDate ? "border-green-500/60 focus:border-green-500 focus:ring-green-500/30" : "border-amber-500/60 focus:border-amber-500 focus:ring-amber-500/30"}`}
                         />
                       </div>
                     )}
@@ -940,12 +960,14 @@ export function PlanJourney({
                           type="date"
                           value={actualPlacementStartDate ?? ""}
                           onFocus={(e) => {
-                            if (!actualPlacementStartDate && expectedPlacementStartDate && onDateChange) {
+                            const input = e.target as HTMLInputElement;
+                            if (!input.value && expectedPlacementStartDate) {
                               const expected = String(expectedPlacementStartDate).slice(0, 10);
                               if (/^\d{4}-\d{2}-\d{2}$/.test(expected)) {
-                                e.target.value = expected;
-                                onDateChange("actualPlacementStartDate", expected);
-                                setTimeout(() => { try { (e.target as any).showPicker?.(); } catch {} }, 0);
+                                input.value = expected;
+                                setTimeout(() => {
+                                  try { input.showPicker(); } catch {}
+                                }, 50);
                               }
                             }
                           }}
@@ -955,7 +977,7 @@ export function PlanJourney({
                               onDateChange("actualPlacementStartDate", val || null);
                             }
                           }}
-                          className={`flex-1 px-3 py-2 text-sm rounded-lg border-2 bg-surface text-primary focus:outline-none focus:ring-2 ${hasPlacementStarted ? "border-green-500/60 focus:border-green-500 focus:ring-green-500/30" : "border-amber-500/60 focus:border-amber-500 focus:ring-amber-500/30"}`}
+                          className={`flex-1 px-2 py-1 text-sm rounded-lg border-2 bg-surface text-primary focus:outline-none focus:ring-2 ${hasPlacementStarted ? "border-green-500/60 focus:border-green-500 focus:ring-green-500/30" : "border-amber-500/60 focus:border-amber-500 focus:ring-amber-500/30"}`}
                         />
                       </div>
                     )}
@@ -966,12 +988,14 @@ export function PlanJourney({
                           type="date"
                           value={actualPlacementCompletedDate ?? ""}
                           onFocus={(e) => {
-                            if (!actualPlacementCompletedDate && expectedPlacementCompletedDate && onDateChange) {
+                            const input = e.target as HTMLInputElement;
+                            if (!input.value && expectedPlacementCompletedDate) {
                               const expected = String(expectedPlacementCompletedDate).slice(0, 10);
                               if (/^\d{4}-\d{2}-\d{2}$/.test(expected)) {
-                                e.target.value = expected;
-                                onDateChange("actualPlacementCompletedDate", expected);
-                                setTimeout(() => { try { (e.target as any).showPicker?.(); } catch {} }, 0);
+                                input.value = expected;
+                                setTimeout(() => {
+                                  try { input.showPicker(); } catch {}
+                                }, 50);
                               }
                             }
                           }}
@@ -981,7 +1005,7 @@ export function PlanJourney({
                               onDateChange("actualPlacementCompletedDate", val || null);
                             }
                           }}
-                          className={`flex-1 px-3 py-2 text-sm rounded-lg border-2 bg-surface text-primary focus:outline-none focus:ring-2 ${hasPlacementCompleted ? "border-green-500/60 focus:border-green-500 focus:ring-green-500/30" : "border-amber-500/60 focus:border-amber-500 focus:ring-amber-500/30"}`}
+                          className={`flex-1 px-2 py-1 text-sm rounded-lg border-2 bg-surface text-primary focus:outline-none focus:ring-2 ${hasPlacementCompleted ? "border-green-500/60 focus:border-green-500 focus:ring-green-500/30" : "border-amber-500/60 focus:border-amber-500 focus:ring-amber-500/30"}`}
                         />
                       </div>
                     )}

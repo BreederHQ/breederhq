@@ -2766,8 +2766,8 @@ export default function AppBreeding() {
                     className={[
                       "pb-1 text-sm font-medium transition-colors select-none",
                       isActive
-                        ? "text-neutral-900 dark:text-neutral-50"
-                        : "text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-100",
+                        ? "text-primary"
+                        : "text-secondary hover:text-primary",
                     ].join(" ")}
                     style={{
                       borderBottom: isActive ? "2px solid #f97316" : "2px solid transparent",
@@ -3678,6 +3678,20 @@ function PlanDetailsView(props: {
     setPendingSave(false);
   }, [row.id]);
 
+  // Sync persisted snapshot with row when row data changes from server (after save)
+  // This ensures the snapshot stays in sync when the parent updates the row prop
+  const rowSnapshotKey = React.useMemo(() => {
+    const snap = buildPlanSnapshot(row);
+    return JSON.stringify(snap);
+  }, [row]);
+
+  React.useEffect(() => {
+    // Only update if draft is empty (i.e., after a save completed and draft was cleared)
+    if (Object.keys(draftRef.current).length === 0) {
+      setPersistedSnapshot(buildPlanSnapshot(row));
+    }
+  }, [rowSnapshotKey]);
+
   // Calculate if there are unsaved changes
   const isDirty = React.useMemo(() => {
     const changedFields = prunePlanDraft(draftRef.current, persistedSnapshot);
@@ -4222,7 +4236,7 @@ function PlanDetailsView(props: {
 
     setExpectedPreview(expectedRaw as any);
     setLockedPreview(true);
-    setDraftLive(payload);
+    // Don't use setDraftLive here - we're immediately persisting, not drafting
 
     try {
       await api.updatePlan(Number(row.id), payload as any);
@@ -4244,12 +4258,21 @@ function PlanDetailsView(props: {
         },
       });
 
-      // Clear draft entries for persisted fields and update snapshot (prevents false "unsaved changes" prompt)
-      for (const key of Object.keys(payload)) {
-        delete (draftRef.current as any)[key];
+      // Refresh the row to ensure lockedCycleStart is in the row prop (not just draft)
+      const fresh = await api.getPlan(Number(row.id), "parents,org");
+      onPlanUpdated?.(row.id, fresh);
+
+      // Update snapshot to match fresh data (prevents false "unsaved changes" prompt)
+      setPersistedSnapshot(buildPlanSnapshot(fresh || { ...row, ...payload }));
+
+      // Also save any other pending draft changes (but stay in edit mode)
+      if (Object.keys(draftRef.current).length > 0) {
+        try {
+          await requestSave();
+        } catch (saveErr) {
+          console.error("[Breeding] lockCycle - additional save failed", saveErr);
+        }
       }
-      setPersistedSnapshot(buildPlanSnapshot({ ...row, ...payload }));
-      setDraftTick((t) => t + 1);
     } catch (e: any) {
       console.error("[Breeding] lockCycle persist or audit failed", e);
       setExpectedPreview(null);
@@ -4350,7 +4373,7 @@ function PlanDetailsView(props: {
       expectedPlacementStartDate: null,
       expectedPlacementCompletedDate: null,
     };
-    setDraftLive(payload);
+    // Don't use setDraftLive here - we're immediately persisting, not drafting
 
     try {
       await api.updatePlan(Number(row.id), payload as any);
@@ -4362,12 +4385,21 @@ function PlanDetailsView(props: {
         data: {},
       });
 
-      // Clear draft entries for persisted fields and update snapshot (prevents false "unsaved changes" prompt)
-      for (const key of Object.keys(payload)) {
-        delete (draftRef.current as any)[key];
+      // Refresh the row to ensure lockedCycleStart is cleared in the row prop (not just draft)
+      const fresh = await api.getPlan(Number(row.id), "parents,org");
+      onPlanUpdated?.(row.id, fresh);
+
+      // Update snapshot to match fresh data (prevents false "unsaved changes" prompt)
+      setPersistedSnapshot(buildPlanSnapshot(fresh || { ...row, ...payload }));
+
+      // Also save any other pending draft changes (but stay in edit mode)
+      if (Object.keys(draftRef.current).length > 0) {
+        try {
+          await requestSave();
+        } catch (saveErr) {
+          console.error("[Breeding] unlockCycle - additional save failed", saveErr);
+        }
       }
-      setPersistedSnapshot(buildPlanSnapshot({ ...row, ...payload }));
-      setDraftTick((t) => t + 1);
     } catch (e) {
       console.error("[Breeding] unlockCycle persist or audit failed", e);
       const expected = pendingCycle ? computeExpectedForPlan({ species: row.species as any, lockedCycleStart: pendingCycle }) : null;
@@ -4556,7 +4588,7 @@ function PlanDetailsView(props: {
   return (
     <DetailsScaffold
       title={row.name}
-      subtitle={row.status || ""}
+      subtitle=""
       mode={mode}
       onEdit={editable ? () => setMode("edit") : undefined}
       onCancel={handleCancel}
@@ -5182,18 +5214,22 @@ function PlanDetailsView(props: {
             {/* Cycle Selection - only show for PLANNING/COMMITTED before cycle starts */}
             {/* Highlight when in EDIT mode, PLANNING phase, and cycle not locked */}
             {!effective.cycleStartDateActual && (statusU === "PLANNING" || statusU === "COMMITTED") && (
-            <SectionCard title={isLocked ? "Cycle Start Date (Estimated)" : "Breeding Cycle Selection"} highlight={isEdit && statusU === "PLANNING" && !isLocked} highlightGreen={isLocked}>
+            <SectionCard title={(isLocked || lockedPreview) ? <span className="text-green-400">Cycle Start Date (Estimated) — Locked!</span> : "Breeding Cycle Selection"} highlight={isEdit && statusU === "PLANNING" && !(isLocked || lockedPreview)} highlightGreen={isLocked || lockedPreview}>
               {/* Simple compact cycle selector - matches original design */}
-              {/* Red border + glow when in view mode and cycle not locked (needs attention) */}
-              {/* Green pulsing glow when in "Ready to Lock" state */}
+              {/* Red border + glow when in view mode and no cycle selected */}
+              {/* Yellow border + glow when in view mode and cycle selected but not locked */}
+              {/* Yellow border + glow when in edit mode "Ready to Lock" state */}
+              {/* Green border when locked */}
               <div className={`relative rounded-xl bg-[#1e1e1e] overflow-hidden ${
-                !isEdit && !isLocked
+                !isEdit && !(isLocked || lockedPreview) && !pendingCycle
                   ? "border-2 border-red-500/60 ring-2 ring-red-500/20"
-                  : isEdit && !isLocked && pendingCycle
-                    ? "border-2 border-green-500/60 box-glow-pulse-green"
-                    : isLocked
-                      ? "border-2 border-green-500/60"
-                      : ""
+                  : !isEdit && !(isLocked || lockedPreview) && pendingCycle
+                    ? "border-2 border-yellow-500/60 ring-2 ring-yellow-500/20 box-glow-pulse-yellow"
+                    : isEdit && !(isLocked || lockedPreview) && pendingCycle
+                      ? "border-2 border-yellow-500/60 box-glow-pulse-yellow"
+                      : (isLocked || lockedPreview)
+                        ? "border-2 border-green-500/60"
+                        : ""
               }`}>
                 <div className="flex items-center gap-4 px-4 py-3">
                   {/* Lock icon button - orange in edit mode with pulse, gray in view mode */}
@@ -5212,15 +5248,17 @@ function PlanDetailsView(props: {
                     title={isLocked ? "Click to unlock cycle" : (pendingCycle && effective.damId ? "Click to lock cycle" : "Select a dam and cycle first")}
                     style={{ width: 44, height: 44, minWidth: 44, minHeight: 44 }}
                     className={`rounded-full flex items-center justify-center flex-shrink-0 transition-all ${
-                      isLocked
+                      (isLocked || lockedPreview)
                         ? isEdit
                           ? "bg-green-600 hover:bg-green-500 cursor-pointer"
                           : "bg-green-600 cursor-default"
                         : isEdit && pendingCycle
-                          ? "bg-green-500 hover:bg-green-400 hover:scale-105 cursor-pointer glow-pulse-green"
+                          ? "bg-yellow-500 hover:bg-yellow-400 hover:scale-105 cursor-pointer glow-pulse-green"
                           : isEdit
                             ? "bg-[hsl(var(--brand-orange))] hover:scale-105 cursor-pointer glow-pulse-orange"
-                            : "bg-red-500 cursor-default glow-pulse-red"
+                            : pendingCycle
+                              ? "bg-yellow-500 cursor-default glow-pulse-yellow"
+                              : "bg-red-500 cursor-default glow-pulse-red"
                     }`}
                   >
                     <svg
@@ -5230,7 +5268,7 @@ function PlanDetailsView(props: {
                       stroke="currentColor"
                       strokeWidth="2"
                     >
-                      {isLocked ? (
+                      {(isLocked || lockedPreview) ? (
                         <>
                           <rect x="5" y="10" width="14" height="10" rx="2" />
                           <path d="M7 10V7a5 5 0 0 1 10 0v3" />
@@ -5306,7 +5344,9 @@ function PlanDetailsView(props: {
                                         ? computeExpectedForPlan({ species: row.species as any, lockedCycleStart: next })
                                         : null
                                     );
+                                    // Update both draft systems so Save button appears
                                     setDraft({ expectedCycleStart: next });
+                                    setDraftLive({ expectedCycleStart: next });
                                   }}
                                   disabled={!hasDam || !editable}
                                 >
@@ -5332,13 +5372,22 @@ function PlanDetailsView(props: {
                   ) : (
                     /* View mode: simple text display */
                     <div className="flex-1">
-                      {isLocked ? (
+                      {(isLocked || lockedPreview) ? (
                         <>
                           <div className="text-sm font-medium text-green-400">
-                            This breeding plan is estimated to begin on {fmt(effective.lockedCycleStart)}
+                            This breeding plan is estimated to begin on {fmt(effective.lockedCycleStart || pendingCycle)}
                           </div>
                           <div className="text-xs text-secondary">
                             If you need to change this, enter edit mode and unlock the cycle.
+                          </div>
+                        </>
+                      ) : pendingCycle ? (
+                        <>
+                          <div className="text-sm font-medium text-amber-400">
+                            Cycle selected: {fmt(pendingCycle)} — not yet locked
+                          </div>
+                          <div className="text-xs text-secondary">
+                            Enter edit mode and click the lock icon to lock this cycle.
                           </div>
                         </>
                       ) : (
@@ -5397,6 +5446,13 @@ function PlanDetailsView(props: {
               .glow-pulse-green {
                 animation: glow-pulse-green-anim 2s ease-in-out infinite;
               }
+              @keyframes box-glow-pulse-yellow-anim {
+                0%, 100% { box-shadow: 0 0 8px 2px rgba(234, 179, 8, 0.4); }
+                50% { box-shadow: 0 0 16px 6px rgba(234, 179, 8, 0.6); }
+              }
+              .box-glow-pulse-yellow {
+                animation: box-glow-pulse-yellow-anim 2s ease-in-out infinite;
+              }
             `}</style>
 
             {/* Placement Scheduling (Phase 6) - only show if plan has linked offspring group */}
@@ -5415,8 +5471,12 @@ function PlanDetailsView(props: {
                 <Button
                   variant="outline"
                   onClick={() => {
-                    if (mode === "edit") {
+                    // In edit mode without pending changes: just exit edit mode
+                    // In edit mode with pending changes: close drawer (will prompt for unsaved changes)
+                    // In view mode: close drawer
+                    if (mode === "edit" && !hasPendingChangesLocal) {
                       handleCancel();
+                      return;
                     }
                     const fn =
                       (typeof closeDrawer === "function" && closeDrawer) ||
@@ -5876,8 +5936,12 @@ function PlanDetailsView(props: {
                 <Button
                   variant="outline"
                   onClick={() => {
-                    if (mode === "edit") {
+                    // In edit mode without pending changes: just exit edit mode
+                    // In edit mode with pending changes: close drawer (will prompt for unsaved changes)
+                    // In view mode: close drawer
+                    if (mode === "edit" && !hasPendingChangesLocal) {
                       handleCancel();
+                      return;
                     }
                     const fn =
                       (typeof closeDrawer === "function" && closeDrawer) ||
