@@ -2417,6 +2417,69 @@ export default function AppBreeding() {
           // Include derived status translated to backend format
           normalizedDraft.status = toBackendStatus(derivedStatus);
           console.log("[Breeding] onSave - derived status:", derivedStatus, "-> backend:", normalizedDraft.status);
+
+          // Backend requires all milestone dates up to the current phase
+          // Include them in the payload even if they weren't just edited
+          const currentStatus = (current?.status || "").toUpperCase();
+          console.log("[Breeding] onSave - current row data:", {
+            status: current?.status,
+            cycleStartDateActual: current?.cycleStartDateActual,
+            breedDateActual: current?.breedDateActual,
+            birthDateActual: current?.birthDateActual,
+            weanedDateActual: current?.weanedDateActual,
+            placementStartDateActual: current?.placementStartDateActual,
+          });
+
+          const effectiveCycleStart = normalizedDraft.cycleStartDateActual ?? current?.cycleStartDateActual;
+          const effectiveBreedDate = normalizedDraft.breedDateActual ?? current?.breedDateActual;
+          const effectiveBirthDate = normalizedDraft.birthDateActual ?? current?.birthDateActual;
+          const effectiveWeanedDate = normalizedDraft.weanedDateActual ?? current?.weanedDateActual;
+          const effectivePlacementStart = normalizedDraft.placementStartDateActual ?? current?.placementStartDateActual;
+          const effectivePlacementCompleted = normalizedDraft.placementCompletedDateActual ?? current?.placementCompletedDateActual;
+
+          console.log("[Breeding] onSave - effective dates:", {
+            effectiveCycleStart,
+            effectiveBreedDate,
+            effectiveBirthDate,
+            effectiveWeanedDate,
+            effectivePlacementStart,
+            effectivePlacementCompleted,
+          });
+
+          // Validate and auto-correct invalid status states
+          // Derive the correct status based on available dates (most advanced milestone)
+          let correctedStatus: Status | null = null;
+
+          if (currentStatus === "PLACEMENT" || currentStatus === "PLACEMENT_STARTED" || currentStatus === "PLACEMENT_COMPLETED") {
+            if (!effectiveWeanedDate) {
+              // Can't be in PLACEMENT without weaned date - derive correct status from available dates
+              if (effectiveBirthDate) {
+                correctedStatus = "BIRTHED";
+              } else if (effectiveBreedDate) {
+                correctedStatus = "BRED";
+              } else if (effectiveCycleStart) {
+                correctedStatus = "COMMITTED";
+              } else {
+                correctedStatus = "PLANNING";
+              }
+              console.warn(`[Breeding] Invalid state detected: PLACEMENT status without weaned date. Auto-correcting to ${correctedStatus} based on available dates.`);
+              normalizedDraft.status = toBackendStatus(correctedStatus);
+              alert(`Note: Your plan status has been automatically corrected from Placement to ${correctedStatus} phase based on your available milestone dates.\n\nYou were in Placement phase but missing the required Weaning Completed date.`);
+            }
+          }
+
+          // Include all dates through the current phase
+          if (currentStatus === "PLACEMENT" || currentStatus === "PLACEMENT_STARTED" || currentStatus === "PLACEMENT_COMPLETED") {
+            if (effectiveCycleStart) normalizedDraft.cycleStartDateActual = effectiveCycleStart;
+            if (effectiveBreedDate) normalizedDraft.breedDateActual = effectiveBreedDate;
+            if (effectiveBirthDate) normalizedDraft.birthDateActual = effectiveBirthDate;
+            if (effectiveWeanedDate) normalizedDraft.weanedDateActual = effectiveWeanedDate;
+            if (effectivePlacementStart) normalizedDraft.placementStartDateActual = effectivePlacementStart;
+          }
+          if (currentStatus === "PLACEMENT_COMPLETED" || currentStatus === "COMPLETE") {
+            if (effectivePlacementCompleted) normalizedDraft.placementCompletedDateActual = effectivePlacementCompleted;
+          }
+          console.log("[Breeding] onSave - final payload:", normalizedDraft);
         }
 
         await api.updatePlan(Number(id), normalizedDraft as any);
@@ -3692,6 +3755,46 @@ function PlanDetailsView(props: {
     setPersistedSnapshot(buildPlanSnapshot(row));
     draftRef.current = {};
     setPendingSave(false);
+
+    // Validate status consistency on load - auto-correct invalid states
+    const validateAndCorrectStatus = async () => {
+      const statusU = (row.status || "").toUpperCase();
+
+      // Check if we're in PLACEMENT phase without required weaned date
+      if (statusU === "PLACEMENT_STARTED" || statusU === "PLACEMENT" || statusU === "PLACEMENT_COMPLETED") {
+        if (!row.weanedDateActual) {
+          // Derive correct status from available dates
+          let correctedStatus: Status;
+          if (row.birthDateActual) {
+            correctedStatus = "BIRTHED";
+          } else if (row.breedDateActual) {
+            correctedStatus = "BRED";
+          } else if (row.cycleStartDateActual) {
+            correctedStatus = "COMMITTED";
+          } else {
+            correctedStatus = "PLANNING";
+          }
+
+          console.warn(`[Breeding] Invalid state on load: ${statusU} without weaned date. Auto-correcting to ${correctedStatus}.`);
+
+          try {
+            const payload: any = {
+              status: toBackendStatus(correctedStatus)
+            };
+
+            await api.updatePlan(Number(row.id), payload);
+            const fresh = await api.getPlan(Number(row.id), "parents,org");
+            onPlanUpdated?.(planToRow(fresh));
+
+            alert(`Your plan status was automatically corrected from ${STATUS_LABELS[statusU as Status] || statusU} to ${STATUS_LABELS[correctedStatus]} because the Weaning Completed date was missing.\n\nThis ensures data consistency. You can now proceed through the phases normally.`);
+          } catch (error) {
+            console.error("[Breeding] Failed to auto-correct status:", error);
+          }
+        }
+      }
+    };
+
+    validateAndCorrectStatus();
   }, [row.id]);
 
   // Sync persisted snapshot with row when row data changes from server (after save)
@@ -4884,8 +4987,10 @@ function PlanDetailsView(props: {
               expectedWeanedDate={expectedWeaned}
               expectedPlacementStartDate={expectedPlacementStart}
               expectedPlacementCompletedDate={expectedPlacementCompleted}
-              onDateChange={(field, value) => {
+              onDateChange={async (field, value) => {
                 if (!isEdit) return;
+
+                // Set draft value
                 if (field === "actualCycleStartDate") {
                   setDraftLive({ cycleStartDateActual: value });
                 } else if (field === "actualHormoneTestingStartDate") {
@@ -4900,6 +5005,22 @@ function PlanDetailsView(props: {
                   setDraftLive({ placementStartDateActual: value });
                 } else if (field === "actualPlacementCompletedDate") {
                   setDraftLive({ placementCompletedDateActual: value });
+                }
+
+                // Auto-save immediately after setting a date value
+                // Do NOT auto-save null (when user clicks "Change") - keep as draft until new date selected
+                // Wait for next tick to ensure draft state is updated
+                if (value !== null) {
+                  setTimeout(async () => {
+                    try {
+                      await handleSave();
+                      console.log(`[Breeding] Auto-saved ${field}:`, value);
+                    } catch (error) {
+                      console.error(`[Breeding] Auto-save failed for ${field}:`, error);
+                    }
+                  }, 0);
+                } else {
+                  console.log(`[Breeding] Cleared ${field} - draft is dirty, waiting for user to select new date`);
                 }
               }}
               onNavigateToTab={(tab) => setActiveTab(tab as typeof activeTab)}
@@ -4947,24 +5068,33 @@ function PlanDetailsView(props: {
                   const effectivePlacementStart = payload.placementStartDateActual ?? row.placementStartDateActual;
                   const effectivePlacementCompleted = payload.placementCompletedDateActual ?? row.placementCompletedDateActual;
 
+                  // Helper to validate date is present and in valid format
+                  const isValidDate = (date: any): boolean => {
+                    if (!date) return false;
+                    const dateStr = String(date).trim();
+                    if (!dateStr) return false;
+                    // Check for ISO date format YYYY-MM-DD (with optional timestamp)
+                    return /^\d{4}-\d{2}-\d{2}/.test(dateStr);
+                  };
+
                   const validationErrors: string[] = [];
-                  if (toPhase === "BRED" && !effectiveCycleStart) {
-                    validationErrors.push("Cycle Start (Actual) date is required to advance to Breeding phase");
+                  if (toPhase === "BRED" && !isValidDate(effectiveCycleStart)) {
+                    validationErrors.push("Cycle Start (Actual) date is required to advance to Breeding phase. Please enter and save the date first.");
                   }
-                  if (toPhase === "BIRTHED" && !effectiveBreedDate) {
-                    validationErrors.push("Breed Date (Actual) is required to advance to Birth phase");
+                  if (toPhase === "BIRTHED" && !isValidDate(effectiveBreedDate)) {
+                    validationErrors.push("Breed Date (Actual) is required to advance to Birth phase. Please enter and save the date first.");
                   }
-                  if (toPhase === "WEANED" && !effectiveBirthDate) {
-                    validationErrors.push("Birth Date (Actual) is required to advance to Weaned phase");
+                  if (toPhase === "WEANED" && !isValidDate(effectiveBirthDate)) {
+                    validationErrors.push("Birth Date (Actual) is required to advance to Weaned phase. Please enter and save the date first.");
                   }
-                  if (toPhase === "PLACEMENT_STARTED" && !effectiveWeanedDate) {
-                    validationErrors.push("Weaned Date (Actual) is required to advance to Placement Started phase");
+                  if (toPhase === "PLACEMENT_STARTED" && !isValidDate(effectiveWeanedDate)) {
+                    validationErrors.push("Weaning Completed (Actual) date is required to advance to Placement Started phase. Please enter and save the date first.");
                   }
-                  if (toPhase === "PLACEMENT_COMPLETED" && !effectivePlacementStart) {
-                    validationErrors.push("Placement Start Date is required to advance to Placement Completed phase");
-                  }
-                  if (toPhase === "COMPLETE" && !effectivePlacementCompleted) {
-                    validationErrors.push("Placement Completed Date is required to mark plan as Complete");
+                  // PLACEMENT_COMPLETED doesn't require the completion date before advancing
+                  // The date gets entered AFTER advancing into the phase
+                  // (Skip validation for PLACEMENT_COMPLETED)
+                  if (toPhase === "COMPLETE" && !isValidDate(effectivePlacementCompleted)) {
+                    validationErrors.push("Placement Completed Date is required to mark plan as Complete. Please enter and save the date first.");
                   }
 
                   if (validationErrors.length > 0) {
@@ -4975,15 +5105,16 @@ function PlanDetailsView(props: {
 
                   // Backend requires all milestone dates up to the target phase
                   // Include them in the payload even if they weren't just edited
-                  if (toPhase === "PLACEMENT_COMPLETED" || toPhase === "COMPLETE") {
-                    // Ensure all dates through placement are included
+                  if (toPhase === "PLACEMENT_STARTED" || toPhase === "PLACEMENT_COMPLETED" || toPhase === "COMPLETE") {
+                    // Ensure all dates through current phase are included
                     if (effectiveCycleStart) payload.cycleStartDateActual = effectiveCycleStart;
                     if (effectiveBreedDate) payload.breedDateActual = effectiveBreedDate;
                     if (effectiveBirthDate) payload.birthDateActual = effectiveBirthDate;
                     if (effectiveWeanedDate) payload.weanedDateActual = effectiveWeanedDate;
-                    if (effectivePlacementStart) payload.placementStartDateActual = effectivePlacementStart;
                   }
-                  if (toPhase === "COMPLETE") {
+                  if (toPhase === "PLACEMENT_COMPLETED" || toPhase === "COMPLETE") {
+                    if (effectivePlacementStart) payload.placementStartDateActual = effectivePlacementStart;
+                    // Include placement completed date when advancing to PLACEMENT_COMPLETED or COMPLETE
                     if (effectivePlacementCompleted) payload.placementCompletedDateActual = effectivePlacementCompleted;
                   }
 
@@ -5689,7 +5820,7 @@ function PlanDetailsView(props: {
                     }
                   }}
                 >
-                  Close
+                  {mode === "edit" && !hasPendingChangesLocal ? "Cancel" : "Close"}
                 </Button>
               </div>
             </div>
@@ -6258,7 +6389,7 @@ function PlanDetailsView(props: {
                     }
                   }}
                 >
-                  Close
+                  {mode === "edit" && !hasPendingChangesLocal ? "Cancel" : "Close"}
                 </Button>
               </div>
             </div>

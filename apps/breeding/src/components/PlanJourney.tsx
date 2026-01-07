@@ -243,12 +243,12 @@ export function PlanJourney({
       case "PLACEMENT_COMPLETED":
         // To advance to Placement Completed, placement must have started
         return [
-          { key: "placementStarted", label: "Placement Start Date", met: hasPlacementStarted, action: "Enter when placements began" },
+          { key: "placementStarted", label: "Actual Placement Start Date", met: hasPlacementStarted, action: "Enter the placement start date" },
         ];
       case "COMPLETE":
-        // To complete, all placements must be done
+        // To complete, placement must be completed
         return [
-          { key: "placementCompleted", label: "Placement Completed Date", met: hasPlacementCompleted, action: "Enter when all placements were completed" },
+          { key: "placementCompleted", label: "Actual Placement Completed Date", met: hasPlacementCompleted, action: "Enter the placement completed date" },
         ];
       default:
         return [];
@@ -499,9 +499,9 @@ export function PlanJourney({
                         : nextPhase.key === "PLACEMENT_STARTED"
                           ? "Weaned Date Recorded — Click Advance to Placement Phase to proceed"
                           : nextPhase.key === "PLACEMENT_COMPLETED"
-                            ? "Placement Start Recorded — Click Advance to Placement Completed to proceed"
+                            ? "Placement Start Recorded — Click Advance to Placement Completed Phase to proceed"
                             : nextPhase.key === "COMPLETE"
-                              ? "Placement Completed — Click Advance to Complete Plan"
+                              ? "Placement Completed Recorded — Click Advance to Complete Plan"
                               : "Ready to advance"
                 : "Enter the required information below:"}
             </div>
@@ -575,14 +575,16 @@ export function PlanJourney({
             )}
             {nextPhase.key === "PLACEMENT_COMPLETED" && (
               <div className="flex items-center gap-2">
-                <label className="text-xs text-primary font-medium whitespace-nowrap">Placement Start Date:</label>
+                <label className="text-xs text-primary font-medium whitespace-nowrap">Placement Start Date (Actual):</label>
                 <DatePicker
                   value={actualPlacementStartDate ?? ""}
                   defaultDate={expectedPlacementStartDate ?? undefined}
                   onChange={(e) => {
                     const val = e.currentTarget.value;
-                    if (!val || /^\d{4}-\d{2}-\d{2}$/.test(val)) {
-                      onDateChange("actualPlacementStartDate", val || null);
+                    if (!val) {
+                      onDateChange("actualPlacementStartDate", null);
+                    } else if (/^\d{4}-\d{2}-\d{2}$/.test(val)) {
+                      onDateChange("actualPlacementStartDate", val);
                     }
                   }}
                   className="flex-1"
@@ -592,14 +594,16 @@ export function PlanJourney({
             )}
             {nextPhase.key === "COMPLETE" && (
               <div className="flex items-center gap-2">
-                <label className="text-xs text-primary font-medium whitespace-nowrap">Placement Completed Date:</label>
+                <label className="text-xs text-primary font-medium whitespace-nowrap">Placement Completed Date (Actual):</label>
                 <DatePicker
                   value={actualPlacementCompletedDate ?? ""}
                   defaultDate={expectedPlacementCompletedDate ?? undefined}
                   onChange={(e) => {
                     const val = e.currentTarget.value;
-                    if (!val || /^\d{4}-\d{2}-\d{2}$/.test(val)) {
-                      onDateChange("actualPlacementCompletedDate", val || null);
+                    if (!val) {
+                      onDateChange("actualPlacementCompletedDate", null);
+                    } else if (/^\d{4}-\d{2}-\d{2}$/.test(val)) {
+                      onDateChange("actualPlacementCompletedDate", val);
                     }
                   }}
                   className="flex-1"
@@ -720,7 +724,7 @@ export function PlanJourney({
                   Your Breeding Plan is currently in the <span className="text-purple-400 font-medium">Placement Started Phase</span>. Puppies are now ready to go to their forever homes. Coordinate with families, complete health checks, and begin transitioning puppies to their new environments.
                 </p>
                 <p className="mt-3 text-xs text-secondary">
-                  <span className="font-medium text-primary">Tip:</span> Enter the Placement Start Date below and save to advance to the Placement Completed phase.
+                  <span className="font-medium text-primary">Tip:</span> Enter the Actual Placement Start Date below and save to advance to the Placement Completed phase.
                 </p>
                 <p className="mt-2 text-xs text-secondary italic">
                   Remember: You must be in <span className="font-medium text-red-500 underline">EDIT</span> mode to make changes to the plan.
@@ -927,14 +931,16 @@ export function PlanJourney({
                     )}
                     {nextPhase.key === "PLACEMENT_COMPLETED" && (
                       <div className="flex items-center gap-3">
-                        <label className="text-sm text-primary font-medium whitespace-nowrap">Placement Start Date:</label>
+                        <label className="text-sm text-primary font-medium whitespace-nowrap">Placement Start Date (Actual):</label>
                         <DatePicker
                           value={actualPlacementStartDate ?? ""}
                           defaultDate={expectedPlacementStartDate ?? undefined}
                           onChange={(e) => {
                             const val = e.currentTarget.value;
-                            if (!val || /^\d{4}-\d{2}-\d{2}$/.test(val)) {
-                              onDateChange("actualPlacementStartDate", val || null);
+                            if (!val) {
+                              onDateChange("actualPlacementStartDate", null);
+                            } else if (/^\d{4}-\d{2}-\d{2}$/.test(val)) {
+                              onDateChange("actualPlacementStartDate", val);
                             }
                           }}
                           className="flex-1"
@@ -944,14 +950,16 @@ export function PlanJourney({
                     )}
                     {nextPhase.key === "COMPLETE" && (
                       <div className="flex items-center gap-3">
-                        <label className="text-sm text-primary font-medium whitespace-nowrap">Placement Completed Date:</label>
+                        <label className="text-sm text-primary font-medium whitespace-nowrap">Placement Completed Date (Actual):</label>
                         <DatePicker
                           value={actualPlacementCompletedDate ?? ""}
                           defaultDate={expectedPlacementCompletedDate ?? undefined}
                           onChange={(e) => {
                             const val = e.currentTarget.value;
-                            if (!val || /^\d{4}-\d{2}-\d{2}$/.test(val)) {
-                              onDateChange("actualPlacementCompletedDate", val || null);
+                            if (!val) {
+                              onDateChange("actualPlacementCompletedDate", null);
+                            } else if (/^\d{4}-\d{2}-\d{2}$/.test(val)) {
+                              onDateChange("actualPlacementCompletedDate", val);
                             }
                           }}
                           className="flex-1"
@@ -1004,7 +1012,7 @@ export function PlanJourney({
             {!nextPhase && (
               <div className="rounded-lg bg-emerald-500/10 border border-emerald-500/30 p-3 text-center">
                 <div className="text-emerald-500 text-sm font-medium">
-                  All puppies have been placed with their new families.
+                  All offspring have been placed - Breeding Plan Complete!
                 </div>
               </div>
             )}

@@ -95,10 +95,11 @@ export function fromBackendStatus(
   const baseStatus = BACKEND_TO_STATUS[normalized] ?? (normalized as Status);
 
   // Special handling for PLACEMENT: determine if PLACEMENT_STARTED or PLACEMENT_COMPLETED
-  // based on whether placement has been completed
+  // based on whether placement has started
   if (normalized === "PLACEMENT" && context) {
-    // If placement completed date exists, show PLACEMENT_COMPLETED phase
-    if (context.placementCompletedDateActual) {
+    // If placement start date exists, show PLACEMENT_COMPLETED phase
+    // (user has entered start date and advanced from WEANED)
+    if (context.placementStartDateActual) {
       return "PLACEMENT_COMPLETED";
     }
     // Otherwise, show PLACEMENT_STARTED phase
