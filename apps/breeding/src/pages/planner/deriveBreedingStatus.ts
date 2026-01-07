@@ -52,15 +52,16 @@ export type BackendStatus =
   | "CANCELED";
 
 // Map frontend status to backend status
-// Frontend uses more granular PLACEMENT_STARTED/PLACEMENT_COMPLETED, backend uses just PLACEMENT
+// Phase 6 (PLACEMENT_STARTED) and Phase 7 (PLACEMENT_COMPLETED) both map to backend PLACEMENT
+// We differentiate them in fromBackendStatus using placementStartDateActual presence
 const STATUS_TO_BACKEND: Record<Status, BackendStatus> = {
   PLANNING: "PLANNING",
   COMMITTED: "COMMITTED",
   BRED: "BRED",
   BIRTHED: "BIRTHED",
   WEANED: "WEANED",
-  PLACEMENT_STARTED: "PLACEMENT",  // Backend uses PLACEMENT for both
-  PLACEMENT_COMPLETED: "PLACEMENT", // Backend uses PLACEMENT for both
+  PLACEMENT_STARTED: "PLACEMENT",   // Phase 6: Beginning placement, entering start date
+  PLACEMENT_COMPLETED: "PLACEMENT", // Phase 7: Placement in progress, entering completed date
   COMPLETE: "COMPLETE",
   CANCELED: "CANCELED",
 };
@@ -75,7 +76,7 @@ const BACKEND_TO_STATUS: Record<BackendStatus, Status> = {
   PREGNANT: "BIRTHED", // Pregnant means expecting birth
   BIRTHED: "BIRTHED",
   WEANED: "WEANED",
-  PLACEMENT: "PLACEMENT_STARTED", // Backend PLACEMENT maps to frontend PLACEMENT_STARTED
+  PLACEMENT: "PLACEMENT_STARTED", // Backend PLACEMENT can be phase 6 or 7 (see fromBackendStatus)
   COMPLETE: "COMPLETE",
   CANCELED: "CANCELED",
 };
@@ -95,13 +96,15 @@ export function fromBackendStatus(
   const baseStatus = BACKEND_TO_STATUS[normalized] ?? (normalized as Status);
 
   // Special handling for PLACEMENT: determine if PLACEMENT_STARTED or PLACEMENT_COMPLETED
-  // based on whether placement has been completed
+  // Phase 6 (PLACEMENT_STARTED) and Phase 7 (PLACEMENT_COMPLETED) both have backend status PLACEMENT
+  // Differentiate by checking if placement start date has been entered
   if (normalized === "PLACEMENT" && context) {
-    // If placement completed date exists, show PLACEMENT_COMPLETED phase
-    if (context.placementCompletedDateActual) {
+    // If placement start date exists, user is in Phase 7 (PLACEMENT_COMPLETED)
+    // They've clicked "Advance to Phase 7" and can now enter placement completed date
+    if (context.placementStartDateActual) {
       return "PLACEMENT_COMPLETED";
     }
-    // Otherwise, show PLACEMENT_STARTED phase
+    // Otherwise, Phase 6 (PLACEMENT_STARTED) - waiting to enter placement start date
     return "PLACEMENT_STARTED";
   }
 

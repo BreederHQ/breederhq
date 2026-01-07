@@ -10,6 +10,7 @@ import type { AvailabilityPrefs } from "@bhq/ui/utils/availability";
 import { DEFAULT_AVAILABILITY_PREFS } from "@bhq/ui/utils/availability";
 import { resolveTenantId } from "@bhq/ui/utils/tenant";
 import type { BreedingProgramProfile } from "@bhq/ui/utils/breedingProgram";
+import BiologySettingsTab from "../components/BiologySettingsTab";
 import DateValidationSettingsTab from "../components/DateValidationSettingsTab";
 import { TagsManagerTab } from "../components/TagsManagerTab";
 import MarketplaceSettingsTab, { type MarketplaceHandle } from "../components/MarketplaceSettingsTab";
@@ -462,6 +463,7 @@ type Tab =
   | "programProfile"
   | "breeds"
   | "policies"
+  | "credentials"
   | "users"
   | "groups"
   | "tags"
@@ -495,6 +497,7 @@ const NAV: NavSection[] = [
       { key: "programProfile", label: "Program Profile" },
       { key: "breeds", label: "Breeds" },
       { key: "policies", label: "Policies" },
+      { key: "credentials", label: "Standards and Credentials" },
     ],
   },
   {
@@ -520,7 +523,7 @@ export default function SettingsPanel({ open, dirty, onDirtyChange, onClose }: P
   const [active, setActive] = React.useState<Tab>("profile");
   const [dirtyMap, setDirtyMap] = React.useState<Record<Tab, boolean>>({
     profile: false, security: false, subscription: false, payments: false, transactions: false,
-    breeding: false, programProfile: false, breeds: false, policies: false, users: false, groups: false, tags: false, accessibility: false, marketplace: false,
+    breeding: false, programProfile: false, breeds: false, policies: false, credentials: false, users: false, groups: false, tags: false, accessibility: false, marketplace: false,
   });
   // Edit mode state at panel level
   const [editMode, setEditMode] = React.useState(false);
@@ -528,12 +531,13 @@ export default function SettingsPanel({ open, dirty, onDirtyChange, onClose }: P
   const breedingRef = React.useRef<BreedingHandle>(null);
   const breedsRef = React.useRef<BreedsHandle>(null);
   const policiesRef = React.useRef<PoliciesHandle>(null);
+  const credentialsRef = React.useRef<CredentialsHandle>(null);
   const programRef = React.useRef<ProgramProfileHandle>(null);
   const marketplaceRef = React.useRef<MarketplaceHandle>(null);
   const [profileTitle, setProfileTitle] = React.useState<string>("");
 
   // Tabs that support edit mode
-  const editableTabs: Tab[] = ["profile", "programProfile", "breeds", "policies", "marketplace"];
+  const editableTabs: Tab[] = ["profile", "programProfile", "breeds", "policies", "credentials", "marketplace"];
   const isEditableTab = editableTabs.includes(active);
 
   React.useEffect(() => { onDirtyChange(!!dirtyMap[active]); }, [active, dirtyMap, onDirtyChange]);
@@ -580,7 +584,7 @@ export default function SettingsPanel({ open, dirty, onDirtyChange, onClose }: P
     setActive(next);
   }
   function handleClose() {
-    if (dirty || editMode) return;
+    if (dirty) return;
     onClose();
   }
 
@@ -610,6 +614,8 @@ export default function SettingsPanel({ open, dirty, onDirtyChange, onClose }: P
       await breedsRef.current?.save(); markDirty("breeds", false);
     } else if (active === "policies") {
       await policiesRef.current?.save(); markDirty("policies", false);
+    } else if (active === "credentials") {
+      await credentialsRef.current?.save(); markDirty("credentials", false);
     } else if (active === "marketplace") {
       await marketplaceRef.current?.save(); markDirty("marketplace", false);
     } else {
@@ -677,7 +683,7 @@ export default function SettingsPanel({ open, dirty, onDirtyChange, onClose }: P
                 </div>
                 <div className="flex items-center gap-2">
                   {/* Close button - always visible but disabled when dirty */}
-                  <Button size="sm" variant="outline" onClick={handleClose} disabled={dirty || editMode}>
+                  <Button size="sm" variant="outline" onClick={handleClose} disabled={dirty}>
                     Close
                   </Button>
 
@@ -725,6 +731,7 @@ export default function SettingsPanel({ open, dirty, onDirtyChange, onClose }: P
                 {active === "programProfile" && <ProgramProfileTab ref={programRef} dirty={dirtyMap.programProfile} onDirty={(v) => markDirty("programProfile", v)} editMode={editMode} />}
                 {active === "breeds" && <BreedsTab ref={breedsRef} dirty={dirtyMap.breeds} onDirty={(v) => markDirty("breeds", v)} />}
                 {active === "policies" && <PoliciesTab ref={policiesRef} dirty={dirtyMap.policies} onDirty={(v) => markDirty("policies", v)} />}
+                {active === "credentials" && <CredentialsTab ref={credentialsRef} dirty={dirtyMap.credentials} onDirty={(v) => markDirty("credentials", v)} editMode={editMode} />}
                 {active === "users" && <UsersTab dirty={dirtyMap.users} onDirty={(v) => markDirty("users", v)} />}
                 {active === "groups" && <GroupsTab dirty={dirtyMap.groups} onDirty={(v) => markDirty("groups", v)} />}
                 {active === "tags" && <TagsManagerTab dirty={dirtyMap.tags} onDirty={(v) => markDirty("tags", v)} />}
@@ -1099,12 +1106,13 @@ type BreedingHandle = {
   goto: (sub: BreedingSubTab) => void;
 };
 
-type BreedingSubTab = "general" | "phases" | "dates" | "validation";
+type BreedingSubTab = "general" | "phases" | "dates" | "biology" | "validation";
 const BREEDING_SUBTABS: Array<{ key: BreedingSubTab; label: string }> = [
   { key: "general", label: "General" },
   { key: "phases", label: "Timeline Phases" },
   { key: "dates", label: "Exact Dates" },
-  { key: "validation", label: "Date Validation" },
+  { key: "biology", label: "Biology & Calculations" },
+  { key: "validation", label: "Validation Rules" },
 ];
 
 const BreedingTab = React.forwardRef<BreedingHandle, { dirty: boolean; onDirty: (v: boolean) => void }>(
@@ -1734,6 +1742,7 @@ const BreedingTab = React.forwardRef<BreedingHandle, { dirty: boolean; onDirty: 
         {activeSub === "general" && GeneralTab}
         {activeSub === "phases" && PhasesTab}
         {activeSub === "dates" && DatesTab}
+        {activeSub === "biology" && <BiologySettingsTab ref={null} dirty={false} onDirty={() => {}} />}
         {activeSub === "validation" && <DateValidationSettingsTab ref={null} dirty={false} onDirty={() => {}} />}
       </div>
     );
@@ -2659,10 +2668,38 @@ type PoliciesProfile = {
     healthGuaranteeMonths: number;
     depositAmountUSD: number | null;
   };
+  placementPolicies: {
+    requireApplication: boolean;
+    showRequireApplication: boolean;
+    requireInterview: boolean;
+    showRequireInterview: boolean;
+    requireContract: boolean;
+    showRequireContract: boolean;
+    hasReturnPolicy: boolean;
+    showHasReturnPolicy: boolean;
+    offersSupport: boolean;
+    showOffersSupport: boolean;
+    note: string;
+    showNote: boolean;
+  };
 };
 const EMPTY_POLICIES: PoliciesProfile = {
   cyclePolicy: { minDamAgeMonths: 18, minHeatsBetween: 1, maxLittersLifetime: 4, retireAfterAgeMonths: null, retireRule: "either" },
   placement: { earliestDaysFromBirth: 56, standardDaysFromBirth: 63, healthGuaranteeMonths: 24, depositAmountUSD: 300 },
+  placementPolicies: {
+    requireApplication: false,
+    showRequireApplication: false,
+    requireInterview: false,
+    showRequireInterview: false,
+    requireContract: false,
+    showRequireContract: false,
+    hasReturnPolicy: false,
+    showHasReturnPolicy: false,
+    offersSupport: false,
+    showOffersSupport: false,
+    note: "",
+    showNote: false,
+  },
 };
 
 const PoliciesTab = React.forwardRef<PoliciesHandle, { dirty: boolean; onDirty: (v: boolean) => void }>(
@@ -2700,6 +2737,20 @@ const PoliciesTab = React.forwardRef<PoliciesHandle, { dirty: boolean; onDirty: 
               healthGuaranteeMonths: prData?.placement?.healthGuaranteeMonths ?? 24,
               depositAmountUSD: prData?.placement?.depositAmountUSD ?? 300,
             },
+            placementPolicies: {
+              requireApplication: (prData as any)?.placementPolicies?.requireApplication ?? false,
+              showRequireApplication: (prData as any)?.placementPolicies?.showRequireApplication ?? false,
+              requireInterview: (prData as any)?.placementPolicies?.requireInterview ?? false,
+              showRequireInterview: (prData as any)?.placementPolicies?.showRequireInterview ?? false,
+              requireContract: (prData as any)?.placementPolicies?.requireContract ?? false,
+              showRequireContract: (prData as any)?.placementPolicies?.showRequireContract ?? false,
+              hasReturnPolicy: (prData as any)?.placementPolicies?.hasReturnPolicy ?? false,
+              showHasReturnPolicy: (prData as any)?.placementPolicies?.showHasReturnPolicy ?? false,
+              offersSupport: (prData as any)?.placementPolicies?.offersSupport ?? false,
+              showOffersSupport: (prData as any)?.placementPolicies?.showOffersSupport ?? false,
+              note: (prData as any)?.placementPolicies?.note ?? "",
+              showNote: (prData as any)?.placementPolicies?.showNote ?? false,
+            },
           };
           if (!ignore) {
             setProfile(loaded);
@@ -2724,6 +2775,7 @@ const PoliciesTab = React.forwardRef<PoliciesHandle, { dirty: boolean; onDirty: 
           ...existingData,
           cyclePolicy: { ...existingData?.cyclePolicy, ...profile.cyclePolicy },
           placement: { ...existingData?.placement, ...profile.placement },
+          placementPolicies: { ...(existingData as any)?.placementPolicies, ...profile.placementPolicies },
         };
         await api.breeding.program.updateForTenant(merged, Number(tenantId));
         setProfileInit(profile);
@@ -2774,6 +2826,442 @@ const PoliciesTab = React.forwardRef<PoliciesHandle, { dirty: boolean; onDirty: 
                 <FieldNum label="Standard days from birth" value={profile.placement.standardDaysFromBirth} onChange={(n) => setProfile(p => ({ ...p, placement: { ...p.placement, standardDaysFromBirth: n } }))} />
                 <FieldNum label="Guarantee months" value={profile.placement.healthGuaranteeMonths} onChange={(n) => setProfile(p => ({ ...p, placement: { ...p.placement, healthGuaranteeMonths: n } }))} />
                 <FieldNum label="Deposit amount USD" value={profile.placement.depositAmountUSD ?? 0} onChange={(n) => setProfile(p => ({ ...p, placement: { ...p.placement, depositAmountUSD: n || null } }))} />
+              </div>
+            </div>
+
+            <div className="rounded-md border border-hairline p-3 space-y-3">
+              <div>
+                <div className="text-sm font-medium mb-1">Marketplace Placement Policies</div>
+                <div className="text-xs text-secondary">Control which policies are displayed on your marketplace profile. Toggle visibility for each policy.</div>
+              </div>
+
+              <div className="space-y-3">
+                <div className="flex items-center justify-between py-2 border-b border-hairline">
+                  <label className="flex items-center gap-2 cursor-pointer flex-1">
+                    <input
+                      type="checkbox"
+                      checked={profile.placementPolicies.requireApplication}
+                      onChange={(e) => setProfile(p => ({ ...p, placementPolicies: { ...p.placementPolicies, requireApplication: e.target.checked } }))}
+                      className="w-4 h-4 rounded border-hairline bg-card accent-blue-500"
+                    />
+                    <span className="text-sm">Require application</span>
+                  </label>
+                  <label className="flex items-center gap-2">
+                    <span className="text-xs text-secondary">Show in marketplace</span>
+                    <input
+                      type="checkbox"
+                      checked={profile.placementPolicies.showRequireApplication}
+                      onChange={(e) => setProfile(p => ({ ...p, placementPolicies: { ...p.placementPolicies, showRequireApplication: e.target.checked } }))}
+                      disabled={!profile.placementPolicies.requireApplication}
+                      className="w-4 h-4 rounded border-hairline bg-card accent-[hsl(var(--brand-orange))]"
+                    />
+                  </label>
+                </div>
+
+                <div className="flex items-center justify-between py-2 border-b border-hairline">
+                  <label className="flex items-center gap-2 cursor-pointer flex-1">
+                    <input
+                      type="checkbox"
+                      checked={profile.placementPolicies.requireInterview}
+                      onChange={(e) => setProfile(p => ({ ...p, placementPolicies: { ...p.placementPolicies, requireInterview: e.target.checked } }))}
+                      className="w-4 h-4 rounded border-hairline bg-card accent-blue-500"
+                    />
+                    <span className="text-sm">Require interview/meeting</span>
+                  </label>
+                  <label className="flex items-center gap-2">
+                    <span className="text-xs text-secondary">Show in marketplace</span>
+                    <input
+                      type="checkbox"
+                      checked={profile.placementPolicies.showRequireInterview}
+                      onChange={(e) => setProfile(p => ({ ...p, placementPolicies: { ...p.placementPolicies, showRequireInterview: e.target.checked } }))}
+                      disabled={!profile.placementPolicies.requireInterview}
+                      className="w-4 h-4 rounded border-hairline bg-card accent-[hsl(var(--brand-orange))]"
+                    />
+                  </label>
+                </div>
+
+                <div className="flex items-center justify-between py-2 border-b border-hairline">
+                  <label className="flex items-center gap-2 cursor-pointer flex-1">
+                    <input
+                      type="checkbox"
+                      checked={profile.placementPolicies.requireContract}
+                      onChange={(e) => setProfile(p => ({ ...p, placementPolicies: { ...p.placementPolicies, requireContract: e.target.checked } }))}
+                      className="w-4 h-4 rounded border-hairline bg-card accent-blue-500"
+                    />
+                    <span className="text-sm">Require signed contract</span>
+                  </label>
+                  <label className="flex items-center gap-2">
+                    <span className="text-xs text-secondary">Show in marketplace</span>
+                    <input
+                      type="checkbox"
+                      checked={profile.placementPolicies.showRequireContract}
+                      onChange={(e) => setProfile(p => ({ ...p, placementPolicies: { ...p.placementPolicies, showRequireContract: e.target.checked } }))}
+                      disabled={!profile.placementPolicies.requireContract}
+                      className="w-4 h-4 rounded border-hairline bg-card accent-[hsl(var(--brand-orange))]"
+                    />
+                  </label>
+                </div>
+
+                <div className="flex items-center justify-between py-2 border-b border-hairline">
+                  <label className="flex items-center gap-2 cursor-pointer flex-1">
+                    <input
+                      type="checkbox"
+                      checked={profile.placementPolicies.hasReturnPolicy}
+                      onChange={(e) => setProfile(p => ({ ...p, placementPolicies: { ...p.placementPolicies, hasReturnPolicy: e.target.checked } }))}
+                      className="w-4 h-4 rounded border-hairline bg-card accent-blue-500"
+                    />
+                    <span className="text-sm">Lifetime return policy</span>
+                  </label>
+                  <label className="flex items-center gap-2">
+                    <span className="text-xs text-secondary">Show in marketplace</span>
+                    <input
+                      type="checkbox"
+                      checked={profile.placementPolicies.showHasReturnPolicy}
+                      onChange={(e) => setProfile(p => ({ ...p, placementPolicies: { ...p.placementPolicies, showHasReturnPolicy: e.target.checked } }))}
+                      disabled={!profile.placementPolicies.hasReturnPolicy}
+                      className="w-4 h-4 rounded border-hairline bg-card accent-[hsl(var(--brand-orange))]"
+                    />
+                  </label>
+                </div>
+
+                <div className="flex items-center justify-between py-2 border-b border-hairline">
+                  <label className="flex items-center gap-2 cursor-pointer flex-1">
+                    <input
+                      type="checkbox"
+                      checked={profile.placementPolicies.offersSupport}
+                      onChange={(e) => setProfile(p => ({ ...p, placementPolicies: { ...p.placementPolicies, offersSupport: e.target.checked } }))}
+                      className="w-4 h-4 rounded border-hairline bg-card accent-blue-500"
+                    />
+                    <span className="text-sm">Ongoing breeder support</span>
+                  </label>
+                  <label className="flex items-center gap-2">
+                    <span className="text-xs text-secondary">Show in marketplace</span>
+                    <input
+                      type="checkbox"
+                      checked={profile.placementPolicies.showOffersSupport}
+                      onChange={(e) => setProfile(p => ({ ...p, placementPolicies: { ...p.placementPolicies, showOffersSupport: e.target.checked } }))}
+                      disabled={!profile.placementPolicies.offersSupport}
+                      className="w-4 h-4 rounded border-hairline bg-card accent-[hsl(var(--brand-orange))]"
+                    />
+                  </label>
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="text-sm font-medium">Additional Placement Notes</label>
+                    <label className="flex items-center gap-2">
+                      <span className="text-xs text-secondary">Show in marketplace</span>
+                      <input
+                        type="checkbox"
+                        checked={profile.placementPolicies.showNote}
+                        onChange={(e) => setProfile(p => ({ ...p, placementPolicies: { ...p.placementPolicies, showNote: e.target.checked } }))}
+                        disabled={!profile.placementPolicies.note.trim()}
+                        className="w-4 h-4 rounded border-hairline bg-card accent-[hsl(var(--brand-orange))]"
+                      />
+                    </label>
+                  </div>
+                  <textarea
+                    value={profile.placementPolicies.note}
+                    onChange={(e) => setProfile(p => ({ ...p, placementPolicies: { ...p.placementPolicies, note: e.target.value.slice(0, 300) } }))}
+                    placeholder="Describe any additional details about your placement process..."
+                    rows={3}
+                    className="w-full bg-card border border-hairline rounded-md px-3 py-2 text-sm placeholder:text-secondary outline-none focus:ring-2 focus:ring-[hsl(var(--brand-orange))] resize-none"
+                  />
+                  <div className="text-xs text-secondary text-right mt-1">{profile.placementPolicies.note.length}/300</div>
+                </div>
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+    );
+  }
+);
+
+/** ───────── Standalone CredentialsTab ───────── */
+type CredentialsHandle = { save: () => Promise<void> };
+type CredentialsProfile = {
+  registrations: string[];
+  showRegistrations: boolean;
+  registrationsNote: string;
+  healthPractices: string[];
+  showHealthPractices: boolean;
+  healthNote: string;
+  breedingPractices: string[];
+  showBreedingPractices: boolean;
+  breedingNote: string;
+  carePractices: string[];
+  showCarePractices: boolean;
+  careNote: string;
+};
+
+const EMPTY_CREDENTIALS: CredentialsProfile = {
+  registrations: [],
+  showRegistrations: false,
+  registrationsNote: "",
+  healthPractices: [],
+  showHealthPractices: false,
+  healthNote: "",
+  breedingPractices: [],
+  showBreedingPractices: false,
+  breedingNote: "",
+  carePractices: [],
+  showCarePractices: false,
+  careNote: "",
+};
+
+const CredentialsTab = React.forwardRef<CredentialsHandle, { dirty: boolean; onDirty: (v: boolean) => void; editMode: boolean }>(
+  function CredentialsTab({ onDirty, editMode }, ref) {
+    const [loading, setLoading] = React.useState(true);
+    const [error, setError] = React.useState<string>("");
+    const [profile, setProfile] = React.useState<CredentialsProfile>(EMPTY_CREDENTIALS);
+    const [profileInit, setProfileInit] = React.useState<CredentialsProfile>(EMPTY_CREDENTIALS);
+
+    const isDirty = React.useMemo(() => {
+      return JSON.stringify(profile) !== JSON.stringify(profileInit);
+    }, [profile, profileInit]);
+    React.useEffect(() => onDirty(isDirty), [isDirty, onDirty]);
+
+    React.useEffect(() => {
+      let ignore = false;
+      (async () => {
+        try {
+          setLoading(true); setError("");
+          const tenantId = await resolveTenantIdSafe();
+          if (!tenantId) throw new Error("Missing tenant id");
+          const pr = await api.breeding.program.getForTenant(Number(tenantId));
+          const prData = (pr?.data ?? pr) as Partial<BreedingProgramProfile> | undefined;
+          const loaded: CredentialsProfile = {
+            registrations: (prData as any)?.standardsAndCredentials?.registrations ?? [],
+            showRegistrations: (prData as any)?.standardsAndCredentials?.showRegistrations ?? false,
+            registrationsNote: (prData as any)?.standardsAndCredentials?.registrationsNote ?? "",
+            healthPractices: (prData as any)?.standardsAndCredentials?.healthPractices ?? [],
+            showHealthPractices: (prData as any)?.standardsAndCredentials?.showHealthPractices ?? false,
+            healthNote: (prData as any)?.standardsAndCredentials?.healthNote ?? "",
+            breedingPractices: (prData as any)?.standardsAndCredentials?.breedingPractices ?? [],
+            showBreedingPractices: (prData as any)?.standardsAndCredentials?.showBreedingPractices ?? false,
+            breedingNote: (prData as any)?.standardsAndCredentials?.breedingNote ?? "",
+            carePractices: (prData as any)?.standardsAndCredentials?.carePractices ?? [],
+            showCarePractices: (prData as any)?.standardsAndCredentials?.showCarePractices ?? false,
+            careNote: (prData as any)?.standardsAndCredentials?.careNote ?? "",
+          };
+          if (!ignore) {
+            setProfile(loaded);
+            setProfileInit(loaded);
+          }
+        } catch (e: any) {
+          if (!ignore) setError(e?.message || "Failed to load credentials");
+        } finally { if (!ignore) setLoading(false); }
+      })();
+      return () => { ignore = true; };
+    }, []);
+
+    async function saveCredentials() {
+      setError("");
+      try {
+        const tenantId = await resolveTenantId();
+        if (!tenantId) throw new Error("Missing tenant id");
+        const existing = await api.breeding.program.getForTenant(Number(tenantId));
+        const existingData = (existing?.data ?? existing) as BreedingProgramProfile | undefined;
+        const merged = {
+          ...existingData,
+          standardsAndCredentials: {
+            ...(existingData as any)?.standardsAndCredentials,
+            registrations: profile.registrations,
+            showRegistrations: profile.showRegistrations,
+            registrationsNote: profile.registrationsNote,
+            healthPractices: profile.healthPractices,
+            showHealthPractices: profile.showHealthPractices,
+            healthNote: profile.healthNote,
+            breedingPractices: profile.breedingPractices,
+            showBreedingPractices: profile.showBreedingPractices,
+            breedingNote: profile.breedingNote,
+            carePractices: profile.carePractices,
+            showCarePractices: profile.showCarePractices,
+            careNote: profile.careNote,
+          },
+        };
+        await api.breeding.program.updateForTenant(merged, Number(tenantId));
+        setProfileInit(profile);
+        onDirty(false);
+      } catch (e: any) {
+        setError(e?.message || "Credentials save failed");
+      }
+    }
+    React.useImperativeHandle(ref, () => ({ async save() { await saveCredentials(); } }));
+
+    function toggleItem(section: keyof Pick<CredentialsProfile, "registrations" | "healthPractices" | "breedingPractices" | "carePractices">, item: string) {
+      setProfile((p) => {
+        const list = p[section];
+        const newList = list.includes(item) ? list.filter((i) => i !== item) : [...list, item];
+        return { ...p, [section]: newList };
+      });
+    }
+
+    return (
+      <div className="space-y-4">
+        {loading ? <div className="text-sm text-secondary">Loading…</div> : (
+          <>
+            {error && <div className="rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">{error}</div>}
+
+            <div>
+              <h3 className="text-lg font-semibold">Standards and Credentials</h3>
+              <p className="text-sm text-secondary mt-1">
+                Configure your breeding program's standards, credentials, and practices.
+              </p>
+            </div>
+
+            <div className="space-y-4">
+              {/* Registrations and Affiliations */}
+              <div className={`rounded-md border border-hairline p-4 space-y-3 ${!editMode ? "pointer-events-none" : ""}`}>
+                <div className="flex items-center justify-between mb-3">
+                  <div className="text-base font-semibold text-primary">Registrations and Affiliations</div>
+                  <VisibilityToggle
+                    isPublic={profile.showRegistrations}
+                    onChange={(v) => setProfile(p => ({ ...p, showRegistrations: v }))}
+                    disabled={!editMode || profile.registrations.length === 0}
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  {["AKC Breeder of Merit", "AKC Bred with H.E.A.R.T.", "GANA Member", "GRCA Member", "UKC Registered", "CKC Registered"].map((item) => (
+                    <label key={item} className={`flex items-center gap-2 ${!editMode ? "cursor-not-allowed" : "cursor-pointer"}`}>
+                      <input
+                        type="checkbox"
+                        checked={profile.registrations.includes(item)}
+                        onChange={() => toggleItem("registrations", item)}
+                        disabled={!editMode}
+                        className="w-4 h-4 rounded border-hairline bg-card accent-blue-500"
+                      />
+                      <span className={`text-sm ${!editMode ? "text-secondary" : ""}`}>{item}</span>
+                    </label>
+                  ))}
+                </div>
+                <div>
+                  <label className="text-xs text-secondary">Standards and Credentials Notes</label>
+                  <textarea
+                    value={profile.registrationsNote}
+                    onChange={(e) => setProfile(p => ({ ...p, registrationsNote: e.target.value.slice(0, 200) }))}
+                    placeholder="Optional notes..."
+                    rows={2}
+                    disabled={!editMode}
+                    className={`w-full mt-1 bg-card border border-hairline rounded-md px-3 py-2 text-sm placeholder:text-secondary outline-none focus:ring-2 focus:ring-[hsl(var(--brand-orange))] resize-none ${!editMode ? "opacity-60 cursor-not-allowed" : ""}`}
+                  />
+                  <div className="text-xs text-secondary text-right mt-1">{profile.registrationsNote.length}/200</div>
+                </div>
+              </div>
+
+              {/* Health and Genetic Practices */}
+              <div className={`rounded-md border border-hairline p-4 space-y-3 ${!editMode ? "pointer-events-none" : ""}`}>
+                <div className="flex items-center justify-between mb-3">
+                  <div className="text-base font-semibold text-primary">Health and Genetic Practices</div>
+                  <VisibilityToggle
+                    isPublic={profile.showHealthPractices}
+                    onChange={(v) => setProfile(p => ({ ...p, showHealthPractices: v }))}
+                    disabled={!editMode || profile.healthPractices.length === 0}
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  {["OFA Hip/Elbow", "OFA Cardiac", "OFA Eyes (CAER)", "PennHIP", "Genetic Testing", "Embark/Wisdom Panel"].map((item) => (
+                    <label key={item} className={`flex items-center gap-2 ${!editMode ? "cursor-not-allowed" : "cursor-pointer"}`}>
+                      <input
+                        type="checkbox"
+                        checked={profile.healthPractices.includes(item)}
+                        onChange={() => toggleItem("healthPractices", item)}
+                        disabled={!editMode}
+                        className="w-4 h-4 rounded border-hairline bg-card accent-blue-500"
+                      />
+                      <span className={`text-sm ${!editMode ? "text-secondary" : ""}`}>{item}</span>
+                    </label>
+                  ))}
+                </div>
+                <div>
+                  <label className="text-xs text-secondary">Health and Genetic Practices Notes</label>
+                  <textarea
+                    value={profile.healthNote}
+                    onChange={(e) => setProfile(p => ({ ...p, healthNote: e.target.value.slice(0, 200) }))}
+                    placeholder="Optional notes..."
+                    rows={2}
+                    disabled={!editMode}
+                    className={`w-full mt-1 bg-card border border-hairline rounded-md px-3 py-2 text-sm placeholder:text-secondary outline-none focus:ring-2 focus:ring-[hsl(var(--brand-orange))] resize-none ${!editMode ? "opacity-60 cursor-not-allowed" : ""}`}
+                  />
+                  <div className="text-xs text-secondary text-right mt-1">{profile.healthNote.length}/200</div>
+                </div>
+              </div>
+
+              {/* Breeding Practices */}
+              <div className={`rounded-md border border-hairline p-4 space-y-3 ${!editMode ? "pointer-events-none" : ""}`}>
+                <div className="flex items-center justify-between mb-3">
+                  <div className="text-base font-semibold text-primary">Breeding Practices</div>
+                  <VisibilityToggle
+                    isPublic={profile.showBreedingPractices}
+                    onChange={(v) => setProfile(p => ({ ...p, showBreedingPractices: v }))}
+                    disabled={!editMode || profile.breedingPractices.length === 0}
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  {["Health-tested parents only", "Puppy Culture", "Avidog Program", "Breeding soundness exam", "Limited breeding rights", "Co-ownership available"].map((item) => (
+                    <label key={item} className={`flex items-center gap-2 ${!editMode ? "cursor-not-allowed" : "cursor-pointer"}`}>
+                      <input
+                        type="checkbox"
+                        checked={profile.breedingPractices.includes(item)}
+                        onChange={() => toggleItem("breedingPractices", item)}
+                        disabled={!editMode}
+                        className="w-4 h-4 rounded border-hairline bg-card accent-blue-500"
+                      />
+                      <span className={`text-sm ${!editMode ? "text-secondary" : ""}`}>{item}</span>
+                    </label>
+                  ))}
+                </div>
+                <div>
+                  <label className="text-xs text-secondary">Breeding Practices Notes</label>
+                  <textarea
+                    value={profile.breedingNote}
+                    onChange={(e) => setProfile(p => ({ ...p, breedingNote: e.target.value.slice(0, 200) }))}
+                    placeholder="Optional notes..."
+                    rows={2}
+                    disabled={!editMode}
+                    className={`w-full mt-1 bg-card border border-hairline rounded-md px-3 py-2 text-sm placeholder:text-secondary outline-none focus:ring-2 focus:ring-[hsl(var(--brand-orange))] resize-none ${!editMode ? "opacity-60 cursor-not-allowed" : ""}`}
+                  />
+                  <div className="text-xs text-secondary text-right mt-1">{profile.breedingNote.length}/200</div>
+                </div>
+              </div>
+
+              {/* Care and Early Life */}
+              <div className={`rounded-md border border-hairline p-4 space-y-3 ${!editMode ? "pointer-events-none" : ""}`}>
+                <div className="flex items-center justify-between mb-3">
+                  <div className="text-base font-semibold text-primary">Care and Early Life</div>
+                  <VisibilityToggle
+                    isPublic={profile.showCarePractices}
+                    onChange={(v) => setProfile(p => ({ ...p, showCarePractices: v }))}
+                    disabled={!editMode || profile.carePractices.length === 0}
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  {["ENS/ESI", "Vet checked", "First vaccinations", "Microchipped", "Crate/potty training started", "Socialization protocol"].map((item) => (
+                    <label key={item} className={`flex items-center gap-2 ${!editMode ? "cursor-not-allowed" : "cursor-pointer"}`}>
+                      <input
+                        type="checkbox"
+                        checked={profile.carePractices.includes(item)}
+                        onChange={() => toggleItem("carePractices", item)}
+                        disabled={!editMode}
+                        className="w-4 h-4 rounded border-hairline bg-card accent-blue-500"
+                      />
+                      <span className={`text-sm ${!editMode ? "text-secondary" : ""}`}>{item}</span>
+                    </label>
+                  ))}
+                </div>
+                <div>
+                  <label className="text-xs text-secondary">Care and Early Life Notes</label>
+                  <textarea
+                    value={profile.careNote}
+                    onChange={(e) => setProfile(p => ({ ...p, careNote: e.target.value.slice(0, 200) }))}
+                    placeholder="Optional notes..."
+                    rows={2}
+                    disabled={!editMode}
+                    className={`w-full mt-1 bg-card border border-hairline rounded-md px-3 py-2 text-sm placeholder:text-secondary outline-none focus:ring-2 focus:ring-[hsl(var(--brand-orange))] resize-none ${!editMode ? "opacity-60 cursor-not-allowed" : ""}`}
+                  />
+                  <div className="text-xs text-secondary text-right mt-1">{profile.careNote.length}/200</div>
+                </div>
               </div>
             </div>
           </>

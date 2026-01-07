@@ -698,10 +698,12 @@ function OwnershipDetailsEditor({
   row,
   setDraft,
   ownershipLookups,
+  mode = "edit",
 }: {
   row: AnimalRow;
   setDraft: (p: Partial<AnimalRow>) => void;
   ownershipLookups: any;
+  mode?: "view" | "edit";
 }) {
   type Hit = {
     id: number;
@@ -959,7 +961,7 @@ function OwnershipDetailsEditor({
     owners.length > 1;
 
   return (
-    <SectionCard title="Ownership">
+    <SectionCard title="Ownership" highlight={mode === "edit"}>
       {/* Search row, custom so text is never under the icon */}
       <div className="mb-3">
         <div className="relative max-w-md">
@@ -1810,45 +1812,11 @@ function ProgramTab({
     onSaved(flags);
   };
 
-  const months = ageInMonths(animal.dob);
   const sex = (animal.sex || "").toLowerCase();
-  const isFemale = sex.startsWith("f");
   const isMale = sex.startsWith("m");
-
-  // very light, transparent readiness hints for breeders
-  const ageOkFemale = months != null ? months >= 18 : false;
-  const ageOkMale = months != null ? months >= 12 : false;
 
   return (
     <div className="space-y-3">
-      <SectionCard title="Readiness Summary">
-        <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 text-sm">
-          <div>
-            <div className="text-xs text-secondary">Age</div>
-            <div>{months != null ? `${months} mo` : "—"}</div>
-          </div>
-          <div>
-            <div className="text-xs text-secondary">Sex</div>
-            <div>{animal.sex || "—"}</div>
-          </div>
-          <div>
-            <div className="text-xs text-secondary">Program Status</div>
-            <div>{animal.status || "Active"}</div>
-          </div>
-          <div>
-            <div className="text-xs text-secondary">Eligibility Hint</div>
-            <div>
-              {isFemale ? (ageOkFemale ? "Age meets common female threshold" : "Age may be low for female breeding") : null}
-              {isMale ? (ageOkMale ? "Age meets common male threshold" : "Age may be low for male breeding") : null}
-              {!isFemale && !isMale ? "—" : ""}
-            </div>
-          </div>
-        </div>
-        <div className="mt-2 text-xs text-secondary">
-          Readiness hints are informational and are not rules. Configure your own constraints below.
-        </div>
-      </SectionCard>
-
       <SectionCard title="Program Flags">
         {loading ? (
           <div className="text-sm text-secondary">Loading…</div>
@@ -5745,7 +5713,7 @@ export default function AppAnimals() {
           >
           {activeTab === "overview" && (
             <div className="space-y-3">
-              <SectionCard title="Identity">
+              <SectionCard title="Identity" highlight={mode === "edit"}>
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
                   <div className="lg:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <LV label="Name">
@@ -5895,7 +5863,7 @@ export default function AppAnimals() {
                 />
               </SectionCard>
 
-              <SectionCard title="Profile">
+              <SectionCard title="Profile" highlight={mode === "edit"}>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                   <LV label="Species">
                     {mode === "view" ? (
@@ -6022,6 +5990,46 @@ export default function AppAnimals() {
                 </div>
               </SectionCard>
 
+              <SectionCard title="Readiness Summary">
+                <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 text-sm">
+                  <div>
+                    <div className="text-xs text-secondary">Age</div>
+                    <div>{(() => {
+                      const months = ageInMonths(row.dob);
+                      return months != null ? `${months} mo` : "—";
+                    })()}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-secondary">Sex</div>
+                    <div>{row.sex || "—"}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-secondary">Program Status</div>
+                    <div>{row.status || "Active"}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-secondary">Eligibility Hint</div>
+                    <div>
+                      {(() => {
+                        const months = ageInMonths(row.dob);
+                        const sex = (row.sex || "").toLowerCase();
+                        const isFemale = sex.startsWith("f");
+                        const isMale = sex.startsWith("m");
+                        const ageOkFemale = months != null ? months >= 18 : false;
+                        const ageOkMale = months != null ? months >= 12 : false;
+
+                        if (isFemale) return ageOkFemale ? "Age meets common female threshold" : "Age may be low for female breeding";
+                        if (isMale) return ageOkMale ? "Age meets common male threshold" : "Age may be low for male breeding";
+                        return "—";
+                      })()}
+                    </div>
+                  </div>
+                </div>
+                <div className="mt-2 text-xs text-secondary">
+                  Readiness hints are informational and are not rules. Configure your own constraints in the Program tab.
+                </div>
+              </SectionCard>
+
               {mode === "view" ? (
                 <SectionCard title="Ownership">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -6069,6 +6077,7 @@ export default function AppAnimals() {
                   row={row}
                   setDraft={setDraft}
                   ownershipLookups={ownershipLookups}
+                  mode={mode}
                 />
               )}
 
@@ -6080,7 +6089,7 @@ export default function AppAnimals() {
                 />
               </SectionCard>
 
-              <SectionCard title="Notes">
+              <SectionCard title="Notes" highlight={mode === "edit"}>
                 {mode === "view" ? (
                   <div className="text-sm">{row.notes || "—"}</div>
                 ) : (

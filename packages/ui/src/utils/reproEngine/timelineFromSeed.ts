@@ -138,6 +138,65 @@ export function buildTimelineFromSeed(summary: ReproSummary, seedCycleStart: ISO
   };
 }
 
+/**
+ * Build post-birth timeline windows from an actual birth date.
+ * This is used to recalculate expected weaning and placement dates when actual birth has occurred.
+ * Returns only the post-birth windows (puppy_care, go_home_normal, go_home_extended).
+ */
+function computeWindowsFromBirth(species: SpeciesCode, actualBirth: ISODate): Partial<Record<string, Window>> {
+  const d = getSpeciesDefaults(species);
+  const birthDate = assertIsoDate(actualBirth, "actualBirth");
+
+  // Use single date for birth (no range, since this is actual)
+  const birthPoint: RangeTuple = [birthDate, birthDate];
+
+  // Puppy care: from birth → +8 weeks
+  const puppyCareFull: RangeTuple = makeRangeTuple(birthDate, addDays(birthDate, 8 * 7));
+  const puppyCareLikely: RangeTuple = puppyCareFull; // Same as full when based on actual
+
+  // Go home normal: starts at 8 weeks from birth
+  const goHomeWeeks = d.placementStartWeeksDefault;
+  const goHomeNormalStart = addDays(birthDate, goHomeWeeks * 7);
+  const goHomeNormalFull: RangeTuple = [goHomeNormalStart, goHomeNormalStart];
+  const goHomeNormalLikely: RangeTuple = goHomeNormalFull;
+
+  // Go home extended: +3 weeks from placement start
+  const goHomeExtendedEnd = addDays(goHomeNormalStart, d.placementExtendedWeeks * 7);
+  const goHomeExtendedFull: RangeTuple = makeRangeTuple(goHomeNormalStart, goHomeExtendedEnd);
+  const goHomeExtendedLikely: RangeTuple = goHomeExtendedFull;
+
+  return {
+    birth: { full: birthPoint, likely: birthPoint },
+    puppy_care: { full: puppyCareFull, likely: puppyCareLikely },
+    go_home_normal: { full: goHomeNormalFull, likely: goHomeNormalLikely },
+    go_home_extended: { full: goHomeExtendedFull, likely: goHomeExtendedLikely },
+  };
+}
+
+/**
+ * Build timeline from an actual birth date.
+ * Use this when actual birth has occurred to get accurate post-birth expected dates.
+ */
+export function buildTimelineFromBirth(summary: ReproSummary, actualBirth: ISODate): ReproTimeline {
+  const birth = assertIsoDate(actualBirth, "actualBirth");
+  const species = summary.species;
+
+  const windows = computeWindowsFromBirth(species, birth);
+
+  return {
+    projectedCycleStarts: [],
+    seedCycleStart: birth, // Using birth as seed for this timeline
+    windows,
+    milestones: {
+      birth_actual: birth,
+    },
+    explain: {
+      species,
+      seedType: "ACTUAL_BIRTH",
+    },
+  };
+}
+
 // Compatibility shim for legacy callers.
 // Returns a flat object that merges windows + milestone dates.
 export function expectedMilestonesFromLocked(
@@ -159,8 +218,10 @@ export function expectedMilestonesFromLocked(
   // Flatten windows into the historical "<key>_full" / "<key>_likely" shape.
   const flat: Record<string, any> = {};
   Object.entries(t.windows || {}).forEach(([k, v]) => {
-    flat[`${k}_full`] = { start: v.full[0], end: v.full[1] };
-    flat[`${k}_likely`] = { start: v.likely[0], end: v.likely[1] };
+    if (v) {
+      flat[`${k}_full`] = { start: v.full[0], end: v.full[1] };
+      flat[`${k}_likely`] = { start: v.likely[0], end: v.likely[1] };
+    }
   });
 
   return { ...flat, ...(t.milestones || {}) };
