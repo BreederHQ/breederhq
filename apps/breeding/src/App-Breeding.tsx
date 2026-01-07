@@ -322,7 +322,7 @@ function computeExpectedForPlan(plan: {
       birth_expected: timeline.windows?.whelping?.likely?.[0] ?? null,
       weaning_expected: timeline.windows?.puppy_care?.likely?.[1] ?? null,
       placement_expected: timeline.windows?.go_home_normal?.likely?.[0] ?? null,
-      placement_expected_end: timeline.windows?.go_home_normal?.likely?.[1] ?? null,
+      placement_expected_end: timeline.windows?.go_home_extended?.full?.[1] ?? null,
       ...timeline.windows,
       ...timeline.milestones,
     };
@@ -4491,38 +4491,87 @@ function PlanDetailsView(props: {
     }
   }
 
-  // Recalculate expected dates when actual cycle start is entered
-  // This uses the ACTUAL cycle start as the seed instead of the locked/expected cycle start
-  // The original expectedCycleStart is preserved, but all other dates are recalculated
-  function recalculateExpectedDatesFromActual(actualCycleStart: string | null) {
-    console.log("[Breeding] recalculateExpectedDatesFromActual called with:", actualCycleStart);
-    if (!actualCycleStart || !String(actualCycleStart).trim()) {
-      return null; // No recalculation if no actual date
+  // Recalculate expected dates using the most recent ACTUAL date as the seed
+  // Priority: actualBirthDate > actualCycleStart
+  // When birth has occurred, only post-birth dates are recalculated
+  function recalculateExpectedDatesFromActual(actualCycleStart: string | null, actualBirthDate: string | null) {
+    console.log("[Breeding] recalculateExpectedDatesFromActual called with:", { actualCycleStart, actualBirthDate });
+
+    // Priority 1: If actual birth exists, recalculate post-birth dates from birth
+    if (actualBirthDate && String(actualBirthDate).trim()) {
+      console.log("[Breeding] Recalculating from actual birth date:", actualBirthDate);
+
+      // Normalize the birth date to ISO date format (YYYY-MM-DD) before passing to reproEngine
+      const normalizedBirthDate = asISODateOnly(actualBirthDate);
+      if (!normalizedBirthDate) {
+        console.warn("[Breeding] Failed to normalize birth date:", actualBirthDate);
+        return null;
+      }
+
+      const birthTimeline = (reproEngine as any).buildTimelineFromBirth?.({
+        animalId: "",
+        species: row.species,
+        cycleStartsAsc: [],
+        today: new Date().toISOString().slice(0, 10),
+      }, normalizedBirthDate);
+
+      console.log("[Breeding] birthTimeline:", birthTimeline);
+
+      if (!birthTimeline) {
+        console.warn("[Breeding] buildTimelineFromBirth not available, falling back to cycle-based");
+      } else {
+        // Extract post-birth dates from birth-based timeline
+        return {
+          // Pre-birth dates are NOT recalculated when using birth as seed
+          expectedHormoneTestingStart: null,
+          expectedBreedDate: null,
+          expectedBirthDate: null,
+          // Post-birth dates ARE recalculated from actual birth
+          expectedWeaned: birthTimeline.windows?.puppy_care?.likely?.[1] ?? null,
+          expectedPlacementStartDate: birthTimeline.windows?.go_home_normal?.likely?.[0] ?? null,
+          expectedPlacementCompletedDate: birthTimeline.windows?.go_home_extended?.full?.[1] ?? null,
+        };
+      }
     }
 
-    const expectedRaw = computeExpectedForPlan({
-      species: row.species as any,
-      lockedCycleStart: actualCycleStart, // Use actual as seed
-      femaleCycleLenOverrideDays: liveOverride,
-    });
+    // Priority 2: If actual cycle start exists, recalculate entire timeline from cycle
+    if (actualCycleStart && String(actualCycleStart).trim()) {
+      console.log("[Breeding] Recalculating from actual cycle start:", actualCycleStart);
 
-    console.log("[Breeding] recalculateExpectedDatesFromActual - expectedRaw:", expectedRaw);
-    if (!expectedRaw) return null;
+      // Normalize the cycle start date to ISO date format (YYYY-MM-DD) before passing to reproEngine
+      const normalizedCycleStart = asISODateOnly(actualCycleStart);
+      if (!normalizedCycleStart) {
+        console.warn("[Breeding] Failed to normalize cycle start date:", actualCycleStart);
+        return null;
+      }
 
-    const expected = normalizeExpectedMilestones(expectedRaw, actualCycleStart);
-    const testingStart =
-      expected.hormoneTestingStart ?? pickExpectedTestingStart(expectedRaw, actualCycleStart);
+      const expectedRaw = computeExpectedForPlan({
+        species: row.species as any,
+        lockedCycleStart: normalizedCycleStart, // Use actual as seed
+        femaleCycleLenOverrideDays: liveOverride,
+      });
 
-    // Return the recalculated expected dates (keep original expectedCycleStart)
-    return {
-      // Don't update expectedCycleStart - keep the original
-      expectedHormoneTestingStart: testingStart ?? null,
-      expectedBreedDate: expected.breedDate,
-      expectedBirthDate: expected.birthDate,
-      expectedWeaned: expected.weanedDate,
-      expectedPlacementStartDate: expected.placementStart,
-      expectedPlacementCompletedDate: expected.placementCompleted,
-    };
+      console.log("[Breeding] recalculateExpectedDatesFromActual - expectedRaw:", expectedRaw);
+      if (!expectedRaw) return null;
+
+      const expected = normalizeExpectedMilestones(expectedRaw, normalizedCycleStart);
+      const testingStart =
+        expected.hormoneTestingStart ?? pickExpectedTestingStart(expectedRaw, normalizedCycleStart);
+
+      // Return the recalculated expected dates (keep original expectedCycleStart)
+      return {
+        // Don't update expectedCycleStart - keep the original
+        expectedHormoneTestingStart: testingStart ?? null,
+        expectedBreedDate: expected.breedDate,
+        expectedBirthDate: expected.birthDate,
+        expectedWeaned: expected.weanedDate,
+        expectedPlacementStartDate: expected.placementStart,
+        expectedPlacementCompletedDate: expected.placementCompleted,
+      };
+    }
+
+    // No actual dates available
+    return null;
   }
 
   async function unlockCycle() {
@@ -4618,19 +4667,18 @@ function PlanDetailsView(props: {
   const expectedPlacementCompleted = expectedGoHomeExtended;
   const expectedCompleted = expectedPlacementCompleted;
 
-  // Recalculated dates based on ACTUAL cycle start (when available)
-  // This shows what the expected dates WOULD BE if we use the actual cycle start as the seed
+  // Recalculated dates based on ACTUAL dates (when available)
+  // Priority: actual birth > actual cycle start
+  // This shows what the expected dates WOULD BE if we use the actual dates as the seed
   const recalculatedDates = React.useMemo(() => {
     const actualCycleStart = effective.cycleStartDateActual;
-    console.log("[Breeding] recalculatedDates memo - actualCycleStart:", actualCycleStart, "species:", row.species);
-    if (!actualCycleStart || !String(actualCycleStart).trim()) {
-      console.log("[Breeding] recalculatedDates - no actual cycle start, returning null");
-      return null; // No recalculation if no actual date
-    }
-    const result = recalculateExpectedDatesFromActual(actualCycleStart);
+    const actualBirth = effective.birthDateActual;
+    console.log("[Breeding] recalculatedDates memo:", { actualCycleStart, actualBirth, species: row.species });
+
+    const result = recalculateExpectedDatesFromActual(actualCycleStart, actualBirth);
     console.log("[Breeding] recalculatedDates - result:", result);
     return result;
-  }, [effective.cycleStartDateActual, row.species, liveOverride]);
+  }, [effective.cycleStartDateActual, effective.birthDateActual, row.species, liveOverride]);
 
   // Extract individual recalculated values for display
   const recalcTestingStart = recalculatedDates?.expectedHormoneTestingStart ?? "";
@@ -4973,6 +5021,7 @@ function PlanDetailsView(props: {
               hasActualWeanedDate={Boolean(effective.weanedDateActual)}
               hasPlacementStarted={Boolean(effective.placementStartDateActual)}
               hasPlacementCompleted={Boolean(effective.placementCompletedDateActual)}
+              hasPlanCompleted={Boolean(effective.completedDateActual)}
               actualCycleStartDate={effective.cycleStartDateActual}
               actualHormoneTestingStartDate={effective.hormoneTestingStartDateActual}
               actualBreedDate={effective.breedDateActual}
@@ -4980,6 +5029,7 @@ function PlanDetailsView(props: {
               actualWeanedDate={effective.weanedDateActual}
               actualPlacementStartDate={effective.placementStartDateActual}
               actualPlacementCompletedDate={effective.placementCompletedDateActual}
+              actualPlanCompletedDate={effective.completedDateActual}
               expectedCycleStartDate={expectedCycleStart}
               expectedHormoneTestingStartDate={expectedTestingStart}
               expectedBreedDate={expectedBreed}
@@ -4987,6 +5037,7 @@ function PlanDetailsView(props: {
               expectedWeanedDate={expectedWeaned}
               expectedPlacementStartDate={expectedPlacementStart}
               expectedPlacementCompletedDate={expectedPlacementCompleted}
+              expectedPlanCompletedDate={null}
               onDateChange={async (field, value) => {
                 if (!isEdit) return;
 
@@ -5005,6 +5056,8 @@ function PlanDetailsView(props: {
                   setDraftLive({ placementStartDateActual: value });
                 } else if (field === "actualPlacementCompletedDate") {
                   setDraftLive({ placementCompletedDateActual: value });
+                } else if (field === "actualPlanCompletedDate") {
+                  setDraftLive({ completedDateActual: value });
                 }
 
                 // Auto-save immediately after setting a date value
@@ -5916,15 +5969,31 @@ function PlanDetailsView(props: {
                 </div>
               </SectionCard>
 
-              {/* RECALCULATED DATES - hidden in PLANNING phase, shows recalculated values when actual cycle start exists */}
+              {/* RECALCULATED DATES - hidden in PLANNING phase, shows recalculated values when actual dates exist */}
               {statusU !== "PLANNING" && (
                 <SectionCard title="EXPECTED DATES (RECALCULATED)">
-                  {!effective.cycleStartDateActual ? (
+                  {!effective.cycleStartDateActual && !effective.birthDateActual ? (
                     <div className="text-sm text-secondary italic">
-                      Enter an Actual Cycle Start date to see recalculated expected dates.
+                      Enter an Actual Cycle Start or Actual Birth Date to see recalculated expected dates.
                     </div>
                   ) : (
                     <>
+                      {/* Seed indicator */}
+                      {effective.birthDateActual && (
+                        <div className="mb-4 px-3 py-2 bg-amber-500/10 border border-amber-500/30 rounded-md">
+                          <div className="text-xs text-amber-600 dark:text-amber-400">
+                            📍 Dates calculated from <strong>Actual Birth: {fmt(effective.birthDateActual)}</strong>
+                          </div>
+                        </div>
+                      )}
+                      {!effective.birthDateActual && effective.cycleStartDateActual && (
+                        <div className="mb-4 px-3 py-2 bg-blue-500/10 border border-blue-500/30 rounded-md">
+                          <div className="text-xs text-blue-600 dark:text-blue-400">
+                            📍 Dates calculated from <strong>Actual Cycle Start: {fmt(effective.cycleStartDateActual)}</strong>
+                          </div>
+                        </div>
+                      )}
+
                       {/* Phase 1: Cycle Start → Birth */}
                       <div className="mb-5">
                         <div className="flex items-center gap-2 mb-3">

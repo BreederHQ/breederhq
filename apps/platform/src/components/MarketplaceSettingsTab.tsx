@@ -401,15 +401,18 @@ function Toggle({ checked, onChange, label, disabled }: { checked: boolean; onCh
 
 function Checkbox({ checked, onChange, label, disabled }: { checked: boolean; onChange: (v: boolean) => void; label: string; disabled?: boolean }) {
   return (
-    <label className={["flex items-center gap-2", disabled ? "opacity-60 cursor-not-allowed" : "cursor-pointer"].join(" ")}>
+    <label className={["flex items-center gap-2", disabled ? "cursor-not-allowed" : "cursor-pointer"].join(" ")}>
       <input
         type="checkbox"
         checked={checked}
         onChange={(e) => !disabled && onChange(e.target.checked)}
         disabled={disabled}
-        className="w-4 h-4 rounded border-hairline bg-card accent-[hsl(var(--brand-orange))]"
+        className={[
+          "w-4 h-4 rounded border-hairline bg-card accent-[hsl(var(--brand-orange))]",
+          disabled && checked ? "opacity-100" : disabled ? "opacity-40" : ""
+        ].filter(Boolean).join(" ")}
       />
-      <span className="text-sm text-primary">{label}</span>
+      <span className={["text-sm", disabled ? "text-secondary" : "text-primary"].join(" ")}>{label}</span>
     </label>
   );
 }
@@ -569,7 +572,6 @@ function CredentialsChecklist({
   noteMaxLength?: number;
   disabled?: boolean;
 }) {
-  const disabledCls = disabled ? "opacity-70 cursor-not-allowed" : "";
   return (
     <div className={`space-y-3 ${disabled ? "pointer-events-none" : ""}`}>
       <h4 className="text-sm font-medium text-primary">{title}</h4>
@@ -591,7 +593,7 @@ function CredentialsChecklist({
           placeholder="Optional notes..."
           rows={2}
           disabled={disabled}
-          className={`${TEXTAREA_CLS} ${disabledCls}`}
+          className={`${TEXTAREA_CLS} ${disabled ? "opacity-60 cursor-not-allowed" : ""}`}
         />
         <div className="text-xs text-secondary text-right mt-1">
           {noteValue.length}/{noteMaxLength}
@@ -1479,10 +1481,35 @@ const MarketplaceSettingsTabInner = React.forwardRef<MarketplaceHandle, Marketpl
         setSaving(false);
       }
     } else {
-      // Not published, or toggling OFF - just update local state
-      setPrograms((prev) =>
-        prev.map((p) => (p.id === id ? { ...p, status: newStatus } : p))
-      );
+      // Not published - inform user when toggling ON
+      if (!published && newStatus) {
+        await confirmDialog({
+          title: "Profile Not Published",
+          message: "This program is now marked as 'Listed', but it won't be visible to buyers until you publish your marketplace profile. Scroll down to 'Preview and Validation' to publish your profile.",
+          confirmText: "Got it",
+          cancelText: null,
+        });
+      }
+
+      // Update local state
+      const updatedPrograms = programs.map((p) => (p.id === id ? { ...p, status: newStatus } : p));
+      setPrograms(updatedPrograms);
+
+      // Auto-save the draft to prevent dirty state blocking close button
+      const updatedDraft = { ...draft, programs: updatedPrograms };
+      setSaving(true);
+      try {
+        await saveMarketplaceDraft(tenantId, updatedDraft);
+        const now = new Date().toISOString();
+        initialDraftRef.current = JSON.stringify({ ...updatedDraft, updatedAt: now });
+        setDraft((prev) => ({ ...prev, programs: updatedPrograms, updatedAt: now }));
+        onDirty(false);
+      } catch (e) {
+        console.error("Failed to save program toggle:", e);
+        setSaveError("Failed to save changes. Please try again.");
+      } finally {
+        setSaving(false);
+      }
     }
   }
 
@@ -1773,14 +1800,9 @@ const MarketplaceSettingsTabInner = React.forwardRef<MarketplaceHandle, Marketpl
         </p>
         <div className="flex flex-wrap gap-3 mt-4">
           <Badge variant={isPublished ? "green" : "neutral"}>
-            Marketplace: {isPublished ? "Visible" : "Draft"}
+            Marketplace: {isPublished ? "Visible" : "Not Published"}
           </Badge>
           <Badge variant="neutral">{listedProgramsCount} of {programs.length} Programs Listed</Badge>
-          {draft.updatedAt && (
-            <Badge variant="neutral">
-              Draft Updated: {new Date(draft.updatedAt).toLocaleDateString()}
-            </Badge>
-          )}
           {published?.publishedAt && (
             <Badge variant="neutral">
               Published: {new Date(published.publishedAt).toLocaleDateString()}
@@ -1789,222 +1811,8 @@ const MarketplaceSettingsTabInner = React.forwardRef<MarketplaceHandle, Marketpl
         </div>
       </div>
 
-      {/* Section: Programs and Listings */}
-      <SectionCard
-        title="Programs and Listings"
-        highlight={editMode}
-        right={
-          <div className="flex items-center gap-2">
-            {realBreedNames.length === 0 && !breedsLoading && (
-              <div className="flex items-center gap-2 text-sm text-secondary">
-                <span>Add breeds to create programs.</span>
-                <button
-                  type="button"
-                  className="text-[hsl(var(--brand-orange))] hover:underline"
-                  onClick={onNavigateToBreeds}
-                >
-                  Manage breeds
-                </button>
-              </div>
-            )}
-            <Button
-              size="sm"
-              onClick={() => setCreateModalOpen(true)}
-              disabled={!editMode || (realBreedNames.length === 0 && !breedsLoading)}
-            >
-              Create program
-            </Button>
-          </div>
-        }
-      >
-        <div className="space-y-4">
-          <p className={SUBLABEL_CLS}>
-            Control which breeding programs appear in the marketplace.
-          </p>
-
-          {programs.length === 0 && visibleExamples.length === 0 && (
-            <div className="text-center py-8 text-secondary">
-              <p>No programs yet. Create your first breeding program to get started.</p>
-            </div>
-          )}
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {programs.map((program) => (
-              <ProgramCard
-                key={program.id}
-                name={program.name}
-                description={program.description}
-                status={program.status}
-                acceptInquiries={program.acceptInquiries}
-                openWaitlist={program.openWaitlist}
-                comingSoon={program.comingSoon}
-                onToggle={() => toggleProgram(program.id)}
-                onEdit={() => setEditingProgram(program)}
-                onDelete={() => handleDeleteProgram(program.id)}
-                disabled={!editMode}
-              />
-            ))}
-
-            {visibleExamples.map((example) => (
-              <ProgramCard
-                key={example.id}
-                name={example.name}
-                description={example.description}
-                status={example.status}
-                acceptInquiries={true}
-                openWaitlist={false}
-                comingSoon={false}
-                onToggle={() => {}}
-                isExample
-                onUseTemplate={() => handleUseTemplate(example.id)}
-                onHideExample={() => handleHideExample(example.id)}
-                disabled={!editMode}
-              />
-            ))}
-          </div>
-        </div>
-      </SectionCard>
-
-      <CreateProgramModal
-        open={createModalOpen}
-        onClose={() => setCreateModalOpen(false)}
-        onCreate={handleCreateProgram}
-        availableBreeds={realBreedNames}
-      />
-
-      <EditProgramModal
-        open={!!editingProgram}
-        program={editingProgram}
-        onClose={() => setEditingProgram(null)}
-        onSave={handleEditProgram}
-        onDelete={handleDeleteProgram}
-        availableBreeds={realBreedNames}
-      />
-
-      {/* Section 5: Standards and Credentials */}
-      <SectionCard title="Standards and Credentials" highlight={editMode}>
-        <div className="space-y-6">
-          <CredentialsChecklist
-            title="Registrations and Affiliations"
-            items={["AKC Breeder of Merit", "AKC Bred with H.E.A.R.T.", "GANA Member", "GRCA Member", "UKC Registered", "CKC Registered"]}
-            selected={draft.standardsAndCredentials.registrations}
-            onToggle={(item) => toggleCredentialItem("registrations", item)}
-            noteValue={draft.standardsAndCredentials.registrationsNote}
-            onNoteChange={(v) => updateCredentials("registrationsNote", v)}
-            disabled={!editMode}
-          />
-
-          <CredentialsChecklist
-            title="Health and Genetic Practices"
-            items={["OFA Hip/Elbow", "OFA Cardiac", "OFA Eyes (CAER)", "PennHIP", "Genetic Testing", "Embark/Wisdom Panel"]}
-            selected={draft.standardsAndCredentials.healthPractices}
-            onToggle={(item) => toggleCredentialItem("healthPractices", item)}
-            noteValue={draft.standardsAndCredentials.healthNote}
-            onNoteChange={(v) => updateCredentials("healthNote", v)}
-            disabled={!editMode}
-          />
-
-          <CredentialsChecklist
-            title="Breeding Practices"
-            items={["Health-tested parents only", "Puppy Culture", "Avidog Program", "Breeding soundness exam", "Limited breeding rights", "Co-ownership available"]}
-            selected={draft.standardsAndCredentials.breedingPractices}
-            onToggle={(item) => toggleCredentialItem("breedingPractices", item)}
-            noteValue={draft.standardsAndCredentials.breedingNote}
-            onNoteChange={(v) => updateCredentials("breedingNote", v)}
-            disabled={!editMode}
-          />
-
-          <CredentialsChecklist
-            title="Care and Early Life"
-            items={["ENS/ESI", "Vet checked", "First vaccinations", "Microchipped", "Crate/potty training started", "Socialization protocol"]}
-            selected={draft.standardsAndCredentials.carePractices}
-            onToggle={(item) => toggleCredentialItem("carePractices", item)}
-            noteValue={draft.standardsAndCredentials.careNote}
-            onNoteChange={(v) => updateCredentials("careNote", v)}
-            disabled={!editMode}
-          />
-        </div>
-      </SectionCard>
-
-      {/* Section 6: Placement Policies */}
-      <SectionCard title="Placement Policies" highlight={editMode}>
-        <div className={`space-y-4 ${!editMode ? "pointer-events-none" : ""}`}>
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-            <Checkbox
-              checked={draft.placementPolicies.requireApplication}
-              onChange={(v) => updatePlacement("requireApplication", v)}
-              label="Require application"
-              disabled={!editMode}
-            />
-            <Checkbox
-              checked={draft.placementPolicies.requireInterview}
-              onChange={(v) => updatePlacement("requireInterview", v)}
-              label="Require interview/meeting"
-              disabled={!editMode}
-            />
-            <Checkbox
-              checked={draft.placementPolicies.requireContract}
-              onChange={(v) => updatePlacement("requireContract", v)}
-              label="Require signed contract"
-              disabled={!editMode}
-            />
-            <Checkbox
-              checked={draft.placementPolicies.hasReturnPolicy}
-              onChange={(v) => updatePlacement("hasReturnPolicy", v)}
-              label="Lifetime return policy"
-              disabled={!editMode}
-            />
-            <Checkbox
-              checked={draft.placementPolicies.offersSupport}
-              onChange={(v) => updatePlacement("offersSupport", v)}
-              label="Ongoing breeder support"
-              disabled={!editMode}
-            />
-          </div>
-          <div>
-            <label className={LABEL_CLS}>Additional Placement Notes</label>
-            <p className={SUBLABEL_CLS}>Describe any additional details about your placement process.</p>
-            <textarea
-              value={draft.placementPolicies.note}
-              onChange={(e) => updatePlacement("note", e.target.value.slice(0, 300))}
-              placeholder="Describe your placement process..."
-              rows={3}
-              disabled={!editMode}
-              className={`${TEXTAREA_CLS} ${!editMode ? "opacity-70 cursor-not-allowed" : ""}`}
-            />
-            <div className="text-xs text-secondary text-right mt-1">{draft.placementPolicies.note.length}/300</div>
-          </div>
-        </div>
-      </SectionCard>
-
-      {/* Section 7: Trust Signals and Badges */}
-      <SectionCard title="Trust Signals and Badges">
-        <div className="space-y-4">
-          <p className={SUBLABEL_CLS}>
-            Badges are earned through verified actions and cannot be manually set. Badge functionality is not yet available.
-          </p>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            {[
-              { name: "Verified Identity" },
-              { name: "Health Testing" },
-              { name: "5+ Placements" },
-              { name: "Quick Responder" },
-            ].map((badge) => (
-              <div
-                key={badge.name}
-                className="rounded-lg border p-3 text-center bg-surface-strong/50 border-hairline opacity-60"
-              >
-                <div className="text-2xl mb-1 text-secondary">○</div>
-                <div className="text-xs font-medium text-secondary">{badge.name}</div>
-                <div className="text-[10px] text-tertiary mt-1">Locked</div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </SectionCard>
-
-      {/* Section 8: Preview and Validation */}
-      <SectionCard title="Preview and Validation" highlight={editMode}>
+      {/* Section: Preview and Validation */}
+      <SectionCard title="Preview and Validation" highlight={false}>
         <div className="space-y-6">
           <PublishErrorBanner errors={publishErrors} />
 
@@ -2034,33 +1842,153 @@ const MarketplaceSettingsTabInner = React.forwardRef<MarketplaceHandle, Marketpl
             </div>
           </div>
 
-          <div className="flex items-center gap-3 pt-4 border-t border-hairline">
-            <Button variant="outline" onClick={handleSaveDraft} disabled={!editMode || saving}>
-              {saving ? "Saving..." : isPublished ? "Save & Update Listing" : "Save Draft"}
-            </Button>
-            <Button
-              variant="outline"
-              onClick={handleDiscardChanges}
-              disabled={!editMode || saving || JSON.stringify(draft) === initialDraftRef.current}
-              className="text-secondary hover:text-primary"
-            >
-              Discard Changes
-            </Button>
-            <div className="flex-1" />
+          <div className="flex items-center justify-end gap-3 pt-4 border-t border-hairline">
             {isPublished ? (
               <Button
                 variant="outline"
                 onClick={handleUnpublish}
-                disabled={!editMode || unpublishing}
+                disabled={unpublishing}
                 className="text-red-400 border-red-400/50 hover:bg-red-400/10"
               >
                 {unpublishing ? "Removing..." : "Remove Marketplace Listing"}
               </Button>
             ) : (
-              <Button onClick={handlePublish} disabled={!editMode || !canPublish || publishing}>
+              <Button onClick={handlePublish} disabled={!canPublish || publishing}>
                 {publishing ? "Publishing..." : "Publish to Marketplace"}
               </Button>
             )}
+          </div>
+        </div>
+      </SectionCard>
+
+      {/* Section: Programs and Listings */}
+      <SectionCard
+        title="Programs and Listings"
+        highlight={false}
+        right={
+          <div className="flex items-center gap-2">
+            {realBreedNames.length === 0 && !breedsLoading && (
+              <div className="flex items-center gap-2 text-sm text-secondary">
+                <span>Add breeds to create programs.</span>
+                <button
+                  type="button"
+                  className="text-[hsl(var(--brand-orange))] hover:underline"
+                  onClick={onNavigateToBreeds}
+                >
+                  Manage breeds
+                </button>
+              </div>
+            )}
+            <Button
+              size="sm"
+              onClick={() => setCreateModalOpen(true)}
+              disabled={realBreedNames.length === 0 && !breedsLoading}
+            >
+              Create program
+            </Button>
+          </div>
+        }
+      >
+        <div className="space-y-4">
+          <p className={SUBLABEL_CLS}>
+            Control which breeding programs appear in the marketplace.
+          </p>
+
+          {!isPublished && programs.some((p) => p.status) && (
+            <div className="rounded-lg border border-yellow-500/30 bg-yellow-500/10 p-4">
+              <div className="flex items-start gap-3">
+                <div className="text-yellow-400 text-lg">⚠️</div>
+                <div className="flex-1 min-w-0">
+                  <h4 className="text-sm font-medium text-yellow-400 mb-1">Marketplace Profile Not Published</h4>
+                  <p className="text-sm text-yellow-300/90">
+                    You have {listedProgramsCount} {listedProgramsCount === 1 ? 'program' : 'programs'} marked as "Listed", but {listedProgramsCount === 1 ? 'it' : 'they'} won't be visible to buyers until you publish your marketplace profile. Scroll down to "Preview and Validation" to publish.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {programs.length === 0 && visibleExamples.length === 0 && (
+            <div className="text-center py-8 text-secondary">
+              <p>No programs yet. Create your first breeding program to get started.</p>
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {programs.map((program) => (
+              <ProgramCard
+                key={program.id}
+                name={program.name}
+                description={program.description}
+                status={program.status}
+                acceptInquiries={program.acceptInquiries}
+                openWaitlist={program.openWaitlist}
+                comingSoon={program.comingSoon}
+                onToggle={() => toggleProgram(program.id)}
+                onEdit={() => setEditingProgram(program)}
+                onDelete={() => handleDeleteProgram(program.id)}
+                disabled={false}
+              />
+            ))}
+
+            {visibleExamples.map((example) => (
+              <ProgramCard
+                key={example.id}
+                name={example.name}
+                description={example.description}
+                status={example.status}
+                acceptInquiries={true}
+                openWaitlist={false}
+                comingSoon={false}
+                onToggle={() => {}}
+                isExample
+                onUseTemplate={() => handleUseTemplate(example.id)}
+                onHideExample={() => handleHideExample(example.id)}
+                disabled={false}
+              />
+            ))}
+          </div>
+        </div>
+      </SectionCard>
+
+      <CreateProgramModal
+        open={createModalOpen}
+        onClose={() => setCreateModalOpen(false)}
+        onCreate={handleCreateProgram}
+        availableBreeds={realBreedNames}
+      />
+
+      <EditProgramModal
+        open={!!editingProgram}
+        program={editingProgram}
+        onClose={() => setEditingProgram(null)}
+        onSave={handleEditProgram}
+        onDelete={handleDeleteProgram}
+        availableBreeds={realBreedNames}
+      />
+
+      {/* Section 5: Trust Signals and Badges */}
+      <SectionCard title="Trust Signals and Badges">
+        <div className="space-y-4">
+          <p className={SUBLABEL_CLS}>
+            Badges are earned through verified actions and cannot be manually set. Badge functionality is not yet available.
+          </p>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {[
+              { name: "Verified Identity" },
+              { name: "Health Testing" },
+              { name: "5+ Placements" },
+              { name: "Quick Responder" },
+            ].map((badge) => (
+              <div
+                key={badge.name}
+                className="rounded-lg border p-3 text-center bg-surface-strong/50 border-hairline opacity-60"
+              >
+                <div className="text-2xl mb-1 text-secondary">○</div>
+                <div className="text-xs font-medium text-secondary">{badge.name}</div>
+                <div className="text-[10px] text-tertiary mt-1">Locked</div>
+              </div>
+            ))}
           </div>
         </div>
       </SectionCard>

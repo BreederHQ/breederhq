@@ -77,7 +77,7 @@ export const Tabs: React.FC<TabsProps> = ({
         aria-orientation="horizontal"
         onKeyDown={onKeyDown}
         className={cx(
-          "inline-flex gap-2",
+          "flex flex-wrap gap-2",
           variant === "underline-orange" && "pb-1 border-b border-hairline"
         )}
         {...a11y}

@@ -57,10 +57,10 @@ export type ReproTimeline = {
   // Optional. Filled when a seed is provided (locked cycle start or what-if selection).
   seedCycleStart?: ISODate | null;
   milestones?: Record<string, ISODate | null>;
-  windows?: Record<string, { full: [ISODate, ISODate]; likely: [ISODate, ISODate] }>;
+  windows?: Partial<Record<string, { full: [ISODate, ISODate]; likely: [ISODate, ISODate] }>>;
 
   explain: {
     species: SpeciesCode;
-    seedType?: "POSTPARTUM" | "HISTORY" | "BIOLOGY" | "JUVENILE";
+    seedType?: "POSTPARTUM" | "HISTORY" | "BIOLOGY" | "JUVENILE" | "ACTUAL_BIRTH";
   };
 };

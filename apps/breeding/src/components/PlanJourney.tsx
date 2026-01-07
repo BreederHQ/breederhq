@@ -50,6 +50,7 @@ export type PlanJourneyProps = {
   hasActualWeanedDate: boolean;
   hasPlacementStarted: boolean;
   hasPlacementCompleted: boolean;
+  hasPlanCompleted: boolean;
   // Actual date values for inline editing
   actualCycleStartDate?: string | null;
   actualHormoneTestingStartDate?: string | null;
@@ -58,6 +59,7 @@ export type PlanJourneyProps = {
   actualWeanedDate?: string | null;
   actualPlacementStartDate?: string | null;
   actualPlacementCompletedDate?: string | null;
+  actualPlanCompletedDate?: string | null;
   // Expected date values (used to pre-populate calendar when opening empty fields)
   expectedCycleStartDate?: string | null;
   expectedHormoneTestingStartDate?: string | null;
@@ -66,10 +68,11 @@ export type PlanJourneyProps = {
   expectedWeanedDate?: string | null;
   expectedPlacementStartDate?: string | null;
   expectedPlacementCompletedDate?: string | null;
+  expectedPlanCompletedDate?: string | null;
   // Callbacks
   onAdvancePhase?: (toPhase: PhaseKey) => void;
   onNavigateToTab?: (tab: string) => void;
-  onDateChange?: (field: "actualCycleStartDate" | "actualHormoneTestingStartDate" | "actualBreedDate" | "actualBirthDate" | "actualWeanedDate" | "actualPlacementStartDate" | "actualPlacementCompletedDate", value: string | null) => void;
+  onDateChange?: (field: "actualCycleStartDate" | "actualHormoneTestingStartDate" | "actualBreedDate" | "actualBirthDate" | "actualWeanedDate" | "actualPlacementStartDate" | "actualPlacementCompletedDate" | "actualPlanCompletedDate", value: string | null) => void;
   // Confirm modal for phase transitions
   confirmModal?: (opts: { title: string; message: React.ReactNode; confirmText: string; cancelText: string }) => Promise<boolean>;
   // Control guidance visibility
@@ -93,6 +96,7 @@ export function PlanJourney({
   hasActualWeanedDate,
   hasPlacementStarted,
   hasPlacementCompleted,
+  hasPlanCompleted,
   actualCycleStartDate,
   actualHormoneTestingStartDate,
   actualBreedDate,
@@ -100,6 +104,7 @@ export function PlanJourney({
   actualWeanedDate,
   actualPlacementStartDate,
   actualPlacementCompletedDate,
+  actualPlanCompletedDate,
   expectedCycleStartDate,
   expectedHormoneTestingStartDate,
   expectedBreedDate,
@@ -107,6 +112,7 @@ export function PlanJourney({
   expectedWeanedDate,
   expectedPlacementStartDate,
   expectedPlacementCompletedDate,
+  expectedPlanCompletedDate,
   onAdvancePhase,
   onNavigateToTab,
   onDateChange,
@@ -246,10 +252,9 @@ export function PlanJourney({
           { key: "placementStarted", label: "Actual Placement Start Date", met: hasPlacementStarted, action: "Enter the placement start date" },
         ];
       case "COMPLETE":
-        // To complete, placement must be completed
-        return [
-          { key: "placementCompleted", label: "Actual Placement Completed Date", met: hasPlacementCompleted, action: "Enter the placement completed date" },
-        ];
+        // When IN phase 8 (COMPLETE), there are no requirements to advance further
+        // The user just needs to enter the plan completed date to officially close
+        return [];
       default:
         return [];
     }
@@ -263,7 +268,11 @@ export function PlanJourney({
   // Section titles - collapsed shows context-aware title, expanded shows phase-specific guidance title
   const nextPhaseIdx = nextPhase ? PHASES.findIndex(p => p.key === nextPhase.key) + 1 : null;
   const collapsedTitle = !nextPhase
-    ? "Plan Complete"
+    ? hasPlanCompleted
+      ? "Plan Complete"
+      : isEdit
+        ? "Enter Plan Completion Date"
+        : "Final Completion Phase — Click Edit"
     : allRequirementsMet
       ? isEdit
         ? `Breeding Plan Ready for Phase ${nextPhaseIdx}`
@@ -272,7 +281,6 @@ export function PlanJourney({
 
   // Phase-specific guidance titles when expanded
   const getExpandedTitle = (): string => {
-    if (!nextPhase) return "Plan Complete";
     switch (currentPhase.key) {
       case "PLANNING":
         return "Planning Phase Guidance";
@@ -288,6 +296,8 @@ export function PlanJourney({
         return "Placement Phase Guidance";
       case "PLACEMENT_COMPLETED":
         return "Completing Plan Guidance";
+      case "COMPLETE":
+        return hasPlanCompleted ? "Plan Complete" : "Final Completion Phase";
       default:
         return "Phase Guidance";
     }
@@ -633,6 +643,56 @@ export function PlanJourney({
           </div>
         )}
 
+        {/* Phase 8 (COMPLETE) - Collapsed mode date input */}
+        {guidanceCollapsed && currentPhase.key === "COMPLETE" && !hasPlanCompleted && isEdit && onDateChange && (
+          <div className="mt-2 px-3 py-2 rounded-lg border-2 ring-2 soft-pulse border-amber-500/60 bg-amber-500/10 ring-amber-500/20">
+            <div className="text-xs font-medium mb-2 text-amber-400">
+              Enter the official plan completion date:
+            </div>
+            <div className="flex items-center gap-2">
+              <label className="text-xs text-primary font-medium whitespace-nowrap">Plan Completed (Actual):</label>
+              <DatePicker
+                value={actualPlanCompletedDate ?? ""}
+                defaultDate={expectedPlanCompletedDate ?? undefined}
+                onChange={(e) => {
+                  const val = e.currentTarget.value;
+                  if (!val) {
+                    onDateChange("actualPlanCompletedDate", null);
+                  } else if (/^\d{4}-\d{2}-\d{2}$/.test(val)) {
+                    onDateChange("actualPlanCompletedDate", val);
+                  }
+                }}
+                className="flex-1"
+                inputClassName={`w-full px-2 py-1 text-sm rounded-lg border-2 bg-surface text-primary focus:outline-none focus:ring-2 ${hasPlanCompleted ? "border-green-500/60 focus:border-green-500 focus:ring-green-500/30" : "border-amber-500/60 focus:border-amber-500 focus:ring-amber-500/30"}`}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Phase 8 (COMPLETE) - Collapsed mode completion status */}
+        {guidanceCollapsed && currentPhase.key === "COMPLETE" && hasPlanCompleted && (
+          <div className="mt-2 px-3 py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-center">
+            <div className="text-emerald-500 text-sm font-semibold">
+              ✓ Breeding Plan Complete
+            </div>
+            {actualPlanCompletedDate && (
+              <div className="text-xs text-emerald-300/70 mt-1">
+                Completed on {formatDateDisplay(actualPlanCompletedDate)}
+              </div>
+            )}
+            {/* Show Change button when in edit mode - allows user to modify completion date */}
+            {isEdit && onDateChange && (
+              <button
+                type="button"
+                onClick={() => onDateChange("actualPlanCompletedDate", null)}
+                className="mt-2 text-xs text-secondary hover:text-primary underline"
+              >
+                Change Completion Date
+              </button>
+            )}
+          </div>
+        )}
+
         {/* Message when collapsed and not in edit mode */}
         {guidanceCollapsed && !allRequirementsMet && nextPhase && nextPhase.key !== "COMMITTED" && !isEdit && (
           <div className="mt-2 text-xs text-secondary italic">
@@ -739,6 +799,29 @@ export function PlanJourney({
                 </p>
                 <p className="mt-3 text-xs text-secondary">
                   <span className="font-medium text-primary">Tip:</span> Enter the Placement Completed Date below and save to mark the plan as Complete.
+                </p>
+                <p className="mt-2 text-xs text-secondary italic">
+                  Remember: You must be in <span className="font-medium text-red-500 underline">EDIT</span> mode to make changes to the plan.
+                </p>
+              </div>
+            )}
+
+            {currentPhase.key === "COMPLETE" && (
+              <div className="mb-4 rounded-lg border border-purple-500/40 bg-purple-500/10 p-3">
+                <p className="text-sm text-primary leading-relaxed mb-3">
+                  Your Breeding Plan is in the <span className="text-purple-400 font-medium">Final Completion Phase</span>. Before officially closing out this plan, please ensure all administrative tasks have been completed.
+                </p>
+                <div className="text-xs text-secondary space-y-1.5 mb-3">
+                  <div className="font-medium text-primary mb-1">Pre-Completion Checklist:</div>
+                  <div className="pl-3 space-y-1">
+                    <div>• All health records have been entered for each individual offspring</div>
+                    <div>• All client contracts and agreements have been signed and completed</div>
+                    <div>• All invoices and financial transactions have been closed out</div>
+                    <div>• All media (photos and videos) have been uploaded to the Offspring Group or individual Offspring pages</div>
+                  </div>
+                </div>
+                <p className="text-xs text-secondary">
+                  <span className="font-medium text-primary">Tip:</span> Once all tasks are complete, enter the official Plan Completed Date below to close out this breeding plan.
                 </p>
                 <p className="mt-2 text-xs text-secondary italic">
                   Remember: You must be in <span className="font-medium text-red-500 underline">EDIT</span> mode to make changes to the plan.
@@ -1008,9 +1091,9 @@ export function PlanJourney({
               </div>
             )}
 
-            {/* Completion message */}
-            {!nextPhase && (
-              <div className="relative rounded-xl bg-gradient-to-br from-emerald-500/20 via-emerald-400/10 to-amber-500/20 border-2 border-emerald-400/40 p-6 text-center overflow-hidden celebration-card">
+            {/* Celebration message - show when in PLACEMENT_COMPLETED phase and placement completed date is entered */}
+            {currentPhase.key === "PLACEMENT_COMPLETED" && hasPlacementCompleted && nextPhase?.key === "COMPLETE" && allRequirementsMet && (
+              <div className="relative rounded-xl bg-gradient-to-br from-emerald-500/20 via-emerald-400/10 to-amber-500/20 border-2 border-emerald-400/40 p-6 text-center overflow-hidden celebration-card mt-4">
                 {/* Confetti animation */}
                 <div className="absolute inset-0 pointer-events-none">
                   <div className="confetti">🎉</div>
@@ -1029,13 +1112,72 @@ export function PlanJourney({
                     Congratulations!
                   </div>
                   <div className="text-emerald-300 text-lg font-semibold mb-3">
-                    Breeding Plan Complete!
+                    All Offspring Placed Successfully!
                   </div>
                   <div className="text-sm text-emerald-200/80 max-w-md mx-auto">
                     All offspring have been successfully placed with their new families.
                     You've put in a lot of hard work getting here - well done! 🏆
                   </div>
+                  <div className="mt-4 text-xs text-emerald-300/70">
+                    Click "Advance to Plan Complete Phase" above to close out this breeding plan.
+                  </div>
                 </div>
+              </div>
+            )}
+
+            {/* Phase 8 (COMPLETE) - Prompt for official plan completed date (EDIT MODE ONLY) */}
+            {currentPhase.key === "COMPLETE" && !hasPlanCompleted && isEdit && onDateChange && (
+              <div className="mt-4 px-4 py-3 rounded-lg border-2 ring-2 soft-pulse border-amber-500/60 bg-amber-500/10 ring-amber-500/20">
+                <div className="text-sm font-medium mb-3 text-amber-400">
+                  Enter the official plan completion date to close out this breeding plan:
+                </div>
+                <div className="flex items-center gap-3">
+                  <label className="text-sm text-primary font-medium whitespace-nowrap">Plan Completed (Actual):</label>
+                  <DatePicker
+                    value={actualPlanCompletedDate ?? ""}
+                    defaultDate={expectedPlanCompletedDate ?? undefined}
+                    onChange={(e) => {
+                      const val = e.currentTarget.value;
+                      if (!val) {
+                        onDateChange("actualPlanCompletedDate", null);
+                      } else if (/^\d{4}-\d{2}-\d{2}$/.test(val)) {
+                        onDateChange("actualPlanCompletedDate", val);
+                      }
+                    }}
+                    className="flex-1"
+                    inputClassName={`w-full px-2 py-1 text-sm rounded-lg border-2 bg-surface text-primary focus:outline-none focus:ring-2 ${hasPlanCompleted ? "border-green-500/60 focus:border-green-500 focus:ring-green-500/30" : "border-amber-500/60 focus:border-amber-500 focus:ring-amber-500/30"}`}
+                  />
+                </div>
+                <div className="mt-2 text-xs text-amber-300/70">
+                  This marks the official completion date of your breeding plan.
+                </div>
+              </div>
+            )}
+
+            {/* Final completion message - show when plan completed date has been entered */}
+            {currentPhase.key === "COMPLETE" && hasPlanCompleted && (
+              <div className="mt-4 rounded-lg bg-emerald-500/10 border border-emerald-500/30 p-4 text-center">
+                <div className="text-emerald-500 text-lg font-semibold mb-2">
+                  ✓ Breeding Plan Complete
+                </div>
+                <div className="text-sm text-emerald-400/80 mb-2">
+                  This breeding plan has been successfully completed and closed.
+                </div>
+                {actualPlanCompletedDate && (
+                  <div className="text-xs text-emerald-300/70">
+                    Completed on {formatDateDisplay(actualPlanCompletedDate)}
+                  </div>
+                )}
+                {/* Show Change button when in edit mode - allows user to modify completion date */}
+                {isEdit && onDateChange && (
+                  <button
+                    type="button"
+                    onClick={() => onDateChange("actualPlanCompletedDate", null)}
+                    className="mt-3 text-xs text-secondary hover:text-primary underline"
+                  >
+                    Change Completion Date
+                  </button>
+                )}
               </div>
             )}
           </div>

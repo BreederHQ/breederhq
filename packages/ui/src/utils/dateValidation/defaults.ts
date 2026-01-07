@@ -20,24 +20,24 @@ export const SPECIES_BIOLOGY_DEFAULTS: Record<SpeciesCode, SpeciesBiologyRules> 
     gestationTypicalDays: 63,
     gestationMaxDays: 68,
 
-    // Breeding window: typically days 9-15 from cycle start (heat)
-    cycleToBreedingMinDays: 9,
-    cycleToBreedingMaxDays: 15,
+    // Breeding window: days 7-21 from cycle start (accounts for early/late ovulators)
+    cycleToBreedingMinDays: 7,
+    cycleToBreedingMaxDays: 21,
 
-    // Weaning: minimum 6 weeks, typical 7 weeks
+    // Weaning: minimum 6 weeks, typical 8 weeks (matches reproEngine calculation)
     birthToWeaningMinDays: 42,
-    birthToWeaningTypicalDays: 49,
+    birthToWeaningTypicalDays: 56,
 
-    // Placement: minimum 8 weeks per most regulations
+    // Placement: minimum 8 weeks per regulations (matches reproEngine calculation)
     birthToPlacementMinDays: 56,
-    birthToPlacementTypicalDays: 63,
+    birthToPlacementTypicalDays: 56,
 
     // Female age: minimum 18-24 months recommended
     femaleMinBreedingAgeMonths: 18,
     femaleMaxBreedingAgeYears: 8,
 
-    // Recovery: minimum 1 heat cycle skipped (roughly 6 months)
-    postpartumRecoveryMinDays: 90,
+    // Recovery: minimum 1 full heat cycle skipped (~6 months for responsible breeding)
+    postpartumRecoveryMinDays: 180,
 
     // Lifetime: responsible breeding limits
     maxLifetimeLitters: 6,
@@ -54,19 +54,19 @@ export const SPECIES_BIOLOGY_DEFAULTS: Record<SpeciesCode, SpeciesBiologyRules> 
     cycleToBreedingMinDays: 2,
     cycleToBreedingMaxDays: 7,
 
-    // Weaning: minimum 6 weeks, typical 8 weeks
+    // Weaning: minimum 6 weeks, typical 8 weeks (matches reproEngine)
     birthToWeaningMinDays: 42,
     birthToWeaningTypicalDays: 56,
 
-    // Placement: minimum 8 weeks, many recommend 12 weeks
+    // Placement: minimum 8 weeks (matches reproEngine), though 12 weeks often preferred
     birthToPlacementMinDays: 56,
-    birthToPlacementTypicalDays: 84,
+    birthToPlacementTypicalDays: 56,
 
     // Female age
     femaleMinBreedingAgeMonths: 12,
     femaleMaxBreedingAgeYears: 8,
 
-    // Recovery
+    // Recovery: minimum 2 months between litters for health
     postpartumRecoveryMinDays: 60,
 
     // Lifetime limits
@@ -114,19 +114,19 @@ export const SPECIES_BIOLOGY_DEFAULTS: Record<SpeciesCode, SpeciesBiologyRules> 
     cycleToBreedingMinDays: 1,
     cycleToBreedingMaxDays: 3,
 
-    // Weaning: typically 8-12 weeks
+    // Weaning: minimum 8 weeks, typical 8 weeks (matches reproEngine)
     birthToWeaningMinDays: 56,
-    birthToWeaningTypicalDays: 84,
+    birthToWeaningTypicalDays: 56,
 
-    // Placement
+    // Placement: minimum 8 weeks (matches reproEngine)
     birthToPlacementMinDays: 56,
-    birthToPlacementTypicalDays: 84,
+    birthToPlacementTypicalDays: 56,
 
     // Female age
     femaleMinBreedingAgeMonths: 8,
     femaleMaxBreedingAgeYears: 10,
 
-    // Recovery
+    // Recovery: minimum 2 months between kidding for health
     postpartumRecoveryMinDays: 60,
 
     // Lifetime limits
@@ -144,11 +144,11 @@ export const SPECIES_BIOLOGY_DEFAULTS: Record<SpeciesCode, SpeciesBiologyRules> 
     cycleToBreedingMinDays: 0,
     cycleToBreedingMaxDays: 1,
 
-    // Weaning: typically 4-6 weeks
+    // Weaning: minimum 4 weeks, typical 8 weeks (matches reproEngine)
     birthToWeaningMinDays: 28,
-    birthToWeaningTypicalDays: 42,
+    birthToWeaningTypicalDays: 56,
 
-    // Placement: typically 8 weeks
+    // Placement: minimum 8 weeks (matches reproEngine and ethical standards)
     birthToPlacementMinDays: 56,
     birthToPlacementTypicalDays: 56,
 
@@ -156,8 +156,8 @@ export const SPECIES_BIOLOGY_DEFAULTS: Record<SpeciesCode, SpeciesBiologyRules> 
     femaleMinBreedingAgeMonths: 6,
     femaleMaxBreedingAgeYears: 4,
 
-    // Recovery: can breed very quickly but not recommended
-    postpartumRecoveryMinDays: 14,
+    // Recovery: minimum 3 weeks for responsible breeding (can breed faster but harmful)
+    postpartumRecoveryMinDays: 21,
 
     // Lifetime limits
     maxLifetimeLitters: 6,
@@ -174,19 +174,19 @@ export const SPECIES_BIOLOGY_DEFAULTS: Record<SpeciesCode, SpeciesBiologyRules> 
     cycleToBreedingMinDays: 1,
     cycleToBreedingMaxDays: 3,
 
-    // Weaning: typically 8-12 weeks
-    birthToWeaningMinDays: 60,
-    birthToWeaningTypicalDays: 90,
+    // Weaning: minimum 60 days (8-9 weeks), typical matches reproEngine defaults
+    birthToWeaningMinDays: 56,
+    birthToWeaningTypicalDays: 56,
 
-    // Placement
-    birthToPlacementMinDays: 60,
-    birthToPlacementTypicalDays: 90,
+    // Placement: minimum matches reproEngine defaults
+    birthToPlacementMinDays: 56,
+    birthToPlacementTypicalDays: 56,
 
     // Female age
     femaleMinBreedingAgeMonths: 12,
     femaleMaxBreedingAgeYears: 10,
 
-    // Recovery
+    // Recovery: minimum 2 months between lambing for health
     postpartumRecoveryMinDays: 60,
 
     // Lifetime limits
