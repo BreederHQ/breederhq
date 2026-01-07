@@ -296,7 +296,7 @@ function WhatIfPlanner({ rows, females, onAddRow, onUpdateRow, onRemoveRow, onCo
         </div>
         <button
           onClick={onAddRow}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-primary rounded-md transition-colors"
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-orange-500 hover:bg-orange-600 text-white rounded-md transition-colors"
         >
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -307,8 +307,8 @@ function WhatIfPlanner({ rows, females, onAddRow, onUpdateRow, onRemoveRow, onCo
 
       {/* What If rows */}
       {rows.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-neutral-300 dark:border-neutral-600 bg-neutral-50 dark:bg-neutral-800/50 p-4 text-center">
-          <p className="text-sm text-secondary">
+        <div className="rounded-lg border border-dashed border-neutral-600 bg-neutral-800/50 p-4 text-center">
+          <p className="text-sm text-primary">
             No What If scenarios yet. Click "Add Female" to create one.
           </p>
         </div>

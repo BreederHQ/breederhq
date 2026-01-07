@@ -128,7 +128,11 @@ export function DetailsHost<T>({
   const requestSave = React.useCallback(async () => {
     if (!config.onSave || !openRow) return;
     await config.onSave(config.getRowId(openRow), draftRef.current);
-    setMode("view");
+    // Only auto-switch to view mode for built-in chrome
+    // Custom chrome components manage their own mode
+    if (!config.customChrome) {
+      setMode("view");
+    }
     setDraftSafe({});
   }, [config, openRow]);
 

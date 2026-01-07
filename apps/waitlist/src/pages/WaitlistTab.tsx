@@ -1373,6 +1373,13 @@ function WaitlistDrawerBody({
         orgEmail={row?.organization?.email}
         entryId={row?.id}
       />
+
+      {/* Block User Section - only for marketplace users */}
+      <BlockUserSection
+        api={api}
+        clientParty={row?.clientParty}
+        marketplaceUserId={row?.marketplaceUserId || row?.clientParty?.externalId}
+      />
     </div>
   );
 }
@@ -1505,6 +1512,205 @@ function PortalInviteSection({
         </Button>
       </div>
     </SectionCard>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * Block User Section Component (for marketplace users in approved/rejected entries)
+ * ───────────────────────────────────────────────────────────────────────────── */
+type BlockLevel = "LIGHT" | "MEDIUM" | "HEAVY";
+
+const BLOCK_LEVELS: Array<{
+  value: BlockLevel;
+  label: string;
+  description: string;
+  restrictions: string[];
+}> = [
+  {
+    value: "LIGHT",
+    label: "Light",
+    description: "Minimal restrictions",
+    restrictions: ["Cannot join your waitlist"],
+  },
+  {
+    value: "MEDIUM",
+    label: "Medium",
+    description: "Moderate restrictions",
+    restrictions: ["Cannot join your waitlist", "Cannot send you messages"],
+  },
+  {
+    value: "HEAVY",
+    label: "Heavy",
+    description: "Full restrictions",
+    restrictions: [
+      "Cannot join your waitlist",
+      "Cannot send you messages",
+      "Cannot view your breeder profile",
+    ],
+  },
+];
+
+function BlockUserSection({
+  api,
+  clientParty,
+  marketplaceUserId,
+}: {
+  api: WaitlistApi | null;
+  clientParty?: { name?: string; email?: string; externalId?: string } | null;
+  marketplaceUserId?: string | null;
+}) {
+  const { showToast } = useToast();
+  const [showModal, setShowModal] = React.useState(false);
+  const [level, setLevel] = React.useState<BlockLevel>("MEDIUM");
+  const [reason, setReason] = React.useState("");
+  const [loading, setLoading] = React.useState(false);
+
+  // Don't show if no marketplace user ID
+  if (!marketplaceUserId) {
+    return null;
+  }
+
+  const userName = clientParty?.name || clientParty?.email || "this user";
+
+  async function handleBlock() {
+    if (!api || !marketplaceUserId) return;
+
+    setLoading(true);
+    try {
+      await api.marketplaceBlocks.block({
+        userId: marketplaceUserId,
+        level,
+        reason: reason || undefined,
+      });
+      showToast({ message: "User blocked successfully", variant: "success" });
+      setShowModal(false);
+      setLevel("MEDIUM");
+      setReason("");
+    } catch (err: any) {
+      console.error("Failed to block user:", err);
+      showToast({ message: err?.message || "Failed to block user", variant: "error" });
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <>
+      <SectionCard title="Block User">
+        <div className="p-4 space-y-3">
+          <p className="text-sm text-secondary">
+            Block this marketplace user from interacting with your profile.
+          </p>
+          <Button
+            variant="destructive"
+            size="sm"
+            onClick={() => setShowModal(true)}
+          >
+            Block User
+          </Button>
+        </div>
+      </SectionCard>
+
+      {/* Block Modal */}
+      {showModal && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/60" onClick={() => setShowModal(false)} />
+          <div className="relative w-full max-w-md bg-surface border border-hairline rounded-xl shadow-2xl overflow-hidden">
+            {/* Header */}
+            <div className="px-5 py-4 border-b border-hairline">
+              <h3 className="text-lg font-semibold">Block User</h3>
+              <p className="text-sm text-secondary mt-1">
+                Block <strong>{userName}</strong> from interacting with your marketplace profile.
+              </p>
+            </div>
+
+            {/* Content */}
+            <div className="px-5 py-4 space-y-4">
+              {/* Level Selection */}
+              <div>
+                <label className="text-xs font-semibold uppercase tracking-wide text-secondary mb-2 block">
+                  Block Level
+                </label>
+                <div className="space-y-2">
+                  {BLOCK_LEVELS.map((opt) => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => setLevel(opt.value)}
+                      className={[
+                        "w-full text-left p-3 rounded-lg border transition-all",
+                        level === opt.value
+                          ? "border-[hsl(var(--brand-orange))] bg-[hsl(var(--brand-orange))]/5"
+                          : "border-hairline hover:border-neutral-500",
+                      ].join(" ")}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="font-medium text-sm">{opt.label}</span>
+                        <span className="text-xs text-secondary">{opt.description}</span>
+                      </div>
+                      <ul className="mt-2 space-y-1">
+                        {opt.restrictions.map((r, i) => (
+                          <li key={i} className="text-xs text-secondary flex items-center gap-1.5">
+                            <svg className="w-3 h-3 text-red-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                            {r}
+                          </li>
+                        ))}
+                      </ul>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Reason (optional) */}
+              <div>
+                <label className="text-xs font-semibold uppercase tracking-wide text-secondary mb-2 block">
+                  Reason (Optional, for your reference only)
+                </label>
+                <textarea
+                  value={reason}
+                  onChange={(e) => setReason(e.target.value)}
+                  placeholder="e.g., Spam, abusive messages, etc."
+                  rows={2}
+                  className="w-full px-3 py-2 text-sm border border-hairline rounded-lg bg-surface focus:outline-none focus:ring-2 focus:ring-[hsl(var(--brand-orange))]/50"
+                />
+                <p className="text-xs text-secondary mt-1">
+                  This is only visible to you, not the blocked user.
+                </p>
+              </div>
+
+              {/* Info banner */}
+              <div className="rounded-lg border border-blue-500/30 bg-blue-500/10 p-3">
+                <p className="text-xs text-blue-400">
+                  The user will not be notified that they have been blocked. They will see generic messages like "This breeder is not accepting inquiries."
+                </p>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="px-5 py-4 border-t border-hairline flex justify-end gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowModal(false)}
+                disabled={loading}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={handleBlock}
+                disabled={loading}
+              >
+                {loading ? "Blocking..." : "Block User"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 

@@ -15,8 +15,10 @@ export function DrawerHeader({
   hasPendingChanges?: boolean;
   hideCloseButton?: boolean;
 }) {
+  // NOTE: Do NOT use backdrop-blur here. backdrop-filter creates a "containing block"
+  // which breaks native date picker positioning (showPicker() positions at 0,0 instead of near input)
   return (
-    <header className={cx("sticky top-0 z-10 bg-surface/90 backdrop-blur border-b border-hairline px-4 py-3", className)}>
+    <header className={cx("sticky top-0 z-10 bg-surface border-b border-hairline px-4 py-3", className)}>
       <div className="flex items-start gap-3">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">

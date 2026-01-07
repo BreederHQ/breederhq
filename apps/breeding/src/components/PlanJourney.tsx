@@ -2,6 +2,8 @@
 // Visual timeline showing breeding plan phases with guidance
 
 import * as React from "react";
+import { DatePicker } from "@bhq/ui";
+import "@bhq/ui/styles/datepicker.css";
 
 // Phase definitions
 const PHASES = [
@@ -58,6 +60,7 @@ export type PlanJourneyProps = {
   actualPlacementCompletedDate?: string | null;
   // Expected date values (used to pre-populate calendar when opening empty fields)
   expectedCycleStartDate?: string | null;
+  expectedHormoneTestingStartDate?: string | null;
   expectedBreedDate?: string | null;
   expectedBirthDate?: string | null;
   expectedWeanedDate?: string | null;
@@ -98,6 +101,7 @@ export function PlanJourney({
   actualPlacementStartDate,
   actualPlacementCompletedDate,
   expectedCycleStartDate,
+  expectedHormoneTestingStartDate,
   expectedBreedDate,
   expectedBirthDate,
   expectedWeanedDate,
@@ -114,6 +118,42 @@ export function PlanJourney({
   const currentPhaseIdx = getPhaseIndex(status);
   const currentPhase = PHASES[currentPhaseIdx];
   const nextPhase = PHASES[currentPhaseIdx + 1];
+
+  // Helper to get actual date value for a requirement key
+  const getActualDateForRequirement = (reqKey: string): string | null => {
+    switch (reqKey) {
+      case "cycleStart": return actualCycleStartDate ?? null;
+      case "breedDate": return actualBreedDate ?? null;
+      case "birthDate": return actualBirthDate ?? null;
+      case "weanedDate": return actualWeanedDate ?? null;
+      case "placementStarted": return actualPlacementStartDate ?? null;
+      case "placementCompleted": return actualPlacementCompletedDate ?? null;
+      default: return null;
+    }
+  };
+
+  // Helper to format date for display (e.g., "Jan 5, 2026")
+  const formatDateDisplay = (dateStr: string | null): string => {
+    if (!dateStr) return "";
+    try {
+      // Extract YYYY-MM-DD from either date-only string or ISO timestamp
+      const dateOnly = dateStr.slice(0, 10); // Gets "YYYY-MM-DD" from both formats
+      const [year, month, day] = dateOnly.split("-").map(Number);
+
+      if (!year || !month || !day) return "";
+
+      // Create date using local timezone components to avoid UTC shift
+      const date = new Date(year, month - 1, day);
+
+      // Check if date is valid
+      if (isNaN(date.getTime())) {
+        return "";
+      }
+      return date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+    } catch {
+      return "";
+    }
+  };
 
   // Refs for measuring node positions
   const containerRef = React.useRef<HTMLDivElement>(null);
@@ -445,8 +485,8 @@ export function PlanJourney({
 
         {/* Inline date input in COLLAPSED mode for date-based requirements */}
         {guidanceCollapsed && nextPhase && requirements.length > 0 && onDateChange && isEdit && (
-          <div className={`mt-3 p-3 rounded-lg border-2 ${allRequirementsMet ? "border-green-500/60 bg-green-500/10" : "border-amber-500/60 bg-amber-500/10"}`}>
-            <div className={`text-xs font-medium mb-2 ${allRequirementsMet ? "text-green-400" : "text-amber-400"}`}>
+          <div className={`mt-2 px-2 py-1 rounded-lg border-2 ${allRequirementsMet ? "border-green-500/60 bg-green-500/10" : "border-amber-500/60 bg-amber-500/10"}`}>
+            <div className={`text-xs font-medium ${nextPhase.key !== "COMMITTED" ? "mb-1" : ""} ${allRequirementsMet ? "text-green-400" : "text-amber-400"}`}>
               {allRequirementsMet
                 ? nextPhase.key === "COMMITTED"
                   ? "All requirements met — Click Advance to Committed Phase to proceed"
@@ -466,160 +506,104 @@ export function PlanJourney({
                 : "Enter the required information below:"}
             </div>
             {nextPhase.key === "BRED" && (
-              <div className="flex items-center gap-3">
-                <label className="text-sm text-primary font-medium whitespace-nowrap">Cycle Start (Actual):</label>
-                <input
-                  type="date"
+              <div className="flex items-center gap-2">
+                <label className="text-xs text-primary font-medium whitespace-nowrap">Cycle Start (Actual):</label>
+                <DatePicker
                   value={actualCycleStartDate ?? ""}
-                  onFocus={(e) => {
-                    // Pre-populate with expected date when empty to help user find the right date
-                    if (!actualCycleStartDate && expectedCycleStartDate && onDateChange) {
-                      const expected = String(expectedCycleStartDate).slice(0, 10);
-                      if (/^\d{4}-\d{2}-\d{2}$/.test(expected)) {
-                        e.target.value = expected;
-                        onDateChange("actualCycleStartDate", expected);
-                        // Re-open picker after setting value
-                        setTimeout(() => { try { (e.target as any).showPicker?.(); } catch {} }, 0);
-                      }
-                    }
-                  }}
+                  defaultDate={expectedCycleStartDate ?? undefined}
                   onChange={(e) => {
-                    const val = e.target.value;
+                    const val = e.currentTarget.value;
                     if (!val || /^\d{4}-\d{2}-\d{2}$/.test(val)) {
                       onDateChange("actualCycleStartDate", val || null);
                     }
                   }}
-                  className={`flex-1 px-3 py-2 text-sm rounded-lg border-2 bg-surface text-primary focus:outline-none focus:ring-2 ${hasActualCycleStart ? "border-green-500/60 focus:border-green-500 focus:ring-green-500/30" : "border-amber-500/60 focus:border-amber-500 focus:ring-amber-500/30"}`}
+                  className="flex-1"
+                  inputClassName={`w-full px-2 py-1 text-sm rounded-lg border-2 bg-surface text-primary focus:outline-none focus:ring-2 ${hasActualCycleStart ? "border-green-500/60 focus:border-green-500 focus:ring-green-500/30" : "border-amber-500/60 focus:border-amber-500 focus:ring-amber-500/30"}`}
                 />
               </div>
             )}
             {nextPhase.key === "BIRTHED" && (
-              <div className="flex items-center gap-3">
-                <label className="text-sm text-primary font-medium whitespace-nowrap">Breed Date (Actual):</label>
-                <input
-                  type="date"
+              <div className="flex items-center gap-2">
+                <label className="text-xs text-primary font-medium whitespace-nowrap">Breed Date (Actual):</label>
+                <DatePicker
                   value={actualBreedDate ?? ""}
-                  onFocus={(e) => {
-                    if (!actualBreedDate && expectedBreedDate && onDateChange) {
-                      const expected = String(expectedBreedDate).slice(0, 10);
-                      if (/^\d{4}-\d{2}-\d{2}$/.test(expected)) {
-                        e.target.value = expected;
-                        onDateChange("actualBreedDate", expected);
-                        setTimeout(() => { try { (e.target as any).showPicker?.(); } catch {} }, 0);
-                      }
-                    }
-                  }}
+                  defaultDate={expectedBreedDate ?? undefined}
                   onChange={(e) => {
-                    const val = e.target.value;
+                    const val = e.currentTarget.value;
                     if (!val || /^\d{4}-\d{2}-\d{2}$/.test(val)) {
                       onDateChange("actualBreedDate", val || null);
                     }
                   }}
-                  className={`flex-1 px-3 py-2 text-sm rounded-lg border-2 bg-surface text-primary focus:outline-none focus:ring-2 ${hasActualBreedDate ? "border-green-500/60 focus:border-green-500 focus:ring-green-500/30" : "border-amber-500/60 focus:border-amber-500 focus:ring-amber-500/30"}`}
+                  className="flex-1"
+                  inputClassName={`w-full px-2 py-1 text-sm rounded-lg border-2 bg-surface text-primary focus:outline-none focus:ring-2 ${hasActualBreedDate ? "border-green-500/60 focus:border-green-500 focus:ring-green-500/30" : "border-amber-500/60 focus:border-amber-500 focus:ring-amber-500/30"}`}
                 />
               </div>
             )}
             {nextPhase.key === "WEANED" && (
-              <div className="flex items-center gap-3">
-                <label className="text-sm text-primary font-medium whitespace-nowrap">Birth Date (Actual):</label>
-                <input
-                  type="date"
+              <div className="flex items-center gap-2">
+                <label className="text-xs text-primary font-medium whitespace-nowrap">Birth Date (Actual):</label>
+                <DatePicker
                   value={actualBirthDate ?? ""}
-                  onFocus={(e) => {
-                    if (!actualBirthDate && expectedBirthDate && onDateChange) {
-                      const expected = String(expectedBirthDate).slice(0, 10);
-                      if (/^\d{4}-\d{2}-\d{2}$/.test(expected)) {
-                        e.target.value = expected;
-                        onDateChange("actualBirthDate", expected);
-                        setTimeout(() => { try { (e.target as any).showPicker?.(); } catch {} }, 0);
-                      }
-                    }
-                  }}
+                  defaultDate={expectedBirthDate ?? undefined}
                   onChange={(e) => {
-                    const val = e.target.value;
+                    const val = e.currentTarget.value;
                     if (!val || /^\d{4}-\d{2}-\d{2}$/.test(val)) {
                       onDateChange("actualBirthDate", val || null);
                     }
                   }}
-                  className={`flex-1 px-3 py-2 text-sm rounded-lg border-2 bg-surface text-primary focus:outline-none focus:ring-2 ${hasActualBirthDate ? "border-green-500/60 focus:border-green-500 focus:ring-green-500/30" : "border-amber-500/60 focus:border-amber-500 focus:ring-amber-500/30"}`}
+                  className="flex-1"
+                  inputClassName={`w-full px-2 py-1 text-sm rounded-lg border-2 bg-surface text-primary focus:outline-none focus:ring-2 ${hasActualBirthDate ? "border-green-500/60 focus:border-green-500 focus:ring-green-500/30" : "border-amber-500/60 focus:border-amber-500 focus:ring-amber-500/30"}`}
                 />
               </div>
             )}
             {nextPhase.key === "PLACEMENT_STARTED" && (
-              <div className="flex items-center gap-3">
-                <label className="text-sm text-primary font-medium whitespace-nowrap">Weaning Completed (Actual):</label>
-                <input
-                  type="date"
+              <div className="flex items-center gap-2">
+                <label className="text-xs text-primary font-medium whitespace-nowrap">Weaning Completed (Actual):</label>
+                <DatePicker
                   value={actualWeanedDate ?? ""}
-                  onFocus={(e) => {
-                    if (!actualWeanedDate && expectedWeanedDate && onDateChange) {
-                      const expected = String(expectedWeanedDate).slice(0, 10);
-                      if (/^\d{4}-\d{2}-\d{2}$/.test(expected)) {
-                        e.target.value = expected;
-                        onDateChange("actualWeanedDate", expected);
-                        setTimeout(() => { try { (e.target as any).showPicker?.(); } catch {} }, 0);
-                      }
-                    }
-                  }}
+                  defaultDate={expectedWeanedDate ?? undefined}
                   onChange={(e) => {
-                    const val = e.target.value;
+                    const val = e.currentTarget.value;
                     if (!val || /^\d{4}-\d{2}-\d{2}$/.test(val)) {
                       onDateChange("actualWeanedDate", val || null);
                     }
                   }}
-                  className={`flex-1 px-3 py-2 text-sm rounded-lg border-2 bg-surface text-primary focus:outline-none focus:ring-2 ${hasActualWeanedDate ? "border-green-500/60 focus:border-green-500 focus:ring-green-500/30" : "border-amber-500/60 focus:border-amber-500 focus:ring-amber-500/30"}`}
+                  className="flex-1"
+                  inputClassName={`w-full px-2 py-1 text-sm rounded-lg border-2 bg-surface text-primary focus:outline-none focus:ring-2 ${hasActualWeanedDate ? "border-green-500/60 focus:border-green-500 focus:ring-green-500/30" : "border-amber-500/60 focus:border-amber-500 focus:ring-amber-500/30"}`}
                 />
               </div>
             )}
             {nextPhase.key === "PLACEMENT_COMPLETED" && (
-              <div className="flex items-center gap-3">
-                <label className="text-sm text-primary font-medium whitespace-nowrap">Placement Start Date:</label>
-                <input
-                  type="date"
+              <div className="flex items-center gap-2">
+                <label className="text-xs text-primary font-medium whitespace-nowrap">Placement Start Date:</label>
+                <DatePicker
                   value={actualPlacementStartDate ?? ""}
-                  onFocus={(e) => {
-                    if (!actualPlacementStartDate && expectedPlacementStartDate && onDateChange) {
-                      const expected = String(expectedPlacementStartDate).slice(0, 10);
-                      if (/^\d{4}-\d{2}-\d{2}$/.test(expected)) {
-                        e.target.value = expected;
-                        onDateChange("actualPlacementStartDate", expected);
-                        setTimeout(() => { try { (e.target as any).showPicker?.(); } catch {} }, 0);
-                      }
-                    }
-                  }}
+                  defaultDate={expectedPlacementStartDate ?? undefined}
                   onChange={(e) => {
-                    const val = e.target.value;
+                    const val = e.currentTarget.value;
                     if (!val || /^\d{4}-\d{2}-\d{2}$/.test(val)) {
                       onDateChange("actualPlacementStartDate", val || null);
                     }
                   }}
-                  className={`flex-1 px-3 py-2 text-sm rounded-lg border-2 bg-surface text-primary focus:outline-none focus:ring-2 ${hasPlacementStarted ? "border-green-500/60 focus:border-green-500 focus:ring-green-500/30" : "border-amber-500/60 focus:border-amber-500 focus:ring-amber-500/30"}`}
+                  className="flex-1"
+                  inputClassName={`w-full px-2 py-1 text-sm rounded-lg border-2 bg-surface text-primary focus:outline-none focus:ring-2 ${hasPlacementStarted ? "border-green-500/60 focus:border-green-500 focus:ring-green-500/30" : "border-amber-500/60 focus:border-amber-500 focus:ring-amber-500/30"}`}
                 />
               </div>
             )}
             {nextPhase.key === "COMPLETE" && (
-              <div className="flex items-center gap-3">
-                <label className="text-sm text-primary font-medium whitespace-nowrap">Placement Completed Date:</label>
-                <input
-                  type="date"
+              <div className="flex items-center gap-2">
+                <label className="text-xs text-primary font-medium whitespace-nowrap">Placement Completed Date:</label>
+                <DatePicker
                   value={actualPlacementCompletedDate ?? ""}
-                  onFocus={(e) => {
-                    if (!actualPlacementCompletedDate && expectedPlacementCompletedDate && onDateChange) {
-                      const expected = String(expectedPlacementCompletedDate).slice(0, 10);
-                      if (/^\d{4}-\d{2}-\d{2}$/.test(expected)) {
-                        e.target.value = expected;
-                        onDateChange("actualPlacementCompletedDate", expected);
-                        setTimeout(() => { try { (e.target as any).showPicker?.(); } catch {} }, 0);
-                      }
-                    }
-                  }}
+                  defaultDate={expectedPlacementCompletedDate ?? undefined}
                   onChange={(e) => {
-                    const val = e.target.value;
+                    const val = e.currentTarget.value;
                     if (!val || /^\d{4}-\d{2}-\d{2}$/.test(val)) {
                       onDateChange("actualPlacementCompletedDate", val || null);
                     }
                   }}
-                  className={`flex-1 px-3 py-2 text-sm rounded-lg border-2 bg-surface text-primary focus:outline-none focus:ring-2 ${hasPlacementCompleted ? "border-green-500/60 focus:border-green-500 focus:ring-green-500/30" : "border-amber-500/60 focus:border-amber-500 focus:ring-amber-500/30"}`}
+                  className="flex-1"
+                  inputClassName={`w-full px-2 py-1 text-sm rounded-lg border-2 bg-surface text-primary focus:outline-none focus:ring-2 ${hasPlacementCompleted ? "border-green-500/60 focus:border-green-500 focus:ring-green-500/30" : "border-amber-500/60 focus:border-amber-500 focus:ring-amber-500/30"}`}
                 />
               </div>
             )}
@@ -634,11 +618,12 @@ export function PlanJourney({
             </div>
             <div className="flex items-center gap-3">
               <label className="text-sm text-primary font-medium whitespace-nowrap">Hormone Testing Started:</label>
-              <input
-                type="date"
+              <DatePicker
                 value={actualHormoneTestingStartDate ?? ""}
-                onChange={(e) => onDateChange("actualHormoneTestingStartDate", e.target.value || null)}
-                className="flex-1 px-3 py-2 text-sm rounded-lg border border-sky-500/40 bg-surface text-primary focus:outline-none focus:ring-2 focus:border-sky-500 focus:ring-sky-500/30"
+                defaultDate={expectedHormoneTestingStartDate ?? undefined}
+                onChange={(e) => onDateChange("actualHormoneTestingStartDate", e.currentTarget.value || null)}
+                className="flex-1"
+                inputClassName="w-full px-3 py-2 text-sm rounded-lg border border-sky-500/40 bg-surface text-primary focus:outline-none focus:ring-2 focus:border-sky-500 focus:ring-sky-500/30"
               />
             </div>
           </div>
@@ -765,11 +750,12 @@ export function PlanJourney({
                 </div>
                 <div className="flex items-center gap-3">
                   <label className="text-sm text-primary font-medium whitespace-nowrap">Hormone Testing Started:</label>
-                  <input
-                    type="date"
+                  <DatePicker
                     value={actualHormoneTestingStartDate ?? ""}
-                    onChange={(e) => onDateChange("actualHormoneTestingStartDate", e.target.value || null)}
-                    className="flex-1 px-3 py-2 text-sm rounded-lg border border-sky-500/40 bg-surface text-primary focus:outline-none focus:ring-2 focus:border-sky-500 focus:ring-sky-500/30"
+                    defaultDate={expectedHormoneTestingStartDate ?? undefined}
+                    onChange={(e) => onDateChange("actualHormoneTestingStartDate", e.currentTarget.value || null)}
+                    className="flex-1"
+                    inputClassName="w-full px-3 py-2 text-sm rounded-lg border border-sky-500/40 bg-surface text-primary focus:outline-none focus:ring-2 focus:border-sky-500 focus:ring-sky-500/30"
                   />
                 </div>
               </div>
@@ -806,6 +792,23 @@ export function PlanJourney({
                       }
                     };
 
+                    // Check if this is a date-based requirement
+                    const isDateRequirement = ["cycleStart", "breedDate", "birthDate", "weanedDate", "placementStarted", "placementCompleted"].includes(req.key);
+                    const actualDate = isDateRequirement ? getActualDateForRequirement(req.key) : null;
+
+                    // Map requirement key to the onDateChange field name
+                    const getDateFieldForRequirement = (reqKey: string): "actualCycleStartDate" | "actualBreedDate" | "actualBirthDate" | "actualWeanedDate" | "actualPlacementStartDate" | "actualPlacementCompletedDate" | null => {
+                      switch (reqKey) {
+                        case "cycleStart": return "actualCycleStartDate";
+                        case "breedDate": return "actualBreedDate";
+                        case "birthDate": return "actualBirthDate";
+                        case "weanedDate": return "actualWeanedDate";
+                        case "placementStarted": return "actualPlacementStartDate";
+                        case "placementCompleted": return "actualPlacementCompletedDate";
+                        default: return null;
+                      }
+                    };
+
                     return (
                       <div key={req.key} className="flex items-center gap-2 text-sm">
                         <span className={req.met ? "text-green-400" : "text-secondary"}>
@@ -813,6 +816,30 @@ export function PlanJourney({
                         </span>
                         <span className={req.met ? "text-primary" : "text-secondary"}>
                           {req.label}
+                          {/* Show the date value when met */}
+                          {req.met && actualDate && (
+                            <>
+                              <span className="ml-1">—</span>
+                              <span className="ml-1 text-green-400 font-medium">
+                                {formatDateDisplay(actualDate)}
+                              </span>
+                            </>
+                          )}
+                          {/* Show Change button when met and in edit mode - clears the date to go back to input state */}
+                          {req.met && isDateRequirement && isEdit && onDateChange && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const field = getDateFieldForRequirement(req.key);
+                                if (field) {
+                                  onDateChange(field, null);
+                                }
+                              }}
+                              className="ml-2 text-xs text-secondary hover:text-primary underline"
+                            >
+                              Change
+                            </button>
+                          )}
                           {!req.met && req.action && (
                             <span style={{ color: "inherit" }}> ({getFormattedAction()})</span>
                           )}
@@ -823,165 +850,112 @@ export function PlanJourney({
                 </div>
 
                 {/* Inline date input for date-based requirements - HIGHLIGHTED */}
-                {requirements.length > 0 && onDateChange && isEdit && !allRequirementsMet && (
-                  <div className="mt-4 p-3 rounded-lg border-2 ring-2 soft-pulse border-amber-500/60 bg-amber-500/10 ring-amber-500/20">
-                    <div className="text-xs font-medium mb-2 text-amber-400">
+                {/* Show when: requirements not met */}
+                {/* Don't show for COMMITTED phase since it has no date input - only cycle lock is needed */}
+                {requirements.length > 0 && onDateChange && isEdit && !allRequirementsMet && nextPhase?.key !== "COMMITTED" && (
+                  <div className="mt-3 px-2 py-1 rounded-lg border-2 ring-2 soft-pulse border-amber-500/60 bg-amber-500/10 ring-amber-500/20">
+                    <div className="text-xs font-medium mb-1 text-amber-400">
                       Enter the required information below:
                     </div>
                     {nextPhase.key === "BRED" && (
                       <div className="flex items-center gap-3">
                         <label className="text-sm text-primary font-medium whitespace-nowrap">Cycle Start (Actual):</label>
-                        <input
-                          type="date"
+                        <DatePicker
                           value={actualCycleStartDate ?? ""}
-                          onFocus={(e) => {
-                            if (!actualCycleStartDate && expectedCycleStartDate && onDateChange) {
-                              const expected = String(expectedCycleStartDate).slice(0, 10);
-                              if (/^\d{4}-\d{2}-\d{2}$/.test(expected)) {
-                                e.target.value = expected;
-                                onDateChange("actualCycleStartDate", expected);
-                                setTimeout(() => { try { (e.target as any).showPicker?.(); } catch {} }, 0);
-                              }
-                            }
-                          }}
+                          defaultDate={expectedCycleStartDate ?? undefined}
                           onChange={(e) => {
-                            const val = e.target.value;
-                            // Only trigger callback for complete dates (YYYY-MM-DD) or when clearing
+                            const val = e.currentTarget.value;
                             if (!val || /^\d{4}-\d{2}-\d{2}$/.test(val)) {
                               onDateChange("actualCycleStartDate", val || null);
                             }
                           }}
-                          className={`flex-1 px-3 py-2 text-sm rounded-lg border-2 bg-surface text-primary focus:outline-none focus:ring-2 ${hasActualCycleStart ? "border-green-500/60 focus:border-green-500 focus:ring-green-500/30" : "border-amber-500/60 focus:border-amber-500 focus:ring-amber-500/30"}`}
+                          className="flex-1"
+                          inputClassName={`w-full px-2 py-1 text-sm rounded-lg border-2 bg-surface text-primary focus:outline-none focus:ring-2 ${hasActualCycleStart ? "border-green-500/60 focus:border-green-500 focus:ring-green-500/30" : "border-amber-500/60 focus:border-amber-500 focus:ring-amber-500/30"}`}
                         />
                       </div>
                     )}
                     {nextPhase.key === "BIRTHED" && (
                       <div className="flex items-center gap-3">
                         <label className="text-sm text-primary font-medium whitespace-nowrap">Breed Date (Actual):</label>
-                        <input
-                          type="date"
+                        <DatePicker
                           value={actualBreedDate ?? ""}
-                          onFocus={(e) => {
-                            if (!actualBreedDate && expectedBreedDate && onDateChange) {
-                              const expected = String(expectedBreedDate).slice(0, 10);
-                              if (/^\d{4}-\d{2}-\d{2}$/.test(expected)) {
-                                e.target.value = expected;
-                                onDateChange("actualBreedDate", expected);
-                                setTimeout(() => { try { (e.target as any).showPicker?.(); } catch {} }, 0);
-                              }
-                            }
-                          }}
+                          defaultDate={expectedBreedDate ?? undefined}
                           onChange={(e) => {
-                            const val = e.target.value;
+                            const val = e.currentTarget.value;
                             if (!val || /^\d{4}-\d{2}-\d{2}$/.test(val)) {
                               onDateChange("actualBreedDate", val || null);
                             }
                           }}
-                          className={`flex-1 px-3 py-2 text-sm rounded-lg border-2 bg-surface text-primary focus:outline-none focus:ring-2 ${hasActualBreedDate ? "border-green-500/60 focus:border-green-500 focus:ring-green-500/30" : "border-amber-500/60 focus:border-amber-500 focus:ring-amber-500/30"}`}
+                          className="flex-1"
+                          inputClassName={`w-full px-2 py-1 text-sm rounded-lg border-2 bg-surface text-primary focus:outline-none focus:ring-2 ${hasActualBreedDate ? "border-green-500/60 focus:border-green-500 focus:ring-green-500/30" : "border-amber-500/60 focus:border-amber-500 focus:ring-amber-500/30"}`}
                         />
                       </div>
                     )}
                     {nextPhase.key === "WEANED" && (
                       <div className="flex items-center gap-3">
                         <label className="text-sm text-primary font-medium whitespace-nowrap">Birth Date (Actual):</label>
-                        <input
-                          type="date"
+                        <DatePicker
                           value={actualBirthDate ?? ""}
-                          onFocus={(e) => {
-                            if (!actualBirthDate && expectedBirthDate && onDateChange) {
-                              const expected = String(expectedBirthDate).slice(0, 10);
-                              if (/^\d{4}-\d{2}-\d{2}$/.test(expected)) {
-                                e.target.value = expected;
-                                onDateChange("actualBirthDate", expected);
-                                setTimeout(() => { try { (e.target as any).showPicker?.(); } catch {} }, 0);
-                              }
-                            }
-                          }}
+                          defaultDate={expectedBirthDate ?? undefined}
                           onChange={(e) => {
-                            const val = e.target.value;
+                            const val = e.currentTarget.value;
                             if (!val || /^\d{4}-\d{2}-\d{2}$/.test(val)) {
                               onDateChange("actualBirthDate", val || null);
                             }
                           }}
-                          className={`flex-1 px-3 py-2 text-sm rounded-lg border-2 bg-surface text-primary focus:outline-none focus:ring-2 ${hasActualBirthDate ? "border-green-500/60 focus:border-green-500 focus:ring-green-500/30" : "border-amber-500/60 focus:border-amber-500 focus:ring-amber-500/30"}`}
+                          className="flex-1"
+                          inputClassName={`w-full px-2 py-1 text-sm rounded-lg border-2 bg-surface text-primary focus:outline-none focus:ring-2 ${hasActualBirthDate ? "border-green-500/60 focus:border-green-500 focus:ring-green-500/30" : "border-amber-500/60 focus:border-amber-500 focus:ring-amber-500/30"}`}
                         />
                       </div>
                     )}
                     {nextPhase.key === "PLACEMENT_STARTED" && (
                       <div className="flex items-center gap-3">
                         <label className="text-sm text-primary font-medium whitespace-nowrap">Weaning Completed (Actual):</label>
-                        <input
-                          type="date"
+                        <DatePicker
                           value={actualWeanedDate ?? ""}
-                          onFocus={(e) => {
-                            if (!actualWeanedDate && expectedWeanedDate && onDateChange) {
-                              const expected = String(expectedWeanedDate).slice(0, 10);
-                              if (/^\d{4}-\d{2}-\d{2}$/.test(expected)) {
-                                e.target.value = expected;
-                                onDateChange("actualWeanedDate", expected);
-                                setTimeout(() => { try { (e.target as any).showPicker?.(); } catch {} }, 0);
-                              }
-                            }
-                          }}
+                          defaultDate={expectedWeanedDate ?? undefined}
                           onChange={(e) => {
-                            const val = e.target.value;
+                            const val = e.currentTarget.value;
                             if (!val || /^\d{4}-\d{2}-\d{2}$/.test(val)) {
                               onDateChange("actualWeanedDate", val || null);
                             }
                           }}
-                          className={`flex-1 px-3 py-2 text-sm rounded-lg border-2 bg-surface text-primary focus:outline-none focus:ring-2 ${hasActualWeanedDate ? "border-green-500/60 focus:border-green-500 focus:ring-green-500/30" : "border-amber-500/60 focus:border-amber-500 focus:ring-amber-500/30"}`}
+                          className="flex-1"
+                          inputClassName={`w-full px-2 py-1 text-sm rounded-lg border-2 bg-surface text-primary focus:outline-none focus:ring-2 ${hasActualWeanedDate ? "border-green-500/60 focus:border-green-500 focus:ring-green-500/30" : "border-amber-500/60 focus:border-amber-500 focus:ring-amber-500/30"}`}
                         />
                       </div>
                     )}
                     {nextPhase.key === "PLACEMENT_COMPLETED" && (
                       <div className="flex items-center gap-3">
                         <label className="text-sm text-primary font-medium whitespace-nowrap">Placement Start Date:</label>
-                        <input
-                          type="date"
+                        <DatePicker
                           value={actualPlacementStartDate ?? ""}
-                          onFocus={(e) => {
-                            if (!actualPlacementStartDate && expectedPlacementStartDate && onDateChange) {
-                              const expected = String(expectedPlacementStartDate).slice(0, 10);
-                              if (/^\d{4}-\d{2}-\d{2}$/.test(expected)) {
-                                e.target.value = expected;
-                                onDateChange("actualPlacementStartDate", expected);
-                                setTimeout(() => { try { (e.target as any).showPicker?.(); } catch {} }, 0);
-                              }
-                            }
-                          }}
+                          defaultDate={expectedPlacementStartDate ?? undefined}
                           onChange={(e) => {
-                            const val = e.target.value;
+                            const val = e.currentTarget.value;
                             if (!val || /^\d{4}-\d{2}-\d{2}$/.test(val)) {
                               onDateChange("actualPlacementStartDate", val || null);
                             }
                           }}
-                          className={`flex-1 px-3 py-2 text-sm rounded-lg border-2 bg-surface text-primary focus:outline-none focus:ring-2 ${hasPlacementStarted ? "border-green-500/60 focus:border-green-500 focus:ring-green-500/30" : "border-amber-500/60 focus:border-amber-500 focus:ring-amber-500/30"}`}
+                          className="flex-1"
+                          inputClassName={`w-full px-2 py-1 text-sm rounded-lg border-2 bg-surface text-primary focus:outline-none focus:ring-2 ${hasPlacementStarted ? "border-green-500/60 focus:border-green-500 focus:ring-green-500/30" : "border-amber-500/60 focus:border-amber-500 focus:ring-amber-500/30"}`}
                         />
                       </div>
                     )}
                     {nextPhase.key === "COMPLETE" && (
                       <div className="flex items-center gap-3">
                         <label className="text-sm text-primary font-medium whitespace-nowrap">Placement Completed Date:</label>
-                        <input
-                          type="date"
+                        <DatePicker
                           value={actualPlacementCompletedDate ?? ""}
-                          onFocus={(e) => {
-                            if (!actualPlacementCompletedDate && expectedPlacementCompletedDate && onDateChange) {
-                              const expected = String(expectedPlacementCompletedDate).slice(0, 10);
-                              if (/^\d{4}-\d{2}-\d{2}$/.test(expected)) {
-                                e.target.value = expected;
-                                onDateChange("actualPlacementCompletedDate", expected);
-                                setTimeout(() => { try { (e.target as any).showPicker?.(); } catch {} }, 0);
-                              }
-                            }
-                          }}
+                          defaultDate={expectedPlacementCompletedDate ?? undefined}
                           onChange={(e) => {
-                            const val = e.target.value;
+                            const val = e.currentTarget.value;
                             if (!val || /^\d{4}-\d{2}-\d{2}$/.test(val)) {
                               onDateChange("actualPlacementCompletedDate", val || null);
                             }
                           }}
-                          className={`flex-1 px-3 py-2 text-sm rounded-lg border-2 bg-surface text-primary focus:outline-none focus:ring-2 ${hasPlacementCompleted ? "border-green-500/60 focus:border-green-500 focus:ring-green-500/30" : "border-amber-500/60 focus:border-amber-500 focus:ring-amber-500/30"}`}
+                          className="flex-1"
+                          inputClassName={`w-full px-2 py-1 text-sm rounded-lg border-2 bg-surface text-primary focus:outline-none focus:ring-2 ${hasPlacementCompleted ? "border-green-500/60 focus:border-green-500 focus:ring-green-500/30" : "border-amber-500/60 focus:border-amber-500 focus:ring-amber-500/30"}`}
                         />
                       </div>
                     )}

@@ -69,11 +69,14 @@ export function DetailsDrawer({
     position: "fixed",
     zIndex: 2147483600, // use token later: var(--z-drawer)
     pointerEvents: "auto",
+    // IMPORTANT: Do NOT use transform, filter, perspective, contain, or willChange
+    // These properties create a "containing block" which breaks showPicker() positioning
+    // for native date inputs - the picker appears at 0,0 instead of near the input
     transform: "none",
     filter: "none",
     perspective: "none",
-    contain: "layout paint",
-    isolation: "isolate",
+    contain: "none", // changed from "layout paint" - contain creates a containing block
+    isolation: "auto", // changed from "isolate" - isolate can interfere with picker
     background: "hsl(var(--surface))",
   };
 
@@ -96,12 +99,17 @@ export function DetailsDrawer({
       }
     : {
         ...basePanelStyle,
+        // Use inset + margin:auto instead of transform for centering
+        // This avoids the showPicker() positioning bug in transformed containers
         maxWidth: typeof width === "number" ? `${width}px` : width,
         width: "min(96vw, 860px)",
-        left: "50%",
+        left: 0,
+        right: 0,
+        marginLeft: "auto",
+        marginRight: "auto",
         ...(align === "center"
-          ? { top: "50%", transform: "translate(-50%, -50%)" }
-          : { top: "6vh", transform: "translateX(-50%)" }),
+          ? { top: 0, bottom: 0, marginTop: "auto", marginBottom: "auto" }
+          : { top: "6vh", bottom: "auto", marginTop: 0, marginBottom: 0 }),
         maxHeight: "88vh",
         border: `${isEditing ? "3px" : "1px"} solid ${borderColor}`,
         borderRadius: 12,

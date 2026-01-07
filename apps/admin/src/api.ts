@@ -287,6 +287,257 @@ export const adminApi = {
       tenantScoped: false,
     });
   },
+
+  /* ───────────────────────── Marketplace Abuse (UNSCOPED: super admin only) ───────────────────────── */
+
+  /** Get flagged marketplace users */
+  listFlaggedUsers(p: { flaggedOnly?: boolean; suspendedOnly?: boolean; page?: number; limit?: number } = {}) {
+    const sp = new URLSearchParams();
+    if (p.flaggedOnly) sp.set("flaggedOnly", "true");
+    if (p.suspendedOnly) sp.set("suspendedOnly", "true");
+    if (p.page != null) setNum(sp, "page", p.page);
+    if (p.limit != null) setNum(sp, "limit", p.limit);
+    return request<{ items: MarketplaceFlaggedUserDTO[]; total: number }>(
+      `/admin/marketplace/flagged-users?${sp.toString()}`,
+      { tenantScoped: false }
+    );
+  },
+
+  /** Get a specific marketplace user's abuse info */
+  getMarketplaceUser(userId: string) {
+    return request<MarketplaceUserDetailDTO>(
+      `/admin/marketplace/users/${encodeURIComponent(userId)}`,
+      { tenantScoped: false }
+    );
+  },
+
+  /** Suspend a marketplace user */
+  suspendMarketplaceUser(userId: string, reason: string) {
+    return request<{ ok: boolean }>(
+      `/admin/marketplace/users/${encodeURIComponent(userId)}/suspend`,
+      { method: "POST", body: { reason }, tenantScoped: false }
+    );
+  },
+
+  /** Unsuspend a marketplace user */
+  unsuspendMarketplaceUser(userId: string) {
+    return request<{ ok: boolean }>(
+      `/admin/marketplace/users/${encodeURIComponent(userId)}/unsuspend`,
+      { method: "POST", tenantScoped: false }
+    );
+  },
+
+  /** Clear a user's flag */
+  clearMarketplaceUserFlag(userId: string) {
+    return request<{ ok: boolean }>(
+      `/admin/marketplace/users/${encodeURIComponent(userId)}/clear-flag`,
+      { method: "POST", tenantScoped: false }
+    );
+  },
+
+  /** Get marketplace abuse settings */
+  getMarketplaceAbuseSettings() {
+    return request<MarketplaceAbuseSettingsDTO>(
+      `/admin/platform-settings/marketplace-abuse`,
+      { tenantScoped: false }
+    );
+  },
+
+  /** Update marketplace abuse settings */
+  updateMarketplaceAbuseSettings(body: Partial<MarketplaceAbuseSettingsDTO>) {
+    return request<MarketplaceAbuseSettingsDTO>(
+      `/admin/platform-settings/marketplace-abuse`,
+      { method: "PUT", body, tenantScoped: false }
+    );
+  },
+};
+
+/** Marketplace flagged user DTO */
+export type MarketplaceFlaggedUserDTO = {
+  id: number;
+  userId: string;
+  totalBlocks: number;
+  activeBlocks: number;
+  lightBlocks: number;
+  mediumBlocks: number;
+  heavyBlocks: number;
+  totalApprovals: number;
+  totalRejections: number;
+  flaggedAt: string | null;
+  flagReason: string | null;
+  suspendedAt: string | null;
+  suspendedReason: string | null;
+  updatedAt: string;
+  user: {
+    id: string;
+    email: string;
+    name: string | null;
+    firstName: string;
+    lastName: string;
+    createdAt: string;
+  };
+};
+
+/** Marketplace user detail with block history */
+export type MarketplaceUserDetailDTO = {
+  flag: MarketplaceFlaggedUserDTO;
+  blocks: Array<{
+    id: number;
+    tenantId: number;
+    level: "LIGHT" | "MEDIUM" | "HEAVY";
+    reason: string | null;
+    createdAt: string;
+    liftedAt: string | null;
+    tenant: { id: number; name: string };
+  }>;
+};
+
+/** Marketplace abuse settings DTO */
+export type MarketplaceAbuseSettingsDTO = {
+  flagThreshold: number;
+  autoSuspendThreshold: number;
+  enableAutoSuspend: boolean;
+};
+
+/* ───────────────────────── Breeder Reports (UNSCOPED: super admin only) ───────────────────────── */
+
+/** Individual breeder report DTO */
+export type BreederReportDTO = {
+  id: number;
+  reporterUserIdMasked: string;  // Masked for privacy
+  breederTenantId: number;
+  reason: "SPAM" | "FRAUD" | "HARASSMENT" | "MISREPRESENTATION" | "OTHER";
+  severity: "LIGHT" | "MEDIUM" | "HEAVY";
+  description: string | null;
+  status: "PENDING" | "REVIEWED" | "DISMISSED" | "ACTIONED";
+  adminNotes: string | null;
+  reviewedByUserId: string | null;
+  reviewedAt: string | null;
+  createdAt: string;
+};
+
+/** Flagged breeder DTO (aggregation) */
+export type BreederFlaggedDTO = {
+  id: number;
+  breederTenantId: number;
+  totalReports: number;
+  pendingReports: number;
+  lightReports: number;
+  mediumReports: number;
+  heavyReports: number;
+  flaggedAt: string | null;
+  flagReason: string | null;
+  warningIssuedAt: string | null;
+  warningNote: string | null;
+  marketplaceSuspendedAt: string | null;
+  suspendedReason: string | null;
+  updatedAt: string;
+  tenant: {
+    id: number;
+    name: string;
+    primaryEmail: string | null;
+  };
+};
+
+/** Breeder report detail with all reports */
+export type BreederReportDetailDTO = {
+  flag: BreederFlaggedDTO;
+  reports: BreederReportDTO[];
+};
+
+/** Breeder report settings DTO */
+export type BreederReportSettingsDTO = {
+  flagThreshold: number;
+  enableAutoFlag: boolean;
+};
+
+/** Breeder reports admin API */
+export const breederReportsApi = {
+  /** List flagged breeders */
+  listFlaggedBreeders(p: {
+    q?: string;
+    flaggedOnly?: boolean;
+    warningOnly?: boolean;
+    suspendedOnly?: boolean;
+    page?: number;
+    limit?: number;
+  } = {}) {
+    const sp = new URLSearchParams();
+    if (p.q) sp.set("q", p.q);
+    if (p.flaggedOnly) sp.set("flaggedOnly", "true");
+    if (p.warningOnly) sp.set("warningOnly", "true");
+    if (p.suspendedOnly) sp.set("suspendedOnly", "true");
+    if (p.page != null) setNum(sp, "page", p.page);
+    if (p.limit != null) setNum(sp, "limit", p.limit);
+    return request<{ items: BreederFlaggedDTO[]; total: number }>(
+      `/admin/breeder-reports/flagged?${sp.toString()}`,
+      { tenantScoped: false }
+    );
+  },
+
+  /** Get breeder report details with all reports */
+  getBreederReports(tenantId: ID) {
+    return request<BreederReportDetailDTO>(
+      `/admin/breeder-reports/breeders/${encodeURIComponent(String(tenantId))}`,
+      { tenantScoped: false }
+    );
+  },
+
+  /** Dismiss a single report */
+  dismissReport(reportId: ID, reason: string) {
+    return request<{ ok: boolean }>(
+      `/admin/breeder-reports/${encodeURIComponent(String(reportId))}/dismiss`,
+      { method: "POST", body: { reason }, tenantScoped: false }
+    );
+  },
+
+  /** Issue warning to a breeder */
+  warnBreeder(tenantId: ID, note: string) {
+    return request<{ ok: boolean }>(
+      `/admin/breeder-reports/breeders/${encodeURIComponent(String(tenantId))}/warn`,
+      { method: "POST", body: { note }, tenantScoped: false }
+    );
+  },
+
+  /** Suspend breeder's marketplace listing */
+  suspendBreederMarketplace(tenantId: ID, reason: string) {
+    return request<{ ok: boolean }>(
+      `/admin/breeder-reports/breeders/${encodeURIComponent(String(tenantId))}/suspend-marketplace`,
+      { method: "POST", body: { reason }, tenantScoped: false }
+    );
+  },
+
+  /** Unsuspend breeder's marketplace listing */
+  unsuspendBreederMarketplace(tenantId: ID) {
+    return request<{ ok: boolean }>(
+      `/admin/breeder-reports/breeders/${encodeURIComponent(String(tenantId))}/unsuspend-marketplace`,
+      { method: "POST", tenantScoped: false }
+    );
+  },
+
+  /** Clear breeder's flag */
+  clearBreederFlag(tenantId: ID) {
+    return request<{ ok: boolean }>(
+      `/admin/breeder-reports/breeders/${encodeURIComponent(String(tenantId))}/clear-flag`,
+      { method: "POST", tenantScoped: false }
+    );
+  },
+
+  /** Get breeder report settings */
+  getSettings() {
+    return request<BreederReportSettingsDTO>(
+      `/admin/platform-settings/breeder-reports`,
+      { tenantScoped: false }
+    );
+  },
+
+  /** Update breeder report settings */
+  updateSettings(body: Partial<BreederReportSettingsDTO>) {
+    return request<BreederReportSettingsDTO>(
+      `/admin/platform-settings/breeder-reports`,
+      { method: "PUT", body, tenantScoped: false }
+    );
+  },
 };
 
 /** ───────────────────────── Small helpers ───────────────────────── */

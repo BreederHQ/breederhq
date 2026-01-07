@@ -2,7 +2,7 @@
 import * as React from "react";
 import { createRoot } from "react-dom/client";
 import { createPortal } from "react-dom";
-import { Trash2, Plus, MoreHorizontal, MoreVertical, Download, Archive } from "lucide-react";
+import { Trash2, Plus, MoreHorizontal, MoreVertical, Download, Archive, Undo2 } from "lucide-react";
 import {
   PageHeader,
   Card,
@@ -118,6 +118,11 @@ function asISODateOnly(v: unknown): string | null {
     // Already YYYY-MM-DD
     if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
 
+    // If it's an ISO timestamp (YYYY-MM-DDTHH:mm:ss.sssZ), extract just the date part
+    if (/^\d{4}-\d{2}-\d{2}T/.test(s)) {
+      return s.slice(0, 10);
+    }
+
     // Parse as local date to avoid timezone issues
     const dt = new Date(s);
     if (!isNaN(dt.getTime())) {
@@ -164,8 +169,11 @@ function normalizeExpectedMilestones(
 
   const hormoneTestingStart =
     day(milestones?.expectedHormoneTestingStart) ??
+    day(milestones?.hormone_testing?.likely?.[0]) ?? // reproEngine nested array format
+    day(milestones?.hormone_testing?.full?.[0]) ?? // reproEngine nested array format
     day(milestones?.hormone_testing_full?.start) ?? // reproEngine format: { start, end }
     day(milestones?.hormone_testing_full?.[0]) ?? // legacy array format
+    day(milestones?.hormone_testing_likely?.[0]) ?? // legacy array format
     day(milestones?.hormoneTesting_full?.[0]) ??
     day(milestones?.testing_expected) ??
     day(milestones?.testing_start) ??
@@ -188,7 +196,11 @@ function normalizeExpectedMilestones(
   const birthDate =
     day(milestones?.expectedBirthDate) ??
     day(milestones?.birth_expected) ?? // legacy format from computeExpectedForPlan
-    day(milestones?.whelping?.likely?.start) ?? // reproEngine nested format
+    day(milestones?.birth?.likely?.[0]) ?? // reproEngine nested array format (birth.likely)
+    day(milestones?.birth?.full?.[0]) ?? // reproEngine nested array format (birth.full)
+    day(milestones?.birth_likely?.[0]) ?? // reproEngine flat format
+    day(milestones?.birth_full?.[0]) ?? // reproEngine flat format
+    day(milestones?.whelping?.likely?.start) ?? // reproEngine nested format (whelping)
     day(milestones?.whelping_full?.start) ?? // reproEngine flat format
     day(milestones?.whelping_likely?.start) ?? // reproEngine flat format
     day(milestones?.whelping?.likely?.[0]) ?? // reproEngine nested array format
@@ -853,7 +865,10 @@ function planToRow(p: any): PlanRow {
   return {
     id: p.id,
     name: p.name,
-    status: fromBackendStatus(p.status),
+    status: fromBackendStatus(p.status, {
+      placementStartDateActual: p.placementStartDateActual,
+      placementCompletedDateActual: p.placementCompletedDateActual,
+    }),
     species: toUiSpecies(p.species),
 
     damId: p.dam?.id ?? null,
@@ -2390,6 +2405,7 @@ export default function AppBreeding() {
             damId: merged.damId,
             sireId: merged.sireId,
             lockedCycleStart: merged.lockedCycleStart,
+            status: current?.status ?? null, // Preserve current explicit status
             cycleStartDateActual: normalizedDraft.cycleStartDateActual !== undefined ? normalizedDraft.cycleStartDateActual : (current?.cycleStartDateActual ?? null),
             breedDateActual: normalizedDraft.breedDateActual !== undefined ? normalizedDraft.breedDateActual : (current?.breedDateActual ?? null),
             birthDateActual: normalizedDraft.birthDateActual !== undefined ? normalizedDraft.birthDateActual : (current?.birthDateActual ?? null),
@@ -2766,8 +2782,8 @@ export default function AppBreeding() {
                     className={[
                       "pb-1 text-sm font-medium transition-colors select-none",
                       isActive
-                        ? "text-neutral-900 dark:text-neutral-50"
-                        : "text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-100",
+                        ? "text-primary"
+                        : "text-secondary hover:text-primary",
                     ].join(" ")}
                     style={{
                       borderBottom: isActive ? "2px solid #f97316" : "2px solid transparent",
@@ -3678,6 +3694,20 @@ function PlanDetailsView(props: {
     setPendingSave(false);
   }, [row.id]);
 
+  // Sync persisted snapshot with row when row data changes from server (after save)
+  // This ensures the snapshot stays in sync when the parent updates the row prop
+  const rowSnapshotKey = React.useMemo(() => {
+    const snap = buildPlanSnapshot(row);
+    return JSON.stringify(snap);
+  }, [row]);
+
+  React.useEffect(() => {
+    // Only update if draft is empty (i.e., after a save completed and draft was cleared)
+    if (Object.keys(draftRef.current).length === 0) {
+      setPersistedSnapshot(buildPlanSnapshot(row));
+    }
+  }, [rowSnapshotKey]);
+
   // Calculate if there are unsaved changes
   const isDirty = React.useMemo(() => {
     const changedFields = prunePlanDraft(draftRef.current, persistedSnapshot);
@@ -3685,6 +3715,17 @@ function PlanDetailsView(props: {
   }, [draftTick, persistedSnapshot]);
 
   const hasPendingChangesLocal = isDirty || pendingSave;
+
+  // Ref-based dirty check for use in event handlers (avoids stale closure issues)
+  const persistedSnapshotRef = React.useRef(persistedSnapshot);
+  React.useEffect(() => { persistedSnapshotRef.current = persistedSnapshot; }, [persistedSnapshot]);
+  const pendingSaveRef = React.useRef(pendingSave);
+  React.useEffect(() => { pendingSaveRef.current = pendingSave; }, [pendingSave]);
+
+  const checkPendingChangesSync = React.useCallback(() => {
+    const changedFields = prunePlanDraft(draftRef.current, persistedSnapshotRef.current);
+    return Object.keys(changedFields).length > 0 || pendingSaveRef.current;
+  }, []);
 
   // Notify parent when pending changes state changes
   React.useEffect(() => {
@@ -4222,7 +4263,7 @@ function PlanDetailsView(props: {
 
     setExpectedPreview(expectedRaw as any);
     setLockedPreview(true);
-    setDraftLive(payload);
+    // Don't use setDraftLive here - we're immediately persisting, not drafting
 
     try {
       await api.updatePlan(Number(row.id), payload as any);
@@ -4244,12 +4285,28 @@ function PlanDetailsView(props: {
         },
       });
 
-      // Clear draft entries for persisted fields and update snapshot (prevents false "unsaved changes" prompt)
-      for (const key of Object.keys(payload)) {
-        delete (draftRef.current as any)[key];
-      }
-      setPersistedSnapshot(buildPlanSnapshot({ ...row, ...payload }));
+      // Refresh the row to ensure lockedCycleStart is in the row prop (not just draft)
+      const fresh = await api.getPlan(Number(row.id), "parents,org");
+      onPlanUpdated?.(row.id, fresh);
+
+      // Update snapshot to match fresh data (prevents false "unsaved changes" prompt)
+      // IMPORTANT: Use planToRow to transform fresh data, ensuring consistency with the
+      // row prop that will be passed down from the parent after onPlanUpdated.
+      // This prevents snapshot mismatch when the rowSnapshotKey effect runs.
+      const freshAsRow = planToRow(fresh || { ...row, ...payload });
+      const newSnapshot = buildPlanSnapshot(freshAsRow);
+
+      setPersistedSnapshot(newSnapshot);
+      persistedSnapshotRef.current = newSnapshot; // Sync update for ref-based checks
+
+      // Clear ALL dirty state since lock operation fully persists
+      // This prevents false "unsaved changes" when closing after locking
+      draftRef.current = {};
       setDraftTick((t) => t + 1);
+      setDraft({});
+      setPendingSave(false);
+      pendingSaveRef.current = false; // Sync update for ref-based checks
+      // Stay in edit mode - user may want to continue editing after locking
     } catch (e: any) {
       console.error("[Breeding] lockCycle persist or audit failed", e);
       setExpectedPreview(null);
@@ -4322,10 +4379,47 @@ function PlanDetailsView(props: {
       }
 
       // Update persisted snapshot to reflect the new saved state
-      setPersistedSnapshot(buildPlanSnapshot(updated || { ...row, ...payload }));
+      // IMPORTANT: Use planToRow to transform API data, ensuring consistency with the
+      // row prop that will be passed down from the parent after onPlanUpdated.
+      const updatedAsRow = planToRow(updated || { ...row, ...payload });
+      setPersistedSnapshot(buildPlanSnapshot(updatedAsRow));
     } catch (e) {
       console.error("[Breeding] recalculateExpectedDates failed", e);
     }
+  }
+
+  // Recalculate expected dates when actual cycle start is entered
+  // This uses the ACTUAL cycle start as the seed instead of the locked/expected cycle start
+  // The original expectedCycleStart is preserved, but all other dates are recalculated
+  function recalculateExpectedDatesFromActual(actualCycleStart: string | null) {
+    console.log("[Breeding] recalculateExpectedDatesFromActual called with:", actualCycleStart);
+    if (!actualCycleStart || !String(actualCycleStart).trim()) {
+      return null; // No recalculation if no actual date
+    }
+
+    const expectedRaw = computeExpectedForPlan({
+      species: row.species as any,
+      lockedCycleStart: actualCycleStart, // Use actual as seed
+      femaleCycleLenOverrideDays: liveOverride,
+    });
+
+    console.log("[Breeding] recalculateExpectedDatesFromActual - expectedRaw:", expectedRaw);
+    if (!expectedRaw) return null;
+
+    const expected = normalizeExpectedMilestones(expectedRaw, actualCycleStart);
+    const testingStart =
+      expected.hormoneTestingStart ?? pickExpectedTestingStart(expectedRaw, actualCycleStart);
+
+    // Return the recalculated expected dates (keep original expectedCycleStart)
+    return {
+      // Don't update expectedCycleStart - keep the original
+      expectedHormoneTestingStart: testingStart ?? null,
+      expectedBreedDate: expected.breedDate,
+      expectedBirthDate: expected.birthDate,
+      expectedWeaned: expected.weanedDate,
+      expectedPlacementStartDate: expected.placementStart,
+      expectedPlacementCompletedDate: expected.placementCompleted,
+    };
   }
 
   async function unlockCycle() {
@@ -4350,7 +4444,7 @@ function PlanDetailsView(props: {
       expectedPlacementStartDate: null,
       expectedPlacementCompletedDate: null,
     };
-    setDraftLive(payload);
+    // Don't use setDraftLive here - we're immediately persisting, not drafting
 
     try {
       await api.updatePlan(Number(row.id), payload as any);
@@ -4362,12 +4456,27 @@ function PlanDetailsView(props: {
         data: {},
       });
 
-      // Clear draft entries for persisted fields and update snapshot (prevents false "unsaved changes" prompt)
-      for (const key of Object.keys(payload)) {
-        delete (draftRef.current as any)[key];
-      }
-      setPersistedSnapshot(buildPlanSnapshot({ ...row, ...payload }));
+      // Refresh the row to ensure lockedCycleStart is cleared in the row prop (not just draft)
+      const fresh = await api.getPlan(Number(row.id), "parents,org");
+      onPlanUpdated?.(row.id, fresh);
+
+      // Update snapshot to match fresh data (prevents false "unsaved changes" prompt)
+      // IMPORTANT: Use planToRow to transform fresh data, ensuring consistency with the
+      // row prop that will be passed down from the parent after onPlanUpdated.
+      // This prevents snapshot mismatch when the rowSnapshotKey effect runs.
+      const freshAsRow = planToRow(fresh || { ...row, ...payload });
+      const newSnapshot = buildPlanSnapshot(freshAsRow);
+      setPersistedSnapshot(newSnapshot);
+      persistedSnapshotRef.current = newSnapshot; // Sync update for ref-based checks
+
+      // Clear ALL dirty state since unlock operation fully persists
+      // This prevents false "unsaved changes" when closing after unlocking
+      draftRef.current = {};
       setDraftTick((t) => t + 1);
+      setDraft({});
+      setPendingSave(false);
+      pendingSaveRef.current = false; // Sync update for ref-based checks
+      // Stay in edit mode - user may want to continue editing after unlocking
     } catch (e) {
       console.error("[Breeding] unlockCycle persist or audit failed", e);
       const expected = pendingCycle ? computeExpectedForPlan({ species: row.species as any, lockedCycleStart: pendingCycle }) : null;
@@ -4396,7 +4505,7 @@ function PlanDetailsView(props: {
   );
 
   const expectedCycleStart = expectedNorm?.cycleStart ?? "";
-  const expectedTestingStart = expectedNorm?.hormoneTestingStart ?? "";
+  const expectedTestingStart = expectedNorm?.hormoneTestingStart ?? pickExpectedTestingStart(expectedPreview, cycleForExpected) ?? "";
   const expectedBreed = expectedNorm?.breedDate ?? "";
   const expectedBirth = expectedNorm?.birthDate ?? "";
   const expectedWeaned = expectedNorm?.weanedDate ?? "";
@@ -4406,6 +4515,27 @@ function PlanDetailsView(props: {
   const expectedPlacementCompleted = expectedGoHomeExtended;
   const expectedCompleted = expectedPlacementCompleted;
 
+  // Recalculated dates based on ACTUAL cycle start (when available)
+  // This shows what the expected dates WOULD BE if we use the actual cycle start as the seed
+  const recalculatedDates = React.useMemo(() => {
+    const actualCycleStart = effective.cycleStartDateActual;
+    console.log("[Breeding] recalculatedDates memo - actualCycleStart:", actualCycleStart, "species:", row.species);
+    if (!actualCycleStart || !String(actualCycleStart).trim()) {
+      console.log("[Breeding] recalculatedDates - no actual cycle start, returning null");
+      return null; // No recalculation if no actual date
+    }
+    const result = recalculateExpectedDatesFromActual(actualCycleStart);
+    console.log("[Breeding] recalculatedDates - result:", result);
+    return result;
+  }, [effective.cycleStartDateActual, row.species, liveOverride]);
+
+  // Extract individual recalculated values for display
+  const recalcTestingStart = recalculatedDates?.expectedHormoneTestingStart ?? "";
+  const recalcBreed = recalculatedDates?.expectedBreedDate ?? "";
+  const recalcBirth = recalculatedDates?.expectedBirthDate ?? "";
+  const recalcWeaned = recalculatedDates?.expectedWeaned ?? "";
+  const recalcPlacementStart = recalculatedDates?.expectedPlacementStartDate ?? "";
+  const recalcPlacementCompleted = recalculatedDates?.expectedPlacementCompletedDate ?? "";
 
   const [editDamQuery, setEditDamQuery] = React.useState<string>("");
   const [editSireQuery, setEditSireQuery] = React.useState<string>("");
@@ -4510,17 +4640,19 @@ function PlanDetailsView(props: {
     setPendingSave(true);
     try {
       await requestSave();
-      // On successful save, update the persisted snapshot, clear draft, and clear pending state
-      setPersistedSnapshot(buildPlanSnapshot({ ...row, ...draftRef.current }));
+      // On successful save, clear draft and pending state
+      // The useEffect at line 3704 will update the persisted snapshot when the row prop updates
       draftRef.current = {};
       setDraftTick((t) => t + 1);
+      setDraft({});
       setPendingSave(false);
+      pendingSaveRef.current = false; // Sync update for ref-based checks
     } catch (error) {
       // On error, clear pending but keep isDirty true
       setPendingSave(false);
       throw error;
     }
-  }, [requestSave, row]);
+  }, [requestSave, setDraft]);
 
   // Wrap close to check for unsaved changes
   const handleClose = React.useCallback(async () => {
@@ -4556,7 +4688,7 @@ function PlanDetailsView(props: {
   return (
     <DetailsScaffold
       title={row.name}
-      subtitle={row.status || ""}
+      subtitle=""
       mode={mode}
       onEdit={editable ? () => setMode("edit") : undefined}
       onCancel={handleCancel}
@@ -4567,80 +4699,80 @@ function PlanDetailsView(props: {
       onClose={handleClose}
       hasPendingChanges={hasPendingChangesLocal}
       hideCloseButton
-      rightActions={
-        <div className="flex gap-2 items-center" data-bhq-details>
-          {mode === "edit" && row.status === "COMMITTED" ? (
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={uncommitting}
-              onClick={async () => {
-                if (!api || uncommitting) return;
-
-                setUncommitting(true);
-                try {
-                  const actorId =
-                    (utils as any)?.session?.currentUserId?.() ??
-                    (utils as any)?.currentUser?.id ??
-                    "ui";
-
-                  await (api as any).uncommitPlan(Number(row.id), { actorId });
-
-                  // Refresh the plan
-                  const fresh = await api.getPlan(Number(row.id), "parents,org");
-                  if (onPlanUpdated) {
-                    onPlanUpdated(row.id, fresh);
-                  }
-                } catch (e: any) {
-                  // Handle 409 Conflict with blockers
-                  if (e?.status === 409 || e?.payload?.blockers) {
-                    const blockers = e?.payload?.blockers || {};
-                    const blockerList: string[] = [];
-
-                    if (blockers.hasOffspring) blockerList.push("Offspring exist in the linked group");
-                    if (blockers.hasBuyers) blockerList.push("Buyers are assigned");
-                    if (blockers.hasInvoices) blockerList.push("Invoices exist");
-                    if (blockers.hasDocuments) blockerList.push("Documents or contracts are attached");
-                    if (blockers.hasContracts) blockerList.push("Contracts are linked");
-                    if (blockers.other && Array.isArray(blockers.other)) {
-                      blockerList.push(...blockers.other);
-                    }
-
-                    // Show info-only dialog with blockers
-                    await infoModal({
-                      title: "Cannot uncommit this plan",
-                      message: blockerList.length > 0 ? (
-                        <ul className="list-disc list-inside space-y-1">
-                          {blockerList.map((b, i) => <li key={i}>{b}</li>)}
-                        </ul>
-                      ) : "This plan cannot be uncommitted at this time.",
-                    });
-                  } else {
-                    console.error("[Breeding] uncommit failed", e);
-                  }
-                } finally {
-                  setUncommitting(false);
-                }
-              }}
-            >
-              {uncommitting ? "Uncommitting..." : "Uncommit"}
-            </Button>
-          ) : null}
-        </div>
-      }
+      rightActions={undefined}
       tabsRightContent={
         mode === "edit" && (
           <Popover open={overflowMenuOpen} onOpenChange={setOverflowMenuOpen}>
             <Popover.Trigger asChild>
               <button
                 type="button"
-                className="p-1.5 rounded hover:bg-white/10 transition-colors"
+                className="flex items-center gap-1 px-2 py-1 rounded hover:bg-white/10 transition-colors text-secondary text-xs"
                 aria-label="More actions"
               >
-                <MoreVertical className="h-5 w-5 text-secondary" />
+                <MoreVertical className="h-4 w-4" />
+                <span>More</span>
               </button>
             </Popover.Trigger>
-            <Popover.Content align="end" className="w-44 p-1">
+            <Popover.Content align="end" className="w-48 p-1">
+              {/* Uncommit - only for COMMITTED plans */}
+              {row.status === "COMMITTED" && (
+                <button
+                  className="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-white/5 rounded disabled:opacity-50"
+                  disabled={uncommitting}
+                  onClick={async () => {
+                    setOverflowMenuOpen(false);
+                    if (!api || uncommitting) return;
+
+                    setUncommitting(true);
+                    try {
+                      const actorId =
+                        (utils as any)?.session?.currentUserId?.() ??
+                        (utils as any)?.currentUser?.id ??
+                        "ui";
+
+                      await (api as any).uncommitPlan(Number(row.id), { actorId });
+
+                      // Refresh the plan
+                      const fresh = await api.getPlan(Number(row.id), "parents,org");
+                      if (onPlanUpdated) {
+                        onPlanUpdated(row.id, fresh);
+                      }
+                    } catch (e: any) {
+                      // Handle 409 Conflict with blockers
+                      if (e?.status === 409 || e?.payload?.blockers) {
+                        const blockers = e?.payload?.blockers || {};
+                        const blockerList: string[] = [];
+
+                        if (blockers.hasOffspring) blockerList.push("Offspring exist in the linked group");
+                        if (blockers.hasBuyers) blockerList.push("Buyers are assigned");
+                        if (blockers.hasInvoices) blockerList.push("Invoices exist");
+                        if (blockers.hasDocuments) blockerList.push("Documents or contracts are attached");
+                        if (blockers.hasContracts) blockerList.push("Contracts are linked");
+                        if (blockers.other && Array.isArray(blockers.other)) {
+                          blockerList.push(...blockers.other);
+                        }
+
+                        // Show info-only dialog with blockers
+                        await infoModal({
+                          title: "Cannot uncommit this plan",
+                          message: blockerList.length > 0 ? (
+                            <ul className="list-disc list-inside space-y-1">
+                              {blockerList.map((b, i) => <li key={i}>{b}</li>)}
+                            </ul>
+                          ) : "This plan cannot be uncommitted at this time.",
+                        });
+                      } else {
+                        console.error("[Breeding] uncommit failed", e);
+                      }
+                    } finally {
+                      setUncommitting(false);
+                    }
+                  }}
+                >
+                  <Undo2 className="h-4 w-4" />
+                  {uncommitting ? "Uncommitting..." : "Uncommit"}
+                </button>
+              )}
               {/* Archive / Unarchive */}
               <button
                 className="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-white/5 rounded"
@@ -4746,6 +4878,7 @@ function PlanDetailsView(props: {
               actualPlacementStartDate={effective.placementStartDateActual}
               actualPlacementCompletedDate={effective.placementCompletedDateActual}
               expectedCycleStartDate={expectedCycleStart}
+              expectedHormoneTestingStartDate={expectedTestingStart}
               expectedBreedDate={expectedBreed}
               expectedBirthDate={expectedBirth}
               expectedWeanedDate={expectedWeaned}
@@ -4776,9 +4909,95 @@ function PlanDetailsView(props: {
                   // Translate frontend status to backend status
                   const backendStatus = toBackendStatus(toPhase);
                   console.log("[Breeding] Advancing to phase:", toPhase, "-> backend:", backendStatus, "for plan:", row.id);
-                  await api.updatePlan(Number(row.id), { status: backendStatus } as any);
+
+                  // Include any pending draft changes along with the status update
+                  // This ensures dates entered before clicking "Advance" are saved
+                  const currentDraft = draftRef.current;
+                  const payload: Record<string, unknown> = { status: backendStatus };
+
+                  // Map draft fields to API field names
+                  if (currentDraft.cycleStartDateActual !== undefined) {
+                    payload.cycleStartDateActual = currentDraft.cycleStartDateActual;
+                  }
+                  if (currentDraft.hormoneTestingStartDateActual !== undefined) {
+                    payload.hormoneTestingStartDateActual = currentDraft.hormoneTestingStartDateActual;
+                  }
+                  if (currentDraft.breedDateActual !== undefined) {
+                    payload.breedDateActual = currentDraft.breedDateActual;
+                  }
+                  if (currentDraft.birthDateActual !== undefined) {
+                    payload.birthDateActual = currentDraft.birthDateActual;
+                  }
+                  if (currentDraft.weanedDateActual !== undefined) {
+                    payload.weanedDateActual = currentDraft.weanedDateActual;
+                  }
+                  if (currentDraft.placementStartDateActual !== undefined) {
+                    payload.placementStartDateActual = currentDraft.placementStartDateActual;
+                  }
+                  if (currentDraft.placementCompletedDateActual !== undefined) {
+                    payload.placementCompletedDateActual = currentDraft.placementCompletedDateActual;
+                  }
+
+                  // VALIDATION: Ensure required date is present before advancing
+                  // Merge current row data with draft to get effective values
+                  const effectiveCycleStart = payload.cycleStartDateActual ?? row.cycleStartDateActual;
+                  const effectiveBreedDate = payload.breedDateActual ?? row.breedDateActual;
+                  const effectiveBirthDate = payload.birthDateActual ?? row.birthDateActual;
+                  const effectiveWeanedDate = payload.weanedDateActual ?? row.weanedDateActual;
+                  const effectivePlacementStart = payload.placementStartDateActual ?? row.placementStartDateActual;
+                  const effectivePlacementCompleted = payload.placementCompletedDateActual ?? row.placementCompletedDateActual;
+
+                  const validationErrors: string[] = [];
+                  if (toPhase === "BRED" && !effectiveCycleStart) {
+                    validationErrors.push("Cycle Start (Actual) date is required to advance to Breeding phase");
+                  }
+                  if (toPhase === "BIRTHED" && !effectiveBreedDate) {
+                    validationErrors.push("Breed Date (Actual) is required to advance to Birth phase");
+                  }
+                  if (toPhase === "WEANED" && !effectiveBirthDate) {
+                    validationErrors.push("Birth Date (Actual) is required to advance to Weaned phase");
+                  }
+                  if (toPhase === "PLACEMENT_STARTED" && !effectiveWeanedDate) {
+                    validationErrors.push("Weaned Date (Actual) is required to advance to Placement Started phase");
+                  }
+                  if (toPhase === "PLACEMENT_COMPLETED" && !effectivePlacementStart) {
+                    validationErrors.push("Placement Start Date is required to advance to Placement Completed phase");
+                  }
+                  if (toPhase === "COMPLETE" && !effectivePlacementCompleted) {
+                    validationErrors.push("Placement Completed Date is required to mark plan as Complete");
+                  }
+
+                  if (validationErrors.length > 0) {
+                    console.error("[Breeding] Validation failed:", validationErrors);
+                    alert(validationErrors.join("\n"));
+                    return;
+                  }
+
+                  // Backend requires all milestone dates up to the target phase
+                  // Include them in the payload even if they weren't just edited
+                  if (toPhase === "PLACEMENT_COMPLETED" || toPhase === "COMPLETE") {
+                    // Ensure all dates through placement are included
+                    if (effectiveCycleStart) payload.cycleStartDateActual = effectiveCycleStart;
+                    if (effectiveBreedDate) payload.breedDateActual = effectiveBreedDate;
+                    if (effectiveBirthDate) payload.birthDateActual = effectiveBirthDate;
+                    if (effectiveWeanedDate) payload.weanedDateActual = effectiveWeanedDate;
+                    if (effectivePlacementStart) payload.placementStartDateActual = effectivePlacementStart;
+                  }
+                  if (toPhase === "COMPLETE") {
+                    if (effectivePlacementCompleted) payload.placementCompletedDateActual = effectivePlacementCompleted;
+                  }
+
+                  console.log("[Breeding] Advance phase payload:", payload);
+                  await api.updatePlan(Number(row.id), payload as any);
+
+                  // Clear the draft since we just saved
+                  draftRef.current = {};
+
                   const fresh = await api.getPlan(Number(row.id), "parents,org");
                   onPlanUpdated?.(row.id, fresh);
+
+                  // Exit edit mode after successful advancement
+                  setMode("view");
                 } catch (err) {
                   console.error("[Breeding] advance phase failed", err);
                 }
@@ -5112,31 +5331,41 @@ function PlanDetailsView(props: {
 
             {/* Next Milestone Summary - show context-aware next milestone based on status */}
             {/* Only show when cycle has started (cycleStartDateActual entered) - not when Breeding Cycle Selection is visible */}
+            {/* Use recalculated dates when available (based on actual cycle start), otherwise fall back to original expected */}
             {committedOrLater && expectedsEnabled && effective.cycleStartDateActual && (() => {
               const status = (row.status || "").toUpperCase();
               let milestoneLabel = "";
               let milestoneDate = "";
               let milestoneIcon = "🏠";
 
+              // When actual cycle start is entered, use recalculated dates for accurate "days away"
+              // Fall back to original expected dates if recalculation not available
+              const useRecalc = Boolean(recalculatedDates);
+              const breed = useRecalc ? recalcBreed : expectedBreed;
+              const birth = useRecalc ? recalcBirth : expectedBirth;
+              const weaned = useRecalc ? recalcWeaned : expectedWeaned;
+              const placementStart = useRecalc ? recalcPlacementStart : expectedPlacementStart;
+              const placementCompleted = useRecalc ? recalcPlacementCompleted : expectedPlacementCompleted;
+
               if (status === "COMMITTED") {
                 milestoneLabel = "Breeding Window";
-                milestoneDate = expectedBreed;
+                milestoneDate = breed;
                 milestoneIcon = "💕";
               } else if (status === "BRED") {
                 milestoneLabel = "Expected Birth";
-                milestoneDate = expectedBirth;
+                milestoneDate = birth;
                 milestoneIcon = "🐣";
               } else if (status === "BIRTHED") {
                 milestoneLabel = "Weaning Completed";
-                milestoneDate = expectedWeaned;
+                milestoneDate = weaned;
                 milestoneIcon = "🍼";
               } else if (status === "WEANED") {
                 milestoneLabel = "Placement Begins";
-                milestoneDate = expectedPlacementStart;
+                milestoneDate = placementStart;
                 milestoneIcon = "🏠";
               } else if (status === "PLACEMENT_STARTED") {
                 milestoneLabel = "Placement Completed";
-                milestoneDate = expectedPlacementCompleted;
+                milestoneDate = placementCompleted;
                 milestoneIcon = "✅";
               }
 
@@ -5182,18 +5411,22 @@ function PlanDetailsView(props: {
             {/* Cycle Selection - only show for PLANNING/COMMITTED before cycle starts */}
             {/* Highlight when in EDIT mode, PLANNING phase, and cycle not locked */}
             {!effective.cycleStartDateActual && (statusU === "PLANNING" || statusU === "COMMITTED") && (
-            <SectionCard title={isLocked ? "Cycle Start Date (Estimated)" : "Breeding Cycle Selection"} highlight={isEdit && statusU === "PLANNING" && !isLocked} highlightGreen={isLocked}>
+            <SectionCard title={(isLocked || lockedPreview) ? <span className="text-green-400">Cycle Start Date (Estimated) — Locked!</span> : "Breeding Cycle Selection"} highlight={isEdit && statusU === "PLANNING" && !(isLocked || lockedPreview)} highlightGreen={isLocked || lockedPreview}>
               {/* Simple compact cycle selector - matches original design */}
-              {/* Red border + glow when in view mode and cycle not locked (needs attention) */}
-              {/* Green pulsing glow when in "Ready to Lock" state */}
+              {/* Red border + glow when in view mode and no cycle selected */}
+              {/* Yellow border + glow when in view mode and cycle selected but not locked */}
+              {/* Yellow border + glow when in edit mode "Ready to Lock" state */}
+              {/* Green border when locked */}
               <div className={`relative rounded-xl bg-[#1e1e1e] overflow-hidden ${
-                !isEdit && !isLocked
+                !isEdit && !(isLocked || lockedPreview) && !pendingCycle
                   ? "border-2 border-red-500/60 ring-2 ring-red-500/20"
-                  : isEdit && !isLocked && pendingCycle
-                    ? "border-2 border-green-500/60 box-glow-pulse-green"
-                    : isLocked
-                      ? "border-2 border-green-500/60"
-                      : ""
+                  : !isEdit && !(isLocked || lockedPreview) && pendingCycle
+                    ? "border-2 border-yellow-500/60 ring-2 ring-yellow-500/20 box-glow-pulse-yellow"
+                    : isEdit && !(isLocked || lockedPreview) && pendingCycle
+                      ? "border-2 border-yellow-500/60 box-glow-pulse-yellow"
+                      : (isLocked || lockedPreview)
+                        ? "border-2 border-green-500/60"
+                        : ""
               }`}>
                 <div className="flex items-center gap-4 px-4 py-3">
                   {/* Lock icon button - orange in edit mode with pulse, gray in view mode */}
@@ -5212,15 +5445,17 @@ function PlanDetailsView(props: {
                     title={isLocked ? "Click to unlock cycle" : (pendingCycle && effective.damId ? "Click to lock cycle" : "Select a dam and cycle first")}
                     style={{ width: 44, height: 44, minWidth: 44, minHeight: 44 }}
                     className={`rounded-full flex items-center justify-center flex-shrink-0 transition-all ${
-                      isLocked
+                      (isLocked || lockedPreview)
                         ? isEdit
                           ? "bg-green-600 hover:bg-green-500 cursor-pointer"
                           : "bg-green-600 cursor-default"
                         : isEdit && pendingCycle
-                          ? "bg-green-500 hover:bg-green-400 hover:scale-105 cursor-pointer glow-pulse-green"
+                          ? "bg-yellow-500 hover:bg-yellow-400 hover:scale-105 cursor-pointer glow-pulse-green"
                           : isEdit
                             ? "bg-[hsl(var(--brand-orange))] hover:scale-105 cursor-pointer glow-pulse-orange"
-                            : "bg-red-500 cursor-default glow-pulse-red"
+                            : pendingCycle
+                              ? "bg-yellow-500 cursor-default glow-pulse-yellow"
+                              : "bg-red-500 cursor-default glow-pulse-red"
                     }`}
                   >
                     <svg
@@ -5230,7 +5465,7 @@ function PlanDetailsView(props: {
                       stroke="currentColor"
                       strokeWidth="2"
                     >
-                      {isLocked ? (
+                      {(isLocked || lockedPreview) ? (
                         <>
                           <rect x="5" y="10" width="14" height="10" rx="2" />
                           <path d="M7 10V7a5 5 0 0 1 10 0v3" />
@@ -5306,7 +5541,9 @@ function PlanDetailsView(props: {
                                         ? computeExpectedForPlan({ species: row.species as any, lockedCycleStart: next })
                                         : null
                                     );
+                                    // Update both draft systems so Save button appears
                                     setDraft({ expectedCycleStart: next });
+                                    setDraftLive({ expectedCycleStart: next });
                                   }}
                                   disabled={!hasDam || !editable}
                                 >
@@ -5332,13 +5569,22 @@ function PlanDetailsView(props: {
                   ) : (
                     /* View mode: simple text display */
                     <div className="flex-1">
-                      {isLocked ? (
+                      {(isLocked || lockedPreview) ? (
                         <>
                           <div className="text-sm font-medium text-green-400">
-                            This breeding plan is estimated to begin on {fmt(effective.lockedCycleStart)}
+                            This breeding plan is estimated to begin on {fmt(effective.lockedCycleStart || pendingCycle)}
                           </div>
                           <div className="text-xs text-secondary">
                             If you need to change this, enter edit mode and unlock the cycle.
+                          </div>
+                        </>
+                      ) : pendingCycle ? (
+                        <>
+                          <div className="text-sm font-medium text-amber-400">
+                            Cycle selected: {fmt(pendingCycle)} — not yet locked
+                          </div>
+                          <div className="text-xs text-secondary">
+                            Enter edit mode and click the lock icon to lock this cycle.
                           </div>
                         </>
                       ) : (
@@ -5397,6 +5643,13 @@ function PlanDetailsView(props: {
               .glow-pulse-green {
                 animation: glow-pulse-green-anim 2s ease-in-out infinite;
               }
+              @keyframes box-glow-pulse-yellow-anim {
+                0%, 100% { box-shadow: 0 0 8px 2px rgba(234, 179, 8, 0.4); }
+                50% { box-shadow: 0 0 16px 6px rgba(234, 179, 8, 0.6); }
+              }
+              .box-glow-pulse-yellow {
+                animation: box-glow-pulse-yellow-anim 2s ease-in-out infinite;
+              }
             `}</style>
 
             {/* Placement Scheduling (Phase 6) - only show if plan has linked offspring group */}
@@ -5415,8 +5668,14 @@ function PlanDetailsView(props: {
                 <Button
                   variant="outline"
                   onClick={() => {
-                    if (mode === "edit") {
+                    // Use sync check to avoid stale closure issues after lock/unlock
+                    const hasPending = checkPendingChangesSync();
+                    // In edit mode without pending changes: just exit edit mode
+                    // In edit mode with pending changes: close drawer (will prompt for unsaved changes)
+                    // In view mode: close drawer
+                    if (mode === "edit" && !hasPending) {
                       handleCancel();
+                      return;
                     }
                     const fn =
                       (typeof closeDrawer === "function" && closeDrawer) ||
@@ -5467,193 +5726,294 @@ function PlanDetailsView(props: {
               </div>
             )}
 
-            {/* Side-by-side layout: Expected on left, Actual on right */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4" data-bhq-details-exempt>
+            {/* Stacked layout: Expected on top, Recalculated in middle, Actual on bottom */}
+            <div className="flex flex-col gap-4" data-bhq-details-exempt>
               {/* EXPECTED DATES (SYSTEM CALCULATED) */}
               <SectionCard title="EXPECTED DATES (SYSTEM CALCULATED)">
-                <div className="grid grid-cols-2 gap-x-4 gap-y-3">
-                  {/* Row 1 */}
-                  <div>
-                    <div className="text-[10px] uppercase text-secondary tracking-wide mb-1">Cycle Start (Expected)</div>
-                    <div className="text-sm text-primary font-medium">{fmt(expectedCycleStart) || "—"}</div>
+                {/* Phase 1: Cycle Start → Birth */}
+                <div className="mb-5">
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className="flex items-center justify-center w-6 h-6 rounded-full bg-gradient-to-br from-blue-500/20 to-purple-500/20 border border-blue-500/30">
+                      <span className="text-xs">🔄</span>
+                    </div>
+                    <span className="text-xs font-semibold uppercase tracking-wider text-blue-400">Cycle Start → Birth</span>
+                    <div className="flex-1 h-px bg-gradient-to-r from-blue-500/40 via-purple-500/20 to-transparent"></div>
                   </div>
-                  <div>
-                    <div className="text-[10px] uppercase text-secondary tracking-wide mb-1">Hormone Testing Start (Expected)</div>
-                    <div className="text-sm text-primary font-medium">{fmt(expectedTestingStart) || "—"}</div>
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-3 pl-8">
+                    <div>
+                      <div className="text-[10px] uppercase text-secondary tracking-wide mb-1">Cycle Start</div>
+                      <div className="text-sm text-primary font-medium">{fmt(expectedCycleStart) || "—"}</div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] uppercase text-secondary tracking-wide mb-1">Hormone Testing Start</div>
+                      <div className="text-sm text-primary font-medium">{fmt(expectedTestingStart) || "—"}</div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] uppercase text-secondary tracking-wide mb-1">Breeding Date</div>
+                      <div className="text-sm text-primary font-medium">{fmt(expectedBreed) || "—"}</div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] uppercase text-secondary tracking-wide mb-1">Birth Date</div>
+                      <div className="text-sm text-primary font-medium">{fmt(expectedBirth) || "—"}</div>
+                    </div>
                   </div>
+                </div>
 
-                  {/* Row 2 */}
-                  <div>
-                    <div className="text-[10px] uppercase text-secondary tracking-wide mb-1">Breeding Date (Expected)</div>
-                    <div className="text-sm text-primary font-medium">{fmt(expectedBreed) || "—"}</div>
+                {/* Phase 2: Weaning → Placement */}
+                <div>
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className="flex items-center justify-center w-6 h-6 rounded-full bg-gradient-to-br from-amber-500/20 to-orange-500/20 border border-amber-500/30">
+                      <span className="text-xs">🏠</span>
+                    </div>
+                    <span className="text-xs font-semibold uppercase tracking-wider text-amber-400">Weaning → Placement</span>
+                    <div className="flex-1 h-px bg-gradient-to-r from-amber-500/40 via-orange-500/20 to-transparent"></div>
                   </div>
-                  <div>
-                    <div className="text-[10px] uppercase text-secondary tracking-wide mb-1">Birth Date (Expected)</div>
-                    <div className="text-sm text-primary font-medium">{fmt(expectedBirth) || "—"}</div>
-                  </div>
-
-                  {/* Row 3 */}
-                  <div>
-                    <div className="text-[10px] uppercase text-secondary tracking-wide mb-1">Weaned Date (Expected)</div>
-                    <div className="text-sm text-primary font-medium">{fmt(expectedWeaned) || "—"}</div>
-                  </div>
-                  <div>
-                    <div className="text-[10px] uppercase text-secondary tracking-wide mb-1">Placement Start (Expected)</div>
-                    <div className="text-sm text-primary font-medium">{fmt(expectedPlacementStart) || "—"}</div>
-                  </div>
-
-                  {/* Row 4 */}
-                  <div className="col-span-2">
-                    <div className="text-[10px] uppercase text-secondary tracking-wide mb-1">Placement Completed (Expected)</div>
-                    <div className="text-sm text-primary font-medium">{fmt(expectedPlacementCompleted) || "—"}</div>
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-3 pl-8">
+                    <div>
+                      <div className="text-[10px] uppercase text-secondary tracking-wide mb-1">Weaned Date</div>
+                      <div className="text-sm text-primary font-medium">{fmt(expectedWeaned) || "—"}</div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] uppercase text-secondary tracking-wide mb-1">Placement Start</div>
+                      <div className="text-sm text-primary font-medium">{fmt(expectedPlacementStart) || "—"}</div>
+                    </div>
+                    <div className="col-span-2">
+                      <div className="text-[10px] uppercase text-secondary tracking-wide mb-1">Placement Completed</div>
+                      <div className="text-sm text-primary font-medium">{fmt(expectedPlacementCompleted) || "—"}</div>
+                    </div>
                   </div>
                 </div>
               </SectionCard>
+
+              {/* RECALCULATED DATES - hidden in PLANNING phase, shows recalculated values when actual cycle start exists */}
+              {statusU !== "PLANNING" && (
+                <SectionCard title="EXPECTED DATES (RECALCULATED)">
+                  {!effective.cycleStartDateActual ? (
+                    <div className="text-sm text-secondary italic">
+                      Enter an Actual Cycle Start date to see recalculated expected dates.
+                    </div>
+                  ) : (
+                    <>
+                      {/* Phase 1: Cycle Start → Birth */}
+                      <div className="mb-5">
+                        <div className="flex items-center gap-2 mb-3">
+                          <div className="flex items-center justify-center w-6 h-6 rounded-full bg-gradient-to-br from-blue-500/20 to-purple-500/20 border border-blue-500/30">
+                            <span className="text-xs">🔄</span>
+                          </div>
+                          <span className="text-xs font-semibold uppercase tracking-wider text-blue-400">Cycle Start → Birth</span>
+                          <div className="flex-1 h-px bg-gradient-to-r from-blue-500/40 via-purple-500/20 to-transparent"></div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-x-4 gap-y-3 pl-8">
+                          <div>
+                            <div className="text-[10px] uppercase text-secondary tracking-wide mb-1">Cycle Start (Actual)</div>
+                            <div className="text-sm text-emerald-600 dark:text-emerald-400 font-medium">{fmt(effective.cycleStartDateActual) || "—"}</div>
+                          </div>
+                          <div>
+                            <div className="text-[10px] uppercase text-secondary tracking-wide mb-1">Hormone Testing Start</div>
+                            <div className="text-sm text-emerald-600 dark:text-emerald-400 font-medium">{fmt(recalcTestingStart) ? <>{fmt(recalcTestingStart)} <span className="text-xs text-secondary font-normal">(New Projection)</span></> : "—"}</div>
+                          </div>
+                          <div>
+                            <div className="text-[10px] uppercase text-secondary tracking-wide mb-1">Breeding Date</div>
+                            <div className="text-sm text-emerald-600 dark:text-emerald-400 font-medium">{fmt(recalcBreed) ? <>{fmt(recalcBreed)} <span className="text-xs text-secondary font-normal">(New Projection)</span></> : "—"}</div>
+                          </div>
+                          <div>
+                            <div className="text-[10px] uppercase text-secondary tracking-wide mb-1">Birth Date</div>
+                            <div className="text-sm text-emerald-600 dark:text-emerald-400 font-medium">{fmt(recalcBirth) ? <>{fmt(recalcBirth)} <span className="text-xs text-secondary font-normal">(New Projection)</span></> : "—"}</div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Phase 2: Weaning → Placement */}
+                      <div>
+                        <div className="flex items-center gap-2 mb-3">
+                          <div className="flex items-center justify-center w-6 h-6 rounded-full bg-gradient-to-br from-amber-500/20 to-orange-500/20 border border-amber-500/30">
+                            <span className="text-xs">🏠</span>
+                          </div>
+                          <span className="text-xs font-semibold uppercase tracking-wider text-amber-400">Weaning → Placement</span>
+                          <div className="flex-1 h-px bg-gradient-to-r from-amber-500/40 via-orange-500/20 to-transparent"></div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-x-4 gap-y-3 pl-8">
+                          <div>
+                            <div className="text-[10px] uppercase text-secondary tracking-wide mb-1">Weaned Date</div>
+                            <div className="text-sm text-emerald-600 dark:text-emerald-400 font-medium">{fmt(recalcWeaned) ? <>{fmt(recalcWeaned)} <span className="text-xs text-secondary font-normal">(New Projection)</span></> : "—"}</div>
+                          </div>
+                          <div>
+                            <div className="text-[10px] uppercase text-secondary tracking-wide mb-1">Placement Start</div>
+                            <div className="text-sm text-emerald-600 dark:text-emerald-400 font-medium">{fmt(recalcPlacementStart) ? <>{fmt(recalcPlacementStart)} <span className="text-xs text-secondary font-normal">(New Projection)</span></> : "—"}</div>
+                          </div>
+                          <div className="col-span-2">
+                            <div className="text-[10px] uppercase text-secondary tracking-wide mb-1">Placement Completed</div>
+                            <div className="text-sm text-emerald-600 dark:text-emerald-400 font-medium">{fmt(recalcPlacementCompleted) ? <>{fmt(recalcPlacementCompleted)} <span className="text-xs text-secondary font-normal">(New Projection)</span></> : "—"}</div>
+                          </div>
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </SectionCard>
+              )}
 
               {/* ACTUAL DATES - with orange/amber border */}
               {showActualDates && (
                 <div className="rounded-lg border-2 border-amber-500/60 bg-surface p-4">
                   <div className="text-sm font-semibold text-primary mb-4">ACTUAL DATES</div>
-                  <div className="grid grid-cols-2 gap-x-4 gap-y-3">
-                    {/* Row 1 */}
-                    <div>
-                      <div className="text-[10px] uppercase text-secondary tracking-wide mb-1">Cycle Start (Actual)</div>
-                      <div className="flex items-center gap-2">
-                        <CalendarInput
-                          value={normalizeDateISO(effective.cycleStartDateActual)}
-                          expectedValue={expectedCycleStart}
-                          readOnly={!canEditCycleStartActual}
-                          showIcon={canEditCycleStartActual}
-                          onChange={(e) => {
-                            if (!canEditCycleStartActual) return;
-                            const raw = e.currentTarget.value;
-                            if (!raw) {
-                              setDraftLive({ cycleStartDateActual: null });
-                              return;
-                            }
-                            warnIfSequenceBroken("cycleStartDateActual", raw);
-                            setDraftLive({ cycleStartDateActual: raw });
-                          }}
-                          className="flex-1"
-                          inputClassName={dateInputCls}
-                          placeholder="mm/dd/yyyy"
-                        />
-                        {canEditCycleStartActual && effective.cycleStartDateActual && (
-                          <button
-                            type="button"
-                            onClick={() => clearActualDateAndSubsequent("cycleStartDateActual")}
-                            className="text-xs text-secondary hover:text-primary px-2 py-1 rounded border border-hairline hover:border-primary/30"
-                          >
-                            Clear
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                    <div>
-                      <div className="text-[10px] uppercase text-secondary tracking-wide mb-1">Hormone Testing Start (Actual)</div>
-                      <div className="flex items-center gap-2">
-                        <CalendarInput
-                          value={normalizeDateISO(effective.hormoneTestingStartDateActual)}
-                          expectedValue={expectedTestingStart}
-                          readOnly={!canEditDates}
-                          showIcon={canEditDates}
-                          onChange={(e) => {
-                            if (!canEditDates) return;
-                            const raw = e.currentTarget.value;
-                            if (!raw) {
-                              setDraftLive({ hormoneTestingStartDateActual: null });
-                              return;
-                            }
-                            warnIfSequenceBroken("hormoneTestingStartDateActual", raw);
-                            setDraftLive({ hormoneTestingStartDateActual: raw });
-                          }}
-                          className="flex-1"
-                          inputClassName={dateInputCls}
-                          placeholder="mm/dd/yyyy"
-                        />
-                        {canEditDates && effective.hormoneTestingStartDateActual && (
-                          <button
-                            type="button"
-                            onClick={() => clearActualDateAndSubsequent("hormoneTestingStartDateActual")}
-                            className="text-xs text-secondary hover:text-primary px-2 py-1 rounded border border-hairline hover:border-primary/30"
-                          >
-                            Clear
-                          </button>
-                        )}
-                      </div>
-                    </div>
 
-                    {/* Row 2 */}
-                    <div>
-                      <div className="text-[10px] uppercase text-secondary tracking-wide mb-1">Breeding Date (Actual)</div>
-                      <div className="flex items-center gap-2">
-                        <CalendarInput
-                          value={normalizeDateISO(effective.breedDateActual)}
-                          expectedValue={expectedBreed}
-                          readOnly={!canEditDates}
-                          showIcon={canEditDates}
-                          onChange={(e) => {
-                            if (!canEditDates) return;
-                            const raw = e.currentTarget.value;
-                            if (!raw) {
-                              setDraftLive({ breedDateActual: null });
-                              return;
-                            }
-                            warnIfSequenceBroken("breedDateActual", raw);
-                            setDraftLive({ breedDateActual: raw });
-                          }}
-                          className="flex-1"
-                          inputClassName={dateInputCls}
-                          placeholder="mm/dd/yyyy"
-                        />
-                        {canEditDates && effective.breedDateActual && (
-                          <button
-                            type="button"
-                            onClick={() => clearActualDateAndSubsequent("breedDateActual")}
-                            className="text-xs text-secondary hover:text-primary px-2 py-1 rounded border border-hairline hover:border-primary/30"
-                          >
-                            Clear
-                          </button>
-                        )}
+                  {/* Phase 1: Cycle Start → Birth */}
+                  <div className="mb-5">
+                    <div className="flex items-center gap-2 mb-3">
+                      <div className="flex items-center justify-center w-6 h-6 rounded-full bg-gradient-to-br from-blue-500/20 to-purple-500/20 border border-blue-500/30">
+                        <span className="text-xs">🔄</span>
+                      </div>
+                      <span className="text-xs font-semibold uppercase tracking-wider text-blue-400">Cycle Start → Birth</span>
+                      <div className="flex-1 h-px bg-gradient-to-r from-blue-500/40 via-purple-500/20 to-transparent"></div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-3 pl-8">
+                      <div>
+                        <div className="text-[10px] uppercase text-secondary tracking-wide mb-1">Cycle Start</div>
+                        <div className="flex items-center gap-2">
+                          <CalendarInput
+                            value={normalizeDateISO(effective.cycleStartDateActual)}
+                            expectedValue={expectedCycleStart}
+                            readOnly={!canEditCycleStartActual}
+                            showIcon={canEditCycleStartActual}
+                            onChange={(e) => {
+                              if (!canEditCycleStartActual) return;
+                              const raw = e.currentTarget.value;
+                              if (!raw) {
+                                setDraftLive({ cycleStartDateActual: null });
+                                return;
+                              }
+                              warnIfSequenceBroken("cycleStartDateActual", raw);
+                              setDraftLive({ cycleStartDateActual: raw });
+                            }}
+                            className="flex-1"
+                            inputClassName={dateInputCls}
+                            placeholder="mm/dd/yyyy"
+                          />
+                          {canEditCycleStartActual && effective.cycleStartDateActual && (
+                            <button
+                              type="button"
+                              onClick={() => clearActualDateAndSubsequent("cycleStartDateActual")}
+                              className="text-xs text-secondary hover:text-primary px-2 py-1 rounded border border-hairline hover:border-primary/30"
+                            >
+                              Clear
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-[10px] uppercase text-secondary tracking-wide mb-1">Hormone Testing Start</div>
+                        <div className="flex items-center gap-2">
+                          <CalendarInput
+                            value={normalizeDateISO(effective.hormoneTestingStartDateActual)}
+                            expectedValue={expectedTestingStart}
+                            readOnly={!canEditDates}
+                            showIcon={canEditDates}
+                            onChange={(e) => {
+                              if (!canEditDates) return;
+                              const raw = e.currentTarget.value;
+                              if (!raw) {
+                                setDraftLive({ hormoneTestingStartDateActual: null });
+                                return;
+                              }
+                              warnIfSequenceBroken("hormoneTestingStartDateActual", raw);
+                              setDraftLive({ hormoneTestingStartDateActual: raw });
+                            }}
+                            className="flex-1"
+                            inputClassName={dateInputCls}
+                            placeholder="mm/dd/yyyy"
+                          />
+                          {canEditDates && effective.hormoneTestingStartDateActual && (
+                            <button
+                              type="button"
+                              onClick={() => clearActualDateAndSubsequent("hormoneTestingStartDateActual")}
+                              className="text-xs text-secondary hover:text-primary px-2 py-1 rounded border border-hairline hover:border-primary/30"
+                            >
+                              Clear
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-[10px] uppercase text-secondary tracking-wide mb-1">Breeding Date</div>
+                        <div className="flex items-center gap-2">
+                          <CalendarInput
+                            value={normalizeDateISO(effective.breedDateActual)}
+                            expectedValue={expectedBreed}
+                            readOnly={!canEditDates}
+                            showIcon={canEditDates}
+                            onChange={(e) => {
+                              if (!canEditDates) return;
+                              const raw = e.currentTarget.value;
+                              if (!raw) {
+                                setDraftLive({ breedDateActual: null });
+                                return;
+                              }
+                              warnIfSequenceBroken("breedDateActual", raw);
+                              setDraftLive({ breedDateActual: raw });
+                            }}
+                            className="flex-1"
+                            inputClassName={dateInputCls}
+                            placeholder="mm/dd/yyyy"
+                          />
+                          {canEditDates && effective.breedDateActual && (
+                            <button
+                              type="button"
+                              onClick={() => clearActualDateAndSubsequent("breedDateActual")}
+                              className="text-xs text-secondary hover:text-primary px-2 py-1 rounded border border-hairline hover:border-primary/30"
+                            >
+                              Clear
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-[10px] uppercase text-secondary tracking-wide mb-1">Birth Date</div>
+                        <div className="flex items-center gap-2">
+                          <CalendarInput
+                            value={normalizeDateISO(effective.birthDateActual)}
+                            expectedValue={expectedBirth}
+                            readOnly={!canEditDates}
+                            showIcon={canEditDates}
+                            onChange={(e) => {
+                              if (!canEditDates) return;
+                              const raw = e.currentTarget.value;
+                              if (!raw) {
+                                setDraftLive({ birthDateActual: null });
+                                return;
+                              }
+                              warnIfSequenceBroken("birthDateActual", raw);
+                              setDraftLive({ birthDateActual: raw });
+                            }}
+                            className="flex-1"
+                            inputClassName={dateInputCls}
+                            placeholder="mm/dd/yyyy"
+                          />
+                          {canEditDates && effective.birthDateActual && (
+                            <button
+                              type="button"
+                              onClick={() => clearActualDateAndSubsequent("birthDateActual")}
+                              className="text-xs text-secondary hover:text-primary px-2 py-1 rounded border border-hairline hover:border-primary/30"
+                            >
+                              Clear
+                            </button>
+                          )}
+                        </div>
                       </div>
                     </div>
-                    <div>
-                      <div className="text-[10px] uppercase text-secondary tracking-wide mb-1">Birth Date (Actual)</div>
-                      <div className="flex items-center gap-2">
-                        <CalendarInput
-                          value={normalizeDateISO(effective.birthDateActual)}
-                          expectedValue={expectedBirth}
-                          readOnly={!canEditDates}
-                          showIcon={canEditDates}
-                          onChange={(e) => {
-                            if (!canEditDates) return;
-                            const raw = e.currentTarget.value;
-                            if (!raw) {
-                              setDraftLive({ birthDateActual: null });
-                              return;
-                            }
-                            warnIfSequenceBroken("birthDateActual", raw);
-                            setDraftLive({ birthDateActual: raw });
-                          }}
-                          className="flex-1"
-                          inputClassName={dateInputCls}
-                          placeholder="mm/dd/yyyy"
-                        />
-                        {canEditDates && effective.birthDateActual && (
-                          <button
-                            type="button"
-                            onClick={() => clearActualDateAndSubsequent("birthDateActual")}
-                            className="text-xs text-secondary hover:text-primary px-2 py-1 rounded border border-hairline hover:border-primary/30"
-                          >
-                            Clear
-                          </button>
-                        )}
-                      </div>
-                    </div>
+                  </div>
 
-                    {/* Row 3 - Weaned and Placement Start */}
-                    <div>
-                      <div className="text-[10px] uppercase text-secondary tracking-wide mb-1">Weaned Date (Actual)</div>
+                  {/* Phase 2: Weaning → Placement */}
+                  <div>
+                    <div className="flex items-center gap-2 mb-3">
+                      <div className="flex items-center justify-center w-6 h-6 rounded-full bg-gradient-to-br from-amber-500/20 to-orange-500/20 border border-amber-500/30">
+                        <span className="text-xs">🏠</span>
+                      </div>
+                      <span className="text-xs font-semibold uppercase tracking-wider text-amber-400">Weaning → Placement</span>
+                      <div className="flex-1 h-px bg-gradient-to-r from-amber-500/40 via-orange-500/20 to-transparent"></div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-3 pl-8">
+                      <div>
+                        <div className="text-[10px] uppercase text-secondary tracking-wide mb-1">Weaned Date</div>
                       <div className="flex items-center gap-2">
                         <CalendarInput
                           value={normalizeDateISO(effective.weanedDateActual)}
@@ -5686,7 +6046,7 @@ function PlanDetailsView(props: {
                       </div>
                     </div>
                     <div>
-                      <div className="text-[10px] uppercase text-secondary tracking-wide mb-1">Placement Start (Actual)</div>
+                        <div className="text-[10px] uppercase text-secondary tracking-wide mb-1">Placement Start</div>
                       <div className="flex items-center gap-2">
                         <CalendarInput
                           value={normalizeDateISO(effective.placementStartDateActual)}
@@ -5721,7 +6081,7 @@ function PlanDetailsView(props: {
 
                     {/* Row 4 - Placement Completed */}
                     <div>
-                      <div className="text-[10px] uppercase text-secondary tracking-wide mb-1">Placement Completed (Actual)</div>
+                        <div className="text-[10px] uppercase text-secondary tracking-wide mb-1">Placement Completed</div>
                       <div className="flex items-center gap-2">
                         <CalendarInput
                           value={normalizeDateISO(effective.placementCompletedDateActual)}
@@ -5756,7 +6116,7 @@ function PlanDetailsView(props: {
 
                     {/* Row 4 - Plan Completed */}
                     <div className="col-span-2">
-                      <div className="text-[10px] uppercase text-secondary tracking-wide mb-1">Plan Completed (Actual)</div>
+                        <div className="text-[10px] uppercase text-secondary tracking-wide mb-1">Plan Completed</div>
                       <div className="flex items-center gap-2">
                         <CalendarInput
                           value={normalizeDateISO(effective.completedDateActual)}
@@ -5791,6 +6151,7 @@ function PlanDetailsView(props: {
                           Enter all earlier Actual Dates before marking the plan completed.
                         </div>
                       )}
+                    </div>
                     </div>
                   </div>
 
@@ -5876,8 +6237,14 @@ function PlanDetailsView(props: {
                 <Button
                   variant="outline"
                   onClick={() => {
-                    if (mode === "edit") {
+                    // Use sync check to avoid stale closure issues after lock/unlock
+                    const hasPending = checkPendingChangesSync();
+                    // In edit mode without pending changes: just exit edit mode
+                    // In edit mode with pending changes: close drawer (will prompt for unsaved changes)
+                    // In view mode: close drawer
+                    if (mode === "edit" && !hasPending) {
                       handleCancel();
+                      return;
                     }
                     const fn =
                       (typeof closeDrawer === "function" && closeDrawer) ||

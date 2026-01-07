@@ -7,6 +7,7 @@ import { getUserMessage } from "../../api/errors";
 import { Breadcrumb } from "../components/Breadcrumb";
 import { useStartConversation } from "../../messages/hooks";
 import { useUserProfile } from "../../gate/MarketplaceGate";
+import { ReportBreederButton } from "../components/ReportBreederModal";
 
 /**
  * Shape of the public breeder profile API response.
@@ -274,6 +275,52 @@ function BusinessHoursDisplay({ schedule, timeZone }: { schedule: BusinessHoursS
 }
 
 /**
+ * Breeder Header Component - includes name, badges, and report button
+ */
+function BreederHeader({
+  profile,
+  locationDisplay,
+}: {
+  profile: BreederProfileResponse;
+  locationDisplay: string;
+}) {
+  const userProfile = useUserProfile();
+  const isAuthenticated = !!userProfile;
+
+  return (
+    <div>
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-3 flex-wrap">
+          <h1 className="text-[28px] font-bold text-white tracking-tight leading-tight">
+            {profile.businessName}
+          </h1>
+          {profile.quickResponderBadge && (
+            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-accent/20 text-accent border border-accent/30">
+              <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M13 10V3L4 14h7v7l9-11h-7z" />
+              </svg>
+              Quick Responder
+            </span>
+          )}
+        </div>
+
+        {/* Report button - only show when authenticated */}
+        {isAuthenticated && (
+          <ReportBreederButton
+            breederTenantSlug={profile.tenantSlug}
+            breederName={profile.businessName}
+            variant="text"
+          />
+        )}
+      </div>
+      {locationDisplay && (
+        <p className="text-text-secondary text-sm mt-1">{locationDisplay}</p>
+      )}
+    </div>
+  );
+}
+
+/**
  * Public breeder profile page.
  */
 export function BreederPage() {
@@ -371,24 +418,10 @@ export function BreederPage() {
       />
 
       {/* Header */}
-      <div>
-        <div className="flex items-center gap-3 flex-wrap">
-          <h1 className="text-[28px] font-bold text-white tracking-tight leading-tight">
-            {profile.businessName}
-          </h1>
-          {profile.quickResponderBadge && (
-            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-accent/20 text-accent border border-accent/30">
-              <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M13 10V3L4 14h7v7l9-11h-7z" />
-              </svg>
-              Quick Responder
-            </span>
-          )}
-        </div>
-        {locationDisplay && (
-          <p className="text-text-secondary text-sm mt-1">{locationDisplay}</p>
-        )}
-      </div>
+      <BreederHeader
+        profile={profile}
+        locationDisplay={locationDisplay}
+      />
 
       {/* Business Hours */}
       <BusinessHoursDisplay schedule={profile.businessHours} timeZone={profile.timeZone} />

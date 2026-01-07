@@ -42,12 +42,23 @@ export function DetailsScaffold({
   hasPendingChanges?: boolean;
   hideCloseButton?: boolean;
 }) {
+  // When in edit mode without pending changes, Close should exit edit mode
+  // When in edit mode with pending changes, Close should trigger the unsaved changes flow
+  // When in view mode, Close should close the drawer
+  const handleClose = React.useCallback(() => {
+    if (mode === "edit" && !hasPendingChanges && onCancel) {
+      onCancel(); // Exit edit mode
+    } else {
+      onClose?.(); // Close drawer (may prompt for unsaved changes)
+    }
+  }, [mode, hasPendingChanges, onCancel, onClose]);
+
   return (
     <>
       <DrawerHeader
         title={title}
         subtitle={subtitle}
-        onClose={onClose}
+        onClose={handleClose}
         hasPendingChanges={hasPendingChanges}
         hideCloseButton={hideCloseButton}
         actions={
@@ -57,10 +68,14 @@ export function DetailsScaffold({
               <Button size="sm" variant="primary" onClick={onEdit}>Edit</Button>
             ) : (
               <>
-                <Button size="sm" variant="outline" onClick={onCancel}>Cancel</Button>
-                <Button size="sm" variant="primary" onClick={onSave} disabled={!!saving}>
-                  {saving ? "Saving…" : "Save"}
-                </Button>
+                {hasPendingChanges && (
+                  <>
+                    <Button size="sm" variant="outline" onClick={onCancel}>Cancel</Button>
+                    <Button size="sm" variant="primary" onClick={onSave} disabled={!!saving}>
+                      {saving ? "Saving…" : "Save"}
+                    </Button>
+                  </>
+                )}
               </>
             )}
           </div>
