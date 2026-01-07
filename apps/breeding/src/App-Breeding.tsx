@@ -850,15 +850,16 @@ function DisplayValue({ value, required }: { value?: string | null; required?: b
 function fmt(d?: string | null) {
   if (!d) return "";
   const s = String(d);
-  // If it's date-only (YYYY-MM-DD), parse as local midnight to avoid timezone shifts
-  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
-    const [y, m, day] = s.split("-").map(Number);
+  // ALWAYS extract just the date portion first (YYYY-MM-DD) to avoid timezone shifts
+  // This handles both "YYYY-MM-DD" and "YYYY-MM-DDTHH:MM:SS.sssZ" formats
+  const dateOnly = s.slice(0, 10);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(dateOnly)) {
+    const [y, m, day] = dateOnly.split("-").map(Number);
     const dt = new Date(y, m - 1, day); // Local timezone, months are 0-indexed
     return Number.isFinite(dt.getTime()) ? dt.toLocaleDateString() : "";
   }
-  // For other formats, parse normally
-  const dt = new Date(s);
-  return Number.isFinite(dt.getTime()) ? dt.toLocaleDateString() : "";
+  // If we can't extract a valid date, return empty
+  return "";
 }
 
 function planToRow(p: any): PlanRow {
@@ -4039,9 +4040,44 @@ function PlanDetailsView(props: {
 
   // Clear a date and all subsequent dates in the sequence
   const clearActualDateAndSubsequent = React.useCallback(
-    (field: ActualFieldKey) => {
+    async (field: ActualFieldKey) => {
       const idx = ACTUAL_FIELD_ORDER.indexOf(field);
       if (idx === -1) return;
+
+      // Build list of fields that will be cleared
+      const fieldsToClear: ActualFieldKey[] = [];
+      for (let i = idx; i < ACTUAL_FIELD_ORDER.length; i++) {
+        const key = ACTUAL_FIELD_ORDER[i];
+        // Only include fields that currently have values
+        if (effective[key]) {
+          fieldsToClear.push(key);
+        }
+      }
+
+      // If nothing to clear, just return
+      if (fieldsToClear.length === 0) return;
+
+      // Build confirmation message
+      const fieldLabels = fieldsToClear.map(k => ACTUAL_FIELD_LABELS[k]).join(", ");
+      const message = fieldsToClear.length === 1
+        ? `This will clear: ${fieldLabels}`
+        : `This will clear the following actual dates: ${fieldLabels}`;
+
+      // Confirm with user
+      const confirmed = await confirmModal({
+        title: "Clear Actual Dates",
+        message: (
+          <div>
+            <p className="mb-2">{message}</p>
+            <p className="text-sm text-secondary">The plan's phase will be updated based on remaining actual dates.</p>
+          </div>
+        ),
+        confirmText: "Clear Dates",
+        cancelText: "Cancel",
+        tone: "danger",
+      });
+
+      if (!confirmed) return;
 
       // Build a patch object that clears this date and all subsequent dates
       const patch: Record<string, null> = {};
@@ -4051,8 +4087,24 @@ function PlanDetailsView(props: {
 
       setDraftLive(patch as any);
       setActualDatesWarning(null);
+
+      // Auto-save to trigger status re-derivation
+      // Wait for next tick to ensure draft state is updated
+      setTimeout(async () => {
+        try {
+          await requestSave();
+
+          // Fetch fresh data to ensure UI reflects updated status/phase
+          if (api && onPlanUpdated) {
+            const fresh = await api.getPlan(Number(row.id), "parents,org");
+            onPlanUpdated(row.id, fresh);
+          }
+        } catch (error) {
+          console.error("[Breeding] Failed to save after clearing dates:", error);
+        }
+      }, 100);
     },
-    [setDraftLive]
+    [setDraftLive, effective, confirmModal, requestSave, api, onPlanUpdated, row.id]
   );
 
   // Allow editing cycle start actual when in edit mode and committed
@@ -4061,9 +4113,10 @@ function PlanDetailsView(props: {
   const canEditCompletedActual =
     canEditDates &&
     !!effective.cycleStartDateActual &&
-    !!effective.hormoneTestingStartDateActual &&
+    // hormoneTestingStartDateActual is optional, not required
     !!effective.breedDateActual &&
     !!effective.birthDateActual &&
+    !!effective.weanedDateActual &&
     !!effective.placementStartDateActual &&
     !!effective.placementCompletedDateActual;
 
@@ -4673,10 +4726,8 @@ function PlanDetailsView(props: {
   const recalculatedDates = React.useMemo(() => {
     const actualCycleStart = effective.cycleStartDateActual;
     const actualBirth = effective.birthDateActual;
-    console.log("[Breeding] recalculatedDates memo:", { actualCycleStart, actualBirth, species: row.species });
 
     const result = recalculateExpectedDatesFromActual(actualCycleStart, actualBirth);
-    console.log("[Breeding] recalculatedDates - result:", result);
     return result;
   }, [effective.cycleStartDateActual, effective.birthDateActual, row.species, liveOverride]);
 
@@ -5061,9 +5112,11 @@ function PlanDetailsView(props: {
                 }
 
                 // Auto-save immediately after setting a date value
+                // EXCEPT for placementStartDateActual - that gets saved when user clicks "Advance to Phase 7"
+                // This prevents auto-advancement from phase 6 to phase 7 when date is entered
                 // Do NOT auto-save null (when user clicks "Change") - keep as draft until new date selected
                 // Wait for next tick to ensure draft state is updated
-                if (value !== null) {
+                if (value !== null && field !== "actualPlacementStartDate") {
                   setTimeout(async () => {
                     try {
                       await handleSave();
@@ -5073,7 +5126,11 @@ function PlanDetailsView(props: {
                     }
                   }, 0);
                 } else {
-                  console.log(`[Breeding] Cleared ${field} - draft is dirty, waiting for user to select new date`);
+                  if (field === "actualPlacementStartDate") {
+                    console.log(`[Breeding] Placement start date entered - draft is dirty, will save on phase advance`);
+                  } else {
+                    console.log(`[Breeding] Cleared ${field} - draft is dirty, waiting for user to select new date`);
+                  }
                 }
               }}
               onNavigateToTab={(tab) => setActiveTab(tab as typeof activeTab)}
@@ -5873,7 +5930,7 @@ function PlanDetailsView(props: {
                     }
                   }}
                 >
-                  {mode === "edit" && !hasPendingChangesLocal ? "Cancel" : "Close"}
+                  {mode === "edit" && hasPendingChangesLocal ? "Cancel" : "Close"}
                 </Button>
               </div>
             </div>
@@ -6458,7 +6515,7 @@ function PlanDetailsView(props: {
                     }
                   }}
                 >
-                  {mode === "edit" && !hasPendingChangesLocal ? "Cancel" : "Close"}
+                  {mode === "edit" && hasPendingChangesLocal ? "Cancel" : "Close"}
                 </Button>
               </div>
             </div>

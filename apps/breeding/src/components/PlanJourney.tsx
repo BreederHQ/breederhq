@@ -252,9 +252,10 @@ export function PlanJourney({
           { key: "placementStarted", label: "Actual Placement Start Date", met: hasPlacementStarted, action: "Enter the placement start date" },
         ];
       case "COMPLETE":
-        // When IN phase 8 (COMPLETE), there are no requirements to advance further
-        // The user just needs to enter the plan completed date to officially close
-        return [];
+        // To advance to Complete phase, placement completed date must be entered
+        return [
+          { key: "placementCompleted", label: "Actual Placement Completed Date", met: hasPlacementCompleted, action: "Enter the placement completed date" },
+        ];
       default:
         return [];
     }
