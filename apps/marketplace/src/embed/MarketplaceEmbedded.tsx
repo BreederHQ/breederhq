@@ -15,6 +15,7 @@ import { InquiriesPage } from "../marketplace/pages/InquiriesPage";
 import { UpdatesPage } from "../marketplace/pages/UpdatesPage";
 import { ProgramPage } from "../marketplace/pages/ProgramPage";
 import { ListingPage } from "../marketplace/pages/ListingPage";
+import { ManageListingPage } from "../management/pages/ManageListingPage";
 
 const BASE_PATH = "/marketplace";
 
@@ -105,6 +106,7 @@ export function MarketplaceEmbedded() {
       <EmbeddedContent>
         <Routes>
           <Route path="/" element={<HomePage />} />
+          <Route path="/manage" element={<ManageListingPage />} />
           <Route path="/animals" element={<AnimalsIndexPage />} />
           <Route path="/breeders" element={<BreedersIndexPage />} />
           <Route path="/breeders/:tenantSlug" element={<BreederPage />} />

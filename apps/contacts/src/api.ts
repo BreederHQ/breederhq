@@ -1,6 +1,6 @@
 // apps/contacts/src/api.ts
 import { readTenantIdFast, getSessionCookieName } from "@bhq/ui/utils/tenant";
-import { createHttp, makeTags } from "@bhq/api";
+import { createHttp, makeTags, makePortalAccess } from "@bhq/api";
 
 export type ID = string | number;
 
@@ -318,6 +318,7 @@ export function makeApi(baseOrigin: string = "", authHeaderFn?: () => Record<str
   /* ----------------------------------- TAGS ---------------------------------- */
   // Wire up unified tags from @bhq/api
   const tags = makeTags(createHttp(v1));
+  const portalAccess = makePortalAccess(createHttp(v1));
 
   /* ------------------------------- ORGANIZATIONS ----------------------------- */
   const organizations = {
@@ -732,6 +733,7 @@ export function makeApi(baseOrigin: string = "", authHeaderFn?: () => Record<str
     lookups,
     audit,
     finance,
+    portalAccess,
   };
 }
 

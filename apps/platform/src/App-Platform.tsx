@@ -13,7 +13,7 @@ import "@bhq/ui/styles/table.css";
 ; (window as any).__BHQ_OVERLAY_MODE = "global";
 
 // Modules
-import AppContactsParty from "@bhq/contacts/App-Contacts-Party";
+import AppContacts from "@bhq/contacts/App-Contacts";
 import AppAnimals from "@bhq/animals/App-Animals";
 import AppBreeding from "@bhq/breeding/App-Breeding";
 import AppOffspring from "@bhq/offspring/App-Offspring";
@@ -68,8 +68,8 @@ function RouteView() {
   const p = path.endsWith("/") ? path.slice(0, -1) : path;
 
   if (p === "" || p === "/") return <DashboardPage />;
-  if (p === "/contacts" || p.startsWith("/contacts")) return <AppContactsParty />;
-  if (p === "/organizations" || p.startsWith("/organizations")) return <AppContactsParty />;
+  if (p === "/contacts" || p.startsWith("/contacts")) return <AppContacts />;
+  if (p === "/organizations" || p.startsWith("/organizations")) return <AppContacts />;
   if (p === "/animals" || p.startsWith("/animals")) return <AppAnimals />;
   if (p === "/breeding" || p.startsWith("/breeding")) return <AppBreeding />;
   if (p === "/offspring" || p.startsWith("/offspring")) return <AppOffspring />;

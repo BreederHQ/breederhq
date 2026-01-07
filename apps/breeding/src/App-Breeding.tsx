@@ -1227,6 +1227,446 @@ function WhatIfRowEditor(props: WhatIfRowEditorProps) {
   );
 }
 
+/** ────────────────────────────────────────────────────────────────────────
+ * Genetics Calculator — Mendelian inheritance calculator
+ * ─────────────────────────────────────────────────────────────────────── */
+function calculateGeneticPairing(damGenetics: any, sireGenetics: any) {
+  const results: any = {
+    coatColor: [],
+    health: [],
+    warnings: [],
+    score: 100,
+  };
+
+  // Calculate coat color genetics
+  if (damGenetics?.coatColor && sireGenetics?.coatColor) {
+    const damLoci = new Map(damGenetics.coatColor.map((l: any) => [l.locus, l]));
+    const sireLoci = new Map(sireGenetics.coatColor.map((l: any) => [l.locus, l]));
+
+    // Get all unique loci from both parents
+    const allLoci = new Set([...damLoci.keys(), ...sireLoci.keys()]);
+
+    for (const locus of allLoci) {
+      const damLocus = damLoci.get(locus) as any;
+      const sireLocus = sireLoci.get(locus) as any;
+
+      if (!damLocus || !sireLocus) continue;
+      if (!damLocus.allele1 || !damLocus.allele2 || !sireLocus.allele1 || !sireLocus.allele2) continue;
+
+      // Calculate Punnett square
+      const offspring = [
+        `${damLocus.allele1}/${sireLocus.allele1}`,
+        `${damLocus.allele1}/${sireLocus.allele2}`,
+        `${damLocus.allele2}/${sireLocus.allele1}`,
+        `${damLocus.allele2}/${sireLocus.allele2}`,
+      ];
+
+      // Count unique genotypes and their percentages
+      const genotypeCounts = new Map<string, number>();
+      offspring.forEach((gt) => {
+        // Normalize genotype (e.g., a/A becomes A/a for counting)
+        const normalized = gt.split('/').sort().join('/');
+        genotypeCounts.set(normalized, (genotypeCounts.get(normalized) || 0) + 25);
+      });
+
+      const predictions = Array.from(genotypeCounts.entries())
+        .map(([genotype, percentage]) => `${percentage}% ${genotype}`)
+        .join(', ');
+
+      results.coatColor.push({
+        trait: `${locus} Locus (${damLocus.locusName || locus})`,
+        damGenotype: `${damLocus.allele1}/${damLocus.allele2}`,
+        sireGenotype: `${sireLocus.allele1}/${sireLocus.allele2}`,
+        prediction: predictions,
+      });
+
+      // Special warnings
+      if (locus === "M" && damLocus.allele1 === "M" && sireLocus.allele1 === "M") {
+        results.warnings.push({
+          severity: "danger",
+          message: "DOUBLE MERLE WARNING: This pairing can produce double merle puppies (M/M), which often have vision and hearing problems.",
+        });
+        results.score -= 50;
+      }
+    }
+  }
+
+  // Calculate health genetics
+  if (damGenetics?.health && sireGenetics?.health) {
+    const damHealth = new Map(damGenetics.health.map((l: any) => [l.locus, l]));
+    const sireHealth = new Map(sireGenetics.health.map((l: any) => [l.locus, l]));
+
+    const allHealthLoci = new Set([...damHealth.keys(), ...sireHealth.keys()]);
+
+    for (const locus of allHealthLoci) {
+      const damLocus = damHealth.get(locus) as any;
+      const sireLocus = sireHealth.get(locus) as any;
+
+      if (!damLocus || !sireLocus) continue;
+      if (!damLocus.genotype || !sireLocus.genotype) continue;
+
+      const damStatus = damLocus.genotype.toLowerCase();
+      const sireStatus = sireLocus.genotype.toLowerCase();
+
+      let prediction = "";
+      let warning = false;
+
+      // Simple carrier/clear logic (N = normal/clear, affected status)
+      if (damStatus.includes("clear") && sireStatus.includes("clear")) {
+        prediction = "100% Clear";
+      } else if (damStatus.includes("carrier") && sireStatus.includes("carrier")) {
+        prediction = "25% Affected, 50% Carrier, 25% Clear";
+        warning = true;
+        results.score -= 10;
+      } else if (
+        (damStatus.includes("clear") && sireStatus.includes("carrier")) ||
+        (damStatus.includes("carrier") && sireStatus.includes("clear"))
+      ) {
+        prediction = "50% Carrier, 50% Clear";
+      } else if (damStatus.includes("affected") || sireStatus.includes("affected")) {
+        prediction = "Affected offspring likely - consult geneticist";
+        warning = true;
+        results.score -= 20;
+      } else {
+        prediction = `Dam: ${damLocus.genotype}, Sire: ${sireLocus.genotype}`;
+      }
+
+      results.health.push({
+        trait: `${locus} (${damLocus.locusName || locus})`,
+        damGenotype: damLocus.genotype,
+        sireGenotype: sireLocus.genotype,
+        prediction,
+        warning,
+      });
+
+      if (warning) {
+        results.warnings.push({
+          severity: "warning",
+          message: `${locus}: Carrier x Carrier pairing may produce affected offspring.`,
+        });
+      }
+    }
+  }
+
+  return results;
+}
+
+/** ────────────────────────────────────────────────────────────────────────
+ * Genetics Lab Page — Genetic pairing analysis and compatibility
+ * ─────────────────────────────────────────────────────────────────────── */
+function GeneticsLabPage({
+  api,
+  animals
+}: {
+  api: any;
+  animals: Array<{ id: number | string; name: string; species: string; breed: string; sex: string }>;
+}) {
+  const [selectedDamId, setSelectedDamId] = React.useState<number | string | null>(null);
+  const [selectedSireId, setSelectedSireId] = React.useState<number | string | null>(null);
+  const [damGenetics, setDamGenetics] = React.useState<any>(null);
+  const [sireGenetics, setSireGenetics] = React.useState<any>(null);
+  const [calculating, setCalculating] = React.useState(false);
+  const [results, setResults] = React.useState<any>(null);
+
+  // Filter animals by sex
+  const dams = animals.filter((a) => (a.sex || "").toUpperCase().startsWith("F"));
+  const sires = animals.filter((a) => (a.sex || "").toUpperCase().startsWith("M"));
+
+  const selectedDam = dams.find((d) => d.id === selectedDamId);
+  const selectedSire = sires.find((s) => s.id === selectedSireId);
+
+  // Load genetics when animals are selected
+  React.useEffect(() => {
+    if (!selectedDamId) {
+      setDamGenetics(null);
+      return;
+    }
+
+    const loadDamGenetics = async () => {
+      try {
+        const res = await fetch(`/api/v1/animals/${selectedDamId}/genetics`, {
+          credentials: "include",
+        });
+        if (res.ok) {
+          const data = await res.json();
+          console.log("Dam genetics loaded:", selectedDamId, data);
+          setDamGenetics({
+            coatColor: data.coatColor || [],
+            health: data.health || [],
+          });
+          console.log("damGenetics state set to:", { coatColor: data.coatColor || [], health: data.health || [] });
+        } else {
+          setDamGenetics({ coatColor: [], health: [] });
+        }
+      } catch (err) {
+        console.error("Failed to load dam genetics:", err);
+        setDamGenetics({ coatColor: [], health: [] });
+      }
+    };
+    loadDamGenetics();
+  }, [selectedDamId, api]);
+
+  React.useEffect(() => {
+    if (!selectedSireId) {
+      setSireGenetics(null);
+      return;
+    }
+
+    const loadSireGenetics = async () => {
+      try {
+        const res = await fetch(`/api/v1/animals/${selectedSireId}/genetics`, {
+          credentials: "include",
+        });
+        if (res.ok) {
+          const data = await res.json();
+          console.log("Sire genetics loaded:", selectedSireId, data);
+          setSireGenetics({
+            coatColor: data.coatColor || [],
+            health: data.health || [],
+          });
+        } else {
+          console.log("Sire genetics fetch failed:", res.status);
+          setSireGenetics({ coatColor: [], health: [] });
+        }
+      } catch (err) {
+        console.error("Failed to load sire genetics:", err);
+        setSireGenetics({ coatColor: [], health: [] });
+      }
+    };
+    loadSireGenetics();
+  }, [selectedSireId, api]);
+
+  const handleCalculate = async () => {
+    console.log("handleCalculate called - damId:", selectedDamId, "sireId:", selectedSireId, "damGenetics:", damGenetics, "sireGenetics:", sireGenetics);
+
+    if (!selectedDamId || !selectedSireId || !damGenetics || !sireGenetics) {
+      console.log("Calculate aborted - missing data");
+      return;
+    }
+
+    setCalculating(true);
+    try {
+      console.log("About to call calculateGeneticPairing");
+      // Calculate Mendelian inheritance using the genetics calculator
+      const calculatedResults = calculateGeneticPairing(damGenetics, sireGenetics);
+      console.log("Results from calculateGeneticPairing:", calculatedResults);
+      setResults(calculatedResults);
+    } catch (err) {
+      console.error("Failed to calculate genetics:", err);
+    } finally {
+      setCalculating(false);
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <Card>
+        <div className="p-4 space-y-4">
+          <div>
+            <h2 className="text-xl font-semibold mb-1">Genetics Lab</h2>
+            <p className="text-sm text-secondary">
+              Analyze genetic compatibility between dam and sire. Select two animals to see predicted offspring traits.
+            </p>
+          </div>
+
+          {/* Animal Selection */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium mb-2">
+                Dam (Female)
+              </label>
+              <select
+                className={`w-full h-10 rounded-md border ${!selectedDamId ? "border-yellow-500 ring-2 ring-yellow-500/20" : "border-hairline"} bg-surface px-3 text-sm`}
+                value={selectedDamId || ""}
+                onChange={(e) => {
+                  setSelectedDamId(e.target.value || null);
+                  setResults(null);
+                }}
+              >
+                <option value="">Select a dam...</option>
+                {dams.map((dam) => (
+                  <option key={dam.id} value={dam.id}>
+                    {dam.name} {dam.breed ? `(${dam.breed})` : ""}
+                  </option>
+                ))}
+              </select>
+              {selectedDam && damGenetics && (
+                <div className="mt-2 text-xs text-secondary">
+                  <div>Species: {selectedDam.species}</div>
+                  <div>Genetics: {damGenetics.coatColor?.length || 0} coat color loci, {damGenetics.health?.length || 0} health markers</div>
+                </div>
+              )}
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-2">
+                Sire (Male)
+              </label>
+              <select
+                className={`w-full h-10 rounded-md border ${!selectedSireId ? "border-yellow-500 ring-2 ring-yellow-500/20" : "border-hairline"} bg-surface px-3 text-sm`}
+                value={selectedSireId || ""}
+                onChange={(e) => {
+                  setSelectedSireId(e.target.value || null);
+                  setResults(null);
+                }}
+              >
+                <option value="">Select a sire...</option>
+                {sires.map((sire) => (
+                  <option key={sire.id} value={sire.id}>
+                    {sire.name} {sire.breed ? `(${sire.breed})` : ""}
+                  </option>
+                ))}
+              </select>
+              {selectedSire && sireGenetics && (
+                <div className="mt-2 text-xs text-secondary">
+                  <div>Species: {selectedSire.species}</div>
+                  <div>Genetics: {sireGenetics.coatColor?.length || 0} coat color loci, {sireGenetics.health?.length || 0} health markers</div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Calculate Button */}
+          {selectedDamId && selectedSireId && (
+            <div className="flex justify-center pt-2">
+              <button
+                onClick={() => {
+                  console.log("Button clicked!");
+                  handleCalculate();
+                }}
+                disabled={calculating}
+                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {calculating ? "Calculating..." : "Calculate Pairing"}
+              </button>
+            </div>
+          )}
+
+          {/* Results */}
+          {results && (
+            <div className="space-y-4 pt-4 border-t border-hairline">
+              <div>
+                <h3 className="text-lg font-semibold mb-2 flex items-center gap-2">
+                  Genetic Compatibility Report
+                  <span className={`text-sm font-normal px-2 py-1 rounded ${
+                    results.score >= 80 ? "bg-green-500/10 text-green-600" :
+                    results.score >= 60 ? "bg-yellow-500/10 text-yellow-600" :
+                    "bg-red-500/10 text-red-600"
+                  }`}>
+                    Score: {results.score}/100
+                  </span>
+                </h3>
+              </div>
+
+              {/* Warnings */}
+              {results.warnings && results.warnings.length > 0 && (
+                <div className="space-y-2">
+                  {results.warnings.map((warning: any, idx: number) => (
+                    <div
+                      key={idx}
+                      className={`rounded-lg border p-3 flex items-start gap-2 ${
+                        warning.severity === "danger"
+                          ? "border-red-500/20 bg-red-500/5"
+                          : "border-yellow-500/20 bg-yellow-500/5"
+                      }`}
+                    >
+                      <span className={warning.severity === "danger" ? "text-red-600" : "text-yellow-600"}>
+                        {warning.severity === "danger" ? "🚨" : "⚠️"}
+                      </span>
+                      <div className="text-sm">
+                        <div className={`font-medium ${warning.severity === "danger" ? "text-red-700" : "text-yellow-700"}`}>
+                          {warning.severity === "danger" ? "Critical Warning" : "Warning"}
+                        </div>
+                        <div className="text-secondary mt-1">{warning.message}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Coat Color Predictions */}
+              <div className="rounded-lg border border-hairline p-4 bg-surface">
+                <h4 className="font-semibold mb-3 flex items-center gap-2">
+                  <span>🎨</span> Coat Color Genetics
+                </h4>
+                <div className="space-y-2">
+                  {results.coatColor?.map((item: any, idx: number) => (
+                    <div key={idx} className="text-sm">
+                      <div className="font-medium">{item.trait}</div>
+                      <div className="text-secondary ml-4">{item.prediction}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Health Genetics */}
+              <div className="rounded-lg border border-hairline p-4 bg-surface">
+                <h4 className="font-semibold mb-3 flex items-center gap-2">
+                  <span>🏥</span> Health Genetics
+                </h4>
+                <div className="space-y-2">
+                  {results.health?.map((item: any, idx: number) => (
+                    <div key={idx} className="text-sm">
+                      <div className="font-medium">{item.trait}</div>
+                      <div className="text-secondary ml-4">{item.prediction}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div className="flex gap-2 justify-end pt-2">
+                <Button variant="outline" size="sm">
+                  Save Report
+                </Button>
+                <Button size="sm" onClick={() => { console.log("Create What-If Plan clicked"); window.location.hash = "#/breeding/planner"; }}>
+                  Create What-If Plan
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* Empty State */}
+          {(!selectedDamId || !selectedSireId) && (
+            <div className="text-center py-12 text-secondary">
+              <div className="text-4xl mb-4">🧬</div>
+              <div className="text-lg font-medium mb-2">Select a Dam and Sire</div>
+              <div className="text-sm">
+                Choose two animals to analyze their genetic compatibility and predict offspring traits.
+              </div>
+            </div>
+          )}
+
+          {/* Missing Genetics Warning */}
+          {((selectedDamId && damGenetics !== null && !damGenetics?.coatColor?.length) || (selectedSireId && sireGenetics !== null && !sireGenetics?.coatColor?.length)) && (
+            <div className="rounded-lg border border-yellow-500/20 bg-yellow-500/5 p-4">
+              <div className="flex items-start gap-2">
+                <span className="text-yellow-600">⚠️</span>
+                <div className="text-sm">
+                  <div className="font-medium text-yellow-700 mb-1">Genetic Data Not Available</div>
+                  <div className="text-secondary">
+                    To use the Genetics Lab, add genetic information to your animals by going to Animals → [Animal Name] → Genetics tab.
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </Card>
+
+      {/* Recent Analyses */}
+      <Card>
+        <div className="p-4">
+          <h3 className="font-semibold mb-3">Recent Analyses</h3>
+          <div className="text-sm text-secondary">
+            Your recent genetic pairing analyses will appear here.
+          </div>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
 export default function AppBreeding() {
   React.useEffect(() => {
     window.dispatchEvent(new CustomEvent("bhq:module", { detail: { key: "breeding", label: "Breeding" } }));
@@ -1364,6 +1804,9 @@ export default function AppBreeding() {
     { id: ID; name: string; species: SpeciesWire | null; femaleCycleLenOverrideDays?: number | null }[]
   >([]);
 
+  // All animals for Genetics Lab (both males and females)
+  const [allAnimals, setAllAnimals] = React.useState<AnimalLite[]>([]);
+
   // Species filter used for Rollup and What If planner
   const [speciesFilterRollup, setSpeciesFilterRollup] =
     React.useState<SpeciesWire | "ALL">("ALL");
@@ -1419,6 +1862,36 @@ export default function AppBreeding() {
       cancelled = true;
     };
   }, [tenantId, speciesFilterRollup]);
+
+  // Fetch all animals for Genetics Lab
+  React.useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      if (tenantId == null) {
+        setAllAnimals([]);
+        return;
+      }
+
+      try {
+        const animals = await fetchAnimals({
+          baseUrl: "/api/v1",
+          tenantId,
+          limit: 500,
+        });
+
+        if (!cancelled) {
+          setAllAnimals(animals);
+        }
+      } catch {
+        if (!cancelled) setAllAnimals([]);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [tenantId]);
 
   const [q, setQ] = React.useState(() => {
     try {
@@ -2671,12 +3144,12 @@ export default function AppBreeding() {
           <div className="p-4">
             <GeneticsLabPage
               api={api}
-              animals={rows.map((r: any) => ({
-                id: r.id,
-                name: r.name,
-                species: r.species,
-                breed: r.breed,
-                sex: r.sex,
+              animals={allAnimals.map((a) => ({
+                id: a.id,
+                name: a.name,
+                species: a.species,
+                breed: a.breed || "",
+                sex: a.sex,
               }))}
             />
           </div>

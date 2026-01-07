@@ -128,14 +128,14 @@
 
 /* Selected day */
 .rdp-selected .rdp-day_button {
-  background: var(--rdp-accent-color);
-  border-color: var(--rdp-accent-color);
+  background: hsl(var(--brand-orange));
+  border-color: hsl(var(--brand-orange));
   color: hsl(var(--primary-foreground));
   font-weight: 600;
 }
 
 .rdp-selected .rdp-day_button:hover {
-  background: var(--rdp-accent-color);
+  background: hsl(var(--brand-orange));
   opacity: 0.9;
 }
 

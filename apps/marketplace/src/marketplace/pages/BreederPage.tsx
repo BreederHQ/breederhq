@@ -83,9 +83,27 @@ interface BreederProfileResponse {
 
 /**
  * Not found state with "How to publish" collapsible panel.
+ * Only shows help text to breeders (users with tenant context).
  */
 function NotFoundState() {
   const [showHowTo, setShowHowTo] = React.useState(false);
+
+  // Check if user is a breeder (has tenant ID) - only show help to breeders
+  // AND only in embedded context (not on standalone marketplace.breederhq.*)
+  const shouldShowHelp = React.useMemo(() => {
+    try {
+      // Don't show help on standalone marketplace domain
+      const isStandalone = typeof window !== "undefined" &&
+        window.location.hostname.startsWith("marketplace.");
+      if (isStandalone) return false;
+
+      // Only show to breeders (users with tenant context)
+      const w: any = typeof window !== "undefined" ? window : {};
+      return !!(w.__BHQ_TENANT_ID__ || localStorage.getItem("BHQ_TENANT_ID"));
+    } catch {
+      return false;
+    }
+  }, []);
 
   return (
     <div className="space-y-4 max-w-md mx-auto">
@@ -107,31 +125,35 @@ function NotFoundState() {
           >
             Browse breeders
           </Link>
-          <button
-            type="button"
-            onClick={() => setShowHowTo(!showHowTo)}
-            className="text-sm text-text-tertiary hover:text-text-secondary transition-colors flex items-center gap-1"
-          >
-            How to publish
-            <svg
-              className={`w-4 h-4 transition-transform ${showHowTo ? "rotate-180" : ""}`}
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
+
+          {/* Only show "How to publish" help to breeders in embedded context */}
+          {shouldShowHelp && (
+            <button
+              type="button"
+              onClick={() => setShowHowTo(!showHowTo)}
+              className="text-sm text-text-tertiary hover:text-text-secondary transition-colors flex items-center gap-1"
             >
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-            </svg>
-          </button>
+              How to publish
+              <svg
+                className={`w-4 h-4 transition-transform ${showHowTo ? "rotate-180" : ""}`}
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+          )}
         </div>
 
-        {/* How to publish panel */}
-        {showHowTo && (
+        {/* How to publish panel - only visible to breeders in embedded context */}
+        {shouldShowHelp && showHowTo && (
           <div className="mt-4 pt-4 border-t border-border-subtle text-left">
             <ol className="text-sm text-text-secondary space-y-2 list-decimal list-inside">
-              <li>Go to Platform Settings → Marketplace</li>
-              <li>Fill out your breeder profile</li>
-              <li>Ensure at least one breed and one listed program</li>
-              <li>Click Publish to Marketplace</li>
+              <li>Go to Marketplace (in navigation) and click "Manage My Listing"</li>
+              <li>Fill out your business identity, location, and contact info</li>
+              <li>Add breeds and create at least one listed program</li>
+              <li>Click "Publish to Marketplace"</li>
             </ol>
           </div>
         )}
