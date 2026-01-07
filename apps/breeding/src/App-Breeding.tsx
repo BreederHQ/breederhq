@@ -2417,19 +2417,9 @@ export default function AppBreeding() {
           });
           // Include derived status translated to backend format
           normalizedDraft.status = toBackendStatus(derivedStatus);
-          console.log("[Breeding] onSave - derived status:", derivedStatus, "-> backend:", normalizedDraft.status);
-
           // Backend requires all milestone dates up to the current phase
           // Include them in the payload even if they weren't just edited
           const currentStatus = (current?.status || "").toUpperCase();
-          console.log("[Breeding] onSave - current row data:", {
-            status: current?.status,
-            cycleStartDateActual: current?.cycleStartDateActual,
-            breedDateActual: current?.breedDateActual,
-            birthDateActual: current?.birthDateActual,
-            weanedDateActual: current?.weanedDateActual,
-            placementStartDateActual: current?.placementStartDateActual,
-          });
 
           const effectiveCycleStart = normalizedDraft.cycleStartDateActual ?? current?.cycleStartDateActual;
           const effectiveBreedDate = normalizedDraft.breedDateActual ?? current?.breedDateActual;
@@ -2437,15 +2427,6 @@ export default function AppBreeding() {
           const effectiveWeanedDate = normalizedDraft.weanedDateActual ?? current?.weanedDateActual;
           const effectivePlacementStart = normalizedDraft.placementStartDateActual ?? current?.placementStartDateActual;
           const effectivePlacementCompleted = normalizedDraft.placementCompletedDateActual ?? current?.placementCompletedDateActual;
-
-          console.log("[Breeding] onSave - effective dates:", {
-            effectiveCycleStart,
-            effectiveBreedDate,
-            effectiveBirthDate,
-            effectiveWeanedDate,
-            effectivePlacementStart,
-            effectivePlacementCompleted,
-          });
 
           // Validate and auto-correct invalid status states
           // Derive the correct status based on available dates (most advanced milestone)
@@ -2480,7 +2461,6 @@ export default function AppBreeding() {
           if (currentStatus === "PLACEMENT_COMPLETED" || currentStatus === "COMPLETE") {
             if (effectivePlacementCompleted) normalizedDraft.placementCompletedDateActual = effectivePlacementCompleted;
           }
-          console.log("[Breeding] onSave - final payload:", normalizedDraft);
         }
 
         await api.updatePlan(Number(id), normalizedDraft as any);
@@ -2631,8 +2611,8 @@ export default function AppBreeding() {
               <DetailsHost
                 rows={rows}
                 config={detailsConfig}
-                closeOnOutsideClick={!drawerIsEditing && !drawerHasPendingChanges}
-                closeOnEscape={!drawerIsEditing && !drawerHasPendingChanges}
+                closeOnOutsideClick={!drawerHasPendingChanges}
+                closeOnEscape={!drawerHasPendingChanges}
               >
                 <Table
                   columns={COLUMNS}
@@ -4548,11 +4528,8 @@ function PlanDetailsView(props: {
   // Priority: actualBirthDate > actualCycleStart
   // When birth has occurred, only post-birth dates are recalculated
   function recalculateExpectedDatesFromActual(actualCycleStart: string | null, actualBirthDate: string | null) {
-    console.log("[Breeding] recalculateExpectedDatesFromActual called with:", { actualCycleStart, actualBirthDate });
-
     // Priority 1: If actual birth exists, recalculate post-birth dates from birth
     if (actualBirthDate && String(actualBirthDate).trim()) {
-      console.log("[Breeding] Recalculating from actual birth date:", actualBirthDate);
 
       // Normalize the birth date to ISO date format (YYYY-MM-DD) before passing to reproEngine
       const normalizedBirthDate = asISODateOnly(actualBirthDate);
@@ -4567,8 +4544,6 @@ function PlanDetailsView(props: {
         cycleStartsAsc: [],
         today: new Date().toISOString().slice(0, 10),
       }, normalizedBirthDate);
-
-      console.log("[Breeding] birthTimeline:", birthTimeline);
 
       if (!birthTimeline) {
         console.warn("[Breeding] buildTimelineFromBirth not available, falling back to cycle-based");
@@ -4589,7 +4564,6 @@ function PlanDetailsView(props: {
 
     // Priority 2: If actual cycle start exists, recalculate entire timeline from cycle
     if (actualCycleStart && String(actualCycleStart).trim()) {
-      console.log("[Breeding] Recalculating from actual cycle start:", actualCycleStart);
 
       // Normalize the cycle start date to ISO date format (YYYY-MM-DD) before passing to reproEngine
       const normalizedCycleStart = asISODateOnly(actualCycleStart);
@@ -4604,7 +4578,6 @@ function PlanDetailsView(props: {
         femaleCycleLenOverrideDays: liveOverride,
       });
 
-      console.log("[Breeding] recalculateExpectedDatesFromActual - expectedRaw:", expectedRaw);
       if (!expectedRaw) return null;
 
       const expected = normalizeExpectedMilestones(expectedRaw, normalizedCycleStart);
@@ -5120,17 +5093,10 @@ function PlanDetailsView(props: {
                   setTimeout(async () => {
                     try {
                       await handleSave();
-                      console.log(`[Breeding] Auto-saved ${field}:`, value);
                     } catch (error) {
                       console.error(`[Breeding] Auto-save failed for ${field}:`, error);
                     }
                   }, 0);
-                } else {
-                  if (field === "actualPlacementStartDate") {
-                    console.log(`[Breeding] Placement start date entered - draft is dirty, will save on phase advance`);
-                  } else {
-                    console.log(`[Breeding] Cleared ${field} - draft is dirty, waiting for user to select new date`);
-                  }
                 }
               }}
               onNavigateToTab={(tab) => setActiveTab(tab as typeof activeTab)}
@@ -5139,7 +5105,6 @@ function PlanDetailsView(props: {
                 try {
                   // Translate frontend status to backend status
                   const backendStatus = toBackendStatus(toPhase);
-                  console.log("[Breeding] Advancing to phase:", toPhase, "-> backend:", backendStatus, "for plan:", row.id);
 
                   // Include any pending draft changes along with the status update
                   // This ensures dates entered before clicking "Advance" are saved
@@ -5228,7 +5193,6 @@ function PlanDetailsView(props: {
                     if (effectivePlacementCompleted) payload.placementCompletedDateActual = effectivePlacementCompleted;
                   }
 
-                  console.log("[Breeding] Advance phase payload:", payload);
                   await api.updatePlan(Number(row.id), payload as any);
 
                   // Clear the draft since we just saved
@@ -5980,7 +5944,7 @@ function PlanDetailsView(props: {
                     <span className="text-xs font-semibold uppercase tracking-wider text-blue-400">Cycle Start → Birth</span>
                     <div className="flex-1 h-px bg-gradient-to-r from-blue-500/40 via-purple-500/20 to-transparent"></div>
                   </div>
-                  <div className="grid grid-cols-2 gap-x-4 gap-y-3 pl-8">
+                  <div className="grid grid-cols-4 gap-x-3 gap-y-2 pl-8">
                     <div>
                       <div className="text-[10px] uppercase text-secondary tracking-wide mb-1">Cycle Start</div>
                       <div className="text-sm text-primary font-medium">{fmt(expectedCycleStart) || "—"}</div>
@@ -6009,7 +5973,7 @@ function PlanDetailsView(props: {
                     <span className="text-xs font-semibold uppercase tracking-wider text-amber-400">Weaning → Placement</span>
                     <div className="flex-1 h-px bg-gradient-to-r from-amber-500/40 via-orange-500/20 to-transparent"></div>
                   </div>
-                  <div className="grid grid-cols-2 gap-x-4 gap-y-3 pl-8">
+                  <div className="grid grid-cols-4 gap-x-3 gap-y-2 pl-8">
                     <div>
                       <div className="text-[10px] uppercase text-secondary tracking-wide mb-1">Weaned Date</div>
                       <div className="text-sm text-primary font-medium">{fmt(expectedWeaned) || "—"}</div>
@@ -6018,7 +5982,7 @@ function PlanDetailsView(props: {
                       <div className="text-[10px] uppercase text-secondary tracking-wide mb-1">Placement Start</div>
                       <div className="text-sm text-primary font-medium">{fmt(expectedPlacementStart) || "—"}</div>
                     </div>
-                    <div className="col-span-2">
+                    <div>
                       <div className="text-[10px] uppercase text-secondary tracking-wide mb-1">Placement Completed</div>
                       <div className="text-sm text-primary font-medium">{fmt(expectedPlacementCompleted) || "—"}</div>
                     </div>
@@ -6060,7 +6024,7 @@ function PlanDetailsView(props: {
                           <span className="text-xs font-semibold uppercase tracking-wider text-blue-400">Cycle Start → Birth</span>
                           <div className="flex-1 h-px bg-gradient-to-r from-blue-500/40 via-purple-500/20 to-transparent"></div>
                         </div>
-                        <div className="grid grid-cols-2 gap-x-4 gap-y-3 pl-8">
+                        <div className="grid grid-cols-4 gap-x-3 gap-y-2 pl-8">
                           <div>
                             <div className="text-[10px] uppercase text-secondary tracking-wide mb-1">Cycle Start (Actual)</div>
                             <div className="text-sm text-emerald-600 dark:text-emerald-400 font-medium">{fmt(effective.cycleStartDateActual) || "—"}</div>
@@ -6089,7 +6053,7 @@ function PlanDetailsView(props: {
                           <span className="text-xs font-semibold uppercase tracking-wider text-amber-400">Weaning → Placement</span>
                           <div className="flex-1 h-px bg-gradient-to-r from-amber-500/40 via-orange-500/20 to-transparent"></div>
                         </div>
-                        <div className="grid grid-cols-2 gap-x-4 gap-y-3 pl-8">
+                        <div className="grid grid-cols-4 gap-x-3 gap-y-2 pl-8">
                           <div>
                             <div className="text-[10px] uppercase text-secondary tracking-wide mb-1">Weaned Date</div>
                             <div className="text-sm text-emerald-600 dark:text-emerald-400 font-medium">{fmt(recalcWeaned) ? <>{fmt(recalcWeaned)} <span className="text-xs text-secondary font-normal">(New Projection)</span></> : "—"}</div>
@@ -6098,7 +6062,7 @@ function PlanDetailsView(props: {
                             <div className="text-[10px] uppercase text-secondary tracking-wide mb-1">Placement Start</div>
                             <div className="text-sm text-emerald-600 dark:text-emerald-400 font-medium">{fmt(recalcPlacementStart) ? <>{fmt(recalcPlacementStart)} <span className="text-xs text-secondary font-normal">(New Projection)</span></> : "—"}</div>
                           </div>
-                          <div className="col-span-2">
+                          <div>
                             <div className="text-[10px] uppercase text-secondary tracking-wide mb-1">Placement Completed</div>
                             <div className="text-sm text-emerald-600 dark:text-emerald-400 font-medium">{fmt(recalcPlacementCompleted) ? <>{fmt(recalcPlacementCompleted)} <span className="text-xs text-secondary font-normal">(New Projection)</span></> : "—"}</div>
                           </div>
@@ -6459,14 +6423,11 @@ function PlanDetailsView(props: {
                               ...resetDates,
                               status: toBackendStatus(derivedStatus),
                             };
-                            console.log("[Breeding] Reset dates - derived status:", derivedStatus);
-                            console.log("[Breeding] Reset dates payload:", payload);
 
                             await api.updatePlan(Number(row.id), payload as any);
 
                             // Fetch fresh data and update UI
                             const fresh = await api.getPlan(Number(row.id), "parents,org");
-                            console.log("[Breeding] Fresh plan status:", fresh.status);
 
                             onPlanUpdated?.(row.id, fresh);
 
