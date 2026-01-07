@@ -1010,9 +1010,31 @@ export function PlanJourney({
 
             {/* Completion message */}
             {!nextPhase && (
-              <div className="rounded-lg bg-emerald-500/10 border border-emerald-500/30 p-3 text-center">
-                <div className="text-emerald-500 text-sm font-medium">
-                  All offspring have been placed - Breeding Plan Complete!
+              <div className="relative rounded-xl bg-gradient-to-br from-emerald-500/20 via-emerald-400/10 to-amber-500/20 border-2 border-emerald-400/40 p-6 text-center overflow-hidden celebration-card">
+                {/* Confetti animation */}
+                <div className="absolute inset-0 pointer-events-none">
+                  <div className="confetti">🎉</div>
+                  <div className="confetti">🎊</div>
+                  <div className="confetti">✨</div>
+                  <div className="confetti">🌟</div>
+                  <div className="confetti">🎉</div>
+                  <div className="confetti">🎊</div>
+                  <div className="confetti">✨</div>
+                  <div className="confetti">🌟</div>
+                </div>
+
+                <div className="relative z-10">
+                  <div className="text-4xl mb-3 animate-bounce">🎉</div>
+                  <div className="text-emerald-400 text-xl font-bold mb-2 celebrate-text">
+                    Congratulations!
+                  </div>
+                  <div className="text-emerald-300 text-lg font-semibold mb-3">
+                    Breeding Plan Complete!
+                  </div>
+                  <div className="text-sm text-emerald-200/80 max-w-md mx-auto">
+                    All offspring have been successfully placed with their new families.
+                    You've put in a lot of hard work getting here - well done! 🏆
+                  </div>
                 </div>
               </div>
             )}
@@ -1020,7 +1042,7 @@ export function PlanJourney({
         )}
       </div>
 
-      {/* CSS for animated marching ants line, gold highlighting, and soft pulse */}
+      {/* CSS for animated marching ants line, gold highlighting, soft pulse, and celebration effects */}
       <style>{`
         @keyframes marchingAnts {
           0% { background-position: 0 0; }
@@ -1036,6 +1058,63 @@ export function PlanJourney({
         [data-gold-highlight="true"] {
           color: #fbbf24 !important;
           font-weight: 600 !important;
+        }
+
+        /* Celebration animations */
+        .celebration-card {
+          animation: celebrationPulse 3s ease-in-out infinite;
+        }
+        @keyframes celebrationPulse {
+          0%, 100% {
+            box-shadow: 0 0 20px rgba(52, 211, 153, 0.3), 0 0 40px rgba(52, 211, 153, 0.1);
+          }
+          50% {
+            box-shadow: 0 0 30px rgba(52, 211, 153, 0.5), 0 0 60px rgba(52, 211, 153, 0.2);
+          }
+        }
+
+        .celebrate-text {
+          animation: colorShift 3s ease-in-out infinite;
+        }
+        @keyframes colorShift {
+          0%, 100% { color: #34d399; }
+          33% { color: #fbbf24; }
+          66% { color: #60a5fa; }
+        }
+
+        /* Confetti animation */
+        .confetti {
+          position: absolute;
+          font-size: 1.5rem;
+          animation: confettiFall 4s ease-in-out infinite;
+          opacity: 0;
+        }
+        .confetti:nth-child(1) { left: 10%; animation-delay: 0s; }
+        .confetti:nth-child(2) { left: 25%; animation-delay: 0.5s; }
+        .confetti:nth-child(3) { left: 40%; animation-delay: 1s; }
+        .confetti:nth-child(4) { left: 55%; animation-delay: 1.5s; }
+        .confetti:nth-child(5) { left: 70%; animation-delay: 2s; }
+        .confetti:nth-child(6) { left: 85%; animation-delay: 2.5s; }
+        .confetti:nth-child(7) { left: 15%; animation-delay: 3s; }
+        .confetti:nth-child(8) { left: 90%; animation-delay: 3.5s; }
+
+        @keyframes confettiFall {
+          0% {
+            top: -10%;
+            opacity: 0;
+            transform: translateX(0) rotate(0deg);
+          }
+          10% {
+            opacity: 1;
+          }
+          90% {
+            opacity: 1;
+          }
+          100% {
+            top: 110%;
+            opacity: 0;
+            transform: translateX(100px) rotate(360deg);
+          }
         }
       `}</style>
     </div>
