@@ -25,6 +25,7 @@ import {
   CustomBreedDialog,
   exportToCsv,
   Popover,
+  DatePicker,
 } from "@bhq/ui";
 import { FinanceTab } from "@bhq/ui/components/Finance";
 import { Overlay } from "@bhq/ui/overlay";
@@ -38,6 +39,7 @@ import PlanJourney from "./components/PlanJourney";
 import "@bhq/ui/styles/table.css";
 import "@bhq/ui/styles/details.css";
 import "@bhq/ui/styles/datefield.css";
+import "@bhq/ui/styles/datepicker.css";
 import { makeBreedingApi } from "./api";
 
 import { windowsFromPlan, expectedTestingFromCycleStart, pickPlacementCompletedAny } from "@bhq/ui/utils";
@@ -351,10 +353,15 @@ function DateField({ label, value, defaultValue, readOnly, onChange }: BHQDateFi
           </div>
         </div>
       ) : (
-        <CalendarInput
-          value={current}
+        <DatePicker
+          value={current ?? ""}
           readOnly={false}
-          onChange={(e) => onChange?.(e.currentTarget.value)}
+          onChange={(e) => {
+            const val = e.currentTarget.value;
+            if (!val || /^\d{4}-\d{2}-\d{2}$/.test(val)) {
+              onChange?.(val || "");
+            }
+          }}
           className={dateFieldW}
           inputClassName={dateInputCls}
           placeholder="mm/dd/yyyy"
@@ -588,220 +595,6 @@ const COLUMNS: Array<{ key: keyof PlanRow & string; label: string; default?: boo
 const STORAGE_KEY = "bhq_breeding_cols_v2";
 
 /* ─────────────────────── Helpers ─────────────────────── */
-
-// ----- Date-picker hoist helpers -----
-const OVERLAY_ROOT_SELECTOR = "#bhq-overlay-root";
-
-function ensureOverlayRoot(): HTMLElement {
-  return (document.querySelector(OVERLAY_ROOT_SELECTOR) as HTMLElement) || document.body;
-}
-
-/** Find the *outermost* popup element we actually want to move. */
-function findDatePopup(): HTMLElement | null {
-  // most libs
-  const candidates = [
-    // Radix Popper wrapper
-    ...Array.from(document.querySelectorAll<HTMLElement>('[data-radix-popper-content-wrapper]')),
-    // react-datepicker
-    ...Array.from(document.querySelectorAll<HTMLElement>('.react-datepicker')),
-    // react-day-picker
-    ...Array.from(document.querySelectorAll<HTMLElement>('.rdp,.rdp-root')),
-    // generic open dialogs/menus (fallback)
-    ...Array.from(document.querySelectorAll<HTMLElement>('[role="dialog"][data-state="open"],[role="menu"][data-state="open"]')),
-  ];
-
-  // ignore things inside our details drawer/panels
-  const filtered = candidates.filter((el) => !el.closest('[data-bhq-details]'));
-
-  const list = filtered.length ? filtered : candidates;
-  if (!list.length) return null;
-
-  const isVisible = (el: HTMLElement) => {
-    const cs = getComputedStyle(el);
-    const r = el.getBoundingClientRect();
-    return cs.display !== "none" && cs.visibility !== "hidden" && r.width > 8 && r.height > 8;
-  };
-
-  // prefer visible + largest area
-  list.sort((a, b) => {
-    const va = isVisible(a) ? 1 : 0;
-    const vb = isVisible(b) ? 1 : 0;
-    const ra = a.getBoundingClientRect();
-    const rb = b.getBoundingClientRect();
-    return vb - va || rb.width * rb.height - ra.width * ra.height;
-  });
-
-  // for Radix, we want the wrapper itself (already selected); for others, this is fine
-  return list[0] || null;
-}
-
-/** Wait up to ~300ms for a date popup to mount, then hoist + place it near trigger. */
-function hoistAndPlaceDatePopup(triggerEl: HTMLElement) {
-  const root = ensureOverlayRoot();
-
-  let raf = 0;
-  let tries = 0;
-  const MAX_TRIES = 12; // ~200–300ms
-
-  const place = (pop: HTMLElement) => {
-    if (pop.parentNode !== root) root.appendChild(pop);
-
-    // style the *moved wrapper* not inner content
-    Object.assign(pop.style, {
-      position: "fixed",
-      transform: "none",
-      inset: "auto",
-      zIndex: "2147483647",
-      maxWidth: "none",
-      maxHeight: "none",
-      overflow: "visible",
-      contain: "paint", // keep it isolated
-      isolation: "auto",
-      filter: "none",
-      perspective: "none",
-      willChange: "top,left",
-    } as CSSStyleDeclaration);
-
-    const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
-    const GAP = 8;
-
-    const doPosition = () => {
-      const r = triggerEl.getBoundingClientRect();
-      const pr = pop.getBoundingClientRect();
-      const vw = window.innerWidth;
-      const vh = window.innerHeight;
-
-      let top = r.bottom + GAP;       // try below
-      let left = r.left;              // left-align
-
-      // clamp horizontally
-      left = clamp(left, GAP, vw - pr.width - GAP);
-
-      // if off-screen bottom, place above
-      if (top + pr.height > vh - GAP) {
-        top = clamp(r.top - pr.height - GAP, GAP, vh - pr.height - GAP);
-      } else {
-        top = clamp(top, GAP, vh - pr.height - GAP);
-      }
-
-      pop.style.top = `${Math.round(top)}px`;
-      pop.style.left = `${Math.round(left)}px`;
-    };
-
-    // Position now, then again next frame after content finishes sizing.
-    doPosition();
-    setTimeout(doPosition, 30);
-
-    // keep it in the right spot on resize/scroll; clean up when it disappears
-    const onRelayout = () => {
-      if (!pop.isConnected) {
-        window.removeEventListener("resize", onRelayout);
-        window.removeEventListener("scroll", onRelayout, true);
-        return;
-      }
-      doPosition();
-    };
-    window.addEventListener("resize", onRelayout);
-    window.addEventListener("scroll", onRelayout, true);
-
-    // small observer to auto-clean when popup is removed
-    const mo = new MutationObserver(() => {
-      if (!pop.isConnected) {
-        window.removeEventListener("resize", onRelayout);
-        window.removeEventListener("scroll", onRelayout, true);
-        mo.disconnect();
-      }
-    });
-    mo.observe(document.body, { childList: true, subtree: true });
-  };
-
-  const tick = () => {
-    const pop = findDatePopup();
-    if (pop) {
-      place(pop);
-      return;
-    }
-    if (tries++ < MAX_TRIES) {
-      raf = requestAnimationFrame(tick);
-    }
-  };
-
-  // kick off after we click the icon
-  raf = requestAnimationFrame(tick);
-}
-
-/** Wire up native date picker to our overlay hoist helper. */
-type AttachDatePopupOpts = {
-  shell: HTMLElement;
-  button: HTMLButtonElement;
-  hiddenInput: HTMLInputElement;
-  onPopupOpen?: () => void;
-  onPopupClose?: () => void;
-};
-
-function attachDatePopupPositioning(opts: AttachDatePopupOpts) {
-  const { shell, button, hiddenInput, onPopupOpen, onPopupClose } = opts;
-
-  if (!shell || !button || !hiddenInput) {
-    return () => { };
-  }
-
-  let isOpen = false;
-
-  const openPicker = () => {
-    if (hiddenInput.disabled || hiddenInput.readOnly) return;
-
-    if (!isOpen) {
-      isOpen = true;
-      onPopupOpen?.();
-    }
-
-    try {
-      // Focus the hidden native input and try to open the picker
-      hiddenInput.focus();
-      const anyInput = hiddenInput as any;
-      if (typeof anyInput.showPicker === "function") {
-        anyInput.showPicker();
-      } else {
-        hiddenInput.click();
-      }
-    } catch {
-      // Ignore browser quirks
-    }
-
-    // Hoist and position the popup near the trigger
-    hoistAndPlaceDatePopup(button);
-  };
-
-  const handleButtonClick = (e: MouseEvent) => {
-    e.preventDefault();
-    openPicker();
-  };
-
-  const handleKeyDown = (e: KeyboardEvent) => {
-    // Support keyboard open from the visible text input
-    if (e.key === "ArrowDown" && (e.altKey || e.metaKey || e.ctrlKey)) {
-      e.preventDefault();
-      openPicker();
-    }
-  };
-
-  const handleHiddenBlur = () => {
-    if (!isOpen) return;
-    isOpen = false;
-    onPopupClose?.();
-  };
-
-  button.addEventListener("click", handleButtonClick);
-  shell.addEventListener("keydown", handleKeyDown);
-  hiddenInput.addEventListener("blur", handleHiddenBlur);
-
-  return () => {
-    button.removeEventListener("click", handleButtonClick);
-    shell.removeEventListener("keydown", handleKeyDown);
-    hiddenInput.removeEventListener("blur", handleHiddenBlur);
-  };
-}
 
 const toKey = (id: ID) => String(id);
 
@@ -1960,8 +1753,8 @@ export default function AppBreeding() {
     return displayRows.slice(from, to);
   }, [displayRows, clampedPage, pageSize]);
 
-  /* ───────── View routing (list | calendar | planner) ───────── */
-  type ViewRoute = "list" | "calendar" | "planner";
+  /* ───────── View routing (list | calendar | planner | genetics-lab) ───────── */
+  type ViewRoute = "list" | "calendar" | "planner" | "genetics-lab";
 
   // Determine the module base path
   const getBasePath = React.useCallback(() => {
@@ -1970,15 +1763,17 @@ export default function AppBreeding() {
     const clean = p.replace(/\/+$/, "");
     if (clean.endsWith("/calendar")) return clean.slice(0, -"/calendar".length) || "/";
     if (clean.endsWith("/planner")) return clean.slice(0, -"/planner".length) || "/";
+    if (clean.endsWith("/genetics-lab")) return clean.slice(0, -"/genetics-lab".length) || "/";
     return clean || "/";
   }, []);
 
-  // Determine the module base path 
+  // Determine the module base path
   const getViewFromLocation = (): ViewRoute => {
     if (typeof window === "undefined") return "list";
     const p = window.location.pathname || "/";
     if (p.includes("/calendar")) return "calendar";
     if (p.includes("/planner")) return "planner";
+    if (p.includes("/genetics-lab")) return "genetics-lab";
     return "list";
   };
 
@@ -2599,6 +2394,21 @@ export default function AppBreeding() {
               >
                 Planner
               </SafeNavLink>
+
+              <SafeNavLink
+                to={`${basePath}/genetics-lab`}
+                className={({ isActive }) =>
+                  [
+                    "h-9 px-2 text-sm font-semibold leading-9 border-b-2 border-transparent transition-colors",
+                    isActive ? "text-primary" : "text-secondary hover:text-primary",
+                  ].join(" ")
+                }
+                style={({ isActive }) =>
+                  isActive ? { borderBottomColor: "hsl(var(--brand-orange))" } : undefined
+                }
+              >
+                Genetics Lab
+              </SafeNavLink>
             </nav>
           </div>
         </div>
@@ -2853,6 +2663,22 @@ export default function AppBreeding() {
                 }}
               />
             )}
+          </div>
+        )}
+
+        {/* GENETICS LAB VIEW */}
+        {currentView === "genetics-lab" && (
+          <div className="p-4">
+            <GeneticsLabPage
+              api={api}
+              animals={rows.map((r: any) => ({
+                id: r.id,
+                name: r.name,
+                species: r.species,
+                breed: r.breed,
+                sex: r.sex,
+              }))}
+            />
           </div>
         )}
 
@@ -3132,182 +2958,6 @@ export default function AppBreeding() {
   );
 }
 
-
-/* CalendarInput: text field + native date picker */
-
-function CalendarInput(props: any) {
-  const readOnly = !!props.readOnly;
-  const className = props.className;
-  const inputClassName = props.inputClassName;
-  const onChange = props.onChange;
-  const value = props.value as string | undefined;
-  const defaultValue = props.defaultValue as string | undefined;
-  const placeholder = props.placeholder ?? "mm/dd/yyyy";
-  const showIcon = props.showIcon ?? true;
-  // expectedValue: when user focuses on empty field, pre-populate with this value
-  const expectedValue = props.expectedValue as string | undefined;
-
-  // any extra props intended for the visible input
-  const rest: any = { ...props };
-  delete rest.readOnly;
-  delete rest.className;
-  delete rest.inputClassName;
-  delete rest.onChange;
-  delete rest.value;
-  delete rest.defaultValue;
-  delete rest.placeholder;
-  delete rest.showIcon;
-  delete rest.expectedValue;
-
-  // ISO <-> display helpers
-  const onlyISO = (s: string | undefined | null) => {
-    if (!s) return "";
-    const str = String(s).trim();
-    if (!str) return "";
-    // Ensure we only return yyyy-mm-dd format or empty string
-    const match = str.match(/^\d{4}-\d{2}-\d{2}/);
-    return match ? match[0] : "";
-  };
-
-  const toDisplay = (s: string | undefined | null) => {
-    if (!s) return "";
-    const iso = onlyISO(s);
-    if (!iso) return "";
-    const [y, m, d] = iso.split("-");
-    if (!y || !m || !d) return "";
-    return `${m}/${d}/${y}`;
-  };
-
-  const toISO = (s: string) => {
-    const trimmed = s.trim();
-    if (!trimmed) return "";
-    // Try to parse mm/dd/yyyy
-    const m = trimmed.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})$/);
-    if (m) {
-      const mm = m[1].padStart(2, "0");
-      const dd = m[2].padStart(2, "0");
-      let yyyy = m[3];
-      if (yyyy.length === 2) yyyy = `20${yyyy}`;
-      return `${yyyy}-${mm}-${dd}`;
-    }
-    // Fallback, assume already ISO-like
-    return onlyISO(trimmed);
-  };
-
-  const [textValue, setTextValue] = React.useState(() =>
-    value != null ? toDisplay(value) : defaultValue != null ? toDisplay(defaultValue) : ""
-  );
-
-  React.useEffect(() => {
-    if (value != null) {
-      setTextValue(toDisplay(value));
-    }
-  }, [value]);
-
-  const shellRef = React.useRef<HTMLDivElement>(null);
-  const inputRef = React.useRef<HTMLInputElement>(null);
-  const buttonRef = React.useRef<HTMLButtonElement>(null);
-  const hiddenRef = React.useRef<HTMLInputElement>(null);
-
-  const [expanded, setExpanded] = React.useState(false);
-
-  React.useEffect(() => {
-    // Only try to wire things up when the icon is actually rendered
-    if (!showIcon) return;
-
-    const shell = shellRef.current;
-    const btn = buttonRef.current;
-    const hidden = hiddenRef.current;
-    if (!shell || !btn || !hidden) return;
-
-    const cleanup = attachDatePopupPositioning({
-      shell,
-      button: btn,
-      hiddenInput: hidden,
-      onPopupOpen: () => setExpanded(true),
-      onPopupClose: () => setExpanded(false),
-    });
-
-    return cleanup;
-  }, [showIcon]);
-
-  const handleTextChange: React.ChangeEventHandler<HTMLInputElement> = (e) => {
-    const raw = e.currentTarget.value;
-    setTextValue(raw);
-
-    if (!onChange) return;
-
-    const iso = toISO(raw);
-    onChange({ currentTarget: { value: iso } } as any);
-  };
-
-  const handleHiddenChange: React.ChangeEventHandler<HTMLInputElement> = (e) => {
-    const iso = onlyISO(e.currentTarget.value || "");
-    const display = toDisplay(iso);
-    setTextValue(display);
-
-    if (!onChange) return;
-    onChange({ currentTarget: { value: iso } } as any);
-  };
-
-  // Pre-populate with expected value when focusing on empty field
-  const handleFocus: React.FocusEventHandler<HTMLInputElement> = (e) => {
-    if (!textValue && expectedValue && onChange) {
-      const iso = onlyISO(expectedValue);
-      if (iso) {
-        const display = toDisplay(iso);
-        setTextValue(display);
-        onChange({ currentTarget: { value: iso } } as any);
-      }
-    }
-  };
-
-  return (
-    <div ref={shellRef} className={className}>
-      <div className="relative">
-        <Input
-          ref={inputRef}
-          className={inputClassName}
-          placeholder={placeholder}
-          value={textValue}
-          onChange={handleTextChange}
-          onFocus={handleFocus}
-          readOnly={readOnly}
-          {...rest}
-        />
-        {showIcon && (
-          <button
-            type="button"
-            ref={buttonRef}
-            className="absolute inset-y-0 right-2 flex items-center text-muted-foreground"
-            aria-label="Open date picker"
-          >
-            <span className="text-xs">📅</span>
-          </button>
-        )}
-        {/* Hidden native date input for mobile and popup control */}
-        <input
-          ref={hiddenRef}
-          type="date"
-          style={{
-            position: "absolute",
-            opacity: 0,
-            pointerEvents: "none",
-            width: 0,
-            height: 0,
-            margin: 0,
-            padding: 0,
-            border: "none",
-          }}
-          value={onlyISO(value || "")}
-          onChange={handleHiddenChange}
-          aria-hidden="true"
-          tabIndex={-1}
-        />
-      </div>
-    </div>
-  );
-}
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -4979,10 +4629,23 @@ function PlanDetailsView(props: {
               {/* Delete */}
               {!isDeleted && (
                 <button
-                  className="flex w-full items-center gap-2 px-3 py-2 text-sm text-red-400 hover:bg-white/5 rounded"
+                  className="flex w-full items-center gap-2 px-3 py-2 text-sm text-red-400 hover:bg-white/5 rounded disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={!!row.breedDateActual}
                   onClick={async () => {
                     setOverflowMenuOpen(false);
                     if (!onDelete) return;
+
+                    // CRITICAL: Cannot delete plan after breed actual date is entered
+                    if (row.breedDateActual) {
+                      await confirmModal({
+                        title: "Cannot Delete Plan",
+                        message: "Plans cannot be deleted after the Breed Date (Actual) has been entered. This is a permanent business rule to protect breeding data integrity.",
+                        confirmText: "OK",
+                        tone: "danger",
+                      });
+                      return;
+                    }
+
                     const ok = await confirmModal({
                       title: "Delete this plan?",
                       message: "This will soft delete the plan and any linked Offspring Group. This action can only be undone by an admin.",
@@ -6091,9 +5754,9 @@ function PlanDetailsView(props: {
                       <div>
                         <div className="text-[10px] uppercase text-secondary tracking-wide mb-1">Cycle Start</div>
                         <div className="flex items-center gap-2">
-                          <CalendarInput
-                            value={normalizeDateISO(effective.cycleStartDateActual)}
-                            expectedValue={expectedCycleStart}
+                          <DatePicker
+                            value={normalizeDateISO(effective.cycleStartDateActual) ?? ""}
+                            defaultDate={expectedCycleStart ?? undefined}
                             readOnly={!canEditCycleStartActual}
                             showIcon={canEditCycleStartActual}
                             onChange={(e) => {
@@ -6103,6 +5766,7 @@ function PlanDetailsView(props: {
                                 setDraftLive({ cycleStartDateActual: null });
                                 return;
                               }
+                              if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return;
                               warnIfSequenceBroken("cycleStartDateActual", raw);
                               setDraftLive({ cycleStartDateActual: raw });
                             }}
@@ -6124,9 +5788,9 @@ function PlanDetailsView(props: {
                       <div>
                         <div className="text-[10px] uppercase text-secondary tracking-wide mb-1">Hormone Testing Start</div>
                         <div className="flex items-center gap-2">
-                          <CalendarInput
-                            value={normalizeDateISO(effective.hormoneTestingStartDateActual)}
-                            expectedValue={expectedTestingStart}
+                          <DatePicker
+                            value={normalizeDateISO(effective.hormoneTestingStartDateActual) ?? ""}
+                            defaultDate={expectedTestingStart ?? undefined}
                             readOnly={!canEditDates}
                             showIcon={canEditDates}
                             onChange={(e) => {
@@ -6136,6 +5800,7 @@ function PlanDetailsView(props: {
                                 setDraftLive({ hormoneTestingStartDateActual: null });
                                 return;
                               }
+                              if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return;
                               warnIfSequenceBroken("hormoneTestingStartDateActual", raw);
                               setDraftLive({ hormoneTestingStartDateActual: raw });
                             }}
@@ -6157,9 +5822,9 @@ function PlanDetailsView(props: {
                       <div>
                         <div className="text-[10px] uppercase text-secondary tracking-wide mb-1">Breeding Date</div>
                         <div className="flex items-center gap-2">
-                          <CalendarInput
-                            value={normalizeDateISO(effective.breedDateActual)}
-                            expectedValue={expectedBreed}
+                          <DatePicker
+                            value={normalizeDateISO(effective.breedDateActual) ?? ""}
+                            defaultDate={expectedBreed ?? undefined}
                             readOnly={!canEditDates}
                             showIcon={canEditDates}
                             onChange={(e) => {
@@ -6169,6 +5834,7 @@ function PlanDetailsView(props: {
                                 setDraftLive({ breedDateActual: null });
                                 return;
                               }
+                              if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return;
                               warnIfSequenceBroken("breedDateActual", raw);
                               setDraftLive({ breedDateActual: raw });
                             }}
@@ -6190,9 +5856,9 @@ function PlanDetailsView(props: {
                       <div>
                         <div className="text-[10px] uppercase text-secondary tracking-wide mb-1">Birth Date</div>
                         <div className="flex items-center gap-2">
-                          <CalendarInput
-                            value={normalizeDateISO(effective.birthDateActual)}
-                            expectedValue={expectedBirth}
+                          <DatePicker
+                            value={normalizeDateISO(effective.birthDateActual) ?? ""}
+                            defaultDate={expectedBirth ?? undefined}
                             readOnly={!canEditDates}
                             showIcon={canEditDates}
                             onChange={(e) => {
@@ -6202,6 +5868,7 @@ function PlanDetailsView(props: {
                                 setDraftLive({ birthDateActual: null });
                                 return;
                               }
+                              if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return;
                               warnIfSequenceBroken("birthDateActual", raw);
                               setDraftLive({ birthDateActual: raw });
                             }}
@@ -6236,9 +5903,9 @@ function PlanDetailsView(props: {
                       <div>
                         <div className="text-[10px] uppercase text-secondary tracking-wide mb-1">Weaned Date</div>
                       <div className="flex items-center gap-2">
-                        <CalendarInput
-                          value={normalizeDateISO(effective.weanedDateActual)}
-                          expectedValue={expectedWeaned}
+                        <DatePicker
+                          value={normalizeDateISO(effective.weanedDateActual) ?? ""}
+                          defaultDate={expectedWeaned ?? undefined}
                           readOnly={!canEditDates}
                           showIcon={canEditDates}
                           onChange={(e) => {
@@ -6248,6 +5915,7 @@ function PlanDetailsView(props: {
                               setDraftLive({ weanedDateActual: null });
                               return;
                             }
+                            if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return;
                             warnIfSequenceBroken("weanedDateActual", raw);
                             setDraftLive({ weanedDateActual: raw });
                           }}
@@ -6269,9 +5937,9 @@ function PlanDetailsView(props: {
                     <div>
                         <div className="text-[10px] uppercase text-secondary tracking-wide mb-1">Placement Start</div>
                       <div className="flex items-center gap-2">
-                        <CalendarInput
-                          value={normalizeDateISO(effective.placementStartDateActual)}
-                          expectedValue={expectedPlacementStart}
+                        <DatePicker
+                          value={normalizeDateISO(effective.placementStartDateActual) ?? ""}
+                          defaultDate={expectedPlacementStart ?? undefined}
                           readOnly={!canEditDates}
                           showIcon={canEditDates}
                           onChange={(e) => {
@@ -6281,6 +5949,7 @@ function PlanDetailsView(props: {
                               setDraftLive({ placementStartDateActual: null });
                               return;
                             }
+                            if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return;
                             warnIfSequenceBroken("placementStartDateActual", raw);
                             setDraftLive({ placementStartDateActual: raw });
                           }}
@@ -6300,13 +5969,13 @@ function PlanDetailsView(props: {
                       </div>
                     </div>
 
-                    {/* Row 4 - Placement Completed */}
+                    {/* Row 4 - Placement Completed & Plan Completed */}
                     <div>
                         <div className="text-[10px] uppercase text-secondary tracking-wide mb-1">Placement Completed</div>
                       <div className="flex items-center gap-2">
-                        <CalendarInput
-                          value={normalizeDateISO(effective.placementCompletedDateActual)}
-                          expectedValue={expectedPlacementCompleted}
+                        <DatePicker
+                          value={normalizeDateISO(effective.placementCompletedDateActual) ?? ""}
+                          defaultDate={expectedPlacementCompleted ?? undefined}
                           readOnly={!canEditDates}
                           showIcon={canEditDates}
                           onChange={(e) => {
@@ -6316,6 +5985,7 @@ function PlanDetailsView(props: {
                               setDraftLive({ placementCompletedDateActual: null });
                               return;
                             }
+                            if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return;
                             warnIfSequenceBroken("placementCompletedDateActual", raw);
                             setDraftLive({ placementCompletedDateActual: raw });
                           }}
@@ -6334,13 +6004,11 @@ function PlanDetailsView(props: {
                         )}
                       </div>
                     </div>
-
-                    {/* Row 4 - Plan Completed */}
-                    <div className="col-span-2">
+                    <div>
                         <div className="text-[10px] uppercase text-secondary tracking-wide mb-1">Plan Completed</div>
                       <div className="flex items-center gap-2">
-                        <CalendarInput
-                          value={normalizeDateISO(effective.completedDateActual)}
+                        <DatePicker
+                          value={normalizeDateISO(effective.completedDateActual) ?? ""}
                           readOnly={!canEditCompletedActual}
                           showIcon={canEditCompletedActual}
                           onChange={(e) => {
@@ -6350,10 +6018,11 @@ function PlanDetailsView(props: {
                               setDraftLive({ completedDateActual: null });
                               return;
                             }
+                            if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return;
                             warnIfSequenceBroken("completedDateActual", raw);
                             setDraftLive({ completedDateActual: raw });
                           }}
-                          className="max-w-[200px]"
+                          className="flex-1"
                           inputClassName={dateInputCls}
                           placeholder="mm/dd/yyyy"
                         />
