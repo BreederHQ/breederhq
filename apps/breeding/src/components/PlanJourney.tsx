@@ -136,10 +136,22 @@ export function PlanJourney({
   const formatDateDisplay = (dateStr: string | null): string => {
     if (!dateStr) return "";
     try {
-      const date = new Date(dateStr + "T00:00:00");
+      // Extract YYYY-MM-DD from either date-only string or ISO timestamp
+      const dateOnly = dateStr.slice(0, 10); // Gets "YYYY-MM-DD" from both formats
+      const [year, month, day] = dateOnly.split("-").map(Number);
+
+      if (!year || !month || !day) return "";
+
+      // Create date using local timezone components to avoid UTC shift
+      const date = new Date(year, month - 1, day);
+
+      // Check if date is valid
+      if (isNaN(date.getTime())) {
+        return "";
+      }
       return date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
     } catch {
-      return dateStr;
+      return "";
     }
   };
 

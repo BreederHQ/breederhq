@@ -87,9 +87,25 @@ export function toBackendStatus(status: Status | string): BackendStatus {
 }
 
 /** Convert backend API status to frontend value */
-export function fromBackendStatus(status: BackendStatus | string): Status {
+export function fromBackendStatus(
+  status: BackendStatus | string,
+  context?: { placementStartDateActual?: string | null; placementCompletedDateActual?: string | null }
+): Status {
   const normalized = (status ?? "").toUpperCase() as BackendStatus;
-  return BACKEND_TO_STATUS[normalized] ?? (normalized as Status);
+  const baseStatus = BACKEND_TO_STATUS[normalized] ?? (normalized as Status);
+
+  // Special handling for PLACEMENT: determine if PLACEMENT_STARTED or PLACEMENT_COMPLETED
+  // based on whether placement has been completed
+  if (normalized === "PLACEMENT" && context) {
+    // If placement completed date exists, show PLACEMENT_COMPLETED phase
+    if (context.placementCompletedDateActual) {
+      return "PLACEMENT_COMPLETED";
+    }
+    // Otherwise, show PLACEMENT_STARTED phase
+    return "PLACEMENT_STARTED";
+  }
+
+  return baseStatus;
 }
 
 export function deriveBreedingStatus(p: {

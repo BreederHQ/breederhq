@@ -118,6 +118,11 @@ function asISODateOnly(v: unknown): string | null {
     // Already YYYY-MM-DD
     if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
 
+    // If it's an ISO timestamp (YYYY-MM-DDTHH:mm:ss.sssZ), extract just the date part
+    if (/^\d{4}-\d{2}-\d{2}T/.test(s)) {
+      return s.slice(0, 10);
+    }
+
     // Parse as local date to avoid timezone issues
     const dt = new Date(s);
     if (!isNaN(dt.getTime())) {
@@ -860,7 +865,10 @@ function planToRow(p: any): PlanRow {
   return {
     id: p.id,
     name: p.name,
-    status: fromBackendStatus(p.status),
+    status: fromBackendStatus(p.status, {
+      placementStartDateActual: p.placementStartDateActual,
+      placementCompletedDateActual: p.placementCompletedDateActual,
+    }),
     species: toUiSpecies(p.species),
 
     damId: p.dam?.id ?? null,
@@ -2397,6 +2405,7 @@ export default function AppBreeding() {
             damId: merged.damId,
             sireId: merged.sireId,
             lockedCycleStart: merged.lockedCycleStart,
+            status: current?.status ?? null, // Preserve current explicit status
             cycleStartDateActual: normalizedDraft.cycleStartDateActual !== undefined ? normalizedDraft.cycleStartDateActual : (current?.cycleStartDateActual ?? null),
             breedDateActual: normalizedDraft.breedDateActual !== undefined ? normalizedDraft.breedDateActual : (current?.breedDateActual ?? null),
             birthDateActual: normalizedDraft.birthDateActual !== undefined ? normalizedDraft.birthDateActual : (current?.birthDateActual ?? null),
@@ -4631,17 +4640,19 @@ function PlanDetailsView(props: {
     setPendingSave(true);
     try {
       await requestSave();
-      // On successful save, update the persisted snapshot, clear draft, and clear pending state
-      setPersistedSnapshot(buildPlanSnapshot({ ...row, ...draftRef.current }));
+      // On successful save, clear draft and pending state
+      // The useEffect at line 3704 will update the persisted snapshot when the row prop updates
       draftRef.current = {};
       setDraftTick((t) => t + 1);
+      setDraft({});
       setPendingSave(false);
+      pendingSaveRef.current = false; // Sync update for ref-based checks
     } catch (error) {
       // On error, clear pending but keep isDirty true
       setPendingSave(false);
       throw error;
     }
-  }, [requestSave, row]);
+  }, [requestSave, setDraft]);
 
   // Wrap close to check for unsaved changes
   const handleClose = React.useCallback(async () => {
@@ -4960,6 +4971,20 @@ function PlanDetailsView(props: {
                     console.error("[Breeding] Validation failed:", validationErrors);
                     alert(validationErrors.join("\n"));
                     return;
+                  }
+
+                  // Backend requires all milestone dates up to the target phase
+                  // Include them in the payload even if they weren't just edited
+                  if (toPhase === "PLACEMENT_COMPLETED" || toPhase === "COMPLETE") {
+                    // Ensure all dates through placement are included
+                    if (effectiveCycleStart) payload.cycleStartDateActual = effectiveCycleStart;
+                    if (effectiveBreedDate) payload.breedDateActual = effectiveBreedDate;
+                    if (effectiveBirthDate) payload.birthDateActual = effectiveBirthDate;
+                    if (effectiveWeanedDate) payload.weanedDateActual = effectiveWeanedDate;
+                    if (effectivePlacementStart) payload.placementStartDateActual = effectivePlacementStart;
+                  }
+                  if (toPhase === "COMPLETE") {
+                    if (effectivePlacementCompleted) payload.placementCompletedDateActual = effectivePlacementCompleted;
                   }
 
                   console.log("[Breeding] Advance phase payload:", payload);
