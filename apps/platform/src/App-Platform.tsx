@@ -21,6 +21,7 @@ import AppMarketing from "@bhq/marketing/App-Marketing";
 import AppFinance from "@bhq/finance/App-Finance";
 import AdminModule from "@bhq/admin/App-Admin";
 import AppWaitlist from "@bhq/waitlist/App-Waitlist";
+import AppBloodlines from "@bhq/bloodlines/App-Bloodlines";
 import { MarketplaceEmbedded } from "@bhq/marketplace";
 import DashboardPage from "./pages/Dashboard";
 
@@ -33,7 +34,7 @@ import NotificationsDropdown, { type Notification } from "./components/Notificat
 import QuotaWarningBanner from "./components/QuotaWarningBanner";
 
 // Lightweight "current module" state (key + label)
-type ActiveModule = { key: "dashboard" | "contacts" | "animals" | "breeding" | "offspring" | "waitlist" | "marketing" | "marketplace" | "finance" | "admin"; label: string };
+type ActiveModule = { key: "dashboard" | "contacts" | "animals" | "breeding" | "offspring" | "waitlist" | "bloodlines" | "marketing" | "marketplace" | "finance" | "admin"; label: string };
 const DEFAULT_MODULE: ActiveModule = { key: "dashboard", label: "Dashboard" };
 
 type AuthState = {
@@ -76,6 +77,7 @@ function RouteView() {
   if (p === "/breeding" || p.startsWith("/breeding")) return <AppBreeding />;
   if (p === "/offspring" || p.startsWith("/offspring")) return <AppOffspring />;
   if (p === "/waitlist" || p.startsWith("/waitlist")) return <AppWaitlist />;
+  if (p === "/bloodlines" || p.startsWith("/bloodlines")) return <AppBloodlines />;
   if (p === "/marketing" || p.startsWith("/marketing")) return <AppMarketing />;
   if (p === "/marketplace" || p.startsWith("/marketplace")) return <MarketplaceEmbedded />;
   if (p === "/finance" || p.startsWith("/finance")) return <AppFinance />;
@@ -364,6 +366,7 @@ export default function AppPlatform() {
               { key: "breeding", label: "Breeding", href: "/breeding", icon: "breeding" },
               { key: "offspring", label: "Offspring", href: "/offspring", icon: "offspring" },
               { key: "waitlist", label: "Waitlist", href: "/waitlist", icon: "waitlist" },
+              { key: "bloodlines", label: "Bloodlines", href: "/bloodlines" },
               { key: "marketing", label: "Marketing", href: "/marketing" },
               { key: "marketplace", label: "Marketplace", href: "/marketplace", icon: "marketplace" },
               { key: "finance", label: "Finance", href: "/finance", icon: "finance" },

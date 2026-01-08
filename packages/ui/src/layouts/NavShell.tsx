@@ -93,6 +93,7 @@ function emojiFor(label: string) {
   if (k.includes("finance")) return "💰";
   if (k.includes("marketplace")) return "🛒";
   if (k.includes("marketing")) return "📣";
+  if (k.includes("bloodline")) return "🏆";
   if (k.includes("breed")) return "🧬";
   if (k.includes("calendar")) return "📅";
   if (k.includes("plan")) return "🗂️";
@@ -381,7 +382,7 @@ export const NavShell: React.FC<NavShellProps> = ({
         <div className="flex gap-4">
           <aside className={cls("shrink-0 transition-all", railOpen ? "w-56" : "w-[72px]")}>
             <nav className="rounded-2xl border border-hairline bg-surface p-1.5">
-              {(items && items.length ? items : defaultItems).map(it => {
+              {navItems.map(it => {
                 const isActive = activeKey === it.key;
                 const compact = !railOpen;
 
@@ -401,7 +402,9 @@ export const NavShell: React.FC<NavShellProps> = ({
                     )}
                   >
                     <span className="h-8 w-8 shrink-0 flex items-center justify-center">
-                      {it.icon ?? <span aria-hidden className="text-[28px] leading-none">{emojiFor(it.label)}</span>}
+                      {typeof it.icon === "object" && it.icon !== null
+                        ? it.icon
+                        : <span aria-hidden className="text-[28px] leading-none">{emojiFor(it.label)}</span>}
                     </span>
 
                     {railOpen && <span className="text-[20px] font-normal">{it.label}</span>}

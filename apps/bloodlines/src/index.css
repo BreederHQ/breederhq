@@ -1,0 +1,37 @@
+/* 1) Load BHQ design-system FIRST so PostCSS is happy and tokens exist */
+@import "@bhq/ui/bhq.css";
+
+/* 2) Tailwind v3 directives */
+@tailwind base;
+@tailwind components;
+
+
+/* 3) Library component styles (tables + footer) */
+@import "@bhq/ui/styles/table.css";
+@import "@bhq/ui/styles/table-footer.css";
+
+/* 4) Tailwind utilities */
+@tailwind utilities;
+
+/* Ensure the app's mount has sane height, and body can scroll */
+html, body { min-height: 100%; }
+#bloodlines-root, #root, #app { min-height: 100vh; display: block; }
+
+/* ===== Overlay layer (for all portals) ===== */
+#overlays-root {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483647; /* max */
+  pointer-events: none; /* toggled to 'auto' while overlays are open */
+}
+
+/* The shared table layout helpers */
+.bhq-page {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+
+.bhq-section-fixed {
+  flex: 0 0 auto;
+}

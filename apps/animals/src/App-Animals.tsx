@@ -39,8 +39,12 @@ import { toast } from "@bhq/ui/atoms/Toast";
 import "@bhq/ui/styles/table.css";
 import "@bhq/ui/styles/datefield.css";
 import { makeApi } from "./api";
-import { MoreHorizontal, Download } from "lucide-react";
+import { MoreHorizontal, Download, Trophy } from "lucide-react";
 import { LineageTab } from "./components/LineageTab";
+import { TitlesTab } from "./components/TitlesTab";
+import { CompetitionsTab } from "./components/CompetitionsTab";
+import { ProducingRecordSection } from "./components/ProducingRecordSection";
+import { GeneticsImportDialog } from "@bhq/ui/components/GeneticsImport";
 
 import {
   normalizeCycleStartsAsc,
@@ -200,6 +204,8 @@ type AnimalRow = {
   lastCycle?: string | null;
   cycleStartDates?: string[];
   femaleCycleLenOverrideDays?: number | null;
+  titlePrefix?: string | null;
+  titleSuffix?: string | null;
 };
 
 type ProgramFlags = {
@@ -3583,6 +3589,7 @@ function GeneticsTab({
   const [loading, setLoading] = React.useState(true);
   const [saving, setSaving] = React.useState(false);
   const [editData, setEditData] = React.useState<GeneticData>({});
+  const [showImportDialog, setShowImportDialog] = React.useState(false);
 
   // Species-specific locus definitions - comprehensive genetic markers
   const getSpeciesLoci = React.useCallback((species: string) => {
@@ -3598,7 +3605,7 @@ function GeneticsTab({
           { locus: "K", locusName: "Black Extension", description: "Dominant black override (KB=dominant black, kbr=brindle, ky=allows agouti)" },
           { locus: "M", locusName: "Merle", description: "Creates merle pattern - WARNING: M/M can cause health issues (M=merle, m=non-merle)" },
           { locus: "S", locusName: "White Spotting", description: "White markings and patterns (S=solid, sp=piebald, sw=extreme white)" },
-          { locus: "H", locusName: "Harlequin", description: "Modifies merle to create harlequin pattern in Great Danes (H=harlequin, h=non-harlequin)" },
+          { locus: "H", locusName: "Harlequin", description: "Modifies merle to create harlequin pattern in Great Danes (H=harlequin, h=non-harlequin)", breedSpecific: "Great Dane" },
           { locus: "Em", locusName: "Mask", description: "Black mask on face (Em=mask, E=no mask)" },
         ],
         coatType: [
@@ -3607,7 +3614,7 @@ function GeneticsTab({
           { locus: "Cu", locusName: "Curly", description: "Coat curl/wave (Cu/Cu=curly, Cu/+=wavy/curly, +/+=straight)" },
           { locus: "Sd", locusName: "Shedding", description: "Shedding propensity (Sd/Sd=low shed, Sd/sd=moderate, sd/sd=normal shedding)" },
           { locus: "IC", locusName: "Improper Coat", description: "Coat quality marker (IC/IC=improper coat, IC/N=carrier, N/N=proper coat)" },
-          { locus: "L4", locusName: "Fluffy Gene (L4)", description: "Long hair in French Bulldogs and other breeds (L4/L4=fluffy, L4/N=carrier, N/N=normal)" },
+          { locus: "L4", locusName: "Fluffy Gene (L4)", description: "Long hair in French Bulldogs and other breeds (L4/L4=fluffy, L4/N=carrier, N/N=normal)", breedSpecific: "French Bulldog" },
         ],
         physicalTraits: [
           { locus: "IGF1", locusName: "Size", description: "Insulin-like growth factor - related to body size in dogs" },
@@ -3623,31 +3630,31 @@ function GeneticsTab({
           { locus: "DM", locusName: "Degenerative Myelopathy", description: "Progressive spinal cord disease causing hind leg weakness" },
           { locus: "PRA", locusName: "Progressive Retinal Atrophy", description: "Progressive blindness - multiple forms exist" },
           { locus: "vWD", locusName: "Von Willebrand Disease", description: "Blood clotting disorder - types I, II, and III" },
-          { locus: "EIC", locusName: "Exercise-Induced Collapse", description: "Episodes of weakness/collapse after intense exercise" },
-          { locus: "DCM", locusName: "Dilated Cardiomyopathy", description: "Heart muscle disease - genetic variants identified in some breeds" },
+          { locus: "EIC", locusName: "Exercise-Induced Collapse", description: "Episodes of weakness/collapse after intense exercise", breedSpecific: "Labrador Retriever, Chesapeake Bay Retriever" },
+          { locus: "DCM", locusName: "Dilated Cardiomyopathy", description: "Heart muscle disease - genetic variants identified in some breeds", breedSpecific: "Doberman, Boxer, Great Dane" },
           { locus: "HUU", locusName: "Hyperuricosuria", description: "Elevated uric acid levels leading to bladder/kidney stones" },
-          { locus: "CEA", locusName: "Collie Eye Anomaly", description: "Eye developmental defect in Collies and related breeds" },
-          { locus: "NCL", locusName: "Neuronal Ceroid Lipofuscinosis", description: "Fatal neurological storage disease - multiple forms" },
-          { locus: "GR_PRA1", locusName: "Golden Retriever PRA 1", description: "Progressive retinal atrophy variant in Golden Retrievers" },
-          { locus: "GR_PRA2", locusName: "Golden Retriever PRA 2", description: "Second PRA variant identified in Golden Retrievers" },
+          { locus: "CEA", locusName: "Collie Eye Anomaly", description: "Eye developmental defect in Collies and related breeds", breedSpecific: "Collie, Border Collie, Australian Shepherd" },
+          { locus: "NCL", locusName: "Neuronal Ceroid Lipofuscinosis", description: "Fatal neurological storage disease - multiple forms", breedSpecific: "Multiple breeds" },
+          { locus: "GR_PRA1", locusName: "Golden Retriever PRA 1", description: "Progressive retinal atrophy variant in Golden Retrievers", breedSpecific: "Golden Retriever" },
+          { locus: "GR_PRA2", locusName: "Golden Retriever PRA 2", description: "Second PRA variant identified in Golden Retrievers", breedSpecific: "Golden Retriever" },
           { locus: "CMR", locusName: "Canine Multifocal Retinopathy", description: "Eye condition causing retinal folds and detachment" },
           { locus: "Ich", locusName: "Ichthyosis", description: "Skin scaling disorder - common in Golden Retrievers" },
-          { locus: "ICT_A", locusName: "Ichthyosis Type A (Golden Retriever)", description: "Breed-specific skin scaling disorder in Golden Retrievers" },
-          { locus: "HNPK", locusName: "Hereditary Nasal Parakeratosis", description: "Dry, crusty nose condition - common in Labradors" },
-          { locus: "SD2", locusName: "Skeletal Dysplasia 2 (Dwarfism)", description: "Dwarfism causing shortened limbs in Labrador Retrievers" },
-          { locus: "CNM", locusName: "Centronuclear Myopathy", description: "Muscle weakness disorder in Labrador Retrievers" },
-          { locus: "RD_OSD", locusName: "Retinal Dysplasia/Oculoskeletal Dysplasia", description: "Eye and skeletal abnormalities - common in Labrador Retrievers" },
-          { locus: "JHC", locusName: "Juvenile Hereditary Cataracts", description: "Early-onset cataracts in various breeds" },
-          { locus: "CMR1", locusName: "Canine Multifocal Retinopathy 1", description: "Specific CMR variant causing retinal lesions" },
-          { locus: "Cystinuria", locusName: "Cystinuria (Urinary stones)", description: "Amino acid metabolism disorder causing urinary stones" },
-          { locus: "EFS", locusName: "Episodic Falling Syndrome (Cavaliers)", description: "Muscle hypertonicity episodes in Cavalier King Charles Spaniels" },
-          { locus: "CC_DEW", locusName: "Curly Coat/Dry Eye Syndrome", description: "Combined coat and eye condition in Cavaliers" },
-          { locus: "HSF4", locusName: "Hereditary Cataracts (HSF4)", description: "Cataracts linked to HSF4 gene - multiple breeds affected" },
-          { locus: "TNS", locusName: "Trapped Neutrophil Syndrome", description: "Immune system disorder in Border Collies" },
-          { locus: "CL_BC", locusName: "Neuronal Ceroid Lipofuscinosis (Border Collie)", description: "Fatal neurological storage disease in Border Collies" },
-          { locus: "IGS", locusName: "Imerslund-Grasbeck Syndrome", description: "Vitamin B12 malabsorption disorder" },
-          { locus: "FN", locusName: "Familial Nephropathy", description: "Progressive kidney disease in Cocker Spaniels and other breeds" },
-          { locus: "PFK", locusName: "Phosphofructokinase Deficiency", description: "Enzyme deficiency causing muscle problems and anemia" },
+          { locus: "ICT_A", locusName: "Ichthyosis Type A (Golden Retriever)", description: "Breed-specific skin scaling disorder in Golden Retrievers", breedSpecific: "Golden Retriever" },
+          { locus: "HNPK", locusName: "Hereditary Nasal Parakeratosis", description: "Dry, crusty nose condition - common in Labradors", breedSpecific: "Labrador Retriever" },
+          { locus: "SD2", locusName: "Skeletal Dysplasia 2 (Dwarfism)", description: "Dwarfism causing shortened limbs in Labrador Retrievers", breedSpecific: "Labrador Retriever" },
+          { locus: "CNM", locusName: "Centronuclear Myopathy", description: "Muscle weakness disorder in Labrador Retrievers", breedSpecific: "Labrador Retriever" },
+          { locus: "RD_OSD", locusName: "Retinal Dysplasia/Oculoskeletal Dysplasia", description: "Eye and skeletal abnormalities - common in Labrador Retrievers", breedSpecific: "Labrador Retriever" },
+          { locus: "JHC", locusName: "Juvenile Hereditary Cataracts", description: "Early-onset cataracts in various breeds", breedSpecific: "French Bulldog, Boston Terrier" },
+          { locus: "CMR1", locusName: "Canine Multifocal Retinopathy 1", description: "Specific CMR variant causing retinal lesions", breedSpecific: "French Bulldog" },
+          { locus: "Cystinuria", locusName: "Cystinuria (Urinary stones)", description: "Amino acid metabolism disorder causing urinary stones", breedSpecific: "French Bulldog, English Bulldog" },
+          { locus: "EFS", locusName: "Episodic Falling Syndrome (Cavaliers)", description: "Muscle hypertonicity episodes in Cavalier King Charles Spaniels", breedSpecific: "Cavalier King Charles Spaniel" },
+          { locus: "CC_DEW", locusName: "Curly Coat/Dry Eye Syndrome", description: "Combined coat and eye condition in Cavaliers", breedSpecific: "Cavalier King Charles Spaniel" },
+          { locus: "HSF4", locusName: "Hereditary Cataracts (HSF4)", description: "Cataracts linked to HSF4 gene - multiple breeds affected", breedSpecific: "Australian Shepherd, Boston Terrier" },
+          { locus: "TNS", locusName: "Trapped Neutrophil Syndrome", description: "Immune system disorder in Border Collies", breedSpecific: "Border Collie" },
+          { locus: "CL_BC", locusName: "Neuronal Ceroid Lipofuscinosis (Border Collie)", description: "Fatal neurological storage disease in Border Collies", breedSpecific: "Border Collie" },
+          { locus: "IGS", locusName: "Imerslund-Grasbeck Syndrome", description: "Vitamin B12 malabsorption disorder", breedSpecific: "Border Collie, Beagle" },
+          { locus: "FN", locusName: "Familial Nephropathy", description: "Progressive kidney disease in Cocker Spaniels and other breeds", breedSpecific: "Cocker Spaniel, English Springer Spaniel" },
+          { locus: "PFK", locusName: "Phosphofructokinase Deficiency", description: "Enzyme deficiency causing muscle problems and anemia", breedSpecific: "English Springer Spaniel, American Cocker Spaniel" },
           { locus: "GPRA", locusName: "Generalized Progressive Retinal Atrophy", description: "General form of progressive blindness across multiple breeds" },
         ],
       };
@@ -3666,7 +3673,7 @@ function GeneticsTab({
           { locus: "L", locusName: "Long Hair", description: "Hair length (L=short, l=long - longhair is recessive)" },
           { locus: "Mc", locusName: "Tabby Pattern", description: "Mackerel vs classic tabby (Mc=mackerel stripes, mc=classic/blotched)" },
           { locus: "R", locusName: "Rex/Curly", description: "Curly coat mutations (various rex genes in different breeds)" },
-          { locus: "Fd", locusName: "Fold Ears", description: "Scottish Fold ear mutation - WARNING: Fd/Fd causes severe cartilage problems" },
+          { locus: "Fd", locusName: "Fold Ears", description: "Scottish Fold ear mutation - WARNING: Fd/Fd causes severe cartilage problems", breedSpecific: "Scottish Fold" },
         ],
         physicalTraits: [
           { locus: "Pd", locusName: "Polydactyl", description: "Extra toes (Pd=polydactyl, pd=normal)" },
@@ -3675,16 +3682,16 @@ function GeneticsTab({
           { locus: "PKD", locusName: "Polycystic Kidney Disease", description: "Kidney cysts - common in Persians and related breeds" },
           { locus: "HCM", locusName: "Hypertrophic Cardiomyopathy", description: "Heart muscle thickening - genetic tests available for some breeds" },
           { locus: "PRA", locusName: "Progressive Retinal Atrophy", description: "Progressive blindness - multiple forms in different breeds" },
-          { locus: "SMA", locusName: "Spinal Muscular Atrophy", description: "Spinal cord motor neuron degeneration in Maine Coons" },
+          { locus: "SMA", locusName: "Spinal Muscular Atrophy", description: "Spinal cord motor neuron degeneration in Maine Coons", breedSpecific: "Maine Coon" },
           { locus: "PK_Def", locusName: "Pyruvate Kinase Deficiency", description: "Red blood cell enzyme deficiency causing anemia" },
-          { locus: "PRA_pd", locusName: "PRA (Persian variant)", description: "Progressive retinal atrophy variant specific to Persians" },
-          { locus: "HCM_MC", locusName: "HCM (Maine Coon MYBPC3)", description: "Hypertrophic cardiomyopathy variant in Maine Coons" },
-          { locus: "HCM_RD", locusName: "HCM (Ragdoll MYBPC3)", description: "Hypertrophic cardiomyopathy variant in Ragdolls" },
-          { locus: "GM1", locusName: "Gangliosidosis Type 1", description: "Fatal lysosomal storage disease in cats" },
-          { locus: "PRA_rdAc", locusName: "PRA (Abyssinian/Somali)", description: "Progressive retinal atrophy in Abyssinian and Somali cats" },
-          { locus: "Amyloidosis", locusName: "Renal Amyloidosis", description: "Protein deposits in kidneys - common in Abyssinians and Siamese" },
+          { locus: "PRA_pd", locusName: "PRA (Persian variant)", description: "Progressive retinal atrophy variant specific to Persians", breedSpecific: "Persian, Exotic Shorthair" },
+          { locus: "HCM_MC", locusName: "HCM (Maine Coon MYBPC3)", description: "Hypertrophic cardiomyopathy variant in Maine Coons", breedSpecific: "Maine Coon" },
+          { locus: "HCM_RD", locusName: "HCM (Ragdoll MYBPC3)", description: "Hypertrophic cardiomyopathy variant in Ragdolls", breedSpecific: "Ragdoll" },
+          { locus: "GM1", locusName: "Gangliosidosis Type 1", description: "Fatal lysosomal storage disease in cats", breedSpecific: "Siamese, Korat" },
+          { locus: "PRA_rdAc", locusName: "PRA (Abyssinian/Somali)", description: "Progressive retinal atrophy in Abyssinian and Somali cats", breedSpecific: "Abyssinian, Somali" },
+          { locus: "Amyloidosis", locusName: "Renal Amyloidosis", description: "Protein deposits in kidneys - common in Abyssinians and Siamese", breedSpecific: "Abyssinian, Siamese" },
           { locus: "FCKS", locusName: "Flat-Chested Kitten Syndrome", description: "Chest deformity in kittens affecting breathing" },
-          { locus: "OCD", locusName: "Osteochondrodysplasia (Fold warning)", description: "Cartilage/bone abnormality - WARNING: Fd/Fd causes severe issues" },
+          { locus: "OCD", locusName: "Osteochondrodysplasia (Fold warning)", description: "Cartilage/bone abnormality - WARNING: Fd/Fd causes severe issues", breedSpecific: "Scottish Fold" },
         ],
         bloodType: [
           { locus: "BloodType", locusName: "Blood Type (A, B, AB)", description: "Critical for breeding - Type B queens bred to Type A toms risk neonatal isoerythrolysis" },
@@ -3709,22 +3716,22 @@ function GeneticsTab({
           { locus: "nCh", locusName: "Chestnut Factor", description: "Hidden red gene - indicates carrier of chestnut/sorrel (nCh/nCh=chestnut carrier)" },
         ],
         health: [
-          { locus: "HYPP", locusName: "Hyperkalemic Periodic Paralysis", description: "Muscle disease in Quarter Horse lines - trace to Impressive" },
-          { locus: "GBED", locusName: "Glycogen Branching Enzyme Deficiency", description: "Fatal metabolic disorder in Quarter Horses" },
-          { locus: "HERDA", locusName: "Hereditary Equine Regional Dermal Asthenia", description: "Skin fragility in Quarter Horses" },
+          { locus: "HYPP", locusName: "Hyperkalemic Periodic Paralysis", description: "Muscle disease in Quarter Horse lines - trace to Impressive", breedSpecific: "Quarter Horse" },
+          { locus: "GBED", locusName: "Glycogen Branching Enzyme Deficiency", description: "Fatal metabolic disorder in Quarter Horses", breedSpecific: "Quarter Horse, Paint" },
+          { locus: "HERDA", locusName: "Hereditary Equine Regional Dermal Asthenia", description: "Skin fragility in Quarter Horses", breedSpecific: "Quarter Horse" },
           { locus: "OLWS", locusName: "Overo Lethal White Syndrome", description: "Lethal when homozygous (O/O) - foals born white, die within days" },
           { locus: "MH", locusName: "Malignant Hyperthermia", description: "Dangerous anesthesia reaction in Quarter Horses" },
           { locus: "PSSM", locusName: "Polysaccharide Storage Myopathy", description: "Muscle disorder - multiple types (PSSM1 and PSSM2)" },
           { locus: "IMM", locusName: "Immune-Mediated Myositis", description: "Rapid muscle wasting triggered by infection or vaccination" },
           { locus: "WFFS", locusName: "Warmblood Fragile Foal Syndrome", description: "Connective tissue disorder in Warmbloods" },
           { locus: "LWO", locusName: "Lethal White Overo", description: "Same as OLWS - frame overo homozygous lethal" },
-          { locus: "CA", locusName: "Cerebellar Abiotrophy", description: "Progressive neurological disease in Arabians and related breeds" },
-          { locus: "SCID", locusName: "Severe Combined Immunodeficiency", description: "Fatal immune system failure in Arabian foals" },
-          { locus: "LFS", locusName: "Lavender Foal Syndrome", description: "Fatal neurological disorder - foals born with dilute/lavender coat" },
-          { locus: "OAAM", locusName: "Occipitoatlantoaxial Malformation", description: "Vertebral malformation in Arabians" },
-          { locus: "Hydro", locusName: "Hydrocephalus (Friesian)", description: "Abnormal fluid accumulation in brain - common in Friesians" },
-          { locus: "FrDwarf", locusName: "Dwarfism (Friesian)", description: "Dwarfism disorder specific to Friesian horses" },
-          { locus: "JEB", locusName: "Junctional Epidermolysis Bullosa", description: "Fatal skin blistering disease - foals born with fragile skin" },
+          { locus: "CA", locusName: "Cerebellar Abiotrophy", description: "Progressive neurological disease in Arabians and related breeds", breedSpecific: "Arabian" },
+          { locus: "SCID", locusName: "Severe Combined Immunodeficiency", description: "Fatal immune system failure in Arabian foals", breedSpecific: "Arabian" },
+          { locus: "LFS", locusName: "Lavender Foal Syndrome", description: "Fatal neurological disorder - foals born with dilute/lavender coat", breedSpecific: "Arabian" },
+          { locus: "OAAM", locusName: "Occipitoatlantoaxial Malformation", description: "Vertebral malformation in Arabians", breedSpecific: "Arabian" },
+          { locus: "Hydro", locusName: "Hydrocephalus (Friesian)", description: "Abnormal fluid accumulation in brain - common in Friesians", breedSpecific: "Friesian" },
+          { locus: "FrDwarf", locusName: "Dwarfism (Friesian)", description: "Dwarfism disorder specific to Friesian horses", breedSpecific: "Friesian" },
+          { locus: "JEB", locusName: "Junctional Epidermolysis Bullosa", description: "Fatal skin blistering disease - foals born with fragile skin", breedSpecific: "Belgian, other Draft breeds" },
         ],
       };
     } else if (sp === "RABBIT") {
@@ -3909,6 +3916,70 @@ function GeneticsTab({
         </div>
       </div>
 
+      {/* Breed-Specific Tests Tip */}
+      <div className="text-sm text-secondary bg-blue-500/5 border border-blue-500/20 rounded-lg p-3">
+        <div className="flex items-start gap-2">
+          <span>💡</span>
+          <div>
+            <span className="font-medium">Tip:</span> Not sure which tests apply to your breed?
+            Check with your genetic testing provider (Embark, Wisdom Panel, UC Davis VGL, etc.) for breed-specific recommendations.
+          </div>
+        </div>
+      </div>
+
+      {/* Import from Lab Section */}
+      <SectionCard title={<SectionTitle icon="📤">Import from Lab</SectionTitle>}>
+        <div className="space-y-3">
+          <div className="text-sm text-secondary">
+            Have genetic test results from Embark or another provider? Import them directly to auto-fill genetic data.
+          </div>
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={() => setShowImportDialog(true)}
+          >
+            Import Genetic Test Results
+          </Button>
+          <div className="text-xs text-secondary">
+            Supported: Embark (CSV/TSV). More providers coming soon.
+          </div>
+        </div>
+      </SectionCard>
+
+      {/* Genetics Import Dialog */}
+      <GeneticsImportDialog
+        open={showImportDialog}
+        onClose={() => setShowImportDialog(false)}
+        animalId={animal.id}
+        animalName={animal.name}
+        animalSpecies={animal.species || "DOG"}
+        onImportComplete={(result) => {
+          // Reload genetic data after import
+          setShowImportDialog(false);
+          setLoading(true);
+          fetch(`/api/v1/animals/${animal.id}/genetics`, { credentials: "include" })
+            .then((res) => res.json())
+            .then((data) => {
+              const mapped: GeneticData = {
+                coatColor: data.coatColor || [],
+                health: data.health || [],
+                coatType: data.coatType || [],
+                physicalTraits: data.physicalTraits || [],
+                eyeColor: data.eyeColor || [],
+                otherTraits: data.otherTraits || [],
+                testResults: {
+                  testLab: data.testProvider || "",
+                  testDate: data.testDate ? data.testDate.split("T")[0] : "",
+                  testId: data.testId || "",
+                },
+              };
+              setGeneticData(mapped);
+              setEditData(mapped);
+            })
+            .finally(() => setLoading(false));
+        }}
+      />
+
       {/* Genetic Test Results */}
       <SectionCard title={<SectionTitle icon="🧬">Genetic Test Results</SectionTitle>}>
         <div className="space-y-3">
@@ -3981,8 +4052,9 @@ function GeneticsTab({
             Record genotype information for coat color loci. This data will be used in the Breeding module's Genetics Lab for pairing analysis.
           </div>
 
+          {/* Common Coat Color Markers */}
           <div className="grid grid-cols-1 gap-3">
-            {loci.coatColor.map((locusInfo) => (
+            {loci.coatColor.filter((l: any) => !l.breedSpecific).map((locusInfo: any) => (
               <div key={locusInfo.locus} className="border border-hairline rounded-lg p-3 bg-surface">
                 <div className="font-semibold text-sm mb-1">{locusInfo.locus} - {locusInfo.locusName}</div>
                 <div className="text-xs text-secondary mb-2">{locusInfo.description}</div>
@@ -4036,6 +4108,74 @@ function GeneticsTab({
               </div>
             ))}
           </div>
+
+          {/* Breed-Specific Coat Color Markers - Collapsible */}
+          {loci.coatColor.filter((l: any) => l.breedSpecific).length > 0 && (
+            <details className="mt-4">
+              <summary className="cursor-pointer text-sm font-medium text-secondary hover:text-primary flex items-center gap-2">
+                <span>📋</span> Breed-Specific Markers ({loci.coatColor.filter((l: any) => l.breedSpecific).length})
+                <span className="text-xs text-secondary">(click to expand)</span>
+              </summary>
+              <div className="mt-3 space-y-3 pl-4 border-l-2 border-hairline">
+                {loci.coatColor.filter((l: any) => l.breedSpecific).map((locusInfo: any) => (
+                  <div key={locusInfo.locus} className="border border-hairline rounded-lg p-3 bg-surface">
+                    <div className="font-semibold text-sm mb-1">
+                      {locusInfo.locus} - {locusInfo.locusName}
+                      <span className="text-xs text-secondary font-normal ml-2">({locusInfo.breedSpecific})</span>
+                    </div>
+                    <div className="text-xs text-secondary mb-2">{locusInfo.description}</div>
+
+                    {mode === "view" ? (
+                      <div className="text-sm">
+                        Genotype: <span className="font-mono">{
+                          editData.coatColor?.find((l) => l.locus === locusInfo.locus)?.genotype || "Not tested"
+                        }</span>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-2 gap-2">
+                        <Input
+                          size="sm"
+                          placeholder="Allele 1"
+                          defaultValue={editData.coatColor?.find((l) => l.locus === locusInfo.locus)?.allele1 || ""}
+                          onChange={(e) => {
+                            const existing = editData.coatColor || [];
+                            const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
+                            const locusData = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
+                            const updated = { ...locusData, allele1: e.target.value };
+                            updated.genotype = `${updated.allele1 || "?"}/${updated.allele2 || "?"}`;
+
+                            const newCoatColor = locusIdx >= 0
+                              ? existing.map((l, i) => (i === locusIdx ? updated : l))
+                              : [...existing, updated];
+
+                            setEditData({ ...editData, coatColor: newCoatColor });
+                          }}
+                        />
+                        <Input
+                          size="sm"
+                          placeholder="Allele 2"
+                          defaultValue={editData.coatColor?.find((l) => l.locus === locusInfo.locus)?.allele2 || ""}
+                          onChange={(e) => {
+                            const existing = editData.coatColor || [];
+                            const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
+                            const locusData = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
+                            const updated = { ...locusData, allele2: e.target.value };
+                            updated.genotype = `${updated.allele1 || "?"}/${updated.allele2 || "?"}`;
+
+                            const newCoatColor = locusIdx >= 0
+                              ? existing.map((l, i) => (i === locusIdx ? updated : l))
+                              : [...existing, updated];
+
+                            setEditData({ ...editData, coatColor: newCoatColor });
+                          }}
+                        />
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </details>
+          )}
         </div>
       </SectionCard>
 
@@ -4047,8 +4187,9 @@ function GeneticsTab({
               Record coat type traits including length, curl, furnishings (teddy bear face), and shedding propensity.
             </div>
 
+            {/* Common Coat Type Markers */}
             <div className="grid grid-cols-1 gap-3">
-              {loci.coatType.map((locusInfo) => (
+              {loci.coatType.filter((l: any) => !l.breedSpecific).map((locusInfo: any) => (
                 <div key={locusInfo.locus} className="border border-hairline rounded-lg p-3 bg-surface">
                   <div className="font-semibold text-sm mb-1">{locusInfo.locus} - {locusInfo.locusName}</div>
                   <div className="text-xs text-secondary mb-2">{locusInfo.description}</div>
@@ -4102,6 +4243,74 @@ function GeneticsTab({
                 </div>
               ))}
             </div>
+
+            {/* Breed-Specific Coat Type Markers - Collapsible */}
+            {loci.coatType.filter((l: any) => l.breedSpecific).length > 0 && (
+              <details className="mt-4">
+                <summary className="cursor-pointer text-sm font-medium text-secondary hover:text-primary flex items-center gap-2">
+                  <span>📋</span> Breed-Specific Markers ({loci.coatType.filter((l: any) => l.breedSpecific).length})
+                  <span className="text-xs text-secondary">(click to expand)</span>
+                </summary>
+                <div className="mt-3 space-y-3 pl-4 border-l-2 border-hairline">
+                  {loci.coatType.filter((l: any) => l.breedSpecific).map((locusInfo: any) => (
+                    <div key={locusInfo.locus} className="border border-hairline rounded-lg p-3 bg-surface">
+                      <div className="font-semibold text-sm mb-1">
+                        {locusInfo.locus} - {locusInfo.locusName}
+                        <span className="text-xs text-secondary font-normal ml-2">({locusInfo.breedSpecific})</span>
+                      </div>
+                      <div className="text-xs text-secondary mb-2">{locusInfo.description}</div>
+
+                      {mode === "view" ? (
+                        <div className="text-sm">
+                          Genotype: <span className="font-mono">{
+                            editData.coatType?.find((l) => l.locus === locusInfo.locus)?.genotype || "Not tested"
+                          }</span>
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-2 gap-2">
+                          <Input
+                            size="sm"
+                            placeholder="Allele 1"
+                            defaultValue={editData.coatType?.find((l) => l.locus === locusInfo.locus)?.allele1 || ""}
+                            onChange={(e) => {
+                              const existing = editData.coatType || [];
+                              const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
+                              const locusData = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
+                              const updated = { ...locusData, allele1: e.target.value };
+                              updated.genotype = `${updated.allele1 || "?"}/${updated.allele2 || "?"}`;
+
+                              const newCoatType = locusIdx >= 0
+                                ? existing.map((l, i) => (i === locusIdx ? updated : l))
+                                : [...existing, updated];
+
+                              setEditData({ ...editData, coatType: newCoatType });
+                            }}
+                          />
+                          <Input
+                            size="sm"
+                            placeholder="Allele 2"
+                            defaultValue={editData.coatType?.find((l) => l.locus === locusInfo.locus)?.allele2 || ""}
+                            onChange={(e) => {
+                              const existing = editData.coatType || [];
+                              const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
+                              const locusData = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
+                              const updated = { ...locusData, allele2: e.target.value };
+                              updated.genotype = `${updated.allele1 || "?"}/${updated.allele2 || "?"}`;
+
+                              const newCoatType = locusIdx >= 0
+                                ? existing.map((l, i) => (i === locusIdx ? updated : l))
+                                : [...existing, updated];
+
+                              setEditData({ ...editData, coatType: newCoatType });
+                            }}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </details>
+            )}
           </div>
         </SectionCard>
       )}
@@ -4114,8 +4323,9 @@ function GeneticsTab({
               Record genetic markers related to physical characteristics like size, tail type, and dewclaws.
             </div>
 
+            {/* Common Physical Traits Markers */}
             <div className="grid grid-cols-1 gap-3">
-              {loci.physicalTraits.map((locusInfo) => (
+              {loci.physicalTraits.filter((l: any) => !l.breedSpecific).map((locusInfo: any) => (
                 <div key={locusInfo.locus} className="border border-hairline rounded-lg p-3 bg-surface">
                   <div className="font-semibold text-sm mb-1">{locusInfo.locus} - {locusInfo.locusName}</div>
                   <div className="text-xs text-secondary mb-2">{locusInfo.description}</div>
@@ -4169,6 +4379,74 @@ function GeneticsTab({
                 </div>
               ))}
             </div>
+
+            {/* Breed-Specific Physical Traits Markers - Collapsible */}
+            {loci.physicalTraits.filter((l: any) => l.breedSpecific).length > 0 && (
+              <details className="mt-4">
+                <summary className="cursor-pointer text-sm font-medium text-secondary hover:text-primary flex items-center gap-2">
+                  <span>📋</span> Breed-Specific Markers ({loci.physicalTraits.filter((l: any) => l.breedSpecific).length})
+                  <span className="text-xs text-secondary">(click to expand)</span>
+                </summary>
+                <div className="mt-3 space-y-3 pl-4 border-l-2 border-hairline">
+                  {loci.physicalTraits.filter((l: any) => l.breedSpecific).map((locusInfo: any) => (
+                    <div key={locusInfo.locus} className="border border-hairline rounded-lg p-3 bg-surface">
+                      <div className="font-semibold text-sm mb-1">
+                        {locusInfo.locus} - {locusInfo.locusName}
+                        <span className="text-xs text-secondary font-normal ml-2">({locusInfo.breedSpecific})</span>
+                      </div>
+                      <div className="text-xs text-secondary mb-2">{locusInfo.description}</div>
+
+                      {mode === "view" ? (
+                        <div className="text-sm">
+                          Genotype: <span className="font-mono">{
+                            editData.physicalTraits?.find((l) => l.locus === locusInfo.locus)?.genotype || "Not tested"
+                          }</span>
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-2 gap-2">
+                          <Input
+                            size="sm"
+                            placeholder="Allele 1"
+                            defaultValue={editData.physicalTraits?.find((l) => l.locus === locusInfo.locus)?.allele1 || ""}
+                            onChange={(e) => {
+                              const existing = editData.physicalTraits || [];
+                              const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
+                              const locusData = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
+                              const updated = { ...locusData, allele1: e.target.value };
+                              updated.genotype = `${updated.allele1 || "?"}/${updated.allele2 || "?"}`;
+
+                              const newPhysicalTraits = locusIdx >= 0
+                                ? existing.map((l, i) => (i === locusIdx ? updated : l))
+                                : [...existing, updated];
+
+                              setEditData({ ...editData, physicalTraits: newPhysicalTraits });
+                            }}
+                          />
+                          <Input
+                            size="sm"
+                            placeholder="Allele 2"
+                            defaultValue={editData.physicalTraits?.find((l) => l.locus === locusInfo.locus)?.allele2 || ""}
+                            onChange={(e) => {
+                              const existing = editData.physicalTraits || [];
+                              const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
+                              const locusData = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
+                              const updated = { ...locusData, allele2: e.target.value };
+                              updated.genotype = `${updated.allele1 || "?"}/${updated.allele2 || "?"}`;
+
+                              const newPhysicalTraits = locusIdx >= 0
+                                ? existing.map((l, i) => (i === locusIdx ? updated : l))
+                                : [...existing, updated];
+
+                              setEditData({ ...editData, physicalTraits: newPhysicalTraits });
+                            }}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </details>
+            )}
           </div>
         </SectionCard>
       )}
@@ -4181,8 +4459,9 @@ function GeneticsTab({
               Record eye color genetic markers including blue eye variants.
             </div>
 
+            {/* Common Eye Color Markers */}
             <div className="grid grid-cols-1 gap-3">
-              {loci.eyeColor.map((locusInfo) => (
+              {loci.eyeColor.filter((l: any) => !l.breedSpecific).map((locusInfo: any) => (
                 <div key={locusInfo.locus} className="border border-hairline rounded-lg p-3 bg-surface">
                   <div className="font-semibold text-sm mb-1">{locusInfo.locus} - {locusInfo.locusName}</div>
                   <div className="text-xs text-secondary mb-2">{locusInfo.description}</div>
@@ -4236,6 +4515,74 @@ function GeneticsTab({
                 </div>
               ))}
             </div>
+
+            {/* Breed-Specific Eye Color Markers - Collapsible */}
+            {loci.eyeColor.filter((l: any) => l.breedSpecific).length > 0 && (
+              <details className="mt-4">
+                <summary className="cursor-pointer text-sm font-medium text-secondary hover:text-primary flex items-center gap-2">
+                  <span>📋</span> Breed-Specific Markers ({loci.eyeColor.filter((l: any) => l.breedSpecific).length})
+                  <span className="text-xs text-secondary">(click to expand)</span>
+                </summary>
+                <div className="mt-3 space-y-3 pl-4 border-l-2 border-hairline">
+                  {loci.eyeColor.filter((l: any) => l.breedSpecific).map((locusInfo: any) => (
+                    <div key={locusInfo.locus} className="border border-hairline rounded-lg p-3 bg-surface">
+                      <div className="font-semibold text-sm mb-1">
+                        {locusInfo.locus} - {locusInfo.locusName}
+                        <span className="text-xs text-secondary font-normal ml-2">({locusInfo.breedSpecific})</span>
+                      </div>
+                      <div className="text-xs text-secondary mb-2">{locusInfo.description}</div>
+
+                      {mode === "view" ? (
+                        <div className="text-sm">
+                          Genotype: <span className="font-mono">{
+                            editData.eyeColor?.find((l) => l.locus === locusInfo.locus)?.genotype || "Not tested"
+                          }</span>
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-2 gap-2">
+                          <Input
+                            size="sm"
+                            placeholder="Allele 1"
+                            defaultValue={editData.eyeColor?.find((l) => l.locus === locusInfo.locus)?.allele1 || ""}
+                            onChange={(e) => {
+                              const existing = editData.eyeColor || [];
+                              const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
+                              const locusData = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
+                              const updated = { ...locusData, allele1: e.target.value };
+                              updated.genotype = `${updated.allele1 || "?"}/${updated.allele2 || "?"}`;
+
+                              const newEyeColor = locusIdx >= 0
+                                ? existing.map((l, i) => (i === locusIdx ? updated : l))
+                                : [...existing, updated];
+
+                              setEditData({ ...editData, eyeColor: newEyeColor });
+                            }}
+                          />
+                          <Input
+                            size="sm"
+                            placeholder="Allele 2"
+                            defaultValue={editData.eyeColor?.find((l) => l.locus === locusInfo.locus)?.allele2 || ""}
+                            onChange={(e) => {
+                              const existing = editData.eyeColor || [];
+                              const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
+                              const locusData = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
+                              const updated = { ...locusData, allele2: e.target.value };
+                              updated.genotype = `${updated.allele1 || "?"}/${updated.allele2 || "?"}`;
+
+                              const newEyeColor = locusIdx >= 0
+                                ? existing.map((l, i) => (i === locusIdx ? updated : l))
+                                : [...existing, updated];
+
+                              setEditData({ ...editData, eyeColor: newEyeColor });
+                            }}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </details>
+            )}
           </div>
         </SectionCard>
       )}
@@ -4248,8 +4595,9 @@ function GeneticsTab({
               Record carrier status and health genetic markers.
             </div>
 
+            {/* Common Health Tests */}
             <div className="grid grid-cols-1 gap-3">
-              {loci.health.map((locusInfo) => (
+              {loci.health.filter((l: any) => !l.breedSpecific).map((locusInfo: any) => (
                 <div key={locusInfo.locus} className="border border-hairline rounded-lg p-3 bg-surface">
                   <div className="font-semibold text-sm mb-1">{locusInfo.locus} - {locusInfo.locusName}</div>
                   <div className="text-xs text-secondary mb-2">{locusInfo.description}</div>
@@ -4284,6 +4632,55 @@ function GeneticsTab({
                 </div>
               ))}
             </div>
+
+            {/* Breed-Specific Health Tests - Collapsible */}
+            {loci.health.filter((l: any) => l.breedSpecific).length > 0 && (
+              <details className="mt-4">
+                <summary className="cursor-pointer text-sm font-medium text-secondary hover:text-primary flex items-center gap-2">
+                  <span>📋</span> Breed-Specific Tests ({loci.health.filter((l: any) => l.breedSpecific).length})
+                  <span className="text-xs text-secondary">(click to expand)</span>
+                </summary>
+                <div className="mt-3 space-y-3 pl-4 border-l-2 border-hairline">
+                  {loci.health.filter((l: any) => l.breedSpecific).map((locusInfo: any) => (
+                    <div key={locusInfo.locus} className="border border-hairline rounded-lg p-3 bg-surface">
+                      <div className="font-semibold text-sm mb-1">
+                        {locusInfo.locus} - {locusInfo.locusName}
+                        <span className="text-xs text-secondary font-normal ml-2">({locusInfo.breedSpecific})</span>
+                      </div>
+                      <div className="text-xs text-secondary mb-2">{locusInfo.description}</div>
+
+                      {mode === "view" ? (
+                        <div className="text-sm">
+                          Status: <span className="font-mono">{
+                            editData.health?.find((l) => l.locus === locusInfo.locus)?.genotype || "Not tested"
+                          }</span>
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-2 gap-2">
+                          <Input
+                            size="sm"
+                            placeholder="e.g., N, Clear, Carrier"
+                            defaultValue={editData.health?.find((l) => l.locus === locusInfo.locus)?.genotype || ""}
+                            onChange={(e) => {
+                              const existing = editData.health || [];
+                              const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
+                              const locusData = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
+                              const updated = { ...locusData, genotype: e.target.value };
+
+                              const newHealth = locusIdx >= 0
+                                ? existing.map((l, i) => (i === locusIdx ? updated : l))
+                                : [...existing, updated];
+
+                              setEditData({ ...editData, health: newHealth });
+                            }}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </details>
+            )}
           </div>
         </SectionCard>
       )}
@@ -6795,8 +7192,14 @@ export default function AppAnimals() {
   }
 
   function HeaderBadges({ row }: { row: AnimalRow }) {
+    const hasTitles = row.titlePrefix || row.titleSuffix;
     return (
       <div className="flex items-center gap-2 flex-wrap">
+        {hasTitles && (
+          <span className="inline-flex items-center rounded-full bg-[hsl(var(--brand-orange))]/20 border border-[hsl(var(--brand-orange))]/30 px-2 py-0.5 text-xs text-[hsl(var(--brand-orange))] font-medium">
+            🏆 {[row.titlePrefix, row.titleSuffix].filter(Boolean).join(" • ")}
+          </span>
+        )}
         {row.species && (
           <Chip>
             {row.species}
@@ -7075,6 +7478,8 @@ export default function AppAnimals() {
         tabs.push({ key: "documents", label: "Documents" } as any);
         tabs.push({ key: "media", label: "Media" } as any);
         tabs.push({ key: "lineage", label: "Lineage" } as any);
+        tabs.push({ key: "titles", label: "Titles" } as any);
+        tabs.push({ key: "competitions", label: "Competitions" } as any);
         tabs.push({ key: "finances", label: "Finances" } as any);
         tabs.push({ key: "audit", label: "Audit" } as any);
         return tabs;
@@ -7473,6 +7878,10 @@ export default function AppAnimals() {
                 />
               )}
 
+              <SectionCard title={<SectionTitle icon="🏆">Producing Record</SectionTitle>}>
+                <ProducingRecordSection animal={row} />
+              </SectionCard>
+
               <SectionCard title={<SectionTitle icon="🏷️">Tags</SectionTitle>}>
                 <AnimalTagsSection
                   animalId={row.id}
@@ -7594,6 +8003,14 @@ export default function AppAnimals() {
 
           {activeTab === "lineage" && (
             <LineageTab animal={row} mode={mode} />
+          )}
+
+          {activeTab === "titles" && (
+            <TitlesTab animal={row} mode={mode} />
+          )}
+
+          {activeTab === "competitions" && (
+            <CompetitionsTab animal={row} mode={mode} />
           )}
 
           {activeTab === "finances" && (
@@ -7827,6 +8244,17 @@ export default function AppAnimals() {
             <Popover.Content align="end" className="w-48">
               <button
                 className="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-white/5 rounded"
+                onClick={() => {
+                  setMenuOpen(false);
+                  window.history.pushState(null, "", "/bloodlines/titles");
+                  window.dispatchEvent(new PopStateEvent("popstate"));
+                }}
+              >
+                <Trophy className="h-4 w-4" />
+                Add Title
+              </button>
+              <button
+                className="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-white/5 rounded"
                 onClick={handleExportCsv}
               >
                 <Download className="h-4 w-4" />
@@ -7973,6 +8401,22 @@ export default function AppAnimals() {
                         let v = (r as any)[c.key] as any;
                         if (DATE_KEYS.has(c.key as any)) v = fmt(v);
                         if (Array.isArray(v)) v = v.join(", ");
+                        // Special handling for name column - show titles badge
+                        if (c.key === "name") {
+                          const hasTitles = r.titlePrefix || r.titleSuffix;
+                          return (
+                            <TableCell key={c.key} align="left">
+                              <div className="flex items-center gap-2">
+                                <span>{v ?? ""}</span>
+                                {hasTitles && (
+                                  <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold text-[hsl(var(--brand-orange))] bg-[hsl(var(--brand-orange))]/10">
+                                    🏆 {[r.titlePrefix, r.titleSuffix].filter(Boolean).join(" ")}
+                                  </span>
+                                )}
+                              </div>
+                            </TableCell>
+                          );
+                        }
                         return <TableCell key={c.key} align={c.center ? "center" : "left"}>{v ?? ""}</TableCell>;
                       })}
                     </TableRow>

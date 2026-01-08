@@ -3,6 +3,134 @@ import { readTenantIdFast, resolveTenantId } from "@bhq/ui/utils/tenant";
 import type { BreedHit } from "@bhq/ui";
 import { createHttp, makeTags } from "@bhq/api";
 
+/* ───────── Title types ───────── */
+
+export type TitleCategory =
+  | "CONFORMATION"
+  | "OBEDIENCE"
+  | "AGILITY"
+  | "FIELD"
+  | "HERDING"
+  | "TRACKING"
+  | "RALLY"
+  | "PRODUCING"
+  | "BREED_SPECIFIC"
+  | "PERFORMANCE"
+  | "OTHER";
+
+export type TitleStatus = "IN_PROGRESS" | "EARNED" | "VERIFIED";
+
+export interface TitleDefinition {
+  id: number;
+  abbreviation: string;
+  fullName: string;
+  category: TitleCategory;
+  organization: string | null;
+  prefixTitle: boolean;
+  suffixTitle: boolean;
+  displayOrder: number;
+  isProducingTitle: boolean;
+  parentTitle?: { id: number; abbreviation: string } | null;
+}
+
+export interface AnimalTitle {
+  id: number;
+  animalId: number;
+  titleDefinitionId: number;
+  titleDefinition: TitleDefinition;
+  dateEarned: string | null;
+  status: TitleStatus;
+  pointsEarned: number | null;
+  majorWins: number | null;
+  eventName: string | null;
+  eventLocation: string | null;
+  handlerName: string | null;
+  verified: boolean;
+  verifiedAt: string | null;
+  verifiedBy: string | null;
+  registryRef: string | null;
+  notes: string | null;
+  documents: Array<{
+    document: {
+      id: number;
+      title: string;
+      mimeType: string;
+      url: string;
+    };
+  }>;
+}
+
+/* ───────── Competition types ───────── */
+
+export type CompetitionType =
+  | "CONFORMATION_SHOW"
+  | "OBEDIENCE_TRIAL"
+  | "AGILITY_TRIAL"
+  | "FIELD_TRIAL"
+  | "HERDING_TRIAL"
+  | "TRACKING_TEST"
+  | "RALLY_TRIAL"
+  | "RACE"
+  | "PERFORMANCE_TEST"
+  | "BREED_SPECIALTY"
+  | "OTHER";
+
+export interface CompetitionEntry {
+  id: number;
+  animalId: number;
+  eventName: string;
+  eventDate: string;
+  location: string | null;
+  organization: string | null;
+  competitionType: CompetitionType;
+  className: string | null;
+  placement: number | null;
+  placementLabel: string | null;
+  pointsEarned: number | null;
+  isMajorWin: boolean;
+  qualifyingScore: boolean;
+  score: number | null;
+  scoreMax: number | null;
+  judgeName: string | null;
+  notes: string | null;
+  // Racing-specific fields
+  prizeMoneyCents: number | null;
+  trackName: string | null;
+  trackSurface: string | null;
+  distanceFurlongs: number | null;
+  distanceMeters: number | null;
+  raceGrade: string | null;
+  finishTime: string | null;
+  speedFigure: number | null;
+  // Handler/rider info
+  handlerName: string | null;
+  trainerName: string | null;
+}
+
+export interface CompetitionStats {
+  totalEntries: number;
+  totalPoints: number;
+  majorWins: number;
+  qualifyingScores: number;
+  wins: number;
+  placements: number;
+  yearsActive: number[];
+  byType: Record<string, { entries: number; points: number; wins: number }>;
+}
+
+export interface ProducingRecord {
+  totalOffspring: number;
+  titledOffspring: number;
+  championOffspring: number;
+  grandChampionOffspring: number;
+  titleCountsByCategory: Record<string, number>;
+  titledOffspringList: Array<{
+    id: number;
+    name: string | null;
+    titles: string[];
+  }>;
+}
+
 /* ───────── Lineage / Pedigree types ───────── */
 
 export interface PedigreeNode {
@@ -14,6 +142,8 @@ export interface PedigreeNode {
   photoUrl: string | null;
   birthDate: string | null;
   coiPercent: number | null;
+  titlePrefix: string | null;
+  titleSuffix: string | null;
   dam: PedigreeNode | null;
   sire: PedigreeNode | null;
 }
@@ -86,6 +216,20 @@ export interface SetParentsResult {
   coiCalculatedAt: string | null;
   dam: { id: number; name: string } | null;
   sire: { id: number; name: string } | null;
+}
+
+export interface PrivacySettings {
+  animalId: number;
+  allowCrossTenantMatching: boolean;
+  showName: boolean;
+  showPhoto: boolean;
+  showFullDob: boolean;
+  showRegistryFull: boolean;
+  showHealthResults: boolean;
+  showGeneticData: boolean;
+  showBreeder: boolean;
+  allowInfoRequests: boolean;
+  allowDirectContact: boolean;
 }
 
 /* ───────── base + cookies ───────── */
@@ -551,6 +695,195 @@ export function makeApi(base?: string, extraHeadersFn?: () => Record<string, str
           `/lineage/coi?damId=${damId}&sireId=${sireId}&generations=${generations}`
         );
       },
+
+      /** Get privacy settings for an animal */
+      async getPrivacySettings(id: string | number): Promise<PrivacySettings> {
+        return reqWithExtra<PrivacySettings>(
+          `/animals/${encodeURIComponent(String(id))}/privacy`
+        );
+      },
+
+      /** Update privacy settings for an animal */
+      async updatePrivacySettings(
+        id: string | number,
+        settings: Partial<Omit<PrivacySettings, "animalId">>
+      ): Promise<PrivacySettings> {
+        return reqWithExtra<PrivacySettings>(
+          `/animals/${encodeURIComponent(String(id))}/privacy`,
+          { method: "PUT", json: settings }
+        );
+      },
+    },
+
+    /* titles */
+    titles: {
+      /** Get all titles for an animal */
+      async list(id: string | number): Promise<AnimalTitle[]> {
+        return reqWithExtra<AnimalTitle[]>(
+          `/animals/${encodeURIComponent(String(id))}/titles`
+        );
+      },
+
+      /** Add a title to an animal */
+      async add(
+        id: string | number,
+        payload: {
+          titleDefinitionId: number;
+          dateEarned?: string;
+          status?: TitleStatus;
+          pointsEarned?: number;
+          majorWins?: number;
+          verified?: boolean;
+          verifiedBy?: string;
+          registryRef?: string;
+          notes?: string;
+        }
+      ): Promise<AnimalTitle> {
+        return reqWithExtra<AnimalTitle>(
+          `/animals/${encodeURIComponent(String(id))}/titles`,
+          { method: "POST", json: payload }
+        );
+      },
+
+      /** Update a title */
+      async update(
+        id: string | number,
+        titleId: number,
+        payload: {
+          dateEarned?: string | null;
+          status?: TitleStatus;
+          pointsEarned?: number | null;
+          majorWins?: number | null;
+          verified?: boolean;
+          verifiedAt?: string | null;
+          verifiedBy?: string | null;
+          registryRef?: string | null;
+          notes?: string | null;
+        }
+      ): Promise<AnimalTitle> {
+        return reqWithExtra<AnimalTitle>(
+          `/animals/${encodeURIComponent(String(id))}/titles/${titleId}`,
+          { method: "PUT", json: payload }
+        );
+      },
+
+      /** Remove a title */
+      async remove(id: string | number, titleId: number): Promise<void> {
+        await reqWithExtra<void>(
+          `/animals/${encodeURIComponent(String(id))}/titles/${titleId}`,
+          { method: "DELETE" }
+        );
+      },
+    },
+
+    /* competitions */
+    competitions: {
+      /** Get all competition entries for an animal */
+      async list(
+        id: string | number,
+        opts?: { type?: CompetitionType; year?: number }
+      ): Promise<CompetitionEntry[]> {
+        return reqWithExtra<CompetitionEntry[]>(
+          `/animals/${encodeURIComponent(String(id))}/competitions${spFrom(opts || {})}`
+        );
+      },
+
+      /** Get competition stats for an animal */
+      async stats(id: string | number): Promise<CompetitionStats> {
+        return reqWithExtra<CompetitionStats>(
+          `/animals/${encodeURIComponent(String(id))}/competitions/stats`
+        );
+      },
+
+      /** Add a competition entry */
+      async add(
+        id: string | number,
+        payload: {
+          eventName: string;
+          eventDate: string;
+          competitionType: CompetitionType;
+          location?: string;
+          organization?: string;
+          className?: string;
+          placement?: number;
+          placementLabel?: string;
+          pointsEarned?: number;
+          isMajorWin?: boolean;
+          qualifyingScore?: boolean;
+          score?: number;
+          scoreMax?: number;
+          judgeName?: string;
+          notes?: string;
+        }
+      ): Promise<CompetitionEntry> {
+        return reqWithExtra<CompetitionEntry>(
+          `/animals/${encodeURIComponent(String(id))}/competitions`,
+          { method: "POST", json: payload }
+        );
+      },
+
+      /** Update a competition entry */
+      async update(
+        id: string | number,
+        entryId: number,
+        payload: Partial<Omit<CompetitionEntry, "id" | "animalId">>
+      ): Promise<CompetitionEntry> {
+        return reqWithExtra<CompetitionEntry>(
+          `/animals/${encodeURIComponent(String(id))}/competitions/${entryId}`,
+          { method: "PUT", json: payload }
+        );
+      },
+
+      /** Remove a competition entry */
+      async remove(id: string | number, entryId: number): Promise<void> {
+        await reqWithExtra<void>(
+          `/animals/${encodeURIComponent(String(id))}/competitions/${entryId}`,
+          { method: "DELETE" }
+        );
+      },
+    },
+
+    /* producing record */
+    async getProducingRecord(id: string | number): Promise<ProducingRecord> {
+      return reqWithExtra<ProducingRecord>(
+        `/animals/${encodeURIComponent(String(id))}/producing-record`
+      );
+    },
+  };
+
+  /* ───────── Title Definitions ───────── */
+
+  const titleDefinitions = {
+    /** Get all title definitions (global + tenant-specific) */
+    async list(opts?: {
+      species?: Species;
+      category?: TitleCategory;
+      organization?: string;
+    }): Promise<TitleDefinition[]> {
+      return reqWithExtra<TitleDefinition[]>(
+        `/title-definitions${spFrom(opts || {})}`
+      );
+    },
+
+    /** Create a custom title definition */
+    async create(payload: {
+      species: Species;
+      abbreviation: string;
+      fullName: string;
+      category: TitleCategory;
+      organization?: string;
+      parentTitleId?: number;
+      pointsRequired?: number;
+      description?: string;
+      isProducingTitle?: boolean;
+      prefixTitle?: boolean;
+      suffixTitle?: boolean;
+      displayOrder?: number;
+    }): Promise<TitleDefinition> {
+      return reqWithExtra<TitleDefinition>(`/title-definitions`, {
+        method: "POST",
+        json: payload,
+      });
     },
   };
 
@@ -869,5 +1202,5 @@ export function makeApi(base?: string, extraHeadersFn?: () => Record<string, str
     },
   };
 
-  return { animals, lookups, breeds, registries, finance, tags, animalPublicListing };
+  return { animals, lookups, breeds, registries, finance, tags, animalPublicListing, titleDefinitions };
 }

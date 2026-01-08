@@ -1,159 +1,124 @@
-// apps/platform/src/routes/Dashboard.tsx
+// apps/platform/src/pages/Dashboard.tsx
+// Mission Control for Breeders - warm, inviting morning coffee experience
+
 import * as React from "react";
-import { PageHeader, SectionCard } from "@bhq/ui";
-import TodayStrip from "../components/TodayStrip";
-import MiniGantt90 from "../components/MiniGantt90";
-import UrgentTasks from "../components/UrgentTasks";
+import { useDashboardDataV2 } from "../features/useDashboardDataV2";
+import {
+  AlertBanner,
+  TodaysAgenda,
+  BreedingPipeline,
+  OffspringGroupCards,
+  WaitlistGauge,
+  FinancialSnapshot,
+  QuickActionsHub,
+} from "../components/dashboard";
 import KpiPanel from "../components/KpiPanel";
 import ActivityFeed from "../components/ActivityFeed";
-import { useDashboardData } from "../features/useDashboardData";
 import { api } from "../api";
 
-/* ───────────────── Local styles (copper accent, surfaces, banner, typography) ───────────────── */
-function LocalStyles() {
+// ═══════════════════════════════════════════════════════════════════════════════
+// LOCAL STYLES - Warm animations and vibes
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function DashboardStyles() {
   return (
     <style>{`
-:root {
-  --copper: #D46A1C;                  /* deeper copper */
-  --accent: #E06C1F;                  /* icon glow accent */
-  --accent-soft: rgba(224,108,31,.30);/* 30% for soft glow */
-  --warm-white: #F5F2EE;              /* headers */
-  --cool-text: #B2B6BA;               /* supporting */
-  --slate-deep: #111315;              /* primary surface */
-  --slate-lite: #171A1C;              /* metric surface */
+@keyframes bhq-sunrise {
+  0% { opacity: 0.6; transform: scale(0.95); }
+  50% { opacity: 1; transform: scale(1.02); }
+  100% { opacity: 0.8; transform: scale(1); }
 }
-
-/* Overall vignette tuned to copper */
-.bhq-vignette { position: relative; }
-.bhq-vignette::before {
-  content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 0;
-  background:
-    radial-gradient(1200px 600px at 50% -10%, color-mix(in oklab, var(--copper) 22%, transparent), transparent 60%),
-    radial-gradient(800px 400px at 80% 120%, color-mix(in oklab, var(--copper) 14%, transparent), transparent 60%);
+@keyframes bhq-pulse-glow {
+  0%, 100% { box-shadow: 0 0 20px rgba(255, 107, 53, 0.3), 0 0 40px rgba(255, 107, 53, 0.1); }
+  50% { box-shadow: 0 0 30px rgba(255, 107, 53, 0.5), 0 0 60px rgba(255, 107, 53, 0.2); }
 }
-
-/* Banner behind greeting, with a very subtle vertical light pass */
-.c-banner {
-  position: relative;
-  border-radius: 16px;
-  overflow: hidden; /* contain the light pass */
-  background:
-    radial-gradient(800px 240px at 30% -40%, color-mix(in oklab, var(--copper) 24%, transparent), transparent 55%),
-    linear-gradient(180deg, rgba(255,255,255,.02), rgba(0,0,0,.10));
-  box-shadow:
-    0 0 0 1px color-mix(in oklab, var(--copper) 24%, transparent),
-    0 18px 36px -22px rgba(0,0,0,.65);
-  will-change: transform;
+@keyframes bhq-float {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-4px); }
 }
-
-/* Light pass: very faint, slow, vertical sweep */
-.c-banner::after {
-  content: "";
+@keyframes bhq-wave {
+  0% { transform: rotate(0deg); }
+  10% { transform: rotate(14deg); }
+  20% { transform: rotate(-8deg); }
+  30% { transform: rotate(14deg); }
+  40% { transform: rotate(-4deg); }
+  50% { transform: rotate(10deg); }
+  60% { transform: rotate(0deg); }
+  100% { transform: rotate(0deg); }
+}
+@keyframes bhq-shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+@keyframes bhq-steam {
+  0% {
+    opacity: 0;
+    transform: translateY(0) scaleX(1);
+  }
+  15% {
+    opacity: 0.8;
+  }
+  50% {
+    opacity: 0.6;
+    transform: translateY(-20px) scaleX(1.2);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-40px) scaleX(0.8);
+  }
+}
+.bhq-steam {
   position: absolute;
-  left: 0; right: 0;
-  top: -60%;
-  height: 220%;
-  pointer-events: none;
-  background: linear-gradient(
-    to bottom,
-    transparent 0%,
-    rgba(255,255,255,0.05) 50%,
-    transparent 100%
-  );
-  opacity: .6; /* controlled by animation keyframes below */
-  animation: bhqLightPassY 13s linear infinite;
+  width: 8px;
+  height: 20px;
+  background: linear-gradient(to top, rgba(255, 255, 255, 0.6), transparent);
+  border-radius: 50%;
+  filter: blur(3px);
+  animation: bhq-steam 2s ease-out infinite;
 }
-
-@keyframes bhqLightPassY {
-  0%   { transform: translateY(-55%); opacity: .0; }
-  10%  { opacity: .12; }
-  50%  { transform: translateY(0%);  opacity: .06; }
-  90%  { opacity: .12; }
-  100% { transform: translateY(55%); opacity: .0; }
+.bhq-steam:nth-child(1) { left: 25%; animation-delay: 0s; }
+.bhq-steam:nth-child(2) { left: 50%; animation-delay: 0.4s; }
+.bhq-steam:nth-child(3) { left: 75%; animation-delay: 0.8s; }
+.bhq-hero-glow {
+  animation: bhq-pulse-glow 4s ease-in-out infinite;
 }
-
-/* Respect reduced motion */
+.bhq-float {
+  animation: bhq-float 3s ease-in-out infinite;
+}
+.bhq-wave {
+  display: inline-block;
+  animation: bhq-wave 2.5s ease-in-out;
+  transform-origin: 70% 70%;
+}
+.bhq-shimmer-text {
+  background: linear-gradient(90deg, #ff6b35 0%, #ffaa35 25%, #ff6b35 50%, #ffaa35 75%, #ff6b35 100%);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  animation: bhq-shimmer 3s linear infinite;
+}
+.bhq-tile:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 40px rgba(255, 107, 53, 0.25);
+  border-color: rgba(255, 107, 53, 0.5) !important;
+}
+.bhq-tile:hover .bhq-tile-icon {
+  transform: scale(1.1);
+}
 @media (prefers-reduced-motion: reduce) {
-  .c-banner::after { animation: none; display: none; }
-}
-
-/* Card surfaces: two tiers with subtle vertical depth */
-.surface-primary :where(.bhq-sectioncard, .bhq-section) {
-  background-color: var(--slate-deep) !important;
-  background-image: linear-gradient(to bottom, rgba(255,255,255,.02), rgba(0,0,0,.12));
-  border-color: color-mix(in oklab, var(--copper) 10%, #1F2326) !important;
-}
-.surface-secondary :where(.bhq-sectioncard, .bhq-section) {
-  background-color: var(--slate-lite) !important;
-  background-image: linear-gradient(to bottom, rgba(255,255,255,.03), rgba(0,0,0,.10));
-  border-color: color-mix(in oklab, var(--copper) 10%, #22272A) !important;
-}
-
-/* Copper linework with hover ramp. Duration set to 150ms. */
-.copper-glow {
-  border-color: transparent !important;
-  box-shadow:
-    inset 0 1px 0 0 rgba(255,255,255,.03),
-    0 0 0 1px color-mix(in oklab, var(--copper) 34%, transparent),
-    0 0 16px -4px color-mix(in oklab, var(--copper) 28%, transparent);
-  transition: box-shadow .15s ease-out, filter .15s ease-out, transform .15s ease-out;
-  will-change: box-shadow, filter, transform;
-}
-.copper-glow--hover:hover,
-.copper-glow--hover:focus-visible {
-  box-shadow:
-    inset 0 1px 0 0 rgba(255,255,255,.04),
-    0 0 0 1px color-mix(in oklab, var(--copper) 46%, transparent),
-    0 0 22px -4px color-mix(in oklab, var(--copper) 36%, transparent);
-  filter: brightness(1.02);
-}
-
-/* Section title and icons: micro glow + ~10% luminance lift */
-.c-section-title { color: var(--warm-white); }
-.c-section-title svg {
-  color: var(--copper);
-  filter:
-    brightness(1.10)
-    drop-shadow(0 0 1px var(--accent-soft));
-  opacity: .95;
-}
-
-/* Page header typography */
-.c-typography :where(h1, .bhq-pageheader h1) { color: var(--warm-white) !important; }
-.c-typography :where(p, .bhq-pageheader-subtitle) { color: var(--cool-text) !important; }
-
-/* KPI tile lift + icon glow */
-.bhq-kpi-surface .kpi-card,
-.bhq-kpi-surface .kpi,
-.bhq-kpi-surface [data-kpi] {
-  transition: transform .18s ease, box-shadow .18s ease, filter .18s ease;
-  box-shadow:
-    0 0 0 1px color-mix(in oklab, var(--copper) 18%, transparent),
-    0 10px 18px -12px rgba(0,0,0,.45);
-  background-image: linear-gradient(to bottom, rgba(255,255,255,.02), rgba(0,0,0,.12));
-}
-.bhq-kpi-surface .kpi-card:hover,
-.bhq-kpi-surface .kpi:hover,
-.bhq-kpi-surface [data-kpi]:hover {
-  transform: translateY(-1px);
-  box-shadow:
-    0 0 0 1px color-mix(in oklab, var(--copper) 28%, transparent),
-    0 14px 24px -14px rgba(0,0,0,.55);
-  filter: brightness(1.02);
-}
-.bhq-kpi-surface .kpi-card svg,
-.bhq-kpi-surface .kpi svg,
-.bhq-kpi-surface [data-kpi] svg {
-  filter:
-    brightness(1.10)
-    drop-shadow(0 0 1px var(--accent-soft));
-  opacity: .94;
+  .bhq-hero-glow, .bhq-float, .bhq-wave, .bhq-shimmer-text, .bhq-steam { animation: none; }
+  .bhq-steam { opacity: 0.3; }
+  .bhq-tile:hover { transform: none; }
 }
     `}</style>
   );
 }
 
-/* ───────────────── Utilities ───────────────── */
+// ═══════════════════════════════════════════════════════════════════════════════
+// UTILITIES
+// ═══════════════════════════════════════════════════════════════════════════════
+
 function pickName(u: any): string {
   if (!u) return "Breeder";
   const nickname =
@@ -167,10 +132,8 @@ function pickName(u: any): string {
   return "Breeder";
 }
 
-/** scope headers so GETs do not 400 */
 function resolveScopeHeaders(): HeadersInit {
   const w: any = (typeof window !== "undefined" ? window : {}) as any;
-
   const rtTid = Number(w?.__BHQ_TENANT_ID__);
   let lsTid = NaN;
   try { lsTid = Number(localStorage.getItem("BHQ_TENANT_ID") || "NaN"); } catch {}
@@ -226,83 +189,488 @@ async function loadNameFromDb(): Promise<string> {
   }
 }
 
-/* ───────────────── Empty card ───────────────── */
-function EmptyCard({
-  title,
-  hint,
-  icon = "placeholder",
+function timeGreeting(d = new Date()): string {
+  const h = d.getHours();
+  if (h >= 5 && h < 12) return "Good morning";
+  if (h >= 12 && h < 18) return "Good afternoon";
+  return "Good evening";
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// LARGE GRADIENT ICONS (matching Marketing page style)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function BreedingIcon({ className = "w-20 h-20" }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 64 64" fill="none">
+      <defs>
+        <linearGradient id="breedingGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#ff6b35" />
+          <stop offset="100%" stopColor="#c45a10" />
+        </linearGradient>
+      </defs>
+      <path
+        d="M32 8c-6 0-10 4-10 10v4c0 6 4 10 10 10s10-4 10-10v-4c0-6-4-10-10-10z"
+        stroke="url(#breedingGrad)"
+        strokeWidth="2.5"
+        fill="none"
+        strokeLinecap="round"
+      />
+      <path
+        d="M48 28c-4 0-7 3-7 7s3 7 7 7 7-3 7-7-3-7-7-7z"
+        stroke="url(#breedingGrad)"
+        strokeWidth="2.5"
+        fill="none"
+      />
+      <path
+        d="M16 28c-4 0-7 3-7 7s3 7 7 7 7-3 7-7-3-7-7-7z"
+        stroke="url(#breedingGrad)"
+        strokeWidth="2.5"
+        fill="none"
+      />
+      <path
+        d="M32 48c-8 0-12 6-12 10v2h24v-2c0-4-4-10-12-10z"
+        stroke="url(#breedingGrad)"
+        strokeWidth="2.5"
+        fill="none"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function OffspringIcon({ className = "w-20 h-20" }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 64 64" fill="none">
+      <defs>
+        <linearGradient id="offspringGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#ff6b35" />
+          <stop offset="100%" stopColor="#c45a10" />
+        </linearGradient>
+      </defs>
+      <path
+        d="M44 14a10 10 0 0 0-10 8 10 10 0 0 0-14-4 10 10 0 0 0-4 14l16 24 16-24a10 10 0 0 0-4-18z"
+        stroke="url(#offspringGrad)"
+        strokeWidth="2.5"
+        fill="none"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+// Custom Waitlist Tile with Pending/Approved breakdown
+function WaitlistTile({
+  pendingCount,
+  approvedCount
 }: {
-  title: string;
-  hint?: string;
-  icon?: "calendar" | "inbox" | "chart" | "placeholder";
+  pendingCount: number;
+  approvedCount: number;
 }) {
-  const Icon = {
-    calendar: (
-      <svg className="w-4 h-4 opacity-80" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-        <rect x="3" y="4" width="18" height="18" rx="2" />
-        <line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" />
-        <line x1="3" y1="10" x2="21" y2="10" />
-      </svg>
-    ),
-    inbox: (
-      <svg className="w-4 h-4 opacity-80" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M22 12h-6l-2 3h-4l-2-3H2" /><path d="M5 7h14l3 5v6a3 3 0 0 1-3 3H5a3 3 0 0 1-3-3v-6l3-5Z" />
-      </svg>
-    ),
-    chart: (
-      <svg className="w-4 h-4 opacity-80" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M3 3v18h18" /><rect x="7" y="12" width="3" height="6" /><rect x="12" y="9" width="3" height="9" /><rect x="17" y="5" width="3" height="13" />
-      </svg>
-    ),
-    placeholder: (
-      <svg className="w-4 h-4 opacity-80" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-        <rect x="3" y="3" width="18" height="14" rx="2" />
-        <path d="m3 17 4.5-4.5a2 2 0 0 1 2.8 0L15 17" />
-        <circle cx="14.5" cy="8.5" r="1.5" />
-      </svg>
-    ),
-  }[icon];
+  const hasPending = pendingCount > 0;
 
   return (
-    <div className="rounded-xl border border-dashed border-[rgba(212,106,28,.35)] bg-transparent p-3 text-sm text-secondary flex items-center gap-2 transition-colors hover:border-[rgba(212,106,28,.6)]">
-      {Icon}
-      <span>{title}</span>
-      {hint ? <span className="opacity-80 ml-1"> - {hint}</span> : null}
+    <a
+      href="/waitlist"
+      className="bhq-tile"
+      style={{
+        display: "block",
+        position: "relative",
+        backgroundColor: "#1a1a1a",
+        border: hasPending ? "1px solid rgba(245, 158, 11, 0.5)" : "1px solid rgba(60, 60, 60, 0.5)",
+        borderRadius: "20px",
+        height: "200px",
+        overflow: "hidden",
+        textDecoration: "none",
+        transition: "all 0.3s ease",
+      }}
+    >
+      {/* Urgent Badge if pending */}
+      {hasPending && (
+        <div style={{ position: "absolute", top: "16px", left: "16px" }}>
+          <span
+            style={{
+              fontSize: "10px",
+              fontWeight: 600,
+              textTransform: "uppercase",
+              letterSpacing: "0.05em",
+              padding: "4px 10px",
+              borderRadius: "999px",
+              backgroundColor: "#f59e0b",
+              color: "#fff",
+              animation: "pulse 2s infinite",
+            }}
+          >
+            Action Needed
+          </span>
+        </div>
+      )}
+
+      {/* Content - two column layout */}
+      <div style={{
+        position: "absolute",
+        bottom: "24px",
+        left: "24px",
+        right: "24px",
+        top: hasPending ? "56px" : "24px",
+        display: "flex",
+        flexDirection: "column",
+        justifyContent: "flex-end",
+      }}>
+        <h3 style={{ margin: 0, fontSize: "1.25rem", fontWeight: 600, color: "#fff" }}>
+          Waitlist
+        </h3>
+
+        {/* Two-stat layout */}
+        <div style={{
+          marginTop: "12px",
+          display: "grid",
+          gridTemplateColumns: "1fr 1fr",
+          gap: "16px",
+        }}>
+          {/* Pending - Action Required */}
+          <div style={{
+            padding: "12px",
+            backgroundColor: hasPending ? "rgba(245, 158, 11, 0.15)" : "rgba(60, 60, 60, 0.3)",
+            borderRadius: "12px",
+            border: hasPending ? "1px solid rgba(245, 158, 11, 0.3)" : "1px solid transparent",
+          }}>
+            <div style={{
+              fontSize: "1.75rem",
+              fontWeight: 700,
+              color: hasPending ? "#f59e0b" : "rgba(255, 255, 255, 0.3)",
+              lineHeight: 1,
+            }}>
+              {pendingCount}
+            </div>
+            <div style={{
+              fontSize: "0.7rem",
+              color: hasPending ? "#f59e0b" : "rgba(255, 255, 255, 0.4)",
+              marginTop: "4px",
+              fontWeight: 500,
+              textTransform: "uppercase",
+              letterSpacing: "0.03em",
+            }}>
+              Pending
+            </div>
+            <div style={{
+              fontSize: "0.65rem",
+              color: "rgba(255, 255, 255, 0.4)",
+              marginTop: "2px",
+            }}>
+              Needs review
+            </div>
+          </div>
+
+          {/* Approved - FYI */}
+          <div style={{
+            padding: "12px",
+            backgroundColor: "rgba(60, 60, 60, 0.3)",
+            borderRadius: "12px",
+          }}>
+            <div style={{
+              fontSize: "1.75rem",
+              fontWeight: 700,
+              color: approvedCount > 0 ? "#22c55e" : "rgba(255, 255, 255, 0.3)",
+              lineHeight: 1,
+            }}>
+              {approvedCount}
+            </div>
+            <div style={{
+              fontSize: "0.7rem",
+              color: approvedCount > 0 ? "#22c55e" : "rgba(255, 255, 255, 0.4)",
+              marginTop: "4px",
+              fontWeight: 500,
+              textTransform: "uppercase",
+              letterSpacing: "0.03em",
+            }}>
+              Approved
+            </div>
+            <div style={{
+              fontSize: "0.65rem",
+              color: "rgba(255, 255, 255, 0.4)",
+              marginTop: "2px",
+            }}>
+              Waiting for availability
+            </div>
+          </div>
+        </div>
+      </div>
+    </a>
+  );
+}
+
+function FinanceIcon({ className = "w-20 h-20" }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 64 64" fill="none">
+      <defs>
+        <linearGradient id="financeGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#ff6b35" />
+          <stop offset="100%" stopColor="#c45a10" />
+        </linearGradient>
+      </defs>
+      <circle cx="32" cy="32" r="22" stroke="url(#financeGrad)" strokeWidth="2.5" fill="none" />
+      <path d="M32 16v32" stroke="url(#financeGrad)" strokeWidth="2.5" strokeLinecap="round" />
+      <path d="M40 24H28a4 4 0 0 0 0 8h8a4 4 0 0 1 0 8H24" stroke="url(#financeGrad)" strokeWidth="2.5" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// HERO GREETING CARD
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function HeroGreeting({
+  name,
+  pendingTasks,
+  completedTasks,
+}: {
+  name: string;
+  pendingTasks: number;
+  completedTasks: number;
+}) {
+  const greeting = timeGreeting();
+  const now = new Date();
+  const dateStr = now.toLocaleDateString("en-US", {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+  });
+
+  return (
+    <div
+      className="bhq-hero-glow"
+      style={{
+        background: "linear-gradient(135deg, rgba(255, 107, 53, 0.15) 0%, #1a1a1a 40%, #1a1a1a 100%)",
+        border: "1px solid rgba(255, 107, 53, 0.4)",
+        borderRadius: "24px",
+        padding: "2.5rem",
+        position: "relative",
+        overflow: "hidden",
+      }}
+    >
+      {/* Decorative gradient orb - behind everything */}
+      <div
+        style={{
+          position: "absolute",
+          top: "-100px",
+          right: "-100px",
+          width: "300px",
+          height: "300px",
+          background: "radial-gradient(circle, rgba(255, 107, 53, 0.3) 0%, transparent 70%)",
+          pointerEvents: "none",
+          zIndex: 0,
+        }}
+      />
+
+      {/* Coffee cup with animated steam - on top of glow */}
+      <div
+        style={{
+          position: "absolute",
+          top: "1.5rem",
+          right: "2rem",
+          zIndex: 10,
+          filter: "drop-shadow(0 4px 8px rgba(0, 0, 0, 0.3))",
+        }}
+      >
+        {/* Steam wisps */}
+        <div style={{ position: "relative", width: "56px", height: "40px" }}>
+          <div className="bhq-steam" />
+          <div className="bhq-steam" />
+          <div className="bhq-steam" />
+        </div>
+        {/* Coffee cup */}
+        <span style={{ fontSize: "3.5rem", display: "block", marginTop: "-12px" }}>☕</span>
+      </div>
+
+      <div style={{ position: "relative", zIndex: 1 }}>
+        {/* Date line */}
+        <div style={{ fontSize: "0.875rem", color: "rgba(255, 255, 255, 0.5)", marginBottom: "0.5rem" }}>
+          {dateStr}
+        </div>
+
+        {/* Main greeting */}
+        <h1 style={{ margin: 0, fontSize: "2.5rem", fontWeight: 700, lineHeight: 1.2 }}>
+          <span style={{ color: "#fff" }}>{greeting}, </span>
+          <span className="bhq-shimmer-text">{name}</span>
+          <span className="bhq-wave" style={{ marginLeft: "0.5rem" }}>👋</span>
+        </h1>
+
+        {/* Subtext */}
+        <p style={{ margin: "1rem 0 0 0", fontSize: "1.125rem", color: "rgba(255, 255, 255, 0.7)" }}>
+          {pendingTasks > 0 ? (
+            <>
+              You have <span style={{ color: "#ff6b35", fontWeight: 600 }}>{pendingTasks}</span> thing{pendingTasks !== 1 ? "s" : ""} to tackle today
+              {completedTasks > 0 && (
+                <span style={{ color: "rgba(255, 255, 255, 0.5)" }}> · {completedTasks} already done</span>
+              )}
+            </>
+          ) : (
+            <>Your schedule is clear - It's a perfect day to plan ahead!</>
+          )}
+        </p>
+      </div>
     </div>
   );
 }
 
-/* ───────────────── Visual helpers ───────────────── */
-const KPI_SURFACE = "bhq-kpi-surface";
+// ═══════════════════════════════════════════════════════════════════════════════
+// PRIMARY TILE (matching Marketing page)
+// ═══════════════════════════════════════════════════════════════════════════════
 
-/* Keep content from stretching too wide on ultra-wide screens */
-function Container({ children }: { children: React.ReactNode }) {
-  return <div className="mx-auto w-full max-w-[1600px]">{children}</div>;
+function PrimaryTile({
+  title,
+  subtitle,
+  count,
+  countLabel,
+  icon,
+  href,
+  badge,
+  badgeColor = "#22c55e",
+}: {
+  title: string;
+  subtitle: string;
+  count?: number | string;
+  countLabel?: string;
+  icon: React.ReactNode;
+  href: string;
+  badge?: string;
+  badgeColor?: string;
+}) {
+  return (
+    <a
+      href={href}
+      className="bhq-tile"
+      style={{
+        display: "block",
+        position: "relative",
+        backgroundColor: "#1a1a1a",
+        border: "1px solid rgba(60, 60, 60, 0.5)",
+        borderRadius: "20px",
+        height: "200px",
+        overflow: "hidden",
+        textDecoration: "none",
+        transition: "all 0.3s ease",
+      }}
+    >
+      {/* Badge */}
+      {badge && (
+        <div style={{ position: "absolute", top: "16px", left: "16px" }}>
+          <span
+            style={{
+              fontSize: "10px",
+              fontWeight: 600,
+              textTransform: "uppercase",
+              letterSpacing: "0.05em",
+              padding: "4px 10px",
+              borderRadius: "999px",
+              backgroundColor: badgeColor,
+              color: "#fff",
+            }}
+          >
+            {badge}
+          </span>
+        </div>
+      )}
+
+      {/* Large Icon */}
+      <div
+        className="bhq-tile-icon"
+        style={{
+          position: "absolute",
+          top: "16px",
+          right: "16px",
+          transition: "transform 0.3s ease",
+        }}
+      >
+        {icon}
+      </div>
+
+      {/* Content */}
+      <div style={{ position: "absolute", bottom: "24px", left: "24px", right: "24px" }}>
+        <h3 style={{ margin: 0, fontSize: "1.25rem", fontWeight: 600, color: "#fff" }}>
+          {title}
+        </h3>
+        <p style={{ margin: "4px 0 0 0", fontSize: "0.875rem", color: "rgba(255, 255, 255, 0.6)" }}>
+          {subtitle}
+        </p>
+        {count !== undefined && (
+          <div style={{ marginTop: "12px", display: "flex", alignItems: "baseline", gap: "6px" }}>
+            <span style={{ fontSize: "2rem", fontWeight: 700, color: "#ff6b35" }}>{count}</span>
+            {countLabel && (
+              <span style={{ fontSize: "0.875rem", color: "rgba(255, 255, 255, 0.5)" }}>{countLabel}</span>
+            )}
+          </div>
+        )}
+      </div>
+    </a>
+  );
 }
 
-/* Small icons for section titles */
-const TitleIcon = {
-  calendar: (
-    <svg className="w-4 h-4 mr-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="3" y="4" width="18" height="18" rx="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" />
-    </svg>
-  ),
-  bolt: (
-    <svg className="w-4 h-4 mr-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M13 2L3 14h7l-1 8 10-12h-7l1-8z" />
-    </svg>
-  ),
-  chart: (
-    <svg className="w-4 h-4 mr-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M3 3v18h18" /><rect x="7" y="12" width="3" height="6" /><rect x="12" y="9" width="3" height="9" /><rect x="17" y="5" width="3" height="13" />
-    </svg>
-  ),
-  activity: (
-    <svg className="w-4 h-4 mr-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M22 12H18l-3 7L9 5l-3 7H2" />
-    </svg>
-  ),
-};
+// ═══════════════════════════════════════════════════════════════════════════════
+// SECTION CARD
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function SectionCard({
+  children,
+  title,
+  icon,
+  linkText,
+  linkHref,
+}: {
+  children: React.ReactNode;
+  title?: string;
+  icon?: React.ReactNode;
+  linkText?: string;
+  linkHref?: string;
+}) {
+  return (
+    <div
+      style={{
+        backgroundColor: "#1a1a1a",
+        border: "1px solid rgba(60, 60, 60, 0.5)",
+        borderRadius: "16px",
+        padding: "1.5rem",
+      }}
+    >
+      {title && (
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "1rem" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+            {icon && <span style={{ color: "#ff6b35", width: "18px", height: "18px" }}>{icon}</span>}
+            <span style={{ fontSize: "0.9375rem", fontWeight: 600, color: "#fff" }}>{title}</span>
+          </div>
+          {linkText && linkHref && (
+            <a href={linkHref} style={{ fontSize: "0.75rem", color: "#ff6b35", textDecoration: "none" }}>
+              {linkText}
+            </a>
+          )}
+        </div>
+      )}
+      {children}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ICONS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const ChartIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" style={{ width: "100%", height: "100%" }}>
+    <path d="M3 3v18h18" /><rect x="7" y="12" width="3" height="6" /><rect x="12" y="9" width="3" height="9" /><rect x="17" y="5" width="3" height="13" />
+  </svg>
+);
+
+const ActivityIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" style={{ width: "100%", height: "100%" }}>
+    <path d="M22 12H18l-3 7L9 5l-3 7H2" />
+  </svg>
+);
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// MAIN DASHBOARD
+// ═══════════════════════════════════════════════════════════════════════════════
 
 export default function Dashboard() {
   React.useEffect(() => {
@@ -312,20 +680,10 @@ export default function Dashboard() {
   }, []);
 
   const [displayName, setDisplayName] = React.useState<string>("Breeder");
-  const [mounted, setMounted] = React.useState(false);
 
-  const prefersReduced = React.useMemo(
-    () =>
-      typeof window !== "undefined" &&
-      window.matchMedia &&
-      window.matchMedia("(prefers-reduced-motion: reduce)").matches,
-    []
-  );
-
+  // Load user's display name
   React.useEffect(() => {
-    setMounted(true);
     let cancelled = false;
-
     const cached = (window as any)?.platform?.currentUser;
     if (cached && !cancelled) setDisplayName(pickName(cached));
 
@@ -345,116 +703,180 @@ export default function Dashboard() {
     return () => { cancelled = true; };
   }, []);
 
-  const data = useDashboardData();
+  // Load dashboard data
+  const data = useDashboardDataV2();
 
-  const counts = data.counts ?? {
-    animals: 0,
-    activeCycles: 0,
-    littersInCare: 0,
-    upcomingBreedings: 0,
-  };
-
-  const hasPlansOrWindows =
-    (Array.isArray(data.plans) && data.plans.length > 0) ||
-    (data.windows && Object.keys(data.windows).length > 0);
-
-  const hasTasks = Array.isArray(data.tasks) && data.tasks.length > 0;
+  const pendingAgenda = data.todaysAgenda.filter((i) => !i.completed).length;
+  const completedAgenda = data.todaysAgenda.length - pendingAgenda;
+  const activePlans = data.plans.filter((p) => p.status?.toUpperCase() !== "COMPLETE").length;
   const hasKpis = Array.isArray(data.kpis) && data.kpis.length > 0;
   const hasFeed = Array.isArray(data.feed) && data.feed.length > 0;
 
-  const appear =
-    prefersReduced
-      ? ""
-      : (mounted ? "opacity-100 translate-y-0" : "opacity-0 translate-y-1") +
-        " transition-all duration-200";
-
   return (
-    <div className="p-6 bhq-vignette c-typography">
-      <LocalStyles />
-      <Container>
-        <div className="space-y-6">
-          <PageHeader
-            title="Dashboard"
-            subtitle="Operational overview, upcoming work, and program health"
+    <div
+      style={{
+        background: `
+          radial-gradient(ellipse 1000px 500px at 100% 0%, rgba(255, 107, 53, 0.12) 0%, transparent 50%),
+          radial-gradient(ellipse 600px 400px at 0% 100%, rgba(255, 107, 53, 0.08) 0%, transparent 45%),
+          linear-gradient(180deg, #111 0%, #0a0a0a 100%)
+        `,
+        minHeight: "100vh",
+        padding: "2rem",
+      }}
+    >
+      <DashboardStyles />
+
+      <div style={{ maxWidth: "1600px", margin: "0 auto" }}>
+        {/* Alert Banner */}
+        {data.alerts.length > 0 && (
+          <div style={{ marginBottom: "1.5rem" }}>
+            <AlertBanner
+              alerts={data.alerts}
+              onDismiss={data.handlers.onDismissAlert}
+            />
+          </div>
+        )}
+
+        {/* Hero Greeting */}
+        <div style={{ marginBottom: "2rem" }}>
+          <HeroGreeting
+            name={displayName}
+            pendingTasks={pendingAgenda}
+            completedTasks={completedAgenda}
           />
-
-          {/* Greeting + KPI band with banner warmth; TodayStrip owns the salutation */}
-          <div className={`${appear} ${KPI_SURFACE}`}>
-            <div className="c-banner p-3 rounded-2xl">
-              <TodayStrip userFirstName={displayName} counts={counts} />
-            </div>
-          </div>
-
-          <div className={`grid grid-cols-1 xl:grid-cols-3 gap-6 ${appear}`}>
-            {/* Next 90 days - primary surface with copper linework */}
-            <SectionCard
-              className={`xl:col-span-2 surface-primary copper-glow copper-glow--hover`}
-              title={<div className="flex items-center c-section-title">{TitleIcon.calendar}Next 90 days</div>}
-              subtitle="Today marker is fixed, chart scrolls under it"
-            >
-              {hasPlansOrWindows ? (
-                <MiniGantt90 plans={data.plans ?? []} windows={data.windows ?? {}} />
-              ) : (
-                <EmptyCard
-                  icon="calendar"
-                  title="No breeding windows yet."
-                  hint="Lock a cycle on a female to see the next 90 days come alive."
-                />
-              )}
-            </SectionCard>
-
-            {/* Urgent tasks - primary surface */}
-            <SectionCard
-              className={`surface-primary copper-glow copper-glow--hover`}
-              title={<div className="flex items-center c-section-title">{TitleIcon.bolt}Urgent tasks</div>}
-              subtitle="Time sensitive items that keep the program moving"
-            >
-              {hasTasks ? (
-                <UrgentTasks tasks={data.tasks ?? []} onComplete={data.handlers.onCompleteTask} />
-              ) : (
-                <EmptyCard
-                  icon="inbox"
-                  title="No urgent tasks."
-                  hint="You are clear for now. Keep momentum by reviewing follow ups."
-                />
-              )}
-            </SectionCard>
-          </div>
-
-          <div className={`grid grid-cols-1 xl:grid-cols-3 gap-6 ${appear}`}>
-            {/* KPIs - secondary surface to separate metrics from workflow */}
-            <SectionCard
-              className={`xl:col-span-2 surface-secondary copper-glow copper-glow--hover`}
-              title={<div className="flex items-center c-section-title">{TitleIcon.chart}Program KPIs</div>}
-            >
-              {hasKpis ? (
-                <KpiPanel kpis={data.kpis ?? []} />
-              ) : (
-                <EmptyCard
-                  icon="chart"
-                  title="No KPIs yet."
-                  hint="As data accumulates, key indicators will light up here."
-                />
-              )}
-            </SectionCard>
-
-            {/* Activity - primary surface */}
-            <SectionCard
-              className={`surface-primary copper-glow copper-glow--hover`}
-              title={<div className="flex items-center c-section-title">{TitleIcon.activity}Recent activity</div>}
-            >
-              {hasFeed ? (
-                <ActivityFeed items={data.feed ?? []} />
-              ) : (
-                <EmptyCard
-                  title="No recent activity."
-                  hint="New events and updates will appear here the moment they happen."
-                />
-              )}
-            </SectionCard>
-          </div>
         </div>
-      </Container>
+
+        {/* Primary Action Tiles */}
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(4, 1fr)",
+            gap: "1.25rem",
+            marginBottom: "2rem",
+          }}
+        >
+          <PrimaryTile
+            title="Breeding Pipeline"
+            subtitle="Active plans and upcoming milestones"
+            count={activePlans}
+            countLabel="active"
+            icon={<BreedingIcon />}
+            href="/breeding"
+            badge={activePlans > 0 ? "Active" : undefined}
+            badgeColor="#22c55e"
+          />
+          <PrimaryTile
+            title="Offspring in Care"
+            subtitle="Groups currently being raised"
+            count={data.offspringGroups.length}
+            countLabel="groups"
+            icon={<OffspringIcon />}
+            href="/offspring"
+            badge={data.offspringGroups.length > 0 ? "Active" : undefined}
+          />
+          <WaitlistTile
+            pendingCount={data.waitlistPressure.pendingWaitlist ?? 0}
+            approvedCount={data.waitlistPressure.activeWaitlist ?? 0}
+          />
+          <PrimaryTile
+            title="Finances"
+            subtitle="Outstanding balances and collections"
+            count={data.financeSummary ? `$${Math.round(data.financeSummary.outstandingTotalCents / 100).toLocaleString()}` : "$0"}
+            countLabel="outstanding"
+            icon={<FinanceIcon />}
+            href="/finance"
+            badge={data.financeSummary && data.financeSummary.outstandingTotalCents > 0 ? "Action" : undefined}
+            badgeColor="#3b82f6"
+          />
+        </div>
+
+        {/* Today's Agenda + Quick Actions */}
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "2fr 1fr",
+            gap: "1.5rem",
+            marginBottom: "2rem",
+          }}
+        >
+          <SectionCard>
+            <TodaysAgenda
+              userFirstName={displayName}
+              items={data.todaysAgenda}
+              onComplete={data.handlers.onCompleteAgendaItem}
+            />
+          </SectionCard>
+          <SectionCard>
+            <QuickActionsHub onAction={data.handlers.onQuickAction} />
+          </SectionCard>
+        </div>
+
+        {/* Breeding Pipeline Detail */}
+        <div style={{ marginBottom: "2rem" }}>
+          <SectionCard>
+            <BreedingPipeline
+              plans={data.plans}
+              windows={data.windows}
+              maxVisible={6}
+              onViewPlan={(id) => {
+                window.location.href = `/breeding/${id}`;
+              }}
+            />
+          </SectionCard>
+        </div>
+
+        {/* Three Column Detail Section */}
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(3, 1fr)",
+            gap: "1.5rem",
+            marginBottom: "2rem",
+          }}
+        >
+          <SectionCard>
+            <OffspringGroupCards
+              groups={data.offspringGroups}
+              onViewGroup={(id) => {
+                window.location.href = `/offspring/${id}`;
+              }}
+              loading={data.loading}
+            />
+          </SectionCard>
+          <SectionCard>
+            <WaitlistGauge pressure={data.waitlistPressure} loading={data.loading} />
+          </SectionCard>
+          <SectionCard>
+            <FinancialSnapshot summary={data.financeSummary} loading={data.loading} />
+          </SectionCard>
+        </div>
+
+        {/* KPIs - only show when we have data */}
+        {hasKpis && (
+        <div style={{ marginBottom: "2rem" }}>
+          <SectionCard title="Program KPIs" icon={<ChartIcon />}>
+              <KpiPanel kpis={data.kpis} />
+          </SectionCard>
+        </div>
+        )}
+
+        {/* Activity Feed */}
+        <div>
+          <SectionCard title="Recent Activity" icon={<ActivityIcon />}>
+            {hasFeed ? (
+              <ActivityFeed items={data.feed} />
+            ) : (
+              <div style={{ padding: "2rem", textAlign: "center" }}>
+                <div style={{ fontSize: "2rem", marginBottom: "0.5rem" }}>⚡</div>
+                <div style={{ color: "#fff", fontWeight: 500 }}>No recent activity</div>
+                <div style={{ color: "rgba(255,255,255,0.5)", fontSize: "0.875rem" }}>
+                  Events and updates will appear here as they happen
+                </div>
+              </div>
+            )}
+          </SectionCard>
+        </div>
+      </div>
     </div>
   );
 }
