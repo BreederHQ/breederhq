@@ -109,7 +109,7 @@ export type ContactRow = {
   archived?: boolean | null;
 };
 
-const COLUMNS: Array<{ key: keyof ContactRow & string; label: string; default?: boolean }> = [
+const COLUMNS: Array<{ key: keyof ContactRow & string; label: string; default?: boolean; center?: boolean }> = [
   { key: "firstName", label: "First", default: true },
   { key: "lastName", label: "Last", default: true },
   { key: "nickname", label: "Nickname", default: true },
@@ -1431,7 +1431,7 @@ export default function AppContacts() {
           limit: 100,
           includeArchived
         });
-        const items = (res?.items || res?.data || []).map(contactToRow);
+        const items = (res?.items || (res as any)?.data || []).map(contactToRow);
         if (!cancelled) setRows(items);
       } catch (e: any) {
         if (!cancelled) setError(e?.payload?.error || e?.message || "Failed to load contacts");
@@ -2179,7 +2179,7 @@ export default function AppContacts() {
                   value={country}
                   onChange={(e) => setCountry((e.target as HTMLSelectElement).value)}
                 >
-                  {COUNTRIES.filter((c) => c !== "- Select country").map((c) => (
+                  {COUNTRIES.filter((c) => c !== "— Select country").map((c) => (
                     <option key={c} value={c}>{c}</option>
                   ))}
                 </select>

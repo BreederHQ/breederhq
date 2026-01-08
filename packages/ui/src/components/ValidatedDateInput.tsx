@@ -9,7 +9,7 @@ import type {
   ValidationWarning,
   PlanActualDates,
 } from "../utils/dateValidation/types";
-import { validateSingleDate } from "../utils/dateValidation/validate";
+import { validateSingleDate, validateBreedingDates } from "../utils/dateValidation/validate";
 import { getMilestoneLabel } from "../utils/dateValidation/defaults";
 
 // ============================================================================
@@ -365,8 +365,6 @@ export function useBreedingDateValidation({
   );
 
   const validateAll = React.useCallback((): ValidationResult => {
-    // Import and use full validation
-    const { validateBreedingDates } = require("../utils/dateValidation/validate");
     return validateBreedingDates(planActuals, validationContext);
   }, [planActuals, validationContext]);
 

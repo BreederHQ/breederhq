@@ -170,7 +170,7 @@ export const NavShell: React.FC<NavShellProps> = ({
     { key: "finance", label: "Finance", href: "/finance/" },
     { key: "admin", label: "Admin", href: "/admin/" },
   ];
-  const navItems = (navItemsProp ?? items)?.length ? (navItemsProp ?? items) : defaultItems;
+  const navItems = (navItemsProp ?? items)?.length ? (navItemsProp ?? items)! : defaultItems;
 
   // INITIAL title bootstrap from URL, but **ignore "/"** so Dashboard doesn't claim everything.
   React.useEffect(() => {
@@ -322,7 +322,7 @@ export const NavShell: React.FC<NavShellProps> = ({
                   </button>
                   {notificationsOpen && notificationsDropdownContent && (
                     <div className="absolute right-0 top-full mt-2 z-50">
-                      {React.cloneElement(notificationsDropdownContent as React.ReactElement, {
+                      {React.cloneElement(notificationsDropdownContent as React.ReactElement<{ onClose?: () => void }>, {
                         onClose: () => setNotificationsOpen(false),
                       })}
                     </div>

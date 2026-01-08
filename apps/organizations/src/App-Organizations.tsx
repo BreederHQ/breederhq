@@ -292,22 +292,22 @@ export default function AppOrganizations() {
       fields: [
         {
           label: "Email", view: (r: OrgRow) => r.email ?? "—",
-          edit: (r, set) => (<Input size="sm" defaultValue={r.email ?? ""} onChange={e => set({ email: e.target.value })} />),
+          edit: (r: OrgRow, set: (patch: Partial<OrgRow>) => void) => (<Input size="sm" defaultValue={r.email ?? ""} onChange={e => set({ email: e.target.value })} />),
         },
         {
-          label: "Phone", view: (r) => r.phone ?? "—",
-          edit: (r, set) => (<Input size="sm" defaultValue={r.phone ?? ""} onChange={e => set({ phone: e.target.value })} />),
+          label: "Phone", view: (r: OrgRow) => r.phone ?? "—",
+          edit: (r: OrgRow, set: (patch: Partial<OrgRow>) => void) => (<Input size="sm" defaultValue={r.phone ?? ""} onChange={e => set({ phone: e.target.value })} />),
         },
         {
-          label: "Website", view: (r) => r.website ?? "—",
-          edit: (r, set) => (<Input size="sm" defaultValue={r.website ?? ""} onChange={e => set({ website: e.target.value })} />),
+          label: "Website", view: (r: OrgRow) => r.website ?? "—",
+          edit: (r: OrgRow, set: (patch: Partial<OrgRow>) => void) => (<Input size="sm" defaultValue={r.website ?? ""} onChange={e => set({ website: e.target.value })} />),
         },
         {
-          label: "Address", view: (r) =>
+          label: "Address", view: (r: OrgRow) =>
             [r.street, r.street2, r.city, r.state, r.zip, r.country].filter(Boolean).join(", ") || "—",
         },
-        { label: "Tags", view: (r) => (r.tags || []).join(", ") || "—" },
-        { label: "Status", view: (r) => r.status || "Active" },
+        { label: "Tags", view: (r: OrgRow) => (r.tags || []).join(", ") || "—" },
+        { label: "Status", view: (r: OrgRow) => r.status || "Active" },
       ],
     },
   ]);
@@ -319,10 +319,10 @@ export default function AppOrganizations() {
     width: 820,
     placement: "center",
     align: "top",
-    fetchRow: (id: number) => api.organizations.get(id),
-    onSave: async (id: number, draft: Partial<OrgRow>) => {
-      const updated = await api.organizations.update(id, draft);
-      setRows(prev => prev.map(r => (r.id === id ? { ...r, ...orgToRow(updated) } : r)));
+    fetchRow: (id: string | number) => api.organizations.get(Number(id)),
+    onSave: async (id: string | number, draft: Partial<OrgRow>) => {
+      const updated = await api.organizations.update(Number(id), draft);
+      setRows(prev => prev.map(r => (r.id === Number(id) ? { ...r, ...orgToRow(updated) } : r)));
     },
     header: (r: OrgRow) => ({ title: r.name, subtitle: r.email || r.website || "" }),
     tabs: [

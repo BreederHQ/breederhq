@@ -281,7 +281,7 @@ export function makeApi(base?: string) {
         },
         async create(input: any, idempotencyKey: string) {
           const ctx = await getCtx(root);
-          const h = headersFor(ctx, { method: "POST" });
+          const h = headersFor(ctx, { method: "POST" }) as Record<string, string>;
           h["Idempotency-Key"] = idempotencyKey;
           const res = await fetch(`${root}/invoices`, {
             method: "POST",
@@ -347,7 +347,7 @@ export function makeApi(base?: string) {
         },
         async create(input: any, idempotencyKey: string) {
           const ctx = await getCtx(root);
-          const h = headersFor(ctx, { method: "POST" });
+          const h = headersFor(ctx, { method: "POST" }) as Record<string, string>;
           h["Idempotency-Key"] = idempotencyKey;
           const res = await fetch(`${root}/payments`, {
             method: "POST",

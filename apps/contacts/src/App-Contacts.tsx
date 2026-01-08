@@ -473,8 +473,8 @@ export default function AppContacts() {
           }),
         ]);
 
-        const contacts = (contactsRes?.items || contactsRes?.data || []).map(contactToPartyRow);
-        const orgs = (orgsRes?.items || orgsRes?.data || []).map(organizationToPartyRow);
+        const contacts = (contactsRes?.items || (contactsRes as any)?.data || []).map(contactToPartyRow);
+        const orgs = (orgsRes?.items || (orgsRes as any)?.data || []).map(organizationToPartyRow);
 
         // Merge and sort by displayName
         const merged = [...contacts, ...orgs].sort((a, b) =>

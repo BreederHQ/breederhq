@@ -33,7 +33,7 @@ import {
 import {
   makeOffspringApiClient,
   type AnimalLite,
-  type OffspringGroupDTO,
+  type OffspringGroupLite as OffspringGroupDTO,
 } from "../api";
 
 import { readTenantIdFast } from "@bhq/ui/utils/tenant";
@@ -63,6 +63,7 @@ const WHELPING_COLLAR_SWATCHES = [
   { label: "Black", value: "Black", hex: "#111827" },
   { label: "White", value: "White", hex: "#f9fafb" },
 ];
+const BIRTH_COLLAR_SWATCHES = WHELPING_COLLAR_SWATCHES;
 
 const __og_COLLAR_COLOR_SWATCHES = [
   { id: "red", name: "Red", hex: "#ef4444" },
@@ -1350,7 +1351,7 @@ function getBuyerSectionTitle(placementState?: PlacementState | null): string {
 
 const isDevRuntime =
   typeof window !== "undefined" &&
-  (typeof process === "undefined" || process.env?.NODE_ENV !== "production");
+  (typeof globalThis.process === "undefined" || (globalThis.process as any)?.env?.NODE_ENV !== "production");
 
 if (isDevRuntime) {
   const deceased = buildOffspringStatusPresentation({

@@ -93,7 +93,7 @@ export default function RollupWithPhaseToggles({
     ? () => {} // No-op for controlled mode
     : internalSelection.setSelectionTouched;
   const toggleOne = React.useCallback((id: ID) => {
-    setSelectedKeys(prev => {
+    setSelectedKeys((prev: Set<ID>) => {
       const next = new Set(prev);
       if (next.has(id)) {
         next.delete(id);
@@ -146,7 +146,7 @@ export default function RollupWithPhaseToggles({
     if (plansInPhase.length === 0) return;
 
     setSelectionTouched(true);
-    setSelectedKeys(prev => {
+    setSelectedKeys((prev: Set<ID>) => {
       const next = new Set(prev);
       const allSelected = plansInPhase.every(p => next.has(p.id));
 

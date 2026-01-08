@@ -42,8 +42,9 @@ import "@bhq/ui/styles/datefield.css";
 import "@bhq/ui/styles/datepicker.css";
 import { makeBreedingApi } from "./api";
 
-import { windowsFromPlan, expectedTestingFromCycleStart, pickPlacementCompletedAny } from "@bhq/ui/utils";
+import { pickPlacementCompletedAny } from "@bhq/ui/utils";
 import { reproEngine } from "@bhq/ui/utils";
+import { windowsFromPlan } from "./adapters/planWindows";
 
 // ── Calendar / Planning wiring ─────────────────────────────
 import BreedingCalendar from "./components/BreedingCalendar";
@@ -57,6 +58,7 @@ import WhatsMissingAnalysis from "./components/WhatsMissingAnalysis";
 import BreedGeneticProfile from "./components/BreedGeneticProfiles";
 import BreedingGoalPlanner from "./components/BreedingGoalPlanner";
 import { GeneticsImportDialog } from "@bhq/ui/components/GeneticsImport";
+import { getOffspringName, translatePrediction, extractLocusFromTrait } from "./utils/geneticsSimpleMode";
 
 // ── Planner pages ─────────────────────────────────────────
 import { YourBreedingPlansPage, WhatIfPlanningPage } from "./pages/planner";
@@ -64,12 +66,17 @@ import type { WhatIfFemale } from "./pages/planner/whatIfTypes";
 import { toBackendStatus, fromBackendStatus, deriveBreedingStatus as deriveBreedingStatusImported, type Status as PlannerStatus } from "./pages/planner/deriveBreedingStatus";
 
 
-/* Cycle math */
-import {
-  useCyclePlanner,
-  type Species as PlannerSpecies,
-  type ExpectedDates as PlannerExpected,
-} from "@bhq/ui/hooks";
+/* Cycle math - local types (previously expected from @bhq/ui/hooks) */
+type PlannerSpecies = "Dog" | "Cat" | "Horse" | "Goat" | "Rabbit";
+type PlannerExpected = {
+  ovulation?: string | null;
+  breeding_expected?: string | null;
+  birth_expected?: string | null;
+  weaning_expected?: string | null;
+  placement_expected?: string | null;
+  placement_expected_end?: string | null;
+  [key: string]: any;
+};
 
 import { type NormalizedPlan } from "./adapters/planToGantt";
 
@@ -1291,6 +1298,7 @@ const SPECIES_PHENOTYPE_MAPS: Record<string, Record<string, Record<string, strin
       "S/S": "Solid (no white)",
       "S/sp": "Solid (carries piebald)",
       "sp/sp": "Piebald/Parti (white patches)",
+    },
     // Coat Type - Critical for doodles
     L: {
       "L/L": "Short coat",
@@ -1425,7 +1433,6 @@ const SPECIES_PHENOTYPE_MAPS: Record<string, Record<string, Record<string, strin
       "N/N": "Clear",
       "N/GPRA": "Carrier",
       "GPRA/GPRA": "Affected",
-    },
     },
   },
 
@@ -2397,7 +2404,8 @@ function GeneticsLabPage({
   const [showDisclaimer, setShowDisclaimer] = React.useState(false);
   const [detailLevel, setDetailLevel] = React.useState<'simple' | 'detailed' | 'professional'>('simple');
   const [showImportDialog, setShowImportDialog] = React.useState<'dam' | 'sire' | null>(null);
-  const [activeLabTab, setActiveLabTab] = React.useState<'overview' | 'punnett' | 'simulator' | 'health' | 'colors' | 'goals'>('overview');
+  const [activeLabTab, setActiveLabTab] = React.useState<'overview' | 'punnett' | 'simulator' | 'health' | 'colors' | 'goals' | 'missing'>('overview');
+  const [simpleMode, setSimpleMode] = React.useState(false);
 
   // Check if user has already accepted genetics disclaimer
   React.useEffect(() => {
@@ -2692,26 +2700,40 @@ function GeneticsLabPage({
                 </div>
               )}
 
-              {/* Compact Status Bar */}
-              <div className="flex items-center justify-between mb-4 pb-4 border-b border-hairline">
-                <div className="flex items-center gap-3">
-                  <div className={`px-3 py-1.5 rounded-full text-sm font-bold ${
-                    results.score >= 80 ? "bg-green-500/20 text-green-500" :
-                    results.score >= 60 ? "bg-yellow-500/20 text-yellow-500" :
-                    "bg-red-500/20 text-red-500"
+              {/* Pairing Score - Prominent Display */}
+              <div className={`mb-4 p-4 rounded-xl border-2 ${
+                results.score >= 80
+                  ? "bg-green-500/10 border-green-500/40"
+                  : results.score >= 60
+                    ? "bg-yellow-500/10 border-yellow-500/40"
+                    : "bg-red-500/10 border-red-500/40"
+              }`}>
+                <div className="flex items-center gap-4">
+                  <div className={`text-4xl font-bold ${
+                    results.score >= 80 ? "text-green-400" :
+                    results.score >= 60 ? "text-yellow-400" :
+                    "text-red-400"
                   }`}>
-                    {results.score}/100
+                    {results.score}<span className="text-2xl text-secondary/60">/100</span>
                   </div>
-                  <span className="text-sm text-secondary">
-                    {results.score >= 80 ? "Great pairing!" :
-                     results.score >= 60 ? "Proceed with caution" :
-                     "Review warnings above"}
-                  </span>
-                  {results.colorSummary && (
-                    <span className="text-sm text-accent font-medium hidden md:inline">
-                      — {results.colorSummary}
-                    </span>
-                  )}
+                  <div>
+                    <div className={`text-lg font-semibold ${
+                      results.score >= 80 ? "text-green-400" :
+                      results.score >= 60 ? "text-yellow-400" :
+                      "text-red-400"
+                    }`}>
+                      {results.score >= 80 ? "Great Pairing!" :
+                       results.score >= 60 ? "Proceed with Caution" :
+                       "Review Warnings"}
+                    </div>
+                    <div className="text-sm text-secondary">
+                      {results.score >= 80
+                        ? "This pairing has good genetic compatibility"
+                        : results.score >= 60
+                          ? "Some concerns to consider before breeding"
+                          : "Significant health risks identified"}
+                    </div>
+                  </div>
                 </div>
               </div>
 
@@ -2727,6 +2749,7 @@ function GeneticsLabPage({
                     { id: 'health', label: 'Health Analysis', icon: '🏥' },
                     { id: 'colors', label: 'Color Preview', icon: '🎨' },
                     { id: 'goals', label: 'Breeding Goals', icon: '🎯' },
+                    { id: 'missing', label: "What's Missing", icon: '📋' },
                   ].map((tab) => (
                     <button
                       key={tab.id}
@@ -2761,123 +2784,232 @@ function GeneticsLabPage({
                       )}
 
                       {/* Offspring Predictions Card */}
-                      <div className="rounded-xl border-2 border-accent/30 bg-accent/5 p-4">
+                      <div className="rounded-lg border border-blue-500/30 bg-blue-500/5 p-4">
                         <div className="flex items-center justify-between mb-3">
-                          <h3 className="text-lg font-bold flex items-center gap-2">
-                            Offspring Predictions
-                            {selectedDam?.species && (
-                              <span className="text-sm font-normal text-secondary">
-                                ({selectedDam.species.charAt(0) + selectedDam.species.slice(1).toLowerCase()})
-                              </span>
-                            )}
-                          </h3>
+                          <div className="flex items-center gap-3">
+                            <span className="text-2xl">🎨</span>
+                            <div>
+                              <h3 className="font-semibold">Offspring Predictions</h3>
+                              {selectedDam?.species && (
+                                <div className="text-sm text-secondary">
+                                  {selectedDam.species.charAt(0) + selectedDam.species.slice(1).toLowerCase()} genetics
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => setSimpleMode(!simpleMode)}
+                            className={`px-3 py-1.5 text-xs font-medium rounded-full transition-colors ${
+                              simpleMode
+                                ? "bg-blue-500 text-white"
+                                : "bg-surface-alt text-secondary hover:bg-surface-alt/80"
+                            }`}
+                          >
+                            {simpleMode ? "Simple Mode" : "Technical"}
+                          </button>
                         </div>
 
-                        {/* Color Summary - if available */}
-                        {results.colorSummary && (
-                          <div className="text-sm font-medium text-accent mb-3 pb-3 border-b border-accent/20">
-                            {results.colorSummary}
+                        {/* Simple Mode View - Plain English */}
+                        {simpleMode ? (
+                          <div className="space-y-4">
+                            {/* Simple intro */}
+                            <p className="text-sm text-secondary italic">
+                              Here's what to expect from this pairing, explained simply:
+                            </p>
+
+                            {/* Coat Colors - Simple */}
+                            {results.coatColor?.length > 0 && (
+                              <div className="bg-surface rounded-lg p-3">
+                                <div className="font-medium mb-2 flex items-center gap-2">
+                                  <span>🎨</span>
+                                  <span>Colors & Patterns</span>
+                                </div>
+                                <div className="space-y-2 text-sm">
+                                  {results.coatColor?.map((item: any, idx: number) => {
+                                    const locus = extractLocusFromTrait(item.trait);
+                                    const species = selectedDam?.species || "DOG";
+                                    const simpleText = translatePrediction("coatColor", locus, item.prediction, species);
+                                    return (
+                                      <p key={idx} className="text-primary leading-relaxed">
+                                        {simpleText}
+                                      </p>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Coat Type - Simple */}
+                            {results.coatType?.length > 0 && (
+                              <div className="bg-surface rounded-lg p-3">
+                                <div className="font-medium mb-2 flex items-center gap-2">
+                                  <span>✨</span>
+                                  <span>Coat Type</span>
+                                </div>
+                                <div className="space-y-2 text-sm">
+                                  {results.coatType?.map((item: any, idx: number) => {
+                                    const locus = extractLocusFromTrait(item.trait);
+                                    const species = selectedDam?.species || "DOG";
+                                    const simpleText = translatePrediction("coatType", locus, item.prediction, species);
+                                    return (
+                                      <p key={idx} className="text-primary leading-relaxed">
+                                        {simpleText}
+                                      </p>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Physical Traits - Simple */}
+                            {results.physicalTraits?.length > 0 && (
+                              <div className="bg-surface rounded-lg p-3">
+                                <div className="font-medium mb-2 flex items-center gap-2">
+                                  <span>🦴</span>
+                                  <span>Physical Features</span>
+                                </div>
+                                <div className="space-y-2 text-sm">
+                                  {results.physicalTraits?.map((item: any, idx: number) => {
+                                    const locus = extractLocusFromTrait(item.trait);
+                                    const species = selectedDam?.species || "DOG";
+                                    const simpleText = translatePrediction("physicalTraits", locus, item.prediction, species);
+                                    return (
+                                      <p key={idx} className="text-primary leading-relaxed">
+                                        {simpleText}
+                                      </p>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Eye Color - Simple */}
+                            {results.eyeColor?.length > 0 && (
+                              <div className="bg-surface rounded-lg p-3">
+                                <div className="font-medium mb-2 flex items-center gap-2">
+                                  <span>👁️</span>
+                                  <span>Eye Color</span>
+                                </div>
+                                <div className="space-y-2 text-sm">
+                                  {results.eyeColor?.map((item: any, idx: number) => {
+                                    const locus = extractLocusFromTrait(item.trait);
+                                    const species = selectedDam?.species || "DOG";
+                                    const simpleText = translatePrediction("eyeColor", locus, item.prediction, species);
+                                    return (
+                                      <p key={idx} className="text-primary leading-relaxed">
+                                        {simpleText}
+                                      </p>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Switch to technical hint */}
+                            <p className="text-xs text-secondary text-center pt-2">
+                              Want the full genetic details? Click "Simple Mode" above to switch to technical view.
+                            </p>
+                          </div>
+                        ) : (
+                          /* Technical Mode View - Original compact grid */
+                          <div className="space-y-3">
+                            {/* Coat Color Section */}
+                            {results.coatColor?.length > 0 && (
+                              <div>
+                                <div className="text-xs font-semibold text-secondary uppercase tracking-wide mb-2">Coat Color</div>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1">
+                                  {results.coatColor?.map((item: any, idx: number) => {
+                                    const locusMatch = item.trait.match(/\(([^)]+)\)/);
+                                    const locusName = locusMatch ? locusMatch[1] : item.trait;
+                                    const outcomes = item.prediction.split(', ').map((p: string) => {
+                                      const match = p.match(/^(\d+)%\s+(.+)$/);
+                                      if (!match) return p;
+                                      return `${match[1]}% ${match[2]}`;
+                                    }).join(' · ');
+                                    return (
+                                      <div key={idx} className="flex items-baseline gap-2 text-sm py-0.5">
+                                        <span className="font-medium text-secondary min-w-[80px]">{locusName}</span>
+                                        <span className="text-primary truncate">{outcomes}</span>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Coat Type Section */}
+                            {results.coatType?.length > 0 && (
+                              <div>
+                                <div className="text-xs font-semibold text-secondary uppercase tracking-wide mb-2">Coat Type</div>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1">
+                                  {results.coatType?.map((item: any, idx: number) => {
+                                    const locusMatch = item.trait.match(/\(([^)]+)\)/);
+                                    const locusName = locusMatch ? locusMatch[1] : item.trait;
+                                    const outcomes = item.prediction.split(', ').map((p: string) => {
+                                      const match = p.match(/^(\d+)%\s+(.+)$/);
+                                      if (!match) return p;
+                                      return `${match[1]}% ${match[2]}`;
+                                    }).join(' · ');
+                                    return (
+                                      <div key={idx} className="flex items-baseline gap-2 text-sm py-0.5">
+                                        <span className="font-medium text-secondary min-w-[80px]">{locusName}</span>
+                                        <span className="text-primary truncate">{outcomes}</span>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Physical Traits Section */}
+                            {results.physicalTraits?.length > 0 && (
+                              <div>
+                                <div className="text-xs font-semibold text-secondary uppercase tracking-wide mb-2">Physical Traits</div>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1">
+                                  {results.physicalTraits?.map((item: any, idx: number) => {
+                                    const locusMatch = item.trait.match(/\(([^)]+)\)/);
+                                    const locusName = locusMatch ? locusMatch[1] : item.trait;
+                                    const outcomes = item.prediction.split(', ').map((p: string) => {
+                                      const match = p.match(/^(\d+)%\s+(.+)$/);
+                                      if (!match) return p;
+                                      return `${match[1]}% ${match[2]}`;
+                                    }).join(' · ');
+                                    return (
+                                      <div key={idx} className="flex items-baseline gap-2 text-sm py-0.5">
+                                        <span className="font-medium text-secondary min-w-[80px]">{locusName}</span>
+                                        <span className="text-primary truncate">{outcomes}</span>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Eye Color Section */}
+                            {results.eyeColor?.length > 0 && (
+                              <div>
+                                <div className="text-xs font-semibold text-secondary uppercase tracking-wide mb-2">Eye Color</div>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1">
+                                  {results.eyeColor?.map((item: any, idx: number) => {
+                                    const locusMatch = item.trait.match(/\(([^)]+)\)/);
+                                    const locusName = locusMatch ? locusMatch[1] : item.trait;
+                                    const outcomes = item.prediction.split(', ').map((p: string) => {
+                                      const match = p.match(/^(\d+)%\s+(.+)$/);
+                                      if (!match) return p;
+                                      return `${match[1]}% ${match[2]}`;
+                                    }).join(' · ');
+                                    return (
+                                      <div key={idx} className="flex items-baseline gap-2 text-sm py-0.5">
+                                        <span className="font-medium text-secondary min-w-[80px]">{locusName}</span>
+                                        <span className="text-primary truncate">{outcomes}</span>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            )}
                           </div>
                         )}
-
-                        {/* Compact Grid Layout for all traits */}
-                        <div className="space-y-3">
-                          {/* Coat Color Section */}
-                          {results.coatColor?.length > 0 && (
-                            <div>
-                              <div className="text-xs font-semibold text-secondary uppercase tracking-wide mb-2">Coat Color</div>
-                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1">
-                                {results.coatColor?.map((item: any, idx: number) => {
-                                  const locusMatch = item.trait.match(/\(([^)]+)\)/);
-                                  const locusName = locusMatch ? locusMatch[1] : item.trait;
-                                  const outcomes = item.prediction.split(', ').map((p: string) => {
-                                    const match = p.match(/^(\d+)%\s+(.+)$/);
-                                    if (!match) return p;
-                                    return `${match[1]}% ${match[2]}`;
-                                  }).join(' · ');
-                                  return (
-                                    <div key={idx} className="flex items-baseline gap-2 text-sm py-0.5">
-                                      <span className="font-medium text-secondary min-w-[80px]">{locusName}</span>
-                                      <span className="text-primary truncate">{outcomes}</span>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Coat Type Section */}
-                          {results.coatType?.length > 0 && (
-                            <div>
-                              <div className="text-xs font-semibold text-secondary uppercase tracking-wide mb-2">Coat Type</div>
-                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1">
-                                {results.coatType?.map((item: any, idx: number) => {
-                                  const locusMatch = item.trait.match(/\(([^)]+)\)/);
-                                  const locusName = locusMatch ? locusMatch[1] : item.trait;
-                                  const outcomes = item.prediction.split(', ').map((p: string) => {
-                                    const match = p.match(/^(\d+)%\s+(.+)$/);
-                                    if (!match) return p;
-                                    return `${match[1]}% ${match[2]}`;
-                                  }).join(' · ');
-                                  return (
-                                    <div key={idx} className="flex items-baseline gap-2 text-sm py-0.5">
-                                      <span className="font-medium text-secondary min-w-[80px]">{locusName}</span>
-                                      <span className="text-primary truncate">{outcomes}</span>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Physical Traits Section */}
-                          {results.physicalTraits?.length > 0 && (
-                            <div>
-                              <div className="text-xs font-semibold text-secondary uppercase tracking-wide mb-2">Physical Traits</div>
-                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1">
-                                {results.physicalTraits?.map((item: any, idx: number) => {
-                                  const locusMatch = item.trait.match(/\(([^)]+)\)/);
-                                  const locusName = locusMatch ? locusMatch[1] : item.trait;
-                                  const outcomes = item.prediction.split(', ').map((p: string) => {
-                                    const match = p.match(/^(\d+)%\s+(.+)$/);
-                                    if (!match) return p;
-                                    return `${match[1]}% ${match[2]}`;
-                                  }).join(' · ');
-                                  return (
-                                    <div key={idx} className="flex items-baseline gap-2 text-sm py-0.5">
-                                      <span className="font-medium text-secondary min-w-[80px]">{locusName}</span>
-                                      <span className="text-primary truncate">{outcomes}</span>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Eye Color Section */}
-                          {results.eyeColor?.length > 0 && (
-                            <div>
-                              <div className="text-xs font-semibold text-secondary uppercase tracking-wide mb-2">Eye Color</div>
-                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1">
-                                {results.eyeColor?.map((item: any, idx: number) => {
-                                  const locusMatch = item.trait.match(/\(([^)]+)\)/);
-                                  const locusName = locusMatch ? locusMatch[1] : item.trait;
-                                  const outcomes = item.prediction.split(', ').map((p: string) => {
-                                    const match = p.match(/^(\d+)%\s+(.+)$/);
-                                    if (!match) return p;
-                                    return `${match[1]}% ${match[2]}`;
-                                  }).join(' · ');
-                                  return (
-                                    <div key={idx} className="flex items-baseline gap-2 text-sm py-0.5">
-                                      <span className="font-medium text-secondary min-w-[80px]">{locusName}</span>
-                                      <span className="text-primary truncate">{outcomes}</span>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            </div>
-                          )}
-                        </div>
                       </div>
 
                       {/* Health Check - Compact */}
@@ -2916,14 +3048,6 @@ function GeneticsLabPage({
                         </div>
                       )}
 
-                      {/* What's Missing Alert */}
-                      <WhatsMissingAnalysis
-                        damGenetics={damGenetics}
-                        sireGenetics={sireGenetics}
-                        species={selectedDam?.species || "DOG"}
-                        damName={selectedDam?.name}
-                        sireName={selectedSire?.name}
-                      />
                     </div>
                   )}
 
@@ -3030,6 +3154,22 @@ function GeneticsLabPage({
                       </div>
                       <BreedingGoalPlanner
                         results={results}
+                        species={selectedDam?.species || "DOG"}
+                        damName={selectedDam?.name}
+                        sireName={selectedSire?.name}
+                      />
+                    </div>
+                  )}
+
+                  {/* What's Missing Tab */}
+                  {activeLabTab === 'missing' && (
+                    <div>
+                      <div className="text-sm text-secondary mb-4">
+                        Identify gaps in genetic testing coverage for this pairing.
+                      </div>
+                      <WhatsMissingAnalysis
+                        damGenetics={damGenetics}
+                        sireGenetics={sireGenetics}
                         species={selectedDam?.species || "DOG"}
                         damName={selectedDam?.name}
                         sireName={selectedSire?.name}

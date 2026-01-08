@@ -98,7 +98,8 @@ function splitSlots(children: React.ReactNode) {
 
   items.forEach((child) => {
     if (React.isValidElement(child)) {
-      const slot = child.props?.["data-bhq-overlay-slot"] as OverlaySlot | undefined;
+      const props = child.props as Record<string, unknown> | null;
+      const slot = props?.["data-bhq-overlay-slot"] as OverlaySlot | undefined;
       if (slot === "header" || slot === "body" || slot === "footer") {
         slots[slot].push(child);
         hasSlots = true;

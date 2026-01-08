@@ -1433,13 +1433,4 @@ export default function HealthRiskSummary({
   );
 }
 
-/**
- * Export types for external use
- */
-export type {
-  HealthMarker,
-  HealthCondition,
-  OffspringRisk,
-  RecommendedTest,
-  PairingRecommendation,
-};
+// Types are exported inline with their declarations above

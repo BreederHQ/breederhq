@@ -3592,7 +3592,17 @@ function GeneticsTab({
   const [showImportDialog, setShowImportDialog] = React.useState(false);
 
   // Species-specific locus definitions - comprehensive genetic markers
-  const getSpeciesLoci = React.useCallback((species: string) => {
+  type LocusInfo = { locus: string; locusName: string; description: string; breedSpecific?: string };
+  type SpeciesLoci = {
+    coatColor: LocusInfo[];
+    coatType?: LocusInfo[];
+    physicalTraits?: LocusInfo[];
+    eyeColor?: LocusInfo[];
+    health?: LocusInfo[];
+    bloodType?: LocusInfo[];
+    otherTraits: LocusInfo[];
+  };
+  const getSpeciesLoci = React.useCallback((species: string): SpeciesLoci => {
     const sp = (species || "DOG").toUpperCase();
 
     if (sp === "DOG") {
@@ -3657,6 +3667,7 @@ function GeneticsTab({
           { locus: "PFK", locusName: "Phosphofructokinase Deficiency", description: "Enzyme deficiency causing muscle problems and anemia", breedSpecific: "English Springer Spaniel, American Cocker Spaniel" },
           { locus: "GPRA", locusName: "Generalized Progressive Retinal Atrophy", description: "General form of progressive blindness across multiple breeds" },
         ],
+        otherTraits: [],
       };
     } else if (sp === "CAT") {
       return {
@@ -3696,6 +3707,7 @@ function GeneticsTab({
         bloodType: [
           { locus: "BloodType", locusName: "Blood Type (A, B, AB)", description: "Critical for breeding - Type B queens bred to Type A toms risk neonatal isoerythrolysis" },
         ],
+        otherTraits: [],
       };
     } else if (sp === "HORSE") {
       return {
@@ -3733,6 +3745,7 @@ function GeneticsTab({
           { locus: "FrDwarf", locusName: "Dwarfism (Friesian)", description: "Dwarfism disorder specific to Friesian horses", breedSpecific: "Friesian" },
           { locus: "JEB", locusName: "Junctional Epidermolysis Bullosa", description: "Fatal skin blistering disease - foals born with fragile skin", breedSpecific: "Belgian, other Draft breeds" },
         ],
+        otherTraits: [],
       };
     } else if (sp === "RABBIT") {
       return {
@@ -3759,6 +3772,7 @@ function GeneticsTab({
           { locus: "Dw", locusName: "Dwarf Gene", description: "Peanut lethal - WARNING: Dw/Dw (double dwarf) is lethal, Dw/dw=dwarf, dw/dw=normal size" },
           { locus: "Splay", locusName: "Splay Leg", description: "Genetic leg deformity - affected kits cannot walk properly" },
         ],
+        otherTraits: [],
       };
     } else if (sp === "GOAT") {
       return {
@@ -3784,6 +3798,7 @@ function GeneticsTab({
           { locus: "Myotonia", locusName: "Myotonia (Fainting gene)", description: "Muscle stiffness causing 'fainting' episodes in Myotonic goats" },
           { locus: "Chondro", locusName: "Chondrodysplasia (Dwarfism)", description: "Skeletal abnormality causing dwarfism in various goat breeds" },
         ],
+        otherTraits: [],
       };
     }
 
@@ -4074,7 +4089,7 @@ function GeneticsTab({
                       onChange={(e) => {
                         const existing = editData.coatColor || [];
                         const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
-                        const locusData = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
+                        const locusData: GeneticLocus = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
                         const updated = { ...locusData, allele1: e.target.value };
                         updated.genotype = `${updated.allele1 || "?"}/${updated.allele2 || "?"}`;
 
@@ -4092,7 +4107,7 @@ function GeneticsTab({
                       onChange={(e) => {
                         const existing = editData.coatColor || [];
                         const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
-                        const locusData = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
+                        const locusData: GeneticLocus = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
                         const updated = { ...locusData, allele2: e.target.value };
                         updated.genotype = `${updated.allele1 || "?"}/${updated.allele2 || "?"}`;
 
@@ -4140,7 +4155,7 @@ function GeneticsTab({
                           onChange={(e) => {
                             const existing = editData.coatColor || [];
                             const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
-                            const locusData = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
+                            const locusData: GeneticLocus = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
                             const updated = { ...locusData, allele1: e.target.value };
                             updated.genotype = `${updated.allele1 || "?"}/${updated.allele2 || "?"}`;
 
@@ -4158,7 +4173,7 @@ function GeneticsTab({
                           onChange={(e) => {
                             const existing = editData.coatColor || [];
                             const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
-                            const locusData = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
+                            const locusData: GeneticLocus = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
                             const updated = { ...locusData, allele2: e.target.value };
                             updated.genotype = `${updated.allele1 || "?"}/${updated.allele2 || "?"}`;
 
@@ -4209,7 +4224,7 @@ function GeneticsTab({
                         onChange={(e) => {
                           const existing = editData.coatType || [];
                           const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
-                          const locusData = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
+                          const locusData: GeneticLocus = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
                           const updated = { ...locusData, allele1: e.target.value };
                           updated.genotype = `${updated.allele1 || "?"}/${updated.allele2 || "?"}`;
 
@@ -4227,7 +4242,7 @@ function GeneticsTab({
                         onChange={(e) => {
                           const existing = editData.coatType || [];
                           const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
-                          const locusData = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
+                          const locusData: GeneticLocus = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
                           const updated = { ...locusData, allele2: e.target.value };
                           updated.genotype = `${updated.allele1 || "?"}/${updated.allele2 || "?"}`;
 
@@ -4275,7 +4290,7 @@ function GeneticsTab({
                             onChange={(e) => {
                               const existing = editData.coatType || [];
                               const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
-                              const locusData = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
+                              const locusData: GeneticLocus = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
                               const updated = { ...locusData, allele1: e.target.value };
                               updated.genotype = `${updated.allele1 || "?"}/${updated.allele2 || "?"}`;
 
@@ -4293,7 +4308,7 @@ function GeneticsTab({
                             onChange={(e) => {
                               const existing = editData.coatType || [];
                               const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
-                              const locusData = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
+                              const locusData: GeneticLocus = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
                               const updated = { ...locusData, allele2: e.target.value };
                               updated.genotype = `${updated.allele1 || "?"}/${updated.allele2 || "?"}`;
 
@@ -4345,7 +4360,7 @@ function GeneticsTab({
                         onChange={(e) => {
                           const existing = editData.physicalTraits || [];
                           const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
-                          const locusData = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
+                          const locusData: GeneticLocus = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
                           const updated = { ...locusData, allele1: e.target.value };
                           updated.genotype = `${updated.allele1 || "?"}/${updated.allele2 || "?"}`;
 
@@ -4363,7 +4378,7 @@ function GeneticsTab({
                         onChange={(e) => {
                           const existing = editData.physicalTraits || [];
                           const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
-                          const locusData = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
+                          const locusData: GeneticLocus = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
                           const updated = { ...locusData, allele2: e.target.value };
                           updated.genotype = `${updated.allele1 || "?"}/${updated.allele2 || "?"}`;
 
@@ -4411,7 +4426,7 @@ function GeneticsTab({
                             onChange={(e) => {
                               const existing = editData.physicalTraits || [];
                               const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
-                              const locusData = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
+                              const locusData: GeneticLocus = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
                               const updated = { ...locusData, allele1: e.target.value };
                               updated.genotype = `${updated.allele1 || "?"}/${updated.allele2 || "?"}`;
 
@@ -4429,7 +4444,7 @@ function GeneticsTab({
                             onChange={(e) => {
                               const existing = editData.physicalTraits || [];
                               const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
-                              const locusData = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
+                              const locusData: GeneticLocus = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
                               const updated = { ...locusData, allele2: e.target.value };
                               updated.genotype = `${updated.allele1 || "?"}/${updated.allele2 || "?"}`;
 
@@ -4481,7 +4496,7 @@ function GeneticsTab({
                         onChange={(e) => {
                           const existing = editData.eyeColor || [];
                           const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
-                          const locusData = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
+                          const locusData: GeneticLocus = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
                           const updated = { ...locusData, allele1: e.target.value };
                           updated.genotype = `${updated.allele1 || "?"}/${updated.allele2 || "?"}`;
 
@@ -4499,7 +4514,7 @@ function GeneticsTab({
                         onChange={(e) => {
                           const existing = editData.eyeColor || [];
                           const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
-                          const locusData = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
+                          const locusData: GeneticLocus = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
                           const updated = { ...locusData, allele2: e.target.value };
                           updated.genotype = `${updated.allele1 || "?"}/${updated.allele2 || "?"}`;
 
@@ -4547,7 +4562,7 @@ function GeneticsTab({
                             onChange={(e) => {
                               const existing = editData.eyeColor || [];
                               const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
-                              const locusData = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
+                              const locusData: GeneticLocus = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
                               const updated = { ...locusData, allele1: e.target.value };
                               updated.genotype = `${updated.allele1 || "?"}/${updated.allele2 || "?"}`;
 
@@ -4565,7 +4580,7 @@ function GeneticsTab({
                             onChange={(e) => {
                               const existing = editData.eyeColor || [];
                               const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
-                              const locusData = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
+                              const locusData: GeneticLocus = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
                               const updated = { ...locusData, allele2: e.target.value };
                               updated.genotype = `${updated.allele1 || "?"}/${updated.allele2 || "?"}`;
 
@@ -4617,7 +4632,7 @@ function GeneticsTab({
                         onChange={(e) => {
                           const existing = editData.health || [];
                           const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
-                          const locusData = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
+                          const locusData: GeneticLocus = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
                           const updated = { ...locusData, genotype: e.target.value };
 
                           const newHealth = locusIdx >= 0
@@ -4664,7 +4679,7 @@ function GeneticsTab({
                             onChange={(e) => {
                               const existing = editData.health || [];
                               const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
-                              const locusData = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
+                              const locusData: GeneticLocus = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
                               const updated = { ...locusData, genotype: e.target.value };
 
                               const newHealth = locusIdx >= 0
@@ -4714,7 +4729,7 @@ function GeneticsTab({
                         onChange={(e) => {
                           const existing = editData.otherTraits || [];
                           const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
-                          const locusData = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
+                          const locusData: GeneticLocus = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
                           const updated = { ...locusData, allele1: e.target.value };
                           updated.genotype = `${updated.allele1 || "?"}/${updated.allele2 || "?"}`;
 
@@ -4732,7 +4747,7 @@ function GeneticsTab({
                         onChange={(e) => {
                           const existing = editData.otherTraits || [];
                           const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
-                          const locusData = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
+                          const locusData: GeneticLocus = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
                           const updated = { ...locusData, allele2: e.target.value };
                           updated.genotype = `${updated.allele1 || "?"}/${updated.allele2 || "?"}`;
 

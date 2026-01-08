@@ -41,19 +41,24 @@ import clsx from "clsx";
 
 import { reproEngine } from "@bhq/ui/utils"
 
-/* Optional toast, fallback to alert if not present */
-let useToast: any;
-try {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  useToast = require("@bhq/ui").useToast;
-} catch {
-  useToast = () => ({
-    toast: (opts: any) =>
-      (typeof window !== "undefined" && window.alert)
-        ? window.alert(`${opts.title || ""}${opts.description ? ": " + opts.description : ""}`)
-        : void 0,
-  });
-}
+
+/* ───────────────────────── shared types ───────────────────────── */
+
+type DirectoryHit =
+  | {
+    kind: "contact";
+    id: number;
+    label: string;
+    sub?: string;
+    email?: string;
+    phone?: string;
+  }
+  | {
+    kind: "org";
+    id: number;
+    label: string;
+    sub?: string;
+  };
 
 /* ───────────────────────── shared utils ───────────────────────── */
 
@@ -311,7 +316,7 @@ function AttachmentsSection({
   mode,
 }: {
   group: OffspringRow;
-  OffspringApi
+  api: OffspringApi | null;
   mode: "media" | "health" | "registration";
 }) {
   const [items, setItems] = React.useState<any[]>([]);
@@ -645,6 +650,22 @@ const GROUP_COLS: Array<{ key: keyof GroupTableRow & string; label: string; defa
 ];
 
 const GROUP_STORAGE_KEY = "bhq_offspring_groups_cols_v3";
+
+const GROUP_DATE_COLS = new Set<string>([
+  "expectedBirth",
+  "expectedPlacementStart",
+  "expectedPlacementCompleted",
+  "updatedAt",
+]);
+
+function moneyFmt(n?: number | null): string {
+  if (n == null) return "-";
+  try {
+    return new Intl.NumberFormat(undefined, { style: "currency", currency: "USD" }).format(n);
+  } catch {
+    return `$${Number(n).toFixed(2)}`;
+  }
+}
 
 /** Derive countSold if not provided by backend */
 function deriveCountSold(d: OffspringRow): number {
@@ -1217,9 +1238,9 @@ async function searchDirectory(
   return hits;
 }
 
-type AnimalLite = { id: number; name: string; species: SpeciesWire; sex: "FEMALE" | "MALE" };
+type LocalAnimalLite = { id: number; name: string; species: SpeciesWire; sex: "FEMALE" | "MALE" };
 async function fetchAnimals(
-  api: ReturnType<typeof makeOffspringApi> | null,
+  api: ReturnType<typeof makeOffspringApiClient> | null,
   opts: { q?: string; species?: SpeciesWire; sex?: "FEMALE" | "MALE"; limit?: number }
 ) {
   if (!api) return [];
@@ -1325,7 +1346,7 @@ const stripEmpty = (o: Record<string, any>) => {
   return out;
 };
 
-async function exactContactLookup(api: ReturnType<typeof makeOffspringApi>, probe: {
+async function exactContactLookup(api: ReturnType<typeof makeOffspringApiClient>, probe: {
   email?: string; phone?: string; firstName?: string; lastName?: string
 }) {
   const tries: string[] = [];
@@ -1388,7 +1409,7 @@ function CreateGroupForm({
   onCreated,
   onCancel,
 }: {
-  OffspringApi
+  api: OffspringApi | null;
   tenantId: number | null;
   onCreated: () => void;
   onCancel: () => void;
@@ -1540,7 +1561,7 @@ function AddToWaitlistModal({
   onCreated,
   allowedSpecies = SPECIES_UI_ALL,
 }: {
-  OffspringApi
+  api: OffspringApi | null;
   tenantId: number | null;
   open: boolean;
   onClose: () => void;
@@ -1726,7 +1747,7 @@ function AddToWaitlistModal({
   }
 
   async function findBestContactMatch(
-    api: ReturnType<typeof makeOffspringApi>,
+    api: ReturnType<typeof makeOffspringApiClient>,
     probe: { email?: string; phone?: string; firstName?: string; lastName?: string }
   ) {
     const q =
@@ -2974,7 +2995,7 @@ function AddBuyerToGroupModal({
   onAdded,
   onClose,
 }: {
-  OffspringApi
+  api: OffspringApi | null;
   group: OffspringRow | null;
   open: boolean;
   onAdded: () => void;
@@ -3514,8 +3535,7 @@ function BuyersTab(
     onGroupUpdate: (updated: OffspringRow) => void;
   },
 ) {
-  const { toast } = useToast();
-  const { cands, loading, error, setCands } = useGroupCandidates(api, group);
+    const { cands, loading, error, setCands } = useGroupCandidates(api, group);
   const [lastAction, setLastAction] =
     React.useState<null | { kind: "add" | "skip"; payload: any }>(null);
   const [autoPromptedForGroupId, setAutoPromptedForGroupId] =
@@ -3690,14 +3710,9 @@ function BuyersTab(
         onGroupUpdate(nextGroup);
       } catch (err) {
         console.error("[Offspring] failed to remove buyer", err);
-        toast({
-          title: "Failed to remove buyer",
-          description: "Please try again.",
-          variant: "destructive",
-        });
       }
     },
-    [api, group, onGroupUpdate, toast],
+    [api, group, onGroupUpdate],
   );
 
 
@@ -3848,23 +3863,13 @@ function BuyersTab(
         setCands((prev) => prev.filter((c) => c.id !== cand.id));
 
         setLastAction({ kind: "add", payload: cand });
-
-        toast({
-          title: "Buyer added from waitlist",
-          description: `${cand.label || "Waitlist buyer"} was added to this plan.`,
-        });
       } catch (err: any) {
         console.error("Failed to add buyer from waitlist", err);
-        toast({
-          title: "Failed to add buyer from waitlist",
-          description: err?.message || "Something went wrong.",
-          variant: "destructive",
-        });
       } finally {
         setAddingFromSuggestion(false);
       }
     },
-    [api, group, onGroupUpdate, setCands, toast],
+    [api, group, onGroupUpdate, setCands],
   );
 
   // search contacts and orgs for inline Add Buyer
@@ -4652,8 +4657,7 @@ function OffspringGroupsTab(
     readOnlyGlobal: boolean;
   },
 ) {
-  const { toast } = useToast();
-  const [q, setQ] = React.useState("");
+    const [q, setQ] = React.useState("");
   const [rows, setRows] = React.useState<GroupTableRow[]>([]);
   const [raw, setRaw] = React.useState<OffspringRow[]>([]);
   const [loading, setLoading] = React.useState(true);
@@ -4857,11 +4861,6 @@ function OffspringGroupsTab(
 
               if (!row || !id) {
                 console.error('[Offspring onSave] Row not found!', { rowId, id, draft });
-                toast?.({
-                  title: "Save failed",
-                  description: "Group not found. Please refresh and try again.",
-                  variant: "destructive"
-                });
                 return;
               }
 
@@ -4912,7 +4911,7 @@ function OffspringGroupsTab(
                   }
                 }
               } catch (e: any) {
-                toast?.({ title: "Save failed", description: String(e?.message || e), variant: "destructive" });
+                console.error('[Offspring onSave] Save failed', e);
                 throw e;
               }
             },
@@ -5557,7 +5556,7 @@ function OffspringGroupsTab(
         group={buyerModalGroup}
         open={!!buyerModalGroup}
         onClose={() => setBuyerModalGroup(null)}
-        onUpdated={async () => {
+        onAdded={async () => {
           setBuyerModalGroup(null);
           await load();
         }}

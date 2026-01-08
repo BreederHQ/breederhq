@@ -1,0 +1,221 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e3]:
+  - generic [ref=e4]:
+    - generic [ref=e8]:
+      - generic [ref=e9]:
+        - button "Toggle navigation" [ref=e10] [cursor=pointer]:
+          - img [ref=e11]
+        - generic [ref=e13]:
+          - img "BreederHQ" [ref=e14]
+          - generic [ref=e16]: BreederHQ
+        - generic [ref=e17]: /
+        - generic [ref=e18]: Breeding
+      - generic [ref=e19]:
+        - button "Messages" [ref=e20] [cursor=pointer]:
+          - img [ref=e21]
+        - button "Notifications" [ref=e24] [cursor=pointer]:
+          - img [ref=e25]
+          - generic [ref=e27]: "1"
+        - button "Organization" [ref=e28] [cursor=pointer]
+        - button "Settings" [ref=e29] [cursor=pointer]:
+          - img [ref=e30]
+        - button "Logout" [ref=e33] [cursor=pointer]:
+          - img [ref=e34]
+          - generic [ref=e37]: Logout
+    - generic [ref=e39]:
+      - complementary [ref=e40]:
+        - navigation [ref=e41]:
+          - link "Dashboard" [ref=e42] [cursor=pointer]:
+            - /url: /
+            - generic [ref=e44]: 🌐
+            - generic [ref=e45]: Dashboard
+          - link "Contacts" [ref=e46] [cursor=pointer]:
+            - /url: /contacts
+            - generic [ref=e48]: 📇
+            - generic [ref=e49]: Contacts
+          - link "Animals" [ref=e50] [cursor=pointer]:
+            - /url: /animals
+            - generic [ref=e52]: 🐾
+            - generic [ref=e53]: Animals
+          - link "Breeding" [ref=e54] [cursor=pointer]:
+            - /url: /breeding
+            - generic [ref=e56]: 🧬
+            - generic [ref=e57]: Breeding
+          - link "Offspring" [ref=e58] [cursor=pointer]:
+            - /url: /offspring
+            - generic [ref=e60]: 🍼
+            - generic [ref=e61]: Offspring
+          - link "Waitlist" [ref=e62] [cursor=pointer]:
+            - /url: /waitlist
+            - generic [ref=e64]: 📋
+            - generic [ref=e65]: Waitlist
+          - link "Bloodlines" [ref=e66] [cursor=pointer]:
+            - /url: /bloodlines
+            - generic [ref=e68]: 🏆
+            - generic [ref=e69]: Bloodlines
+          - link "Marketing" [ref=e70] [cursor=pointer]:
+            - /url: /marketing
+            - generic [ref=e72]: 📣
+            - generic [ref=e73]: Marketing
+          - link "Marketplace" [ref=e74] [cursor=pointer]:
+            - /url: /marketplace
+            - generic [ref=e76]: 🛒
+            - generic [ref=e77]: Marketplace
+          - link "Finance" [ref=e78] [cursor=pointer]:
+            - /url: /finance
+            - generic [ref=e80]: 💰
+            - generic [ref=e81]: Finance
+          - link "Admin" [ref=e82] [cursor=pointer]:
+            - /url: /admin
+            - generic [ref=e84]: 🛠️
+            - generic [ref=e85]: Admin
+      - main [ref=e86]:
+        - generic [ref=e87]:
+          - generic [ref=e88]:
+            - generic [ref=e91]:
+              - heading "Breeding" [level=1] [ref=e92]
+              - paragraph [ref=e93]: Create and manage breeding plans
+            - navigation [ref=e95]:
+              - link "📋 Plans" [ref=e96] [cursor=pointer]:
+                - /url: /breeding/
+                - generic [ref=e97]: 📋
+                - generic [ref=e98]: Plans
+              - link "📅 Calendar" [ref=e99] [cursor=pointer]:
+                - /url: /breeding/calendar
+                - generic [ref=e100]: 📅
+                - generic [ref=e101]: Calendar
+              - link "🔮 Planner" [ref=e102] [cursor=pointer]:
+                - /url: /breeding/planner
+                - generic [ref=e103]: 🔮
+                - generic [ref=e104]: Planner
+              - link "🧬 Genetics Lab" [ref=e105] [cursor=pointer]:
+                - /url: /breeding/genetics-lab
+                - generic [ref=e106]: 🧬
+                - generic [ref=e107]: Genetics Lab
+          - generic [ref=e111]:
+            - generic [ref=e112]:
+              - heading "Genetics Lab" [level=2] [ref=e113]
+              - paragraph [ref=e114]: Analyze genetic compatibility between dam and sire. Select two animals to see predicted offspring traits.
+            - generic [ref=e115]:
+              - generic [ref=e116]:
+                - generic [ref=e117]: Dam (Female)
+                - combobox [ref=e119]:
+                  - option "Select a dam..." [selected]
+                  - option "Nala Se's Project Dam — DOG"
+                  - option "Kamino Clone Dam Gamma — DOG"
+                  - option "Kamino Clone Dam Beta — DOG"
+                  - option "Concord Dawn Dam — DOG"
+                  - option "Kamino Clone Dam Alpha — DOG"
+                  - option "Poe's Companion Dam — RABBIT"
+                  - option "Ancient Droid Dam — RABBIT"
+                  - option "Security Droid Dam — RABBIT"
+                  - option "Astromech Dam — RABBIT"
+                  - option "Ancient Mandalore Dam — GOAT"
+                  - option "Ursa Wren — GOAT"
+                  - option "Duchess Kryze Dam — GOAT"
+                  - option "Yaddle — GOAT"
+                  - option "Aq Vetina — GOAT"
+                  - option "Jedi Mare Tahl — HORSE"
+                  - option "Ancient Jedi Dam — HORSE"
+                  - option "Rey's Mother — HORSE"
+                  - option "Shili Mare — HORSE"
+                  - option "Korun Mare — HORSE"
+                  - option "Sith Lady — CAT"
+                  - option "Ancient Sith Lady — CAT"
+                  - option "Leia Organa Meow — CAT"
+                  - option "Nightsister Elder — CAT"
+                  - option "Chrome Matriarch — CAT"
+                  - option "Jobal Naberrie — DOG"
+                  - option "Elder Skybarker Dam — DOG"
+                  - option "Royal Naberrie Dam — DOG"
+                  - option "Jaina Solo Dam — DOG"
+                  - option "Mallatobuck — DOG"
+                  - option "Shmi Skybarker — DOG"
+                  - option "Queen Amidala Pawdmé — DOG"
+                  - option "Clover (Horned Doe) — GOAT"
+                  - option "Buttercup (Polled Doe) — GOAT"
+                  - option "Snowball (BEW) — RABBIT"
+                  - option "Patches (Broken Pattern Carrier) — RABBIT"
+                  - option "Luna (Tortie Female) — CAT"
+                  - option "Whiskers (Pointed Carrier) — CAT"
+                  - option "Painted Lady (Frame Overo Mare) — HORSE"
+                  - option "Fifi (Fluffy Carrier Frenchie Female) — DOG"
+                  - option "Sadie (EIC Carrier Lab Female) — DOG"
+                  - option "Daisy (Unfurnished Carrier Golden) — DOG"
+                  - option "Bella (Furnished Goldendoodle Dam) — DOG"
+                  - option "Luna (Merle Carrier Female) — DOG"
+                  - option "Omega — DOG"
+                  - option "Sabine Wren — GOAT"
+                  - option "Bo-Katan Kryze — GOAT"
+                  - option "Rey Skywalker — HORSE"
+                  - option "Ahsoka Tano — HORSE"
+              - generic [ref=e120]: ×
+              - generic [ref=e121]:
+                - generic [ref=e122]: Sire (Male)
+                - combobox [ref=e124]:
+                  - option "Select a sire..." [selected]
+                  - option "Enhanced Clone Sire — DOG"
+                  - option "Jango Fett (Template) — DOG"
+                  - option "Mandalorian Bounty Sire — DOG"
+                  - option "Imperial Droid Sire — RABBIT"
+                  - option "Resistance Droid Sire — RABBIT"
+                  - option "Protocol Droid Senior — RABBIT"
+                  - option "Ancient Droid Sire — RABBIT"
+                  - option "Alrich Wren — GOAT"
+                  - option "Duke Kryze — GOAT"
+                  - option "Mandalorian Elder — GOAT"
+                  - option "Ancient Mandalore — GOAT"
+                  - option "Yoda's Kin — GOAT"
+                  - option "Togruta Stallion — HORSE"
+                  - option "Windu Senior — HORSE"
+                  - option "Qui-Gon Jinn — HORSE"
+                  - option "Ancient Jedi Sire — HORSE"
+                  - option "Unknown Palpatine Heir — HORSE"
+                  - option "First Order Commander — CAT"
+                  - option "Darth Plagueis — CAT"
+                  - option "Ancient Sith Lord — CAT"
+                  - option "Count Dooku Cat — CAT"
+                  - option "Elder Skybarker Sire — DOG"
+                  - option "Royal Naberrie Sire — DOG"
+                  - option "Corell Solo — DOG"
+                  - option "Attichitcuk — DOG"
+                  - option "Anakin Skybarker — DOG"
+                  - option "King Veruna Naberrie — DOG"
+                  - option "Thunder (Polled Buck) — GOAT"
+                  - option "Oreo (Broken Pattern Male) — RABBIT"
+                  - option "Shadow (Seal Point Male) — CAT"
+                  - option "Impressive Legacy (HYPP Carrier QH) — HORSE"
+                  - option "Midnight Run (Safe Tobiano Stallion) — HORSE"
+                  - option "Storm Chaser (Frame Overo Stallion) — HORSE"
+                  - option "Pierre (Fluffy Carrier Frenchie) — DOG"
+                  - option "Duke (Clear Lab Male) — DOG"
+                  - option "Max (EIC Carrier Lab) — DOG"
+                  - option "Cooper (Furnished Carrier Poodle) — DOG"
+                  - option "Shadow (Non-Merle Male) — DOG"
+                  - option "Maverick (Merle Carrier Male) — DOG"
+                  - option "Echo — DOG"
+                  - option "Fives — DOG"
+                  - option "Commander Cody — DOG"
+                  - option "Captain Rex — DOG"
+                  - option "K-2SO — RABBIT"
+                  - option "BB-8 — RABBIT"
+                  - option "C-3PO — RABBIT"
+                  - option "R2-D2 — RABBIT"
+                  - option "Grogu — GOAT"
+                  - option "Din Djarin — GOAT"
+                  - option "Mace Windu — HORSE"
+                  - option "Yoda — HORSE"
+                  - option "Obi-Wan Kenobi — HORSE"
+              - button "Calculate" [disabled] [ref=e125]
+            - generic [ref=e126]:
+              - generic [ref=e127]: 🧬
+              - generic [ref=e128]: Select a Dam and Sire
+              - generic [ref=e129]: Choose two animals to analyze their genetic compatibility and predict offspring traits.
+  - contentinfo [ref=e130]:
+    - generic [ref=e131]:
+      - generic [ref=e132]: © 2026 BreederHQ LLC
+      - link "Terms of Service" [ref=e133] [cursor=pointer]:
+        - /url: /terms
+```

@@ -262,6 +262,18 @@ function CompetitionModal({
         scoreMax: scoreMax ? parseFloat(scoreMax) : null,
         judgeName: judgeName || null,
         notes: notes || null,
+        // Racing-specific fields (default to null for non-racing entries)
+        prizeMoneyCents: null,
+        trackName: null,
+        trackSurface: null,
+        distanceFurlongs: null,
+        distanceMeters: null,
+        raceGrade: null,
+        finishTime: null,
+        speedFigure: null,
+        // Handler/rider info
+        handlerName: null,
+        trainerName: null,
       });
       onClose();
     } finally {
