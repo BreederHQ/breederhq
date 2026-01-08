@@ -2664,15 +2664,6 @@ function GeneticsLabPage({
             )}
           </div>
 
-          {/* COI Check - shows automatically when both animals selected */}
-          {selectedDamId && selectedSireId && (
-            <COICheckPanel
-              damId={Number(selectedDamId)}
-              sireId={Number(selectedSireId)}
-              api={api}
-            />
-          )}
-
           {/* Results */}
           {results && (
             <div className="pt-4 border-t border-hairline">
@@ -2722,12 +2713,6 @@ function GeneticsLabPage({
                     </span>
                   )}
                 </div>
-                <button
-                  onClick={() => window.location.hash = "#/breeding/planner"}
-                  className="px-3 py-1.5 text-xs border border-hairline rounded hover:bg-surface"
-                >
-                  Create What-If Plan
-                </button>
               </div>
 
               {/* ───────────────────────────────────────────────────────────
@@ -2766,6 +2751,15 @@ function GeneticsLabPage({
                   {/* Overview Tab - Full Offspring Predictions */}
                   {activeLabTab === 'overview' && (
                     <div className="space-y-4">
+                      {/* COI Check - Coefficient of Inbreeding */}
+                      {selectedDamId && selectedSireId && (
+                        <COICheckPanel
+                          damId={Number(selectedDamId)}
+                          sireId={Number(selectedSireId)}
+                          api={api}
+                        />
+                      )}
+
                       {/* Offspring Predictions Card */}
                       <div className="rounded-xl border-2 border-accent/30 bg-accent/5 p-4">
                         <div className="flex items-center justify-between mb-3">
@@ -3072,16 +3066,6 @@ function GeneticsLabPage({
               </div>
             </div>
           )}
-        </div>
-      </Card>
-
-      {/* Recent Analyses */}
-      <Card>
-        <div className="p-4">
-          <h3 className="font-semibold mb-3">Recent Analyses</h3>
-          <div className="text-sm text-secondary">
-            Your recent genetic pairing analyses will appear here.
-          </div>
         </div>
       </Card>
 
@@ -4381,68 +4365,69 @@ export default function AppBreeding() {
       <div className="p-4 space-y-4">
         <div className="relative">
           <PageHeader title="Breeding" subtitle="Create and manage breeding plans" />
-          <div className="absolute right-0 top-0 h-full flex items-center gap-2 pr-1" style={{ zIndex: 50, pointerEvents: "auto" }}>
-            {/* Top-right page navigation */}
-            <nav className="flex items-center gap-1 mr-1">
+
+          {/* Right-aligned Tab Navigation with emojis and orange underline */}
+          <div className="absolute right-0 top-0 h-full flex items-center">
+            <nav className="flex items-center gap-1">
               <SafeNavLink
                 to={basePath === "/" ? "/" : `${basePath}/`}
                 end
                 className={({ isActive }) =>
                   [
-                    "h-9 px-2 text-sm font-semibold leading-9 border-b-2 border-transparent transition-colors",
-                    isActive ? "text-primary" : "text-secondary hover:text-primary",
+                    "h-9 px-3 text-sm font-semibold leading-9 border-b-2 transition-colors flex items-center gap-1.5",
+                    isActive
+                      ? "text-primary border-accent"
+                      : "text-secondary hover:text-primary border-transparent",
                   ].join(" ")
                 }
-                style={({ isActive }) =>
-                  isActive ? { borderBottomColor: "hsl(var(--brand-orange))" } : undefined
-                }
               >
-                Plans
+                <span>📋</span>
+                <span>Plans</span>
               </SafeNavLink>
 
               <SafeNavLink
                 to={`${basePath}/calendar`}
                 className={({ isActive }) =>
                   [
-                    "h-9 px-2 text-sm font-semibold leading-9 border-b-2 border-transparent transition-colors",
-                    isActive ? "text-primary" : "text-secondary hover:text-primary",
+                    "h-9 px-3 text-sm font-semibold leading-9 border-b-2 transition-colors flex items-center gap-1.5",
+                    isActive
+                      ? "text-primary border-accent"
+                      : "text-secondary hover:text-primary border-transparent",
                   ].join(" ")
                 }
-                style={({ isActive }) =>
-                  isActive ? { borderBottomColor: "hsl(var(--brand-orange))" } : undefined
-                }
               >
-                Calendar
+                <span>📅</span>
+                <span>Calendar</span>
               </SafeNavLink>
 
               <SafeNavLink
                 to={`${basePath}/planner`}
                 className={({ isActive }) =>
                   [
-                    "h-9 px-2 text-sm font-semibold leading-9 border-b-2 border-transparent transition-colors",
-                    isActive ? "text-primary" : "text-secondary hover:text-primary",
+                    "h-9 px-3 text-sm font-semibold leading-9 border-b-2 transition-colors flex items-center gap-1.5",
+                    isActive
+                      ? "text-primary border-accent"
+                      : "text-secondary hover:text-primary border-transparent",
                   ].join(" ")
                 }
-                style={({ isActive }) =>
-                  isActive ? { borderBottomColor: "hsl(var(--brand-orange))" } : undefined
-                }
               >
-                Planner
+                <span>🔮</span>
+                <span>Planner</span>
               </SafeNavLink>
 
               <SafeNavLink
                 to={`${basePath}/genetics-lab`}
                 className={({ isActive }) =>
                   [
-                    "h-9 px-2 text-sm font-semibold leading-9 border-b-2 border-transparent transition-colors",
-                    isActive ? "text-primary" : "text-secondary hover:text-primary",
+                    "h-9 px-3 text-sm font-semibold leading-9 border-b-2 transition-colors flex items-center gap-1.5",
+                    isActive
+                      ? "text-primary border-accent"
+                      : "text-secondary hover:text-primary border-transparent",
                   ].join(" ")
                 }
-                style={({ isActive }) =>
-                  isActive ? { borderBottomColor: "hsl(var(--brand-orange))" } : undefined
-                }
               >
-                Genetics Lab
+                <span>🧬</span>
+                <span>Genetics Lab</span>
               </SafeNavLink>
             </nav>
           </div>
