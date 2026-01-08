@@ -3558,6 +3558,10 @@ type GeneticLocus = {
 type GeneticData = {
   coatColor?: GeneticLocus[];
   health?: GeneticLocus[];
+  coatType?: GeneticLocus[];
+  physicalTraits?: GeneticLocus[];
+  eyeColor?: GeneticLocus[];
+  otherTraits?: GeneticLocus[];
   testResults?: {
     testName?: string;
     testDate?: string;
@@ -3580,63 +3584,212 @@ function GeneticsTab({
   const [saving, setSaving] = React.useState(false);
   const [editData, setEditData] = React.useState<GeneticData>({});
 
-  // Species-specific locus definitions
+  // Species-specific locus definitions - comprehensive genetic markers
   const getSpeciesLoci = React.useCallback((species: string) => {
     const sp = (species || "DOG").toUpperCase();
 
     if (sp === "DOG") {
       return {
         coatColor: [
-          { locus: "A", locusName: "Agouti", description: "Controls distribution of black/brown pigment" },
-          { locus: "B", locusName: "Brown", description: "Black vs brown pigment" },
-          { locus: "C", locusName: "Chinchilla/Albino", description: "Color dilution/pigmentation" },
-          { locus: "D", locusName: "Dilute", description: "Dilution of eumelanin" },
-          { locus: "E", locusName: "Extension", description: "Extension of pigment over body" },
-          { locus: "K", locusName: "Black Extension", description: "Dominant black" },
-          { locus: "M", locusName: "Merle", description: "Merle pattern" },
-          { locus: "S", locusName: "White Spotting", description: "White markings/spotting" },
+          { locus: "A", locusName: "Agouti", description: "Controls distribution of black/brown pigment (ay=sable, aw=wild, at=tan points, a=recessive black)" },
+          { locus: "B", locusName: "Brown", description: "Black vs brown/chocolate pigment (B=black, b=brown)" },
+          { locus: "D", locusName: "Dilute", description: "Dilutes black to blue, brown to isabella (D=full color, d=dilute)" },
+          { locus: "E", locusName: "Extension", description: "Allows/prevents black pigment expression (E=normal, e=recessive red/cream)" },
+          { locus: "K", locusName: "Black Extension", description: "Dominant black override (KB=dominant black, kbr=brindle, ky=allows agouti)" },
+          { locus: "M", locusName: "Merle", description: "Creates merle pattern - WARNING: M/M can cause health issues (M=merle, m=non-merle)" },
+          { locus: "S", locusName: "White Spotting", description: "White markings and patterns (S=solid, sp=piebald, sw=extreme white)" },
+          { locus: "H", locusName: "Harlequin", description: "Modifies merle to create harlequin pattern in Great Danes (H=harlequin, h=non-harlequin)" },
+          { locus: "Em", locusName: "Mask", description: "Black mask on face (Em=mask, E=no mask)" },
+        ],
+        coatType: [
+          { locus: "L", locusName: "Long Hair", description: "Hair length gene (L/L=short coat, L/l=short carries long, l/l=long coat)" },
+          { locus: "F", locusName: "Furnishings", description: "Beard/eyebrows - gives doodles their teddy bear face (F/F or F/f=furnished, f/f=unfurnished/smooth face)" },
+          { locus: "Cu", locusName: "Curly", description: "Coat curl/wave (Cu/Cu=curly, Cu/+=wavy/curly, +/+=straight)" },
+          { locus: "Sd", locusName: "Shedding", description: "Shedding propensity (Sd/Sd=low shed, Sd/sd=moderate, sd/sd=normal shedding)" },
+          { locus: "IC", locusName: "Improper Coat", description: "Coat quality marker (IC/IC=improper coat, IC/N=carrier, N/N=proper coat)" },
+          { locus: "L4", locusName: "Fluffy Gene (L4)", description: "Long hair in French Bulldogs and other breeds (L4/L4=fluffy, L4/N=carrier, N/N=normal)" },
+        ],
+        physicalTraits: [
+          { locus: "IGF1", locusName: "Size", description: "Insulin-like growth factor - related to body size in dogs" },
+          { locus: "BT", locusName: "Bobtail", description: "Natural bobtail gene (T/T=normal tail, T/bt=natural bob, bt/bt=no tail - lethal in some breeds)" },
+          { locus: "Dw", locusName: "Dewclaws", description: "Rear dewclaws present/absent" },
+        ],
+        eyeColor: [
+          { locus: "Blue", locusName: "Blue Eyes", description: "Blue eye color gene (N/N=no blue, N/B=may have blue, B/B=blue eyes)" },
+          { locus: "ALX4", locusName: "Blue Eyes (ALX4)", description: "Blue eye variant common in Huskies and Australian Shepherds" },
         ],
         health: [
-          { locus: "MDR1", locusName: "MDR1 Drug Sensitivity", description: "Drug sensitivity mutation" },
-          { locus: "DM", locusName: "Degenerative Myelopathy", description: "Progressive spinal cord disease" },
-          { locus: "PRA", locusName: "Progressive Retinal Atrophy", description: "Eye degeneration" },
-          { locus: "vWD", locusName: "Von Willebrand Disease", description: "Clotting disorder" },
+          { locus: "MDR1", locusName: "MDR1 Drug Sensitivity", description: "Multi-drug resistance mutation - affected dogs sensitive to ivermectin and other drugs" },
+          { locus: "DM", locusName: "Degenerative Myelopathy", description: "Progressive spinal cord disease causing hind leg weakness" },
+          { locus: "PRA", locusName: "Progressive Retinal Atrophy", description: "Progressive blindness - multiple forms exist" },
+          { locus: "vWD", locusName: "Von Willebrand Disease", description: "Blood clotting disorder - types I, II, and III" },
+          { locus: "EIC", locusName: "Exercise-Induced Collapse", description: "Episodes of weakness/collapse after intense exercise" },
+          { locus: "DCM", locusName: "Dilated Cardiomyopathy", description: "Heart muscle disease - genetic variants identified in some breeds" },
+          { locus: "HUU", locusName: "Hyperuricosuria", description: "Elevated uric acid levels leading to bladder/kidney stones" },
+          { locus: "CEA", locusName: "Collie Eye Anomaly", description: "Eye developmental defect in Collies and related breeds" },
+          { locus: "NCL", locusName: "Neuronal Ceroid Lipofuscinosis", description: "Fatal neurological storage disease - multiple forms" },
+          { locus: "GR_PRA1", locusName: "Golden Retriever PRA 1", description: "Progressive retinal atrophy variant in Golden Retrievers" },
+          { locus: "GR_PRA2", locusName: "Golden Retriever PRA 2", description: "Second PRA variant identified in Golden Retrievers" },
+          { locus: "CMR", locusName: "Canine Multifocal Retinopathy", description: "Eye condition causing retinal folds and detachment" },
+          { locus: "Ich", locusName: "Ichthyosis", description: "Skin scaling disorder - common in Golden Retrievers" },
+          { locus: "ICT_A", locusName: "Ichthyosis Type A (Golden Retriever)", description: "Breed-specific skin scaling disorder in Golden Retrievers" },
+          { locus: "HNPK", locusName: "Hereditary Nasal Parakeratosis", description: "Dry, crusty nose condition - common in Labradors" },
+          { locus: "SD2", locusName: "Skeletal Dysplasia 2 (Dwarfism)", description: "Dwarfism causing shortened limbs in Labrador Retrievers" },
+          { locus: "CNM", locusName: "Centronuclear Myopathy", description: "Muscle weakness disorder in Labrador Retrievers" },
+          { locus: "RD_OSD", locusName: "Retinal Dysplasia/Oculoskeletal Dysplasia", description: "Eye and skeletal abnormalities - common in Labrador Retrievers" },
+          { locus: "JHC", locusName: "Juvenile Hereditary Cataracts", description: "Early-onset cataracts in various breeds" },
+          { locus: "CMR1", locusName: "Canine Multifocal Retinopathy 1", description: "Specific CMR variant causing retinal lesions" },
+          { locus: "Cystinuria", locusName: "Cystinuria (Urinary stones)", description: "Amino acid metabolism disorder causing urinary stones" },
+          { locus: "EFS", locusName: "Episodic Falling Syndrome (Cavaliers)", description: "Muscle hypertonicity episodes in Cavalier King Charles Spaniels" },
+          { locus: "CC_DEW", locusName: "Curly Coat/Dry Eye Syndrome", description: "Combined coat and eye condition in Cavaliers" },
+          { locus: "HSF4", locusName: "Hereditary Cataracts (HSF4)", description: "Cataracts linked to HSF4 gene - multiple breeds affected" },
+          { locus: "TNS", locusName: "Trapped Neutrophil Syndrome", description: "Immune system disorder in Border Collies" },
+          { locus: "CL_BC", locusName: "Neuronal Ceroid Lipofuscinosis (Border Collie)", description: "Fatal neurological storage disease in Border Collies" },
+          { locus: "IGS", locusName: "Imerslund-Grasbeck Syndrome", description: "Vitamin B12 malabsorption disorder" },
+          { locus: "FN", locusName: "Familial Nephropathy", description: "Progressive kidney disease in Cocker Spaniels and other breeds" },
+          { locus: "PFK", locusName: "Phosphofructokinase Deficiency", description: "Enzyme deficiency causing muscle problems and anemia" },
+          { locus: "GPRA", locusName: "Generalized Progressive Retinal Atrophy", description: "General form of progressive blindness across multiple breeds" },
         ],
       };
     } else if (sp === "CAT") {
       return {
         coatColor: [
-          { locus: "B", locusName: "Brown", description: "Black vs brown pigment" },
-          { locus: "D", locusName: "Dilute", description: "Color dilution" },
-          { locus: "W", locusName: "White", description: "Dominant white" },
-          { locus: "L", locusName: "Long Hair", description: "Hair length" },
+          { locus: "A", locusName: "Agouti", description: "Tabby vs solid pattern (A=agouti/tabby, a=non-agouti/solid)" },
+          { locus: "B", locusName: "Brown", description: "Black vs chocolate vs cinnamon (B=black, b=chocolate, bl=cinnamon)" },
+          { locus: "C", locusName: "Colorpoint", description: "Full color to albino series (C=full, cs=siamese, cb=burmese, ca=blue-eyed albino, c=pink-eyed albino)" },
+          { locus: "D", locusName: "Dilute", description: "Full color vs dilute (D=full, d=dilute - black becomes blue, orange becomes cream)" },
+          { locus: "O", locusName: "Orange", description: "Sex-linked orange/red (O=orange, o=non-orange) - females can be tortoiseshell" },
+          { locus: "S", locusName: "White Spotting", description: "White markings (S=spotting, s=no spotting)" },
+          { locus: "W", locusName: "Dominant White", description: "Epistatic white - masks all other colors (W=white, w=colored) - can cause deafness" },
+        ],
+        coatType: [
+          { locus: "L", locusName: "Long Hair", description: "Hair length (L=short, l=long - longhair is recessive)" },
+          { locus: "Mc", locusName: "Tabby Pattern", description: "Mackerel vs classic tabby (Mc=mackerel stripes, mc=classic/blotched)" },
+          { locus: "R", locusName: "Rex/Curly", description: "Curly coat mutations (various rex genes in different breeds)" },
+          { locus: "Fd", locusName: "Fold Ears", description: "Scottish Fold ear mutation - WARNING: Fd/Fd causes severe cartilage problems" },
+        ],
+        physicalTraits: [
+          { locus: "Pd", locusName: "Polydactyl", description: "Extra toes (Pd=polydactyl, pd=normal)" },
         ],
         health: [
-          { locus: "PKD", locusName: "Polycystic Kidney Disease", description: "Kidney cysts" },
-          { locus: "HCM", locusName: "Hypertrophic Cardiomyopathy", description: "Heart disease" },
+          { locus: "PKD", locusName: "Polycystic Kidney Disease", description: "Kidney cysts - common in Persians and related breeds" },
+          { locus: "HCM", locusName: "Hypertrophic Cardiomyopathy", description: "Heart muscle thickening - genetic tests available for some breeds" },
+          { locus: "PRA", locusName: "Progressive Retinal Atrophy", description: "Progressive blindness - multiple forms in different breeds" },
+          { locus: "SMA", locusName: "Spinal Muscular Atrophy", description: "Spinal cord motor neuron degeneration in Maine Coons" },
+          { locus: "PK_Def", locusName: "Pyruvate Kinase Deficiency", description: "Red blood cell enzyme deficiency causing anemia" },
+          { locus: "PRA_pd", locusName: "PRA (Persian variant)", description: "Progressive retinal atrophy variant specific to Persians" },
+          { locus: "HCM_MC", locusName: "HCM (Maine Coon MYBPC3)", description: "Hypertrophic cardiomyopathy variant in Maine Coons" },
+          { locus: "HCM_RD", locusName: "HCM (Ragdoll MYBPC3)", description: "Hypertrophic cardiomyopathy variant in Ragdolls" },
+          { locus: "GM1", locusName: "Gangliosidosis Type 1", description: "Fatal lysosomal storage disease in cats" },
+          { locus: "PRA_rdAc", locusName: "PRA (Abyssinian/Somali)", description: "Progressive retinal atrophy in Abyssinian and Somali cats" },
+          { locus: "Amyloidosis", locusName: "Renal Amyloidosis", description: "Protein deposits in kidneys - common in Abyssinians and Siamese" },
+          { locus: "FCKS", locusName: "Flat-Chested Kitten Syndrome", description: "Chest deformity in kittens affecting breathing" },
+          { locus: "OCD", locusName: "Osteochondrodysplasia (Fold warning)", description: "Cartilage/bone abnormality - WARNING: Fd/Fd causes severe issues" },
+        ],
+        bloodType: [
+          { locus: "BloodType", locusName: "Blood Type (A, B, AB)", description: "Critical for breeding - Type B queens bred to Type A toms risk neonatal isoerythrolysis" },
         ],
       };
     } else if (sp === "HORSE") {
       return {
         coatColor: [
-          { locus: "Cream", locusName: "Cream Dilution", description: "Cream dilution gene" },
-          { locus: "Champagne", locusName: "Champagne", description: "Champagne dilution" },
-          { locus: "Dun", locusName: "Dun", description: "Dun dilution" },
-          { locus: "Agouti", locusName: "Agouti", description: "Bay patterning" },
+          { locus: "E", locusName: "Extension", description: "Red vs black base (E=black pigment, e=red/chestnut only)" },
+          { locus: "A", locusName: "Agouti", description: "Black distribution on bay horses (A=bay, a=black)" },
+          { locus: "Cr", locusName: "Cream", description: "Cream dilution (Cr/Cr=cremello/perlino, Cr/cr=palomino/buckskin, cr/cr=no dilution)" },
+          { locus: "D", locusName: "Dun", description: "Dun dilution with primitive markings (D=dun with dorsal stripe, d=non-dun)" },
+          { locus: "G", locusName: "Gray", description: "Progressive graying (G=gray, g=non-gray) - horses born colored, turn gray with age" },
+          { locus: "Ch", locusName: "Champagne", description: "Champagne dilution (Ch=champagne, ch=non-champagne)" },
+          { locus: "Z", locusName: "Silver", description: "Silver dapple - dilutes black pigment (Z=silver, z=non-silver)" },
+          { locus: "TO", locusName: "Tobiano", description: "Tobiano white pattern (TO=tobiano, to=non-tobiano)" },
+          { locus: "O", locusName: "Overo (OLWS)", description: "Frame overo pattern - WARNING: O/O is Lethal White Overo Syndrome" },
+          { locus: "SB", locusName: "Sabino", description: "Sabino white pattern (SB1 and other variants)" },
+          { locus: "LP", locusName: "Leopard Complex", description: "Appaloosa patterns (LP=leopard complex, lp=no pattern)" },
+          { locus: "Rn", locusName: "Roan", description: "Roan pattern - white hairs interspersed (Rn=roan, rn=non-roan)" },
+          { locus: "W", locusName: "Dominant White", description: "Dominant white spotting patterns - multiple W alleles exist" },
+          { locus: "nCh", locusName: "Chestnut Factor", description: "Hidden red gene - indicates carrier of chestnut/sorrel (nCh/nCh=chestnut carrier)" },
         ],
         health: [
-          { locus: "HYPP", locusName: "Hyperkalemic Periodic Paralysis", description: "Muscle disease" },
-          { locus: "PSSM", locusName: "Polysaccharide Storage Myopathy", description: "Muscle disorder" },
+          { locus: "HYPP", locusName: "Hyperkalemic Periodic Paralysis", description: "Muscle disease in Quarter Horse lines - trace to Impressive" },
+          { locus: "GBED", locusName: "Glycogen Branching Enzyme Deficiency", description: "Fatal metabolic disorder in Quarter Horses" },
+          { locus: "HERDA", locusName: "Hereditary Equine Regional Dermal Asthenia", description: "Skin fragility in Quarter Horses" },
+          { locus: "OLWS", locusName: "Overo Lethal White Syndrome", description: "Lethal when homozygous (O/O) - foals born white, die within days" },
+          { locus: "MH", locusName: "Malignant Hyperthermia", description: "Dangerous anesthesia reaction in Quarter Horses" },
+          { locus: "PSSM", locusName: "Polysaccharide Storage Myopathy", description: "Muscle disorder - multiple types (PSSM1 and PSSM2)" },
+          { locus: "IMM", locusName: "Immune-Mediated Myositis", description: "Rapid muscle wasting triggered by infection or vaccination" },
+          { locus: "WFFS", locusName: "Warmblood Fragile Foal Syndrome", description: "Connective tissue disorder in Warmbloods" },
+          { locus: "LWO", locusName: "Lethal White Overo", description: "Same as OLWS - frame overo homozygous lethal" },
+          { locus: "CA", locusName: "Cerebellar Abiotrophy", description: "Progressive neurological disease in Arabians and related breeds" },
+          { locus: "SCID", locusName: "Severe Combined Immunodeficiency", description: "Fatal immune system failure in Arabian foals" },
+          { locus: "LFS", locusName: "Lavender Foal Syndrome", description: "Fatal neurological disorder - foals born with dilute/lavender coat" },
+          { locus: "OAAM", locusName: "Occipitoatlantoaxial Malformation", description: "Vertebral malformation in Arabians" },
+          { locus: "Hydro", locusName: "Hydrocephalus (Friesian)", description: "Abnormal fluid accumulation in brain - common in Friesians" },
+          { locus: "FrDwarf", locusName: "Dwarfism (Friesian)", description: "Dwarfism disorder specific to Friesian horses" },
+          { locus: "JEB", locusName: "Junctional Epidermolysis Bullosa", description: "Fatal skin blistering disease - foals born with fragile skin" },
+        ],
+      };
+    } else if (sp === "RABBIT") {
+      return {
+        coatColor: [
+          { locus: "A", locusName: "Agouti", description: "Agouti vs self/tan pattern (A=agouti, at=tan, a=self)" },
+          { locus: "B", locusName: "Brown", description: "Black vs chocolate (B=black, b=chocolate)" },
+          { locus: "C", locusName: "Color Series", description: "Full color to albino (C=full, cchd=chinchilla dark, cchl=sable/seal, ch=himalayan, c=albino REW)" },
+          { locus: "D", locusName: "Dilute", description: "Full color vs dilute (D=full, d=dilute - black becomes blue)" },
+          { locus: "E", locusName: "Extension", description: "Full extension vs steel vs non-extension (E=normal, Es=steel, e=non-extension/tort)" },
+          { locus: "En", locusName: "English Spotting", description: "Broken/spotted pattern (En=spotted, en=solid) - WARNING: En/En causes digestive issues" },
+          { locus: "V", locusName: "Vienna", description: "Blue-eyed white and Vienna marked (V=normal, v=vienna - v/v=BEW)" },
+          { locus: "Du", locusName: "Dutch", description: "Dutch pattern markings (Du=normal, du=dutch pattern when homozygous)" },
+          { locus: "W", locusName: "Wideband", description: "Width of agouti band (W/W=wideband, W/w=intermediate, w/w=normal band)" },
+        ],
+        coatType: [
+          { locus: "L", locusName: "Long Hair (Angora)", description: "Hair length (L=normal, l=long/angora wool)" },
+          { locus: "Sa", locusName: "Satin", description: "Satin sheen coat (Sa=normal, sa=satin)" },
+          { locus: "Rx", locusName: "Rex", description: "Rex coat texture (Rx=normal, rx=rex)" },
+          { locus: "Fuzzy", locusName: "Fuzzy/Wool Gene", description: "Creates wool-like fuzzy coat texture" },
+          { locus: "Mane", locusName: "Lionhead Mane Gene", description: "Creates mane of longer fur around head in Lionhead breed (M/M or M/m=mane)" },
+          { locus: "Boot", locusName: "Booted (white feet pattern)", description: "White feet markings pattern" },
+        ],
+        health: [
+          { locus: "Dw", locusName: "Dwarf Gene", description: "Peanut lethal - WARNING: Dw/Dw (double dwarf) is lethal, Dw/dw=dwarf, dw/dw=normal size" },
+          { locus: "Splay", locusName: "Splay Leg", description: "Genetic leg deformity - affected kits cannot walk properly" },
+        ],
+      };
+    } else if (sp === "GOAT") {
+      return {
+        coatColor: [
+          { locus: "A", locusName: "Agouti Pattern", description: "Agouti patterns (multiple alleles: wild, tan, swiss marked, badger face, etc.)" },
+          { locus: "B", locusName: "Brown", description: "Black vs brown/chocolate pigment (B=black, b=brown)" },
+          { locus: "E", locusName: "Extension", description: "Extension of dark pigment (E=normal, e=recessive red)" },
+          { locus: "S", locusName: "Spotting", description: "White spotting patterns" },
+          { locus: "Rn", locusName: "Roan", description: "Roan pattern - white hairs interspersed" },
+          { locus: "Co", locusName: "Concentrated", description: "Concentrated pigment pattern" },
+        ],
+        physicalTraits: [
+          { locus: "P", locusName: "Polled", description: "Hornless gene - WARNING: P/P may cause intersex in females, P/p=polled, p/p=horned" },
+          { locus: "Wd", locusName: "Wattles", description: "Wattles present (Wd=wattles present)" },
+        ],
+        health: [
+          { locus: "G6S", locusName: "G6S (Beta-Mannosidosis)", description: "Fatal metabolic storage disease in Nubians and related breeds" },
+          { locus: "Scrapie", locusName: "Scrapie Susceptibility", description: "Prion disease susceptibility genotype (QQ, QR, RR variants)" },
+          { locus: "CAE", locusName: "CAE", description: "Caprine Arthritis Encephalitis - viral but testing important for breeding" },
+          { locus: "CL", locusName: "CL (Caseous Lymphadenitis)", description: "Bacterial disease - testing important for breeding programs" },
+          { locus: "AS1_Casein", locusName: "Alpha-S1 Casein", description: "Milk protein gene affecting cheese yield and milk composition" },
+          { locus: "BetaCasein", locusName: "Beta-Casein Variants", description: "Milk protein variants affecting digestibility and cheese production" },
+          { locus: "Myotonia", locusName: "Myotonia (Fainting gene)", description: "Muscle stiffness causing 'fainting' episodes in Myotonic goats" },
+          { locus: "Chondro", locusName: "Chondrodysplasia (Dwarfism)", description: "Skeletal abnormality causing dwarfism in various goat breeds" },
         ],
       };
     }
 
-    // Default for RABBIT, GOAT, SHEEP
+    // Default for SHEEP and other species
     return {
       coatColor: [
         { locus: "Custom", locusName: "Custom Locus", description: "Add custom genetic information" },
       ],
+      coatType: [],
+      physicalTraits: [],
+      eyeColor: [],
       health: [],
+      otherTraits: [],
     };
   }, []);
 
@@ -3655,6 +3808,10 @@ function GeneticsTab({
           const data: GeneticData = {
             coatColor: apiData.coatColor || [],
             health: apiData.health || [],
+            coatType: apiData.coatType || [],
+            physicalTraits: apiData.physicalTraits || [],
+            eyeColor: apiData.eyeColor || [],
+            otherTraits: apiData.otherTraits || [],
             testResults: {
               testName: apiData.testProvider || undefined,
               testDate: apiData.testDate || undefined,
@@ -3665,14 +3822,14 @@ function GeneticsTab({
           setEditData(data);
         } else {
           // Initialize empty if no data exists
-          const data: GeneticData = { coatColor: [], health: [] };
+          const data: GeneticData = { coatColor: [], health: [], coatType: [], physicalTraits: [], eyeColor: [], otherTraits: [] };
           setGeneticData(data);
           setEditData(data);
         }
       } catch (err) {
         console.error("Failed to load genetics:", err);
         // Initialize empty on error
-        const data: GeneticData = { coatColor: [], health: [] };
+        const data: GeneticData = { coatColor: [], health: [], coatType: [], physicalTraits: [], eyeColor: [], otherTraits: [] };
         setGeneticData(data);
         setEditData(data);
       } finally {
@@ -3692,6 +3849,10 @@ function GeneticsTab({
         testId: editData.testResults?.testId || null,
         coatColor: editData.coatColor || [],
         health: editData.health || [],
+        coatType: editData.coatType || [],
+        physicalTraits: editData.physicalTraits || [],
+        eyeColor: editData.eyeColor || [],
+        otherTraits: editData.otherTraits || [],
       };
       const res = await fetch(`/api/v1/animals/${animal.id}/genetics`, {
         method: "PUT",
@@ -3704,6 +3865,10 @@ function GeneticsTab({
         setGeneticData({
           coatColor: saved.coatColor || [],
           health: saved.health || [],
+          coatType: saved.coatType || [],
+          physicalTraits: saved.physicalTraits || [],
+          eyeColor: saved.eyeColor || [],
+          otherTraits: saved.otherTraits || [],
           testResults: {
             testName: saved.testProvider || undefined,
             testDate: saved.testDate || undefined,
@@ -3874,8 +4039,209 @@ function GeneticsTab({
         </div>
       </SectionCard>
 
+      {/* Coat Type Genetics */}
+      {loci.coatType && loci.coatType.length > 0 && (
+        <SectionCard title={<SectionTitle icon="✂️">Coat Type Genetics</SectionTitle>}>
+          <div className="space-y-3">
+            <div className="text-sm text-secondary mb-3">
+              Record coat type traits including length, curl, furnishings (teddy bear face), and shedding propensity.
+            </div>
+
+            <div className="grid grid-cols-1 gap-3">
+              {loci.coatType.map((locusInfo) => (
+                <div key={locusInfo.locus} className="border border-hairline rounded-lg p-3 bg-surface">
+                  <div className="font-semibold text-sm mb-1">{locusInfo.locus} - {locusInfo.locusName}</div>
+                  <div className="text-xs text-secondary mb-2">{locusInfo.description}</div>
+
+                  {mode === "view" ? (
+                    <div className="text-sm">
+                      Genotype: <span className="font-mono">{
+                        editData.coatType?.find((l) => l.locus === locusInfo.locus)?.genotype || "Not tested"
+                      }</span>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-2">
+                      <Input
+                        size="sm"
+                        placeholder="Allele 1"
+                        defaultValue={editData.coatType?.find((l) => l.locus === locusInfo.locus)?.allele1 || ""}
+                        onChange={(e) => {
+                          const existing = editData.coatType || [];
+                          const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
+                          const locusData = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
+                          const updated = { ...locusData, allele1: e.target.value };
+                          updated.genotype = `${updated.allele1 || "?"}/${updated.allele2 || "?"}`;
+
+                          const newCoatType = locusIdx >= 0
+                            ? existing.map((l, i) => (i === locusIdx ? updated : l))
+                            : [...existing, updated];
+
+                          setEditData({ ...editData, coatType: newCoatType });
+                        }}
+                      />
+                      <Input
+                        size="sm"
+                        placeholder="Allele 2"
+                        defaultValue={editData.coatType?.find((l) => l.locus === locusInfo.locus)?.allele2 || ""}
+                        onChange={(e) => {
+                          const existing = editData.coatType || [];
+                          const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
+                          const locusData = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
+                          const updated = { ...locusData, allele2: e.target.value };
+                          updated.genotype = `${updated.allele1 || "?"}/${updated.allele2 || "?"}`;
+
+                          const newCoatType = locusIdx >= 0
+                            ? existing.map((l, i) => (i === locusIdx ? updated : l))
+                            : [...existing, updated];
+
+                          setEditData({ ...editData, coatType: newCoatType });
+                        }}
+                      />
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        </SectionCard>
+      )}
+
+      {/* Physical Traits Genetics */}
+      {loci.physicalTraits && loci.physicalTraits.length > 0 && (
+        <SectionCard title={<SectionTitle icon="📏">Physical Traits Genetics</SectionTitle>}>
+          <div className="space-y-3">
+            <div className="text-sm text-secondary mb-3">
+              Record genetic markers related to physical characteristics like size, tail type, and dewclaws.
+            </div>
+
+            <div className="grid grid-cols-1 gap-3">
+              {loci.physicalTraits.map((locusInfo) => (
+                <div key={locusInfo.locus} className="border border-hairline rounded-lg p-3 bg-surface">
+                  <div className="font-semibold text-sm mb-1">{locusInfo.locus} - {locusInfo.locusName}</div>
+                  <div className="text-xs text-secondary mb-2">{locusInfo.description}</div>
+
+                  {mode === "view" ? (
+                    <div className="text-sm">
+                      Genotype: <span className="font-mono">{
+                        editData.physicalTraits?.find((l) => l.locus === locusInfo.locus)?.genotype || "Not tested"
+                      }</span>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-2">
+                      <Input
+                        size="sm"
+                        placeholder="Allele 1"
+                        defaultValue={editData.physicalTraits?.find((l) => l.locus === locusInfo.locus)?.allele1 || ""}
+                        onChange={(e) => {
+                          const existing = editData.physicalTraits || [];
+                          const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
+                          const locusData = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
+                          const updated = { ...locusData, allele1: e.target.value };
+                          updated.genotype = `${updated.allele1 || "?"}/${updated.allele2 || "?"}`;
+
+                          const newPhysicalTraits = locusIdx >= 0
+                            ? existing.map((l, i) => (i === locusIdx ? updated : l))
+                            : [...existing, updated];
+
+                          setEditData({ ...editData, physicalTraits: newPhysicalTraits });
+                        }}
+                      />
+                      <Input
+                        size="sm"
+                        placeholder="Allele 2"
+                        defaultValue={editData.physicalTraits?.find((l) => l.locus === locusInfo.locus)?.allele2 || ""}
+                        onChange={(e) => {
+                          const existing = editData.physicalTraits || [];
+                          const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
+                          const locusData = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
+                          const updated = { ...locusData, allele2: e.target.value };
+                          updated.genotype = `${updated.allele1 || "?"}/${updated.allele2 || "?"}`;
+
+                          const newPhysicalTraits = locusIdx >= 0
+                            ? existing.map((l, i) => (i === locusIdx ? updated : l))
+                            : [...existing, updated];
+
+                          setEditData({ ...editData, physicalTraits: newPhysicalTraits });
+                        }}
+                      />
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        </SectionCard>
+      )}
+
+      {/* Eye Color Genetics */}
+      {loci.eyeColor && loci.eyeColor.length > 0 && (
+        <SectionCard title={<SectionTitle icon="👁️">Eye Color Genetics</SectionTitle>}>
+          <div className="space-y-3">
+            <div className="text-sm text-secondary mb-3">
+              Record eye color genetic markers including blue eye variants.
+            </div>
+
+            <div className="grid grid-cols-1 gap-3">
+              {loci.eyeColor.map((locusInfo) => (
+                <div key={locusInfo.locus} className="border border-hairline rounded-lg p-3 bg-surface">
+                  <div className="font-semibold text-sm mb-1">{locusInfo.locus} - {locusInfo.locusName}</div>
+                  <div className="text-xs text-secondary mb-2">{locusInfo.description}</div>
+
+                  {mode === "view" ? (
+                    <div className="text-sm">
+                      Genotype: <span className="font-mono">{
+                        editData.eyeColor?.find((l) => l.locus === locusInfo.locus)?.genotype || "Not tested"
+                      }</span>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-2">
+                      <Input
+                        size="sm"
+                        placeholder="Allele 1"
+                        defaultValue={editData.eyeColor?.find((l) => l.locus === locusInfo.locus)?.allele1 || ""}
+                        onChange={(e) => {
+                          const existing = editData.eyeColor || [];
+                          const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
+                          const locusData = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
+                          const updated = { ...locusData, allele1: e.target.value };
+                          updated.genotype = `${updated.allele1 || "?"}/${updated.allele2 || "?"}`;
+
+                          const newEyeColor = locusIdx >= 0
+                            ? existing.map((l, i) => (i === locusIdx ? updated : l))
+                            : [...existing, updated];
+
+                          setEditData({ ...editData, eyeColor: newEyeColor });
+                        }}
+                      />
+                      <Input
+                        size="sm"
+                        placeholder="Allele 2"
+                        defaultValue={editData.eyeColor?.find((l) => l.locus === locusInfo.locus)?.allele2 || ""}
+                        onChange={(e) => {
+                          const existing = editData.eyeColor || [];
+                          const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
+                          const locusData = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
+                          const updated = { ...locusData, allele2: e.target.value };
+                          updated.genotype = `${updated.allele1 || "?"}/${updated.allele2 || "?"}`;
+
+                          const newEyeColor = locusIdx >= 0
+                            ? existing.map((l, i) => (i === locusIdx ? updated : l))
+                            : [...existing, updated];
+
+                          setEditData({ ...editData, eyeColor: newEyeColor });
+                        }}
+                      />
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        </SectionCard>
+      )}
+
       {/* Health Genetics */}
-      {loci.health.length > 0 && (
+      {loci.health && loci.health.length > 0 && (
         <SectionCard title={<SectionTitle icon="🏥">Health Genetics</SectionTitle>}>
           <div className="space-y-3">
             <div className="text-sm text-secondary mb-3">
@@ -3911,6 +4277,73 @@ function GeneticsTab({
                             : [...existing, updated];
 
                           setEditData({ ...editData, health: newHealth });
+                        }}
+                      />
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        </SectionCard>
+      )}
+
+      {/* Other Traits Genetics */}
+      {loci.otherTraits && loci.otherTraits.length > 0 && (
+        <SectionCard title={<SectionTitle icon="🔬">Other Genetic Traits</SectionTitle>}>
+          <div className="space-y-3">
+            <div className="text-sm text-secondary mb-3">
+              Record additional genetic markers and traits.
+            </div>
+
+            <div className="grid grid-cols-1 gap-3">
+              {loci.otherTraits.map((locusInfo) => (
+                <div key={locusInfo.locus} className="border border-hairline rounded-lg p-3 bg-surface">
+                  <div className="font-semibold text-sm mb-1">{locusInfo.locus} - {locusInfo.locusName}</div>
+                  <div className="text-xs text-secondary mb-2">{locusInfo.description}</div>
+
+                  {mode === "view" ? (
+                    <div className="text-sm">
+                      Genotype: <span className="font-mono">{
+                        editData.otherTraits?.find((l) => l.locus === locusInfo.locus)?.genotype || "Not tested"
+                      }</span>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-2">
+                      <Input
+                        size="sm"
+                        placeholder="Allele 1"
+                        defaultValue={editData.otherTraits?.find((l) => l.locus === locusInfo.locus)?.allele1 || ""}
+                        onChange={(e) => {
+                          const existing = editData.otherTraits || [];
+                          const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
+                          const locusData = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
+                          const updated = { ...locusData, allele1: e.target.value };
+                          updated.genotype = `${updated.allele1 || "?"}/${updated.allele2 || "?"}`;
+
+                          const newOtherTraits = locusIdx >= 0
+                            ? existing.map((l, i) => (i === locusIdx ? updated : l))
+                            : [...existing, updated];
+
+                          setEditData({ ...editData, otherTraits: newOtherTraits });
+                        }}
+                      />
+                      <Input
+                        size="sm"
+                        placeholder="Allele 2"
+                        defaultValue={editData.otherTraits?.find((l) => l.locus === locusInfo.locus)?.allele2 || ""}
+                        onChange={(e) => {
+                          const existing = editData.otherTraits || [];
+                          const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
+                          const locusData = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
+                          const updated = { ...locusData, allele2: e.target.value };
+                          updated.genotype = `${updated.allele1 || "?"}/${updated.allele2 || "?"}`;
+
+                          const newOtherTraits = locusIdx >= 0
+                            ? existing.map((l, i) => (i === locusIdx ? updated : l))
+                            : [...existing, updated];
+
+                          setEditData({ ...editData, otherTraits: newOtherTraits });
                         }}
                       />
                     </div>

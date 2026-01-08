@@ -1093,7 +1093,8 @@ export function PlanJourney({
             )}
 
             {/* Celebration message - show when in PLACEMENT_COMPLETED phase and placement completed date is entered */}
-            {currentPhase.key === "PLACEMENT_COMPLETED" && hasPlacementCompleted && nextPhase?.key === "COMPLETE" && allRequirementsMet && (
+            {/* Note: hasPlacementCompleted implies allRequirementsMet since that's the only requirement for COMPLETE phase */}
+            {currentPhase.key === "PLACEMENT_COMPLETED" && hasPlacementCompleted && (
               <div className="relative rounded-xl bg-gradient-to-br from-emerald-500/20 via-emerald-400/10 to-amber-500/20 border-2 border-emerald-400/40 p-6 text-center overflow-hidden celebration-card mt-4">
                 {/* Confetti animation */}
                 <div className="absolute inset-0 pointer-events-none">

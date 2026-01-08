@@ -612,6 +612,170 @@ export const usageApi = {
   },
 };
 
+/** ───────────────────────── Admin Subscriptions API ───────────────────────── */
+
+export type ProductDTO = {
+  id: number;
+  name: string;
+  description: string | null;
+  type: "SUBSCRIPTION" | "ADD_ON" | "ONE_TIME";
+  priceUSD: number;
+  billingInterval: "MONTHLY" | "YEARLY" | "QUARTERLY" | null;
+  features: string[] | null;
+  active: boolean;
+  sortOrder: number;
+  stripeProductId: string | null;
+  stripePriceId: string | null;
+  entitlements: ProductEntitlementDTO[];
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ProductEntitlementDTO = {
+  entitlementKey: string;
+  limitValue: number | null;
+};
+
+export type SubscriptionDTO = {
+  id: number;
+  tenantId: number;
+  productId: number;
+  status: "TRIAL" | "ACTIVE" | "PAST_DUE" | "CANCELED" | "EXPIRED";
+  stripeSubscriptionId: string | null;
+  stripeCustomerId: string | null;
+  currentPeriodStart: string | null;
+  currentPeriodEnd: string | null;
+  canceledAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  product?: ProductDTO;
+  tenant?: { id: number; name: string; primaryEmail: string | null };
+};
+
+export const adminSubscriptionApi = {
+  /** List all subscriptions (platform admin) */
+  listSubscriptions(params?: { status?: string; tenantId?: number; page?: number; limit?: number }) {
+    const sp = new URLSearchParams();
+    if (params?.status) sp.set("status", params.status);
+    if (params?.tenantId) sp.set("tenantId", String(params.tenantId));
+    if (params?.page) sp.set("page", String(params.page));
+    if (params?.limit) sp.set("limit", String(params.limit));
+    const qs = sp.toString();
+    return request<{ subscriptions: SubscriptionDTO[]; total: number }>(
+      `/admin/subscriptions${qs ? `?${qs}` : ""}`,
+      { tenantScoped: true }
+    );
+  },
+
+  /** Get single subscription details */
+  getSubscription(id: number) {
+    return request<{ subscription: SubscriptionDTO }>(`/admin/subscriptions/${id}`, { tenantScoped: true });
+  },
+
+  /** Create subscription manually (for comps, testing, etc.) */
+  createSubscription(data: {
+    tenantId: number;
+    productId: number;
+    status?: string;
+    currentPeriodStart?: string;
+    currentPeriodEnd?: string;
+  }) {
+    return request<{ subscription: SubscriptionDTO }>("/admin/subscriptions", {
+      method: "POST",
+      body: data,
+      tenantScoped: true,
+    });
+  },
+
+  /** Update subscription status/dates */
+  updateSubscription(id: number, data: { status?: string; currentPeriodEnd?: string }) {
+    return request<{ subscription: SubscriptionDTO }>(`/admin/subscriptions/${id}`, {
+      method: "PATCH",
+      body: data,
+      tenantScoped: true,
+    });
+  },
+
+  /** Cancel a subscription */
+  cancelSubscription(id: number) {
+    return request<{ ok: boolean }>(`/admin/subscriptions/${id}`, {
+      method: "DELETE",
+      tenantScoped: true,
+    });
+  },
+
+  /** List all products */
+  listProducts(params?: { includeInactive?: boolean }) {
+    const sp = new URLSearchParams();
+    if (params?.includeInactive) sp.set("includeInactive", "true");
+    const qs = sp.toString();
+    return request<{ products: ProductDTO[] }>(`/admin/products${qs ? `?${qs}` : ""}`, { tenantScoped: true });
+  },
+
+  /** Get single product details */
+  getProduct(id: number) {
+    return request<{ product: ProductDTO }>(`/admin/products/${id}`, { tenantScoped: true });
+  },
+
+  /** Create a new product */
+  createProduct(data: {
+    name: string;
+    description?: string;
+    type: "SUBSCRIPTION" | "ADD_ON" | "ONE_TIME";
+    priceUSD: number;
+    billingInterval?: "MONTHLY" | "YEARLY" | "QUARTERLY";
+    features?: string[];
+    sortOrder?: number;
+  }) {
+    return request<{ product: ProductDTO }>("/admin/products", {
+      method: "POST",
+      body: data,
+      tenantScoped: true,
+    });
+  },
+
+  /** Update a product */
+  updateProduct(id: number, data: Partial<{
+    name: string;
+    description: string | null;
+    priceUSD: number;
+    features: string[];
+    active: boolean;
+    sortOrder: number;
+  }>) {
+    return request<{ product: ProductDTO }>(`/admin/products/${id}`, {
+      method: "PATCH",
+      body: data,
+      tenantScoped: true,
+    });
+  },
+
+  /** Add entitlement to product */
+  addEntitlement(productId: number, data: { entitlementKey: string; limitValue?: number | null }) {
+    return request<{ entitlement: ProductEntitlementDTO }>(`/admin/products/${productId}/entitlements`, {
+      method: "POST",
+      body: data,
+      tenantScoped: true,
+    });
+  },
+
+  /** Update entitlement limit */
+  updateEntitlement(productId: number, entitlementKey: string, data: { limitValue: number | null }) {
+    return request<{ entitlement: ProductEntitlementDTO }>(
+      `/admin/products/${productId}/entitlements/${entitlementKey}`,
+      { method: "PATCH", body: data, tenantScoped: true }
+    );
+  },
+
+  /** Remove entitlement from product */
+  removeEntitlement(productId: number, entitlementKey: string) {
+    return request<{ ok: boolean }>(`/admin/products/${productId}/entitlements/${entitlementKey}`, {
+      method: "DELETE",
+      tenantScoped: true,
+    });
+  },
+};
+
 /** ───────────────────────── Small helpers ───────────────────────── */
 function setNum(sp: URLSearchParams, key: string, n: number) {
   if (Number.isFinite(n as number)) sp.set(key, String(n));

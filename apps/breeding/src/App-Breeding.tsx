@@ -1230,88 +1230,602 @@ function WhatIfRowEditor(props: WhatIfRowEditorProps) {
 /** ────────────────────────────────────────────────────────────────────────
  * Genetics Calculator — Mendelian inheritance calculator
  * ─────────────────────────────────────────────────────────────────────── */
-/** Translate genotypes to human-readable phenotypes */
-const PHENOTYPE_MAP: Record<string, Record<string, string>> = {
-  // A Locus (Agouti) - controls pattern distribution
-  A: {
-    "Ay/Ay": "Sable/Fawn",
-    "Ay/aw": "Sable/Fawn (carries wild)",
-    "Ay/at": "Sable/Fawn (carries tan points)",
-    "Ay/a": "Sable/Fawn (carries recessive black)",
-    "aw/aw": "Wild Sable/Agouti",
-    "aw/at": "Wild Sable (carries tan points)",
-    "aw/a": "Wild Sable (carries recessive black)",
-    "at/at": "Tan Points/Tricolor",
-    "at/a": "Tan Points (carries recessive black)",
-    "a/a": "Recessive Black/Solid",
+/** Species-specific phenotype maps */
+const SPECIES_PHENOTYPE_MAPS: Record<string, Record<string, Record<string, string>>> = {
+  // DOG GENETICS
+  DOG: {
+    A: {
+      "Ay/Ay": "Sable/Fawn",
+      "Ay/aw": "Sable/Fawn (carries wild)",
+      "Ay/at": "Sable/Fawn (carries tan points)",
+      "Ay/a": "Sable/Fawn (carries recessive black)",
+      "aw/aw": "Wild Sable/Agouti",
+      "aw/at": "Wild Sable (carries tan points)",
+      "aw/a": "Wild Sable (carries recessive black)",
+      "at/at": "Tan Points/Tricolor",
+      "at/a": "Tan Points (carries recessive black)",
+      "a/a": "Recessive Black/Solid",
+    },
+    B: {
+      "B/B": "Black pigment",
+      "B/b": "Black pigment (carries brown)",
+      "b/b": "Brown/Chocolate/Liver pigment",
+    },
+    D: {
+      "D/D": "Full color intensity",
+      "D/d": "Full color (carries dilute)",
+      "d/d": "Dilute (Blue/Isabella/Lilac)",
+    },
+    E: {
+      "Em/Em": "Melanistic Mask",
+      "Em/E": "Melanistic Mask",
+      "Em/e": "Melanistic Mask (carries cream)",
+      "E/E": "Normal extension",
+      "E/e": "Normal (carries cream/red)",
+      "e/e": "Cream/Red/Yellow (no black pigment)",
+    },
+    K: {
+      "KB/KB": "Dominant Black (solid)",
+      "KB/kbr": "Dominant Black (carries brindle)",
+      "KB/ky": "Dominant Black (carries pattern)",
+      "kbr/kbr": "Brindle",
+      "kbr/ky": "Brindle (carries pattern)",
+      "ky/ky": "Agouti pattern expressed",
+    },
+    M: {
+      "M/M": "Double Merle (health risk!)",
+      "M/m": "Merle pattern",
+      "m/m": "Non-merle (solid)",
+    },
+    S: {
+      "S/S": "Solid (no white)",
+      "S/sp": "Solid (carries piebald)",
+      "sp/sp": "Piebald/Parti (white patches)",
+    // Coat Type - Critical for doodles
+    L: {
+      "L/L": "Short coat",
+      "L/l": "Short coat (carries long)",
+      "l/l": "Long coat",
+    },
+    F: {
+      "F/F": "Furnished (teddy bear face)",
+      "F/f": "Furnished (carries unfurnished)",
+      "f/f": "Unfurnished (smooth face)",
+    },
+    Cu: {
+      "Cu/Cu": "Curly coat",
+      "Cu/N": "Wavy/Curly coat",
+      "N/N": "Straight coat",
+    },
+    Sd: {
+      "Sd/Sd": "Low shedding",
+      "Sd/sd": "Moderate shedding",
+      "sd/sd": "Normal shedding",
+    },
+    IC: {
+      "IC/IC": "Improper coat",
+      "IC/N": "Proper coat (carries improper)",
+      "N/N": "Proper coat",
+    },
+    // Physical Traits
+    IGF1: {
+      "I/I": "Small body size",
+      "I/N": "Medium body size",
+      "N/N": "Large body size",
+    },
+    BT: {
+      "T/T": "Normal tail",
+      "T/bt": "Natural bobtail",
+      "bt/bt": "Very short/no tail",
+    },
+    // Eye Color
+    Blue: {
+      "B/B": "Blue eyes",
+      "B/N": "May have blue eyes",
+      "N/N": "Normal eye color",
+    },
+    // Additional Coat Type
+    L4: {
+      "L4/L4": "Fluffy (long hair)",
+      "L4/N": "Carrier (normal coat)",
+      "N/N": "Normal coat",
+    },
+    // Additional Health Markers
+    ICT_A: {
+      "N/N": "Clear",
+      "N/ICT_A": "Carrier",
+      "ICT_A/ICT_A": "Affected",
+    },
+    HNPK: {
+      "N/N": "Clear",
+      "N/HNPK": "Carrier",
+      "HNPK/HNPK": "Affected",
+    },
+    SD2: {
+      "N/N": "Clear",
+      "N/SD2": "Carrier",
+      "SD2/SD2": "Affected",
+    },
+    CNM: {
+      "N/N": "Clear",
+      "N/CNM": "Carrier",
+      "CNM/CNM": "Affected",
+    },
+    RD_OSD: {
+      "N/N": "Clear",
+      "N/RD": "Carrier",
+      "RD/RD": "Affected",
+    },
+    JHC: {
+      "N/N": "Clear",
+      "N/JHC": "Carrier",
+      "JHC/JHC": "Affected",
+    },
+    CMR1: {
+      "N/N": "Clear",
+      "N/CMR1": "Carrier",
+      "CMR1/CMR1": "Affected",
+    },
+    Cystinuria: {
+      "N/N": "Clear",
+      "N/Cys": "Carrier",
+      "Cys/Cys": "Affected",
+    },
+    EFS: {
+      "N/N": "Clear",
+      "N/EFS": "Carrier",
+      "EFS/EFS": "Affected",
+    },
+    CC_DEW: {
+      "N/N": "Clear",
+      "N/CC": "Carrier",
+      "CC/CC": "Affected",
+    },
+    HSF4: {
+      "N/N": "Clear",
+      "N/HSF4": "Carrier",
+      "HSF4/HSF4": "Affected",
+    },
+    TNS: {
+      "N/N": "Clear",
+      "N/TNS": "Carrier",
+      "TNS/TNS": "Affected",
+    },
+    CL_BC: {
+      "N/N": "Clear",
+      "N/CL": "Carrier",
+      "CL/CL": "Affected",
+    },
+    IGS: {
+      "N/N": "Clear",
+      "N/IGS": "Carrier",
+      "IGS/IGS": "Affected",
+    },
+    FN: {
+      "N/N": "Clear",
+      "N/FN": "Carrier",
+      "FN/FN": "Affected",
+    },
+    PFK: {
+      "N/N": "Clear",
+      "N/PFK": "Carrier",
+      "PFK/PFK": "Affected",
+    },
+    GPRA: {
+      "N/N": "Clear",
+      "N/GPRA": "Carrier",
+      "GPRA/GPRA": "Affected",
+    },
+    },
   },
-  // B Locus (Brown) - black vs chocolate pigment
-  B: {
-    "B/B": "Black pigment",
-    "B/b": "Black pigment (carries brown)",
-    "b/b": "Brown/Chocolate/Liver pigment",
+
+  // CAT GENETICS
+  CAT: {
+    A: {
+      "A/A": "Tabby pattern visible",
+      "A/a": "Tabby pattern (carries solid)",
+      "a/a": "Solid/Non-agouti",
+    },
+    B: {
+      "B/B": "Black",
+      "B/b": "Black (carries chocolate)",
+      "B/bl": "Black (carries cinnamon)",
+      "b/b": "Chocolate",
+      "b/bl": "Chocolate (carries cinnamon)",
+      "bl/bl": "Cinnamon/Light brown",
+    },
+    C: {
+      "C/C": "Full color",
+      "C/cs": "Full color (carries pointed)",
+      "C/cb": "Full color (carries sepia)",
+      "cs/cs": "Colorpoint/Siamese pattern",
+      "cs/cb": "Mink pattern",
+      "cb/cb": "Sepia/Burmese pattern",
+    },
+    D: {
+      "D/D": "Full color intensity",
+      "D/d": "Full color (carries dilute)",
+      "d/d": "Dilute (Blue/Lilac/Fawn)",
+    },
+    O: {
+      "O/O": "Orange/Red (male)",
+      "O/o": "Tortoiseshell (female)",
+      "o/o": "Non-orange (black-based)",
+      "O/Y": "Orange/Red (male)",
+      "o/Y": "Non-orange (male)",
+    },
+    S: {
+      "S/S": "High white (Van/Bicolor)",
+      "S/s": "Medium white spotting",
+      "s/s": "No white",
+    },
+    W: {
+      "W/W": "Dominant White",
+      "W/w": "Dominant White",
+      "w/w": "Normal color expression",
+    },
+    Mc: {
+      "Mc/Mc": "Mackerel tabby",
+      "Mc/mc": "Mackerel tabby (carries classic)",
+      "mc/mc": "Classic/Blotched tabby",
+    },
+    L: {
+      "L/L": "Shorthair",
+      "L/l": "Shorthair (carries longhair)",
+      "l/l": "Longhair",
+    },
+    // Additional Health Markers
+    PRA_pd: {
+      "N/N": "Clear",
+      "N/PRA": "Carrier",
+      "PRA/PRA": "Affected",
+    },
+    HCM_MC: {
+      "N/N": "Clear",
+      "N/HCM": "Carrier",
+      "HCM/HCM": "Affected",
+    },
+    HCM_RD: {
+      "N/N": "Clear",
+      "N/HCM": "Carrier",
+      "HCM/HCM": "Affected",
+    },
+    GM1: {
+      "N/N": "Clear",
+      "N/GM1": "Carrier",
+      "GM1/GM1": "Affected",
+    },
+    PRA_rdAc: {
+      "N/N": "Clear",
+      "N/rdAc": "Carrier",
+      "rdAc/rdAc": "Affected",
+    },
+    Amyloidosis: {
+      "N/N": "Clear",
+      "N/Amy": "Carrier",
+      "Amy/Amy": "At Risk",
+    },
+    FCKS: {
+      "N/N": "Clear",
+      "N/FCKS": "Carrier",
+      "FCKS/FCKS": "Affected",
+    },
+    OCD: {
+      "N/N": "Clear",
+      "Fd/N": "Fold ears (safe)",
+      "Fd/Fd": "Double Fold (health risk)",
+    },
+    // Blood Type
+    BloodType: {
+      "A/A": "Type A",
+      "A/b": "Type A (carries B)",
+      "b/b": "Type B",
+      "A/ab": "Type A (carries AB)",
+      "ab/ab": "Type AB",
+    },
   },
-  // D Locus (Dilute) - dilutes color intensity
-  D: {
-    "D/D": "Full color intensity",
-    "D/d": "Full color (carries dilute)",
-    "d/d": "Dilute (Blue/Isabella/Lilac)",
+
+  // HORSE GENETICS
+  HORSE: {
+    E: {
+      "E/E": "Black-based",
+      "E/e": "Black-based (carries red)",
+      "e/e": "Red-based (Chestnut/Sorrel)",
+    },
+    A: {
+      "A/A": "Bay (black restricted to points)",
+      "A/a": "Bay (carries non-agouti)",
+      "a/a": "Black (if E present)",
+    },
+    Cr: {
+      "Cr/Cr": "Double Cream (Cremello/Perlino)",
+      "Cr/n": "Single Cream (Palomino/Buckskin)",
+      "n/n": "No cream dilution",
+    },
+    D: {
+      "D/D": "Dun (double)",
+      "D/d": "Dun",
+      "d/d": "Non-dun",
+    },
+    G: {
+      "G/G": "Gray (will gray out)",
+      "G/g": "Gray (will gray out)",
+      "g/g": "Non-gray",
+    },
+    TO: {
+      "TO/TO": "Tobiano (homozygous)",
+      "TO/to": "Tobiano",
+      "to/to": "Non-tobiano",
+    },
+    O: {
+      "O/O": "Lethal White Overo Syndrome (fatal)",
+      "O/n": "Frame Overo pattern",
+      "n/n": "Non-frame",
+    },
+    SB: {
+      "SB/SB": "Sabino (may be mostly white)",
+      "SB/n": "Sabino pattern",
+      "n/n": "Non-sabino",
+    },
+    Rn: {
+      "Rn/Rn": "Roan",
+      "Rn/n": "Roan",
+      "n/n": "Non-roan",
+    },
+    Ch: {
+      "Ch/Ch": "Champagne (double)",
+      "Ch/n": "Champagne",
+      "n/n": "Non-champagne",
+    },
+    Z: {
+      "Z/Z": "Silver (double)",
+      "Z/n": "Silver dapple",
+      "n/n": "Non-silver",
+    },
+    LP: {
+      "LP/LP": "Leopard Complex (few spots)",
+      "LP/lp": "Leopard Complex",
+      "lp/lp": "Non-appaloosa",
+    },
+    // Additional Coat Color
+    nCh: {
+      "nCh/nCh": "Chestnut carrier",
+      "nCh/N": "Carries chestnut",
+      "N/N": "Non-carrier",
+    },
+    // Additional Health Markers
+    CA: {
+      "N/N": "Clear",
+      "N/CA": "Carrier",
+      "CA/CA": "Affected",
+    },
+    SCID: {
+      "N/N": "Clear",
+      "N/SCID": "Carrier",
+      "SCID/SCID": "Affected (fatal)",
+    },
+    LFS: {
+      "N/N": "Clear",
+      "N/LFS": "Carrier",
+      "LFS/LFS": "Affected (fatal)",
+    },
+    OAAM: {
+      "N/N": "Clear",
+      "N/OAAM": "Carrier",
+      "OAAM/OAAM": "Affected",
+    },
+    Hydro: {
+      "N/N": "Clear",
+      "N/Hy": "Carrier",
+      "Hy/Hy": "Affected",
+    },
+    FrDwarf: {
+      "N/N": "Clear",
+      "N/Dw": "Carrier",
+      "Dw/Dw": "Affected",
+    },
+    JEB: {
+      "N/N": "Clear",
+      "N/JEB": "Carrier",
+      "JEB/JEB": "Affected (fatal)",
+    },
   },
-  // E Locus (Extension) - controls red/yellow expression
-  E: {
-    "Em/Em": "Melanistic Mask",
-    "Em/E": "Melanistic Mask",
-    "Em/e": "Melanistic Mask (carries cream)",
-    "E/E": "Normal extension",
-    "E/e": "Normal (carries cream/red)",
-    "e/e": "Cream/Red/Yellow (no black pigment in coat)",
+
+  // RABBIT GENETICS
+  RABBIT: {
+    A: {
+      "A/A": "Agouti (wild pattern)",
+      "A/at": "Agouti (carries tan)",
+      "A/a": "Agouti (carries self)",
+      "at/at": "Tan/Otter pattern",
+      "at/a": "Tan (carries self)",
+      "a/a": "Self/Solid color",
+    },
+    B: {
+      "B/B": "Black-based",
+      "B/b": "Black-based (carries chocolate)",
+      "b/b": "Chocolate-based",
+    },
+    C: {
+      "C/C": "Full color",
+      "C/cchd": "Full color (carries chinchilla)",
+      "C/cchl": "Full color (carries sable)",
+      "C/ch": "Full color (carries himalayan)",
+      "C/c": "Full color (carries REW)",
+      "cchd/cchd": "Chinchilla",
+      "cchd/cchl": "Chinchilla (carries sable)",
+      "cchl/cchl": "Sable/Siamese sable",
+      "ch/ch": "Himalayan/Pointed",
+      "ch/c": "Himalayan (carries REW)",
+      "c/c": "REW (Ruby-Eyed White)",
+    },
+    D: {
+      "D/D": "Dense/Full color",
+      "D/d": "Dense (carries dilute)",
+      "d/d": "Dilute (Blue/Lilac)",
+    },
+    E: {
+      "Es/Es": "Steel (dominant)",
+      "Es/E": "Steel",
+      "E/E": "Normal extension",
+      "E/ej": "Normal (carries Japanese)",
+      "E/e": "Normal (carries tort)",
+      "ej/ej": "Japanese brindling",
+      "ej/e": "Japanese (carries tort)",
+      "e/e": "Tort/Non-extension",
+    },
+    En: {
+      "En/En": "Charlie (mostly white - health risk)",
+      "En/en": "Broken pattern",
+      "en/en": "Solid (no spots)",
+    },
+    V: {
+      "V/V": "Normal eyes",
+      "V/v": "Vienna carrier (may show blue)",
+      "v/v": "BEW (Blue-Eyed White)",
+    },
+    Du: {
+      "Du/Du": "No Dutch markings",
+      "Du/du": "Dutch pattern",
+      "du/du": "Solid (no Dutch)",
+    },
+    W: {
+      "W/W": "Wideband (red enhanced)",
+      "W/w": "Wideband",
+      "w/w": "Normal band width",
+    },
+    // Additional Coat Type
+    Fuzzy: {
+      "F/F": "Fuzzy/Wool coat",
+      "F/f": "Fuzzy (carries normal)",
+      "f/f": "Normal coat",
+    },
+    Mane: {
+      "M/M": "Double mane (full mane)",
+      "M/m": "Single mane",
+      "m/m": "No mane",
+    },
+    Boot: {
+      "Bo/Bo": "Booted (white feet)",
+      "Bo/bo": "Booted (white feet)",
+      "bo/bo": "Non-booted",
+    },
   },
-  // K Locus (Dominant Black) - overrides agouti
-  K: {
-    "KB/KB": "Dominant Black (solid)",
-    "KB/kbr": "Dominant Black (carries brindle)",
-    "KB/ky": "Dominant Black (carries non-black)",
-    "kbr/kbr": "Brindle",
-    "kbr/ky": "Brindle (carries non-black)",
-    "ky/ky": "Agouti pattern expressed",
-  },
-  // M Locus (Merle)
-  M: {
-    "M/M": "Double Merle (health risk!)",
-    "M/m": "Merle pattern",
-    "m/m": "Non-merle (solid)",
-  },
-  // S Locus (White Spotting)
-  S: {
-    "S/S": "Solid (no white)",
-    "S/sp": "Solid (carries piebald)",
-    "S/sw": "Solid (carries extreme white)",
-    "sp/sp": "Piebald/Parti (white patches)",
-    "sp/sw": "Piebald (carries extreme white)",
-    "sw/sw": "Extreme White Piebald",
+
+  // GOAT GENETICS
+  GOAT: {
+    A: {
+      "Awt/Awt": "White/Tan (Swiss markings)",
+      "Awt/Ab": "White/Tan (carries badgerface)",
+      "Ab/Ab": "Badgerface (light belly)",
+      "Ab/Ag": "Badgerface (carries grey)",
+      "Ag/Ag": "Grey/Agouti",
+      "Ag/As": "Grey (carries swiss)",
+      "As/As": "Swiss marked",
+      "As/a": "Swiss (carries solid)",
+      "a/a": "Solid/Self (no pattern)",
+    },
+    B: {
+      "B/B": "Black eumelanin",
+      "B/b": "Black (carries brown)",
+      "b/b": "Brown/Chocolate eumelanin",
+    },
+    E: {
+      "Ed/Ed": "Dominant Black (solid black)",
+      "Ed/E": "Dominant Black",
+      "Ed/e": "Dominant Black (carries red)",
+      "E/E": "Normal (pattern expressed)",
+      "E/e": "Normal (carries red)",
+      "e/e": "Red/Tan (no eumelanin)",
+    },
+    S: {
+      "S/S": "Random white spots",
+      "S/s": "Some white spotting",
+      "s/s": "No random spotting",
+    },
+    Rn: {
+      "Rn/Rn": "Roan",
+      "Rn/rn": "Roan",
+      "rn/rn": "Non-roan",
+    },
+    Co: {
+      "Co/Co": "Normal pigment distribution",
+      "Co/co": "Normal (carries concentrated)",
+      "co/co": "Concentrated (sundgau)",
+    },
+    P: {
+      "P/P": "Polled (hornless) - intersex risk",
+      "P/p": "Polled (hornless)",
+      "p/p": "Horned",
+    },
+    // Additional Health Markers
+    BetaCasein: {
+      "A2/A2": "A2 Beta-Casein (preferred)",
+      "A1/A2": "A1/A2 Beta-Casein",
+      "A1/A1": "A1 Beta-Casein",
+    },
+    Myotonia: {
+      "N/N": "Normal",
+      "N/My": "Carrier",
+      "My/My": "Myotonic (fainting)",
+    },
+    Chondro: {
+      "N/N": "Clear",
+      "N/Ch": "Carrier",
+      "Ch/Ch": "Affected (dwarf)",
+    },
   },
 };
 
-/** Get phenotype description for a genotype */
-function getPhenotype(locus: string, genotype: string): string {
-  const locusMap = PHENOTYPE_MAP[locus];
+/** Species-specific dangerous pairings */
+const SPECIES_WARNINGS: Record<string, Array<{locus: string, genotype: string, message: string, severity: string, scorePenalty: number}>> = {
+  DOG: [
+    { locus: "M", genotype: "M/M", message: "DOUBLE MERLE: Can produce deaf/blind offspring", severity: "danger", scorePenalty: 50 },
+  ],
+  CAT: [
+    { locus: "Fd", genotype: "Fd/Fd", message: "DOUBLE FOLD: Causes severe osteochondrodysplasia (painful cartilage/bone disease)", severity: "danger", scorePenalty: 50 },
+  ],
+  HORSE: [
+    { locus: "O", genotype: "O/O", message: "LETHAL WHITE OVERO: Foals will not survive", severity: "danger", scorePenalty: 100 },
+    { locus: "LP", genotype: "LP/LP", message: "Double LP may have vision issues (CSNB)", severity: "warning", scorePenalty: 10 },
+    { locus: "SCID", genotype: "SCID/SCID", message: "SCID: Foals will have no immune system and will not survive", severity: "danger", scorePenalty: 100 },
+    { locus: "LFS", genotype: "LFS/LFS", message: "LAVENDER FOAL SYNDROME: Affected foals will not survive", severity: "danger", scorePenalty: 100 },
+    { locus: "JEB", genotype: "JEB/JEB", message: "JEB: Foals born with fragile blistering skin will not survive", severity: "danger", scorePenalty: 100 },
+  ],
+  RABBIT: [
+    { locus: "En", genotype: "En/En", message: "CHARLIE: May have digestive issues", severity: "warning", scorePenalty: 20 },
+  ],
+  GOAT: [
+    { locus: "P", genotype: "P/P", message: "POLLED x POLLED: Risk of intersex offspring", severity: "danger", scorePenalty: 30 },
+  ],
+};
+
+/** Get phenotype description for a genotype (species-specific) */
+function getPhenotype(species: string, locus: string, genotype: string): string {
+  const speciesUpper = species?.toUpperCase() || "DOG";
+  const speciesMap = SPECIES_PHENOTYPE_MAPS[speciesUpper];
+  if (!speciesMap) return genotype; // Unknown species, show raw genotype
+
+  const locusMap = speciesMap[locus];
   if (!locusMap) return genotype;
 
-  // Try exact match first
+  // Try exact match
   if (locusMap[genotype]) return locusMap[genotype];
 
-  // Try reversed order (e.g., "a/at" -> "at/a")
+  // Try reversed order
   const parts = genotype.split('/');
   const reversed = `${parts[1]}/${parts[0]}`;
   if (locusMap[reversed]) return locusMap[reversed];
 
-  // Fall back to genotype
   return genotype;
 }
 
-function calculateGeneticPairing(damGenetics: any, sireGenetics: any) {
+function calculateGeneticPairing(damGenetics: any, sireGenetics: any, species: string = "DOG") {
   const results: any = {
     coatColor: [],
+    coatType: [],
+    physicalTraits: [],
+    eyeColor: [],
     health: [],
     warnings: [],
     score: 100,
@@ -1366,7 +1880,7 @@ function calculateGeneticPairing(damGenetics: any, sireGenetics: any) {
       const phenotypeCounts = new Map<string, number>();
 
       for (const [genotype, percentage] of genotypeCounts.entries()) {
-        const phenotype = getPhenotype(locus, genotype);
+        const phenotype = getPhenotype(species, locus, genotype);
         predictionParts.push(`${percentage}% ${phenotype}`);
 
         // Track for summary
@@ -1396,13 +1910,27 @@ function calculateGeneticPairing(damGenetics: any, sireGenetics: any) {
         prediction: predictionParts.join(', '),
       });
 
-      // Special warnings
-      if (locus === "M" && damLocus.allele1 === "M" && sireLocus.allele1 === "M") {
-        results.warnings.push({
-          severity: "danger",
-          message: "DOUBLE MERLE WARNING: This pairing can produce double merle puppies (M/M), which often have vision and hearing problems.",
-        });
-        results.score -= 50;
+    }
+
+    // Species-specific warning checks
+    const speciesUpper = species?.toUpperCase() || "DOG";
+    const speciesWarnings = SPECIES_WARNINGS[speciesUpper] || [];
+    for (const warning of speciesWarnings) {
+      // Check if this pairing can produce the dangerous genotype
+      const damLocus = damLoci.get(warning.locus) as any;
+      const sireLocus = sireLoci.get(warning.locus) as any;
+      if (damLocus && sireLocus) {
+        // Check if both parents carry the dangerous allele
+        const dangerousAllele = warning.genotype.split('/')[0];
+        const damHas = damLocus.allele1 === dangerousAllele || damLocus.allele2 === dangerousAllele;
+        const sireHas = sireLocus.allele1 === dangerousAllele || sireLocus.allele2 === dangerousAllele;
+        if (damHas && sireHas) {
+          results.warnings.push({
+            severity: warning.severity,
+            message: `${warning.message} (${warning.genotype} possible in offspring)`,
+          });
+          results.score -= warning.scorePenalty;
+        }
       }
     }
 
@@ -1417,8 +1945,134 @@ function calculateGeneticPairing(damGenetics: any, sireGenetics: any) {
     if (uniqueModifiers.length) summaryParts.push(`with ${uniqueModifiers.join(" and ")}`);
 
     results.colorSummary = summaryParts.length > 0
-      ? `Possible puppies: ${summaryParts.join(" ")}`
+      ? `Possible offspring: ${summaryParts.join(" ")}`
       : "Color prediction requires more genetic data";
+  }
+
+  // Calculate coat type genetics
+  if (damGenetics?.coatType && sireGenetics?.coatType) {
+    const damLoci = new Map(damGenetics.coatType.map((l: any) => [l.locus, l]));
+    const sireLoci = new Map(sireGenetics.coatType.map((l: any) => [l.locus, l]));
+    const allLoci = new Set([...damLoci.keys(), ...sireLoci.keys()]);
+
+    for (const locus of allLoci) {
+      const damLocus = damLoci.get(locus) as any;
+      const sireLocus = sireLoci.get(locus) as any;
+      if (!damLocus || !sireLocus) continue;
+      if (!damLocus.allele1 || !damLocus.allele2 || !sireLocus.allele1 || !sireLocus.allele2) continue;
+
+      // Calculate Punnett square
+      const offspring = [
+        `${damLocus.allele1}/${sireLocus.allele1}`,
+        `${damLocus.allele1}/${sireLocus.allele2}`,
+        `${damLocus.allele2}/${sireLocus.allele1}`,
+        `${damLocus.allele2}/${sireLocus.allele2}`,
+      ];
+
+      const genotypeCounts = new Map<string, number>();
+      offspring.forEach((gt) => {
+        const parts = gt.split('/');
+        const normalized = parts.sort().join('/');
+        genotypeCounts.set(normalized, (genotypeCounts.get(normalized) || 0) + 25);
+      });
+
+      const predictionParts: string[] = [];
+      for (const [genotype, percentage] of genotypeCounts.entries()) {
+        const phenotype = getPhenotype(species, locus, genotype);
+        predictionParts.push(`${percentage}% ${phenotype}`);
+      }
+
+      results.coatType.push({
+        trait: `${locus} Locus (${damLocus.locusName || locus})`,
+        damGenotype: `${damLocus.allele1}/${damLocus.allele2}`,
+        sireGenotype: `${sireLocus.allele1}/${sireLocus.allele2}`,
+        prediction: predictionParts.join(', '),
+      });
+    }
+  }
+
+  // Calculate physical traits genetics
+  if (damGenetics?.physicalTraits && sireGenetics?.physicalTraits) {
+    const damLoci = new Map(damGenetics.physicalTraits.map((l: any) => [l.locus, l]));
+    const sireLoci = new Map(sireGenetics.physicalTraits.map((l: any) => [l.locus, l]));
+    const allLoci = new Set([...damLoci.keys(), ...sireLoci.keys()]);
+
+    for (const locus of allLoci) {
+      const damLocus = damLoci.get(locus) as any;
+      const sireLocus = sireLoci.get(locus) as any;
+      if (!damLocus || !sireLocus) continue;
+      if (!damLocus.allele1 || !damLocus.allele2 || !sireLocus.allele1 || !sireLocus.allele2) continue;
+
+      // Calculate Punnett square
+      const offspring = [
+        `${damLocus.allele1}/${sireLocus.allele1}`,
+        `${damLocus.allele1}/${sireLocus.allele2}`,
+        `${damLocus.allele2}/${sireLocus.allele1}`,
+        `${damLocus.allele2}/${sireLocus.allele2}`,
+      ];
+
+      const genotypeCounts = new Map<string, number>();
+      offspring.forEach((gt) => {
+        const parts = gt.split('/');
+        const normalized = parts.sort().join('/');
+        genotypeCounts.set(normalized, (genotypeCounts.get(normalized) || 0) + 25);
+      });
+
+      const predictionParts: string[] = [];
+      for (const [genotype, percentage] of genotypeCounts.entries()) {
+        const phenotype = getPhenotype(species, locus, genotype);
+        predictionParts.push(`${percentage}% ${phenotype}`);
+      }
+
+      results.physicalTraits.push({
+        trait: `${locus} Locus (${damLocus.locusName || locus})`,
+        damGenotype: `${damLocus.allele1}/${damLocus.allele2}`,
+        sireGenotype: `${sireLocus.allele1}/${sireLocus.allele2}`,
+        prediction: predictionParts.join(', '),
+      });
+    }
+  }
+
+  // Calculate eye color genetics
+  if (damGenetics?.eyeColor && sireGenetics?.eyeColor) {
+    const damLoci = new Map(damGenetics.eyeColor.map((l: any) => [l.locus, l]));
+    const sireLoci = new Map(sireGenetics.eyeColor.map((l: any) => [l.locus, l]));
+    const allLoci = new Set([...damLoci.keys(), ...sireLoci.keys()]);
+
+    for (const locus of allLoci) {
+      const damLocus = damLoci.get(locus) as any;
+      const sireLocus = sireLoci.get(locus) as any;
+      if (!damLocus || !sireLocus) continue;
+      if (!damLocus.allele1 || !damLocus.allele2 || !sireLocus.allele1 || !sireLocus.allele2) continue;
+
+      // Calculate Punnett square
+      const offspring = [
+        `${damLocus.allele1}/${sireLocus.allele1}`,
+        `${damLocus.allele1}/${sireLocus.allele2}`,
+        `${damLocus.allele2}/${sireLocus.allele1}`,
+        `${damLocus.allele2}/${sireLocus.allele2}`,
+      ];
+
+      const genotypeCounts = new Map<string, number>();
+      offspring.forEach((gt) => {
+        const parts = gt.split('/');
+        const normalized = parts.sort().join('/');
+        genotypeCounts.set(normalized, (genotypeCounts.get(normalized) || 0) + 25);
+      });
+
+      const predictionParts: string[] = [];
+      for (const [genotype, percentage] of genotypeCounts.entries()) {
+        const phenotype = getPhenotype(species, locus, genotype);
+        predictionParts.push(`${percentage}% ${phenotype}`);
+      }
+
+      results.eyeColor.push({
+        trait: `${locus} Locus (${damLocus.locusName || locus})`,
+        damGenotype: `${damLocus.allele1}/${damLocus.allele2}`,
+        sireGenotype: `${sireLocus.allele1}/${sireLocus.allele2}`,
+        prediction: predictionParts.join(', '),
+      });
+    }
   }
 
   // Calculate health genetics
@@ -1636,6 +2290,27 @@ function GeneticsLabPage({
   const [showDisclaimer, setShowDisclaimer] = React.useState(false);
   const [detailLevel, setDetailLevel] = React.useState<'simple' | 'detailed' | 'professional'>('simple');
 
+  // Check if user has already accepted genetics disclaimer
+  React.useEffect(() => {
+    const checkDisclaimerAcceptance = async () => {
+      try {
+        const res = await fetch('/api/v1/settings/genetics-disclaimer', {
+          credentials: 'include',
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.accepted) {
+            setDisclaimerAccepted(true);
+            console.log('Genetics disclaimer already accepted on:', data.acceptedAt);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to check genetics disclaimer acceptance:', err);
+      }
+    };
+    checkDisclaimerAcceptance();
+  }, []);
+
   // Filter animals by sex
   const allDams = animals.filter((a) => (a.sex || "").toUpperCase().startsWith("F"));
   const allSires = animals.filter((a) => (a.sex || "").toUpperCase().startsWith("M"));
@@ -1736,7 +2411,7 @@ function GeneticsLabPage({
     try {
       console.log("About to call calculateGeneticPairing");
       // Calculate Mendelian inheritance using the genetics calculator
-      const calculatedResults = calculateGeneticPairing(damGenetics, sireGenetics);
+      const calculatedResults = calculateGeneticPairing(damGenetics, sireGenetics, selectedDam?.species || "DOG");
       console.log("Results from calculateGeneticPairing:", calculatedResults);
       setResults(calculatedResults);
     } catch (err) {
@@ -1850,10 +2525,15 @@ function GeneticsLabPage({
           {/* Results */}
           {results && (
             <div className="space-y-4 pt-4 border-t border-hairline">
-              {/* Big Summary - What puppies will look like */}
+              {/* Big Summary - What offspring will look like */}
               <div className="rounded-xl border-2 border-accent/30 bg-accent/5 p-5">
                 <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
-                  What Your Puppies Could Look Like
+                  What Your Offspring Could Look Like
+                  {selectedDam?.species && (
+                    <span className="text-base font-normal text-secondary">
+                      ({selectedDam.species.charAt(0) + selectedDam.species.slice(1).toLowerCase()})
+                    </span>
+                  )}
                 </h3>
 
                 {/* Color Summary */}
@@ -1875,11 +2555,11 @@ function GeneticsLabPage({
                       const [, pct, desc] = match;
                       const pctNum = parseInt(pct);
                       let likelihood = "";
-                      if (pctNum === 100) likelihood = "All puppies will be";
-                      else if (pctNum >= 75) likelihood = "Most puppies (~" + pct + "%) will be";
-                      else if (pctNum >= 50) likelihood = "About half the puppies will be";
-                      else if (pctNum >= 25) likelihood = "Some puppies (~" + pct + "%) may be";
-                      else likelihood = "A few puppies (~" + pct + "%) could be";
+                      if (pctNum === 100) likelihood = "All offspring will be";
+                      else if (pctNum >= 75) likelihood = "Most offspring (~" + pct + "%) will be";
+                      else if (pctNum >= 50) likelihood = "About half the offspring will be";
+                      else if (pctNum >= 25) likelihood = "Some offspring (~" + pct + "%) may be";
+                      else likelihood = "A few offspring (~" + pct + "%) could be";
                       return { likelihood, desc, pct: pctNum };
                     }).filter(Boolean);
 
@@ -1903,6 +2583,129 @@ function GeneticsLabPage({
                   })}
                 </div>
               </div>
+
+              {/* Coat Type Results */}
+              {results.coatType?.length > 0 && (
+                <div className="rounded-xl border border-hairline bg-surface p-5">
+                  <h4 className="text-lg font-bold mb-4 flex items-center gap-2">
+                    <span>✂️</span> Coat Type Predictions
+                  </h4>
+                  <div className="space-y-3">
+                    {results.coatType?.map((item: any, idx: number) => {
+                      const explanations = item.prediction.split(', ').map((p: string) => {
+                        const match = p.match(/^(\d+)%\s+(.+)$/);
+                        if (!match) return null;
+                        const [, pct, desc] = match;
+                        const pctNum = parseInt(pct);
+                        let likelihood = "";
+                        if (pctNum === 100) likelihood = "All offspring will have";
+                        else if (pctNum >= 75) likelihood = "Most offspring (~" + pct + "%) will have";
+                        else if (pctNum >= 50) likelihood = "About half will have";
+                        else if (pctNum >= 25) likelihood = "Some offspring (~" + pct + "%) may have";
+                        else likelihood = "A few offspring (~" + pct + "%) could have";
+                        return { likelihood, desc, pct: pctNum };
+                      }).filter(Boolean);
+                      const locusMatch = item.trait.match(/\(([^)]+)\)/);
+                      const locusName = locusMatch ? locusMatch[1] : item.trait;
+                      return (
+                        <div key={idx} className="rounded-lg bg-surface/50 p-3">
+                          <div className="text-sm font-semibold text-secondary mb-2">{locusName}</div>
+                          <div className="space-y-1">
+                            {explanations.map((exp: any, i: number) => (
+                              <div key={i} className="text-sm">
+                                <span className="text-secondary">{exp.likelihood}</span>{" "}
+                                <span className="font-medium">{exp.desc}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Physical Traits Results */}
+              {results.physicalTraits?.length > 0 && (
+                <div className="rounded-xl border border-hairline bg-surface p-5">
+                  <h4 className="text-lg font-bold mb-4 flex items-center gap-2">
+                    <span>📏</span> Physical Traits Predictions
+                  </h4>
+                  <div className="space-y-3">
+                    {results.physicalTraits?.map((item: any, idx: number) => {
+                      const explanations = item.prediction.split(', ').map((p: string) => {
+                        const match = p.match(/^(\d+)%\s+(.+)$/);
+                        if (!match) return null;
+                        const [, pct, desc] = match;
+                        const pctNum = parseInt(pct);
+                        let likelihood = "";
+                        if (pctNum === 100) likelihood = "All offspring will have";
+                        else if (pctNum >= 75) likelihood = "Most offspring (~" + pct + "%) will have";
+                        else if (pctNum >= 50) likelihood = "About half will have";
+                        else if (pctNum >= 25) likelihood = "Some offspring (~" + pct + "%) may have";
+                        else likelihood = "A few offspring (~" + pct + "%) could have";
+                        return { likelihood, desc, pct: pctNum };
+                      }).filter(Boolean);
+                      const locusMatch = item.trait.match(/\(([^)]+)\)/);
+                      const locusName = locusMatch ? locusMatch[1] : item.trait;
+                      return (
+                        <div key={idx} className="rounded-lg bg-surface/50 p-3">
+                          <div className="text-sm font-semibold text-secondary mb-2">{locusName}</div>
+                          <div className="space-y-1">
+                            {explanations.map((exp: any, i: number) => (
+                              <div key={i} className="text-sm">
+                                <span className="text-secondary">{exp.likelihood}</span>{" "}
+                                <span className="font-medium">{exp.desc}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Eye Color Results */}
+              {results.eyeColor?.length > 0 && (
+                <div className="rounded-xl border border-hairline bg-surface p-5">
+                  <h4 className="text-lg font-bold mb-4 flex items-center gap-2">
+                    <span>👁️</span> Eye Color Predictions
+                  </h4>
+                  <div className="space-y-3">
+                    {results.eyeColor?.map((item: any, idx: number) => {
+                      const explanations = item.prediction.split(', ').map((p: string) => {
+                        const match = p.match(/^(\d+)%\s+(.+)$/);
+                        if (!match) return null;
+                        const [, pct, desc] = match;
+                        const pctNum = parseInt(pct);
+                        let likelihood = "";
+                        if (pctNum === 100) likelihood = "All offspring will have";
+                        else if (pctNum >= 75) likelihood = "Most offspring (~" + pct + "%) will have";
+                        else if (pctNum >= 50) likelihood = "About half will have";
+                        else if (pctNum >= 25) likelihood = "Some offspring (~" + pct + "%) may have";
+                        else likelihood = "A few offspring (~" + pct + "%) could have";
+                        return { likelihood, desc, pct: pctNum };
+                      }).filter(Boolean);
+                      const locusMatch = item.trait.match(/\(([^)]+)\)/);
+                      const locusName = locusMatch ? locusMatch[1] : item.trait;
+                      return (
+                        <div key={idx} className="rounded-lg bg-surface/50 p-3">
+                          <div className="text-sm font-semibold text-secondary mb-2">{locusName}</div>
+                          <div className="space-y-1">
+                            {explanations.map((exp: any, i: number) => (
+                              <div key={i} className="text-sm">
+                                <span className="text-secondary">{exp.likelihood}</span>{" "}
+                                <span className="font-medium">{exp.desc}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
               {/* Warnings - Make them prominent */}
               {results.warnings && results.warnings.length > 0 && (
@@ -1950,15 +2753,15 @@ function GeneticsLabPage({
                     if (item.prediction.includes("100% Clear")) {
                       icon = "✅";
                       statusClass = "text-green-500";
-                      simpleExplanation = "All puppies will be clear - no risk";
+                      simpleExplanation = "All offspring will be clear - no risk";
                     } else if (item.prediction.includes("Affected")) {
                       icon = "🚨";
                       statusClass = "text-red-500";
-                      simpleExplanation = "Some puppies could be affected - talk to a vet";
+                      simpleExplanation = "Some offspring could be affected - talk to a vet";
                     } else if (item.prediction.includes("Carrier")) {
                       icon = "⚠️";
                       statusClass = "text-yellow-500";
-                      simpleExplanation = "Some puppies may carry this gene (won't be sick, but can pass it on)";
+                      simpleExplanation = "Some offspring may carry this gene (won't be sick, but can pass it on)";
                     } else {
                       icon = "ℹ️";
                       statusClass = "text-secondary";
