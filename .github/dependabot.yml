@@ -56,7 +56,6 @@ updates:
     open-pull-requests-limit: 10
     labels:
       - "dependencies"
-      - "npm"
 
   # Platform app
   - package-ecosystem: "npm"
@@ -80,8 +79,6 @@ updates:
     open-pull-requests-limit: 5
     labels:
       - "dependencies"
-      - "npm"
-      - "app:platform"
 
   # Portal app
   - package-ecosystem: "npm"
@@ -105,8 +102,6 @@ updates:
     open-pull-requests-limit: 5
     labels:
       - "dependencies"
-      - "npm"
-      - "app:portal"
 
   # Marketing app
   - package-ecosystem: "npm"
@@ -130,8 +125,6 @@ updates:
     open-pull-requests-limit: 5
     labels:
       - "dependencies"
-      - "npm"
-      - "app:marketing"
 
   # Marketplace app
   - package-ecosystem: "npm"
@@ -155,5 +148,3 @@ updates:
     open-pull-requests-limit: 5
     labels:
       - "dependencies"
-      - "npm"
-      - "app:marketplace"
