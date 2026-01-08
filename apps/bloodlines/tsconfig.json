@@ -1,0 +1,18 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "baseUrl": ".",
+    "paths": {
+      "@bhq/ui": ["../../packages/ui/src/index.ts"],
+      "@bhq/ui/*": ["../../packages/ui/src/*"],
+      "@bhq/ui/layouts": ["../../packages/ui/src/layouts"],
+      "@bhq/ui/styles": ["../../packages/ui/src"],
+      "@bhq/config": ["../../packages/config"],
+      "@bhq/api/*": ["../../packages/api/src/*"],
+      "@bhq/bloodlines/*": ["../bloodlines/src/*"]
+    },
+    "types": ["vite/client"]
+  },
+  "include": ["src"]
+}

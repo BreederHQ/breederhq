@@ -6,7 +6,7 @@ export default defineConfig({
   plugins: [react()],
 
   optimizeDeps: {
-    exclude: ["@bhq/contacts", "@bhq/animals", "@bhq/breeding", "@bhq/offspring", "@bhq/marketing", "@bhq/finance", "@bhq/organizations", "@bhq/admin", "@bhq/waitlist", "@bhq/marketplace"],
+    exclude: ["@bhq/contacts", "@bhq/animals", "@bhq/breeding", "@bhq/offspring", "@bhq/marketing", "@bhq/finance", "@bhq/organizations", "@bhq/admin", "@bhq/waitlist", "@bhq/marketplace", "@bhq/bloodlines"],
   },
 
   resolve: {
@@ -24,6 +24,7 @@ export default defineConfig({
       "@bhq/admin": fileURLToPath(new URL("../admin/src", import.meta.url)),
       "@bhq/waitlist": fileURLToPath(new URL("../waitlist/src", import.meta.url)),
       "@bhq/marketplace": fileURLToPath(new URL("../marketplace/src", import.meta.url)),
+      "@bhq/bloodlines": fileURLToPath(new URL("../bloodlines/src", import.meta.url)),
     },
 
     dedupe: ["react", "react-dom", "lucide-react"],

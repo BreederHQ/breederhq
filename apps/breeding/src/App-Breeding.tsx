@@ -48,6 +48,16 @@ import { reproEngine } from "@bhq/ui/utils";
 // ── Calendar / Planning wiring ─────────────────────────────
 import BreedingCalendar from "./components/BreedingCalendar";
 
+// ── Genetics Lab components ─────────────────────────────────
+import PunnettSquare, { MultiLocusPunnett } from "./components/PunnettSquare";
+import OffspringSimulator from "./components/OffspringSimulator";
+import CoatColorPreview from "./components/CoatColorPreview";
+import HealthRiskSummary from "./components/HealthRiskSummary";
+import WhatsMissingAnalysis from "./components/WhatsMissingAnalysis";
+import BreedGeneticProfile from "./components/BreedGeneticProfiles";
+import BreedingGoalPlanner from "./components/BreedingGoalPlanner";
+import { GeneticsImportDialog } from "@bhq/ui/components/GeneticsImport";
+
 // ── Planner pages ─────────────────────────────────────────
 import { YourBreedingPlansPage, WhatIfPlanningPage } from "./pages/planner";
 import type { WhatIfFemale } from "./pages/planner/whatIfTypes";
@@ -1800,6 +1810,64 @@ const SPECIES_WARNINGS: Record<string, Array<{locus: string, genotype: string, m
   ],
 };
 
+// Breed-specific marker information
+const BREED_SPECIFIC_MARKERS: Record<string, Record<string, string>> = {
+  DOG: {
+    // Health
+    ICT_A: "Golden Retriever",
+    GR_PRA1: "Golden Retriever",
+    GR_PRA2: "Golden Retriever",
+    Ich: "Golden Retriever",
+    HNPK: "Labrador Retriever",
+    SD2: "Labrador Retriever",
+    CNM: "Labrador Retriever",
+    RD_OSD: "Labrador Retriever",
+    EIC: "Labrador Retriever, Chesapeake Bay Retriever",
+    JHC: "French Bulldog, Boston Terrier",
+    CMR1: "French Bulldog",
+    Cystinuria: "French Bulldog, English Bulldog",
+    EFS: "Cavalier King Charles Spaniel",
+    CC_DEW: "Cavalier King Charles Spaniel",
+    HSF4: "Australian Shepherd, Boston Terrier",
+    TNS: "Border Collie",
+    CL_BC: "Border Collie",
+    CEA: "Collie, Border Collie, Australian Shepherd",
+    IGS: "Border Collie, Beagle",
+    FN: "Cocker Spaniel, English Springer Spaniel",
+    PFK: "English Springer Spaniel, American Cocker Spaniel",
+    NCL: "Multiple breeds",
+    DCM: "Doberman, Boxer, Great Dane",
+    // Coat
+    L4: "French Bulldog",
+    H: "Great Dane",
+  },
+  CAT: {
+    PRA_pd: "Persian, Exotic Shorthair",
+    HCM_MC: "Maine Coon",
+    HCM_RD: "Ragdoll",
+    SMA: "Maine Coon",
+    GM1: "Siamese, Korat",
+    PRA_rdAc: "Abyssinian, Somali",
+    Amyloidosis: "Abyssinian, Siamese",
+    OCD: "Scottish Fold",
+    Fd: "Scottish Fold",
+  },
+  HORSE: {
+    HYPP: "Quarter Horse",
+    GBED: "Quarter Horse, Paint",
+    HERDA: "Quarter Horse",
+    CA: "Arabian",
+    SCID: "Arabian",
+    LFS: "Arabian",
+    OAAM: "Arabian",
+    Hydro: "Friesian",
+    FrDwarf: "Friesian",
+    JEB: "Belgian, Draft breeds",
+  },
+  RABBIT: {},
+  GOAT: {},
+};
+
 /** Get phenotype description for a genotype (species-specific) */
 function getPhenotype(species: string, locus: string, genotype: string): string {
   const speciesUpper = species?.toUpperCase() || "DOG";
@@ -1903,11 +1971,15 @@ function calculateGeneticPairing(damGenetics: any, sireGenetics: any, species: s
         }
       }
 
+      // Get breed-specific info if available
+      const breedInfo = BREED_SPECIFIC_MARKERS[species?.toUpperCase() || "DOG"]?.[locus] || null;
+
       results.coatColor.push({
         trait: `${locus} Locus (${damLocus.locusName || locus})`,
         damGenotype: `${damLocus.allele1}/${damLocus.allele2}`,
         sireGenotype: `${sireLocus.allele1}/${sireLocus.allele2}`,
         prediction: predictionParts.join(', '),
+        breedSpecific: breedInfo,
       });
 
     }
@@ -1915,16 +1987,35 @@ function calculateGeneticPairing(damGenetics: any, sireGenetics: any, species: s
     // Species-specific warning checks
     const speciesUpper = species?.toUpperCase() || "DOG";
     const speciesWarnings = SPECIES_WARNINGS[speciesUpper] || [];
+
+    // Build combined loci maps from all trait categories for warning checks
+    const damAllLoci = new Map([
+      ...damLoci,
+      ...(damGenetics?.physicalTraits || []).map((l: any) => [l.locus, l]),
+      ...(damGenetics?.health || []).map((l: any) => [l.locus, l]),
+    ]);
+    const sireAllLoci = new Map([
+      ...sireLoci,
+      ...(sireGenetics?.physicalTraits || []).map((l: any) => [l.locus, l]),
+      ...(sireGenetics?.health || []).map((l: any) => [l.locus, l]),
+    ]);
+
+    console.log("🔍 Warning check - species:", speciesUpper, "warnings to check:", speciesWarnings.length);
+    console.log("🔍 Dam all loci keys:", [...damAllLoci.keys()]);
+    console.log("🔍 Sire all loci keys:", [...sireAllLoci.keys()]);
     for (const warning of speciesWarnings) {
       // Check if this pairing can produce the dangerous genotype
-      const damLocus = damLoci.get(warning.locus) as any;
-      const sireLocus = sireLoci.get(warning.locus) as any;
+      const damLocus = damAllLoci.get(warning.locus) as any;
+      const sireLocus = sireAllLoci.get(warning.locus) as any;
+      console.log(`🔍 Checking ${warning.locus}:`, { damLocus, sireLocus });
       if (damLocus && sireLocus) {
         // Check if both parents carry the dangerous allele
         const dangerousAllele = warning.genotype.split('/')[0];
         const damHas = damLocus.allele1 === dangerousAllele || damLocus.allele2 === dangerousAllele;
         const sireHas = sireLocus.allele1 === dangerousAllele || sireLocus.allele2 === dangerousAllele;
+        console.log(`🔍 ${warning.locus} - dangerousAllele: ${dangerousAllele}, damHas: ${damHas}, sireHas: ${sireHas}`);
         if (damHas && sireHas) {
+          console.log(`⚠️ WARNING TRIGGERED: ${warning.message}`);
           results.warnings.push({
             severity: warning.severity,
             message: `${warning.message} (${warning.genotype} possible in offspring)`,
@@ -1982,11 +2073,15 @@ function calculateGeneticPairing(damGenetics: any, sireGenetics: any, species: s
         predictionParts.push(`${percentage}% ${phenotype}`);
       }
 
+      // Get breed-specific info if available
+      const breedInfo = BREED_SPECIFIC_MARKERS[species?.toUpperCase() || "DOG"]?.[locus] || null;
+
       results.coatType.push({
         trait: `${locus} Locus (${damLocus.locusName || locus})`,
         damGenotype: `${damLocus.allele1}/${damLocus.allele2}`,
         sireGenotype: `${sireLocus.allele1}/${sireLocus.allele2}`,
         prediction: predictionParts.join(', '),
+        breedSpecific: breedInfo,
       });
     }
   }
@@ -2024,11 +2119,15 @@ function calculateGeneticPairing(damGenetics: any, sireGenetics: any, species: s
         predictionParts.push(`${percentage}% ${phenotype}`);
       }
 
+      // Get breed-specific info if available
+      const breedInfo = BREED_SPECIFIC_MARKERS[species?.toUpperCase() || "DOG"]?.[locus] || null;
+
       results.physicalTraits.push({
         trait: `${locus} Locus (${damLocus.locusName || locus})`,
         damGenotype: `${damLocus.allele1}/${damLocus.allele2}`,
         sireGenotype: `${sireLocus.allele1}/${sireLocus.allele2}`,
         prediction: predictionParts.join(', '),
+        breedSpecific: breedInfo,
       });
     }
   }
@@ -2066,11 +2165,15 @@ function calculateGeneticPairing(damGenetics: any, sireGenetics: any, species: s
         predictionParts.push(`${percentage}% ${phenotype}`);
       }
 
+      // Get breed-specific info if available
+      const breedInfo = BREED_SPECIFIC_MARKERS[species?.toUpperCase() || "DOG"]?.[locus] || null;
+
       results.eyeColor.push({
         trait: `${locus} Locus (${damLocus.locusName || locus})`,
         damGenotype: `${damLocus.allele1}/${damLocus.allele2}`,
         sireGenotype: `${sireLocus.allele1}/${sireLocus.allele2}`,
         prediction: predictionParts.join(', '),
+        breedSpecific: breedInfo,
       });
     }
   }
@@ -2115,12 +2218,16 @@ function calculateGeneticPairing(damGenetics: any, sireGenetics: any, species: s
         prediction = `Dam: ${damLocus.genotype}, Sire: ${sireLocus.genotype}`;
       }
 
+      // Get breed-specific info if available
+      const breedInfo = BREED_SPECIFIC_MARKERS[species?.toUpperCase() || "DOG"]?.[locus] || null;
+
       results.health.push({
         trait: `${locus} (${damLocus.locusName || locus})`,
         damGenotype: damLocus.genotype,
         sireGenotype: sireLocus.genotype,
         prediction,
         warning,
+        breedSpecific: breedInfo,
       });
 
       if (warning) {
@@ -2289,6 +2396,8 @@ function GeneticsLabPage({
   const [disclaimerAccepted, setDisclaimerAccepted] = React.useState(false);
   const [showDisclaimer, setShowDisclaimer] = React.useState(false);
   const [detailLevel, setDetailLevel] = React.useState<'simple' | 'detailed' | 'professional'>('simple');
+  const [showImportDialog, setShowImportDialog] = React.useState<'dam' | 'sire' | null>(null);
+  const [activeLabTab, setActiveLabTab] = React.useState<'overview' | 'punnett' | 'simulator' | 'health' | 'colors' | 'goals'>('overview');
 
   // Check if user has already accepted genetics disclaimer
   React.useEffect(() => {
@@ -2315,8 +2424,8 @@ function GeneticsLabPage({
   const allDams = animals.filter((a) => (a.sex || "").toUpperCase().startsWith("F"));
   const allSires = animals.filter((a) => (a.sex || "").toUpperCase().startsWith("M"));
 
-  const selectedDam = allDams.find((d) => d.id === selectedDamId);
-  const selectedSire = allSires.find((s) => s.id === selectedSireId);
+  const selectedDam = allDams.find((d) => String(d.id) === String(selectedDamId));
+  const selectedSire = allSires.find((s) => String(s.id) === String(selectedSireId));
 
   // Filter sires to same species as selected dam (and vice versa)
   const dams = selectedSire
@@ -2347,15 +2456,19 @@ function GeneticsLabPage({
           console.log("Dam genetics loaded:", selectedDamId, data);
           setDamGenetics({
             coatColor: data.coatColor || [],
+            coatType: data.coatType || [],
+            physicalTraits: data.physicalTraits || [],
+            eyeColor: data.eyeColor || [],
             health: data.health || [],
+            otherTraits: data.otherTraits || [],
           });
-          console.log("damGenetics state set to:", { coatColor: data.coatColor || [], health: data.health || [] });
+          console.log("damGenetics state set to:", data);
         } else {
-          setDamGenetics({ coatColor: [], health: [] });
+          setDamGenetics({ coatColor: [], coatType: [], physicalTraits: [], eyeColor: [], health: [], otherTraits: [] });
         }
       } catch (err) {
         console.error("Failed to load dam genetics:", err);
-        setDamGenetics({ coatColor: [], health: [] });
+        setDamGenetics({ coatColor: [], coatType: [], physicalTraits: [], eyeColor: [], health: [], otherTraits: [] });
       }
     };
     loadDamGenetics();
@@ -2377,15 +2490,19 @@ function GeneticsLabPage({
           console.log("Sire genetics loaded:", selectedSireId, data);
           setSireGenetics({
             coatColor: data.coatColor || [],
+            coatType: data.coatType || [],
+            physicalTraits: data.physicalTraits || [],
+            eyeColor: data.eyeColor || [],
             health: data.health || [],
+            otherTraits: data.otherTraits || [],
           });
         } else {
           console.log("Sire genetics fetch failed:", res.status);
-          setSireGenetics({ coatColor: [], health: [] });
+          setSireGenetics({ coatColor: [], coatType: [], physicalTraits: [], eyeColor: [], health: [], otherTraits: [] });
         }
       } catch (err) {
         console.error("Failed to load sire genetics:", err);
-        setSireGenetics({ coatColor: [], health: [] });
+        setSireGenetics({ coatColor: [], coatType: [], physicalTraits: [], eyeColor: [], health: [], otherTraits: [] });
       }
     };
     loadSireGenetics();
@@ -2409,10 +2526,12 @@ function GeneticsLabPage({
 
     setCalculating(true);
     try {
-      console.log("About to call calculateGeneticPairing");
+      const speciesForCalc = selectedDam?.species || "DOG";
+      console.log("About to call calculateGeneticPairing - species:", speciesForCalc, "selectedDam:", selectedDam);
       // Calculate Mendelian inheritance using the genetics calculator
-      const calculatedResults = calculateGeneticPairing(damGenetics, sireGenetics, selectedDam?.species || "DOG");
+      const calculatedResults = calculateGeneticPairing(damGenetics, sireGenetics, speciesForCalc);
       console.log("Results from calculateGeneticPairing:", calculatedResults);
+      console.log("Warnings:", calculatedResults.warnings);
       setResults(calculatedResults);
     } catch (err) {
       console.error("Failed to calculate genetics:", err);
@@ -2432,69 +2551,117 @@ function GeneticsLabPage({
             </p>
           </div>
 
-          {/* Animal Selection */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium mb-2">
+          {/* Animal Selection - Compact Row */}
+          <div className="flex flex-col md:flex-row gap-3 items-end">
+            <div className="flex-1">
+              <label className="block text-xs font-medium text-secondary mb-1">
                 Dam (Female)
                 {selectedSire && (
-                  <span className="ml-2 text-xs text-secondary font-normal">
-                    — showing {selectedSire.species?.toLowerCase()}s only
+                  <span className="ml-1 opacity-70">
+                    — {selectedSire.species?.toLowerCase()}s only
                   </span>
                 )}
               </label>
-              <select
-                className={`w-full h-10 rounded-md border ${!selectedDamId ? "border-yellow-500 ring-2 ring-yellow-500/20" : "border-hairline"} bg-surface px-3 text-sm`}
-                value={selectedDamId || ""}
-                onChange={(e) => {
-                  setSelectedDamId(e.target.value || null);
-                  setResults(null);
-                }}
-              >
-                <option value="">Select a dam...</option>
-                {dams.map((dam) => (
-                  <option key={dam.id} value={dam.id}>
-                    {dam.name} — {dam.species} {dam.breed ? `(${dam.breed})` : ""}
-                  </option>
-                ))}
-              </select>
-              {selectedDam && damGenetics && (
-                <div className="mt-2 text-xs text-secondary">
-                  <div>Genetics: {damGenetics.coatColor?.length || 0} coat color loci, {damGenetics.health?.length || 0} health markers</div>
-                </div>
-              )}
+              <div className="flex gap-1">
+                <select
+                  className={`flex-1 h-9 rounded-md border ${!selectedDamId ? "border-yellow-500/50" : "border-hairline"} bg-surface px-2 text-sm`}
+                  value={selectedDamId || ""}
+                  onChange={(e) => {
+                    setSelectedDamId(e.target.value || null);
+                    setResults(null);
+                  }}
+                >
+                  <option value="">Select a dam...</option>
+                  {dams.map((dam) => (
+                    <option key={dam.id} value={dam.id}>
+                      {dam.name} — {dam.species} {dam.breed ? `(${dam.breed})` : ""}
+                    </option>
+                  ))}
+                </select>
+                {selectedDamId && (
+                  <button
+                    onClick={() => setShowImportDialog('dam')}
+                    className="h-9 px-2 text-xs border border-hairline rounded-md hover:bg-surface-alt text-secondary hover:text-primary"
+                    title="Import genetics for dam"
+                  >
+                    📤
+                  </button>
+                )}
+              </div>
             </div>
 
-            <div>
-              <label className="block text-sm font-medium mb-2">
+            <div className="hidden md:flex items-center text-secondary text-lg pb-1">×</div>
+
+            <div className="flex-1">
+              <label className="block text-xs font-medium text-secondary mb-1">
                 Sire (Male)
                 {selectedDam && (
-                  <span className="ml-2 text-xs text-secondary font-normal">
-                    — showing {selectedDam.species?.toLowerCase()}s only
+                  <span className="ml-1 opacity-70">
+                    — {selectedDam.species?.toLowerCase()}s only
                   </span>
                 )}
               </label>
-              <select
-                className={`w-full h-10 rounded-md border ${!selectedSireId ? "border-yellow-500 ring-2 ring-yellow-500/20" : "border-hairline"} bg-surface px-3 text-sm`}
-                value={selectedSireId || ""}
-                onChange={(e) => {
-                  setSelectedSireId(e.target.value || null);
-                  setResults(null);
-                }}
-              >
-                <option value="">Select a sire...</option>
-                {sires.map((sire) => (
-                  <option key={sire.id} value={sire.id}>
-                    {sire.name} — {sire.species} {sire.breed ? `(${sire.breed})` : ""}
-                  </option>
-                ))}
-              </select>
-              {selectedSire && sireGenetics && (
-                <div className="mt-2 text-xs text-secondary">
-                  <div>Genetics: {sireGenetics.coatColor?.length || 0} coat color loci, {sireGenetics.health?.length || 0} health markers</div>
-                </div>
-              )}
+              <div className="flex gap-1">
+                <select
+                  className={`flex-1 h-9 rounded-md border ${!selectedSireId ? "border-yellow-500/50" : "border-hairline"} bg-surface px-2 text-sm`}
+                  value={selectedSireId || ""}
+                  onChange={(e) => {
+                    setSelectedSireId(e.target.value || null);
+                    setResults(null);
+                  }}
+                >
+                  <option value="">Select a sire...</option>
+                  {sires.map((sire) => (
+                    <option key={sire.id} value={sire.id}>
+                      {sire.name} — {sire.species} {sire.breed ? `(${sire.breed})` : ""}
+                    </option>
+                  ))}
+                </select>
+                {selectedSireId && (
+                  <button
+                    onClick={() => setShowImportDialog('sire')}
+                    className="h-9 px-2 text-xs border border-hairline rounded-md hover:bg-surface-alt text-secondary hover:text-primary"
+                    title="Import genetics for sire"
+                  >
+                    📤
+                  </button>
+                )}
+              </div>
             </div>
+
+            <button
+              onClick={() => {
+                console.log("Button clicked!");
+                handleCalculateClick();
+              }}
+              disabled={calculating || !selectedDamId || !selectedSireId}
+              className="h-9 px-4 bg-green-600 text-white text-sm font-medium rounded-md hover:bg-green-700 disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap flex items-center gap-2"
+            >
+              {calculating ? (
+                <>
+                  <span className="animate-spin">⟳</span> Calculating...
+                </>
+              ) : (
+                <>Calculate</>
+              )}
+            </button>
+
+            {/* Reset button - only show when at least one animal is selected */}
+            {(selectedDamId || selectedSireId) && (
+              <button
+                onClick={() => {
+                  setSelectedDamId(null);
+                  setSelectedSireId(null);
+                  setResults(null);
+                  setDamGenetics(null);
+                  setSireGenetics(null);
+                }}
+                className="h-9 px-3 text-secondary text-sm hover:text-primary hover:bg-surface rounded-md"
+                title="Clear selections"
+              >
+                Reset
+              </button>
+            )}
           </div>
 
           {/* COI Check - shows automatically when both animals selected */}
@@ -2506,318 +2673,376 @@ function GeneticsLabPage({
             />
           )}
 
-          {/* Calculate Button */}
-          {selectedDamId && selectedSireId && (
-            <div className="flex justify-center pt-2">
-              <button
-                onClick={() => {
-                  console.log("Button clicked!");
-                  handleCalculateClick();
-                }}
-                disabled={calculating}
-                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {calculating ? "Calculating..." : "Calculate Pairing"}
-              </button>
-            </div>
-          )}
-
           {/* Results */}
           {results && (
-            <div className="space-y-4 pt-4 border-t border-hairline">
-              {/* Big Summary - What offspring will look like */}
-              <div className="rounded-xl border-2 border-accent/30 bg-accent/5 p-5">
-                <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
-                  What Your Offspring Could Look Like
-                  {selectedDam?.species && (
-                    <span className="text-base font-normal text-secondary">
-                      ({selectedDam.species.charAt(0) + selectedDam.species.slice(1).toLowerCase()})
-                    </span>
-                  )}
-                </h3>
-
-                {/* Color Summary */}
-                {results.colorSummary && (
-                  <div className="mb-4">
-                    <div className="text-lg font-medium text-accent mb-2">
-                      {results.colorSummary}
-                    </div>
-                  </div>
-                )}
-
-                {/* Simple explanations */}
-                <div className="space-y-3">
-                  {results.coatColor?.map((item: any, idx: number) => {
-                    // Parse the prediction to create simple explanation
-                    const explanations = item.prediction.split(', ').map((p: string) => {
-                      const match = p.match(/^(\d+)%\s+(.+)$/);
-                      if (!match) return null;
-                      const [, pct, desc] = match;
-                      const pctNum = parseInt(pct);
-                      let likelihood = "";
-                      if (pctNum === 100) likelihood = "All offspring will be";
-                      else if (pctNum >= 75) likelihood = "Most offspring (~" + pct + "%) will be";
-                      else if (pctNum >= 50) likelihood = "About half the offspring will be";
-                      else if (pctNum >= 25) likelihood = "Some offspring (~" + pct + "%) may be";
-                      else likelihood = "A few offspring (~" + pct + "%) could be";
-                      return { likelihood, desc, pct: pctNum };
-                    }).filter(Boolean);
-
-                    // Get locus name for friendly display
-                    const locusMatch = item.trait.match(/\(([^)]+)\)/);
-                    const locusName = locusMatch ? locusMatch[1] : item.trait;
-
-                    return (
-                      <div key={idx} className="rounded-lg bg-surface/50 p-3">
-                        <div className="text-sm font-semibold text-secondary mb-2">{locusName}</div>
-                        <div className="space-y-1">
-                          {explanations.map((exp: any, i: number) => (
-                            <div key={i} className="text-sm">
-                              <span className="text-secondary">{exp.likelihood}</span>{" "}
-                              <span className="font-medium">{exp.desc}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Coat Type Results */}
-              {results.coatType?.length > 0 && (
-                <div className="rounded-xl border border-hairline bg-surface p-5">
-                  <h4 className="text-lg font-bold mb-4 flex items-center gap-2">
-                    <span>✂️</span> Coat Type Predictions
-                  </h4>
-                  <div className="space-y-3">
-                    {results.coatType?.map((item: any, idx: number) => {
-                      const explanations = item.prediction.split(', ').map((p: string) => {
-                        const match = p.match(/^(\d+)%\s+(.+)$/);
-                        if (!match) return null;
-                        const [, pct, desc] = match;
-                        const pctNum = parseInt(pct);
-                        let likelihood = "";
-                        if (pctNum === 100) likelihood = "All offspring will have";
-                        else if (pctNum >= 75) likelihood = "Most offspring (~" + pct + "%) will have";
-                        else if (pctNum >= 50) likelihood = "About half will have";
-                        else if (pctNum >= 25) likelihood = "Some offspring (~" + pct + "%) may have";
-                        else likelihood = "A few offspring (~" + pct + "%) could have";
-                        return { likelihood, desc, pct: pctNum };
-                      }).filter(Boolean);
-                      const locusMatch = item.trait.match(/\(([^)]+)\)/);
-                      const locusName = locusMatch ? locusMatch[1] : item.trait;
-                      return (
-                        <div key={idx} className="rounded-lg bg-surface/50 p-3">
-                          <div className="text-sm font-semibold text-secondary mb-2">{locusName}</div>
-                          <div className="space-y-1">
-                            {explanations.map((exp: any, i: number) => (
-                              <div key={i} className="text-sm">
-                                <span className="text-secondary">{exp.likelihood}</span>{" "}
-                                <span className="font-medium">{exp.desc}</span>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {/* Physical Traits Results */}
-              {results.physicalTraits?.length > 0 && (
-                <div className="rounded-xl border border-hairline bg-surface p-5">
-                  <h4 className="text-lg font-bold mb-4 flex items-center gap-2">
-                    <span>📏</span> Physical Traits Predictions
-                  </h4>
-                  <div className="space-y-3">
-                    {results.physicalTraits?.map((item: any, idx: number) => {
-                      const explanations = item.prediction.split(', ').map((p: string) => {
-                        const match = p.match(/^(\d+)%\s+(.+)$/);
-                        if (!match) return null;
-                        const [, pct, desc] = match;
-                        const pctNum = parseInt(pct);
-                        let likelihood = "";
-                        if (pctNum === 100) likelihood = "All offspring will have";
-                        else if (pctNum >= 75) likelihood = "Most offspring (~" + pct + "%) will have";
-                        else if (pctNum >= 50) likelihood = "About half will have";
-                        else if (pctNum >= 25) likelihood = "Some offspring (~" + pct + "%) may have";
-                        else likelihood = "A few offspring (~" + pct + "%) could have";
-                        return { likelihood, desc, pct: pctNum };
-                      }).filter(Boolean);
-                      const locusMatch = item.trait.match(/\(([^)]+)\)/);
-                      const locusName = locusMatch ? locusMatch[1] : item.trait;
-                      return (
-                        <div key={idx} className="rounded-lg bg-surface/50 p-3">
-                          <div className="text-sm font-semibold text-secondary mb-2">{locusName}</div>
-                          <div className="space-y-1">
-                            {explanations.map((exp: any, i: number) => (
-                              <div key={i} className="text-sm">
-                                <span className="text-secondary">{exp.likelihood}</span>{" "}
-                                <span className="font-medium">{exp.desc}</span>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {/* Eye Color Results */}
-              {results.eyeColor?.length > 0 && (
-                <div className="rounded-xl border border-hairline bg-surface p-5">
-                  <h4 className="text-lg font-bold mb-4 flex items-center gap-2">
-                    <span>👁️</span> Eye Color Predictions
-                  </h4>
-                  <div className="space-y-3">
-                    {results.eyeColor?.map((item: any, idx: number) => {
-                      const explanations = item.prediction.split(', ').map((p: string) => {
-                        const match = p.match(/^(\d+)%\s+(.+)$/);
-                        if (!match) return null;
-                        const [, pct, desc] = match;
-                        const pctNum = parseInt(pct);
-                        let likelihood = "";
-                        if (pctNum === 100) likelihood = "All offspring will have";
-                        else if (pctNum >= 75) likelihood = "Most offspring (~" + pct + "%) will have";
-                        else if (pctNum >= 50) likelihood = "About half will have";
-                        else if (pctNum >= 25) likelihood = "Some offspring (~" + pct + "%) may have";
-                        else likelihood = "A few offspring (~" + pct + "%) could have";
-                        return { likelihood, desc, pct: pctNum };
-                      }).filter(Boolean);
-                      const locusMatch = item.trait.match(/\(([^)]+)\)/);
-                      const locusName = locusMatch ? locusMatch[1] : item.trait;
-                      return (
-                        <div key={idx} className="rounded-lg bg-surface/50 p-3">
-                          <div className="text-sm font-semibold text-secondary mb-2">{locusName}</div>
-                          <div className="space-y-1">
-                            {explanations.map((exp: any, i: number) => (
-                              <div key={i} className="text-sm">
-                                <span className="text-secondary">{exp.likelihood}</span>{" "}
-                                <span className="font-medium">{exp.desc}</span>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {/* Warnings - Make them prominent */}
+            <div className="pt-4 border-t border-hairline">
+              {/* Warnings - Show prominently at top if any */}
               {results.warnings && results.warnings.length > 0 && (
-                <div className="space-y-2">
+                <div className="space-y-2 mb-4">
                   {results.warnings.map((warning: any, idx: number) => (
                     <div
                       key={idx}
-                      className={`rounded-lg border-2 p-4 ${
+                      className={`rounded-lg border-2 p-3 ${
                         warning.severity === "danger"
                           ? "border-red-500 bg-red-500/10"
                           : "border-yellow-500 bg-yellow-500/10"
                       }`}
                     >
-                      <div className="flex items-start gap-3">
-                        <span className="text-2xl">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xl">
                           {warning.severity === "danger" ? "🚨" : "⚠️"}
                         </span>
-                        <div>
-                          <div className={`font-bold text-lg ${warning.severity === "danger" ? "text-red-500" : "text-yellow-500"}`}>
-                            {warning.severity === "danger" ? "STOP - Health Risk!" : "Heads Up"}
-                          </div>
-                          <div className="mt-1">{warning.message}</div>
-                        </div>
+                        <span className={`font-bold ${warning.severity === "danger" ? "text-red-500" : "text-yellow-500"}`}>
+                          {warning.message}
+                        </span>
                       </div>
                     </div>
                   ))}
                 </div>
               )}
 
-              {/* Health Summary - Simple */}
-              <div className="rounded-xl border border-hairline bg-surface p-5">
-                <h4 className="text-lg font-bold mb-4 flex items-center gap-2">
-                  Health Check
-                </h4>
-                <div className="space-y-3">
-                  {results.health?.map((item: any, idx: number) => {
-                    const locusMatch = item.trait.match(/\(([^)]+)\)/);
-                    const conditionName = locusMatch ? locusMatch[1] : item.trait;
-
-                    // Determine status icon and color
-                    let icon = "✅";
-                    let statusClass = "text-green-500";
-                    let simpleExplanation = "";
-
-                    if (item.prediction.includes("100% Clear")) {
-                      icon = "✅";
-                      statusClass = "text-green-500";
-                      simpleExplanation = "All offspring will be clear - no risk";
-                    } else if (item.prediction.includes("Affected")) {
-                      icon = "🚨";
-                      statusClass = "text-red-500";
-                      simpleExplanation = "Some offspring could be affected - talk to a vet";
-                    } else if (item.prediction.includes("Carrier")) {
-                      icon = "⚠️";
-                      statusClass = "text-yellow-500";
-                      simpleExplanation = "Some offspring may carry this gene (won't be sick, but can pass it on)";
-                    } else {
-                      icon = "ℹ️";
-                      statusClass = "text-secondary";
-                      simpleExplanation = item.prediction;
-                    }
-
-                    return (
-                      <div key={idx} className="flex items-start gap-3 py-2 border-b border-hairline last:border-0">
-                        <span className={`text-xl ${statusClass}`}>{icon}</span>
-                        <div className="flex-1">
-                          <div className="font-medium">{conditionName}</div>
-                          <div className="text-sm text-secondary">{simpleExplanation}</div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Compatibility Score */}
-              <div className="flex items-center justify-center gap-4 py-4">
-                <div className="text-center">
-                  <div className={`text-4xl font-bold ${
-                    results.score >= 80 ? "text-green-500" :
-                    results.score >= 60 ? "text-yellow-500" :
-                    "text-red-500"
+              {/* Compact Status Bar */}
+              <div className="flex items-center justify-between mb-4 pb-4 border-b border-hairline">
+                <div className="flex items-center gap-3">
+                  <div className={`px-3 py-1.5 rounded-full text-sm font-bold ${
+                    results.score >= 80 ? "bg-green-500/20 text-green-500" :
+                    results.score >= 60 ? "bg-yellow-500/20 text-yellow-500" :
+                    "bg-red-500/20 text-red-500"
                   }`}>
                     {results.score}/100
                   </div>
-                  <div className="text-sm text-secondary mt-1">
+                  <span className="text-sm text-secondary">
                     {results.score >= 80 ? "Great pairing!" :
                      results.score >= 60 ? "Proceed with caution" :
-                     "Reconsider this pairing"}
-                  </div>
+                     "Review warnings above"}
+                  </span>
+                  {results.colorSummary && (
+                    <span className="text-sm text-accent font-medium hidden md:inline">
+                      — {results.colorSummary}
+                    </span>
+                  )}
                 </div>
-              </div>
-
-              {/* Actions */}
-              <div className="flex gap-2 justify-end pt-2">
                 <button
-                  onClick={() => {
-                    console.log("Save Report clicked");
-                  }}
-                  className="px-3 py-1.5 text-sm border border-hairline rounded-md hover:bg-surface"
-                >
-                  Save Report
-                </button>
-                <button
-                  onClick={() => {
-                    console.log("What-If Plan clicked");
-                    window.location.hash = "#/breeding/planner";
-                  }}
-                  className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700"
+                  onClick={() => window.location.hash = "#/breeding/planner"}
+                  className="px-3 py-1.5 text-xs border border-hairline rounded hover:bg-surface"
                 >
                   Create What-If Plan
                 </button>
+              </div>
+
+              {/* ───────────────────────────────────────────────────────────
+                  Tab Navigation for Genetics Lab Sections
+                  ─────────────────────────────────────────────────────────── */}
+              <div>
+                <div className="flex flex-wrap gap-1 mb-4">
+                  {[
+                    { id: 'overview', label: 'Overview', icon: '📊' },
+                    { id: 'punnett', label: 'Punnett Squares', icon: '🧬' },
+                    { id: 'simulator', label: 'Offspring Simulator', icon: '🎲' },
+                    { id: 'health', label: 'Health Analysis', icon: '🏥' },
+                    { id: 'colors', label: 'Color Preview', icon: '🎨' },
+                    { id: 'goals', label: 'Breeding Goals', icon: '🎯' },
+                  ].map((tab) => (
+                    <button
+                      key={tab.id}
+                      onClick={() => setActiveLabTab(tab.id as typeof activeLabTab)}
+                      className={`
+                        px-3 py-2 text-sm font-medium rounded-lg transition-colors
+                        flex items-center gap-1.5
+                        ${activeLabTab === tab.id
+                          ? 'bg-accent text-white'
+                          : 'bg-surface-alt hover:bg-surface-alt/80 text-secondary hover:text-primary'
+                        }
+                      `}
+                    >
+                      <span>{tab.icon}</span>
+                      <span className="hidden sm:inline">{tab.label}</span>
+                    </button>
+                  ))}
+                </div>
+
+                {/* Tab Content */}
+                <div className="min-h-[400px]">
+                  {/* Overview Tab - Full Offspring Predictions */}
+                  {activeLabTab === 'overview' && (
+                    <div className="space-y-4">
+                      {/* Offspring Predictions Card */}
+                      <div className="rounded-xl border-2 border-accent/30 bg-accent/5 p-4">
+                        <div className="flex items-center justify-between mb-3">
+                          <h3 className="text-lg font-bold flex items-center gap-2">
+                            Offspring Predictions
+                            {selectedDam?.species && (
+                              <span className="text-sm font-normal text-secondary">
+                                ({selectedDam.species.charAt(0) + selectedDam.species.slice(1).toLowerCase()})
+                              </span>
+                            )}
+                          </h3>
+                        </div>
+
+                        {/* Color Summary - if available */}
+                        {results.colorSummary && (
+                          <div className="text-sm font-medium text-accent mb-3 pb-3 border-b border-accent/20">
+                            {results.colorSummary}
+                          </div>
+                        )}
+
+                        {/* Compact Grid Layout for all traits */}
+                        <div className="space-y-3">
+                          {/* Coat Color Section */}
+                          {results.coatColor?.length > 0 && (
+                            <div>
+                              <div className="text-xs font-semibold text-secondary uppercase tracking-wide mb-2">Coat Color</div>
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1">
+                                {results.coatColor?.map((item: any, idx: number) => {
+                                  const locusMatch = item.trait.match(/\(([^)]+)\)/);
+                                  const locusName = locusMatch ? locusMatch[1] : item.trait;
+                                  const outcomes = item.prediction.split(', ').map((p: string) => {
+                                    const match = p.match(/^(\d+)%\s+(.+)$/);
+                                    if (!match) return p;
+                                    return `${match[1]}% ${match[2]}`;
+                                  }).join(' · ');
+                                  return (
+                                    <div key={idx} className="flex items-baseline gap-2 text-sm py-0.5">
+                                      <span className="font-medium text-secondary min-w-[80px]">{locusName}</span>
+                                      <span className="text-primary truncate">{outcomes}</span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Coat Type Section */}
+                          {results.coatType?.length > 0 && (
+                            <div>
+                              <div className="text-xs font-semibold text-secondary uppercase tracking-wide mb-2">Coat Type</div>
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1">
+                                {results.coatType?.map((item: any, idx: number) => {
+                                  const locusMatch = item.trait.match(/\(([^)]+)\)/);
+                                  const locusName = locusMatch ? locusMatch[1] : item.trait;
+                                  const outcomes = item.prediction.split(', ').map((p: string) => {
+                                    const match = p.match(/^(\d+)%\s+(.+)$/);
+                                    if (!match) return p;
+                                    return `${match[1]}% ${match[2]}`;
+                                  }).join(' · ');
+                                  return (
+                                    <div key={idx} className="flex items-baseline gap-2 text-sm py-0.5">
+                                      <span className="font-medium text-secondary min-w-[80px]">{locusName}</span>
+                                      <span className="text-primary truncate">{outcomes}</span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Physical Traits Section */}
+                          {results.physicalTraits?.length > 0 && (
+                            <div>
+                              <div className="text-xs font-semibold text-secondary uppercase tracking-wide mb-2">Physical Traits</div>
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1">
+                                {results.physicalTraits?.map((item: any, idx: number) => {
+                                  const locusMatch = item.trait.match(/\(([^)]+)\)/);
+                                  const locusName = locusMatch ? locusMatch[1] : item.trait;
+                                  const outcomes = item.prediction.split(', ').map((p: string) => {
+                                    const match = p.match(/^(\d+)%\s+(.+)$/);
+                                    if (!match) return p;
+                                    return `${match[1]}% ${match[2]}`;
+                                  }).join(' · ');
+                                  return (
+                                    <div key={idx} className="flex items-baseline gap-2 text-sm py-0.5">
+                                      <span className="font-medium text-secondary min-w-[80px]">{locusName}</span>
+                                      <span className="text-primary truncate">{outcomes}</span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Eye Color Section */}
+                          {results.eyeColor?.length > 0 && (
+                            <div>
+                              <div className="text-xs font-semibold text-secondary uppercase tracking-wide mb-2">Eye Color</div>
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1">
+                                {results.eyeColor?.map((item: any, idx: number) => {
+                                  const locusMatch = item.trait.match(/\(([^)]+)\)/);
+                                  const locusName = locusMatch ? locusMatch[1] : item.trait;
+                                  const outcomes = item.prediction.split(', ').map((p: string) => {
+                                    const match = p.match(/^(\d+)%\s+(.+)$/);
+                                    if (!match) return p;
+                                    return `${match[1]}% ${match[2]}`;
+                                  }).join(' · ');
+                                  return (
+                                    <div key={idx} className="flex items-baseline gap-2 text-sm py-0.5">
+                                      <span className="font-medium text-secondary min-w-[80px]">{locusName}</span>
+                                      <span className="text-primary truncate">{outcomes}</span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Health Check - Compact */}
+                      {results.health?.length > 0 && (
+                        <div className="rounded-xl border border-hairline bg-surface p-4">
+                          <h4 className="text-sm font-bold mb-3 flex items-center gap-2">
+                            Health Markers
+                          </h4>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1">
+                            {results.health?.map((item: any, idx: number) => {
+                              const locusMatch = item.trait.match(/\(([^)]+)\)/);
+                              const conditionName = locusMatch ? locusMatch[1] : item.trait;
+                              let icon = "✓";
+                              let statusClass = "text-green-500";
+                              if (item.prediction.includes("Affected")) {
+                                icon = "!";
+                                statusClass = "text-red-500";
+                              } else if (item.prediction.includes("Carrier")) {
+                                icon = "~";
+                                statusClass = "text-yellow-500";
+                              }
+                              const outcomes = item.prediction.split(', ').map((p: string) => {
+                                const match = p.match(/^(\d+)%\s+(.+)$/);
+                                if (!match) return p;
+                                return `${match[1]}% ${match[2]}`;
+                              }).join(' · ');
+                              return (
+                                <div key={idx} className="flex items-baseline gap-2 text-sm py-0.5">
+                                  <span className={`font-bold ${statusClass}`}>{icon}</span>
+                                  <span className="font-medium text-secondary min-w-[60px] truncate">{conditionName}</span>
+                                  <span className="text-primary truncate text-xs">{outcomes}</span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* What's Missing Alert */}
+                      <WhatsMissingAnalysis
+                        damGenetics={damGenetics}
+                        sireGenetics={sireGenetics}
+                        species={selectedDam?.species || "DOG"}
+                        damName={selectedDam?.name}
+                        sireName={selectedSire?.name}
+                      />
+                    </div>
+                  )}
+
+                  {/* Punnett Squares Tab */}
+                  {activeLabTab === 'punnett' && (
+                    <div>
+                      <div className="text-sm text-secondary mb-4">
+                        Visual Punnett squares showing inheritance patterns for each genetic locus.
+                      </div>
+                      {(results.coatColor?.length > 0 || results.health?.length > 0) ? (
+                        <MultiLocusPunnett
+                          loci={[
+                            ...(results.coatColor || []).map((item: any) => ({
+                              locusName: item.trait,
+                              parent1Genotype: item.damGenotype,
+                              parent2Genotype: item.sireGenotype,
+                              parent1Label: selectedDam?.name || "Dam",
+                              parent2Label: selectedSire?.name || "Sire",
+                            })),
+                            ...(results.health || []).map((item: any) => ({
+                              locusName: item.trait,
+                              parent1Genotype: item.damGenotype,
+                              parent2Genotype: item.sireGenotype,
+                              parent1Label: selectedDam?.name || "Dam",
+                              parent2Label: selectedSire?.name || "Sire",
+                            })),
+                          ]}
+                        />
+                      ) : (
+                        <div className="text-center py-12 text-secondary">
+                          No genetic loci data available for Punnett square visualization.
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Offspring Simulator Tab */}
+                  {activeLabTab === 'simulator' && (
+                    <div>
+                      <div className="text-sm text-secondary mb-4">
+                        Simulate random offspring outcomes based on genetic probabilities.
+                      </div>
+                      <OffspringSimulator
+                        results={results}
+                        species={selectedDam?.species || "DOG"}
+                        damName={selectedDam?.name}
+                        sireName={selectedSire?.name}
+                      />
+                    </div>
+                  )}
+
+                  {/* Health Analysis Tab */}
+                  {activeLabTab === 'health' && (
+                    <div>
+                      <div className="text-sm text-secondary mb-4">
+                        Comprehensive health risk analysis and testing recommendations.
+                      </div>
+                      {(damGenetics?.health?.length > 0 || sireGenetics?.health?.length > 0) ? (
+                        <HealthRiskSummary
+                          damGenetics={damGenetics?.health || []}
+                          sireGenetics={sireGenetics?.health || []}
+                          species={selectedDam?.species || "DOG"}
+                          damName={selectedDam?.name}
+                          sireName={selectedSire?.name}
+                          calculatedResults={results}
+                        />
+                      ) : (
+                        <div className="text-center py-12 text-secondary">
+                          <div className="text-4xl mb-4">🏥</div>
+                          <div className="font-medium mb-2">No Health Data Available</div>
+                          <div className="text-sm">
+                            Add health testing results to your animals to see risk analysis.
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Color Preview Tab */}
+                  {activeLabTab === 'colors' && (
+                    <div>
+                      <div className="text-sm text-secondary mb-4">
+                        Visual preview of possible coat colors based on genetic data.
+                      </div>
+                      {selectedDam?.species ? (
+                        <CoatColorPreview
+                          species={selectedDam.species as "DOG" | "CAT" | "HORSE" | "GOAT" | "RABBIT"}
+                          selectedGenotype={results.coatColor?.[0]?.damGenotype}
+                        />
+                      ) : (
+                        <div className="text-center py-12 text-secondary">
+                          <div className="text-4xl mb-4">🎨</div>
+                          <div className="font-medium mb-2">Select Animals to Preview Colors</div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Breeding Goals Tab */}
+                  {activeLabTab === 'goals' && (
+                    <div>
+                      <div className="text-sm text-secondary mb-4">
+                        Set and track your breeding goals for this pairing.
+                      </div>
+                      <BreedingGoalPlanner
+                        results={results}
+                        species={selectedDam?.species || "DOG"}
+                        damName={selectedDam?.name}
+                        sireName={selectedSire?.name}
+                      />
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           )}
@@ -2930,10 +3155,18 @@ function GeneticsLabPage({
                     setShowDisclaimer(false);
                     // Save acceptance to database
                     try {
+                      // Get CSRF token from cookie
+                      const csrfToken = document.cookie
+                        .split('; ')
+                        .find(row => row.startsWith('XSRF-TOKEN='))
+                        ?.split('=')[1];
                       await fetch('/api/v1/settings/genetics-disclaimer', {
                         method: 'POST',
                         credentials: 'include',
-                        headers: { 'Content-Type': 'application/json' },
+                        headers: {
+                          'Content-Type': 'application/json',
+                          ...(csrfToken ? { 'x-csrf-token': decodeURIComponent(csrfToken) } : {}),
+                        },
                         body: JSON.stringify({ accepted: true, timestamp: new Date().toISOString() })
                       });
                     } catch (err) {
@@ -2950,6 +3183,47 @@ function GeneticsLabPage({
             </div>
           </div>
         </div>
+      )}
+
+      {/* Genetics Import Dialog */}
+      {showImportDialog && (
+        <GeneticsImportDialog
+          open={true}
+          onClose={() => setShowImportDialog(null)}
+          animalId={Number(showImportDialog === 'dam' ? selectedDamId : selectedSireId)}
+          animalName={(showImportDialog === 'dam' ? selectedDam?.name : selectedSire?.name) || 'Unknown'}
+          animalSpecies={(showImportDialog === 'dam' ? selectedDam?.species : selectedSire?.species) || 'DOG'}
+          onImportComplete={() => {
+            // Reload genetics for the imported animal
+            const reloadGenetics = async (animalId: number | string, setter: (data: any) => void) => {
+              try {
+                const res = await fetch(`/api/v1/animals/${animalId}/genetics`, {
+                  credentials: "include",
+                });
+                if (res.ok) {
+                  const data = await res.json();
+                  setter({
+                    coatColor: data.coatColor || [],
+                    coatType: data.coatType || [],
+                    physicalTraits: data.physicalTraits || [],
+                    eyeColor: data.eyeColor || [],
+                    health: data.health || [],
+                    otherTraits: data.otherTraits || [],
+                  });
+                }
+              } catch (err) {
+                console.error("Failed to reload genetics:", err);
+              }
+            };
+
+            if (showImportDialog === 'dam' && selectedDamId) {
+              reloadGenetics(selectedDamId, setDamGenetics);
+            } else if (showImportDialog === 'sire' && selectedSireId) {
+              reloadGenetics(selectedSireId, setSireGenetics);
+            }
+            setShowImportDialog(null);
+          }}
+        />
       )}
     </div>
   );

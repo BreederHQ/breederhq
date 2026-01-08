@@ -63,6 +63,95 @@ export type DashboardCounts = {
   upcomingBreedings: number;
 };
 
+// ───────── New dashboard types for V2 ─────────
+
+export type AlertSeverity = "critical" | "warning" | "info";
+
+export type AlertItem = {
+  id: string;
+  severity: AlertSeverity;
+  title: string;
+  message: string;
+  actionLabel?: string;
+  actionHref?: string;
+  entityType?: "plan" | "animal" | "offspring" | "contact" | "invoice";
+  entityId?: string;
+  dismissible: boolean;
+  createdAt: string;
+};
+
+export type AgendaItemKind =
+  | "breeding_appt"
+  | "health_check"
+  | "placement"
+  | "contract"
+  | "reminder"
+  | "vaccination"
+  | "weigh_in";
+
+export type AgendaItem = {
+  id: string;
+  kind: AgendaItemKind;
+  title: string;
+  scheduledAt: string;
+  entityType?: string;
+  entityId?: string;
+  completed: boolean;
+  severity: "normal" | "important" | "critical";
+};
+
+export type OffspringGroupSummary = {
+  id: number;
+  identifier: string;
+  damName: string;
+  sireName: string;
+  species: string;
+  birthedAt: string | null;
+  ageWeeks: number | null;
+  counts: {
+    total: number;
+    placed: number;
+    available: number;
+    reserved: number;
+  };
+  financialSummary: {
+    totalInvoicedCents: number;
+    totalPaidCents: number;
+  };
+  placementProgress: number;
+  status: "in_care" | "placement_active" | "nearly_complete";
+};
+
+export type WaitlistPressureStatus =
+  | "low_demand"
+  | "balanced"
+  | "high_demand"
+  | "oversubscribed";
+
+export type WaitlistPressure = {
+  totalWaitlist: number;
+  activeWaitlist: number;
+  pendingWaitlist: number;
+  totalAvailable: number;
+  expectedNext90Days: number;
+  ratio: number;
+  status: WaitlistPressureStatus;
+  bySpecies: {
+    species: string;
+    waitlist: number;
+    available: number;
+    expected: number;
+  }[];
+};
+
+export type FinanceSummary = {
+  outstandingTotalCents: number;
+  invoicedMtdCents: number;
+  collectedMtdCents: number;
+  expensesMtdCents: number;
+  depositsOutstandingCents: number;
+};
+
 // ───────────────────────── utils ─────────────────────────
 
 function normalizeBase(base: string): string {
@@ -405,6 +494,88 @@ export function makeApi(base?: string) {
           return Array.isArray(r) ? (r as PlanRow[]) : [];
         } catch {
           return [];
+        }
+      },
+
+      // V2 dashboard endpoints
+      alerts: async (): Promise<AlertItem[]> => {
+        if (!dashboardRemoteEnabled()) return [];
+        return requestOr404<AlertItem[]>(`${root}/dashboard/alerts`, { method: "GET" }, []);
+      },
+
+      agenda: async (p: { date?: string } = {}): Promise<AgendaItem[]> => {
+        if (!dashboardRemoteEnabled()) return [];
+        const date = p.date || new Date().toISOString().slice(0, 10);
+        return requestOr404<AgendaItem[]>(
+          `${root}/dashboard/agenda` + qs({ date }),
+          { method: "GET" },
+          []
+        );
+      },
+
+      offspringSummary: async (): Promise<OffspringGroupSummary[]> => {
+        if (!dashboardRemoteEnabled()) return [];
+        return requestOr404<OffspringGroupSummary[]>(
+          `${root}/dashboard/offspring-summary`,
+          { method: "GET" },
+          []
+        );
+      },
+
+      waitlistPressure: async (): Promise<WaitlistPressure> => {
+        const fallback: WaitlistPressure = {
+          totalWaitlist: 0,
+          totalAvailable: 0,
+          expectedNext90Days: 0,
+          ratio: 0,
+          status: "balanced",
+          bySpecies: [],
+        };
+        if (!dashboardRemoteEnabled()) return fallback;
+        return requestOr404<WaitlistPressure>(
+          `${root}/dashboard/waitlist-pressure`,
+          { method: "GET" },
+          fallback
+        );
+      },
+
+      financeSummary: async (): Promise<FinanceSummary> => {
+        const fallback: FinanceSummary = {
+          outstandingTotalCents: 0,
+          invoicedMtdCents: 0,
+          collectedMtdCents: 0,
+          expensesMtdCents: 0,
+          depositsOutstandingCents: 0,
+        };
+        // Finance summary may be available even without dashboard remote enabled
+        return requestOr404<FinanceSummary>(
+          `${root}/finance/summary`,
+          { method: "GET" },
+          fallback
+        );
+      },
+
+      dismissAlert: async (id: string): Promise<{ ok: boolean }> => {
+        if (!dashboardRemoteEnabled()) return { ok: true };
+        try {
+          await request(`${root}/dashboard/alerts/${encodeURIComponent(id)}/dismiss`, {
+            method: "POST",
+          });
+          return { ok: true };
+        } catch {
+          return { ok: false };
+        }
+      },
+
+      completeAgendaItem: async (id: string): Promise<{ ok: boolean }> => {
+        if (!dashboardRemoteEnabled()) return { ok: true };
+        try {
+          await request(`${root}/dashboard/agenda/${encodeURIComponent(id)}/complete`, {
+            method: "POST",
+          });
+          return { ok: true };
+        } catch {
+          return { ok: false };
         }
       },
     },

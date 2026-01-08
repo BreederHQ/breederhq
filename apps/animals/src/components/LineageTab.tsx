@@ -2,7 +2,7 @@
 // Lineage tab for animal detail view - shows parents, pedigree tree, and COI
 
 import React from "react";
-import { makeApi, type PedigreeNode, type COIResult, type ParentsResult } from "../api";
+import { makeApi, type PedigreeNode, type COIResult, type ParentsResult, type PrivacySettings } from "../api";
 
 const api = makeApi();
 
@@ -254,6 +254,31 @@ function AnimalPickerModal({
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
+ * Helper: Format animal name with titles
+ * ───────────────────────────────────────────────────────────────────────────── */
+
+function formatNameWithTitles(node: PedigreeNode): React.ReactNode {
+  const hasPrefix = node.titlePrefix && node.titlePrefix.trim();
+  const hasSuffix = node.titleSuffix && node.titleSuffix.trim();
+
+  if (!hasPrefix && !hasSuffix) {
+    return node.name;
+  }
+
+  return (
+    <>
+      {hasPrefix && (
+        <span className="text-[hsl(var(--brand-orange))] font-semibold">{node.titlePrefix} </span>
+      )}
+      <span>{node.name}</span>
+      {hasSuffix && (
+        <span className="text-[hsl(var(--brand-orange))] font-semibold"> {node.titleSuffix}</span>
+      )}
+    </>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
  * Helper: Simple Pedigree Tree (3 generations)
  * ───────────────────────────────────────────────────────────────────────────── */
 
@@ -321,8 +346,8 @@ function SimplePedigreeTree({ pedigree }: { pedigree: PedigreeNode | null }) {
       <div className="inline-flex gap-4 min-w-max">
         {/* Subject */}
         <div className="flex flex-col justify-center">
-          <div className="rounded-md border-2 border-accent p-2 bg-accent/10 text-xs w-36">
-            <div className="font-semibold truncate">{pedigree.name}</div>
+          <div className="rounded-md border-2 border-accent p-2 bg-accent/10 text-xs w-40">
+            <div className="font-semibold truncate">{formatNameWithTitles(pedigree)}</div>
             {pedigree.breed && (
               <div className="text-secondary truncate text-[10px]">{pedigree.breed}</div>
             )}
@@ -333,10 +358,10 @@ function SimplePedigreeTree({ pedigree }: { pedigree: PedigreeNode | null }) {
         <div className="flex flex-col justify-center gap-2">
           {/* Sire */}
           <div className="flex items-center gap-2">
-            <div className="rounded-md border border-hairline p-2 bg-surface text-xs w-32">
+            <div className="rounded-md border border-hairline p-2 bg-surface text-xs w-36">
               {pedigree.sire ? (
                 <>
-                  <div className="font-medium truncate">{pedigree.sire.name}</div>
+                  <div className="font-medium truncate">{formatNameWithTitles(pedigree.sire)}</div>
                   {pedigree.sire.breed && (
                     <div className="text-secondary truncate text-[10px]">{pedigree.sire.breed}</div>
                   )}
@@ -348,16 +373,16 @@ function SimplePedigreeTree({ pedigree }: { pedigree: PedigreeNode | null }) {
             {/* Grandparents (sire's side) */}
             {pedigree.sire && (pedigree.sire.sire || pedigree.sire.dam) && (
               <div className="flex flex-col gap-1">
-                <div className="rounded border border-hairline p-1.5 bg-surface text-[10px] w-28">
+                <div className="rounded border border-hairline p-1.5 bg-surface text-[10px] w-32">
                   {pedigree.sire.sire ? (
-                    <div className="truncate">{pedigree.sire.sire.name}</div>
+                    <div className="truncate">{formatNameWithTitles(pedigree.sire.sire)}</div>
                   ) : (
                     <div className="text-secondary">Unknown</div>
                   )}
                 </div>
-                <div className="rounded border border-hairline p-1.5 bg-surface text-[10px] w-28">
+                <div className="rounded border border-hairline p-1.5 bg-surface text-[10px] w-32">
                   {pedigree.sire.dam ? (
-                    <div className="truncate">{pedigree.sire.dam.name}</div>
+                    <div className="truncate">{formatNameWithTitles(pedigree.sire.dam)}</div>
                   ) : (
                     <div className="text-secondary">Unknown</div>
                   )}
@@ -368,10 +393,10 @@ function SimplePedigreeTree({ pedigree }: { pedigree: PedigreeNode | null }) {
 
           {/* Dam */}
           <div className="flex items-center gap-2">
-            <div className="rounded-md border border-hairline p-2 bg-surface text-xs w-32">
+            <div className="rounded-md border border-hairline p-2 bg-surface text-xs w-36">
               {pedigree.dam ? (
                 <>
-                  <div className="font-medium truncate">{pedigree.dam.name}</div>
+                  <div className="font-medium truncate">{formatNameWithTitles(pedigree.dam)}</div>
                   {pedigree.dam.breed && (
                     <div className="text-secondary truncate text-[10px]">{pedigree.dam.breed}</div>
                   )}
@@ -383,16 +408,16 @@ function SimplePedigreeTree({ pedigree }: { pedigree: PedigreeNode | null }) {
             {/* Grandparents (dam's side) */}
             {pedigree.dam && (pedigree.dam.sire || pedigree.dam.dam) && (
               <div className="flex flex-col gap-1">
-                <div className="rounded border border-hairline p-1.5 bg-surface text-[10px] w-28">
+                <div className="rounded border border-hairline p-1.5 bg-surface text-[10px] w-32">
                   {pedigree.dam.sire ? (
-                    <div className="truncate">{pedigree.dam.sire.name}</div>
+                    <div className="truncate">{formatNameWithTitles(pedigree.dam.sire)}</div>
                   ) : (
                     <div className="text-secondary">Unknown</div>
                   )}
                 </div>
-                <div className="rounded border border-hairline p-1.5 bg-surface text-[10px] w-28">
+                <div className="rounded border border-hairline p-1.5 bg-surface text-[10px] w-32">
                   {pedigree.dam.dam ? (
-                    <div className="truncate">{pedigree.dam.dam.name}</div>
+                    <div className="truncate">{formatNameWithTitles(pedigree.dam.dam)}</div>
                   ) : (
                     <div className="text-secondary">Unknown</div>
                   )}
@@ -402,6 +427,217 @@ function SimplePedigreeTree({ pedigree }: { pedigree: PedigreeNode | null }) {
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * Privacy Settings Panel - Controls what's shared with other breeders
+ * ───────────────────────────────────────────────────────────────────────────── */
+
+function PrivacyToggle({
+  label,
+  description,
+  checked,
+  onChange,
+  disabled,
+}: {
+  label: string;
+  description: string;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <label className={`flex items-start gap-3 py-2 cursor-pointer ${disabled ? "opacity-50" : ""}`}>
+      <div className="pt-0.5">
+        <input
+          type="checkbox"
+          checked={checked}
+          onChange={(e) => onChange(e.target.checked)}
+          disabled={disabled}
+          className="w-4 h-4 rounded border-hairline bg-surface text-accent focus:ring-accent/50"
+        />
+      </div>
+      <div className="flex-1">
+        <div className="text-sm font-medium">{label}</div>
+        <div className="text-xs text-secondary">{description}</div>
+      </div>
+    </label>
+  );
+}
+
+function PrivacySettingsPanel({
+  animalId,
+  mode,
+}: {
+  animalId: number;
+  mode: "view" | "edit";
+}) {
+  const [settings, setSettings] = React.useState<PrivacySettings | null>(null);
+  const [loading, setLoading] = React.useState(true);
+  const [saving, setSaving] = React.useState(false);
+  const [expanded, setExpanded] = React.useState(false);
+
+  React.useEffect(() => {
+    api.animals.lineage.getPrivacySettings(animalId)
+      .then(setSettings)
+      .catch((err) => console.error("Failed to load privacy settings:", err))
+      .finally(() => setLoading(false));
+  }, [animalId]);
+
+  const updateSetting = async (key: keyof Omit<PrivacySettings, "animalId">, value: boolean) => {
+    if (!settings || mode !== "edit") return;
+    setSaving(true);
+    try {
+      const updated = await api.animals.lineage.updatePrivacySettings(animalId, { [key]: value });
+      setSettings(updated);
+    } catch (err) {
+      console.error("Failed to update privacy setting:", err);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="rounded-lg border border-hairline bg-surface p-4">
+        <div className="text-sm text-secondary animate-pulse">Loading privacy settings...</div>
+      </div>
+    );
+  }
+
+  if (!settings) return null;
+
+  return (
+    <div className="rounded-lg border border-hairline bg-surface overflow-hidden">
+      {/* Header - clickable to expand/collapse */}
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="w-full p-4 flex items-center justify-between hover:bg-hairline/30 transition-colors"
+      >
+        <div className="flex items-center gap-2">
+          <span className="text-lg">🔒</span>
+          <h3 className="text-sm font-semibold">Sharing & Privacy</h3>
+          {saving && <span className="text-xs text-secondary">(saving...)</span>}
+        </div>
+        <div className="flex items-center gap-2">
+          <span className={`text-xs px-2 py-0.5 rounded-full ${
+            settings.allowCrossTenantMatching
+              ? "bg-green-500/20 text-green-400"
+              : "bg-yellow-500/20 text-yellow-400"
+          }`}>
+            {settings.allowCrossTenantMatching ? "Discoverable" : "Private"}
+          </span>
+          <svg
+            className={`w-4 h-4 text-secondary transition-transform ${expanded ? "rotate-180" : ""}`}
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
+        </div>
+      </button>
+
+      {/* Expandable content */}
+      {expanded && (
+        <div className="px-4 pb-4 border-t border-hairline">
+          <p className="text-xs text-secondary py-3">
+            Control what information about this animal is visible to other breeders in the BreederHQ network.
+            This affects how your animal appears in cross-kennel pedigrees.
+          </p>
+
+          <div className="space-y-1">
+            <div className="text-xs font-semibold text-secondary uppercase tracking-wide mb-2">
+              Cross-Kennel Visibility
+            </div>
+
+            <PrivacyToggle
+              label="Allow cross-tenant matching"
+              description="Let BreederHQ match this animal with records from other breeders (via microchip, registry number, etc.)"
+              checked={settings.allowCrossTenantMatching}
+              onChange={(v) => updateSetting("allowCrossTenantMatching", v)}
+              disabled={mode !== "edit"}
+            />
+
+            <PrivacyToggle
+              label="Show name"
+              description="Display this animal's name to other breeders viewing their pedigrees"
+              checked={settings.showName}
+              onChange={(v) => updateSetting("showName", v)}
+              disabled={mode !== "edit" || !settings.allowCrossTenantMatching}
+            />
+
+            <PrivacyToggle
+              label="Show photo"
+              description="Display this animal's photo in cross-kennel pedigrees"
+              checked={settings.showPhoto}
+              onChange={(v) => updateSetting("showPhoto", v)}
+              disabled={mode !== "edit" || !settings.allowCrossTenantMatching}
+            />
+
+            <PrivacyToggle
+              label="Show full birth date"
+              description="Show complete DOB (otherwise only year is shown)"
+              checked={settings.showFullDob}
+              onChange={(v) => updateSetting("showFullDob", v)}
+              disabled={mode !== "edit" || !settings.allowCrossTenantMatching}
+            />
+
+            <PrivacyToggle
+              label="Show full registry numbers"
+              description="Show complete AKC/UKC/etc. numbers (otherwise only last 4 digits)"
+              checked={settings.showRegistryFull}
+              onChange={(v) => updateSetting("showRegistryFull", v)}
+              disabled={mode !== "edit" || !settings.allowCrossTenantMatching}
+            />
+
+            <PrivacyToggle
+              label="Show health test results"
+              description="Share detailed health testing results with other breeders"
+              checked={settings.showHealthResults}
+              onChange={(v) => updateSetting("showHealthResults", v)}
+              disabled={mode !== "edit" || !settings.allowCrossTenantMatching}
+            />
+
+            <PrivacyToggle
+              label="Show genetic data"
+              description="Share coat color genetics and other genetic test results"
+              checked={settings.showGeneticData}
+              onChange={(v) => updateSetting("showGeneticData", v)}
+              disabled={mode !== "edit" || !settings.allowCrossTenantMatching}
+            />
+
+            <div className="text-xs font-semibold text-secondary uppercase tracking-wide mt-4 mb-2">
+              Contact Preferences
+            </div>
+
+            <PrivacyToggle
+              label="Allow info requests"
+              description="Let other breeders request additional information about this animal"
+              checked={settings.allowInfoRequests}
+              onChange={(v) => updateSetting("allowInfoRequests", v)}
+              disabled={mode !== "edit" || !settings.allowCrossTenantMatching}
+            />
+
+            <PrivacyToggle
+              label="Allow direct contact"
+              description="Show your contact information directly (otherwise they must send a request)"
+              checked={settings.allowDirectContact}
+              onChange={(v) => updateSetting("allowDirectContact", v)}
+              disabled={mode !== "edit" || !settings.allowCrossTenantMatching}
+            />
+          </div>
+
+          {!settings.allowCrossTenantMatching && (
+            <div className="mt-4 p-3 rounded-md bg-yellow-500/10 border border-yellow-500/30 text-xs text-yellow-400">
+              Cross-tenant matching is disabled. This animal won't appear in other breeders' pedigrees
+              and COI calculations across kennels won't include this animal's lineage.
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -594,6 +830,9 @@ export function LineageTab({
           </div>
         </div>
       )}
+
+      {/* Privacy Settings */}
+      <PrivacySettingsPanel animalId={animal.id} mode={mode} />
 
       {/* Animal Picker Modal */}
       <AnimalPickerModal

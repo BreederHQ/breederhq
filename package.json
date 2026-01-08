@@ -21,10 +21,14 @@
     "build": "npm -C ./apps/platform run build",
     "lint": "eslint . --ext .ts,.tsx --max-warnings=0",
     "format": "prettier --write \"**/*.{ts,.tsx,js,json,css,md}\"",
-    "postinstall": "echo \"root postinstall: no builds here\""
+    "postinstall": "echo \"root postinstall: no builds here\"",
+    "test:e2e": "npx playwright test",
+    "test:e2e:ui": "npx playwright test --ui",
+    "test:e2e:headed": "npx playwright test --headed"
   },
   "dependencies": {
     "@fastify/rate-limit": "^10.3.0",
+    "@xyflow/react": "^12.10.0",
     "clsx": "^2.1.1",
     "lucide-react": "^0.545.0",
     "react": "^19.2.0",

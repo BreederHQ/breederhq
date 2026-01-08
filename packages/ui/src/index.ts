@@ -14,6 +14,15 @@ export { Spinner } from "./atoms/Spinner";
 export type { SpinnerProps } from "./atoms/Spinner";
 export { toast, useToast, ToastViewport } from "./atoms/Toast";
 
+// assets - animal placeholders
+export {
+  DogPlaceholder,
+  CatPlaceholder,
+  HorsePlaceholder,
+  GoatPlaceholder,
+  RabbitPlaceholder,
+} from "./assets/placeholders";
+
 // legal
 export {
   CURRENT_TOS_VERSION,

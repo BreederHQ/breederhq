@@ -18,6 +18,7 @@ export * from "./FieldRow";
 export * from "./Filters";
 export * from "./Finance";
 export * from "./Gantt";
+export * from "./GeneticsImport";
 export * from "./Input";
 export * from "./IntlPhoneField";
 export * from "./LoginPage";
