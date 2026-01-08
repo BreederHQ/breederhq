@@ -320,6 +320,42 @@ export function makeApi(base?: string) {
         ),
     },
 
+    /* Billing and subscription management */
+    billing: {
+      getPlans: () => request(`${root}/billing/plans`, { method: "GET" }),
+      getSubscription: () => request(`${root}/billing/subscription`, { method: "GET" }),
+      createCheckoutSession: (productId: number, successUrl: string, cancelUrl: string) =>
+        request(`${root}/billing/checkout`, {
+          method: "POST",
+          body: JSON.stringify({ productId, successUrl, cancelUrl }),
+          headers: { "content-type": "application/json" },
+        }),
+      createPortalSession: (returnUrl: string) =>
+        request(`${root}/billing/portal`, {
+          method: "POST",
+          body: JSON.stringify({ returnUrl }),
+          headers: { "content-type": "application/json" },
+        }),
+      addAddon: (addOnProductId: number) =>
+        request(`${root}/billing/add-ons`, {
+          method: "POST",
+          body: JSON.stringify({ addOnProductId }),
+          headers: { "content-type": "application/json" },
+        }),
+      cancelSubscription: (cancelAtPeriodEnd: boolean = true) =>
+        request(`${root}/billing/cancel`, {
+          method: "POST",
+          body: JSON.stringify({ cancelAtPeriodEnd }),
+          headers: { "content-type": "application/json" },
+        }),
+    },
+
+    /* Usage and quota dashboard */
+    usage: {
+      getMetrics: () => request(`${root}/usage`, { method: "GET" }),
+      getMetric: (metricKey: string) => request(`${root}/usage/${encodeURIComponent(metricKey)}`, { method: "GET" }),
+    },
+
     /* Dashboard read models with remote gate and 404 fallbacks */
     dashboard: {
       counts: () => {

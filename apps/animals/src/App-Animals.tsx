@@ -40,6 +40,7 @@ import "@bhq/ui/styles/table.css";
 import "@bhq/ui/styles/datefield.css";
 import { makeApi } from "./api";
 import { MoreHorizontal, Download } from "lucide-react";
+import { LineageTab } from "./components/LineageTab";
 
 import {
   normalizeCycleStartsAsc,
@@ -7159,36 +7160,7 @@ export default function AppAnimals() {
           )}
 
           {activeTab === "lineage" && (
-            <div className="space-y-3 p-4">
-              <SectionCard title={<SectionTitle icon="🌳">Family Tree</SectionTitle>}>
-                <div className="text-sm text-secondary mb-4">
-                  View and manage the lineage history for {row.name}.
-                </div>
-                <div className="space-y-4">
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                    <div>
-                      <div className="text-xs font-semibold text-secondary mb-2">SIRE (Father)</div>
-                      <div className="rounded-lg border border-hairline p-3 bg-surface hover:bg-white/5 cursor-pointer transition-colors">
-                        <div className="text-sm text-secondary">Not linked</div>
-                      </div>
-                    </div>
-                    <div>
-                      <div className="text-xs font-semibold text-secondary mb-2">DAM (Mother)</div>
-                      <div className="rounded-lg border border-hairline p-3 bg-surface hover:bg-white/5 cursor-pointer transition-colors">
-                        <div className="text-sm text-secondary">Not linked</div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="pt-4 border-t border-hairline">
-                    <div className="text-xs font-semibold text-secondary mb-2">OFFSPRING</div>
-                    <div className="rounded-lg border border-hairline p-3 bg-surface">
-                      <div className="text-sm text-secondary">No offspring recorded</div>
-                    </div>
-                  </div>
-                </div>
-              </SectionCard>
-            </div>
+            <LineageTab animal={row} mode={mode} />
           )}
 
           {activeTab === "finances" && (

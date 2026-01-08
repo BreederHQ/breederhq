@@ -181,6 +181,70 @@ async function publishMarketplaceProfile(
   return body;
 }
 
+// Business Hours types
+interface DaySchedule {
+  enabled: boolean;
+  open: string;  // "HH:mm" format, e.g. "09:00"
+  close: string; // "HH:mm" format, e.g. "17:00"
+}
+
+interface BusinessHoursSchedule {
+  monday: DaySchedule;
+  tuesday: DaySchedule;
+  wednesday: DaySchedule;
+  thursday: DaySchedule;
+  friday: DaySchedule;
+  saturday: DaySchedule;
+  sunday: DaySchedule;
+}
+
+interface BusinessHoursConfig {
+  schedule: BusinessHoursSchedule;
+  timeZone: string;
+}
+
+const DEFAULT_BUSINESS_HOURS: BusinessHoursSchedule = {
+  monday: { enabled: true, open: "09:00", close: "17:00" },
+  tuesday: { enabled: true, open: "09:00", close: "17:00" },
+  wednesday: { enabled: true, open: "09:00", close: "17:00" },
+  thursday: { enabled: true, open: "09:00", close: "17:00" },
+  friday: { enabled: true, open: "09:00", close: "17:00" },
+  saturday: { enabled: false, open: "09:00", close: "17:00" },
+  sunday: { enabled: false, open: "09:00", close: "17:00" },
+};
+
+async function fetchBusinessHours(tenantId: string): Promise<BusinessHoursConfig | null> {
+  const res = await fetch("/api/v1/business-hours", {
+    credentials: "include",
+    headers: {
+      Accept: "application/json",
+      "X-Tenant-Id": tenantId,
+    },
+  });
+  if (!res.ok) {
+    console.error("Failed to fetch business hours:", res.status);
+    return null;
+  }
+  return res.json();
+}
+
+async function saveBusinessHours(tenantId: string, config: BusinessHoursConfig): Promise<{ ok: boolean }> {
+  const csrf = readCsrfToken();
+  const res = await fetch("/api/v1/business-hours", {
+    method: "PUT",
+    credentials: "include",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      "X-Tenant-Id": tenantId,
+      ...(csrf ? { "X-CSRF-Token": csrf } : {}),
+    },
+    body: JSON.stringify(config),
+  });
+  if (!res.ok) throw new Error(`API error: ${res.status}`);
+  return res.json();
+}
+
 async function unpublishMarketplaceProfile(
   tenantId: string
 ): Promise<{ ok: boolean; error?: string }> {
@@ -1272,6 +1336,10 @@ export function ManageListingPage() {
   const [apiError, setApiError] = React.useState<string | null>(null);
   const [saveError, setSaveError] = React.useState<string | null>(null);
 
+  // Business hours state
+  const [businessHours, setBusinessHours] = React.useState<BusinessHoursSchedule>(DEFAULT_BUSINESS_HOURS);
+  const [businessHoursTimezone, setBusinessHoursTimezone] = React.useState<string>("America/New_York");
+
   // Track initial draft for dirty comparison
   const initialDraftRef = React.useRef<string>(JSON.stringify(createEmptyDraft()));
   const tenantId = getTenantId();
@@ -1299,6 +1367,25 @@ export function ManageListingPage() {
         }
       } finally {
         if (alive) setApiLoading(false);
+      }
+    })();
+    return () => { alive = false; };
+  }, [tenantId]);
+
+  // ─── Load business hours from API ─────────────────────────────────────────
+  React.useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const hoursConfig = await fetchBusinessHours(tenantId);
+        if (!alive) return;
+        if (hoursConfig) {
+          setBusinessHours(hoursConfig.schedule);
+          setBusinessHoursTimezone(hoursConfig.timeZone);
+        }
+      } catch (e: any) {
+        console.error("Failed to load business hours:", e);
+        // Non-fatal - just use defaults
       }
     })();
     return () => { alive = false; };
@@ -1559,6 +1646,44 @@ export function ManageListingPage() {
       } finally {
         setSaving(false);
       }
+    }
+  }
+
+  // ─── Business Hours Handlers ──────────────────────────────────────────────
+  async function handleBusinessHoursChange(day: keyof BusinessHoursSchedule, field: keyof DaySchedule, value: boolean | string) {
+    const updated = {
+      ...businessHours,
+      [day]: {
+        ...businessHours[day],
+        [field]: value,
+      },
+    };
+    setBusinessHours(updated);
+
+    // Auto-save to API
+    try {
+      await saveBusinessHours(tenantId, {
+        schedule: updated,
+        timeZone: businessHoursTimezone,
+      });
+    } catch (e) {
+      console.error("Failed to save business hours:", e);
+      setSaveError("Failed to save business hours. Please try again.");
+    }
+  }
+
+  async function handleTimezoneChange(newTimezone: string) {
+    setBusinessHoursTimezone(newTimezone);
+
+    // Auto-save to API
+    try {
+      await saveBusinessHours(tenantId, {
+        schedule: businessHours,
+        timeZone: newTimezone,
+      });
+    } catch (e) {
+      console.error("Failed to save timezone:", e);
+      setSaveError("Failed to save timezone. Please try again.");
     }
   }
 
@@ -2095,6 +2220,89 @@ export function ManageListingPage() {
               ))}
             </div>
           </div>
+        </div>
+      </SectionCard>
+
+      {/* Section: Business Hours */}
+      <SectionCard
+        title={
+          <div className="flex items-center gap-2">
+            <span className="text-lg">🕐</span>
+            <div>
+              <div className="text-base font-semibold text-primary">Business Hours</div>
+              <div className="text-xs text-secondary font-normal">Set when you're available for calls and inquiries</div>
+            </div>
+          </div>
+        }
+        highlight={false}
+      >
+        <div className="space-y-5 pt-2">
+          {/* Timezone Selector */}
+          <div>
+            <label className="text-xs text-secondary mb-1 block">Timezone</label>
+            <select
+              value={businessHoursTimezone}
+              onChange={(e) => handleTimezoneChange(e.target.value)}
+              className={INPUT_CLS}
+            >
+              <option value="America/New_York">Eastern Time (ET)</option>
+              <option value="America/Chicago">Central Time (CT)</option>
+              <option value="America/Denver">Mountain Time (MT)</option>
+              <option value="America/Phoenix">Arizona Time (MST)</option>
+              <option value="America/Los_Angeles">Pacific Time (PT)</option>
+              <option value="America/Anchorage">Alaska Time (AKT)</option>
+              <option value="Pacific/Honolulu">Hawaii Time (HST)</option>
+            </select>
+          </div>
+
+          {/* Days Schedule */}
+          <div className="space-y-3">
+            {(["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"] as const).map((day) => {
+              const schedule = businessHours[day];
+              const dayLabel = day.charAt(0).toUpperCase() + day.slice(1);
+              return (
+                <div key={day} className="flex items-center gap-3 py-2 border-b border-hairline last:border-0">
+                  {/* Day name and toggle */}
+                  <div className="w-32 flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={schedule.enabled}
+                      onChange={(e) => handleBusinessHoursChange(day, "enabled", e.target.checked)}
+                      className="w-4 h-4 rounded border-hairline bg-surface text-[hsl(var(--brand-orange))] focus:ring-2 focus:ring-[hsl(var(--brand-orange))]/20"
+                    />
+                    <span className={`text-sm font-medium ${schedule.enabled ? "text-primary" : "text-secondary"}`}>
+                      {dayLabel}
+                    </span>
+                  </div>
+
+                  {/* Time inputs */}
+                  {schedule.enabled ? (
+                    <div className="flex items-center gap-2 flex-1">
+                      <input
+                        type="time"
+                        value={schedule.open}
+                        onChange={(e) => handleBusinessHoursChange(day, "open", e.target.value)}
+                        className="px-2 py-1 text-sm rounded-md border border-hairline bg-surface text-primary focus:outline-none focus:ring-2 focus:ring-[hsl(var(--brand-orange))]/50"
+                      />
+                      <span className="text-xs text-secondary">to</span>
+                      <input
+                        type="time"
+                        value={schedule.close}
+                        onChange={(e) => handleBusinessHoursChange(day, "close", e.target.value)}
+                        className="px-2 py-1 text-sm rounded-md border border-hairline bg-surface text-primary focus:outline-none focus:ring-2 focus:ring-[hsl(var(--brand-orange))]/50"
+                      />
+                    </div>
+                  ) : (
+                    <span className="text-sm text-secondary italic flex-1">Closed</span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          <p className="text-xs text-secondary">
+            Business hours appear on your marketplace profile and help buyers know when to expect responses.
+          </p>
         </div>
       </SectionCard>
 

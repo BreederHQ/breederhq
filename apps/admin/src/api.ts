@@ -540,6 +540,78 @@ export const breederReportsApi = {
   },
 };
 
+/* ───────────────────────── Usage Dashboard (SCOPED) ───────────────────────── */
+
+/** Usage metrics DTO */
+export type UsageMetricsDTO = {
+  plan: {
+    name: string;
+    tier: string;
+  };
+  usage: {
+    animals: {
+      current: number;
+      limit: number | null;
+      percentUsed: number | null;
+      isOverLimit: boolean;
+    };
+    contacts: {
+      current: number;
+      limit: number | null;
+      percentUsed: number | null;
+      isOverLimit: boolean;
+    };
+    portalUsers: {
+      current: number;
+      limit: number | null;
+      percentUsed: number | null;
+      isOverLimit: boolean;
+    };
+    breedingPlans: {
+      current: number;
+      limit: number | null;
+      percentUsed: number | null;
+      isOverLimit: boolean;
+    };
+    marketplaceListings: {
+      current: number;
+      limit: number | null;
+      percentUsed: number | null;
+      isOverLimit: boolean;
+    };
+    storageGB: {
+      current: number;
+      limit: number | null;
+      percentUsed: number | null;
+      isOverLimit: boolean;
+    };
+    smsMessages: {
+      current: number;
+      limit: number | null;
+      percentUsed: number | null;
+      isOverLimit: boolean;
+    };
+  };
+  warnings: string[];
+};
+
+/** Usage dashboard API */
+export const usageApi = {
+  /** Get all usage metrics for tenant */
+  getUsageMetrics(tenantId?: ID) {
+    const headers: Record<string, string> = {};
+    if (tenantId != null) headers["X-Tenant-Id"] = String(tenantId);
+    return request<UsageMetricsDTO>('/usage', { headers });
+  },
+
+  /** Get specific usage metric */
+  getUsageMetric(metricKey: string, tenantId?: ID) {
+    const headers: Record<string, string> = {};
+    if (tenantId != null) headers["X-Tenant-Id"] = String(tenantId);
+    return request<UsageMetricsDTO['usage']['animals']>(`/usage/${metricKey}`, { headers });
+  },
+};
+
 /** ───────────────────────── Small helpers ───────────────────────── */
 function setNum(sp: URLSearchParams, key: string, n: number) {
   if (Number.isFinite(n as number)) sp.set(key, String(n));

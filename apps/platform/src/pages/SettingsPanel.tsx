@@ -13,6 +13,7 @@ import type { BreedingProgramProfile } from "@bhq/ui/utils/breedingProgram";
 import BiologySettingsTab from "../components/BiologySettingsTab";
 import DateValidationSettingsTab from "../components/DateValidationSettingsTab";
 import { TagsManagerTab } from "../components/TagsManagerTab";
+import BillingTab from "../components/BillingTab";
 // Marketplace settings moved to marketplace module at /marketplace/manage
 import { api } from "../api";
 
@@ -456,6 +457,7 @@ const INPUT_CLS =
 type Tab =
   | "profile"
   | "security"
+  | "billing"
   | "subscription"
   | "payments"
   | "transactions"
@@ -478,6 +480,7 @@ const NAV: NavSection[] = [
     items: [
       { key: "profile", label: "Your Profile" },
       { key: "security", label: "Security" },
+      { key: "billing", label: "Billing & Subscription" },
       { key: "subscription", label: "Subscription" },
       { key: "payments", label: "Payment Methods" },
       { key: "transactions", label: "Transactions" },
@@ -719,6 +722,7 @@ export default function SettingsPanel({ open, dirty, onDirtyChange, onClose }: P
                   <ProfileTab ref={profileRef} dirty={dirtyMap.profile} onDirty={(v) => markDirty("profile", v)} onTitle={setProfileTitle} editMode={editMode} />
                 )}
                 {active === "security" && <SecurityTab dirty={dirtyMap.security} onDirty={(v) => markDirty("security", v)} />}
+                {active === "billing" && <BillingTab dirty={dirtyMap.billing} onDirty={(v) => markDirty("billing", v)} />}
                 {active === "subscription" && <SubscriptionTab dirty={dirtyMap.subscription} onDirty={(v) => markDirty("subscription", v)} />}
                 {active === "payments" && <PaymentsTab dirty={dirtyMap.payments} onDirty={(v) => markDirty("payments", v)} />}
                 {active === "transactions" && <TransactionsTab dirty={dirtyMap.transactions} onDirty={(v) => markDirty("transactions", v)} />}

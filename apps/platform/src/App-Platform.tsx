@@ -28,7 +28,9 @@ import DashboardPage from "./pages/Dashboard";
 import SettingsPanel from "./pages/SettingsPanel";
 import TermsPage from "./pages/TermsPage";
 import LoginPage from "./pages/LoginPage";
+import PricingPage from "./pages/PricingPage";
 import NotificationsDropdown, { type Notification } from "./components/NotificationsDropdown";
+import QuotaWarningBanner from "./components/QuotaWarningBanner";
 
 // Lightweight "current module" state (key + label)
 type ActiveModule = { key: "dashboard" | "contacts" | "animals" | "breeding" | "offspring" | "waitlist" | "marketing" | "marketplace" | "finance" | "admin"; label: string };
@@ -78,6 +80,7 @@ function RouteView() {
   if (p === "/marketplace" || p.startsWith("/marketplace")) return <MarketplaceEmbedded />;
   if (p === "/finance" || p.startsWith("/finance")) return <AppFinance />;
   if (p === "/admin" || p.startsWith("/admin")) return <AdminModule />;
+  if (p === "/pricing" || p.startsWith("/pricing")) return <PricingPage />;
 
   return <DashboardPage />;
 }
@@ -393,6 +396,7 @@ export default function AppPlatform() {
               onLogout: doLogout,
             }}
           >
+            <QuotaWarningBanner />
             <RouteView />
           </NavShell>
 
