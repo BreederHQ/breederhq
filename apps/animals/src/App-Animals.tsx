@@ -37,8 +37,10 @@ import type { OwnershipRow } from "@bhq/ui/utils/ownership";
 import { Overlay, getOverlayRoot } from "@bhq/ui/overlay";
 import { toast } from "@bhq/ui/atoms/Toast";
 import "@bhq/ui/styles/table.css";
+import "@bhq/ui/styles/datefield.css";
 import { makeApi } from "./api";
 import { MoreHorizontal, Download } from "lucide-react";
+import { LineageTab } from "./components/LineageTab";
 
 import {
   normalizeCycleStartsAsc,
@@ -69,6 +71,88 @@ function getPlaceholderForSpecies(species?: string | null): string {
   if (!species) return DogPlaceholder;
   const key = species.toUpperCase();
   return SPECIES_PLACEHOLDERS[key] || DogPlaceholder;
+}
+
+/** ────────────────────────────────────────────────────────────────────────
+ * Visual Components - Status Badges & Indicators
+ * ─────────────────────────────────────────────────────────────────────── */
+
+function StatusBadge({ status }: { status: string }) {
+  const statusConfig: Record<string, { text: string; dot: string }> = {
+    Active: { text: "text-green-400", dot: "bg-green-400" },
+    Breeding: { text: "text-purple-400", dot: "bg-purple-400" },
+    Unavailable: { text: "text-orange-400", dot: "bg-orange-400" },
+    Retired: { text: "text-blue-400", dot: "bg-blue-400" },
+    Deceased: { text: "text-gray-400", dot: "bg-gray-400" },
+    Prospect: { text: "text-sky-400", dot: "bg-sky-400" },
+  };
+
+  const config = statusConfig[status] || statusConfig.Active;
+
+  return (
+    <span className={`inline-flex items-center gap-2 text-sm font-medium ${config.text}`}>
+      <span className={`w-2.5 h-2.5 rounded-full ${config.dot} ${status === 'Breeding' ? 'animate-pulse' : ''}`}></span>
+      <span>{status}</span>
+    </span>
+  );
+}
+
+function SexIndicator({ sex }: { sex: string }) {
+  const isFemale = (sex || "").toLowerCase().startsWith("f");
+  const isMale = (sex || "").toLowerCase().startsWith("m");
+
+  if (isFemale) {
+    return (
+      <span className="inline-flex items-center gap-1.5 text-sm">
+        <span className="text-pink-400">♀</span>
+        <span>{sex}</span>
+      </span>
+    );
+  }
+
+  if (isMale) {
+    return (
+      <span className="inline-flex items-center gap-1.5 text-sm">
+        <span className="text-blue-400">♂</span>
+        <span>{sex}</span>
+      </span>
+    );
+  }
+
+  return <span>{sex || "—"}</span>;
+}
+
+function ReadinessBadge({ eligible, label }: { eligible: boolean | null; label: string }) {
+  if (eligible === null) {
+    return <span className="text-sm text-secondary">—</span>;
+  }
+
+  if (eligible) {
+    return (
+      <span className="inline-flex items-center gap-2 text-sm font-medium text-green-400">
+        <span className="w-2.5 h-2.5 rounded-full bg-green-400"></span>
+        <span>{label}</span>
+      </span>
+    );
+  }
+
+  return (
+    <span className="inline-flex items-center gap-2 text-sm font-medium text-amber-400">
+      <span className="w-2.5 h-2.5 rounded-full bg-amber-400"></span>
+      <span>{label}</span>
+    </span>
+  );
+}
+
+function SectionTitle({ icon, children }: { icon?: string; children: React.ReactNode }) {
+  if (!icon) return <>{children}</>;
+
+  return (
+    <span className="inline-flex items-center gap-2">
+      <span className="text-secondary">{icon}</span>
+      <span>{children}</span>
+    </span>
+  );
 }
 
 /** ────────────────────────────────────────────────────────────────────────
@@ -220,30 +304,239 @@ function animalToRow(p: any): AnimalRow {
   };
 }
 
-/* CalendarInput: text field + native date picker */
+/* ──────────────────────────────────────────────────────────────────────────
+ * Date Picker System (CalendarInput + popup positioning helpers)
+ * ─────────────────────────────────────────────────────────────────────── */
 
-type CalendarInputProps = {
-  value: string;
-  onChange: React.ChangeEventHandler<HTMLInputElement>;
-  placeholder?: string;
-  className?: string;
-  inputClassName?: string;
-  readOnly?: boolean;
-  showIcon?: boolean;
+// ----- Date-picker hoist helpers -----
+const OVERLAY_ROOT_SELECTOR = "#bhq-overlay-root";
+
+function ensureOverlayRoot(): HTMLElement {
+  return (document.querySelector(OVERLAY_ROOT_SELECTOR) as HTMLElement) || document.body;
+}
+
+/** Find the *outermost* popup element we actually want to move. */
+function findDatePopup(): HTMLElement | null {
+  // most libs
+  const candidates = [
+    // Radix Popper wrapper
+    ...Array.from(document.querySelectorAll<HTMLElement>('[data-radix-popper-content-wrapper]')),
+    // react-datepicker
+    ...Array.from(document.querySelectorAll<HTMLElement>('.react-datepicker')),
+    // react-day-picker
+    ...Array.from(document.querySelectorAll<HTMLElement>('.rdp,.rdp-root')),
+    // generic open dialogs/menus (fallback)
+    ...Array.from(document.querySelectorAll<HTMLElement>('[role="dialog"][data-state="open"],[role="menu"][data-state="open"]')),
+  ];
+
+  // ignore things inside our details drawer/panels
+  const filtered = candidates.filter((el) => !el.closest('[data-bhq-details]'));
+
+  const list = filtered.length ? filtered : candidates;
+  if (!list.length) return null;
+
+  const isVisible = (el: HTMLElement) => {
+    const cs = getComputedStyle(el);
+    const r = el.getBoundingClientRect();
+    return cs.display !== "none" && cs.visibility !== "hidden" && r.width > 8 && r.height > 8;
+  };
+
+  // prefer visible + largest area
+  list.sort((a, b) => {
+    const va = isVisible(a) ? 1 : 0;
+    const vb = isVisible(b) ? 1 : 0;
+    const ra = a.getBoundingClientRect();
+    const rb = b.getBoundingClientRect();
+    return vb - va || rb.width * rb.height - ra.width * ra.height;
+  });
+
+  // for Radix, we want the wrapper itself (already selected); for others, this is fine
+  return list[0] || null;
+}
+
+/** Wait up to ~300ms for a date popup to mount, then hoist + place it near trigger. */
+function hoistAndPlaceDatePopup(triggerEl: HTMLElement) {
+  const root = ensureOverlayRoot();
+
+  let raf = 0;
+  let tries = 0;
+  const MAX_TRIES = 12; // ~200–300ms
+
+  const place = (pop: HTMLElement) => {
+    if (pop.parentNode !== root) root.appendChild(pop);
+
+    // style the *moved wrapper* not inner content
+    Object.assign(pop.style, {
+      position: "fixed",
+      transform: "none",
+      inset: "auto",
+      zIndex: "2147483647",
+      maxWidth: "none",
+      maxHeight: "none",
+      overflow: "visible",
+      contain: "paint", // keep it isolated
+      isolation: "auto",
+      filter: "none",
+      perspective: "none",
+      willChange: "top,left",
+    } as CSSStyleDeclaration);
+
+    const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
+    const GAP = 8;
+
+    const doPosition = () => {
+      const r = triggerEl.getBoundingClientRect();
+      const pr = pop.getBoundingClientRect();
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+
+      let top = r.bottom + GAP;       // try below
+      let left = r.left;              // left-align
+
+      // clamp horizontally
+      left = clamp(left, GAP, vw - pr.width - GAP);
+
+      // if off-screen bottom, place above
+      if (top + pr.height > vh - GAP) {
+        top = clamp(r.top - pr.height - GAP, GAP, vh - pr.height - GAP);
+      } else {
+        top = clamp(top, GAP, vh - pr.height - GAP);
+      }
+
+      pop.style.top = `${Math.round(top)}px`;
+      pop.style.left = `${Math.round(left)}px`;
+    };
+
+    // Position now, then again next frame after content finishes sizing.
+    doPosition();
+    setTimeout(doPosition, 30);
+
+    // keep it in the right spot on resize/scroll; clean up when it disappears
+    const onRelayout = () => {
+      if (!pop.isConnected) {
+        window.removeEventListener("resize", onRelayout);
+        window.removeEventListener("scroll", onRelayout, true);
+        return;
+      }
+      doPosition();
+    };
+    window.addEventListener("resize", onRelayout);
+    window.addEventListener("scroll", onRelayout, true);
+
+    // small observer to auto-clean when popup is removed
+    const mo = new MutationObserver(() => {
+      if (!pop.isConnected) {
+        window.removeEventListener("resize", onRelayout);
+        window.removeEventListener("scroll", onRelayout, true);
+        mo.disconnect();
+      }
+    });
+    mo.observe(document.body, { childList: true, subtree: true });
+  };
+
+  const tick = () => {
+    const pop = findDatePopup();
+    if (pop) {
+      place(pop);
+      return;
+    }
+    if (tries++ < MAX_TRIES) {
+      raf = requestAnimationFrame(tick);
+    }
+  };
+
+  // kick off after we click the icon
+  raf = requestAnimationFrame(tick);
+}
+
+/** Wire up native date picker to our overlay hoist helper. */
+type AttachDatePopupOpts = {
+  shell: HTMLElement;
+  button: HTMLButtonElement;
+  hiddenInput: HTMLInputElement;
+  onPopupOpen?: () => void;
+  onPopupClose?: () => void;
 };
 
-const dateInputCls = "h-8 py-0 px-2 text-sm bg-transparent border-hairline";
+function attachDatePopupPositioning(opts: AttachDatePopupOpts) {
+  const { shell, button, hiddenInput, onPopupOpen, onPopupClose } = opts;
+
+  if (!shell || !button || !hiddenInput) {
+    return () => { };
+  }
+
+  let isOpen = false;
+
+  const openPicker = () => {
+    if (hiddenInput.disabled || hiddenInput.readOnly) return;
+
+    if (!isOpen) {
+      isOpen = true;
+      onPopupOpen?.();
+    }
+
+    try {
+      // Focus the hidden native input and try to open the picker
+      hiddenInput.focus();
+      const anyInput = hiddenInput as any;
+      if (typeof anyInput.showPicker === "function") {
+        anyInput.showPicker();
+      } else {
+        hiddenInput.click();
+      }
+    } catch {
+      // Ignore browser quirks
+    }
+
+    // Hoist and position the popup near the trigger
+    hoistAndPlaceDatePopup(button);
+  };
+
+  const handleButtonClick = (e: MouseEvent) => {
+    e.preventDefault();
+    openPicker();
+  };
+
+  const handleKeyDown = (e: KeyboardEvent) => {
+    // Support keyboard open from the visible text input
+    if (e.key === "ArrowDown" && (e.altKey || e.metaKey || e.ctrlKey)) {
+      e.preventDefault();
+      openPicker();
+    }
+  };
+
+  const handleHiddenBlur = () => {
+    if (!isOpen) return;
+    isOpen = false;
+    onPopupClose?.();
+  };
+
+  button.addEventListener("click", handleButtonClick);
+  shell.addEventListener("keydown", handleKeyDown);
+  hiddenInput.addEventListener("blur", handleHiddenBlur);
+
+  return () => {
+    button.removeEventListener("click", handleButtonClick);
+    shell.removeEventListener("keydown", handleKeyDown);
+    hiddenInput.removeEventListener("blur", handleHiddenBlur);
+  };
+}
+
+/* CalendarInput: text field + native date picker */
 
 function CalendarInput(props: any) {
   const readOnly = !!props.readOnly;
   const className = props.className;
   const inputClassName = props.inputClassName;
-  const onChange = props.onChange as React.ChangeEventHandler<HTMLInputElement> | undefined;
+  const onChange = props.onChange;
   const value = props.value as string | undefined;
   const defaultValue = props.defaultValue as string | undefined;
   const placeholder = props.placeholder ?? "mm/dd/yyyy";
   const showIcon = props.showIcon ?? true;
+  // expectedValue: when user focuses on empty field, pre-populate with this value
+  const expectedValue = props.expectedValue as string | undefined;
 
+  // any extra props intended for the visible input
   const rest: any = { ...props };
   delete rest.readOnly;
   delete rest.className;
@@ -253,12 +546,22 @@ function CalendarInput(props: any) {
   delete rest.defaultValue;
   delete rest.placeholder;
   delete rest.showIcon;
+  delete rest.expectedValue;
 
-  const onlyISO = (s: string) => (s || "").slice(0, 10);
+  // ISO <-> display helpers
+  const onlyISO = (s: string | undefined | null) => {
+    if (!s) return "";
+    const str = String(s).trim();
+    if (!str) return "";
+    // Ensure we only return yyyy-mm-dd format or empty string
+    const match = str.match(/^\d{4}-\d{2}-\d{2}/);
+    return match ? match[0] : "";
+  };
 
   const toDisplay = (s: string | undefined | null) => {
     if (!s) return "";
     const iso = onlyISO(s);
+    if (!iso) return "";
     const [y, m, d] = iso.split("-");
     if (!y || !m || !d) return "";
     return `${m}/${d}/${y}`;
@@ -267,6 +570,7 @@ function CalendarInput(props: any) {
   const toISO = (s: string) => {
     const trimmed = s.trim();
     if (!trimmed) return "";
+    // Try to parse mm/dd/yyyy
     const m = trimmed.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})$/);
     if (m) {
       const mm = m[1].padStart(2, "0");
@@ -275,6 +579,7 @@ function CalendarInput(props: any) {
       if (yyyy.length === 2) yyyy = `20${yyyy}`;
       return `${yyyy}-${mm}-${dd}`;
     }
+    // Fallback, assume already ISO-like
     return onlyISO(trimmed);
   };
 
@@ -288,13 +593,39 @@ function CalendarInput(props: any) {
     }
   }, [value]);
 
+  const shellRef = React.useRef<HTMLDivElement>(null);
   const inputRef = React.useRef<HTMLInputElement>(null);
+  const buttonRef = React.useRef<HTMLButtonElement>(null);
   const hiddenRef = React.useRef<HTMLInputElement>(null);
+
+  const [expanded, setExpanded] = React.useState(false);
+
+  React.useEffect(() => {
+    // Only try to wire things up when the icon is actually rendered
+    if (!showIcon) return;
+
+    const shell = shellRef.current;
+    const btn = buttonRef.current;
+    const hidden = hiddenRef.current;
+    if (!shell || !btn || !hidden) return;
+
+    const cleanup = attachDatePopupPositioning({
+      shell,
+      button: btn,
+      hiddenInput: hidden,
+      onPopupOpen: () => setExpanded(true),
+      onPopupClose: () => setExpanded(false),
+    });
+
+    return cleanup;
+  }, [showIcon]);
 
   const handleTextChange: React.ChangeEventHandler<HTMLInputElement> = (e) => {
     const raw = e.currentTarget.value;
     setTextValue(raw);
+
     if (!onChange) return;
+
     const iso = toISO(raw);
     onChange({ currentTarget: { value: iso } } as any);
   };
@@ -303,17 +634,25 @@ function CalendarInput(props: any) {
     const iso = onlyISO(e.currentTarget.value || "");
     const display = toDisplay(iso);
     setTextValue(display);
+
     if (!onChange) return;
     onChange({ currentTarget: { value: iso } } as any);
   };
 
-  const handleIconClick = () => {
-    if (readOnly) return;
-    hiddenRef.current?.showPicker?.();
+  // Pre-populate with expected value when focusing on empty field
+  const handleFocus: React.FocusEventHandler<HTMLInputElement> = (e) => {
+    if (!textValue && expectedValue && onChange) {
+      const iso = onlyISO(expectedValue);
+      if (iso) {
+        const display = toDisplay(iso);
+        setTextValue(display);
+        onChange({ currentTarget: { value: iso } } as any);
+      }
+    }
   };
 
   return (
-    <div className={className}>
+    <div ref={shellRef} className={className}>
       <div className="relative">
         <Input
           ref={inputRef}
@@ -321,24 +660,24 @@ function CalendarInput(props: any) {
           placeholder={placeholder}
           value={textValue}
           onChange={handleTextChange}
+          onFocus={handleFocus}
           readOnly={readOnly}
           {...rest}
         />
         {showIcon && (
           <button
             type="button"
+            ref={buttonRef}
             className="absolute inset-y-0 right-2 flex items-center text-muted-foreground"
             aria-label="Open date picker"
-            onClick={handleIconClick}
           >
             <span className="text-xs">📅</span>
           </button>
         )}
+        {/* Hidden native date input for mobile and popup control */}
         <input
           ref={hiddenRef}
           type="date"
-          value={value ? onlyISO(value) : ""}
-          onChange={handleHiddenChange}
           style={{
             position: "absolute",
             opacity: 0,
@@ -349,6 +688,10 @@ function CalendarInput(props: any) {
             padding: 0,
             border: "none",
           }}
+          value={onlyISO(value || "")}
+          onChange={handleHiddenChange}
+          aria-hidden="true"
+          tabIndex={-1}
         />
       </div>
     </div>
@@ -386,6 +729,209 @@ const PencilIcon = (props: React.SVGProps<SVGSVGElement>) => (
 
 function clamp(n: number, lo: number, hi: number) {
   return Math.max(lo, Math.min(hi, n));
+}
+
+/** Breeding Status Section - fetches active breeding plans for this animal */
+function BreedingStatusSection({ animalId, sex, dob, api }: {
+  animalId: number;
+  sex?: string | null;
+  dob?: string | null;
+  api: any;
+}) {
+  const [plans, setPlans] = React.useState<any[]>([]);
+  const [loading, setLoading] = React.useState(true);
+
+  React.useEffect(() => {
+    let dead = false;
+    (async () => {
+      try {
+        setLoading(true);
+        const isFemale = (sex || "").toLowerCase().startsWith("f");
+        const isMale = (sex || "").toLowerCase().startsWith("m");
+
+        // Fetch breeding plans for this animal
+        const params = new URLSearchParams();
+        if (isFemale) params.set("damId", String(animalId));
+        else if (isMale) params.set("sireId", String(animalId));
+        else {
+          setPlans([]);
+          setLoading(false);
+          return;
+        }
+
+        params.set("archived", "exclude"); // Don't show archived plans
+
+        const response = await fetch(`/api/v1/breeding/plans?${params.toString()}`, {
+          headers: {
+            "x-tenant-id": String((window as any).__BHQ_TENANT_ID__ || localStorage.getItem("BHQ_TENANT_ID") || ""),
+          },
+        });
+
+        if (!dead && response.ok) {
+          const data = await response.json();
+          const items = data.items || data || [];
+
+          // Filter to relevant active plans
+          const relevantPlans = items.filter((p: any) => {
+            // Skip completed plans
+            if (p.completedDateActual) return false;
+
+            // Include if in PLANNING phase
+            const status = (p.status || "").toUpperCase();
+            if (status === "PLANNING") return true;
+
+            // Include if breeding has occurred (has breed date actual)
+            if (p.breedDateActual) return true;
+
+            return false;
+          });
+
+          // Sort by status priority: PLANNING first, then others
+          relevantPlans.sort((a: any, b: any) => {
+            const aStatus = (a.status || "").toUpperCase();
+            const bStatus = (b.status || "").toUpperCase();
+            const aIsPlanning = aStatus === "PLANNING";
+            const bIsPlanning = bStatus === "PLANNING";
+
+            if (aIsPlanning && !bIsPlanning) return -1;
+            if (!aIsPlanning && bIsPlanning) return 1;
+
+            // Then sort by most recent
+            const aDate = a.breedDateActual || a.expectedBreedDate || a.createdAt;
+            const bDate = b.breedDateActual || b.expectedBreedDate || b.createdAt;
+            return bDate > aDate ? 1 : -1;
+          });
+
+          setPlans(relevantPlans);
+        }
+      } catch (err) {
+        console.error("Failed to fetch breeding plans:", err);
+      } finally {
+        if (!dead) setLoading(false);
+      }
+    })();
+    return () => { dead = true; };
+  }, [animalId, sex, api]);
+
+  const months = ageInMonths(dob);
+  const isFemale = (sex || "").toLowerCase().startsWith("f");
+  const isMale = (sex || "").toLowerCase().startsWith("m");
+  const minAge = isFemale ? 18 : isMale ? 12 : 18;
+  const ageOk = months != null && months >= minAge;
+
+  // Separate planning and active breeding plans
+  const planningPlans = plans.filter(p => (p.status || "").toUpperCase() === "PLANNING");
+  const breedingPlans = plans.filter(p => !!p.breedDateActual);
+
+  return (
+    <SectionCard title={<SectionTitle icon="📊">Breeding Status</SectionTitle>}>
+      <div className="space-y-3">
+        {/* Loading state */}
+        {loading && <div className="text-sm text-secondary">Loading breeding plans...</div>}
+
+        {/* Active Breeding - has breed date actual */}
+        {!loading && breedingPlans.map(plan => (
+          <div key={plan.id} className="rounded-lg bg-purple-500/10 border border-purple-500/30 p-3">
+            <div className="flex items-start justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-purple-400 animate-pulse"></span>
+                <span className="text-sm font-semibold text-purple-400">Currently Breeding</span>
+              </div>
+            </div>
+            <div className="text-sm text-secondary/90 space-y-1">
+              <div className="flex justify-between">
+                <span>Plan:</span>
+                <span className="font-medium">{plan.name || "Unnamed Plan"}</span>
+              </div>
+              {plan.breedDateActual && (
+                <div className="flex justify-between">
+                  <span>Bred on:</span>
+                  <span className="font-medium">{fmt(plan.breedDateActual)}</span>
+                </div>
+              )}
+              {plan.expectedBirthDate && (
+                <div className="flex justify-between">
+                  <span>Expected birth:</span>
+                  <span className="font-medium">{fmt(plan.expectedBirthDate)}</span>
+                </div>
+              )}
+            </div>
+            <div className="mt-2 pt-2 border-t border-purple-500/20 text-xs text-secondary/70">
+              View full details in the <span className="font-medium">Breeding Plans</span> module
+            </div>
+          </div>
+        ))}
+
+        {/* Planning phase - upcoming breeding */}
+        {!loading && planningPlans.map(plan => (
+          <div key={plan.id} className="rounded-lg bg-blue-500/10 border border-blue-500/30 p-3">
+            <div className="flex items-start justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-blue-400"></span>
+                <span className="text-sm font-semibold text-blue-400">Breeding Planned</span>
+              </div>
+            </div>
+            <div className="text-sm text-secondary/90 space-y-1">
+              <div className="flex justify-between">
+                <span>Plan:</span>
+                <span className="font-medium">{plan.name || "Unnamed Plan"}</span>
+              </div>
+              {plan.expectedCycleStart && (
+                <div className="flex justify-between">
+                  <span>Expected cycle:</span>
+                  <span className="font-medium">{fmt(plan.expectedCycleStart)}</span>
+                </div>
+              )}
+              {plan.expectedBreedDate && (
+                <div className="flex justify-between">
+                  <span>Expected breed date:</span>
+                  <span className="font-medium">{fmt(plan.expectedBreedDate)}</span>
+                </div>
+              )}
+            </div>
+            <div className="mt-2 pt-2 border-t border-blue-500/20 text-xs text-secondary/70">
+              Plan in progress. View details in the <span className="font-medium">Breeding Plans</span> module
+            </div>
+          </div>
+        ))}
+
+        {/* Current Age */}
+        <div className="flex items-center justify-between">
+          <div className="text-sm text-secondary">Current Age</div>
+          <div className="text-lg font-semibold">
+            {months != null ? `${months} months` : "—"}
+          </div>
+        </div>
+
+        {/* Age Eligibility */}
+        <div className="flex items-center justify-between pb-3 border-b border-hairline">
+          <div className="text-sm text-secondary">Breeding Age ({minAge}+ months)</div>
+          <div className="flex items-center gap-2">
+            {ageOk ? (
+              <>
+                <span className="w-2.5 h-2.5 rounded-full bg-green-400"></span>
+                <span className="text-sm font-medium text-green-400">Eligible</span>
+              </>
+            ) : (
+              <>
+                <span className="w-2.5 h-2.5 rounded-full bg-orange-400"></span>
+                <span className="text-sm font-medium text-orange-400">
+                  {months != null ? `${minAge - months} months to go` : "Not Eligible"}
+                </span>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Additional Info - only show if no active plans */}
+        {!loading && breedingPlans.length === 0 && planningPlans.length === 0 && (
+          <div className="text-xs text-secondary/70">
+            For program holds and other constraints, see the <span className="font-medium">Program</span> tab
+          </div>
+        )}
+      </div>
+    </SectionCard>
+  );
 }
 
 function loadImage(src: string): Promise<HTMLImageElement> {
@@ -961,7 +1507,7 @@ function OwnershipDetailsEditor({
     owners.length > 1;
 
   return (
-    <SectionCard title="Ownership" highlight={mode === "edit"}>
+    <SectionCard title={<SectionTitle icon="👥">Ownership</SectionTitle>} highlight={mode === "edit"}>
       {/* Search row, custom so text is never under the icon */}
       <div className="mb-3">
         <div className="relative max-w-md">
@@ -2973,6 +3519,865 @@ function MarketplaceListingTab({
 }
 
 /** ────────────────────────────────────────────────────────────────────────
+ * Label-Value component for display
+ * ─────────────────────────────────────────────────────────────────────── */
+function LV({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="min-w-0">
+      <div className="text-[11px] leading-4 text-secondary mb-0.5">
+        {label}
+      </div>
+      <div className="text-sm leading-5 text-primary break-words">
+        {children || "—"}
+      </div>
+    </div>
+  );
+}
+
+/** ────────────────────────────────────────────────────────────────────────
+ * Genetics Tab — genetic data storage for breeding analysis
+ * ─────────────────────────────────────────────────────────────────────── */
+type GeneticLocus = {
+  locus: string;
+  locusName: string;
+  allele1?: string;
+  allele2?: string;
+  genotype?: string;
+  phenotype?: string;
+  testDate?: string;
+  testLab?: string;
+  notes?: string;
+};
+
+type GeneticData = {
+  coatColor?: GeneticLocus[];
+  health?: GeneticLocus[];
+  coatType?: GeneticLocus[];
+  physicalTraits?: GeneticLocus[];
+  eyeColor?: GeneticLocus[];
+  otherTraits?: GeneticLocus[];
+  testResults?: {
+    testName?: string;
+    testDate?: string;
+    testLab?: string;
+    testId?: string;
+  };
+};
+
+function GeneticsTab({
+  animal,
+  api,
+  mode,
+}: {
+  animal: AnimalRow;
+  api: any;
+  mode: "view" | "edit";
+}) {
+  const [geneticData, setGeneticData] = React.useState<GeneticData>({});
+  const [loading, setLoading] = React.useState(true);
+  const [saving, setSaving] = React.useState(false);
+  const [editData, setEditData] = React.useState<GeneticData>({});
+
+  // Species-specific locus definitions - comprehensive genetic markers
+  const getSpeciesLoci = React.useCallback((species: string) => {
+    const sp = (species || "DOG").toUpperCase();
+
+    if (sp === "DOG") {
+      return {
+        coatColor: [
+          { locus: "A", locusName: "Agouti", description: "Controls distribution of black/brown pigment (ay=sable, aw=wild, at=tan points, a=recessive black)" },
+          { locus: "B", locusName: "Brown", description: "Black vs brown/chocolate pigment (B=black, b=brown)" },
+          { locus: "D", locusName: "Dilute", description: "Dilutes black to blue, brown to isabella (D=full color, d=dilute)" },
+          { locus: "E", locusName: "Extension", description: "Allows/prevents black pigment expression (E=normal, e=recessive red/cream)" },
+          { locus: "K", locusName: "Black Extension", description: "Dominant black override (KB=dominant black, kbr=brindle, ky=allows agouti)" },
+          { locus: "M", locusName: "Merle", description: "Creates merle pattern - WARNING: M/M can cause health issues (M=merle, m=non-merle)" },
+          { locus: "S", locusName: "White Spotting", description: "White markings and patterns (S=solid, sp=piebald, sw=extreme white)" },
+          { locus: "H", locusName: "Harlequin", description: "Modifies merle to create harlequin pattern in Great Danes (H=harlequin, h=non-harlequin)" },
+          { locus: "Em", locusName: "Mask", description: "Black mask on face (Em=mask, E=no mask)" },
+        ],
+        coatType: [
+          { locus: "L", locusName: "Long Hair", description: "Hair length gene (L/L=short coat, L/l=short carries long, l/l=long coat)" },
+          { locus: "F", locusName: "Furnishings", description: "Beard/eyebrows - gives doodles their teddy bear face (F/F or F/f=furnished, f/f=unfurnished/smooth face)" },
+          { locus: "Cu", locusName: "Curly", description: "Coat curl/wave (Cu/Cu=curly, Cu/+=wavy/curly, +/+=straight)" },
+          { locus: "Sd", locusName: "Shedding", description: "Shedding propensity (Sd/Sd=low shed, Sd/sd=moderate, sd/sd=normal shedding)" },
+          { locus: "IC", locusName: "Improper Coat", description: "Coat quality marker (IC/IC=improper coat, IC/N=carrier, N/N=proper coat)" },
+          { locus: "L4", locusName: "Fluffy Gene (L4)", description: "Long hair in French Bulldogs and other breeds (L4/L4=fluffy, L4/N=carrier, N/N=normal)" },
+        ],
+        physicalTraits: [
+          { locus: "IGF1", locusName: "Size", description: "Insulin-like growth factor - related to body size in dogs" },
+          { locus: "BT", locusName: "Bobtail", description: "Natural bobtail gene (T/T=normal tail, T/bt=natural bob, bt/bt=no tail - lethal in some breeds)" },
+          { locus: "Dw", locusName: "Dewclaws", description: "Rear dewclaws present/absent" },
+        ],
+        eyeColor: [
+          { locus: "Blue", locusName: "Blue Eyes", description: "Blue eye color gene (N/N=no blue, N/B=may have blue, B/B=blue eyes)" },
+          { locus: "ALX4", locusName: "Blue Eyes (ALX4)", description: "Blue eye variant common in Huskies and Australian Shepherds" },
+        ],
+        health: [
+          { locus: "MDR1", locusName: "MDR1 Drug Sensitivity", description: "Multi-drug resistance mutation - affected dogs sensitive to ivermectin and other drugs" },
+          { locus: "DM", locusName: "Degenerative Myelopathy", description: "Progressive spinal cord disease causing hind leg weakness" },
+          { locus: "PRA", locusName: "Progressive Retinal Atrophy", description: "Progressive blindness - multiple forms exist" },
+          { locus: "vWD", locusName: "Von Willebrand Disease", description: "Blood clotting disorder - types I, II, and III" },
+          { locus: "EIC", locusName: "Exercise-Induced Collapse", description: "Episodes of weakness/collapse after intense exercise" },
+          { locus: "DCM", locusName: "Dilated Cardiomyopathy", description: "Heart muscle disease - genetic variants identified in some breeds" },
+          { locus: "HUU", locusName: "Hyperuricosuria", description: "Elevated uric acid levels leading to bladder/kidney stones" },
+          { locus: "CEA", locusName: "Collie Eye Anomaly", description: "Eye developmental defect in Collies and related breeds" },
+          { locus: "NCL", locusName: "Neuronal Ceroid Lipofuscinosis", description: "Fatal neurological storage disease - multiple forms" },
+          { locus: "GR_PRA1", locusName: "Golden Retriever PRA 1", description: "Progressive retinal atrophy variant in Golden Retrievers" },
+          { locus: "GR_PRA2", locusName: "Golden Retriever PRA 2", description: "Second PRA variant identified in Golden Retrievers" },
+          { locus: "CMR", locusName: "Canine Multifocal Retinopathy", description: "Eye condition causing retinal folds and detachment" },
+          { locus: "Ich", locusName: "Ichthyosis", description: "Skin scaling disorder - common in Golden Retrievers" },
+          { locus: "ICT_A", locusName: "Ichthyosis Type A (Golden Retriever)", description: "Breed-specific skin scaling disorder in Golden Retrievers" },
+          { locus: "HNPK", locusName: "Hereditary Nasal Parakeratosis", description: "Dry, crusty nose condition - common in Labradors" },
+          { locus: "SD2", locusName: "Skeletal Dysplasia 2 (Dwarfism)", description: "Dwarfism causing shortened limbs in Labrador Retrievers" },
+          { locus: "CNM", locusName: "Centronuclear Myopathy", description: "Muscle weakness disorder in Labrador Retrievers" },
+          { locus: "RD_OSD", locusName: "Retinal Dysplasia/Oculoskeletal Dysplasia", description: "Eye and skeletal abnormalities - common in Labrador Retrievers" },
+          { locus: "JHC", locusName: "Juvenile Hereditary Cataracts", description: "Early-onset cataracts in various breeds" },
+          { locus: "CMR1", locusName: "Canine Multifocal Retinopathy 1", description: "Specific CMR variant causing retinal lesions" },
+          { locus: "Cystinuria", locusName: "Cystinuria (Urinary stones)", description: "Amino acid metabolism disorder causing urinary stones" },
+          { locus: "EFS", locusName: "Episodic Falling Syndrome (Cavaliers)", description: "Muscle hypertonicity episodes in Cavalier King Charles Spaniels" },
+          { locus: "CC_DEW", locusName: "Curly Coat/Dry Eye Syndrome", description: "Combined coat and eye condition in Cavaliers" },
+          { locus: "HSF4", locusName: "Hereditary Cataracts (HSF4)", description: "Cataracts linked to HSF4 gene - multiple breeds affected" },
+          { locus: "TNS", locusName: "Trapped Neutrophil Syndrome", description: "Immune system disorder in Border Collies" },
+          { locus: "CL_BC", locusName: "Neuronal Ceroid Lipofuscinosis (Border Collie)", description: "Fatal neurological storage disease in Border Collies" },
+          { locus: "IGS", locusName: "Imerslund-Grasbeck Syndrome", description: "Vitamin B12 malabsorption disorder" },
+          { locus: "FN", locusName: "Familial Nephropathy", description: "Progressive kidney disease in Cocker Spaniels and other breeds" },
+          { locus: "PFK", locusName: "Phosphofructokinase Deficiency", description: "Enzyme deficiency causing muscle problems and anemia" },
+          { locus: "GPRA", locusName: "Generalized Progressive Retinal Atrophy", description: "General form of progressive blindness across multiple breeds" },
+        ],
+      };
+    } else if (sp === "CAT") {
+      return {
+        coatColor: [
+          { locus: "A", locusName: "Agouti", description: "Tabby vs solid pattern (A=agouti/tabby, a=non-agouti/solid)" },
+          { locus: "B", locusName: "Brown", description: "Black vs chocolate vs cinnamon (B=black, b=chocolate, bl=cinnamon)" },
+          { locus: "C", locusName: "Colorpoint", description: "Full color to albino series (C=full, cs=siamese, cb=burmese, ca=blue-eyed albino, c=pink-eyed albino)" },
+          { locus: "D", locusName: "Dilute", description: "Full color vs dilute (D=full, d=dilute - black becomes blue, orange becomes cream)" },
+          { locus: "O", locusName: "Orange", description: "Sex-linked orange/red (O=orange, o=non-orange) - females can be tortoiseshell" },
+          { locus: "S", locusName: "White Spotting", description: "White markings (S=spotting, s=no spotting)" },
+          { locus: "W", locusName: "Dominant White", description: "Epistatic white - masks all other colors (W=white, w=colored) - can cause deafness" },
+        ],
+        coatType: [
+          { locus: "L", locusName: "Long Hair", description: "Hair length (L=short, l=long - longhair is recessive)" },
+          { locus: "Mc", locusName: "Tabby Pattern", description: "Mackerel vs classic tabby (Mc=mackerel stripes, mc=classic/blotched)" },
+          { locus: "R", locusName: "Rex/Curly", description: "Curly coat mutations (various rex genes in different breeds)" },
+          { locus: "Fd", locusName: "Fold Ears", description: "Scottish Fold ear mutation - WARNING: Fd/Fd causes severe cartilage problems" },
+        ],
+        physicalTraits: [
+          { locus: "Pd", locusName: "Polydactyl", description: "Extra toes (Pd=polydactyl, pd=normal)" },
+        ],
+        health: [
+          { locus: "PKD", locusName: "Polycystic Kidney Disease", description: "Kidney cysts - common in Persians and related breeds" },
+          { locus: "HCM", locusName: "Hypertrophic Cardiomyopathy", description: "Heart muscle thickening - genetic tests available for some breeds" },
+          { locus: "PRA", locusName: "Progressive Retinal Atrophy", description: "Progressive blindness - multiple forms in different breeds" },
+          { locus: "SMA", locusName: "Spinal Muscular Atrophy", description: "Spinal cord motor neuron degeneration in Maine Coons" },
+          { locus: "PK_Def", locusName: "Pyruvate Kinase Deficiency", description: "Red blood cell enzyme deficiency causing anemia" },
+          { locus: "PRA_pd", locusName: "PRA (Persian variant)", description: "Progressive retinal atrophy variant specific to Persians" },
+          { locus: "HCM_MC", locusName: "HCM (Maine Coon MYBPC3)", description: "Hypertrophic cardiomyopathy variant in Maine Coons" },
+          { locus: "HCM_RD", locusName: "HCM (Ragdoll MYBPC3)", description: "Hypertrophic cardiomyopathy variant in Ragdolls" },
+          { locus: "GM1", locusName: "Gangliosidosis Type 1", description: "Fatal lysosomal storage disease in cats" },
+          { locus: "PRA_rdAc", locusName: "PRA (Abyssinian/Somali)", description: "Progressive retinal atrophy in Abyssinian and Somali cats" },
+          { locus: "Amyloidosis", locusName: "Renal Amyloidosis", description: "Protein deposits in kidneys - common in Abyssinians and Siamese" },
+          { locus: "FCKS", locusName: "Flat-Chested Kitten Syndrome", description: "Chest deformity in kittens affecting breathing" },
+          { locus: "OCD", locusName: "Osteochondrodysplasia (Fold warning)", description: "Cartilage/bone abnormality - WARNING: Fd/Fd causes severe issues" },
+        ],
+        bloodType: [
+          { locus: "BloodType", locusName: "Blood Type (A, B, AB)", description: "Critical for breeding - Type B queens bred to Type A toms risk neonatal isoerythrolysis" },
+        ],
+      };
+    } else if (sp === "HORSE") {
+      return {
+        coatColor: [
+          { locus: "E", locusName: "Extension", description: "Red vs black base (E=black pigment, e=red/chestnut only)" },
+          { locus: "A", locusName: "Agouti", description: "Black distribution on bay horses (A=bay, a=black)" },
+          { locus: "Cr", locusName: "Cream", description: "Cream dilution (Cr/Cr=cremello/perlino, Cr/cr=palomino/buckskin, cr/cr=no dilution)" },
+          { locus: "D", locusName: "Dun", description: "Dun dilution with primitive markings (D=dun with dorsal stripe, d=non-dun)" },
+          { locus: "G", locusName: "Gray", description: "Progressive graying (G=gray, g=non-gray) - horses born colored, turn gray with age" },
+          { locus: "Ch", locusName: "Champagne", description: "Champagne dilution (Ch=champagne, ch=non-champagne)" },
+          { locus: "Z", locusName: "Silver", description: "Silver dapple - dilutes black pigment (Z=silver, z=non-silver)" },
+          { locus: "TO", locusName: "Tobiano", description: "Tobiano white pattern (TO=tobiano, to=non-tobiano)" },
+          { locus: "O", locusName: "Overo (OLWS)", description: "Frame overo pattern - WARNING: O/O is Lethal White Overo Syndrome" },
+          { locus: "SB", locusName: "Sabino", description: "Sabino white pattern (SB1 and other variants)" },
+          { locus: "LP", locusName: "Leopard Complex", description: "Appaloosa patterns (LP=leopard complex, lp=no pattern)" },
+          { locus: "Rn", locusName: "Roan", description: "Roan pattern - white hairs interspersed (Rn=roan, rn=non-roan)" },
+          { locus: "W", locusName: "Dominant White", description: "Dominant white spotting patterns - multiple W alleles exist" },
+          { locus: "nCh", locusName: "Chestnut Factor", description: "Hidden red gene - indicates carrier of chestnut/sorrel (nCh/nCh=chestnut carrier)" },
+        ],
+        health: [
+          { locus: "HYPP", locusName: "Hyperkalemic Periodic Paralysis", description: "Muscle disease in Quarter Horse lines - trace to Impressive" },
+          { locus: "GBED", locusName: "Glycogen Branching Enzyme Deficiency", description: "Fatal metabolic disorder in Quarter Horses" },
+          { locus: "HERDA", locusName: "Hereditary Equine Regional Dermal Asthenia", description: "Skin fragility in Quarter Horses" },
+          { locus: "OLWS", locusName: "Overo Lethal White Syndrome", description: "Lethal when homozygous (O/O) - foals born white, die within days" },
+          { locus: "MH", locusName: "Malignant Hyperthermia", description: "Dangerous anesthesia reaction in Quarter Horses" },
+          { locus: "PSSM", locusName: "Polysaccharide Storage Myopathy", description: "Muscle disorder - multiple types (PSSM1 and PSSM2)" },
+          { locus: "IMM", locusName: "Immune-Mediated Myositis", description: "Rapid muscle wasting triggered by infection or vaccination" },
+          { locus: "WFFS", locusName: "Warmblood Fragile Foal Syndrome", description: "Connective tissue disorder in Warmbloods" },
+          { locus: "LWO", locusName: "Lethal White Overo", description: "Same as OLWS - frame overo homozygous lethal" },
+          { locus: "CA", locusName: "Cerebellar Abiotrophy", description: "Progressive neurological disease in Arabians and related breeds" },
+          { locus: "SCID", locusName: "Severe Combined Immunodeficiency", description: "Fatal immune system failure in Arabian foals" },
+          { locus: "LFS", locusName: "Lavender Foal Syndrome", description: "Fatal neurological disorder - foals born with dilute/lavender coat" },
+          { locus: "OAAM", locusName: "Occipitoatlantoaxial Malformation", description: "Vertebral malformation in Arabians" },
+          { locus: "Hydro", locusName: "Hydrocephalus (Friesian)", description: "Abnormal fluid accumulation in brain - common in Friesians" },
+          { locus: "FrDwarf", locusName: "Dwarfism (Friesian)", description: "Dwarfism disorder specific to Friesian horses" },
+          { locus: "JEB", locusName: "Junctional Epidermolysis Bullosa", description: "Fatal skin blistering disease - foals born with fragile skin" },
+        ],
+      };
+    } else if (sp === "RABBIT") {
+      return {
+        coatColor: [
+          { locus: "A", locusName: "Agouti", description: "Agouti vs self/tan pattern (A=agouti, at=tan, a=self)" },
+          { locus: "B", locusName: "Brown", description: "Black vs chocolate (B=black, b=chocolate)" },
+          { locus: "C", locusName: "Color Series", description: "Full color to albino (C=full, cchd=chinchilla dark, cchl=sable/seal, ch=himalayan, c=albino REW)" },
+          { locus: "D", locusName: "Dilute", description: "Full color vs dilute (D=full, d=dilute - black becomes blue)" },
+          { locus: "E", locusName: "Extension", description: "Full extension vs steel vs non-extension (E=normal, Es=steel, e=non-extension/tort)" },
+          { locus: "En", locusName: "English Spotting", description: "Broken/spotted pattern (En=spotted, en=solid) - WARNING: En/En causes digestive issues" },
+          { locus: "V", locusName: "Vienna", description: "Blue-eyed white and Vienna marked (V=normal, v=vienna - v/v=BEW)" },
+          { locus: "Du", locusName: "Dutch", description: "Dutch pattern markings (Du=normal, du=dutch pattern when homozygous)" },
+          { locus: "W", locusName: "Wideband", description: "Width of agouti band (W/W=wideband, W/w=intermediate, w/w=normal band)" },
+        ],
+        coatType: [
+          { locus: "L", locusName: "Long Hair (Angora)", description: "Hair length (L=normal, l=long/angora wool)" },
+          { locus: "Sa", locusName: "Satin", description: "Satin sheen coat (Sa=normal, sa=satin)" },
+          { locus: "Rx", locusName: "Rex", description: "Rex coat texture (Rx=normal, rx=rex)" },
+          { locus: "Fuzzy", locusName: "Fuzzy/Wool Gene", description: "Creates wool-like fuzzy coat texture" },
+          { locus: "Mane", locusName: "Lionhead Mane Gene", description: "Creates mane of longer fur around head in Lionhead breed (M/M or M/m=mane)" },
+          { locus: "Boot", locusName: "Booted (white feet pattern)", description: "White feet markings pattern" },
+        ],
+        health: [
+          { locus: "Dw", locusName: "Dwarf Gene", description: "Peanut lethal - WARNING: Dw/Dw (double dwarf) is lethal, Dw/dw=dwarf, dw/dw=normal size" },
+          { locus: "Splay", locusName: "Splay Leg", description: "Genetic leg deformity - affected kits cannot walk properly" },
+        ],
+      };
+    } else if (sp === "GOAT") {
+      return {
+        coatColor: [
+          { locus: "A", locusName: "Agouti Pattern", description: "Agouti patterns (multiple alleles: wild, tan, swiss marked, badger face, etc.)" },
+          { locus: "B", locusName: "Brown", description: "Black vs brown/chocolate pigment (B=black, b=brown)" },
+          { locus: "E", locusName: "Extension", description: "Extension of dark pigment (E=normal, e=recessive red)" },
+          { locus: "S", locusName: "Spotting", description: "White spotting patterns" },
+          { locus: "Rn", locusName: "Roan", description: "Roan pattern - white hairs interspersed" },
+          { locus: "Co", locusName: "Concentrated", description: "Concentrated pigment pattern" },
+        ],
+        physicalTraits: [
+          { locus: "P", locusName: "Polled", description: "Hornless gene - WARNING: P/P may cause intersex in females, P/p=polled, p/p=horned" },
+          { locus: "Wd", locusName: "Wattles", description: "Wattles present (Wd=wattles present)" },
+        ],
+        health: [
+          { locus: "G6S", locusName: "G6S (Beta-Mannosidosis)", description: "Fatal metabolic storage disease in Nubians and related breeds" },
+          { locus: "Scrapie", locusName: "Scrapie Susceptibility", description: "Prion disease susceptibility genotype (QQ, QR, RR variants)" },
+          { locus: "CAE", locusName: "CAE", description: "Caprine Arthritis Encephalitis - viral but testing important for breeding" },
+          { locus: "CL", locusName: "CL (Caseous Lymphadenitis)", description: "Bacterial disease - testing important for breeding programs" },
+          { locus: "AS1_Casein", locusName: "Alpha-S1 Casein", description: "Milk protein gene affecting cheese yield and milk composition" },
+          { locus: "BetaCasein", locusName: "Beta-Casein Variants", description: "Milk protein variants affecting digestibility and cheese production" },
+          { locus: "Myotonia", locusName: "Myotonia (Fainting gene)", description: "Muscle stiffness causing 'fainting' episodes in Myotonic goats" },
+          { locus: "Chondro", locusName: "Chondrodysplasia (Dwarfism)", description: "Skeletal abnormality causing dwarfism in various goat breeds" },
+        ],
+      };
+    }
+
+    // Default for SHEEP and other species
+    return {
+      coatColor: [
+        { locus: "Custom", locusName: "Custom Locus", description: "Add custom genetic information" },
+      ],
+      coatType: [],
+      physicalTraits: [],
+      eyeColor: [],
+      health: [],
+      otherTraits: [],
+    };
+  }, []);
+
+  const loci = React.useMemo(() => getSpeciesLoci(animal.species || "DOG"), [animal.species, getSpeciesLoci]);
+
+  React.useEffect(() => {
+    const loadData = async () => {
+      try {
+        setLoading(true);
+        // Fetch genetic data from API
+        const res = await fetch(`/api/v1/animals/${animal.id}/genetics`, {
+          credentials: "include",
+        });
+        if (res.ok) {
+          const apiData = await res.json();
+          const data: GeneticData = {
+            coatColor: apiData.coatColor || [],
+            health: apiData.health || [],
+            coatType: apiData.coatType || [],
+            physicalTraits: apiData.physicalTraits || [],
+            eyeColor: apiData.eyeColor || [],
+            otherTraits: apiData.otherTraits || [],
+            testResults: {
+              testName: apiData.testProvider || undefined,
+              testDate: apiData.testDate || undefined,
+              testId: apiData.testId || undefined,
+            },
+          };
+          setGeneticData(data);
+          setEditData(data);
+        } else {
+          // Initialize empty if no data exists
+          const data: GeneticData = { coatColor: [], health: [], coatType: [], physicalTraits: [], eyeColor: [], otherTraits: [] };
+          setGeneticData(data);
+          setEditData(data);
+        }
+      } catch (err) {
+        console.error("Failed to load genetics:", err);
+        // Initialize empty on error
+        const data: GeneticData = { coatColor: [], health: [], coatType: [], physicalTraits: [], eyeColor: [], otherTraits: [] };
+        setGeneticData(data);
+        setEditData(data);
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadData();
+  }, [animal.id]);
+
+  const handleSave = async () => {
+    try {
+      setSaving(true);
+      // Save genetic data to API
+      const payload = {
+        testProvider: editData.testResults?.testName || null,
+        testDate: editData.testResults?.testDate || null,
+        testId: editData.testResults?.testId || null,
+        coatColor: editData.coatColor || [],
+        health: editData.health || [],
+        coatType: editData.coatType || [],
+        physicalTraits: editData.physicalTraits || [],
+        eyeColor: editData.eyeColor || [],
+        otherTraits: editData.otherTraits || [],
+      };
+      const res = await fetch(`/api/v1/animals/${animal.id}/genetics`, {
+        method: "PUT",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (res.ok) {
+        const saved = await res.json();
+        setGeneticData({
+          coatColor: saved.coatColor || [],
+          health: saved.health || [],
+          coatType: saved.coatType || [],
+          physicalTraits: saved.physicalTraits || [],
+          eyeColor: saved.eyeColor || [],
+          otherTraits: saved.otherTraits || [],
+          testResults: {
+            testName: saved.testProvider || undefined,
+            testDate: saved.testDate || undefined,
+            testId: saved.testId || undefined,
+          },
+        });
+        console.log("Genetics data saved successfully");
+      } else {
+        throw new Error("Failed to save genetics data");
+      }
+    } catch (err) {
+      console.error("Failed to save genetics:", err);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="p-4">
+        <div className="text-sm text-secondary">Loading genetic information...</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3 p-4">
+      {/* Helper Notice - at the very top */}
+      <div className="rounded-lg border border-blue-500/20 bg-blue-500/5 p-3">
+        <div className="flex items-start gap-2">
+          <span className="text-blue-600">💡</span>
+          <div className="text-sm">
+            <div className="font-medium text-blue-700 mb-1">Looking for health screening summaries?</div>
+            <div className="text-secondary">
+              For general health clearances and test completion status, use the <span className="font-semibold">Health tab → Genetic category</span>.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Genetic Test Results */}
+      <SectionCard title={<SectionTitle icon="🧬">Genetic Test Results</SectionTitle>}>
+        <div className="space-y-3">
+          <div className="text-sm text-secondary mb-3">
+            Store genetic test results from Embark, Wisdom Panel, or other laboratories. Record specific alleles and genotypes for use in the Breeding module's Genetics Lab.
+          </div>
+
+          {mode === "view" ? (
+            <div className="space-y-2">
+              <LV label="Test Provider">
+                {editData.testResults?.testLab || "—"}
+              </LV>
+              <LV label="Test Date">
+                {editData.testResults?.testDate || "—"}
+              </LV>
+              <LV label="Test ID">
+                {editData.testResults?.testId || "—"}
+              </LV>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <LV label="Test Provider">
+                <Input
+                  size="sm"
+                  placeholder="e.g., Embark, Wisdom Panel"
+                  defaultValue={editData.testResults?.testLab || ""}
+                  onChange={(e) =>
+                    setEditData({
+                      ...editData,
+                      testResults: { ...editData.testResults, testLab: e.target.value },
+                    })
+                  }
+                />
+              </LV>
+              <LV label="Test Date">
+                <Input
+                  type="date"
+                  size="sm"
+                  defaultValue={editData.testResults?.testDate || ""}
+                  onChange={(e) =>
+                    setEditData({
+                      ...editData,
+                      testResults: { ...editData.testResults, testDate: e.target.value },
+                    })
+                  }
+                />
+              </LV>
+              <LV label="Test ID">
+                <Input
+                  size="sm"
+                  placeholder="e.g., EMB-123456"
+                  defaultValue={editData.testResults?.testId || ""}
+                  onChange={(e) =>
+                    setEditData({
+                      ...editData,
+                      testResults: { ...editData.testResults, testId: e.target.value },
+                    })
+                  }
+                />
+              </LV>
+            </div>
+          )}
+        </div>
+      </SectionCard>
+
+      {/* Coat Color Genetics */}
+      <SectionCard title={<SectionTitle icon="🎨">Coat Color Genetics</SectionTitle>}>
+        <div className="space-y-3">
+          <div className="text-sm text-secondary mb-3">
+            Record genotype information for coat color loci. This data will be used in the Breeding module's Genetics Lab for pairing analysis.
+          </div>
+
+          <div className="grid grid-cols-1 gap-3">
+            {loci.coatColor.map((locusInfo) => (
+              <div key={locusInfo.locus} className="border border-hairline rounded-lg p-3 bg-surface">
+                <div className="font-semibold text-sm mb-1">{locusInfo.locus} - {locusInfo.locusName}</div>
+                <div className="text-xs text-secondary mb-2">{locusInfo.description}</div>
+
+                {mode === "view" ? (
+                  <div className="text-sm">
+                    Genotype: <span className="font-mono">{
+                      editData.coatColor?.find((l) => l.locus === locusInfo.locus)?.genotype || "Not tested"
+                    }</span>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-2">
+                    <Input
+                      size="sm"
+                      placeholder="Allele 1"
+                      defaultValue={editData.coatColor?.find((l) => l.locus === locusInfo.locus)?.allele1 || ""}
+                      onChange={(e) => {
+                        const existing = editData.coatColor || [];
+                        const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
+                        const locusData = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
+                        const updated = { ...locusData, allele1: e.target.value };
+                        updated.genotype = `${updated.allele1 || "?"}/${updated.allele2 || "?"}`;
+
+                        const newCoatColor = locusIdx >= 0
+                          ? existing.map((l, i) => (i === locusIdx ? updated : l))
+                          : [...existing, updated];
+
+                        setEditData({ ...editData, coatColor: newCoatColor });
+                      }}
+                    />
+                    <Input
+                      size="sm"
+                      placeholder="Allele 2"
+                      defaultValue={editData.coatColor?.find((l) => l.locus === locusInfo.locus)?.allele2 || ""}
+                      onChange={(e) => {
+                        const existing = editData.coatColor || [];
+                        const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
+                        const locusData = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
+                        const updated = { ...locusData, allele2: e.target.value };
+                        updated.genotype = `${updated.allele1 || "?"}/${updated.allele2 || "?"}`;
+
+                        const newCoatColor = locusIdx >= 0
+                          ? existing.map((l, i) => (i === locusIdx ? updated : l))
+                          : [...existing, updated];
+
+                        setEditData({ ...editData, coatColor: newCoatColor });
+                      }}
+                    />
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      </SectionCard>
+
+      {/* Coat Type Genetics */}
+      {loci.coatType && loci.coatType.length > 0 && (
+        <SectionCard title={<SectionTitle icon="✂️">Coat Type Genetics</SectionTitle>}>
+          <div className="space-y-3">
+            <div className="text-sm text-secondary mb-3">
+              Record coat type traits including length, curl, furnishings (teddy bear face), and shedding propensity.
+            </div>
+
+            <div className="grid grid-cols-1 gap-3">
+              {loci.coatType.map((locusInfo) => (
+                <div key={locusInfo.locus} className="border border-hairline rounded-lg p-3 bg-surface">
+                  <div className="font-semibold text-sm mb-1">{locusInfo.locus} - {locusInfo.locusName}</div>
+                  <div className="text-xs text-secondary mb-2">{locusInfo.description}</div>
+
+                  {mode === "view" ? (
+                    <div className="text-sm">
+                      Genotype: <span className="font-mono">{
+                        editData.coatType?.find((l) => l.locus === locusInfo.locus)?.genotype || "Not tested"
+                      }</span>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-2">
+                      <Input
+                        size="sm"
+                        placeholder="Allele 1"
+                        defaultValue={editData.coatType?.find((l) => l.locus === locusInfo.locus)?.allele1 || ""}
+                        onChange={(e) => {
+                          const existing = editData.coatType || [];
+                          const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
+                          const locusData = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
+                          const updated = { ...locusData, allele1: e.target.value };
+                          updated.genotype = `${updated.allele1 || "?"}/${updated.allele2 || "?"}`;
+
+                          const newCoatType = locusIdx >= 0
+                            ? existing.map((l, i) => (i === locusIdx ? updated : l))
+                            : [...existing, updated];
+
+                          setEditData({ ...editData, coatType: newCoatType });
+                        }}
+                      />
+                      <Input
+                        size="sm"
+                        placeholder="Allele 2"
+                        defaultValue={editData.coatType?.find((l) => l.locus === locusInfo.locus)?.allele2 || ""}
+                        onChange={(e) => {
+                          const existing = editData.coatType || [];
+                          const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
+                          const locusData = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
+                          const updated = { ...locusData, allele2: e.target.value };
+                          updated.genotype = `${updated.allele1 || "?"}/${updated.allele2 || "?"}`;
+
+                          const newCoatType = locusIdx >= 0
+                            ? existing.map((l, i) => (i === locusIdx ? updated : l))
+                            : [...existing, updated];
+
+                          setEditData({ ...editData, coatType: newCoatType });
+                        }}
+                      />
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        </SectionCard>
+      )}
+
+      {/* Physical Traits Genetics */}
+      {loci.physicalTraits && loci.physicalTraits.length > 0 && (
+        <SectionCard title={<SectionTitle icon="📏">Physical Traits Genetics</SectionTitle>}>
+          <div className="space-y-3">
+            <div className="text-sm text-secondary mb-3">
+              Record genetic markers related to physical characteristics like size, tail type, and dewclaws.
+            </div>
+
+            <div className="grid grid-cols-1 gap-3">
+              {loci.physicalTraits.map((locusInfo) => (
+                <div key={locusInfo.locus} className="border border-hairline rounded-lg p-3 bg-surface">
+                  <div className="font-semibold text-sm mb-1">{locusInfo.locus} - {locusInfo.locusName}</div>
+                  <div className="text-xs text-secondary mb-2">{locusInfo.description}</div>
+
+                  {mode === "view" ? (
+                    <div className="text-sm">
+                      Genotype: <span className="font-mono">{
+                        editData.physicalTraits?.find((l) => l.locus === locusInfo.locus)?.genotype || "Not tested"
+                      }</span>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-2">
+                      <Input
+                        size="sm"
+                        placeholder="Allele 1"
+                        defaultValue={editData.physicalTraits?.find((l) => l.locus === locusInfo.locus)?.allele1 || ""}
+                        onChange={(e) => {
+                          const existing = editData.physicalTraits || [];
+                          const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
+                          const locusData = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
+                          const updated = { ...locusData, allele1: e.target.value };
+                          updated.genotype = `${updated.allele1 || "?"}/${updated.allele2 || "?"}`;
+
+                          const newPhysicalTraits = locusIdx >= 0
+                            ? existing.map((l, i) => (i === locusIdx ? updated : l))
+                            : [...existing, updated];
+
+                          setEditData({ ...editData, physicalTraits: newPhysicalTraits });
+                        }}
+                      />
+                      <Input
+                        size="sm"
+                        placeholder="Allele 2"
+                        defaultValue={editData.physicalTraits?.find((l) => l.locus === locusInfo.locus)?.allele2 || ""}
+                        onChange={(e) => {
+                          const existing = editData.physicalTraits || [];
+                          const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
+                          const locusData = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
+                          const updated = { ...locusData, allele2: e.target.value };
+                          updated.genotype = `${updated.allele1 || "?"}/${updated.allele2 || "?"}`;
+
+                          const newPhysicalTraits = locusIdx >= 0
+                            ? existing.map((l, i) => (i === locusIdx ? updated : l))
+                            : [...existing, updated];
+
+                          setEditData({ ...editData, physicalTraits: newPhysicalTraits });
+                        }}
+                      />
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        </SectionCard>
+      )}
+
+      {/* Eye Color Genetics */}
+      {loci.eyeColor && loci.eyeColor.length > 0 && (
+        <SectionCard title={<SectionTitle icon="👁️">Eye Color Genetics</SectionTitle>}>
+          <div className="space-y-3">
+            <div className="text-sm text-secondary mb-3">
+              Record eye color genetic markers including blue eye variants.
+            </div>
+
+            <div className="grid grid-cols-1 gap-3">
+              {loci.eyeColor.map((locusInfo) => (
+                <div key={locusInfo.locus} className="border border-hairline rounded-lg p-3 bg-surface">
+                  <div className="font-semibold text-sm mb-1">{locusInfo.locus} - {locusInfo.locusName}</div>
+                  <div className="text-xs text-secondary mb-2">{locusInfo.description}</div>
+
+                  {mode === "view" ? (
+                    <div className="text-sm">
+                      Genotype: <span className="font-mono">{
+                        editData.eyeColor?.find((l) => l.locus === locusInfo.locus)?.genotype || "Not tested"
+                      }</span>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-2">
+                      <Input
+                        size="sm"
+                        placeholder="Allele 1"
+                        defaultValue={editData.eyeColor?.find((l) => l.locus === locusInfo.locus)?.allele1 || ""}
+                        onChange={(e) => {
+                          const existing = editData.eyeColor || [];
+                          const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
+                          const locusData = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
+                          const updated = { ...locusData, allele1: e.target.value };
+                          updated.genotype = `${updated.allele1 || "?"}/${updated.allele2 || "?"}`;
+
+                          const newEyeColor = locusIdx >= 0
+                            ? existing.map((l, i) => (i === locusIdx ? updated : l))
+                            : [...existing, updated];
+
+                          setEditData({ ...editData, eyeColor: newEyeColor });
+                        }}
+                      />
+                      <Input
+                        size="sm"
+                        placeholder="Allele 2"
+                        defaultValue={editData.eyeColor?.find((l) => l.locus === locusInfo.locus)?.allele2 || ""}
+                        onChange={(e) => {
+                          const existing = editData.eyeColor || [];
+                          const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
+                          const locusData = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
+                          const updated = { ...locusData, allele2: e.target.value };
+                          updated.genotype = `${updated.allele1 || "?"}/${updated.allele2 || "?"}`;
+
+                          const newEyeColor = locusIdx >= 0
+                            ? existing.map((l, i) => (i === locusIdx ? updated : l))
+                            : [...existing, updated];
+
+                          setEditData({ ...editData, eyeColor: newEyeColor });
+                        }}
+                      />
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        </SectionCard>
+      )}
+
+      {/* Health Genetics */}
+      {loci.health && loci.health.length > 0 && (
+        <SectionCard title={<SectionTitle icon="🏥">Health Genetics</SectionTitle>}>
+          <div className="space-y-3">
+            <div className="text-sm text-secondary mb-3">
+              Record carrier status and health genetic markers.
+            </div>
+
+            <div className="grid grid-cols-1 gap-3">
+              {loci.health.map((locusInfo) => (
+                <div key={locusInfo.locus} className="border border-hairline rounded-lg p-3 bg-surface">
+                  <div className="font-semibold text-sm mb-1">{locusInfo.locus} - {locusInfo.locusName}</div>
+                  <div className="text-xs text-secondary mb-2">{locusInfo.description}</div>
+
+                  {mode === "view" ? (
+                    <div className="text-sm">
+                      Status: <span className="font-mono">{
+                        editData.health?.find((l) => l.locus === locusInfo.locus)?.genotype || "Not tested"
+                      }</span>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-2">
+                      <Input
+                        size="sm"
+                        placeholder="e.g., N, Clear, Carrier"
+                        defaultValue={editData.health?.find((l) => l.locus === locusInfo.locus)?.genotype || ""}
+                        onChange={(e) => {
+                          const existing = editData.health || [];
+                          const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
+                          const locusData = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
+                          const updated = { ...locusData, genotype: e.target.value };
+
+                          const newHealth = locusIdx >= 0
+                            ? existing.map((l, i) => (i === locusIdx ? updated : l))
+                            : [...existing, updated];
+
+                          setEditData({ ...editData, health: newHealth });
+                        }}
+                      />
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        </SectionCard>
+      )}
+
+      {/* Other Traits Genetics */}
+      {loci.otherTraits && loci.otherTraits.length > 0 && (
+        <SectionCard title={<SectionTitle icon="🔬">Other Genetic Traits</SectionTitle>}>
+          <div className="space-y-3">
+            <div className="text-sm text-secondary mb-3">
+              Record additional genetic markers and traits.
+            </div>
+
+            <div className="grid grid-cols-1 gap-3">
+              {loci.otherTraits.map((locusInfo) => (
+                <div key={locusInfo.locus} className="border border-hairline rounded-lg p-3 bg-surface">
+                  <div className="font-semibold text-sm mb-1">{locusInfo.locus} - {locusInfo.locusName}</div>
+                  <div className="text-xs text-secondary mb-2">{locusInfo.description}</div>
+
+                  {mode === "view" ? (
+                    <div className="text-sm">
+                      Genotype: <span className="font-mono">{
+                        editData.otherTraits?.find((l) => l.locus === locusInfo.locus)?.genotype || "Not tested"
+                      }</span>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-2">
+                      <Input
+                        size="sm"
+                        placeholder="Allele 1"
+                        defaultValue={editData.otherTraits?.find((l) => l.locus === locusInfo.locus)?.allele1 || ""}
+                        onChange={(e) => {
+                          const existing = editData.otherTraits || [];
+                          const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
+                          const locusData = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
+                          const updated = { ...locusData, allele1: e.target.value };
+                          updated.genotype = `${updated.allele1 || "?"}/${updated.allele2 || "?"}`;
+
+                          const newOtherTraits = locusIdx >= 0
+                            ? existing.map((l, i) => (i === locusIdx ? updated : l))
+                            : [...existing, updated];
+
+                          setEditData({ ...editData, otherTraits: newOtherTraits });
+                        }}
+                      />
+                      <Input
+                        size="sm"
+                        placeholder="Allele 2"
+                        defaultValue={editData.otherTraits?.find((l) => l.locus === locusInfo.locus)?.allele2 || ""}
+                        onChange={(e) => {
+                          const existing = editData.otherTraits || [];
+                          const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
+                          const locusData = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
+                          const updated = { ...locusData, allele2: e.target.value };
+                          updated.genotype = `${updated.allele1 || "?"}/${updated.allele2 || "?"}`;
+
+                          const newOtherTraits = locusIdx >= 0
+                            ? existing.map((l, i) => (i === locusIdx ? updated : l))
+                            : [...existing, updated];
+
+                          setEditData({ ...editData, otherTraits: newOtherTraits });
+                        }}
+                      />
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        </SectionCard>
+      )}
+
+      {mode === "edit" && (
+        <div className="flex justify-end gap-2 pt-2">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setEditData(geneticData)}
+          >
+            Cancel
+          </Button>
+          <Button
+            size="sm"
+            onClick={handleSave}
+            disabled={saving}
+          >
+            {saving ? "Saving..." : "Save Genetics"}
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** ────────────────────────────────────────────────────────────────────────
  * Health Tab — species-standardized trait fields with document linking
  * ─────────────────────────────────────────────────────────────────────── */
 type TraitDraft = {
@@ -3224,6 +4629,19 @@ function HealthTab({
 
   return (
     <div className="space-y-3">
+      {/* Helper Notice - at the very top */}
+      <div className="rounded-lg border border-blue-500/20 bg-blue-500/5 p-3">
+        <div className="flex items-start gap-2">
+          <span className="text-blue-600">💡</span>
+          <div className="text-sm">
+            <div className="font-medium text-blue-700 mb-1">Health Screening & Medical Records</div>
+            <div className="text-secondary">
+              Record health clearances, test results, and medical conditions here. For detailed genetic breeding data (specific alleles like ay/at, B/B), use the <span className="font-semibold">Genetics tab</span>.
+            </div>
+          </div>
+        </div>
+      </div>
+
       {categories.map((cat: any) => {
         const items = cat.items || [];
         // Render all categories from definitions, even when empty (shows "0 of 0 provided")
@@ -3277,6 +4695,21 @@ function HealthTab({
           >
             {!isCollapsed && (
               <div className="space-y-2">
+                {/* Add helper for Genetic category */}
+                {cat.category === "Genetic" && (
+                  <div className="rounded-lg border border-blue-500/20 bg-blue-500/5 p-3 mb-3">
+                    <div className="flex items-start gap-2">
+                      <span className="text-blue-600">💡</span>
+                      <div className="text-sm">
+                        <div className="font-medium text-blue-700 mb-1">Need to record specific alleles for breeding?</div>
+                        <div className="text-secondary">
+                          This section is for general health screening summaries. For detailed genotype data (e.g., A Locus: ay/at), use the <span className="font-semibold">Genetics tab</span> above.
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {items.map((trait: any) => {
                   const draftKey = getTraitDraftKey(trait);
                   return (
@@ -5353,25 +6786,6 @@ export default function AppAnimals() {
     return null;
   }
 
-  function LV({
-    label,
-    children,
-  }: {
-    label: string;
-    children: React.ReactNode;
-  }) {
-    return (
-      <div className="min-w-0">
-        <div className="text-[11px] leading-4 text-secondary mb-0.5">
-          {label}
-        </div>
-        <div className="text-sm leading-5 text-primary break-words">
-          {children || "—"}
-        </div>
-      </div>
-    );
-  }
-
   function Chip({ children }: { children: React.ReactNode }) {
     return (
       <span className="inline-flex items-center rounded-full border border-hairline px-2 py-0.5 text-xs text-primary">
@@ -5656,10 +7070,12 @@ export default function AppAnimals() {
         // Marketplace tab always present - content gated by feature flag
         tabs.push({ key: "marketplace", label: "Marketplace" } as any);
         tabs.push({ key: "health", label: "Health" } as any);
+        tabs.push({ key: "genetics", label: "Genetics" } as any);
         tabs.push({ key: "registry", label: "Registry" } as any);
         tabs.push({ key: "documents", label: "Documents" } as any);
+        tabs.push({ key: "media", label: "Media" } as any);
+        tabs.push({ key: "lineage", label: "Lineage" } as any);
         tabs.push({ key: "finances", label: "Finances" } as any);
-        tabs.push({ key: "pairing", label: "Pairing" } as any);
         tabs.push({ key: "audit", label: "Audit" } as any);
         return tabs;
       },
@@ -5712,71 +7128,212 @@ export default function AppAnimals() {
             }
           >
           {activeTab === "overview" && (
-            <div className="space-y-3">
-              <SectionCard title="Identity" highlight={mode === "edit"}>
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
-                  <div className="lg:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <LV label="Name">
-                      {mode === "view" ? (
-                        row.name || "-"
-                      ) : (
-                        <Input
-                          size="sm"
-                          defaultValue={row.name}
-                          onChange={(e) =>
-                            setDraft({ name: e.currentTarget.value })
-                          }
-                        />
-                      )}
-                    </LV>
+            <div className="space-y-3 transition-opacity duration-200 ease-in-out">
+              <SectionCard title={<SectionTitle icon="🆔">Identity</SectionTitle>} highlight={mode === "edit"}>
+                <div className="flex gap-4 items-start">
+                  <div className="flex-1 space-y-3">
+                    {/* Row 1: Name, Nickname, Species */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-3">
+                      <LV label="Name">
+                        {mode === "view" ? (
+                          row.name || "-"
+                        ) : (
+                          <Input
+                            size="sm"
+                            defaultValue={row.name}
+                            onChange={(e) =>
+                              setDraft({ name: e.currentTarget.value })
+                            }
+                          />
+                        )}
+                      </LV>
 
-                    <LV label="Nickname">
-                      {mode === "view" ? (
-                        row.nickname || "-"
-                      ) : (
-                        <Input
-                          size="sm"
-                          defaultValue={row.nickname ?? ""}
-                          onChange={(e) =>
-                            setDraft({ nickname: e.currentTarget.value })
-                          }
-                        />
-                      )}
-                    </LV>
+                      <LV label="Nickname">
+                        {mode === "view" ? (
+                          row.nickname || "-"
+                        ) : (
+                          <Input
+                            size="sm"
+                            defaultValue={row.nickname ?? ""}
+                            onChange={(e) =>
+                              setDraft({ nickname: e.currentTarget.value })
+                            }
+                          />
+                        )}
+                      </LV>
 
-                    <LV label="Microchip #">
-                      {mode === "view" ? (
-                        row.microchip || "-"
-                      ) : (
-                        <Input
-                          size="sm"
-                          defaultValue={row.microchip ?? ""}
-                          onChange={(e) =>
-                            setDraft({ microchip: e.currentTarget.value })
-                          }
-                        />
-                      )}
-                    </LV>
+                      <LV label="Species">
+                        {mode === "view" ? (
+                          row.species || "—"
+                        ) : (
+                          <select
+                            className="h-8 w-full rounded-md bg-surface border border-hairline px-2 text-sm text-primary"
+                            defaultValue={row.species || "Dog"}
+                            onChange={(e) => {
+                              const next = e.target
+                                .value as "Dog" | "Cat" | "Horse" | "Goat" | "Sheep" | "Rabbit";
+                              setDraft({ species: next, breed: null });
+                            }}
+                          >
+                            <option>Dog</option>
+                            <option>Cat</option>
+                            <option>Horse</option>
+                            <option>Goat</option>
+                            <option>Sheep</option>
+                            <option>Rabbit</option>
+                          </select>
+                        )}
+                      </LV>
+                    </div>
 
-                    <LV label="DOB">
-                      {mode === "view" ? (
-                        fmt(row.dob) || "-"
-                      ) : (
-                        <Input
-                          size="sm"
-                          type="date"
-                          defaultValue={(row.dob || "").slice(0, 10)}
-                          onChange={(e) =>
-                            setDraft({ dob: e.currentTarget.value })
-                          }
-                        />
-                      )}
-                    </LV>
+                    {/* Row 2: Sex, Breed, DOB */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-3">
+                      <LV label="Sex">
+                        {mode === "view" ? (
+                          <SexIndicator sex={row.sex || ""} />
+                        ) : (
+                          <select
+                            className="h-8 w-full rounded-md bg-surface border border-hairline px-2 text-sm text-primary"
+                            defaultValue={row.sex || "Female"}
+                            onChange={(e) =>
+                              setDraft({ sex: e.target.value })
+                            }
+                          >
+                            <option>Female</option>
+                            <option>Male</option>
+                          </select>
+                        )}
+                      </LV>
+
+                      <LV label="Breed">
+                        {mode === "view" ? (
+                          row.breed || "—"
+                        ) : (
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <div className="flex-1 min-w-[160px]">
+                              <BreedCombo
+                                key={`breed-${row.species || "Dog"}`}
+                                orgId={orgIdForBreeds ?? undefined}
+                                species={(row.species as any) || "Dog"}
+                                value={
+                                  row.breed
+                                    ? ({
+                                      id: "__current__",
+                                      name: row.breed,
+                                      species: row.species,
+                                      source: "canonical",
+                                    } as any)
+                                    : null
+                                }
+                                onChange={(hit: any) =>
+                                  setDraft({ breed: hit?.name ?? null })
+                                }
+                                api={breedBrowseApi}
+                              />
+                            </div>
+                            <Button
+                              variant="secondary"
+                              size="sm"
+                              onClick={() => {
+                                const speciesEnum = String(
+                                  row.species || "Dog"
+                                ).toUpperCase() as "DOG" | "CAT" | "HORSE";
+                                setCustomBreedSpecies(speciesEnum);
+                                setOnCustomBreedCreated(
+                                  () => (created: any) => {
+                                    setDraft({ breed: created.name });
+                                    setCustomBreedOpen(false);
+                                  }
+                                );
+                                setCustomBreedOpen(true);
+                              }}
+                            >
+                              New custom
+                            </Button>
+                            <Button
+                              variant="secondary"
+                              size="sm"
+                              onClick={() => setDraft({ breed: null })}
+                            >
+                              Clear
+                            </Button>
+                          </div>
+                        )}
+                      </LV>
+
+                      <LV label="DOB">
+                        {mode === "view" ? (
+                          fmt(row.dob) || "-"
+                        ) : (
+                          <Input
+                            size="sm"
+                            type="date"
+                            defaultValue={(row.dob || "").slice(0, 10)}
+                            onChange={(e) =>
+                              setDraft({ dob: e.currentTarget.value })
+                            }
+                          />
+                        )}
+                      </LV>
+                    </div>
+
+                    {/* Row 3: Microchip, Status */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-3">
+                      <LV label="Microchip #">
+                        {mode === "view" ? (
+                          row.microchip || "-"
+                        ) : (
+                          <Input
+                            size="sm"
+                            defaultValue={row.microchip ?? ""}
+                            onChange={(e) =>
+                              setDraft({ microchip: e.currentTarget.value })
+                            }
+                          />
+                        )}
+                      </LV>
+
+                      <LV label="Status">
+                        {mode === "view" ? (
+                          <StatusBadge status={row.status || "Active"} />
+                        ) : (
+                          <select
+                            className="h-8 w-full rounded-md bg-surface border border-hairline px-2 text-sm text-primary"
+                            defaultValue={row.status || "Active"}
+                            onChange={(e) =>
+                              setDraft({ status: e.target.value })
+                            }
+                          >
+                            {[
+                              "Active",
+                              "Breeding",
+                              "Unavailable",
+                              "Retired",
+                              "Deceased",
+                              "Prospect",
+                            ].map((s) => (
+                              <option key={s}>{s}</option>
+                            ))}
+                          </select>
+                        )}
+                      </LV>
+                    </div>
                   </div>
 
-                  <div className="lg:col-span-1 flex justify-center lg:justify-end lg:items-start">
-                    <div className="relative w-48 h-48 md:w-56 md:h-56 lg:w-64 lg:h-64" style={{ zIndex: 100 }}>
-                      <div className="w-full h-full rounded-md bg-neutral-100 dark:bg-neutral-900 border border-hairline overflow-hidden flex items-center justify-center">
+                  <div className="flex-shrink-0 -mt-8">
+                    <div className="relative w-32 h-32" style={{ zIndex: 100 }}>
+                      <div className={`w-full h-full rounded-md bg-neutral-100 dark:bg-neutral-900 overflow-hidden flex items-center justify-center ${(() => {
+                        const status = row.status || "Active";
+                        const statusRings: Record<string, string> = {
+                          Active: "ring-2 ring-green-500/30 border-2 border-green-500/40",
+                          Breeding: "ring-2 ring-purple-500/40 ring-offset-2 ring-offset-purple-500/20 border-2 border-purple-500/50",
+                          Retired: "ring-2 ring-blue-500/30 border-2 border-blue-500/40",
+                          Deceased: "ring-2 ring-gray-500/30 border-2 border-gray-500/40 grayscale",
+                          Unavailable: "ring-2 ring-orange-500/30 border-2 border-orange-500/40",
+                          Prospect: "ring-2 ring-sky-500/30 border-2 border-sky-500/40",
+                        };
+                        return statusRings[status] || "border border-hairline";
+                      })()}`}>
                         {row.photoUrl ? (
                           <img
                             src={row.photoUrl}
@@ -5796,8 +7353,8 @@ export default function AppAnimals() {
                       <button
                         type="button"
                         aria-label={row.photoUrl ? "Edit photo" : "Upload photo"}
-                        style={{ zIndex: 9999, position: 'absolute', bottom: '12px', right: '12px' }}
-                        className="h-12 w-12 rounded-full bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white flex items-center justify-center shadow-xl border-2 border-neutral-200 dark:border-neutral-700 hover:bg-neutral-50 dark:hover:bg-neutral-700 hover:scale-110 focus:outline-none focus:ring-4 focus:ring-[hsl(var(--brand-orange))] transition-all duration-200 cursor-pointer"
+                        style={{ zIndex: 9999, position: 'absolute', bottom: '8px', right: '8px' }}
+                        className="h-8 w-8 rounded-full bg-white/90 dark:bg-neutral-800/90 backdrop-blur-sm text-neutral-900 dark:text-white flex items-center justify-center shadow-lg border border-neutral-200 dark:border-neutral-700 hover:bg-white dark:hover:bg-neutral-700 hover:scale-110 focus:outline-none focus:ring-2 focus:ring-[hsl(var(--brand-orange))] transition-all duration-200 cursor-pointer"
                         onClick={(e) => {
                           e.preventDefault();
                           e.stopPropagation();
@@ -5809,7 +7366,7 @@ export default function AppAnimals() {
                       >
                         <svg
                           viewBox="0 0 24 24"
-                          className="h-6 w-6 pointer-events-none"
+                          className="h-4 w-4 pointer-events-none"
                           fill="none"
                           stroke="currentColor"
                           strokeWidth={2.5}
@@ -5827,8 +7384,8 @@ export default function AppAnimals() {
                         <button
                           type="button"
                           aria-label="Remove photo"
-                          style={{ zIndex: 9999, position: 'absolute', top: '12px', right: '12px' }}
-                          className="h-10 w-10 rounded-full bg-red-600 text-white p-2 hover:bg-red-700 hover:scale-110 focus:outline-none focus:ring-4 focus:ring-red-500 transition-all duration-200 cursor-pointer shadow-lg"
+                          style={{ zIndex: 9999, position: 'absolute', top: '8px', right: '8px' }}
+                          className="h-7 w-7 rounded-full bg-red-600/90 backdrop-blur-sm text-white hover:bg-red-700 hover:scale-110 focus:outline-none focus:ring-2 focus:ring-red-500 transition-all duration-200 cursor-pointer shadow-lg flex items-center justify-center p-1.5"
                           onClick={(e) => {
                             e.preventDefault();
                             e.stopPropagation();
@@ -5863,175 +7420,10 @@ export default function AppAnimals() {
                 />
               </SectionCard>
 
-              <SectionCard title="Profile" highlight={mode === "edit"}>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                  <LV label="Species">
-                    {mode === "view" ? (
-                      row.species || "—"
-                    ) : (
-                      <select
-                        className="h-8 w-full rounded-md bg-surface border border-hairline px-2 text-sm text-primary"
-                        defaultValue={row.species || "Dog"}
-                        onChange={(e) => {
-                          const next = e.target
-                            .value as "Dog" | "Cat" | "Horse" | "Goat" | "Sheep" | "Rabbit";
-                          setDraft({ species: next, breed: null });
-                        }}
-                      >
-                        <option>Dog</option>
-                        <option>Cat</option>
-                        <option>Horse</option>
-                        <option>Goat</option>
-                        <option>Sheep</option>
-                        <option>Rabbit</option>
-                      </select>
-                    )}
-                  </LV>
-
-                  <LV label="Sex">
-                    {mode === "view" ? (
-                      row.sex || "—"
-                    ) : (
-                      <select
-                        className="h-8 w-full rounded-md bg-surface border border-hairline px-2 text-sm text-primary"
-                        defaultValue={row.sex || "Female"}
-                        onChange={(e) =>
-                          setDraft({ sex: e.target.value })
-                        }
-                      >
-                        <option>Female</option>
-                        <option>Male</option>
-                      </select>
-                    )}
-                  </LV>
-
-                  <LV label="Status">
-                    {mode === "view" ? (
-                      row.status || "Active"
-                    ) : (
-                      <select
-                        className="h-8 w-full rounded-md bg-surface border border-hairline px-2 text-sm text-primary"
-                        defaultValue={row.status || "Active"}
-                        onChange={(e) =>
-                          setDraft({ status: e.target.value })
-                        }
-                      >
-                        {[
-                          "Active",
-                          "Breeding",
-                          "Unavailable",
-                          "Retired",
-                          "Deceased",
-                          "Prospect",
-                        ].map((s) => (
-                          <option key={s}>{s}</option>
-                        ))}
-                      </select>
-                    )}
-                  </LV>
-                </div>
-
-                <div className="mt-3 grid grid-cols-1 gap-3">
-                  <LV label="Breed">
-                    {mode === "view" ? (
-                      row.breed || "—"
-                    ) : (
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <div className="flex-1 min-w-[320px]">
-                          <BreedCombo
-                            key={`breed-${row.species || "Dog"}`}
-                            orgId={orgIdForBreeds ?? undefined}
-                            species={(row.species as any) || "Dog"}
-                            value={
-                              row.breed
-                                ? ({
-                                  id: "__current__",
-                                  name: row.breed,
-                                  species: row.species,
-                                  source: "canonical",
-                                } as any)
-                                : null
-                            }
-                            onChange={(hit: any) =>
-                              setDraft({ breed: hit?.name ?? null })
-                            }
-                            api={breedBrowseApi}
-                          />
-                        </div>
-                        <Button
-                          variant="secondary"
-                          size="sm"
-                          onClick={() => {
-                            const speciesEnum = String(
-                              row.species || "Dog"
-                            ).toUpperCase() as "DOG" | "CAT" | "HORSE";
-                            setCustomBreedSpecies(speciesEnum);
-                            setOnCustomBreedCreated(
-                              () => (created: any) => {
-                                setDraft({ breed: created.name });
-                                setCustomBreedOpen(false);
-                              }
-                            );
-                            setCustomBreedOpen(true);
-                          }}
-                        >
-                          New custom
-                        </Button>
-                        <Button
-                          variant="secondary"
-                          size="sm"
-                          onClick={() => setDraft({ breed: null })}
-                        >
-                          Clear
-                        </Button>
-                      </div>
-                    )}
-                  </LV>
-                </div>
-              </SectionCard>
-
-              <SectionCard title="Readiness Summary">
-                <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 text-sm">
-                  <div>
-                    <div className="text-xs text-secondary">Age</div>
-                    <div>{(() => {
-                      const months = ageInMonths(row.dob);
-                      return months != null ? `${months} mo` : "—";
-                    })()}</div>
-                  </div>
-                  <div>
-                    <div className="text-xs text-secondary">Sex</div>
-                    <div>{row.sex || "—"}</div>
-                  </div>
-                  <div>
-                    <div className="text-xs text-secondary">Program Status</div>
-                    <div>{row.status || "Active"}</div>
-                  </div>
-                  <div>
-                    <div className="text-xs text-secondary">Eligibility Hint</div>
-                    <div>
-                      {(() => {
-                        const months = ageInMonths(row.dob);
-                        const sex = (row.sex || "").toLowerCase();
-                        const isFemale = sex.startsWith("f");
-                        const isMale = sex.startsWith("m");
-                        const ageOkFemale = months != null ? months >= 18 : false;
-                        const ageOkMale = months != null ? months >= 12 : false;
-
-                        if (isFemale) return ageOkFemale ? "Age meets common female threshold" : "Age may be low for female breeding";
-                        if (isMale) return ageOkMale ? "Age meets common male threshold" : "Age may be low for male breeding";
-                        return "—";
-                      })()}
-                    </div>
-                  </div>
-                </div>
-                <div className="mt-2 text-xs text-secondary">
-                  Readiness hints are informational and are not rules. Configure your own constraints in the Program tab.
-                </div>
-              </SectionCard>
+              <BreedingStatusSection animalId={row.id} sex={row.sex} dob={row.dob} api={api} />
 
               {mode === "view" ? (
-                <SectionCard title="Ownership">
+                <SectionCard title={<SectionTitle icon="👥">Ownership</SectionTitle>}>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <LV label="Primary Owner">
                       <OwnershipChips
@@ -6081,7 +7473,7 @@ export default function AppAnimals() {
                 />
               )}
 
-              <SectionCard title="Tags">
+              <SectionCard title={<SectionTitle icon="🏷️">Tags</SectionTitle>}>
                 <AnimalTagsSection
                   animalId={row.id}
                   api={api}
@@ -6089,7 +7481,7 @@ export default function AppAnimals() {
                 />
               </SectionCard>
 
-              <SectionCard title="Notes" highlight={mode === "edit"}>
+              <SectionCard title={<SectionTitle icon="📝">Notes</SectionTitle>} highlight={mode === "edit"}>
                 {mode === "view" ? (
                   <div className="text-sm">{row.notes || "—"}</div>
                 ) : (
@@ -6158,6 +7550,14 @@ export default function AppAnimals() {
             />
           )}
 
+          {activeTab === "genetics" && (
+            <GeneticsTab
+              animal={row}
+              api={api}
+              mode={mode}
+            />
+          )}
+
           {activeTab === "registry" && (
             <RegistryTab
               animal={row}
@@ -6174,6 +7574,28 @@ export default function AppAnimals() {
             />
           )}
 
+          {activeTab === "media" && (
+            <div className="space-y-3 p-4">
+              <SectionCard title={<SectionTitle icon="📸">Photos & Videos</SectionTitle>}>
+                <div className="text-sm text-secondary">
+                  Upload and manage photos and videos for {row.name}.
+                </div>
+                <div className="mt-4 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                  <div className="aspect-square rounded-lg border-2 border-dashed border-hairline hover:border-brand-orange/50 flex items-center justify-center cursor-pointer transition-colors">
+                    <div className="text-center text-secondary">
+                      <div className="text-2xl mb-1">+</div>
+                      <div className="text-xs">Add Media</div>
+                    </div>
+                  </div>
+                </div>
+              </SectionCard>
+            </div>
+          )}
+
+          {activeTab === "lineage" && (
+            <LineageTab animal={row} mode={mode} />
+          )}
+
           {activeTab === "finances" && (
             <FinanceTab
               invoiceFilters={{ animalId: row.id }}
@@ -6181,10 +7603,6 @@ export default function AppAnimals() {
               api={api}
               defaultAnchor={{ animalId: row.id, animalName: row.name }}
             />
-          )}
-
-          {activeTab === "pairing" && (
-            <PairingTab animal={row} api={api} />
           )}
 
           {activeTab === "audit" && (

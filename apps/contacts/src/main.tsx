@@ -6,8 +6,8 @@ import { createRoot } from "react-dom/client";
 import "./theme.css";
 import "./index.css";
 
-// 2) App
-import AppContacts from "./App-Contacts";
+// 2) App (use legacy standalone version for now - can switch to main later)
+import AppContacts from "./App-Contacts-Legacy";
 
 /** Ensure a single global overlays root that sits at the top of the viewport.
  *  All createPortal(...) calls should target this node.

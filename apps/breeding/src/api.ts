@@ -83,6 +83,19 @@ export type ListPlansParams = {
 };
 
 /** Availability prefs shape kept on Tenant.availabilityPrefs */
+/** COI calculation result */
+export type COIResult = {
+  coefficient: number;
+  generationsAnalyzed: number;
+  commonAncestors: Array<{
+    id: number;
+    name: string;
+    pathCount: number;
+    contribution: number;
+  }>;
+  riskLevel: "LOW" | "MODERATE" | "HIGH" | "CRITICAL";
+};
+
 export type AvailabilityPrefs = {
   testing_risky_from_full_start: number;
   testing_risky_to_full_end: number;
@@ -499,6 +512,14 @@ export function makeBreedingApi(opts: ApiOpts) {
 
     updateCycle(id: number, body: any) {
       return patch<any>(`/breeding/cycles/${id}`, normalizeCycleDates(body));
+    },
+
+    /* Lineage / COI check */
+    lineage: {
+      /** Calculate prospective COI for a hypothetical breeding */
+      getProspectiveCOI(damId: number, sireId: number, generations: number = 10) {
+        return get<COIResult>(`/lineage/coi?damId=${damId}&sireId=${sireId}&generations=${generations}`);
+      },
     },
 
     /* Offspring Groups linkage helpers (new) */

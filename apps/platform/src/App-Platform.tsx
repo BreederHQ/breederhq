@@ -13,7 +13,7 @@ import "@bhq/ui/styles/table.css";
 ; (window as any).__BHQ_OVERLAY_MODE = "global";
 
 // Modules
-import AppContactsParty from "@bhq/contacts/App-Contacts-Party";
+import AppContacts from "@bhq/contacts/App-Contacts";
 import AppAnimals from "@bhq/animals/App-Animals";
 import AppBreeding from "@bhq/breeding/App-Breeding";
 import AppOffspring from "@bhq/offspring/App-Offspring";
@@ -28,7 +28,9 @@ import DashboardPage from "./pages/Dashboard";
 import SettingsPanel from "./pages/SettingsPanel";
 import TermsPage from "./pages/TermsPage";
 import LoginPage from "./pages/LoginPage";
+import PricingPage from "./pages/PricingPage";
 import NotificationsDropdown, { type Notification } from "./components/NotificationsDropdown";
+import QuotaWarningBanner from "./components/QuotaWarningBanner";
 
 // Lightweight "current module" state (key + label)
 type ActiveModule = { key: "dashboard" | "contacts" | "animals" | "breeding" | "offspring" | "waitlist" | "marketing" | "marketplace" | "finance" | "admin"; label: string };
@@ -68,8 +70,8 @@ function RouteView() {
   const p = path.endsWith("/") ? path.slice(0, -1) : path;
 
   if (p === "" || p === "/") return <DashboardPage />;
-  if (p === "/contacts" || p.startsWith("/contacts")) return <AppContactsParty />;
-  if (p === "/organizations" || p.startsWith("/organizations")) return <AppContactsParty />;
+  if (p === "/contacts" || p.startsWith("/contacts")) return <AppContacts />;
+  if (p === "/organizations" || p.startsWith("/organizations")) return <AppContacts />;
   if (p === "/animals" || p.startsWith("/animals")) return <AppAnimals />;
   if (p === "/breeding" || p.startsWith("/breeding")) return <AppBreeding />;
   if (p === "/offspring" || p.startsWith("/offspring")) return <AppOffspring />;
@@ -78,6 +80,7 @@ function RouteView() {
   if (p === "/marketplace" || p.startsWith("/marketplace")) return <MarketplaceEmbedded />;
   if (p === "/finance" || p.startsWith("/finance")) return <AppFinance />;
   if (p === "/admin" || p.startsWith("/admin")) return <AdminModule />;
+  if (p === "/pricing" || p.startsWith("/pricing")) return <PricingPage />;
 
   return <DashboardPage />;
 }
@@ -393,6 +396,7 @@ export default function AppPlatform() {
               onLogout: doLogout,
             }}
           >
+            <QuotaWarningBanner />
             <RouteView />
           </NavShell>
 

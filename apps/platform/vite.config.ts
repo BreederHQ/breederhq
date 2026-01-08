@@ -5,6 +5,10 @@ import { fileURLToPath, URL } from "node:url";
 export default defineConfig({
   plugins: [react()],
 
+  optimizeDeps: {
+    exclude: ["@bhq/contacts", "@bhq/animals", "@bhq/breeding", "@bhq/offspring", "@bhq/marketing", "@bhq/finance", "@bhq/organizations", "@bhq/admin", "@bhq/waitlist", "@bhq/marketplace"],
+  },
+
   resolve: {
     alias: {
       "@bhq/ui": fileURLToPath(new URL("../../packages/ui/src", import.meta.url)),

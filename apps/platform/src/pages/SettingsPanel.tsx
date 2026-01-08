@@ -13,7 +13,8 @@ import type { BreedingProgramProfile } from "@bhq/ui/utils/breedingProgram";
 import BiologySettingsTab from "../components/BiologySettingsTab";
 import DateValidationSettingsTab from "../components/DateValidationSettingsTab";
 import { TagsManagerTab } from "../components/TagsManagerTab";
-import MarketplaceSettingsTab, { type MarketplaceHandle } from "../components/MarketplaceSettingsTab";
+import BillingTab from "../components/BillingTab";
+// Marketplace settings moved to marketplace module at /marketplace/manage
 import { api } from "../api";
 
 /** ───────── Tenant helpers ───────── */
@@ -456,6 +457,7 @@ const INPUT_CLS =
 type Tab =
   | "profile"
   | "security"
+  | "billing"
   | "subscription"
   | "payments"
   | "transactions"
@@ -467,8 +469,7 @@ type Tab =
   | "users"
   | "groups"
   | "tags"
-  | "accessibility"
-  | "marketplace";
+  | "accessibility";
 
 type Props = { open: boolean; dirty: boolean; onDirtyChange: (v: boolean) => void; onClose: () => void; };
 
@@ -479,6 +480,7 @@ const NAV: NavSection[] = [
     items: [
       { key: "profile", label: "Your Profile" },
       { key: "security", label: "Security" },
+      { key: "billing", label: "Billing & Subscription" },
       { key: "subscription", label: "Subscription" },
       { key: "payments", label: "Payment Methods" },
       { key: "transactions", label: "Transactions" },
@@ -488,7 +490,6 @@ const NAV: NavSection[] = [
     title: "Modules",
     items: [
       { key: "breeding", label: "Breeding" },
-      { key: "marketplace", label: "Marketplace" },
     ],
   },
   {
@@ -523,7 +524,7 @@ export default function SettingsPanel({ open, dirty, onDirtyChange, onClose }: P
   const [active, setActive] = React.useState<Tab>("profile");
   const [dirtyMap, setDirtyMap] = React.useState<Record<Tab, boolean>>({
     profile: false, security: false, subscription: false, payments: false, transactions: false,
-    breeding: false, programProfile: false, breeds: false, policies: false, credentials: false, users: false, groups: false, tags: false, accessibility: false, marketplace: false,
+    breeding: false, programProfile: false, breeds: false, policies: false, credentials: false, users: false, groups: false, tags: false, accessibility: false,
   });
   // Edit mode state at panel level
   const [editMode, setEditMode] = React.useState(false);
@@ -533,11 +534,10 @@ export default function SettingsPanel({ open, dirty, onDirtyChange, onClose }: P
   const policiesRef = React.useRef<PoliciesHandle>(null);
   const credentialsRef = React.useRef<CredentialsHandle>(null);
   const programRef = React.useRef<ProgramProfileHandle>(null);
-  const marketplaceRef = React.useRef<MarketplaceHandle>(null);
   const [profileTitle, setProfileTitle] = React.useState<string>("");
 
   // Tabs that support edit mode
-  const editableTabs: Tab[] = ["profile", "programProfile", "breeds", "policies", "credentials", "marketplace"];
+  const editableTabs: Tab[] = ["profile", "programProfile", "breeds", "policies", "credentials"];
   const isEditableTab = editableTabs.includes(active);
 
   React.useEffect(() => { onDirtyChange(!!dirtyMap[active]); }, [active, dirtyMap, onDirtyChange]);
@@ -616,8 +616,6 @@ export default function SettingsPanel({ open, dirty, onDirtyChange, onClose }: P
       await policiesRef.current?.save(); markDirty("policies", false);
     } else if (active === "credentials") {
       await credentialsRef.current?.save(); markDirty("credentials", false);
-    } else if (active === "marketplace") {
-      await marketplaceRef.current?.save(); markDirty("marketplace", false);
     } else {
       await saveActive(active, markDirty);
       markDirty(active, false);
@@ -724,6 +722,7 @@ export default function SettingsPanel({ open, dirty, onDirtyChange, onClose }: P
                   <ProfileTab ref={profileRef} dirty={dirtyMap.profile} onDirty={(v) => markDirty("profile", v)} onTitle={setProfileTitle} editMode={editMode} />
                 )}
                 {active === "security" && <SecurityTab dirty={dirtyMap.security} onDirty={(v) => markDirty("security", v)} />}
+                {active === "billing" && <BillingTab dirty={dirtyMap.billing} onDirty={(v) => markDirty("billing", v)} />}
                 {active === "subscription" && <SubscriptionTab dirty={dirtyMap.subscription} onDirty={(v) => markDirty("subscription", v)} />}
                 {active === "payments" && <PaymentsTab dirty={dirtyMap.payments} onDirty={(v) => markDirty("payments", v)} />}
                 {active === "transactions" && <TransactionsTab dirty={dirtyMap.transactions} onDirty={(v) => markDirty("transactions", v)} />}
@@ -736,7 +735,6 @@ export default function SettingsPanel({ open, dirty, onDirtyChange, onClose }: P
                 {active === "groups" && <GroupsTab dirty={dirtyMap.groups} onDirty={(v) => markDirty("groups", v)} />}
                 {active === "tags" && <TagsManagerTab dirty={dirtyMap.tags} onDirty={(v) => markDirty("tags", v)} />}
                 {active === "accessibility" && <AccessibilityTab />}
-                {active === "marketplace" && <MarketplaceSettingsTab ref={marketplaceRef} dirty={dirtyMap.marketplace} onDirty={(v) => markDirty("marketplace", v)} onNavigateToBreeds={() => setActive("breeds")} editMode={editMode} onExitEditMode={() => setEditMode(false)} />}
               </div>
             </main>
           </div>
@@ -2819,157 +2817,83 @@ const PoliciesTab = React.forwardRef<PoliciesHandle, { dirty: boolean; onDirty: 
               </label>
             </div>
 
-            <div className="rounded-md border border-hairline p-3">
-              <div className="text-sm font-medium mb-2">Placement</div>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                <FieldNum label="Earliest days from birth" value={profile.placement.earliestDaysFromBirth} onChange={(n) => setProfile(p => ({ ...p, placement: { ...p.placement, earliestDaysFromBirth: n } }))} />
-                <FieldNum label="Standard days from birth" value={profile.placement.standardDaysFromBirth} onChange={(n) => setProfile(p => ({ ...p, placement: { ...p.placement, standardDaysFromBirth: n } }))} />
-                <FieldNum label="Guarantee months" value={profile.placement.healthGuaranteeMonths} onChange={(n) => setProfile(p => ({ ...p, placement: { ...p.placement, healthGuaranteeMonths: n } }))} />
-                <FieldNum label="Deposit amount USD" value={profile.placement.depositAmountUSD ?? 0} onChange={(n) => setProfile(p => ({ ...p, placement: { ...p.placement, depositAmountUSD: n || null } }))} />
+            <div className="rounded-md border border-hairline p-4 space-y-3">
+              <div className="flex items-center justify-between mb-3">
+                <div className="text-base font-semibold text-primary">Placement Policies</div>
+                <VisibilityToggle
+                  isPublic={profile.placementPolicies.requireApplication || profile.placementPolicies.requireInterview || profile.placementPolicies.requireContract || profile.placementPolicies.hasReturnPolicy || profile.placementPolicies.offersSupport}
+                  onChange={(v) => {
+                    setProfile(p => ({
+                      ...p,
+                      placementPolicies: {
+                        ...p.placementPolicies,
+                        showRequireApplication: v && p.placementPolicies.requireApplication,
+                        showRequireInterview: v && p.placementPolicies.requireInterview,
+                        showRequireContract: v && p.placementPolicies.requireContract,
+                        showHasReturnPolicy: v && p.placementPolicies.hasReturnPolicy,
+                        showOffersSupport: v && p.placementPolicies.offersSupport,
+                        showNote: v && !!p.placementPolicies.note.trim()
+                      }
+                    }));
+                  }}
+                  disabled={!profile.placementPolicies.requireApplication && !profile.placementPolicies.requireInterview && !profile.placementPolicies.requireContract && !profile.placementPolicies.hasReturnPolicy && !profile.placementPolicies.offersSupport}
+                />
               </div>
-            </div>
-
-            <div className="rounded-md border border-hairline p-3 space-y-3">
-              <div>
-                <div className="text-sm font-medium mb-1">Marketplace Placement Policies</div>
-                <div className="text-xs text-secondary">Control which policies are displayed on your marketplace profile. Toggle visibility for each policy.</div>
-              </div>
-
-              <div className="space-y-3">
-                <div className="flex items-center justify-between py-2 border-b border-hairline">
-                  <label className="flex items-center gap-2 cursor-pointer flex-1">
-                    <input
-                      type="checkbox"
-                      checked={profile.placementPolicies.requireApplication}
-                      onChange={(e) => setProfile(p => ({ ...p, placementPolicies: { ...p.placementPolicies, requireApplication: e.target.checked } }))}
-                      className="w-4 h-4 rounded border-hairline bg-card accent-blue-500"
-                    />
-                    <span className="text-sm">Require application</span>
-                  </label>
-                  <label className="flex items-center gap-2">
-                    <span className="text-xs text-secondary">Show in marketplace</span>
-                    <input
-                      type="checkbox"
-                      checked={profile.placementPolicies.showRequireApplication}
-                      onChange={(e) => setProfile(p => ({ ...p, placementPolicies: { ...p.placementPolicies, showRequireApplication: e.target.checked } }))}
-                      disabled={!profile.placementPolicies.requireApplication}
-                      className="w-4 h-4 rounded border-hairline bg-card accent-[hsl(var(--brand-orange))]"
-                    />
-                  </label>
-                </div>
-
-                <div className="flex items-center justify-between py-2 border-b border-hairline">
-                  <label className="flex items-center gap-2 cursor-pointer flex-1">
-                    <input
-                      type="checkbox"
-                      checked={profile.placementPolicies.requireInterview}
-                      onChange={(e) => setProfile(p => ({ ...p, placementPolicies: { ...p.placementPolicies, requireInterview: e.target.checked } }))}
-                      className="w-4 h-4 rounded border-hairline bg-card accent-blue-500"
-                    />
-                    <span className="text-sm">Require interview/meeting</span>
-                  </label>
-                  <label className="flex items-center gap-2">
-                    <span className="text-xs text-secondary">Show in marketplace</span>
-                    <input
-                      type="checkbox"
-                      checked={profile.placementPolicies.showRequireInterview}
-                      onChange={(e) => setProfile(p => ({ ...p, placementPolicies: { ...p.placementPolicies, showRequireInterview: e.target.checked } }))}
-                      disabled={!profile.placementPolicies.requireInterview}
-                      className="w-4 h-4 rounded border-hairline bg-card accent-[hsl(var(--brand-orange))]"
-                    />
-                  </label>
-                </div>
-
-                <div className="flex items-center justify-between py-2 border-b border-hairline">
-                  <label className="flex items-center gap-2 cursor-pointer flex-1">
-                    <input
-                      type="checkbox"
-                      checked={profile.placementPolicies.requireContract}
-                      onChange={(e) => setProfile(p => ({ ...p, placementPolicies: { ...p.placementPolicies, requireContract: e.target.checked } }))}
-                      className="w-4 h-4 rounded border-hairline bg-card accent-blue-500"
-                    />
-                    <span className="text-sm">Require signed contract</span>
-                  </label>
-                  <label className="flex items-center gap-2">
-                    <span className="text-xs text-secondary">Show in marketplace</span>
-                    <input
-                      type="checkbox"
-                      checked={profile.placementPolicies.showRequireContract}
-                      onChange={(e) => setProfile(p => ({ ...p, placementPolicies: { ...p.placementPolicies, showRequireContract: e.target.checked } }))}
-                      disabled={!profile.placementPolicies.requireContract}
-                      className="w-4 h-4 rounded border-hairline bg-card accent-[hsl(var(--brand-orange))]"
-                    />
-                  </label>
-                </div>
-
-                <div className="flex items-center justify-between py-2 border-b border-hairline">
-                  <label className="flex items-center gap-2 cursor-pointer flex-1">
-                    <input
-                      type="checkbox"
-                      checked={profile.placementPolicies.hasReturnPolicy}
-                      onChange={(e) => setProfile(p => ({ ...p, placementPolicies: { ...p.placementPolicies, hasReturnPolicy: e.target.checked } }))}
-                      className="w-4 h-4 rounded border-hairline bg-card accent-blue-500"
-                    />
-                    <span className="text-sm">Lifetime return policy</span>
-                  </label>
-                  <label className="flex items-center gap-2">
-                    <span className="text-xs text-secondary">Show in marketplace</span>
-                    <input
-                      type="checkbox"
-                      checked={profile.placementPolicies.showHasReturnPolicy}
-                      onChange={(e) => setProfile(p => ({ ...p, placementPolicies: { ...p.placementPolicies, showHasReturnPolicy: e.target.checked } }))}
-                      disabled={!profile.placementPolicies.hasReturnPolicy}
-                      className="w-4 h-4 rounded border-hairline bg-card accent-[hsl(var(--brand-orange))]"
-                    />
-                  </label>
-                </div>
-
-                <div className="flex items-center justify-between py-2 border-b border-hairline">
-                  <label className="flex items-center gap-2 cursor-pointer flex-1">
-                    <input
-                      type="checkbox"
-                      checked={profile.placementPolicies.offersSupport}
-                      onChange={(e) => setProfile(p => ({ ...p, placementPolicies: { ...p.placementPolicies, offersSupport: e.target.checked } }))}
-                      className="w-4 h-4 rounded border-hairline bg-card accent-blue-500"
-                    />
-                    <span className="text-sm">Ongoing breeder support</span>
-                  </label>
-                  <label className="flex items-center gap-2">
-                    <span className="text-xs text-secondary">Show in marketplace</span>
-                    <input
-                      type="checkbox"
-                      checked={profile.placementPolicies.showOffersSupport}
-                      onChange={(e) => setProfile(p => ({ ...p, placementPolicies: { ...p.placementPolicies, showOffersSupport: e.target.checked } }))}
-                      disabled={!profile.placementPolicies.offersSupport}
-                      className="w-4 h-4 rounded border-hairline bg-card accent-[hsl(var(--brand-orange))]"
-                    />
-                  </label>
-                </div>
-
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <label className="text-sm font-medium">Additional Placement Notes</label>
-                    <label className="flex items-center gap-2">
-                      <span className="text-xs text-secondary">Show in marketplace</span>
-                      <input
-                        type="checkbox"
-                        checked={profile.placementPolicies.showNote}
-                        onChange={(e) => setProfile(p => ({ ...p, placementPolicies: { ...p.placementPolicies, showNote: e.target.checked } }))}
-                        disabled={!profile.placementPolicies.note.trim()}
-                        className="w-4 h-4 rounded border-hairline bg-card accent-[hsl(var(--brand-orange))]"
-                      />
-                    </label>
-                  </div>
-                  <textarea
-                    value={profile.placementPolicies.note}
-                    onChange={(e) => setProfile(p => ({ ...p, placementPolicies: { ...p.placementPolicies, note: e.target.value.slice(0, 300) } }))}
-                    placeholder="Describe any additional details about your placement process..."
-                    rows={3}
-                    className="w-full bg-card border border-hairline rounded-md px-3 py-2 text-sm placeholder:text-secondary outline-none focus:ring-2 focus:ring-[hsl(var(--brand-orange))] resize-none"
+              <div className="grid grid-cols-2 gap-2">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={profile.placementPolicies.requireApplication}
+                    onChange={(e) => setProfile(p => ({ ...p, placementPolicies: { ...p.placementPolicies, requireApplication: e.target.checked } }))}
+                    className="w-4 h-4 rounded border-hairline bg-card accent-blue-500"
                   />
-                  <div className="text-xs text-secondary text-right mt-1">{profile.placementPolicies.note.length}/300</div>
-                </div>
+                  <span className="text-sm">Require application</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={profile.placementPolicies.requireInterview}
+                    onChange={(e) => setProfile(p => ({ ...p, placementPolicies: { ...p.placementPolicies, requireInterview: e.target.checked } }))}
+                    className="w-4 h-4 rounded border-hairline bg-card accent-blue-500"
+                  />
+                  <span className="text-sm">Require interview/meeting</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={profile.placementPolicies.requireContract}
+                    onChange={(e) => setProfile(p => ({ ...p, placementPolicies: { ...p.placementPolicies, requireContract: e.target.checked } }))}
+                    className="w-4 h-4 rounded border-hairline bg-card accent-blue-500"
+                  />
+                  <span className="text-sm">Require signed contract</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={profile.placementPolicies.hasReturnPolicy}
+                    onChange={(e) => setProfile(p => ({ ...p, placementPolicies: { ...p.placementPolicies, hasReturnPolicy: e.target.checked } }))}
+                    className="w-4 h-4 rounded border-hairline bg-card accent-blue-500"
+                  />
+                  <span className="text-sm">Lifetime return policy</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={profile.placementPolicies.offersSupport}
+                    onChange={(e) => setProfile(p => ({ ...p, placementPolicies: { ...p.placementPolicies, offersSupport: e.target.checked } }))}
+                    className="w-4 h-4 rounded border-hairline bg-card accent-blue-500"
+                  />
+                  <span className="text-sm">Ongoing breeder support</span>
+                </label>
               </div>
+              <textarea
+                value={profile.placementPolicies.note}
+                onChange={(e) => setProfile(p => ({ ...p, placementPolicies: { ...p.placementPolicies, note: e.target.value.slice(0, 300) } }))}
+                placeholder="Optional notes..."
+                rows={2}
+                className="w-full mt-1 bg-card border border-hairline rounded-md px-3 py-2 text-sm placeholder:text-secondary outline-none focus:ring-2 focus:ring-[hsl(var(--brand-orange))] resize-none"
+              />
+              <div className="text-xs text-secondary text-right mt-1">{profile.placementPolicies.note.length}/300</div>
             </div>
           </>
         )}

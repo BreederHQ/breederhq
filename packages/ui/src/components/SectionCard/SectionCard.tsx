@@ -28,7 +28,7 @@ export function SectionCard({
 }: SectionCardProps) {
   const headerRight = right ?? rightSlot ?? actions;
 
-  const baseClasses = "bhq-section-card rounded-xl bg-surface p-3";
+  const baseClasses = "bhq-section-card rounded-xl bg-surface p-3 transition-all duration-200 ease-in-out";
   const borderClasses = highlightGreen
     ? "border-2 border-green-500/60 ring-2 ring-green-500/20"
     : highlight

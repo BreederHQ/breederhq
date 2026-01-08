@@ -82,6 +82,19 @@ type AnimalRow = {
   sharePct: number | null;
 };
 
+/* ───────────────── SectionTitle (with icon support) ───────────────── */
+
+function SectionTitle({ icon, children }: { icon?: string; children: React.ReactNode }) {
+  if (!icon) return <>{children}</>;
+
+  return (
+    <span className="inline-flex items-center gap-2">
+      <span className="text-lg" style={{ opacity: 0.7 }}>{icon}</span>
+      <span>{children}</span>
+    </span>
+  );
+}
+
 function tinyDebounce<T extends (...args: any[]) => any>(fn: T, ms = 300) {
   let t: any;
   return (...args: Parameters<T>) => {
@@ -788,7 +801,7 @@ export function PartyDetailsView({
           <div className="space-y-3">
             {/* Identity section - for Contacts only */}
             {row.kind === "CONTACT" && (
-              <SectionCard title="Identity">
+              <SectionCard title={<SectionTitle icon="🆔">Identity</SectionTitle>} highlight={mode === "edit"}>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <div>
                     <div className="text-xs text-secondary mb-1">First Name</div>
@@ -845,7 +858,7 @@ export function PartyDetailsView({
 
             {/* Organization section - for Organizations only */}
             {row.kind === "ORGANIZATION" && (
-              <SectionCard title="Organization">
+              <SectionCard title={<SectionTitle icon="🏢">Organization</SectionTitle>} highlight={mode === "edit"}>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="sm:col-span-2">
                     <div className="text-xs text-secondary mb-1">Name</div>
@@ -866,7 +879,7 @@ export function PartyDetailsView({
             )}
 
             {/* Tags */}
-            <SectionCard title="Tags">
+            <SectionCard title={<SectionTitle icon="🏷️">Tags</SectionTitle>}>
               <TagPicker
                 availableTags={availableTags}
                 selectedTags={selectedTags}
@@ -881,7 +894,7 @@ export function PartyDetailsView({
             </SectionCard>
 
             {/* Address */}
-            <SectionCard title="Address">
+            <SectionCard title={<SectionTitle icon="📍">Address</SectionTitle>} highlight={mode === "edit"}>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <div className="text-xs text-secondary mb-1">Street</div>
@@ -944,7 +957,7 @@ export function PartyDetailsView({
 
             {/* Communication Preferences - for Contacts only */}
             {row.kind === "CONTACT" && (
-              <SectionCard title="Communication Preferences">
+              <SectionCard title={<SectionTitle icon="📞">Communication Preferences</SectionTitle>} highlight={mode === "edit"}>
                 <div className="flex flex-wrap items-center gap-2 mb-3">
                   <PillToggle
                     on={!!prefs.email}
@@ -1092,7 +1105,7 @@ export function PartyDetailsView({
 
             {/* Compliance - for Contacts only */}
             {row.kind === "CONTACT" && (
-              <SectionCard title="Compliance">
+              <SectionCard title={<SectionTitle icon="⚖️">Compliance</SectionTitle>} highlight={mode === "edit"}>
                 <div className="text-xs text-secondary mb-2">
                   System sets these from unsubscribes. Select Reset to opt the user back in. Action is logged on save.
                 </div>
@@ -1188,7 +1201,7 @@ export function PartyDetailsView({
 
             {/* Communication Preferences - for Organizations only */}
             {row.kind === "ORGANIZATION" && (
-              <SectionCard title="Communication Preferences">
+              <SectionCard title={<SectionTitle icon="📞">Communication Preferences</SectionTitle>} highlight={mode === "edit"}>
                 <div className="flex flex-wrap items-center gap-2 mb-3">
                   <PillToggle
                     on={!!prefs.email}
@@ -1347,7 +1360,7 @@ export function PartyDetailsView({
 
             {/* Compliance - for Organizations */}
             {row.kind === "ORGANIZATION" && (
-              <SectionCard title="Compliance">
+              <SectionCard title={<SectionTitle icon="⚖️">Compliance</SectionTitle>} highlight={mode === "edit"}>
                 <div className="text-xs text-secondary mb-2">
                   System sets these from unsubscribes. Select Reset to opt the user back in. Action is logged on save.
                 </div>
@@ -1445,7 +1458,7 @@ export function PartyDetailsView({
 
         {activeTab === "animals" && (
           <div className="space-y-3">
-            <SectionCard title="Animals">
+            <SectionCard title={<SectionTitle icon="🐾">Animals</SectionTitle>}>
               {!animals && !animalsErr && <div className="text-sm text-secondary py-4">Loading…</div>}
               {animalsErr && <div className="text-sm text-red-600 py-4">Error: {animalsErr}</div>}
               {animals && animals.length === 0 && <div className="text-sm text-secondary py-4">No animals yet.</div>}
@@ -1493,7 +1506,7 @@ export function PartyDetailsView({
 
         {activeTab === "audit" && (
           <div className="space-y-3">
-            <SectionCard title="Audit Events">
+            <SectionCard title={<SectionTitle icon="📋">Audit Events</SectionTitle>}>
               <div className="text-sm text-secondary">Audit events will appear here once available.</div>
             </SectionCard>
           </div>
@@ -1501,7 +1514,7 @@ export function PartyDetailsView({
 
         {activeTab === "documents" && (
           <div className="space-y-3">
-            <SectionCard title="Documents">
+            <SectionCard title={<SectionTitle icon="📄">Documents</SectionTitle>}>
               <div className="text-sm text-secondary">Coming Soon</div>
             </SectionCard>
           </div>

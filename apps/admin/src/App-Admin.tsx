@@ -10,6 +10,8 @@ import "@bhq/ui/styles/table.css";
 import { adminApi, TenantDTO } from "./api";
 import MarketplaceAbuseAdmin from "./MarketplaceAbuseAdmin";
 import BreederReportsAdmin from "./BreederReportsAdmin";
+import UsageDashboard from "./UsageDashboard";
+import SubscriptionAdmin from "./SubscriptionAdmin";
 
 type TenantRow = TenantDTO;
 
@@ -232,7 +234,7 @@ function TenantDetailsView({
 }
 
 /* ───────────────────────── Main component ───────────────────────── */
-type AdminSection = "tenants" | "marketplace-abuse" | "breeder-reports";
+type AdminSection = "tenants" | "marketplace-abuse" | "breeder-reports" | "usage" | "subscriptions";
 
 export default function AppAdmin() {
   const [activeSection, setActiveSection] = React.useState<AdminSection>("tenants");
@@ -694,6 +696,8 @@ export default function AppAdmin() {
     { key: "tenants", label: "Tenants" },
     { key: "marketplace-abuse", label: "Marketplace Abuse" },
     { key: "breeder-reports", label: "Breeder Reports" },
+    { key: "usage", label: "Usage Dashboard" },
+    { key: "subscriptions", label: "Subscriptions" },
   ] as const;
 
   // Render super admin section nav
@@ -743,6 +747,28 @@ export default function AppAdmin() {
         {/* Super Admin Section Nav */}
         {renderSuperAdminNav()}
         <BreederReportsAdmin />
+      </div>
+    );
+  }
+
+  // If showing Usage Dashboard section (not super admin only - tenant scoped), render that instead
+  if (activeSection === "usage") {
+    return (
+      <div>
+        {/* Super Admin Section Nav */}
+        {isSuper && renderSuperAdminNav()}
+        <UsageDashboard />
+      </div>
+    );
+  }
+
+  // If showing Subscriptions section (super admin only), render that instead
+  if (activeSection === "subscriptions" && isSuper) {
+    return (
+      <div>
+        {/* Super Admin Section Nav */}
+        {renderSuperAdminNav()}
+        <SubscriptionAdmin />
       </div>
     );
   }

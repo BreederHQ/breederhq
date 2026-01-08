@@ -3,6 +3,91 @@ import { readTenantIdFast, resolveTenantId } from "@bhq/ui/utils/tenant";
 import type { BreedHit } from "@bhq/ui";
 import { createHttp, makeTags } from "@bhq/api";
 
+/* ───────── Lineage / Pedigree types ───────── */
+
+export interface PedigreeNode {
+  id: number;
+  name: string;
+  sex: "FEMALE" | "MALE";
+  species: string;
+  breed: string | null;
+  photoUrl: string | null;
+  birthDate: string | null;
+  coiPercent: number | null;
+  dam: PedigreeNode | null;
+  sire: PedigreeNode | null;
+}
+
+export interface COIResult {
+  coefficient: number;
+  generationsAnalyzed: number;
+  commonAncestors: Array<{
+    id: number;
+    name: string;
+    pathCount: number;
+    contribution: number;
+  }>;
+  riskLevel: "LOW" | "MODERATE" | "HIGH" | "CRITICAL";
+}
+
+export interface PedigreeResult {
+  pedigree: PedigreeNode | null;
+  coi: COIResult;
+}
+
+export interface DescendantNode {
+  id: number;
+  name: string;
+  sex: "FEMALE" | "MALE";
+  species: string;
+  breed: string | null;
+  photoUrl: string | null;
+  birthDate: string | null;
+  otherParent: { id: number; name: string } | null;
+  children: DescendantNode[];
+}
+
+export interface DescendantsResult {
+  animal: { id: number; name: string; sex: string };
+  descendants: DescendantNode[];
+}
+
+export interface ParentsResult {
+  dam: {
+    id: number;
+    name: string;
+    species: string;
+    breed: string | null;
+    photoUrl: string | null;
+    birthDate: string | null;
+  } | null;
+  sire: {
+    id: number;
+    name: string;
+    species: string;
+    breed: string | null;
+    photoUrl: string | null;
+    birthDate: string | null;
+  } | null;
+  coi: {
+    percent: number;
+    generations: number;
+    calculatedAt: string;
+  } | null;
+}
+
+export interface SetParentsResult {
+  id: number;
+  name: string;
+  damId: number | null;
+  sireId: number | null;
+  coiPercent: number | null;
+  coiGenerations: number | null;
+  coiCalculatedAt: string | null;
+  dam: { id: number; name: string } | null;
+  sire: { id: number; name: string } | null;
+}
+
 /* ───────── base + cookies ───────── */
 
 function normBase(base?: string): string {
@@ -418,6 +503,52 @@ export function makeApi(base?: string, extraHeadersFn?: () => Record<string, str
         return reqWithExtra<any>(
           `/animals/${encodeURIComponent(String(id))}/documents/${encodeURIComponent(String(documentId))}`,
           { method: "DELETE" }
+        );
+      },
+    },
+
+    /* lineage / pedigree */
+    lineage: {
+      /** Get pedigree (ancestor tree) for an animal */
+      async getPedigree(id: string | number, generations: number = 5): Promise<PedigreeResult> {
+        return reqWithExtra<PedigreeResult>(
+          `/animals/${encodeURIComponent(String(id))}/pedigree?generations=${generations}`
+        );
+      },
+
+      /** Get descendants (offspring tree) for an animal */
+      async getDescendants(id: string | number, generations: number = 3): Promise<DescendantsResult> {
+        return reqWithExtra<DescendantsResult>(
+          `/animals/${encodeURIComponent(String(id))}/descendants?generations=${generations}`
+        );
+      },
+
+      /** Get parents for an animal */
+      async getParents(id: string | number): Promise<ParentsResult> {
+        return reqWithExtra<ParentsResult>(
+          `/animals/${encodeURIComponent(String(id))}/parents`
+        );
+      },
+
+      /** Set parents for an animal */
+      async setParents(
+        id: string | number,
+        parents: { damId?: number | null; sireId?: number | null }
+      ): Promise<SetParentsResult> {
+        return reqWithExtra<SetParentsResult>(
+          `/animals/${encodeURIComponent(String(id))}/parents`,
+          { method: "PUT", json: parents }
+        );
+      },
+
+      /** Calculate prospective COI for a hypothetical breeding */
+      async getProspectiveCOI(
+        damId: number,
+        sireId: number,
+        generations: number = 10
+      ): Promise<COIResult> {
+        return reqWithExtra<COIResult>(
+          `/lineage/coi?damId=${damId}&sireId=${sireId}&generations=${generations}`
         );
       },
     },
