@@ -910,22 +910,37 @@ export default function ExplorePage() {
                 </filter>
               </defs>
 
-              {/* Connecting lines - curved paths with subtle pulse */}
-              <g stroke="#3f3f46" strokeWidth="2" fill="none">
-                <animate attributeName="opacity" values="0.5;0.8;0.5" dur="3s" repeatCount="indefinite" />
-                {/* Root to parents */}
-                <path d="M 205 200 C 275 200, 275 120, 345 120" />
-                <path d="M 205 200 C 275 200, 275 280, 345 280" />
-                {/* Sire to grandparents */}
-                <path d="M 445 120 C 505 120, 505 55, 565 55" />
-                <path d="M 445 120 C 505 120, 505 130, 565 130" />
-                {/* Dam to grandparents */}
-                <path d="M 445 280 C 505 280, 505 270, 565 270" />
-                <path d="M 445 280 C 505 280, 505 345, 565 345" />
+              {/* Connecting lines - draw outward from root */}
+              <g stroke="#52525b" strokeWidth="2" fill="none">
+                {/* Root to Sire - draws first */}
+                <path d="M 205 200 C 275 200, 275 120, 345 120" strokeDasharray="200" strokeDashoffset="200">
+                  <animate attributeName="stroke-dashoffset" from="200" to="0" dur="0.8s" begin="0.3s" fill="freeze" />
+                </path>
+                {/* Root to Dam - draws first */}
+                <path d="M 205 200 C 275 200, 275 280, 345 280" strokeDasharray="200" strokeDashoffset="200">
+                  <animate attributeName="stroke-dashoffset" from="200" to="0" dur="0.8s" begin="0.3s" fill="freeze" />
+                </path>
+                {/* Sire to Paternal Grandsire */}
+                <path d="M 445 120 C 505 120, 505 55, 565 55" strokeDasharray="150" strokeDashoffset="150">
+                  <animate attributeName="stroke-dashoffset" from="150" to="0" dur="0.6s" begin="1.2s" fill="freeze" />
+                </path>
+                {/* Sire to Paternal Granddam */}
+                <path d="M 445 120 C 505 120, 505 130, 565 130" strokeDasharray="150" strokeDashoffset="150">
+                  <animate attributeName="stroke-dashoffset" from="150" to="0" dur="0.6s" begin="1.2s" fill="freeze" />
+                </path>
+                {/* Dam to Maternal Grandsire */}
+                <path d="M 445 280 C 505 280, 505 270, 565 270" strokeDasharray="150" strokeDashoffset="150">
+                  <animate attributeName="stroke-dashoffset" from="150" to="0" dur="0.6s" begin="1.2s" fill="freeze" />
+                </path>
+                {/* Dam to Maternal Granddam */}
+                <path d="M 445 280 C 505 280, 505 345, 565 345" strokeDasharray="150" strokeDashoffset="150">
+                  <animate attributeName="stroke-dashoffset" from="150" to="0" dur="0.6s" begin="1.2s" fill="freeze" />
+                </path>
               </g>
 
-              {/* Root node - "Your Animal" */}
-              <g transform="translate(65, 155)" filter="url(#rootGlow)">
+              {/* Root node - "Your Animal" - fades in first */}
+              <g transform="translate(65, 155)" filter="url(#rootGlow)" opacity="0">
+                <animate attributeName="opacity" from="0" to="1" dur="0.4s" begin="0s" fill="freeze" />
                 <rect width="140" height="90" rx="8" fill="url(#sampleMaleGrad)" stroke="#f59e0b" strokeWidth="2" />
                 <circle cx="32" cy="45" r="20" fill="#27272a" stroke="#0ea5e9" strokeWidth="2" />
                 <text x="32" y="51" textAnchor="middle" fill="#0ea5e9" fontSize="16" fontWeight="bold">♂</text>
@@ -934,8 +949,9 @@ export default function ExplorePage() {
                 <text x="60" y="66" textAnchor="start" fill="#71717a" fontSize="10">to begin exploring</text>
               </g>
 
-              {/* Sire */}
-              <g transform="translate(345, 85)">
+              {/* Sire - fades in when line reaches it */}
+              <g transform="translate(345, 85)" opacity="0">
+                <animate attributeName="opacity" from="0" to="1" dur="0.3s" begin="1.1s" fill="freeze" />
                 <rect width="100" height="70" rx="6" fill="url(#sampleMaleGrad)" stroke="#0ea5e9" strokeWidth="1.5" />
                 <circle cx="22" cy="35" r="14" fill="#27272a" stroke="#0ea5e9" strokeWidth="1.5" />
                 <text x="22" y="40" textAnchor="middle" fill="#0ea5e9" fontSize="12" fontWeight="bold">♂</text>
@@ -944,8 +960,9 @@ export default function ExplorePage() {
                 <text x="44" y="52" textAnchor="start" fill="#52525b" fontSize="9">2018</text>
               </g>
 
-              {/* Dam */}
-              <g transform="translate(345, 245)">
+              {/* Dam - fades in when line reaches it */}
+              <g transform="translate(345, 245)" opacity="0">
+                <animate attributeName="opacity" from="0" to="1" dur="0.3s" begin="1.1s" fill="freeze" />
                 <rect width="100" height="70" rx="6" fill="url(#sampleFemaleGrad)" stroke="#ec4899" strokeWidth="1.5" />
                 <circle cx="22" cy="35" r="14" fill="#27272a" stroke="#ec4899" strokeWidth="1.5" />
                 <text x="22" y="40" textAnchor="middle" fill="#ec4899" fontSize="12" fontWeight="bold">♀</text>
@@ -954,8 +971,9 @@ export default function ExplorePage() {
                 <text x="44" y="52" textAnchor="start" fill="#52525b" fontSize="9">2019</text>
               </g>
 
-              {/* Paternal Grandsire */}
-              <g transform="translate(565, 25)">
+              {/* Paternal Grandsire - fades in when line reaches it */}
+              <g transform="translate(565, 25)" opacity="0">
+                <animate attributeName="opacity" from="0" to="1" dur="0.3s" begin="1.8s" fill="freeze" />
                 <rect width="120" height="60" rx="5" fill="url(#sampleMaleGrad)" stroke="#0ea5e9" strokeWidth="1" />
                 <circle cx="20" cy="30" r="12" fill="#27272a" stroke="#0ea5e9" strokeWidth="1" />
                 <text x="20" y="34" textAnchor="middle" fill="#0ea5e9" fontSize="10">♂</text>
@@ -963,8 +981,9 @@ export default function ExplorePage() {
                 <text x="40" y="38" textAnchor="start" fill="#a1a1aa" fontSize="10">Grandfather</text>
               </g>
 
-              {/* Paternal Granddam */}
-              <g transform="translate(565, 100)">
+              {/* Paternal Granddam - fades in when line reaches it */}
+              <g transform="translate(565, 100)" opacity="0">
+                <animate attributeName="opacity" from="0" to="1" dur="0.3s" begin="1.85s" fill="freeze" />
                 <rect width="120" height="60" rx="5" fill="url(#sampleFemaleGrad)" stroke="#ec4899" strokeWidth="1" />
                 <circle cx="20" cy="30" r="12" fill="#27272a" stroke="#ec4899" strokeWidth="1" />
                 <text x="20" y="34" textAnchor="middle" fill="#ec4899" fontSize="10">♀</text>
@@ -972,8 +991,9 @@ export default function ExplorePage() {
                 <text x="40" y="38" textAnchor="start" fill="#a1a1aa" fontSize="10">Grandmother</text>
               </g>
 
-              {/* Maternal Grandsire */}
-              <g transform="translate(565, 240)">
+              {/* Maternal Grandsire - fades in when line reaches it */}
+              <g transform="translate(565, 240)" opacity="0">
+                <animate attributeName="opacity" from="0" to="1" dur="0.3s" begin="1.9s" fill="freeze" />
                 <rect width="120" height="60" rx="5" fill="url(#sampleMaleGrad)" stroke="#0ea5e9" strokeWidth="1" />
                 <circle cx="20" cy="30" r="12" fill="#27272a" stroke="#0ea5e9" strokeWidth="1" />
                 <text x="20" y="34" textAnchor="middle" fill="#0ea5e9" fontSize="10">♂</text>
@@ -981,8 +1001,9 @@ export default function ExplorePage() {
                 <text x="40" y="38" textAnchor="start" fill="#a1a1aa" fontSize="10">Grandfather</text>
               </g>
 
-              {/* Maternal Granddam */}
-              <g transform="translate(565, 315)">
+              {/* Maternal Granddam - fades in when line reaches it */}
+              <g transform="translate(565, 315)" opacity="0">
+                <animate attributeName="opacity" from="0" to="1" dur="0.3s" begin="1.95s" fill="freeze" />
                 <rect width="120" height="60" rx="5" fill="url(#sampleFemaleGrad)" stroke="#ec4899" strokeWidth="1" />
                 <circle cx="20" cy="30" r="12" fill="#27272a" stroke="#ec4899" strokeWidth="1" />
                 <text x="20" y="34" textAnchor="middle" fill="#ec4899" fontSize="10">♀</text>
