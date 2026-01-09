@@ -914,18 +914,18 @@ export default function ExplorePage() {
               <g stroke="#3f3f46" strokeWidth="2" fill="none">
                 <animate attributeName="opacity" values="0.5;0.8;0.5" dur="3s" repeatCount="indefinite" />
                 {/* Root to parents */}
-                <path d="M 190 200 C 260 200, 260 120, 330 120" />
-                <path d="M 190 200 C 260 200, 260 280, 330 280" />
+                <path d="M 205 200 C 275 200, 275 120, 345 120" />
+                <path d="M 205 200 C 275 200, 275 280, 345 280" />
                 {/* Sire to grandparents */}
-                <path d="M 430 120 C 490 120, 490 55, 550 55" />
-                <path d="M 430 120 C 490 120, 490 130, 550 130" />
+                <path d="M 445 120 C 505 120, 505 55, 565 55" />
+                <path d="M 445 120 C 505 120, 505 130, 565 130" />
                 {/* Dam to grandparents */}
-                <path d="M 430 280 C 490 280, 490 270, 550 270" />
-                <path d="M 430 280 C 490 280, 490 345, 550 345" />
+                <path d="M 445 280 C 505 280, 505 270, 565 270" />
+                <path d="M 445 280 C 505 280, 505 345, 565 345" />
               </g>
 
               {/* Root node - "Your Animal" */}
-              <g transform="translate(50, 155)" filter="url(#rootGlow)">
+              <g transform="translate(65, 155)" filter="url(#rootGlow)">
                 <rect width="140" height="90" rx="8" fill="url(#sampleMaleGrad)" stroke="#f59e0b" strokeWidth="2" />
                 <circle cx="32" cy="45" r="20" fill="#27272a" stroke="#0ea5e9" strokeWidth="2" />
                 <text x="32" y="51" textAnchor="middle" fill="#0ea5e9" fontSize="16" fontWeight="bold">♂</text>
@@ -935,7 +935,7 @@ export default function ExplorePage() {
               </g>
 
               {/* Sire */}
-              <g transform="translate(330, 85)">
+              <g transform="translate(345, 85)">
                 <rect width="100" height="70" rx="6" fill="url(#sampleMaleGrad)" stroke="#0ea5e9" strokeWidth="1.5" />
                 <circle cx="22" cy="35" r="14" fill="#27272a" stroke="#0ea5e9" strokeWidth="1.5" />
                 <text x="22" y="40" textAnchor="middle" fill="#0ea5e9" fontSize="12" fontWeight="bold">♂</text>
@@ -945,7 +945,7 @@ export default function ExplorePage() {
               </g>
 
               {/* Dam */}
-              <g transform="translate(330, 245)">
+              <g transform="translate(345, 245)">
                 <rect width="100" height="70" rx="6" fill="url(#sampleFemaleGrad)" stroke="#ec4899" strokeWidth="1.5" />
                 <circle cx="22" cy="35" r="14" fill="#27272a" stroke="#ec4899" strokeWidth="1.5" />
                 <text x="22" y="40" textAnchor="middle" fill="#ec4899" fontSize="12" fontWeight="bold">♀</text>
@@ -955,7 +955,7 @@ export default function ExplorePage() {
               </g>
 
               {/* Paternal Grandsire */}
-              <g transform="translate(550, 25)">
+              <g transform="translate(565, 25)">
                 <rect width="120" height="60" rx="5" fill="url(#sampleMaleGrad)" stroke="#0ea5e9" strokeWidth="1" />
                 <circle cx="20" cy="30" r="12" fill="#27272a" stroke="#0ea5e9" strokeWidth="1" />
                 <text x="20" y="34" textAnchor="middle" fill="#0ea5e9" fontSize="10">♂</text>
@@ -964,7 +964,7 @@ export default function ExplorePage() {
               </g>
 
               {/* Paternal Granddam */}
-              <g transform="translate(550, 100)">
+              <g transform="translate(565, 100)">
                 <rect width="120" height="60" rx="5" fill="url(#sampleFemaleGrad)" stroke="#ec4899" strokeWidth="1" />
                 <circle cx="20" cy="30" r="12" fill="#27272a" stroke="#ec4899" strokeWidth="1" />
                 <text x="20" y="34" textAnchor="middle" fill="#ec4899" fontSize="10">♀</text>
@@ -973,7 +973,7 @@ export default function ExplorePage() {
               </g>
 
               {/* Maternal Grandsire */}
-              <g transform="translate(550, 240)">
+              <g transform="translate(565, 240)">
                 <rect width="120" height="60" rx="5" fill="url(#sampleMaleGrad)" stroke="#0ea5e9" strokeWidth="1" />
                 <circle cx="20" cy="30" r="12" fill="#27272a" stroke="#0ea5e9" strokeWidth="1" />
                 <text x="20" y="34" textAnchor="middle" fill="#0ea5e9" fontSize="10">♂</text>
@@ -982,7 +982,7 @@ export default function ExplorePage() {
               </g>
 
               {/* Maternal Granddam */}
-              <g transform="translate(550, 315)">
+              <g transform="translate(565, 315)">
                 <rect width="120" height="60" rx="5" fill="url(#sampleFemaleGrad)" stroke="#ec4899" strokeWidth="1" />
                 <circle cx="20" cy="30" r="12" fill="#27272a" stroke="#ec4899" strokeWidth="1" />
                 <text x="20" y="34" textAnchor="middle" fill="#ec4899" fontSize="10">♀</text>
