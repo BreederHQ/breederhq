@@ -884,7 +884,7 @@ export default function ExplorePage() {
         ) : (
           <div className="w-full h-full bg-zinc-900 rounded-xl border border-amber-500/30 overflow-hidden relative">
             {/* Sample pedigree illustration */}
-            <svg className="w-full h-full" viewBox="0 0 800 500" preserveAspectRatio="xMidYMid meet">
+            <svg className="w-full h-full" viewBox="0 0 800 400" preserveAspectRatio="xMidYMid meet">
               <defs>
                 <linearGradient id="sampleMaleGrad" x1="0%" y1="0%" x2="100%" y2="100%">
                   <stop offset="0%" stopColor="#0ea5e9" stopOpacity="0.2" />
@@ -894,111 +894,102 @@ export default function ExplorePage() {
                   <stop offset="0%" stopColor="#ec4899" stopOpacity="0.2" />
                   <stop offset="100%" stopColor="#db2777" stopOpacity="0.1" />
                 </linearGradient>
-                <filter id="glow">
-                  <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+                {/* Animated glow filter for root node */}
+                <filter id="rootGlow" x="-50%" y="-50%" width="200%" height="200%">
+                  <feGaussianBlur stdDeviation="4" result="blur">
+                    <animate attributeName="stdDeviation" values="3;6;3" dur="2s" repeatCount="indefinite" />
+                  </feGaussianBlur>
+                  <feFlood floodColor="#f59e0b" result="color">
+                    <animate attributeName="floodOpacity" values="0.3;0.6;0.3" dur="2s" repeatCount="indefinite" />
+                  </feFlood>
+                  <feComposite in="color" in2="blur" operator="in" result="glow"/>
                   <feMerge>
-                    <feMergeNode in="coloredBlur"/>
+                    <feMergeNode in="glow"/>
                     <feMergeNode in="SourceGraphic"/>
                   </feMerge>
                 </filter>
               </defs>
 
-              {/* Connecting lines - curved paths */}
-              <g stroke="#3f3f46" strokeWidth="2" fill="none" opacity="0.6">
+              {/* Connecting lines - curved paths with subtle pulse */}
+              <g stroke="#3f3f46" strokeWidth="2" fill="none">
+                <animate attributeName="opacity" values="0.5;0.8;0.5" dur="3s" repeatCount="indefinite" />
                 {/* Root to parents */}
-                <path d="M 200 250 C 280 250, 280 150, 360 150" />
-                <path d="M 200 250 C 280 250, 280 350, 360 350" />
+                <path d="M 190 200 C 260 200, 260 120, 330 120" />
+                <path d="M 190 200 C 260 200, 260 280, 330 280" />
                 {/* Sire to grandparents */}
-                <path d="M 460 150 C 520 150, 520 90, 580 90" />
-                <path d="M 460 150 C 520 150, 520 210, 580 210" />
+                <path d="M 430 120 C 490 120, 490 55, 550 55" />
+                <path d="M 430 120 C 490 120, 490 130, 550 130" />
                 {/* Dam to grandparents */}
-                <path d="M 460 350 C 520 350, 520 290, 580 290" />
-                <path d="M 460 350 C 520 350, 520 410, 580 410" />
+                <path d="M 430 280 C 490 280, 490 270, 550 270" />
+                <path d="M 430 280 C 490 280, 490 345, 550 345" />
               </g>
 
               {/* Root node - "Your Animal" */}
-              <g transform="translate(80, 210)" filter="url(#glow)">
-                <rect width="120" height="80" rx="8" fill="url(#sampleMaleGrad)" stroke="#f59e0b" strokeWidth="2" opacity="0.9" />
-                <circle cx="25" cy="40" r="18" fill="#27272a" stroke="#0ea5e9" strokeWidth="2" />
-                <text x="25" y="45" textAnchor="middle" fill="#0ea5e9" fontSize="14" fontWeight="bold">♂</text>
-                <text x="70" y="32" textAnchor="start" fill="#a1a1aa" fontSize="10">Your Animal</text>
-                <text x="70" y="48" textAnchor="start" fill="#fafafa" fontSize="13" fontWeight="500">Select Above</text>
-                <text x="70" y="64" textAnchor="start" fill="#71717a" fontSize="10">to begin</text>
+              <g transform="translate(50, 155)" filter="url(#rootGlow)">
+                <rect width="140" height="90" rx="8" fill="url(#sampleMaleGrad)" stroke="#f59e0b" strokeWidth="2" />
+                <circle cx="32" cy="45" r="20" fill="#27272a" stroke="#0ea5e9" strokeWidth="2" />
+                <text x="32" y="51" textAnchor="middle" fill="#0ea5e9" fontSize="16" fontWeight="bold">♂</text>
+                <text x="60" y="30" textAnchor="start" fill="#a1a1aa" fontSize="9">YOUR ANIMAL</text>
+                <text x="60" y="48" textAnchor="start" fill="#fafafa" fontSize="12" fontWeight="500">Select Above</text>
+                <text x="60" y="66" textAnchor="start" fill="#71717a" fontSize="10">to begin exploring</text>
               </g>
 
               {/* Sire */}
-              <g transform="translate(360, 115)">
-                <rect width="100" height="70" rx="6" fill="url(#sampleMaleGrad)" stroke="#0ea5e9" strokeWidth="1.5" opacity="0.7" />
+              <g transform="translate(330, 85)">
+                <rect width="100" height="70" rx="6" fill="url(#sampleMaleGrad)" stroke="#0ea5e9" strokeWidth="1.5" />
                 <circle cx="22" cy="35" r="14" fill="#27272a" stroke="#0ea5e9" strokeWidth="1.5" />
                 <text x="22" y="40" textAnchor="middle" fill="#0ea5e9" fontSize="12" fontWeight="bold">♂</text>
-                <text x="55" y="28" textAnchor="start" fill="#71717a" fontSize="9">SIRE</text>
-                <text x="55" y="42" textAnchor="start" fill="#d4d4d8" fontSize="11">Father</text>
-                <text x="55" y="56" textAnchor="start" fill="#52525b" fontSize="9">2018</text>
+                <text x="44" y="24" textAnchor="start" fill="#71717a" fontSize="8">SIRE</text>
+                <text x="44" y="38" textAnchor="start" fill="#d4d4d8" fontSize="11">Father</text>
+                <text x="44" y="52" textAnchor="start" fill="#52525b" fontSize="9">2018</text>
               </g>
 
               {/* Dam */}
-              <g transform="translate(360, 315)">
-                <rect width="100" height="70" rx="6" fill="url(#sampleFemaleGrad)" stroke="#ec4899" strokeWidth="1.5" opacity="0.7" />
+              <g transform="translate(330, 245)">
+                <rect width="100" height="70" rx="6" fill="url(#sampleFemaleGrad)" stroke="#ec4899" strokeWidth="1.5" />
                 <circle cx="22" cy="35" r="14" fill="#27272a" stroke="#ec4899" strokeWidth="1.5" />
                 <text x="22" y="40" textAnchor="middle" fill="#ec4899" fontSize="12" fontWeight="bold">♀</text>
-                <text x="55" y="28" textAnchor="start" fill="#71717a" fontSize="9">DAM</text>
-                <text x="55" y="42" textAnchor="start" fill="#d4d4d8" fontSize="11">Mother</text>
-                <text x="55" y="56" textAnchor="start" fill="#52525b" fontSize="9">2019</text>
+                <text x="44" y="24" textAnchor="start" fill="#71717a" fontSize="8">DAM</text>
+                <text x="44" y="38" textAnchor="start" fill="#d4d4d8" fontSize="11">Mother</text>
+                <text x="44" y="52" textAnchor="start" fill="#52525b" fontSize="9">2019</text>
               </g>
 
               {/* Paternal Grandsire */}
-              <g transform="translate(580, 60)" opacity="0.5">
-                <rect width="90" height="60" rx="5" fill="url(#sampleMaleGrad)" stroke="#0ea5e9" strokeWidth="1" />
-                <circle cx="18" cy="30" r="11" fill="#27272a" stroke="#0ea5e9" strokeWidth="1" />
-                <text x="18" y="34" textAnchor="middle" fill="#0ea5e9" fontSize="10">♂</text>
-                <text x="48" y="26" textAnchor="start" fill="#52525b" fontSize="8">GRANDSIRE</text>
-                <text x="48" y="40" textAnchor="start" fill="#a1a1aa" fontSize="10">Grandfather</text>
+              <g transform="translate(550, 25)">
+                <rect width="120" height="60" rx="5" fill="url(#sampleMaleGrad)" stroke="#0ea5e9" strokeWidth="1" />
+                <circle cx="20" cy="30" r="12" fill="#27272a" stroke="#0ea5e9" strokeWidth="1" />
+                <text x="20" y="34" textAnchor="middle" fill="#0ea5e9" fontSize="10">♂</text>
+                <text x="40" y="22" textAnchor="start" fill="#52525b" fontSize="7">GRANDSIRE</text>
+                <text x="40" y="38" textAnchor="start" fill="#a1a1aa" fontSize="10">Grandfather</text>
               </g>
 
               {/* Paternal Granddam */}
-              <g transform="translate(580, 180)" opacity="0.5">
-                <rect width="90" height="60" rx="5" fill="url(#sampleFemaleGrad)" stroke="#ec4899" strokeWidth="1" />
-                <circle cx="18" cy="30" r="11" fill="#27272a" stroke="#ec4899" strokeWidth="1" />
-                <text x="18" y="34" textAnchor="middle" fill="#ec4899" fontSize="10">♀</text>
-                <text x="48" y="26" textAnchor="start" fill="#52525b" fontSize="8">GRANDDAM</text>
-                <text x="48" y="40" textAnchor="start" fill="#a1a1aa" fontSize="10">Grandmother</text>
+              <g transform="translate(550, 100)">
+                <rect width="120" height="60" rx="5" fill="url(#sampleFemaleGrad)" stroke="#ec4899" strokeWidth="1" />
+                <circle cx="20" cy="30" r="12" fill="#27272a" stroke="#ec4899" strokeWidth="1" />
+                <text x="20" y="34" textAnchor="middle" fill="#ec4899" fontSize="10">♀</text>
+                <text x="40" y="22" textAnchor="start" fill="#52525b" fontSize="7">GRANDDAM</text>
+                <text x="40" y="38" textAnchor="start" fill="#a1a1aa" fontSize="10">Grandmother</text>
               </g>
 
               {/* Maternal Grandsire */}
-              <g transform="translate(580, 260)" opacity="0.5">
-                <rect width="90" height="60" rx="5" fill="url(#sampleMaleGrad)" stroke="#0ea5e9" strokeWidth="1" />
-                <circle cx="18" cy="30" r="11" fill="#27272a" stroke="#0ea5e9" strokeWidth="1" />
-                <text x="18" y="34" textAnchor="middle" fill="#0ea5e9" fontSize="10">♂</text>
-                <text x="48" y="26" textAnchor="start" fill="#52525b" fontSize="8">GRANDSIRE</text>
-                <text x="48" y="40" textAnchor="start" fill="#a1a1aa" fontSize="10">Grandfather</text>
+              <g transform="translate(550, 240)">
+                <rect width="120" height="60" rx="5" fill="url(#sampleMaleGrad)" stroke="#0ea5e9" strokeWidth="1" />
+                <circle cx="20" cy="30" r="12" fill="#27272a" stroke="#0ea5e9" strokeWidth="1" />
+                <text x="20" y="34" textAnchor="middle" fill="#0ea5e9" fontSize="10">♂</text>
+                <text x="40" y="22" textAnchor="start" fill="#52525b" fontSize="7">GRANDSIRE</text>
+                <text x="40" y="38" textAnchor="start" fill="#a1a1aa" fontSize="10">Grandfather</text>
               </g>
 
               {/* Maternal Granddam */}
-              <g transform="translate(580, 380)" opacity="0.5">
-                <rect width="90" height="60" rx="5" fill="url(#sampleFemaleGrad)" stroke="#ec4899" strokeWidth="1" />
-                <circle cx="18" cy="30" r="11" fill="#27272a" stroke="#ec4899" strokeWidth="1" />
-                <text x="18" y="34" textAnchor="middle" fill="#ec4899" fontSize="10">♀</text>
-                <text x="48" y="26" textAnchor="start" fill="#52525b" fontSize="8">GRANDDAM</text>
-                <text x="48" y="40" textAnchor="start" fill="#a1a1aa" fontSize="10">Grandmother</text>
+              <g transform="translate(550, 315)">
+                <rect width="120" height="60" rx="5" fill="url(#sampleFemaleGrad)" stroke="#ec4899" strokeWidth="1" />
+                <circle cx="20" cy="30" r="12" fill="#27272a" stroke="#ec4899" strokeWidth="1" />
+                <text x="20" y="34" textAnchor="middle" fill="#ec4899" fontSize="10">♀</text>
+                <text x="40" y="22" textAnchor="start" fill="#52525b" fontSize="7">GRANDDAM</text>
+                <text x="40" y="38" textAnchor="start" fill="#a1a1aa" fontSize="10">Grandmother</text>
               </g>
 
-              {/* Fade-out indicators for more generations */}
-              <g transform="translate(700, 90)" opacity="0.25">
-                <rect width="60" height="40" rx="4" fill="#27272a" stroke="#3f3f46" strokeWidth="1" />
-                <text x="30" y="24" textAnchor="middle" fill="#52525b" fontSize="8">...</text>
-              </g>
-              <g transform="translate(700, 210)" opacity="0.25">
-                <rect width="60" height="40" rx="4" fill="#27272a" stroke="#3f3f46" strokeWidth="1" />
-                <text x="30" y="24" textAnchor="middle" fill="#52525b" fontSize="8">...</text>
-              </g>
-              <g transform="translate(700, 290)" opacity="0.25">
-                <rect width="60" height="40" rx="4" fill="#27272a" stroke="#3f3f46" strokeWidth="1" />
-                <text x="30" y="24" textAnchor="middle" fill="#52525b" fontSize="8">...</text>
-              </g>
-              <g transform="translate(700, 410)" opacity="0.25">
-                <rect width="60" height="40" rx="4" fill="#27272a" stroke="#3f3f46" strokeWidth="1" />
-                <text x="30" y="24" textAnchor="middle" fill="#52525b" fontSize="8">...</text>
-              </g>
             </svg>
 
             {/* Overlay with call to action */}
