@@ -136,7 +136,7 @@ const COAT_TYPE_TRANSLATIONS: Record<string, Record<string, string>> = {
 };
 
 // Health translations
-const HEALTH_TRANSLATIONS: Record<string, Record<string, string>> = {
+const HEALTH_TRANSLATIONS: Record<string, string> = {
   Clear: "not affected and cannot pass on this condition",
   "N/N": "completely clear - no risk of this condition",
   "N/m": "carrier - healthy but could pass the gene to offspring",

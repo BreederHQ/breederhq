@@ -47,6 +47,11 @@ logs/
 .DS_Store
 Thumbs.db
 
+# Playwright test artifacts
+test-results/
+playwright-report/
+playwright/.cache/
+
 # Other files
 /.claude
 repo-structure-output.txt

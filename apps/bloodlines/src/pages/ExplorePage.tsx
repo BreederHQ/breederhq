@@ -1,7 +1,7 @@
 // apps/bloodlines/src/pages/ExplorePage.tsx
 // Interactive pedigree tree using React Flow - FamilySearch/Geni style
 import * as React from "react";
-import { PageHeader, Button, AsyncAutocomplete, type AutocompleteOption } from "@bhq/ui";
+import { PageHeader, Button } from "@bhq/ui";
 import {
   ReactFlow,
   Node,
@@ -77,7 +77,9 @@ async function fetchPedigree(animalId: number, generations: number = 4): Promise
     headers: getApiHeaders(),
   });
   if (!res.ok) return null;
-  return res.json();
+  const data = await res.json();
+  // API returns { pedigree, coi } - we just need the pedigree
+  return data.pedigree || null;
 }
 
 /* ───────────────── Custom Node Component ───────────────── */
@@ -127,7 +129,7 @@ function PedigreeNodeComponent({ data }: NodeProps<Node<PedigreeNodeData>>) {
       <button
         onClick={() => animal && onSelect(animal)}
         disabled={!animal}
-        className="group relative flex items-center gap-2 p-2 rounded-lg transition-all duration-200 hover:shadow-lg"
+        className="group relative flex items-center gap-2 p-2 rounded-lg transition-all duration-200 hover:shadow-lg hover:scale-105 active:scale-100 cursor-pointer"
         style={{
           width: cardWidth,
           backgroundColor: isRoot ? "rgba(30, 30, 30, 0.95)" : "rgba(24, 24, 27, 0.9)",
@@ -279,17 +281,17 @@ function buildTreeFromPedigree(
     edges.push({ id: "e-root-dam", source: "root", target: "dam", type: "smoothstep", style: edgeStyle });
   }
 
-  // Generation 2: Grandparents (4 nodes)
+  // Generation 2: Grandparents - only show if we have actual data
   const grandparents = [
-    { id: "sire-sire", animal: root.sire?.sire || null, parent: "sire", isSire: true, parentAnimal: root.sire },
-    { id: "sire-dam", animal: root.sire?.dam || null, parent: "sire", isSire: false, parentAnimal: root.sire },
-    { id: "dam-sire", animal: root.dam?.sire || null, parent: "dam", isSire: true, parentAnimal: root.dam },
-    { id: "dam-dam", animal: root.dam?.dam || null, parent: "dam", isSire: false, parentAnimal: root.dam },
+    { id: "sire-sire", animal: root.sire?.sire, parent: "sire", isSire: true, parentAnimal: root.sire },
+    { id: "sire-dam", animal: root.sire?.dam, parent: "sire", isSire: false, parentAnimal: root.sire },
+    { id: "dam-sire", animal: root.dam?.sire, parent: "dam", isSire: true, parentAnimal: root.dam },
+    { id: "dam-dam", animal: root.dam?.dam, parent: "dam", isSire: false, parentAnimal: root.dam },
   ];
 
   grandparents.forEach((gp, i) => {
-    // Only show if parent exists
-    if (!gp.parentAnimal && !((i < 2 ? root.sire : root.dam))) return;
+    // Only show if parent exists AND this grandparent has data
+    if (!gp.parentAnimal || !gp.animal) return;
 
     const y = getVerticalOffset(2, i, 4);
     addNode(gp.id, gp.animal, HORIZONTAL_SPACING * 2, y, 2, gp.isSire);
@@ -302,21 +304,21 @@ function buildTreeFromPedigree(
     });
   });
 
-  // Generation 3: Great-grandparents (8 nodes)
+  // Generation 3: Great-grandparents - only show if we have actual data
   const greatGrandparents = [
-    { id: "sire-sire-sire", animal: root.sire?.sire?.sire || null, parent: "sire-sire", parentAnimal: root.sire?.sire },
-    { id: "sire-sire-dam", animal: root.sire?.sire?.dam || null, parent: "sire-sire", parentAnimal: root.sire?.sire },
-    { id: "sire-dam-sire", animal: root.sire?.dam?.sire || null, parent: "sire-dam", parentAnimal: root.sire?.dam },
-    { id: "sire-dam-dam", animal: root.sire?.dam?.dam || null, parent: "sire-dam", parentAnimal: root.sire?.dam },
-    { id: "dam-sire-sire", animal: root.dam?.sire?.sire || null, parent: "dam-sire", parentAnimal: root.dam?.sire },
-    { id: "dam-sire-dam", animal: root.dam?.sire?.dam || null, parent: "dam-sire", parentAnimal: root.dam?.sire },
-    { id: "dam-dam-sire", animal: root.dam?.dam?.sire || null, parent: "dam-dam", parentAnimal: root.dam?.dam },
-    { id: "dam-dam-dam", animal: root.dam?.dam?.dam || null, parent: "dam-dam", parentAnimal: root.dam?.dam },
+    { id: "sire-sire-sire", animal: root.sire?.sire?.sire, parent: "sire-sire", parentAnimal: root.sire?.sire },
+    { id: "sire-sire-dam", animal: root.sire?.sire?.dam, parent: "sire-sire", parentAnimal: root.sire?.sire },
+    { id: "sire-dam-sire", animal: root.sire?.dam?.sire, parent: "sire-dam", parentAnimal: root.sire?.dam },
+    { id: "sire-dam-dam", animal: root.sire?.dam?.dam, parent: "sire-dam", parentAnimal: root.sire?.dam },
+    { id: "dam-sire-sire", animal: root.dam?.sire?.sire, parent: "dam-sire", parentAnimal: root.dam?.sire },
+    { id: "dam-sire-dam", animal: root.dam?.sire?.dam, parent: "dam-sire", parentAnimal: root.dam?.sire },
+    { id: "dam-dam-sire", animal: root.dam?.dam?.sire, parent: "dam-dam", parentAnimal: root.dam?.dam },
+    { id: "dam-dam-dam", animal: root.dam?.dam?.dam, parent: "dam-dam", parentAnimal: root.dam?.dam },
   ];
 
   greatGrandparents.forEach((ggp, i) => {
-    // Only show if grandparent exists
-    if (!ggp.parentAnimal) return;
+    // Only show if grandparent exists AND this great-grandparent has data
+    if (!ggp.parentAnimal || !ggp.animal) return;
 
     const y = getVerticalOffset(3, i, 8);
     addNode(ggp.id, ggp.animal, HORIZONTAL_SPACING * 3, y, 3, i % 2 === 0);
@@ -399,35 +401,6 @@ function PedigreeTree({ root, onSelectAnimal, onExpandAnimal }: PedigreeTreeProp
       </ReactFlow>
     </div>
   );
-}
-
-/* ───────────────── Animal Search (Async) ───────────────── */
-
-// Store for the animals cache to enable search
-let animalsCache: AnimalBasic[] = [];
-
-async function searchAnimals(query: string): Promise<AutocompleteOption[]> {
-  // If cache is empty, fetch all animals
-  if (animalsCache.length === 0) {
-    try {
-      animalsCache = await fetchAllAnimals();
-    } catch (err) {
-      console.error("Failed to fetch animals for search:", err);
-      return [];
-    }
-  }
-
-  const q = query.toLowerCase();
-  const filtered = animalsCache.filter(a => {
-    const name = (a.registeredName || a.name || "").toLowerCase();
-    const breed = (a.breed || "").toLowerCase();
-    return name.includes(q) || breed.includes(q);
-  });
-
-  return filtered.slice(0, 50).map(animal => ({
-    id: animal.id,
-    label: animal.registeredName || animal.name || `Animal #${animal.id}`,
-  }));
 }
 
 /* ───────────────── Animal Details Panel ───────────────── */
@@ -532,16 +505,24 @@ function AnimalPanel({ animal, onClose, onViewPedigree }: AnimalPanelProps) {
 /* ───────────────── Main Component ───────────────── */
 
 export default function ExplorePage() {
-  const [selectedOption, setSelectedOption] = React.useState<AutocompleteOption | null>(null);
+  const [allAnimals, setAllAnimals] = React.useState<AnimalBasic[]>([]);
+  const [loadingAnimals, setLoadingAnimals] = React.useState(true);
+  const [selectedAnimalId, setSelectedAnimalId] = React.useState<number | null>(null);
   const [focusAnimal, setFocusAnimal] = React.useState<PedigreeNode | null>(null);
   const [selectedAnimal, setSelectedAnimal] = React.useState<PedigreeNode | null>(null);
   const [loadingPedigree, setLoadingPedigree] = React.useState(false);
 
-  // Preload animals cache on mount
+  // Load animals on mount
   React.useEffect(() => {
     fetchAllAnimals()
-      .then(animals => { animalsCache = animals; })
-      .catch(console.error);
+      .then(animals => {
+        setAllAnimals(animals);
+        setLoadingAnimals(false);
+      })
+      .catch(err => {
+        console.error("Failed to load animals:", err);
+        setLoadingAnimals(false);
+      });
   }, []);
 
   const loadPedigreeById = React.useCallback(async (animalId: number) => {
@@ -560,10 +541,11 @@ export default function ExplorePage() {
     }
   }, []);
 
-  const handleAutocompleteChange = React.useCallback((option: AutocompleteOption | null) => {
-    setSelectedOption(option);
-    if (option) {
-      loadPedigreeById(option.id as number);
+  const handleSelectChange = React.useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
+    const id = e.target.value ? parseInt(e.target.value, 10) : null;
+    setSelectedAnimalId(id);
+    if (id) {
+      loadPedigreeById(id);
     }
   }, [loadPedigreeById]);
 
@@ -573,16 +555,30 @@ export default function ExplorePage() {
 
   const handleViewPedigree = React.useCallback((animal: PedigreeNode) => {
     setSelectedAnimal(null);
-    setSelectedOption({ id: animal.id, label: animal.registeredName || animal.name || `Animal #${animal.id}` });
+    setSelectedAnimalId(animal.id);
     loadPedigreeById(animal.id);
   }, [loadPedigreeById]);
 
   // Handler for expanding a node (loading more ancestors)
   const handleExpandAnimal = React.useCallback(async (animal: PedigreeNode) => {
-    // Navigate to this animal as the new root
-    setSelectedOption({ id: animal.id, label: animal.registeredName || animal.name || `Animal #${animal.id}` });
+    setSelectedAnimalId(animal.id);
     loadPedigreeById(animal.id);
   }, [loadPedigreeById]);
+
+  // Group animals by species for the dropdown
+  const animalsBySpecies = React.useMemo(() => {
+    const grouped: Record<string, AnimalBasic[]> = {};
+    allAnimals.forEach(animal => {
+      const species = animal.species || "Other";
+      if (!grouped[species]) grouped[species] = [];
+      grouped[species].push(animal);
+    });
+    // Sort each group by name
+    Object.values(grouped).forEach(list => {
+      list.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+    });
+    return grouped;
+  }, [allAnimals]);
 
   return (
     <div className="p-6 h-full flex flex-col">
@@ -593,12 +589,26 @@ export default function ExplorePage() {
           subtitle="Interactive family tree - pan, zoom, and click to explore ancestry"
         />
         <div className="w-80 flex-shrink-0 pt-1">
-          <AsyncAutocomplete
-            value={selectedOption}
-            onChange={handleAutocompleteChange}
-            onSearch={searchAnimals}
-            placeholder="Search animals..."
-          />
+          <select
+            value={selectedAnimalId ?? ""}
+            onChange={handleSelectChange}
+            disabled={loadingAnimals}
+            className="w-full h-10 px-3 bg-surface border border-hairline rounded-md text-sm text-primary focus:outline-none focus:ring-2 focus:ring-amber-500/50 focus:border-amber-500 disabled:opacity-50"
+          >
+            <option value="">
+              {loadingAnimals ? "Loading animals..." : "Select an animal..."}
+            </option>
+            {Object.entries(animalsBySpecies).map(([species, animals]) => (
+              <optgroup key={species} label={species}>
+                {animals.map(animal => (
+                  <option key={animal.id} value={animal.id}>
+                    {animal.name || `Animal #${animal.id}`}
+                    {animal.sex ? ` (${animal.sex === "MALE" ? "♂" : animal.sex === "FEMALE" ? "♀" : ""})` : ""}
+                  </option>
+                ))}
+              </optgroup>
+            ))}
+          </select>
         </div>
       </div>
 

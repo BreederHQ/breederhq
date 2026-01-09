@@ -750,7 +750,7 @@ export default function RollupGantt({
               key={`ph_${horizon.start.toISOString()}_${horizon.end.toISOString()}_${phaseData.length}_${anyChecked}_${toggles.showBands}_${fitToContent}`}
               {...ganttCommon}
               stages={phaseStages()}
-              data={anyChecked ? phaseData : []}
+              data={(anyChecked ? phaseData : []) as any}
             />
           </div>
         </div>
@@ -765,7 +765,7 @@ export default function RollupGantt({
               key={`ex_${horizon.start.toISOString()}_${horizon.end.toISOString()}_${visibleExactStages.length}_${anyChecked}_${toggles.showBands}_${fitToContent}`}
               {...ganttCommon}
               stages={visibleExactStages}
-              data={anyChecked ? exactData : []}
+              data={(anyChecked ? exactData : []) as any}
             />
           </div>
         </div>

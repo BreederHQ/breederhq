@@ -63,7 +63,7 @@ import { getOffspringName, translatePrediction, extractLocusFromTrait } from "./
 // ── Planner pages ─────────────────────────────────────────
 import { YourBreedingPlansPage, WhatIfPlanningPage } from "./pages/planner";
 import type { WhatIfFemale } from "./pages/planner/whatIfTypes";
-import { toBackendStatus, fromBackendStatus, deriveBreedingStatus as deriveBreedingStatusImported, type Status as PlannerStatus } from "./pages/planner/deriveBreedingStatus";
+import { toBackendStatus, fromBackendStatus, deriveBreedingStatus as deriveBreedingStatusImported, STATUS_LABELS, type Status as PlannerStatus } from "./pages/planner/deriveBreedingStatus";
 
 
 /* Cycle math - local types (previously expected from @bhq/ui/hooks) */
@@ -105,6 +105,7 @@ type WhatIfRow = {
   id: string;
   damId: ID | null;
   damName: string | null;
+  sireId?: ID | null;
   species: SpeciesWire | null;
   cycleStartIso: string | null;
   showOnChart: boolean;
@@ -564,10 +565,15 @@ type PlanRow = {
 
   createdAt?: string | null;
   updatedAt?: string | null;
+  createdBy?: string | null;
+  updatedBy?: string | null;
 
   // optional overrides used by planner master view
   femaleCycleLenOverrideDays?: number | null;
   homingStartWeeksOverride?: number | null;
+
+  // offspring tracking
+  offspringGroupId?: number | null;
 };
 
 const COLUMNS: Array<{ key: keyof PlanRow & string; label: string; default?: boolean }> = [
@@ -610,6 +616,29 @@ const COLUMNS: Array<{ key: keyof PlanRow & string; label: string; default?: boo
 ];
 
 const STORAGE_KEY = "bhq_breeding_cols_v2";
+
+// Date columns for CSV export formatting
+const DATE_COLS = new Set([
+  "expectedCycleStart",
+  "expectedHormoneTestingStart",
+  "expectedBreedDate",
+  "expectedBirthDate",
+  "expectedWeaned",
+  "expectedPlacementStartDate",
+  "expectedPlacementCompletedDate",
+  "cycleStartDateActual",
+  "hormoneTestingStartDateActual",
+  "breedDateActual",
+  "birthDateActual",
+  "weanedDateActual",
+  "placementStartDateActual",
+  "placementCompletedDateActual",
+  "completedDateActual",
+  "lockedCycleStart",
+  "lockedOvulationDate",
+  "lockedDueDate",
+  "lockedPlacementStartDate",
+]);
 
 /* ─────────────────────── Helpers ─────────────────────── */
 
@@ -746,6 +775,7 @@ type AnimalLite = {
   id: number;
   name: string;
   species: SpeciesWire;
+  breed?: string | null;
   sex: "FEMALE" | "MALE";
   organization?: { name: string } | null;
   femaleCycleLenOverrideDays?: number | null;
@@ -826,7 +856,7 @@ function confirmModal(
     | string
     | {
       title?: string;
-      message: string;
+      message: string | React.ReactNode;
       confirmText?: string;
       cancelText?: string;
       tone?: "default" | "danger";
@@ -989,7 +1019,7 @@ type WhatIfDamReproData = {
 
 type WhatIfRowEditorProps = {
   row: WhatIfRow;
-  females: { id: ID; name: string; species: SpeciesWire | null }[];
+  females: { id: ID; name: string; species: SpeciesWire | null; femaleCycleLenOverrideDays?: number | null }[];
   api: any;
   tenantId: number | null;
   onChange: (next: WhatIfRow) => void;
@@ -1068,7 +1098,7 @@ function WhatIfRowEditor(props: WhatIfRowEditorProps) {
           .filter(Boolean) as WhatIfDamReproEvent[];
 
         const cycleStartDates: string[] = Array.isArray(data?.cycleStartDates)
-          ? (data.cycleStartDates as any[]).map((d) => asISODateOnly(d)).filter(Boolean).sort()
+          ? (data.cycleStartDates as any[]).map((d) => asISODateOnly(d)).filter((d): d is string => d !== null).sort()
           : [];
 
         const lastCycle: string | null = asISODateOnly(data?.lastCycle ?? data?.last_cycle ?? null);
@@ -1920,8 +1950,8 @@ function calculateGeneticPairing(damGenetics: any, sireGenetics: any, species: s
 
   // Calculate coat color genetics
   if (damGenetics?.coatColor && sireGenetics?.coatColor) {
-    const damLoci = new Map(damGenetics.coatColor.map((l: any) => [l.locus, l]));
-    const sireLoci = new Map(sireGenetics.coatColor.map((l: any) => [l.locus, l]));
+    const damLoci = new Map<string, any>(damGenetics.coatColor.map((l: any) => [l.locus, l]));
+    const sireLoci = new Map<string, any>(sireGenetics.coatColor.map((l: any) => [l.locus, l]));
 
     // Get all unique loci from both parents
     const allLoci = new Set([...damLoci.keys(), ...sireLoci.keys()]);
@@ -2049,8 +2079,8 @@ function calculateGeneticPairing(damGenetics: any, sireGenetics: any, species: s
 
   // Calculate coat type genetics
   if (damGenetics?.coatType && sireGenetics?.coatType) {
-    const damLoci = new Map(damGenetics.coatType.map((l: any) => [l.locus, l]));
-    const sireLoci = new Map(sireGenetics.coatType.map((l: any) => [l.locus, l]));
+    const damLoci = new Map<string, any>(damGenetics.coatType.map((l: any) => [l.locus, l]));
+    const sireLoci = new Map<string, any>(sireGenetics.coatType.map((l: any) => [l.locus, l]));
     const allLoci = new Set([...damLoci.keys(), ...sireLoci.keys()]);
 
     for (const locus of allLoci) {
@@ -2095,8 +2125,8 @@ function calculateGeneticPairing(damGenetics: any, sireGenetics: any, species: s
 
   // Calculate physical traits genetics
   if (damGenetics?.physicalTraits && sireGenetics?.physicalTraits) {
-    const damLoci = new Map(damGenetics.physicalTraits.map((l: any) => [l.locus, l]));
-    const sireLoci = new Map(sireGenetics.physicalTraits.map((l: any) => [l.locus, l]));
+    const damLoci = new Map<string, any>(damGenetics.physicalTraits.map((l: any) => [l.locus, l]));
+    const sireLoci = new Map<string, any>(sireGenetics.physicalTraits.map((l: any) => [l.locus, l]));
     const allLoci = new Set([...damLoci.keys(), ...sireLoci.keys()]);
 
     for (const locus of allLoci) {
@@ -2141,8 +2171,8 @@ function calculateGeneticPairing(damGenetics: any, sireGenetics: any, species: s
 
   // Calculate eye color genetics
   if (damGenetics?.eyeColor && sireGenetics?.eyeColor) {
-    const damLoci = new Map(damGenetics.eyeColor.map((l: any) => [l.locus, l]));
-    const sireLoci = new Map(sireGenetics.eyeColor.map((l: any) => [l.locus, l]));
+    const damLoci = new Map<string, any>(damGenetics.eyeColor.map((l: any) => [l.locus, l]));
+    const sireLoci = new Map<string, any>(sireGenetics.eyeColor.map((l: any) => [l.locus, l]));
     const allLoci = new Set([...damLoci.keys(), ...sireLoci.keys()]);
 
     for (const locus of allLoci) {
@@ -2187,8 +2217,8 @@ function calculateGeneticPairing(damGenetics: any, sireGenetics: any, species: s
 
   // Calculate health genetics
   if (damGenetics?.health && sireGenetics?.health) {
-    const damHealth = new Map(damGenetics.health.map((l: any) => [l.locus, l]));
-    const sireHealth = new Map(sireGenetics.health.map((l: any) => [l.locus, l]));
+    const damHealth = new Map<string, any>(damGenetics.health.map((l: any) => [l.locus, l]));
+    const sireHealth = new Map<string, any>(sireGenetics.health.map((l: any) => [l.locus, l]));
 
     const allHealthLoci = new Set([...damHealth.keys(), ...sireHealth.keys()]);
 
@@ -3170,7 +3200,7 @@ function GeneticsLabPage({
                       <WhatsMissingAnalysis
                         damGenetics={damGenetics}
                         sireGenetics={sireGenetics}
-                        species={selectedDam?.species || "DOG"}
+                        species={(selectedDam?.species || "DOG") as any}
                         damName={selectedDam?.name}
                         sireName={selectedSire?.name}
                       />
@@ -3608,7 +3638,7 @@ export default function AppBreeding() {
       )
       .map((r): NormalizedPlan => {
         const id = `whatif-${r.id}`;
-        const speciesUi: SpeciesUi = toUiSpecies(r.species);
+        const speciesUi: SpeciesUi = toUiSpecies(r.species) || "Dog";
 
         // Compute expected dates from the locked cycle start using reproEngine
         const expectedDates = computeExpectedForPlan({
@@ -4195,16 +4225,16 @@ export default function AppBreeding() {
 
         const lockPayload: any = {
           lockedCycleStart,
-          lockedOvulationDate: expected.expectedBreedDate,
-          lockedDueDate: expected.expectedBirthDate,
-          lockedPlacementStartDate: expected.expectedPlacementStartDate,
-          expectedCycleStart: expected.expectedCycleStart,
-          expectedHormoneTestingStart: expected.expectedHormoneTestingStart,
-          expectedBreedDate: expected.expectedBreedDate,
-          expectedBirthDate: expected.expectedBirthDate,
-          expectedWeaned: expected.expectedWeaned,
-          expectedPlacementStartDate: expected.expectedPlacementStartDate,
-          expectedPlacementCompletedDate: expected.expectedPlacementCompletedDate,
+          lockedOvulationDate: expected?.expectedBreedDate,
+          lockedDueDate: expected?.expectedBirthDate,
+          lockedPlacementStartDate: expected?.expectedPlacementStartDate,
+          expectedCycleStart: expected?.expectedCycleStart,
+          expectedHormoneTestingStart: expected?.expectedHormoneTestingStart,
+          expectedBreedDate: expected?.expectedBreedDate,
+          expectedBirthDate: expected?.expectedBirthDate,
+          expectedWeaned: expected?.expectedWeaned,
+          expectedPlacementStartDate: expected?.expectedPlacementStartDate,
+          expectedPlacementCompletedDate: expected?.expectedPlacementCompletedDate,
         };
 
         const finalRes = await api.updatePlan(Number(createdPlan.id), lockPayload);
@@ -4436,7 +4466,7 @@ export default function AppBreeding() {
           openCustomBreed={(speciesUi: SpeciesUi, onCreated: (name: string) => void) => {
             const s = (speciesUi || "Dog").toUpperCase() as "DOG" | "CAT" | "HORSE";
             setCustomBreedSpecies(s);
-            setOnCustomBreedCreated(() => (c) => {
+            setOnCustomBreedCreated(() => (c: any) => {
               onCreated(c.name);
               setCustomBreedOpen(false);
             });
@@ -4595,7 +4625,6 @@ export default function AppBreeding() {
                       columns={map}
                       onToggle={toggle}
                       onSet={setAll}
-                      onReset={() => setAll(COLUMNS)}
                       allColumns={COLUMNS}
                       triggerClassName="bhq-columns-trigger"
                     />
@@ -4930,7 +4959,7 @@ export default function AppBreeding() {
                               setCustomBreedSpecies(speciesEnum);
                               setOnCustomBreedCreated(
                                 () =>
-                                  (created) => {
+                                  (created: any) => {
                                     setNewBreed({
                                       id: created.id,
                                       name: created.name,
@@ -5689,13 +5718,14 @@ function PlanDetailsView(props: {
           console.warn(`[Breeding] Invalid state on load: ${statusU} without weaned date. Auto-correcting to ${correctedStatus}.`);
 
           try {
+            if (!api) return;
             const payload: any = {
               status: toBackendStatus(correctedStatus)
             };
 
             await api.updatePlan(Number(row.id), payload);
             const fresh = await api.getPlan(Number(row.id), "parents,org");
-            onPlanUpdated?.(planToRow(fresh));
+            onPlanUpdated?.(row.id, planToRow(fresh));
 
             alert(`Your plan status was automatically corrected from ${STATUS_LABELS[statusU as Status] || statusU} to ${STATUS_LABELS[correctedStatus]} because the Weaning Completed date was missing.\n\nThis ensures data consistency. You can now proceed through the phases normally.`);
           } catch (error) {
@@ -6138,7 +6168,7 @@ function PlanDetailsView(props: {
         const cycleStartDates: string[] = Array.isArray(data?.cycleStartDates)
           ? (data.cycleStartDates as any[])
             .map((d) => asISODateOnly(d))
-            .filter(Boolean)
+            .filter((d): d is string => d !== null)
             .sort()
           : [];
 
@@ -6261,7 +6291,7 @@ function PlanDetailsView(props: {
 
     if (!speciesWire) return [];
 
-    const summary: ReproSummary = {
+    const summary: any = {
       species: speciesWire,
       cycleStartsAsc,
       dob: null,
@@ -6457,7 +6487,7 @@ function PlanDetailsView(props: {
   // Recalculate expected dates using the most recent ACTUAL date as the seed
   // Priority: actualBirthDate > actualCycleStart
   // When birth has occurred, only post-birth dates are recalculated
-  function recalculateExpectedDatesFromActual(actualCycleStart: string | null, actualBirthDate: string | null) {
+  function recalculateExpectedDatesFromActual(actualCycleStart: string | null | undefined, actualBirthDate: string | null | undefined) {
     // Priority 1: If actual birth exists, recalculate post-birth dates from birth
     if (actualBirthDate && String(actualBirthDate).trim()) {
 
@@ -6798,7 +6828,7 @@ function PlanDetailsView(props: {
       onEdit={editable ? () => setMode("edit") : undefined}
       onCancel={handleCancel}
       onSave={handleSave}
-      tabs={tabs}
+      tabs={tabs as { key: string; label: string }[]}
       activeTab={activeTab}
       onTabChange={setActiveTab}
       onClose={handleClose}
@@ -7153,7 +7183,7 @@ function PlanDetailsView(props: {
               isEdit={isEdit}
               guidanceCollapsed={guidanceCollapsed}
               onToggleGuidance={setGuidanceCollapsed}
-              confirmModal={confirmModal}
+              confirmModal={confirmModal as any}
             />
 
             {/* Plan Info */}
@@ -8368,6 +8398,7 @@ function PlanDetailsView(props: {
 
                           // Call API directly with reset dates AND derived status
                           try {
+                            if (!api) return;
                             const payload = {
                               ...resetDates,
                               status: toBackendStatus(derivedStatus),
