@@ -939,14 +939,14 @@ export default function ExplorePage() {
               </g>
 
               {/* Root node - "Your Animal" - fades in first */}
-              <g transform="translate(65, 155)" filter="url(#rootGlow)" opacity="0">
+              <g transform="translate(55, 145)" filter="url(#rootGlow)" opacity="0">
                 <animate attributeName="opacity" from="0" to="1" dur="0.4s" begin="0s" fill="freeze" />
-                <rect width="140" height="90" rx="8" fill="url(#sampleMaleGrad)" stroke="#f59e0b" strokeWidth="2" />
-                <circle cx="32" cy="45" r="20" fill="#27272a" stroke="#0ea5e9" strokeWidth="2" />
-                <text x="32" y="51" textAnchor="middle" fill="#0ea5e9" fontSize="16" fontWeight="bold">♂</text>
-                <text x="60" y="30" textAnchor="start" fill="#a1a1aa" fontSize="9">YOUR ANIMAL</text>
-                <text x="60" y="48" textAnchor="start" fill="#fafafa" fontSize="12" fontWeight="500">Select Above</text>
-                <text x="60" y="66" textAnchor="start" fill="#71717a" fontSize="10">to begin exploring</text>
+                <rect width="170" height="110" rx="8" fill="url(#sampleMaleGrad)" stroke="#f59e0b" strokeWidth="2" />
+                <circle cx="38" cy="55" r="20" fill="#27272a" stroke="#0ea5e9" strokeWidth="2" />
+                <text x="38" y="61" textAnchor="middle" fill="#0ea5e9" fontSize="16" fontWeight="bold">♂</text>
+                <text x="68" y="35" textAnchor="start" fill="#a1a1aa" fontSize="9">YOUR ANIMAL</text>
+                <text x="68" y="53" textAnchor="start" fill="#fafafa" fontSize="12" fontWeight="500">Select Above</text>
+                <text x="68" y="71" textAnchor="start" fill="#71717a" fontSize="10">to begin exploring</text>
               </g>
 
               {/* Sire - fades in when line reaches it */}
