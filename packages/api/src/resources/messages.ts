@@ -6,6 +6,8 @@ export interface MessageThread {
   tenantId: number;
   subject?: string;
   archived: boolean;
+  flagged: boolean;
+  flaggedAt?: string;
   participants: MessageParticipant[];
   messages: Message[];
   unreadCount?: number;
@@ -40,6 +42,11 @@ export interface SendMessageRequest {
   body: string;
 }
 
+export interface UpdateThreadRequest {
+  flagged?: boolean;
+  archived?: boolean;
+}
+
 export function makeMessages(http: Http) {
   return {
     threads: {
@@ -54,6 +61,9 @@ export function makeMessages(http: Http) {
       },
       async sendMessage(threadId: number, params: SendMessageRequest): Promise<{ ok: boolean; message: Message }> {
         return http.post(`/messages/threads/${threadId}/messages`, params);
+      },
+      async update(threadId: number, params: UpdateThreadRequest): Promise<{ ok: boolean; thread: MessageThread }> {
+        return http.patch(`/messages/threads/${threadId}`, params);
       },
     },
   };

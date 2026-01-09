@@ -14,6 +14,7 @@ import {
   FilterChips,
   FiltersRow,
   DetailsHost,
+  useTableDetails,
   DetailsScaffold,
   SectionCard,
   Button,
@@ -40,7 +41,8 @@ import { toast } from "@bhq/ui/atoms/Toast";
 import "@bhq/ui/styles/table.css";
 import "@bhq/ui/styles/datefield.css";
 import { makeApi } from "./api";
-import { MoreHorizontal, Download, Trophy } from "lucide-react";
+import { MoreHorizontal, MoreVertical, Download, Trophy, LayoutGrid, Table as TableIcon, Archive, Trash2 } from "lucide-react";
+import { AnimalCardView } from "./components/AnimalCardView";
 import { LineageTab } from "./components/LineageTab";
 import { TitlesTab } from "./components/TitlesTab";
 import { CompetitionsTab } from "./components/CompetitionsTab";
@@ -207,6 +209,7 @@ type AnimalRow = {
   femaleCycleLenOverrideDays?: number | null;
   titlePrefix?: string | null;
   titleSuffix?: string | null;
+  archived?: boolean | null;
 };
 
 type ProgramFlags = {
@@ -258,6 +261,8 @@ function speciesEmoji(species?: string | null): string {
 }
 
 const STORAGE_KEY = "bhq_animals_cols_v1";
+const VIEW_MODE_KEY = "bhq_animals_view_v1";
+type ViewMode = "table" | "cards";
 const DATE_KEYS = new Set(["dob", "created_at", "updated_at"] as const);
 
 function fmt(d?: string | null) {
@@ -308,6 +313,7 @@ function animalToRow(p: any): AnimalRow {
     lastCycle: p.lastCycle ?? null,
     cycleStartDates: Array.isArray(p.cycleStartDates) ? p.cycleStartDates : [],
     femaleCycleLenOverrideDays: p.femaleCycleLenOverrideDays ?? null,
+    archived: p.archived ?? p.archivedAt != null ?? false,
   };
 }
 
@@ -341,6 +347,76 @@ const PencilIcon = (props: React.SVGProps<SVGSVGElement>) => (
 
 function clamp(n: number, lo: number, hi: number) {
   return Math.max(lo, Math.min(hi, n));
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
+ * Card View Wrapper (uses DetailsHost context)
+ * ────────────────────────────────────────────────────────────────────────── */
+
+function CardViewWithDetails({
+  rows,
+  loading,
+  error,
+  sortedRows,
+  pageSize,
+  page,
+  pageCount,
+  setPage,
+  setPageSize,
+  includeArchived,
+  setIncludeArchived,
+  totalRows,
+  start,
+  end,
+}: {
+  rows: AnimalRow[];
+  loading: boolean;
+  error: string | null;
+  sortedRows: AnimalRow[];
+  pageSize: number;
+  page: number;
+  pageCount: number;
+  setPage: (p: number) => void;
+  setPageSize: (n: number) => void;
+  includeArchived: boolean;
+  setIncludeArchived: (v: boolean) => void;
+  totalRows: number;
+  start: number;
+  end: number;
+}) {
+  const { open } = useTableDetails<AnimalRow>();
+
+  return (
+    <>
+      <AnimalCardView
+        rows={rows}
+        loading={loading}
+        error={error}
+        onRowClick={(row) => open?.(row)}
+      />
+      <TableFooter
+        entityLabel="animals"
+        page={page}
+        pageCount={pageCount}
+        pageSize={pageSize}
+        pageSizeOptions={[12, 24, 48, 96]}
+        onPageChange={setPage}
+        onPageSizeChange={(n) => {
+          setPageSize(n);
+          setPage(1);
+        }}
+        start={start}
+        end={end}
+        filteredTotal={sortedRows.length}
+        total={totalRows}
+        includeArchived={includeArchived}
+        onIncludeArchivedChange={(checked) => {
+          setIncludeArchived(checked);
+          setPage(1);
+        }}
+      />
+    </>
+  );
 }
 
 /** Breeding Status Section - fetches active breeding plans for this animal */
@@ -6483,6 +6559,18 @@ export default function AppAnimals() {
       return "";
     }
   });
+
+  // View mode toggle (table vs cards)
+  const [viewMode, setViewMode] = React.useState<ViewMode>(() => {
+    try {
+      const stored = localStorage.getItem(VIEW_MODE_KEY);
+      return (stored === "cards" ? "cards" : "table") as ViewMode;
+    } catch { return "table"; }
+  });
+  React.useEffect(() => {
+    try { localStorage.setItem(VIEW_MODE_KEY, viewMode); } catch { }
+  }, [viewMode]);
+
   const [filtersOpen, setFiltersOpen] = React.useState(false);
   const [filters, setFilters] = React.useState<Record<string, string>>(() => {
     try {
@@ -6838,6 +6926,18 @@ export default function AppAnimals() {
   const [archiveTargetId, setArchiveTargetId] = React.useState<number | null>(null);
   const [isArchiving, setIsArchiving] = React.useState(false);
 
+  // Overflow menu and delete state
+  const [overflowMenuOpen, setOverflowMenuOpen] = React.useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = React.useState(false);
+  const [deleteTargetId, setDeleteTargetId] = React.useState<number | null>(null);
+  const [isDeleting, setIsDeleting] = React.useState(false);
+  const [checkingDelete, setCheckingDelete] = React.useState(false);
+  const [deleteBlockersOpen, setDeleteBlockersOpen] = React.useState(false);
+  const [deleteBlockers, setDeleteBlockers] = React.useState<{
+    blockers: Record<string, boolean | string[] | undefined>;
+    details?: Record<string, number | undefined>;
+  } | null>(null);
+
   const handleArchive = React.useCallback(
     async (id: number) => {
       setIsArchiving(true);
@@ -6850,12 +6950,69 @@ export default function AppAnimals() {
         // Close the details drawer by removing the id parameter from URL
         const url = new URL(window.location.href);
         url.searchParams.delete("id");
+        url.searchParams.delete("animalId");
         window.history.replaceState({}, "", url.toString());
+        // Notify drawer state to sync with URL change
+        window.dispatchEvent(new Event("bhq:drawer-url-changed"));
       } catch (error) {
         console.error("Failed to archive animal:", error);
         toast.error("Failed to archive animal. Please try again.");
       } finally {
         setIsArchiving(false);
+      }
+    },
+    [api]
+  );
+
+  const checkCanDelete = React.useCallback(
+    async (id: number) => {
+      setCheckingDelete(true);
+      setDeleteBlockers(null);
+      try {
+        const result = await api.animals.canDelete(id);
+        if (result.canDelete) {
+          // No blockers, show delete confirmation
+          setDeleteTargetId(id);
+          setDeleteDialogOpen(true);
+        } else {
+          // Has blockers, show blocker info modal
+          setDeleteTargetId(id);
+          setDeleteBlockers({ blockers: result.blockers, details: result.details });
+          setDeleteBlockersOpen(true);
+        }
+      } catch (error) {
+        console.error("[Animals] canDelete check failed", error);
+        // If check fails, still allow delete attempt (API will block if needed)
+        setDeleteTargetId(id);
+        setDeleteDialogOpen(true);
+      } finally {
+        setCheckingDelete(false);
+      }
+    },
+    [api]
+  );
+
+  const handleDelete = React.useCallback(
+    async (id: number) => {
+      setIsDeleting(true);
+      try {
+        await api.animals.remove(id);
+        setRows((prev) => prev.filter((r) => r.id !== id));
+        toast.success("Animal deleted successfully");
+        setDeleteDialogOpen(false);
+
+        // Close the details drawer by removing the id parameter from URL
+        const url = new URL(window.location.href);
+        url.searchParams.delete("id");
+        url.searchParams.delete("animalId");
+        window.history.replaceState({}, "", url.toString());
+        // Notify drawer state to sync with URL change
+        window.dispatchEvent(new Event("bhq:drawer-url-changed"));
+      } catch (error) {
+        console.error("Failed to delete animal:", error);
+        toast.error("Failed to delete animal. Please try again.");
+      } finally {
+        setIsDeleting(false);
       }
     },
     [api]
@@ -7113,12 +7270,14 @@ export default function AppAnimals() {
         <>
           <DetailsScaffold
             title={row.name}
-            subtitle={row.nickname || row.ownerName || ""}
-            mode={mode}
-            onEdit={() => setMode("edit")}
+            subtitle={row.archived ? <span className="text-amber-400">(Archived)</span> : (row.nickname || row.ownerName || "")}
+            mode={row.archived ? "view" : mode}
+            onEdit={row.archived ? undefined : () => setMode("edit")}
             onCancel={() => setMode("view")}
             onClose={close}
             hasPendingChanges={hasPendingChanges}
+            hideCloseButton
+            showFooterClose
             onSave={async () => {
               const currentTab = activeTab;
               await Promise.resolve(requestSave());
@@ -7130,19 +7289,48 @@ export default function AppAnimals() {
             tabs={detailsConfig.tabs(row)}
             activeTab={activeTab}
             onTabChange={setActiveTab}
-            rightActions={
+            tabsRightContent={
               mode === "edit" ? (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => {
-                    setArchiveTargetId(row.id);
-                    setArchiveDialogOpen(true);
-                  }}
-                >
-                  Archive
-                </Button>
-              ) : null
+                <Popover open={overflowMenuOpen} onOpenChange={setOverflowMenuOpen}>
+                  <Popover.Trigger asChild>
+                    <button
+                      type="button"
+                      className="flex items-center gap-1 px-2 py-1 rounded hover:bg-white/10 transition-colors text-secondary text-xs"
+                      aria-label="More actions"
+                    >
+                      <MoreVertical className="h-4 w-4" />
+                      <span>More</span>
+                    </button>
+                  </Popover.Trigger>
+                  <Popover.Content align="end" className="w-48 p-1">
+                    {/* Archive */}
+                    <button
+                      className="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-white/5 rounded disabled:opacity-50"
+                      disabled={isArchiving}
+                      onClick={() => {
+                        setOverflowMenuOpen(false);
+                        setArchiveTargetId(row.id);
+                        setArchiveDialogOpen(true);
+                      }}
+                    >
+                      <Archive className="h-4 w-4" />
+                      {isArchiving ? "Archiving…" : "Archive"}
+                    </button>
+                    {/* Delete */}
+                    <button
+                      className="flex w-full items-center gap-2 px-3 py-2 text-sm text-red-400 hover:bg-white/5 rounded disabled:opacity-50"
+                      disabled={checkingDelete}
+                      onClick={() => {
+                        setOverflowMenuOpen(false);
+                        checkCanDelete(row.id);
+                      }}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                      {checkingDelete ? "Checking…" : "Delete"}
+                    </button>
+                  </Popover.Content>
+                </Popover>
+              ) : undefined
             }
           >
           {activeTab === "overview" && (
@@ -7662,7 +7850,7 @@ export default function AppAnimals() {
       </>
       ),
     }),
-    [api, orgIdForBreeds, ownershipLookups, breedBrowseApi, syncOwners, photoWorking, photoEditorOpen, photoEditorSrc, photoEditorForId, setArchiveTargetId, setArchiveDialogOpen]
+    [api, orgIdForBreeds, ownershipLookups, breedBrowseApi, syncOwners, photoWorking, photoEditorOpen, photoEditorSrc, photoEditorForId, setArchiveTargetId, setArchiveDialogOpen, overflowMenuOpen, setOverflowMenuOpen, isArchiving, setDeleteTargetId, setDeleteDialogOpen]
   );
 
   const [createOpen, setCreateOpen] = React.useState(false);
@@ -7895,168 +8083,223 @@ export default function AppAnimals() {
 
       <Card>
         <DetailsHost rows={rows} config={detailsConfig}>
-          <Table
-            columns={COLUMNS}
-            columnState={map}
-            onColumnStateChange={setAll}
-            getRowId={(r: AnimalRow) => r.id}
-            pageSize={25}
-            renderStickyRight={() => (
-              <ColumnsPopover
-                columns={map}
-                onToggle={toggle}
-                onSet={setAll}
-                allColumns={COLUMNS}
-                triggerClassName="bhq-columns-trigger"
-              />
-            )}
-            stickyRightWidthPx={40}
-          >
-            <div className="bhq-table__toolbar px-2 pt-2 pb-3 relative z-30">
-              <SearchBar
-                value={q}
-                onChange={setQ}
-                placeholder="Search any field…"
-                widthPx={520}
-                rightSlot={
-                  <button
-                    type="button"
-                    onClick={() => setFiltersOpen((v) => !v)}
-                    aria-expanded={filtersOpen}
-                    title="Filters"
-                    className="h-7 w-7 rounded-md flex items-center justify-center hover:bg-white/5 focus:outline-none"
+          {/* Shared Toolbar - always visible */}
+          <div className="bhq-table__toolbar px-3 pt-3 pb-3 relative z-30 flex items-center gap-3">
+            <SearchBar
+              value={q}
+              onChange={setQ}
+              placeholder="Search any field…"
+              widthPx={420}
+              rightSlot={
+                <button
+                  type="button"
+                  onClick={() => setFiltersOpen((v) => !v)}
+                  aria-expanded={filtersOpen}
+                  title="Filters"
+                  className="h-7 w-7 rounded-md flex items-center justify-center hover:bg-white/5 focus:outline-none"
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    className="h-4 w-4"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    aria-hidden="true"
                   >
-                    <svg
-                      viewBox="0 0 24 24"
-                      className="h-4 w-4"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      aria-hidden="true"
-                    >
-                      <path
-                        d="M3 5h18M7 12h10M10 19h4"
-                        strokeLinecap="round"
-                      />
-                    </svg>
-                  </button>
-                }
-              />
+                    <path
+                      d="M3 5h18M7 12h10M10 19h4"
+                      strokeLinecap="round"
+                    />
+                  </svg>
+                </button>
+              }
+            />
+
+            {/* View mode toggle */}
+            <div className="flex items-center rounded-lg border border-hairline overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setViewMode("table")}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-sm transition-colors ${
+                  viewMode === "table"
+                    ? "bg-[hsl(var(--brand-orange))] text-black"
+                    : "bg-transparent text-secondary hover:text-primary hover:bg-[hsl(var(--muted)/0.5)]"
+                }`}
+                title="Table view"
+              >
+                <TableIcon className="w-4 h-4" />
+                <span className="hidden sm:inline">Table</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode("cards")}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-sm transition-colors ${
+                  viewMode === "cards"
+                    ? "bg-[hsl(var(--brand-orange))] text-black"
+                    : "bg-transparent text-secondary hover:text-primary hover:bg-[hsl(var(--muted)/0.5)]"
+                }`}
+                title="Card view"
+              >
+                <LayoutGrid className="w-4 h-4" />
+                <span className="hidden sm:inline">Cards</span>
+              </button>
             </div>
 
-            {filtersOpen && (
-              <FiltersRow
-                filters={filters}
-                onChange={(next) => setFilters(next)}
-                schema={filterSchemaForFiltersRow}
-              />
+            {/* Column toggle - only show in table mode */}
+            {viewMode === "table" && (
+              <div className="ml-auto">
+                <ColumnsPopover
+                  columns={map}
+                  onToggle={toggle}
+                  onSet={setAll}
+                  allColumns={COLUMNS}
+                  triggerClassName="bhq-columns-trigger"
+                />
+              </div>
             )}
+          </div>
 
-            <FilterChips
+          {filtersOpen && (
+            <FiltersRow
               filters={filters}
-              onChange={setFilters}
-              prettyLabel={(k) => {
-                if (k === "dob_from") return "DOB ≥";
-                if (k === "dob_to") return "DOB ≤";
-                if (k === "created_at_from") return "Created ≥";
-                if (k === "created_at_to") return "Created ≤";
-                if (k === "updated_at_from") return "Updated ≥";
-                if (k === "updated_at_to") return "Updated ≤";
-                return k;
-              }}
+              onChange={(next) => setFilters(next)}
+              schema={filterSchemaForFiltersRow}
             />
+          )}
 
-            <table className="min-w-max w-full text-sm">
-              <TableHeader
-                columns={visibleSafe}
-                sorts={sorts}
-                onToggleSort={onToggleSort}
-              />
-              <tbody>
-                {loading && (
-                  <TableRow>
-                    <TableCell colSpan={visibleSafe.length}>
-                      <div className="py-8 text-center text-sm text-secondary">
-                        Loading animals…
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                )}
+          <FilterChips
+            filters={filters}
+            onChange={setFilters}
+            prettyLabel={(k) => {
+              if (k === "dob_from") return "DOB ≥";
+              if (k === "dob_to") return "DOB ≤";
+              if (k === "created_at_from") return "Created ≥";
+              if (k === "created_at_to") return "Created ≤";
+              if (k === "updated_at_from") return "Updated ≥";
+              if (k === "updated_at_to") return "Updated ≤";
+              return k;
+            }}
+          />
 
-                {!loading && error && (
-                  <TableRow>
-                    <TableCell colSpan={visibleSafe.length}>
-                      <div className="py-8 text-center text-sm text-red-600">
-                        Error: {error}
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                )}
-
-                {!loading && !error && pageRows.length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={visibleSafe.length}>
-                      <div className="py-8 text-center text-sm text-secondary">
-                        No animals to display yet.
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                )}
-
-                {!loading &&
-                  !error &&
-                  pageRows.length > 0 &&
-                  pageRows.map((r) => (
-                    <TableRow key={r.id} detailsRow={r}>
-                      {visibleSafe.map((c) => {
-                        let v = (r as any)[c.key] as any;
-                        if (DATE_KEYS.has(c.key as any)) v = fmt(v);
-                        if (Array.isArray(v)) v = v.join(", ");
-                        // Special handling for name column - show titles badge
-                        if (c.key === "name") {
-                          const hasTitles = r.titlePrefix || r.titleSuffix;
-                          return (
-                            <TableCell key={c.key} align="left">
-                              <div className="flex items-center gap-2">
-                                <span>{v ?? ""}</span>
-                                {hasTitles && (
-                                  <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold text-[hsl(var(--brand-orange))] bg-[hsl(var(--brand-orange))]/10">
-                                    🏆 {[r.titlePrefix, r.titleSuffix].filter(Boolean).join(" ")}
-                                  </span>
-                                )}
-                              </div>
-                            </TableCell>
-                          );
-                        }
-                        return <TableCell key={c.key} align={c.center ? "center" : "left"}>{v ?? ""}</TableCell>;
-                      })}
+          {/* Conditional view rendering */}
+          {viewMode === "table" ? (
+            <Table
+              columns={COLUMNS}
+              columnState={map}
+              onColumnStateChange={setAll}
+              getRowId={(r: AnimalRow) => r.id}
+              pageSize={25}
+              stickyRightWidthPx={0}
+            >
+              <table className="min-w-max w-full text-sm">
+                <TableHeader
+                  columns={visibleSafe}
+                  sorts={sorts}
+                  onToggleSort={onToggleSort}
+                />
+                <tbody>
+                  {loading && (
+                    <TableRow>
+                      <TableCell colSpan={visibleSafe.length}>
+                        <div className="py-8 text-center text-sm text-secondary">
+                          Loading animals…
+                        </div>
+                      </TableCell>
                     </TableRow>
-                  ))}
-              </tbody>
-            </table>
+                  )}
 
-            <TableFooter
-              entityLabel="animals"
+                  {!loading && error && (
+                    <TableRow>
+                      <TableCell colSpan={visibleSafe.length}>
+                        <div className="py-8 text-center text-sm text-red-600">
+                          Error: {error}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  )}
+
+                  {!loading && !error && pageRows.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={visibleSafe.length}>
+                        <div className="py-8 text-center text-sm text-secondary">
+                          No animals to display yet.
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  )}
+
+                  {!loading &&
+                    !error &&
+                    pageRows.length > 0 &&
+                    pageRows.map((r) => (
+                      <TableRow key={r.id} detailsRow={r}>
+                        {visibleSafe.map((c) => {
+                          let v = (r as any)[c.key] as any;
+                          if (DATE_KEYS.has(c.key as any)) v = fmt(v);
+                          if (Array.isArray(v)) v = v.join(", ");
+                          // Special handling for name column - show titles badge
+                          if (c.key === "name") {
+                            const hasTitles = r.titlePrefix || r.titleSuffix;
+                            return (
+                              <TableCell key={c.key} align="left">
+                                <div className="flex items-center gap-2">
+                                  <span>{v ?? ""}</span>
+                                  {hasTitles && (
+                                    <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold text-[hsl(var(--brand-orange))] bg-[hsl(var(--brand-orange))]/10">
+                                      🏆 {[r.titlePrefix, r.titleSuffix].filter(Boolean).join(" ")}
+                                    </span>
+                                  )}
+                                </div>
+                              </TableCell>
+                            );
+                          }
+                          return <TableCell key={c.key} align={c.center ? "center" : "left"}>{v ?? ""}</TableCell>;
+                        })}
+                      </TableRow>
+                    ))}
+                </tbody>
+              </table>
+
+              <TableFooter
+                entityLabel="animals"
+                page={clampedPage}
+                pageCount={pageCount}
+                pageSize={pageSize}
+                pageSizeOptions={[10, 25, 50, 100]}
+                onPageChange={(p) => setPage(p)}
+                onPageSizeChange={(n) => {
+                  setPageSize(n);
+                  setPage(1);
+                }}
+                start={start}
+                end={end}
+                filteredTotal={sortedRows.length}
+                total={rows.length}
+                includeArchived={includeArchived}
+                onIncludeArchivedChange={(checked) => {
+                  setIncludeArchived(checked);
+                  setPage(1);
+                }}
+              />
+            </Table>
+          ) : (
+            <CardViewWithDetails
+              rows={pageRows}
+              loading={loading}
+              error={error}
+              sortedRows={sortedRows}
+              pageSize={pageSize}
               page={clampedPage}
               pageCount={pageCount}
-              pageSize={pageSize}
-              pageSizeOptions={[10, 25, 50, 100]}
-              onPageChange={(p) => setPage(p)}
-              onPageSizeChange={(n) => {
-                setPageSize(n);
-                setPage(1);
-              }}
+              setPage={setPage}
+              setPageSize={setPageSize}
+              includeArchived={includeArchived}
+              setIncludeArchived={setIncludeArchived}
+              totalRows={rows.length}
               start={start}
               end={end}
-              filteredTotal={sortedRows.length}
-              total={rows.length}
-              includeArchived={includeArchived}
-              onIncludeArchivedChange={(checked) => {
-                setIncludeArchived(checked);
-                setPage(1);
-              }}
             />
-          </Table>
+          )}
         </DetailsHost>
       </Card>
 
@@ -8086,6 +8329,142 @@ export default function AppAnimals() {
               disabled={isArchiving}
             >
               {isArchiving ? "Archiving..." : "Archive"}
+            </Button>
+          </div>
+        </div>
+      </Dialog>
+
+      <Dialog
+        open={deleteDialogOpen}
+        onClose={() => setDeleteDialogOpen(false)}
+        title="Delete Animal"
+        size="sm"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-secondary">
+            Are you sure you want to delete <strong>{rows.find(r => r.id === deleteTargetId)?.name || "this animal"}</strong>? This action cannot be undone.
+          </p>
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setDeleteDialogOpen(false)}
+              disabled={isDeleting}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={() => deleteTargetId && handleDelete(deleteTargetId)}
+              disabled={isDeleting}
+            >
+              {isDeleting ? "Deleting..." : "Delete"}
+            </Button>
+          </div>
+        </div>
+      </Dialog>
+
+      {/* Delete blockers info dialog */}
+      <Dialog
+        open={deleteBlockersOpen}
+        onClose={() => setDeleteBlockersOpen(false)}
+        title=""
+        size="md"
+      >
+        <div className="space-y-4">
+          <div className="text-lg font-semibold text-amber-400">
+            Cannot Delete Animal
+          </div>
+          <p className="text-sm text-secondary">
+            This animal has associated records that must be removed or reassigned first:
+          </p>
+          {deleteBlockers && (
+            <ul className="text-sm space-y-2">
+              {deleteBlockers.blockers.hasOffspring && (
+                <li className="flex items-center gap-2">
+                  <span className="text-amber-400">•</span>
+                  <span>
+                    Has {deleteBlockers.details?.offspringCount ?? "some"} offspring
+                  </span>
+                </li>
+              )}
+              {deleteBlockers.blockers.isParentInPedigree && (
+                <li className="flex items-center gap-2">
+                  <span className="text-amber-400">•</span>
+                  <span>Is a parent in another animal's pedigree</span>
+                </li>
+              )}
+              {deleteBlockers.blockers.hasBreedingPlans && (
+                <li className="flex items-center gap-2">
+                  <span className="text-amber-400">•</span>
+                  <span>
+                    Associated with {deleteBlockers.details?.breedingPlanCount ?? "some"} breeding plan{(deleteBlockers.details?.breedingPlanCount ?? 0) !== 1 ? "s" : ""}
+                  </span>
+                </li>
+              )}
+              {deleteBlockers.blockers.hasWaitlistEntries && (
+                <li className="flex items-center gap-2">
+                  <span className="text-amber-400">•</span>
+                  <span>
+                    Has {deleteBlockers.details?.waitlistEntryCount ?? "some"} waitlist {(deleteBlockers.details?.waitlistEntryCount ?? 0) !== 1 ? "entries" : "entry"}
+                  </span>
+                </li>
+              )}
+              {deleteBlockers.blockers.hasInvoices && (
+                <li className="flex items-center gap-2">
+                  <span className="text-amber-400">•</span>
+                  <span>
+                    Has {deleteBlockers.details?.invoiceCount ?? "some"} invoice{(deleteBlockers.details?.invoiceCount ?? 0) !== 1 ? "s" : ""}
+                  </span>
+                </li>
+              )}
+              {deleteBlockers.blockers.hasDocuments && (
+                <li className="flex items-center gap-2">
+                  <span className="text-amber-400">•</span>
+                  <span>
+                    Has {deleteBlockers.details?.documentCount ?? "some"} document{(deleteBlockers.details?.documentCount ?? 0) !== 1 ? "s" : ""}
+                  </span>
+                </li>
+              )}
+              {deleteBlockers.blockers.hasPublicListing && (
+                <li className="flex items-center gap-2">
+                  <span className="text-amber-400">•</span>
+                  <span>Has an active public listing</span>
+                </li>
+              )}
+              {Array.isArray(deleteBlockers.blockers.other) && deleteBlockers.blockers.other.map((msg, i) => (
+                <li key={i} className="flex items-center gap-2">
+                  <span className="text-amber-400">•</span>
+                  <span>{msg}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+          <p className="text-xs text-secondary">
+            To delete this animal, please remove or reassign these records first.
+            Alternatively, you can archive this animal to hide it from active views.
+          </p>
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setDeleteBlockersOpen(false)}
+            >
+              Close
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setDeleteBlockersOpen(false);
+                if (deleteTargetId) {
+                  setArchiveTargetId(deleteTargetId);
+                  setArchiveDialogOpen(true);
+                }
+              }}
+            >
+              Archive Instead
             </Button>
           </div>
         </div>

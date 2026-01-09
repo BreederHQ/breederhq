@@ -271,6 +271,40 @@ export function makeApi(baseOrigin: string = "", authHeaderFn?: () => Record<str
       const url = joinUrl(v1, "contacts", String(id));
       return fetchJson<{ ok: true }>(url, { method: "DELETE" }, withAuth());
     },
+    /**
+     * Check if a contact can be deleted. Returns blockers if deletion is not allowed.
+     */
+    async canDelete(id: ID): Promise<{
+      canDelete: boolean;
+      blockers: {
+        hasAnimals?: boolean;
+        hasInvoices?: boolean;
+        hasPayments?: boolean;
+        hasWaitlistEntries?: boolean;
+        hasBreedingPlans?: boolean;
+        hasDocuments?: boolean;
+        hasPortalAccess?: boolean;
+        other?: string[];
+      };
+      details?: {
+        animalCount?: number;
+        invoiceCount?: number;
+        paymentCount?: number;
+        waitlistCount?: number;
+        breedingPlanCount?: number;
+      };
+    }> {
+      const url = joinUrl(v1, "contacts", String(id), "can-delete");
+      try {
+        return await fetchJson<any>(url, { method: "GET" }, withAuth());
+      } catch (e: any) {
+        // If endpoint doesn't exist yet, allow delete (graceful fallback)
+        if (e?.status === 404) {
+          return { canDelete: true, blockers: {} };
+        }
+        throw e;
+      }
+    },
     async archive(id: ID, reason?: string) {
       const url = joinUrl(v1, "contacts", String(id), "archive");
       const body = reason ? { reason } : undefined;
@@ -394,6 +428,39 @@ export function makeApi(baseOrigin: string = "", authHeaderFn?: () => Record<str
     async remove(id: ID) {
       const url = joinUrl(v1, "organizations", String(id));
       return fetchJson<{ ok: true }>(url, { method: "DELETE" }, withAuth());
+    },
+    /**
+     * Check if an organization can be deleted. Returns blockers if deletion is not allowed.
+     */
+    async canDelete(id: ID): Promise<{
+      canDelete: boolean;
+      blockers: {
+        hasContacts?: boolean;
+        hasAnimals?: boolean;
+        hasInvoices?: boolean;
+        hasPayments?: boolean;
+        hasBreedingPlans?: boolean;
+        hasDocuments?: boolean;
+        other?: string[];
+      };
+      details?: {
+        contactCount?: number;
+        animalCount?: number;
+        invoiceCount?: number;
+        paymentCount?: number;
+        breedingPlanCount?: number;
+      };
+    }> {
+      const url = joinUrl(v1, "organizations", String(id), "can-delete");
+      try {
+        return await fetchJson<any>(url, { method: "GET" }, withAuth());
+      } catch (e: any) {
+        // If endpoint doesn't exist yet, allow delete (graceful fallback)
+        if (e?.status === 404) {
+          return { canDelete: true, blockers: {} };
+        }
+        throw e;
+      }
     },
   };
 

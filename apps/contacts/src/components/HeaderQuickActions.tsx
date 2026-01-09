@@ -5,6 +5,8 @@ import * as React from "react";
 import { createPortal } from "react-dom";
 import { Mail, MessageSquare, Phone, CalendarClock } from "lucide-react";
 import { getOverlayRoot, acquireOverlayHost } from "@bhq/ui/overlay";
+import { DayPicker } from "react-day-picker";
+import "@bhq/ui/styles/datepicker.css";
 
 // WhatsApp icon (not in lucide)
 function WhatsAppIcon({ className }: { className?: string }) {
@@ -66,6 +68,8 @@ function FollowUpQuickPicker({
   onChange: (iso: string | null) => void;
 }) {
   const [pos, setPos] = React.useState({ top: 0, left: 0 });
+  const [showDatePicker, setShowDatePicker] = React.useState(false);
+  const [customDate, setCustomDate] = React.useState("");
   const overlayRoot = getOverlayRoot();
 
   React.useEffect(() => {
@@ -83,6 +87,14 @@ function FollowUpQuickPicker({
     });
   }, [open, anchorRef]);
 
+  // Reset date picker state when closing
+  React.useEffect(() => {
+    if (!open) {
+      setShowDatePicker(false);
+      setCustomDate("");
+    }
+  }, [open]);
+
   if (!open || !overlayRoot) return null;
 
   const setFollowUp = (days: number) => {
@@ -92,9 +104,12 @@ function FollowUpQuickPicker({
     onClose();
   };
 
-  const setFollowUpMonths = (months: number) => {
+  const setFollowUpToNextMonday = () => {
     const date = new Date();
-    date.setMonth(date.getMonth() + months);
+    const dayOfWeek = date.getDay();
+    // Days until Monday: if Sunday (0) -> 1, if Monday (1) -> 7, if Tuesday (2) -> 6, etc.
+    const daysUntilMonday = dayOfWeek === 0 ? 1 : (8 - dayOfWeek);
+    date.setDate(date.getDate() + daysUntilMonday);
     onChange(date.toISOString());
     onClose();
   };
@@ -103,7 +118,7 @@ function FollowUpQuickPicker({
     <>
       <div
         className="fixed inset-0"
-        style={{ zIndex: 9998 }}
+        style={{ zIndex: 2147483645 }}
         onClick={onClose}
       />
       <div
@@ -112,46 +127,107 @@ function FollowUpQuickPicker({
           position: "fixed",
           top: pos.top,
           left: pos.left,
-          zIndex: 9999,
-          minWidth: 140,
+          zIndex: 2147483646,
+          minWidth: showDatePicker ? 300 : 160,
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex flex-col">
-          <button
-            type="button"
-            className="text-left px-3 py-1.5 text-sm hover:bg-white/5 rounded"
-            onClick={() => setFollowUp(1)}
-          >
-            Tomorrow
-          </button>
-          <button
-            type="button"
-            className="text-left px-3 py-1.5 text-sm hover:bg-white/5 rounded"
-            onClick={() => setFollowUp(7)}
-          >
-            Next week
-          </button>
-          <button
-            type="button"
-            className="text-left px-3 py-1.5 text-sm hover:bg-white/5 rounded"
-            onClick={() => setFollowUpMonths(1)}
-          >
-            Next month
-          </button>
-          {currentValue && (
+        {showDatePicker ? (
+          <div className="p-1">
+            <DayPicker
+              mode="single"
+              selected={customDate ? new Date(customDate + "T12:00:00") : undefined}
+              onSelect={(date) => {
+                if (date) {
+                  const iso = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+                  setCustomDate(iso);
+                  // Auto-submit when a date is selected
+                  const selectedDate = new Date(iso + "T12:00:00");
+                  if (!isNaN(selectedDate.getTime())) {
+                    onChange(selectedDate.toISOString());
+                    onClose();
+                  }
+                }
+              }}
+              defaultMonth={new Date()}
+              disabled={{ before: new Date() }}
+              showOutsideDays
+              classNames={{
+                root: "rdp-root",
+                months: "rdp-months",
+                month: "rdp-month",
+                month_caption: "rdp-month_caption",
+                caption_label: "rdp-caption_label",
+                nav: "rdp-nav",
+                button_previous: "rdp-button_previous",
+                button_next: "rdp-button_next",
+                month_grid: "rdp-month_grid",
+                weekdays: "rdp-weekdays",
+                weekday: "rdp-weekday",
+                week: "rdp-week",
+                day: "rdp-day",
+                day_button: "rdp-day_button",
+                selected: "rdp-selected",
+                today: "rdp-today",
+                outside: "rdp-outside",
+                disabled: "rdp-disabled",
+                hidden: "rdp-hidden",
+              }}
+            />
+            <div className="flex justify-start px-2 pb-2">
+              <button
+                type="button"
+                className="px-2 py-1 text-xs text-secondary hover:text-primary hover:bg-white/5 rounded"
+                onClick={() => setShowDatePicker(false)}
+              >
+                Back
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="flex flex-col">
             <button
               type="button"
-              className="text-left px-3 py-1.5 text-sm text-red-400 hover:bg-white/5 rounded border-t border-hairline mt-1 pt-1.5"
-              onClick={() => {
-                onChange(null);
-                onClose();
-              }}
+              className="text-left px-3 py-1.5 text-sm hover:bg-white/5 rounded"
+              onClick={() => setFollowUp(1)}
             >
-              Clear
+              Tomorrow
             </button>
-          )}
-        </div>
+            <button
+              type="button"
+              className="text-left px-3 py-1.5 text-sm hover:bg-white/5 rounded"
+              onClick={() => setFollowUp(3)}
+            >
+              In 3 days
+            </button>
+            <button
+              type="button"
+              className="text-left px-3 py-1.5 text-sm hover:bg-white/5 rounded"
+              onClick={setFollowUpToNextMonday}
+            >
+              Monday
+            </button>
+            <button
+              type="button"
+              className="text-left px-3 py-1.5 text-sm hover:bg-white/5 rounded border-t border-hairline mt-1 pt-1.5"
+              onClick={() => setShowDatePicker(true)}
+            >
+              Pick date...
+            </button>
+            {currentValue && (
+              <button
+                type="button"
+                className="text-left px-3 py-1.5 text-sm text-red-400 hover:bg-white/5 rounded border-t border-hairline mt-1 pt-1.5"
+                onClick={() => {
+                  onChange(null);
+                  onClose();
+                }}
+              >
+                Clear
+              </button>
+            )}
+          </div>
+        )}
       </div>
     </>,
     overlayRoot

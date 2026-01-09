@@ -86,47 +86,75 @@ async function fetchPedigree(animalId: number, generations: number = 4): Promise
 /* ───────────────── Custom Node Component ───────────────── */
 
 function PedigreeNodeComponent({ data }: NodeProps<Node<PedigreeNodeData>>) {
-  const { animal, isSire, generation, isRoot, hasParents, onSelect, onExpand } = data;
+  const { animal, generation, isRoot, hasParents, onSelect, onExpand, isSire } = data;
 
   const isMale = animal?.sex === "MALE";
   const isFemale = animal?.sex === "FEMALE";
 
-  // FamilySearch-style card dimensions
-  const cardWidth = generation === 0 ? 160 : generation === 1 ? 140 : generation === 2 ? 130 : 120;
-  const avatarSize = generation === 0 ? 48 : generation === 1 ? 40 : 36;
+  // Card dimensions - SCALED UP to match rendered demo appearance
+  // The SVG viewbox (800x400) is scaled ~1.5x when rendered to screen
+  // Root: 255x165, Parents: 150x105, Grandparents: 180x90, Great-grandparents: 150x75
+  const cardWidth = generation === 0 ? 255 : generation === 1 ? 150 : generation === 2 ? 180 : 150;
+  const cardHeight = generation === 0 ? 165 : generation === 1 ? 105 : generation === 2 ? 90 : 75;
+  const avatarSize = generation === 0 ? 60 : generation === 1 ? 42 : generation === 2 ? 36 : 30;
 
-  // Colors - FamilySearch uses green tones, we use gender-specific colors
-  const accentColor = animal
-    ? isMale
-      ? { border: "#0ea5e9", bg: "rgba(14, 165, 233, 0.1)", text: "#38bdf8" }
-      : isFemale
-      ? { border: "#ec4899", bg: "rgba(236, 72, 153, 0.1)", text: "#f472b6" }
-      : { border: "#f59e0b", bg: "rgba(245, 158, 11, 0.1)", text: "#fbbf24" }
-    : { border: "#3f3f46", bg: "rgba(63, 63, 70, 0.3)", text: "#71717a" };
+  // Role labels for nodes (matching demo)
+  const roleLabel = isRoot
+    ? "YOUR ANIMAL"
+    : generation === 1
+    ? (isSire ? "SIRE" : "DAM")
+    : generation === 2
+    ? (isSire ? "GRANDSIRE" : "GRANDDAM")
+    : "";
+
+  // Colors matching the SVG illustration gradients
+  const colors = isMale
+    ? {
+        border: "#0ea5e9",
+        gradientFrom: "rgba(14, 165, 233, 0.2)",
+        gradientTo: "rgba(2, 132, 199, 0.1)",
+        text: "#0ea5e9",
+        avatarBg: "#27272a"
+      }
+    : isFemale
+    ? {
+        border: "#ec4899",
+        gradientFrom: "rgba(236, 72, 153, 0.2)",
+        gradientTo: "rgba(219, 39, 119, 0.1)",
+        text: "#ec4899",
+        avatarBg: "#27272a"
+      }
+    : {
+        border: "#f59e0b",
+        gradientFrom: "rgba(245, 158, 11, 0.2)",
+        gradientTo: "rgba(217, 119, 6, 0.1)",
+        text: "#f59e0b",
+        avatarBg: "#27272a"
+      };
+
+  // Root node gets amber/orange border like the illustration
+  // SVG strokeWidth: Root=2, Parents=1.5, Grandparents=1
+  const borderColor = isRoot ? "#f59e0b" : colors.border;
+  const borderWidth = generation === 0 ? 2 : generation === 1 ? 1.5 : 1;
 
   const displayName = animal?.registeredName || animal?.name || "Unknown";
-  const initial = displayName[0]?.toUpperCase() || "?";
   const birthYear = animal?.dateOfBirth
     ? new Date(animal.dateOfBirth).getFullYear().toString()
     : null;
-  const deathYear = animal?.dateOfDeath
-    ? new Date(animal.dateOfDeath).getFullYear().toString()
-    : null;
-  const lifespan = birthYear ? (deathYear ? `${birthYear}–${deathYear}` : birthYear) : null;
 
   // Check if this node can be expanded (has parent IDs but no loaded parent data)
   const canExpand = animal && (animal.sireId || animal.damId) && !hasParents;
 
   return (
     <div className="relative" style={{ pointerEvents: "auto" }}>
-      {/* Connection handles */}
+      {/* Connection handles - invisible, no dots */}
       <Handle
         type="target"
         position={Position.Left}
-        className="!bg-transparent !border-0 !w-0 !h-0"
+        style={{ opacity: 0, width: 1, height: 1 }}
       />
 
-      {/* FamilySearch-style card */}
+      {/* Card matching demo illustration - SCALED for screen render */}
       <button
         onClick={(e) => {
           e.stopPropagation();
@@ -134,66 +162,88 @@ function PedigreeNodeComponent({ data }: NodeProps<Node<PedigreeNodeData>>) {
           if (animal && onSelect) onSelect(animal);
         }}
         disabled={!animal}
-        className="group relative flex items-center gap-2 p-2 rounded-lg transition-all duration-200 hover:shadow-lg hover:scale-105 active:scale-100 cursor-pointer"
+        className="group relative flex items-center gap-3 transition-all duration-200 hover:scale-[1.02] active:scale-100 cursor-pointer"
         style={{
           width: cardWidth,
-          backgroundColor: isRoot ? "rgba(30, 30, 30, 0.95)" : "rgba(24, 24, 27, 0.9)",
-          border: `2px solid ${accentColor.border}`,
-          boxShadow: isRoot ? `0 0 20px ${accentColor.border}30` : undefined,
+          height: cardHeight,
+          padding: generation === 0 ? "18px 20px" : generation === 1 ? "14px 16px" : "12px 14px",
+          background: `linear-gradient(135deg, ${colors.gradientFrom} 0%, ${colors.gradientTo} 100%)`,
+          border: `${borderWidth}px solid ${borderColor}`,
+          borderRadius: generation === 0 ? 12 : generation === 1 ? 10 : 8,
+          boxShadow: isRoot
+            ? `0 0 30px rgba(245, 158, 11, 0.5), 0 0 60px rgba(245, 158, 11, 0.2)`
+            : `0 4px 20px rgba(0, 0, 0, 0.4)`,
         }}
       >
-        {/* Avatar */}
+        {/* Circular avatar with gender symbol - scaled up */}
         <div
-          className="flex-shrink-0 rounded-full flex items-center justify-center font-bold text-white"
+          className="flex-shrink-0 rounded-full flex items-center justify-center"
           style={{
             width: avatarSize,
             height: avatarSize,
-            backgroundColor: accentColor.bg,
-            border: `2px solid ${accentColor.border}`,
-            fontSize: avatarSize * 0.4,
+            backgroundColor: colors.avatarBg,
+            border: `${generation === 0 ? 3 : generation === 1 ? 2 : 2}px solid ${colors.border}`,
           }}
         >
-          {animal ? initial : "?"}
+          <span style={{
+            color: colors.text,
+            fontSize: generation === 0 ? 24 : generation === 1 ? 18 : 15,
+            fontWeight: "bold"
+          }}>
+            {isMale ? "♂" : isFemale ? "♀" : "?"}
+          </span>
         </div>
 
-        {/* Info */}
+        {/* Info section - text sizes scaled up for readability */}
         <div className="flex-1 min-w-0 text-left">
+          {/* Role label (SIRE, DAM, GRANDSIRE, etc.) */}
+          {roleLabel && (
+            <div
+              className="leading-tight mb-0.5"
+              style={{
+                fontSize: generation === 0 ? 13 : generation === 1 ? 11 : 10,
+                color: generation === 0 ? "#a1a1aa" : generation === 1 ? "#71717a" : "#52525b",
+                letterSpacing: "0.02em",
+              }}
+            >
+              {roleLabel}
+            </div>
+          )}
           {/* Title prefix */}
           {animal?.titlePrefix && (
-            <div className="text-[9px] font-bold text-amber-400 leading-tight truncate">
+            <div className="text-[11px] font-bold text-amber-400 leading-tight truncate mb-0.5">
               {animal.titlePrefix}
             </div>
           )}
-          {/* Name */}
+          {/* Name - scaled up for readability */}
           <div
-            className="font-semibold leading-tight truncate text-white group-hover:text-amber-300 transition-colors"
-            style={{ fontSize: generation === 0 ? 12 : 11 }}
+            className="leading-tight truncate group-hover:brightness-110 transition-all"
+            style={{
+              fontSize: generation === 0 ? 18 : generation === 1 ? 16 : 14,
+              fontWeight: generation === 0 ? 500 : 400,
+              color: generation === 0 ? "#fafafa" : generation === 1 ? "#d4d4d8" : "#a1a1aa",
+            }}
           >
             {displayName}
           </div>
-          {/* Lifespan */}
-          {lifespan && (
-            <div className="text-[10px] text-zinc-500 leading-tight">
-              {lifespan}
+          {/* Year */}
+          {birthYear && (
+            <div
+              className="leading-tight mt-1"
+              style={{
+                fontSize: generation === 0 ? 14 : generation === 1 ? 13 : 12,
+                color: generation === 0 ? "#71717a" : "#52525b",
+              }}
+            >
+              {birthYear}
             </div>
           )}
-          {/* Gender indicator */}
-          <div className="flex items-center gap-1 mt-0.5">
-            <span style={{ color: accentColor.text }} className="text-[10px]">
-              {isMale ? "♂" : isFemale ? "♀" : ""}
-            </span>
-            {animal?.breed && (
-              <span className="text-[9px] text-zinc-600 truncate">
-                {animal.breed}
-              </span>
-            )}
-          </div>
         </div>
 
         {/* Deceased indicator */}
         {animal?.dateOfDeath && (
-          <div className="absolute -top-1 -right-1 w-4 h-4 bg-zinc-800 rounded-full border border-zinc-600 flex items-center justify-center">
-            <span className="text-[8px] text-zinc-400">†</span>
+          <div className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-zinc-800 rounded-full border border-zinc-600 flex items-center justify-center shadow-md">
+            <span className="text-[10px] text-zinc-400">†</span>
           </div>
         )}
       </button>
@@ -217,7 +267,7 @@ function PedigreeNodeComponent({ data }: NodeProps<Node<PedigreeNodeData>>) {
       <Handle
         type="source"
         position={Position.Right}
-        className="!bg-transparent !border-0 !w-0 !h-0"
+        style={{ opacity: 0, width: 1, height: 1 }}
       />
     </div>
   );
@@ -230,6 +280,7 @@ const nodeTypes = {
 /* ───────────────── Build Tree Layout ───────────────── */
 
 // FamilySearch-style horizontal layout: root on left, ancestors to the right
+// EXACT layout matching the SVG demo illustration
 function buildTreeFromPedigree(
   root: PedigreeNode,
   onSelect: (animal: PedigreeNode) => void,
@@ -238,19 +289,44 @@ function buildTreeFromPedigree(
   const nodes: Node<PedigreeNodeData>[] = [];
   const edges: Edge[] = [];
 
-  // Layout constants - horizontal layout
-  const HORIZONTAL_SPACING = 200; // Space between generations (left to right)
-  const ROW_HEIGHT = 70; // Vertical spacing between nodes in same generation
+  // ═══════════════════════════════════════════════════════════════════════════
+  // LAYOUT SCALED 1.5x from SVG to match rendered demo appearance
+  // Original SVG viewBox: 800x400, but rendered larger on screen
+  // ═══════════════════════════════════════════════════════════════════════════
 
-  // Calculate y positions for each generation
-  // More ancestors = need more vertical spread
-  const getVerticalOffset = (gen: number, index: number, totalInGen: number) => {
-    const totalHeight = (totalInGen - 1) * ROW_HEIGHT;
-    const startY = -totalHeight / 2;
-    return startY + index * ROW_HEIGHT;
-  };
+  // Card dimensions SCALED 1.5x to match rendered appearance
+  const CARD_WIDTHS = [255, 150, 180, 150];   // gen 0, 1, 2, 3
+  const CARD_HEIGHTS = [165, 105, 90, 75];    // gen 0, 1, 2, 3
 
-  // Create nodes for each generation
+  // X positions SCALED 1.5x
+  // Original: Root=0, Parents=290, Grandparents=510
+  // Scaled: Root=0, Parents=435, Grandparents=765, Great-grandparents=1020
+  const X_GEN0 = 0;
+  const X_GEN1 = 435;
+  const X_GEN2 = 765;
+  const X_GEN3 = 1020;
+
+  // Y positions SCALED 1.5x
+  // Original: Sire=0, Dam=160, Root=60
+  // Scaled: Sire=0, Dam=240, Root=90
+  const Y_ROOT = 90;
+  const Y_SIRE = 0;
+  const Y_DAM = 240;
+
+  // Grandparent Y positions SCALED 1.5x
+  // Original: PGS=-60, PGD=15, MGS=155, MGD=230
+  // Scaled: PGS=-90, PGD=22, MGS=232, MGD=345
+  const Y_PATERNAL_GRANDSIRE = -90;
+  const Y_PATERNAL_GRANDDAM = 22;
+  const Y_MATERNAL_GRANDSIRE = 232;
+  const Y_MATERNAL_GRANDDAM = 345;
+
+  // Great-grandparent positions
+  const gpHeight = CARD_HEIGHTS[2];
+  const ggpHeight = CARD_HEIGHTS[3];
+  const ggpGap = 12;  // Gap between great-grandparent pairs
+
+  // Helper to add a node
   const addNode = (
     id: string,
     animal: PedigreeNode | null,
@@ -269,72 +345,85 @@ function buildTreeFromPedigree(
     });
   };
 
-  // Edge style
-  const edgeStyle = { stroke: "#52525b", strokeWidth: 1.5 };
+  // Edge style - smooth bezier curves matching SVG
+  const edgeStyle = { stroke: "#52525b", strokeWidth: 2 };
 
-  // Generation 0: Root (leftmost)
-  addNode("root", root, 0, 0, 0, undefined, true);
+  // ═══════════════════════════════════════════════════════════════════════════
+  // ADD NODES AND EDGES (using EXACT SVG positions)
+  // ═══════════════════════════════════════════════════════════════════════════
 
-  // Generation 1: Parents (2 nodes)
-  const gen1Y = getVerticalOffset(1, 0, 2);
+  // Generation 0: Root (center of tree)
+  addNode("root", root, X_GEN0, Y_ROOT, 0, undefined, true);
+
+  // Generation 1: Parents (Sire above, Dam below)
   if (root.sire || root.sireId) {
-    addNode("sire", root.sire || null, HORIZONTAL_SPACING, gen1Y, 1, true);
-    edges.push({ id: "e-root-sire", source: "root", target: "sire", type: "smoothstep", style: edgeStyle });
+    addNode("sire", root.sire || null, X_GEN1, Y_SIRE, 1, true);
+    edges.push({ id: "e-root-sire", source: "root", target: "sire", type: "default", style: edgeStyle });
   }
   if (root.dam || root.damId) {
-    addNode("dam", root.dam || null, HORIZONTAL_SPACING, gen1Y + ROW_HEIGHT, 1, false);
-    edges.push({ id: "e-root-dam", source: "root", target: "dam", type: "smoothstep", style: edgeStyle });
+    addNode("dam", root.dam || null, X_GEN1, Y_DAM, 1, false);
+    edges.push({ id: "e-root-dam", source: "root", target: "dam", type: "default", style: edgeStyle });
   }
 
-  // Generation 2: Grandparents - only show if we have actual data
-  const grandparents = [
-    { id: "sire-sire", animal: root.sire?.sire, parent: "sire", isSire: true, parentAnimal: root.sire },
-    { id: "sire-dam", animal: root.sire?.dam, parent: "sire", isSire: false, parentAnimal: root.sire },
-    { id: "dam-sire", animal: root.dam?.sire, parent: "dam", isSire: true, parentAnimal: root.dam },
-    { id: "dam-dam", animal: root.dam?.dam, parent: "dam", isSire: false, parentAnimal: root.dam },
-  ];
+  // Generation 2: Grandparents (EXACT positions from SVG)
+  if (root.sire?.sire) {
+    addNode("sire-sire", root.sire.sire, X_GEN2, Y_PATERNAL_GRANDSIRE, 2, true);
+    edges.push({ id: "e-sire-sire-sire", source: "sire", target: "sire-sire", type: "default", style: edgeStyle });
+  }
+  if (root.sire?.dam) {
+    addNode("sire-dam", root.sire.dam, X_GEN2, Y_PATERNAL_GRANDDAM, 2, false);
+    edges.push({ id: "e-sire-sire-dam", source: "sire", target: "sire-dam", type: "default", style: edgeStyle });
+  }
+  if (root.dam?.sire) {
+    addNode("dam-sire", root.dam.sire, X_GEN2, Y_MATERNAL_GRANDSIRE, 2, true);
+    edges.push({ id: "e-dam-dam-sire", source: "dam", target: "dam-sire", type: "default", style: edgeStyle });
+  }
+  if (root.dam?.dam) {
+    addNode("dam-dam", root.dam.dam, X_GEN2, Y_MATERNAL_GRANDDAM, 2, false);
+    edges.push({ id: "e-dam-dam-dam", source: "dam", target: "dam-dam", type: "default", style: edgeStyle });
+  }
 
-  grandparents.forEach((gp, i) => {
-    // Only show if parent exists AND this grandparent has data
-    if (!gp.parentAnimal || !gp.animal) return;
+  // Generation 3: Great-grandparents (calculated from grandparent positions)
+  // Each grandparent has 2 great-grandparents stacked vertically
+  const calcGGP = (gpY: number, isSire: boolean) => {
+    const gpCenter = gpY + gpHeight / 2;
+    return isSire
+      ? gpCenter - ggpHeight - ggpGap / 2
+      : gpCenter + ggpGap / 2;
+  };
 
-    const y = getVerticalOffset(2, i, 4);
-    addNode(gp.id, gp.animal, HORIZONTAL_SPACING * 2, y, 2, gp.isSire);
-    edges.push({
-      id: `e-${gp.parent}-${gp.id}`,
-      source: gp.parent,
-      target: gp.id,
-      type: "smoothstep",
-      style: edgeStyle,
-    });
-  });
-
-  // Generation 3: Great-grandparents - only show if we have actual data
-  const greatGrandparents = [
-    { id: "sire-sire-sire", animal: root.sire?.sire?.sire, parent: "sire-sire", parentAnimal: root.sire?.sire },
-    { id: "sire-sire-dam", animal: root.sire?.sire?.dam, parent: "sire-sire", parentAnimal: root.sire?.sire },
-    { id: "sire-dam-sire", animal: root.sire?.dam?.sire, parent: "sire-dam", parentAnimal: root.sire?.dam },
-    { id: "sire-dam-dam", animal: root.sire?.dam?.dam, parent: "sire-dam", parentAnimal: root.sire?.dam },
-    { id: "dam-sire-sire", animal: root.dam?.sire?.sire, parent: "dam-sire", parentAnimal: root.dam?.sire },
-    { id: "dam-sire-dam", animal: root.dam?.sire?.dam, parent: "dam-sire", parentAnimal: root.dam?.sire },
-    { id: "dam-dam-sire", animal: root.dam?.dam?.sire, parent: "dam-dam", parentAnimal: root.dam?.dam },
-    { id: "dam-dam-dam", animal: root.dam?.dam?.dam, parent: "dam-dam", parentAnimal: root.dam?.dam },
-  ];
-
-  greatGrandparents.forEach((ggp, i) => {
-    // Only show if grandparent exists AND this great-grandparent has data
-    if (!ggp.parentAnimal || !ggp.animal) return;
-
-    const y = getVerticalOffset(3, i, 8);
-    addNode(ggp.id, ggp.animal, HORIZONTAL_SPACING * 3, y, 3, i % 2 === 0);
-    edges.push({
-      id: `e-${ggp.parent}-${ggp.id}`,
-      source: ggp.parent,
-      target: ggp.id,
-      type: "smoothstep",
-      style: edgeStyle,
-    });
-  });
+  if (root.sire?.sire?.sire) {
+    addNode("sire-sire-sire", root.sire.sire.sire, X_GEN3, calcGGP(Y_PATERNAL_GRANDSIRE, true), 3, true);
+    edges.push({ id: "e-ss-sss", source: "sire-sire", target: "sire-sire-sire", type: "default", style: edgeStyle });
+  }
+  if (root.sire?.sire?.dam) {
+    addNode("sire-sire-dam", root.sire.sire.dam, X_GEN3, calcGGP(Y_PATERNAL_GRANDSIRE, false), 3, false);
+    edges.push({ id: "e-ss-ssd", source: "sire-sire", target: "sire-sire-dam", type: "default", style: edgeStyle });
+  }
+  if (root.sire?.dam?.sire) {
+    addNode("sire-dam-sire", root.sire.dam.sire, X_GEN3, calcGGP(Y_PATERNAL_GRANDDAM, true), 3, true);
+    edges.push({ id: "e-sd-sds", source: "sire-dam", target: "sire-dam-sire", type: "default", style: edgeStyle });
+  }
+  if (root.sire?.dam?.dam) {
+    addNode("sire-dam-dam", root.sire.dam.dam, X_GEN3, calcGGP(Y_PATERNAL_GRANDDAM, false), 3, false);
+    edges.push({ id: "e-sd-sdd", source: "sire-dam", target: "sire-dam-dam", type: "default", style: edgeStyle });
+  }
+  if (root.dam?.sire?.sire) {
+    addNode("dam-sire-sire", root.dam.sire.sire, X_GEN3, calcGGP(Y_MATERNAL_GRANDSIRE, true), 3, true);
+    edges.push({ id: "e-ds-dss", source: "dam-sire", target: "dam-sire-sire", type: "default", style: edgeStyle });
+  }
+  if (root.dam?.sire?.dam) {
+    addNode("dam-sire-dam", root.dam.sire.dam, X_GEN3, calcGGP(Y_MATERNAL_GRANDSIRE, false), 3, false);
+    edges.push({ id: "e-ds-dsd", source: "dam-sire", target: "dam-sire-dam", type: "default", style: edgeStyle });
+  }
+  if (root.dam?.dam?.sire) {
+    addNode("dam-dam-sire", root.dam.dam.sire, X_GEN3, calcGGP(Y_MATERNAL_GRANDDAM, true), 3, true);
+    edges.push({ id: "e-dd-dds", source: "dam-dam", target: "dam-dam-sire", type: "default", style: edgeStyle });
+  }
+  if (root.dam?.dam?.dam) {
+    addNode("dam-dam-dam", root.dam.dam.dam, X_GEN3, calcGGP(Y_MATERNAL_GRANDDAM, false), 3, false);
+    edges.push({ id: "e-dd-ddd", source: "dam-dam", target: "dam-dam-dam", type: "default", style: edgeStyle });
+  }
 
   return { nodes, edges };
 }
@@ -448,13 +537,13 @@ function PedigreeTreeInner({ root, onSelectAnimal, onExpandAnimal }: PedigreeTre
           if (animal) onSelectAnimal(animal);
         }}
         fitView
-        fitViewOptions={{ padding: 0.3, minZoom: 0.6, maxZoom: 1.2 }}
-        minZoom={0.4}
-        maxZoom={1.5}
-        defaultViewport={{ x: 100, y: 200, zoom: 0.85 }}
+        fitViewOptions={{ padding: 0.2, minZoom: 0.8, maxZoom: 1.5 }}
+        minZoom={0.3}
+        maxZoom={2}
+        defaultViewport={{ x: 0, y: 0, zoom: 1 }}
         defaultEdgeOptions={{
-          type: "smoothstep",
-          style: { stroke: "#52525b", strokeWidth: 1.5 },
+          type: "default",
+          style: { stroke: "#52525b", strokeWidth: 2 },
         }}
         proOptions={{ hideAttribution: true }}
         nodesDraggable={false}

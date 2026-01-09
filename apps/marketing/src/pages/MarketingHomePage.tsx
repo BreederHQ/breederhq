@@ -195,10 +195,69 @@ export default function MarketingHomePage() {
         subtitle="Plan it, write it, post it and track it - all in one place!"
       />
 
-      {/* Active Communications - Primary Section */}
+      {/* Communications Hub - Hero Section */}
       <section className="mt-8">
-        <div style={{ marginBottom: '1.25rem' }}>
-          <h2 className="text-xl font-semibold text-primary">Active Communications</h2>
+        <div
+          onClick={(e) => {
+            e.preventDefault();
+            window.history.pushState(null, "", "/marketing/hub");
+            window.dispatchEvent(new PopStateEvent("popstate"));
+          }}
+          className="relative rounded-2xl hover:brightness-110 transition-all overflow-hidden cursor-pointer group"
+          style={{
+            background: 'linear-gradient(135deg, rgba(232, 121, 36, 0.15) 0%, rgba(20, 184, 166, 0.1) 100%)',
+            border: '2px solid rgba(232, 121, 36, 0.3)',
+            height: '180px',
+          }}
+        >
+          {/* Animated gradient border effect */}
+          <div className="absolute inset-0 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300"
+            style={{
+              background: 'linear-gradient(135deg, rgba(232, 121, 36, 0.3) 0%, rgba(20, 184, 166, 0.2) 100%)',
+            }}
+          />
+
+          {/* Live pill */}
+          <div style={{ position: 'absolute', top: '16px', left: '16px' }}>
+            <span
+              className="text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-full animate-pulse"
+              style={{
+                backgroundColor: '#16a34a',
+                color: '#fff',
+              }}
+            >
+              Live
+            </span>
+          </div>
+
+          {/* Icon cluster in top-right */}
+          <div style={{ position: 'absolute', top: '16px', right: '24px' }} className="flex gap-2">
+            <ChatIcon className="w-16 h-16 opacity-80" />
+            <EmailIcon className="w-16 h-16 opacity-80" />
+          </div>
+
+          {/* Content */}
+          <div style={{ position: 'absolute', bottom: '24px', left: '24px', right: '24px' }}>
+            <h3 className="text-2xl font-bold text-primary">Communications Hub</h3>
+            <p className="mt-1 text-sm text-secondary">
+              All your messages, emails, and templates unified in one powerful inbox
+            </p>
+            <div className="mt-4">
+              <Button>
+                Open Hub
+                <svg className="w-4 h-4 ml-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M5 12h14M12 5l7 7-7 7" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </Button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Quick Access - Secondary Section */}
+      <section className="mt-6">
+        <div style={{ marginBottom: '1rem' }}>
+          <h2 className="text-lg font-semibold text-primary">Quick Access</h2>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <PrimaryTile
@@ -206,14 +265,14 @@ export default function MarketingHomePage() {
             description="Private conversations with clients."
             buttonLabel="Open Inbox"
             href="/marketing/messages"
-            icon={<ChatIcon className="w-24 h-24" />}
+            icon={<ChatIcon className="w-20 h-20" />}
           />
           <PrimaryTile
-            title="Email and Message Templates"
+            title="Email Templates"
             description="Reusable emails, DM replies, announcements."
             buttonLabel="Manage Templates"
             href="/marketing/templates"
-            icon={<EmailIcon className="w-24 h-24" />}
+            icon={<EmailIcon className="w-20 h-20" />}
           />
         </div>
       </section>

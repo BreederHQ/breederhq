@@ -4,12 +4,17 @@ import MessagesPage from "./pages/MessagesPage";
 import TemplatesHubPage from "./pages/TemplatesHubPage";
 import AutoRepliesPage from "./pages/AutoRepliesPage";
 import BusinessHoursPage from "./pages/BusinessHoursPage";
+import CommunicationsHub from "./pages/CommunicationsHub";
 
-type ViewRoute = "home" | "messages" | "templates" | "auto-replies" | "business-hours";
+type ViewRoute = "home" | "hub" | "messages" | "templates" | "auto-replies" | "business-hours";
 
 function getViewFromPath(pathname: string): ViewRoute {
   const path = pathname.toLowerCase().replace(/\/+$/, "");
 
+  // Communications Hub is the main unified view
+  if (path === "/marketing/hub" || path.startsWith("/marketing/hub/")) {
+    return "hub";
+  }
   if (path === "/marketing/messages" || path.startsWith("/marketing/messages/")) {
     return "messages";
   }
@@ -53,6 +58,8 @@ export default function AppMarketing() {
   }, []);
 
   switch (currentView) {
+    case "hub":
+      return <CommunicationsHub />;
     case "messages":
       return <MessagesPage />;
     case "templates":

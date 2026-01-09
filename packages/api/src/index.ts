@@ -14,6 +14,8 @@ import { makePortalData, type PortalDataResource } from "./resources/portal-data
 import { makeTags, type TagsResource } from "./resources/tags";
 import { makePartyCrm, type PartyCrmResource } from "./resources/party-crm";
 import { makeTemplates, type TemplatesResource } from "./resources/templates";
+import { makeCommunications, type CommunicationsResource } from "./resources/communications";
+import { makeDrafts, type DraftsResource } from "./resources/drafts";
 
 export { createHttp, type Http, type MakeAuthHeader } from "./http";
 
@@ -24,7 +26,7 @@ export { makeBreeding } from "./resources/breeding";
 export { makeOffspring } from "./resources/offspring";
 export { makeFinance, type FinanceResource, type InvoicesResource, type PaymentsResource, type ExpensesResource, type PartiesResource, type PartySearchResult, type FinanceContactsResource, type FinanceOrganizationsResource } from "./resources/finance";
 export { makeMarketing, type MarketingResource } from "./resources/marketing";
-export { makeMessages, type MessagesResource, type MessageThread, type Message, type MessageParticipant } from "./resources/messages";
+export { makeMessages, type MessagesResource, type MessageThread, type Message, type MessageParticipant, type UpdateThreadRequest } from "./resources/messages";
 export { makePortalAccess, type PortalAccessResource, type PortalAccessDTO, type PortalAccessStatus, type PortalAccessResponse } from "./resources/portal-access";
 export {
   makePortalData,
@@ -77,6 +79,32 @@ export {
   makeTemplates,
   type TemplatesResource,
 } from "./resources/templates";
+export {
+  makeCommunications,
+  type CommunicationsResource,
+  type CommunicationItem,
+  type CommunicationChannel,
+  type CommunicationStatus,
+  type CommunicationType,
+  type CommunicationSort,
+  type BulkAction,
+  type InboxParams,
+  type InboxResponse,
+  type BulkActionRequest,
+  type BulkActionResponse,
+  type InboxCounts,
+} from "./resources/communications";
+export {
+  makeDrafts,
+  type DraftsResource,
+  type Draft,
+  type DraftChannel,
+  type DraftListParams,
+  type DraftListResponse,
+  type CreateDraftRequest,
+  type UpdateDraftRequest,
+  type SendDraftResponse,
+} from "./resources/drafts";
 
 // Re-export shared types - common types first (ID, ListParams, ListResponse)
 export * from "./types/contacts";
@@ -122,5 +150,7 @@ export function makeApi(baseURL: string, makeAuth?: MakeAuthHeader) {
     tags:      makeTags(http),
     partyCrm:  makePartyCrm(http),
     templates: makeTemplates(http),
+    communications: makeCommunications(http),
+    drafts: makeDrafts(http),
   };
 }

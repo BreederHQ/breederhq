@@ -11,11 +11,12 @@ import {
   Badge,
   Button,
   TagPicker,
+  Popover,
   type TagOption,
 } from "@bhq/ui";
 import { FinanceTab } from "@bhq/ui/components/Finance";
 import { PortalAccessTab } from "@bhq/ui/components/PortalAccess";
-import { Copy } from "lucide-react";
+import { Copy, MoreVertical, Archive, Trash2 } from "lucide-react";
 import { getOverlayRoot } from "@bhq/ui/overlay";
 import { makeApi } from "./api";
 import { NotesTab } from "./components/NotesTab";
@@ -342,6 +343,9 @@ export function PartyDetailsView({
   activeTab,
   setActiveTab,
   requestSave,
+  close,
+  hasPendingChanges,
+  onDelete,
 }: {
   row: PartyTableRow;
   mode: "view" | "edit";
@@ -350,6 +354,9 @@ export function PartyDetailsView({
   activeTab: string;
   setActiveTab: (k: string) => void;
   requestSave: () => Promise<void>;
+  close?: () => void;
+  hasPendingChanges?: boolean;
+  onDelete?: () => Promise<void>;
 }) {
   const api = React.useMemo(() => makeApi(), []);
 
@@ -570,6 +577,16 @@ export function PartyDetailsView({
 
   const overlayRoot = typeof document !== "undefined" ? document.getElementById("bhq-overlay-root") : null;
 
+  // Overflow menu state
+  const [overflowMenuOpen, setOverflowMenuOpen] = React.useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = React.useState(false);
+  const [deleting, setDeleting] = React.useState(false);
+  const [checkingDelete, setCheckingDelete] = React.useState(false);
+  const [deleteBlockers, setDeleteBlockers] = React.useState<{
+    blockers: Record<string, boolean | string[] | undefined>;
+    details?: Record<string, number | undefined>;
+  } | null>(null);
+
   // Archive button
   const [archiving, setArchiving] = React.useState(false);
   const handleArchive = async () => {
@@ -623,32 +640,116 @@ export function PartyDetailsView({
     }
   }, [api, row.contactId, setDraft]);
 
-  const headerRight = row.kind === "CONTACT" || mode === "edit" ? (
-    <div className="flex items-center gap-2">
-      {/* Quick action icons */}
-      {mode === "view" && (
-        <HeaderQuickActions
-          email={row.email}
-          phone={(row as any).phoneMobileE164 || row.phone}
-          whatsapp={whatsappNumber}
-          partyName={row.displayName}
-          onComposeEmail={() => row.email && setShowEmailComposer(true)}
-          onComposeDM={() => setShowDMComposer(true)}
-          nextFollowUp={row.kind === "CONTACT" ? row.nextFollowUp : undefined}
-          onFollowUpChange={row.kind === "CONTACT" ? handleFollowUpChange : undefined}
-        />
-      )}
-      {mode === "edit" && row.archived && (
-        <Button size="sm" variant="outline" onClick={handleUnarchive} disabled={archiving}>
-          {archiving ? "Unarchiving…" : "Unarchive"}
-        </Button>
-      )}
-      {mode === "edit" && !row.archived && (
-        <Button size="sm" variant="outline" onClick={handleArchive} disabled={archiving}>
-          {archiving ? "Archiving…" : "Archive"}
-        </Button>
-      )}
-    </div>
+  // Quick actions in header (only in view mode for Contacts)
+  const headerRight = row.kind === "CONTACT" && mode === "view" ? (
+    <HeaderQuickActions
+      email={row.email}
+      phone={(row as any).phoneMobileE164 || row.phone}
+      whatsapp={whatsappNumber}
+      partyName={row.displayName}
+      onComposeEmail={() => row.email && setShowEmailComposer(true)}
+      onComposeDM={() => setShowDMComposer(true)}
+      nextFollowUp={row.nextFollowUp}
+      onFollowUpChange={handleFollowUpChange}
+    />
+  ) : undefined;
+
+  // Check if deletion is allowed
+  const checkCanDelete = async () => {
+    if (!onDelete) return;
+    setCheckingDelete(true);
+    setDeleteBlockers(null);
+    try {
+      let result: { canDelete: boolean; blockers: Record<string, any>; details?: Record<string, any> };
+      if (row.kind === "CONTACT" && row.contactId) {
+        result = await api.contacts.canDelete(row.contactId);
+      } else if (row.kind === "ORGANIZATION" && row.organizationId) {
+        result = await api.organizations.canDelete(row.organizationId);
+      } else {
+        // No valid entity to check
+        setDeleteConfirmOpen(true);
+        return;
+      }
+
+      if (result.canDelete) {
+        // No blockers, show delete confirmation
+        setDeleteConfirmOpen(true);
+      } else {
+        // Has blockers, show blocker info modal
+        setDeleteBlockers({ blockers: result.blockers, details: result.details });
+      }
+    } catch (e) {
+      console.error("[Contacts] canDelete check failed", e);
+      // If check fails, still allow delete attempt (API will block if needed)
+      setDeleteConfirmOpen(true);
+    } finally {
+      setCheckingDelete(false);
+    }
+  };
+
+  // Handle delete action
+  const handleDelete = async () => {
+    if (!onDelete) return;
+    setDeleting(true);
+    try {
+      await onDelete();
+      close?.();
+    } catch (e) {
+      console.error("[Contacts] delete failed", e);
+    } finally {
+      setDeleting(false);
+      setDeleteConfirmOpen(false);
+    }
+  };
+
+  // Overflow menu content (only in edit mode)
+  const tabsRightContent = mode === "edit" ? (
+    <Popover open={overflowMenuOpen} onOpenChange={setOverflowMenuOpen}>
+      <Popover.Trigger asChild>
+        <button
+          type="button"
+          className="flex items-center gap-1 px-2 py-1 rounded hover:bg-white/10 transition-colors text-secondary text-xs"
+          aria-label="More actions"
+        >
+          <MoreVertical className="h-4 w-4" />
+          <span>More</span>
+        </button>
+      </Popover.Trigger>
+      <Popover.Content align="end" className="w-48 p-1">
+        {/* Archive / Unarchive */}
+        <button
+          className="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-white/5 rounded disabled:opacity-50"
+          disabled={archiving}
+          onClick={async () => {
+            setOverflowMenuOpen(false);
+            if (row.archived) {
+              await handleUnarchive();
+            } else {
+              await handleArchive();
+            }
+          }}
+        >
+          <Archive className="h-4 w-4" />
+          {archiving
+            ? (row.archived ? "Unarchiving…" : "Archiving…")
+            : (row.archived ? "Unarchive" : "Archive")}
+        </button>
+        {/* Delete */}
+        {onDelete && (
+          <button
+            className="flex w-full items-center gap-2 px-3 py-2 text-sm text-red-400 hover:bg-white/5 rounded disabled:opacity-50"
+            disabled={checkingDelete}
+            onClick={() => {
+              setOverflowMenuOpen(false);
+              checkCanDelete();
+            }}
+          >
+            <Trash2 className="h-4 w-4" />
+            {checkingDelete ? "Checking…" : "Delete"}
+          </button>
+        )}
+      </Popover.Content>
+    </Popover>
   ) : undefined;
 
   const editText = (k: keyof PartyTableRow, placeholder?: string) => (
@@ -668,28 +769,35 @@ export function PartyDetailsView({
       <DetailsScaffold
         title={row.kind === "ORGANIZATION" ? (row.name || row.displayName) : row.displayName}
         subtitle={
-          row.kind === "CONTACT"
-            ? row.organizationName || row.email || ""
-            : row.email || row.phone || row.website || ""
+          row.archived
+            ? <span className="text-amber-400">(Archived)</span>
+            : row.kind === "CONTACT"
+              ? row.organizationName || row.email || ""
+              : row.email || row.phone || row.website || ""
         }
-        mode={mode}
-        onEdit={() => setMode("edit")}
+        mode={row.archived ? "view" : mode}
+        onEdit={row.archived ? undefined : () => setMode("edit")}
         onCancel={() => setMode("view")}
         onSave={requestSave}
         tabs={[
           { key: "overview", label: "Overview" },
-          { key: "activity", label: "Activity" },
-          { key: "notes", label: "Notes" },
           { key: "messages", label: "Messages" },
+          { key: "notes", label: "Notes" },
+          { key: "finances", label: "Finances" },
           { key: "animals", label: "Animals" },
           { key: "documents", label: "Documents" },
-          { key: "finances", label: "Finances" },
           { key: "portal", label: "Portal" },
+          { key: "activity", label: "Activity" },
           { key: "audit", label: "Audit" },
         ]}
         activeTab={activeTab}
         onTabChange={setActiveTab}
         rightActions={headerRight}
+        tabsRightContent={tabsRightContent}
+        onClose={close}
+        hasPendingChanges={hasPendingChanges}
+        hideCloseButton
+        showFooterClose
       >
         {activeTab === "overview" && (
           <div className="space-y-3">
@@ -849,248 +957,247 @@ export function PartyDetailsView({
               </div>
             </SectionCard>
 
-            {/* Communication Preferences - for Contacts only */}
+            {/* Communication Preferences + Compliance side by side - for Contacts only */}
             {row.kind === "CONTACT" && (
-              <SectionCard title={<SectionTitle icon="📞">Communication Preferences</SectionTitle>} highlight={mode === "edit"}>
-                <div className="flex flex-wrap items-center gap-2 mb-3">
-                  <PillToggle
-                    on={!!prefs.email}
-                    label="Email"
-                    onClick={() => togglePref("email")}
-                    className={`inline-flex h-7 items-center justify-center whitespace-nowrap rounded-full px-3.5 text-[11px] leading-none border transition-colors select-none${mode === "view" ? " pointer-events-none" : ""}`}
-                  />
-                  <PillToggle
-                    on={!!prefs.sms}
-                    label="SMS"
-                    onClick={() => togglePref("sms")}
-                    className={`inline-flex h-7 items-center justify-center whitespace-nowrap rounded-full px-3.5 text-[11px] leading-none border transition-colors select-none${mode === "view" ? " pointer-events-none" : ""}`}
-                  />
-                  <PillToggle
-                    on={!!prefs.phone}
-                    label="Phone"
-                    onClick={() => togglePref("phone")}
-                    className={`inline-flex h-7 items-center justify-center whitespace-nowrap rounded-full px-3.5 text-[11px] leading-none border transition-colors select-none${mode === "view" ? " pointer-events-none" : ""}`}
-                  />
-                  <PillToggle
-                    on={!!prefs.mail}
-                    label="Mail"
-                    onClick={() => togglePref("mail")}
-                    className={`inline-flex h-7 items-center justify-center whitespace-nowrap rounded-full px-3.5 text-[11px] leading-none border transition-colors select-none${mode === "view" ? " pointer-events-none" : ""}`}
-                  />
-                  <PillToggle
-                    on={!!prefs.whatsapp}
-                    label="WhatsApp"
-                    onClick={() => togglePref("whatsapp")}
-                    className={`inline-flex h-7 items-center justify-center whitespace-nowrap rounded-full px-3.5 text-[11px] leading-none border transition-colors select-none${mode === "view" ? " pointer-events-none" : ""}`}
-                  />
-                </div>
-
-                {/* Email */}
-                <div className="flex items-center gap-3">
-                  <div className="text-xs text-secondary min-w-[80px]">Email</div>
-                  {mode === "view" ? (
-                    <div className="text-sm flex items-center gap-2">
-                      <span>{row.email || "—"}</span>
-                      {row.email ? (
-                        <button
-                          type="button"
-                          className="inline-flex h-6 w-6 items-center justify-center rounded text-secondary hover:text-primary hover:bg-white/5"
-                          onClick={() => navigator.clipboard.writeText(row.email || "")}
-                          aria-label="Copy email address"
-                          title="Copy email address"
-                        >
-                          <Copy className="h-3.5 w-3.5" />
-                        </button>
-                      ) : null}
-                    </div>
-                  ) : (
-                    <div className="flex-1">
-                      <Input
-                        type="email"
-                        defaultValue={row.email ?? ""}
-                        onChange={(e) =>
-                          setDraft((d: any) => ({ ...d, email: (e.currentTarget as HTMLInputElement).value }))
-                        }
-                      />
-                    </div>
-                  )}
-                </div>
-
-                {/* Phones */}
-                <div className="flex items-center gap-3">
-                  <div className="text-xs text-secondary min-w-[80px]">Cell Phone</div>
-                  {mode === "view" ? (
-                    <div className="text-sm">
-                      {formatE164Phone((row as any).phoneMobileE164 || row.phone) || "—"}
-                    </div>
-                  ) : (
-                    <div className="flex-1">
-                      {/* @ts-ignore */}
-                      <IntlPhoneField
-                        value={cell}
-                        onChange={(v) => {
-                          setCell(v);
-                          const e164 = typeof v === "string" ? v : v?.e164;
-                          const waE164 = typeof wa === "string" ? wa : wa?.e164;
-                          setDraft((d: any) => ({
-                            ...d,
-                            phoneMobileE164: e164 || null,
-                            phone: e164 || waE164 || null,
-                          }));
-                        }}
-                      />
-                    </div>
-                  )}
-                </div>
-
-                <div className="flex items-center gap-3">
-                  <div className="text-xs text-secondary min-w-[80px]">Landline</div>
-                  {mode === "view" ? (
-                    <div className="text-sm">{formatE164Phone((row as any).phoneLandlineE164) || "—"}</div>
-                  ) : (
-                    <div className="flex-1">
-                      {/* @ts-ignore */}
-                      <IntlPhoneField
-                        value={land}
-                        onChange={(v) => {
-                          setLand(v);
-                          const e164 = typeof v === "string" ? v : v?.e164;
-                          setDraft((d: any) => ({
-                            ...d,
-                            phoneLandlineE164: e164 || null,
-                          }));
-                        }}
-                      />
-                    </div>
-                  )}
-                </div>
-
-                <div className="flex items-center gap-3">
-                  <div className="text-xs text-secondary min-w-[80px]">WhatsApp</div>
-                  {mode === "view" ? (
-                    <div className="text-sm">{formatE164Phone((row as any).whatsappE164) || "—"}</div>
-                  ) : (
-                    <div className="flex-1">
-                      {/* @ts-ignore */}
-                      <IntlPhoneField
-                        value={wa}
-                        onChange={(v) => {
-                          setWa(v);
-                          const e164 = typeof v === "string" ? v : v?.e164;
-                          const cellE164 = typeof cell === "string" ? cell : cell?.e164;
-                          setDraft((d: any) => ({
-                            ...d,
-                            whatsappE164: e164 || null,
-                            phone: cellE164 || e164 || null,
-                          }));
-                        }}
-                      />
-                    </div>
-                  )}
-                </div>
-
-                {mode === "edit" && (
-                  <div className="text-xs text-secondary">
-                    If Cell Phone is left empty, WhatsApp will be used as the phone on save.
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                <SectionCard title={<SectionTitle icon="📞">Communication Preferences</SectionTitle>} highlight={mode === "edit"}>
+                  <div className="flex flex-wrap items-center gap-2 mb-3">
+                    <PillToggle
+                      on={!!prefs.email}
+                      label="Email"
+                      onClick={() => togglePref("email")}
+                      className={`inline-flex h-7 items-center justify-center whitespace-nowrap rounded-full px-3.5 text-[11px] leading-none border transition-colors select-none${mode === "view" ? " pointer-events-none" : ""}`}
+                    />
+                    <PillToggle
+                      on={!!prefs.sms}
+                      label="SMS"
+                      onClick={() => togglePref("sms")}
+                      className={`inline-flex h-7 items-center justify-center whitespace-nowrap rounded-full px-3.5 text-[11px] leading-none border transition-colors select-none${mode === "view" ? " pointer-events-none" : ""}`}
+                    />
+                    <PillToggle
+                      on={!!prefs.phone}
+                      label="Phone"
+                      onClick={() => togglePref("phone")}
+                      className={`inline-flex h-7 items-center justify-center whitespace-nowrap rounded-full px-3.5 text-[11px] leading-none border transition-colors select-none${mode === "view" ? " pointer-events-none" : ""}`}
+                    />
+                    <PillToggle
+                      on={!!prefs.mail}
+                      label="Mail"
+                      onClick={() => togglePref("mail")}
+                      className={`inline-flex h-7 items-center justify-center whitespace-nowrap rounded-full px-3.5 text-[11px] leading-none border transition-colors select-none${mode === "view" ? " pointer-events-none" : ""}`}
+                    />
+                    <PillToggle
+                      on={!!prefs.whatsapp}
+                      label="WhatsApp"
+                      onClick={() => togglePref("whatsapp")}
+                      className={`inline-flex h-7 items-center justify-center whitespace-nowrap rounded-full px-3.5 text-[11px] leading-none border transition-colors select-none${mode === "view" ? " pointer-events-none" : ""}`}
+                    />
                   </div>
-                )}
-              </SectionCard>
-            )}
 
-            {/* Compliance - for Contacts only */}
-            {row.kind === "CONTACT" && (
-              <SectionCard title={<SectionTitle icon="⚖️">Compliance</SectionTitle>} highlight={mode === "edit"}>
-                <div className="text-xs text-secondary mb-2">
-                  System sets these from unsubscribes. Select Reset to opt the user back in. Action is logged on save.
-                </div>
-
-                {mode === "view" ? (
-                  <div className="flex flex-wrap items-center gap-6">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs">EMAIL</span>
-                      <span className="text-xs px-2 py-0.5 rounded border border-hairline">
-                        {(row as any).emailUnsubscribed ? "unsubscribed" : "subscribed"}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs">SMS</span>
-                      <span className="text-xs px-2 py-0.5 rounded border border-hairline">
-                        {(row as any).smsUnsubscribed ? "unsubscribed" : "subscribed"}
-                      </span>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="flex flex-wrap items-center gap-8">
-                    {/* EMAIL Reset */}
-                    <label className="flex items-center gap-2 text-xs">
-                      <span>EMAIL</span>
-                      <span className="px-2 py-0.5 rounded border border-hairline text-xs">
-                        {(row as any).emailUnsubscribed ? "unsubscribed" : "subscribed"}
-                      </span>
-                      <input
-                        type="checkbox"
-                        defaultChecked={!!(row as any).emailOptOutOverride}
-                        onChange={(e) => {
-                          const el = e.currentTarget as HTMLInputElement;
-                          const checked = el.checked;
-
-                          if (checked) {
-                            setConfirmReset({
-                              channel: "email",
-                              onAnswer: (ok) => {
-                                if (ok) {
-                                  setDraft((d: any) => ({ ...d, emailOptOutOverride: true }));
-                                  el.checked = true;
-                                } else {
-                                  el.checked = false;
-                                }
-                                setConfirmReset(null);
-                              },
-                            });
-                          } else {
-                            setDraft((d: any) => ({ ...d, emailOptOutOverride: false }));
+                  {/* Email */}
+                  <div className="flex items-center gap-3">
+                    <div className="text-xs text-secondary min-w-[80px]">Email</div>
+                    {mode === "view" ? (
+                      <div className="text-sm flex items-center gap-2">
+                        <span>{row.email || "—"}</span>
+                        {row.email ? (
+                          <button
+                            type="button"
+                            className="inline-flex h-6 w-6 items-center justify-center rounded text-secondary hover:text-primary hover:bg-white/5"
+                            onClick={() => navigator.clipboard.writeText(row.email || "")}
+                            aria-label="Copy email address"
+                            title="Copy email address"
+                          >
+                            <Copy className="h-3.5 w-3.5" />
+                          </button>
+                        ) : null}
+                      </div>
+                    ) : (
+                      <div className="flex-1">
+                        <Input
+                          type="email"
+                          defaultValue={row.email ?? ""}
+                          onChange={(e) =>
+                            setDraft((d: any) => ({ ...d, email: (e.currentTarget as HTMLInputElement).value }))
                           }
-                        }}
-                      />
-                      <span>Reset</span>
-                    </label>
-
-                    {/* SMS Reset */}
-                    <label className="flex items-center gap-2 text-xs">
-                      <span>SMS</span>
-                      <span className="px-2 py-0.5 rounded border border-hairline text-xs">
-                        {(row as any).smsUnsubscribed ? "unsubscribed" : "subscribed"}
-                      </span>
-                      <input
-                        type="checkbox"
-                        defaultChecked={!!(row as any).smsOptOutOverride}
-                        onChange={(e) => {
-                          const el = e.currentTarget as HTMLInputElement;
-                          const checked = el.checked;
-
-                          if (checked) {
-                            setConfirmReset({
-                              channel: "sms",
-                              onAnswer: (ok) => {
-                                if (ok) {
-                                  setDraft((d: any) => ({ ...d, smsOptOutOverride: true }));
-                                  el.checked = true;
-                                } else {
-                                  el.checked = false;
-                                }
-                                setConfirmReset(null);
-                              },
-                            });
-                          } else {
-                            setDraft((d: any) => ({ ...d, smsOptOutOverride: false }));
-                          }
-                        }}
-                      />
-                      <span>Reset</span>
-                    </label>
+                        />
+                      </div>
+                    )}
                   </div>
-                )}
-              </SectionCard>
+
+                  {/* Phones */}
+                  <div className="flex items-center gap-3">
+                    <div className="text-xs text-secondary min-w-[80px]">Cell Phone</div>
+                    {mode === "view" ? (
+                      <div className="text-sm">
+                        {formatE164Phone((row as any).phoneMobileE164 || row.phone) || "—"}
+                      </div>
+                    ) : (
+                      <div className="flex-1">
+                        {/* @ts-ignore */}
+                        <IntlPhoneField
+                          value={cell}
+                          onChange={(v) => {
+                            setCell(v);
+                            const e164 = typeof v === "string" ? v : v?.e164;
+                            const waE164 = typeof wa === "string" ? wa : wa?.e164;
+                            setDraft((d: any) => ({
+                              ...d,
+                              phoneMobileE164: e164 || null,
+                              phone: e164 || waE164 || null,
+                            }));
+                          }}
+                        />
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <div className="text-xs text-secondary min-w-[80px]">Landline</div>
+                    {mode === "view" ? (
+                      <div className="text-sm">{formatE164Phone((row as any).phoneLandlineE164) || "—"}</div>
+                    ) : (
+                      <div className="flex-1">
+                        {/* @ts-ignore */}
+                        <IntlPhoneField
+                          value={land}
+                          onChange={(v) => {
+                            setLand(v);
+                            const e164 = typeof v === "string" ? v : v?.e164;
+                            setDraft((d: any) => ({
+                              ...d,
+                              phoneLandlineE164: e164 || null,
+                            }));
+                          }}
+                        />
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <div className="text-xs text-secondary min-w-[80px]">WhatsApp</div>
+                    {mode === "view" ? (
+                      <div className="text-sm">{formatE164Phone((row as any).whatsappE164) || "—"}</div>
+                    ) : (
+                      <div className="flex-1">
+                        {/* @ts-ignore */}
+                        <IntlPhoneField
+                          value={wa}
+                          onChange={(v) => {
+                            setWa(v);
+                            const e164 = typeof v === "string" ? v : v?.e164;
+                            const cellE164 = typeof cell === "string" ? cell : cell?.e164;
+                            setDraft((d: any) => ({
+                              ...d,
+                              whatsappE164: e164 || null,
+                              phone: cellE164 || e164 || null,
+                            }));
+                          }}
+                        />
+                      </div>
+                    )}
+                  </div>
+
+                  {mode === "edit" && (
+                    <div className="text-xs text-secondary">
+                      If Cell Phone is left empty, WhatsApp will be used as the phone on save.
+                    </div>
+                  )}
+                </SectionCard>
+
+                <SectionCard title={<SectionTitle icon="⚖️">Compliance</SectionTitle>} highlight={mode === "edit"}>
+                  <div className="text-xs text-secondary mb-2">
+                    System sets these from unsubscribes. Select Reset to opt the user back in. Action is logged on save.
+                  </div>
+
+                  {mode === "view" ? (
+                    <div className="flex flex-wrap items-center gap-6">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs">EMAIL</span>
+                        <span className="text-xs px-2 py-0.5 rounded border border-hairline">
+                          {(row as any).emailUnsubscribed ? "unsubscribed" : "subscribed"}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs">SMS</span>
+                        <span className="text-xs px-2 py-0.5 rounded border border-hairline">
+                          {(row as any).smsUnsubscribed ? "unsubscribed" : "subscribed"}
+                        </span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex flex-wrap items-center gap-8">
+                      {/* EMAIL Reset */}
+                      <label className="flex items-center gap-2 text-xs">
+                        <span>EMAIL</span>
+                        <span className="px-2 py-0.5 rounded border border-hairline text-xs">
+                          {(row as any).emailUnsubscribed ? "unsubscribed" : "subscribed"}
+                        </span>
+                        <input
+                          type="checkbox"
+                          defaultChecked={!!(row as any).emailOptOutOverride}
+                          onChange={(e) => {
+                            const el = e.currentTarget as HTMLInputElement;
+                            const checked = el.checked;
+
+                            if (checked) {
+                              setConfirmReset({
+                                channel: "email",
+                                onAnswer: (ok) => {
+                                  if (ok) {
+                                    setDraft((d: any) => ({ ...d, emailOptOutOverride: true }));
+                                    el.checked = true;
+                                  } else {
+                                    el.checked = false;
+                                  }
+                                  setConfirmReset(null);
+                                },
+                              });
+                            } else {
+                              setDraft((d: any) => ({ ...d, emailOptOutOverride: false }));
+                            }
+                          }}
+                        />
+                        <span>Reset</span>
+                      </label>
+
+                      {/* SMS Reset */}
+                      <label className="flex items-center gap-2 text-xs">
+                        <span>SMS</span>
+                        <span className="px-2 py-0.5 rounded border border-hairline text-xs">
+                          {(row as any).smsUnsubscribed ? "unsubscribed" : "subscribed"}
+                        </span>
+                        <input
+                          type="checkbox"
+                          defaultChecked={!!(row as any).smsOptOutOverride}
+                          onChange={(e) => {
+                            const el = e.currentTarget as HTMLInputElement;
+                            const checked = el.checked;
+
+                            if (checked) {
+                              setConfirmReset({
+                                channel: "sms",
+                                onAnswer: (ok) => {
+                                  if (ok) {
+                                    setDraft((d: any) => ({ ...d, smsOptOutOverride: true }));
+                                    el.checked = true;
+                                  } else {
+                                    el.checked = false;
+                                  }
+                                  setConfirmReset(null);
+                                },
+                              });
+                            } else {
+                              setDraft((d: any) => ({ ...d, smsOptOutOverride: false }));
+                            }
+                          }}
+                        />
+                        <span>Reset</span>
+                      </label>
+                    </div>
+                  )}
+                </SectionCard>
+              </div>
             )}
 
             {/* Communication Preferences - for Organizations only */}
@@ -1498,6 +1605,153 @@ export function PartyDetailsView({
                 Cancel
               </Button>
               <Button onClick={() => confirmReset.onAnswer(true)}>Confirm</Button>
+            </div>
+          </div>
+        </div>,
+        overlayRoot
+      )}
+
+      {/* Delete confirmation modal */}
+      {deleteConfirmOpen && overlayRoot && createPortal(
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 z-[100] flex items-center justify-center"
+        >
+          <div className="absolute inset-0 bg-black/50" onClick={() => setDeleteConfirmOpen(false)} />
+          <div className="relative w-[480px] max-w-[92vw] rounded-xl border border-hairline bg-surface shadow-xl p-4">
+            <div className="text-lg font-semibold mb-1">
+              Delete {row.kind === "CONTACT" ? "contact" : "organization"}?
+            </div>
+            <div className="text-sm text-secondary mb-4">
+              This will permanently delete this {row.kind === "CONTACT" ? "contact" : "organization"} and all associated data.
+              This action cannot be undone.
+            </div>
+            <div className="flex items-center justify-end gap-2">
+              <Button variant="outline" onClick={() => setDeleteConfirmOpen(false)} disabled={deleting}>
+                Cancel
+              </Button>
+              <Button variant="destructive" onClick={handleDelete} disabled={deleting}>
+                {deleting ? "Deleting…" : "Delete"}
+              </Button>
+            </div>
+          </div>
+        </div>,
+        overlayRoot
+      )}
+
+      {/* Delete blockers info modal */}
+      {deleteBlockers && overlayRoot && createPortal(
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 z-[100] flex items-center justify-center"
+        >
+          <div className="absolute inset-0 bg-black/50" onClick={() => setDeleteBlockers(null)} />
+          <div className="relative w-[520px] max-w-[92vw] rounded-xl border border-hairline bg-surface shadow-xl p-4">
+            <div className="text-lg font-semibold mb-1 text-amber-400">
+              Cannot Delete {row.kind === "CONTACT" ? "Contact" : "Organization"}
+            </div>
+            <div className="text-sm text-secondary mb-3">
+              This {row.kind === "CONTACT" ? "contact" : "organization"} has associated records that must be removed or reassigned first:
+            </div>
+            <ul className="text-sm space-y-2 mb-4">
+              {deleteBlockers.blockers.hasAnimals && (
+                <li className="flex items-center gap-2">
+                  <span className="text-amber-400">•</span>
+                  <span>
+                    Owns {deleteBlockers.details?.animalCount ?? "some"} animal{(deleteBlockers.details?.animalCount ?? 0) !== 1 ? "s" : ""}
+                  </span>
+                </li>
+              )}
+              {deleteBlockers.blockers.hasInvoices && (
+                <li className="flex items-center gap-2">
+                  <span className="text-amber-400">•</span>
+                  <span>
+                    Has {deleteBlockers.details?.invoiceCount ?? "some"} invoice{(deleteBlockers.details?.invoiceCount ?? 0) !== 1 ? "s" : ""}
+                  </span>
+                </li>
+              )}
+              {deleteBlockers.blockers.hasPayments && (
+                <li className="flex items-center gap-2">
+                  <span className="text-amber-400">•</span>
+                  <span>
+                    Has {deleteBlockers.details?.paymentCount ?? "some"} payment{(deleteBlockers.details?.paymentCount ?? 0) !== 1 ? "s" : ""}
+                  </span>
+                </li>
+              )}
+              {deleteBlockers.blockers.hasWaitlistEntries && (
+                <li className="flex items-center gap-2">
+                  <span className="text-amber-400">•</span>
+                  <span>
+                    Has {deleteBlockers.details?.waitlistEntryCount ?? "some"} waitlist {(deleteBlockers.details?.waitlistEntryCount ?? 0) !== 1 ? "entries" : "entry"}
+                  </span>
+                </li>
+              )}
+              {deleteBlockers.blockers.hasBreedingPlans && (
+                <li className="flex items-center gap-2">
+                  <span className="text-amber-400">•</span>
+                  <span>
+                    Associated with {deleteBlockers.details?.breedingPlanCount ?? "some"} breeding plan{(deleteBlockers.details?.breedingPlanCount ?? 0) !== 1 ? "s" : ""}
+                  </span>
+                </li>
+              )}
+              {deleteBlockers.blockers.hasDocuments && (
+                <li className="flex items-center gap-2">
+                  <span className="text-amber-400">•</span>
+                  <span>
+                    Has {deleteBlockers.details?.documentCount ?? "some"} document{(deleteBlockers.details?.documentCount ?? 0) !== 1 ? "s" : ""}
+                  </span>
+                </li>
+              )}
+              {deleteBlockers.blockers.hasPortalAccess && (
+                <li className="flex items-center gap-2">
+                  <span className="text-amber-400">•</span>
+                  <span>Has active portal access</span>
+                </li>
+              )}
+              {deleteBlockers.blockers.hasMembers && (
+                <li className="flex items-center gap-2">
+                  <span className="text-amber-400">•</span>
+                  <span>
+                    Has {deleteBlockers.details?.memberCount ?? "some"} member{(deleteBlockers.details?.memberCount ?? 0) !== 1 ? "s" : ""}
+                  </span>
+                </li>
+              )}
+              {deleteBlockers.blockers.hasExpenses && (
+                <li className="flex items-center gap-2">
+                  <span className="text-amber-400">•</span>
+                  <span>
+                    Has {deleteBlockers.details?.expenseCount ?? "some"} expense{(deleteBlockers.details?.expenseCount ?? 0) !== 1 ? "s" : ""}
+                  </span>
+                </li>
+              )}
+              {Array.isArray(deleteBlockers.blockers.other) && deleteBlockers.blockers.other.map((msg, i) => (
+                <li key={i} className="flex items-center gap-2">
+                  <span className="text-amber-400">•</span>
+                  <span>{msg}</span>
+                </li>
+              ))}
+            </ul>
+            <div className="text-xs text-secondary mb-4">
+              To delete this {row.kind === "CONTACT" ? "contact" : "organization"}, please remove or reassign these records first.
+              Alternatively, you can archive this record to hide it from active views.
+            </div>
+            <div className="flex items-center justify-end gap-2">
+              <Button variant="outline" onClick={() => setDeleteBlockers(null)}>
+                Close
+              </Button>
+              <Button
+                variant="outline"
+                onClick={async () => {
+                  setDeleteBlockers(null);
+                  if (!row.archived) {
+                    await handleArchive();
+                  }
+                }}
+              >
+                {row.archived ? "Already Archived" : "Archive Instead"}
+              </Button>
             </div>
           </div>
         </div>,

@@ -2,7 +2,7 @@
 import * as React from "react";
 import { createRoot } from "react-dom/client";
 import { createPortal } from "react-dom";
-import { Trash2, Plus, MoreHorizontal, MoreVertical, Download, Archive, Undo2 } from "lucide-react";
+import { Trash2, Plus, MoreHorizontal, MoreVertical, Download, Archive, Undo2, LayoutGrid, Table as TableIcon } from "lucide-react";
 import {
   PageHeader,
   Card,
@@ -16,6 +16,7 @@ import {
   SearchBar,
   FiltersRow,
   DetailsHost,
+  useTableDetails,
   DetailsScaffold,
   SectionCard,
   Button,
@@ -36,6 +37,7 @@ import RollupGantt from "./components/RollupGantt";
 import PerPlanGantt from "./components/PerPlanGantt";
 import PlannerSwitch from "./components/PlannerSwitch";
 import PlanJourney from "./components/PlanJourney";
+import { BreedingPlanCardView } from "./components/BreedingPlanCardView";
 import "@bhq/ui/styles/table.css";
 import "@bhq/ui/styles/details.css";
 import "@bhq/ui/styles/datefield.css";
@@ -353,6 +355,93 @@ function computeExpectedForPlan(plan: {
     console.error("[Breeding] computeExpectedForPlan failed", { locked, speciesWire, e });
     return null;
   }
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
+ * Card View Wrapper (uses DetailsHost context)
+ * ────────────────────────────────────────────────────────────────────────── */
+
+type PlanCardRow = {
+  id: number | string;
+  name: string;
+  status: string;
+  species: string;
+  damName: string;
+  sireName?: string | null;
+  breedText?: string | null;
+  expectedBreedDate?: string | null;
+  expectedBirthDate?: string | null;
+  expectedPlacementStartDate?: string | null;
+  depositsCommitted?: number | null;
+  depositsPaid?: number | null;
+  archived?: boolean;
+};
+
+function PlanCardViewWithDetails({
+  rows,
+  loading,
+  error,
+  displayRows,
+  pageSize,
+  page,
+  pageCount,
+  setPage,
+  setPageSize,
+  showArchived,
+  setShowArchived,
+  totalRows,
+  start,
+  end,
+}: {
+  rows: PlanCardRow[];
+  loading: boolean;
+  error: string | null;
+  displayRows: PlanCardRow[];
+  pageSize: number;
+  page: number;
+  pageCount: number;
+  setPage: (p: number) => void;
+  setPageSize: (n: number) => void;
+  showArchived: boolean;
+  setShowArchived: (v: boolean) => void;
+  totalRows: number;
+  start: number;
+  end: number;
+}) {
+  const { open } = useTableDetails<PlanCardRow>();
+
+  return (
+    <>
+      <BreedingPlanCardView
+        rows={rows}
+        loading={loading}
+        error={error}
+        onRowClick={(row) => open?.(row)}
+      />
+      <TableFooter
+        entityLabel="plans"
+        page={page}
+        pageCount={pageCount}
+        pageSize={pageSize}
+        pageSizeOptions={[12, 24, 48, 96]}
+        onPageChange={setPage}
+        onPageSizeChange={(n) => {
+          setPageSize(n);
+          setPage(1);
+        }}
+        start={start}
+        end={end}
+        filteredTotal={displayRows.length}
+        total={totalRows}
+        includeArchived={showArchived}
+        onIncludeArchivedChange={(checked) => {
+          setShowArchived(checked);
+          setPage(1);
+        }}
+        includeArchivedLabel="Show archived"
+      />
+    </>
+  );
 }
 
 function DateField({ label, value, defaultValue, readOnly, onChange }: BHQDateFieldProps) {
@@ -3567,6 +3656,19 @@ export default function AppBreeding() {
     } catch { }
   }, [showArchived]);
 
+  // View mode toggle (table vs cards)
+  const VIEW_MODE_KEY = "bhq_breeding_view_v1";
+  type ViewMode = "table" | "cards";
+  const [viewMode, setViewMode] = React.useState<ViewMode>(() => {
+    try {
+      const stored = localStorage.getItem(VIEW_MODE_KEY);
+      return (stored === "cards" ? "cards" : "table") as ViewMode;
+    } catch { return "table"; }
+  });
+  React.useEffect(() => {
+    try { localStorage.setItem(VIEW_MODE_KEY, viewMode); } catch { }
+  }, [viewMode]);
+
   // Selection (keep raw ID types; do NOT stringify)
   const [selectedKeys, setSelectedKeys] = React.useState<Set<ID>>(() => new Set<ID>());
   // Remember if the user has changed selection at least once
@@ -4721,159 +4823,212 @@ export default function AppBreeding() {
                 closeOnOutsideClick={!drawerHasPendingChanges}
                 closeOnEscape={!drawerHasPendingChanges}
               >
-                <Table
-                  columns={COLUMNS}
-                  columnState={map}
-                  onColumnStateChange={setAll}
-                  getRowId={(r: PlanRow) => r.id}
-                  pageSize={25}
-                  renderStickyRight={() => (
-                    <ColumnsPopover
-                      columns={map}
-                      onToggle={toggle}
-                      onSet={setAll}
-                      allColumns={COLUMNS}
-                      triggerClassName="bhq-columns-trigger"
-                    />
-                  )}
-                  stickyRightWidthPx={40}
-                >
-                  {/* Toolbar */}
-                  <div className="bhq-table__toolbar px-2 pt-2 pb-3 relative z-30 flex items-center gap-2">
-                    <div className="min-w-0 flex-1">
-                      <SearchBar
-                        value={q}
-                        onChange={setQ}
-                        placeholder="Search any field…"
-                        rightSlot={
-                          <button
-                            type="button"
-                            onClick={() => setFiltersOpen((v) => !v)}
-                            aria-expanded={filtersOpen}
-                            title="Filters"
-                            className="h-7 w-7 rounded-md flex items-center justify-center hover:bg-white/5 focus:outline-none"
-                          >
-                            <svg
-                              viewBox="0 0 24 24"
-                              className="h-4 w-4"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth={2}
-                              aria-hidden="true"
-                            >
-                              <path d="M3 5h18M7 12h10M10 19h4" strokeLinecap="round" />
-                            </svg>
-                          </button>
-                        }
-                      />
-                    </div>
-
-                    <Button
-                      size="sm"
-                      onClick={() => setCreateOpen(true)}
-                      disabled={!api}
-                      className="ml-auto shrink-0"
-                    >
-                      New Breeding Plan
-                    </Button>
-                    <Popover open={menuOpen} onOpenChange={setMenuOpen}>
-                      <Popover.Trigger asChild>
-                        <Button size="sm" variant="outline" aria-label="More actions">
-                          <MoreHorizontal className="h-4 w-4" />
-                        </Button>
-                      </Popover.Trigger>
-                      <Popover.Content align="end" className="w-48">
-                        <button
-                          className="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-white/5 rounded"
-                          onClick={handleExportCsv}
+                {/* Shared Toolbar - always visible */}
+                <div className="bhq-table__toolbar px-3 pt-3 pb-3 relative z-30 flex items-center gap-3">
+                  <SearchBar
+                    value={q}
+                    onChange={setQ}
+                    placeholder="Search any field…"
+                    widthPx={420}
+                    rightSlot={
+                      <button
+                        type="button"
+                        onClick={() => setFiltersOpen((v) => !v)}
+                        aria-expanded={filtersOpen}
+                        title="Filters"
+                        className="h-7 w-7 rounded-md flex items-center justify-center hover:bg-white/5 focus:outline-none"
+                      >
+                        <svg
+                          viewBox="0 0 24 24"
+                          className="h-4 w-4"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth={2}
+                          aria-hidden="true"
                         >
-                          <Download className="h-4 w-4" />
-                          Export CSV
-                        </button>
-                      </Popover.Content>
-                    </Popover>
+                          <path d="M3 5h18M7 12h10M10 19h4" strokeLinecap="round" />
+                        </svg>
+                      </button>
+                    }
+                  />
+
+                  {/* View mode toggle */}
+                  <div className="flex items-center rounded-lg border border-hairline overflow-hidden">
+                    <button
+                      type="button"
+                      onClick={() => setViewMode("table")}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 text-sm transition-colors ${
+                        viewMode === "table"
+                          ? "bg-[hsl(var(--brand-orange))] text-black"
+                          : "bg-transparent text-secondary hover:text-primary hover:bg-[hsl(var(--muted)/0.5)]"
+                      }`}
+                      title="Table view"
+                    >
+                      <TableIcon className="w-4 h-4" />
+                      <span className="hidden sm:inline">Table</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setViewMode("cards")}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 text-sm transition-colors ${
+                        viewMode === "cards"
+                          ? "bg-[hsl(var(--brand-orange))] text-black"
+                          : "bg-transparent text-secondary hover:text-primary hover:bg-[hsl(var(--muted)/0.5)]"
+                      }`}
+                      title="Card view"
+                    >
+                      <LayoutGrid className="w-4 h-4" />
+                      <span className="hidden sm:inline">Cards</span>
+                    </button>
                   </div>
 
-                  {/* Filters */}
-                  {filtersOpen && (
-                    <FiltersRow
-                      filters={filters}
-                      onChange={(next) => setFilters(next)}
-                      schema={FILTER_SCHEMA}
-                    />
+                  {/* Column toggle - only show in table mode */}
+                  {viewMode === "table" && (
+                    <div className="ml-auto">
+                      <ColumnsPopover
+                        columns={map}
+                        onToggle={toggle}
+                        onSet={setAll}
+                        allColumns={COLUMNS}
+                        triggerClassName="bhq-columns-trigger"
+                      />
+                    </div>
                   )}
 
-                  {/* Table */}
-                  <table className="min-w-max w-full text-sm">
-                    <TableHeader columns={visibleSafe} sorts={sorts} onToggleSort={onToggleSort} />
-                    <tbody>
-                      {loading && (
-                        <TableRow>
-                          <TableCell colSpan={visibleSafe.length}>
-                            <div className="py-8 text-center text-sm text-secondary">Loading breeding plans…</div>
-                          </TableCell>
-                        </TableRow>
-                      )}
+                  <Button
+                    size="sm"
+                    onClick={() => setCreateOpen(true)}
+                    disabled={!api}
+                    className={viewMode === "cards" ? "ml-auto shrink-0" : "shrink-0"}
+                  >
+                    New Breeding Plan
+                  </Button>
+                  <Popover open={menuOpen} onOpenChange={setMenuOpen}>
+                    <Popover.Trigger asChild>
+                      <Button size="sm" variant="outline" aria-label="More actions">
+                        <MoreHorizontal className="h-4 w-4" />
+                      </Button>
+                    </Popover.Trigger>
+                    <Popover.Content align="end" className="w-48">
+                      <button
+                        className="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-white/5 rounded"
+                        onClick={handleExportCsv}
+                      >
+                        <Download className="h-4 w-4" />
+                        Export CSV
+                      </button>
+                    </Popover.Content>
+                  </Popover>
+                </div>
 
-                      {!loading && error && (
-                        <TableRow>
-                          <TableCell colSpan={visibleSafe.length}>
-                            <div className="py-8 text-center text-sm text-red-600">Error: {error}</div>
-                          </TableCell>
-                        </TableRow>
-                      )}
+                {/* Filters */}
+                {filtersOpen && (
+                  <FiltersRow
+                    filters={filters}
+                    onChange={(next) => setFilters(next)}
+                    schema={FILTER_SCHEMA}
+                  />
+                )}
 
-                      {!loading && !error && pageRows.length === 0 && (
-                        <TableRow>
-                          <TableCell colSpan={visibleSafe.length}>
-                            <div className="py-8 text-center text-sm text-secondary">No breeding plans to display yet.</div>
-                          </TableCell>
-                        </TableRow>
-                      )}
-
-                      {!loading &&
-                        !error &&
-                        pageRows.length > 0 &&
-                        pageRows.map((r) => (
-                          <TableRow
-                            key={r.id}
-                            detailsRow={r}
-                            className={r.archived || r.archivedAt ? "bhq-row-archived" : undefined}
-                          >
-                            {visibleSafe.map((c) => {
-                              let v = (r as any)[c.key] as any;
-                              if (DATE_KEYS.has(c.key as any)) v = fmt(v);
-                              if (Array.isArray(v)) v = v.join(", ");
-                              return <TableCell key={c.key}>{v ?? ""}</TableCell>;
-                            })}
+                {/* Conditional view rendering */}
+                {viewMode === "table" ? (
+                  <Table
+                    columns={COLUMNS}
+                    columnState={map}
+                    onColumnStateChange={setAll}
+                    getRowId={(r: PlanRow) => r.id}
+                    pageSize={25}
+                    stickyRightWidthPx={0}
+                  >
+                    {/* Table */}
+                    <table className="min-w-max w-full text-sm">
+                      <TableHeader columns={visibleSafe} sorts={sorts} onToggleSort={onToggleSort} />
+                      <tbody>
+                        {loading && (
+                          <TableRow>
+                            <TableCell colSpan={visibleSafe.length}>
+                              <div className="py-8 text-center text-sm text-secondary">Loading breeding plans…</div>
+                            </TableCell>
                           </TableRow>
-                        ))}
-                    </tbody>
-                  </table>
+                        )}
 
-                  <TableFooter
-                    entityLabel="plans"
+                        {!loading && error && (
+                          <TableRow>
+                            <TableCell colSpan={visibleSafe.length}>
+                              <div className="py-8 text-center text-sm text-red-600">Error: {error}</div>
+                            </TableCell>
+                          </TableRow>
+                        )}
+
+                        {!loading && !error && pageRows.length === 0 && (
+                          <TableRow>
+                            <TableCell colSpan={visibleSafe.length}>
+                              <div className="py-8 text-center text-sm text-secondary">No breeding plans to display yet.</div>
+                            </TableCell>
+                          </TableRow>
+                        )}
+
+                        {!loading &&
+                          !error &&
+                          pageRows.length > 0 &&
+                          pageRows.map((r) => (
+                            <TableRow
+                              key={r.id}
+                              detailsRow={r}
+                              className={r.archived || r.archivedAt ? "bhq-row-archived" : undefined}
+                            >
+                              {visibleSafe.map((c) => {
+                                let v = (r as any)[c.key] as any;
+                                if (DATE_KEYS.has(c.key as any)) v = fmt(v);
+                                if (Array.isArray(v)) v = v.join(", ");
+                                return <TableCell key={c.key}>{v ?? ""}</TableCell>;
+                              })}
+                            </TableRow>
+                          ))}
+                      </tbody>
+                    </table>
+
+                    <TableFooter
+                      entityLabel="plans"
+                      page={clampedPage}
+                      pageCount={pageCount}
+                      pageSize={pageSize}
+                      pageSizeOptions={[10, 25, 50, 100]}
+                      onPageChange={(p) => setPage(p)}
+                      onPageSizeChange={(n) => {
+                        setPageSize(n);
+                        setPage(1);
+                      }}
+                      start={start}
+                      end={end}
+                      filteredTotal={displayRows.length}
+                      total={rows.length}
+                      includeArchived={showArchived}
+                      onIncludeArchivedChange={(checked) => {
+                        setShowArchived(checked);
+                        setPage(1);
+                      }}
+                      includeArchivedLabel="Show archived"
+                    />
+                  </Table>
+                ) : (
+                  <PlanCardViewWithDetails
+                    rows={pageRows}
+                    loading={loading}
+                    error={error}
+                    displayRows={displayRows}
+                    pageSize={pageSize}
                     page={clampedPage}
                     pageCount={pageCount}
-                    pageSize={pageSize}
-                    pageSizeOptions={[10, 25, 50, 100]}
-                    onPageChange={(p) => setPage(p)}
-                    onPageSizeChange={(n) => {
-                      setPageSize(n);
-                      setPage(1);
-                    }}
+                    setPage={setPage}
+                    setPageSize={setPageSize}
+                    showArchived={showArchived}
+                    setShowArchived={setShowArchived}
+                    totalRows={rows.length}
                     start={start}
                     end={end}
-                    filteredTotal={displayRows.length}
-                    total={rows.length}
-                    includeArchived={showArchived}
-                    onIncludeArchivedChange={(checked) => {
-                      setShowArchived(checked);
-                      setPage(1);
-                    }}
-                    includeArchivedLabel="Show archived"
                   />
-                </Table>
+                )}
               </DetailsHost>
 
               {/* Quick Add Event modal */}

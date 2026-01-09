@@ -23,6 +23,7 @@ export function DetailsScaffold({
   onClose,
   hasPendingChanges,
   hideCloseButton,
+  showFooterClose,
 }: {
   title: React.ReactNode;
   subtitle?: React.ReactNode;
@@ -41,6 +42,8 @@ export function DetailsScaffold({
   onClose?: () => void;
   hasPendingChanges?: boolean;
   hideCloseButton?: boolean;
+  /** Show a Close button in the footer instead of/in addition to header X */
+  showFooterClose?: boolean;
 }) {
   // When in edit mode without pending changes, Close should exit edit mode
   // When in edit mode with pending changes, Close should trigger the unsaved changes flow
@@ -65,7 +68,7 @@ export function DetailsScaffold({
           <div className="flex items-center gap-2">
             {rightActions /* should render <Button size="sm" variant="outline">Archive</Button> */}
             {mode === "view" ? (
-              <Button size="sm" variant="primary" onClick={onEdit}>Edit</Button>
+              onEdit && <Button size="sm" variant="primary" onClick={onEdit}>Edit</Button>
             ) : (
               <>
                 {hasPendingChanges && (
@@ -87,7 +90,7 @@ export function DetailsScaffold({
 
       {/* Shared Tabs — pills variant with prominent styling */}
       {tabs?.length > 0 && (
-        <div className="px-4 pt-3 pb-3 flex items-center justify-between border-b border-white/10">
+        <div className="px-4 pt-3 pb-3 flex items-start justify-between border-b border-white/10">
           <Tabs
             items={tabs.map(t => ({ value: t.key, label: <span className="uppercase tracking-wide">{t.label}</span> }))}
             value={activeTab}
@@ -102,6 +105,17 @@ export function DetailsScaffold({
       )}
 
       <div className="p-4 space-y-4">{children}</div>
+
+      {/* Footer Close button */}
+      {showFooterClose && onClose && (
+        <div className="sticky bottom-0 p-4 pt-6 bg-gradient-to-t from-[hsl(var(--surface))] via-[hsl(var(--surface)/0.95)] to-transparent">
+          <div className="flex justify-end">
+            <Button variant="outline" onClick={handleClose}>
+              Close
+            </Button>
+          </div>
+        </div>
+      )}
     </>
   );
 }
