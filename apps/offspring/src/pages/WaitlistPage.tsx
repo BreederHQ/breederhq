@@ -15,6 +15,7 @@ import {
   SectionCard,
   Button,
   BreedCombo,
+  DatePicker,
   useToast
 } from "@bhq/ui";
 import { Plus } from "lucide-react";
@@ -568,17 +569,17 @@ function CreateGroupForm({
 
             <label className="flex flex-col gap-1">
               <span className={cx(labelClass)}>Weaned At (optional)</span>
-              <input className={cx(inputClass)} type="date" value={weanedAt} onChange={(e) => setWeanedAt(e.target.value)} />
+              <DatePicker value={weanedAt} onChange={(e) => setWeanedAt(e.currentTarget.value)} inputClassName={cx(inputClass)} />
             </label>
 
             <label className="flex flex-col gap-1">
               <span className={cx(labelClass)}>Placement Start (optional)</span>
-              <input className={cx(inputClass)} type="date" value={placementStartAt} onChange={(e) => setPlacementStartAt(e.target.value)} />
+              <DatePicker value={placementStartAt} onChange={(e) => setPlacementStartAt(e.currentTarget.value)} inputClassName={cx(inputClass)} />
             </label>
 
             <label className="flex flex-col gap-1">
               <span className={cx(labelClass)}>Placement Completed (optional)</span>
-              <input className={cx(inputClass)} type="date" value={placementCompletedAt} onChange={(e) => setPlacementCompletedAt(e.target.value)} />
+              <DatePicker value={placementCompletedAt} onChange={(e) => setPlacementCompletedAt(e.currentTarget.value)} inputClassName={cx(inputClass)} />
             </label>
 
             {/* NEW: status override + reason */}
@@ -1603,11 +1604,11 @@ function WaitlistDrawerBody({
           </label>
           <label className="flex flex-col gap-1">
             <span className={cx(labelClass)}>Deposit Paid</span>
-            <input
-              className={cx(inputClass)}
-              type="date"
+            <DatePicker
               value={depositPaidAt || ""}
-              onChange={(e) => setDepositPaidAt(e.target.value)} disabled={readOnly}
+              onChange={(e) => setDepositPaidAt(e.currentTarget.value)}
+              inputClassName={cx(inputClass)}
+              readOnly={readOnly}
             />
           </label>
           <label className="flex flex-col gap-1 md:col-span-3">

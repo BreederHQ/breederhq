@@ -77,7 +77,7 @@ export default function BillingTab({ dirty, onDirty }: { dirty: boolean; onDirty
         setLoading(true);
         setError(null);
 
-        const subData = await api.billing.getSubscription() as Promise<SubscriptionData>;
+        const subData = await api.billing.getSubscription() as SubscriptionData;
 
         if (!cancelled) {
           setSubscription(subData);

@@ -12,6 +12,8 @@ import { makeMessages, type MessagesResource } from "./resources/messages";
 import { makePortalAccess, type PortalAccessResource } from "./resources/portal-access";
 import { makePortalData, type PortalDataResource } from "./resources/portal-data";
 import { makeTags, type TagsResource } from "./resources/tags";
+import { makePartyCrm, type PartyCrmResource } from "./resources/party-crm";
+import { makeTemplates, type TemplatesResource } from "./resources/templates";
 
 export { createHttp, type Http, type MakeAuthHeader } from "./http";
 
@@ -55,6 +57,26 @@ export {
   type UpdateTagInput,
   type TagAssignmentTarget,
 } from "./resources/tags";
+export {
+  makePartyCrm,
+  makePartyNotes,
+  makePartyActivity,
+  makePartyEmails,
+  makePartyEvents,
+  makePartyMilestones,
+  makeContactTasks,
+  type PartyCrmResource,
+  type PartyNotesResource,
+  type PartyActivityResource,
+  type PartyEmailsResource,
+  type PartyEventsResource,
+  type PartyMilestonesResource,
+  type ContactTasksResource,
+} from "./resources/party-crm";
+export {
+  makeTemplates,
+  type TemplatesResource,
+} from "./resources/templates";
 
 // Re-export shared types - common types first (ID, ListParams, ListResponse)
 export * from "./types/contacts";
@@ -62,6 +84,8 @@ export * from "./types/animals";
 export * from "./types/breeding";
 export * from "./types/offspring";
 export * from "./types/party";
+export * from "./types/party-crm";
+export * from "./types/templates";
 export {
   type LineItemKind,
   type InvoiceCategory,
@@ -96,5 +120,7 @@ export function makeApi(baseURL: string, makeAuth?: MakeAuthHeader) {
     portalAccess: makePortalAccess(http),
     portalData: makePortalData(http),
     tags:      makeTags(http),
+    partyCrm:  makePartyCrm(http),
+    templates: makeTemplates(http),
   };
 }

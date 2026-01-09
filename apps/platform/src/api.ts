@@ -152,6 +152,25 @@ export type FinanceSummary = {
   depositsOutstandingCents: number;
 };
 
+// Contact follow-up tasks for dashboard
+export type ContactFollowUpTaskKind = "follow_up" | "milestone" | "event" | "overdue_invoice";
+
+export type ContactFollowUpTask = {
+  id: string;
+  kind: ContactFollowUpTaskKind;
+  title: string;
+  description?: string;
+  partyId: number;
+  partyName: string;
+  partyKind: "CONTACT" | "ORGANIZATION";
+  dueDate: string; // ISO date
+  severity: "info" | "warning" | "overdue";
+  // For linking
+  eventId?: string | number;
+  milestoneId?: string | number;
+  invoiceId?: string | number;
+};
+
 // ───────────────────────── utils ─────────────────────────
 
 function normalizeBase(base: string): string {
@@ -525,6 +544,8 @@ export function makeApi(base?: string) {
       waitlistPressure: async (): Promise<WaitlistPressure> => {
         const fallback: WaitlistPressure = {
           totalWaitlist: 0,
+          activeWaitlist: 0,
+          pendingWaitlist: 0,
           totalAvailable: 0,
           expectedNext90Days: 0,
           ratio: 0,
@@ -572,6 +593,42 @@ export function makeApi(base?: string) {
         try {
           await request(`${root}/dashboard/agenda/${encodeURIComponent(id)}/complete`, {
             method: "POST",
+          });
+          return { ok: true };
+        } catch {
+          return { ok: false };
+        }
+      },
+
+      // Contact follow-up tasks for prominent dashboard display
+      contactTasks: async (): Promise<ContactFollowUpTask[]> => {
+        if (!dashboardRemoteEnabled()) return [];
+        return requestOr404<ContactFollowUpTask[]>(
+          `${root}/dashboard/contact-tasks`,
+          { method: "GET" },
+          []
+        );
+      },
+
+      completeContactTask: async (id: string): Promise<{ ok: boolean }> => {
+        if (!dashboardRemoteEnabled()) return { ok: true };
+        try {
+          await request(`${root}/dashboard/contact-tasks/${encodeURIComponent(id)}/complete`, {
+            method: "POST",
+          });
+          return { ok: true };
+        } catch {
+          return { ok: false };
+        }
+      },
+
+      snoozeContactTask: async (id: string, newDate: string): Promise<{ ok: boolean }> => {
+        if (!dashboardRemoteEnabled()) return { ok: true };
+        try {
+          await request(`${root}/dashboard/contact-tasks/${encodeURIComponent(id)}/snooze`, {
+            method: "POST",
+            body: JSON.stringify({ date: newDate }),
+            headers: { "content-type": "application/json" },
           });
           return { ok: true };
         } catch {

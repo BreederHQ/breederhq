@@ -32,6 +32,7 @@ export * from "./weights";
 export * from "./csvExport";
 export * from "./money";
 export * from "./confirmDialog";
+export * from "./templates";
 
 
 // Temporary helper until all expected-date shapes are unified across apps.

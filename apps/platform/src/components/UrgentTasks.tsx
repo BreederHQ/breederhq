@@ -1,7 +1,16 @@
 // apps/platform/src/components/dashboard/UrgentTasks.tsx
 import * as React from "react";
 import { Button } from "@bhq/ui";
-import type { Task } from "../../api/dashboard";
+
+type Task = {
+  id: string | number;
+  title: string;
+  description?: string;
+  due?: string | Date;
+  priority?: "low" | "medium" | "high";
+  kind?: string;
+  severity?: "info" | "warning" | "overdue";
+};
 
 export default function UrgentTasks({
   tasks,
@@ -19,10 +28,10 @@ export default function UrgentTasks({
           <li key={t.id} className="flex items-center justify-between rounded-xl border border-black/5 p-3">
             <div>
               <div className="text-sm">{t.title}</div>
-              <div className="text-xs opacity-70">{t.kind} due {t.due}</div>
+              <div className="text-xs opacity-70">{t.kind} due {t.due instanceof Date ? t.due.toLocaleDateString() : t.due}</div>
             </div>
             <div className="flex items-center gap-2">
-              <SeverityDot level={t.severity} />
+              <SeverityDot level={t.severity ?? "info"} />
               <Button size="sm" onClick={() => onComplete(t.id)}>Done</Button>
             </div>
           </li>

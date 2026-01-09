@@ -191,6 +191,28 @@ export function makeWaitlistApi(opts: MakeOpts = "/api/v1") {
       patch: (id: number, body: any) => {
         return raw.patch<WaitlistEntry>(`/waitlist/${id}`, body, {});
       },
+      /** Check if a duplicate waitlist entry exists for this combination */
+      checkDuplicate: (params: {
+        clientPartyId?: number | null;
+        contactId?: number | null;
+        organizationId?: number | null;
+        speciesPref: string;
+        breedPrefs?: string[] | null;
+        sirePrefId?: number | null;
+        damPrefId?: number | null;
+      }) => {
+        const qs = new URLSearchParams();
+        if (params.clientPartyId != null) qs.set("clientPartyId", String(params.clientPartyId));
+        if (params.contactId != null) qs.set("contactId", String(params.contactId));
+        if (params.organizationId != null) qs.set("organizationId", String(params.organizationId));
+        if (params.speciesPref) qs.set("speciesPref", params.speciesPref);
+        if (params.breedPrefs?.length) qs.set("breedPrefs", params.breedPrefs.join(","));
+        if (params.sirePrefId != null) qs.set("sirePrefId", String(params.sirePrefId));
+        if (params.damPrefId != null) qs.set("damPrefId", String(params.damPrefId));
+
+        const query = qs.toString();
+        return raw.get<{ isDuplicate: boolean; existingEntry?: WaitlistEntry | null }>(`/waitlist/check-duplicate?${query}`, {});
+      },
     },
 
     contacts: {

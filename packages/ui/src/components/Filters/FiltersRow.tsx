@@ -1,5 +1,6 @@
 // packages/ui/src/components/Filters/FiltersRow.tsx
 import * as React from "react";
+import { DatePicker } from "../DatePicker";
 
 export type FilterSchemaItem =
   | { key: string; label: string; editor?: "text" | "select" | "date" | "checklist" }
@@ -28,10 +29,11 @@ const DefaultInput: React.FC<any> = (p) => (
 );
 
 const DefaultDate: React.FC<any> = (p) => (
-  <input
-    type="date"
-    className="h-10 w-full rounded-full bg-surface border border-hairline px-3"
-    {...p}
+  <DatePicker
+    value={p.value || ""}
+    onChange={p.onChange}
+    inputClassName="h-10 w-full rounded-full bg-surface border border-hairline px-3"
+    placeholder={p.placeholder}
   />
 );
 

@@ -182,7 +182,7 @@ export default function ExpensesPage({ api }: Props) {
           limit: 1000,
           offset: 0,
         });
-        const items = (res?.items || res?.data || []).map(expenseToRow);
+        const items = (res?.items || (res as any)?.data || []).map(expenseToRow);
         if (!cancelled) setRows(items);
       } catch (e: any) {
         if (!cancelled)
@@ -328,7 +328,7 @@ export default function ExpensesPage({ api }: Props) {
     setError(null);
     try {
       const res = await api.finance.expenses.list({ limit: 1000, offset: 0 });
-      const items = (res?.items || res?.data || []).map(expenseToRow);
+      const items = (res?.items || (res as any)?.data || []).map(expenseToRow);
       setRows(items);
     } catch (e: any) {
       setError(e?.payload?.error || e?.message || "Failed to load expenses");

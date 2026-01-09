@@ -57,6 +57,9 @@ import HealthRiskSummary from "./components/HealthRiskSummary";
 import WhatsMissingAnalysis from "./components/WhatsMissingAnalysis";
 import BreedGeneticProfile from "./components/BreedGeneticProfiles";
 import BreedingGoalPlanner from "./components/BreedingGoalPlanner";
+import { BestMatchFinder } from "./components/BestMatchFinder";
+import { PairingComparisonPanel } from "./components/PairingComparisonPanel";
+import { PedigreeTreePanel } from "./components/PedigreeTreePanel";
 import { GeneticsImportDialog } from "@bhq/ui/components/GeneticsImport";
 import { getOffspringName, translatePrediction, extractLocusFromTrait } from "./utils/geneticsSimpleMode";
 
@@ -2415,6 +2418,67 @@ function COICheckPanel({
 }
 
 /** ────────────────────────────────────────────────────────────────────────
+ * Pedigree Tab Content - Helper component with local state for pedigree view
+ * ─────────────────────────────────────────────────────────────────────── */
+function PedigreeTabContent({
+  selectedDamId,
+  selectedSireId,
+  selectedDam,
+  selectedSire,
+}: {
+  selectedDamId: number | string | null;
+  selectedSireId: number | string | null;
+  selectedDam: { name: string } | undefined;
+  selectedSire: { name: string } | undefined;
+}) {
+  const [viewingAnimal, setViewingAnimal] = React.useState<'dam' | 'sire'>('dam');
+
+  const currentAnimalId = viewingAnimal === 'dam' ? selectedDamId : selectedSireId;
+  const currentAnimalName = viewingAnimal === 'dam' ? selectedDam?.name : selectedSire?.name;
+
+  return (
+    <div className="space-y-4">
+      <div className="text-sm text-secondary mb-4">
+        View the pedigree tree with genetic information for the selected animal.
+      </div>
+      <div className="flex gap-2 mb-4">
+        <button
+          onClick={() => setViewingAnimal('dam')}
+          className={`px-4 py-2 text-sm rounded-lg transition-colors ${
+            viewingAnimal === 'dam'
+              ? 'bg-pink-500 text-white'
+              : selectedDamId
+                ? 'bg-pink-500/10 text-pink-600 border border-pink-500/30 hover:bg-pink-500/20'
+                : 'bg-surface-alt text-secondary cursor-not-allowed'
+          }`}
+          disabled={!selectedDamId}
+        >
+          Dam: {selectedDam?.name || 'Not selected'}
+        </button>
+        <button
+          onClick={() => setViewingAnimal('sire')}
+          className={`px-4 py-2 text-sm rounded-lg transition-colors ${
+            viewingAnimal === 'sire'
+              ? 'bg-blue-500 text-white'
+              : selectedSireId
+                ? 'bg-blue-500/10 text-blue-600 border border-blue-500/30 hover:bg-blue-500/20'
+                : 'bg-surface-alt text-secondary cursor-not-allowed'
+          }`}
+          disabled={!selectedSireId}
+        >
+          Sire: {selectedSire?.name || 'Not selected'}
+        </button>
+      </div>
+      <PedigreeTreePanel
+        animalId={currentAnimalId}
+        animalName={currentAnimalName}
+        generations={4}
+      />
+    </div>
+  );
+}
+
+/** ────────────────────────────────────────────────────────────────────────
  * Genetics Lab Page — Genetic pairing analysis and compatibility
  * ─────────────────────────────────────────────────────────────────────── */
 function GeneticsLabPage({
@@ -2434,7 +2498,7 @@ function GeneticsLabPage({
   const [showDisclaimer, setShowDisclaimer] = React.useState(false);
   const [detailLevel, setDetailLevel] = React.useState<'simple' | 'detailed' | 'professional'>('simple');
   const [showImportDialog, setShowImportDialog] = React.useState<'dam' | 'sire' | null>(null);
-  const [activeLabTab, setActiveLabTab] = React.useState<'overview' | 'punnett' | 'simulator' | 'health' | 'colors' | 'goals' | 'missing'>('overview');
+  const [activeLabTab, setActiveLabTab] = React.useState<'overview' | 'punnett' | 'simulator' | 'health' | 'colors' | 'goals' | 'missing' | 'bestmatch' | 'compare' | 'pedigree'>('overview');
   const [simpleMode, setSimpleMode] = React.useState(false);
 
   // Check if user has already accepted genetics disclaimer
@@ -2774,6 +2838,9 @@ function GeneticsLabPage({
                 <div className="flex flex-wrap gap-1 mb-4">
                   {[
                     { id: 'overview', label: 'Overview', icon: '📊' },
+                    { id: 'bestmatch', label: 'Best Match', icon: '🔍' },
+                    { id: 'compare', label: 'Compare', icon: '⚖️' },
+                    { id: 'pedigree', label: 'Pedigree', icon: '🌳' },
                     { id: 'punnett', label: 'Punnett Squares', icon: '🧬' },
                     { id: 'simulator', label: 'Offspring Simulator', icon: '🎲' },
                     { id: 'health', label: 'Health Analysis', icon: '🏥' },
@@ -3205,6 +3272,46 @@ function GeneticsLabPage({
                         sireName={selectedSire?.name}
                       />
                     </div>
+                  )}
+
+                  {/* Best Match Finder Tab */}
+                  {activeLabTab === 'bestmatch' && (
+                    <BestMatchFinder
+                      animals={animals}
+                      api={api}
+                      selectedAnimal={selectedDam || null}
+                      mode="find-sires"
+                      onSelectMatch={(sireId) => {
+                        setSelectedSireId(sireId);
+                        setActiveLabTab('overview');
+                      }}
+                      calculateGeneticPairing={calculateGeneticPairing}
+                    />
+                  )}
+
+                  {/* Pairing Comparison Tab */}
+                  {activeLabTab === 'compare' && (
+                    <PairingComparisonPanel
+                      dam={selectedDam || null}
+                      damGenetics={damGenetics}
+                      availableSires={allSires}
+                      api={api}
+                      calculateGeneticPairing={calculateGeneticPairing}
+                      onViewFullPairing={(sireId) => {
+                        setSelectedSireId(sireId);
+                        setActiveLabTab('overview');
+                      }}
+                    />
+                  )}
+
+                  {/* Pedigree Tree Tab */}
+                  {activeLabTab === 'pedigree' && (
+                    <PedigreeTabContent
+                      selectedDamId={selectedDamId}
+                      selectedSireId={selectedSireId}
+                      selectedDam={selectedDam}
+                      selectedSire={selectedSire}
+                    />
                   )}
                 </div>
               </div>

@@ -7,10 +7,10 @@ import {
   Node,
   Edge,
   Background,
-  Controls,
-  MiniMap,
   useNodesState,
   useEdgesState,
+  useReactFlow,
+  ReactFlowProvider,
   Position,
   Handle,
   type NodeProps,
@@ -62,7 +62,8 @@ function getApiHeaders(): Record<string, string> {
 }
 
 async function fetchAllAnimals(): Promise<AnimalBasic[]> {
-  const res = await fetch(`/api/v1/animals?limit=100`, {
+  // Fetch all animals (increase limit to get all, sorted by name ascending)
+  const res = await fetch(`/api/v1/animals?limit=500&sort=name`, {
     credentials: "include",
     headers: getApiHeaders(),
   });
@@ -117,7 +118,7 @@ function PedigreeNodeComponent({ data }: NodeProps<Node<PedigreeNodeData>>) {
   const canExpand = animal && (animal.sireId || animal.damId) && !hasParents;
 
   return (
-    <div className="relative">
+    <div className="relative" style={{ pointerEvents: "auto" }}>
       {/* Connection handles */}
       <Handle
         type="target"
@@ -127,7 +128,11 @@ function PedigreeNodeComponent({ data }: NodeProps<Node<PedigreeNodeData>>) {
 
       {/* FamilySearch-style card */}
       <button
-        onClick={() => animal && onSelect(animal)}
+        onClick={(e) => {
+          e.stopPropagation();
+          e.preventDefault();
+          if (animal && onSelect) onSelect(animal);
+        }}
         disabled={!animal}
         className="group relative flex items-center gap-2 p-2 rounded-lg transition-all duration-200 hover:shadow-lg hover:scale-105 active:scale-100 cursor-pointer"
         style={{
@@ -334,6 +339,78 @@ function buildTreeFromPedigree(
   return { nodes, edges };
 }
 
+/* ───────────────── Custom Zoom Controls ───────────────── */
+
+function CustomControlsOverlay() {
+  const { zoomIn, zoomOut, fitView } = useReactFlow();
+
+  const containerStyle: React.CSSProperties = {
+    position: "absolute",
+    bottom: "16px",
+    left: "16px",
+    zIndex: 50,
+    display: "flex",
+    flexDirection: "column",
+    gap: "4px",
+    backgroundColor: "#27272a",
+    border: "1px solid #f59e0b",
+    borderRadius: "8px",
+    padding: "4px",
+    boxShadow: "0 4px 12px rgba(0,0,0,0.5)",
+  };
+
+  const buttonStyle: React.CSSProperties = {
+    width: "32px",
+    height: "32px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: "4px",
+    backgroundColor: "transparent",
+    border: "none",
+    color: "#a1a1aa",
+    cursor: "pointer",
+  };
+
+  return (
+    <div style={containerStyle}>
+      <button
+        onClick={() => zoomIn()}
+        style={buttonStyle}
+        title="Zoom in"
+        onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = "#3f3f46"; e.currentTarget.style.color = "#fff"; }}
+        onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = "transparent"; e.currentTarget.style.color = "#a1a1aa"; }}
+      >
+        <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v12M6 12h12" />
+        </svg>
+      </button>
+      <button
+        onClick={() => zoomOut()}
+        style={buttonStyle}
+        title="Zoom out"
+        onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = "#3f3f46"; e.currentTarget.style.color = "#fff"; }}
+        onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = "transparent"; e.currentTarget.style.color = "#a1a1aa"; }}
+      >
+        <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M6 12h12" />
+        </svg>
+      </button>
+      <button
+        onClick={() => fitView({ padding: 0.2 })}
+        style={buttonStyle}
+        title="Fit view"
+        onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = "#3f3f46"; e.currentTarget.style.color = "#fff"; }}
+        onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = "transparent"; e.currentTarget.style.color = "#a1a1aa"; }}
+      >
+        <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5v-4m0 4h-4m4 0l-5-5" />
+        </svg>
+      </button>
+    </div>
+  );
+}
+
 /* ───────────────── Pedigree Tree Component ───────────────── */
 
 interface PedigreeTreeProps {
@@ -342,7 +419,7 @@ interface PedigreeTreeProps {
   onExpandAnimal?: (animal: PedigreeNode) => void;
 }
 
-function PedigreeTree({ root, onSelectAnimal, onExpandAnimal }: PedigreeTreeProps) {
+function PedigreeTreeInner({ root, onSelectAnimal, onExpandAnimal }: PedigreeTreeProps) {
   const { nodes: initialNodes, edges: initialEdges } = React.useMemo(
     () => buildTreeFromPedigree(root, onSelectAnimal, onExpandAnimal),
     [root, onSelectAnimal, onExpandAnimal]
@@ -359,18 +436,22 @@ function PedigreeTree({ root, onSelectAnimal, onExpandAnimal }: PedigreeTreeProp
   }, [root, onSelectAnimal, onExpandAnimal, setNodes, setEdges]);
 
   return (
-    <div className="w-full h-full rounded-xl overflow-hidden border border-zinc-800 bg-zinc-950">
+    <>
       <ReactFlow
         nodes={nodes}
         edges={edges}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         nodeTypes={nodeTypes}
+        onNodeClick={(_, node) => {
+          const animal = (node.data as PedigreeNodeData).animal;
+          if (animal) onSelectAnimal(animal);
+        }}
         fitView
-        fitViewOptions={{ padding: 0.2, minZoom: 0.4, maxZoom: 0.8 }}
-        minZoom={0.2}
+        fitViewOptions={{ padding: 0.3, minZoom: 0.6, maxZoom: 1.2 }}
+        minZoom={0.4}
         maxZoom={1.5}
-        defaultViewport={{ x: 100, y: 200, zoom: 0.6 }}
+        defaultViewport={{ x: 100, y: 200, zoom: 0.85 }}
         defaultEdgeOptions={{
           type: "smoothstep",
           style: { stroke: "#52525b", strokeWidth: 1.5 },
@@ -380,25 +461,19 @@ function PedigreeTree({ root, onSelectAnimal, onExpandAnimal }: PedigreeTreeProp
         nodesConnectable={false}
         elementsSelectable={false}
       >
-        <Background color="#1f1f23" gap={24} size={1} />
-        <Controls
-          showInteractive={false}
-          className="!bg-zinc-900 !border-zinc-700 !rounded-lg !shadow-lg [&>button]:!bg-zinc-900 [&>button]:!border-zinc-700 [&>button]:!text-zinc-400 [&>button:hover]:!bg-zinc-800 [&>button:hover]:!text-white"
-        />
-        <MiniMap
-          nodeColor={(node) => {
-            const animal = (node.data as PedigreeNodeData).animal;
-            if (!animal) return "#3f3f46";
-            if (animal.sex === "MALE") return "#0ea5e9";
-            if (animal.sex === "FEMALE") return "#ec4899";
-            return "#f59e0b";
-          }}
-          maskColor="rgba(0, 0, 0, 0.7)"
-          className="!bg-zinc-900 !border-zinc-700 !rounded-lg"
-          pannable
-          zoomable
-        />
+        <Background color="#27272a" gap={20} size={1} />
       </ReactFlow>
+    </>
+  );
+}
+
+function PedigreeTree(props: PedigreeTreeProps) {
+  return (
+    <div className="w-full h-full rounded-xl overflow-hidden border border-amber-500/30 bg-zinc-950 relative">
+      <ReactFlowProvider>
+        <PedigreeTreeInner {...props} />
+        <CustomControlsOverlay />
+      </ReactFlowProvider>
     </div>
   );
 }
@@ -409,16 +484,29 @@ interface AnimalPanelProps {
   animal: PedigreeNode;
   onClose: () => void;
   onViewPedigree: (animal: PedigreeNode) => void;
+  isLocalAnimal?: boolean; // Whether this animal belongs to the current tenant
+  isCurrentRoot?: boolean; // Whether this is the animal currently at the center of the tree
 }
 
-function AnimalPanel({ animal, onClose, onViewPedigree }: AnimalPanelProps) {
+function AnimalPanel({ animal, onClose, onViewPedigree, isLocalAnimal = false, isCurrentRoot = false }: AnimalPanelProps) {
   const isMale = animal.sex === "MALE";
   const isFemale = animal.sex === "FEMALE";
   const ringColor = isMale ? "from-sky-400 to-sky-600" : isFemale ? "from-pink-400 to-pink-600" : "from-amber-400 to-amber-600";
 
+  // Format dates nicely
+  const formatDate = (dateStr: string | null) => {
+    if (!dateStr) return null;
+    const d = new Date(dateStr);
+    return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+  };
+
+  const birthDate = formatDate(animal.dateOfBirth);
+  const deathDate = formatDate(animal.dateOfDeath);
+
   return (
-    <div className="absolute bottom-4 left-1/2 -translate-x-1/2 w-96 bg-zinc-900/95 backdrop-blur-sm border border-zinc-700 rounded-2xl shadow-2xl z-50">
+    <div className="absolute bottom-4 left-1/2 -translate-x-1/2 w-[420px] bg-zinc-900/95 backdrop-blur-sm border border-zinc-700 rounded-2xl shadow-2xl z-50">
       <div className="p-4">
+        {/* Header with avatar and name */}
         <div className="flex items-start gap-4">
           <div className={`w-14 h-14 rounded-full p-[2px] bg-gradient-to-br ${ringColor} flex-shrink-0`}>
             <div className="w-full h-full rounded-full bg-zinc-900 flex items-center justify-center">
@@ -435,9 +523,19 @@ function AnimalPanel({ animal, onClose, onViewPedigree }: AnimalPanelProps) {
             <h3 className="text-base font-semibold text-white truncate">
               {animal.registeredName || animal.name || "Unknown"}
             </h3>
-            <div className="text-sm text-zinc-400">
-              {animal.breed || animal.species}
-              {animal.dateOfBirth && ` • ${new Date(animal.dateOfBirth).getFullYear()}`}
+            {animal.titleSuffix && (
+              <div className="text-xs text-amber-400">{animal.titleSuffix}</div>
+            )}
+            <div className="flex items-center gap-2 text-sm text-zinc-400 mt-0.5">
+              <span className={isMale ? "text-sky-400" : isFemale ? "text-pink-400" : "text-zinc-500"}>
+                {isMale ? "♂ Male" : isFemale ? "♀ Female" : "Unknown"}
+              </span>
+              {animal.breed && (
+                <>
+                  <span className="text-zinc-600">•</span>
+                  <span>{animal.breed}</span>
+                </>
+              )}
             </div>
           </div>
 
@@ -451,19 +549,41 @@ function AnimalPanel({ animal, onClose, onViewPedigree }: AnimalPanelProps) {
           </button>
         </div>
 
+        {/* Details grid */}
+        <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
+          {birthDate && (
+            <div className="bg-zinc-800/50 rounded-lg px-3 py-2">
+              <div className="text-[10px] uppercase text-zinc-500 font-medium">Born</div>
+              <div className="text-zinc-200">{birthDate}</div>
+            </div>
+          )}
+          {deathDate && (
+            <div className="bg-zinc-800/50 rounded-lg px-3 py-2">
+              <div className="text-[10px] uppercase text-zinc-500 font-medium">Died</div>
+              <div className="text-zinc-200">{deathDate}</div>
+            </div>
+          )}
+          {!birthDate && !deathDate && (
+            <div className="col-span-2 bg-zinc-800/30 rounded-lg px-3 py-2 text-center text-zinc-500 text-xs">
+              No date information available
+            </div>
+          )}
+        </div>
+
+        {/* Parent buttons */}
         <div className="mt-3 flex gap-2">
           <button
             onClick={() => animal.sire && onViewPedigree(animal.sire)}
             disabled={!animal.sire}
             className={`flex-1 p-2 rounded-lg border text-left text-xs ${
               animal.sire
-                ? "border-sky-500/30 bg-sky-500/5 hover:bg-sky-500/10"
-                : "border-zinc-700 bg-zinc-800/30 opacity-50"
+                ? "border-sky-500/30 bg-sky-500/5 hover:bg-sky-500/10 cursor-pointer"
+                : "border-zinc-700 bg-zinc-800/30 opacity-50 cursor-not-allowed"
             }`}
           >
             <div className="text-[10px] uppercase text-sky-400 font-medium">Sire</div>
             <div className="text-white truncate">
-              {animal.sire?.registeredName || animal.sire?.name || "Unknown"}
+              {animal.sire?.registeredName || animal.sire?.name || (animal.sireId ? "Not loaded" : "Unknown")}
             </div>
           </button>
           <button
@@ -471,33 +591,175 @@ function AnimalPanel({ animal, onClose, onViewPedigree }: AnimalPanelProps) {
             disabled={!animal.dam}
             className={`flex-1 p-2 rounded-lg border text-left text-xs ${
               animal.dam
-                ? "border-pink-400/30 bg-pink-400/5 hover:bg-pink-400/10"
-                : "border-zinc-700 bg-zinc-800/30 opacity-50"
+                ? "border-pink-400/30 bg-pink-400/5 hover:bg-pink-400/10 cursor-pointer"
+                : "border-zinc-700 bg-zinc-800/30 opacity-50 cursor-not-allowed"
             }`}
           >
             <div className="text-[10px] uppercase text-pink-400 font-medium">Dam</div>
             <div className="text-white truncate">
-              {animal.dam?.registeredName || animal.dam?.name || "Unknown"}
+              {animal.dam?.registeredName || animal.dam?.name || (animal.damId ? "Not loaded" : "Unknown")}
             </div>
           </button>
         </div>
 
+        {/* Action buttons */}
         <div className="mt-3 flex gap-2">
-          <Button className="flex-1" size="sm" onClick={() => onViewPedigree(animal)}>
-            View Pedigree
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => {
-              window.history.pushState(null, "", `/animals/${animal.id}`);
-              window.dispatchEvent(new PopStateEvent("popstate"));
-            }}
-          >
-            Profile
-          </Button>
+          {/* Only show "Explore Ancestors" if this animal has parents and isn't already the root */}
+          {!isCurrentRoot && (animal.sire || animal.dam || animal.sireId || animal.damId) && (
+            <Button className="flex-1" size="sm" onClick={() => onViewPedigree(animal)}>
+              Explore Ancestors
+            </Button>
+          )}
+          {isLocalAnimal && (
+            <Button
+              variant={isCurrentRoot || !(animal.sire || animal.dam || animal.sireId || animal.damId) ? "default" : "ghost"}
+              className={isCurrentRoot || !(animal.sire || animal.dam || animal.sireId || animal.damId) ? "flex-1" : ""}
+              size="sm"
+              onClick={() => {
+                window.history.pushState(null, "", `/animals/${animal.id}`);
+                window.dispatchEvent(new PopStateEvent("popstate"));
+              }}
+            >
+              Full Profile
+            </Button>
+          )}
+          {/* If no actions available, show a message */}
+          {isCurrentRoot && !isLocalAnimal && (
+            <div className="flex-1 text-center text-sm text-zinc-500 py-2">
+              Currently viewing this animal's pedigree
+            </div>
+          )}
         </div>
+
+        {/* Cross-tenant indicator */}
+        {!isLocalAnimal && (
+          <div className="mt-2 text-center text-[11px] text-zinc-500">
+            Shared from another breeder's records
+          </div>
+        )}
       </div>
+    </div>
+  );
+}
+
+/* ───────────────── Custom Animal Select ───────────────── */
+
+interface AnimalSelectProps {
+  animals: AnimalBasic[];
+  animalsBySpecies: Record<string, AnimalBasic[]>;
+  selectedId: number | null;
+  onSelect: (id: number | null) => void;
+  loading?: boolean;
+}
+
+function AnimalSelect({ animalsBySpecies, selectedId, onSelect, loading }: AnimalSelectProps) {
+  const [isOpen, setIsOpen] = React.useState(false);
+  const [search, setSearch] = React.useState("");
+  const containerRef = React.useRef<HTMLDivElement>(null);
+
+  // Find selected animal
+  const selectedAnimal = React.useMemo(() => {
+    if (!selectedId) return null;
+    for (const animals of Object.values(animalsBySpecies)) {
+      const found = animals.find(a => a.id === selectedId);
+      if (found) return found;
+    }
+    return null;
+  }, [selectedId, animalsBySpecies]);
+
+  // Filter animals by search
+  const filteredBySpecies = React.useMemo(() => {
+    if (!search.trim()) return animalsBySpecies;
+    const lower = search.toLowerCase();
+    const result: Record<string, AnimalBasic[]> = {};
+    for (const [species, animals] of Object.entries(animalsBySpecies)) {
+      const filtered = animals.filter(a =>
+        (a.name || "").toLowerCase().includes(lower) ||
+        (a.registeredName || "").toLowerCase().includes(lower)
+      );
+      if (filtered.length > 0) result[species] = filtered;
+    }
+    return result;
+  }, [search, animalsBySpecies]);
+
+  // Close on outside click
+  React.useEffect(() => {
+    const handleClick = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
+
+  return (
+    <div ref={containerRef} className="w-96 flex-shrink-0 relative">
+      {/* Input styled like BreedSelect */}
+      <input
+        readOnly
+        onClick={() => !loading && setIsOpen(!isOpen)}
+        value={loading ? "Loading animals..." : selectedAnimal ? (selectedAnimal.name || `Animal #${selectedAnimal.id}`) : ""}
+        placeholder="Search animals..."
+        className="w-full h-[42px] rounded-md border border-hairline bg-surface px-3 pr-8 text-sm text-primary outline-none focus:shadow-[0_0_0_2px_hsl(var(--hairline))] cursor-pointer"
+      />
+      {/* Chevron */}
+      <svg
+        className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-secondary"
+        viewBox="0 0 20 20"
+        aria-hidden="true"
+      >
+        <path d="M5.5 7.5l4.5 4 4.5-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      </svg>
+
+      {/* Dropdown */}
+      {isOpen && (
+        <div className="absolute z-50 mt-1 w-full rounded-md border border-hairline bg-surface-strong max-h-72 overflow-hidden shadow-lg">
+          {/* Search */}
+          <div className="p-2 border-b border-hairline">
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Type to filter..."
+              className="w-full h-9 rounded-md border border-hairline bg-surface px-3 text-sm text-primary outline-none focus:shadow-[0_0_0_2px_hsl(var(--hairline))]"
+              autoFocus
+            />
+          </div>
+
+          {/* Options */}
+          <div className="max-h-60 overflow-y-auto">
+            {Object.entries(filteredBySpecies).map(([species, animals]) => (
+              <div key={species}>
+                <div className="px-3 py-2 text-xs font-bold uppercase tracking-wider text-amber-500 bg-zinc-800 border-b border-hairline">
+                  {species}
+                </div>
+                {animals.map(animal => (
+                  <button
+                    key={animal.id}
+                    onClick={() => {
+                      onSelect(animal.id);
+                      setIsOpen(false);
+                      setSearch("");
+                    }}
+                    className={`w-full px-3 py-2 text-left text-sm flex items-center gap-2 hover:bg-surface/60 ${
+                      selectedId === animal.id ? "bg-surface/60" : ""
+                    }`}
+                  >
+                    <span className={animal.sex === "MALE" ? "text-sky-400" : animal.sex === "FEMALE" ? "text-pink-400" : "text-secondary"}>
+                      {animal.sex === "MALE" ? "♂" : animal.sex === "FEMALE" ? "♀" : "•"}
+                    </span>
+                    <span className="truncate text-primary">{animal.name || `Animal #${animal.id}`}</span>
+                  </button>
+                ))}
+              </div>
+            ))}
+            {Object.keys(filteredBySpecies).length === 0 && (
+              <div className="px-3 py-4 text-sm text-secondary text-center">No animals found</div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -541,14 +803,6 @@ export default function ExplorePage() {
     }
   }, []);
 
-  const handleSelectChange = React.useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
-    const id = e.target.value ? parseInt(e.target.value, 10) : null;
-    setSelectedAnimalId(id);
-    if (id) {
-      loadPedigreeById(id);
-    }
-  }, [loadPedigreeById]);
-
   const handleSelectAnimal = React.useCallback((animal: PedigreeNode) => {
     setSelectedAnimal(animal);
   }, []);
@@ -580,42 +834,31 @@ export default function ExplorePage() {
     return grouped;
   }, [allAnimals]);
 
+  // Use viewport height minus header/footer/padding (~180px total for shell chrome)
   return (
-    <div className="p-6 h-full flex flex-col">
-      {/* Header with search */}
-      <div className="flex items-start justify-between gap-6">
+    <div className="p-4 flex flex-col" style={{ height: "calc(100vh - 180px)" }}>
+      {/* Header with search - compact */}
+      <div className="flex items-center justify-between gap-4 flex-shrink-0 mb-3">
         <PageHeader
           title="Explore Pedigrees"
-          subtitle="Interactive family tree - pan, zoom, and click to explore ancestry"
+          subtitle="Pan, zoom, and click to explore ancestry"
         />
-        <div className="w-80 flex-shrink-0 pt-1">
-          <select
-            value={selectedAnimalId ?? ""}
-            onChange={handleSelectChange}
-            disabled={loadingAnimals}
-            className="w-full h-10 px-3 bg-surface border border-hairline rounded-md text-sm text-primary focus:outline-none focus:ring-2 focus:ring-amber-500/50 focus:border-amber-500 disabled:opacity-50"
-          >
-            <option value="">
-              {loadingAnimals ? "Loading animals..." : "Select an animal..."}
-            </option>
-            {Object.entries(animalsBySpecies).map(([species, animals]) => (
-              <optgroup key={species} label={species}>
-                {animals.map(animal => (
-                  <option key={animal.id} value={animal.id}>
-                    {animal.name || `Animal #${animal.id}`}
-                    {animal.sex ? ` (${animal.sex === "MALE" ? "♂" : animal.sex === "FEMALE" ? "♀" : ""})` : ""}
-                  </option>
-                ))}
-              </optgroup>
-            ))}
-          </select>
-        </div>
+        <AnimalSelect
+          animals={allAnimals}
+          animalsBySpecies={animalsBySpecies}
+          selectedId={selectedAnimalId}
+          onSelect={(id) => {
+            setSelectedAnimalId(id);
+            if (id) loadPedigreeById(id);
+          }}
+          loading={loadingAnimals}
+        />
       </div>
 
-      {/* Tree area - full width */}
-      <div className="mt-4 flex-1 min-h-0 relative">
+      {/* Tree area - fill remaining space */}
+      <div className="flex-1 min-h-0 relative" style={{ minHeight: "400px" }}>
         {loadingPedigree ? (
-          <div className="w-full h-full flex items-center justify-center bg-zinc-900 rounded-xl border border-zinc-800">
+          <div className="w-full h-full flex items-center justify-center bg-zinc-900 rounded-xl border border-amber-500/30">
             <div className="text-center">
               <div className="animate-spin w-8 h-8 border-2 border-amber-500 border-t-transparent rounded-full mx-auto mb-3" />
               <div className="text-zinc-400">Loading pedigree...</div>
@@ -633,11 +876,13 @@ export default function ExplorePage() {
                 animal={selectedAnimal}
                 onClose={() => setSelectedAnimal(null)}
                 onViewPedigree={handleViewPedigree}
+                isLocalAnimal={allAnimals.some(a => a.id === selectedAnimal.id)}
+                isCurrentRoot={focusAnimal?.id === selectedAnimal.id}
               />
             )}
           </>
         ) : (
-          <div className="w-full h-full flex items-center justify-center bg-zinc-900 rounded-xl border border-zinc-800">
+          <div className="w-full h-full flex items-center justify-center bg-zinc-900 rounded-xl border border-amber-500/30">
             <div className="text-center max-w-xs">
                 <div className="w-20 h-20 rounded-full bg-gradient-to-br from-amber-500/20 to-orange-500/10 flex items-center justify-center mx-auto mb-4">
                   <svg className="w-10 h-10 text-amber-500/70" fill="none" viewBox="0 0 24 24" stroke="currentColor">

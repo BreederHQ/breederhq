@@ -72,7 +72,6 @@ function RouteView() {
 
   if (p === "" || p === "/") return <DashboardPage />;
   if (p === "/contacts" || p.startsWith("/contacts")) return <AppContacts />;
-  if (p === "/organizations" || p.startsWith("/organizations")) return <AppContacts />;
   if (p === "/animals" || p.startsWith("/animals")) return <AppAnimals />;
   if (p === "/breeding" || p.startsWith("/breeding")) return <AppBreeding />;
   if (p === "/offspring" || p.startsWith("/offspring")) return <AppOffspring />;
@@ -356,9 +355,8 @@ export default function AppPlatform() {
       ) : (
         <div className="theme-dark bhq-grain h-screen bg-page text-primary flex flex-col overflow-hidden">
           <NavShell
-            appTitle={activeModule.label}
-            activeKey={activeModule.key}
-            logoSize={40}
+            title={activeModule.label}
+            {...{ activeKey: activeModule.key, logoSize: 40 } as any}
             navItems={[
               { key: "dashboard", label: "Dashboard", href: "/", icon: "home" },
               { key: "contacts", label: "Contacts", href: "/contacts", icon: "contacts" },

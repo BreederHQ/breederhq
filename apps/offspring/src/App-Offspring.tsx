@@ -22,6 +22,7 @@ import {
   Button,
   BreedCombo,
   Input,
+  DatePicker,
   exportToCsv,
   Popover,
 } from "@bhq/ui";
@@ -1523,17 +1524,17 @@ function CreateGroupForm({
 
         <label className="flex flex-col gap-1">
           <span className={labelClass}>Weaned At (optional)</span>
-          <input className={inputClass} type="date" value={weanedAt} onChange={(e) => setWeanedAt(e.target.value)} />
+          <DatePicker value={weanedAt} onChange={(e) => setWeanedAt(e.currentTarget.value)} inputClassName={inputClass} />
         </label>
 
         <label className="flex flex-col gap-1">
           <span className={labelClass}>Placement Start (optional)</span>
-          <input className={inputClass} type="date" value={placementStartAt} onChange={(e) => setPlacementStartAt(e.target.value)} />
+          <DatePicker value={placementStartAt} onChange={(e) => setPlacementStartAt(e.currentTarget.value)} inputClassName={inputClass} />
         </label>
 
         <label className="flex flex-col gap-1">
           <span className={labelClass}>Placement Completed (optional)</span>
-          <input className={inputClass} type="date" value={placementCompletedAt} onChange={(e) => setPlacementCompletedAt(e.target.value)} />
+          <DatePicker value={placementCompletedAt} onChange={(e) => setPlacementCompletedAt(e.currentTarget.value)} inputClassName={inputClass} />
         </label>
 
         <label className="flex flex-col gap-1">

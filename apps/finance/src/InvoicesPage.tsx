@@ -210,7 +210,7 @@ export default function InvoicesPage({ api }: Props) {
           limit: 1000,
           offset: 0,
         });
-        const items = (res?.items || res?.data || []).map(invoiceToRow);
+        const items = (res?.items || (res as any)?.data || []).map(invoiceToRow);
         if (!cancelled) setRows(items);
       } catch (e: any) {
         if (!cancelled)
@@ -363,7 +363,7 @@ export default function InvoicesPage({ api }: Props) {
     setError(null);
     try {
       const res = await api.finance.invoices.list({ limit: 1000, offset: 0 });
-      const items = (res?.items || res?.data || []).map(invoiceToRow);
+      const items = (res?.items || (res as any)?.data || []).map(invoiceToRow);
       setRows(items);
     } catch (e: any) {
       setError(e?.payload?.error || e?.message || "Failed to load invoices");

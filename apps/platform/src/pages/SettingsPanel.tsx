@@ -56,17 +56,17 @@ function normalizeExactBands(draft: AvailabilityPrefs, enforcePlusOne: boolean =
 
     // BEFORE side
     if (enforcePlusOne) {
-      const rf = Number(draft[k.rf] ?? 0); // risky before (days)
-      const uf = Number(draft[k.uf] ?? 0); // unlikely before (days)
+      const rf = Number((draft as any)[k.rf] ?? 0); // risky before (days)
+      const uf = Number((draft as any)[k.uf] ?? 0); // unlikely before (days)
       // Only enforce widening when Risky is present; otherwise preserve Unlikely
-      if (rf > 0 && uf <= rf) draft[k.uf] = rf + 1;
+      if (rf > 0 && uf <= rf) (draft as any)[k.uf] = rf + 1;
     }
 
     // AFTER (positive): only widen if Risky side is non-zero
     if (enforcePlusOne) {
-      const rt = Number(draft[k.rt] ?? 0); // risky after
-      const ut = Number(draft[k.ut] ?? 0); // unlikely after
-      if (rt > 0 && ut <= rt) draft[k.ut] = rt + 1;
+      const rt = Number((draft as any)[k.rt] ?? 0); // risky after
+      const ut = Number((draft as any)[k.ut] ?? 0); // unlikely after
+      if (rt > 0 && ut <= rt) (draft as any)[k.ut] = rt + 1;
     }
   });
   return draft;
@@ -78,10 +78,10 @@ function normalizePhaseBands(draft: AvailabilityPrefs, enforcePlusOne = true) {
 
   const QUADS = [
     {
-      ub: "cycle_breeding_unlikely_from_likely_start",
-      ua: "cycle_breeding_unlikely_to_likely_end",
-      rb: "cycle_breeding_risky_from_full_start",
-      ra: "cycle_breeding_risky_to_full_end",
+      ub: "cycle_breeding_unlikely_from",
+      ua: "cycle_breeding_unlikely_to",
+      rb: "cycle_breeding_risky_from",
+      ra: "cycle_breeding_risky_to",
     },
     {
       ub: "post_unlikely_from_likely_start",
@@ -523,7 +523,7 @@ function getTabLabel(k: Tab): string {
 export default function SettingsPanel({ open, dirty, onDirtyChange, onClose }: Props) {
   const [active, setActive] = React.useState<Tab>("profile");
   const [dirtyMap, setDirtyMap] = React.useState<Record<Tab, boolean>>({
-    profile: false, security: false, subscription: false, payments: false, transactions: false,
+    profile: false, security: false, billing: false, subscription: false, payments: false, transactions: false,
     breeding: false, programProfile: false, breeds: false, policies: false, credentials: false, users: false, groups: false, tags: false, accessibility: false,
   });
   // Edit mode state at panel level
@@ -802,6 +802,21 @@ const ProfileTab = React.forwardRef<ProfileHandle, {
       if (t) (TENANT_ID_CACHE = String(t));
     } catch { }
     return { id, email };
+  }
+  async function verifyViaLogin(email: string, password: string): Promise<{ ok: boolean; msg?: string }> {
+    try {
+      const res = await fetch("/api/v1/auth/verify", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+      if (res.ok) return { ok: true };
+      const data = await res.json().catch(() => ({}));
+      return { ok: false, msg: data.message || "Verification failed" };
+    } catch {
+      return { ok: false, msg: "Could not verify credentials" };
+    }
   }
   async function guardEmailChange(currentEmail: string): Promise<boolean> {
     const pw = window.prompt("To change your email, enter your current password:");
@@ -1141,10 +1156,10 @@ const BreedingTab = React.forwardRef<BreedingHandle, { dirty: boolean; onDirty: 
       // any non-zero across either phases or exact-date bands = "initialized"
       const keys: (keyof AvailabilityPrefs)[] = [
         // Phases
-        "cycle_breeding_unlikely_from_likely_start",
-        "cycle_breeding_unlikely_to_likely_end",
-        "cycle_breeding_risky_from_full_start",
-        "cycle_breeding_risky_to_full_end",
+        "cycle_breeding_unlikely_from",
+        "cycle_breeding_unlikely_to",
+        "cycle_breeding_risky_from",
+        "cycle_breeding_risky_to",
         "post_unlikely_from_likely_start",
         "post_unlikely_to_likely_end",
         "post_risky_from_full_start",
@@ -1163,6 +1178,18 @@ const BreedingTab = React.forwardRef<BreedingHandle, { dirty: boolean; onDirty: 
       return keys.every(k => isZeroish((av as any)[k]));
     }
 
+    // Base seed values for "Balanced" availability
+    const BASE_PHASE = { riskyBefore: -7, riskyAfter: 7, unlikelyBefore: -14, unlikelyAfter: 14 };
+    const BASE_DATE = { riskyBefore: 3, riskyAfter: 3, unlikelyBefore: 7, unlikelyAfter: 7 };
+
+    function seedOrCurrent(cur: any, def: any, seed: number): number {
+      const c = Number(cur ?? 0);
+      const d = Number(def ?? 0);
+      if (Number.isFinite(c) && c !== 0) return c;
+      if (Number.isFinite(d) && d !== 0) return d;
+      return seed;
+    }
+
     function seedBalancedIfEmpty(
       current: AvailabilityPrefs,
       defaults: AvailabilityPrefs,
@@ -1176,10 +1203,10 @@ const BreedingTab = React.forwardRef<BreedingHandle, { dirty: boolean; onDirty: 
 
       // —— Phases (Balanced multiplier = 1.0)
       ([
-        ["cycle_breeding_unlikely_from_likely_start", BASE_PHASE.unlikelyBefore],
-        ["cycle_breeding_unlikely_to_likely_end", BASE_PHASE.unlikelyAfter],
-        ["cycle_breeding_risky_from_full_start", BASE_PHASE.riskyBefore],
-        ["cycle_breeding_risky_to_full_end", BASE_PHASE.riskyAfter],
+        ["cycle_breeding_unlikely_from", BASE_PHASE.unlikelyBefore],
+        ["cycle_breeding_unlikely_to", BASE_PHASE.unlikelyAfter],
+        ["cycle_breeding_risky_from", BASE_PHASE.riskyBefore],
+        ["cycle_breeding_risky_to", BASE_PHASE.riskyAfter],
         ["post_unlikely_from_likely_start", BASE_PHASE.unlikelyBefore],
         ["post_unlikely_to_likely_end", BASE_PHASE.unlikelyAfter],
         ["post_risky_from_full_start", BASE_PHASE.riskyBefore],
@@ -1202,7 +1229,7 @@ const BreedingTab = React.forwardRef<BreedingHandle, { dirty: boolean; onDirty: 
         (next as any)[k.ut] = Math.round(utCur * 1.0);
       });
 
-      // Normalize (placement before bands, “+1” widening, etc.)
+      // Normalize (placement before bands, "+1" widening, etc.)
       const withDates = normalizeExactBands(next, plusOneDates);
       const withPhases = normalizePhaseBands(withDates, plusOnePhases);
       return withPhases;
@@ -1410,10 +1437,10 @@ const BreedingTab = React.forwardRef<BreedingHandle, { dirty: boolean; onDirty: 
       setForm((f) => {
         const next = { ...f };
         // Cycle Start → Breeding
-        (next as any).cycle_breeding_unlikely_from_likely_start = -U;
-        (next as any).cycle_breeding_unlikely_to_likely_end = +U;
-        (next as any).cycle_breeding_risky_from_full_start = -R;
-        (next as any).cycle_breeding_risky_to_full_end = +R;
+        (next as any).cycle_breeding_unlikely_from = -U;
+        (next as any).cycle_breeding_unlikely_to = +U;
+        (next as any).cycle_breeding_risky_from = -R;
+        (next as any).cycle_breeding_risky_to = +R;
         // Birth → Placement
         (next as any).post_unlikely_from_likely_start = -U;
         (next as any).post_unlikely_to_likely_end = +U;
@@ -1426,8 +1453,8 @@ const BreedingTab = React.forwardRef<BreedingHandle, { dirty: boolean; onDirty: 
     function adjustPhasesBy(delta: number) {
       if (!delta) return;
       const keys: (keyof AvailabilityPrefs)[] = [
-        "cycle_breeding_unlikely_from_likely_start", "cycle_breeding_unlikely_to_likely_end",
-        "cycle_breeding_risky_from_full_start", "cycle_breeding_risky_to_full_end",
+        "cycle_breeding_unlikely_from", "cycle_breeding_unlikely_to",
+        "cycle_breeding_risky_from", "cycle_breeding_risky_to",
         "post_unlikely_from_likely_start", "post_unlikely_to_likely_end",
         "post_risky_from_full_start", "post_risky_to_full_end",
       ];
@@ -1439,8 +1466,8 @@ const BreedingTab = React.forwardRef<BreedingHandle, { dirty: boolean; onDirty: 
     }
     function scalePhases(mult: number) {
       const keys: (keyof AvailabilityPrefs)[] = [
-        "cycle_breeding_unlikely_from_likely_start", "cycle_breeding_unlikely_to_likely_end",
-        "cycle_breeding_risky_from_full_start", "cycle_breeding_risky_to_full_end",
+        "cycle_breeding_unlikely_from", "cycle_breeding_unlikely_to",
+        "cycle_breeding_risky_from", "cycle_breeding_risky_to",
         "post_unlikely_from_likely_start", "post_unlikely_to_likely_end",
         "post_risky_from_full_start", "post_risky_to_full_end",
       ];
@@ -1514,7 +1541,7 @@ const BreedingTab = React.forwardRef<BreedingHandle, { dirty: boolean; onDirty: 
 
     // ── General
     const GeneralTab = (
-      <SectionCard title="Default Settings" subtitle="Saved to tenant preferences and used by Planner." right={<Legend />}>        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+      <SectionCard title={<>Default Settings<div className="text-xs text-secondary font-normal mt-0.5">Saved to tenant preferences and used by Planner.</div></>} right={<Legend />}>        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         <Card className="p-3 space-y-2">
           <div className="text-sm font-medium">Default bands visibility</div>
           <label className="flex items-center gap-2">
@@ -1532,7 +1559,7 @@ const BreedingTab = React.forwardRef<BreedingHandle, { dirty: boolean; onDirty: 
 
     // ── Phases subtab (with Presets A)
     const PhasesTab = (
-      <SectionCard title="Timeline Phases" subtitle="Bands that follow a whole phase span." right={<Legend />} className="space-y-4">
+      <SectionCard title={<>Timeline Phases<div className="text-xs text-secondary font-normal mt-0.5">Bands that follow a whole phase span.</div></>} right={<Legend />} className="space-y-4">
         {loading ? <div className="text-sm text-secondary">Loading…</div> : (
           <>
             <Card className="p-3 space-y-3">
@@ -1586,10 +1613,10 @@ const BreedingTab = React.forwardRef<BreedingHandle, { dirty: boolean; onDirty: 
 
             <PhaseBlock
               title="Cycle Start → Breeding"
-              unlikelyBeforeKey="cycle_breeding_unlikely_from_likely_start"
-              unlikelyAfterKey="cycle_breeding_unlikely_to_likely_end"
-              riskyBeforeKey="cycle_breeding_risky_from_full_start"
-              riskyAfterKey="cycle_breeding_risky_to_full_end"
+              unlikelyBeforeKey="cycle_breeding_unlikely_from"
+              unlikelyAfterKey="cycle_breeding_unlikely_to"
+              riskyBeforeKey="cycle_breeding_risky_from"
+              riskyAfterKey="cycle_breeding_risky_to"
               form={form} setForm={setForm} defaults={DEFAULTS} plusOnePhases={enforcePlusOnePhases}
             />
 
@@ -1643,10 +1670,10 @@ const BreedingTab = React.forwardRef<BreedingHandle, { dirty: boolean; onDirty: 
     function resetPhasesToDefaults() {
       setForm((f) => normalizePhaseBands({
         ...f,
-        cycle_breeding_unlikely_from_likely_start: DEFAULTS.cycle_breeding_unlikely_from_likely_start,
-        cycle_breeding_unlikely_to_likely_end: DEFAULTS.cycle_breeding_unlikely_to_likely_end,
-        cycle_breeding_risky_from_full_start: DEFAULTS.cycle_breeding_risky_from_full_start,
-        cycle_breeding_risky_to_full_end: DEFAULTS.cycle_breeding_risky_to_full_end,
+        cycle_breeding_unlikely_from: DEFAULTS.cycle_breeding_unlikely_from,
+        cycle_breeding_unlikely_to: DEFAULTS.cycle_breeding_unlikely_to,
+        cycle_breeding_risky_from: DEFAULTS.cycle_breeding_risky_from,
+        cycle_breeding_risky_to: DEFAULTS.cycle_breeding_risky_to,
         post_unlikely_from_likely_start: DEFAULTS.post_unlikely_from_likely_start,
         post_unlikely_to_likely_end: DEFAULTS.post_unlikely_to_likely_end,
         post_risky_from_full_start: DEFAULTS.post_risky_from_full_start,
@@ -1657,7 +1684,7 @@ const BreedingTab = React.forwardRef<BreedingHandle, { dirty: boolean; onDirty: 
 
     // ── Dates subtab (with Presets B + placement toggle)
     const DatesTab = (
-      <SectionCard title="Exact Dates" subtitle="Wrap a single expected or actual calendar date." right={<Legend />} className="space-y-4">
+      <SectionCard title={<>Exact Dates<div className="text-xs text-secondary font-normal mt-0.5">Wrap a single expected or actual calendar date.</div></>} right={<Legend />} className="space-y-4">
         {loading ? <div className="text-sm text-secondary">Loading…</div> : (
           <>
             <Card className="p-3 space-y-3">
@@ -1864,29 +1891,34 @@ function ProfileRadioGroup({ value, onChange, options, name }: { value: string; 
 
 const ProgramProfileTab = React.forwardRef<ProgramProfileHandle, { dirty: boolean; onDirty: (v: boolean) => void; editMode?: boolean }>(
   function ProgramProfileImpl({ onDirty, editMode = false }, ref) {
-    const EMPTY_PROFILE: BreedingProgramProfile & {
+    // Extended profile type to include optional fields not in base type
+    type ExtendedProfile = BreedingProgramProfile & {
       cyclePolicy?: (BreedingProgramProfile["cyclePolicy"] & { retireRule?: "age_only" | "litters_only" | "either" });
       publication?: { publishInDirectory: boolean; summary?: string | null };
-    } = {
+      whelping?: { expectedDaysFromOvulation: number; interveneIfNoPupHours: number; emergencyVetName: string | null; emergencyVetPhone: string | null };
+    };
+    const EMPTY_PROFILE: ExtendedProfile = {
       kennelName: "", registryPrefixes: [], website: null, socials: [], species: ["DOG"], sellRegions: [],
       shippingAllowed: false, travelPolicy: "case_by_case",
       cyclePolicy: { minDamAgeMonths: 18, minDamWeightLbs: null, minHeatsBetween: 1, maxLittersLifetime: 4, retireAfterAgeMonths: null, retireRule: "either", lockApproverRole: "manager" },
       methods: { allowed: ["natural", "ai_fresh", "ai_chilled"], preferredBySpecies: {}, externalStudDocsRequired: ["brucellosis"] },
       hormoneTesting: { progesteroneInHouse: true, progesteroneLab: true, lhTesting: false, ovulationNgMlTarget: 5, decisionOwnerRole: "manager" },
       pregnancyChecks: { ultrasoundDayFromOvulation: 28, relaxinUsed: false, xrayDayFromOvulation: 55 },
+      birth: { expectedDaysFromOvulation: 63, interveneIfNoPupHours: 2, emergencyVetName: null, emergencyVetPhone: null },
       whelping: { expectedDaysFromOvulation: 63, interveneIfNoPupHours: 2, emergencyVetName: null, emergencyVetPhone: null },
       puppyCare: { dewclawPolicy: "breed_specific", tailPolicy: "breed_specific", dewormScheduleDays: [14, 28, 42], firstVaccineDay: 56, microchipAtWeeks: 8, registrationAuthority: null },
       placement: { earliestDaysFromBirth: 56, standardDaysFromBirth: 63, extendedHoldPolicy: "offered_fee", contractTemplateId: null, healthGuaranteeMonths: 24, depositRequired: true, depositAmountUSD: 300, paymentMethods: ["ach", "zelle"], waitlistPolicy: "priority_order" },
       healthTesting: { requiredByBreed: {}, acceptedLabs: ["Embark", "OFA"], recheckMonths: 24 },
       docsAndData: { readyToBreedChecklist: ["dam_health_tests", "stud_clearances", "contract_ready"], marketingMediaPolicy: "buyers_only", showClientNames: false },
       comms: { prospectDuringPregnancyCadenceDays: 7, postBirthUpdateCadenceDays: 7, channels: ["email"], sendAutoMilestones: true },
+      availabilityDefaults: { showGanttBands: true, showCalendarBands: true, horizonMonths: 3 },
       publication: { publishInDirectory: false, summary: null },
     };
 
     const [loading, setLoading] = React.useState(true);
     const [error, setError] = React.useState<string>("");
-    const [profileInit, setProfileInit] = React.useState<BreedingProgramProfile>(EMPTY_PROFILE);
-    const [profile, setProfile] = React.useState<BreedingProgramProfile>(EMPTY_PROFILE);
+    const [profileInit, setProfileInit] = React.useState<ExtendedProfile>(EMPTY_PROFILE);
+    const [profile, setProfile] = React.useState<ExtendedProfile>(EMPTY_PROFILE);
 
     // Business Identity state (from marketplace draft)
     const [bizIdentity, setBizIdentity] = React.useState<BusinessIdentityDraft>(createEmptyBusinessIdentity);
@@ -1908,10 +1940,10 @@ const ProgramProfileTab = React.forwardRef<ProgramProfileHandle, { dirty: boolea
           if (!tenantId) throw new Error("Missing tenant id");
 
           // Load breeding program profile
-          let profMerged: BreedingProgramProfile;
+          let profMerged: ExtendedProfile;
           try {
             const pr = await api.breeding.program.getForTenant(Number(tenantId));
-            const prData = (pr?.data ?? pr) as Partial<BreedingProgramProfile> | undefined;
+            const prData = (pr?.data ?? pr) as Partial<ExtendedProfile> | undefined;
             const safePublication = prData?.publication ?? { publishInDirectory: false, summary: null };
             profMerged = { ...EMPTY_PROFILE, ...(prData || {}), publication: safePublication };
           } catch (e: any) {
@@ -2033,8 +2065,8 @@ const ProgramProfileTab = React.forwardRef<ProgramProfileHandle, { dirty: boolea
         // If already published, also republish to update public listing immediately
         if (isPublished) {
           // Build publish payload with required fields
-          const listedBreeds = Array.isArray(mergedDraft.listedBreeds) ? mergedDraft.listedBreeds : [];
-          const programs = Array.isArray(mergedDraft.programs) ? mergedDraft.programs : [];
+          const listedBreeds = Array.isArray((mergedDraft as any).listedBreeds) ? (mergedDraft as any).listedBreeds : [];
+          const programs = Array.isArray((mergedDraft as any).programs) ? (mergedDraft as any).programs : [];
           const listedPrograms = programs
             .filter((p: any) => p.status)
             .map((p: any) => ({
@@ -2630,7 +2662,7 @@ const BreedsTab = React.forwardRef<BreedsHandle, { dirty: boolean; onDirty: (v: 
                     },
                   },
                 }}
-                species={toApiSpecies(breedsSpecies)}
+                species={toApiSpecies(breedsSpecies) as any}
                 onCreated={(created) => {
                   addBreed({
                     id: created.id,
@@ -3460,10 +3492,10 @@ function PhasePreview({ form }: { form: AvailabilityPrefs }) {
     {
       id: "cb",
       label: "Cycle Start → Breeding",
-      uf: -Math.abs(Number(form.cycle_breeding_unlikely_from_likely_start || 0)),
-      ut: Math.abs(Number(form.cycle_breeding_unlikely_to_likely_end || 0)),
-      rf: -Math.abs(Number(form.cycle_breeding_risky_from_full_start || 0)),
-      rt: Math.abs(Number(form.cycle_breeding_risky_to_full_end || 0)),
+      uf: -Math.abs(Number(form.cycle_breeding_unlikely_from || 0)),
+      ut: Math.abs(Number(form.cycle_breeding_unlikely_to || 0)),
+      rf: -Math.abs(Number(form.cycle_breeding_risky_from || 0)),
+      rt: Math.abs(Number(form.cycle_breeding_risky_to || 0)),
       color: "hsl(200 85% 55%)",
     },
     {
@@ -3662,7 +3694,7 @@ function ExactDateRow(props: {
       [riskyToKey]: (DER as any)[riskyToKey] ?? 0,
       [unlikelyFromKey]: (DER as any)[unlikelyFromKey] ?? 0,
       [unlikelyToKey]: (DER as any)[unlikelyToKey] ?? 0,
-    } as AvailabilityPrefs, enforcePlusOneDates));
+    } as AvailabilityPrefs, props.plusOneDates));
   }
 
   return (

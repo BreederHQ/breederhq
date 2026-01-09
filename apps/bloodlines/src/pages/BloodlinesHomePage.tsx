@@ -110,6 +110,114 @@ function RibbonIcon({ className }: { className?: string }) {
   );
 }
 
+function PedigreeTreeIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 64 64" fill="none">
+      <defs>
+        <linearGradient id="pedigreeGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#e87924" />
+          <stop offset="100%" stopColor="#c45a10" />
+        </linearGradient>
+      </defs>
+      {/* Root node (left) */}
+      <rect
+        x="4"
+        y="24"
+        width="16"
+        height="16"
+        rx="3"
+        stroke="url(#pedigreeGradient)"
+        strokeWidth="2.5"
+        fill="none"
+      />
+      {/* Parent nodes (middle) */}
+      <rect
+        x="28"
+        y="12"
+        width="12"
+        height="12"
+        rx="2"
+        stroke="url(#pedigreeGradient)"
+        strokeWidth="2"
+        fill="none"
+      />
+      <rect
+        x="28"
+        y="40"
+        width="12"
+        height="12"
+        rx="2"
+        stroke="url(#pedigreeGradient)"
+        strokeWidth="2"
+        fill="none"
+      />
+      {/* Grandparent nodes (right) */}
+      <rect
+        x="48"
+        y="4"
+        width="10"
+        height="10"
+        rx="2"
+        stroke="url(#pedigreeGradient)"
+        strokeWidth="1.5"
+        fill="none"
+      />
+      <rect
+        x="48"
+        y="18"
+        width="10"
+        height="10"
+        rx="2"
+        stroke="url(#pedigreeGradient)"
+        strokeWidth="1.5"
+        fill="none"
+      />
+      <rect
+        x="48"
+        y="36"
+        width="10"
+        height="10"
+        rx="2"
+        stroke="url(#pedigreeGradient)"
+        strokeWidth="1.5"
+        fill="none"
+      />
+      <rect
+        x="48"
+        y="50"
+        width="10"
+        height="10"
+        rx="2"
+        stroke="url(#pedigreeGradient)"
+        strokeWidth="1.5"
+        fill="none"
+      />
+      {/* Connecting lines */}
+      <path
+        d="M20 32 L28 18 M20 32 L28 46"
+        stroke="url(#pedigreeGradient)"
+        strokeWidth="2"
+        fill="none"
+        strokeLinecap="round"
+      />
+      <path
+        d="M40 18 L48 9 M40 18 L48 23"
+        stroke="url(#pedigreeGradient)"
+        strokeWidth="1.5"
+        fill="none"
+        strokeLinecap="round"
+      />
+      <path
+        d="M40 46 L48 41 M40 46 L48 55"
+        stroke="url(#pedigreeGradient)"
+        strokeWidth="1.5"
+        fill="none"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
 /* ───────────────── Primary Action Tile ───────────────── */
 
 interface PrimaryTileProps {
@@ -267,13 +375,13 @@ export default function BloodlinesHomePage() {
         <div style={{ marginBottom: '1.25rem' }}>
           <h2 className="text-xl font-semibold text-primary">Title and Competition Tracking</h2>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <PrimaryTile
             title="Titles"
             description="Track earned titles, championships, and certifications."
             buttonLabel="Manage Titles"
             href="/bloodlines/titles"
-            icon={<TrophyIcon className="w-24 h-24" />}
+            icon={<TrophyIcon className="w-20 h-20" />}
             status="live"
           />
           <PrimaryTile
@@ -281,7 +389,15 @@ export default function BloodlinesHomePage() {
             description="Log show entries, placements, points, and major wins."
             buttonLabel="View Competitions"
             href="/bloodlines/competitions"
-            icon={<RibbonIcon className="w-24 h-24" />}
+            icon={<RibbonIcon className="w-20 h-20" />}
+            status="live"
+          />
+          <PrimaryTile
+            title="Explore Pedigrees"
+            description="Interactive pedigree tree with cross-breeder data."
+            buttonLabel="Explore Now"
+            href="/bloodlines/explore"
+            icon={<PedigreeTreeIcon className="w-20 h-20" />}
             status="live"
           />
         </div>
@@ -292,20 +408,13 @@ export default function BloodlinesHomePage() {
         <div style={{ marginBottom: '1.25rem' }}>
           <h2 className="text-xl font-semibold text-primary">Connections and Discovery</h2>
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <SecondaryTile
             icon={<span className="text-base">🔗</span>}
             title="Connections"
             description="Match identities across breeders and manage info requests"
             href="/bloodlines/connections"
             status="coming-soon"
-          />
-          <SecondaryTile
-            icon={<span className="text-base">🔍</span>}
-            title="Explore Pedigrees"
-            description="Browse pedigrees across the breeder network"
-            href="/bloodlines/explore"
-            status="live"
           />
           <SecondaryTile
             icon={<span className="text-base">📊</span>}

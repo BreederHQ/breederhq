@@ -18,6 +18,7 @@ import {
   SectionCard,
   Button,
   Input,
+  DatePicker,
   buildRangeAwareSchema,
   inDateRange,
   OwnershipChips,
@@ -309,401 +310,6 @@ function animalToRow(p: any): AnimalRow {
     femaleCycleLenOverrideDays: p.femaleCycleLenOverrideDays ?? null,
   };
 }
-
-/* ──────────────────────────────────────────────────────────────────────────
- * Date Picker System (CalendarInput + popup positioning helpers)
- * ─────────────────────────────────────────────────────────────────────── */
-
-// ----- Date-picker hoist helpers -----
-const OVERLAY_ROOT_SELECTOR = "#bhq-overlay-root";
-
-function ensureOverlayRoot(): HTMLElement {
-  return (document.querySelector(OVERLAY_ROOT_SELECTOR) as HTMLElement) || document.body;
-}
-
-/** Find the *outermost* popup element we actually want to move. */
-function findDatePopup(): HTMLElement | null {
-  // most libs
-  const candidates = [
-    // Radix Popper wrapper
-    ...Array.from(document.querySelectorAll<HTMLElement>('[data-radix-popper-content-wrapper]')),
-    // react-datepicker
-    ...Array.from(document.querySelectorAll<HTMLElement>('.react-datepicker')),
-    // react-day-picker
-    ...Array.from(document.querySelectorAll<HTMLElement>('.rdp,.rdp-root')),
-    // generic open dialogs/menus (fallback)
-    ...Array.from(document.querySelectorAll<HTMLElement>('[role="dialog"][data-state="open"],[role="menu"][data-state="open"]')),
-  ];
-
-  // ignore things inside our details drawer/panels
-  const filtered = candidates.filter((el) => !el.closest('[data-bhq-details]'));
-
-  const list = filtered.length ? filtered : candidates;
-  if (!list.length) return null;
-
-  const isVisible = (el: HTMLElement) => {
-    const cs = getComputedStyle(el);
-    const r = el.getBoundingClientRect();
-    return cs.display !== "none" && cs.visibility !== "hidden" && r.width > 8 && r.height > 8;
-  };
-
-  // prefer visible + largest area
-  list.sort((a, b) => {
-    const va = isVisible(a) ? 1 : 0;
-    const vb = isVisible(b) ? 1 : 0;
-    const ra = a.getBoundingClientRect();
-    const rb = b.getBoundingClientRect();
-    return vb - va || rb.width * rb.height - ra.width * ra.height;
-  });
-
-  // for Radix, we want the wrapper itself (already selected); for others, this is fine
-  return list[0] || null;
-}
-
-/** Wait up to ~300ms for a date popup to mount, then hoist + place it near trigger. */
-function hoistAndPlaceDatePopup(triggerEl: HTMLElement) {
-  const root = ensureOverlayRoot();
-
-  let raf = 0;
-  let tries = 0;
-  const MAX_TRIES = 12; // ~200–300ms
-
-  const place = (pop: HTMLElement) => {
-    if (pop.parentNode !== root) root.appendChild(pop);
-
-    // style the *moved wrapper* not inner content
-    Object.assign(pop.style, {
-      position: "fixed",
-      transform: "none",
-      inset: "auto",
-      zIndex: "2147483647",
-      maxWidth: "none",
-      maxHeight: "none",
-      overflow: "visible",
-      contain: "paint", // keep it isolated
-      isolation: "auto",
-      filter: "none",
-      perspective: "none",
-      willChange: "top,left",
-    } as CSSStyleDeclaration);
-
-    const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
-    const GAP = 8;
-
-    const doPosition = () => {
-      const r = triggerEl.getBoundingClientRect();
-      const pr = pop.getBoundingClientRect();
-      const vw = window.innerWidth;
-      const vh = window.innerHeight;
-
-      let top = r.bottom + GAP;       // try below
-      let left = r.left;              // left-align
-
-      // clamp horizontally
-      left = clamp(left, GAP, vw - pr.width - GAP);
-
-      // if off-screen bottom, place above
-      if (top + pr.height > vh - GAP) {
-        top = clamp(r.top - pr.height - GAP, GAP, vh - pr.height - GAP);
-      } else {
-        top = clamp(top, GAP, vh - pr.height - GAP);
-      }
-
-      pop.style.top = `${Math.round(top)}px`;
-      pop.style.left = `${Math.round(left)}px`;
-    };
-
-    // Position now, then again next frame after content finishes sizing.
-    doPosition();
-    setTimeout(doPosition, 30);
-
-    // keep it in the right spot on resize/scroll; clean up when it disappears
-    const onRelayout = () => {
-      if (!pop.isConnected) {
-        window.removeEventListener("resize", onRelayout);
-        window.removeEventListener("scroll", onRelayout, true);
-        return;
-      }
-      doPosition();
-    };
-    window.addEventListener("resize", onRelayout);
-    window.addEventListener("scroll", onRelayout, true);
-
-    // small observer to auto-clean when popup is removed
-    const mo = new MutationObserver(() => {
-      if (!pop.isConnected) {
-        window.removeEventListener("resize", onRelayout);
-        window.removeEventListener("scroll", onRelayout, true);
-        mo.disconnect();
-      }
-    });
-    mo.observe(document.body, { childList: true, subtree: true });
-  };
-
-  const tick = () => {
-    const pop = findDatePopup();
-    if (pop) {
-      place(pop);
-      return;
-    }
-    if (tries++ < MAX_TRIES) {
-      raf = requestAnimationFrame(tick);
-    }
-  };
-
-  // kick off after we click the icon
-  raf = requestAnimationFrame(tick);
-}
-
-/** Wire up native date picker to our overlay hoist helper. */
-type AttachDatePopupOpts = {
-  shell: HTMLElement;
-  button: HTMLButtonElement;
-  hiddenInput: HTMLInputElement;
-  onPopupOpen?: () => void;
-  onPopupClose?: () => void;
-};
-
-function attachDatePopupPositioning(opts: AttachDatePopupOpts) {
-  const { shell, button, hiddenInput, onPopupOpen, onPopupClose } = opts;
-
-  if (!shell || !button || !hiddenInput) {
-    return () => { };
-  }
-
-  let isOpen = false;
-
-  const openPicker = () => {
-    if (hiddenInput.disabled || hiddenInput.readOnly) return;
-
-    if (!isOpen) {
-      isOpen = true;
-      onPopupOpen?.();
-    }
-
-    try {
-      // Focus the hidden native input and try to open the picker
-      hiddenInput.focus();
-      const anyInput = hiddenInput as any;
-      if (typeof anyInput.showPicker === "function") {
-        anyInput.showPicker();
-      } else {
-        hiddenInput.click();
-      }
-    } catch {
-      // Ignore browser quirks
-    }
-
-    // Hoist and position the popup near the trigger
-    hoistAndPlaceDatePopup(button);
-  };
-
-  const handleButtonClick = (e: MouseEvent) => {
-    e.preventDefault();
-    openPicker();
-  };
-
-  const handleKeyDown = (e: KeyboardEvent) => {
-    // Support keyboard open from the visible text input
-    if (e.key === "ArrowDown" && (e.altKey || e.metaKey || e.ctrlKey)) {
-      e.preventDefault();
-      openPicker();
-    }
-  };
-
-  const handleHiddenBlur = () => {
-    if (!isOpen) return;
-    isOpen = false;
-    onPopupClose?.();
-  };
-
-  button.addEventListener("click", handleButtonClick);
-  shell.addEventListener("keydown", handleKeyDown);
-  hiddenInput.addEventListener("blur", handleHiddenBlur);
-
-  return () => {
-    button.removeEventListener("click", handleButtonClick);
-    shell.removeEventListener("keydown", handleKeyDown);
-    hiddenInput.removeEventListener("blur", handleHiddenBlur);
-  };
-}
-
-/* CalendarInput: text field + native date picker */
-
-function CalendarInput(props: any) {
-  const readOnly = !!props.readOnly;
-  const className = props.className;
-  const inputClassName = props.inputClassName;
-  const onChange = props.onChange;
-  const value = props.value as string | undefined;
-  const defaultValue = props.defaultValue as string | undefined;
-  const placeholder = props.placeholder ?? "mm/dd/yyyy";
-  const showIcon = props.showIcon ?? true;
-  // expectedValue: when user focuses on empty field, pre-populate with this value
-  const expectedValue = props.expectedValue as string | undefined;
-
-  // any extra props intended for the visible input
-  const rest: any = { ...props };
-  delete rest.readOnly;
-  delete rest.className;
-  delete rest.inputClassName;
-  delete rest.onChange;
-  delete rest.value;
-  delete rest.defaultValue;
-  delete rest.placeholder;
-  delete rest.showIcon;
-  delete rest.expectedValue;
-
-  // ISO <-> display helpers
-  const onlyISO = (s: string | undefined | null) => {
-    if (!s) return "";
-    const str = String(s).trim();
-    if (!str) return "";
-    // Ensure we only return yyyy-mm-dd format or empty string
-    const match = str.match(/^\d{4}-\d{2}-\d{2}/);
-    return match ? match[0] : "";
-  };
-
-  const toDisplay = (s: string | undefined | null) => {
-    if (!s) return "";
-    const iso = onlyISO(s);
-    if (!iso) return "";
-    const [y, m, d] = iso.split("-");
-    if (!y || !m || !d) return "";
-    return `${m}/${d}/${y}`;
-  };
-
-  const toISO = (s: string) => {
-    const trimmed = s.trim();
-    if (!trimmed) return "";
-    // Try to parse mm/dd/yyyy
-    const m = trimmed.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})$/);
-    if (m) {
-      const mm = m[1].padStart(2, "0");
-      const dd = m[2].padStart(2, "0");
-      let yyyy = m[3];
-      if (yyyy.length === 2) yyyy = `20${yyyy}`;
-      return `${yyyy}-${mm}-${dd}`;
-    }
-    // Fallback, assume already ISO-like
-    return onlyISO(trimmed);
-  };
-
-  const [textValue, setTextValue] = React.useState(() =>
-    value != null ? toDisplay(value) : defaultValue != null ? toDisplay(defaultValue) : ""
-  );
-
-  React.useEffect(() => {
-    if (value != null) {
-      setTextValue(toDisplay(value));
-    }
-  }, [value]);
-
-  const shellRef = React.useRef<HTMLDivElement>(null);
-  const inputRef = React.useRef<HTMLInputElement>(null);
-  const buttonRef = React.useRef<HTMLButtonElement>(null);
-  const hiddenRef = React.useRef<HTMLInputElement>(null);
-
-  const [expanded, setExpanded] = React.useState(false);
-
-  React.useEffect(() => {
-    // Only try to wire things up when the icon is actually rendered
-    if (!showIcon) return;
-
-    const shell = shellRef.current;
-    const btn = buttonRef.current;
-    const hidden = hiddenRef.current;
-    if (!shell || !btn || !hidden) return;
-
-    const cleanup = attachDatePopupPositioning({
-      shell,
-      button: btn,
-      hiddenInput: hidden,
-      onPopupOpen: () => setExpanded(true),
-      onPopupClose: () => setExpanded(false),
-    });
-
-    return cleanup;
-  }, [showIcon]);
-
-  const handleTextChange: React.ChangeEventHandler<HTMLInputElement> = (e) => {
-    const raw = e.currentTarget.value;
-    setTextValue(raw);
-
-    if (!onChange) return;
-
-    const iso = toISO(raw);
-    onChange({ currentTarget: { value: iso } } as any);
-  };
-
-  const handleHiddenChange: React.ChangeEventHandler<HTMLInputElement> = (e) => {
-    const iso = onlyISO(e.currentTarget.value || "");
-    const display = toDisplay(iso);
-    setTextValue(display);
-
-    if (!onChange) return;
-    onChange({ currentTarget: { value: iso } } as any);
-  };
-
-  // Pre-populate with expected value when focusing on empty field
-  const handleFocus: React.FocusEventHandler<HTMLInputElement> = (e) => {
-    if (!textValue && expectedValue && onChange) {
-      const iso = onlyISO(expectedValue);
-      if (iso) {
-        const display = toDisplay(iso);
-        setTextValue(display);
-        onChange({ currentTarget: { value: iso } } as any);
-      }
-    }
-  };
-
-  return (
-    <div ref={shellRef} className={className}>
-      <div className="relative">
-        <Input
-          ref={inputRef}
-          className={inputClassName}
-          placeholder={placeholder}
-          value={textValue}
-          onChange={handleTextChange}
-          onFocus={handleFocus}
-          readOnly={readOnly}
-          {...rest}
-        />
-        {showIcon && (
-          <button
-            type="button"
-            ref={buttonRef}
-            className="absolute inset-y-0 right-2 flex items-center text-muted-foreground"
-            aria-label="Open date picker"
-          >
-            <span className="text-xs">📅</span>
-          </button>
-        )}
-        {/* Hidden native date input for mobile and popup control */}
-        <input
-          ref={hiddenRef}
-          type="date"
-          style={{
-            position: "absolute",
-            opacity: 0,
-            pointerEvents: "none",
-            width: 0,
-            height: 0,
-            margin: 0,
-            padding: 0,
-            border: "none",
-          }}
-          value={onlyISO(value || "")}
-          onChange={handleHiddenChange}
-          aria-hidden="true"
-          tabIndex={-1}
-        />
-      </div>
-    </div>
-  );
-}
-
 
 async function safeGetCreatingOrg(api: any) {
   try {
@@ -2181,7 +1787,7 @@ return (
 
                 {isEditing && (
                   <div className="flex items-center gap-2 w-full">
-                    <CalendarInput
+                    <DatePicker
                       value={d}
                       onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
                         const v = e.currentTarget.value;
@@ -2229,7 +1835,7 @@ return (
 
         <div className="mt-3 flex items-center justify-between gap-2">
           <div className="w-64">
-            <CalendarInput
+            <DatePicker
               value={newDateIso}
               onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
                 const v = e.currentTarget.value;
@@ -2377,8 +1983,7 @@ function ProgramTab({
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div>
                 <div className="text-xs text-secondary mb-1">Hold Until</div>
-                <Input
-                  type="date"
+                <DatePicker
                   value={(flags.holdUntil || "").slice(0, 10)}
                   onChange={(e) => setFlags((f) => ({ ...f, holdUntil: (e.currentTarget as HTMLInputElement).value || null }))}
                 />
@@ -4030,14 +3635,12 @@ function GeneticsTab({
                 />
               </LV>
               <LV label="Test Date">
-                <Input
-                  type="date"
-                  size="sm"
-                  defaultValue={editData.testResults?.testDate || ""}
+                <DatePicker
+                  value={editData.testResults?.testDate || ""}
                   onChange={(e) =>
                     setEditData({
                       ...editData,
-                      testResults: { ...editData.testResults, testDate: e.target.value },
+                      testResults: { ...editData.testResults, testDate: e.currentTarget.value },
                     })
                   }
                 />
@@ -5356,14 +4959,12 @@ function TraitRow({
 
     if (isDate) {
       return (
-        <Input
-          type="date"
-          size="sm"
+        <DatePicker
           value={currentValue?.date?.slice(0, 10) || ""}
           onChange={(e) =>
             onDraftChange({
               ...localDraft,
-              value: { date: e.target.value },
+              value: { date: e.currentTarget.value },
             })
           }
           className="w-40"
@@ -5602,14 +5203,12 @@ function TraitRow({
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs text-secondary block mb-1">Performed Date</label>
-              <Input
-                type="date"
-                size="sm"
+              <DatePicker
                 value={currentPerformedAt?.slice(0, 10) || ""}
                 onChange={(e) =>
                   onDraftChange({
                     ...localDraft,
-                    performedAt: e.target.value,
+                    performedAt: e.currentTarget.value,
                   })
                 }
                 className="w-full"
@@ -6376,10 +5975,9 @@ function RegistryTab({
 
                     <div>
                       <label className="text-xs text-secondary block mb-1">Issued Date</label>
-                      <Input
-                        type="date"
+                      <DatePicker
                         value={draft?.issuedAt || ""}
-                        onChange={(e) => updateDraft(reg.id, { issuedAt: e.target.value })}
+                        onChange={(e) => updateDraft(reg.id, { issuedAt: e.currentTarget.value })}
                       />
                     </div>
 
@@ -7685,10 +7283,8 @@ export default function AppAnimals() {
                         {mode === "view" ? (
                           fmt(row.dob) || "-"
                         ) : (
-                          <Input
-                            size="sm"
-                            type="date"
-                            defaultValue={(row.dob || "").slice(0, 10)}
+                          <DatePicker
+                            value={(row.dob || "").slice(0, 10)}
                             onChange={(e) =>
                               setDraft({ dob: e.currentTarget.value })
                             }
@@ -8619,13 +8215,10 @@ export default function AppAnimals() {
                 <div className="mb-1 text-xs text-secondary">
                   Date of Birth *
                 </div>
-                <Input
-                  type="date"
+                <DatePicker
                   value={newDob}
                   onChange={(e) =>
-                    setNewDob(
-                      (e.currentTarget as HTMLInputElement).value
-                    )
+                    setNewDob(e.currentTarget.value)
                   }
                 />
               </div>

@@ -5,6 +5,7 @@ import * as React from "react";
 import { Dialog } from "../Dialog";
 import { Button } from "../Button";
 import { Input } from "../Input";
+import { DatePicker } from "../DatePicker";
 import { useToast } from "../../atoms/Toast";
 import { parseToCents, centsToInput } from "../../utils/money";
 
@@ -180,10 +181,9 @@ export function PaymentCreateModal({
 
         <div>
           <label className="block text-xs text-secondary mb-1">Received Date *</label>
-          <Input
-            type="date"
+          <DatePicker
             value={form.receivedAt}
-            onChange={(e) => setForm((f) => ({ ...f, receivedAt: e.target.value }))}
+            onChange={(e) => setForm((f) => ({ ...f, receivedAt: e.currentTarget.value }))}
           />
           {errors.receivedAt && <div className="text-xs text-red-400 mt-1">{errors.receivedAt}</div>}
         </div>

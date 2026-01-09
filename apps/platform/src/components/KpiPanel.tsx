@@ -1,6 +1,14 @@
 // apps/platform/src/components/dashboard/KpiPanel.tsx
 import * as React from "react";
-import type { KPI } from "../../api/dashboard";
+
+type KPI = {
+  key: string;
+  label: string;
+  value: string | number;
+  change?: number;
+  unit?: string;
+  trend?: "up" | "down" | "flat";
+};
 
 export default function KpiPanel({ kpis }: { kpis: KPI[] }) {
   const items = kpis ?? [];

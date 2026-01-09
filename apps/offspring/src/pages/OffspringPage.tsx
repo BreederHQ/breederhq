@@ -15,6 +15,7 @@ import {
   Button,
   BreedCombo,
   Badge,
+  DatePicker,
   TagPicker,
   type TagOption,
 } from "@bhq/ui";
@@ -1928,13 +1929,12 @@ function CreateOffspringOverlayContent({
                   {allowNoGroup && (
                     <label className="grid gap-1 text-sm">
                       <span className="text-xs text-secondary">Birth date</span>
-                      <input
-                        type="date"
-                        className={inputClass}
+                      <DatePicker
                         value={form.dob ?? ""}
                         onChange={(e) =>
-                          handleChange("dob", e.target.value as any)
+                          handleChange("dob", e.currentTarget.value as any)
                         }
+                        inputClassName={inputClass}
                       />
                     </label>
                   )}
@@ -3630,15 +3630,14 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
                                   <dt className={labelClass}>DOB</dt>
                                   <dd className="mt-1 text-sm">
                                     {drawerMode === "edit" && coreForm && !isLinkedToParent ? (
-                                      <input
-                                        type="date"
-                                        className={inputClass}
+                                      <DatePicker
                                         value={coreForm.dob ?? drawer.dob ?? ""}
                                         onChange={(e) =>
                                           setCoreForm((prev) =>
-                                            prev ? { ...prev, dob: e.target.value } : prev,
+                                            prev ? { ...prev, dob: e.currentTarget.value } : prev,
                                           )
                                         }
+                                        inputClassName={inputClass}
                                       />
                                     ) : (
                                       dobLabel
@@ -3690,15 +3689,14 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
                                     <dt className={labelClass}>Deceased</dt>
                                     <dd className="mt-1 text-sm">
                                       {drawerMode === "edit" && coreForm ? (
-                                        <input
-                                          type="date"
-                                          className={inputClass}
+                                        <DatePicker
                                           value={toDateInputValue(coreForm.diedAt ?? diedAtValue)}
                                           onChange={(e) =>
                                             updateCoreForm({
-                                              diedAt: e.target.value ? e.target.value : null,
+                                              diedAt: e.currentTarget.value ? e.currentTarget.value : null,
                                             })
                                           }
+                                          inputClassName={inputClass}
                                         />
                                       ) : (
                                         diedAtLabel ?? "Yes"
@@ -4060,15 +4058,14 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
                                           {placementState === "PLACED" && (
                                             <div>
                                               <div className={labelClass}>Placed at</div>
-                                              <input
-                                                type="date"
-                                                className={inputClass}
+                                              <DatePicker
                                                 value={toDateInputValue(coreForm?.placedAt ?? placedAtValue)}
                                                 onChange={(e) =>
                                                   updateCoreForm({
-                                                    placedAt: e.target.value ? e.target.value : null,
+                                                    placedAt: e.currentTarget.value ? e.currentTarget.value : null,
                                                   })
                                                 }
+                                                inputClassName={inputClass}
                                               />
                                             </div>
                                           )}
@@ -4103,15 +4100,14 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
                                           {financialState === "PAID_IN_FULL" && (
                                             <div>
                                               <div className={labelClass}>Paid in full at</div>
-                                              <input
-                                                type="date"
-                                                className={inputClass}
+                                              <DatePicker
                                                 value={toDateInputValue(coreForm?.paidInFullAt ?? paidInFullAtValue)}
                                                 onChange={(e) =>
                                                   updateCoreForm({
-                                                    paidInFullAt: e.target.value ? e.target.value : null,
+                                                    paidInFullAt: e.currentTarget.value ? e.currentTarget.value : null,
                                                   })
                                                 }
+                                                inputClassName={inputClass}
                                               />
                                             </div>
                                           )}
@@ -4146,15 +4142,14 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
                                           {(paperworkState === "SIGNED" || paperworkState === "COMPLETE") && (
                                             <div>
                                               <div className={labelClass}>Contract signed at</div>
-                                              <input
-                                                type="date"
-                                                className={inputClass}
+                                              <DatePicker
                                                 value={toDateInputValue(coreForm?.contractSignedAt ?? contractSignedAtValue)}
                                                 onChange={(e) =>
                                                   updateCoreForm({
-                                                    contractSignedAt: e.target.value ? e.target.value : null,
+                                                    contractSignedAt: e.currentTarget.value ? e.currentTarget.value : null,
                                                   })
                                                 }
+                                                inputClassName={inputClass}
                                               />
                                             </div>
                                           )}

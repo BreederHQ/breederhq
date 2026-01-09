@@ -75,53 +75,91 @@ export default function AppWaitlist() {
 
   return (
     <div className="bhq-waitlist-app">
-      <PageHeader
-        title="Waitlist"
-        subtitle={
-          activeView === "approved"
-            ? "Manage your approved waitlist entries"
-            : activeView === "pending"
-            ? "Review pending waitlist requests"
-            : activeView === "rejected"
-            ? "View rejected waitlist requests"
-            : "Manage blocked marketplace users"
-        }
-        rightSlot={null}
-      />
+      <div className="p-4 space-y-4">
+        <div className="relative">
+          <PageHeader
+            title="Waitlist"
+            subtitle={
+              activeView === "approved"
+                ? "Manage your approved waitlist entries"
+                : activeView === "pending"
+                ? "Review pending waitlist requests"
+                : activeView === "rejected"
+                ? "View rejected waitlist requests"
+                : "Manage blocked marketplace users"
+            }
+            rightSlot={null}
+          />
 
-      <div className="p-4">
-        {/* Page-level tabs: Approved | Pending | Rejected | Blocked */}
-        {/* Pattern from apps/breeding/src/App-Breeding.tsx lines 2703-2728 */}
-        <nav className="inline-flex items-end gap-6 mb-4" role="tablist" aria-label="Waitlist views">
-          {(["approved", "pending", "rejected", "blocked"] as const).map((tabKey) => {
-            const isActive = activeView === tabKey;
-            const label =
-              tabKey === "approved" ? "Approved" :
-              tabKey === "pending" ? "Pending" :
-              tabKey === "rejected" ? "Rejected" :
-              "Blocked";
-            return (
+          {/* Right-aligned Tab Navigation with emojis and orange underline */}
+          <div className="absolute right-0 top-0 h-full flex items-center">
+            <nav className="flex items-center gap-1" role="tablist" aria-label="Waitlist views">
               <button
-                key={tabKey}
                 type="button"
                 role="tab"
-                aria-selected={isActive}
-                onClick={() => setActiveView(tabKey)}
+                aria-selected={activeView === "approved"}
+                onClick={() => setActiveView("approved")}
                 className={[
-                  "pb-1 text-sm font-medium transition-colors select-none",
-                  isActive
-                    ? "text-white"
-                    : "text-neutral-400 hover:text-white",
+                  "h-9 px-3 text-sm font-semibold leading-9 border-b-2 transition-colors flex items-center gap-1.5",
+                  activeView === "approved"
+                    ? "text-primary border-accent"
+                    : "text-secondary hover:text-primary border-transparent",
                 ].join(" ")}
-                style={{
-                  borderBottom: isActive ? "2px solid #f97316" : "2px solid transparent",
-                }}
               >
-                {label}
+                <span>✅</span>
+                <span>Approved</span>
               </button>
-            );
-          })}
-        </nav>
+
+              <button
+                type="button"
+                role="tab"
+                aria-selected={activeView === "pending"}
+                onClick={() => setActiveView("pending")}
+                className={[
+                  "h-9 px-3 text-sm font-semibold leading-9 border-b-2 transition-colors flex items-center gap-1.5",
+                  activeView === "pending"
+                    ? "text-primary border-accent"
+                    : "text-secondary hover:text-primary border-transparent",
+                ].join(" ")}
+              >
+                <span>⏳</span>
+                <span>Pending</span>
+              </button>
+
+              <button
+                type="button"
+                role="tab"
+                aria-selected={activeView === "rejected"}
+                onClick={() => setActiveView("rejected")}
+                className={[
+                  "h-9 px-3 text-sm font-semibold leading-9 border-b-2 transition-colors flex items-center gap-1.5",
+                  activeView === "rejected"
+                    ? "text-primary border-accent"
+                    : "text-secondary hover:text-primary border-transparent",
+                ].join(" ")}
+              >
+                <span>🚫</span>
+                <span>Rejected</span>
+              </button>
+
+              <button
+                type="button"
+                role="tab"
+                aria-selected={activeView === "blocked"}
+                onClick={() => setActiveView("blocked")}
+                className={[
+                  "h-9 px-3 text-sm font-semibold leading-9 border-b-2 transition-colors flex items-center gap-1.5",
+                  activeView === "blocked"
+                    ? "text-primary border-accent"
+                    : "text-secondary hover:text-primary border-transparent",
+                ].join(" ")}
+              >
+                <span>🛑</span>
+                <span>Blocked</span>
+              </button>
+            </nav>
+          </div>
+        </div>
 
         {/* Tab content */}
         {activeView === "approved" ? (
@@ -177,25 +215,11 @@ function PendingWaitlistTab({
   return (
     <div className="space-y-4">
       {/* Informational card */}
-      <div className="rounded-lg border border-hairline bg-surface p-6 text-center">
-        <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-neutral-100 dark:bg-neutral-800 mb-3">
-          <svg
-            className="w-6 h-6 text-neutral-400"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={1.5}
-              d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
-            />
-          </svg>
-        </div>
-        <h3 className="text-sm font-medium text-primary mb-1">Pending Waitlist</h3>
-        <p className="text-sm text-secondary max-w-sm mx-auto">
+      <div className="rounded-lg border border-yellow-500/30 bg-surface px-4 py-3 text-center">
+        <h3 className="text-sm font-medium text-yellow-500 mb-1">Pending Waitlist</h3>
+        <p className="text-sm text-secondary max-w-lg mx-auto">
           Marketplace inquiries and portal requests will appear here for your review before being added to the approved waitlist.
+          The same person can request multiple waitlist entries if they have unique species, breed, sire, or dam preferences.
         </p>
       </div>
 
@@ -571,7 +595,440 @@ function BlockUserModal({
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
- * Pending Waitlist Drawer - Details and actions for a pending entry
+ * Approval Confirmation Modal - Contact/Organization creation wizard
+ * ───────────────────────────────────────────────────────────────────────────── */
+type RecordType = "contact" | "organization";
+
+const inputClass =
+  "w-full h-9 rounded-md border border-hairline bg-surface px-3 text-sm text-primary " +
+  "placeholder:text-secondary/80 focus:outline-none focus:ring-1 focus:ring-[hsl(var(--brand-orange))] " +
+  "focus:border-[hsl(var(--brand-orange))] shadow-[inset_0_0_0_9999px_rgba(255,255,255,0.02)]";
+
+function ApprovalConfirmationModal({
+  entry,
+  duplicateInfo,
+  onConfirm,
+  onCancel,
+  loading,
+}: {
+  entry: any;
+  duplicateInfo: any;
+  onConfirm: (data: {
+    recordType: RecordType;
+    linkToExisting: boolean;
+    contactData?: {
+      firstName: string;
+      lastName: string;
+      email: string;
+      phone: string;
+      address?: string;
+      city?: string;
+      state?: string;
+      zip?: string;
+      notes?: string;
+    };
+    orgData?: {
+      name: string;
+      email: string;
+      phone: string;
+      website?: string;
+      address?: string;
+      city?: string;
+      state?: string;
+      zip?: string;
+      notes?: string;
+    };
+  }) => void;
+  onCancel: () => void;
+  loading: boolean;
+}) {
+  const clientParty = entry?.clientParty;
+  const existingContact = duplicateInfo?.existingContact;
+  const hasDuplicate = duplicateInfo?.hasDuplicate;
+
+  // Step state: 'choose' -> 'form'
+  const [step, setStep] = React.useState<"choose" | "form">(hasDuplicate ? "choose" : "choose");
+  const [recordType, setRecordType] = React.useState<RecordType>("contact");
+  const [linkToExisting, setLinkToExisting] = React.useState(false);
+
+  // Contact form state
+  const [contactForm, setContactForm] = React.useState({
+    firstName: clientParty?.name?.split(" ")[0] || "",
+    lastName: clientParty?.name?.split(" ").slice(1).join(" ") || "",
+    email: clientParty?.email || "",
+    phone: clientParty?.phone || "",
+    address: "",
+    city: "",
+    state: "",
+    zip: "",
+    notes: "",
+  });
+
+  // Organization form state
+  const [orgForm, setOrgForm] = React.useState({
+    name: clientParty?.name || "",
+    email: clientParty?.email || "",
+    phone: clientParty?.phone || "",
+    website: "",
+    address: "",
+    city: "",
+    state: "",
+    zip: "",
+    notes: "",
+  });
+
+  const handleSubmit = () => {
+    if (linkToExisting && hasDuplicate) {
+      onConfirm({ recordType, linkToExisting: true });
+    } else if (recordType === "contact") {
+      onConfirm({ recordType, linkToExisting: false, contactData: contactForm });
+    } else {
+      onConfirm({ recordType, linkToExisting: false, orgData: orgForm });
+    }
+  };
+
+  const canSubmit = linkToExisting || (recordType === "contact"
+    ? (contactForm.firstName.trim() || contactForm.lastName.trim()) && contactForm.email.trim()
+    : orgForm.name.trim() && orgForm.email.trim());
+
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center">
+      <div className="absolute inset-0 bg-black/60" onClick={onCancel} />
+      <div className="relative w-full max-w-xl bg-surface border border-hairline rounded-xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col">
+        {/* Header */}
+        <div className="px-5 py-4 border-b border-hairline flex-shrink-0">
+          <h3 className="text-lg font-semibold">Approve & Add to Your Records</h3>
+          <p className="text-sm text-secondary mt-1">
+            This person will be added to your approved waitlist and converted to a record in your system.
+          </p>
+        </div>
+
+        {/* Content */}
+        <div className="px-5 py-4 space-y-4 overflow-y-auto flex-1">
+          {/* Duplicate Match Notice */}
+          {hasDuplicate && (
+            <div className="rounded-lg border border-green-500/50 bg-green-500/10 p-3">
+              <div className="flex items-start gap-2">
+                <svg className="w-5 h-5 text-green-500 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <div>
+                  <p className="text-sm font-medium text-green-600 dark:text-green-400">
+                    Existing Record Found
+                  </p>
+                  <p className="text-xs text-green-600/80 dark:text-green-400/80 mt-1">
+                    <strong>{existingContact?.display_name}</strong>
+                    {existingContact?.email && <> ({existingContact.email})</>}
+                  </p>
+                  <label className="flex items-center gap-2 mt-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={linkToExisting}
+                      onChange={(e) => setLinkToExisting(e.target.checked)}
+                      className="w-4 h-4 rounded border-hairline"
+                    />
+                    <span className="text-xs text-green-600 dark:text-green-400">
+                      Link to this existing record instead of creating a new one
+                    </span>
+                  </label>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Record Type Selection */}
+          {!linkToExisting && (
+            <>
+              <div>
+                <label className="text-xs font-semibold uppercase tracking-wide text-secondary mb-2 block">
+                  Create as
+                </label>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setRecordType("contact")}
+                    className={[
+                      "p-4 rounded-lg border-2 text-left transition-all",
+                      recordType === "contact"
+                        ? "border-[hsl(var(--brand-orange))] bg-[hsl(var(--brand-orange))]/5"
+                        : "border-hairline hover:border-neutral-500",
+                    ].join(" ")}
+                  >
+                    <div className="flex items-center gap-2 mb-1">
+                      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                      </svg>
+                      <span className="font-medium">Contact</span>
+                    </div>
+                    <p className="text-xs text-secondary">
+                      An individual person (buyer, client, etc.)
+                    </p>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setRecordType("organization")}
+                    className={[
+                      "p-4 rounded-lg border-2 text-left transition-all",
+                      recordType === "organization"
+                        ? "border-[hsl(var(--brand-orange))] bg-[hsl(var(--brand-orange))]/5"
+                        : "border-hairline hover:border-neutral-500",
+                    ].join(" ")}
+                  >
+                    <div className="flex items-center gap-2 mb-1">
+                      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                      </svg>
+                      <span className="font-medium">Organization</span>
+                    </div>
+                    <p className="text-xs text-secondary">
+                      A business, breeder, or other entity
+                    </p>
+                  </button>
+                </div>
+              </div>
+
+              {/* Contact Form */}
+              {recordType === "contact" && (
+                <div className="space-y-3">
+                  <div className="text-xs font-semibold uppercase tracking-wide text-secondary">
+                    Contact Details
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs text-secondary mb-1 block">First Name *</label>
+                      <input
+                        type="text"
+                        value={contactForm.firstName}
+                        onChange={(e) => setContactForm({ ...contactForm, firstName: e.target.value })}
+                        className={inputClass}
+                        placeholder="First name"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-secondary mb-1 block">Last Name</label>
+                      <input
+                        type="text"
+                        value={contactForm.lastName}
+                        onChange={(e) => setContactForm({ ...contactForm, lastName: e.target.value })}
+                        className={inputClass}
+                        placeholder="Last name"
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs text-secondary mb-1 block">Email *</label>
+                      <input
+                        type="email"
+                        value={contactForm.email}
+                        onChange={(e) => setContactForm({ ...contactForm, email: e.target.value })}
+                        className={inputClass}
+                        placeholder="email@example.com"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-secondary mb-1 block">Phone</label>
+                      <input
+                        type="tel"
+                        value={contactForm.phone}
+                        onChange={(e) => setContactForm({ ...contactForm, phone: e.target.value })}
+                        className={inputClass}
+                        placeholder="+1 (555) 000-0000"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-xs text-secondary mb-1 block">Address</label>
+                    <input
+                      type="text"
+                      value={contactForm.address}
+                      onChange={(e) => setContactForm({ ...contactForm, address: e.target.value })}
+                      className={inputClass}
+                      placeholder="Street address"
+                    />
+                  </div>
+                  <div className="grid grid-cols-3 gap-3">
+                    <div>
+                      <label className="text-xs text-secondary mb-1 block">City</label>
+                      <input
+                        type="text"
+                        value={contactForm.city}
+                        onChange={(e) => setContactForm({ ...contactForm, city: e.target.value })}
+                        className={inputClass}
+                        placeholder="City"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-secondary mb-1 block">State</label>
+                      <input
+                        type="text"
+                        value={contactForm.state}
+                        onChange={(e) => setContactForm({ ...contactForm, state: e.target.value })}
+                        className={inputClass}
+                        placeholder="State"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-secondary mb-1 block">ZIP</label>
+                      <input
+                        type="text"
+                        value={contactForm.zip}
+                        onChange={(e) => setContactForm({ ...contactForm, zip: e.target.value })}
+                        className={inputClass}
+                        placeholder="ZIP code"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-xs text-secondary mb-1 block">Notes</label>
+                    <textarea
+                      value={contactForm.notes}
+                      onChange={(e) => setContactForm({ ...contactForm, notes: e.target.value })}
+                      className={inputClass + " h-20 resize-none"}
+                      placeholder="Any additional notes about this contact..."
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Organization Form */}
+              {recordType === "organization" && (
+                <div className="space-y-3">
+                  <div className="text-xs font-semibold uppercase tracking-wide text-secondary">
+                    Organization Details
+                  </div>
+                  <div>
+                    <label className="text-xs text-secondary mb-1 block">Organization Name *</label>
+                    <input
+                      type="text"
+                      value={orgForm.name}
+                      onChange={(e) => setOrgForm({ ...orgForm, name: e.target.value })}
+                      className={inputClass}
+                      placeholder="Organization name"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs text-secondary mb-1 block">Email *</label>
+                      <input
+                        type="email"
+                        value={orgForm.email}
+                        onChange={(e) => setOrgForm({ ...orgForm, email: e.target.value })}
+                        className={inputClass}
+                        placeholder="contact@organization.com"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-secondary mb-1 block">Phone</label>
+                      <input
+                        type="tel"
+                        value={orgForm.phone}
+                        onChange={(e) => setOrgForm({ ...orgForm, phone: e.target.value })}
+                        className={inputClass}
+                        placeholder="+1 (555) 000-0000"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-xs text-secondary mb-1 block">Website</label>
+                    <input
+                      type="url"
+                      value={orgForm.website}
+                      onChange={(e) => setOrgForm({ ...orgForm, website: e.target.value })}
+                      className={inputClass}
+                      placeholder="https://www.example.com"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-secondary mb-1 block">Address</label>
+                    <input
+                      type="text"
+                      value={orgForm.address}
+                      onChange={(e) => setOrgForm({ ...orgForm, address: e.target.value })}
+                      className={inputClass}
+                      placeholder="Street address"
+                    />
+                  </div>
+                  <div className="grid grid-cols-3 gap-3">
+                    <div>
+                      <label className="text-xs text-secondary mb-1 block">City</label>
+                      <input
+                        type="text"
+                        value={orgForm.city}
+                        onChange={(e) => setOrgForm({ ...orgForm, city: e.target.value })}
+                        className={inputClass}
+                        placeholder="City"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-secondary mb-1 block">State</label>
+                      <input
+                        type="text"
+                        value={orgForm.state}
+                        onChange={(e) => setOrgForm({ ...orgForm, state: e.target.value })}
+                        className={inputClass}
+                        placeholder="State"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-secondary mb-1 block">ZIP</label>
+                      <input
+                        type="text"
+                        value={orgForm.zip}
+                        onChange={(e) => setOrgForm({ ...orgForm, zip: e.target.value })}
+                        className={inputClass}
+                        placeholder="ZIP code"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-xs text-secondary mb-1 block">Notes</label>
+                    <textarea
+                      value={orgForm.notes}
+                      onChange={(e) => setOrgForm({ ...orgForm, notes: e.target.value })}
+                      className={inputClass + " h-20 resize-none"}
+                      placeholder="Any additional notes about this organization..."
+                    />
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+
+          {/* Info Banner */}
+          <div className="rounded-lg border border-blue-500/30 bg-blue-500/10 p-3">
+            <p className="text-xs text-blue-600 dark:text-blue-400">
+              {linkToExisting
+                ? "The waitlist entry will be linked to your existing record. No new record will be created."
+                : recordType === "contact"
+                ? "A new Contact will be created in your Contacts list. You can edit their details anytime from the Contacts module."
+                : "A new Organization will be created in your system. You can edit their details anytime from the Contacts module."}
+            </p>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="px-5 py-4 border-t border-hairline flex justify-end gap-2 flex-shrink-0">
+          <Button variant="ghost" size="sm" onClick={onCancel} disabled={loading}>
+            Cancel
+          </Button>
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={handleSubmit}
+            disabled={loading || !canSubmit}
+          >
+            {loading ? "Processing..." : linkToExisting ? "Approve & Link" : `Approve & Create ${recordType === "contact" ? "Contact" : "Organization"}`}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * Pending Waitlist Modal - Details and actions for a pending entry (centered popup)
  * ───────────────────────────────────────────────────────────────────────────── */
 function PendingWaitlistDrawer({
   api,
@@ -599,6 +1056,7 @@ function PendingWaitlistDrawer({
   const [showMessageInput, setShowMessageInput] = React.useState(false);
   const [messageText, setMessageText] = React.useState("");
   const [showBlockModal, setShowBlockModal] = React.useState(false);
+  const [showApprovalModal, setShowApprovalModal] = React.useState(false);
 
   // Fetch entry details
   React.useEffect(() => {
@@ -628,16 +1086,50 @@ function PendingWaitlistDrawer({
     })();
   }, [api, entryId]);
 
-  const handleApprove = async () => {
+  const handleApproveWithData = async (data: {
+    recordType: RecordType;
+    linkToExisting: boolean;
+    contactData?: any;
+    orgData?: any;
+  }) => {
     if (!api || !entry) return;
     setActionLoading("approve");
     try {
-      const body: any = {};
-      if (duplicateInfo?.hasDuplicate && duplicateInfo?.existingContact?.id) {
+      const body: any = {
+        recordType: data.recordType,
+      };
+
+      if (data.linkToExisting && duplicateInfo?.existingContact?.id) {
         body.linkToExistingContactId = duplicateInfo.existingContact.id;
+      } else if (data.recordType === "contact" && data.contactData) {
+        body.contactData = {
+          first_name: data.contactData.firstName,
+          last_name: data.contactData.lastName,
+          email: data.contactData.email,
+          phone_e164: data.contactData.phone,
+          address_line1: data.contactData.address,
+          city: data.contactData.city,
+          state: data.contactData.state,
+          postal_code: data.contactData.zip,
+          notes: data.contactData.notes,
+        };
+      } else if (data.recordType === "organization" && data.orgData) {
+        body.organizationData = {
+          name: data.orgData.name,
+          email: data.orgData.email,
+          phone: data.orgData.phone,
+          website: data.orgData.website,
+          address_line1: data.orgData.address,
+          city: data.orgData.city,
+          state: data.orgData.state,
+          postal_code: data.orgData.zip,
+          notes: data.orgData.notes,
+        };
       }
+
       await api.raw.post(`/waitlist/${entryId}/approve`, body);
-      toast.success("Entry approved successfully");
+      toast.success(`Entry approved and ${data.linkToExisting ? "linked to existing record" : (data.recordType === "contact" ? "Contact created" : "Organization created")}`);
+      setShowApprovalModal(false);
       onActionComplete();
     } catch (e: any) {
       toast.error(e?.message || "Failed to approve entry");
@@ -675,8 +1167,6 @@ function PendingWaitlistDrawer({
   const handleBlockUser = async (level: BlockLevel, reason: string) => {
     if (!api || !entry) return;
 
-    // Get marketplace user ID from the entry
-    // The marketplace user ID should be available via the clientParty's externalId
     const marketplaceUserId = entry.clientParty?.externalId || entry.marketplaceUserId;
 
     if (!marketplaceUserId) {
@@ -714,16 +1204,11 @@ function PendingWaitlistDrawer({
   const displayPhone = contact?.phoneE164 || null;
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex justify-end"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-    >
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
-      <div className="relative w-full max-w-lg bg-surface border-l border-hairline shadow-xl overflow-y-auto">
+      <div className="relative w-full max-w-xl bg-surface border border-hairline rounded-xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col">
         {/* Header */}
-        <div className="sticky top-0 z-10 bg-surface border-b border-hairline px-4 py-3 flex items-center justify-between">
+        <div className="px-5 py-4 border-b border-hairline flex items-center justify-between flex-shrink-0">
           <h2 className="text-lg font-semibold">Pending Request</h2>
           <button
             onClick={onClose}
@@ -736,7 +1221,7 @@ function PendingWaitlistDrawer({
         </div>
 
         {/* Content */}
-        <div className="p-4 space-y-6">
+        <div className="px-5 py-4 space-y-5 overflow-y-auto flex-1">
           {loading && (
             <div className="py-8 text-center text-sm text-secondary">Loading...</div>
           )}
@@ -747,7 +1232,7 @@ function PendingWaitlistDrawer({
             <>
               {/* Contact Info */}
               <section>
-                <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-secondary mb-2">
                   Contact Information
                 </h3>
                 <div className="space-y-2">
@@ -773,35 +1258,9 @@ function PendingWaitlistDrawer({
                 </div>
               </section>
 
-              {/* Duplicate Warning */}
-              {duplicateInfo?.hasDuplicate && (
-                <section className="rounded-lg border border-yellow-500/50 bg-yellow-500/10 p-3">
-                  <div className="flex items-start gap-2">
-                    <svg className="w-5 h-5 text-yellow-500 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                    </svg>
-                    <div>
-                      <p className="text-sm font-medium text-yellow-600 dark:text-yellow-400">
-                        Potential Duplicate Found
-                      </p>
-                      <p className="text-xs text-yellow-600/80 dark:text-yellow-400/80 mt-1">
-                        This contact may match an existing contact:{" "}
-                        <strong>{duplicateInfo.existingContact?.display_name}</strong>
-                        {duplicateInfo.existingContact?.email && (
-                          <> ({duplicateInfo.existingContact.email})</>
-                        )}
-                      </p>
-                      <p className="text-xs text-yellow-600/60 dark:text-yellow-400/60 mt-1">
-                        If you approve, this entry will be linked to the existing contact.
-                      </p>
-                    </div>
-                  </div>
-                </section>
-              )}
-
               {/* Request Details */}
               <section>
-                <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-secondary mb-2">
                   Request Details
                 </h3>
                 <div className="space-y-2 text-sm">
@@ -843,10 +1302,10 @@ function PendingWaitlistDrawer({
               {/* Notes */}
               {entry.notes && (
                 <section>
-                  <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
+                  <h3 className="text-xs font-semibold uppercase tracking-wide text-secondary mb-2">
                     Notes / Message
                   </h3>
-                  <div className="text-sm bg-surface-strong rounded-lg p-3 whitespace-pre-wrap">
+                  <div className="text-sm bg-neutral-800/50 rounded-lg p-3 whitespace-pre-wrap">
                     {entry.notes}
                   </div>
                 </section>
@@ -855,7 +1314,7 @@ function PendingWaitlistDrawer({
               {/* Message Input */}
               {showMessageInput && (
                 <section>
-                  <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
+                  <h3 className="text-xs font-semibold uppercase tracking-wide text-secondary mb-2">
                     Send Message
                   </h3>
                   <textarea
@@ -891,7 +1350,7 @@ function PendingWaitlistDrawer({
               {/* Reject Reason Input */}
               {showRejectInput && (
                 <section>
-                  <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
+                  <h3 className="text-xs font-semibold uppercase tracking-wide text-secondary mb-2">
                     Rejection Reason (Optional)
                   </h3>
                   <textarea
@@ -901,7 +1360,7 @@ function PendingWaitlistDrawer({
                     rows={3}
                     className="w-full px-3 py-2 text-sm border border-hairline rounded-lg bg-surface focus:outline-none focus:ring-2 focus:ring-red-500/50"
                   />
-                  <p className="text-xs text-muted-foreground mt-1">
+                  <p className="text-xs text-secondary mt-1">
                     This will be visible to the applicant.
                   </p>
                   <div className="flex gap-2 mt-2">
@@ -932,7 +1391,7 @@ function PendingWaitlistDrawer({
 
         {/* Footer Actions */}
         {!loading && !error && entry && !showRejectInput && !showMessageInput && (
-          <div className="sticky bottom-0 bg-surface border-t border-hairline px-4 py-3 flex gap-2">
+          <div className="px-5 py-4 border-t border-hairline flex gap-2 flex-shrink-0">
             <Button
               variant="ghost"
               size="sm"
@@ -966,18 +1425,25 @@ function PendingWaitlistDrawer({
             <Button
               variant="primary"
               size="sm"
-              onClick={handleApprove}
+              onClick={() => setShowApprovalModal(true)}
               disabled={!!actionLoading}
             >
-              {actionLoading === "approve"
-                ? "Approving..."
-                : duplicateInfo?.hasDuplicate
-                ? "Approve & Link"
-                : "Approve"}
+              Approve
             </Button>
           </div>
         )}
       </div>
+
+      {/* Approval Confirmation Modal */}
+      {showApprovalModal && (
+        <ApprovalConfirmationModal
+          entry={entry}
+          duplicateInfo={duplicateInfo}
+          onConfirm={handleApproveWithData}
+          onCancel={() => setShowApprovalModal(false)}
+          loading={actionLoading === "approve"}
+        />
+      )}
 
       {/* Block User Modal */}
       {showBlockModal && (
@@ -1130,24 +1596,9 @@ function RejectedWaitlistTab({
   return (
     <div className="space-y-4">
       {/* Informational card */}
-      <div className="rounded-lg border border-hairline bg-surface p-6 text-center">
-        <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-neutral-100 dark:bg-neutral-800 mb-3">
-          <svg
-            className="w-6 h-6 text-neutral-400"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={1.5}
-              d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"
-            />
-          </svg>
-        </div>
-        <h3 className="text-sm font-medium text-primary mb-1">Rejected Requests</h3>
-        <p className="text-sm text-secondary max-w-sm mx-auto">
+      <div className="rounded-lg border border-red-500/30 bg-surface px-4 py-3 text-center">
+        <h3 className="text-sm font-medium text-red-500 mb-1">Rejected Requests</h3>
+        <p className="text-sm text-secondary max-w-lg mx-auto">
           Historical record of waitlist requests that were declined.
         </p>
       </div>
@@ -1330,24 +1781,9 @@ function BlockedUsersTab({ api }: { api: WaitlistApi | null }) {
   return (
     <div className="space-y-4">
       {/* Informational card */}
-      <div className="rounded-lg border border-hairline bg-surface p-6 text-center">
-        <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-neutral-100 dark:bg-neutral-800 mb-3">
-          <svg
-            className="w-6 h-6 text-neutral-400"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={1.5}
-              d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"
-            />
-          </svg>
-        </div>
-        <h3 className="text-sm font-medium text-primary mb-1">Blocked Users</h3>
-        <p className="text-sm text-secondary max-w-sm mx-auto">
+      <div className="rounded-lg border border-orange-500/30 bg-surface px-4 py-3 text-center">
+        <h3 className="text-sm font-medium text-orange-500 mb-1">Blocked Users</h3>
+        <p className="text-sm text-secondary max-w-lg mx-auto">
           Marketplace users you've blocked. They cannot interact with your profile based on their block level.
         </p>
       </div>

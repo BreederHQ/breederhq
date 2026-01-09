@@ -1,6 +1,6 @@
 // apps/bloodlines/src/pages/TitlesPage.tsx
 import * as React from "react";
-import { PageHeader, Button } from "@bhq/ui";
+import { PageHeader, Button, DatePicker } from "@bhq/ui";
 
 /* ───────────────── Types ───────────────── */
 
@@ -419,11 +419,10 @@ function AddTitleModal({ animals, onClose, onSave, preSelectedAnimalId }: AddTit
 
           <div>
             <label className="block text-sm font-medium text-secondary mb-1">Date Earned</label>
-            <input
-              type="date"
-              className="w-full px-3 py-2 bg-surface-strong border border-hairline rounded-lg text-primary"
+            <DatePicker
               value={dateEarned}
-              onChange={(e) => setDateEarned(e.target.value)}
+              onChange={(e) => setDateEarned(e.currentTarget.value)}
+              inputClassName="w-full px-3 py-2 bg-surface-strong border border-hairline rounded-lg text-primary"
             />
           </div>
 

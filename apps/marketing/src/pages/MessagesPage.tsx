@@ -1046,8 +1046,8 @@ export default function MessagesPage() {
       }
       // Sort by thread-level timestamps only. Do not depend on messages[] in list payload.
       const sorted = threadList.sort((a, b) => {
-        const aKey = a.lastMessageAt || a.updatedAt || a.createdAt;
-        const bKey = b.lastMessageAt || b.updatedAt || b.createdAt;
+        const aKey = (a as any).lastMessageAt || a.updatedAt || a.createdAt;
+        const bKey = (b as any).lastMessageAt || b.updatedAt || b.createdAt;
         return new Date(bKey).getTime() - new Date(aKey).getTime();
       });
       setThreads(sorted);

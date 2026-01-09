@@ -161,7 +161,7 @@ export default function AppFinance() {
                   ].join(" ")
                 }
                 style={({ isActive }) =>
-                  isActive ? { borderBottomColor: "hsl(var(--brand-orange))" } : undefined
+                  isActive ? { borderBottomColor: "hsl(var(--brand-orange))" } : {}
                 }
               >
                 Home
@@ -176,7 +176,7 @@ export default function AppFinance() {
                   ].join(" ")
                 }
                 style={({ isActive }) =>
-                  isActive ? { borderBottomColor: "hsl(var(--brand-orange))" } : undefined
+                  isActive ? { borderBottomColor: "hsl(var(--brand-orange))" } : {}
                 }
               >
                 Invoices
@@ -191,7 +191,7 @@ export default function AppFinance() {
                   ].join(" ")
                 }
                 style={({ isActive }) =>
-                  isActive ? { borderBottomColor: "hsl(var(--brand-orange))" } : undefined
+                  isActive ? { borderBottomColor: "hsl(var(--brand-orange))" } : {}
                 }
               >
                 Expenses
@@ -201,7 +201,7 @@ export default function AppFinance() {
         </div>
 
         {/* Page Content */}
-        {currentView === "home" && <FinanceHome api={api} onNavigate={handleNavigate} />}
+        {currentView === "home" && <FinanceHome api={api} />}
         {currentView === "invoices" && <InvoicesPage api={api} />}
         {currentView === "expenses" && <ExpensesPage api={api} />}
       </div>

@@ -18,6 +18,13 @@ import { PortalAccessTab } from "@bhq/ui/components/PortalAccess";
 import { Copy } from "lucide-react";
 import { getOverlayRoot } from "@bhq/ui/overlay";
 import { makeApi } from "./api";
+import { NotesTab } from "./components/NotesTab";
+import { ActivityTab } from "./components/ActivityTab";
+import { MessagesTab } from "./components/MessagesTab";
+import { EmailComposer } from "./components/EmailComposer";
+import { QuickDMComposer } from "./components/QuickDMComposer";
+import { HeaderQuickActions } from "./components/HeaderQuickActions";
+import { EventsSection } from "./components/EventsSection";
 
 type ID = number | string;
 
@@ -327,141 +334,6 @@ function formatE164Phone(e164?: string | null) {
   return `+${digits}`;
 }
 
-function formatNextFollowUpLabel(iso?: string | null) {
-  if (!iso) return null;
-  const dt = new Date(iso);
-  if (!Number.isFinite(dt.getTime())) return null;
-
-  const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const target = new Date(dt.getFullYear(), dt.getMonth(), dt.getDate());
-  const diffDays = Math.floor((target.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-
-  if (diffDays === 0) return "Today";
-  if (diffDays === 1) return "Tomorrow";
-  if (diffDays > 1 && diffDays < 7) return `In ${diffDays} days`;
-  if (diffDays < 0 && diffDays > -7) return `${Math.abs(diffDays)} days ago`;
-
-  return dt.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
-}
-
-/* ─────────────── NextFollowUpChip ─────────────── */
-
-const NextFollowUpChip: React.FC<{
-  value?: string | null;
-  onChange: (iso: string | null) => void;
-}> = ({ value, onChange }) => {
-  const [open, setOpen] = React.useState(false);
-  const [anchorRect, setAnchorRect] = React.useState<DOMRect | null>(null);
-  const btnRef = React.useRef<HTMLButtonElement | null>(null);
-
-  const label = formatNextFollowUpLabel(value) || "Set follow-up";
-
-  const recompute = React.useCallback(() => {
-    if (!btnRef.current) return;
-    setAnchorRect(btnRef.current.getBoundingClientRect());
-  }, []);
-
-  React.useEffect(() => {
-    if (!open) return;
-    recompute();
-    const onScroll = () => recompute();
-    const onResize = () => recompute();
-    window.addEventListener("scroll", onScroll, true);
-    window.addEventListener("resize", onResize);
-    return () => {
-      window.removeEventListener("scroll", onScroll, true);
-      window.removeEventListener("resize", onResize);
-    };
-  }, [open, recompute]);
-
-  const overlayRoot = getOverlayRoot();
-
-  return (
-    <div className="relative inline-flex items-center">
-      <button
-        ref={btnRef}
-        type="button"
-        className="text-xs px-2 py-1 rounded border border-hairline hover:bg-white/5 whitespace-nowrap"
-        onClick={() => setOpen(true)}
-      >
-        {label}
-      </button>
-      {open && overlayRoot && anchorRect && createPortal(
-        <>
-          <div
-            style={{ position: "fixed", inset: 0, zIndex: 999 }}
-            onClick={() => setOpen(false)}
-          />
-          <div
-            className="rounded-md border border-hairline bg-surface shadow-lg p-2"
-            style={{
-              position: "fixed",
-              top: anchorRect.bottom + 4,
-              left: anchorRect.left,
-              zIndex: 1000,
-              minWidth: 200,
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex flex-col gap-1">
-              <button
-                type="button"
-                className="text-left px-2 py-1 text-sm hover:bg-white/5 rounded"
-                onClick={() => {
-                  const tomorrow = new Date();
-                  tomorrow.setDate(tomorrow.getDate() + 1);
-                  onChange(tomorrow.toISOString());
-                  setOpen(false);
-                }}
-              >
-                Tomorrow
-              </button>
-              <button
-                type="button"
-                className="text-left px-2 py-1 text-sm hover:bg-white/5 rounded"
-                onClick={() => {
-                  const nextWeek = new Date();
-                  nextWeek.setDate(nextWeek.getDate() + 7);
-                  onChange(nextWeek.toISOString());
-                  setOpen(false);
-                }}
-              >
-                Next week
-              </button>
-              <button
-                type="button"
-                className="text-left px-2 py-1 text-sm hover:bg-white/5 rounded"
-                onClick={() => {
-                  const nextMonth = new Date();
-                  nextMonth.setMonth(nextMonth.getMonth() + 1);
-                  onChange(nextMonth.toISOString());
-                  setOpen(false);
-                }}
-              >
-                Next month
-              </button>
-              {value && (
-                <button
-                  type="button"
-                  className="text-left px-2 py-1 text-sm text-red-400 hover:bg-white/5 rounded border-t border-hairline mt-1 pt-2"
-                  onClick={() => {
-                    onChange(null);
-                    setOpen(false);
-                  }}
-                >
-                  Clear
-                </button>
-              )}
-            </div>
-          </div>
-        </>,
-        overlayRoot
-      )}
-    </div>
-  );
-};
-
 export function PartyDetailsView({
   row,
   mode,
@@ -726,25 +598,44 @@ export function PartyDetailsView({
   // Next follow-up
   const [snoozing, setSnoozing] = React.useState(false);
 
+  // Email composer state
+  const [showEmailComposer, setShowEmailComposer] = React.useState(false);
+
+  // Quick DM composer state
+  const [showDMComposer, setShowDMComposer] = React.useState(false);
+
+  // Get WhatsApp number - prefer dedicated field, fallback to mobile
+  const whatsappNumber = (row as any).whatsappE164 || (prefs.whatsapp ? (row as any).phoneMobileE164 || row.phone : null);
+
+  // Handler for follow-up changes
+  const handleFollowUpChange = React.useCallback(async (iso: string | null) => {
+    const value = iso ? new Date(iso).toISOString() : null;
+    try {
+      setSnoozing(true);
+      if (row.contactId) {
+        await api.contacts.update(row.contactId, { nextFollowUp: value });
+        setDraft((d: any) => ({ ...d, nextFollowUp: value }));
+      }
+    } catch (e) {
+      console.error("nextFollowUp save failed", e);
+    } finally {
+      setSnoozing(false);
+    }
+  }, [api, row.contactId, setDraft]);
+
   const headerRight = row.kind === "CONTACT" || mode === "edit" ? (
     <div className="flex items-center gap-2">
-      {row.kind === "CONTACT" && (
-        <NextFollowUpChip
-          value={row.nextFollowUp}
-          onChange={async (iso) => {
-            const value = iso ? new Date(iso).toISOString() : null;
-            try {
-              setSnoozing(true);
-              if (row.contactId) {
-                await api.contacts.update(row.contactId, { nextFollowUp: value });
-                setDraft((d: any) => ({ ...d, nextFollowUp: value }));
-              }
-            } catch (e) {
-              console.error("nextFollowUp save failed", e);
-            } finally {
-              setSnoozing(false);
-            }
-          }}
+      {/* Quick action icons */}
+      {mode === "view" && (
+        <HeaderQuickActions
+          email={row.email}
+          phone={(row as any).phoneMobileE164 || row.phone}
+          whatsapp={whatsappNumber}
+          partyName={row.displayName}
+          onComposeEmail={() => row.email && setShowEmailComposer(true)}
+          onComposeDM={() => setShowDMComposer(true)}
+          nextFollowUp={row.kind === "CONTACT" ? row.nextFollowUp : undefined}
+          onFollowUpChange={row.kind === "CONTACT" ? handleFollowUpChange : undefined}
         />
       )}
       {mode === "edit" && row.archived && (
@@ -787,6 +678,9 @@ export function PartyDetailsView({
         onSave={requestSave}
         tabs={[
           { key: "overview", label: "Overview" },
+          { key: "activity", label: "Activity" },
+          { key: "notes", label: "Notes" },
+          { key: "messages", label: "Messages" },
           { key: "animals", label: "Animals" },
           { key: "documents", label: "Documents" },
           { key: "finances", label: "Finances" },
@@ -831,7 +725,7 @@ export function PartyDetailsView({
                   </div>
 
                   <div className="sm:col-span-3">
-                    <div className="text-xs text-secondary mb-1">Organization</div>
+                    <div className="text-xs text-secondary mb-1">Affiliated Organization</div>
                     {mode === "view" ? (
                       <div className="text-sm">{row.organizationName || "—"}</div>
                     ) : (
@@ -1453,6 +1347,14 @@ export function PartyDetailsView({
                 )}
               </SectionCard>
             )}
+
+            {/* Events & Reminders Section */}
+            <EventsSection
+              partyId={row.partyId}
+              partyName={row.displayName}
+              birthday={(row as any).birthday}
+              api={api}
+            />
           </div>
         )}
 
@@ -1536,7 +1438,46 @@ export function PartyDetailsView({
             api={api}
           />
         )}
+
+        {activeTab === "notes" && (
+          <NotesTab partyId={row.partyId} api={api} />
+        )}
+
+        {activeTab === "activity" && (
+          <ActivityTab partyId={row.partyId} partyKind={row.kind} api={api} />
+        )}
+
+        {activeTab === "messages" && (
+          <MessagesTab
+            partyId={row.partyId}
+            partyEmail={row.email}
+            partyName={row.displayName}
+            api={api}
+            onComposeEmail={() => row.email && setShowEmailComposer(true)}
+          />
+        )}
       </DetailsScaffold>
+
+      {/* Email Composer Modal */}
+      {showEmailComposer && row.email && (
+        <EmailComposer
+          partyId={row.partyId}
+          partyName={row.displayName}
+          partyEmail={row.email}
+          onClose={() => setShowEmailComposer(false)}
+          api={api}
+        />
+      )}
+
+      {/* Quick DM Composer Modal */}
+      {showDMComposer && (
+        <QuickDMComposer
+          partyId={row.partyId}
+          partyName={row.displayName}
+          onClose={() => setShowDMComposer(false)}
+          api={api}
+        />
+      )}
 
       {/* Compliance reset confirmation modal */}
       {confirmReset && overlayRoot && createPortal(

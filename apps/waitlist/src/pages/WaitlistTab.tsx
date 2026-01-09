@@ -18,6 +18,7 @@ import {
   SectionCard,
   Button,
   BreedCombo,
+  DatePicker,
   useToast
 } from "@bhq/ui";
 import { Plus } from "lucide-react";
@@ -585,7 +586,54 @@ function AddToWaitlistModal({
   const [damOpen, setDamOpen] = React.useState(false);
   const [sireOpen, setSireOpen] = React.useState(false);
 
-  const canSubmit = !!link && !!speciesWire && !!(breed?.name || "").trim();
+  // Duplicate detection state
+  const [duplicateCheck, setDuplicateCheck] = React.useState<{
+    isDuplicate: boolean;
+    existingEntry?: any;
+    checking: boolean;
+  }>({ isDuplicate: false, existingEntry: null, checking: false });
+
+  // Check for duplicates when relevant fields change
+  React.useEffect(() => {
+    let alive = true;
+    const checkDuplicate = async () => {
+      if (!api || !link || !speciesWire || !(breed?.name ?? "").trim()) {
+        if (alive) setDuplicateCheck({ isDuplicate: false, existingEntry: null, checking: false });
+        return;
+      }
+
+      setDuplicateCheck(prev => ({ ...prev, checking: true }));
+
+      try {
+        const result = await api.waitlist.checkDuplicate({
+          clientPartyId: link.kind === "contact" || link.kind === "org" ? link.id : null,
+          speciesPref: speciesWire,
+          breedPrefs: (breed?.name ?? "").trim() ? [(breed?.name ?? "").trim()] : null,
+          sirePrefId: sireId ?? null,
+          damPrefId: damId ?? null,
+        });
+        if (alive) {
+          setDuplicateCheck({
+            isDuplicate: result.isDuplicate ?? false,
+            existingEntry: result.existingEntry ?? null,
+            checking: false,
+          });
+        }
+      } catch (e) {
+        // If duplicate check fails, allow creation anyway
+        console.warn("Duplicate check failed:", e);
+        if (alive) setDuplicateCheck({ isDuplicate: false, existingEntry: null, checking: false });
+      }
+    };
+
+    const timer = setTimeout(checkDuplicate, 300);
+    return () => {
+      alive = false;
+      clearTimeout(timer);
+    };
+  }, [api, link, speciesWire, breed?.name, sireId, damId]);
+
+  const canSubmit = !!link && !!speciesWire && !!(breed?.name || "").trim() && !duplicateCheck.isDuplicate;
 
   async function handleSubmit() {
     if (!api || !canSubmit) return;
@@ -632,6 +680,7 @@ function AddToWaitlistModal({
     setSireId(null);
     setDamOpen(false);
     setSireOpen(false);
+    setDuplicateCheck({ isDuplicate: false, existingEntry: null, checking: false });
   }
 
   React.useEffect(() => {
@@ -740,7 +789,7 @@ function AddToWaitlistModal({
                       }}
                       placeholder="Type a name, email, phone, or organization..."
                       widthPx={720}
-                      autoFocus={!link}
+                      {...({ autoFocus: !link } as any)}
                     />
                   </div>
 
@@ -1044,6 +1093,37 @@ function AddToWaitlistModal({
                   </div>
                 </SectionCard>
 
+                {/* Duplicate Warning */}
+                {duplicateCheck.isDuplicate && duplicateCheck.existingEntry && (
+                  <div className="rounded-lg border border-yellow-500/50 bg-yellow-500/10 p-4">
+                    <div className="flex items-start gap-3">
+                      <svg className="w-5 h-5 text-yellow-500 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                      </svg>
+                      <div>
+                        <p className="text-sm font-medium text-yellow-600 dark:text-yellow-400">
+                          Duplicate Waitlist Entry
+                        </p>
+                        <p className="text-sm text-yellow-600/80 dark:text-yellow-400/80 mt-1">
+                          A waitlist entry already exists for this contact/organization with the same species, breed,
+                          {duplicateCheck.existingEntry.sirePref?.name && ` sire (${duplicateCheck.existingEntry.sirePref.name}),`}
+                          {duplicateCheck.existingEntry.damPref?.name && ` dam (${duplicateCheck.existingEntry.damPref.name}),`} combination.
+                        </p>
+                        <p className="text-xs text-yellow-600/60 dark:text-yellow-400/60 mt-2">
+                          To create a new entry, change the species, breed, sire, or dam to differentiate it from the existing entry.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Checking indicator */}
+                {duplicateCheck.checking && (
+                  <div className="text-sm text-secondary text-center py-2">
+                    Checking for existing entries...
+                  </div>
+                )}
+
                 <div className="flex justify-end gap-2">
                   <Button
                     variant="outline"
@@ -1054,7 +1134,7 @@ function AddToWaitlistModal({
                   >
                     Cancel
                   </Button>
-                  <Button onClick={handleSubmit} disabled={!canSubmit || !api}>
+                  <Button onClick={handleSubmit} disabled={!canSubmit || !api || duplicateCheck.checking}>
                     <Plus className="h-4 w-4 mr-1" />
                     Add to Waitlist
                   </Button>
@@ -1096,15 +1176,39 @@ function WaitlistDrawerBody({
   row,
   mode,
   onChange,
+  onStatusChange,
 }: {
   api: WaitlistApi | null;
   row: any;
   mode: "view" | "edit";
   onChange: (patch: any) => void;
+  onStatusChange?: (newStatus: string, reason?: string) => Promise<void>;
 }) {
   const onChangeRef = React.useRef(onChange);
   React.useEffect(() => { onChangeRef.current = onChange; }, [onChange]);
   const readOnly = mode !== "edit";
+  const isRejected = row?.status === "REJECTED";
+  const isPending = row?.status === "INQUIRY" || row?.status === "PENDING";
+  const isApproved = row?.status === "APPROVED" || row?.status === "ACTIVE";
+
+  // Restore modal state
+  const [showRestoreModal, setShowRestoreModal] = React.useState(false);
+  const [restoreTarget, setRestoreTarget] = React.useState<"APPROVED" | "INQUIRY">("APPROVED");
+  const [restoreReason, setRestoreReason] = React.useState("");
+  const [restoreLoading, setRestoreLoading] = React.useState(false);
+
+  const handleRestore = async () => {
+    if (!onStatusChange) return;
+    setRestoreLoading(true);
+    try {
+      await onStatusChange(restoreTarget, restoreReason || undefined);
+      setShowRestoreModal(false);
+      setRestoreReason("");
+    } catch (e) {
+      console.error("Failed to restore entry", e);
+    }
+    setRestoreLoading(false);
+  };
   const breedsApi = React.useMemo(() => {
     if (api && api.breeds && typeof api.breeds.listCanonical === "function") {
       return api.breeds;
@@ -1202,7 +1306,10 @@ function WaitlistDrawerBody({
           <label className="flex flex-col gap-1">
             <span className={cx(labelClass)}>Species</span>
             <select
-              className={cx(inputClass)}
+              className={cx(
+                inputClass,
+                !readOnly && !speciesUi && "border-yellow-500 ring-1 ring-yellow-500/50"
+              )}
               value={speciesUi}
               onChange={(e) => {
                 setSpeciesUi(e.currentTarget.value as SpeciesUi);
@@ -1345,19 +1452,22 @@ function WaitlistDrawerBody({
               onChange={(e) => setPriority(e.target.value === "" ? "" : Number(e.target.value))} disabled={readOnly}
             />
           </label>
-          <label className="flex flex-col gap-1">
-            <span className={cx(labelClass)}>Deposit Paid</span>
-            <input
-              className={cx(inputClass)}
-              type="date"
-              value={depositPaidAt || ""}
-              onChange={(e) => setDepositPaidAt(e.target.value)} disabled={readOnly}
-            />
-          </label>
-          <label className="flex flex-col gap-1 md:col-span-3">
+          {/* Only show Deposit Paid for approved entries */}
+          {isApproved && (
+            <label className="flex flex-col gap-1">
+              <span className={cx(labelClass)}>Deposit Paid</span>
+              <DatePicker
+                value={depositPaidAt || ""}
+                onChange={(e) => setDepositPaidAt(e.currentTarget.value)}
+                inputClassName={cx(inputClass)}
+                readOnly={readOnly}
+              />
+            </label>
+          )}
+          <label className={"flex flex-col gap-1 " + (isApproved ? "md:col-span-3" : "md:col-span-1")}>
             <span className={cx(labelClass)}>Notes</span>
             <textarea
-              className={cx(inputClass, " h-24 resize-vertical")}
+              className={cx(inputClass, " h-32 resize-vertical")}
               value={notes}
               onChange={(e) => setNotes(e.target.value)} disabled={readOnly}
             />
@@ -1365,14 +1475,117 @@ function WaitlistDrawerBody({
         </div>
       </SectionCard>
 
-      {/* Portal Access Section */}
-      <PortalInviteSection
-        api={api}
-        clientPartyId={row?.clientPartyId}
-        contactEmail={row?.contact?.email}
-        orgEmail={row?.organization?.email}
-        entryId={row?.id}
-      />
+      {/* Restore Section - only for rejected entries */}
+      {isRejected && onStatusChange && (
+        <SectionCard title="Restore Applicant">
+          <div className="p-3">
+            <p className="text-sm text-secondary mb-3">
+              This applicant was rejected. You can restore them to the pending or approved waitlist.
+            </p>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowRestoreModal(true)}
+            >
+              Restore to Waitlist
+            </Button>
+          </div>
+        </SectionCard>
+      )}
+
+      {/* Restore Modal */}
+      {showRestoreModal && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/60" onClick={() => setShowRestoreModal(false)} />
+          <div className="relative w-full max-w-md bg-surface border border-hairline rounded-xl shadow-2xl overflow-hidden">
+            <div className="px-5 py-4 border-b border-hairline">
+              <h3 className="text-lg font-semibold">Restore Applicant</h3>
+              <p className="text-sm text-secondary mt-1">
+                Move this applicant back to an active status.
+              </p>
+            </div>
+
+            <div className="px-5 py-4 space-y-4">
+              <div>
+                <label className="text-xs font-semibold uppercase tracking-wide text-secondary mb-2 block">
+                  Restore to
+                </label>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setRestoreTarget("APPROVED")}
+                    className={[
+                      "p-3 rounded-lg border-2 text-left transition-all",
+                      restoreTarget === "APPROVED"
+                        ? "border-green-500 bg-green-500/10"
+                        : "border-hairline hover:border-neutral-500",
+                    ].join(" ")}
+                  >
+                    <div className="font-medium text-sm">Approved</div>
+                    <p className="text-xs text-secondary mt-0.5">
+                      Ready to be matched
+                    </p>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setRestoreTarget("INQUIRY")}
+                    className={[
+                      "p-3 rounded-lg border-2 text-left transition-all",
+                      restoreTarget === "INQUIRY"
+                        ? "border-yellow-500 bg-yellow-500/10"
+                        : "border-hairline hover:border-neutral-500",
+                    ].join(" ")}
+                  >
+                    <div className="font-medium text-sm">Pending</div>
+                    <p className="text-xs text-secondary mt-0.5">
+                      Needs review again
+                    </p>
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold uppercase tracking-wide text-secondary mb-2 block">
+                  Reason (optional)
+                </label>
+                <textarea
+                  value={restoreReason}
+                  onChange={(e) => setRestoreReason(e.target.value)}
+                  placeholder="Why are you restoring this applicant?"
+                  rows={3}
+                  className="w-full px-3 py-2 text-sm border border-hairline rounded-lg bg-surface focus:outline-none focus:ring-2 focus:ring-[hsl(var(--brand-orange))]/50"
+                />
+              </div>
+            </div>
+
+            <div className="px-5 py-4 border-t border-hairline flex justify-end gap-2">
+              <Button variant="ghost" size="sm" onClick={() => setShowRestoreModal(false)} disabled={restoreLoading}>
+                Cancel
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={handleRestore}
+                disabled={restoreLoading}
+              >
+                {restoreLoading ? "Restoring..." : `Restore to ${restoreTarget === "APPROVED" ? "Approved" : "Pending"}`}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Portal Access Section - only for approved entries */}
+      {isApproved && (
+        <PortalInviteSection
+          api={api}
+          clientPartyId={row?.clientPartyId}
+          contactEmail={row?.contact?.email}
+          orgEmail={row?.organization?.email}
+          entryId={row?.id}
+        />
+      )}
 
       {/* Block User Section - only for marketplace users */}
       <BlockUserSection
@@ -1398,7 +1611,7 @@ function PortalInviteSection({
   orgEmail?: string;
   entryId?: number;
 }) {
-  const { showToast } = useToast();
+  const { toast } = useToast();
   const [portalStatus, setPortalStatus] = React.useState<string | null>(null);
   const [loading, setLoading] = React.useState(false);
   const [checkingStatus, setCheckingStatus] = React.useState(true);
@@ -1451,22 +1664,22 @@ function PortalInviteSection({
       const data = await res.json();
 
       if (res.ok) {
-        showToast({ message: "Client portal invite sent.", variant: "success" });
+        toast.success("Client portal invite sent.");
         setPortalStatus("INVITED");
       } else {
         if (data.error === "already_active") {
-          showToast({ message: "Client portal already active.", variant: "info" });
+          toast.info("Client portal already active.");
           setPortalStatus("ACTIVE");
         } else if (data.error === "already_invited") {
-          showToast({ message: "Invite already sent.", variant: "info" });
+          toast.info("Invite already sent.");
           setPortalStatus("INVITED");
         } else {
-          showToast({ message: data.error || "Failed to send invite.", variant: "error" });
+          toast.error(data.error || "Failed to send invite.");
         }
       }
     } catch (err) {
       console.error("Failed to send portal invite:", err);
-      showToast({ message: "Network error. Please try again.", variant: "error" });
+      toast.error("Network error. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -1559,7 +1772,7 @@ function BlockUserSection({
   clientParty?: { name?: string; email?: string; externalId?: string } | null;
   marketplaceUserId?: string | null;
 }) {
-  const { showToast } = useToast();
+  const { toast } = useToast();
   const [showModal, setShowModal] = React.useState(false);
   const [level, setLevel] = React.useState<BlockLevel>("MEDIUM");
   const [reason, setReason] = React.useState("");
@@ -1582,13 +1795,13 @@ function BlockUserSection({
         level,
         reason: reason || undefined,
       });
-      showToast({ message: "User blocked successfully", variant: "success" });
+      toast.success("User blocked successfully");
       setShowModal(false);
       setLevel("MEDIUM");
       setReason("");
     } catch (err: any) {
       console.error("Failed to block user:", err);
-      showToast({ message: err?.message || "Failed to block user", variant: "error" });
+      toast.error(err?.message || "Failed to block user");
     } finally {
       setLoading(false);
     }
@@ -1715,6 +1928,21 @@ function BlockUserSection({
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
+ * Approved Waitlist Info Card
+ * ───────────────────────────────────────────────────────────────────────────── */
+function ApprovedWaitlistInfoCard() {
+  return (
+    <div className="rounded-lg border border-green-500/30 bg-surface px-4 py-3 text-center mb-4">
+      <h3 className="text-sm font-medium text-green-500 mb-1">Approved Waitlist</h3>
+      <p className="text-sm text-secondary max-w-lg mx-auto">
+        Pre-screened and vetted contacts you've decided to proceed with transactionally will appear here until they are matched with an offspring.
+        Contacts can have multiple waitlist entries with different species, breed, sire, or dam preferences.
+      </p>
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
  * Main WaitlistTab Component
  * ───────────────────────────────────────────────────────────────────────────── */
 export default function WaitlistTab({ api, tenantId, readOnlyGlobal }: { api: WaitlistApi | null; tenantId: number | null, readOnlyGlobal: boolean }) {
@@ -1800,22 +2028,24 @@ export default function WaitlistTab({ api, tenantId, readOnlyGlobal }: { api: Wa
   }, [rows, sorts]);
 
   return (
-    <Card>
-      <div className="relative">
-        <div className="absolute right-0 top-0 h-10 flex items-center gap-2 pr-2" style={{ zIndex: 50, pointerEvents: "auto" }}>
-          {!readOnlyGlobal && (
-            <Button
-              size="sm"
-              onClick={() => window.dispatchEvent(new CustomEvent("bhq:waitlist:add"))}
-            >
-              <Plus className="h-4 w-4 mr-1" />
-              Add to Waitlist
-            </Button>
-          )}
-          {readOnlyGlobal && <span className="text-xs text-secondary">View only</span>}
-        </div>
+    <>
+      <ApprovedWaitlistInfoCard />
+      <Card>
+        <div className="relative">
+          <div className="absolute right-0 top-0 h-10 flex items-center gap-2 pr-2" style={{ zIndex: 50, pointerEvents: "auto" }}>
+            {!readOnlyGlobal && (
+              <Button
+                size="sm"
+                onClick={() => window.dispatchEvent(new CustomEvent("bhq:waitlist:add"))}
+              >
+                <Plus className="h-4 w-4 mr-1" />
+                Add to Waitlist
+              </Button>
+            )}
+            {readOnlyGlobal && <span className="text-xs text-secondary">View only</span>}
+          </div>
 
-        <DetailsHost key="waitlist"
+          <DetailsHost key="waitlist"
           rows={raw}
           config={{
             idParam: "waitlistId",
@@ -1874,6 +2104,10 @@ export default function WaitlistTab({ api, tenantId, readOnlyGlobal }: { api: Wa
             customChrome: true,
             render: ({ row, mode, setMode, activeTab, setActiveTab, requestSave, setDraft }: any) => {
               const tblRow = mapWaitlistToTableRow(row);
+              const isRejected = row?.status === "REJECTED";
+              // Rejected entries are always read-only
+              const effectiveReadOnly = readOnlyGlobal || isRejected;
+              const effectiveMode = effectiveReadOnly ? "view" : mode;
 
               const handleDraftChange = (patch: any) =>
                 setDraft((prev: any) => ({ ...(prev || {}), ...patch }));
@@ -1881,9 +2115,9 @@ export default function WaitlistTab({ api, tenantId, readOnlyGlobal }: { api: Wa
               return (
                 <DetailsScaffold
                   title={tblRow.contactLabel || tblRow.orgLabel || `Waitlist #${tblRow.id}`}
-                  subtitle=""
-                  mode={readOnlyGlobal ? "view" : mode}
-                  onEdit={() => !readOnlyGlobal && setMode("edit")}
+                  subtitle={isRejected ? "Rejected" : ""}
+                  mode={effectiveMode}
+                  onEdit={() => !effectiveReadOnly && setMode("edit")}
                   onCancel={() => setMode("view")}
                   onSave={requestSave}
                   tabs={[{ key: "overview", label: "Overview" }]}
@@ -1894,8 +2128,30 @@ export default function WaitlistTab({ api, tenantId, readOnlyGlobal }: { api: Wa
                     key={row.id ?? "new"}
                     api={api}
                     row={row}
-                    mode={readOnlyGlobal ? "view" : mode}
+                    mode={effectiveMode}
                     onChange={handleDraftChange}
+                    onStatusChange={async (newStatus: string, reason?: string) => {
+                      if (!api) return;
+                      const id = row.id;
+                      const body = { status: newStatus, restoreReason: reason };
+                      let updated: any;
+                      if (api.waitlist && typeof api.waitlist.patch === "function") {
+                        updated = await api.waitlist.patch(id, body);
+                      } else if (api.raw && typeof api.raw.patch === "function") {
+                        updated = await api.raw.patch(`/waitlist/${id}`, body, {
+                          tenantId: tenantId ?? undefined,
+                        });
+                      }
+                      if (updated) {
+                        const idx = raw.findIndex((r) => String(r.id) === String(id));
+                        if (idx >= 0) {
+                          const nextRaw = [...raw];
+                          nextRaw[idx] = updated as any;
+                          setRaw(nextRaw);
+                          setRows(nextRaw.map(mapWaitlistToTableRow));
+                        }
+                      }
+                    }}
                   />
                 </DetailsScaffold>
               );
@@ -1974,6 +2230,7 @@ export default function WaitlistTab({ api, tenantId, readOnlyGlobal }: { api: Wa
       {/* Add to Waitlist Modal wiring */}
       <WaitlistAddBridge api={api} tenantId={tenantId} onCreated={load} />
     </Card>
+    </>
   );
 }
 
