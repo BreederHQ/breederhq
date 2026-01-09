@@ -806,6 +806,38 @@ export type OffspringApi = {
     listCanonical(params?: { species?: string; q?: string; limit?: number }): Promise<any>;
   };
 
+  /* Finance namespace for invoices, payments, expenses */
+  finance: {
+    parties: {
+      search(query: string, opts?: { limit?: number }): Promise<any[]>;
+    };
+    contacts: {
+      create(input: { first_name?: string; last_name?: string; display_name?: string; email?: string; phone_e164?: string }): Promise<any>;
+    };
+    organizations: {
+      create(input: { name: string; website?: string | null }): Promise<any>;
+    };
+    invoices: {
+      list(params?: any): Promise<{ items: any[]; total: number }>;
+      get(id: number): Promise<any>;
+      create(input: any, idempotencyKey: string): Promise<any>;
+      update(id: number, input: any): Promise<any>;
+      void(id: number): Promise<any>;
+    };
+    payments: {
+      list(params?: any): Promise<{ items: any[]; total: number }>;
+      get(id: number): Promise<any>;
+      create(input: any, idempotencyKey: string): Promise<any>;
+    };
+    expenses: {
+      list(params?: any): Promise<{ items: any[]; total: number }>;
+      get(id: number): Promise<any>;
+      create(input: any): Promise<any>;
+      update(id: number, input: any): Promise<any>;
+      delete(id: number): Promise<{ success: boolean }>;
+    };
+  };
+
   /* Tags from unified @bhq/api */
   tags: TagsResource;
 };

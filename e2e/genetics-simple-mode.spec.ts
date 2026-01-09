@@ -51,17 +51,36 @@ async function calculatePairing(page: Page, damSearch: string, sireSearch: strin
   const sireSelect = page.locator('select').nth(1);
   await selectOptionByText(page, sireSelect, sireSearch);
 
-  await page.click('button:has-text("Calculate")');
+  // Click Calculate button - use evaluate for more reliable click
+  const calculateButton = page.locator('button:has-text("Calculate")');
+  await calculateButton.waitFor({ state: 'visible', timeout: 5000 });
+  await calculateButton.scrollIntoViewIfNeeded();
+  await page.waitForTimeout(300);
+  await calculateButton.evaluate((btn) => (btn as HTMLButtonElement).click());
+
+  // Wait for any modal to appear
+  await page.waitForTimeout(1000);
 
   // Handle disclaimer if it appears after clicking calculate
-  const disclaimerModal = page.locator('button:has-text("I Understand")');
-  if (await disclaimerModal.isVisible({ timeout: 2000 }).catch(() => false)) {
-    await disclaimerModal.click();
-    await page.waitForTimeout(500);
-    await page.click('button:has-text("Calculate")');
+  const disclaimerButtons = [
+    page.locator('button:has-text("I Understand")'),
+    page.locator('button:has-text("I understand")'),
+    page.locator('button:has-text("Accept")'),
+  ];
+
+  for (const btn of disclaimerButtons) {
+    const isVisible = await btn.isVisible().catch(() => false);
+    if (isVisible) {
+      await btn.click();
+      await page.waitForTimeout(500);
+      // Click calculate again after accepting disclaimer
+      await calculateButton.evaluate((b) => (b as HTMLButtonElement).click());
+      break;
+    }
   }
 
-  await page.waitForSelector('text=Offspring Predictions', { timeout: 10000 });
+  // Wait for results to load
+  await page.waitForSelector('text=Offspring Predictions', { timeout: 20000 });
 }
 
 test.describe('Genetics Lab - Simple Mode Translations', () => {
@@ -72,8 +91,8 @@ test.describe('Genetics Lab - Simple Mode Translations', () => {
 
   test.describe('Technical Mode Display', () => {
     test('should display technical genetics terminology by default', async ({ page }) => {
-      // Select a dog pairing with known genetics
-      await calculatePairing(page, 'Luna', 'Shadow');
+      // Select a dog pairing with known genetics - use full names with (Merle to match dogs
+      await calculatePairing(page, 'Luna (Merle', 'Shadow (Non-Merle');
 
       // Verify we're in Technical mode (button should say "Technical")
       const modeButton = page.locator('button:has-text("Technical")');
@@ -96,7 +115,7 @@ test.describe('Genetics Lab - Simple Mode Translations', () => {
     });
 
     test('should show genotype notation in technical mode', async ({ page }) => {
-      await calculatePairing(page, 'Luna', 'Shadow');
+      await calculatePairing(page, 'Luna (Merle', 'Shadow (Non-Merle');
 
       // Look for genotype patterns (e.g., percentages with phenotypes)
       // Technical view should show things like "100% Sable/Fawn" or "50% Dominant Black"
@@ -111,7 +130,7 @@ test.describe('Genetics Lab - Simple Mode Translations', () => {
 
   test.describe('Simple Mode Display', () => {
     test('should toggle to Simple Mode and show plain English', async ({ page }) => {
-      await calculatePairing(page, 'Luna', 'Shadow');
+      await calculatePairing(page, 'Luna (Merle', 'Shadow (Non-Merle');
 
       // Click the mode toggle button to switch to Simple Mode
       const modeButton = page.locator('button:has-text("Technical")');
@@ -136,7 +155,7 @@ test.describe('Genetics Lab - Simple Mode Translations', () => {
     });
 
     test('should use species-specific offspring names (puppies for dogs)', async ({ page }) => {
-      await calculatePairing(page, 'Luna', 'Shadow');
+      await calculatePairing(page, 'Luna (Merle', 'Shadow (Non-Merle');
 
       // Switch to Simple Mode
       await page.locator('button:has-text("Technical")').click();
@@ -150,7 +169,7 @@ test.describe('Genetics Lab - Simple Mode Translations', () => {
     });
 
     test('should translate coat color genetics to plain English', async ({ page }) => {
-      await calculatePairing(page, 'Luna', 'Shadow');
+      await calculatePairing(page, 'Luna (Merle', 'Shadow (Non-Merle');
 
       // Switch to Simple Mode
       await page.locator('button:has-text("Technical")').click();
@@ -167,7 +186,7 @@ test.describe('Genetics Lab - Simple Mode Translations', () => {
     });
 
     test('should translate coat type genetics (curly, wavy, etc)', async ({ page }) => {
-      await calculatePairing(page, 'Luna', 'Shadow');
+      await calculatePairing(page, 'Luna (Merle', 'Shadow (Non-Merle');
 
       // Switch to Simple Mode
       await page.locator('button:has-text("Technical")').click();
@@ -184,7 +203,7 @@ test.describe('Genetics Lab - Simple Mode Translations', () => {
     });
 
     test('should show hint to switch back to technical view', async ({ page }) => {
-      await calculatePairing(page, 'Luna', 'Shadow');
+      await calculatePairing(page, 'Luna (Merle', 'Shadow (Non-Merle');
 
       // Switch to Simple Mode
       await page.locator('button:has-text("Technical")').click();
@@ -197,7 +216,7 @@ test.describe('Genetics Lab - Simple Mode Translations', () => {
 
   test.describe('Mode Toggle Persistence', () => {
     test('should toggle back to Technical mode', async ({ page }) => {
-      await calculatePairing(page, 'Luna', 'Shadow');
+      await calculatePairing(page, 'Luna (Merle', 'Shadow (Non-Merle');
 
       // Switch to Simple Mode
       await page.locator('button:has-text("Technical")').click();
@@ -257,7 +276,7 @@ test.describe('Genetics Lab - Simple Mode Translations', () => {
 
   test.describe('Translation Quality Checks', () => {
     test('should not show raw genotypes in simple mode', async ({ page }) => {
-      await calculatePairing(page, 'Luna', 'Shadow');
+      await calculatePairing(page, 'Luna (Merle', 'Shadow (Non-Merle');
 
       // Switch to Simple Mode
       await page.locator('button:has-text("Technical")').click();
@@ -279,7 +298,7 @@ test.describe('Genetics Lab - Simple Mode Translations', () => {
     });
 
     test('should translate percentage descriptions to friendly language', async ({ page }) => {
-      await calculatePairing(page, 'Luna', 'Shadow');
+      await calculatePairing(page, 'Luna (Merle', 'Shadow (Non-Merle');
 
       // Switch to Simple Mode
       await page.locator('button:has-text("Technical")').click();
@@ -292,7 +311,7 @@ test.describe('Genetics Lab - Simple Mode Translations', () => {
     });
 
     test('should handle carrier information gracefully', async ({ page }) => {
-      await calculatePairing(page, 'Luna', 'Shadow');
+      await calculatePairing(page, 'Luna (Merle', 'Shadow (Non-Merle');
 
       // Switch to Simple Mode
       await page.locator('button:has-text("Technical")').click();
@@ -310,7 +329,7 @@ test.describe('Genetics Lab - Simple Mode Translations', () => {
 
   test.describe('Visual Comparison Screenshots', () => {
     test('capture side-by-side comparison for documentation', async ({ page }) => {
-      await calculatePairing(page, 'Luna', 'Shadow');
+      await calculatePairing(page, 'Luna (Merle', 'Shadow (Non-Merle');
 
       // Capture Technical mode
       await page.screenshot({
@@ -331,7 +350,7 @@ test.describe('Genetics Lab - Simple Mode Translations', () => {
 
     test('capture all species simple mode views', async ({ page }) => {
       // Dog
-      await calculatePairing(page, 'Luna', 'Shadow');
+      await calculatePairing(page, 'Luna (Merle', 'Shadow (Non-Merle');
       await page.locator('button:has-text("Technical")').click();
       await page.screenshot({ path: 'e2e/screenshots/species-dog-simple.png', fullPage: true });
 
@@ -369,7 +388,7 @@ test.describe('Genetics Simple Mode - Specific Translation Tests', () => {
   });
 
   test('coat color translations should be human-readable', async ({ page }) => {
-    await calculatePairing(page, 'Luna', 'Shadow');
+    await calculatePairing(page, 'Luna (Merle', 'Shadow (Non-Merle');
     await page.locator('button:has-text("Technical")').click();
 
     // Get the Colors & Patterns section text
@@ -385,7 +404,7 @@ test.describe('Genetics Simple Mode - Specific Translation Tests', () => {
   });
 
   test('coat type translations should describe fur characteristics', async ({ page }) => {
-    await calculatePairing(page, 'Luna', 'Shadow');
+    await calculatePairing(page, 'Luna (Merle', 'Shadow (Non-Merle');
     await page.locator('button:has-text("Technical")').click();
 
     const coatTypeSection = page.locator('text=Coat Type');

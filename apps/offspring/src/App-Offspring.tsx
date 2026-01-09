@@ -140,6 +140,26 @@ function SectionChipHeading({ icon, text }: { icon: React.ReactNode; text: strin
   );
 }
 
+type DetailsSpecField<T> = {
+  key: keyof T | string;
+  label: string;
+  view?: (row: T) => React.ReactNode;
+  editor?: "number" | "text";
+};
+
+type DetailsSpecSection<T> = {
+  title: string;
+  columns?: 1 | 2 | 3;
+  fields: DetailsSpecField<T>[];
+};
+
+type DetailsSpecRendererProps<T> = {
+  row: T;
+  mode: "view" | "edit";
+  setDraft: (patch: Partial<T>) => void;
+  sections: DetailsSpecSection<T>[];
+};
+
 function DetailsSpecRenderer<T extends Record<string, any>>({
   row,
   mode,
@@ -736,45 +756,35 @@ function computeExpectedForPlanLite(plan: { species?: string | null; lockedCycle
     };
   }
 
-const computeFromLocked = React.useCallback(
-  (lockedCycleStart: string): any => {
-    const speciesWire = toWireSpecies(row.species as any) ?? "DOG";
-    const locked = String(lockedCycleStart || "").slice(0, 10);
-    if (!locked) return {};
+  // Compute timeline using reproEngine
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const summary = {
+    animalId: "",
+    species: speciesWire,
+    cycleStartsAsc: [],
+    dob: null,
+    today: todayIso,
+  };
 
-    const todayIso = new Date().toISOString().slice(0, 10);
-    const summary = {
-      species: speciesWire,
-      cycleStartsAsc: [], // not needed for windows-from-seed
-      dob: null,
-      today: todayIso,
-    };
-
-    const t = reproEngine.buildTimelineFromSeed(summary as any, locked as any);
-
-    // Return the timeline windows and milestones directly
-    return t;
-  },
-  [row.species],
-);
+  const timeline = reproEngine.buildTimelineFromSeed(summary as any, locked as any);
 
   const expectedCycleStart = locked;
-  const expectedHormoneTestingStart = pickExpectedTestingStart(preview, locked);
-  const expectedBreedDate = onlyDay(preview.milestones?.ovulation_center) || null;
-  const expectedBirthDate = onlyDay(preview.windows?.birth?.likely?.[0]) || null;
+  const expectedHormoneTestingStart = pickExpectedTestingStart(timeline, locked);
+  const expectedBreedDate = onlyDay(timeline?.milestones?.ovulation_center) || null;
+  const expectedBirthDate = onlyDay(timeline?.windows?.birth?.likely?.[0]) || null;
   const expectedWeaned =
     onlyDay(
-      preview.windows?.puppy_care?.likely?.[1],
+      timeline?.windows?.puppy_care?.likely?.[1],
     ) || null;
 
   const expectedPlacementStartDate =
     onlyDay(
-      preview.windows?.go_home_normal?.likely?.[0],
+      timeline?.windows?.go_home_normal?.likely?.[0],
     ) || null;
 
   const expectedPlacementCompletedDate =
     onlyDay(
-      preview.windows?.go_home_extended?.full?.[1],
+      timeline?.windows?.go_home_extended?.full?.[1],
     ) || null;
 
   return {
@@ -803,8 +813,8 @@ type ExpectedLite = {
 function mapDetailToTableRow(d: OffspringRow): GroupTableRow {
   const plan = d.plan;
   const planAny: any = plan;
-  const counts = d.counts ?? {};
-  const dates = d.dates ?? {};
+  const counts: any = d.counts ?? {};
+  const dates: any = d.dates ?? {};
 
   // Compute expected date preview from the breeding plan, if we have a locked cycle
   let expected: ExpectedLite = {
@@ -1062,7 +1072,7 @@ function IdentityField(props: { label: string; children: React.ReactNode }) {
 }
 
 
-const groupSections = (mode: "view" | "edit") => [
+const groupSections = (mode: "view" | "edit"): DetailsSpecSection<GroupTableRow>[] => [
   {
     title: "Tags",
     fields: [
@@ -1077,7 +1087,7 @@ const groupSections = (mode: "view" | "edit") => [
 
   {
     title: "Counts",
-    columns: 3,
+    columns: 3 as const,
     fields: [
       {
         label: "Live",
@@ -1150,9 +1160,8 @@ async function searchDirectory(
       contactsRes = await anyApi.contacts.list({ q: term, limit: 50 });
     } else {
       // Fallback to platform contacts endpoint
-      contactsRes = await api.raw.get<any>("/contacts", {
-        params: { q: term, limit: 50 },
-      });
+      const qs = new URLSearchParams({ q: term, limit: "50" });
+      contactsRes = await api.raw.get<any>(`/contacts?${qs.toString()}`, {});
     }
 
     const items: any[] = Array.isArray(contactsRes)
@@ -1191,9 +1200,8 @@ async function searchDirectory(
     if (anyApi.organizations && typeof anyApi.organizations.list === "function") {
       orgsRes = await anyApi.organizations.list({ q: term, limit: 50 });
     } else {
-      orgsRes = await api.raw.get<any>("/organizations", {
-        params: { q: term, limit: 50 },
-      });
+      const qs = new URLSearchParams({ q: term, limit: "50" });
+      orgsRes = await api.raw.get<any>(`/organizations?${qs.toString()}`, {});
     }
 
     const items: any[] = Array.isArray(orgsRes)
@@ -1560,6 +1568,8 @@ function AddToWaitlistModal({
   onClose,
   onCreated,
   allowedSpecies = SPECIES_UI_ALL,
+  group,
+  onGroupUpdate,
 }: {
   api: OffspringApi | null;
   tenantId: number | null;
@@ -1567,6 +1577,8 @@ function AddToWaitlistModal({
   onClose: () => void;
   onCreated: () => Promise<void> | void;
   allowedSpecies?: SpeciesUi[];
+  group?: any;
+  onGroupUpdate?: (g: any) => void;
 }) {
   // Modal is always editable; defining this prevents ReferenceError from reads below.
   const readOnly = false;
@@ -1729,7 +1741,7 @@ function AddToWaitlistModal({
           Offspring: nextAnimals,
         };
 
-        onGroupUpdate(nextGroup);
+        onGroupUpdate?.(nextGroup);
       } finally {
         setAssigningOffspringId(null);
       }
@@ -2245,7 +2257,7 @@ function AddToWaitlistModal({
                                 species={speciesWire}
                                 onPick={(a) => {
                                   setDamId(a.id);
-                                  setDamQ(a.name);
+                                  setDamQ(a.name ?? "");
                                   setDamOpen(false);
                                 }}
                               />
@@ -2278,7 +2290,7 @@ function AddToWaitlistModal({
                                 species={speciesWire}
                                 onPick={(a) => {
                                   setSireId(a.id);
-                                  setSireQ(a.name);
+                                  setSireQ(a.name ?? "");
                                   setSireOpen(false);
                                 }}
                               />
@@ -3097,12 +3109,9 @@ function AddBuyerToGroupModal({
           subtitle?: string;
         }[] = [];
 
-        const contactsArr: any[] = Array.isArray(res.contacts)
-          ? res.contacts
-          : res.contacts?.items ?? [];
-        const orgsArr: any[] = Array.isArray(res.organizations)
-          ? res.organizations
-          : res.organizations?.items ?? [];
+        // searchDirectory returns DirectoryHit[] - split into contacts and orgs
+        const contactsArr: any[] = res.filter((h) => h.kind === "contact");
+        const orgsArr: any[] = res.filter((h) => h.kind === "org");
 
         // contacts, skip anything already linked
         for (const c of contactsArr) {
@@ -3670,7 +3679,7 @@ function BuyersTab(
           Offspring: nextAnimals,
         };
 
-        onGroupUpdate(nextGroup);
+        onGroupUpdate?.(nextGroup);
       } finally {
         setAssigningOffspringId(null);
       }
@@ -3707,7 +3716,7 @@ function BuyersTab(
           buyers: nextBuyers as any,
         };
 
-        onGroupUpdate(nextGroup);
+        onGroupUpdate?.(nextGroup);
       } catch (err) {
         console.error("[Offspring] failed to remove buyer", err);
       }
@@ -3983,11 +3992,11 @@ function BuyersTab(
             if (status === 409) {
               const id = conflictExistingIdFromError(e);
               if (id) {
-                const found = await api.organizations.get(id);
-                if (found) o = found;
+                const found = await api.contacts.get(id);
+                if (found) c = found;
               }
             }
-            if (!o) throw e;
+            if (!c) throw e;
           }
         }
 
@@ -4016,7 +4025,7 @@ function BuyersTab(
           if (status === 409) {
             const id = conflictExistingIdFromError(e);
             if (id) {
-              const found = await api.organizations.getById(id);
+              const found = await api.organizations.get(id);
               if (found) o = found;
             }
           }
@@ -5223,7 +5232,7 @@ function OffspringGroupsTab(
                       <DetailsSpecRenderer<GroupTableRow>
                         row={tblRow}
                         mode={isEdit ? "edit" : "view"}
-                        setDraft={(p) => setDraft((d: any) => ({ ...d, ...p }))}
+                        setDraft={(p: Partial<GroupTableRow>) => setDraft((d: any) => ({ ...d, ...p }))}
                         sections={groupSections(isEdit ? "edit" : "view")}
                       />
                     </>

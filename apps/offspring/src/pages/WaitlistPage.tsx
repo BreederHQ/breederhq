@@ -522,11 +522,11 @@ function CreateGroupForm({
           placementCompletedAt: placementCompletedAt || null,
         },
       });
-      toast?.({ title: "Group created" });
+      toast?.success?.("Group created");
       onCreated();
     } catch (e: any) {
       setSubmitErr(e?.message || "Failed to create offspring group");
-      toast?.({ title: "Create failed", description: String(e?.message || e), variant: "destructive" });
+      toast?.error?.(`Create failed: ${e?.message || e}`);
     } finally {
       setSubmitting(false);
     }
@@ -996,7 +996,6 @@ function AddToWaitlistModal({
                       }}
                       placeholder="Type a name, email, phone, or organization..."
                       widthPx={720}
-                      autoFocus={!link}
                     />
                   </div>
 
@@ -1324,7 +1323,7 @@ function AddToWaitlistModal({
   );
 }
 
-function PortalPopover({ anchorRef, open, children }: { anchorRef: React.RefObject<HTMLElement>, open: boolean, children: React.ReactNode }) {
+function PortalPopover({ anchorRef, open, children }: { anchorRef: React.RefObject<HTMLElement | null>, open: boolean, children: React.ReactNode }) {
   const [style, setStyle] = React.useState<React.CSSProperties>({});
   React.useLayoutEffect(() => {
     if (!open || !anchorRef.current) return;
@@ -1648,7 +1647,7 @@ function PortalInviteSection({
   orgEmail?: string;
   entryId?: number;
 }) {
-  const { showToast } = useToast();
+  const { toast } = useToast();
   const [portalStatus, setPortalStatus] = React.useState<string | null>(null);
   const [loading, setLoading] = React.useState(false);
   const [checkingStatus, setCheckingStatus] = React.useState(true);
@@ -1701,22 +1700,22 @@ function PortalInviteSection({
       const data = await res.json();
 
       if (res.ok) {
-        showToast({ message: "Client portal invite sent.", variant: "success" });
+        toast.success("Client portal invite sent.");
         setPortalStatus("INVITED");
       } else {
         if (data.error === "already_active") {
-          showToast({ message: "Client portal already active.", variant: "info" });
+          toast.info("Client portal already active.");
           setPortalStatus("ACTIVE");
         } else if (data.error === "already_invited") {
-          showToast({ message: "Invite already sent.", variant: "info" });
+          toast.info("Invite already sent.");
           setPortalStatus("INVITED");
         } else {
-          showToast({ message: data.error || "Failed to send invite.", variant: "error" });
+          toast.error(data.error || "Failed to send invite.");
         }
       }
     } catch (err) {
       console.error("Failed to send portal invite:", err);
-      showToast({ message: "Network error. Please try again.", variant: "error" });
+      toast.error("Network error. Please try again.");
     } finally {
       setLoading(false);
     }

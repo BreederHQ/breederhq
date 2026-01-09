@@ -1,138 +1,28 @@
 # Page snapshot
 
 ```yaml
-- generic [ref=e3]:
-  - generic [ref=e4]:
-    - generic [ref=e8]:
-      - generic [ref=e9]:
-        - button "Toggle navigation" [ref=e10] [cursor=pointer]:
-          - img [ref=e11]
-        - generic [ref=e13]:
-          - img "BreederHQ" [ref=e14]
-          - generic [ref=e16]: BreederHQ
-        - generic [ref=e17]: /
-        - generic [ref=e18]: Breeding
-      - generic [ref=e19]:
-        - button "Messages" [ref=e20] [cursor=pointer]:
-          - img [ref=e21]
-        - button "Notifications" [ref=e24] [cursor=pointer]:
-          - img [ref=e25]
-          - generic [ref=e27]: "1"
-        - button "Organization" [ref=e28] [cursor=pointer]
-        - button "Settings" [ref=e29] [cursor=pointer]:
-          - img [ref=e30]
-        - button "Logout" [ref=e33] [cursor=pointer]:
-          - img [ref=e34]
-          - generic [ref=e37]: Logout
-    - generic [ref=e39]:
-      - complementary [ref=e40]:
-        - navigation [ref=e41]:
-          - link "Dashboard" [ref=e42] [cursor=pointer]:
-            - /url: /
-            - generic [ref=e44]: 🌐
-            - generic [ref=e45]: Dashboard
-          - link "Contacts" [ref=e46] [cursor=pointer]:
-            - /url: /contacts
-            - generic [ref=e48]: 📇
-            - generic [ref=e49]: Contacts
-          - link "Animals" [ref=e50] [cursor=pointer]:
-            - /url: /animals
-            - generic [ref=e52]: 🐾
-            - generic [ref=e53]: Animals
-          - link "Breeding" [ref=e54] [cursor=pointer]:
-            - /url: /breeding
-            - generic [ref=e56]: 🧬
-            - generic [ref=e57]: Breeding
-          - link "Offspring" [ref=e58] [cursor=pointer]:
-            - /url: /offspring
-            - generic [ref=e60]: 🍼
-            - generic [ref=e61]: Offspring
-          - link "Waitlist" [ref=e62] [cursor=pointer]:
-            - /url: /waitlist
-            - generic [ref=e64]: 📋
-            - generic [ref=e65]: Waitlist
-          - link "Bloodlines" [ref=e66] [cursor=pointer]:
-            - /url: /bloodlines
-            - generic [ref=e68]: 🏆
-            - generic [ref=e69]: Bloodlines
-          - link "Marketing" [ref=e70] [cursor=pointer]:
-            - /url: /marketing
-            - generic [ref=e72]: 📣
-            - generic [ref=e73]: Marketing
-          - link "Marketplace" [ref=e74] [cursor=pointer]:
-            - /url: /marketplace
-            - generic [ref=e76]: 🛒
-            - generic [ref=e77]: Marketplace
-          - link "Finance" [ref=e78] [cursor=pointer]:
-            - /url: /finance
-            - generic [ref=e80]: 💰
-            - generic [ref=e81]: Finance
-          - link "Admin" [ref=e82] [cursor=pointer]:
-            - /url: /admin
-            - generic [ref=e84]: 🛠️
-            - generic [ref=e85]: Admin
-      - main [ref=e86]:
-        - generic [ref=e87]:
-          - generic [ref=e88]:
-            - generic [ref=e91]:
-              - heading "Breeding" [level=1] [ref=e92]
-              - paragraph [ref=e93]: Create and manage breeding plans
-            - navigation [ref=e95]:
-              - link "📋 Plans" [ref=e96] [cursor=pointer]:
-                - /url: /breeding/
-                - generic [ref=e97]: 📋
-                - generic [ref=e98]: Plans
-              - link "📅 Calendar" [ref=e99] [cursor=pointer]:
-                - /url: /breeding/calendar
-                - generic [ref=e100]: 📅
-                - generic [ref=e101]: Calendar
-              - link "🔮 Planner" [ref=e102] [cursor=pointer]:
-                - /url: /breeding/planner
-                - generic [ref=e103]: 🔮
-                - generic [ref=e104]: Planner
-              - link "🧬 Genetics Lab" [ref=e105] [cursor=pointer]:
-                - /url: /breeding/genetics-lab
-                - generic [ref=e106]: 🧬
-                - generic [ref=e107]: Genetics Lab
-          - generic [ref=e111]:
-            - generic [ref=e112]:
-              - heading "Genetics Lab" [level=2] [ref=e113]
-              - paragraph [ref=e114]: Analyze genetic compatibility between dam and sire. Select two animals to see predicted offspring traits.
-            - generic [ref=e115]:
-              - generic [ref=e116]:
-                - generic [ref=e117]:
-                  - text: Dam (Female)
-                  - generic [ref=e118]: — cats only
-                - generic [ref=e119]:
-                  - combobox [ref=e120]:
-                    - option "Select a dam..."
-                    - option "Sith Lady — CAT"
-                    - option "Ancient Sith Lady — CAT"
-                    - option "Leia Organa Meow — CAT"
-                    - option "Nightsister Elder — CAT"
-                    - option "Chrome Matriarch — CAT"
-                    - option "Luna (Tortie Female) — CAT" [selected]
-                    - option "Whiskers (Pointed Carrier) — CAT"
-                  - button "📤" [ref=e121] [cursor=pointer]
-              - generic [ref=e122]: ×
-              - generic [ref=e123]:
-                - generic [ref=e124]:
-                  - text: Sire (Male)
-                  - generic [ref=e125]: — cats only
-                - generic [ref=e126]:
-                  - combobox [ref=e127]:
-                    - option "Select a sire..."
-                    - option "First Order Commander — CAT"
-                    - option "Darth Plagueis — CAT"
-                    - option "Ancient Sith Lord — CAT"
-                    - option "Count Dooku Cat — CAT"
-                    - option "Shadow (Seal Point Male) — CAT" [selected]
-                  - button "📤" [ref=e128] [cursor=pointer]
-              - button "Calculate" [active] [ref=e129] [cursor=pointer]
-              - button "Reset" [ref=e130] [cursor=pointer]
-  - contentinfo [ref=e131]:
-    - generic [ref=e132]:
-      - generic [ref=e133]: © 2026 BreederHQ LLC
-      - link "Terms of Service" [ref=e134] [cursor=pointer]:
-        - /url: /terms
+- generic [ref=e4]:
+  - generic [ref=e5]:
+    - img "BreederHQ" [ref=e6]
+    - heading "BreederHQ" [level=1] [ref=e7]
+    - paragraph [ref=e8]: Breeder management software for modern breeders.
+  - generic [ref=e10]:
+    - alert [ref=e11]: Login failed (500)
+    - generic [ref=e12]:
+      - generic [ref=e13]: Email
+      - textbox "Email address" [ref=e14]:
+        - /placeholder: you@example.com
+        - text: luke.skywalker@tester.local
+    - generic [ref=e15]:
+      - generic [ref=e16]: Password
+      - textbox "Password" [ref=e17]:
+        - /placeholder: Your password
+        - text: soKpY9yUPoWeLwcRL16ONA
+    - button "Sign In" [ref=e18] [cursor=pointer]
+    - link "Forgot password" [ref=e19] [cursor=pointer]:
+      - /url: /forgot-password
+    - generic [ref=e20]:
+      - text: Don't have an account?
+      - link "Create one" [ref=e21] [cursor=pointer]:
+        - /url: /register
 ```
