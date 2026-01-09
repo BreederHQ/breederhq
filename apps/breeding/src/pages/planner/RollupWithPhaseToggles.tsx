@@ -93,16 +93,14 @@ export default function RollupWithPhaseToggles({
     ? () => {} // No-op for controlled mode
     : internalSelection.setSelectionTouched;
   const toggleOne = React.useCallback((id: ID) => {
-    setSelectedKeys(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
-      }
-      return next;
-    });
-  }, [setSelectedKeys]);
+    const next = new Set(selectedKeys);
+    if (next.has(id)) {
+      next.delete(id);
+    } else {
+      next.add(id);
+    }
+    setSelectedKeys(next);
+  }, [setSelectedKeys, selectedKeys]);
   const setAll = React.useCallback((checked: boolean, items: PlanLike[]) => {
     if (checked) {
       setSelectedKeys(new Set(items.map(p => p.id)));
@@ -146,20 +144,18 @@ export default function RollupWithPhaseToggles({
     if (plansInPhase.length === 0) return;
 
     setSelectionTouched(true);
-    setSelectedKeys(prev => {
-      const next = new Set(prev);
-      const allSelected = plansInPhase.every(p => next.has(p.id));
+    const next = new Set(selectedKeys);
+    const allSelected = plansInPhase.every(p => next.has(p.id));
 
-      if (allSelected) {
-        // Turn all off
-        plansInPhase.forEach(p => next.delete(p.id));
-      } else {
-        // Turn all on (covers indeterminate and unchecked)
-        plansInPhase.forEach(p => next.add(p.id));
-      }
-      return next;
-    });
-  }, [plansByStatus, setSelectedKeys, setSelectionTouched]);
+    if (allSelected) {
+      // Turn all off
+      plansInPhase.forEach(p => next.delete(p.id));
+    } else {
+      // Turn all on (covers indeterminate and unchecked)
+      plansInPhase.forEach(p => next.add(p.id));
+    }
+    setSelectedKeys(next);
+  }, [plansByStatus, setSelectedKeys, setSelectionTouched, selectedKeys]);
 
   // Handle individual plan toggle
   const handlePlanToggle = React.useCallback((id: ID) => {

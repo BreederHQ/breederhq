@@ -12,6 +12,10 @@ import { makeMessages, type MessagesResource } from "./resources/messages";
 import { makePortalAccess, type PortalAccessResource } from "./resources/portal-access";
 import { makePortalData, type PortalDataResource } from "./resources/portal-data";
 import { makeTags, type TagsResource } from "./resources/tags";
+import { makePartyCrm, type PartyCrmResource } from "./resources/party-crm";
+import { makeTemplates, type TemplatesResource } from "./resources/templates";
+import { makeCommunications, type CommunicationsResource } from "./resources/communications";
+import { makeDrafts, type DraftsResource } from "./resources/drafts";
 
 export { createHttp, type Http, type MakeAuthHeader } from "./http";
 
@@ -22,7 +26,7 @@ export { makeBreeding } from "./resources/breeding";
 export { makeOffspring } from "./resources/offspring";
 export { makeFinance, type FinanceResource, type InvoicesResource, type PaymentsResource, type ExpensesResource, type PartiesResource, type PartySearchResult, type FinanceContactsResource, type FinanceOrganizationsResource } from "./resources/finance";
 export { makeMarketing, type MarketingResource } from "./resources/marketing";
-export { makeMessages, type MessagesResource, type MessageThread, type Message, type MessageParticipant } from "./resources/messages";
+export { makeMessages, type MessagesResource, type MessageThread, type Message, type MessageParticipant, type UpdateThreadRequest } from "./resources/messages";
 export { makePortalAccess, type PortalAccessResource, type PortalAccessDTO, type PortalAccessStatus, type PortalAccessResponse } from "./resources/portal-access";
 export {
   makePortalData,
@@ -55,6 +59,52 @@ export {
   type UpdateTagInput,
   type TagAssignmentTarget,
 } from "./resources/tags";
+export {
+  makePartyCrm,
+  makePartyNotes,
+  makePartyActivity,
+  makePartyEmails,
+  makePartyEvents,
+  makePartyMilestones,
+  makeContactTasks,
+  type PartyCrmResource,
+  type PartyNotesResource,
+  type PartyActivityResource,
+  type PartyEmailsResource,
+  type PartyEventsResource,
+  type PartyMilestonesResource,
+  type ContactTasksResource,
+} from "./resources/party-crm";
+export {
+  makeTemplates,
+  type TemplatesResource,
+} from "./resources/templates";
+export {
+  makeCommunications,
+  type CommunicationsResource,
+  type CommunicationItem,
+  type CommunicationChannel,
+  type CommunicationStatus,
+  type CommunicationType,
+  type CommunicationSort,
+  type BulkAction,
+  type InboxParams,
+  type InboxResponse,
+  type BulkActionRequest,
+  type BulkActionResponse,
+  type InboxCounts,
+} from "./resources/communications";
+export {
+  makeDrafts,
+  type DraftsResource,
+  type Draft,
+  type DraftChannel,
+  type DraftListParams,
+  type DraftListResponse,
+  type CreateDraftRequest,
+  type UpdateDraftRequest,
+  type SendDraftResponse,
+} from "./resources/drafts";
 
 // Re-export shared types - common types first (ID, ListParams, ListResponse)
 export * from "./types/contacts";
@@ -62,6 +112,8 @@ export * from "./types/animals";
 export * from "./types/breeding";
 export * from "./types/offspring";
 export * from "./types/party";
+export * from "./types/party-crm";
+export * from "./types/templates";
 export {
   type LineItemKind,
   type InvoiceCategory,
@@ -96,5 +148,9 @@ export function makeApi(baseURL: string, makeAuth?: MakeAuthHeader) {
     portalAccess: makePortalAccess(http),
     portalData: makePortalData(http),
     tags:      makeTags(http),
+    partyCrm:  makePartyCrm(http),
+    templates: makeTemplates(http),
+    communications: makeCommunications(http),
+    drafts: makeDrafts(http),
   };
 }

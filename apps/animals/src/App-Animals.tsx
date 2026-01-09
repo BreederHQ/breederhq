@@ -14,10 +14,12 @@ import {
   FilterChips,
   FiltersRow,
   DetailsHost,
+  useTableDetails,
   DetailsScaffold,
   SectionCard,
   Button,
   Input,
+  DatePicker,
   buildRangeAwareSchema,
   inDateRange,
   OwnershipChips,
@@ -39,7 +41,8 @@ import { toast } from "@bhq/ui/atoms/Toast";
 import "@bhq/ui/styles/table.css";
 import "@bhq/ui/styles/datefield.css";
 import { makeApi } from "./api";
-import { MoreHorizontal, Download, Trophy } from "lucide-react";
+import { MoreHorizontal, MoreVertical, Download, Trophy, LayoutGrid, Table as TableIcon, Archive, Trash2 } from "lucide-react";
+import { AnimalCardView } from "./components/AnimalCardView";
 import { LineageTab } from "./components/LineageTab";
 import { TitlesTab } from "./components/TitlesTab";
 import { CompetitionsTab } from "./components/CompetitionsTab";
@@ -206,6 +209,7 @@ type AnimalRow = {
   femaleCycleLenOverrideDays?: number | null;
   titlePrefix?: string | null;
   titleSuffix?: string | null;
+  archived?: boolean | null;
 };
 
 type ProgramFlags = {
@@ -257,6 +261,8 @@ function speciesEmoji(species?: string | null): string {
 }
 
 const STORAGE_KEY = "bhq_animals_cols_v1";
+const VIEW_MODE_KEY = "bhq_animals_view_v1";
+type ViewMode = "table" | "cards";
 const DATE_KEYS = new Set(["dob", "created_at", "updated_at"] as const);
 
 function fmt(d?: string | null) {
@@ -307,403 +313,9 @@ function animalToRow(p: any): AnimalRow {
     lastCycle: p.lastCycle ?? null,
     cycleStartDates: Array.isArray(p.cycleStartDates) ? p.cycleStartDates : [],
     femaleCycleLenOverrideDays: p.femaleCycleLenOverrideDays ?? null,
+    archived: p.archived ?? p.archivedAt != null ?? false,
   };
 }
-
-/* ──────────────────────────────────────────────────────────────────────────
- * Date Picker System (CalendarInput + popup positioning helpers)
- * ─────────────────────────────────────────────────────────────────────── */
-
-// ----- Date-picker hoist helpers -----
-const OVERLAY_ROOT_SELECTOR = "#bhq-overlay-root";
-
-function ensureOverlayRoot(): HTMLElement {
-  return (document.querySelector(OVERLAY_ROOT_SELECTOR) as HTMLElement) || document.body;
-}
-
-/** Find the *outermost* popup element we actually want to move. */
-function findDatePopup(): HTMLElement | null {
-  // most libs
-  const candidates = [
-    // Radix Popper wrapper
-    ...Array.from(document.querySelectorAll<HTMLElement>('[data-radix-popper-content-wrapper]')),
-    // react-datepicker
-    ...Array.from(document.querySelectorAll<HTMLElement>('.react-datepicker')),
-    // react-day-picker
-    ...Array.from(document.querySelectorAll<HTMLElement>('.rdp,.rdp-root')),
-    // generic open dialogs/menus (fallback)
-    ...Array.from(document.querySelectorAll<HTMLElement>('[role="dialog"][data-state="open"],[role="menu"][data-state="open"]')),
-  ];
-
-  // ignore things inside our details drawer/panels
-  const filtered = candidates.filter((el) => !el.closest('[data-bhq-details]'));
-
-  const list = filtered.length ? filtered : candidates;
-  if (!list.length) return null;
-
-  const isVisible = (el: HTMLElement) => {
-    const cs = getComputedStyle(el);
-    const r = el.getBoundingClientRect();
-    return cs.display !== "none" && cs.visibility !== "hidden" && r.width > 8 && r.height > 8;
-  };
-
-  // prefer visible + largest area
-  list.sort((a, b) => {
-    const va = isVisible(a) ? 1 : 0;
-    const vb = isVisible(b) ? 1 : 0;
-    const ra = a.getBoundingClientRect();
-    const rb = b.getBoundingClientRect();
-    return vb - va || rb.width * rb.height - ra.width * ra.height;
-  });
-
-  // for Radix, we want the wrapper itself (already selected); for others, this is fine
-  return list[0] || null;
-}
-
-/** Wait up to ~300ms for a date popup to mount, then hoist + place it near trigger. */
-function hoistAndPlaceDatePopup(triggerEl: HTMLElement) {
-  const root = ensureOverlayRoot();
-
-  let raf = 0;
-  let tries = 0;
-  const MAX_TRIES = 12; // ~200–300ms
-
-  const place = (pop: HTMLElement) => {
-    if (pop.parentNode !== root) root.appendChild(pop);
-
-    // style the *moved wrapper* not inner content
-    Object.assign(pop.style, {
-      position: "fixed",
-      transform: "none",
-      inset: "auto",
-      zIndex: "2147483647",
-      maxWidth: "none",
-      maxHeight: "none",
-      overflow: "visible",
-      contain: "paint", // keep it isolated
-      isolation: "auto",
-      filter: "none",
-      perspective: "none",
-      willChange: "top,left",
-    } as CSSStyleDeclaration);
-
-    const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
-    const GAP = 8;
-
-    const doPosition = () => {
-      const r = triggerEl.getBoundingClientRect();
-      const pr = pop.getBoundingClientRect();
-      const vw = window.innerWidth;
-      const vh = window.innerHeight;
-
-      let top = r.bottom + GAP;       // try below
-      let left = r.left;              // left-align
-
-      // clamp horizontally
-      left = clamp(left, GAP, vw - pr.width - GAP);
-
-      // if off-screen bottom, place above
-      if (top + pr.height > vh - GAP) {
-        top = clamp(r.top - pr.height - GAP, GAP, vh - pr.height - GAP);
-      } else {
-        top = clamp(top, GAP, vh - pr.height - GAP);
-      }
-
-      pop.style.top = `${Math.round(top)}px`;
-      pop.style.left = `${Math.round(left)}px`;
-    };
-
-    // Position now, then again next frame after content finishes sizing.
-    doPosition();
-    setTimeout(doPosition, 30);
-
-    // keep it in the right spot on resize/scroll; clean up when it disappears
-    const onRelayout = () => {
-      if (!pop.isConnected) {
-        window.removeEventListener("resize", onRelayout);
-        window.removeEventListener("scroll", onRelayout, true);
-        return;
-      }
-      doPosition();
-    };
-    window.addEventListener("resize", onRelayout);
-    window.addEventListener("scroll", onRelayout, true);
-
-    // small observer to auto-clean when popup is removed
-    const mo = new MutationObserver(() => {
-      if (!pop.isConnected) {
-        window.removeEventListener("resize", onRelayout);
-        window.removeEventListener("scroll", onRelayout, true);
-        mo.disconnect();
-      }
-    });
-    mo.observe(document.body, { childList: true, subtree: true });
-  };
-
-  const tick = () => {
-    const pop = findDatePopup();
-    if (pop) {
-      place(pop);
-      return;
-    }
-    if (tries++ < MAX_TRIES) {
-      raf = requestAnimationFrame(tick);
-    }
-  };
-
-  // kick off after we click the icon
-  raf = requestAnimationFrame(tick);
-}
-
-/** Wire up native date picker to our overlay hoist helper. */
-type AttachDatePopupOpts = {
-  shell: HTMLElement;
-  button: HTMLButtonElement;
-  hiddenInput: HTMLInputElement;
-  onPopupOpen?: () => void;
-  onPopupClose?: () => void;
-};
-
-function attachDatePopupPositioning(opts: AttachDatePopupOpts) {
-  const { shell, button, hiddenInput, onPopupOpen, onPopupClose } = opts;
-
-  if (!shell || !button || !hiddenInput) {
-    return () => { };
-  }
-
-  let isOpen = false;
-
-  const openPicker = () => {
-    if (hiddenInput.disabled || hiddenInput.readOnly) return;
-
-    if (!isOpen) {
-      isOpen = true;
-      onPopupOpen?.();
-    }
-
-    try {
-      // Focus the hidden native input and try to open the picker
-      hiddenInput.focus();
-      const anyInput = hiddenInput as any;
-      if (typeof anyInput.showPicker === "function") {
-        anyInput.showPicker();
-      } else {
-        hiddenInput.click();
-      }
-    } catch {
-      // Ignore browser quirks
-    }
-
-    // Hoist and position the popup near the trigger
-    hoistAndPlaceDatePopup(button);
-  };
-
-  const handleButtonClick = (e: MouseEvent) => {
-    e.preventDefault();
-    openPicker();
-  };
-
-  const handleKeyDown = (e: KeyboardEvent) => {
-    // Support keyboard open from the visible text input
-    if (e.key === "ArrowDown" && (e.altKey || e.metaKey || e.ctrlKey)) {
-      e.preventDefault();
-      openPicker();
-    }
-  };
-
-  const handleHiddenBlur = () => {
-    if (!isOpen) return;
-    isOpen = false;
-    onPopupClose?.();
-  };
-
-  button.addEventListener("click", handleButtonClick);
-  shell.addEventListener("keydown", handleKeyDown);
-  hiddenInput.addEventListener("blur", handleHiddenBlur);
-
-  return () => {
-    button.removeEventListener("click", handleButtonClick);
-    shell.removeEventListener("keydown", handleKeyDown);
-    hiddenInput.removeEventListener("blur", handleHiddenBlur);
-  };
-}
-
-/* CalendarInput: text field + native date picker */
-
-function CalendarInput(props: any) {
-  const readOnly = !!props.readOnly;
-  const className = props.className;
-  const inputClassName = props.inputClassName;
-  const onChange = props.onChange;
-  const value = props.value as string | undefined;
-  const defaultValue = props.defaultValue as string | undefined;
-  const placeholder = props.placeholder ?? "mm/dd/yyyy";
-  const showIcon = props.showIcon ?? true;
-  // expectedValue: when user focuses on empty field, pre-populate with this value
-  const expectedValue = props.expectedValue as string | undefined;
-
-  // any extra props intended for the visible input
-  const rest: any = { ...props };
-  delete rest.readOnly;
-  delete rest.className;
-  delete rest.inputClassName;
-  delete rest.onChange;
-  delete rest.value;
-  delete rest.defaultValue;
-  delete rest.placeholder;
-  delete rest.showIcon;
-  delete rest.expectedValue;
-
-  // ISO <-> display helpers
-  const onlyISO = (s: string | undefined | null) => {
-    if (!s) return "";
-    const str = String(s).trim();
-    if (!str) return "";
-    // Ensure we only return yyyy-mm-dd format or empty string
-    const match = str.match(/^\d{4}-\d{2}-\d{2}/);
-    return match ? match[0] : "";
-  };
-
-  const toDisplay = (s: string | undefined | null) => {
-    if (!s) return "";
-    const iso = onlyISO(s);
-    if (!iso) return "";
-    const [y, m, d] = iso.split("-");
-    if (!y || !m || !d) return "";
-    return `${m}/${d}/${y}`;
-  };
-
-  const toISO = (s: string) => {
-    const trimmed = s.trim();
-    if (!trimmed) return "";
-    // Try to parse mm/dd/yyyy
-    const m = trimmed.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})$/);
-    if (m) {
-      const mm = m[1].padStart(2, "0");
-      const dd = m[2].padStart(2, "0");
-      let yyyy = m[3];
-      if (yyyy.length === 2) yyyy = `20${yyyy}`;
-      return `${yyyy}-${mm}-${dd}`;
-    }
-    // Fallback, assume already ISO-like
-    return onlyISO(trimmed);
-  };
-
-  const [textValue, setTextValue] = React.useState(() =>
-    value != null ? toDisplay(value) : defaultValue != null ? toDisplay(defaultValue) : ""
-  );
-
-  React.useEffect(() => {
-    if (value != null) {
-      setTextValue(toDisplay(value));
-    }
-  }, [value]);
-
-  const shellRef = React.useRef<HTMLDivElement>(null);
-  const inputRef = React.useRef<HTMLInputElement>(null);
-  const buttonRef = React.useRef<HTMLButtonElement>(null);
-  const hiddenRef = React.useRef<HTMLInputElement>(null);
-
-  const [expanded, setExpanded] = React.useState(false);
-
-  React.useEffect(() => {
-    // Only try to wire things up when the icon is actually rendered
-    if (!showIcon) return;
-
-    const shell = shellRef.current;
-    const btn = buttonRef.current;
-    const hidden = hiddenRef.current;
-    if (!shell || !btn || !hidden) return;
-
-    const cleanup = attachDatePopupPositioning({
-      shell,
-      button: btn,
-      hiddenInput: hidden,
-      onPopupOpen: () => setExpanded(true),
-      onPopupClose: () => setExpanded(false),
-    });
-
-    return cleanup;
-  }, [showIcon]);
-
-  const handleTextChange: React.ChangeEventHandler<HTMLInputElement> = (e) => {
-    const raw = e.currentTarget.value;
-    setTextValue(raw);
-
-    if (!onChange) return;
-
-    const iso = toISO(raw);
-    onChange({ currentTarget: { value: iso } } as any);
-  };
-
-  const handleHiddenChange: React.ChangeEventHandler<HTMLInputElement> = (e) => {
-    const iso = onlyISO(e.currentTarget.value || "");
-    const display = toDisplay(iso);
-    setTextValue(display);
-
-    if (!onChange) return;
-    onChange({ currentTarget: { value: iso } } as any);
-  };
-
-  // Pre-populate with expected value when focusing on empty field
-  const handleFocus: React.FocusEventHandler<HTMLInputElement> = (e) => {
-    if (!textValue && expectedValue && onChange) {
-      const iso = onlyISO(expectedValue);
-      if (iso) {
-        const display = toDisplay(iso);
-        setTextValue(display);
-        onChange({ currentTarget: { value: iso } } as any);
-      }
-    }
-  };
-
-  return (
-    <div ref={shellRef} className={className}>
-      <div className="relative">
-        <Input
-          ref={inputRef}
-          className={inputClassName}
-          placeholder={placeholder}
-          value={textValue}
-          onChange={handleTextChange}
-          onFocus={handleFocus}
-          readOnly={readOnly}
-          {...rest}
-        />
-        {showIcon && (
-          <button
-            type="button"
-            ref={buttonRef}
-            className="absolute inset-y-0 right-2 flex items-center text-muted-foreground"
-            aria-label="Open date picker"
-          >
-            <span className="text-xs">📅</span>
-          </button>
-        )}
-        {/* Hidden native date input for mobile and popup control */}
-        <input
-          ref={hiddenRef}
-          type="date"
-          style={{
-            position: "absolute",
-            opacity: 0,
-            pointerEvents: "none",
-            width: 0,
-            height: 0,
-            margin: 0,
-            padding: 0,
-            border: "none",
-          }}
-          value={onlyISO(value || "")}
-          onChange={handleHiddenChange}
-          aria-hidden="true"
-          tabIndex={-1}
-        />
-      </div>
-    </div>
-  );
-}
-
 
 async function safeGetCreatingOrg(api: any) {
   try {
@@ -735,6 +347,76 @@ const PencilIcon = (props: React.SVGProps<SVGSVGElement>) => (
 
 function clamp(n: number, lo: number, hi: number) {
   return Math.max(lo, Math.min(hi, n));
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
+ * Card View Wrapper (uses DetailsHost context)
+ * ────────────────────────────────────────────────────────────────────────── */
+
+function CardViewWithDetails({
+  rows,
+  loading,
+  error,
+  sortedRows,
+  pageSize,
+  page,
+  pageCount,
+  setPage,
+  setPageSize,
+  includeArchived,
+  setIncludeArchived,
+  totalRows,
+  start,
+  end,
+}: {
+  rows: AnimalRow[];
+  loading: boolean;
+  error: string | null;
+  sortedRows: AnimalRow[];
+  pageSize: number;
+  page: number;
+  pageCount: number;
+  setPage: (p: number) => void;
+  setPageSize: (n: number) => void;
+  includeArchived: boolean;
+  setIncludeArchived: (v: boolean) => void;
+  totalRows: number;
+  start: number;
+  end: number;
+}) {
+  const { open } = useTableDetails<AnimalRow>();
+
+  return (
+    <>
+      <AnimalCardView
+        rows={rows}
+        loading={loading}
+        error={error}
+        onRowClick={(row) => open?.(row)}
+      />
+      <TableFooter
+        entityLabel="animals"
+        page={page}
+        pageCount={pageCount}
+        pageSize={pageSize}
+        pageSizeOptions={[12, 24, 48, 96]}
+        onPageChange={setPage}
+        onPageSizeChange={(n) => {
+          setPageSize(n);
+          setPage(1);
+        }}
+        start={start}
+        end={end}
+        filteredTotal={sortedRows.length}
+        total={totalRows}
+        includeArchived={includeArchived}
+        onIncludeArchivedChange={(checked) => {
+          setIncludeArchived(checked);
+          setPage(1);
+        }}
+      />
+    </>
+  );
 }
 
 /** Breeding Status Section - fetches active breeding plans for this animal */
@@ -2181,7 +1863,7 @@ return (
 
                 {isEditing && (
                   <div className="flex items-center gap-2 w-full">
-                    <CalendarInput
+                    <DatePicker
                       value={d}
                       onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
                         const v = e.currentTarget.value;
@@ -2229,7 +1911,7 @@ return (
 
         <div className="mt-3 flex items-center justify-between gap-2">
           <div className="w-64">
-            <CalendarInput
+            <DatePicker
               value={newDateIso}
               onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
                 const v = e.currentTarget.value;
@@ -2377,8 +2059,7 @@ function ProgramTab({
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div>
                 <div className="text-xs text-secondary mb-1">Hold Until</div>
-                <Input
-                  type="date"
+                <DatePicker
                   value={(flags.holdUntil || "").slice(0, 10)}
                   onChange={(e) => setFlags((f) => ({ ...f, holdUntil: (e.currentTarget as HTMLInputElement).value || null }))}
                 />
@@ -3592,7 +3273,17 @@ function GeneticsTab({
   const [showImportDialog, setShowImportDialog] = React.useState(false);
 
   // Species-specific locus definitions - comprehensive genetic markers
-  const getSpeciesLoci = React.useCallback((species: string) => {
+  type LocusInfo = { locus: string; locusName: string; description: string; breedSpecific?: string };
+  type SpeciesLoci = {
+    coatColor: LocusInfo[];
+    coatType?: LocusInfo[];
+    physicalTraits?: LocusInfo[];
+    eyeColor?: LocusInfo[];
+    health?: LocusInfo[];
+    bloodType?: LocusInfo[];
+    otherTraits: LocusInfo[];
+  };
+  const getSpeciesLoci = React.useCallback((species: string): SpeciesLoci => {
     const sp = (species || "DOG").toUpperCase();
 
     if (sp === "DOG") {
@@ -3657,6 +3348,7 @@ function GeneticsTab({
           { locus: "PFK", locusName: "Phosphofructokinase Deficiency", description: "Enzyme deficiency causing muscle problems and anemia", breedSpecific: "English Springer Spaniel, American Cocker Spaniel" },
           { locus: "GPRA", locusName: "Generalized Progressive Retinal Atrophy", description: "General form of progressive blindness across multiple breeds" },
         ],
+        otherTraits: [],
       };
     } else if (sp === "CAT") {
       return {
@@ -3696,6 +3388,7 @@ function GeneticsTab({
         bloodType: [
           { locus: "BloodType", locusName: "Blood Type (A, B, AB)", description: "Critical for breeding - Type B queens bred to Type A toms risk neonatal isoerythrolysis" },
         ],
+        otherTraits: [],
       };
     } else if (sp === "HORSE") {
       return {
@@ -3733,6 +3426,7 @@ function GeneticsTab({
           { locus: "FrDwarf", locusName: "Dwarfism (Friesian)", description: "Dwarfism disorder specific to Friesian horses", breedSpecific: "Friesian" },
           { locus: "JEB", locusName: "Junctional Epidermolysis Bullosa", description: "Fatal skin blistering disease - foals born with fragile skin", breedSpecific: "Belgian, other Draft breeds" },
         ],
+        otherTraits: [],
       };
     } else if (sp === "RABBIT") {
       return {
@@ -3759,6 +3453,7 @@ function GeneticsTab({
           { locus: "Dw", locusName: "Dwarf Gene", description: "Peanut lethal - WARNING: Dw/Dw (double dwarf) is lethal, Dw/dw=dwarf, dw/dw=normal size" },
           { locus: "Splay", locusName: "Splay Leg", description: "Genetic leg deformity - affected kits cannot walk properly" },
         ],
+        otherTraits: [],
       };
     } else if (sp === "GOAT") {
       return {
@@ -3784,6 +3479,7 @@ function GeneticsTab({
           { locus: "Myotonia", locusName: "Myotonia (Fainting gene)", description: "Muscle stiffness causing 'fainting' episodes in Myotonic goats" },
           { locus: "Chondro", locusName: "Chondrodysplasia (Dwarfism)", description: "Skeletal abnormality causing dwarfism in various goat breeds" },
         ],
+        otherTraits: [],
       };
     }
 
@@ -4015,14 +3711,12 @@ function GeneticsTab({
                 />
               </LV>
               <LV label="Test Date">
-                <Input
-                  type="date"
-                  size="sm"
-                  defaultValue={editData.testResults?.testDate || ""}
+                <DatePicker
+                  value={editData.testResults?.testDate || ""}
                   onChange={(e) =>
                     setEditData({
                       ...editData,
-                      testResults: { ...editData.testResults, testDate: e.target.value },
+                      testResults: { ...editData.testResults, testDate: e.currentTarget.value },
                     })
                   }
                 />
@@ -4074,7 +3768,7 @@ function GeneticsTab({
                       onChange={(e) => {
                         const existing = editData.coatColor || [];
                         const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
-                        const locusData = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
+                        const locusData: GeneticLocus = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
                         const updated = { ...locusData, allele1: e.target.value };
                         updated.genotype = `${updated.allele1 || "?"}/${updated.allele2 || "?"}`;
 
@@ -4092,7 +3786,7 @@ function GeneticsTab({
                       onChange={(e) => {
                         const existing = editData.coatColor || [];
                         const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
-                        const locusData = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
+                        const locusData: GeneticLocus = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
                         const updated = { ...locusData, allele2: e.target.value };
                         updated.genotype = `${updated.allele1 || "?"}/${updated.allele2 || "?"}`;
 
@@ -4140,7 +3834,7 @@ function GeneticsTab({
                           onChange={(e) => {
                             const existing = editData.coatColor || [];
                             const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
-                            const locusData = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
+                            const locusData: GeneticLocus = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
                             const updated = { ...locusData, allele1: e.target.value };
                             updated.genotype = `${updated.allele1 || "?"}/${updated.allele2 || "?"}`;
 
@@ -4158,7 +3852,7 @@ function GeneticsTab({
                           onChange={(e) => {
                             const existing = editData.coatColor || [];
                             const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
-                            const locusData = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
+                            const locusData: GeneticLocus = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
                             const updated = { ...locusData, allele2: e.target.value };
                             updated.genotype = `${updated.allele1 || "?"}/${updated.allele2 || "?"}`;
 
@@ -4209,7 +3903,7 @@ function GeneticsTab({
                         onChange={(e) => {
                           const existing = editData.coatType || [];
                           const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
-                          const locusData = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
+                          const locusData: GeneticLocus = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
                           const updated = { ...locusData, allele1: e.target.value };
                           updated.genotype = `${updated.allele1 || "?"}/${updated.allele2 || "?"}`;
 
@@ -4227,7 +3921,7 @@ function GeneticsTab({
                         onChange={(e) => {
                           const existing = editData.coatType || [];
                           const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
-                          const locusData = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
+                          const locusData: GeneticLocus = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
                           const updated = { ...locusData, allele2: e.target.value };
                           updated.genotype = `${updated.allele1 || "?"}/${updated.allele2 || "?"}`;
 
@@ -4275,7 +3969,7 @@ function GeneticsTab({
                             onChange={(e) => {
                               const existing = editData.coatType || [];
                               const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
-                              const locusData = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
+                              const locusData: GeneticLocus = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
                               const updated = { ...locusData, allele1: e.target.value };
                               updated.genotype = `${updated.allele1 || "?"}/${updated.allele2 || "?"}`;
 
@@ -4293,7 +3987,7 @@ function GeneticsTab({
                             onChange={(e) => {
                               const existing = editData.coatType || [];
                               const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
-                              const locusData = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
+                              const locusData: GeneticLocus = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
                               const updated = { ...locusData, allele2: e.target.value };
                               updated.genotype = `${updated.allele1 || "?"}/${updated.allele2 || "?"}`;
 
@@ -4345,7 +4039,7 @@ function GeneticsTab({
                         onChange={(e) => {
                           const existing = editData.physicalTraits || [];
                           const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
-                          const locusData = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
+                          const locusData: GeneticLocus = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
                           const updated = { ...locusData, allele1: e.target.value };
                           updated.genotype = `${updated.allele1 || "?"}/${updated.allele2 || "?"}`;
 
@@ -4363,7 +4057,7 @@ function GeneticsTab({
                         onChange={(e) => {
                           const existing = editData.physicalTraits || [];
                           const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
-                          const locusData = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
+                          const locusData: GeneticLocus = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
                           const updated = { ...locusData, allele2: e.target.value };
                           updated.genotype = `${updated.allele1 || "?"}/${updated.allele2 || "?"}`;
 
@@ -4411,7 +4105,7 @@ function GeneticsTab({
                             onChange={(e) => {
                               const existing = editData.physicalTraits || [];
                               const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
-                              const locusData = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
+                              const locusData: GeneticLocus = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
                               const updated = { ...locusData, allele1: e.target.value };
                               updated.genotype = `${updated.allele1 || "?"}/${updated.allele2 || "?"}`;
 
@@ -4429,7 +4123,7 @@ function GeneticsTab({
                             onChange={(e) => {
                               const existing = editData.physicalTraits || [];
                               const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
-                              const locusData = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
+                              const locusData: GeneticLocus = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
                               const updated = { ...locusData, allele2: e.target.value };
                               updated.genotype = `${updated.allele1 || "?"}/${updated.allele2 || "?"}`;
 
@@ -4481,7 +4175,7 @@ function GeneticsTab({
                         onChange={(e) => {
                           const existing = editData.eyeColor || [];
                           const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
-                          const locusData = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
+                          const locusData: GeneticLocus = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
                           const updated = { ...locusData, allele1: e.target.value };
                           updated.genotype = `${updated.allele1 || "?"}/${updated.allele2 || "?"}`;
 
@@ -4499,7 +4193,7 @@ function GeneticsTab({
                         onChange={(e) => {
                           const existing = editData.eyeColor || [];
                           const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
-                          const locusData = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
+                          const locusData: GeneticLocus = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
                           const updated = { ...locusData, allele2: e.target.value };
                           updated.genotype = `${updated.allele1 || "?"}/${updated.allele2 || "?"}`;
 
@@ -4547,7 +4241,7 @@ function GeneticsTab({
                             onChange={(e) => {
                               const existing = editData.eyeColor || [];
                               const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
-                              const locusData = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
+                              const locusData: GeneticLocus = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
                               const updated = { ...locusData, allele1: e.target.value };
                               updated.genotype = `${updated.allele1 || "?"}/${updated.allele2 || "?"}`;
 
@@ -4565,7 +4259,7 @@ function GeneticsTab({
                             onChange={(e) => {
                               const existing = editData.eyeColor || [];
                               const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
-                              const locusData = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
+                              const locusData: GeneticLocus = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
                               const updated = { ...locusData, allele2: e.target.value };
                               updated.genotype = `${updated.allele1 || "?"}/${updated.allele2 || "?"}`;
 
@@ -4617,7 +4311,7 @@ function GeneticsTab({
                         onChange={(e) => {
                           const existing = editData.health || [];
                           const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
-                          const locusData = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
+                          const locusData: GeneticLocus = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
                           const updated = { ...locusData, genotype: e.target.value };
 
                           const newHealth = locusIdx >= 0
@@ -4664,7 +4358,7 @@ function GeneticsTab({
                             onChange={(e) => {
                               const existing = editData.health || [];
                               const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
-                              const locusData = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
+                              const locusData: GeneticLocus = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
                               const updated = { ...locusData, genotype: e.target.value };
 
                               const newHealth = locusIdx >= 0
@@ -4714,7 +4408,7 @@ function GeneticsTab({
                         onChange={(e) => {
                           const existing = editData.otherTraits || [];
                           const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
-                          const locusData = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
+                          const locusData: GeneticLocus = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
                           const updated = { ...locusData, allele1: e.target.value };
                           updated.genotype = `${updated.allele1 || "?"}/${updated.allele2 || "?"}`;
 
@@ -4732,7 +4426,7 @@ function GeneticsTab({
                         onChange={(e) => {
                           const existing = editData.otherTraits || [];
                           const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
-                          const locusData = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
+                          const locusData: GeneticLocus = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
                           const updated = { ...locusData, allele2: e.target.value };
                           updated.genotype = `${updated.allele1 || "?"}/${updated.allele2 || "?"}`;
 
@@ -5341,14 +5035,12 @@ function TraitRow({
 
     if (isDate) {
       return (
-        <Input
-          type="date"
-          size="sm"
+        <DatePicker
           value={currentValue?.date?.slice(0, 10) || ""}
           onChange={(e) =>
             onDraftChange({
               ...localDraft,
-              value: { date: e.target.value },
+              value: { date: e.currentTarget.value },
             })
           }
           className="w-40"
@@ -5587,14 +5279,12 @@ function TraitRow({
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs text-secondary block mb-1">Performed Date</label>
-              <Input
-                type="date"
-                size="sm"
+              <DatePicker
                 value={currentPerformedAt?.slice(0, 10) || ""}
                 onChange={(e) =>
                   onDraftChange({
                     ...localDraft,
-                    performedAt: e.target.value,
+                    performedAt: e.currentTarget.value,
                   })
                 }
                 className="w-full"
@@ -6361,10 +6051,9 @@ function RegistryTab({
 
                     <div>
                       <label className="text-xs text-secondary block mb-1">Issued Date</label>
-                      <Input
-                        type="date"
+                      <DatePicker
                         value={draft?.issuedAt || ""}
-                        onChange={(e) => updateDraft(reg.id, { issuedAt: e.target.value })}
+                        onChange={(e) => updateDraft(reg.id, { issuedAt: e.currentTarget.value })}
                       />
                     </div>
 
@@ -6870,6 +6559,18 @@ export default function AppAnimals() {
       return "";
     }
   });
+
+  // View mode toggle (table vs cards)
+  const [viewMode, setViewMode] = React.useState<ViewMode>(() => {
+    try {
+      const stored = localStorage.getItem(VIEW_MODE_KEY);
+      return (stored === "cards" ? "cards" : "table") as ViewMode;
+    } catch { return "table"; }
+  });
+  React.useEffect(() => {
+    try { localStorage.setItem(VIEW_MODE_KEY, viewMode); } catch { }
+  }, [viewMode]);
+
   const [filtersOpen, setFiltersOpen] = React.useState(false);
   const [filters, setFilters] = React.useState<Record<string, string>>(() => {
     try {
@@ -7225,6 +6926,18 @@ export default function AppAnimals() {
   const [archiveTargetId, setArchiveTargetId] = React.useState<number | null>(null);
   const [isArchiving, setIsArchiving] = React.useState(false);
 
+  // Overflow menu and delete state
+  const [overflowMenuOpen, setOverflowMenuOpen] = React.useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = React.useState(false);
+  const [deleteTargetId, setDeleteTargetId] = React.useState<number | null>(null);
+  const [isDeleting, setIsDeleting] = React.useState(false);
+  const [checkingDelete, setCheckingDelete] = React.useState(false);
+  const [deleteBlockersOpen, setDeleteBlockersOpen] = React.useState(false);
+  const [deleteBlockers, setDeleteBlockers] = React.useState<{
+    blockers: Record<string, boolean | string[] | undefined>;
+    details?: Record<string, number | undefined>;
+  } | null>(null);
+
   const handleArchive = React.useCallback(
     async (id: number) => {
       setIsArchiving(true);
@@ -7237,12 +6950,69 @@ export default function AppAnimals() {
         // Close the details drawer by removing the id parameter from URL
         const url = new URL(window.location.href);
         url.searchParams.delete("id");
+        url.searchParams.delete("animalId");
         window.history.replaceState({}, "", url.toString());
+        // Notify drawer state to sync with URL change
+        window.dispatchEvent(new Event("bhq:drawer-url-changed"));
       } catch (error) {
         console.error("Failed to archive animal:", error);
         toast.error("Failed to archive animal. Please try again.");
       } finally {
         setIsArchiving(false);
+      }
+    },
+    [api]
+  );
+
+  const checkCanDelete = React.useCallback(
+    async (id: number) => {
+      setCheckingDelete(true);
+      setDeleteBlockers(null);
+      try {
+        const result = await api.animals.canDelete(id);
+        if (result.canDelete) {
+          // No blockers, show delete confirmation
+          setDeleteTargetId(id);
+          setDeleteDialogOpen(true);
+        } else {
+          // Has blockers, show blocker info modal
+          setDeleteTargetId(id);
+          setDeleteBlockers({ blockers: result.blockers, details: result.details });
+          setDeleteBlockersOpen(true);
+        }
+      } catch (error) {
+        console.error("[Animals] canDelete check failed", error);
+        // If check fails, still allow delete attempt (API will block if needed)
+        setDeleteTargetId(id);
+        setDeleteDialogOpen(true);
+      } finally {
+        setCheckingDelete(false);
+      }
+    },
+    [api]
+  );
+
+  const handleDelete = React.useCallback(
+    async (id: number) => {
+      setIsDeleting(true);
+      try {
+        await api.animals.remove(id);
+        setRows((prev) => prev.filter((r) => r.id !== id));
+        toast.success("Animal deleted successfully");
+        setDeleteDialogOpen(false);
+
+        // Close the details drawer by removing the id parameter from URL
+        const url = new URL(window.location.href);
+        url.searchParams.delete("id");
+        url.searchParams.delete("animalId");
+        window.history.replaceState({}, "", url.toString());
+        // Notify drawer state to sync with URL change
+        window.dispatchEvent(new Event("bhq:drawer-url-changed"));
+      } catch (error) {
+        console.error("Failed to delete animal:", error);
+        toast.error("Failed to delete animal. Please try again.");
+      } finally {
+        setIsDeleting(false);
       }
     },
     [api]
@@ -7500,12 +7270,14 @@ export default function AppAnimals() {
         <>
           <DetailsScaffold
             title={row.name}
-            subtitle={row.nickname || row.ownerName || ""}
-            mode={mode}
-            onEdit={() => setMode("edit")}
+            subtitle={row.archived ? <span className="text-amber-400">(Archived)</span> : (row.nickname || row.ownerName || "")}
+            mode={row.archived ? "view" : mode}
+            onEdit={row.archived ? undefined : () => setMode("edit")}
             onCancel={() => setMode("view")}
             onClose={close}
             hasPendingChanges={hasPendingChanges}
+            hideCloseButton
+            showFooterClose
             onSave={async () => {
               const currentTab = activeTab;
               await Promise.resolve(requestSave());
@@ -7517,19 +7289,48 @@ export default function AppAnimals() {
             tabs={detailsConfig.tabs(row)}
             activeTab={activeTab}
             onTabChange={setActiveTab}
-            rightActions={
+            tabsRightContent={
               mode === "edit" ? (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => {
-                    setArchiveTargetId(row.id);
-                    setArchiveDialogOpen(true);
-                  }}
-                >
-                  Archive
-                </Button>
-              ) : null
+                <Popover open={overflowMenuOpen} onOpenChange={setOverflowMenuOpen}>
+                  <Popover.Trigger asChild>
+                    <button
+                      type="button"
+                      className="flex items-center gap-1 px-2 py-1 rounded hover:bg-white/10 transition-colors text-secondary text-xs"
+                      aria-label="More actions"
+                    >
+                      <MoreVertical className="h-4 w-4" />
+                      <span>More</span>
+                    </button>
+                  </Popover.Trigger>
+                  <Popover.Content align="end" className="w-48 p-1">
+                    {/* Archive */}
+                    <button
+                      className="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-white/5 rounded disabled:opacity-50"
+                      disabled={isArchiving}
+                      onClick={() => {
+                        setOverflowMenuOpen(false);
+                        setArchiveTargetId(row.id);
+                        setArchiveDialogOpen(true);
+                      }}
+                    >
+                      <Archive className="h-4 w-4" />
+                      {isArchiving ? "Archiving…" : "Archive"}
+                    </button>
+                    {/* Delete */}
+                    <button
+                      className="flex w-full items-center gap-2 px-3 py-2 text-sm text-red-400 hover:bg-white/5 rounded disabled:opacity-50"
+                      disabled={checkingDelete}
+                      onClick={() => {
+                        setOverflowMenuOpen(false);
+                        checkCanDelete(row.id);
+                      }}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                      {checkingDelete ? "Checking…" : "Delete"}
+                    </button>
+                  </Popover.Content>
+                </Popover>
+              ) : undefined
             }
           >
           {activeTab === "overview" && (
@@ -7670,10 +7471,8 @@ export default function AppAnimals() {
                         {mode === "view" ? (
                           fmt(row.dob) || "-"
                         ) : (
-                          <Input
-                            size="sm"
-                            type="date"
-                            defaultValue={(row.dob || "").slice(0, 10)}
+                          <DatePicker
+                            value={(row.dob || "").slice(0, 10)}
                             onChange={(e) =>
                               setDraft({ dob: e.currentTarget.value })
                             }
@@ -8051,7 +7850,7 @@ export default function AppAnimals() {
       </>
       ),
     }),
-    [api, orgIdForBreeds, ownershipLookups, breedBrowseApi, syncOwners, photoWorking, photoEditorOpen, photoEditorSrc, photoEditorForId, setArchiveTargetId, setArchiveDialogOpen]
+    [api, orgIdForBreeds, ownershipLookups, breedBrowseApi, syncOwners, photoWorking, photoEditorOpen, photoEditorSrc, photoEditorForId, setArchiveTargetId, setArchiveDialogOpen, overflowMenuOpen, setOverflowMenuOpen, isArchiving, setDeleteTargetId, setDeleteDialogOpen]
   );
 
   const [createOpen, setCreateOpen] = React.useState(false);
@@ -8284,168 +8083,223 @@ export default function AppAnimals() {
 
       <Card>
         <DetailsHost rows={rows} config={detailsConfig}>
-          <Table
-            columns={COLUMNS}
-            columnState={map}
-            onColumnStateChange={setAll}
-            getRowId={(r: AnimalRow) => r.id}
-            pageSize={25}
-            renderStickyRight={() => (
-              <ColumnsPopover
-                columns={map}
-                onToggle={toggle}
-                onSet={setAll}
-                allColumns={COLUMNS}
-                triggerClassName="bhq-columns-trigger"
-              />
-            )}
-            stickyRightWidthPx={40}
-          >
-            <div className="bhq-table__toolbar px-2 pt-2 pb-3 relative z-30">
-              <SearchBar
-                value={q}
-                onChange={setQ}
-                placeholder="Search any field…"
-                widthPx={520}
-                rightSlot={
-                  <button
-                    type="button"
-                    onClick={() => setFiltersOpen((v) => !v)}
-                    aria-expanded={filtersOpen}
-                    title="Filters"
-                    className="h-7 w-7 rounded-md flex items-center justify-center hover:bg-white/5 focus:outline-none"
+          {/* Shared Toolbar - always visible */}
+          <div className="bhq-table__toolbar px-3 pt-3 pb-3 relative z-30 flex items-center gap-3">
+            <SearchBar
+              value={q}
+              onChange={setQ}
+              placeholder="Search any field…"
+              widthPx={420}
+              rightSlot={
+                <button
+                  type="button"
+                  onClick={() => setFiltersOpen((v) => !v)}
+                  aria-expanded={filtersOpen}
+                  title="Filters"
+                  className="h-7 w-7 rounded-md flex items-center justify-center hover:bg-white/5 focus:outline-none"
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    className="h-4 w-4"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    aria-hidden="true"
                   >
-                    <svg
-                      viewBox="0 0 24 24"
-                      className="h-4 w-4"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      aria-hidden="true"
-                    >
-                      <path
-                        d="M3 5h18M7 12h10M10 19h4"
-                        strokeLinecap="round"
-                      />
-                    </svg>
-                  </button>
-                }
-              />
+                    <path
+                      d="M3 5h18M7 12h10M10 19h4"
+                      strokeLinecap="round"
+                    />
+                  </svg>
+                </button>
+              }
+            />
+
+            {/* View mode toggle */}
+            <div className="flex items-center rounded-lg border border-hairline overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setViewMode("table")}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-sm transition-colors ${
+                  viewMode === "table"
+                    ? "bg-[hsl(var(--brand-orange))] text-black"
+                    : "bg-transparent text-secondary hover:text-primary hover:bg-[hsl(var(--muted)/0.5)]"
+                }`}
+                title="Table view"
+              >
+                <TableIcon className="w-4 h-4" />
+                <span className="hidden sm:inline">Table</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode("cards")}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-sm transition-colors ${
+                  viewMode === "cards"
+                    ? "bg-[hsl(var(--brand-orange))] text-black"
+                    : "bg-transparent text-secondary hover:text-primary hover:bg-[hsl(var(--muted)/0.5)]"
+                }`}
+                title="Card view"
+              >
+                <LayoutGrid className="w-4 h-4" />
+                <span className="hidden sm:inline">Cards</span>
+              </button>
             </div>
 
-            {filtersOpen && (
-              <FiltersRow
-                filters={filters}
-                onChange={(next) => setFilters(next)}
-                schema={filterSchemaForFiltersRow}
-              />
+            {/* Column toggle - only show in table mode */}
+            {viewMode === "table" && (
+              <div className="ml-auto">
+                <ColumnsPopover
+                  columns={map}
+                  onToggle={toggle}
+                  onSet={setAll}
+                  allColumns={COLUMNS}
+                  triggerClassName="bhq-columns-trigger"
+                />
+              </div>
             )}
+          </div>
 
-            <FilterChips
+          {filtersOpen && (
+            <FiltersRow
               filters={filters}
-              onChange={setFilters}
-              prettyLabel={(k) => {
-                if (k === "dob_from") return "DOB ≥";
-                if (k === "dob_to") return "DOB ≤";
-                if (k === "created_at_from") return "Created ≥";
-                if (k === "created_at_to") return "Created ≤";
-                if (k === "updated_at_from") return "Updated ≥";
-                if (k === "updated_at_to") return "Updated ≤";
-                return k;
-              }}
+              onChange={(next) => setFilters(next)}
+              schema={filterSchemaForFiltersRow}
             />
+          )}
 
-            <table className="min-w-max w-full text-sm">
-              <TableHeader
-                columns={visibleSafe}
-                sorts={sorts}
-                onToggleSort={onToggleSort}
-              />
-              <tbody>
-                {loading && (
-                  <TableRow>
-                    <TableCell colSpan={visibleSafe.length}>
-                      <div className="py-8 text-center text-sm text-secondary">
-                        Loading animals…
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                )}
+          <FilterChips
+            filters={filters}
+            onChange={setFilters}
+            prettyLabel={(k) => {
+              if (k === "dob_from") return "DOB ≥";
+              if (k === "dob_to") return "DOB ≤";
+              if (k === "created_at_from") return "Created ≥";
+              if (k === "created_at_to") return "Created ≤";
+              if (k === "updated_at_from") return "Updated ≥";
+              if (k === "updated_at_to") return "Updated ≤";
+              return k;
+            }}
+          />
 
-                {!loading && error && (
-                  <TableRow>
-                    <TableCell colSpan={visibleSafe.length}>
-                      <div className="py-8 text-center text-sm text-red-600">
-                        Error: {error}
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                )}
-
-                {!loading && !error && pageRows.length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={visibleSafe.length}>
-                      <div className="py-8 text-center text-sm text-secondary">
-                        No animals to display yet.
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                )}
-
-                {!loading &&
-                  !error &&
-                  pageRows.length > 0 &&
-                  pageRows.map((r) => (
-                    <TableRow key={r.id} detailsRow={r}>
-                      {visibleSafe.map((c) => {
-                        let v = (r as any)[c.key] as any;
-                        if (DATE_KEYS.has(c.key as any)) v = fmt(v);
-                        if (Array.isArray(v)) v = v.join(", ");
-                        // Special handling for name column - show titles badge
-                        if (c.key === "name") {
-                          const hasTitles = r.titlePrefix || r.titleSuffix;
-                          return (
-                            <TableCell key={c.key} align="left">
-                              <div className="flex items-center gap-2">
-                                <span>{v ?? ""}</span>
-                                {hasTitles && (
-                                  <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold text-[hsl(var(--brand-orange))] bg-[hsl(var(--brand-orange))]/10">
-                                    🏆 {[r.titlePrefix, r.titleSuffix].filter(Boolean).join(" ")}
-                                  </span>
-                                )}
-                              </div>
-                            </TableCell>
-                          );
-                        }
-                        return <TableCell key={c.key} align={c.center ? "center" : "left"}>{v ?? ""}</TableCell>;
-                      })}
+          {/* Conditional view rendering */}
+          {viewMode === "table" ? (
+            <Table
+              columns={COLUMNS}
+              columnState={map}
+              onColumnStateChange={setAll}
+              getRowId={(r: AnimalRow) => r.id}
+              pageSize={25}
+              stickyRightWidthPx={0}
+            >
+              <table className="min-w-max w-full text-sm">
+                <TableHeader
+                  columns={visibleSafe}
+                  sorts={sorts}
+                  onToggleSort={onToggleSort}
+                />
+                <tbody>
+                  {loading && (
+                    <TableRow>
+                      <TableCell colSpan={visibleSafe.length}>
+                        <div className="py-8 text-center text-sm text-secondary">
+                          Loading animals…
+                        </div>
+                      </TableCell>
                     </TableRow>
-                  ))}
-              </tbody>
-            </table>
+                  )}
 
-            <TableFooter
-              entityLabel="animals"
+                  {!loading && error && (
+                    <TableRow>
+                      <TableCell colSpan={visibleSafe.length}>
+                        <div className="py-8 text-center text-sm text-red-600">
+                          Error: {error}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  )}
+
+                  {!loading && !error && pageRows.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={visibleSafe.length}>
+                        <div className="py-8 text-center text-sm text-secondary">
+                          No animals to display yet.
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  )}
+
+                  {!loading &&
+                    !error &&
+                    pageRows.length > 0 &&
+                    pageRows.map((r) => (
+                      <TableRow key={r.id} detailsRow={r}>
+                        {visibleSafe.map((c) => {
+                          let v = (r as any)[c.key] as any;
+                          if (DATE_KEYS.has(c.key as any)) v = fmt(v);
+                          if (Array.isArray(v)) v = v.join(", ");
+                          // Special handling for name column - show titles badge
+                          if (c.key === "name") {
+                            const hasTitles = r.titlePrefix || r.titleSuffix;
+                            return (
+                              <TableCell key={c.key} align="left">
+                                <div className="flex items-center gap-2">
+                                  <span>{v ?? ""}</span>
+                                  {hasTitles && (
+                                    <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold text-[hsl(var(--brand-orange))] bg-[hsl(var(--brand-orange))]/10">
+                                      🏆 {[r.titlePrefix, r.titleSuffix].filter(Boolean).join(" ")}
+                                    </span>
+                                  )}
+                                </div>
+                              </TableCell>
+                            );
+                          }
+                          return <TableCell key={c.key} align={c.center ? "center" : "left"}>{v ?? ""}</TableCell>;
+                        })}
+                      </TableRow>
+                    ))}
+                </tbody>
+              </table>
+
+              <TableFooter
+                entityLabel="animals"
+                page={clampedPage}
+                pageCount={pageCount}
+                pageSize={pageSize}
+                pageSizeOptions={[10, 25, 50, 100]}
+                onPageChange={(p) => setPage(p)}
+                onPageSizeChange={(n) => {
+                  setPageSize(n);
+                  setPage(1);
+                }}
+                start={start}
+                end={end}
+                filteredTotal={sortedRows.length}
+                total={rows.length}
+                includeArchived={includeArchived}
+                onIncludeArchivedChange={(checked) => {
+                  setIncludeArchived(checked);
+                  setPage(1);
+                }}
+              />
+            </Table>
+          ) : (
+            <CardViewWithDetails
+              rows={pageRows}
+              loading={loading}
+              error={error}
+              sortedRows={sortedRows}
+              pageSize={pageSize}
               page={clampedPage}
               pageCount={pageCount}
-              pageSize={pageSize}
-              pageSizeOptions={[10, 25, 50, 100]}
-              onPageChange={(p) => setPage(p)}
-              onPageSizeChange={(n) => {
-                setPageSize(n);
-                setPage(1);
-              }}
+              setPage={setPage}
+              setPageSize={setPageSize}
+              includeArchived={includeArchived}
+              setIncludeArchived={setIncludeArchived}
+              totalRows={rows.length}
               start={start}
               end={end}
-              filteredTotal={sortedRows.length}
-              total={rows.length}
-              includeArchived={includeArchived}
-              onIncludeArchivedChange={(checked) => {
-                setIncludeArchived(checked);
-                setPage(1);
-              }}
             />
-          </Table>
+          )}
         </DetailsHost>
       </Card>
 
@@ -8475,6 +8329,142 @@ export default function AppAnimals() {
               disabled={isArchiving}
             >
               {isArchiving ? "Archiving..." : "Archive"}
+            </Button>
+          </div>
+        </div>
+      </Dialog>
+
+      <Dialog
+        open={deleteDialogOpen}
+        onClose={() => setDeleteDialogOpen(false)}
+        title="Delete Animal"
+        size="sm"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-secondary">
+            Are you sure you want to delete <strong>{rows.find(r => r.id === deleteTargetId)?.name || "this animal"}</strong>? This action cannot be undone.
+          </p>
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setDeleteDialogOpen(false)}
+              disabled={isDeleting}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={() => deleteTargetId && handleDelete(deleteTargetId)}
+              disabled={isDeleting}
+            >
+              {isDeleting ? "Deleting..." : "Delete"}
+            </Button>
+          </div>
+        </div>
+      </Dialog>
+
+      {/* Delete blockers info dialog */}
+      <Dialog
+        open={deleteBlockersOpen}
+        onClose={() => setDeleteBlockersOpen(false)}
+        title=""
+        size="md"
+      >
+        <div className="space-y-4">
+          <div className="text-lg font-semibold text-amber-400">
+            Cannot Delete Animal
+          </div>
+          <p className="text-sm text-secondary">
+            This animal has associated records that must be removed or reassigned first:
+          </p>
+          {deleteBlockers && (
+            <ul className="text-sm space-y-2">
+              {deleteBlockers.blockers.hasOffspring && (
+                <li className="flex items-center gap-2">
+                  <span className="text-amber-400">•</span>
+                  <span>
+                    Has {deleteBlockers.details?.offspringCount ?? "some"} offspring
+                  </span>
+                </li>
+              )}
+              {deleteBlockers.blockers.isParentInPedigree && (
+                <li className="flex items-center gap-2">
+                  <span className="text-amber-400">•</span>
+                  <span>Is a parent in another animal's pedigree</span>
+                </li>
+              )}
+              {deleteBlockers.blockers.hasBreedingPlans && (
+                <li className="flex items-center gap-2">
+                  <span className="text-amber-400">•</span>
+                  <span>
+                    Associated with {deleteBlockers.details?.breedingPlanCount ?? "some"} breeding plan{(deleteBlockers.details?.breedingPlanCount ?? 0) !== 1 ? "s" : ""}
+                  </span>
+                </li>
+              )}
+              {deleteBlockers.blockers.hasWaitlistEntries && (
+                <li className="flex items-center gap-2">
+                  <span className="text-amber-400">•</span>
+                  <span>
+                    Has {deleteBlockers.details?.waitlistEntryCount ?? "some"} waitlist {(deleteBlockers.details?.waitlistEntryCount ?? 0) !== 1 ? "entries" : "entry"}
+                  </span>
+                </li>
+              )}
+              {deleteBlockers.blockers.hasInvoices && (
+                <li className="flex items-center gap-2">
+                  <span className="text-amber-400">•</span>
+                  <span>
+                    Has {deleteBlockers.details?.invoiceCount ?? "some"} invoice{(deleteBlockers.details?.invoiceCount ?? 0) !== 1 ? "s" : ""}
+                  </span>
+                </li>
+              )}
+              {deleteBlockers.blockers.hasDocuments && (
+                <li className="flex items-center gap-2">
+                  <span className="text-amber-400">•</span>
+                  <span>
+                    Has {deleteBlockers.details?.documentCount ?? "some"} document{(deleteBlockers.details?.documentCount ?? 0) !== 1 ? "s" : ""}
+                  </span>
+                </li>
+              )}
+              {deleteBlockers.blockers.hasPublicListing && (
+                <li className="flex items-center gap-2">
+                  <span className="text-amber-400">•</span>
+                  <span>Has an active public listing</span>
+                </li>
+              )}
+              {Array.isArray(deleteBlockers.blockers.other) && deleteBlockers.blockers.other.map((msg, i) => (
+                <li key={i} className="flex items-center gap-2">
+                  <span className="text-amber-400">•</span>
+                  <span>{msg}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+          <p className="text-xs text-secondary">
+            To delete this animal, please remove or reassign these records first.
+            Alternatively, you can archive this animal to hide it from active views.
+          </p>
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setDeleteBlockersOpen(false)}
+            >
+              Close
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setDeleteBlockersOpen(false);
+                if (deleteTargetId) {
+                  setArchiveTargetId(deleteTargetId);
+                  setArchiveDialogOpen(true);
+                }
+              }}
+            >
+              Archive Instead
             </Button>
           </div>
         </div>
@@ -8604,13 +8594,10 @@ export default function AppAnimals() {
                 <div className="mb-1 text-xs text-secondary">
                   Date of Birth *
                 </div>
-                <Input
-                  type="date"
+                <DatePicker
                   value={newDob}
                   onChange={(e) =>
-                    setNewDob(
-                      (e.currentTarget as HTMLInputElement).value
-                    )
+                    setNewDob(e.currentTarget.value)
                   }
                 />
               </div>

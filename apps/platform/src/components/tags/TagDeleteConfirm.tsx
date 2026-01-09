@@ -44,7 +44,7 @@ export function TagDeleteConfirm({ open, onOpenChange, tag, onConfirm }: Props) 
   if (!tag) return null;
 
   return (
-    <Overlay open={open} onOpenChange={onOpenChange} size="sm" ariaLabel="Delete Tag">
+    <Overlay open={open} onClose={() => onOpenChange(false)}>
       <div className="bg-surface rounded-lg shadow-xl overflow-hidden">
         {/* Header */}
         <div className="px-6 py-4 border-b border-hairline">

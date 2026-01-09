@@ -194,7 +194,7 @@ export default function BusinessHoursPage() {
     let ignore = false;
     (async () => {
       try {
-        const data = await api.get<BusinessHoursResponse>("/business-hours");
+        const data = await api.http.get<BusinessHoursResponse>("/business-hours");
         if (ignore) return;
         setSchedule(data.schedule);
         setTimeZone(data.timeZone);
@@ -231,7 +231,7 @@ export default function BusinessHoursPage() {
     setSuccess(false);
 
     try {
-      const data = await api.put<{ ok: boolean; schedule: BusinessHoursSchedule; timeZone: string; isCustom: boolean }>(
+      const data = await api.http.put<{ ok: boolean; schedule: BusinessHoursSchedule; timeZone: string; isCustom: boolean }>(
         "/business-hours",
         { schedule, timeZone }
       );
@@ -253,7 +253,7 @@ export default function BusinessHoursPage() {
     setSuccess(false);
 
     try {
-      const data = await api.put<{ ok: boolean; schedule: BusinessHoursSchedule; timeZone: string; isCustom: boolean }>(
+      const data = await api.http.put<{ ok: boolean; schedule: BusinessHoursSchedule; timeZone: string; isCustom: boolean }>(
         "/business-hours",
         { resetToDefaults: true }
       );

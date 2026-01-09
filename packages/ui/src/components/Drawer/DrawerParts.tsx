@@ -132,16 +132,42 @@ export function DrawerActions({
 /** URL param + Escape helper */
 export function useDrawerState(param = "id") {
   const [openId, setOpenId] = React.useState<string | null>(() => new URLSearchParams(location.search).get(param));
+
+  // Listen for Escape key
   React.useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setOpenId(null); };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
+
+  // Sync state -> URL
   React.useEffect(() => {
     const url = new URL(location.href);
     if (openId) url.searchParams.set(param, openId);
     else url.searchParams.delete(param);
     window.history.replaceState({}, "", url.toString());
   }, [openId, param]);
+
+  // Listen for external URL changes (e.g., from archive/delete handlers)
+  React.useEffect(() => {
+    const syncFromUrl = () => {
+      const urlId = new URLSearchParams(location.search).get(param);
+      if (urlId !== openId) {
+        setOpenId(urlId);
+      }
+    };
+
+    // Listen for popstate (back/forward navigation)
+    window.addEventListener("popstate", syncFromUrl);
+
+    // Listen for custom event dispatched when URL is changed externally
+    window.addEventListener("bhq:drawer-url-changed", syncFromUrl);
+
+    return () => {
+      window.removeEventListener("popstate", syncFromUrl);
+      window.removeEventListener("bhq:drawer-url-changed", syncFromUrl);
+    };
+  }, [param, openId]);
+
   return { openId, setOpenId };
 }

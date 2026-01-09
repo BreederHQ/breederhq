@@ -5,6 +5,7 @@ import * as React from "react";
 import { Dialog } from "../Dialog";
 import { Button } from "../Button";
 import { Input } from "../Input";
+import { DatePicker } from "../DatePicker";
 import { useToast } from "../../atoms/Toast";
 import { PartyAutocomplete, type AutocompleteOption } from "./PartyAutocomplete";
 import { AnimalAutocomplete } from "./AnimalAutocomplete";
@@ -293,10 +294,9 @@ export function ExpenseModal({
 
         <div>
           <label className="block text-xs text-secondary mb-1">Date Incurred *</label>
-          <Input
-            type="date"
+          <DatePicker
             value={form.incurredAt}
-            onChange={(e) => setForm((f) => ({ ...f, incurredAt: e.target.value }))}
+            onChange={(e) => setForm((f) => ({ ...f, incurredAt: e.currentTarget.value }))}
           />
           {errors.incurredAt && <div className="text-xs text-red-400 mt-1">{errors.incurredAt}</div>}
         </div>

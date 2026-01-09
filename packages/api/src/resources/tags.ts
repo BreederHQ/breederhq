@@ -10,7 +10,9 @@ export type TagModule =
   | "ANIMAL"
   | "WAITLIST_ENTRY"
   | "OFFSPRING_GROUP"
-  | "OFFSPRING";
+  | "OFFSPRING"
+  | "MESSAGE_THREAD"
+  | "DRAFT";
 
 export type TagDTO = {
   id: number;
@@ -49,6 +51,8 @@ export type TagAssignmentTarget = {
   waitlistEntryId?: number;
   offspringGroupId?: number;
   offspringId?: number;
+  messageThreadId?: number;
+  draftId?: number;
 };
 
 export type TagsResource = {
@@ -64,6 +68,8 @@ export type TagsResource = {
   listForOrganization(organizationId: number): Promise<TagDTO[]>;
   listForAnimal(animalId: number): Promise<TagDTO[]>;
   listForOffspring(offspringId: number): Promise<TagDTO[]>;
+  listForMessageThread(messageThreadId: number): Promise<TagDTO[]>;
+  listForDraft(draftId: number): Promise<TagDTO[]>;
 };
 
 function buildQuery(params: TagListParams): string {
@@ -97,6 +103,8 @@ function getEntityPath(target: TagAssignmentTarget): string {
   if (target.waitlistEntryId != null) return `/waitlist/${target.waitlistEntryId}/tags`;
   if (target.offspringGroupId != null) return `/offspring/${target.offspringGroupId}/tags`;
   if (target.offspringId != null) return `/offspring/individuals/${target.offspringId}/tags`;
+  if (target.messageThreadId != null) return `/message-threads/${target.messageThreadId}/tags`;
+  if (target.draftId != null) return `/drafts/${target.draftId}/tags`;
   throw new Error("TagAssignmentTarget must have exactly one entity ID");
 }
 
@@ -157,6 +165,14 @@ export function makeTags(http: Http): TagsResource {
 
     async listForOffspring(offspringId: number): Promise<TagDTO[]> {
       return this.listForEntity({ offspringId });
+    },
+
+    async listForMessageThread(messageThreadId: number): Promise<TagDTO[]> {
+      return this.listForEntity({ messageThreadId });
+    },
+
+    async listForDraft(draftId: number): Promise<TagDTO[]> {
+      return this.listForEntity({ draftId });
     },
   };
 }

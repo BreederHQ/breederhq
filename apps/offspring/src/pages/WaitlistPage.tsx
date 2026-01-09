@@ -15,6 +15,7 @@ import {
   SectionCard,
   Button,
   BreedCombo,
+  DatePicker,
   useToast
 } from "@bhq/ui";
 import { Plus } from "lucide-react";
@@ -522,11 +523,11 @@ function CreateGroupForm({
           placementCompletedAt: placementCompletedAt || null,
         },
       });
-      toast?.({ title: "Group created" });
+      toast?.success?.("Group created");
       onCreated();
     } catch (e: any) {
       setSubmitErr(e?.message || "Failed to create offspring group");
-      toast?.({ title: "Create failed", description: String(e?.message || e), variant: "destructive" });
+      toast?.error?.(`Create failed: ${e?.message || e}`);
     } finally {
       setSubmitting(false);
     }
@@ -568,17 +569,17 @@ function CreateGroupForm({
 
             <label className="flex flex-col gap-1">
               <span className={cx(labelClass)}>Weaned At (optional)</span>
-              <input className={cx(inputClass)} type="date" value={weanedAt} onChange={(e) => setWeanedAt(e.target.value)} />
+              <DatePicker value={weanedAt} onChange={(e) => setWeanedAt(e.currentTarget.value)} inputClassName={cx(inputClass)} />
             </label>
 
             <label className="flex flex-col gap-1">
               <span className={cx(labelClass)}>Placement Start (optional)</span>
-              <input className={cx(inputClass)} type="date" value={placementStartAt} onChange={(e) => setPlacementStartAt(e.target.value)} />
+              <DatePicker value={placementStartAt} onChange={(e) => setPlacementStartAt(e.currentTarget.value)} inputClassName={cx(inputClass)} />
             </label>
 
             <label className="flex flex-col gap-1">
               <span className={cx(labelClass)}>Placement Completed (optional)</span>
-              <input className={cx(inputClass)} type="date" value={placementCompletedAt} onChange={(e) => setPlacementCompletedAt(e.target.value)} />
+              <DatePicker value={placementCompletedAt} onChange={(e) => setPlacementCompletedAt(e.currentTarget.value)} inputClassName={cx(inputClass)} />
             </label>
 
             {/* NEW: status override + reason */}
@@ -996,7 +997,6 @@ function AddToWaitlistModal({
                       }}
                       placeholder="Type a name, email, phone, or organization..."
                       widthPx={720}
-                      autoFocus={!link}
                     />
                   </div>
 
@@ -1324,7 +1324,7 @@ function AddToWaitlistModal({
   );
 }
 
-function PortalPopover({ anchorRef, open, children }: { anchorRef: React.RefObject<HTMLElement>, open: boolean, children: React.ReactNode }) {
+function PortalPopover({ anchorRef, open, children }: { anchorRef: React.RefObject<HTMLElement | null>, open: boolean, children: React.ReactNode }) {
   const [style, setStyle] = React.useState<React.CSSProperties>({});
   React.useLayoutEffect(() => {
     if (!open || !anchorRef.current) return;
@@ -1604,11 +1604,11 @@ function WaitlistDrawerBody({
           </label>
           <label className="flex flex-col gap-1">
             <span className={cx(labelClass)}>Deposit Paid</span>
-            <input
-              className={cx(inputClass)}
-              type="date"
+            <DatePicker
               value={depositPaidAt || ""}
-              onChange={(e) => setDepositPaidAt(e.target.value)} disabled={readOnly}
+              onChange={(e) => setDepositPaidAt(e.currentTarget.value)}
+              inputClassName={cx(inputClass)}
+              readOnly={readOnly}
             />
           </label>
           <label className="flex flex-col gap-1 md:col-span-3">
@@ -1648,7 +1648,7 @@ function PortalInviteSection({
   orgEmail?: string;
   entryId?: number;
 }) {
-  const { showToast } = useToast();
+  const { toast } = useToast();
   const [portalStatus, setPortalStatus] = React.useState<string | null>(null);
   const [loading, setLoading] = React.useState(false);
   const [checkingStatus, setCheckingStatus] = React.useState(true);
@@ -1701,22 +1701,22 @@ function PortalInviteSection({
       const data = await res.json();
 
       if (res.ok) {
-        showToast({ message: "Client portal invite sent.", variant: "success" });
+        toast.success("Client portal invite sent.");
         setPortalStatus("INVITED");
       } else {
         if (data.error === "already_active") {
-          showToast({ message: "Client portal already active.", variant: "info" });
+          toast.info("Client portal already active.");
           setPortalStatus("ACTIVE");
         } else if (data.error === "already_invited") {
-          showToast({ message: "Invite already sent.", variant: "info" });
+          toast.info("Invite already sent.");
           setPortalStatus("INVITED");
         } else {
-          showToast({ message: data.error || "Failed to send invite.", variant: "error" });
+          toast.error(data.error || "Failed to send invite.");
         }
       }
     } catch (err) {
       console.error("Failed to send portal invite:", err);
-      showToast({ message: "Network error. Please try again.", variant: "error" });
+      toast.error("Network error. Please try again.");
     } finally {
       setLoading(false);
     }

@@ -2,6 +2,7 @@
 // Titles tab for animal detail view - shows earned titles and allows management
 
 import React, { useEffect, useState, useCallback } from "react";
+import { DatePicker } from "@bhq/ui";
 import {
   makeApi,
   type AnimalTitle,
@@ -422,11 +423,10 @@ function AddTitleModal({
             <label className="block text-xs font-semibold text-secondary mb-1.5">
               Date Earned
             </label>
-            <input
-              type="date"
+            <DatePicker
               value={dateEarned}
-              onChange={(e) => setDateEarned(e.target.value)}
-              className="w-full px-3 py-2 bg-white/5 border border-hairline rounded-md text-sm focus:outline-none focus:border-white/30"
+              onChange={(e) => setDateEarned(e.currentTarget.value)}
+              inputClassName="w-full px-3 py-2 bg-white/5 border border-hairline rounded-md text-sm focus:outline-none focus:border-white/30"
             />
           </div>
 
@@ -645,11 +645,10 @@ function EditTitleModal({
             <label className="block text-xs font-semibold text-secondary mb-1.5">
               Date Earned
             </label>
-            <input
-              type="date"
+            <DatePicker
               value={dateEarned}
-              onChange={(e) => setDateEarned(e.target.value)}
-              className="w-full px-3 py-2 bg-white/5 border border-hairline rounded-md text-sm focus:outline-none focus:border-white/30"
+              onChange={(e) => setDateEarned(e.currentTarget.value)}
+              inputClassName="w-full px-3 py-2 bg-white/5 border border-hairline rounded-md text-sm focus:outline-none focus:border-white/30"
             />
           </div>
 

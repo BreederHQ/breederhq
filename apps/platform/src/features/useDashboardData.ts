@@ -7,9 +7,23 @@ import {
   type DashboardFeedItem as FeedItem,
   type DashboardCounts as Counts,
 } from "../api";
-import type { StageWindows } from "@bhq/ui/utils";
+
+// Local type definition for StageWindows (not exported from @bhq/ui/utils)
+type StageWindows = {
+  key?: string;
+  full?: { start: Date; end: Date };
+  likely?: { start: Date; end: Date };
+};
 
 export type WindowsMap = Record<string, StageWindows[]>;
+
+// Stub for buildStageWindows - plan data should already have windows
+function buildStageWindows(plan: any): StageWindows[] | undefined {
+  // If plan already has windows property, return it
+  if (plan?.windows) return plan.windows;
+  // Otherwise return undefined - cleanWindows handles this
+  return undefined;
+}
 
 function toDate(x: unknown): Date | null {
   if (x instanceof Date && !isNaN(x.getTime())) return x;

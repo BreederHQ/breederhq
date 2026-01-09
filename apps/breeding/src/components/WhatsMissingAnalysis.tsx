@@ -456,9 +456,9 @@ function compareCoverage(
  */
 function PriorityBadge({ priority }: { priority: TestPriority }) {
   const styles: Record<TestPriority, string> = {
-    critical: "bg-red-500/15 text-red-600 dark:text-red-400 border-red-500/30",
-    recommended: "bg-yellow-500/15 text-yellow-600 dark:text-yellow-400 border-yellow-500/30",
-    optional: "bg-neutral-500/10 text-neutral-600 dark:text-neutral-400 border-neutral-500/20",
+    critical: "bg-red-800 text-red-100 dark:bg-red-900 dark:text-red-200 border-red-700",
+    recommended: "bg-yellow-700 text-yellow-100 dark:bg-yellow-800 dark:text-yellow-200 border-yellow-600",
+    optional: "bg-neutral-600 text-neutral-100 dark:bg-neutral-700 dark:text-neutral-200 border-neutral-500",
   };
 
   const labels: Record<TestPriority, string> = {
@@ -484,11 +484,11 @@ function PriorityBadge({ priority }: { priority: TestPriority }) {
  */
 function CategoryBadge({ category }: { category: MissingTest["category"] }) {
   const styles: Record<MissingTest["category"], string> = {
-    health: "bg-purple-500/10 text-purple-600 dark:text-purple-400",
-    coatColor: "bg-blue-500/10 text-blue-600 dark:text-blue-400",
-    coatType: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
-    physicalTraits: "bg-orange-500/10 text-orange-600 dark:text-orange-400",
-    other: "bg-neutral-500/10 text-neutral-600 dark:text-neutral-400",
+    health: "bg-purple-700 text-purple-100 dark:bg-purple-800 dark:text-purple-200",
+    coatColor: "bg-blue-700 text-blue-100 dark:bg-blue-800 dark:text-blue-200",
+    coatType: "bg-emerald-700 text-emerald-100 dark:bg-emerald-800 dark:text-emerald-200",
+    physicalTraits: "bg-orange-700 text-orange-100 dark:bg-orange-800 dark:text-orange-200",
+    other: "bg-neutral-600 text-neutral-100 dark:bg-neutral-700 dark:text-neutral-200",
   };
 
   const labels: Record<MissingTest["category"], string> = {
@@ -548,32 +548,27 @@ function AnimalMissingPanel({
   incomplete: GeneticLocus[];
   onAddResults?: () => void;
 }) {
-  const [expanded, setExpanded] = React.useState(true);
+  const [expanded, setExpanded] = React.useState(false);
 
   const criticalCount = missing.filter((m) => m.priority === "critical").length;
   const recommendedCount = missing.filter((m) => m.priority === "recommended").length;
   const optionalCount = missing.filter((m) => m.priority === "optional").length;
 
-  const roleColor = role === "dam" ? "pink" : "blue";
-  const roleIcon = role === "dam" ? (
-    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-      <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd" />
-    </svg>
-  ) : (
+  const roleIcon = (
     <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
       <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd" />
     </svg>
   );
 
   return (
-    <div className={`rounded-xl border-2 border-${roleColor}-500/30 bg-surface overflow-hidden`}>
+    <div className="rounded-xl border-2 border-hairline bg-surface overflow-hidden">
       {/* Header */}
       <button
         onClick={() => setExpanded(!expanded)}
-        className={`w-full flex items-center justify-between p-4 bg-${roleColor}-500/5 hover:bg-${roleColor}-500/10 transition-colors`}
+        className="w-full flex items-center justify-between p-4 bg-surface-alt/50 hover:bg-surface-alt transition-colors"
       >
         <div className="flex items-center gap-3">
-          <div className={`w-8 h-8 rounded-full bg-${roleColor}-500/20 flex items-center justify-center text-${roleColor}-600 dark:text-${roleColor}-400`}>
+          <div className="w-8 h-8 rounded-full bg-accent/10 flex items-center justify-center text-accent">
             {roleIcon}
           </div>
           <div className="text-left">
@@ -610,16 +605,16 @@ function AnimalMissingPanel({
         <div className="p-4 space-y-4">
           {/* Incomplete Data Warning */}
           {incomplete.length > 0 && (
-            <div className="p-3 rounded-lg bg-orange-500/10 border border-orange-500/20">
+            <div className="p-3 rounded-lg bg-orange-500/10 border border-orange-500/30">
               <div className="flex items-start gap-2">
                 <svg className="w-5 h-5 text-orange-500 shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
                   <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
                 </svg>
                 <div>
-                  <div className="font-medium text-orange-700 dark:text-orange-300 text-sm">
+                  <div className="font-medium text-orange-300 text-sm">
                     Incomplete Data Detected
                   </div>
-                  <div className="text-xs text-orange-600 dark:text-orange-400 mt-1">
+                  <div className="text-xs text-orange-200/90 mt-1">
                     {incomplete.length} {incomplete.length === 1 ? "locus has" : "loci have"} only one allele known:
                     <span className="font-mono ml-1">
                       {incomplete.slice(0, 3).map((l) => l.locus).join(", ")}
@@ -707,7 +702,7 @@ function AnimalMissingPanel({
           {onAddResults && missing.length > 0 && (
             <button
               onClick={onAddResults}
-              className={`w-full mt-4 px-4 py-2.5 rounded-lg font-medium text-sm bg-${roleColor}-500/10 text-${roleColor}-600 dark:text-${roleColor}-400 hover:bg-${roleColor}-500/20 transition-colors flex items-center justify-center gap-2`}
+              className="w-full mt-4 px-4 py-2.5 rounded-lg font-medium text-sm bg-accent/10 text-accent hover:bg-accent/20 transition-colors flex items-center justify-center gap-2"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -795,7 +790,7 @@ export default function WhatsMissingAnalysis({
 
       {/* Critical Alert - Both Missing */}
       {criticalBothMissing > 0 && (
-        <div className="p-4 bg-red-500/10 border-b border-red-500/20">
+        <div className="p-4 bg-red-500/10 border-b border-red-500/30">
           <div className="flex items-start gap-3">
             <div className="w-10 h-10 rounded-full bg-red-500/20 flex items-center justify-center shrink-0">
               <svg className="w-5 h-5 text-red-500" fill="currentColor" viewBox="0 0 20 20">
@@ -803,10 +798,10 @@ export default function WhatsMissingAnalysis({
               </svg>
             </div>
             <div>
-              <div className="font-bold text-red-700 dark:text-red-300">
+              <div className="font-bold text-red-300">
                 {criticalBothMissing} Critical Test{criticalBothMissing !== 1 ? "s" : ""} Missing from Both Parents
               </div>
-              <div className="text-sm text-red-600 dark:text-red-400 mt-1">
+              <div className="text-sm text-red-200/90 mt-1">
                 These tests could identify health conditions that may produce affected offspring.
                 Testing both parents before breeding is strongly recommended.
               </div>
@@ -817,7 +812,7 @@ export default function WhatsMissingAnalysis({
                   .map((test) => (
                     <span
                       key={test.locus}
-                      className="inline-flex items-center px-2 py-1 text-xs font-mono bg-red-500/20 text-red-700 dark:text-red-300 rounded"
+                      className="inline-flex items-center px-2 py-1 text-xs font-mono bg-red-900/80 text-red-100 dark:bg-red-950 dark:text-red-200 rounded border border-red-700/50"
                     >
                       {test.locus}: {test.locusName}
                     </span>
@@ -830,18 +825,18 @@ export default function WhatsMissingAnalysis({
 
       {/* Both Missing Section (non-critical) */}
       {comparison.bothMissing.filter((m) => m.priority !== "critical").length > 0 && (
-        <div className="p-4 bg-yellow-500/5 border-b border-hairline">
+        <div className="p-4 bg-yellow-500/10 border-b border-yellow-500/30">
           <div className="flex items-start gap-3">
             <div className="w-8 h-8 rounded-full bg-yellow-500/20 flex items-center justify-center shrink-0">
-              <svg className="w-4 h-4 text-yellow-600" fill="currentColor" viewBox="0 0 20 20">
+              <svg className="w-4 h-4 text-yellow-500" fill="currentColor" viewBox="0 0 20 20">
                 <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
               </svg>
             </div>
             <div>
-              <div className="font-medium text-yellow-700 dark:text-yellow-300 text-sm">
+              <div className="font-medium text-yellow-300 text-sm">
                 {comparison.bothMissing.filter((m) => m.priority !== "critical").length} Tests Missing from Both Parents
               </div>
-              <div className="text-xs text-yellow-600 dark:text-yellow-400 mt-1">
+              <div className="text-xs text-yellow-200/90 mt-1">
                 Testing either parent for these loci would improve prediction accuracy.
               </div>
             </div>

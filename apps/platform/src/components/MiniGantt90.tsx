@@ -1,8 +1,14 @@
 import * as React from "react";
 import BHQGantt, { type BHQGanttStage } from "@bhq/ui/components/Gantt/Gantt";
-import type { StageWindows } from "@bhq/ui/utils";
 
 type ID = number | string;
+
+// Local type definition for StageWindows (not exported from @bhq/ui/utils)
+type StageWindows = {
+  full?: { start: Date | string; end: Date | string };
+  likely?: { start: Date | string; end: Date | string };
+  [key: string]: any;
+};
 
 type Props = {
   plans: { id: ID; name: string }[] | undefined | null;
@@ -10,13 +16,13 @@ type Props = {
 };
 
 const STAGES: BHQGanttStage[] = [
-  { key: "preBreeding", label: "Pre-breeding" },
-  { key: "hormoneTesting", label: "Hormone" },
-  { key: "breeding", label: "Breeding" },
-  { key: "birth", label: "Birth" },
-  { key: "postBirthCare", label: "Post Birth Care" },
-  { key: "PlacementNormal", label: "Placement" },
-  { key: "PlacementExtended", label: "Placement ext" },
+  { key: "preBreeding", label: "Pre-breeding", baseColor: "#6366f1" },
+  { key: "hormoneTesting", label: "Hormone", baseColor: "#8b5cf6" },
+  { key: "breeding", label: "Breeding", baseColor: "#ec4899" },
+  { key: "birth", label: "Birth", baseColor: "#f97316" },
+  { key: "postBirthCare", label: "Post Birth Care", baseColor: "#eab308" },
+  { key: "PlacementNormal", label: "Placement", baseColor: "#22c55e" },
+  { key: "PlacementExtended", label: "Placement ext", baseColor: "#14b8a6" },
 ];
 
 function cleanWindows(list: StageWindows[] | undefined | null): StageWindows[] {
@@ -66,12 +72,10 @@ export default function MiniGantt90({ plans, windows }: Props) {
       {hasAnyBars ? (
         <BHQGantt
           stages={STAGES}
-          rows={rows}
-          startDate={start}
-          endDate={end}
-          pxPerDay={4}
-          showTodayLine
-          compact
+          data={rows.map(r => r.windows) as any}
+          horizon={{ start, end }}
+          today={now}
+          showToday
         />
       ) : (
         <div className="text-sm text-secondary border border-hairline rounded-lg p-3">

@@ -7,7 +7,7 @@ import clsx from "clsx";
 // ====================== LEGACY POPOVER (anchorRef-based) ======================
 
 export type PopoverProps = {
-  anchorRef: React.RefObject<HTMLElement>;
+  anchorRef: React.RefObject<HTMLElement | null>;
   open: boolean;
   onClose: () => void;
   estHeight?: number;         // layout hint; default 360
@@ -87,7 +87,7 @@ function PopoverLegacy({ anchorRef, open, onClose, estHeight = 360, width = 320,
 type PopoverContextValue = {
   open: boolean;
   setOpen: (open: boolean) => void;
-  triggerRef: React.RefObject<HTMLElement>;
+  triggerRef: React.RefObject<HTMLElement | null>;
   contentId: string;
 };
 
@@ -113,7 +113,7 @@ function PopoverRoot({ open: controlledOpen, onOpenChange, children }: CompoundP
     onOpenChange?.(next);
   }, [onOpenChange]);
 
-  const triggerRef = React.useRef<HTMLElement>(null);
+  const triggerRef = React.useRef<HTMLElement | null>(null);
   const contentId = React.useId();
 
   return (

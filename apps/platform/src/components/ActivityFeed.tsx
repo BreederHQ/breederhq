@@ -1,6 +1,12 @@
 // apps/platform/src/components/dashboard/ActivityFeed.tsx
 import * as React from "react";
-import type { FeedItem } from "../../api/dashboard";
+
+type FeedItem = {
+  id: string | number;
+  when: string | Date;
+  who?: string;
+  text: string;
+};
 
 export default function ActivityFeed({ items }: { items: FeedItem[] }) {
   if (!items?.length) return <div className="p-4 text-sm opacity-70">No recent activity</div>;

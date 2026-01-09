@@ -14,6 +14,7 @@ import {
 } from "../components/dashboard";
 import KpiPanel from "../components/KpiPanel";
 import ActivityFeed from "../components/ActivityFeed";
+import ContactFollowUps from "../components/ContactFollowUps";
 import { api } from "../api";
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -790,7 +791,7 @@ export default function Dashboard() {
           />
         </div>
 
-        {/* Today's Agenda + Quick Actions */}
+        {/* Today's Agenda + Quick Actions + Contact Follow-ups */}
         <div
           style={{
             display: "grid",
@@ -799,13 +800,23 @@ export default function Dashboard() {
             marginBottom: "2rem",
           }}
         >
-          <SectionCard>
-            <TodaysAgenda
-              userFirstName={displayName}
-              items={data.todaysAgenda}
-              onComplete={data.handlers.onCompleteAgendaItem}
+          <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
+            <SectionCard>
+              <TodaysAgenda
+                userFirstName={displayName}
+                items={data.todaysAgenda}
+                onComplete={data.handlers.onCompleteAgendaItem}
+              />
+            </SectionCard>
+            {/* Contact Follow-ups - Prominent CRM widget */}
+            <ContactFollowUps
+              maxItems={5}
+              onOpenContact={(partyId, partyKind) => {
+                // Navigate to contacts with party drawer open
+                window.location.href = `/contacts?partyId=${partyId}&kind=${partyKind}`;
+              }}
             />
-          </SectionCard>
+          </div>
           <SectionCard>
             <QuickActionsHub onAction={data.handlers.onQuickAction} />
           </SectionCard>

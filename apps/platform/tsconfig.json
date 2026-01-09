@@ -36,9 +36,6 @@
       "@bhq/breeding": ["../breeding/src/index.ts"],
       "@bhq/breeding/*": ["../breeding/src/*"],
 
-      "@bhq/organizations": ["../organizations/src/index.ts"],
-      "@bhq/organizations/*": ["../organizations/src/*"],
-
       "@bhq/waitlist": ["../waitlist/src/index.ts"],
       "@bhq/waitlist/*": ["../waitlist/src/*"]
     },

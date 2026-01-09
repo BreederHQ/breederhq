@@ -481,6 +481,43 @@ export function makeApi(base?: string, extraHeadersFn?: () => Record<string, str
       return reqWithExtra<any>(`/animals/${encodeURIComponent(String(id))}`, { method: "DELETE" });
     },
 
+    /**
+     * Check if an animal can be deleted.
+     * Returns blockers if there are dependencies that prevent deletion.
+     */
+    async canDelete(id: string | number): Promise<{
+      canDelete: boolean;
+      blockers: {
+        hasOffspring?: boolean;
+        isParentInPedigree?: boolean;
+        hasBreedingPlans?: boolean;
+        hasWaitlistEntries?: boolean;
+        hasInvoices?: boolean;
+        hasDocuments?: boolean;
+        hasPublicListing?: boolean;
+        other?: string[];
+      };
+      details?: {
+        offspringCount?: number;
+        breedingPlanCount?: number;
+        waitlistEntryCount?: number;
+        invoiceCount?: number;
+        documentCount?: number;
+      };
+    }> {
+      try {
+        return await reqWithExtra<any>(
+          `/animals/${encodeURIComponent(String(id))}/can-delete`
+        );
+      } catch (err: any) {
+        // If the endpoint returns 404, treat as deletable (no blockers)
+        if (err?.status === 404) {
+          return { canDelete: true, blockers: {} };
+        }
+        throw err;
+      }
+    },
+
     /* profile photo upload and delete (legacy) */
     async uploadPhoto(id: string | number, file: File): Promise<{ photoUrl: string }> {
       const form = new FormData();

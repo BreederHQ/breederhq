@@ -71,8 +71,7 @@ const BiologySettingsTab = React.forwardRef<BiologySettingsHandle, Props>(
 
         {/* Species Selection */}
         <SectionCard
-          title="Species Biology Constants"
-          subtitle="View the calculation values used for each species"
+          title={<>Species Biology Constants<div className="text-xs text-secondary font-normal mt-0.5">View the calculation values used for each species</div></>}
         >
           <Card className="p-4 space-y-4">
             <div className="flex items-center gap-4">
@@ -93,7 +92,7 @@ const BiologySettingsTab = React.forwardRef<BiologySettingsHandle, Props>(
         </SectionCard>
 
         {/* Gestation */}
-        <SectionCard title="Gestation Period" subtitle="Pregnancy duration from breeding to birth">
+        <SectionCard title={<>Gestation Period<div className="text-xs text-secondary font-normal mt-0.5">Pregnancy duration from breeding to birth</div></>}>
           <Card className="p-4">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
@@ -114,7 +113,7 @@ const BiologySettingsTab = React.forwardRef<BiologySettingsHandle, Props>(
         </SectionCard>
 
         {/* Breeding Window */}
-        <SectionCard title="Breeding Window" subtitle="Optimal timing for breeding from cycle/heat start">
+        <SectionCard title={<>Breeding Window<div className="text-xs text-secondary font-normal mt-0.5">Optimal timing for breeding from cycle/heat start</div></>}>
           <Card className="p-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
@@ -133,7 +132,7 @@ const BiologySettingsTab = React.forwardRef<BiologySettingsHandle, Props>(
         </SectionCard>
 
         {/* Weaning */}
-        <SectionCard title="Weaning Age" subtitle="When offspring are typically weaned">
+        <SectionCard title={<>Weaning Age<div className="text-xs text-secondary font-normal mt-0.5">When offspring are typically weaned</div></>}>
           <Card className="p-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
@@ -150,7 +149,7 @@ const BiologySettingsTab = React.forwardRef<BiologySettingsHandle, Props>(
         </SectionCard>
 
         {/* Placement */}
-        <SectionCard title="Placement Age" subtitle="When offspring can go to new homes">
+        <SectionCard title={<>Placement Age<div className="text-xs text-secondary font-normal mt-0.5">When offspring can go to new homes</div></>}>
           <Card className="p-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
@@ -173,7 +172,7 @@ const BiologySettingsTab = React.forwardRef<BiologySettingsHandle, Props>(
         </SectionCard>
 
         {/* Female Breeding Age */}
-        <SectionCard title="Female Breeding Age" subtitle="Age recommendations for responsible breeding">
+        <SectionCard title={<>Female Breeding Age<div className="text-xs text-secondary font-normal mt-0.5">Age recommendations for responsible breeding</div></>}>
           <Card className="p-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
@@ -189,7 +188,7 @@ const BiologySettingsTab = React.forwardRef<BiologySettingsHandle, Props>(
         </SectionCard>
 
         {/* Recovery & Limits */}
-        <SectionCard title="Recovery & Lifetime Limits" subtitle="Responsible breeding practices">
+        <SectionCard title={<>Recovery & Lifetime Limits<div className="text-xs text-secondary font-normal mt-0.5">Responsible breeding practices</div></>}>
           <Card className="p-4">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
@@ -211,8 +210,7 @@ const BiologySettingsTab = React.forwardRef<BiologySettingsHandle, Props>(
 
         {/* Practical Use Cases */}
         <SectionCard
-          title="How to Use This Information"
-          subtitle="Practical actions you can take with these biology constants"
+          title={<>How to Use This Information<div className="text-xs text-secondary font-normal mt-0.5">Practical actions you can take with these biology constants</div></>}
         >
           <Card className="p-4">
             <div className="space-y-4">

@@ -808,17 +808,20 @@ export default function OffspringSimulator({
           <>
             <div className="flex items-center gap-2">
               <label className="text-sm text-secondary">Litter size:</label>
-              <select
+              <input
+                type="number"
+                min={1}
+                max={20}
                 value={litterSize}
-                onChange={(e) => setLitterSize(parseInt(e.target.value, 10))}
-                className="h-8 px-2 text-sm border border-hairline rounded bg-surface"
-              >
-                {[2, 3, 4, 5, 6, 7, 8, 10, 12].map((n) => (
-                  <option key={n} value={n}>
-                    {n}
-                  </option>
-                ))}
-              </select>
+                onChange={(e) => {
+                  const val = parseInt(e.target.value, 10);
+                  if (!isNaN(val) && val >= 1 && val <= 20) {
+                    setLitterSize(val);
+                  }
+                }}
+                className="h-8 w-16 px-2 text-sm text-center border border-hairline rounded bg-surface focus:border-accent focus:ring-1 focus:ring-accent/30 outline-none"
+              />
+              <span className="text-xs text-secondary">(1-20)</span>
             </div>
             <button
               onClick={handleSimulateLitter}
@@ -915,7 +918,7 @@ export default function OffspringSimulator({
           <div className="text-4xl mb-3 animate-bounce">🎲</div>
           <p className="text-sm">
             {showLitterMode
-              ? `Click "Simulate Litter" to generate ${litterSize} potential offspring`
+              ? `Click "Simulate Litter" to generate ${litterSize} potential offspring${litterSize > 1 ? '' : ' (increase to simulate a full litter)'}`
               : "Click \"Roll the Dice\" to generate a random offspring"}
           </p>
           <p className="text-xs mt-2 text-secondary/80">

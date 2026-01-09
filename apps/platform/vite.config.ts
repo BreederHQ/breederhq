@@ -6,7 +6,7 @@ export default defineConfig({
   plugins: [react()],
 
   optimizeDeps: {
-    exclude: ["@bhq/contacts", "@bhq/animals", "@bhq/breeding", "@bhq/offspring", "@bhq/marketing", "@bhq/finance", "@bhq/organizations", "@bhq/admin", "@bhq/waitlist", "@bhq/marketplace", "@bhq/bloodlines"],
+    exclude: ["@bhq/contacts", "@bhq/animals", "@bhq/breeding", "@bhq/offspring", "@bhq/marketing", "@bhq/finance", "@bhq/admin", "@bhq/waitlist", "@bhq/marketplace", "@bhq/bloodlines"],
   },
 
   resolve: {
@@ -20,7 +20,6 @@ export default defineConfig({
       "@bhq/offspring": fileURLToPath(new URL("../offspring/src", import.meta.url)),
       "@bhq/marketing": fileURLToPath(new URL("../marketing/src", import.meta.url)),
       "@bhq/finance": fileURLToPath(new URL("../finance/src", import.meta.url)),
-      "@bhq/organizations": fileURLToPath(new URL("../organizations/src", import.meta.url)),
       "@bhq/admin": fileURLToPath(new URL("../admin/src", import.meta.url)),
       "@bhq/waitlist": fileURLToPath(new URL("../waitlist/src", import.meta.url)),
       "@bhq/marketplace": fileURLToPath(new URL("../marketplace/src", import.meta.url)),

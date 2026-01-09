@@ -505,7 +505,7 @@ function ProgramCard({
         </Badge>
         {acceptInquiries && <Badge variant="neutral">Inquiries</Badge>}
         {openWaitlist && <Badge variant="neutral">Waitlist Open</Badge>}
-        {comingSoon && <Badge variant="yellow">Coming Soon</Badge>}
+        {comingSoon && <Badge variant="amber">Coming Soon</Badge>}
         {!acceptInquiries && !openWaitlist && !comingSoon && !isExample && (
           <Badge variant="neutral">No Actions Enabled</Badge>
         )}
@@ -1487,7 +1487,7 @@ const MarketplaceSettingsTabInner = React.forwardRef<MarketplaceHandle, Marketpl
           title: "Profile Not Published",
           message: "This program is now marked as 'Listed', but it won't be visible to buyers until you publish your marketplace profile. Scroll down to 'Preview and Validation' to publish your profile.",
           confirmText: "Got it",
-          cancelText: null,
+          cancelText: undefined,
         });
       }
 
@@ -1653,9 +1653,9 @@ const MarketplaceSettingsTabInner = React.forwardRef<MarketplaceHandle, Marketpl
         setDraft((prev) => ({ ...prev, updatedAt: now }));
         onDirty(false);
       }
-    } catch (e) {
+    } catch (e: any) {
       console.error("Failed to save:", e);
-      setSaveError(e.message || "Failed to save. Please try again.");
+      setSaveError(e?.message || "Failed to save. Please try again.");
     } finally {
       setSaving(false);
     }

@@ -15,6 +15,7 @@ import {
   Button,
   BreedCombo,
   Badge,
+  DatePicker,
   TagPicker,
   type TagOption,
 } from "@bhq/ui";
@@ -33,7 +34,7 @@ import {
 import {
   makeOffspringApiClient,
   type AnimalLite,
-  type OffspringGroupDTO,
+  type OffspringGroupLite as OffspringGroupDTO,
 } from "../api";
 
 import { readTenantIdFast } from "@bhq/ui/utils/tenant";
@@ -63,6 +64,7 @@ const WHELPING_COLLAR_SWATCHES = [
   { label: "Black", value: "Black", hex: "#111827" },
   { label: "White", value: "White", hex: "#f9fafb" },
 ];
+const BIRTH_COLLAR_SWATCHES = WHELPING_COLLAR_SWATCHES;
 
 const __og_COLLAR_COLOR_SWATCHES = [
   { id: "red", name: "Red", hex: "#ef4444" },
@@ -104,7 +106,7 @@ function __og_resolveCollarColor(input: any): {
 /** ---------- Types for this page ---------- */
 type ID = string | number;
 type Sex = "MALE" | "FEMALE" | "UNKNOWN";
-type Status = "AVAILABLE" | "RESERVED" | "PLACED" | "HOLDBACK" | "DECEASED";
+type Status = "PLANNED" | "BORN" | "AVAILABLE" | "RESERVED" | "PLACED" | "HOLDBACK" | "DECEASED";
 type Species = "DOG" | "CAT" | "HORSE";
 type SpeciesUi = "Dog" | "Cat" | "Horse";
 type Money = number;
@@ -447,6 +449,18 @@ export type OffspringRow = {
   notes: string | null;
   groupId: number | null;
   groupLabel: string | null;
+
+  // Group-related fields
+  groupName?: string | null;
+  groupCode?: string | null;
+  groupSeasonLabel?: string | null;
+  identifier?: string | null;
+  placeholderLabel?: string | null;
+
+  // Siblings and waitlist
+  siblings?: SiblingLite[] | null;
+  waitlistEntry?: WaitlistRefLite | null;
+  group?: { id: number; name?: string; code?: string } | null;
 
   // new fields
   whelpingCollarColor: string | null;
@@ -810,6 +824,12 @@ function makeLocalFallbackApi(): OffspringApi {
     async remove() {
       throw new Error("remove not available without backend API");
     },
+    async addHealthEvent() {
+      throw new Error("addHealthEvent not available without backend API");
+    },
+    async linkInvoice() {
+      throw new Error("linkInvoice not available without backend API");
+    },
   };
 }
 
@@ -1090,6 +1110,10 @@ function todayInputValue(): string {
 
 function prettyStatus(s: Status): string {
   switch (s) {
+    case "PLANNED":
+      return "Planned";
+    case "BORN":
+      return "Born";
     case "AVAILABLE":
       return "Available";
     case "RESERVED":
@@ -1350,7 +1374,7 @@ function getBuyerSectionTitle(placementState?: PlacementState | null): string {
 
 const isDevRuntime =
   typeof window !== "undefined" &&
-  (typeof process === "undefined" || process.env?.NODE_ENV !== "production");
+  (typeof (globalThis as any).process === "undefined" || ((globalThis as any).process as any)?.env?.NODE_ENV !== "production");
 
 if (isDevRuntime) {
   const deceased = buildOffspringStatusPresentation({
@@ -1905,13 +1929,12 @@ function CreateOffspringOverlayContent({
                   {allowNoGroup && (
                     <label className="grid gap-1 text-sm">
                       <span className="text-xs text-secondary">Birth date</span>
-                      <input
-                        type="date"
-                        className={inputClass}
+                      <DatePicker
                         value={form.dob ?? ""}
                         onChange={(e) =>
-                          handleChange("dob", e.target.value as any)
+                          handleChange("dob", e.currentTarget.value as any)
                         }
+                        inputClassName={inputClass}
                       />
                     </label>
                   )}
@@ -2115,7 +2138,7 @@ function CrossRefsSection({
         </div>
         {row.siblings && row.siblings.length ? (
           <ul className="space-y-1">
-            {row.siblings.map((s) => (
+            {row.siblings.map((s: SiblingLite) => (
               <li
                 key={s.id}
                 className="flex items-center justify-between gap-2 text-xs"
@@ -2825,7 +2848,7 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
 
         // For offspring linked to a parent group, do not change DOB here.
         // They inherit DOB from the group.
-        birthDate: isLinkedToParent
+        dob: isLinkedToParent
           ? drawer.dob
           : (coreForm.dob ?? drawer.dob),
 
@@ -2862,7 +2885,7 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
         <PageHeader
           title="Offspring"
           subtitle="Manage individual offspring records"
-          right={
+          actions={
             <div className="flex items-center gap-2">
               <Button variant="outline" onClick={() => setShowCreate(true)}>
                 <Plus className="h-4 w-4" /> New
@@ -3101,10 +3124,7 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
             </tbody>
           </table>
 
-          <TableFooter colSpan={visibleSafe.length}>
-            <TableRow>
-              <TableCell colSpan={visibleSafe.length}>
-                <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center justify-between gap-3 p-3 border-t border-hairline">
                   <div className={labelClass}>
                     {total === 0 ? (
                       "No records"
@@ -3154,10 +3174,7 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
                       </Button>
                     </div>
                   </div>
-                </div>
-              </TableCell>
-            </TableRow>
-          </TableFooter>
+          </div>
         </Table>
       </SectionCard>
 
@@ -3373,8 +3390,7 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
                       </Button>
                     </div>
                   }
-                />
-
+                >
                 {/* Body */}
                 <div className="px-5 py-3 space-y-6">
                   {(() => {
@@ -3614,15 +3630,14 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
                                   <dt className={labelClass}>DOB</dt>
                                   <dd className="mt-1 text-sm">
                                     {drawerMode === "edit" && coreForm && !isLinkedToParent ? (
-                                      <input
-                                        type="date"
-                                        className={inputClass}
+                                      <DatePicker
                                         value={coreForm.dob ?? drawer.dob ?? ""}
                                         onChange={(e) =>
                                           setCoreForm((prev) =>
-                                            prev ? { ...prev, dob: e.target.value } : prev,
+                                            prev ? { ...prev, dob: e.currentTarget.value } : prev,
                                           )
                                         }
+                                        inputClassName={inputClass}
                                       />
                                     ) : (
                                       dobLabel
@@ -3674,15 +3689,14 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
                                     <dt className={labelClass}>Deceased</dt>
                                     <dd className="mt-1 text-sm">
                                       {drawerMode === "edit" && coreForm ? (
-                                        <input
-                                          type="date"
-                                          className={inputClass}
+                                        <DatePicker
                                           value={toDateInputValue(coreForm.diedAt ?? diedAtValue)}
                                           onChange={(e) =>
                                             updateCoreForm({
-                                              diedAt: e.target.value ? e.target.value : null,
+                                              diedAt: e.currentTarget.value ? e.currentTarget.value : null,
                                             })
                                           }
+                                          inputClassName={inputClass}
                                         />
                                       ) : (
                                         diedAtLabel ?? "Yes"
@@ -3836,8 +3850,8 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
                                       </div>
                                     ) : group ? (
                                       <Button
-                                        variant="link"
-                                        className="h-auto p-0 text-sm"
+                                        variant="ghost"
+                                        className="h-auto p-0 text-sm underline"
                                         onClick={() => navigateToGroup(group.id)}
                                       >
                                         {groupName}
@@ -3942,16 +3956,9 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
                                   <dt className={labelClass}>Dam</dt>
                                   <dd className="mt-1 text-sm">
                                     {row.dam ? (
-                                      <button
-                                        type="button"
-                                        className="text-brand-600 hover:underline"
-                                        onClick={() => {
-                                          onClose();
-                                          onNavigateToAnimal?.(row.dam!.id);
-                                        }}
-                                      >
-                                        {row.dam.name ?? "View dam"}
-                                      </button>
+                                      <span className="text-brand-600">
+                                        {row.dam.name ?? "Dam"}
+                                      </span>
                                     ) : (
                                       "Not set"
                                     )}
@@ -3962,16 +3969,9 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
                                   <dt className={labelClass}>Sire</dt>
                                   <dd className="mt-1 text-sm">
                                     {row.sire ? (
-                                      <button
-                                        type="button"
-                                        className="text-brand-600 hover:underline"
-                                        onClick={() => {
-                                          onClose();
-                                          onNavigateToAnimal?.(row.sire!.id);
-                                        }}
-                                      >
-                                        {row.sire.name ?? "View sire"}
-                                      </button>
+                                      <span className="text-brand-600">
+                                        {row.sire.name ?? "Sire"}
+                                      </span>
                                     ) : (
                                       "Not set"
                                     )}
@@ -4011,11 +4011,6 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
                             {/* Buyer card - CONSOLIDATED */}
                             <SectionCard
                               title={buyerHeaderLabel}
-                              description={
-                                group
-                                  ? "Assign a buyer to this offspring using buyers already linked to the parent group, or search the global directory."
-                                  : "This offspring is not linked to a group. You can still assign a buyer from the directory."
-                              }
                             >
                               {(() => {
                                 const hasGroup = !!group;
@@ -4063,15 +4058,14 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
                                           {placementState === "PLACED" && (
                                             <div>
                                               <div className={labelClass}>Placed at</div>
-                                              <input
-                                                type="date"
-                                                className={inputClass}
+                                              <DatePicker
                                                 value={toDateInputValue(coreForm?.placedAt ?? placedAtValue)}
                                                 onChange={(e) =>
                                                   updateCoreForm({
-                                                    placedAt: e.target.value ? e.target.value : null,
+                                                    placedAt: e.currentTarget.value ? e.currentTarget.value : null,
                                                   })
                                                 }
+                                                inputClassName={inputClass}
                                               />
                                             </div>
                                           )}
@@ -4106,15 +4100,14 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
                                           {financialState === "PAID_IN_FULL" && (
                                             <div>
                                               <div className={labelClass}>Paid in full at</div>
-                                              <input
-                                                type="date"
-                                                className={inputClass}
+                                              <DatePicker
                                                 value={toDateInputValue(coreForm?.paidInFullAt ?? paidInFullAtValue)}
                                                 onChange={(e) =>
                                                   updateCoreForm({
-                                                    paidInFullAt: e.target.value ? e.target.value : null,
+                                                    paidInFullAt: e.currentTarget.value ? e.currentTarget.value : null,
                                                   })
                                                 }
+                                                inputClassName={inputClass}
                                               />
                                             </div>
                                           )}
@@ -4149,15 +4142,14 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
                                           {(paperworkState === "SIGNED" || paperworkState === "COMPLETE") && (
                                             <div>
                                               <div className={labelClass}>Contract signed at</div>
-                                              <input
-                                                type="date"
-                                                className={inputClass}
+                                              <DatePicker
                                                 value={toDateInputValue(coreForm?.contractSignedAt ?? contractSignedAtValue)}
                                                 onChange={(e) =>
                                                   updateCoreForm({
-                                                    contractSignedAt: e.target.value ? e.target.value : null,
+                                                    contractSignedAt: e.currentTarget.value ? e.currentTarget.value : null,
                                                   })
                                                 }
+                                                inputClassName={inputClass}
                                               />
                                             </div>
                                           )}
@@ -4318,7 +4310,6 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
                                           onChange={setBuyerSearchQ}
                                           placeholder="To Add a Buyer - Search by name, email, or phone"
                                           widthPx={560}
-                                          busy={buyerSearchBusy}
                                         />
                                         {buyerHits.length > 0 ? (
                                           <div className="mt-2 max-h-56 overflow-y-auto rounded-md border border-hairline bg-surface-soft">
@@ -4361,7 +4352,6 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
                         {drawerTab === "health" && (
                           <SectionCard
                             title="Health and growth"
-                            description="Review growth trend and recorded health events."
                           >
                             <div className="space-y-4">
                               <div>
@@ -4406,7 +4396,6 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
                         {drawerTab === "media" && (
                           <SectionCard
                             title="Media"
-                            description="Media files linked to this offspring."
                           >
                             <div className={labelClass}>
                               {mediaSummary}
@@ -4418,7 +4407,6 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
                         {drawerTab === "invoices" && (
                           <SectionCard
                             title="Invoices"
-                            description="Invoices linked to this offspring."
                           >
                             <div className="space-y-3">
                               <div className="flex items-center justify-between gap-2">
@@ -4445,7 +4433,6 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
                         {drawerTab === "records" && (
                           <SectionCard
                             title="Related records"
-                            description="Navigate between related groups, siblings, and waitlist entries."
                           >
                             <CrossRefsSection
                               row={row}
@@ -4460,7 +4447,6 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
                         {drawerTab === "notes" && (
                           <SectionCard
                             title="Notes"
-                            description="Internal notes for this offspring."
                           >
                             <div className="text-xs md:text-sm whitespace-pre-wrap">
                               {notes || "No notes recorded yet."}
@@ -4471,6 +4457,7 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
                     );
                   })()}
                 </div>
+                </DetailsScaffold>
               </div>
             </div>
           </div>

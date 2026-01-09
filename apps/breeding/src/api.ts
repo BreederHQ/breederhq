@@ -376,6 +376,20 @@ export function makeBreedingApi(opts: ApiOpts) {
     return res.json() as Promise<T>;
   };
 
+  const del = async <T>(path: string, init?: RequestInit): Promise<T> => {
+    await ensureTenant();
+    const res = await fetchFn(joinUrl(base, path), {
+      method: "DELETE",
+      credentials: "include",
+      headers: buildHeaders("DELETE", init?.headers),
+      ...init,
+    });
+    if (!res.ok) throw await toError(res);
+    // DELETE often returns 204 with no body
+    if (res.status === 204) return {} as T;
+    return res.json() as Promise<T>;
+  };
+
   /* endpoints */
   return {
     /* Health and diag */

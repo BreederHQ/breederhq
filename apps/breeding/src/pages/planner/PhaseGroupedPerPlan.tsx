@@ -378,7 +378,7 @@ function PlanBlock({ plan, prefs }: { plan: PlanLike; prefs: AvailabilityPrefs }
           <section className="px-3 pt-3 pb-3">
             <div className="px-1 pb-2 text-xs font-medium text-secondary">Timeline Phases</div>
             <div className="rounded-xl bg-black/20 p-2 overflow-hidden mb-2" style={{ border: "none" }}>
-              <Gantt {...ganttCommon} stages={toStages(phases.rows)} data={toStageData(phases.rows)} />
+              <Gantt {...ganttCommon} stages={toStages(phases.rows)} data={toStageData(phases.rows) as any} />
             </div>
           </section>
         )}
@@ -387,7 +387,7 @@ function PlanBlock({ plan, prefs }: { plan: PlanLike; prefs: AvailabilityPrefs }
           <section className="px-3 pt-2 pb-3">
             <div className="px-1 pb-2 text-xs font-medium text-secondary">Expected Dates</div>
             <div className="rounded-xl bg-black/20 p-2 overflow-hidden" style={{ border: "none" }}>
-              <Gantt {...ganttCommon} stages={toStages(exact.rows)} data={toStageData(exact.rows)} />
+              <Gantt {...ganttCommon} stages={toStages(exact.rows)} data={toStageData(exact.rows) as any} />
             </div>
           </section>
         )}

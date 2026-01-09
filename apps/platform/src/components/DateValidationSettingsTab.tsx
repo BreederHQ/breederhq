@@ -332,7 +332,7 @@ const DateValidationSettingsTab = React.forwardRef<DateValidationSettingsHandle,
 
     if (loading) {
       return (
-        <SectionCard title="Date Validation Rules" subtitle="Configure validation for breeding plan dates">
+        <SectionCard title={<>Date Validation Rules<div className="text-xs text-secondary font-normal mt-0.5">Configure validation for breeding plan dates</div></>}>
           <div className="text-sm text-secondary">Loading...</div>
         </SectionCard>
       );
@@ -348,8 +348,7 @@ const DateValidationSettingsTab = React.forwardRef<DateValidationSettingsHandle,
 
         {/* Master Toggles */}
         <SectionCard
-          title="Validation Settings"
-          subtitle="Control which validation rules are active when entering breeding plan dates"
+          title={<>Validation Settings<div className="text-xs text-secondary font-normal mt-0.5">Control which validation rules are active when entering breeding plan dates</div></>}
         >
           <Card className="p-4 space-y-4">
             <div className="text-sm font-medium">Master Toggles</div>
@@ -378,8 +377,7 @@ const DateValidationSettingsTab = React.forwardRef<DateValidationSettingsHandle,
 
         {/* Sequence Rules */}
         <SectionCard
-          title="Sequence Rules"
-          subtitle="Hard blocks that prevent impossible date combinations"
+          title={<>Sequence Rules<div className="text-xs text-secondary font-normal mt-0.5">Hard blocks that prevent impossible date combinations</div></>}
         >
           <Card className="p-4 space-y-4">
             <Toggle
@@ -408,8 +406,7 @@ const DateValidationSettingsTab = React.forwardRef<DateValidationSettingsHandle,
 
         {/* Business Rules */}
         <SectionCard
-          title="Business Rules"
-          subtitle="Soft warnings for operational concerns"
+          title={<>Business Rules<div className="text-xs text-secondary font-normal mt-0.5">Soft warnings for operational concerns</div></>}
         >
           <Card className="p-4 space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

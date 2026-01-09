@@ -2,7 +2,7 @@
 import * as React from "react";
 import { createRoot } from "react-dom/client";
 import { createPortal } from "react-dom";
-import { Trash2, Plus, MoreHorizontal, MoreVertical, Download, Archive, Undo2 } from "lucide-react";
+import { Trash2, Plus, MoreHorizontal, MoreVertical, Download, Archive, Undo2, LayoutGrid, Table as TableIcon } from "lucide-react";
 import {
   PageHeader,
   Card,
@@ -16,6 +16,7 @@ import {
   SearchBar,
   FiltersRow,
   DetailsHost,
+  useTableDetails,
   DetailsScaffold,
   SectionCard,
   Button,
@@ -36,14 +37,16 @@ import RollupGantt from "./components/RollupGantt";
 import PerPlanGantt from "./components/PerPlanGantt";
 import PlannerSwitch from "./components/PlannerSwitch";
 import PlanJourney from "./components/PlanJourney";
+import { BreedingPlanCardView } from "./components/BreedingPlanCardView";
 import "@bhq/ui/styles/table.css";
 import "@bhq/ui/styles/details.css";
 import "@bhq/ui/styles/datefield.css";
 import "@bhq/ui/styles/datepicker.css";
 import { makeBreedingApi } from "./api";
 
-import { windowsFromPlan, expectedTestingFromCycleStart, pickPlacementCompletedAny } from "@bhq/ui/utils";
+import { pickPlacementCompletedAny } from "@bhq/ui/utils";
 import { reproEngine } from "@bhq/ui/utils";
+import { windowsFromPlan } from "./adapters/planWindows";
 
 // ── Calendar / Planning wiring ─────────────────────────────
 import BreedingCalendar from "./components/BreedingCalendar";
@@ -56,20 +59,29 @@ import HealthRiskSummary from "./components/HealthRiskSummary";
 import WhatsMissingAnalysis from "./components/WhatsMissingAnalysis";
 import BreedGeneticProfile from "./components/BreedGeneticProfiles";
 import BreedingGoalPlanner from "./components/BreedingGoalPlanner";
+import { BestMatchFinder } from "./components/BestMatchFinder";
+import { PairingComparisonPanel } from "./components/PairingComparisonPanel";
+import { PedigreeTreePanel } from "./components/PedigreeTreePanel";
 import { GeneticsImportDialog } from "@bhq/ui/components/GeneticsImport";
+import { getOffspringName, translatePrediction, extractLocusFromTrait } from "./utils/geneticsSimpleMode";
 
 // ── Planner pages ─────────────────────────────────────────
 import { YourBreedingPlansPage, WhatIfPlanningPage } from "./pages/planner";
 import type { WhatIfFemale } from "./pages/planner/whatIfTypes";
-import { toBackendStatus, fromBackendStatus, deriveBreedingStatus as deriveBreedingStatusImported, type Status as PlannerStatus } from "./pages/planner/deriveBreedingStatus";
+import { toBackendStatus, fromBackendStatus, deriveBreedingStatus as deriveBreedingStatusImported, STATUS_LABELS, type Status as PlannerStatus } from "./pages/planner/deriveBreedingStatus";
 
 
-/* Cycle math */
-import {
-  useCyclePlanner,
-  type Species as PlannerSpecies,
-  type ExpectedDates as PlannerExpected,
-} from "@bhq/ui/hooks";
+/* Cycle math - local types (previously expected from @bhq/ui/hooks) */
+type PlannerSpecies = "Dog" | "Cat" | "Horse" | "Goat" | "Rabbit";
+type PlannerExpected = {
+  ovulation?: string | null;
+  breeding_expected?: string | null;
+  birth_expected?: string | null;
+  weaning_expected?: string | null;
+  placement_expected?: string | null;
+  placement_expected_end?: string | null;
+  [key: string]: any;
+};
 
 import { type NormalizedPlan } from "./adapters/planToGantt";
 
@@ -98,6 +110,7 @@ type WhatIfRow = {
   id: string;
   damId: ID | null;
   damName: string | null;
+  sireId?: ID | null;
   species: SpeciesWire | null;
   cycleStartIso: string | null;
   showOnChart: boolean;
@@ -344,6 +357,93 @@ function computeExpectedForPlan(plan: {
   }
 }
 
+/* ────────────────────────────────────────────────────────────────────────────
+ * Card View Wrapper (uses DetailsHost context)
+ * ────────────────────────────────────────────────────────────────────────── */
+
+type PlanCardRow = {
+  id: number | string;
+  name: string;
+  status: string;
+  species: string;
+  damName: string;
+  sireName?: string | null;
+  breedText?: string | null;
+  expectedBreedDate?: string | null;
+  expectedBirthDate?: string | null;
+  expectedPlacementStartDate?: string | null;
+  depositsCommitted?: number | null;
+  depositsPaid?: number | null;
+  archived?: boolean;
+};
+
+function PlanCardViewWithDetails({
+  rows,
+  loading,
+  error,
+  displayRows,
+  pageSize,
+  page,
+  pageCount,
+  setPage,
+  setPageSize,
+  showArchived,
+  setShowArchived,
+  totalRows,
+  start,
+  end,
+}: {
+  rows: PlanCardRow[];
+  loading: boolean;
+  error: string | null;
+  displayRows: PlanCardRow[];
+  pageSize: number;
+  page: number;
+  pageCount: number;
+  setPage: (p: number) => void;
+  setPageSize: (n: number) => void;
+  showArchived: boolean;
+  setShowArchived: (v: boolean) => void;
+  totalRows: number;
+  start: number;
+  end: number;
+}) {
+  const { open } = useTableDetails<PlanCardRow>();
+
+  return (
+    <>
+      <BreedingPlanCardView
+        rows={rows}
+        loading={loading}
+        error={error}
+        onRowClick={(row) => open?.(row)}
+      />
+      <TableFooter
+        entityLabel="plans"
+        page={page}
+        pageCount={pageCount}
+        pageSize={pageSize}
+        pageSizeOptions={[12, 24, 48, 96]}
+        onPageChange={setPage}
+        onPageSizeChange={(n) => {
+          setPageSize(n);
+          setPage(1);
+        }}
+        start={start}
+        end={end}
+        filteredTotal={displayRows.length}
+        total={totalRows}
+        includeArchived={showArchived}
+        onIncludeArchivedChange={(checked) => {
+          setShowArchived(checked);
+          setPage(1);
+        }}
+        includeArchivedLabel="Show archived"
+      />
+    </>
+  );
+}
+
 function DateField({ label, value, defaultValue, readOnly, onChange }: BHQDateFieldProps) {
   const isReadOnly = !!readOnly;
   // Normalize to ensure only valid yyyy-mm-dd or empty string
@@ -557,10 +657,15 @@ type PlanRow = {
 
   createdAt?: string | null;
   updatedAt?: string | null;
+  createdBy?: string | null;
+  updatedBy?: string | null;
 
   // optional overrides used by planner master view
   femaleCycleLenOverrideDays?: number | null;
   homingStartWeeksOverride?: number | null;
+
+  // offspring tracking
+  offspringGroupId?: number | null;
 };
 
 const COLUMNS: Array<{ key: keyof PlanRow & string; label: string; default?: boolean }> = [
@@ -603,6 +708,29 @@ const COLUMNS: Array<{ key: keyof PlanRow & string; label: string; default?: boo
 ];
 
 const STORAGE_KEY = "bhq_breeding_cols_v2";
+
+// Date columns for CSV export formatting
+const DATE_COLS = new Set([
+  "expectedCycleStart",
+  "expectedHormoneTestingStart",
+  "expectedBreedDate",
+  "expectedBirthDate",
+  "expectedWeaned",
+  "expectedPlacementStartDate",
+  "expectedPlacementCompletedDate",
+  "cycleStartDateActual",
+  "hormoneTestingStartDateActual",
+  "breedDateActual",
+  "birthDateActual",
+  "weanedDateActual",
+  "placementStartDateActual",
+  "placementCompletedDateActual",
+  "completedDateActual",
+  "lockedCycleStart",
+  "lockedOvulationDate",
+  "lockedDueDate",
+  "lockedPlacementStartDate",
+]);
 
 /* ─────────────────────── Helpers ─────────────────────── */
 
@@ -739,6 +867,7 @@ type AnimalLite = {
   id: number;
   name: string;
   species: SpeciesWire;
+  breed?: string | null;
   sex: "FEMALE" | "MALE";
   organization?: { name: string } | null;
   femaleCycleLenOverrideDays?: number | null;
@@ -819,7 +948,7 @@ function confirmModal(
     | string
     | {
       title?: string;
-      message: string;
+      message: string | React.ReactNode;
       confirmText?: string;
       cancelText?: string;
       tone?: "default" | "danger";
@@ -982,7 +1111,7 @@ type WhatIfDamReproData = {
 
 type WhatIfRowEditorProps = {
   row: WhatIfRow;
-  females: { id: ID; name: string; species: SpeciesWire | null }[];
+  females: { id: ID; name: string; species: SpeciesWire | null; femaleCycleLenOverrideDays?: number | null }[];
   api: any;
   tenantId: number | null;
   onChange: (next: WhatIfRow) => void;
@@ -1061,7 +1190,7 @@ function WhatIfRowEditor(props: WhatIfRowEditorProps) {
           .filter(Boolean) as WhatIfDamReproEvent[];
 
         const cycleStartDates: string[] = Array.isArray(data?.cycleStartDates)
-          ? (data.cycleStartDates as any[]).map((d) => asISODateOnly(d)).filter(Boolean).sort()
+          ? (data.cycleStartDates as any[]).map((d) => asISODateOnly(d)).filter((d): d is string => d !== null).sort()
           : [];
 
         const lastCycle: string | null = asISODateOnly(data?.lastCycle ?? data?.last_cycle ?? null);
@@ -1291,6 +1420,7 @@ const SPECIES_PHENOTYPE_MAPS: Record<string, Record<string, Record<string, strin
       "S/S": "Solid (no white)",
       "S/sp": "Solid (carries piebald)",
       "sp/sp": "Piebald/Parti (white patches)",
+    },
     // Coat Type - Critical for doodles
     L: {
       "L/L": "Short coat",
@@ -1425,7 +1555,6 @@ const SPECIES_PHENOTYPE_MAPS: Record<string, Record<string, Record<string, strin
       "N/N": "Clear",
       "N/GPRA": "Carrier",
       "GPRA/GPRA": "Affected",
-    },
     },
   },
 
@@ -1913,8 +2042,8 @@ function calculateGeneticPairing(damGenetics: any, sireGenetics: any, species: s
 
   // Calculate coat color genetics
   if (damGenetics?.coatColor && sireGenetics?.coatColor) {
-    const damLoci = new Map(damGenetics.coatColor.map((l: any) => [l.locus, l]));
-    const sireLoci = new Map(sireGenetics.coatColor.map((l: any) => [l.locus, l]));
+    const damLoci = new Map<string, any>(damGenetics.coatColor.map((l: any) => [l.locus, l]));
+    const sireLoci = new Map<string, any>(sireGenetics.coatColor.map((l: any) => [l.locus, l]));
 
     // Get all unique loci from both parents
     const allLoci = new Set([...damLoci.keys(), ...sireLoci.keys()]);
@@ -2042,8 +2171,8 @@ function calculateGeneticPairing(damGenetics: any, sireGenetics: any, species: s
 
   // Calculate coat type genetics
   if (damGenetics?.coatType && sireGenetics?.coatType) {
-    const damLoci = new Map(damGenetics.coatType.map((l: any) => [l.locus, l]));
-    const sireLoci = new Map(sireGenetics.coatType.map((l: any) => [l.locus, l]));
+    const damLoci = new Map<string, any>(damGenetics.coatType.map((l: any) => [l.locus, l]));
+    const sireLoci = new Map<string, any>(sireGenetics.coatType.map((l: any) => [l.locus, l]));
     const allLoci = new Set([...damLoci.keys(), ...sireLoci.keys()]);
 
     for (const locus of allLoci) {
@@ -2088,8 +2217,8 @@ function calculateGeneticPairing(damGenetics: any, sireGenetics: any, species: s
 
   // Calculate physical traits genetics
   if (damGenetics?.physicalTraits && sireGenetics?.physicalTraits) {
-    const damLoci = new Map(damGenetics.physicalTraits.map((l: any) => [l.locus, l]));
-    const sireLoci = new Map(sireGenetics.physicalTraits.map((l: any) => [l.locus, l]));
+    const damLoci = new Map<string, any>(damGenetics.physicalTraits.map((l: any) => [l.locus, l]));
+    const sireLoci = new Map<string, any>(sireGenetics.physicalTraits.map((l: any) => [l.locus, l]));
     const allLoci = new Set([...damLoci.keys(), ...sireLoci.keys()]);
 
     for (const locus of allLoci) {
@@ -2134,8 +2263,8 @@ function calculateGeneticPairing(damGenetics: any, sireGenetics: any, species: s
 
   // Calculate eye color genetics
   if (damGenetics?.eyeColor && sireGenetics?.eyeColor) {
-    const damLoci = new Map(damGenetics.eyeColor.map((l: any) => [l.locus, l]));
-    const sireLoci = new Map(sireGenetics.eyeColor.map((l: any) => [l.locus, l]));
+    const damLoci = new Map<string, any>(damGenetics.eyeColor.map((l: any) => [l.locus, l]));
+    const sireLoci = new Map<string, any>(sireGenetics.eyeColor.map((l: any) => [l.locus, l]));
     const allLoci = new Set([...damLoci.keys(), ...sireLoci.keys()]);
 
     for (const locus of allLoci) {
@@ -2180,8 +2309,8 @@ function calculateGeneticPairing(damGenetics: any, sireGenetics: any, species: s
 
   // Calculate health genetics
   if (damGenetics?.health && sireGenetics?.health) {
-    const damHealth = new Map(damGenetics.health.map((l: any) => [l.locus, l]));
-    const sireHealth = new Map(sireGenetics.health.map((l: any) => [l.locus, l]));
+    const damHealth = new Map<string, any>(damGenetics.health.map((l: any) => [l.locus, l]));
+    const sireHealth = new Map<string, any>(sireGenetics.health.map((l: any) => [l.locus, l]));
 
     const allHealthLoci = new Set([...damHealth.keys(), ...sireHealth.keys()]);
 
@@ -2378,6 +2507,67 @@ function COICheckPanel({
 }
 
 /** ────────────────────────────────────────────────────────────────────────
+ * Pedigree Tab Content - Helper component with local state for pedigree view
+ * ─────────────────────────────────────────────────────────────────────── */
+function PedigreeTabContent({
+  selectedDamId,
+  selectedSireId,
+  selectedDam,
+  selectedSire,
+}: {
+  selectedDamId: number | string | null;
+  selectedSireId: number | string | null;
+  selectedDam: { name: string } | undefined;
+  selectedSire: { name: string } | undefined;
+}) {
+  const [viewingAnimal, setViewingAnimal] = React.useState<'dam' | 'sire'>('dam');
+
+  const currentAnimalId = viewingAnimal === 'dam' ? selectedDamId : selectedSireId;
+  const currentAnimalName = viewingAnimal === 'dam' ? selectedDam?.name : selectedSire?.name;
+
+  return (
+    <div className="space-y-4">
+      <div className="text-sm text-secondary mb-4">
+        View the pedigree tree with genetic information for the selected animal.
+      </div>
+      <div className="flex gap-2 mb-4">
+        <button
+          onClick={() => setViewingAnimal('dam')}
+          className={`px-4 py-2 text-sm rounded-lg transition-colors ${
+            viewingAnimal === 'dam'
+              ? 'bg-pink-500 text-white'
+              : selectedDamId
+                ? 'bg-pink-500/10 text-pink-600 border border-pink-500/30 hover:bg-pink-500/20'
+                : 'bg-surface-alt text-secondary cursor-not-allowed'
+          }`}
+          disabled={!selectedDamId}
+        >
+          Dam: {selectedDam?.name || 'Not selected'}
+        </button>
+        <button
+          onClick={() => setViewingAnimal('sire')}
+          className={`px-4 py-2 text-sm rounded-lg transition-colors ${
+            viewingAnimal === 'sire'
+              ? 'bg-blue-500 text-white'
+              : selectedSireId
+                ? 'bg-blue-500/10 text-blue-600 border border-blue-500/30 hover:bg-blue-500/20'
+                : 'bg-surface-alt text-secondary cursor-not-allowed'
+          }`}
+          disabled={!selectedSireId}
+        >
+          Sire: {selectedSire?.name || 'Not selected'}
+        </button>
+      </div>
+      <PedigreeTreePanel
+        animalId={currentAnimalId}
+        animalName={currentAnimalName}
+        generations={4}
+      />
+    </div>
+  );
+}
+
+/** ────────────────────────────────────────────────────────────────────────
  * Genetics Lab Page — Genetic pairing analysis and compatibility
  * ─────────────────────────────────────────────────────────────────────── */
 function GeneticsLabPage({
@@ -2397,7 +2587,8 @@ function GeneticsLabPage({
   const [showDisclaimer, setShowDisclaimer] = React.useState(false);
   const [detailLevel, setDetailLevel] = React.useState<'simple' | 'detailed' | 'professional'>('simple');
   const [showImportDialog, setShowImportDialog] = React.useState<'dam' | 'sire' | null>(null);
-  const [activeLabTab, setActiveLabTab] = React.useState<'overview' | 'punnett' | 'simulator' | 'health' | 'colors' | 'goals'>('overview');
+  const [activeLabTab, setActiveLabTab] = React.useState<'overview' | 'punnett' | 'simulator' | 'health' | 'colors' | 'goals' | 'missing' | 'bestmatch' | 'compare' | 'pedigree'>('overview');
+  const [simpleMode, setSimpleMode] = React.useState(false);
 
   // Check if user has already accepted genetics disclaimer
   React.useEffect(() => {
@@ -2664,15 +2855,6 @@ function GeneticsLabPage({
             )}
           </div>
 
-          {/* COI Check - shows automatically when both animals selected */}
-          {selectedDamId && selectedSireId && (
-            <COICheckPanel
-              damId={Number(selectedDamId)}
-              sireId={Number(selectedSireId)}
-              api={api}
-            />
-          )}
-
           {/* Results */}
           {results && (
             <div className="pt-4 border-t border-hairline">
@@ -2701,33 +2883,41 @@ function GeneticsLabPage({
                 </div>
               )}
 
-              {/* Compact Status Bar */}
-              <div className="flex items-center justify-between mb-4 pb-4 border-b border-hairline">
-                <div className="flex items-center gap-3">
-                  <div className={`px-3 py-1.5 rounded-full text-sm font-bold ${
-                    results.score >= 80 ? "bg-green-500/20 text-green-500" :
-                    results.score >= 60 ? "bg-yellow-500/20 text-yellow-500" :
-                    "bg-red-500/20 text-red-500"
+              {/* Pairing Score - Prominent Display */}
+              <div className={`mb-4 p-4 rounded-xl border-2 ${
+                results.score >= 80
+                  ? "bg-green-500/10 border-green-500/40"
+                  : results.score >= 60
+                    ? "bg-yellow-500/10 border-yellow-500/40"
+                    : "bg-red-500/10 border-red-500/40"
+              }`}>
+                <div className="flex items-center gap-4">
+                  <div className={`text-4xl font-bold ${
+                    results.score >= 80 ? "text-green-400" :
+                    results.score >= 60 ? "text-yellow-400" :
+                    "text-red-400"
                   }`}>
-                    {results.score}/100
+                    {results.score}<span className="text-2xl text-secondary/60">/100</span>
                   </div>
-                  <span className="text-sm text-secondary">
-                    {results.score >= 80 ? "Great pairing!" :
-                     results.score >= 60 ? "Proceed with caution" :
-                     "Review warnings above"}
-                  </span>
-                  {results.colorSummary && (
-                    <span className="text-sm text-accent font-medium hidden md:inline">
-                      — {results.colorSummary}
-                    </span>
-                  )}
+                  <div>
+                    <div className={`text-lg font-semibold ${
+                      results.score >= 80 ? "text-green-400" :
+                      results.score >= 60 ? "text-yellow-400" :
+                      "text-red-400"
+                    }`}>
+                      {results.score >= 80 ? "Great Pairing!" :
+                       results.score >= 60 ? "Proceed with Caution" :
+                       "Review Warnings"}
+                    </div>
+                    <div className="text-sm text-secondary">
+                      {results.score >= 80
+                        ? "This pairing has good genetic compatibility"
+                        : results.score >= 60
+                          ? "Some concerns to consider before breeding"
+                          : "Significant health risks identified"}
+                    </div>
+                  </div>
                 </div>
-                <button
-                  onClick={() => window.location.hash = "#/breeding/planner"}
-                  className="px-3 py-1.5 text-xs border border-hairline rounded hover:bg-surface"
-                >
-                  Create What-If Plan
-                </button>
               </div>
 
               {/* ───────────────────────────────────────────────────────────
@@ -2737,11 +2927,15 @@ function GeneticsLabPage({
                 <div className="flex flex-wrap gap-1 mb-4">
                   {[
                     { id: 'overview', label: 'Overview', icon: '📊' },
+                    { id: 'bestmatch', label: 'Best Match', icon: '🔍' },
+                    { id: 'compare', label: 'Compare', icon: '⚖️' },
+                    { id: 'pedigree', label: 'Pedigree', icon: '🌳' },
                     { id: 'punnett', label: 'Punnett Squares', icon: '🧬' },
                     { id: 'simulator', label: 'Offspring Simulator', icon: '🎲' },
                     { id: 'health', label: 'Health Analysis', icon: '🏥' },
                     { id: 'colors', label: 'Color Preview', icon: '🎨' },
                     { id: 'goals', label: 'Breeding Goals', icon: '🎯' },
+                    { id: 'missing', label: "What's Missing", icon: '📋' },
                   ].map((tab) => (
                     <button
                       key={tab.id}
@@ -2766,124 +2960,242 @@ function GeneticsLabPage({
                   {/* Overview Tab - Full Offspring Predictions */}
                   {activeLabTab === 'overview' && (
                     <div className="space-y-4">
+                      {/* COI Check - Coefficient of Inbreeding */}
+                      {selectedDamId && selectedSireId && (
+                        <COICheckPanel
+                          damId={Number(selectedDamId)}
+                          sireId={Number(selectedSireId)}
+                          api={api}
+                        />
+                      )}
+
                       {/* Offspring Predictions Card */}
-                      <div className="rounded-xl border-2 border-accent/30 bg-accent/5 p-4">
+                      <div className="rounded-lg border border-blue-500/30 bg-blue-500/5 p-4">
                         <div className="flex items-center justify-between mb-3">
-                          <h3 className="text-lg font-bold flex items-center gap-2">
-                            Offspring Predictions
-                            {selectedDam?.species && (
-                              <span className="text-sm font-normal text-secondary">
-                                ({selectedDam.species.charAt(0) + selectedDam.species.slice(1).toLowerCase()})
-                              </span>
-                            )}
-                          </h3>
+                          <div className="flex items-center gap-3">
+                            <span className="text-2xl">🎨</span>
+                            <div>
+                              <h3 className="font-semibold">Offspring Predictions</h3>
+                              {selectedDam?.species && (
+                                <div className="text-sm text-secondary">
+                                  {selectedDam.species.charAt(0) + selectedDam.species.slice(1).toLowerCase()} genetics
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => setSimpleMode(!simpleMode)}
+                            className={`px-3 py-1.5 text-xs font-medium rounded-full transition-colors ${
+                              simpleMode
+                                ? "bg-blue-500 text-white"
+                                : "bg-surface-alt text-secondary hover:bg-surface-alt/80"
+                            }`}
+                          >
+                            {simpleMode ? "Simple Mode" : "Technical"}
+                          </button>
                         </div>
 
-                        {/* Color Summary - if available */}
-                        {results.colorSummary && (
-                          <div className="text-sm font-medium text-accent mb-3 pb-3 border-b border-accent/20">
-                            {results.colorSummary}
+                        {/* Simple Mode View - Plain English */}
+                        {simpleMode ? (
+                          <div className="space-y-4">
+                            {/* Simple intro */}
+                            <p className="text-sm text-secondary italic">
+                              Here's what to expect from this pairing, explained simply:
+                            </p>
+
+                            {/* Coat Colors - Simple */}
+                            {results.coatColor?.length > 0 && (
+                              <div className="bg-surface rounded-lg p-3">
+                                <div className="font-medium mb-2 flex items-center gap-2">
+                                  <span>🎨</span>
+                                  <span>Colors & Patterns</span>
+                                </div>
+                                <div className="space-y-2 text-sm">
+                                  {results.coatColor?.map((item: any, idx: number) => {
+                                    const locus = extractLocusFromTrait(item.trait);
+                                    const species = selectedDam?.species || "DOG";
+                                    const simpleText = translatePrediction("coatColor", locus, item.prediction, species);
+                                    return (
+                                      <p key={idx} className="text-primary leading-relaxed">
+                                        {simpleText}
+                                      </p>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Coat Type - Simple */}
+                            {results.coatType?.length > 0 && (
+                              <div className="bg-surface rounded-lg p-3">
+                                <div className="font-medium mb-2 flex items-center gap-2">
+                                  <span>✨</span>
+                                  <span>Coat Type</span>
+                                </div>
+                                <div className="space-y-2 text-sm">
+                                  {results.coatType?.map((item: any, idx: number) => {
+                                    const locus = extractLocusFromTrait(item.trait);
+                                    const species = selectedDam?.species || "DOG";
+                                    const simpleText = translatePrediction("coatType", locus, item.prediction, species);
+                                    return (
+                                      <p key={idx} className="text-primary leading-relaxed">
+                                        {simpleText}
+                                      </p>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Physical Traits - Simple */}
+                            {results.physicalTraits?.length > 0 && (
+                              <div className="bg-surface rounded-lg p-3">
+                                <div className="font-medium mb-2 flex items-center gap-2">
+                                  <span>🦴</span>
+                                  <span>Physical Features</span>
+                                </div>
+                                <div className="space-y-2 text-sm">
+                                  {results.physicalTraits?.map((item: any, idx: number) => {
+                                    const locus = extractLocusFromTrait(item.trait);
+                                    const species = selectedDam?.species || "DOG";
+                                    const simpleText = translatePrediction("physicalTraits", locus, item.prediction, species);
+                                    return (
+                                      <p key={idx} className="text-primary leading-relaxed">
+                                        {simpleText}
+                                      </p>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Eye Color - Simple */}
+                            {results.eyeColor?.length > 0 && (
+                              <div className="bg-surface rounded-lg p-3">
+                                <div className="font-medium mb-2 flex items-center gap-2">
+                                  <span>👁️</span>
+                                  <span>Eye Color</span>
+                                </div>
+                                <div className="space-y-2 text-sm">
+                                  {results.eyeColor?.map((item: any, idx: number) => {
+                                    const locus = extractLocusFromTrait(item.trait);
+                                    const species = selectedDam?.species || "DOG";
+                                    const simpleText = translatePrediction("eyeColor", locus, item.prediction, species);
+                                    return (
+                                      <p key={idx} className="text-primary leading-relaxed">
+                                        {simpleText}
+                                      </p>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Switch to technical hint */}
+                            <p className="text-xs text-secondary text-center pt-2">
+                              Want the full genetic details? Click "Simple Mode" above to switch to technical view.
+                            </p>
+                          </div>
+                        ) : (
+                          /* Technical Mode View - Original compact grid */
+                          <div className="space-y-3">
+                            {/* Coat Color Section */}
+                            {results.coatColor?.length > 0 && (
+                              <div>
+                                <div className="text-xs font-semibold text-secondary uppercase tracking-wide mb-2">Coat Color</div>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1">
+                                  {results.coatColor?.map((item: any, idx: number) => {
+                                    const locusMatch = item.trait.match(/\(([^)]+)\)/);
+                                    const locusName = locusMatch ? locusMatch[1] : item.trait;
+                                    const outcomes = item.prediction.split(', ').map((p: string) => {
+                                      const match = p.match(/^(\d+)%\s+(.+)$/);
+                                      if (!match) return p;
+                                      return `${match[1]}% ${match[2]}`;
+                                    }).join(' · ');
+                                    return (
+                                      <div key={idx} className="flex items-baseline gap-2 text-sm py-0.5">
+                                        <span className="font-medium text-secondary min-w-[80px]">{locusName}</span>
+                                        <span className="text-primary truncate">{outcomes}</span>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Coat Type Section */}
+                            {results.coatType?.length > 0 && (
+                              <div>
+                                <div className="text-xs font-semibold text-secondary uppercase tracking-wide mb-2">Coat Type</div>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1">
+                                  {results.coatType?.map((item: any, idx: number) => {
+                                    const locusMatch = item.trait.match(/\(([^)]+)\)/);
+                                    const locusName = locusMatch ? locusMatch[1] : item.trait;
+                                    const outcomes = item.prediction.split(', ').map((p: string) => {
+                                      const match = p.match(/^(\d+)%\s+(.+)$/);
+                                      if (!match) return p;
+                                      return `${match[1]}% ${match[2]}`;
+                                    }).join(' · ');
+                                    return (
+                                      <div key={idx} className="flex items-baseline gap-2 text-sm py-0.5">
+                                        <span className="font-medium text-secondary min-w-[80px]">{locusName}</span>
+                                        <span className="text-primary truncate">{outcomes}</span>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Physical Traits Section */}
+                            {results.physicalTraits?.length > 0 && (
+                              <div>
+                                <div className="text-xs font-semibold text-secondary uppercase tracking-wide mb-2">Physical Traits</div>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1">
+                                  {results.physicalTraits?.map((item: any, idx: number) => {
+                                    const locusMatch = item.trait.match(/\(([^)]+)\)/);
+                                    const locusName = locusMatch ? locusMatch[1] : item.trait;
+                                    const outcomes = item.prediction.split(', ').map((p: string) => {
+                                      const match = p.match(/^(\d+)%\s+(.+)$/);
+                                      if (!match) return p;
+                                      return `${match[1]}% ${match[2]}`;
+                                    }).join(' · ');
+                                    return (
+                                      <div key={idx} className="flex items-baseline gap-2 text-sm py-0.5">
+                                        <span className="font-medium text-secondary min-w-[80px]">{locusName}</span>
+                                        <span className="text-primary truncate">{outcomes}</span>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Eye Color Section */}
+                            {results.eyeColor?.length > 0 && (
+                              <div>
+                                <div className="text-xs font-semibold text-secondary uppercase tracking-wide mb-2">Eye Color</div>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1">
+                                  {results.eyeColor?.map((item: any, idx: number) => {
+                                    const locusMatch = item.trait.match(/\(([^)]+)\)/);
+                                    const locusName = locusMatch ? locusMatch[1] : item.trait;
+                                    const outcomes = item.prediction.split(', ').map((p: string) => {
+                                      const match = p.match(/^(\d+)%\s+(.+)$/);
+                                      if (!match) return p;
+                                      return `${match[1]}% ${match[2]}`;
+                                    }).join(' · ');
+                                    return (
+                                      <div key={idx} className="flex items-baseline gap-2 text-sm py-0.5">
+                                        <span className="font-medium text-secondary min-w-[80px]">{locusName}</span>
+                                        <span className="text-primary truncate">{outcomes}</span>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            )}
                           </div>
                         )}
-
-                        {/* Compact Grid Layout for all traits */}
-                        <div className="space-y-3">
-                          {/* Coat Color Section */}
-                          {results.coatColor?.length > 0 && (
-                            <div>
-                              <div className="text-xs font-semibold text-secondary uppercase tracking-wide mb-2">Coat Color</div>
-                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1">
-                                {results.coatColor?.map((item: any, idx: number) => {
-                                  const locusMatch = item.trait.match(/\(([^)]+)\)/);
-                                  const locusName = locusMatch ? locusMatch[1] : item.trait;
-                                  const outcomes = item.prediction.split(', ').map((p: string) => {
-                                    const match = p.match(/^(\d+)%\s+(.+)$/);
-                                    if (!match) return p;
-                                    return `${match[1]}% ${match[2]}`;
-                                  }).join(' · ');
-                                  return (
-                                    <div key={idx} className="flex items-baseline gap-2 text-sm py-0.5">
-                                      <span className="font-medium text-secondary min-w-[80px]">{locusName}</span>
-                                      <span className="text-primary truncate">{outcomes}</span>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Coat Type Section */}
-                          {results.coatType?.length > 0 && (
-                            <div>
-                              <div className="text-xs font-semibold text-secondary uppercase tracking-wide mb-2">Coat Type</div>
-                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1">
-                                {results.coatType?.map((item: any, idx: number) => {
-                                  const locusMatch = item.trait.match(/\(([^)]+)\)/);
-                                  const locusName = locusMatch ? locusMatch[1] : item.trait;
-                                  const outcomes = item.prediction.split(', ').map((p: string) => {
-                                    const match = p.match(/^(\d+)%\s+(.+)$/);
-                                    if (!match) return p;
-                                    return `${match[1]}% ${match[2]}`;
-                                  }).join(' · ');
-                                  return (
-                                    <div key={idx} className="flex items-baseline gap-2 text-sm py-0.5">
-                                      <span className="font-medium text-secondary min-w-[80px]">{locusName}</span>
-                                      <span className="text-primary truncate">{outcomes}</span>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Physical Traits Section */}
-                          {results.physicalTraits?.length > 0 && (
-                            <div>
-                              <div className="text-xs font-semibold text-secondary uppercase tracking-wide mb-2">Physical Traits</div>
-                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1">
-                                {results.physicalTraits?.map((item: any, idx: number) => {
-                                  const locusMatch = item.trait.match(/\(([^)]+)\)/);
-                                  const locusName = locusMatch ? locusMatch[1] : item.trait;
-                                  const outcomes = item.prediction.split(', ').map((p: string) => {
-                                    const match = p.match(/^(\d+)%\s+(.+)$/);
-                                    if (!match) return p;
-                                    return `${match[1]}% ${match[2]}`;
-                                  }).join(' · ');
-                                  return (
-                                    <div key={idx} className="flex items-baseline gap-2 text-sm py-0.5">
-                                      <span className="font-medium text-secondary min-w-[80px]">{locusName}</span>
-                                      <span className="text-primary truncate">{outcomes}</span>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Eye Color Section */}
-                          {results.eyeColor?.length > 0 && (
-                            <div>
-                              <div className="text-xs font-semibold text-secondary uppercase tracking-wide mb-2">Eye Color</div>
-                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1">
-                                {results.eyeColor?.map((item: any, idx: number) => {
-                                  const locusMatch = item.trait.match(/\(([^)]+)\)/);
-                                  const locusName = locusMatch ? locusMatch[1] : item.trait;
-                                  const outcomes = item.prediction.split(', ').map((p: string) => {
-                                    const match = p.match(/^(\d+)%\s+(.+)$/);
-                                    if (!match) return p;
-                                    return `${match[1]}% ${match[2]}`;
-                                  }).join(' · ');
-                                  return (
-                                    <div key={idx} className="flex items-baseline gap-2 text-sm py-0.5">
-                                      <span className="font-medium text-secondary min-w-[80px]">{locusName}</span>
-                                      <span className="text-primary truncate">{outcomes}</span>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            </div>
-                          )}
-                        </div>
                       </div>
 
                       {/* Health Check - Compact */}
@@ -2922,14 +3234,6 @@ function GeneticsLabPage({
                         </div>
                       )}
 
-                      {/* What's Missing Alert */}
-                      <WhatsMissingAnalysis
-                        damGenetics={damGenetics}
-                        sireGenetics={sireGenetics}
-                        species={selectedDam?.species || "DOG"}
-                        damName={selectedDam?.name}
-                        sireName={selectedSire?.name}
-                      />
                     </div>
                   )}
 
@@ -3042,6 +3346,62 @@ function GeneticsLabPage({
                       />
                     </div>
                   )}
+
+                  {/* What's Missing Tab */}
+                  {activeLabTab === 'missing' && (
+                    <div>
+                      <div className="text-sm text-secondary mb-4">
+                        Identify gaps in genetic testing coverage for this pairing.
+                      </div>
+                      <WhatsMissingAnalysis
+                        damGenetics={damGenetics}
+                        sireGenetics={sireGenetics}
+                        species={(selectedDam?.species || "DOG") as any}
+                        damName={selectedDam?.name}
+                        sireName={selectedSire?.name}
+                      />
+                    </div>
+                  )}
+
+                  {/* Best Match Finder Tab */}
+                  {activeLabTab === 'bestmatch' && (
+                    <BestMatchFinder
+                      animals={animals}
+                      api={api}
+                      selectedAnimal={selectedDam || null}
+                      mode="find-sires"
+                      onSelectMatch={(sireId) => {
+                        setSelectedSireId(sireId);
+                        setActiveLabTab('overview');
+                      }}
+                      calculateGeneticPairing={calculateGeneticPairing}
+                    />
+                  )}
+
+                  {/* Pairing Comparison Tab */}
+                  {activeLabTab === 'compare' && (
+                    <PairingComparisonPanel
+                      dam={selectedDam || null}
+                      damGenetics={damGenetics}
+                      availableSires={allSires}
+                      api={api}
+                      calculateGeneticPairing={calculateGeneticPairing}
+                      onViewFullPairing={(sireId) => {
+                        setSelectedSireId(sireId);
+                        setActiveLabTab('overview');
+                      }}
+                    />
+                  )}
+
+                  {/* Pedigree Tree Tab */}
+                  {activeLabTab === 'pedigree' && (
+                    <PedigreeTabContent
+                      selectedDamId={selectedDamId}
+                      selectedSireId={selectedSireId}
+                      selectedDam={selectedDam}
+                      selectedSire={selectedSire}
+                    />
+                  )}
                 </div>
               </div>
             </div>
@@ -3072,16 +3432,6 @@ function GeneticsLabPage({
               </div>
             </div>
           )}
-        </div>
-      </Card>
-
-      {/* Recent Analyses */}
-      <Card>
-        <div className="p-4">
-          <h3 className="font-semibold mb-3">Recent Analyses</h3>
-          <div className="text-sm text-secondary">
-            Your recent genetic pairing analyses will appear here.
-          </div>
         </div>
       </Card>
 
@@ -3306,6 +3656,19 @@ export default function AppBreeding() {
     } catch { }
   }, [showArchived]);
 
+  // View mode toggle (table vs cards)
+  const VIEW_MODE_KEY = "bhq_breeding_view_v1";
+  type ViewMode = "table" | "cards";
+  const [viewMode, setViewMode] = React.useState<ViewMode>(() => {
+    try {
+      const stored = localStorage.getItem(VIEW_MODE_KEY);
+      return (stored === "cards" ? "cards" : "table") as ViewMode;
+    } catch { return "table"; }
+  });
+  React.useEffect(() => {
+    try { localStorage.setItem(VIEW_MODE_KEY, viewMode); } catch { }
+  }, [viewMode]);
+
   // Selection (keep raw ID types; do NOT stringify)
   const [selectedKeys, setSelectedKeys] = React.useState<Set<ID>>(() => new Set<ID>());
   // Remember if the user has changed selection at least once
@@ -3484,7 +3847,7 @@ export default function AppBreeding() {
       )
       .map((r): NormalizedPlan => {
         const id = `whatif-${r.id}`;
-        const speciesUi: SpeciesUi = toUiSpecies(r.species);
+        const speciesUi: SpeciesUi = toUiSpecies(r.species) || "Dog";
 
         // Compute expected dates from the locked cycle start using reproEngine
         const expectedDates = computeExpectedForPlan({
@@ -4071,16 +4434,16 @@ export default function AppBreeding() {
 
         const lockPayload: any = {
           lockedCycleStart,
-          lockedOvulationDate: expected.expectedBreedDate,
-          lockedDueDate: expected.expectedBirthDate,
-          lockedPlacementStartDate: expected.expectedPlacementStartDate,
-          expectedCycleStart: expected.expectedCycleStart,
-          expectedHormoneTestingStart: expected.expectedHormoneTestingStart,
-          expectedBreedDate: expected.expectedBreedDate,
-          expectedBirthDate: expected.expectedBirthDate,
-          expectedWeaned: expected.expectedWeaned,
-          expectedPlacementStartDate: expected.expectedPlacementStartDate,
-          expectedPlacementCompletedDate: expected.expectedPlacementCompletedDate,
+          lockedOvulationDate: expected?.expectedBreedDate,
+          lockedDueDate: expected?.expectedBirthDate,
+          lockedPlacementStartDate: expected?.expectedPlacementStartDate,
+          expectedCycleStart: expected?.expectedCycleStart,
+          expectedHormoneTestingStart: expected?.expectedHormoneTestingStart,
+          expectedBreedDate: expected?.expectedBreedDate,
+          expectedBirthDate: expected?.expectedBirthDate,
+          expectedWeaned: expected?.expectedWeaned,
+          expectedPlacementStartDate: expected?.expectedPlacementStartDate,
+          expectedPlacementCompletedDate: expected?.expectedPlacementCompletedDate,
         };
 
         const finalRes = await api.updatePlan(Number(createdPlan.id), lockPayload);
@@ -4312,7 +4675,7 @@ export default function AppBreeding() {
           openCustomBreed={(speciesUi: SpeciesUi, onCreated: (name: string) => void) => {
             const s = (speciesUi || "Dog").toUpperCase() as "DOG" | "CAT" | "HORSE";
             setCustomBreedSpecies(s);
-            setOnCustomBreedCreated(() => (c) => {
+            setOnCustomBreedCreated(() => (c: any) => {
               onCreated(c.name);
               setCustomBreedOpen(false);
             });
@@ -4381,68 +4744,69 @@ export default function AppBreeding() {
       <div className="p-4 space-y-4">
         <div className="relative">
           <PageHeader title="Breeding" subtitle="Create and manage breeding plans" />
-          <div className="absolute right-0 top-0 h-full flex items-center gap-2 pr-1" style={{ zIndex: 50, pointerEvents: "auto" }}>
-            {/* Top-right page navigation */}
-            <nav className="flex items-center gap-1 mr-1">
+
+          {/* Right-aligned Tab Navigation with emojis and orange underline */}
+          <div className="absolute right-0 top-0 h-full flex items-center">
+            <nav className="flex items-center gap-1">
               <SafeNavLink
                 to={basePath === "/" ? "/" : `${basePath}/`}
                 end
                 className={({ isActive }) =>
                   [
-                    "h-9 px-2 text-sm font-semibold leading-9 border-b-2 border-transparent transition-colors",
-                    isActive ? "text-primary" : "text-secondary hover:text-primary",
+                    "h-9 px-3 text-sm font-semibold leading-9 border-b-2 transition-colors flex items-center gap-1.5",
+                    isActive
+                      ? "text-primary border-accent"
+                      : "text-secondary hover:text-primary border-transparent",
                   ].join(" ")
                 }
-                style={({ isActive }) =>
-                  isActive ? { borderBottomColor: "hsl(var(--brand-orange))" } : undefined
-                }
               >
-                Plans
+                <span>📋</span>
+                <span>Plans</span>
               </SafeNavLink>
 
               <SafeNavLink
                 to={`${basePath}/calendar`}
                 className={({ isActive }) =>
                   [
-                    "h-9 px-2 text-sm font-semibold leading-9 border-b-2 border-transparent transition-colors",
-                    isActive ? "text-primary" : "text-secondary hover:text-primary",
+                    "h-9 px-3 text-sm font-semibold leading-9 border-b-2 transition-colors flex items-center gap-1.5",
+                    isActive
+                      ? "text-primary border-accent"
+                      : "text-secondary hover:text-primary border-transparent",
                   ].join(" ")
                 }
-                style={({ isActive }) =>
-                  isActive ? { borderBottomColor: "hsl(var(--brand-orange))" } : undefined
-                }
               >
-                Calendar
+                <span>📅</span>
+                <span>Calendar</span>
               </SafeNavLink>
 
               <SafeNavLink
                 to={`${basePath}/planner`}
                 className={({ isActive }) =>
                   [
-                    "h-9 px-2 text-sm font-semibold leading-9 border-b-2 border-transparent transition-colors",
-                    isActive ? "text-primary" : "text-secondary hover:text-primary",
+                    "h-9 px-3 text-sm font-semibold leading-9 border-b-2 transition-colors flex items-center gap-1.5",
+                    isActive
+                      ? "text-primary border-accent"
+                      : "text-secondary hover:text-primary border-transparent",
                   ].join(" ")
                 }
-                style={({ isActive }) =>
-                  isActive ? { borderBottomColor: "hsl(var(--brand-orange))" } : undefined
-                }
               >
-                Planner
+                <span>🔮</span>
+                <span>Planner</span>
               </SafeNavLink>
 
               <SafeNavLink
                 to={`${basePath}/genetics-lab`}
                 className={({ isActive }) =>
                   [
-                    "h-9 px-2 text-sm font-semibold leading-9 border-b-2 border-transparent transition-colors",
-                    isActive ? "text-primary" : "text-secondary hover:text-primary",
+                    "h-9 px-3 text-sm font-semibold leading-9 border-b-2 transition-colors flex items-center gap-1.5",
+                    isActive
+                      ? "text-primary border-accent"
+                      : "text-secondary hover:text-primary border-transparent",
                   ].join(" ")
                 }
-                style={({ isActive }) =>
-                  isActive ? { borderBottomColor: "hsl(var(--brand-orange))" } : undefined
-                }
               >
-                Genetics Lab
+                <span>🧬</span>
+                <span>Genetics Lab</span>
               </SafeNavLink>
             </nav>
           </div>
@@ -4459,160 +4823,212 @@ export default function AppBreeding() {
                 closeOnOutsideClick={!drawerHasPendingChanges}
                 closeOnEscape={!drawerHasPendingChanges}
               >
-                <Table
-                  columns={COLUMNS}
-                  columnState={map}
-                  onColumnStateChange={setAll}
-                  getRowId={(r: PlanRow) => r.id}
-                  pageSize={25}
-                  renderStickyRight={() => (
-                    <ColumnsPopover
-                      columns={map}
-                      onToggle={toggle}
-                      onSet={setAll}
-                      onReset={() => setAll(COLUMNS)}
-                      allColumns={COLUMNS}
-                      triggerClassName="bhq-columns-trigger"
-                    />
-                  )}
-                  stickyRightWidthPx={40}
-                >
-                  {/* Toolbar */}
-                  <div className="bhq-table__toolbar px-2 pt-2 pb-3 relative z-30 flex items-center gap-2">
-                    <div className="min-w-0 flex-1">
-                      <SearchBar
-                        value={q}
-                        onChange={setQ}
-                        placeholder="Search any field…"
-                        rightSlot={
-                          <button
-                            type="button"
-                            onClick={() => setFiltersOpen((v) => !v)}
-                            aria-expanded={filtersOpen}
-                            title="Filters"
-                            className="h-7 w-7 rounded-md flex items-center justify-center hover:bg-white/5 focus:outline-none"
-                          >
-                            <svg
-                              viewBox="0 0 24 24"
-                              className="h-4 w-4"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth={2}
-                              aria-hidden="true"
-                            >
-                              <path d="M3 5h18M7 12h10M10 19h4" strokeLinecap="round" />
-                            </svg>
-                          </button>
-                        }
-                      />
-                    </div>
-
-                    <Button
-                      size="sm"
-                      onClick={() => setCreateOpen(true)}
-                      disabled={!api}
-                      className="ml-auto shrink-0"
-                    >
-                      New Breeding Plan
-                    </Button>
-                    <Popover open={menuOpen} onOpenChange={setMenuOpen}>
-                      <Popover.Trigger asChild>
-                        <Button size="sm" variant="outline" aria-label="More actions">
-                          <MoreHorizontal className="h-4 w-4" />
-                        </Button>
-                      </Popover.Trigger>
-                      <Popover.Content align="end" className="w-48">
-                        <button
-                          className="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-white/5 rounded"
-                          onClick={handleExportCsv}
+                {/* Shared Toolbar - always visible */}
+                <div className="bhq-table__toolbar px-3 pt-3 pb-3 relative z-30 flex items-center gap-3">
+                  <SearchBar
+                    value={q}
+                    onChange={setQ}
+                    placeholder="Search any field…"
+                    widthPx={420}
+                    rightSlot={
+                      <button
+                        type="button"
+                        onClick={() => setFiltersOpen((v) => !v)}
+                        aria-expanded={filtersOpen}
+                        title="Filters"
+                        className="h-7 w-7 rounded-md flex items-center justify-center hover:bg-white/5 focus:outline-none"
+                      >
+                        <svg
+                          viewBox="0 0 24 24"
+                          className="h-4 w-4"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth={2}
+                          aria-hidden="true"
                         >
-                          <Download className="h-4 w-4" />
-                          Export CSV
-                        </button>
-                      </Popover.Content>
-                    </Popover>
+                          <path d="M3 5h18M7 12h10M10 19h4" strokeLinecap="round" />
+                        </svg>
+                      </button>
+                    }
+                  />
+
+                  {/* View mode toggle */}
+                  <div className="flex items-center rounded-lg border border-hairline overflow-hidden">
+                    <button
+                      type="button"
+                      onClick={() => setViewMode("table")}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 text-sm transition-colors ${
+                        viewMode === "table"
+                          ? "bg-[hsl(var(--brand-orange))] text-black"
+                          : "bg-transparent text-secondary hover:text-primary hover:bg-[hsl(var(--muted)/0.5)]"
+                      }`}
+                      title="Table view"
+                    >
+                      <TableIcon className="w-4 h-4" />
+                      <span className="hidden sm:inline">Table</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setViewMode("cards")}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 text-sm transition-colors ${
+                        viewMode === "cards"
+                          ? "bg-[hsl(var(--brand-orange))] text-black"
+                          : "bg-transparent text-secondary hover:text-primary hover:bg-[hsl(var(--muted)/0.5)]"
+                      }`}
+                      title="Card view"
+                    >
+                      <LayoutGrid className="w-4 h-4" />
+                      <span className="hidden sm:inline">Cards</span>
+                    </button>
                   </div>
 
-                  {/* Filters */}
-                  {filtersOpen && (
-                    <FiltersRow
-                      filters={filters}
-                      onChange={(next) => setFilters(next)}
-                      schema={FILTER_SCHEMA}
-                    />
+                  {/* Column toggle - only show in table mode */}
+                  {viewMode === "table" && (
+                    <div className="ml-auto">
+                      <ColumnsPopover
+                        columns={map}
+                        onToggle={toggle}
+                        onSet={setAll}
+                        allColumns={COLUMNS}
+                        triggerClassName="bhq-columns-trigger"
+                      />
+                    </div>
                   )}
 
-                  {/* Table */}
-                  <table className="min-w-max w-full text-sm">
-                    <TableHeader columns={visibleSafe} sorts={sorts} onToggleSort={onToggleSort} />
-                    <tbody>
-                      {loading && (
-                        <TableRow>
-                          <TableCell colSpan={visibleSafe.length}>
-                            <div className="py-8 text-center text-sm text-secondary">Loading breeding plans…</div>
-                          </TableCell>
-                        </TableRow>
-                      )}
+                  <Button
+                    size="sm"
+                    onClick={() => setCreateOpen(true)}
+                    disabled={!api}
+                    className={viewMode === "cards" ? "ml-auto shrink-0" : "shrink-0"}
+                  >
+                    New Breeding Plan
+                  </Button>
+                  <Popover open={menuOpen} onOpenChange={setMenuOpen}>
+                    <Popover.Trigger asChild>
+                      <Button size="sm" variant="outline" aria-label="More actions">
+                        <MoreHorizontal className="h-4 w-4" />
+                      </Button>
+                    </Popover.Trigger>
+                    <Popover.Content align="end" className="w-48">
+                      <button
+                        className="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-white/5 rounded"
+                        onClick={handleExportCsv}
+                      >
+                        <Download className="h-4 w-4" />
+                        Export CSV
+                      </button>
+                    </Popover.Content>
+                  </Popover>
+                </div>
 
-                      {!loading && error && (
-                        <TableRow>
-                          <TableCell colSpan={visibleSafe.length}>
-                            <div className="py-8 text-center text-sm text-red-600">Error: {error}</div>
-                          </TableCell>
-                        </TableRow>
-                      )}
+                {/* Filters */}
+                {filtersOpen && (
+                  <FiltersRow
+                    filters={filters}
+                    onChange={(next) => setFilters(next)}
+                    schema={FILTER_SCHEMA}
+                  />
+                )}
 
-                      {!loading && !error && pageRows.length === 0 && (
-                        <TableRow>
-                          <TableCell colSpan={visibleSafe.length}>
-                            <div className="py-8 text-center text-sm text-secondary">No breeding plans to display yet.</div>
-                          </TableCell>
-                        </TableRow>
-                      )}
-
-                      {!loading &&
-                        !error &&
-                        pageRows.length > 0 &&
-                        pageRows.map((r) => (
-                          <TableRow
-                            key={r.id}
-                            detailsRow={r}
-                            className={r.archived || r.archivedAt ? "bhq-row-archived" : undefined}
-                          >
-                            {visibleSafe.map((c) => {
-                              let v = (r as any)[c.key] as any;
-                              if (DATE_KEYS.has(c.key as any)) v = fmt(v);
-                              if (Array.isArray(v)) v = v.join(", ");
-                              return <TableCell key={c.key}>{v ?? ""}</TableCell>;
-                            })}
+                {/* Conditional view rendering */}
+                {viewMode === "table" ? (
+                  <Table
+                    columns={COLUMNS}
+                    columnState={map}
+                    onColumnStateChange={setAll}
+                    getRowId={(r: PlanRow) => r.id}
+                    pageSize={25}
+                    stickyRightWidthPx={0}
+                  >
+                    {/* Table */}
+                    <table className="min-w-max w-full text-sm">
+                      <TableHeader columns={visibleSafe} sorts={sorts} onToggleSort={onToggleSort} />
+                      <tbody>
+                        {loading && (
+                          <TableRow>
+                            <TableCell colSpan={visibleSafe.length}>
+                              <div className="py-8 text-center text-sm text-secondary">Loading breeding plans…</div>
+                            </TableCell>
                           </TableRow>
-                        ))}
-                    </tbody>
-                  </table>
+                        )}
 
-                  <TableFooter
-                    entityLabel="plans"
+                        {!loading && error && (
+                          <TableRow>
+                            <TableCell colSpan={visibleSafe.length}>
+                              <div className="py-8 text-center text-sm text-red-600">Error: {error}</div>
+                            </TableCell>
+                          </TableRow>
+                        )}
+
+                        {!loading && !error && pageRows.length === 0 && (
+                          <TableRow>
+                            <TableCell colSpan={visibleSafe.length}>
+                              <div className="py-8 text-center text-sm text-secondary">No breeding plans to display yet.</div>
+                            </TableCell>
+                          </TableRow>
+                        )}
+
+                        {!loading &&
+                          !error &&
+                          pageRows.length > 0 &&
+                          pageRows.map((r) => (
+                            <TableRow
+                              key={r.id}
+                              detailsRow={r}
+                              className={r.archived || r.archivedAt ? "bhq-row-archived" : undefined}
+                            >
+                              {visibleSafe.map((c) => {
+                                let v = (r as any)[c.key] as any;
+                                if (DATE_KEYS.has(c.key as any)) v = fmt(v);
+                                if (Array.isArray(v)) v = v.join(", ");
+                                return <TableCell key={c.key}>{v ?? ""}</TableCell>;
+                              })}
+                            </TableRow>
+                          ))}
+                      </tbody>
+                    </table>
+
+                    <TableFooter
+                      entityLabel="plans"
+                      page={clampedPage}
+                      pageCount={pageCount}
+                      pageSize={pageSize}
+                      pageSizeOptions={[10, 25, 50, 100]}
+                      onPageChange={(p) => setPage(p)}
+                      onPageSizeChange={(n) => {
+                        setPageSize(n);
+                        setPage(1);
+                      }}
+                      start={start}
+                      end={end}
+                      filteredTotal={displayRows.length}
+                      total={rows.length}
+                      includeArchived={showArchived}
+                      onIncludeArchivedChange={(checked) => {
+                        setShowArchived(checked);
+                        setPage(1);
+                      }}
+                      includeArchivedLabel="Show archived"
+                    />
+                  </Table>
+                ) : (
+                  <PlanCardViewWithDetails
+                    rows={pageRows}
+                    loading={loading}
+                    error={error}
+                    displayRows={displayRows}
+                    pageSize={pageSize}
                     page={clampedPage}
                     pageCount={pageCount}
-                    pageSize={pageSize}
-                    pageSizeOptions={[10, 25, 50, 100]}
-                    onPageChange={(p) => setPage(p)}
-                    onPageSizeChange={(n) => {
-                      setPageSize(n);
-                      setPage(1);
-                    }}
+                    setPage={setPage}
+                    setPageSize={setPageSize}
+                    showArchived={showArchived}
+                    setShowArchived={setShowArchived}
+                    totalRows={rows.length}
                     start={start}
                     end={end}
-                    filteredTotal={displayRows.length}
-                    total={rows.length}
-                    includeArchived={showArchived}
-                    onIncludeArchivedChange={(checked) => {
-                      setShowArchived(checked);
-                      setPage(1);
-                    }}
-                    includeArchivedLabel="Show archived"
                   />
-                </Table>
+                )}
               </DetailsHost>
 
               {/* Quick Add Event modal */}
@@ -4805,7 +5221,7 @@ export default function AppBreeding() {
                               setCustomBreedSpecies(speciesEnum);
                               setOnCustomBreedCreated(
                                 () =>
-                                  (created) => {
+                                  (created: any) => {
                                     setNewBreed({
                                       id: created.id,
                                       name: created.name,
@@ -5564,13 +5980,14 @@ function PlanDetailsView(props: {
           console.warn(`[Breeding] Invalid state on load: ${statusU} without weaned date. Auto-correcting to ${correctedStatus}.`);
 
           try {
+            if (!api) return;
             const payload: any = {
               status: toBackendStatus(correctedStatus)
             };
 
             await api.updatePlan(Number(row.id), payload);
             const fresh = await api.getPlan(Number(row.id), "parents,org");
-            onPlanUpdated?.(planToRow(fresh));
+            onPlanUpdated?.(row.id, planToRow(fresh));
 
             alert(`Your plan status was automatically corrected from ${STATUS_LABELS[statusU as Status] || statusU} to ${STATUS_LABELS[correctedStatus]} because the Weaning Completed date was missing.\n\nThis ensures data consistency. You can now proceed through the phases normally.`);
           } catch (error) {
@@ -6013,7 +6430,7 @@ function PlanDetailsView(props: {
         const cycleStartDates: string[] = Array.isArray(data?.cycleStartDates)
           ? (data.cycleStartDates as any[])
             .map((d) => asISODateOnly(d))
-            .filter(Boolean)
+            .filter((d): d is string => d !== null)
             .sort()
           : [];
 
@@ -6136,7 +6553,7 @@ function PlanDetailsView(props: {
 
     if (!speciesWire) return [];
 
-    const summary: ReproSummary = {
+    const summary: any = {
       species: speciesWire,
       cycleStartsAsc,
       dob: null,
@@ -6332,7 +6749,7 @@ function PlanDetailsView(props: {
   // Recalculate expected dates using the most recent ACTUAL date as the seed
   // Priority: actualBirthDate > actualCycleStart
   // When birth has occurred, only post-birth dates are recalculated
-  function recalculateExpectedDatesFromActual(actualCycleStart: string | null, actualBirthDate: string | null) {
+  function recalculateExpectedDatesFromActual(actualCycleStart: string | null | undefined, actualBirthDate: string | null | undefined) {
     // Priority 1: If actual birth exists, recalculate post-birth dates from birth
     if (actualBirthDate && String(actualBirthDate).trim()) {
 
@@ -6673,7 +7090,7 @@ function PlanDetailsView(props: {
       onEdit={editable ? () => setMode("edit") : undefined}
       onCancel={handleCancel}
       onSave={handleSave}
-      tabs={tabs}
+      tabs={tabs as { key: string; label: string }[]}
       activeTab={activeTab}
       onTabChange={setActiveTab}
       onClose={handleClose}
@@ -7028,7 +7445,7 @@ function PlanDetailsView(props: {
               isEdit={isEdit}
               guidanceCollapsed={guidanceCollapsed}
               onToggleGuidance={setGuidanceCollapsed}
-              confirmModal={confirmModal}
+              confirmModal={confirmModal as any}
             />
 
             {/* Plan Info */}
@@ -8243,6 +8660,7 @@ function PlanDetailsView(props: {
 
                           // Call API directly with reset dates AND derived status
                           try {
+                            if (!api) return;
                             const payload = {
                               ...resetDates,
                               status: toBackendStatus(derivedStatus),

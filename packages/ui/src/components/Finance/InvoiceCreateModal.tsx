@@ -5,6 +5,7 @@ import * as React from "react";
 import { Dialog } from "../Dialog";
 import { Button } from "../Button";
 import { Input } from "../Input";
+import { DatePicker } from "../DatePicker";
 import { useToast } from "../../atoms/Toast";
 import { PartyAutocomplete, type AutocompleteOption } from "./PartyAutocomplete";
 import { AnimalAutocomplete } from "./AnimalAutocomplete";
@@ -566,19 +567,17 @@ export function InvoiceCreateModal({
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="block text-xs text-secondary mb-1">Issued Date *</label>
-            <Input
-              type="date"
+            <DatePicker
               value={form.issuedAt}
-              onChange={(e) => setForm((f) => ({ ...f, issuedAt: e.target.value }))}
+              onChange={(e) => setForm((f) => ({ ...f, issuedAt: e.currentTarget.value }))}
             />
             {errors.issuedAt && <div className="text-xs text-red-400 mt-1">{errors.issuedAt}</div>}
           </div>
           <div>
             <label className="block text-xs text-secondary mb-1">Due Date</label>
-            <Input
-              type="date"
+            <DatePicker
               value={form.dueAt}
-              onChange={(e) => setForm((f) => ({ ...f, dueAt: e.target.value }))}
+              onChange={(e) => setForm((f) => ({ ...f, dueAt: e.currentTarget.value }))}
             />
           </div>
         </div>

@@ -1,6 +1,6 @@
 // apps/bloodlines/src/pages/CompetitionsPage.tsx
 import * as React from "react";
-import { PageHeader, Button } from "@bhq/ui";
+import { PageHeader, Button, DatePicker } from "@bhq/ui";
 
 /* ───────────────── Types ───────────────── */
 
@@ -224,12 +224,10 @@ function AddCompetitionModal({ animals, onClose, onSave }: AddCompetitionModalPr
             </div>
             <div>
               <label className="block text-sm font-medium text-secondary mb-1">Date *</label>
-              <input
-                type="date"
-                className="w-full px-3 py-2 bg-surface-strong border border-hairline rounded-lg text-primary"
+              <DatePicker
                 value={eventDate}
-                onChange={(e) => setEventDate(e.target.value)}
-                required
+                onChange={(e) => setEventDate(e.currentTarget.value)}
+                inputClassName="w-full px-3 py-2 bg-surface-strong border border-hairline rounded-lg text-primary"
               />
             </div>
           </div>

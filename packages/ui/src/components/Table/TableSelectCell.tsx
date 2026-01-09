@@ -27,8 +27,7 @@ export function TableSelectCell({
   const setRef = React.useCallback((el: HTMLInputElement | null) => {
     // keep original behavior
     if (objRef && "current" in objRef) {
-      // @ts-expect-error relax nullability for assignment, hook handles null
-      objRef.current = el;
+      (objRef as React.MutableRefObject<HTMLInputElement | null>).current = el;
     }
   }, [objRef]);
 

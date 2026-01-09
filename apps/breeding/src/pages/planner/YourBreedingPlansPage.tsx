@@ -15,7 +15,7 @@ type PlanLike = {
   name: string;
   lockedCycleStart?: string | null;
   // Status derivation fields
-  species?: string | null;
+  species?: string;
   damId?: number | null;
   sireId?: number | null;
   breedDateActual?: string | null;

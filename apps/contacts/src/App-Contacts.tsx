@@ -26,7 +26,8 @@ import {
   IntlPhoneField,
   PillToggle,
 } from "@bhq/ui";
-import { Download, MoreHorizontal, ChevronDown } from "lucide-react";
+import { Download, MoreHorizontal, ChevronDown, LayoutGrid, Table as TableIcon } from "lucide-react";
+import { ContactCardView } from "./components/ContactCardView";
 import "@bhq/ui/styles/table.css";
 import { makeApi } from "./api";
 import { PartyKind } from "@bhq/api";
@@ -111,6 +112,9 @@ const PARTY_COLUMNS: Array<{ key: keyof PartyTableRow & string; label: string; d
 
 const STORAGE_KEY = "bhq_party_contacts_cols_v1";
 const Q_KEY = "bhq_party_contacts_q_v1";
+const VIEW_MODE_KEY = "bhq_party_contacts_view_v1";
+
+type ViewMode = "table" | "cards";
 
 /* ────────────────────────────────────────────────────────────────────────────
  * Helpers
@@ -414,6 +418,75 @@ function PartyTableBody({
 }
 
 /* ────────────────────────────────────────────────────────────────────────────
+ * Card View Wrapper (uses DetailsHost context)
+ * ────────────────────────────────────────────────────────────────────────── */
+
+function CardViewWithDetails({
+  rows,
+  loading,
+  error,
+  displayRows,
+  pageSize,
+  page,
+  pageCount,
+  setPage,
+  setPageSize,
+  includeArchived,
+  setIncludeArchived,
+  totalRows,
+}: {
+  rows: PartyTableRow[];
+  loading: boolean;
+  error: string | null;
+  displayRows: PartyTableRow[];
+  pageSize: number;
+  page: number;
+  pageCount: number;
+  setPage: (p: number) => void;
+  setPageSize: (n: number) => void;
+  includeArchived: boolean;
+  setIncludeArchived: (v: boolean) => void;
+  totalRows: number;
+}) {
+  const { open } = useTableDetails<PartyTableRow>();
+
+  const start = displayRows.length === 0 ? 0 : (page - 1) * pageSize + 1;
+  const end = displayRows.length === 0 ? 0 : Math.min(displayRows.length, page * pageSize);
+
+  return (
+    <>
+      <ContactCardView
+        rows={rows}
+        loading={loading}
+        error={error}
+        onRowClick={(row) => open?.(row)}
+      />
+      <TableFooter
+        entityLabel="entries"
+        page={page}
+        pageCount={pageCount}
+        pageSize={pageSize}
+        pageSizeOptions={[12, 24, 48, 96]}
+        onPageChange={setPage}
+        onPageSizeChange={(n) => {
+          setPageSize(n);
+          setPage(1);
+        }}
+        start={start}
+        end={end}
+        filteredTotal={displayRows.length}
+        total={totalRows}
+        includeArchived={includeArchived}
+        onIncludeArchivedChange={(checked) => {
+          setIncludeArchived(checked);
+          setPage(1);
+        }}
+      />
+    </>
+  );
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
  * Main Component
  * ────────────────────────────────────────────────────────────────────────── */
 
@@ -431,6 +504,17 @@ export default function AppContacts() {
     try { return localStorage.getItem(Q_KEY) || ""; } catch { return ""; }
   });
   React.useEffect(() => { try { localStorage.setItem(Q_KEY, q); } catch { } }, [q]);
+
+  // View mode toggle (table vs cards) - experimental
+  const [viewMode, setViewMode] = React.useState<ViewMode>(() => {
+    try {
+      const stored = localStorage.getItem(VIEW_MODE_KEY);
+      return (stored === "cards" ? "cards" : "table") as ViewMode;
+    } catch { return "table"; }
+  });
+  React.useEffect(() => {
+    try { localStorage.setItem(VIEW_MODE_KEY, viewMode); } catch { }
+  }, [viewMode]);
 
   const [qDebounced, setQDebounced] = React.useState(q);
   React.useEffect(() => {
@@ -473,8 +557,8 @@ export default function AppContacts() {
           }),
         ]);
 
-        const contacts = (contactsRes?.items || contactsRes?.data || []).map(contactToPartyRow);
-        const orgs = (orgsRes?.items || orgsRes?.data || []).map(organizationToPartyRow);
+        const contacts = (contactsRes?.items || (contactsRes as any)?.data || []).map(contactToPartyRow);
+        const orgs = (orgsRes?.items || (orgsRes as any)?.data || []).map(organizationToPartyRow);
 
         // Merge and sort by displayName
         const merged = [...contacts, ...orgs].sort((a, b) =>
@@ -628,7 +712,7 @@ export default function AppContacts() {
     () => ({
       idParam: "partyId",
       getRowId: (r: PartyTableRow) => r.partyId,
-      width: 820,
+      width: 900,
       placement: "center" as const,
       align: "top" as const,
       fetchRow: async (id: number | string) => {
@@ -668,7 +752,19 @@ export default function AppContacts() {
         { key: "audit", label: "Audit" },
       ],
       customChrome: true, // Use custom chrome with DetailsScaffold
-      render: (props: any) => <PartyDetailsView {...props} />,
+      render: (props: any) => {
+        const handleDelete = async () => {
+          const row = props.row as PartyTableRow;
+          if (row.kind === "CONTACT" && row.contactId) {
+            await api.contacts.remove(row.contactId);
+          } else if (row.kind === "ORGANIZATION" && row.organizationId) {
+            await api.organizations.remove(row.organizationId);
+          }
+          // Remove from local state
+          setRows((prev) => prev.filter((r) => r.partyId !== row.partyId));
+        };
+        return <PartyDetailsView {...props} onDelete={handleDelete} />;
+      },
       onSave: async (id: number | string, draft: any) => {
         const row = rows.find((r) => r.partyId === Number(id));
         if (!row) return;
@@ -824,68 +920,120 @@ export default function AppContacts() {
 
       <Card>
         <DetailsHost rows={rows} config={detailsConfig}>
-          <Table
-            columns={PARTY_COLUMNS}
-            columnState={map}
-            onColumnStateChange={setAll}
-            getRowId={(r: PartyTableRow) => r.partyId}
-            pageSize={pageSize}
-            renderStickyRight={() => (
-              <ColumnsPopover
-                columns={map}
-                onToggle={toggle}
-                onSet={setAll}
-                allColumns={PARTY_COLUMNS}
-                triggerClassName="bhq-columns-trigger"
-              />
-            )}
-            stickyRightWidthPx={40}
-          >
-          {/* Toolbar */}
-          <div className="bhq-table__toolbar px-2 pt-2 pb-3 relative z-30">
+          {/* Shared Toolbar - always visible */}
+          <div className="bhq-table__toolbar px-3 pt-3 pb-3 relative z-30 flex items-center gap-3">
             <SearchBar
               value={q}
               onChange={setQ}
               placeholder="Search contacts and organizations..."
-              widthPx={520}
+              widthPx={420}
             />
+
+            {/* View mode toggle */}
+            <div className="flex items-center rounded-lg border border-hairline overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setViewMode("table")}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-sm transition-colors ${
+                  viewMode === "table"
+                    ? "bg-[hsl(var(--brand-orange))] text-black"
+                    : "bg-transparent text-secondary hover:text-primary hover:bg-[hsl(var(--muted)/0.5)]"
+                }`}
+                title="Table view"
+              >
+                <TableIcon className="w-4 h-4" />
+                <span className="hidden sm:inline">Table</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode("cards")}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-sm transition-colors ${
+                  viewMode === "cards"
+                    ? "bg-[hsl(var(--brand-orange))] text-black"
+                    : "bg-transparent text-secondary hover:text-primary hover:bg-[hsl(var(--muted)/0.5)]"
+                }`}
+                title="Card view"
+              >
+                <LayoutGrid className="w-4 h-4" />
+                <span className="hidden sm:inline">Cards</span>
+              </button>
+            </div>
+
+            {/* Column toggle - only show in table mode */}
+            {viewMode === "table" && (
+              <div className="ml-auto">
+                <ColumnsPopover
+                  columns={map}
+                  onToggle={toggle}
+                  onSet={setAll}
+                  allColumns={PARTY_COLUMNS}
+                  triggerClassName="bhq-columns-trigger"
+                />
+              </div>
+            )}
           </div>
 
-          {/* Table */}
-          <table className="min-w-max w-full text-sm">
-            <TableHeader columns={visibleSafe} sorts={sorts} onToggleSort={onToggleSort} />
-            <tbody>
-              <PartyTableBody
-                pageRows={pageRows}
-                visibleSafe={visibleSafe}
-                loading={loading}
-                error={error}
-              />
-            </tbody>
-          </table>
+          {/* Conditional view rendering */}
+          {viewMode === "table" ? (
+            <Table
+              columns={PARTY_COLUMNS}
+              columnState={map}
+              onColumnStateChange={setAll}
+              getRowId={(r: PartyTableRow) => r.partyId}
+              pageSize={pageSize}
+              stickyRightWidthPx={0}
+            >
+              {/* Table */}
+              <table className="min-w-max w-full text-sm">
+                <TableHeader columns={visibleSafe} sorts={sorts} onToggleSort={onToggleSort} />
+                <tbody>
+                  <PartyTableBody
+                    pageRows={pageRows}
+                    visibleSafe={visibleSafe}
+                    loading={loading}
+                    error={error}
+                  />
+                </tbody>
+              </table>
 
-          <TableFooter
-            entityLabel="entries"
-            page={clampedPage}
-            pageCount={pageCount}
-            pageSize={pageSize}
-            pageSizeOptions={[10, 25, 50, 100]}
-            onPageChange={(p) => setPage(p)}
-            onPageSizeChange={(n) => {
-              setPageSize(n);
-              setPage(1);
-            }}
-            start={start}
-            end={end}
-            filteredTotal={displayRows.length}
-            total={rows.length}
-            includeArchived={includeArchived}
-            onIncludeArchivedChange={(checked) => {
-              setIncludeArchived(checked);
-              setPage(1);
-            }}
-          />
-        </Table>
+              <TableFooter
+                entityLabel="entries"
+                page={clampedPage}
+                pageCount={pageCount}
+                pageSize={pageSize}
+                pageSizeOptions={[10, 25, 50, 100]}
+                onPageChange={(p) => setPage(p)}
+                onPageSizeChange={(n) => {
+                  setPageSize(n);
+                  setPage(1);
+                }}
+                start={start}
+                end={end}
+                filteredTotal={displayRows.length}
+                total={rows.length}
+                includeArchived={includeArchived}
+                onIncludeArchivedChange={(checked) => {
+                  setIncludeArchived(checked);
+                  setPage(1);
+                }}
+              />
+            </Table>
+          ) : (
+            <CardViewWithDetails
+              rows={pageRows}
+              loading={loading}
+              error={error}
+              displayRows={displayRows}
+              pageSize={pageSize}
+              page={clampedPage}
+              pageCount={pageCount}
+              setPage={setPage}
+              setPageSize={setPageSize}
+              includeArchived={includeArchived}
+              setIncludeArchived={setIncludeArchived}
+              totalRows={rows.length}
+            />
+          )}
         </DetailsHost>
       </Card>
 
