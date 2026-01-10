@@ -545,12 +545,12 @@ function PrivacySettingsPanel({
         <div className="px-4 pb-4 border-t border-hairline">
           <p className="text-xs text-secondary py-3">
             Control what information about this animal is visible to other breeders in the BreederHQ network.
-            This affects how your animal appears in cross-kennel pedigrees.
+            This affects how your animal appears in pedigrees shared across programs.
           </p>
 
           <div className="space-y-1">
             <div className="text-xs font-semibold text-secondary uppercase tracking-wide mb-2">
-              Cross-Kennel Visibility
+              Network Visibility
             </div>
 
             <PrivacyToggle
@@ -571,7 +571,7 @@ function PrivacySettingsPanel({
 
             <PrivacyToggle
               label="Show photo"
-              description="Display this animal's photo in cross-kennel pedigrees"
+              description="Display this animal's photo in shared pedigrees"
               checked={settings.showPhoto}
               onChange={(v) => updateSetting("showPhoto", v)}
               disabled={mode !== "edit" || !settings.allowCrossTenantMatching}
@@ -633,7 +633,7 @@ function PrivacySettingsPanel({
           {!settings.allowCrossTenantMatching && (
             <div className="mt-4 p-3 rounded-md bg-yellow-500/10 border border-yellow-500/30 text-xs text-yellow-400">
               Cross-tenant matching is disabled. This animal won't appear in other breeders' pedigrees
-              and COI calculations across kennels won't include this animal's lineage.
+              and COI calculations across programs won't include this animal's lineage.
             </div>
           )}
         </div>

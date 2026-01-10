@@ -18,12 +18,13 @@ import {
   DatePicker,
   useToast
 } from "@bhq/ui";
-import { Plus } from "lucide-react";
+import { Plus, LayoutGrid, Table as TableIcon } from "lucide-react";
 import { Overlay } from "@bhq/ui/overlay";
 import { getOverlayRoot } from "@bhq/ui/overlay";
 import "@bhq/ui/styles/table.css";
 import { readTenantIdFast, resolveTenantId } from "@bhq/ui/utils/tenant";
 import { makeOffspringApiClient, OffspringApi, WaitlistEntry } from "../api";
+import { WaitlistCardView } from "../components/WaitlistCardView";
 
 
 /* URL param helper used by row clicks to open drawers */
@@ -101,6 +102,7 @@ function InlineSearch({
 }
 
 // Types and mapping
+type ViewMode = "table" | "cards";
 type WaitlistRowWire = WaitlistEntry;
 type WaitlistTableRow = {
   id: number;
@@ -1832,6 +1834,25 @@ function WaitlistTab({ api, tenantId, readOnlyGlobal }: { api: OffspringApi | nu
   const cols = hooks.useColumns(WAITLIST_COLS, WAITLIST_STORAGE_KEY);
   const visibleSafe = cols.visible?.length ? cols.visible : WAITLIST_COLS;
 
+  // View mode state (table or cards) - defaults to cards
+  const [viewMode, setViewMode] = React.useState<ViewMode>(() => {
+    try {
+      const stored = localStorage.getItem("bhq:waitlist:viewMode");
+      return (stored === "table" ? "table" : "cards") as ViewMode;
+    } catch {
+      return "cards";
+    }
+  });
+
+  // Persist view mode
+  React.useEffect(() => {
+    try {
+      localStorage.setItem("bhq:waitlist:viewMode", viewMode);
+    } catch {
+      // ignore storage errors
+    }
+  }, [viewMode]);
+
   const sorted = React.useMemo(() => {
     const list = [...rows];
     if (!sorts.length) return list;
@@ -1952,13 +1973,42 @@ function WaitlistTab({ api, tenantId, readOnlyGlobal }: { api: OffspringApi | nu
             },
           }}
         >
-          <Table
-            columns={WAITLIST_COLS}
-            columnState={cols.map}
-            onColumnStateChange={cols.setAll}
-            getRowId={(r: WaitlistTableRow) => r.id}
-            pageSize={25}
-            renderStickyRight={() => (
+          {/* Toolbar - always visible */}
+          <div className="bhq-table__toolbar px-2 pt-2 pb-3 relative z-30 flex items-center gap-3">
+            <SearchBar value={q} onChange={(v) => setQ(v)} placeholder="Search waitlist..." widthPx={400} />
+
+            {/* View mode toggle */}
+            <div className="flex items-center rounded-lg border border-hairline overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setViewMode("table")}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-sm transition-colors ${
+                  viewMode === "table"
+                    ? "bg-[hsl(var(--brand-orange))] text-black"
+                    : "bg-transparent text-secondary hover:text-primary hover:bg-[hsl(var(--muted)/0.5)]"
+                }`}
+                title="Table view"
+              >
+                <TableIcon className="w-4 h-4" />
+                <span className="hidden sm:inline">Table</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode("cards")}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-sm transition-colors ${
+                  viewMode === "cards"
+                    ? "bg-[hsl(var(--brand-orange))] text-black"
+                    : "bg-transparent text-secondary hover:text-primary hover:bg-[hsl(var(--muted)/0.5)]"
+                }`}
+                title="Card view"
+              >
+                <LayoutGrid className="w-4 h-4" />
+                <span className="hidden sm:inline">Cards</span>
+              </button>
+            </div>
+
+            {/* Column toggle - only show in table mode */}
+            {viewMode === "table" && (
               <ColumnsPopover
                 columns={cols.map}
                 onToggle={cols.toggle}
@@ -1967,12 +2017,25 @@ function WaitlistTab({ api, tenantId, readOnlyGlobal }: { api: OffspringApi | nu
                 triggerClassName="bhq-columns-trigger"
               />
             )}
-            stickyRightWidthPx={40}
+          </div>
+
+          {/* Conditional view rendering */}
+          {viewMode === "cards" ? (
+            <WaitlistCardView
+              rows={sorted}
+              loading={loading}
+              error={error}
+              onRowClick={(row) => setParamAndNotify("waitlistId", row.id)}
+            />
+          ) : (
+          <Table
+            columns={WAITLIST_COLS}
+            columnState={cols.map}
+            onColumnStateChange={cols.setAll}
+            getRowId={(r: WaitlistTableRow) => r.id}
+            pageSize={25}
+            stickyRightWidthPx={0}
           >
-            <div className="bhq-table__toolbar px-2 pt-2 pb-3 relative z-30 flex items-center justify-between">
-              <SearchBar value={q} onChange={(v) => setQ(v)} placeholder="Search waitlist..." widthPx={520} />
-              <div />
-            </div>
 
             <table className="min-w-max w-full text-sm">
               <TableHeader columns={visibleSafe} sorts={sorts} onToggleSort={onToggleSort} />
@@ -2018,6 +2081,7 @@ function WaitlistTab({ api, tenantId, readOnlyGlobal }: { api: OffspringApi | nu
               </tbody>
             </table>
           </Table>
+          )}
         </DetailsHost>
       </div>
 

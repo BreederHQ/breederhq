@@ -4,7 +4,7 @@ import WaitlistPage from "./pages/WaitlistPage";
 import OffspringPage from "./pages/OffspringPage";
 import * as React from "react";
 import ReactDOM from "react-dom";
-import { Trash2, Plus, X, ChevronDown, MoreHorizontal, Download } from "lucide-react";
+import { Trash2, Plus, X, ChevronDown, MoreHorizontal, Download, LayoutGrid, Table as TableIcon } from "lucide-react";
 import {
   PageHeader,
   Card,
@@ -40,7 +40,8 @@ import {
 } from "./api";
 import clsx from "clsx";
 
-import { reproEngine } from "@bhq/ui/utils"
+import { reproEngine } from "@bhq/ui/utils";
+import { GroupCardView } from "./components/GroupCardView";
 
 
 /* ───────────────────────── shared types ───────────────────────── */
@@ -589,6 +590,8 @@ type BuyerLink = {
 
 
 /* ───────────────────────── Groups table ───────────────────────── */
+type ViewMode = "table" | "cards";
+
 type GroupTableRow = {
   id: number;
   planCode?: string | null;
@@ -4729,6 +4732,25 @@ function OffspringGroupsTab(
   const cols = hooks.useColumns(GROUP_COLS, GROUP_STORAGE_KEY);
   const visibleSafe = cols.visible?.length ? cols.visible : GROUP_COLS;
 
+  // View mode state (table or cards) - defaults to cards
+  const [viewMode, setViewMode] = React.useState<ViewMode>(() => {
+    try {
+      const stored = localStorage.getItem("bhq:groups:viewMode");
+      return (stored === "table" ? "table" : "cards") as ViewMode;
+    } catch {
+      return "cards";
+    }
+  });
+
+  // Persist view mode
+  React.useEffect(() => {
+    try {
+      localStorage.setItem("bhq:groups:viewMode", viewMode);
+    } catch {
+      // ignore storage errors
+    }
+  }, [viewMode]);
+
   const [sorts, setSorts] = React.useState<Array<{ key: string; dir: "asc" | "desc" }>>([]);
   const onToggleSort = (key: string) => {
     setSorts((prev) => {
@@ -5443,19 +5465,63 @@ function OffspringGroupsTab(
             },
           }}
         >
+          {/* Toolbar - always visible */}
+          <div className="bhq-table__toolbar px-2 pt-2 pb-3 relative z-30 flex items-center gap-3">
+            <SearchBar value={q} onChange={(v) => { setQ(v); setPage(1); }} placeholder="Search groups..." widthPx={400} />
+
+            {/* View mode toggle */}
+            <div className="flex items-center rounded-lg border border-hairline overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setViewMode("table")}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-sm transition-colors ${
+                  viewMode === "table"
+                    ? "bg-[hsl(var(--brand-orange))] text-black"
+                    : "bg-transparent text-secondary hover:text-primary hover:bg-[hsl(var(--muted)/0.5)]"
+                }`}
+                title="Table view"
+              >
+                <TableIcon className="w-4 h-4" />
+                <span className="hidden sm:inline">Table</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode("cards")}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-sm transition-colors ${
+                  viewMode === "cards"
+                    ? "bg-[hsl(var(--brand-orange))] text-black"
+                    : "bg-transparent text-secondary hover:text-primary hover:bg-[hsl(var(--muted)/0.5)]"
+                }`}
+                title="Card view"
+              >
+                <LayoutGrid className="w-4 h-4" />
+                <span className="hidden sm:inline">Cards</span>
+              </button>
+            </div>
+
+            {/* Column toggle - only show in table mode */}
+            {viewMode === "table" && (
+              <ColumnsPopover columns={cols.map} onToggle={cols.toggle} onSet={cols.setAll} allColumns={GROUP_COLS} triggerClassName="bhq-columns-trigger" />
+            )}
+          </div>
+
+          {/* Conditional view rendering */}
+          {viewMode === "cards" ? (
+            <GroupCardView
+              rows={pageRows}
+              loading={loading}
+              error={error}
+              onRowClick={(row) => openDetails("groupId", row.id)}
+            />
+          ) : (
           <Table
             columns={GROUP_COLS}
             columnState={cols.map}
             onColumnStateChange={cols.setAll}
             getRowId={(r: GroupTableRow) => r.id}
             pageSize={25}
-            renderStickyRight={() => <ColumnsPopover columns={cols.map} onToggle={cols.toggle} onSet={cols.setAll} allColumns={GROUP_COLS} triggerClassName="bhq-columns-trigger" />}
-            stickyRightWidthPx={40}
+            stickyRightWidthPx={0}
           >
-            <div className="bhq-table__toolbar px-2 pt-2 pb-3 relative z-30 flex items-center justify-between">
-              <SearchBar value={q} onChange={(v) => { setQ(v); setPage(1); }} placeholder="Search groups..." widthPx={520} />
-              <div />
-            </div>
 
             <table className="min-w-max w-full text-sm">
               <TableHeader columns={visibleSafe} sorts={sorts} onToggleSort={onToggleSort} />
@@ -5558,6 +5624,7 @@ function OffspringGroupsTab(
               total={rows.length}
             />
           </Table>
+          )}
         </DetailsHost>
       </div >
 

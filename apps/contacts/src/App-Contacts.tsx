@@ -505,12 +505,12 @@ export default function AppContacts() {
   });
   React.useEffect(() => { try { localStorage.setItem(Q_KEY, q); } catch { } }, [q]);
 
-  // View mode toggle (table vs cards) - experimental
+  // View mode toggle (table vs cards) - defaults to cards
   const [viewMode, setViewMode] = React.useState<ViewMode>(() => {
     try {
       const stored = localStorage.getItem(VIEW_MODE_KEY);
-      return (stored === "cards" ? "cards" : "table") as ViewMode;
-    } catch { return "table"; }
+      return (stored === "table" ? "table" : "cards") as ViewMode;
+    } catch { return "cards"; }
   });
   React.useEffect(() => {
     try { localStorage.setItem(VIEW_MODE_KEY, viewMode); } catch { }

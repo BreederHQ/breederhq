@@ -1,8 +1,8 @@
 // apps/animals/src/components/CompetitionsTab.tsx
 // Competitions tab for animal detail view - shows competition entries and stats
 
-import React, { useEffect, useState, useCallback } from "react";
-import { DatePicker } from "@bhq/ui";
+import React, { useEffect, useState, useCallback, useMemo } from "react";
+import { DatePicker, Select } from "@bhq/ui";
 import {
   makeApi,
   type CompetitionEntry,
@@ -329,15 +329,12 @@ function CompetitionModal({
               <label className="block text-xs font-semibold text-secondary mb-1.5">
                 Competition Type *
               </label>
-              <select
+              <Select
                 value={competitionType}
-                onChange={(e) => setCompetitionType(e.target.value as CompetitionType)}
-                className="w-full px-3 py-2 bg-white/5 border border-hairline rounded-md text-sm focus:outline-none focus:border-white/30"
-              >
-                {Object.entries(COMPETITION_TYPE_LABELS).map(([key, label]) => (
-                  <option key={key} value={key}>{label}</option>
-                ))}
-              </select>
+                onChange={(v) => setCompetitionType(v as CompetitionType)}
+                options={Object.entries(COMPETITION_TYPE_LABELS).map(([key, label]) => ({ value: key, label }))}
+                className="w-full"
+              />
             </div>
           </div>
 
@@ -697,28 +694,26 @@ export function CompetitionsTab({
       {/* Filters */}
       {entries.length > 0 && (
         <div className="flex gap-3">
-          <select
+          <Select
             value={typeFilter}
-            onChange={(e) => setTypeFilter(e.target.value as CompetitionType | "")}
-            className="px-3 py-1.5 bg-white/5 border border-hairline rounded-md text-sm focus:outline-none focus:border-white/30"
-          >
-            <option value="">All Types</option>
-            {Object.entries(COMPETITION_TYPE_LABELS).map(([key, label]) => (
-              <option key={key} value={key}>{label}</option>
-            ))}
-          </select>
+            onChange={(v) => setTypeFilter(v as CompetitionType | "")}
+            options={[
+              { value: "", label: "All Types" },
+              ...Object.entries(COMPETITION_TYPE_LABELS).map(([key, label]) => ({ value: key, label })),
+            ]}
+            className="min-w-[140px]"
+          />
 
           {stats && stats.yearsActive.length > 1 && (
-            <select
-              value={yearFilter}
-              onChange={(e) => setYearFilter(e.target.value ? parseInt(e.target.value, 10) : "")}
-              className="px-3 py-1.5 bg-white/5 border border-hairline rounded-md text-sm focus:outline-none focus:border-white/30"
-            >
-              <option value="">All Years</option>
-              {stats.yearsActive.map(year => (
-                <option key={year} value={year}>{year}</option>
-              ))}
-            </select>
+            <Select
+              value={yearFilter === "" ? "" : String(yearFilter)}
+              onChange={(v) => setYearFilter(v ? parseInt(v, 10) : "")}
+              options={[
+                { value: "", label: "All Years" },
+                ...stats.yearsActive.map(year => ({ value: String(year), label: String(year) })),
+              ]}
+              className="min-w-[100px]"
+            />
           )}
         </div>
       )}

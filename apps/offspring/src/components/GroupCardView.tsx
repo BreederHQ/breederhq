@@ -1,49 +1,50 @@
-// apps/breeding/src/components/BreedingPlanCardView.tsx
-// Card-based view for breeding plans (similar to AnimalCardView)
+// apps/offspring/src/components/GroupCardView.tsx
+// Card-based view for offspring groups (litters)
 
 import * as React from "react";
-import { Calendar, Heart, Baby, Home } from "lucide-react";
+import { Baby, Calendar, Home, Users } from "lucide-react";
 
-type PlanRow = {
-  id: number | string;
-  name: string;
-  status: string;
-  species: string;
-  damName: string;
+type GroupTableRow = {
+  id: number;
+  planCode?: string | null;
+  planName?: string | null;
+  groupName?: string | null;
+  species?: string | null;
+  breed?: string | null;
+  damName?: string | null;
   sireName?: string | null;
-  breedText?: string | null;
-  expectedBreedDate?: string | null;
-  expectedBirthDate?: string | null;
-  expectedPlacementStartDate?: string | null;
-  depositsCommitted?: number | null;
-  depositsPaid?: number | null;
-  archived?: boolean;
+  expectedBirth?: string | null;
+  expectedPlacementStart?: string | null;
+  seasonLabel?: string | null;
+  status?: string | null;
+  countLive?: number | null;
+  countReserved?: number | null;
+  countSold?: number | null;
+  countPlaced?: number | null;
 };
 
-// Status colors for left accent stripe (keys match backend status values)
+// Status colors for left accent stripe
 const STATUS_COLORS: Record<string, string> = {
-  "PLANNING": "hsl(210, 70%, 50%)",           // Blue
-  "COMMITTED": "hsl(25, 95%, 53%)",           // Orange
-  "BRED": "hsl(330, 70%, 50%)",               // Pink
-  "BIRTHED": "hsl(45, 90%, 50%)",             // Gold
-  "WEANED": "hsl(80, 60%, 45%)",              // Yellow-green
-  "PLACEMENT_STARTED": "hsl(142, 70%, 45%)",  // Green
-  "PLACEMENT_COMPLETED": "hsl(160, 60%, 42%)",// Teal-green
-  "COMPLETE": "hsl(160, 50%, 40%)",           // Teal
-  "CANCELED": "hsl(0, 0%, 50%)",              // Gray
+  PLANNING: "hsl(210, 70%, 50%)",           // Blue
+  COMMITTED: "hsl(25, 95%, 53%)",           // Orange
+  BRED: "hsl(330, 70%, 50%)",               // Pink
+  BIRTHED: "hsl(45, 90%, 50%)",             // Gold
+  WEANED: "hsl(80, 60%, 45%)",              // Yellow-green
+  PLACEMENT: "hsl(142, 70%, 45%)",          // Green
+  COMPLETE: "hsl(160, 50%, 40%)",           // Teal
+  CANCELED: "hsl(0, 0%, 50%)",              // Gray
 };
 
-// Display labels for statuses
+// Status labels
 const STATUS_LABELS: Record<string, string> = {
-  "PLANNING": "Planning",
-  "COMMITTED": "Committed",
-  "BRED": "Bred",
-  "BIRTHED": "Birthed",
-  "WEANED": "Weaned",
-  "PLACEMENT_STARTED": "Placement",
-  "PLACEMENT_COMPLETED": "Placing",
-  "COMPLETE": "Complete",
-  "CANCELED": "Canceled",
+  PLANNING: "Planning",
+  COMMITTED: "Committed",
+  BRED: "Bred",
+  BIRTHED: "Birthed",
+  WEANED: "Weaned",
+  PLACEMENT: "Placement",
+  COMPLETE: "Complete",
+  CANCELED: "Canceled",
 };
 
 // Species emoji helper
@@ -53,6 +54,7 @@ function speciesEmoji(species?: string | null): string {
   if (s === "cat") return "🐱";
   if (s === "horse") return "🐴";
   if (s === "goat") return "🐐";
+  if (s === "sheep") return "🐑";
   if (s === "rabbit") return "🐰";
   return "🐾";
 }
@@ -69,25 +71,27 @@ function formatDate(dateStr?: string | null): string {
   }
 }
 
-type BreedingPlanCardViewProps = {
-  rows: PlanRow[];
+type GroupCardViewProps = {
+  rows: GroupTableRow[];
   loading: boolean;
   error: string | null;
-  onRowClick?: (row: PlanRow) => void;
+  onRowClick?: (row: GroupTableRow) => void;
 };
 
-function PlanCard({ row, onClick }: { row: PlanRow; onClick?: () => void }) {
+function GroupCard({ row, onClick }: { row: GroupTableRow; onClick?: () => void }) {
   const statusKey = (row.status || "PLANNING").toUpperCase();
   const accentColor = STATUS_COLORS[statusKey] || STATUS_COLORS.PLANNING;
-  const statusLabel = STATUS_LABELS[statusKey] || row.status;
-  const breedDate = formatDate(row.expectedBreedDate);
-  const birthDate = formatDate(row.expectedBirthDate);
-  const placementDate = formatDate(row.expectedPlacementStartDate);
+  const statusLabel = STATUS_LABELS[statusKey] || row.status || "Planning";
 
-  // Calculate deposit progress
-  const depositsCommitted = row.depositsCommitted ?? 0;
-  const depositsPaid = row.depositsPaid ?? 0;
-  const hasDeposits = depositsCommitted > 0;
+  const birthDate = formatDate(row.expectedBirth);
+  const placementDate = formatDate(row.expectedPlacementStart);
+  const displayName = row.groupName || row.planCode || `Group #${row.id}`;
+
+  // Count stats
+  const live = row.countLive ?? 0;
+  const reserved = row.countReserved ?? 0;
+  const sold = row.countSold ?? 0;
+  const placed = row.countPlaced ?? 0;
 
   return (
     <button
@@ -101,7 +105,7 @@ function PlanCard({ row, onClick }: { row: PlanRow; onClick?: () => void }) {
         style={{ backgroundColor: accentColor }}
       />
 
-      {/* Top row: Species Emoji + Plan Name */}
+      {/* Top row: Species Emoji + Group Name */}
       <div className="flex items-start gap-3">
         {/* Species Emoji */}
         <div className="flex-shrink-0 w-12 h-12 rounded-lg bg-[hsl(var(--muted))] flex items-center justify-center text-2xl">
@@ -112,14 +116,14 @@ function PlanCard({ row, onClick }: { row: PlanRow; onClick?: () => void }) {
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <span className="font-medium text-primary truncate">
-              {row.name}
+              {displayName}
             </span>
-            {row.archived && (
-              <span className="text-xs text-amber-400">(Archived)</span>
+            {row.seasonLabel && (
+              <span className="text-xs text-secondary">({row.seasonLabel})</span>
             )}
           </div>
           <div className="text-xs text-secondary mt-0.5">
-            {[row.species, row.breedText].filter(Boolean).join(" - ")}
+            {[row.species, row.breed].filter(Boolean).join(" • ")}
           </div>
         </div>
       </div>
@@ -139,12 +143,6 @@ function PlanCard({ row, onClick }: { row: PlanRow; onClick?: () => void }) {
 
       {/* Timeline milestones */}
       <div className="mt-3 flex items-center gap-3 text-xs">
-        {breedDate && (
-          <div className="flex items-center gap-1 text-secondary">
-            <Heart className="w-3 h-3 text-pink-400" />
-            <span>{breedDate}</span>
-          </div>
-        )}
         {birthDate && (
           <div className="flex items-center gap-1 text-secondary">
             <Baby className="w-3 h-3 text-amber-400" />
@@ -159,7 +157,25 @@ function PlanCard({ row, onClick }: { row: PlanRow; onClick?: () => void }) {
         )}
       </div>
 
-      {/* Status badge + deposits */}
+      {/* Stats row */}
+      {(live > 0 || reserved > 0 || sold > 0 || placed > 0) && (
+        <div className="mt-3 flex items-center gap-3 text-xs text-secondary">
+          {live > 0 && (
+            <span>{live} live</span>
+          )}
+          {reserved > 0 && (
+            <span className="text-amber-400">{reserved} reserved</span>
+          )}
+          {sold > 0 && (
+            <span className="text-green-400">{sold} sold</span>
+          )}
+          {placed > 0 && (
+            <span className="text-blue-400">{placed} placed</span>
+          )}
+        </div>
+      )}
+
+      {/* Status badge */}
       <div className="mt-3 flex items-center justify-between">
         <span
           className="inline-flex items-center gap-1.5 text-xs font-medium px-2 py-0.5 rounded-full"
@@ -174,18 +190,12 @@ function PlanCard({ row, onClick }: { row: PlanRow; onClick?: () => void }) {
           />
           {statusLabel}
         </span>
-
-        {hasDeposits && (
-          <span className="text-xs text-secondary">
-            {depositsPaid}/{depositsCommitted} deposits
-          </span>
-        )}
       </div>
     </button>
   );
 }
 
-export function BreedingPlanCardView({ rows, loading, error, onRowClick }: BreedingPlanCardViewProps) {
+export function GroupCardView({ rows, loading, error, onRowClick }: GroupCardViewProps) {
   if (loading) {
     return (
       <div className="p-8 text-center text-sm text-secondary">
@@ -205,7 +215,7 @@ export function BreedingPlanCardView({ rows, loading, error, onRowClick }: Breed
   if (rows.length === 0) {
     return (
       <div className="p-8 text-center text-sm text-secondary">
-        No breeding plans to display yet.
+        No groups to display yet.
       </div>
     );
   }
@@ -214,7 +224,7 @@ export function BreedingPlanCardView({ rows, loading, error, onRowClick }: Breed
     <div className="p-4">
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
         {rows.map((row) => (
-          <PlanCard
+          <GroupCard
             key={row.id}
             row={row}
             onClick={() => onRowClick?.(row)}

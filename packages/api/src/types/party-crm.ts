@@ -123,6 +123,7 @@ export interface SendEmailInput {
   partyId: number;
   to: string;
   subject: string;
+  body?: string;
   bodyHtml?: string;
   bodyText?: string;
   templateKey?: string;

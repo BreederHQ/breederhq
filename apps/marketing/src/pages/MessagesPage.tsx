@@ -9,35 +9,25 @@ const IS_DEV = import.meta.env.DEV;
  * Resolves API base URL deterministically:
  * 1. VITE_API_BASE_URL env var (if defined and non-empty)
  * 2. window.__BHQ_API_BASE__ (if defined and non-empty)
- * 3. In dev: http://localhost:6001 (direct to API server, not Vite origin)
+ * 3. In dev: empty string (same origin, Vite proxy)
  * 4. In prod: location.origin
+ *
+ * NOTE: Resource files already include /api/v1 in their paths,
+ * so the base URL should NOT include /api/v1 to avoid duplication.
  */
 function getApiBase(): string {
-  // 1. Explicit env override
   const envBase = (import.meta.env.VITE_API_BASE_URL as string) || "";
-  if (envBase.trim()) {
-    return normalizeBase(envBase);
-  }
-
-  // 2. Platform shell injection
+  if (envBase.trim()) return normalizeBase(envBase);
   const w = window as any;
   const windowBase = String(w.__BHQ_API_BASE__ || "").trim();
-  if (windowBase) {
-    return normalizeBase(windowBase);
-  }
-
-  // 3. Dev mode: use Vite proxy (same origin) to preserve cookies
-  if (IS_DEV) {
-    return "/api/v1";
-  }
-
-  // 4. Production: use origin
+  if (windowBase) return normalizeBase(windowBase);
+  if (IS_DEV) return ""; // Empty string = same origin, resource paths add /api/v1
   return normalizeBase(window.location.origin);
 }
 
 function normalizeBase(base: string): string {
-  const b = base.replace(/\/+$/, "").replace(/\/api\/v1$/i, "");
-  return `${b}/api/v1`;
+  // Strip trailing slashes and any existing /api/v1 suffix
+  return base.replace(/\/+$/, "").replace(/\/api\/v1$/i, "");
 }
 
 const API_BASE = getApiBase();

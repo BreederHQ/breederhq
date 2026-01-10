@@ -2,6 +2,7 @@
 // Interactive pedigree tree using React Flow - FamilySearch/Geni style
 import * as React from "react";
 import { PageHeader, Button } from "@bhq/ui";
+import { AnimalFullProfileDialog } from "../components/AnimalFullProfileDialog";
 import {
   ReactFlow,
   Node,
@@ -573,11 +574,12 @@ interface AnimalPanelProps {
   animal: PedigreeNode;
   onClose: () => void;
   onViewPedigree: (animal: PedigreeNode) => void;
+  onViewFullProfile: (animal: PedigreeNode) => void;
   isLocalAnimal?: boolean; // Whether this animal belongs to the current tenant
   isCurrentRoot?: boolean; // Whether this is the animal currently at the center of the tree
 }
 
-function AnimalPanel({ animal, onClose, onViewPedigree, isLocalAnimal = false, isCurrentRoot = false }: AnimalPanelProps) {
+function AnimalPanel({ animal, onClose, onViewPedigree, onViewFullProfile, isLocalAnimal = false, isCurrentRoot = false }: AnimalPanelProps) {
   const isMale = animal.sex === "MALE";
   const isFemale = animal.sex === "FEMALE";
   const ringColor = isMale ? "from-sky-400 to-sky-600" : isFemale ? "from-pink-400 to-pink-600" : "from-amber-400 to-amber-600";
@@ -699,25 +701,15 @@ function AnimalPanel({ animal, onClose, onViewPedigree, isLocalAnimal = false, i
               Explore Ancestors
             </Button>
           )}
-          {isLocalAnimal && (
-            <Button
-              variant={isCurrentRoot || !(animal.sire || animal.dam || animal.sireId || animal.damId) ? "default" : "ghost"}
-              className={isCurrentRoot || !(animal.sire || animal.dam || animal.sireId || animal.damId) ? "flex-1" : ""}
-              size="sm"
-              onClick={() => {
-                window.history.pushState(null, "", `/animals/${animal.id}`);
-                window.dispatchEvent(new PopStateEvent("popstate"));
-              }}
-            >
-              Full Profile
-            </Button>
-          )}
-          {/* If no actions available, show a message */}
-          {isCurrentRoot && !isLocalAnimal && (
-            <div className="flex-1 text-center text-sm text-zinc-500 py-2">
-              Currently viewing this animal's pedigree
-            </div>
-          )}
+          {/* Full Profile button - always available, opens dialog */}
+          <Button
+            variant={isCurrentRoot || !(animal.sire || animal.dam || animal.sireId || animal.damId) ? "default" : "ghost"}
+            className={isCurrentRoot || !(animal.sire || animal.dam || animal.sireId || animal.damId) ? "flex-1" : ""}
+            size="sm"
+            onClick={() => onViewFullProfile(animal)}
+          >
+            Full Profile
+          </Button>
         </div>
 
         {/* Cross-tenant indicator */}
@@ -862,6 +854,8 @@ export default function ExplorePage() {
   const [focusAnimal, setFocusAnimal] = React.useState<PedigreeNode | null>(null);
   const [selectedAnimal, setSelectedAnimal] = React.useState<PedigreeNode | null>(null);
   const [loadingPedigree, setLoadingPedigree] = React.useState(false);
+  // Full profile dialog state
+  const [fullProfileAnimal, setFullProfileAnimal] = React.useState<PedigreeNode | null>(null);
 
   // Load animals on mount
   React.useEffect(() => {
@@ -901,6 +895,17 @@ export default function ExplorePage() {
     setSelectedAnimalId(animal.id);
     loadPedigreeById(animal.id);
   }, [loadPedigreeById]);
+
+  // Handler for opening full profile dialog
+  const handleViewFullProfile = React.useCallback((animal: PedigreeNode) => {
+    setFullProfileAnimal(animal);
+  }, []);
+
+  // Handler for navigating to Animals module (for local animals)
+  const handleNavigateToAnimal = React.useCallback((animalId: number) => {
+    window.history.pushState(null, "", `/animals/${animalId}`);
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  }, []);
 
   // Handler for expanding a node (loading more ancestors)
   const handleExpandAnimal = React.useCallback(async (animal: PedigreeNode) => {
@@ -965,6 +970,7 @@ export default function ExplorePage() {
                 animal={selectedAnimal}
                 onClose={() => setSelectedAnimal(null)}
                 onViewPedigree={handleViewPedigree}
+                onViewFullProfile={handleViewFullProfile}
                 isLocalAnimal={allAnimals.some(a => a.id === selectedAnimal.id)}
                 isCurrentRoot={focusAnimal?.id === selectedAnimal.id}
               />
@@ -1123,6 +1129,21 @@ export default function ExplorePage() {
           </div>
           )}
         </div>
+
+      {/* Full Profile Dialog */}
+      {fullProfileAnimal && (
+        <AnimalFullProfileDialog
+          open={!!fullProfileAnimal}
+          onClose={() => setFullProfileAnimal(null)}
+          animal={fullProfileAnimal}
+          isLocalAnimal={allAnimals.some(a => a.id === fullProfileAnimal.id)}
+          onNavigateToAnimal={handleNavigateToAnimal}
+          onViewPedigree={(animal) => {
+            setFullProfileAnimal(null);
+            handleViewPedigree(animal);
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -2858,6 +2858,24 @@ function GeneticsLabPage({
           {/* Results */}
           {results && (
             <div className="pt-4 border-t border-hairline">
+              {/* Pairing Summary - Who is being paired */}
+              <div className="mb-4 p-4 rounded-xl bg-gradient-to-r from-pink-500/10 via-purple-500/5 to-blue-500/10 border border-purple-500/30">
+                <div className="text-xs text-secondary uppercase tracking-wide mb-2 text-center">Current Pairing</div>
+                <div className="flex items-center justify-center gap-4">
+                  <div className="text-center">
+                    <div className="text-xs text-pink-400 font-medium mb-1">Dam (Female)</div>
+                    <div className="text-lg font-bold text-primary">{selectedDam?.name || "—"}</div>
+                    <div className="text-xs text-secondary">{selectedDam?.breed || selectedDam?.species}</div>
+                  </div>
+                  <div className="text-3xl text-purple-400 font-light">×</div>
+                  <div className="text-center">
+                    <div className="text-xs text-blue-400 font-medium mb-1">Sire (Male)</div>
+                    <div className="text-lg font-bold text-primary">{selectedSire?.name || "—"}</div>
+                    <div className="text-xs text-secondary">{selectedSire?.breed || selectedSire?.species}</div>
+                  </div>
+                </div>
+              </div>
+
               {/* Warnings - Show prominently at top if any */}
               {results.warnings && results.warnings.length > 0 && (
                 <div className="space-y-2 mb-4">
@@ -3208,13 +3226,13 @@ function GeneticsLabPage({
                             {results.health?.map((item: any, idx: number) => {
                               const locusMatch = item.trait.match(/\(([^)]+)\)/);
                               const conditionName = locusMatch ? locusMatch[1] : item.trait;
-                              let icon = "✓";
+                              let icon = "🛡️";
                               let statusClass = "text-green-500";
                               if (item.prediction.includes("Affected")) {
-                                icon = "!";
+                                icon = "❌";
                                 statusClass = "text-red-500";
                               } else if (item.prediction.includes("Carrier")) {
-                                icon = "~";
+                                icon = "⚠️";
                                 statusClass = "text-yellow-500";
                               }
                               const outcomes = item.prediction.split(', ').map((p: string) => {
@@ -3656,14 +3674,14 @@ export default function AppBreeding() {
     } catch { }
   }, [showArchived]);
 
-  // View mode toggle (table vs cards)
+  // View mode toggle (table vs cards) - defaults to cards
   const VIEW_MODE_KEY = "bhq_breeding_view_v1";
   type ViewMode = "table" | "cards";
   const [viewMode, setViewMode] = React.useState<ViewMode>(() => {
     try {
       const stored = localStorage.getItem(VIEW_MODE_KEY);
-      return (stored === "cards" ? "cards" : "table") as ViewMode;
-    } catch { return "table"; }
+      return (stored === "table" ? "table" : "cards") as ViewMode;
+    } catch { return "cards"; }
   });
   React.useEffect(() => {
     try { localStorage.setItem(VIEW_MODE_KEY, viewMode); } catch { }
@@ -6826,10 +6844,22 @@ function PlanDetailsView(props: {
     if (isArchived) return; // Prevent cycle unlocking for archived plans
     if (!api) return;
 
+    // Prevent unlocking if plan has progressed past COMMITTED phase
+    // (BRED, BIRTHED, WEANED, PLACEMENT_*, COMPLETE have actual dates that depend on the cycle)
+    const currentStatus = (effective.status || "").toUpperCase();
+    if (["BRED", "BIRTHED", "WEANED", "PLACEMENT_STARTED", "PLACEMENT_COMPLETED", "COMPLETE"].includes(currentStatus)) {
+      console.warn("[Breeding] Cannot unlock cycle - plan has progressed past COMMITTED phase");
+      return;
+    }
+
     setExpectedPreview(null);
     setLockedPreview(false);
 
-    const payload = {
+    // If currently COMMITTED, unlocking the cycle violates COMMITTED prerequisites
+    // so we must regress the status back to PLANNING
+    const shouldResetStatus = currentStatus === "COMMITTED";
+
+    const payload: Record<string, unknown> = {
       lockedCycleStart: null,
       lockedOvulationDate: null,
       lockedDueDate: null,
@@ -6844,6 +6874,12 @@ function PlanDetailsView(props: {
       expectedPlacementStartDate: null,
       expectedPlacementCompletedDate: null,
     };
+
+    // Reset status to PLANNING if we're in COMMITTED phase
+    if (shouldResetStatus) {
+      payload.status = "PLANNING";
+    }
+
     // Don't use setDraftLive here - we're immediately persisting, not drafting
 
     try {
@@ -6852,8 +6888,8 @@ function PlanDetailsView(props: {
       await api.createEvent(Number(row.id), {
         type: "CYCLE_UNLOCKED",
         occurredAt: new Date().toISOString(),
-        label: "Cycle unlocked",
-        data: {},
+        label: shouldResetStatus ? "Cycle unlocked - status reset to Planning" : "Cycle unlocked",
+        data: { previousStatus: currentStatus, statusReset: shouldResetStatus },
       });
 
       // Refresh the row to ensure lockedCycleStart is cleared in the row prop (not just draft)

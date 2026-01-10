@@ -3261,10 +3261,12 @@ function GeneticsTab({
   animal,
   api,
   mode,
+  onCancel,
 }: {
   animal: AnimalRow;
   api: any;
   mode: "view" | "edit";
+  onCancel?: () => void;
 }) {
   const [geneticData, setGeneticData] = React.useState<GeneticData>({});
   const [loading, setLoading] = React.useState(true);
@@ -4451,7 +4453,10 @@ function GeneticsTab({
           <Button
             size="sm"
             variant="outline"
-            onClick={() => setEditData(geneticData)}
+            onClick={() => {
+              setEditData(geneticData);
+              onCancel?.();
+            }}
           >
             Cancel
           </Button>
@@ -6560,12 +6565,12 @@ export default function AppAnimals() {
     }
   });
 
-  // View mode toggle (table vs cards)
+  // View mode toggle (table vs cards) - defaults to cards
   const [viewMode, setViewMode] = React.useState<ViewMode>(() => {
     try {
       const stored = localStorage.getItem(VIEW_MODE_KEY);
-      return (stored === "cards" ? "cards" : "table") as ViewMode;
-    } catch { return "table"; }
+      return (stored === "table" ? "table" : "cards") as ViewMode;
+    } catch { return "cards"; }
   });
   React.useEffect(() => {
     try { localStorage.setItem(VIEW_MODE_KEY, viewMode); } catch { }
@@ -7763,6 +7768,7 @@ export default function AppAnimals() {
               animal={row}
               api={api}
               mode={mode}
+              onCancel={() => setMode("view")}
             />
           )}
 

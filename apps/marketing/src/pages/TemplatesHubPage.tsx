@@ -14,27 +14,20 @@ import { createTemplatePreview } from "@bhq/ui/utils";
 const IS_DEV = import.meta.env.DEV;
 
 function getApiBase(): string {
+  // Resource files already include /api/v1 in their paths, so the base URL
+  // should NOT include /api/v1 to avoid duplication.
   const envBase = (import.meta.env.VITE_API_BASE_URL as string) || "";
-  if (envBase.trim()) {
-    return normalizeBase(envBase);
-  }
-
+  if (envBase.trim()) return normalizeBase(envBase);
   const w = window as any;
   const windowBase = String(w.__BHQ_API_BASE__ || "").trim();
-  if (windowBase) {
-    return normalizeBase(windowBase);
-  }
-
-  if (IS_DEV) {
-    return "/api/v1";
-  }
-
+  if (windowBase) return normalizeBase(windowBase);
+  if (IS_DEV) return ""; // Empty string = same origin, resource paths add /api/v1
   return normalizeBase(window.location.origin);
 }
 
 function normalizeBase(base: string): string {
-  const b = base.replace(/\/+$/, "").replace(/\/api\/v1$/i, "");
-  return `${b}/api/v1`;
+  // Strip trailing slashes and any existing /api/v1 suffix
+  return base.replace(/\/+$/, "").replace(/\/api\/v1$/i, "");
 }
 
 const API_BASE = getApiBase();

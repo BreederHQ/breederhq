@@ -176,25 +176,25 @@ function normalizeList<T>(res: any): ListResponse<T> {
 function makeInvoices(http: Http): InvoicesResource {
   return {
     async list(params: ListParams = {}): Promise<ListResponse<InvoiceDTO>> {
-      const res = await http.get(`/api/v1/invoices${buildQuery(params)}`);
+      const res = await http.get(`/invoices${buildQuery(params)}`);
       return normalizeList<InvoiceDTO>(res);
     },
 
     async get(id: ID): Promise<InvoiceDTO> {
-      return http.get(`/api/v1/invoices/${id}`);
+      return http.get(`/invoices/${id}`);
     },
 
     async create(input: CreateInvoiceInput, idempotencyKey: string): Promise<InvoiceDTO> {
       const headers: IdempotencyHeaders = { "Idempotency-Key": idempotencyKey };
-      return http.post(`/api/v1/invoices`, input, { headers });
+      return http.post(`/invoices`, input, { headers });
     },
 
     async update(id: ID, input: UpdateInvoiceInput): Promise<InvoiceDTO> {
-      return http.patch(`/api/v1/invoices/${id}`, input);
+      return http.patch(`/invoices/${id}`, input);
     },
 
     async void(id: ID): Promise<InvoiceDTO> {
-      return http.post(`/api/v1/invoices/${id}/void`);
+      return http.post(`/invoices/${id}/void`);
     },
   };
 }
@@ -204,21 +204,21 @@ function makeInvoices(http: Http): InvoicesResource {
 function makePayments(http: Http): PaymentsResource {
   return {
     async list(params: ListParams = {}): Promise<ListResponse<PaymentDTO>> {
-      const res = await http.get(`/api/v1/payments${buildQuery(params)}`);
+      const res = await http.get(`/payments${buildQuery(params)}`);
       return normalizeList<PaymentDTO>(res);
     },
 
     async get(id: ID): Promise<PaymentDTO> {
-      return http.get(`/api/v1/payments/${id}`);
+      return http.get(`/payments/${id}`);
     },
 
     async create(input: CreatePaymentInput, idempotencyKey: string): Promise<PaymentDTO> {
       const headers: IdempotencyHeaders = { "Idempotency-Key": idempotencyKey };
-      return http.post(`/api/v1/payments`, input, { headers });
+      return http.post(`/payments`, input, { headers });
     },
 
     async export(filters?: any): Promise<ListResponse<any>> {
-      const res = await http.post(`/api/v1/finance/payments/export`, filters || {});
+      const res = await http.post(`/finance/payments/export`, filters || {});
       return normalizeList<any>(res);
     },
   };
@@ -229,24 +229,24 @@ function makePayments(http: Http): PaymentsResource {
 function makeExpenses(http: Http): ExpensesResource {
   return {
     async list(params: ListParams = {}): Promise<ListResponse<ExpenseDTO>> {
-      const res = await http.get(`/api/v1/expenses${buildQuery(params)}`);
+      const res = await http.get(`/expenses${buildQuery(params)}`);
       return normalizeList<ExpenseDTO>(res);
     },
 
     async get(id: ID): Promise<ExpenseDTO> {
-      return http.get(`/api/v1/expenses/${id}`);
+      return http.get(`/expenses/${id}`);
     },
 
     async create(input: CreateExpenseInput): Promise<ExpenseDTO> {
-      return http.post(`/api/v1/expenses`, input);
+      return http.post(`/expenses`, input);
     },
 
     async update(id: ID, input: UpdateExpenseInput): Promise<ExpenseDTO> {
-      return http.patch(`/api/v1/expenses/${id}`, input);
+      return http.patch(`/expenses/${id}`, input);
     },
 
     async delete(id: ID): Promise<{ success: true }> {
-      await http.delete(`/api/v1/expenses/${id}`);
+      await http.delete(`/expenses/${id}`);
       return { success: true };
     },
   };
@@ -260,7 +260,7 @@ function makeParties(http: Http): PartiesResource {
       const sp = new URLSearchParams();
       sp.set("q", query);
       if (options?.limit != null) sp.set("limit", String(options.limit));
-      const res = await http.get(`/api/v1/parties?${sp.toString()}`);
+      const res = await http.get(`/parties?${sp.toString()}`);
       // Handle various response shapes
       if (Array.isArray(res)) return res;
       if (res && typeof res === "object") {
@@ -278,7 +278,7 @@ function makeParties(http: Http): PartiesResource {
 function makeFinanceContacts(http: Http): FinanceContactsResource {
   return {
     async create(input: ContactCreateInput): Promise<ContactCreateResult> {
-      return http.post(`/api/v1/contacts`, input);
+      return http.post(`/contacts`, input);
     },
   };
 }
@@ -288,7 +288,7 @@ function makeFinanceContacts(http: Http): FinanceContactsResource {
 function makeFinanceOrganizations(http: Http): FinanceOrganizationsResource {
   return {
     async create(input: OrganizationCreateInput): Promise<OrganizationCreateResult> {
-      return http.post(`/api/v1/organizations`, input);
+      return http.post(`/organizations`, input);
     },
   };
 }
@@ -305,7 +305,7 @@ export function makeFinance(http: Http): FinanceResource {
     organizations: makeFinanceOrganizations(http),
 
     async summary(): Promise<FinanceSummary> {
-      return http.get(`/api/v1/finance/summary`);
+      return http.get(`/finance/summary`);
     },
   };
 }

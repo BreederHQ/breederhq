@@ -33,6 +33,7 @@ export * from "./PortalAccess";
 export * from "./RegionSelect";
 export * from "./SearchBar";
 export * from "./SectionCard";
+export * from "./Select";
 export * from "./SettingsProtocols";
 export * from "./StatCard";
 export * from "./TabButton";

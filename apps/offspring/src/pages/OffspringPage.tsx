@@ -27,7 +27,9 @@ import {
   ChevronDown,
   ChevronUp,
   FilePlus2,
+  LayoutGrid,
   Plus,
+  Table as TableIcon,
   Trash2,
 } from "lucide-react";
 
@@ -36,6 +38,8 @@ import {
   type AnimalLite,
   type OffspringGroupLite as OffspringGroupDTO,
 } from "../api";
+
+import { OffspringCardView } from "../components/OffspringCardView";
 
 import { readTenantIdFast } from "@bhq/ui/utils/tenant";
 
@@ -104,6 +108,7 @@ function __og_resolveCollarColor(input: any): {
 
 
 /** ---------- Types for this page ---------- */
+type ViewMode = "table" | "cards";
 type ID = string | number;
 type Sex = "MALE" | "FEMALE" | "UNKNOWN";
 type Status = "PLANNED" | "BORN" | "AVAILABLE" | "RESERVED" | "PLACED" | "HOLDBACK" | "DECEASED";
@@ -2329,6 +2334,25 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
   const [rows, setRows] = React.useState<OffspringRow[]>([]);
   const [sorts, setSorts] = React.useState<{ key: ColumnKey; dir: "asc" | "desc" }[]>([]);
   const cols = hooks.useColumns(ALL_COLUMNS as any, OFFSPRING_STORAGE_KEY);
+
+  // View mode state (table or cards) - defaults to cards
+  const [viewMode, setViewMode] = React.useState<ViewMode>(() => {
+    try {
+      const stored = localStorage.getItem("bhq:offspring:viewMode");
+      return (stored === "table" ? "table" : "cards") as ViewMode;
+    } catch {
+      return "cards";
+    }
+  });
+
+  // Persist view mode
+  React.useEffect(() => {
+    try {
+      localStorage.setItem("bhq:offspring:viewMode", viewMode);
+    } catch {
+      // ignore storage errors
+    }
+  }, [viewMode]);
   const visibleSafe = cols.visible && cols.visible.length > 0 ? cols.visible : ALL_COLUMNS;
   const [drawer, setDrawer] = React.useState<OffspringRow | null>(null);
   const [drawerTab, setDrawerTab] = React.useState<
@@ -2896,13 +2920,50 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
       )}
 
       <SectionCard>
-        <Table
-          columns={ALL_COLUMNS as any}
-          columnState={cols.map}
-          onColumnStateChange={cols.setAll}
-          getRowId={(r: OffspringRow) => r.id}
-          pageSize={25}
-          renderStickyRight={() => (
+        {/* Toolbar - always visible */}
+        <div className="bhq-table__toolbar px-2 pt-2 pb-3 relative z-30 flex items-center gap-3">
+          <SearchBar
+            value={q}
+            onChange={(v) => {
+              setQ(v);
+              setPage(1);
+            }}
+            placeholder="Search name, buyer, group, microchip"
+            widthPx={400}
+          />
+
+          {/* View mode toggle */}
+          <div className="flex items-center rounded-lg border border-hairline overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setViewMode("table")}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-sm transition-colors ${
+                viewMode === "table"
+                  ? "bg-[hsl(var(--brand-orange))] text-black"
+                  : "bg-transparent text-secondary hover:text-primary hover:bg-[hsl(var(--muted)/0.5)]"
+              }`}
+              title="Table view"
+            >
+              <TableIcon className="w-4 h-4" />
+              <span className="hidden sm:inline">Table</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode("cards")}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-sm transition-colors ${
+                viewMode === "cards"
+                  ? "bg-[hsl(var(--brand-orange))] text-black"
+                  : "bg-transparent text-secondary hover:text-primary hover:bg-[hsl(var(--muted)/0.5)]"
+              }`}
+              title="Card view"
+            >
+              <LayoutGrid className="w-4 h-4" />
+              <span className="hidden sm:inline">Cards</span>
+            </button>
+          </div>
+
+          {/* Column toggle - only show in table mode */}
+          {viewMode === "table" && (
             <ColumnsPopover
               columns={cols.map}
               onToggle={cols.toggle}
@@ -2911,18 +2972,8 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
               triggerClassName="bhq-columns-trigger"
             />
           )}
-          stickyRightWidthPx={40}
-        >
-          <div className="bhq-table__toolbar px-2 pt-2 pb-3 relative z-30 flex items-center justify-between">
-            <SearchBar
-              value={q}
-              onChange={(v) => {
-                setQ(v);
-                setPage(1);
-              }}
-              placeholder="Search name, buyer, group, microchip"
-              widthPx={520}
-            />
+
+          <div className="ml-auto">
             <Button
               size="sm"
               variant="primary"
@@ -2932,6 +2983,36 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
               Add Offspring
             </Button>
           </div>
+        </div>
+
+        {/* Conditional view rendering */}
+        {viewMode === "cards" ? (
+          <OffspringCardView
+            rows={rows}
+            loading={false}
+            error={null}
+            onRowClick={async (row) => {
+              try {
+                const full = await api.getById(row.id);
+                if (full) {
+                  setDrawer(full);
+                  writeUrlParam(full.id);
+                  setDrawerTab("overview");
+                }
+              } catch (err) {
+                console.error("[Offspring] Failed to load row", row.id, err);
+              }
+            }}
+          />
+        ) : (
+        <Table
+          columns={ALL_COLUMNS as any}
+          columnState={cols.map}
+          onColumnStateChange={cols.setAll}
+          getRowId={(r: OffspringRow) => r.id}
+          pageSize={25}
+          stickyRightWidthPx={0}
+        >
           <table className="min-w-max w-full text-sm">
             <TableHeader columns={visibleSafe as any} sorts={sorts} onToggleSort={onToggleSort} />
             <tbody>
@@ -3176,6 +3257,7 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
                   </div>
           </div>
         </Table>
+        )}
       </SectionCard>
 
       <CreateOffspringOverlayContent

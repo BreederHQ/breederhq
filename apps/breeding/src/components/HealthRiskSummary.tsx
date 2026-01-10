@@ -585,7 +585,7 @@ function getHealthRatingInfo(rating: HealthRating): {
     case "good":
       return {
         label: "Good",
-        description: "Carriers present but no at-risk offspring expected",
+        description: "Carriers present, but no at-risk offspring expected",
         color: "text-blue-600 dark:text-blue-400",
         bgColor: "bg-blue-500/10",
         borderColor: "border-blue-500/40",

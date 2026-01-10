@@ -82,6 +82,7 @@ export function EmailComposer({
         partyId,
         to: partyEmail,
         subject: subject.trim(),
+        body: body.trim(),
         bodyText: body.trim(),
         bodyHtml: `<p>${body.trim().replace(/\n/g, "</p><p>")}</p>`,
         category: "transactional",

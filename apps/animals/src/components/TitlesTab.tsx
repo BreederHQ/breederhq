@@ -1,8 +1,8 @@
 // apps/animals/src/components/TitlesTab.tsx
 // Titles tab for animal detail view - shows earned titles and allows management
 
-import React, { useEffect, useState, useCallback } from "react";
-import { DatePicker } from "@bhq/ui";
+import React, { useEffect, useState, useCallback, useMemo } from "react";
+import { DatePicker, Select } from "@bhq/ui";
 import {
   makeApi,
   type AnimalTitle,
@@ -330,26 +330,24 @@ function AddTitleModal({
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="flex-1 min-w-[120px] px-3 py-1.5 bg-white/5 border border-hairline rounded-md text-sm placeholder:text-secondary/50 focus:outline-none focus:border-white/30"
               />
-              <select
+              <Select
                 value={orgFilter}
-                onChange={(e) => setOrgFilter(e.target.value)}
-                className="px-2 py-1.5 bg-white/5 border border-hairline rounded-md text-sm focus:outline-none focus:border-white/30"
-              >
-                <option value="">All Organizations</option>
-                {availableOrgs.map((org) => (
-                  <option key={org} value={org}>{org}</option>
-                ))}
-              </select>
-              <select
+                onChange={setOrgFilter}
+                options={[
+                  { value: "", label: "All Organizations" },
+                  ...availableOrgs.map((org) => ({ value: org, label: org })),
+                ]}
+                className="min-w-[140px]"
+              />
+              <Select
                 value={categoryFilter}
-                onChange={(e) => setCategoryFilter(e.target.value as TitleCategory | "")}
-                className="px-2 py-1.5 bg-white/5 border border-hairline rounded-md text-sm focus:outline-none focus:border-white/30"
-              >
-                <option value="">All Categories</option>
-                {Object.entries(CATEGORY_LABELS).map(([key, label]) => (
-                  <option key={key} value={key}>{label}</option>
-                ))}
-              </select>
+                onChange={(v) => setCategoryFilter(v as TitleCategory | "")}
+                options={[
+                  { value: "", label: "All Categories" },
+                  ...Object.entries(CATEGORY_LABELS).map(([key, label]) => ({ value: key, label })),
+                ]}
+                className="min-w-[140px]"
+              />
             </div>
 
             <div className="max-h-48 overflow-y-auto border border-hairline rounded-md bg-white/5">
@@ -363,7 +361,7 @@ function AddTitleModal({
                 sortedOrgs.map(org => (
                   <div key={org}>
                     {/* Organization header */}
-                    <div className="sticky top-0 px-3 py-1.5 bg-white/10 text-xs font-semibold text-secondary border-b border-hairline">
+                    <div className="sticky top-0 px-3 py-1.5 bg-surface text-xs font-semibold text-secondary border-b border-hairline z-10">
                       {org}
                     </div>
                     {/* Titles in this organization */}
@@ -407,15 +405,16 @@ function AddTitleModal({
             <label className="block text-xs font-semibold text-secondary mb-1.5">
               Status
             </label>
-            <select
+            <Select
               value={status}
-              onChange={(e) => setStatus(e.target.value as TitleStatus)}
-              className="w-full px-3 py-2 bg-white/5 border border-hairline rounded-md text-sm focus:outline-none focus:border-white/30"
-            >
-              <option value="EARNED">Earned</option>
-              <option value="IN_PROGRESS">In Progress</option>
-              <option value="VERIFIED">Verified</option>
-            </select>
+              onChange={(v) => setStatus(v as TitleStatus)}
+              options={[
+                { value: "EARNED", label: "Earned" },
+                { value: "IN_PROGRESS", label: "In Progress" },
+                { value: "VERIFIED", label: "Verified" },
+              ]}
+              className="w-full"
+            />
           </div>
 
           {/* Date Earned */}
@@ -629,15 +628,16 @@ function EditTitleModal({
             <label className="block text-xs font-semibold text-secondary mb-1.5">
               Status
             </label>
-            <select
+            <Select
               value={status}
-              onChange={(e) => setStatus(e.target.value as TitleStatus)}
-              className="w-full px-3 py-2 bg-white/5 border border-hairline rounded-md text-sm focus:outline-none focus:border-white/30"
-            >
-              <option value="EARNED">Earned</option>
-              <option value="IN_PROGRESS">In Progress</option>
-              <option value="VERIFIED">Verified</option>
-            </select>
+              onChange={(v) => setStatus(v as TitleStatus)}
+              options={[
+                { value: "EARNED", label: "Earned" },
+                { value: "IN_PROGRESS", label: "In Progress" },
+                { value: "VERIFIED", label: "Verified" },
+              ]}
+              className="w-full"
+            />
           </div>
 
           {/* Date Earned */}
