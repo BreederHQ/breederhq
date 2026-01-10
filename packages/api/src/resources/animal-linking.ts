@@ -179,7 +179,10 @@ export function makeAnimalLinking(http: Http): AnimalLinkingResource {
     },
 
     async revokeLink(linkId: number, reason?: string): Promise<void> {
-      await http.delete(`/cross-tenant-links/${linkId}`, { reason });
+      const url = reason
+        ? `/cross-tenant-links/${linkId}?reason=${encodeURIComponent(reason)}`
+        : `/cross-tenant-links/${linkId}`;
+      await http.delete(url);
     },
 
     // ═══════════════════════════════════════════════════════════════════════
