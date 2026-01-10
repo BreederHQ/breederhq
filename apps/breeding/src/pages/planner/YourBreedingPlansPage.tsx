@@ -47,12 +47,12 @@ export default function YourBreedingPlansPage({ plans = [], initialMode = "rollu
     <>
       {/* Content - conditional wrapper based on mode */}
       {!hasPlans ? (
-        <SectionCard title={<span><span>Planner</span></span>} right={modeToggle}>
+        <SectionCard title="Planner" right={modeToggle}>
           <EmptyState />
         </SectionCard>
       ) : mode === "rollup" ? (
         // Rollup mode: keep the outer SectionCard wrapper
-        <SectionCard title={<span><span>Planner</span></span>} right={modeToggle}>
+        <SectionCard title="Planner" right={modeToggle}>
           <RollupWithPhaseToggles
             plans={plans}
             allowSynthetic={false}
@@ -61,7 +61,7 @@ export default function YourBreedingPlansPage({ plans = [], initialMode = "rollu
         </SectionCard>
       ) : (
         // Per Plan mode: wrap in SectionCard so toggle is visible
-        <SectionCard title={<span><span>Planner</span></span>} right={modeToggle}>
+        <SectionCard title="Planner" right={modeToggle}>
           <PhaseGroupedPerPlan
             plans={plans}
             className="w-full"

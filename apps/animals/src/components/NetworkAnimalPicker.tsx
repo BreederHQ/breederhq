@@ -156,7 +156,7 @@ export function NetworkAnimalPicker({
   onSelect: (animal: NetworkAnimalResult | ShareableAnimal, method: "gaid" | "exchange-code" | "registry" | "breeder", targetTenantId?: number) => void;
   onBack: () => void;
 }) {
-  const [searchMethod, setSearchMethod] = React.useState<SearchMethod>("gaid");
+  const [searchMethod, setSearchMethod] = React.useState<SearchMethod>("breeder");
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
@@ -368,10 +368,10 @@ export function NetworkAnimalPicker({
       {/* Search method tabs */}
       <div className="flex border-b border-hairline">
         {[
+          { key: "breeder", label: "Find Breeder" },
           { key: "gaid", label: "GAID" },
           { key: "exchange-code", label: "Exchange Code" },
           { key: "registry", label: "Registry #" },
-          { key: "breeder", label: "Find Breeder" },
         ].map(({ key, label }) => (
           <button
             key={key}

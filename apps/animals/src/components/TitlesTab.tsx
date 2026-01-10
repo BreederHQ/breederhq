@@ -9,7 +9,9 @@ import {
   type TitleDefinition,
   type TitleStatus,
   type TitleCategory,
+  type PrivacySettings,
 } from "../api";
+import { PrivacyBadge } from "./PrivacyTab";
 
 const api = makeApi();
 
@@ -897,6 +899,14 @@ export function TitlesTab({
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingTitle, setEditingTitle] = useState<AnimalTitle | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [privacySettings, setPrivacySettings] = useState<Pick<PrivacySettings, "showTitles"> | null>(null);
+
+  // Load privacy settings
+  useEffect(() => {
+    api.animals.lineage.getPrivacySettings(animal.id)
+      .then((s) => setPrivacySettings({ showTitles: s.showTitles ?? true }))
+      .catch(() => {});
+  }, [animal.id]);
 
   // Load titles and definitions
   const loadData = useCallback(async () => {
@@ -987,12 +997,17 @@ export function TitlesTab({
     <div className="space-y-6">
       {/* Header with title string */}
       <div className="flex items-center justify-between gap-4">
-        <div>
-          <h3 className="text-lg font-semibold">Titles</h3>
-          {titles.length > 0 && (
-            <div className="text-sm text-secondary mt-1">
-              Full name: <span className="text-[hsl(var(--brand-orange))] font-medium">{titleString}</span>
-            </div>
+        <div className="flex items-center gap-3">
+          <div>
+            <h3 className="text-lg font-semibold">Titles</h3>
+            {titles.length > 0 && (
+              <div className="text-sm text-secondary mt-1">
+                Full name: <span className="text-[hsl(var(--brand-orange))] font-medium">{titleString}</span>
+              </div>
+            )}
+          </div>
+          {privacySettings && (
+            <PrivacyBadge isPublic={privacySettings.showTitles} />
           )}
         </div>
 

@@ -78,14 +78,15 @@ function computeWindowsFromSeed(species: SpeciesCode, seedCycleStart: ISODate): 
   const birthFull = centerRangeTuple(birthCenter, 2);
   const birthLikely = centerRangeTuple(birthCenter, 1);
 
-  // Offspring care: from birth → +8 weeks (UI convention)
-  const offspringCareFull: RangeTuple = makeRangeTuple(birthFull[0], addDays(birthFull[1], 8 * 7));
-  const offspringCareLikely: RangeTuple = makeRangeTuple(birthLikely[0], addDays(birthLikely[0], 8 * 7));
+  // Offspring care: from birth → weaning complete (species-specific duration)
+  const offspringCareWeeks = d.offspringCareDurationWeeks;
+  const offspringCareFull: RangeTuple = makeRangeTuple(birthFull[0], addDays(birthFull[1], offspringCareWeeks * 7));
+  const offspringCareLikely: RangeTuple = makeRangeTuple(birthLikely[0], addDays(birthLikely[0], offspringCareWeeks * 7));
 
-  // Placement windows (use species defaults)
+  // Placement windows (use species defaults - must be >= offspringCareDurationWeeks)
   const placementWeeks = d.placementStartWeeksDefault;
   const placementNormalFull: RangeTuple = makeRangeTuple(addDays(birthFull[0], placementWeeks * 7), addDays(birthFull[1], placementWeeks * 7));
-  const placementNormalLikelyCenter = addDays(birthLikely[0], 8 * 7);
+  const placementNormalLikelyCenter = addDays(birthLikely[0], placementWeeks * 7);
   const placementNormalLikely = centerRangeTuple(placementNormalLikelyCenter, 1);
 
   const placementExtendedFull: RangeTuple = makeRangeTuple(placementNormalFull[1], addDays(placementNormalFull[1], d.placementExtendedWeeks * 7));
@@ -150,11 +151,12 @@ function computeWindowsFromBirth(species: SpeciesCode, actualBirth: ISODate): Pa
   // Use single date for birth (no range, since this is actual)
   const birthPoint: RangeTuple = [birthDate, birthDate];
 
-  // Offspring care: from birth → +8 weeks
-  const offspringCareFull: RangeTuple = makeRangeTuple(birthDate, addDays(birthDate, 8 * 7));
+  // Offspring care: from birth → weaning complete (species-specific duration)
+  const offspringCareWeeks = d.offspringCareDurationWeeks;
+  const offspringCareFull: RangeTuple = makeRangeTuple(birthDate, addDays(birthDate, offspringCareWeeks * 7));
   const offspringCareLikely: RangeTuple = offspringCareFull; // Same as full when based on actual
 
-  // Placement normal: starts at 8 weeks from birth
+  // Placement normal: starts at placementStartWeeksDefault from birth
   const placementWeeks = d.placementStartWeeksDefault;
   const placementNormalStart = addDays(birthDate, placementWeeks * 7);
   const placementNormalFull: RangeTuple = [placementNormalStart, placementNormalStart];

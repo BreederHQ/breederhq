@@ -2,7 +2,7 @@
 // "What If Planning" page with Rollup + What If controls
 
 import * as React from "react";
-import { SectionCard } from "@bhq/ui";
+import { SectionCard, Tooltip } from "@bhq/ui";
 import RollupWithPhaseToggles, { type ID } from "./RollupWithPhaseToggles";
 import { useRollupSelection } from "./rollupSelection";
 import type { WhatIfRow, WhatIfFemale } from "./whatIfTypes";
@@ -226,7 +226,7 @@ export default function WhatIfPlanningPage({ plans = [], females = [], api, onPl
   return (
     <>
       {/* Rollup Section */}
-      <SectionCard title={<span><span>Timeline Rollup</span></span>} className="mb-4">
+      <SectionCard title="Timeline Rollup" className="mb-4">
         {!hasPlans && syntheticPlans.length === 0 ? (
           <EmptyState context="rollup" />
         ) : (
@@ -253,7 +253,7 @@ export default function WhatIfPlanningPage({ plans = [], females = [], api, onPl
       </SectionCard>
 
       {/* What If Planner Section */}
-      <SectionCard title={<span><span>What If Planner</span></span>}>
+      <SectionCard title="What If Planner">
         <WhatIfPlanner
           rows={whatIfRows}
           females={females}
@@ -516,25 +516,27 @@ function WhatIfRowEditor({ row, females, onUpdate, onRemove, onConvertToPlan }: 
           </label>
 
           {/* Convert to Plan button */}
-          <button
-            onClick={onConvertToPlan}
-            disabled={!row.damId || !row.cycleStartIso || !row.species}
-            className="h-8 px-3 text-xs font-medium bg-green-600 hover:bg-green-700 disabled:bg-neutral-700 disabled:text-neutral-500 disabled:cursor-not-allowed text-white rounded transition-colors"
-            title="Convert to breeding plan"
-          >
-            Convert to Plan
-          </button>
+          <Tooltip content="Convert to breeding plan">
+            <button
+              onClick={onConvertToPlan}
+              disabled={!row.damId || !row.cycleStartIso || !row.species}
+              className="h-8 px-3 text-xs font-medium bg-green-600 hover:bg-green-700 disabled:bg-neutral-700 disabled:text-neutral-500 disabled:cursor-not-allowed text-white rounded transition-colors"
+            >
+              Convert to Plan
+            </button>
+          </Tooltip>
 
           {/* Remove button */}
-          <button
-            onClick={onRemove}
-            className="h-8 px-2 text-xs font-medium text-red-500 hover:bg-red-900/20 rounded transition-colors"
-            title="Remove this What If"
-          >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
+          <Tooltip content="Remove this What If">
+            <button
+              onClick={onRemove}
+              className="h-8 px-2 text-xs font-medium text-red-500 hover:bg-red-900/20 rounded transition-colors"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </Tooltip>
         </div>
       </div>
     </div>

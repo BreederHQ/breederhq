@@ -1541,7 +1541,7 @@ const BreedingTab = React.forwardRef<BreedingHandle, { dirty: boolean; onDirty: 
 
     // ── General
     const GeneralTab = (
-      <SectionCard title={<>Default Settings<div className="text-xs text-secondary font-normal mt-0.5">Saved to tenant preferences and used by Planner.</div></>} right={<Legend />}>        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+      <SectionCard title="Default Settings" subtitle="Saved to tenant preferences and used by Planner." right={<Legend />}>        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         <Card className="p-3 space-y-2">
           <div className="text-sm font-medium">Default bands visibility</div>
           <label className="flex items-center gap-2">
@@ -1559,7 +1559,7 @@ const BreedingTab = React.forwardRef<BreedingHandle, { dirty: boolean; onDirty: 
 
     // ── Phases subtab (with Presets A)
     const PhasesTab = (
-      <SectionCard title={<>Timeline Phases<div className="text-xs text-secondary font-normal mt-0.5">Bands that follow a whole phase span.</div></>} right={<Legend />} className="space-y-4">
+      <SectionCard title="Timeline Phases" subtitle="Bands that follow a whole phase span." right={<Legend />} className="space-y-4">
         {loading ? <div className="text-sm text-secondary">Loading…</div> : (
           <>
             <Card className="p-3 space-y-3">
@@ -1684,7 +1684,7 @@ const BreedingTab = React.forwardRef<BreedingHandle, { dirty: boolean; onDirty: 
 
     // ── Dates subtab (with Presets B + placement toggle)
     const DatesTab = (
-      <SectionCard title={<>Exact Dates<div className="text-xs text-secondary font-normal mt-0.5">Wrap a single expected or actual calendar date.</div></>} right={<Legend />} className="space-y-4">
+      <SectionCard title="Exact Dates" subtitle="Wrap a single expected or actual calendar date." right={<Legend />} className="space-y-4">
         {loading ? <div className="text-sm text-secondary">Loading…</div> : (
           <>
             <Card className="p-3 space-y-3">

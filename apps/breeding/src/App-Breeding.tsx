@@ -29,6 +29,7 @@ import {
   DatePicker,
   TagPicker,
   TagCreateModal,
+  Tooltip,
   type TagOption,
 } from "@bhq/ui";
 import { FinanceTab } from "@bhq/ui/components/Finance";
@@ -1506,14 +1507,15 @@ function WhatIfRowEditor(props: WhatIfRowEditorProps) {
           Convert to plan
         </Button>
 
-        <button
-          type="button"
-          onClick={onRemove}
-          className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-hairline bg-surface-subtle text-secondary hover:bg-white/5"
-          title="Remove row"
-        >
-          <Trash2 className="h-4 w-4" />
-        </button>
+        <Tooltip content="Remove row">
+          <button
+            type="button"
+            onClick={onRemove}
+            className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-hairline bg-surface-subtle text-secondary hover:bg-white/5"
+          >
+            <Trash2 className="h-4 w-4" />
+          </button>
+        </Tooltip>
       </div>
 
       {damLoadError && <div className="mt-1 text-xs text-red-500">{damLoadError}</div>}
@@ -2928,13 +2930,14 @@ function GeneticsLabPage({
                   ))}
                 </select>
                 {selectedDamId && (
-                  <button
-                    onClick={() => setShowImportDialog('dam')}
-                    className="h-9 px-2 text-xs border border-hairline rounded-md hover:bg-surface-alt text-secondary hover:text-primary"
-                    title="Import genetics for dam"
-                  >
-                    📤
-                  </button>
+                  <Tooltip content="Import genetics for dam">
+                    <button
+                      onClick={() => setShowImportDialog('dam')}
+                      className="h-9 px-2 text-xs border border-hairline rounded-md hover:bg-surface-alt text-secondary hover:text-primary"
+                    >
+                      📤
+                    </button>
+                  </Tooltip>
                 )}
               </div>
             </div>
@@ -2967,13 +2970,14 @@ function GeneticsLabPage({
                   ))}
                 </select>
                 {selectedSireId && (
-                  <button
-                    onClick={() => setShowImportDialog('sire')}
-                    className="h-9 px-2 text-xs border border-hairline rounded-md hover:bg-surface-alt text-secondary hover:text-primary"
-                    title="Import genetics for sire"
-                  >
-                    📤
-                  </button>
+                  <Tooltip content="Import genetics for sire">
+                    <button
+                      onClick={() => setShowImportDialog('sire')}
+                      className="h-9 px-2 text-xs border border-hairline rounded-md hover:bg-surface-alt text-secondary hover:text-primary"
+                    >
+                      📤
+                    </button>
+                  </Tooltip>
                 )}
               </div>
             </div>
@@ -2997,19 +3001,20 @@ function GeneticsLabPage({
 
             {/* Reset button - only show when at least one animal is selected */}
             {(selectedDamId || selectedSireId) && (
-              <button
-                onClick={() => {
-                  setSelectedDamId(null);
-                  setSelectedSireId(null);
-                  setResults(null);
-                  setDamGenetics(null);
-                  setSireGenetics(null);
-                }}
-                className="h-9 px-3 text-secondary text-sm hover:text-primary hover:bg-surface rounded-md"
-                title="Clear selections"
-              >
-                Reset
-              </button>
+              <Tooltip content="Clear selections">
+                <button
+                  onClick={() => {
+                    setSelectedDamId(null);
+                    setSelectedSireId(null);
+                    setResults(null);
+                    setDamGenetics(null);
+                    setSireGenetics(null);
+                  }}
+                  className="h-9 px-3 text-secondary text-sm hover:text-primary hover:bg-surface rounded-md"
+                >
+                  Reset
+                </button>
+              </Tooltip>
             )}
           </div>
           )}
@@ -5037,55 +5042,58 @@ export default function AppBreeding() {
                     placeholder="Search any field…"
                     widthPx={420}
                     rightSlot={
-                      <button
-                        type="button"
-                        onClick={() => setFiltersOpen((v) => !v)}
-                        aria-expanded={filtersOpen}
-                        title="Filters"
-                        className="h-7 w-7 rounded-md flex items-center justify-center hover:bg-white/5 focus:outline-none"
-                      >
-                        <svg
-                          viewBox="0 0 24 24"
-                          className="h-4 w-4"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth={2}
-                          aria-hidden="true"
+                      <Tooltip content="Filters">
+                        <button
+                          type="button"
+                          onClick={() => setFiltersOpen((v) => !v)}
+                          aria-expanded={filtersOpen}
+                          className="h-7 w-7 rounded-md flex items-center justify-center hover:bg-white/5 focus:outline-none"
                         >
-                          <path d="M3 5h18M7 12h10M10 19h4" strokeLinecap="round" />
-                        </svg>
-                      </button>
+                          <svg
+                            viewBox="0 0 24 24"
+                            className="h-4 w-4"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth={2}
+                            aria-hidden="true"
+                          >
+                            <path d="M3 5h18M7 12h10M10 19h4" strokeLinecap="round" />
+                          </svg>
+                        </button>
+                      </Tooltip>
                     }
                   />
 
                   {/* View mode toggle */}
                   <div className="flex items-center rounded-lg border border-hairline overflow-hidden">
-                    <button
-                      type="button"
-                      onClick={() => setViewMode("table")}
-                      className={`flex items-center gap-1.5 px-3 py-1.5 text-sm transition-colors ${
-                        viewMode === "table"
-                          ? "bg-[hsl(var(--brand-orange))] text-black"
-                          : "bg-transparent text-secondary hover:text-primary hover:bg-[hsl(var(--muted)/0.5)]"
-                      }`}
-                      title="Table view"
-                    >
-                      <TableIcon className="w-4 h-4" />
-                      <span className="hidden sm:inline">Table</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setViewMode("cards")}
-                      className={`flex items-center gap-1.5 px-3 py-1.5 text-sm transition-colors ${
-                        viewMode === "cards"
-                          ? "bg-[hsl(var(--brand-orange))] text-black"
-                          : "bg-transparent text-secondary hover:text-primary hover:bg-[hsl(var(--muted)/0.5)]"
-                      }`}
-                      title="Card view"
-                    >
-                      <LayoutGrid className="w-4 h-4" />
-                      <span className="hidden sm:inline">Cards</span>
-                    </button>
+                    <Tooltip content="Table view">
+                      <button
+                        type="button"
+                        onClick={() => setViewMode("table")}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 text-sm transition-colors ${
+                          viewMode === "table"
+                            ? "bg-[hsl(var(--brand-orange))] text-black"
+                            : "bg-transparent text-secondary hover:text-primary hover:bg-[hsl(var(--muted)/0.5)]"
+                        }`}
+                      >
+                        <TableIcon className="w-4 h-4" />
+                        <span className="hidden sm:inline">Table</span>
+                      </button>
+                    </Tooltip>
+                    <Tooltip content="Card view">
+                      <button
+                        type="button"
+                        onClick={() => setViewMode("cards")}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 text-sm transition-colors ${
+                          viewMode === "cards"
+                            ? "bg-[hsl(var(--brand-orange))] text-black"
+                            : "bg-transparent text-secondary hover:text-primary hover:bg-[hsl(var(--muted)/0.5)]"
+                        }`}
+                      >
+                        <LayoutGrid className="w-4 h-4" />
+                        <span className="hidden sm:inline">Cards</span>
+                      </button>
+                    </Tooltip>
                   </div>
 
                   {/* Column toggle - only show in table mode */}
@@ -7851,20 +7859,21 @@ function PlanDetailsView(props: {
                           style={{ height: 42, minHeight: 42 }}
                         />
                         {effective.damId && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setDraftLive({ damId: null, damName: "" });
-                              setEditDamQuery("");
-                            }}
-                            className="absolute right-2 top-1/2 -translate-y-1/2 text-secondary hover:text-primary transition-colors"
-                            title="Clear Dam"
-                            disabled={!editable}
-                          >
-                            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                            </svg>
-                          </button>
+                          <Tooltip content="Clear Dam">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setDraftLive({ damId: null, damName: "" });
+                                setEditDamQuery("");
+                              }}
+                              className="absolute right-2 top-1/2 -translate-y-1/2 text-secondary hover:text-primary transition-colors"
+                              disabled={!editable}
+                            >
+                              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                              </svg>
+                            </button>
+                          </Tooltip>
                         )}
                       </div>
                       {editDamFocus && (
@@ -7936,20 +7945,21 @@ function PlanDetailsView(props: {
                           style={{ height: 42, minHeight: 42 }}
                         />
                         {effective.sireId && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setDraftLive({ sireId: null, sireName: "" });
-                              setEditSireQuery("");
-                            }}
-                            className="absolute right-2 top-1/2 -translate-y-1/2 text-secondary hover:text-primary transition-colors"
-                            title="Clear Sire"
-                            disabled={!editable}
-                          >
-                            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                            </svg>
-                          </button>
+                          <Tooltip content="Clear Sire">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setDraftLive({ sireId: null, sireName: "" });
+                                setEditSireQuery("");
+                              }}
+                              className="absolute right-2 top-1/2 -translate-y-1/2 text-secondary hover:text-primary transition-colors"
+                              disabled={!editable}
+                            >
+                              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                              </svg>
+                            </button>
+                          </Tooltip>
                         )}
                       </div>
                       {editSireFocus && (
@@ -8107,53 +8117,54 @@ function PlanDetailsView(props: {
                 <div className="flex items-center gap-4 px-4 py-3">
                   {/* Lock icon button - orange in edit mode with pulse, gray in view mode */}
                   {/* Clicking locks the cycle (when unlocked) or unlocks it (when locked) */}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (!isEdit) return;
-                      if (isLocked) {
-                        unlockCycle();
-                      } else if (pendingCycle && effective.damId) {
-                        lockCycle();
-                      }
-                    }}
-                    disabled={!isEdit || (!isLocked && (!pendingCycle || !effective.damId))}
-                    title={isLocked ? "Click to unlock cycle" : (pendingCycle && effective.damId ? "Click to lock cycle" : "Select a dam and cycle first")}
-                    style={{ width: 44, height: 44, minWidth: 44, minHeight: 44 }}
-                    className={`rounded-full flex items-center justify-center flex-shrink-0 transition-all ${
-                      (isLocked || lockedPreview)
-                        ? isEdit
-                          ? "bg-green-600 hover:bg-green-500 cursor-pointer"
-                          : "bg-green-600 cursor-default"
-                        : isEdit && pendingCycle
-                          ? "bg-yellow-500 hover:bg-yellow-400 hover:scale-105 cursor-pointer glow-pulse-green"
-                          : isEdit
-                            ? "bg-[hsl(var(--brand-orange))] hover:scale-105 cursor-pointer glow-pulse-orange"
-                            : pendingCycle
-                              ? "bg-yellow-500 cursor-default glow-pulse-yellow"
-                              : "bg-red-500 cursor-default glow-pulse-red"
-                    }`}
-                  >
-                    <svg
-                      viewBox="0 0 24 24"
-                      className="h-5 w-5 text-white"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
+                  <Tooltip content={isLocked ? "Click to unlock cycle" : (pendingCycle && effective.damId ? "Click to lock cycle" : "Select a dam and cycle first")}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!isEdit) return;
+                        if (isLocked) {
+                          unlockCycle();
+                        } else if (pendingCycle && effective.damId) {
+                          lockCycle();
+                        }
+                      }}
+                      disabled={!isEdit || (!isLocked && (!pendingCycle || !effective.damId))}
+                      style={{ width: 44, height: 44, minWidth: 44, minHeight: 44 }}
+                      className={`rounded-full flex items-center justify-center flex-shrink-0 transition-all ${
+                        (isLocked || lockedPreview)
+                          ? isEdit
+                            ? "bg-green-600 hover:bg-green-500 cursor-pointer"
+                            : "bg-green-600 cursor-default"
+                          : isEdit && pendingCycle
+                            ? "bg-yellow-500 hover:bg-yellow-400 hover:scale-105 cursor-pointer glow-pulse-green"
+                            : isEdit
+                              ? "bg-[hsl(var(--brand-orange))] hover:scale-105 cursor-pointer glow-pulse-orange"
+                              : pendingCycle
+                                ? "bg-yellow-500 cursor-default glow-pulse-yellow"
+                                : "bg-red-500 cursor-default glow-pulse-red"
+                      }`}
                     >
-                      {(isLocked || lockedPreview) ? (
-                        <>
-                          <rect x="5" y="10" width="14" height="10" rx="2" />
-                          <path d="M7 10V7a5 5 0 0 1 10 0v3" />
-                        </>
-                      ) : (
-                        <>
-                          <rect x="5" y="10" width="14" height="10" rx="2" />
-                          <path d="M7 10V7a5 5 0 0 1 9.9-1" />
-                        </>
-                      )}
-                    </svg>
-                  </button>
+                      <svg
+                        viewBox="0 0 24 24"
+                        className="h-5 w-5 text-white"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                      >
+                        {(isLocked || lockedPreview) ? (
+                          <>
+                            <rect x="5" y="10" width="14" height="10" rx="2" />
+                            <path d="M7 10V7a5 5 0 0 1 10 0v3" />
+                          </>
+                        ) : (
+                          <>
+                            <rect x="5" y="10" width="14" height="10" rx="2" />
+                            <path d="M7 10V7a5 5 0 0 1 9.9-1" />
+                          </>
+                        )}
+                      </svg>
+                    </button>
+                  </Tooltip>
 
                   {/* Content - view mode shows simple text, edit mode shows label + dropdown */}
                   {isEdit ? (
@@ -8853,8 +8864,8 @@ function PlanDetailsView(props: {
                     </div>
                   </div>
 
-                  {/* Reset All button inside the Actual Dates frame */}
-                  {isEdit && (
+                  {/* Reset All button inside the Actual Dates frame - hidden for completed plans */}
+                  {isEdit && statusU !== "COMPLETE" && (
                     <div className="mt-4 pt-3 border-t border-amber-500/30">
                       <Button
                         variant="outline"
@@ -8862,9 +8873,13 @@ function PlanDetailsView(props: {
                         disabled={!canEditDates}
                         onClick={async () => {
                           if (!canEditDates) return;
-                          if (!window.confirm("Reset all actual dates for this plan back to blank?")) {
-                            return;
-                          }
+                          const confirmed = await utils.confirmDialog({
+                            title: "Reset Actual Dates",
+                            message: "Reset all actual dates for this plan back to blank?",
+                            confirmText: "Reset",
+                            cancelText: "Cancel",
+                          });
+                          if (!confirmed) return;
 
                           // Build payload with null dates
                           const resetDates = {

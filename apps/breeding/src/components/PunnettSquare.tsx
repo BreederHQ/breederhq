@@ -1,5 +1,6 @@
 // apps/breeding/src/components/PunnettSquare.tsx
 import * as React from "react";
+import { Tooltip } from "@bhq/ui";
 
 /**
  * Inheritance type determines how alleles interact
@@ -433,29 +434,29 @@ export default function PunnettSquare({
               if (!cell) return null;
 
               return (
-                <div
-                  key={`cell-${rowIdx}-${colIdx}`}
-                  className={`
-                    ${cellSize}
-                    ${cell.colors.bg}
-                    border ${cell.colors.border}
-                    flex flex-col items-center justify-center
-                    transition-all duration-200
-                    hover:scale-105 hover:shadow-md
-                    cursor-default
-                    m-0.5 rounded-md
-                  `}
-                  title={`${cell.genotype}: ${getPhenotypeDescription(cell.genotype)}`}
-                >
-                  <span className={`font-mono font-bold ${cell.colors.text} ${fontSize}`}>
-                    {cell.genotype}
-                  </span>
-                  {showPhenotypes && !compact && (
-                    <span className={`text-[10px] ${cell.colors.text} opacity-80 text-center px-1 leading-tight mt-1`}>
-                      {getPhenotypeDescription(cell.genotype)}
+                <Tooltip key={`cell-${rowIdx}-${colIdx}`} content={`${cell.genotype}: ${getPhenotypeDescription(cell.genotype)}`}>
+                  <div
+                    className={`
+                      ${cellSize}
+                      ${cell.colors.bg}
+                      border ${cell.colors.border}
+                      flex flex-col items-center justify-center
+                      transition-all duration-200
+                      hover:scale-105 hover:shadow-md
+                      cursor-default
+                      m-0.5 rounded-md
+                    `}
+                  >
+                    <span className={`font-mono font-bold ${cell.colors.text} ${fontSize}`}>
+                      {cell.genotype}
                     </span>
-                  )}
-                </div>
+                    {showPhenotypes && !compact && (
+                      <span className={`text-[10px] ${cell.colors.text} opacity-80 text-center px-1 leading-tight mt-1`}>
+                        {getPhenotypeDescription(cell.genotype)}
+                      </span>
+                    )}
+                  </div>
+                </Tooltip>
               );
             })}
           </div>

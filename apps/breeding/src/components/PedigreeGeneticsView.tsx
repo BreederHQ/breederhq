@@ -1,5 +1,6 @@
 // apps/breeding/src/components/PedigreeGeneticsView.tsx
 import * as React from "react";
+import { Tooltip } from "@bhq/ui";
 import { ChevronDown, ChevronUp, AlertTriangle, CheckCircle, HelpCircle, Dna } from "lucide-react";
 
 /**
@@ -402,20 +403,20 @@ function LocusFilter({
           </div>
           <div className="flex flex-wrap gap-1">
             {loci.map((l) => (
-              <button
-                key={l.locus}
-                onClick={() => onToggleLocus(l.locus)}
-                className={`
-                  px-2 py-1 text-xs rounded-full border transition-all
-                  ${selectedLoci.includes(l.locus)
-                    ? "bg-accent text-white border-accent"
-                    : "bg-surface border-hairline hover:border-accent"
-                  }
-                `}
-                title={l.locusName}
-              >
-                {l.locus}
-              </button>
+              <Tooltip key={l.locus} content={l.locusName}>
+                <button
+                  onClick={() => onToggleLocus(l.locus)}
+                  className={`
+                    px-2 py-1 text-xs rounded-full border transition-all
+                    ${selectedLoci.includes(l.locus)
+                      ? "bg-accent text-white border-accent"
+                      : "bg-surface border-hairline hover:border-accent"
+                    }
+                  `}
+                >
+                  {l.locus}
+                </button>
+              </Tooltip>
             ))}
           </div>
         </div>

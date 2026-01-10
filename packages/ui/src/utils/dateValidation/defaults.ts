@@ -24,13 +24,13 @@ export const SPECIES_BIOLOGY_DEFAULTS: Record<SpeciesCode, SpeciesBiologyRules> 
     cycleToBreedingMinDays: 7,
     cycleToBreedingMaxDays: 21,
 
-    // Weaning: minimum 6 weeks, typical 8 weeks (matches reproEngine calculation)
-    birthToWeaningMinDays: 42,
-    birthToWeaningTypicalDays: 56,
+    // Weaning: begins week 3-4, complete by week 6 (AKC: puppies exclusively on puppy food)
+    birthToWeaningMinDays: 35,      // 5 weeks minimum
+    birthToWeaningTypicalDays: 42,  // 6 weeks typical (AKC standard)
 
-    // Placement: minimum 8 weeks per regulations (matches reproEngine calculation)
-    birthToPlacementMinDays: 56,
-    birthToPlacementTypicalDays: 56,
+    // Placement: week 8-10 (AKC recommended)
+    birthToPlacementMinDays: 56,    // 8 weeks minimum per most state laws
+    birthToPlacementTypicalDays: 56, // 8 weeks typical (2 weeks after weaning)
 
     // Female age: minimum 18-24 months recommended
     femaleMinBreedingAgeMonths: 18,
@@ -54,13 +54,13 @@ export const SPECIES_BIOLOGY_DEFAULTS: Record<SpeciesCode, SpeciesBiologyRules> 
     cycleToBreedingMinDays: 2,
     cycleToBreedingMaxDays: 7,
 
-    // Weaning: minimum 6 weeks, typical 8 weeks (matches reproEngine)
-    birthToWeaningMinDays: 42,
-    birthToWeaningTypicalDays: 56,
+    // Weaning: begins week 4-5, complete by week 8
+    birthToWeaningMinDays: 42,       // 6 weeks minimum
+    birthToWeaningTypicalDays: 56,   // 8 weeks typical
 
-    // Placement: minimum 8 weeks (matches reproEngine), though 12 weeks often preferred
-    birthToPlacementMinDays: 56,
-    birthToPlacementTypicalDays: 56,
+    // Placement: 12 weeks preferred for socialization (TICA/CFA recommendation)
+    birthToPlacementMinDays: 56,     // 8 weeks legal minimum
+    birthToPlacementTypicalDays: 84, // 12 weeks typical (4 weeks after weaning)
 
     // Female age
     femaleMinBreedingAgeMonths: 12,
@@ -84,13 +84,13 @@ export const SPECIES_BIOLOGY_DEFAULTS: Record<SpeciesCode, SpeciesBiologyRules> 
     cycleToBreedingMinDays: 3,
     cycleToBreedingMaxDays: 7,
 
-    // Weaning: typically 4-6 months
-    birthToWeaningMinDays: 120,
-    birthToWeaningTypicalDays: 180,
+    // Weaning: 4-6 months (AQHA standard)
+    birthToWeaningMinDays: 112,      // 16 weeks / 4 months minimum
+    birthToWeaningTypicalDays: 140,  // 20 weeks / 5 months typical
 
-    // Placement: varies widely, often 6-12 months
-    birthToPlacementMinDays: 180,
-    birthToPlacementTypicalDays: 365,
+    // Placement: after weaning + adjustment period
+    birthToPlacementMinDays: 140,    // 20 weeks / 5 months minimum
+    birthToPlacementTypicalDays: 168, // 24 weeks / 6 months typical
 
     // Female age: minimum 3 years
     femaleMinBreedingAgeMonths: 36,
@@ -114,13 +114,13 @@ export const SPECIES_BIOLOGY_DEFAULTS: Record<SpeciesCode, SpeciesBiologyRules> 
     cycleToBreedingMinDays: 1,
     cycleToBreedingMaxDays: 3,
 
-    // Weaning: minimum 8 weeks, typical 8 weeks (matches reproEngine)
-    birthToWeaningMinDays: 56,
-    birthToWeaningTypicalDays: 56,
+    // Weaning: 8-10 weeks optimal (research shows <70 days causes weaning shock)
+    birthToWeaningMinDays: 56,       // 8 weeks minimum
+    birthToWeaningTypicalDays: 63,   // 9 weeks typical
 
-    // Placement: minimum 8 weeks (matches reproEngine)
-    birthToPlacementMinDays: 56,
-    birthToPlacementTypicalDays: 56,
+    // Placement: after weaning adjustment
+    birthToPlacementMinDays: 63,     // 9 weeks minimum
+    birthToPlacementTypicalDays: 70, // 10 weeks typical
 
     // Female age
     femaleMinBreedingAgeMonths: 8,
@@ -144,13 +144,13 @@ export const SPECIES_BIOLOGY_DEFAULTS: Record<SpeciesCode, SpeciesBiologyRules> 
     cycleToBreedingMinDays: 0,
     cycleToBreedingMaxDays: 1,
 
-    // Weaning: minimum 4 weeks, typical 8 weeks (matches reproEngine)
-    birthToWeaningMinDays: 28,
-    birthToWeaningTypicalDays: 56,
+    // Weaning: 6-8 weeks (ARBA standard)
+    birthToWeaningMinDays: 28,       // 4 weeks minimum (intensive only)
+    birthToWeaningTypicalDays: 42,   // 6 weeks typical (ARBA)
 
-    // Placement: minimum 8 weeks (matches reproEngine and ethical standards)
-    birthToPlacementMinDays: 56,
-    birthToPlacementTypicalDays: 56,
+    // Placement: 8 weeks, must be before 10 weeks to prevent fighting
+    birthToPlacementMinDays: 42,     // 6 weeks minimum
+    birthToPlacementTypicalDays: 56, // 8 weeks typical (ARBA)
 
     // Female age
     femaleMinBreedingAgeMonths: 6,
@@ -174,13 +174,13 @@ export const SPECIES_BIOLOGY_DEFAULTS: Record<SpeciesCode, SpeciesBiologyRules> 
     cycleToBreedingMinDays: 1,
     cycleToBreedingMaxDays: 3,
 
-    // Weaning: minimum 60 days (8-9 weeks), typical matches reproEngine defaults
-    birthToWeaningMinDays: 56,
-    birthToWeaningTypicalDays: 56,
+    // Weaning: 8-12 weeks typical, 60 days common for early weaning
+    birthToWeaningMinDays: 56,       // 8 weeks minimum
+    birthToWeaningTypicalDays: 56,   // 8 weeks typical
 
-    // Placement: minimum matches reproEngine defaults
-    birthToPlacementMinDays: 56,
-    birthToPlacementTypicalDays: 56,
+    // Placement: after weaning adjustment
+    birthToPlacementMinDays: 56,     // 8 weeks minimum
+    birthToPlacementTypicalDays: 70, // 10 weeks typical
 
     // Female age
     femaleMinBreedingAgeMonths: 12,

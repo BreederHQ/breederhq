@@ -8,7 +8,9 @@ import {
   type CompetitionEntry,
   type CompetitionStats,
   type CompetitionType,
+  type PrivacySettings,
 } from "../api";
+import { PrivacyBadge } from "./PrivacyTab";
 
 const api = makeApi();
 
@@ -547,10 +549,18 @@ export function CompetitionsTab({
 
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingEntry, setEditingEntry] = useState<CompetitionEntry | null>(null);
+  const [privacySettings, setPrivacySettings] = useState<Pick<PrivacySettings, "showCompetitions"> | null>(null);
 
   // Filter state
   const [typeFilter, setTypeFilter] = useState<CompetitionType | "">("");
   const [yearFilter, setYearFilter] = useState<number | "">("");
+
+  // Load privacy settings
+  useEffect(() => {
+    api.animals.lineage.getPrivacySettings(animal.id)
+      .then((s) => setPrivacySettings({ showCompetitions: s.showCompetitions ?? false }))
+      .catch(() => {});
+  }, [animal.id]);
 
   // Load entries and stats
   const loadData = useCallback(async () => {
@@ -633,12 +643,17 @@ export function CompetitionsTab({
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between gap-4">
-        <div>
-          <h3 className="text-lg font-semibold">Competition Record</h3>
-          {stats && stats.totalEntries > 0 && (
-            <div className="text-sm text-secondary mt-1">
-              {stats.totalEntries} entries · {stats.totalPoints} total points · {stats.wins} wins
-            </div>
+        <div className="flex items-center gap-3">
+          <div>
+            <h3 className="text-lg font-semibold">Competition Record</h3>
+            {stats && stats.totalEntries > 0 && (
+              <div className="text-sm text-secondary mt-1">
+                {stats.totalEntries} entries · {stats.totalPoints} total points · {stats.wins} wins
+              </div>
+            )}
+          </div>
+          {privacySettings && (
+            <PrivacyBadge isPublic={privacySettings.showCompetitions} />
           )}
         </div>
 

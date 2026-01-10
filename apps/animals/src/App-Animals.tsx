@@ -47,6 +47,7 @@ import { AnimalCardView } from "./components/AnimalCardView";
 import { LineageTab } from "./components/LineageTab";
 import { TitlesTab } from "./components/TitlesTab";
 import { CompetitionsTab } from "./components/CompetitionsTab";
+import { PrivacyTab } from "./components/PrivacyTab";
 import { ProducingRecordSection } from "./components/ProducingRecordSection";
 import { GeneticsImportDialog } from "@bhq/ui/components/GeneticsImport";
 
@@ -3299,6 +3300,7 @@ type GeneticLocus = {
   testDate?: string;
   testLab?: string;
   notes?: string;
+  networkVisible?: boolean;
 };
 
 type GeneticData = {
@@ -3332,6 +3334,14 @@ function GeneticsTab({
   const [saving, setSaving] = React.useState(false);
   const [editData, setEditData] = React.useState<GeneticData>({});
   const [showImportDialog, setShowImportDialog] = React.useState(false);
+  const [enableGeneticsSharing, setEnableGeneticsSharing] = React.useState(false);
+
+  // Load privacy settings to check if genetics sharing is enabled
+  React.useEffect(() => {
+    api?.animals?.lineage?.getPrivacySettings(animal.id)
+      .then((s: any) => setEnableGeneticsSharing(s.enableGeneticsSharing ?? false))
+      .catch(() => {});
+  }, [api, animal.id]);
 
   // Species-specific locus definitions - comprehensive genetic markers
   type LocusInfo = { locus: string; locusName: string; description: string; breedSpecific?: string };
@@ -3660,6 +3670,21 @@ function GeneticsTab({
 
   return (
     <div className="space-y-3 p-4">
+      {/* Network Sharing Status */}
+      {enableGeneticsSharing && (
+        <div className="rounded-lg border border-purple-500/20 bg-purple-500/5 p-3">
+          <div className="flex items-start gap-2">
+            <span className="text-purple-600">🔗</span>
+            <div className="text-sm">
+              <div className="font-medium text-purple-700 mb-1">Network Sharing Enabled</div>
+              <div className="text-secondary">
+                Genetic data entered here may be shared with other breeders in the network based on your Privacy settings.
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Helper Notice - at the very top */}
       <div className="rounded-lg border border-blue-500/20 bg-blue-500/5 p-3">
         <div className="flex items-start gap-2">
@@ -4544,7 +4569,7 @@ type TraitDraft = {
     json?: any;
   };
   marketplaceVisible?: boolean | null;
-  verified?: boolean | null;
+  networkVisible?: boolean | null;
   performedAt?: string | null;
   source?: string | null;
   jsonText?: string;
@@ -4569,6 +4594,14 @@ function HealthTab({
   const [expandedTraitKey, setExpandedTraitKey] = React.useState<string | null>(null);
   const [traitDrafts, setTraitDrafts] = React.useState<Record<string, TraitDraft>>({});
   const [collapsedCategories, setCollapsedCategories] = React.useState<Set<string>>(new Set());
+  const [enableHealthSharing, setEnableHealthSharing] = React.useState(false);
+
+  // Load privacy settings to check if health sharing is enabled
+  React.useEffect(() => {
+    api?.animals?.lineage?.getPrivacySettings(animal.id)
+      .then((s: any) => setEnableHealthSharing(s.enableHealthSharing ?? false))
+      .catch(() => {});
+  }, [api, animal.id]);
 
   const getTraitDraftKey = React.useCallback((trait: any) => {
     const raw = trait?.traitKey ?? trait?.traitValueId ?? "";
@@ -4594,7 +4627,7 @@ function HealthTab({
       const nextDraft: TraitDraft = {
         value: nextValue,
         marketplaceVisible: trait.marketplaceVisible,
-        verified: trait.verified,
+        networkVisible: trait.networkVisible,
         performedAt: trait.performedAt,
         source: trait.source,
       };
@@ -4680,6 +4713,16 @@ function HealthTab({
     } catch (err: any) {
       console.error("[HealthTab] Save failed", err);
       toast.error(err?.data?.message || "Failed to save trait");
+    }
+  };
+
+  const handleVisibilityToggle = async (traitKey: string, networkVisible: boolean) => {
+    try {
+      await api?.animals?.traits?.update(animal.id, [{ traitKey, networkVisible }]);
+      await fetchTraits();
+    } catch (err: any) {
+      console.error("[HealthTab] Visibility toggle failed", err);
+      toast.error(err?.data?.message || "Failed to update visibility");
     }
   };
 
@@ -4874,6 +4917,7 @@ function HealthTab({
                       draft={traitDrafts[draftKey]}
                       isExpanded={expandedTraitKey === draftKey}
                       editMode={mode === "edit"}
+                      enableNetworkSharing={enableHealthSharing}
                       onExpand={() => {
                         if (mode === "edit") {
                           const nextKey = ensureTraitDraft(trait);
@@ -4885,6 +4929,7 @@ function HealthTab({
                       onDraftReset={() => clearTraitDraft(draftKey)}
                       onSave={(update) => handleSaveTrait(trait.traitKey, draftKey, update)}
                       onUpload={() => handleUploadFromTrait(trait.traitKey)}
+                      onVisibilityToggle={(networkVisible) => handleVisibilityToggle(trait.traitKey, networkVisible)}
                     />
                   );
                 })}
@@ -4928,28 +4973,114 @@ function formatTraitDisplayName(displayName?: string, traitKey?: string) {
   return rawDisplayName || "Trait";
 }
 
+function VisibilityToggle({
+  isPublic,
+  onChange,
+  disabled,
+  readOnly,
+}: {
+  isPublic: boolean;
+  onChange: (v: boolean) => void;
+  disabled?: boolean;
+  readOnly?: boolean;
+}) {
+  if (readOnly) {
+    // Read-only display (non-edit mode)
+    return (
+      <span
+        className={`
+          inline-flex items-center gap-1.5 text-xs px-2 py-1 rounded-full font-medium
+          ${isPublic
+            ? "bg-emerald-500/15 text-emerald-400"
+            : "bg-zinc-500/15 text-zinc-400"
+          }
+        `}
+      >
+        {isPublic ? (
+          <>
+            <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+              <path d="M10 12a2 2 0 100-4 2 2 0 000 4z" />
+              <path fillRule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clipRule="evenodd" />
+            </svg>
+            Public
+          </>
+        ) : (
+          <>
+            <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M3.707 2.293a1 1 0 00-1.414 1.414l14 14a1 1 0 001.414-1.414l-1.473-1.473A10.014 10.014 0 0019.542 10C18.268 5.943 14.478 3 10 3a9.958 9.958 0 00-4.512 1.074l-1.78-1.781zm4.261 4.26l1.514 1.515a2.003 2.003 0 012.45 2.45l1.514 1.514a4 4 0 00-5.478-5.478z" clipRule="evenodd" />
+              <path d="M12.454 16.697L9.75 13.992a4 4 0 01-3.742-3.741L2.335 6.578A9.98 9.98 0 00.458 10c1.274 4.057 5.065 7 9.542 7 .847 0 1.669-.105 2.454-.303z" />
+            </svg>
+            Private
+          </>
+        )}
+      </span>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        if (!disabled) onChange(!isPublic);
+      }}
+      disabled={disabled}
+      className={`
+        inline-flex items-center gap-1.5 text-xs px-2 py-1 rounded-full font-medium transition-all
+        ${disabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}
+        ${isPublic
+          ? "bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25"
+          : "bg-zinc-500/15 text-zinc-400 hover:bg-zinc-500/25"
+        }
+      `}
+    >
+      {isPublic ? (
+        <>
+          <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+            <path d="M10 12a2 2 0 100-4 2 2 0 000 4z" />
+            <path fillRule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clipRule="evenodd" />
+          </svg>
+          Public
+        </>
+      ) : (
+        <>
+          <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+            <path fillRule="evenodd" d="M3.707 2.293a1 1 0 00-1.414 1.414l14 14a1 1 0 001.414-1.414l-1.473-1.473A10.014 10.014 0 0019.542 10C18.268 5.943 14.478 3 10 3a9.958 9.958 0 00-4.512 1.074l-1.78-1.781zm4.261 4.26l1.514 1.515a2.003 2.003 0 012.45 2.45l1.514 1.514a4 4 0 00-5.478-5.478z" clipRule="evenodd" />
+            <path d="M12.454 16.697L9.75 13.992a4 4 0 01-3.742-3.741L2.335 6.578A9.98 9.98 0 00.458 10c1.274 4.057 5.065 7 9.542 7 .847 0 1.669-.105 2.454-.303z" />
+          </svg>
+          Private
+        </>
+      )}
+    </button>
+  );
+}
+
 function TraitRow({
   trait,
   draft,
   isExpanded,
   editMode,
+  enableNetworkSharing,
   onExpand,
   onCollapse,
   onSave,
   onUpload,
   onDraftChange,
   onDraftReset,
+  onVisibilityToggle,
 }: {
   trait: any;
   draft?: TraitDraft;
   isExpanded: boolean;
   editMode: boolean;
+  enableNetworkSharing?: boolean;
   onExpand: () => void;
   onCollapse: () => void;
   onSave: (update: any) => void;
   onUpload: () => void;
   onDraftChange: (next: TraitDraft) => void;
   onDraftReset: () => void;
+  onVisibilityToggle?: (networkVisible: boolean) => void;
 }) {
   const [saving, setSaving] = React.useState(false);
   const localDraft = draft ?? {};
@@ -4964,7 +5095,9 @@ function TraitRow({
   const currentMarketplace = localDraft.marketplaceVisible !== undefined
     ? localDraft.marketplaceVisible
     : trait.marketplaceVisible;
-  const currentVerified = localDraft.verified !== undefined ? localDraft.verified : trait.verified;
+  const currentNetworkVisible = localDraft.networkVisible !== undefined
+    ? localDraft.networkVisible
+    : trait.networkVisible;
   const currentPerformedAt = localDraft.performedAt !== undefined
     ? localDraft.performedAt
     : trait.performedAt;
@@ -5027,7 +5160,7 @@ function TraitRow({
       }
 
       if (currentMarketplace !== undefined) update.marketplaceVisible = currentMarketplace;
-      if (currentVerified !== undefined) update.verified = currentVerified;
+      if (currentNetworkVisible !== undefined) update.networkVisible = currentNetworkVisible;
       if (currentPerformedAt !== undefined) update.performedAt = currentPerformedAt;
       if (currentSource !== undefined) update.source = currentSource;
 
@@ -5255,13 +5388,17 @@ function TraitRow({
             <div className="text-xs text-secondary truncate">{getDisplayValue()}</div>
           </div>
           <div className="flex items-center gap-2">
-            {trait.verified && (
-              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-100">
-                Verified
-              </span>
+            {/* Network visibility toggle - only show when health sharing is enabled */}
+            {enableNetworkSharing && onVisibilityToggle && (
+              <VisibilityToggle
+                isPublic={trait.networkVisible || false}
+                onChange={onVisibilityToggle}
+                disabled={!editMode}
+                readOnly={!editMode}
+              />
             )}
             {trait.marketplaceVisible && (
-              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-100">
+              <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] bg-blue-500/20 text-blue-400 border border-blue-500/30">
                 Marketplace
               </span>
             )}
@@ -5304,11 +5441,27 @@ function TraitRow({
           {renderValueEditor()}
         </div>
 
-        {/* Visibility and Verification */}
+        {/* Visibility */}
         <div className="border-t border-hairline pt-4 space-y-3">
-          <div className="text-xs font-medium text-secondary mb-2">Visibility and Verification</div>
+          <div className="text-xs font-medium text-secondary mb-2">Visibility</div>
 
           <div className="grid grid-cols-2 gap-3">
+            {enableNetworkSharing && (
+              <label className="flex items-center gap-2 text-sm cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={currentNetworkVisible || false}
+                  onChange={(e) =>
+                    onDraftChange({
+                      ...localDraft,
+                      networkVisible: e.target.checked,
+                    })
+                  }
+                  className="rounded border-hairline"
+                />
+                <span>Share with network</span>
+              </label>
+            )}
             <label className="flex items-center gap-2 text-sm cursor-pointer">
               <input
                 type="checkbox"
@@ -5322,20 +5475,6 @@ function TraitRow({
                 className="rounded border-hairline"
               />
               <span>Visible on marketplace</span>
-            </label>
-            <label className="flex items-center gap-2 text-sm cursor-pointer">
-              <input
-                type="checkbox"
-                checked={currentVerified || false}
-                onChange={(e) =>
-                  onDraftChange({
-                    ...localDraft,
-                    verified: e.target.checked,
-                  })
-                }
-                className="rounded border-hairline"
-              />
-              <span>Verified</span>
             </label>
           </div>
 
@@ -5454,6 +5593,14 @@ function DocumentsTab({
   const [uploadModalOpen, setUploadModalOpen] = React.useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = React.useState<number | null>(null);
   const [allTraits, setAllTraits] = React.useState<any[]>([]);
+  const [enableDocumentSharing, setEnableDocumentSharing] = React.useState(false);
+
+  // Load privacy settings to check if document sharing is enabled
+  React.useEffect(() => {
+    api?.animals?.lineage?.getPrivacySettings(animal.id)
+      .then((s: any) => setEnableDocumentSharing(s.enableDocumentSharing ?? false))
+      .catch(() => {});
+  }, [api, animal.id]);
 
   const fetchDocuments = React.useCallback(async () => {
     try {
@@ -5601,7 +5748,32 @@ function DocumentsTab({
                       {doc.status}
                     </span>
                   )}
+                  {doc.networkVisible && (
+                    <span className="px-2 py-0.5 rounded bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-100">
+                      Network
+                    </span>
+                  )}
                 </div>
+                {enableDocumentSharing && (
+                  <label className="flex items-center gap-2 text-xs cursor-pointer mt-2">
+                    <input
+                      type="checkbox"
+                      checked={doc.networkVisible || false}
+                      onChange={async (e) => {
+                        try {
+                          await api?.animals?.documents?.update(animal.id, doc.documentId, {
+                            networkVisible: e.target.checked,
+                          });
+                          await fetchDocuments();
+                        } catch (err) {
+                          console.error("Failed to update document sharing", err);
+                        }
+                      }}
+                      className="rounded border-hairline"
+                    />
+                    <span>Share with network</span>
+                  </label>
+                )}
                 {doc.linkedTraits && doc.linkedTraits.length > 0 && (
                   <div className="flex flex-wrap gap-2">
                     <span className="text-xs text-secondary">Linked to:</span>
@@ -5903,10 +6075,9 @@ function RegistryTab({
   }, [fetchRegistrations]);
 
   React.useEffect(() => {
-    if (mode === "edit") {
-      fetchAllRegistries();
-    }
-  }, [mode, fetchAllRegistries]);
+    // Fetch registries in both view and edit modes so we can display registry names
+    fetchAllRegistries();
+  }, [fetchAllRegistries]);
 
   const handleAddRegistration = () => {
     setExpandedId("draft");
@@ -7309,12 +7480,13 @@ export default function AppAnimals() {
         tabs.push({ key: "health", label: "Health" } as any);
         tabs.push({ key: "genetics", label: "Genetics" } as any);
         tabs.push({ key: "registry", label: "Registry" } as any);
+        tabs.push({ key: "finances", label: "Finances" } as any);
         tabs.push({ key: "documents", label: "Documents" } as any);
         tabs.push({ key: "media", label: "Media" } as any);
         tabs.push({ key: "lineage", label: "Lineage" } as any);
         tabs.push({ key: "titles", label: "Titles" } as any);
         tabs.push({ key: "competitions", label: "Competitions" } as any);
-        tabs.push({ key: "finances", label: "Finances" } as any);
+        tabs.push({ key: "privacy", label: "Privacy" } as any);
         tabs.push({ key: "audit", label: "Audit" } as any);
         return tabs;
       },
@@ -7875,6 +8047,10 @@ export default function AppAnimals() {
 
           {activeTab === "competitions" && (
             <CompetitionsTab animal={row} mode={mode} />
+          )}
+
+          {activeTab === "privacy" && (
+            <PrivacyTab animal={row} mode={mode} />
           )}
 
           {activeTab === "finances" && (

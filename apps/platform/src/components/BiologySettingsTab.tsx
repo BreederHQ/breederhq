@@ -50,28 +50,43 @@ const BiologySettingsTab = React.forwardRef<BiologySettingsHandle, Props>(
 
     return (
       <div className="space-y-6">
-        {/* Info Box */}
+        {/* Consolidated Info Box */}
         <Card className="p-4 bg-blue-500/10 border-blue-500/30">
-          <div className="text-sm font-medium text-blue-300 mb-2">About Biology & Calculation Constants</div>
-          <ul className="text-xs text-blue-200 space-y-1 list-disc list-inside">
-            <li>
-              These values control <strong>how BreederHQ calculates expected breeding dates</strong>
-            </li>
-            <li>
-              When you lock a breeding plan, these constants determine the timeline for breeding, birth, weaning, and placement
-            </li>
-            <li>
-              These are <strong>system defaults</strong> based on veterinary standards and industry best practices
-            </li>
-            <li>
-              Future updates will allow customization per breeding program
-            </li>
-          </ul>
+          <div className="text-sm font-medium text-blue-300 mb-3">About Biology & Calculation Constants</div>
+          <div className="text-xs text-blue-200 space-y-3">
+            <p>
+              These values control <strong>how BreederHQ calculates expected dates</strong> for breeding, birth, weaning, and placement
+              when you create a breeding plan. They are <strong>system defaults</strong> based on veterinary standards and industry best practices.
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-2">
+              <div className="flex gap-2">
+                <div className="flex-shrink-0 w-5 h-5 rounded-full bg-blue-500/30 flex items-center justify-center text-xs font-bold">1</div>
+                <div className="text-xs"><strong>Review</strong> the values used in your breeding plan calculations</div>
+              </div>
+              <div className="flex gap-2">
+                <div className="flex-shrink-0 w-5 h-5 rounded-full bg-blue-500/30 flex items-center justify-center text-xs font-bold">2</div>
+                <div className="text-xs"><strong>Verify</strong> your plan dates align with these standards</div>
+              </div>
+              <div className="flex gap-2">
+                <div className="flex-shrink-0 w-5 h-5 rounded-full bg-blue-500/30 flex items-center justify-center text-xs font-bold">3</div>
+                <div className="text-xs"><strong>Protect</strong> your female's health with proper recovery times</div>
+              </div>
+            </div>
+          </div>
+        </Card>
+
+        {/* Future Customization Note */}
+        <Card className="p-4 bg-purple-500/10 border-purple-500/30">
+          <div className="text-sm font-medium text-purple-300 mb-1">Coming Soon: Customization</div>
+          <div className="text-xs text-purple-200">
+            Future updates will allow breeding programs to customize these values to match their specific practices and breed standards.
+          </div>
         </Card>
 
         {/* Species Selection */}
         <SectionCard
-          title={<>Species Biology Constants<div className="text-xs text-secondary font-normal mt-0.5">View the calculation values used for each species</div></>}
+          title="Species Biology Constants"
+          subtitle="View the calculation values used for each species"
         >
           <Card className="p-4 space-y-4">
             <div className="flex items-center gap-4">
@@ -92,7 +107,7 @@ const BiologySettingsTab = React.forwardRef<BiologySettingsHandle, Props>(
         </SectionCard>
 
         {/* Gestation */}
-        <SectionCard title={<>Gestation Period<div className="text-xs text-secondary font-normal mt-0.5">Pregnancy duration from breeding to birth</div></>}>
+        <SectionCard title="Gestation Period" subtitle="Pregnancy duration from breeding to birth">
           <Card className="p-4">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
@@ -113,7 +128,7 @@ const BiologySettingsTab = React.forwardRef<BiologySettingsHandle, Props>(
         </SectionCard>
 
         {/* Breeding Window */}
-        <SectionCard title={<>Breeding Window<div className="text-xs text-secondary font-normal mt-0.5">Optimal timing for breeding from cycle/heat start</div></>}>
+        <SectionCard title="Breeding Window" subtitle="Optimal timing for breeding from cycle/heat start">
           <Card className="p-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
@@ -126,13 +141,13 @@ const BiologySettingsTab = React.forwardRef<BiologySettingsHandle, Props>(
               </div>
             </div>
             <div className="mt-3 text-xs text-secondary">
-              System calculates ovulation at day 12 for dogs, breeding window is typically days 11-14
+              Breeding window timing varies by species. For dogs, ovulation is typically around day 12 from cycle start.
             </div>
           </Card>
         </SectionCard>
 
         {/* Weaning */}
-        <SectionCard title={<>Weaning Age<div className="text-xs text-secondary font-normal mt-0.5">When offspring are typically weaned</div></>}>
+        <SectionCard title="Weaning Age" subtitle="When offspring are typically weaned">
           <Card className="p-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
@@ -149,7 +164,7 @@ const BiologySettingsTab = React.forwardRef<BiologySettingsHandle, Props>(
         </SectionCard>
 
         {/* Placement */}
-        <SectionCard title={<>Placement Age<div className="text-xs text-secondary font-normal mt-0.5">When offspring can go to new homes</div></>}>
+        <SectionCard title="Placement Age" subtitle="When offspring can go to new homes">
           <Card className="p-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
@@ -165,14 +180,14 @@ const BiologySettingsTab = React.forwardRef<BiologySettingsHandle, Props>(
             </div>
             <div className="mt-3 p-3 bg-amber-500/10 border border-amber-500/30 rounded">
               <div className="text-xs text-amber-400">
-                <strong>Note:</strong> System calculates placement start at 8 weeks and placement completed at 11 weeks (8 weeks + 3 week window)
+                <strong>Note:</strong> Placement timing varies by species. The system calculates an extended placement window based on species-specific standards.
               </div>
             </div>
           </Card>
         </SectionCard>
 
         {/* Female Breeding Age */}
-        <SectionCard title={<>Female Breeding Age<div className="text-xs text-secondary font-normal mt-0.5">Age recommendations for responsible breeding</div></>}>
+        <SectionCard title="Female Breeding Age" subtitle="Age recommendations for responsible breeding">
           <Card className="p-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
@@ -188,7 +203,7 @@ const BiologySettingsTab = React.forwardRef<BiologySettingsHandle, Props>(
         </SectionCard>
 
         {/* Recovery & Limits */}
-        <SectionCard title={<>Recovery & Lifetime Limits<div className="text-xs text-secondary font-normal mt-0.5">Responsible breeding practices</div></>}>
+        <SectionCard title="Recovery & Lifetime Limits" subtitle="Responsible breeding practices">
           <Card className="p-4">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
@@ -208,62 +223,6 @@ const BiologySettingsTab = React.forwardRef<BiologySettingsHandle, Props>(
           </Card>
         </SectionCard>
 
-        {/* Practical Use Cases */}
-        <SectionCard
-          title={<>How to Use This Information<div className="text-xs text-secondary font-normal mt-0.5">Practical actions you can take with these biology constants</div></>}
-        >
-          <Card className="p-4">
-            <div className="space-y-4">
-              <div className="flex gap-3">
-                <div className="flex-shrink-0 w-6 h-6 rounded-full bg-brand-orange/20 flex items-center justify-center text-xs font-bold text-brand-orange">
-                  1
-                </div>
-                <div>
-                  <div className="text-sm font-medium mb-1">Understand Your Expected Dates</div>
-                  <div className="text-xs text-secondary">
-                    When you create a breeding plan, BreederHQ uses these constants to calculate expected dates for breeding, birth, weaning, and placement.
-                    This tab shows you the exact values used in those calculations.
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex gap-3">
-                <div className="flex-shrink-0 w-6 h-6 rounded-full bg-brand-orange/20 flex items-center justify-center text-xs font-bold text-brand-orange">
-                  2
-                </div>
-                <div>
-                  <div className="text-sm font-medium mb-1">Protect Your Female's Health</div>
-                  <div className="text-xs text-secondary">
-                    Use the "Postpartum Recovery" period ({biology.postpartumRecoveryMinDays} days minimum for {selectedSpecies.toLowerCase()}s) to ensure
-                    you're giving your female adequate rest between litters. Never skip cycles just to breed more frequently.
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex gap-3">
-                <div className="flex-shrink-0 w-6 h-6 rounded-full bg-brand-orange/20 flex items-center justify-center text-xs font-bold text-brand-orange">
-                  3
-                </div>
-                <div>
-                  <div className="text-sm font-medium mb-1">Verify Breeding Plan Dates</div>
-                  <div className="text-xs text-secondary">
-                    Compare dates in your active breeding plans against these constants. If something looks wrong (like 1-day placement windows),
-                    you'll know to investigate or report it as a system issue.
-                  </div>
-                </div>
-              </div>
-            </div>
-          </Card>
-        </SectionCard>
-
-        {/* Future Customization Note */}
-        <Card className="p-4 bg-purple-500/10 border-purple-500/30">
-          <div className="text-sm font-medium text-purple-300 mb-2">Coming Soon: Customization</div>
-          <div className="text-xs text-purple-200">
-            Future updates will allow breeding programs to customize these values to match their specific practices and breed standards.
-            These customizations will only affect new breeding plans created after the changes.
-          </div>
-        </Card>
       </div>
     );
   }

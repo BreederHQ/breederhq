@@ -2,6 +2,8 @@ import * as React from "react";
 
 export type SectionCardProps = {
   title?: React.ReactNode;
+  /** Subtitle displayed below the title (does not affect animated underline position) */
+  subtitle?: React.ReactNode;
   /** Primary right-aligned header content */
   right?: React.ReactNode;
   /** Deprecated alias kept for compatibility with older callers */
@@ -18,6 +20,7 @@ export type SectionCardProps = {
 
 export function SectionCard({
   title,
+  subtitle,
   right,
   rightSlot,
   actions,
@@ -39,8 +42,11 @@ export function SectionCard({
     <div className={[baseClasses, borderClasses, className].join(" ")}>
       {(title || headerRight) && (
         <div className="bhq-section-header flex items-center justify-between mb-1">
-          {/* remove the forced all-caps, give a stable class for global styling */}
-          <div className="bhq-section-title flex-1">{title}</div>
+          {/* Wrap title in div > span structure for animated underline from details.css */}
+          <div className="bhq-section-title flex-1">
+            <div><span>{title}</span></div>
+            {subtitle && <div className="text-xs text-secondary font-normal mt-2">{subtitle}</div>}
+          </div>
           {headerRight}
         </div>
       )}

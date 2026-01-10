@@ -220,14 +220,28 @@ export interface SetParentsResult {
 
 export interface PrivacySettings {
   animalId: number;
+  // Master toggle
   allowCrossTenantMatching: boolean;
+  // Identity
   showName: boolean;
   showPhoto: boolean;
   showFullDob: boolean;
+  // Registry
   showRegistryFull: boolean;
-  showHealthResults: boolean;
-  showGeneticData: boolean;
   showBreeder: boolean;
+  // Granular sharing gates (enables per-item networkVisible toggles in respective tabs)
+  enableHealthSharing: boolean;
+  enableGeneticsSharing: boolean;
+  enableDocumentSharing: boolean;
+  enableMediaSharing: boolean;
+  // Achievements
+  showTitles: boolean;
+  showTitleDetails: boolean;
+  showCompetitions: boolean;
+  showCompetitionDetails: boolean;
+  // Breeding
+  showBreedingHistory: boolean;
+  // Contact
   allowInfoRequests: boolean;
   allowDirectContact: boolean;
 }
