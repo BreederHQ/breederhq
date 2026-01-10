@@ -115,6 +115,18 @@ interface UnifiedMessage {
   type: "email" | "dm" | "draft";
   // Direction for sent folder filtering
   direction?: "inbound" | "outbound";
+  // Breeder meta - enriched contact insights
+  meta?: {
+    leadStatus?: "prospect" | "lead" | "customer" | "inactive" | string;
+    waitlistPosition?: number | null;
+    waitlistPlanName?: string | null; // e.g., "Spring 2025 Litter"
+    hasActiveDeposit?: boolean;
+    depositPlanName?: string | null;
+    totalPurchases?: number; // lifetime value in cents
+    animalsOwned?: number; // count of animals they own from this breeder
+    lastContactedDaysAgo?: number | null;
+    location?: string | null; // e.g., "Austin, TX"
+  };
 }
 
 interface ConversationThread {
@@ -182,7 +194,7 @@ const KEYBOARD_SHORTCUTS = [
 ];
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   SIDEBAR COMPONENT
+   SIDEBAR COMPONENT - Refined visual design
    ═══════════════════════════════════════════════════════════════════════════ */
 
 interface SidebarProps {
@@ -207,63 +219,76 @@ function Sidebar({
   onCreateTag,
 }: SidebarProps) {
   return (
-    <div className="w-56 flex-shrink-0 border-r border-hairline bg-surface-strong/30 flex flex-col">
+    <div className="w-56 flex-shrink-0 border-r border-hairline bg-surface flex flex-col">
       {/* Folders */}
-      <div className="flex-1 overflow-y-auto py-2">
-        <div className="px-3 py-2">
-          <span className="text-[10px] font-semibold uppercase tracking-wider text-secondary">
+      <div className="flex-1 overflow-y-auto py-3">
+        <div className="px-4 py-2">
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-500">
             Folders
           </span>
         </div>
         {SMART_FOLDERS.map((folder) => {
           const count = folderCounts[folder.id] || 0;
           const isActive = activeFolder === folder.id;
+          const isInbox = folder.id === "inbox";
           return (
             <React.Fragment key={folder.id}>
               <button
                 onClick={() => onFolderChange(folder.id)}
-                className={`w-full px-3 py-2 flex items-center gap-2 text-sm transition-all ${
-                  isActive
-                    ? "bg-[hsl(var(--brand-orange))]/10 text-[hsl(var(--brand-orange))] border-r-2 border-[hsl(var(--brand-orange))]"
-                    : "text-secondary hover:text-primary hover:bg-white/5"
-                }`}
+                className={`
+                  w-full px-4 py-2 flex items-center gap-3 text-sm transition-all duration-150 relative
+                  ${isActive
+                    ? "text-white bg-white/[0.08]"
+                    : "text-gray-400 hover:text-white hover:bg-white/[0.04]"
+                  }
+                `}
               >
-                <span className={isActive ? "text-[hsl(var(--brand-orange))]" : ""}>{folder.icon}</span>
+                {/* Active indicator bar */}
+                {isActive && (
+                  <div className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 bg-[hsl(var(--brand-orange))] rounded-r" />
+                )}
+                <span className={isActive ? "text-[hsl(var(--brand-orange))]" : "text-gray-500"}>
+                  {folder.icon}
+                </span>
                 <span className="flex-1 text-left truncate">{folder.label}</span>
                 {count > 0 && (
                   <span
-                    className={`text-xs px-1.5 py-0.5 rounded-full ${
-                      isActive
-                        ? "bg-[hsl(var(--brand-orange))]/20 text-[hsl(var(--brand-orange))]"
-                        : "bg-surface-strong text-secondary"
-                    }`}
+                    className={`
+                      text-[11px] tabular-nums min-w-[20px] text-center
+                      ${isInbox && count > 0
+                        ? "px-1.5 py-0.5 rounded-full bg-cyan-500/20 text-cyan-400 font-semibold"
+                        : isActive
+                        ? "text-gray-300"
+                        : "text-gray-500"
+                      }
+                    `}
                   >
                     {count}
                   </span>
                 )}
               </button>
-              {folder.dividerAfter && <div className="my-2 mx-3 border-t border-hairline" />}
+              {folder.dividerAfter && <div className="my-2 mx-4 border-t border-hairline" />}
             </React.Fragment>
           );
         })}
 
         {/* Tags Section */}
-        <div className="my-2 mx-3 border-t border-hairline" />
-        <div className="px-3 py-2 flex items-center justify-between">
-          <span className="text-[10px] font-semibold uppercase tracking-wider text-secondary">
+        <div className="my-2 mx-4 border-t border-hairline" />
+        <div className="px-4 py-2 flex items-center justify-between">
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-500">
             Tags
           </span>
           <button
             onClick={onManageTags}
-            className="text-[10px] text-[hsl(var(--brand-orange))] hover:underline"
+            className="text-[10px] text-cyan-400 hover:text-cyan-300 transition-colors"
           >
             Manage
           </button>
         </div>
         {tags.length === 0 ? (
-          <div className="px-3 py-2 text-xs text-secondary">
+          <div className="px-4 py-2 text-xs text-gray-500">
             No tags yet.{" "}
-            <button onClick={onCreateTag} className="text-[hsl(var(--brand-orange))] hover:underline">
+            <button onClick={onCreateTag} className="text-cyan-400 hover:text-cyan-300 transition-colors">
               Create one
             </button>
           </div>
@@ -274,19 +299,21 @@ function Sidebar({
               <button
                 key={tag.id}
                 onClick={() => onTagToggle(tag.id)}
-                className={`w-full px-3 py-1.5 flex items-center gap-2 text-sm transition-all ${
-                  isSelected
-                    ? "bg-[hsl(var(--brand-teal))]/10 text-[hsl(var(--brand-teal))]"
-                    : "text-secondary hover:text-primary hover:bg-white/5"
-                }`}
+                className={`
+                  w-full px-4 py-1.5 flex items-center gap-3 text-sm transition-all duration-150
+                  ${isSelected
+                    ? "text-cyan-400 bg-cyan-500/10"
+                    : "text-gray-400 hover:text-white hover:bg-white/[0.04]"
+                  }
+                `}
               >
                 {tag.color ? (
                   <div
-                    className="w-3 h-3 rounded-full"
+                    className="w-2.5 h-2.5 rounded-full ring-2 ring-white/10"
                     style={{ backgroundColor: tag.color }}
                   />
                 ) : (
-                  <Hash className="w-3 h-3" />
+                  <Hash className="w-3.5 h-3.5 text-gray-500" />
                 )}
                 <span className="flex-1 text-left truncate">{tag.name}</span>
               </button>
@@ -296,10 +323,12 @@ function Sidebar({
       </div>
 
       {/* Keyboard Shortcuts Hint */}
-      <div className="p-3 border-t border-hairline">
-        <div className="text-[10px] text-secondary flex items-center gap-1">
-          <Command className="w-3 h-3" />
-          <span>K for shortcuts</span>
+      <div className="p-4 border-t border-hairline">
+        <div className="flex items-center gap-2 text-[11px] text-gray-500">
+          <kbd className="px-1.5 py-0.5 bg-white/5 border border-white/10 rounded font-mono text-[10px]">
+            <Command className="w-2.5 h-2.5 inline" />K
+          </kbd>
+          <span>Shortcuts</span>
         </div>
       </div>
     </div>
@@ -609,7 +638,7 @@ function TemplatesPanel({ api }: TemplatesPanelProps) {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   CONVERSATION LIST COMPONENT
+   CONVERSATION LIST COMPONENT - Redesigned for clarity and visual hierarchy
    ═══════════════════════════════════════════════════════════════════════════ */
 
 interface ConversationListProps {
@@ -636,6 +665,207 @@ interface ConversationListProps {
   hasDraftsSelected: boolean;
 }
 
+// Lead status badge colors
+const LEAD_STATUS_COLORS: Record<string, { bg: string; text: string }> = {
+  customer: { bg: "bg-emerald-500/20", text: "text-emerald-400" },
+  lead: { bg: "bg-cyan-500/20", text: "text-cyan-400" },
+  prospect: { bg: "bg-amber-500/20", text: "text-amber-400" },
+  inactive: { bg: "bg-gray-500/20", text: "text-gray-400" },
+};
+
+// Format currency for display
+function formatCurrency(cents: number): string {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(cents / 100);
+}
+
+// Message item component - card style like breeding plans
+function MessageListItem({
+  msg,
+  isViewing,
+  isChecked,
+  onSelect,
+  onToggleSelect,
+}: {
+  msg: UnifiedMessage;
+  isViewing: boolean;
+  isChecked: boolean;
+  onSelect: () => void;
+  onToggleSelect: () => void;
+}) {
+  const isUnread = msg.isUnread;
+  const meta = msg.meta;
+  // Channel accent color - blue for email, violet for DM (like status colors on breeding plan cards)
+  const accentColor = msg.channel === "email" ? "#3b82f6" : "#8b5cf6";
+
+  // Build meta chips to display - icons + labels for quick scanning
+  const metaChips: { label: string; color: string; icon?: React.ReactNode }[] = [];
+
+  // Lead status with icon
+  if (meta?.leadStatus) {
+    const colors = LEAD_STATUS_COLORS[meta.leadStatus] || LEAD_STATUS_COLORS.prospect;
+    const icon = meta.leadStatus === "customer"
+      ? <CheckCheck className="w-3 h-3" />
+      : meta.leadStatus === "lead"
+      ? <Zap className="w-3 h-3" />
+      : <User className="w-3 h-3" />;
+    metaChips.push({
+      label: meta.leadStatus.charAt(0).toUpperCase() + meta.leadStatus.slice(1),
+      color: `${colors.bg} ${colors.text}`,
+      icon,
+    });
+  }
+
+  // Waitlist position - high priority info for breeders
+  if (meta?.waitlistPosition) {
+    metaChips.push({
+      label: `#${meta.waitlistPosition}`,
+      color: "bg-violet-500/20 text-violet-400",
+      icon: <ClipboardList className="w-3 h-3" />,
+    });
+  }
+
+  // Active deposit - critical financial info
+  if (meta?.hasActiveDeposit) {
+    metaChips.push({
+      label: meta.depositPlanName || "Deposit",
+      color: "bg-green-500/20 text-green-400",
+      icon: <Check className="w-3 h-3" />,
+    });
+  }
+
+  // Animals owned - relationship depth indicator
+  if (meta?.animalsOwned && meta.animalsOwned > 0) {
+    metaChips.push({
+      label: `${meta.animalsOwned}`,
+      color: "bg-pink-500/20 text-pink-400",
+      icon: <Dog className="w-3 h-3" />,
+    });
+  }
+
+  // Lifetime value - $$$ indicator
+  if (meta?.totalPurchases && meta.totalPurchases > 0) {
+    metaChips.push({
+      label: formatCurrency(meta.totalPurchases),
+      color: "bg-teal-500/20 text-teal-400",
+    });
+  }
+
+  // Location
+  if (meta?.location) {
+    metaChips.push({
+      label: meta.location,
+      color: "bg-slate-500/20 text-slate-400",
+      icon: <MapPin className="w-3 h-3" />,
+    });
+  }
+
+  // User-applied tags from the message
+  if (msg.tags && msg.tags.length > 0) {
+    msg.tags.slice(0, 2).forEach((tag) => {
+      metaChips.push({
+        label: tag,
+        color: "bg-orange-500/20 text-orange-400",
+        icon: <Tag className="w-3 h-3" />,
+      });
+    });
+  }
+
+  return (
+    <div className="px-2 py-1 first:pt-2">
+      <button
+        onClick={onSelect}
+        className={`
+          group relative w-full text-left bg-surface border border-hairline rounded-lg
+          p-3 pl-4 overflow-hidden transition-all duration-200 cursor-pointer
+          hover:border-[hsl(var(--foreground)/0.2)] hover:bg-[hsl(var(--foreground)/0.03)]
+          hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/15
+          ${isViewing ? "border-[hsl(var(--brand-orange)/0.5)] bg-[hsl(var(--brand-orange)/0.05)]" : ""}
+        `}
+      >
+        {/* Left accent stripe - colored by channel (like status colors on breeding plan cards) */}
+        <div
+          className="absolute left-0 top-0 bottom-0 w-1 rounded-l-lg"
+          style={{ backgroundColor: isViewing ? "hsl(var(--brand-orange))" : accentColor }}
+        />
+
+        {/* Row 1: Sender + unread dot + star + timestamp */}
+        <div className="flex items-center gap-2 mb-1">
+          {isUnread && (
+            <div className="w-2 h-2 rounded-full bg-cyan-400 flex-shrink-0" />
+          )}
+          <span
+            className={`
+              text-sm truncate flex-1
+              ${isUnread ? "font-semibold text-primary" : "font-normal text-secondary"}
+            `}
+          >
+            {msg.contactName}
+          </span>
+          {msg.isStarred && (
+            <Star className="w-3.5 h-3.5 text-amber-400 fill-amber-400 flex-shrink-0" />
+          )}
+          <span className={`text-[11px] flex-shrink-0 tabular-nums ${isUnread ? "text-secondary" : "text-secondary/60"}`}>
+            {formatRelativeTime(msg.timestamp)}
+          </span>
+        </div>
+
+        {/* Row 2: Subject */}
+        {msg.subject && (
+          <div
+            className={`
+              text-sm truncate
+              ${isUnread ? "text-primary/80" : "text-secondary"}
+            `}
+          >
+            {msg.subject}
+          </div>
+        )}
+
+        {/* Row 3: Preview */}
+        <div className="text-xs text-secondary/60 truncate mt-1">
+          {msg.preview}
+        </div>
+
+        {/* Row 4: Meta chips - breeder insights with icons */}
+        {metaChips.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5 mt-2 pt-2 border-t border-hairline/50">
+            {metaChips.slice(0, 4).map((chip, i) => (
+              <span
+                key={i}
+                className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium ${chip.color}`}
+              >
+                {chip.icon}
+                {chip.label}
+              </span>
+            ))}
+            {metaChips.length > 4 && (
+              <span className="text-[10px] text-secondary/50">
+                +{metaChips.length - 4}
+              </span>
+            )}
+          </div>
+        )}
+      </button>
+    </div>
+  );
+}
+
+// Date group header component
+function DateGroupHeader({ label }: { label: string }) {
+  return (
+    <div className="sticky top-0 z-10 px-3 py-2 bg-surface/95 backdrop-blur-sm">
+      <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-500">
+        {label}
+      </span>
+    </div>
+  );
+}
+
 function ConversationList({
   messages,
   selectedId,
@@ -659,28 +889,49 @@ function ConversationList({
   const hasSelection = selectedIds.size > 0;
   const allSelected = messages.length > 0 && selectedIds.size === messages.length;
 
+  // Group messages by date
+  const groupedMessages = React.useMemo(() => {
+    const groups: { label: string; messages: UnifiedMessage[] }[] = [];
+    let currentGroup: string | null = null;
+
+    messages.forEach((msg) => {
+      const group = getDateGroup(msg.timestamp);
+      if (group !== currentGroup) {
+        groups.push({ label: group, messages: [msg] });
+        currentGroup = group;
+      } else {
+        groups[groups.length - 1].messages.push(msg);
+      }
+    });
+
+    return groups;
+  }, [messages]);
+
+  // Count unread
+  const unreadCount = messages.filter((m) => m.isUnread).length;
+
   return (
-    <div className="w-80 flex-shrink-0 border-r border-hairline flex flex-col bg-surface">
-      {/* Bulk Actions Bar - shows when items are selected */}
+    <div className="w-[340px] flex-shrink-0 border-r border-hairline flex flex-col bg-surface">
+      {/* Bulk Actions Bar */}
       {hasSelection && (
-        <div className="p-2 border-b border-hairline bg-[hsl(var(--brand-orange))]/10 flex items-center justify-between">
+        <div className="flex-shrink-0 px-3 py-2 border-b border-hairline bg-cyan-500/10 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <button
               onClick={onClearSelection}
-              className="p-1 rounded hover:bg-white/10 text-secondary hover:text-primary"
+              className="p-1.5 rounded-md hover:bg-white/10 text-gray-400 hover:text-white transition-colors"
               title="Clear selection"
             >
               <X className="w-4 h-4" />
             </button>
-            <span className="text-xs font-medium text-primary">
+            <span className="text-xs font-medium text-cyan-400">
               {selectedIds.size} selected
             </span>
           </div>
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-0.5">
             <button
               onClick={onBulkMarkRead}
               disabled={bulkActionLoading}
-              className="p-1.5 rounded text-secondary hover:text-primary hover:bg-white/10 disabled:opacity-50"
+              className="p-2 rounded-md text-gray-400 hover:text-white hover:bg-white/10 disabled:opacity-50 transition-colors"
               title="Mark as read"
             >
               <Check className="w-4 h-4" />
@@ -688,7 +939,7 @@ function ConversationList({
             <button
               onClick={onBulkFlag}
               disabled={bulkActionLoading}
-              className="p-1.5 rounded text-secondary hover:text-yellow-500 hover:bg-white/10 disabled:opacity-50"
+              className="p-2 rounded-md text-gray-400 hover:text-amber-400 hover:bg-white/10 disabled:opacity-50 transition-colors"
               title="Flag selected"
             >
               <Star className="w-4 h-4" />
@@ -696,7 +947,7 @@ function ConversationList({
             <button
               onClick={onBulkArchive}
               disabled={bulkActionLoading}
-              className="p-1.5 rounded text-secondary hover:text-primary hover:bg-white/10 disabled:opacity-50"
+              className="p-2 rounded-md text-gray-400 hover:text-white hover:bg-white/10 disabled:opacity-50 transition-colors"
               title="Archive selected"
             >
               <Archive className="w-4 h-4" />
@@ -705,7 +956,7 @@ function ConversationList({
               <button
                 onClick={onBulkDelete}
                 disabled={bulkActionLoading}
-                className="p-1.5 rounded text-secondary hover:text-red-400 hover:bg-white/10 disabled:opacity-50"
+                className="p-2 rounded-md text-gray-400 hover:text-red-400 hover:bg-white/10 disabled:opacity-50 transition-colors"
                 title="Delete selected drafts"
               >
                 <Trash2 className="w-4 h-4" />
@@ -716,15 +967,18 @@ function ConversationList({
       )}
 
       {/* Search & Filters */}
-      <div className="p-3 border-b border-hairline space-y-2">
+      <div className="flex-shrink-0 p-3 border-b border-hairline space-y-2">
+        {/* Search input */}
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-secondary" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
             placeholder="Search messages..."
-            className="w-full pl-9 pr-3 py-2 text-sm bg-surface-strong border border-hairline rounded-lg focus:outline-none focus:ring-2 focus:ring-[hsl(var(--brand-orange))]/50 focus:border-transparent"
+            className="w-full pl-9 pr-8 py-2 text-sm bg-white/5 border border-white/10 rounded-lg
+                     focus:outline-none focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500/50
+                     placeholder:text-gray-500 text-white transition-all"
             autoComplete="off"
             data-1p-ignore
             data-lpignore="true"
@@ -733,160 +987,78 @@ function ConversationList({
           {searchQuery && (
             <button
               onClick={() => onSearchChange("")}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-secondary hover:text-primary"
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white transition-colors"
             >
               <X className="w-4 h-4" />
             </button>
           )}
         </div>
 
-        {/* Channel Toggle with Select All */}
+        {/* Channel toggle + unread count */}
         <div className="flex items-center gap-2">
-          <button
-            onClick={allSelected ? onClearSelection : onSelectAll}
-            className={`p-1.5 rounded transition-colors ${
-              allSelected
-                ? "text-[hsl(var(--brand-orange))]"
-                : "text-secondary hover:text-primary"
-            }`}
-            title={allSelected ? "Deselect all" : "Select all"}
-          >
-            <CheckCheck className="w-4 h-4" />
-          </button>
-          <div className="flex-1 flex gap-1 p-1 bg-surface-strong rounded-lg">
+          <div className="flex-1 flex p-1 bg-white/5 rounded-lg">
             {(["all", "email", "dm"] as ChannelType[]).map((ch) => (
               <button
                 key={ch}
                 onClick={() => onChannelFilterChange(ch)}
-                className={`flex-1 px-2 py-1 text-xs font-medium rounded-md transition-all ${
-                  channelFilter === ch
-                    ? "bg-[hsl(var(--brand-orange))] text-black"
-                    : "text-secondary hover:text-primary"
-                }`}
+                className={`
+                  flex-1 px-3 py-1.5 text-xs font-medium rounded-md transition-all duration-150
+                  ${channelFilter === ch
+                    ? "bg-white/10 text-white shadow-sm"
+                    : "text-gray-500 hover:text-gray-300"
+                  }
+                `}
               >
                 {ch === "all" ? "All" : ch === "email" ? "Email" : "DMs"}
               </button>
             ))}
           </div>
+
+          {/* Unread badge */}
+          {unreadCount > 0 && (
+            <div className="flex items-center justify-center min-w-[24px] h-6 px-1.5 rounded-full bg-cyan-500/20 text-cyan-400">
+              <span className="text-[11px] font-bold">{unreadCount}</span>
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Message List */}
+      {/* Message List with date grouping */}
       <div className="flex-1 overflow-y-auto">
         {loading ? (
-          <div className="p-8 text-center text-sm text-secondary">
-            <RefreshCw className="w-5 h-5 animate-spin mx-auto mb-2" />
-            Loading messages...
+          <div className="flex flex-col items-center justify-center py-16 px-4">
+            <RefreshCw className="w-6 h-6 animate-spin text-gray-500 mb-3" />
+            <span className="text-sm text-gray-500">Loading messages...</span>
           </div>
         ) : messages.length === 0 ? (
-          <div className="p-8 text-center">
-            <Inbox className="w-10 h-10 text-secondary/50 mx-auto mb-3" />
-            <div className="text-sm text-secondary">No messages found</div>
-            <div className="text-xs text-secondary mt-1">
-              {searchQuery ? "Try a different search" : "Start a conversation!"}
+          <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
+            <div className="w-14 h-14 rounded-2xl bg-white/5 flex items-center justify-center mb-4">
+              <Inbox className="w-7 h-7 text-gray-500" />
+            </div>
+            <div className="text-sm font-medium text-gray-300 mb-1">No messages</div>
+            <div className="text-xs text-gray-500 max-w-[200px]">
+              {searchQuery
+                ? "Try adjusting your search terms"
+                : "When you receive messages, they'll appear here"
+              }
             </div>
           </div>
         ) : (
-          messages.map((msg) => {
-            const isViewing = selectedId === msg.id;
-            const isChecked = selectedIds.has(msg.id);
-            return (
-              <div
-                key={msg.id}
-                className={`w-full p-3 text-left border-b border-hairline transition-all group ${
-                  isViewing
-                    ? "bg-[hsl(var(--brand-orange))]/10 border-l-2 border-l-[hsl(var(--brand-orange))]"
-                    : isChecked
-                    ? "bg-[hsl(var(--brand-teal))]/10"
-                    : msg.isUnread
-                    ? "bg-[hsl(var(--brand-orange))]/5 hover:bg-[hsl(var(--brand-orange))]/10"
-                    : "hover:bg-white/5"
-                }`}
-              >
-                <div className="flex items-start gap-2">
-                  {/* Checkbox for bulk selection */}
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onToggleSelect(msg.id);
-                    }}
-                    className={`w-4 h-4 mt-0.5 flex-shrink-0 rounded border transition-colors ${
-                      isChecked
-                        ? "bg-[hsl(var(--brand-orange))] border-[hsl(var(--brand-orange))]"
-                        : "border-hairline group-hover:border-secondary"
-                    }`}
-                  >
-                    {isChecked && <Check className="w-3 h-3 text-black m-auto" />}
-                  </button>
-
-                  {/* Main content - clickable to view */}
-                  <button
-                    onClick={() => onSelect(msg.id)}
-                    className="flex-1 min-w-0 text-left"
-                  >
-                    {/* Header Row */}
-                    <div className="flex items-center gap-2">
-                      {msg.isUnread && (
-                        <div className="w-2 h-2 rounded-full bg-[hsl(var(--brand-orange))] flex-shrink-0" />
-                      )}
-                      <span
-                        className={`font-medium text-sm truncate ${
-                          msg.isUnread ? "text-primary" : "text-primary/80"
-                        }`}
-                      >
-                        {msg.contactName}
-                      </span>
-                      <span
-                        className="flex-shrink-0 px-1.5 py-0.5 text-[10px] rounded font-medium uppercase tracking-wide"
-                        style={{
-                          backgroundColor: msg.channel === "email" ? "rgba(59, 130, 246, 0.2)" : "rgba(139, 92, 246, 0.2)",
-                          color: msg.channel === "email" ? "#60a5fa" : "#a78bfa",
-                        }}
-                      >
-                        {msg.channel === "email" ? "Email" : "DM"}
-                      </span>
-                      {msg.isStarred && (
-                        <Star className="w-3 h-3 text-yellow-500 fill-yellow-500 flex-shrink-0" />
-                      )}
-                    </div>
-
-                    {/* Subject */}
-                    {msg.subject && (
-                      <div
-                        className={`text-sm truncate mt-0.5 ${
-                          msg.isUnread ? "text-primary font-medium" : "text-secondary"
-                        }`}
-                      >
-                        {msg.subject}
-                      </div>
-                    )}
-
-                    {/* Preview */}
-                    <div className="text-xs text-secondary truncate mt-0.5">{msg.preview}</div>
-
-                    {/* Footer Row */}
-                    <div className="flex items-center gap-2 mt-1.5">
-                      <span className="text-[10px] text-secondary">
-                        {formatRelativeTime(msg.timestamp)}
-                      </span>
-                      {msg.tags && msg.tags.length > 0 && (
-                        <div className="flex gap-1">
-                          {msg.tags.slice(0, 2).map((tag) => (
-                            <span
-                              key={tag}
-                              className="text-[10px] px-1.5 py-0.5 rounded bg-surface-strong text-secondary"
-                            >
-                              {tag}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </button>
-                </div>
-              </div>
-            );
-          })
+          groupedMessages.map((group) => (
+            <div key={group.label}>
+              <DateGroupHeader label={group.label} />
+              {group.messages.map((msg) => (
+                <MessageListItem
+                  key={msg.id}
+                  msg={msg}
+                  isViewing={selectedId === msg.id}
+                  isChecked={selectedIds.has(msg.id)}
+                  onSelect={() => onSelect(msg.id)}
+                  onToggleSelect={() => onToggleSelect(msg.id)}
+                />
+              ))}
+            </div>
+          ))
         )}
       </div>
     </div>
@@ -894,7 +1066,7 @@ function ConversationList({
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   MESSAGE THREAD VIEW COMPONENT
+   MESSAGE THREAD VIEW COMPONENT - Enhanced visual design
    ═══════════════════════════════════════════════════════════════════════════ */
 
 interface ThreadViewProps {
@@ -908,6 +1080,41 @@ interface ThreadViewProps {
   onToggleFlag: () => void;
   onToggleArchive: () => void;
   actionLoading: boolean;
+}
+
+// Action button component for thread header
+function ThreadActionButton({
+  onClick,
+  disabled,
+  isActive,
+  activeColor,
+  icon: Icon,
+  title,
+}: {
+  onClick: () => void;
+  disabled?: boolean;
+  isActive?: boolean;
+  activeColor?: string;
+  icon: React.ComponentType<{ className?: string }>;
+  title: string;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className={`
+        p-2 rounded-lg transition-all duration-150
+        ${isActive
+          ? `${activeColor || "text-cyan-400"} bg-white/5`
+          : "text-gray-500 hover:text-white hover:bg-white/5"
+        }
+        ${disabled ? "opacity-50 cursor-not-allowed" : ""}
+      `}
+      title={title}
+    >
+      <Icon className={`w-4 h-4 ${isActive && activeColor?.includes("amber") ? "fill-amber-400" : ""}`} />
+    </button>
+  );
 }
 
 function ThreadView({
@@ -930,99 +1137,111 @@ function ThreadView({
 
   if (loading) {
     return (
-      <div className="flex-1 flex items-center justify-center">
-        <RefreshCw className="w-6 h-6 animate-spin text-secondary" />
+      <div className="flex-1 flex items-center justify-center bg-gradient-to-br from-surface to-canvas">
+        <div className="flex flex-col items-center gap-3">
+          <RefreshCw className="w-6 h-6 animate-spin text-gray-500" />
+          <span className="text-sm text-gray-500">Loading conversation...</span>
+        </div>
       </div>
     );
   }
 
   if (!thread) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center text-center p-8">
-        <MessageCircle className="w-16 h-16 text-secondary/30 mb-4" />
-        <div className="text-lg font-medium text-primary mb-1">Select a conversation</div>
-        <div className="text-sm text-secondary">
-          Choose a message from the list to view the conversation
+      <div className="flex-1 flex flex-col items-center justify-center text-center p-8 bg-gradient-to-br from-surface to-canvas">
+        <div className="w-20 h-20 rounded-2xl bg-white/5 flex items-center justify-center mb-5">
+          <MessageCircle className="w-10 h-10 text-gray-600" />
         </div>
-        <div className="mt-6 text-xs text-secondary">
-          <span className="px-2 py-1 bg-surface-strong rounded">j</span> /{" "}
-          <span className="px-2 py-1 bg-surface-strong rounded">k</span> to navigate
+        <div className="text-lg font-semibold text-gray-300 mb-2">Select a conversation</div>
+        <div className="text-sm text-gray-500 max-w-xs">
+          Choose a message from the list to view the full conversation
+        </div>
+        <div className="mt-8 flex items-center gap-3 text-xs text-gray-500">
+          <div className="flex items-center gap-1.5">
+            <kbd className="px-2 py-1 bg-white/5 border border-white/10 rounded font-mono">j</kbd>
+            <kbd className="px-2 py-1 bg-white/5 border border-white/10 rounded font-mono">k</kbd>
+          </div>
+          <span>to navigate</span>
         </div>
       </div>
     );
   }
 
+  // Derive initials for avatar
+  const initials = thread.contact.name
+    .split(" ")
+    .map((n) => n[0])
+    .join("")
+    .toUpperCase()
+    .slice(0, 2);
+
   // Email view - traditional email layout
   if (thread.channel === "email") {
     const emailMessage = thread.messages[0];
     return (
-      <div className="flex-1 flex flex-col min-w-0 min-h-0">
-        {/* Email Header */}
-        <div className="flex-shrink-0 px-6 py-4 border-b border-hairline bg-surface">
+      <div className="flex-1 flex flex-col min-w-0 min-h-0 bg-gradient-to-br from-surface to-canvas">
+        {/* Email Header - Enhanced */}
+        <div className="flex-shrink-0 px-6 py-5 border-b border-hairline bg-surface/50 backdrop-blur-sm">
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0 flex-1">
-              <h2 className="text-lg font-semibold text-primary mb-2">
+              <h2 className="text-xl font-semibold text-white mb-3 leading-tight">
                 {thread.subject || "(No Subject)"}
               </h2>
-              <div className="flex items-center gap-3 text-sm">
-                <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-full bg-[hsl(var(--brand-orange))]/20 flex items-center justify-center flex-shrink-0">
-                    <Mail className="w-4 h-4 text-[hsl(var(--brand-orange))]" />
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500/30 to-blue-600/20 flex items-center justify-center flex-shrink-0">
+                  <span className="text-sm font-bold text-blue-400">{initials}</span>
+                </div>
+                <div className="min-w-0">
+                  <div className="text-sm font-medium text-white">
+                    To: {thread.contact.email || thread.contact.name}
                   </div>
-                  <div>
-                    <div className="text-primary font-medium">To: {thread.contact.email || thread.contact.name}</div>
-                    <div className="flex items-center gap-2 text-xs text-secondary">
-                      {emailMessage && <span>{formatTime(emailMessage.timestamp)}</span>}
-                      <span className="flex items-center gap-1 text-[hsl(var(--brand-teal))]">
-                        <CheckCheck className="w-3 h-3" />
-                        Sent
-                      </span>
-                    </div>
+                  <div className="flex items-center gap-2 text-xs text-gray-400 mt-0.5">
+                    {emailMessage && (
+                      <span>{formatTime(emailMessage.timestamp)}</span>
+                    )}
+                    <span className="flex items-center gap-1 text-cyan-400">
+                      <CheckCheck className="w-3 h-3" />
+                      Sent
+                    </span>
                   </div>
                 </div>
               </div>
             </div>
             <div className="flex items-center gap-1 flex-shrink-0">
-              <button
+              <ThreadActionButton
                 onClick={onToggleFlag}
                 disabled={actionLoading}
-                className={`p-2 rounded-md transition-colors ${
-                  thread.isFlagged
-                    ? "text-yellow-500 hover:text-yellow-400"
-                    : "text-secondary hover:text-primary hover:bg-white/5"
-                } ${actionLoading ? "opacity-50 cursor-not-allowed" : ""}`}
+                isActive={thread.isFlagged}
+                activeColor="text-amber-400"
+                icon={Star}
                 title={thread.isFlagged ? "Remove flag" : "Flag message"}
-              >
-                <Star className={`w-4 h-4 ${thread.isFlagged ? "fill-yellow-500" : ""}`} />
-              </button>
-              <button
+              />
+              <ThreadActionButton
                 onClick={onToggleArchive}
                 disabled={actionLoading}
-                className={`p-2 rounded-md transition-colors ${
-                  thread.isArchived
-                    ? "text-[hsl(var(--brand-teal))]"
-                    : "text-secondary hover:text-primary hover:bg-white/5"
-                } ${actionLoading ? "opacity-50 cursor-not-allowed" : ""}`}
+                isActive={thread.isArchived}
+                activeColor="text-cyan-400"
+                icon={Archive}
                 title={thread.isArchived ? "Unarchive" : "Archive"}
-              >
-                <Archive className="w-4 h-4" />
-              </button>
-              <button className="p-2 rounded-md text-secondary hover:text-primary hover:bg-white/5 transition-colors">
-                <MoreHorizontal className="w-4 h-4" />
-              </button>
+              />
+              <ThreadActionButton
+                onClick={() => {}}
+                icon={MoreHorizontal}
+                title="More options"
+              />
             </div>
           </div>
         </div>
 
-        {/* Email Body */}
+        {/* Email Body - Enhanced */}
         <div className="flex-1 overflow-y-auto p-6 min-h-0">
-          <div className="prose prose-sm prose-invert max-w-none">
+          <div className="max-w-3xl">
             {emailMessage ? (
-              <div className="whitespace-pre-wrap text-primary leading-relaxed">
+              <div className="whitespace-pre-wrap text-gray-200 leading-relaxed text-[15px]">
                 {emailMessage.body}
               </div>
             ) : (
-              <div className="text-secondary italic">No content</div>
+              <div className="text-gray-500 italic">No content</div>
             )}
           </div>
         </div>
@@ -1032,104 +1251,116 @@ function ThreadView({
 
   // DM view - chat bubble layout
   return (
-    <div className="flex-1 flex flex-col min-w-0">
-      {/* Thread Header */}
-      <div className="px-4 py-3 border-b border-hairline flex items-center justify-between bg-surface">
+    <div className="flex-1 flex flex-col min-w-0 bg-gradient-to-br from-surface to-canvas">
+      {/* Thread Header - Enhanced */}
+      <div className="flex-shrink-0 px-5 py-4 border-b border-hairline flex items-center justify-between bg-surface/50 backdrop-blur-sm">
         <div className="flex items-center gap-3 min-w-0">
-          <div className="w-10 h-10 rounded-full bg-[hsl(var(--brand-orange))]/20 flex items-center justify-center flex-shrink-0">
-            <User className="w-5 h-5 text-[hsl(var(--brand-orange))]" />
+          <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-violet-500/30 to-violet-600/20 flex items-center justify-center flex-shrink-0">
+            <span className="text-sm font-bold text-violet-400">{initials}</span>
           </div>
           <div className="min-w-0">
-            <div className="font-semibold text-primary truncate">{thread.contact.name}</div>
+            <div className="font-semibold text-white truncate">{thread.contact.name}</div>
             {thread.subject && (
-              <div className="text-sm text-secondary truncate">{thread.subject}</div>
+              <div className="text-sm text-gray-400 truncate">{thread.subject}</div>
             )}
           </div>
         </div>
         <div className="flex items-center gap-1">
-          <button
+          <ThreadActionButton
             onClick={onToggleFlag}
             disabled={actionLoading}
-            className={`p-2 rounded-md transition-colors ${
-              thread.isFlagged
-                ? "text-yellow-500 hover:text-yellow-400"
-                : "text-secondary hover:text-primary hover:bg-white/5"
-            } ${actionLoading ? "opacity-50 cursor-not-allowed" : ""}`}
+            isActive={thread.isFlagged}
+            activeColor="text-amber-400"
+            icon={Star}
             title={thread.isFlagged ? "Remove flag" : "Flag message"}
-          >
-            <Star className={`w-4 h-4 ${thread.isFlagged ? "fill-yellow-500" : ""}`} />
-          </button>
-          <button
+          />
+          <ThreadActionButton
             onClick={onToggleArchive}
             disabled={actionLoading}
-            className={`p-2 rounded-md transition-colors ${
-              thread.isArchived
-                ? "text-[hsl(var(--brand-teal))]"
-                : "text-secondary hover:text-primary hover:bg-white/5"
-            } ${actionLoading ? "opacity-50 cursor-not-allowed" : ""}`}
+            isActive={thread.isArchived}
+            activeColor="text-cyan-400"
+            icon={Archive}
             title={thread.isArchived ? "Unarchive" : "Archive"}
-          >
-            <Archive className="w-4 h-4" />
-          </button>
-          <button className="p-2 rounded-md text-secondary hover:text-primary hover:bg-white/5 transition-colors">
-            <MoreHorizontal className="w-4 h-4" />
-          </button>
+          />
+          <ThreadActionButton
+            onClick={() => {}}
+            icon={MoreHorizontal}
+            title="More options"
+          />
         </div>
       </div>
 
-      {/* Messages Area */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {thread.messages.map((msg) => (
-          <div
-            key={msg.id}
-            className={`flex ${msg.isOwn ? "justify-end" : "justify-start"}`}
-          >
-            <div
-              className={`max-w-[70%] ${
-                msg.isOwn ? "order-2" : "order-1"
-              }`}
-            >
-              <div
-                className={`px-4 py-2.5 rounded-2xl ${
-                  msg.isOwn
-                    ? "bg-[hsl(var(--brand-orange))] text-black rounded-br-md"
-                    : "bg-surface-strong border border-hairline text-primary rounded-bl-md"
-                }`}
-              >
-                <div className="text-sm whitespace-pre-wrap">{msg.body}</div>
-              </div>
-              <div
-                className={`flex items-center gap-1.5 mt-1 text-[10px] text-secondary ${
-                  msg.isOwn ? "justify-end" : "justify-start"
-                }`}
-              >
-                <span>{formatTime(msg.timestamp)}</span>
-                {msg.isOwn && msg.status && (
-                  <>
-                    {msg.status === "sent" && <Check className="w-3 h-3" />}
-                    {msg.status === "delivered" && <CheckCheck className="w-3 h-3" />}
-                    {msg.status === "read" && (
-                      <CheckCheck className="w-3 h-3 text-[hsl(var(--brand-teal))]" />
+      {/* Messages Area - Enhanced bubbles */}
+      <div className="flex-1 overflow-y-auto p-5 space-y-4">
+        {thread.messages.map((msg, index) => {
+          // Check if we should show date separator
+          const prevMsg = thread.messages[index - 1];
+          const showDateSeparator = !prevMsg ||
+            getDateGroup(msg.timestamp) !== getDateGroup(prevMsg.timestamp);
+
+          return (
+            <React.Fragment key={msg.id}>
+              {showDateSeparator && (
+                <div className="flex items-center gap-3 py-2">
+                  <div className="flex-1 h-px bg-hairline" />
+                  <span className="text-[10px] font-medium uppercase tracking-wider text-gray-500">
+                    {getDateGroup(msg.timestamp)}
+                  </span>
+                  <div className="flex-1 h-px bg-hairline" />
+                </div>
+              )}
+              <div className={`flex ${msg.isOwn ? "justify-end" : "justify-start"}`}>
+                <div className={`max-w-[75%] ${msg.isOwn ? "order-2" : "order-1"}`}>
+                  <div
+                    className={`
+                      px-4 py-3 rounded-2xl shadow-sm
+                      ${msg.isOwn
+                        ? "bg-gradient-to-br from-[hsl(var(--brand-orange))] to-[hsl(var(--brand-orange))]/90 text-black rounded-br-md"
+                        : "bg-white/[0.08] border border-white/10 text-gray-100 rounded-bl-md"
+                      }
+                    `}
+                  >
+                    <div className="text-[15px] leading-relaxed whitespace-pre-wrap">{msg.body}</div>
+                  </div>
+                  <div
+                    className={`
+                      flex items-center gap-1.5 mt-1.5 text-[10px] text-gray-500
+                      ${msg.isOwn ? "justify-end pr-1" : "justify-start pl-1"}
+                    `}
+                  >
+                    <span>{formatTime(msg.timestamp)}</span>
+                    {msg.isOwn && msg.status && (
+                      <>
+                        {msg.status === "sent" && <Check className="w-3 h-3" />}
+                        {msg.status === "delivered" && <CheckCheck className="w-3 h-3" />}
+                        {msg.status === "read" && (
+                          <CheckCheck className="w-3 h-3 text-cyan-400" />
+                        )}
+                      </>
                     )}
-                  </>
-                )}
+                  </div>
+                </div>
               </div>
-            </div>
-          </div>
-        ))}
+            </React.Fragment>
+          );
+        })}
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Reply Box */}
-      <div className="p-4 border-t border-hairline bg-surface">
-        <div className="flex gap-2">
-          <div className="flex-1 relative">
+      {/* Reply Box - Enhanced */}
+      <div className="flex-shrink-0 p-4 border-t border-hairline bg-surface/50 backdrop-blur-sm">
+        <div className="flex gap-3">
+          <div className="flex-1">
             <textarea
               value={replyText}
               onChange={(e) => onReplyTextChange(e.target.value)}
-              placeholder="Type your message... (Ctrl+Enter to send)"
-              rows={3}
-              className="w-full px-4 py-3 text-sm bg-surface-strong border border-hairline rounded-xl resize-none focus:outline-none focus:ring-2 focus:ring-[hsl(var(--brand-orange))]/50 focus:border-transparent"
+              placeholder="Type your message..."
+              rows={2}
+              className="
+                w-full px-4 py-3 text-[15px] bg-white/5 border border-white/10 rounded-xl
+                resize-none focus:outline-none focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500/50
+                placeholder:text-gray-500 text-white transition-all
+              "
               onKeyDown={(e) => {
                 if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
                   e.preventDefault();
@@ -1143,37 +1374,45 @@ function ThreadView({
             />
           </div>
         </div>
-        <div className="flex items-center justify-between mt-2">
+        <div className="flex items-center justify-between mt-3">
           <div className="flex items-center gap-1">
             <button
-              className="p-2 rounded-md text-secondary hover:text-primary hover:bg-white/5 transition-colors"
+              className="p-2 rounded-lg text-gray-500 hover:text-white hover:bg-white/5 transition-colors"
               title="Attach file"
             >
               <Paperclip className="w-4 h-4" />
             </button>
             <button
               onClick={onOpenTemplatePicker}
-              className="flex items-center gap-1.5 px-2 py-1.5 rounded-md text-secondary hover:text-primary hover:bg-white/5 transition-colors text-sm"
+              className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-gray-500 hover:text-white hover:bg-white/5 transition-colors text-sm"
               title="Use template (t)"
             >
               <FileText className="w-4 h-4" />
               <span>Template</span>
             </button>
           </div>
-          <Button
-            onClick={() => onReply(replyText)}
-            disabled={!replyText.trim() || sending}
-            className="px-4"
-          >
-            {sending ? (
-              "Sending..."
-            ) : (
-              <>
-                <Send className="w-4 h-4 mr-1.5" />
-                Send
-              </>
-            )}
-          </Button>
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] text-gray-500">
+              Ctrl+Enter to send
+            </span>
+            <Button
+              onClick={() => onReply(replyText)}
+              disabled={!replyText.trim() || sending}
+              className="px-5"
+            >
+              {sending ? (
+                <>
+                  <RefreshCw className="w-4 h-4 mr-1.5 animate-spin" />
+                  Sending...
+                </>
+              ) : (
+                <>
+                  <Send className="w-4 h-4 mr-1.5" />
+                  Send
+                </>
+              )}
+            </Button>
+          </div>
         </div>
       </div>
     </div>
@@ -1181,7 +1420,7 @@ function ThreadView({
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   CONTACT CONTEXT PANEL
+   CONTACT CONTEXT PANEL - Streamlined for quick context
    ═══════════════════════════════════════════════════════════════════════════ */
 
 interface ContactPanelProps {
@@ -1193,65 +1432,97 @@ interface ContactPanelProps {
 function ContactPanel({ contact, isOpen, onClose }: ContactPanelProps) {
   if (!isOpen || !contact) return null;
 
+  // Derive initials for avatar
+  const initials = contact.name
+    .split(" ")
+    .map((n) => n[0])
+    .join("")
+    .toUpperCase()
+    .slice(0, 2);
+
   return (
-    <div className="w-72 flex-shrink-0 border-l border-hairline bg-surface-strong/30 overflow-y-auto">
-      <div className="p-4 border-b border-hairline flex items-center justify-between">
-        <span className="font-semibold text-sm">Contact Info</span>
-        <button
-          onClick={onClose}
-          className="p-1 rounded-md text-secondary hover:text-primary hover:bg-white/5"
-        >
-          <X className="w-4 h-4" />
-        </button>
+    <div className="w-64 flex-shrink-0 border-l border-hairline bg-surface flex flex-col">
+      {/* Contact header - compact */}
+      <div className="p-4 border-b border-hairline">
+        <div className="flex items-start gap-3">
+          <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[hsl(var(--brand-orange))]/30 to-[hsl(var(--brand-teal))]/20 flex items-center justify-center flex-shrink-0">
+            <span className="text-lg font-bold text-white">{initials}</span>
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="font-semibold text-white truncate">{contact.name}</div>
+            {contact.email && (
+              <div className="text-xs text-gray-500 truncate">{contact.email}</div>
+            )}
+            {contact.waitlistPosition && (
+              <div className="inline-flex items-center gap-1 mt-1.5">
+                <div className="w-1.5 h-1.5 rounded-full bg-cyan-400" />
+                <span className="text-[11px] font-medium text-cyan-400">
+                  Waitlist #{contact.waitlistPosition}
+                </span>
+              </div>
+            )}
+          </div>
+          <button
+            onClick={onClose}
+            className="p-1 rounded text-gray-600 hover:text-white hover:bg-white/5 transition-colors"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
       </div>
 
-      <div className="p-4 space-y-4">
-        {/* Avatar & Name */}
-        <div className="text-center">
-          <div className="w-16 h-16 rounded-full bg-[hsl(var(--brand-orange))]/20 flex items-center justify-center mx-auto mb-2">
-            <User className="w-8 h-8 text-[hsl(var(--brand-orange))]" />
-          </div>
-          <div className="font-semibold text-primary">{contact.name}</div>
-          {contact.waitlistPosition && (
-            <div className="text-xs text-[hsl(var(--brand-teal))] mt-1">
-              Waitlist #{contact.waitlistPosition}
+      {/* Scrollable content */}
+      <div className="flex-1 overflow-y-auto">
+        {/* Animals of Interest - Most important context for breeders */}
+        {contact.animals && contact.animals.length > 0 && (
+          <div className="p-4 border-b border-hairline">
+            <div className="text-[10px] font-semibold uppercase tracking-wider text-gray-500 mb-2">
+              Interested In
             </div>
-          )}
-        </div>
+            <div className="space-y-1.5">
+              {contact.animals.map((animal) => (
+                <div
+                  key={animal}
+                  className="flex items-center gap-2 px-2.5 py-2 rounded-lg bg-[hsl(var(--brand-orange))]/10 border border-[hsl(var(--brand-orange))]/20"
+                >
+                  <Dog className="w-4 h-4 text-[hsl(var(--brand-orange))] flex-shrink-0" />
+                  <span className="text-sm text-white truncate">{animal}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
-        {/* Contact Details */}
-        <div className="space-y-2">
+        {/* Contact info - condensed */}
+        <div className="p-4 border-b border-hairline space-y-2">
           {contact.email && (
             <div className="flex items-center gap-2 text-sm">
-              <Mail className="w-4 h-4 text-secondary" />
-              <span className="text-primary truncate">{contact.email}</span>
+              <Mail className="w-4 h-4 text-gray-500 flex-shrink-0" />
+              <span className="text-gray-300 truncate">{contact.email}</span>
             </div>
           )}
           {contact.phone && (
             <div className="flex items-center gap-2 text-sm">
-              <Phone className="w-4 h-4 text-secondary" />
-              <span className="text-primary">{contact.phone}</span>
+              <Phone className="w-4 h-4 text-gray-500 flex-shrink-0" />
+              <span className="text-gray-300">{contact.phone}</span>
             </div>
           )}
           {contact.location && (
             <div className="flex items-center gap-2 text-sm">
-              <MapPin className="w-4 h-4 text-secondary" />
-              <span className="text-primary">{contact.location}</span>
+              <MapPin className="w-4 h-4 text-gray-500 flex-shrink-0" />
+              <span className="text-gray-300 truncate">{contact.location}</span>
             </div>
           )}
         </div>
 
-        {/* Tags */}
+        {/* Tags - if any */}
         {contact.tags && contact.tags.length > 0 && (
-          <div>
-            <div className="text-xs font-semibold text-secondary uppercase tracking-wide mb-2">
-              Tags
-            </div>
-            <div className="flex flex-wrap gap-1">
+          <div className="p-4 border-b border-hairline">
+            <div className="flex flex-wrap gap-1.5">
               {contact.tags.map((tag) => (
                 <span
                   key={tag}
-                  className="px-2 py-0.5 text-xs rounded-full bg-surface-strong text-secondary"
+                  className="px-2 py-0.5 text-xs rounded-full bg-white/5 text-gray-400 border border-white/10"
                 >
                   {tag}
                 </span>
@@ -1259,42 +1530,22 @@ function ContactPanel({ contact, isOpen, onClose }: ContactPanelProps) {
             </div>
           </div>
         )}
+      </div>
 
-        {/* Animals of Interest */}
-        {contact.animals && contact.animals.length > 0 && (
-          <div>
-            <div className="text-xs font-semibold text-secondary uppercase tracking-wide mb-2">
-              Interested In
-            </div>
-            <div className="space-y-1">
-              {contact.animals.map((animal) => (
-                <div
-                  key={animal}
-                  className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-surface-strong text-sm"
-                >
-                  <Dog className="w-4 h-4 text-[hsl(var(--brand-orange))]" />
-                  <span>{animal}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Quick Actions */}
-        <div className="pt-2 border-t border-hairline space-y-2">
-          <button className="w-full px-3 py-2 text-sm text-left rounded-md hover:bg-white/5 transition-colors flex items-center gap-2">
-            <Calendar className="w-4 h-4 text-secondary" />
-            <span>Schedule Follow-up</span>
-          </button>
-          <button className="w-full px-3 py-2 text-sm text-left rounded-md hover:bg-white/5 transition-colors flex items-center gap-2">
-            <ClipboardList className="w-4 h-4 text-secondary" />
-            <span>Add to Waitlist</span>
-          </button>
-          <button className="w-full px-3 py-2 text-sm text-left rounded-md hover:bg-white/5 transition-colors flex items-center gap-2">
-            <User className="w-4 h-4 text-secondary" />
-            <span>View Full Profile</span>
-          </button>
-        </div>
+      {/* Quick Actions - Sticky footer */}
+      <div className="flex-shrink-0 p-3 border-t border-hairline bg-surface space-y-1.5">
+        <button className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left rounded-lg hover:bg-white/5 transition-colors text-gray-400 hover:text-white">
+          <Calendar className="w-4 h-4" />
+          <span>Schedule Follow-up</span>
+        </button>
+        <button className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left rounded-lg hover:bg-white/5 transition-colors text-gray-400 hover:text-white">
+          <ClipboardList className="w-4 h-4" />
+          <span>Add to Waitlist</span>
+        </button>
+        <button className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left rounded-lg hover:bg-white/5 transition-colors text-gray-400 hover:text-white">
+          <User className="w-4 h-4" />
+          <span>View Full Profile</span>
+        </button>
       </div>
     </div>
   );
@@ -2195,17 +2446,45 @@ function KeyboardShortcutsModal({
    UTILITY FUNCTIONS
    ═══════════════════════════════════════════════════════════════════════════ */
 
+function getDateGroup(date: Date): string {
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const yesterday = new Date(today.getTime() - 86400000);
+  const weekAgo = new Date(today.getTime() - 7 * 86400000);
+  const messageDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+
+  if (messageDate.getTime() === today.getTime()) return "Today";
+  if (messageDate.getTime() === yesterday.getTime()) return "Yesterday";
+  if (messageDate >= weekAgo) return "This Week";
+  if (messageDate.getMonth() === now.getMonth() && messageDate.getFullYear() === now.getFullYear()) return "This Month";
+  return date.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+}
+
 function formatRelativeTime(date: Date): string {
   const now = new Date();
   const diffMs = now.getTime() - date.getTime();
   const diffMins = Math.floor(diffMs / 60000);
   const diffHours = Math.floor(diffMs / 3600000);
-  const diffDays = Math.floor(diffMs / 86400000);
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const messageDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
 
-  if (diffMins < 1) return "Just now";
-  if (diffMins < 60) return `${diffMins}m ago`;
-  if (diffHours < 24) return `${diffHours}h ago`;
-  if (diffDays < 7) return `${diffDays}d ago`;
+  // Today: show time
+  if (messageDate.getTime() === today.getTime()) {
+    if (diffMins < 1) return "Just now";
+    if (diffMins < 60) return `${diffMins}m`;
+    return date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+  }
+  // Yesterday: show "Yesterday"
+  const yesterday = new Date(today.getTime() - 86400000);
+  if (messageDate.getTime() === yesterday.getTime()) {
+    return "Yesterday";
+  }
+  // This week: show day name
+  const weekAgo = new Date(today.getTime() - 7 * 86400000);
+  if (messageDate >= weekAgo) {
+    return date.toLocaleDateString("en-US", { weekday: "short" });
+  }
+  // Older: show date
   return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
@@ -2358,6 +2637,10 @@ export default function CommunicationsHub() {
         const [itemType, itemId] = item.id.split(":");
         const numericId = parseInt(itemId, 10);
 
+        // TODO: Backend should provide enriched contact meta - for now, generate sample data
+        // This shows what the UI will look like when backend returns real data
+        const sampleMeta = generateSampleMeta(item.partyId, item.partyName);
+
         return {
           id: item.id,
           channel: item.channel,
@@ -2374,8 +2657,39 @@ export default function CommunicationsHub() {
           emailId: ["email", "partyEmail", "unlinkedEmail"].includes(itemType) ? numericId : undefined,
           draftId: itemType === "draft" ? numericId : undefined,
           direction: item.direction,
+          meta: sampleMeta,
         };
       };
+
+      // Generate deterministic sample meta based on partyId or name for demo purposes
+      // TODO: Remove when backend provides real enriched data via API
+      function generateSampleMeta(partyId: number | null, partyName: string | null): UnifiedMessage["meta"] {
+        // For demo: generate sample data for any identified contact
+        // Use partyId if available, otherwise hash the name
+        let seed: number;
+        if (partyId) {
+          seed = partyId % 10;
+        } else if (partyName && partyName !== "Unknown") {
+          // Simple hash of name for deterministic demo data
+          seed = partyName.split("").reduce((acc, c) => acc + c.charCodeAt(0), 0) % 10;
+        } else {
+          return undefined;
+        }
+
+        const statuses: Array<"customer" | "lead" | "prospect"> = ["customer", "lead", "prospect"];
+        const locations = ["Austin, TX", "Denver, CO", "Portland, OR", "Seattle, WA", "Miami, FL", "Chicago, IL", "Nashville, TN", "Phoenix, AZ"];
+
+        return {
+          leadStatus: statuses[seed % 3],
+          waitlistPosition: seed < 5 ? seed + 1 : undefined,
+          waitlistPlanName: seed < 5 ? "Spring 2025 Litter" : undefined,
+          hasActiveDeposit: seed % 3 === 0,
+          depositPlanName: seed % 3 === 0 ? "Golden Litter #4" : undefined,
+          totalPurchases: seed > 4 ? (seed * 450 + 1200) * 100 : undefined, // in cents
+          animalsOwned: seed > 5 ? seed - 4 : undefined,
+          location: locations[seed] ?? undefined,
+        };
+      }
 
       // Combine and deduplicate by id
       const allItems = [
@@ -3053,23 +3367,26 @@ export default function CommunicationsHub() {
 
   return (
     <div className="flex-1 min-h-0 flex flex-col bg-canvas overflow-hidden rounded-xl border border-hairline">
-      {/* Header */}
-      <div className="flex-shrink-0 px-4 py-3 border-b border-hairline bg-surface flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[hsl(var(--brand-orange))] to-[hsl(var(--brand-teal))] flex items-center justify-center">
+      {/* Header - Refined */}
+      <div className="flex-shrink-0 px-5 py-4 border-b border-hairline bg-surface flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-[hsl(var(--brand-orange))] to-[hsl(var(--brand-teal))] flex items-center justify-center shadow-lg shadow-[hsl(var(--brand-orange))]/20">
             <MessageCircle className="w-5 h-5 text-white" />
           </div>
           <div>
-            <h1 className="text-lg font-bold text-primary">Communications Hub</h1>
-            <p className="text-xs text-secondary">All your messages in one place</p>
+            <h1 className="text-lg font-bold text-white">Communications Hub</h1>
+            <p className="text-xs text-gray-400">All your messages in one place</p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={() => setShowShortcutsModal(true)}>
-            <Command className="w-4 h-4 mr-1" />
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => setShowShortcutsModal(true)}
+            className="flex items-center gap-1.5 px-3 py-2 text-sm text-gray-400 hover:text-white bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg transition-all"
+          >
+            <Command className="w-3.5 h-3.5" />
             <span className="text-xs">K</span>
-          </Button>
-          <Button onClick={() => setShowComposeModal(true)}>
+          </button>
+          <Button onClick={() => setShowComposeModal(true)} className="shadow-lg shadow-[hsl(var(--brand-orange))]/20">
             <Plus className="w-4 h-4 mr-1.5" />
             Compose
           </Button>

@@ -115,40 +115,42 @@ function getEntityPath(target: TagAssignmentTarget): string {
 }
 
 export function makeTags(http: Http): TagsResource {
+  const BASE = "/api/v1";
+
   return {
     async list(params: TagListParams): Promise<TagListResponse> {
-      const res = await http.get(`/tags${buildQuery(params)}`);
+      const res = await http.get(`${BASE}/tags${buildQuery(params)}`);
       return normalizeList(res);
     },
 
     async get(id: number): Promise<TagDTO> {
-      return http.get(`/tags/${id}`);
+      return http.get(`${BASE}/tags/${id}`);
     },
 
     async create(input: CreateTagInput): Promise<TagDTO> {
-      return http.post(`/tags`, input);
+      return http.post(`${BASE}/tags`, input);
     },
 
     async update(id: number, input: UpdateTagInput): Promise<TagDTO> {
-      return http.patch(`/tags/${id}`, input);
+      return http.patch(`${BASE}/tags/${id}`, input);
     },
 
     async delete(id: number): Promise<{ success: true }> {
-      await http.delete(`/tags/${id}`);
+      await http.delete(`${BASE}/tags/${id}`);
       return { success: true };
     },
 
     async assign(tagId: number, target: TagAssignmentTarget): Promise<void> {
-      await http.post(`/tags/${tagId}/assign`, target);
+      await http.post(`${BASE}/tags/${tagId}/assign`, target);
     },
 
     async unassign(tagId: number, target: TagAssignmentTarget): Promise<void> {
-      await http.post(`/tags/${tagId}/unassign`, target);
+      await http.post(`${BASE}/tags/${tagId}/unassign`, target);
     },
 
     async listForEntity(target: TagAssignmentTarget): Promise<TagDTO[]> {
       const path = getEntityPath(target);
-      const res = await http.get(path);
+      const res = await http.get(`${BASE}${path}`);
       // Normalize array or { items } response
       if (Array.isArray(res)) return res as TagDTO[];
       if (res && typeof res === "object" && "items" in res) {
