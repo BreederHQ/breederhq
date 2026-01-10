@@ -13,8 +13,12 @@ import type {
   CommunicationChannel,
   InboxCounts,
   TagDTO,
+  EmailLookupMatch,
 } from "@bhq/api";
-import { Button, Input, Badge, TagCreateModal } from "@bhq/ui";
+import { Button, Input, Badge, TagCreateModal, Tabs, SectionCard, useToast } from "@bhq/ui";
+import { TemplateCreateEditModal } from "../components/TemplateCreateEditModal";
+import { createTemplatePreview } from "@bhq/ui/utils";
+import type { TemplateCategory } from "@bhq/api";
 import {
   Search,
   Plus,
@@ -48,6 +52,11 @@ import {
   User,
   Building2,
   Hash,
+  AlertCircle,
+  Loader2,
+  UserPlus,
+  Edit2,
+  AlertTriangle,
 } from "lucide-react";
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -81,7 +90,7 @@ const api = makeApi(API_BASE);
    ═══════════════════════════════════════════════════════════════════════════ */
 
 type ChannelType = "all" | "email" | "dm";
-type FolderType = "all" | "inbox" | "flagged" | "drafts" | "archived" | "email" | "dm";
+type FolderType = "all" | "inbox" | "sent" | "flagged" | "drafts" | "archived" | "email" | "dm" | "templates";
 
 interface UnifiedMessage {
   id: string; // Composite ID from backend: "thread:123" or "email:456" or "draft:789"
@@ -104,6 +113,8 @@ interface UnifiedMessage {
   draftId?: number;
   // Type from backend
   type: "email" | "dm" | "draft";
+  // Direction for sent folder filtering
+  direction?: "inbound" | "outbound";
 }
 
 interface ConversationThread {
@@ -145,11 +156,13 @@ const SMART_FOLDERS: Array<{
 }> = [
   { id: "all", label: "All Messages", icon: <Inbox className="w-4 h-4" />, status: "all" },
   { id: "inbox", label: "Inbox", icon: <Inbox className="w-4 h-4" />, status: "unread" },
+  { id: "sent", label: "Sent", icon: <Send className="w-4 h-4" />, status: "sent" },
   { id: "flagged", label: "Flagged", icon: <Star className="w-4 h-4" />, status: "flagged", dividerAfter: true },
   { id: "drafts", label: "Drafts", icon: <FileText className="w-4 h-4" />, status: "draft" },
   { id: "archived", label: "Archived", icon: <Archive className="w-4 h-4" />, status: "archived", dividerAfter: true },
   { id: "email", label: "Email", icon: <Mail className="w-4 h-4" />, status: "all" },
-  { id: "dm", label: "Direct Messages", icon: <MessageCircle className="w-4 h-4" />, status: "all" },
+  { id: "dm", label: "Direct Messages", icon: <MessageCircle className="w-4 h-4" />, status: "all", dividerAfter: true },
+  { id: "templates", label: "Templates", icon: <FileText className="w-4 h-4" /> },
 ];
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -294,6 +307,308 @@ function Sidebar({
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
+   TEMPLATES PANEL COMPONENT
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+const CATEGORY_LABELS: Record<TemplateCategory, string> = {
+  email: "Email",
+  dm: "Direct Messages",
+  social: "Social Drafts",
+};
+
+const TAB_TO_CATEGORY: Record<string, TemplateCategory | null> = {
+  all: null,
+  email: "email",
+  dm: "dm",
+  social: "social",
+};
+
+interface TemplateItemProps {
+  template: EmailTemplate;
+  onEdit: () => void;
+  onDelete: () => void;
+}
+
+function TemplateItem({ template, onEdit, onDelete }: TemplateItemProps) {
+  const [showDeleteConfirm, setShowDeleteConfirm] = React.useState(false);
+
+  return (
+    <div className="flex items-start justify-between py-4 px-4 rounded-lg border border-hairline bg-surface hover:border-[hsl(var(--brand-orange))]/30 transition-colors group">
+      <div className="flex items-start gap-3 flex-1 min-w-0">
+        <div className="flex-shrink-0 w-9 h-9 rounded-lg bg-[hsl(var(--brand-orange))]/10 flex items-center justify-center">
+          <FileText className="h-4 w-4 text-[hsl(var(--brand-orange))]" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="font-medium text-sm text-primary">{template.name}</div>
+          <div className="text-xs text-secondary mt-0.5">
+            {CATEGORY_LABELS[template.category]}
+          </div>
+          {template.subject && (
+            <div className="text-xs text-secondary mt-1 truncate">
+              Subject: {template.subject}
+            </div>
+          )}
+          <div className="text-xs text-secondary mt-1 line-clamp-2">
+            {createTemplatePreview(template.bodyText).substring(0, 120)}
+            {template.bodyText.length > 120 && "..."}
+          </div>
+        </div>
+      </div>
+
+      <div className="flex items-center gap-1 ml-3">
+        {showDeleteConfirm ? (
+          <div className="flex items-center gap-2 bg-red-500/10 px-3 py-1.5 rounded-md">
+            <span className="text-xs text-red-400">Delete?</span>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setShowDeleteConfirm(false)}
+              className="h-6 px-2 text-xs"
+            >
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              onClick={onDelete}
+              className="h-6 px-2 text-xs bg-red-600 hover:bg-red-700"
+            >
+              Delete
+            </Button>
+          </div>
+        ) : (
+          <>
+            <button
+              onClick={onEdit}
+              className="p-2 rounded-md text-secondary hover:text-primary hover:bg-white/5 transition-colors opacity-0 group-hover:opacity-100"
+              title="Edit template"
+            >
+              <Edit2 className="h-4 w-4" />
+            </button>
+            <button
+              onClick={() => setShowDeleteConfirm(true)}
+              className="p-2 rounded-md text-secondary hover:text-red-400 hover:bg-red-500/10 transition-colors opacity-0 group-hover:opacity-100"
+              title="Delete template"
+            >
+              <Trash2 className="h-4 w-4" />
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function TemplatesEmptyState({ category, onCreate }: { category: string | null; onCreate: () => void }) {
+  const categoryLabel = category ? CATEGORY_LABELS[category as TemplateCategory] : "templates";
+
+  return (
+    <div className="py-12 text-center">
+      <div className="w-12 h-12 rounded-full bg-surface-strong mx-auto mb-4 flex items-center justify-center">
+        <FileText className="h-6 w-6 text-secondary" />
+      </div>
+      <div className="text-sm text-primary font-medium mb-1">
+        No {categoryLabel.toLowerCase()} templates yet
+      </div>
+      <p className="text-xs text-secondary mb-4 max-w-xs mx-auto">
+        Create reusable templates to save time when communicating with contacts.
+      </p>
+      <Button size="sm" onClick={onCreate}>
+        <Plus className="h-4 w-4 mr-1.5" />
+        Create Template
+      </Button>
+    </div>
+  );
+}
+
+interface TemplatesPanelProps {
+  api: ReturnType<typeof makeApi>;
+}
+
+function TemplatesPanel({ api }: TemplatesPanelProps) {
+  const { toast } = useToast();
+  const [activeTab, setActiveTab] = React.useState("all");
+  const [templates, setTemplates] = React.useState<EmailTemplate[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = React.useState("");
+
+  // Modal state
+  const [modalOpen, setModalOpen] = React.useState(false);
+  const [modalMode, setModalMode] = React.useState<"create" | "edit">("create");
+  const [editingTemplate, setEditingTemplate] = React.useState<EmailTemplate | undefined>();
+
+  const tabItems = [
+    { value: "all", label: "All" },
+    { value: "email", label: "Email" },
+    { value: "dm", label: "DMs" },
+    { value: "social", label: "Social" },
+  ];
+
+  // Fetch templates
+  const fetchTemplates = React.useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const category = TAB_TO_CATEGORY[activeTab];
+      const res = await api.templates.list(category ? { category } : undefined);
+      setTemplates(res.items);
+    } catch (e: any) {
+      console.error("[TemplatesPanel] Failed to fetch templates:", e);
+      setError(e?.message || "Failed to load templates");
+    } finally {
+      setLoading(false);
+    }
+  }, [activeTab, api]);
+
+  React.useEffect(() => {
+    fetchTemplates();
+  }, [fetchTemplates]);
+
+  // Filter templates by search and active tab
+  const filteredTemplates = React.useMemo(() => {
+    const category = TAB_TO_CATEGORY[activeTab];
+    let result = category ? templates.filter((t) => t.category === category) : templates;
+
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      result = result.filter(
+        (t) =>
+          t.name.toLowerCase().includes(q) ||
+          t.subject?.toLowerCase().includes(q) ||
+          t.bodyText.toLowerCase().includes(q)
+      );
+    }
+
+    return result;
+  }, [templates, activeTab, searchQuery]);
+
+  const handleCreateTemplate = () => {
+    setModalMode("create");
+    setEditingTemplate(undefined);
+    setModalOpen(true);
+  };
+
+  const handleEditTemplate = (template: EmailTemplate) => {
+    setModalMode("edit");
+    setEditingTemplate(template);
+    setModalOpen(true);
+  };
+
+  const handleDeleteTemplate = async (template: EmailTemplate) => {
+    try {
+      await api.templates.delete(template.id);
+      toast.success(`Template "${template.name}" deleted`);
+      fetchTemplates();
+    } catch (e: any) {
+      console.error("[TemplatesPanel] Failed to delete template:", e);
+      toast.error(e?.message || "Failed to delete template");
+    }
+  };
+
+  const handleModalSuccess = () => {
+    toast.success(modalMode === "create" ? "Template created" : "Template updated");
+    fetchTemplates();
+  };
+
+  return (
+    <div className="flex-1 flex flex-col overflow-hidden bg-surface">
+      {/* Header */}
+      <div className="flex-shrink-0 p-4 border-b border-hairline">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h2 className="text-lg font-semibold text-primary">Templates</h2>
+            <p className="text-xs text-secondary">Create and manage reusable message templates</p>
+          </div>
+          <Button size="sm" onClick={handleCreateTemplate}>
+            <Plus className="h-4 w-4 mr-1.5" />
+            New Template
+          </Button>
+        </div>
+
+        {/* Search */}
+        <div className="relative mb-4">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-secondary" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search templates..."
+            className="w-full pl-9 pr-3 py-2 text-sm bg-surface-strong border border-hairline rounded-lg focus:outline-none focus:ring-2 focus:ring-[hsl(var(--brand-orange))]/50 focus:border-transparent"
+            autoComplete="off"
+            data-1p-ignore
+            data-lpignore="true"
+            data-form-type="other"
+          />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery("")}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-secondary hover:text-primary"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+
+        {/* Tabs */}
+        <Tabs
+          value={activeTab}
+          onValueChange={setActiveTab}
+          items={tabItems}
+          variant="underline-orange"
+          size="sm"
+        />
+      </div>
+
+      {/* Content */}
+      <div className="flex-1 overflow-y-auto p-4">
+        {loading ? (
+          <div className="py-8 text-center text-sm text-secondary">
+            <RefreshCw className="w-5 h-5 animate-spin mx-auto mb-2" />
+            Loading templates...
+          </div>
+        ) : error ? (
+          <div className="py-8 text-center">
+            <div className="w-12 h-12 rounded-full bg-red-500/10 mx-auto mb-4 flex items-center justify-center">
+              <AlertTriangle className="h-6 w-6 text-red-400" />
+            </div>
+            <div className="text-sm text-red-400 mb-2">{error}</div>
+            <Button variant="outline" size="sm" onClick={fetchTemplates}>
+              Retry
+            </Button>
+          </div>
+        ) : filteredTemplates.length === 0 ? (
+          <TemplatesEmptyState
+            category={TAB_TO_CATEGORY[activeTab]}
+            onCreate={handleCreateTemplate}
+          />
+        ) : (
+          <div className="space-y-2">
+            {filteredTemplates.map((template) => (
+              <TemplateItem
+                key={template.id}
+                template={template}
+                onEdit={() => handleEditTemplate(template)}
+                onDelete={() => handleDeleteTemplate(template)}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Create/Edit Modal */}
+      <TemplateCreateEditModal
+        open={modalOpen}
+        onOpenChange={setModalOpen}
+        mode={modalMode}
+        template={editingTemplate}
+        api={{ templates: api.templates }}
+        onSuccess={handleModalSuccess}
+      />
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
    CONVERSATION LIST COMPONENT
    ═══════════════════════════════════════════════════════════════════════════ */
 
@@ -315,7 +630,10 @@ interface ConversationListProps {
   onBulkArchive: () => void;
   onBulkFlag: () => void;
   onBulkMarkRead: () => void;
+  onBulkDelete: () => void;
   bulkActionLoading: boolean;
+  // For showing delete button only when drafts are selected
+  hasDraftsSelected: boolean;
 }
 
 function ConversationList({
@@ -334,7 +652,9 @@ function ConversationList({
   onBulkArchive,
   onBulkFlag,
   onBulkMarkRead,
+  onBulkDelete,
   bulkActionLoading,
+  hasDraftsSelected,
 }: ConversationListProps) {
   const hasSelection = selectedIds.size > 0;
   const allSelected = messages.length > 0 && selectedIds.size === messages.length;
@@ -381,6 +701,16 @@ function ConversationList({
             >
               <Archive className="w-4 h-4" />
             </button>
+            {hasDraftsSelected && (
+              <button
+                onClick={onBulkDelete}
+                disabled={bulkActionLoading}
+                className="p-1.5 rounded text-secondary hover:text-red-400 hover:bg-white/10 disabled:opacity-50"
+                title="Delete selected drafts"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -395,6 +725,10 @@ function ConversationList({
             onChange={(e) => onSearchChange(e.target.value)}
             placeholder="Search messages..."
             className="w-full pl-9 pr-3 py-2 text-sm bg-surface-strong border border-hairline rounded-lg focus:outline-none focus:ring-2 focus:ring-[hsl(var(--brand-orange))]/50 focus:border-transparent"
+            autoComplete="off"
+            data-1p-ignore
+            data-lpignore="true"
+            data-form-type="other"
           />
           {searchQuery && (
             <button
@@ -503,11 +837,11 @@ function ConversationList({
                         {msg.contactName}
                       </span>
                       <span
-                        className={`flex-shrink-0 px-1.5 py-0.5 text-[10px] rounded ${
-                          msg.channel === "email"
-                            ? "bg-blue-500/20 text-blue-400"
-                            : "bg-purple-500/20 text-purple-400"
-                        }`}
+                        className="flex-shrink-0 px-1.5 py-0.5 text-[10px] rounded font-medium uppercase tracking-wide"
+                        style={{
+                          backgroundColor: msg.channel === "email" ? "rgba(59, 130, 246, 0.2)" : "rgba(139, 92, 246, 0.2)",
+                          color: msg.channel === "email" ? "#60a5fa" : "#a78bfa",
+                        }}
                       >
                         {msg.channel === "email" ? "Email" : "DM"}
                       </span>
@@ -618,6 +952,85 @@ function ThreadView({
     );
   }
 
+  // Email view - traditional email layout
+  if (thread.channel === "email") {
+    const emailMessage = thread.messages[0];
+    return (
+      <div className="flex-1 flex flex-col min-w-0 min-h-0">
+        {/* Email Header */}
+        <div className="flex-shrink-0 px-6 py-4 border-b border-hairline bg-surface">
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0 flex-1">
+              <h2 className="text-lg font-semibold text-primary mb-2">
+                {thread.subject || "(No Subject)"}
+              </h2>
+              <div className="flex items-center gap-3 text-sm">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-full bg-[hsl(var(--brand-orange))]/20 flex items-center justify-center flex-shrink-0">
+                    <Mail className="w-4 h-4 text-[hsl(var(--brand-orange))]" />
+                  </div>
+                  <div>
+                    <div className="text-primary font-medium">To: {thread.contact.email || thread.contact.name}</div>
+                    <div className="flex items-center gap-2 text-xs text-secondary">
+                      {emailMessage && <span>{formatTime(emailMessage.timestamp)}</span>}
+                      <span className="flex items-center gap-1 text-[hsl(var(--brand-teal))]">
+                        <CheckCheck className="w-3 h-3" />
+                        Sent
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center gap-1 flex-shrink-0">
+              <button
+                onClick={onToggleFlag}
+                disabled={actionLoading}
+                className={`p-2 rounded-md transition-colors ${
+                  thread.isFlagged
+                    ? "text-yellow-500 hover:text-yellow-400"
+                    : "text-secondary hover:text-primary hover:bg-white/5"
+                } ${actionLoading ? "opacity-50 cursor-not-allowed" : ""}`}
+                title={thread.isFlagged ? "Remove flag" : "Flag message"}
+              >
+                <Star className={`w-4 h-4 ${thread.isFlagged ? "fill-yellow-500" : ""}`} />
+              </button>
+              <button
+                onClick={onToggleArchive}
+                disabled={actionLoading}
+                className={`p-2 rounded-md transition-colors ${
+                  thread.isArchived
+                    ? "text-[hsl(var(--brand-teal))]"
+                    : "text-secondary hover:text-primary hover:bg-white/5"
+                } ${actionLoading ? "opacity-50 cursor-not-allowed" : ""}`}
+                title={thread.isArchived ? "Unarchive" : "Archive"}
+              >
+                <Archive className="w-4 h-4" />
+              </button>
+              <button className="p-2 rounded-md text-secondary hover:text-primary hover:bg-white/5 transition-colors">
+                <MoreHorizontal className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Email Body */}
+        <div className="flex-1 overflow-y-auto p-6 min-h-0">
+          <div className="prose prose-sm prose-invert max-w-none">
+            {emailMessage ? (
+              <div className="whitespace-pre-wrap text-primary leading-relaxed">
+                {emailMessage.body}
+              </div>
+            ) : (
+              <div className="text-secondary italic">No content</div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // DM view - chat bubble layout
   return (
     <div className="flex-1 flex flex-col min-w-0">
       {/* Thread Header */}
@@ -723,6 +1136,10 @@ function ThreadView({
                   onReply(replyText);
                 }
               }}
+              autoComplete="off"
+              data-1p-ignore
+              data-lpignore="true"
+              data-form-type="other"
             />
           </div>
         </div>
@@ -884,30 +1301,143 @@ function ContactPanel({ contact, isOpen, onClose }: ContactPanelProps) {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   COMPOSE MODAL
+   COMPOSE MODAL - Supports free-form email addresses with party lookup
    ═══════════════════════════════════════════════════════════════════════════ */
+
+type RecipientStatus = "pending" | "matched" | "unmatched" | "invalid";
+
+interface Recipient {
+  email: string;
+  status: RecipientStatus;
+  match?: EmailLookupMatch;
+}
+
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function isValidEmail(email: string): boolean {
+  return EMAIL_REGEX.test(email.trim());
+}
+
+function parseEmails(input: string): string[] {
+  return input
+    .split(/[,;\s\n]+/)
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+interface RecipientChipProps {
+  recipient: Recipient;
+  onRemove: () => void;
+  disabled?: boolean;
+}
+
+function RecipientChip({ recipient, onRemove, disabled }: RecipientChipProps) {
+  const { email, status, match } = recipient;
+
+  const statusStyles: Record<RecipientStatus, string> = {
+    pending: "bg-white/5 border-hairline text-secondary",
+    matched: "bg-green-500/10 border-green-500/30 text-green-400",
+    unmatched: "bg-amber-500/10 border-amber-500/30 text-amber-400",
+    invalid: "bg-red-500/10 border-red-500/30 text-red-400",
+  };
+
+  const StatusIcon = () => {
+    switch (status) {
+      case "pending":
+        return <Loader2 className="w-3 h-3 animate-spin" />;
+      case "matched":
+        return match?.partyKind === "ORGANIZATION" ? (
+          <Building2 className="w-3 h-3" />
+        ) : (
+          <User className="w-3 h-3" />
+        );
+      case "unmatched":
+        return <AlertCircle className="w-3 h-3" />;
+      case "invalid":
+        return <X className="w-3 h-3" />;
+    }
+  };
+
+  return (
+    <div
+      className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-md border text-sm ${statusStyles[status]}`}
+      title={
+        status === "matched" && match
+          ? `${match.partyKind}: ${match.partyName}`
+          : status === "unmatched"
+            ? "No matching contact or organization"
+            : status === "invalid"
+              ? "Invalid email address"
+              : "Looking up..."
+      }
+    >
+      <StatusIcon />
+      <span className="max-w-[200px] truncate">
+        {status === "matched" && match ? match.partyName : email}
+      </span>
+      {status === "matched" && match && (
+        <span className="text-xs text-secondary">({email})</span>
+      )}
+      {!disabled && (
+        <button
+          type="button"
+          onClick={onRemove}
+          className="ml-0.5 p-0.5 rounded hover:bg-white/10 transition-colors"
+        >
+          <X className="w-3 h-3" />
+        </button>
+      )}
+    </div>
+  );
+}
 
 interface ComposeModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSend: (data: { channel: "email" | "dm"; contactId: number; subject?: string; body: string }) => void;
+  onSend: (data: {
+    channel: "email" | "dm";
+    contactId?: number;
+    toAddresses?: string[];
+    ccAddresses?: string[];
+    bccAddresses?: string[];
+    subject?: string;
+    body: string;
+  }) => void;
   onSaveDraft: (data: { channel: "email" | "dm"; partyId?: number; subject?: string; body: string; draftId?: number }) => Promise<number | null>;
+  onDiscardDraft: (draftId: number) => Promise<void>;
   templates: EmailTemplate[];
   contacts: Array<{ id: number; name: string; email?: string }>;
   editingDraft?: { id: number; channel: "email" | "dm"; partyId?: number; subject?: string; body: string } | null;
 }
 
-function ComposeModal({ isOpen, onClose, onSend, onSaveDraft, templates, contacts, editingDraft }: ComposeModalProps) {
+function ComposeModal({ isOpen, onClose, onSend, onSaveDraft, onDiscardDraft, templates, contacts, editingDraft }: ComposeModalProps) {
   const [channel, setChannel] = React.useState<"email" | "dm">("email");
+  // For DM mode - still use contact selection
   const [selectedContact, setSelectedContact] = React.useState<number | null>(null);
   const [contactSearch, setContactSearch] = React.useState("");
+  const [contactSearchFocused, setContactSearchFocused] = React.useState(false);
+  // For email mode - free-form recipients (To, CC, BCC)
+  const [recipients, setRecipients] = React.useState<Recipient[]>([]);
+  const [ccRecipients, setCcRecipients] = React.useState<Recipient[]>([]);
+  const [bccRecipients, setBccRecipients] = React.useState<Recipient[]>([]);
+  const [emailInput, setEmailInput] = React.useState("");
+  const [ccInput, setCcInput] = React.useState("");
+  const [bccInput, setBccInput] = React.useState("");
+  const [showCcBcc, setShowCcBcc] = React.useState(false);
+  const [lookingUp, setLookingUp] = React.useState(false);
+
   const [subject, setSubject] = React.useState("");
   const [body, setBody] = React.useState("");
   const [showTemplates, setShowTemplates] = React.useState(false);
   const [sending, setSending] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
+  const [discarding, setDiscarding] = React.useState(false);
   const [draftId, setDraftId] = React.useState<number | null>(null);
   const [lastSaved, setLastSaved] = React.useState<Date | null>(null);
+
+  const emailInputRef = React.useRef<HTMLInputElement>(null);
+  const ccInputRef = React.useRef<HTMLInputElement>(null);
+  const bccInputRef = React.useRef<HTMLInputElement>(null);
 
   // Load draft data when editing
   React.useEffect(() => {
@@ -917,10 +1447,17 @@ function ComposeModal({ isOpen, onClose, onSend, onSaveDraft, templates, contact
       setSubject(editingDraft.subject ?? "");
       setBody(editingDraft.body);
       setDraftId(editingDraft.id);
-    } else {
+    } else if (isOpen) {
       // Reset form when opening fresh
       setChannel("email");
       setSelectedContact(null);
+      setRecipients([]);
+      setCcRecipients([]);
+      setBccRecipients([]);
+      setEmailInput("");
+      setCcInput("");
+      setBccInput("");
+      setShowCcBcc(false);
       setSubject("");
       setBody("");
       setDraftId(null);
@@ -935,9 +1472,10 @@ function ComposeModal({ isOpen, onClose, onSend, onSaveDraft, templates, contact
     const timer = setTimeout(async () => {
       setSaving(true);
       try {
+        const partyId = channel === "dm" ? selectedContact : recipients.find(r => r.match)?.match?.partyId;
         const newDraftId = await onSaveDraft({
           channel,
-          partyId: selectedContact ?? undefined,
+          partyId: partyId ?? undefined,
           subject: channel === "email" ? subject : undefined,
           body,
           draftId: draftId ?? undefined,
@@ -951,10 +1489,145 @@ function ComposeModal({ isOpen, onClose, onSend, onSaveDraft, templates, contact
       } finally {
         setSaving(false);
       }
-    }, 2000); // Auto-save after 2 seconds of inactivity
+    }, 2000);
 
     return () => clearTimeout(timer);
-  }, [body, subject, selectedContact, channel, isOpen, draftId, onSaveDraft]);
+  }, [body, subject, selectedContact, recipients, channel, isOpen, draftId, onSaveDraft]);
+
+  // Lookup emails when recipients change
+  const handleLookupEmails = React.useCallback(async (emailsToLookup: string[]) => {
+    if (emailsToLookup.length === 0) return;
+
+    setLookingUp(true);
+    try {
+      const response = await api.messagingHub.lookupByEmail(emailsToLookup);
+      const matches = response?.matches || [];
+      const unmatched = response?.unmatched || [];
+
+      setRecipients((prev) => {
+        return prev.map((r) => {
+          if (r.status !== "pending") return r;
+
+          const match = matches.find(
+            (m: EmailLookupMatch) => m.email.toLowerCase() === r.email.toLowerCase()
+          );
+
+          if (match) {
+            return { ...r, status: "matched" as const, match };
+          } else if (unmatched.includes(r.email.toLowerCase())) {
+            return { ...r, status: "unmatched" as const };
+          }
+          // If not in matches or unmatched, mark as unmatched
+          return { ...r, status: "unmatched" as const };
+        });
+      });
+    } catch (err) {
+      console.error("Failed to lookup emails:", err);
+      // Mark all pending as unmatched on error
+      setRecipients((prev) =>
+        prev.map((r) =>
+          r.status === "pending" ? { ...r, status: "unmatched" as const } : r
+        )
+      );
+    } finally {
+      setLookingUp(false);
+    }
+  }, []);
+
+  // Generic function to add emails to any recipient list (To, CC, BCC)
+  const createAddEmailsHandler = React.useCallback(
+    (
+      currentRecipients: Recipient[],
+      setCurrentRecipients: React.Dispatch<React.SetStateAction<Recipient[]>>,
+      setCurrentInput: React.Dispatch<React.SetStateAction<string>>
+    ) => {
+      return (input: string) => {
+        const newEmails = parseEmails(input);
+        if (newEmails.length === 0) return;
+
+        // Check across all recipient lists for duplicates
+        const allExisting = new Set([
+          ...recipients.map((r) => r.email.toLowerCase()),
+          ...ccRecipients.map((r) => r.email.toLowerCase()),
+          ...bccRecipients.map((r) => r.email.toLowerCase()),
+        ]);
+        const uniqueNewEmails = newEmails.filter((e) => !allExisting.has(e));
+
+        if (uniqueNewEmails.length === 0) {
+          setCurrentInput("");
+          return;
+        }
+
+        const newRecipientItems: Recipient[] = uniqueNewEmails.map((email) => ({
+          email,
+          status: isValidEmail(email) ? "pending" : "invalid",
+        }));
+
+        setCurrentRecipients([...currentRecipients, ...newRecipientItems]);
+        setCurrentInput("");
+
+        // Trigger lookup for valid pending emails
+        const emailsToLookup = newRecipientItems
+          .filter((r) => r.status === "pending")
+          .map((r) => r.email);
+
+        if (emailsToLookup.length > 0) {
+          handleLookupEmails(emailsToLookup);
+        }
+      };
+    },
+    [recipients, ccRecipients, bccRecipients, handleLookupEmails]
+  );
+
+  const handleAddToEmails = createAddEmailsHandler(recipients, setRecipients, setEmailInput);
+  const handleAddCcEmails = createAddEmailsHandler(ccRecipients, setCcRecipients, setCcInput);
+  const handleAddBccEmails = createAddEmailsHandler(bccRecipients, setBccRecipients, setBccInput);
+
+  // Generic key handler factory
+  const createKeyDownHandler = (
+    currentInput: string,
+    currentRecipients: Recipient[],
+    setCurrentRecipients: React.Dispatch<React.SetStateAction<Recipient[]>>,
+    handleAddEmails: (input: string) => void
+  ) => {
+    return (e: React.KeyboardEvent<HTMLInputElement>) => {
+      const { key } = e;
+      if (["Enter", "Tab", ",", ";", " "].includes(key)) {
+        if (currentInput.trim()) {
+          e.preventDefault();
+          handleAddEmails(currentInput);
+        }
+      }
+      if (key === "Backspace" && !currentInput && currentRecipients.length > 0) {
+        setCurrentRecipients(currentRecipients.slice(0, -1));
+      }
+    };
+  };
+
+  const handleToKeyDown = createKeyDownHandler(emailInput, recipients, setRecipients, handleAddToEmails);
+  const handleCcKeyDown = createKeyDownHandler(ccInput, ccRecipients, setCcRecipients, handleAddCcEmails);
+  const handleBccKeyDown = createKeyDownHandler(bccInput, bccRecipients, setBccRecipients, handleAddBccEmails);
+
+  const handleToPaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+    e.preventDefault();
+    handleAddToEmails(e.clipboardData.getData("text"));
+  };
+  const handleCcPaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+    e.preventDefault();
+    handleAddCcEmails(e.clipboardData.getData("text"));
+  };
+  const handleBccPaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+    e.preventDefault();
+    handleAddBccEmails(e.clipboardData.getData("text"));
+  };
+
+  const handleToBlur = () => { if (emailInput.trim()) handleAddToEmails(emailInput); };
+  const handleCcBlur = () => { if (ccInput.trim()) handleAddCcEmails(ccInput); };
+  const handleBccBlur = () => { if (bccInput.trim()) handleAddBccEmails(bccInput); };
+
+  const handleRemoveToRecipient = (index: number) => setRecipients(recipients.filter((_, i) => i !== index));
+  const handleRemoveCcRecipient = (index: number) => setCcRecipients(ccRecipients.filter((_, i) => i !== index));
+  const handleRemoveBccRecipient = (index: number) => setBccRecipients(bccRecipients.filter((_, i) => i !== index));
 
   const filteredContacts = React.useMemo(() => {
     if (!contactSearch.trim()) return contacts.slice(0, 10);
@@ -972,24 +1645,113 @@ function ComposeModal({ isOpen, onClose, onSend, onSaveDraft, templates, contact
     setShowTemplates(false);
   };
 
-  const handleSend = () => {
-    if (!selectedContact || !body.trim()) return;
-    setSending(true);
-    onSend({
-      channel,
-      contactId: selectedContact,
-      subject: channel === "email" ? subject : undefined,
-      body,
-    });
+  const handleSend = async () => {
+    if (!body.trim()) return;
+
+    if (channel === "dm") {
+      if (!selectedContact) return;
+      setSending(true);
+      onSend({
+        channel,
+        contactId: selectedContact,
+        body,
+      });
+    } else {
+      // Email mode
+      const validToRecipients = recipients.filter((r) => r.status !== "invalid");
+      if (validToRecipients.length === 0) return;
+
+      setSending(true);
+
+      // Get all valid CC/BCC recipients
+      const validCcRecipients = ccRecipients.filter((r) => r.status !== "invalid");
+      const validBccRecipients = bccRecipients.filter((r) => r.status !== "invalid");
+
+      // Check if all TO recipients are matched to the same party
+      const matchedRecipients = validToRecipients.filter((r) => r.status === "matched");
+      const allSameParty = matchedRecipients.length === validToRecipients.length &&
+        matchedRecipients.every((r) => r.match?.partyId === matchedRecipients[0]?.match?.partyId);
+
+      const toAddresses = validToRecipients.map((r) => r.email);
+      const ccAddresses = validCcRecipients.map((r) => r.email);
+      const bccAddresses = validBccRecipients.map((r) => r.email);
+      const contactId = allSameParty && matchedRecipients[0]?.match?.partyId
+        ? matchedRecipients[0].match.partyId
+        : undefined;
+
+      onSend({
+        channel,
+        contactId,
+        toAddresses,
+        ccAddresses: ccAddresses.length > 0 ? ccAddresses : undefined,
+        bccAddresses: bccAddresses.length > 0 ? bccAddresses : undefined,
+        subject,
+        body,
+      });
+    }
+
     // Reset form
     setTimeout(() => {
       setSending(false);
       setSelectedContact(null);
+      setRecipients([]);
+      setCcRecipients([]);
+      setBccRecipients([]);
+      setEmailInput("");
+      setCcInput("");
+      setBccInput("");
+      setShowCcBcc(false);
       setSubject("");
       setBody("");
       onClose();
     }, 500);
   };
+
+  const handleDiscard = async () => {
+    if (!draftId) {
+      // No draft saved yet, just close
+      onClose();
+      return;
+    }
+
+    setDiscarding(true);
+    try {
+      await onDiscardDraft(draftId);
+      // Reset form and close
+      setSelectedContact(null);
+      setRecipients([]);
+      setCcRecipients([]);
+      setBccRecipients([]);
+      setEmailInput("");
+      setCcInput("");
+      setBccInput("");
+      setShowCcBcc(false);
+      setSubject("");
+      setBody("");
+      setDraftId(null);
+      setLastSaved(null);
+      onClose();
+    } catch (e) {
+      console.error("Failed to discard draft:", e);
+    } finally {
+      setDiscarding(false);
+    }
+  };
+
+  // Check if we can send
+  const canSend = React.useMemo(() => {
+    if (!body.trim() || sending) return false;
+    if (channel === "dm") return !!selectedContact;
+    // Email mode: need at least one valid recipient (not invalid, not pending)
+    return recipients.some((r) => r.status === "matched" || r.status === "unmatched");
+  }, [body, sending, channel, selectedContact, recipients]);
+
+  // Count unmatched recipients for warning (across To, CC, BCC)
+  const unmatchedCount = [
+    ...recipients.filter((r) => r.status === "unmatched"),
+    ...ccRecipients.filter((r) => r.status === "unmatched"),
+    ...bccRecipients.filter((r) => r.status === "unmatched"),
+  ].length;
 
   if (!isOpen) return null;
 
@@ -1023,22 +1785,24 @@ function ComposeModal({ isOpen, onClose, onSend, onSaveDraft, templates, contact
             <div className="flex gap-2">
               <button
                 onClick={() => setChannel("email")}
-                className={`flex-1 px-4 py-2.5 rounded-lg border-2 transition-all flex items-center justify-center gap-2 ${
-                  channel === "email"
-                    ? "border-[hsl(var(--brand-orange))] bg-[hsl(var(--brand-orange))]/10 text-[hsl(var(--brand-orange))]"
-                    : "border-hairline text-secondary hover:border-[hsl(var(--brand-orange))]/50"
-                }`}
+                className="flex-1 px-4 py-2.5 rounded-lg border-2 transition-all flex items-center justify-center gap-2"
+                style={{
+                  borderColor: "#60a5fa",
+                  color: "#60a5fa",
+                  backgroundColor: "transparent",
+                }}
               >
                 <Mail className="w-4 h-4" />
                 <span className="font-medium">Email</span>
               </button>
               <button
                 onClick={() => setChannel("dm")}
-                className={`flex-1 px-4 py-2.5 rounded-lg border-2 transition-all flex items-center justify-center gap-2 ${
-                  channel === "dm"
-                    ? "border-[hsl(var(--brand-orange))] bg-[hsl(var(--brand-orange))]/10 text-[hsl(var(--brand-orange))]"
-                    : "border-hairline text-secondary hover:border-[hsl(var(--brand-orange))]/50"
-                }`}
+                className="flex-1 px-4 py-2.5 rounded-lg border-2 transition-all flex items-center justify-center gap-2"
+                style={{
+                  borderColor: "#a78bfa",
+                  color: "#a78bfa",
+                  backgroundColor: "transparent",
+                }}
               >
                 <MessageCircle className="w-4 h-4" />
                 <span className="font-medium">Direct Message</span>
@@ -1046,55 +1810,207 @@ function ComposeModal({ isOpen, onClose, onSend, onSaveDraft, templates, contact
             </div>
           </div>
 
-          {/* Contact Selection */}
+          {/* Recipient Selection */}
           <div>
-            <label className="block text-xs text-secondary font-medium uppercase tracking-wide mb-1.5">
-              To
-            </label>
-            {selectedContact ? (
-              <div className="flex items-center gap-2 px-3 py-2 bg-surface-strong border border-hairline rounded-lg">
-                <User className="w-4 h-4 text-secondary" />
-                <span className="flex-1">{selectedContactData?.name}</span>
-                <button
-                  onClick={() => setSelectedContact(null)}
-                  className="text-secondary hover:text-primary"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
+            {channel === "dm" && (
+              <label className="block text-xs text-secondary font-medium uppercase tracking-wide mb-1.5">
+                To
+              </label>
+            )}
+
+            {channel === "dm" ? (
+              // DM mode: Contact picker
+              selectedContact ? (
+                <div className="flex items-center gap-2 px-3 py-2 bg-surface-strong border border-hairline rounded-lg">
+                  <User className="w-4 h-4 text-secondary" />
+                  <span className="flex-1">{selectedContactData?.name}</span>
+                  <button
+                    onClick={() => setSelectedContact(null)}
+                    className="text-secondary hover:text-primary"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              ) : (
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-secondary" />
+                  <input
+                    type="text"
+                    value={contactSearch}
+                    onChange={(e) => setContactSearch(e.target.value)}
+                    onFocus={() => setContactSearchFocused(true)}
+                    onBlur={() => setTimeout(() => setContactSearchFocused(false), 150)}
+                    placeholder="Search contacts..."
+                    className="w-full pl-9 pr-3 py-2 bg-surface-strong border border-hairline rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[hsl(var(--brand-orange))]/50"
+                    autoComplete="off"
+                    data-1p-ignore
+                    data-lpignore="true"
+                    data-form-type="other"
+                  />
+                  {contactSearchFocused && (
+                    <div className="absolute top-full left-0 right-0 mt-1 bg-surface border border-hairline rounded-lg shadow-lg max-h-48 overflow-y-auto z-10">
+                      {filteredContacts.length > 0 ? (
+                        filteredContacts.map((contact) => (
+                          <button
+                            key={contact.id}
+                            onClick={() => {
+                              setSelectedContact(contact.id);
+                              setContactSearch("");
+                              setContactSearchFocused(false);
+                            }}
+                            className="w-full px-3 py-2 text-left text-sm hover:bg-white/5 flex items-center gap-2"
+                          >
+                            <User className="w-4 h-4 text-secondary" />
+                            <span>{contact.name}</span>
+                            {contact.email && (
+                              <span className="text-xs text-secondary ml-auto">{contact.email}</span>
+                            )}
+                          </button>
+                        ))
+                      ) : (
+                        <div className="px-3 py-2 text-sm text-secondary">
+                          {contactSearch ? "No contacts match your search" : "No contacts available"}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )
             ) : (
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-secondary" />
-                <input
-                  type="text"
-                  value={contactSearch}
-                  onChange={(e) => setContactSearch(e.target.value)}
-                  placeholder="Search contacts..."
-                  className="w-full pl-9 pr-3 py-2 bg-surface-strong border border-hairline rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[hsl(var(--brand-orange))]/50"
-                />
-                {contactSearch && filteredContacts.length > 0 && (
-                  <div className="absolute top-full left-0 right-0 mt-1 bg-surface border border-hairline rounded-lg shadow-lg max-h-48 overflow-y-auto z-10">
-                    {filteredContacts.map((contact) => (
-                      <button
-                        key={contact.id}
-                        onClick={() => {
-                          setSelectedContact(contact.id);
-                          setContactSearch("");
-                        }}
-                        className="w-full px-3 py-2 text-left text-sm hover:bg-white/5 flex items-center gap-2"
+              // Email mode: Free-form email input with chips
+              <div className="space-y-2">
+                {/* To field */}
+                <div className="flex items-start gap-2">
+                  <span className="text-xs text-secondary font-medium uppercase w-8 pt-2.5 flex-shrink-0">To</span>
+                  <div className="flex-1">
+                    <div
+                      className="min-h-[38px] px-3 py-1.5 rounded-lg border border-hairline bg-surface-strong flex flex-wrap items-center gap-1.5 cursor-text transition-colors focus-within:border-[hsl(var(--brand-orange))]"
+                      onClick={() => emailInputRef.current?.focus()}
+                    >
+                      {recipients.map((recipient, index) => (
+                        <RecipientChip
+                          key={`to-${recipient.email}-${index}`}
+                          recipient={recipient}
+                          onRemove={() => handleRemoveToRecipient(index)}
+                        />
+                      ))}
+                      <input
+                        ref={emailInputRef}
+                        type="text"
+                        value={emailInput}
+                        onChange={(e) => setEmailInput(e.target.value)}
+                        onKeyDown={handleToKeyDown}
+                        onPaste={handleToPaste}
+                        onBlur={handleToBlur}
+                        placeholder={recipients.length === 0 ? "Enter email addresses..." : ""}
+                        className="chip-input-field flex-1 min-w-[150px] h-6 bg-transparent border-none text-sm text-primary placeholder:text-secondary"
+                        autoComplete="off"
+                        data-1p-ignore
+                        data-lpignore="true"
+                        data-form-type="other"
+                      />
+                    </div>
+                  </div>
+                  {!showCcBcc && (
+                    <button
+                      type="button"
+                      onClick={() => setShowCcBcc(true)}
+                      className="text-xs text-[hsl(var(--brand-orange))] hover:underline pt-2.5 flex-shrink-0"
+                    >
+                      Cc/Bcc
+                    </button>
+                  )}
+                </div>
+
+                {/* CC field */}
+                {showCcBcc && (
+                  <div className="flex items-start gap-2">
+                    <span className="text-xs text-secondary font-medium uppercase w-8 pt-2.5 flex-shrink-0">Cc</span>
+                    <div className="flex-1">
+                      <div
+                        className="min-h-[38px] px-3 py-1.5 rounded-lg border border-hairline bg-surface-strong flex flex-wrap items-center gap-1.5 cursor-text transition-colors focus-within:border-[hsl(var(--brand-orange))]"
+                        onClick={() => ccInputRef.current?.focus()}
                       >
-                        <User className="w-4 h-4 text-secondary" />
-                        <span>{contact.name}</span>
-                        {contact.email && (
-                          <span className="text-xs text-secondary ml-auto">{contact.email}</span>
-                        )}
-                      </button>
-                    ))}
+                        {ccRecipients.map((recipient, index) => (
+                          <RecipientChip
+                            key={`cc-${recipient.email}-${index}`}
+                            recipient={recipient}
+                            onRemove={() => handleRemoveCcRecipient(index)}
+                          />
+                        ))}
+                        <input
+                          ref={ccInputRef}
+                          type="text"
+                          value={ccInput}
+                          onChange={(e) => setCcInput(e.target.value)}
+                          onKeyDown={handleCcKeyDown}
+                          onPaste={handleCcPaste}
+                          onBlur={handleCcBlur}
+                          placeholder={ccRecipients.length === 0 ? "Add CC recipients..." : ""}
+                          className="chip-input-field flex-1 min-w-[150px] h-6 bg-transparent border-none text-sm text-primary placeholder:text-secondary"
+                          autoComplete="off"
+                          data-1p-ignore
+                          data-lpignore="true"
+                          data-form-type="other"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* BCC field */}
+                {showCcBcc && (
+                  <div className="flex items-start gap-2">
+                    <span className="text-xs text-secondary font-medium uppercase w-8 pt-2.5 flex-shrink-0">Bcc</span>
+                    <div className="flex-1">
+                      <div
+                        className="min-h-[38px] px-3 py-1.5 rounded-lg border border-hairline bg-surface-strong flex flex-wrap items-center gap-1.5 cursor-text transition-colors focus-within:border-[hsl(var(--brand-orange))]"
+                        onClick={() => bccInputRef.current?.focus()}
+                      >
+                        {bccRecipients.map((recipient, index) => (
+                          <RecipientChip
+                            key={`bcc-${recipient.email}-${index}`}
+                            recipient={recipient}
+                            onRemove={() => handleRemoveBccRecipient(index)}
+                          />
+                        ))}
+                        <input
+                          ref={bccInputRef}
+                          type="text"
+                          value={bccInput}
+                          onChange={(e) => setBccInput(e.target.value)}
+                          onKeyDown={handleBccKeyDown}
+                          onPaste={handleBccPaste}
+                          onBlur={handleBccBlur}
+                          placeholder={bccRecipients.length === 0 ? "Add BCC recipients..." : ""}
+                          className="chip-input-field flex-1 min-w-[150px] h-6 bg-transparent border-none text-sm text-primary placeholder:text-secondary"
+                          autoComplete="off"
+                          data-1p-ignore
+                          data-lpignore="true"
+                          data-form-type="other"
+                        />
+                      </div>
+                    </div>
                   </div>
                 )}
               </div>
             )}
           </div>
+
+          {/* Unmatched recipients warning */}
+          {channel === "email" && unmatchedCount > 0 && (
+            <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-400 text-sm">
+              <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+              <div>
+                <div className="font-medium">
+                  {unmatchedCount} recipient{unmatchedCount > 1 ? "s" : ""} not linked to a contact
+                </div>
+                <div className="text-xs mt-0.5 text-amber-400/80">
+                  Email will be sent but won't be linked to a contact record. You can link it later from the "Other Recipients" folder.
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Subject (Email only) */}
           {channel === "email" && (
@@ -1108,6 +2024,10 @@ function ComposeModal({ isOpen, onClose, onSend, onSaveDraft, templates, contact
                 onChange={(e) => setSubject(e.target.value)}
                 placeholder="Enter subject..."
                 className="w-full px-3 py-2 bg-surface-strong border border-hairline rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[hsl(var(--brand-orange))]/50"
+                autoComplete="off"
+                data-1p-ignore
+                data-lpignore="true"
+                data-form-type="other"
               />
             </div>
           )}
@@ -1161,6 +2081,10 @@ function ComposeModal({ isOpen, onClose, onSend, onSaveDraft, templates, contact
               placeholder="Write your message..."
               rows={8}
               className="w-full px-3 py-2 bg-surface-strong border border-hairline rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-[hsl(var(--brand-orange))]/50"
+              autoComplete="off"
+              data-1p-ignore
+              data-lpignore="true"
+              data-form-type="other"
             />
           </div>
         </div>
@@ -1187,12 +2111,29 @@ function ComposeModal({ isOpen, onClose, onSend, onSaveDraft, templates, contact
                 ) : null}
               </div>
             )}
+            {lookingUp && (
+              <div className="flex items-center gap-1.5 text-xs text-secondary">
+                <Loader2 className="w-3 h-3 animate-spin" />
+                <span>Looking up recipients...</span>
+              </div>
+            )}
           </div>
           <div className="flex items-center gap-2">
+            {(draftId || body.trim()) && (
+              <Button
+                variant="outline"
+                onClick={handleDiscard}
+                disabled={discarding}
+                className="text-red-400 hover:text-red-300 hover:border-red-400/50"
+              >
+                <Trash2 className="w-4 h-4 mr-1.5" />
+                {discarding ? "Discarding..." : "Discard"}
+              </Button>
+            )}
             <Button variant="outline" onClick={onClose}>
               {body.trim() ? "Save & Close" : "Cancel"}
             </Button>
-            <Button onClick={handleSend} disabled={!selectedContact || !body.trim() || sending}>
+            <Button onClick={handleSend} disabled={!canSend}>
               {sending ? "Sending..." : "Send Message"}
             </Button>
           </div>
@@ -1297,7 +2238,7 @@ export default function CommunicationsHub() {
   const [loading, setLoading] = React.useState(true);
   const [threadLoading, setThreadLoading] = React.useState(false);
   const [actionLoading, setActionLoading] = React.useState(false);
-  const [inboxCounts, setInboxCounts] = React.useState<InboxCounts>({ unreadCount: 0, flaggedCount: 0, draftCount: 0 });
+  const [inboxCounts, setInboxCounts] = React.useState<InboxCounts>({ unreadCount: 0, flaggedCount: 0, draftCount: 0, sentCount: 0 });
 
   // Bulk selection state
   const [bulkSelectedIds, setBulkSelectedIds] = React.useState<Set<string>>(new Set());
@@ -1323,13 +2264,15 @@ export default function CommunicationsHub() {
     return {
       all: messages.filter((m) => !m.isArchived).length,
       inbox: inboxCounts.unreadCount,
+      sent: inboxCounts.sentCount || messages.filter((m) => m.direction === "outbound" && !m.isArchived).length,
       flagged: inboxCounts.flaggedCount,
       drafts: inboxCounts.draftCount,
       archived: messages.filter((m) => m.isArchived).length,
       email: messages.filter((m) => m.channel === "email" && !m.isArchived).length,
       dm: messages.filter((m) => m.channel === "dm" && !m.isArchived).length,
+      templates: templates.length,
     };
-  }, [messages, inboxCounts]);
+  }, [messages, inboxCounts, templates]);
 
   // Filtered messages based on active folder
   const filteredMessages = React.useMemo(() => {
@@ -1349,6 +2292,10 @@ export default function CommunicationsHub() {
           if (!a.isUnread && b.isUnread) return 1;
           return b.timestamp.getTime() - a.timestamp.getTime();
         });
+        break;
+      case "sent":
+        // Outbound emails only
+        filtered = filtered.filter((m) => m.direction === "outbound" && !m.isArchived);
         break;
       case "flagged":
         filtered = filtered.filter((m) => m.isStarred && !m.isArchived);
@@ -1393,18 +2340,21 @@ export default function CommunicationsHub() {
   }, [messages, activeFolder, channelFilter, selectedTags, searchQuery]);
 
   // Load inbox data using communications API
-  const loadInboxData = React.useCallback(async () => {
-    setLoading(true);
+  const loadInboxData = React.useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
-      // Load from communications inbox API - gets DMs, emails, and drafts
-      const inboxRes = await api.communications.inbox.list({
-        status: "all", // Get all items so we can filter locally
-        limit: 200,
-      });
+      // Load from multiple endpoints to get all data
+      // 1. Main inbox (DMs, legacy emails) with status=all
+      // 2. Sent items (PartyEmail, UnlinkedEmail) with status=sent
+      // 3. Drafts with status=draft
+      const [inboxRes, sentRes, draftsRes] = await Promise.all([
+        api.communications.inbox.list({ status: "all", limit: 200 }),
+        api.communications.inbox.list({ status: "sent", limit: 200 }),
+        api.communications.inbox.list({ status: "draft", limit: 200 }),
+      ]);
 
-      // Transform backend CommunicationItem to UnifiedMessage
-      const unified: UnifiedMessage[] = (inboxRes.items || []).map((item: CommunicationItem) => {
-        // Parse the composite ID to get the numeric ID
+      // Helper to transform backend CommunicationItem to UnifiedMessage
+      const transformItem = (item: CommunicationItem): UnifiedMessage => {
         const [itemType, itemId] = item.id.split(":");
         const numericId = parseInt(itemId, 10);
 
@@ -1421,10 +2371,20 @@ export default function CommunicationsHub() {
           isArchived: item.archived,
           type: item.type,
           threadId: itemType === "thread" ? numericId : undefined,
-          emailId: itemType === "email" ? numericId : undefined,
+          emailId: ["email", "partyEmail", "unlinkedEmail"].includes(itemType) ? numericId : undefined,
           draftId: itemType === "draft" ? numericId : undefined,
+          direction: item.direction,
         };
-      });
+      };
+
+      // Combine and deduplicate by id
+      const allItems = [
+        ...(inboxRes.items || []),
+        ...(sentRes.items || []),
+        ...(draftsRes.items || []),
+      ];
+      const uniqueItems = Array.from(new Map(allItems.map((item) => [item.id, item])).values());
+      const unified: UnifiedMessage[] = uniqueItems.map(transformItem);
 
       setMessages(unified);
 
@@ -1472,9 +2432,16 @@ export default function CommunicationsHub() {
     }
   }, []);
 
-  // Load initial data
+  // Load initial data and set up polling for real-time updates
   React.useEffect(() => {
-    loadInboxData();
+    loadInboxData(); // Initial load shows spinner
+
+    // Poll for new messages every 10 seconds (silent - no spinner)
+    const pollInterval = setInterval(() => {
+      loadInboxData(true);
+    }, 10000);
+
+    return () => clearInterval(pollInterval);
   }, [loadInboxData]);
 
   // Toggle flag (star) on current thread
@@ -1542,25 +2509,27 @@ export default function CommunicationsHub() {
   }, [selectedThread, activeFolder]);
 
   // Load thread when selection changes
-  React.useEffect(() => {
-    if (!selectedMessageId) {
-      setSelectedThread(null);
-      return;
-    }
-
-    const message = messages.find((m) => m.id === selectedMessageId);
-    if (!message) return;
-
-    async function loadThread() {
+  const loadSelectedThread = React.useCallback(
+    async (messageId: string) => {
       setThreadLoading(true);
+      setSelectedThread(null); // Clear previous thread immediately
       try {
-        if (message?.threadId) {
-          const res = await api.messages.threads.get(message.threadId);
-          const thread = res.thread;
-          const otherParticipant = thread.participants?.find(
+        // Check ID pattern to determine type
+        if (messageId.startsWith("thread:")) {
+          // Load DM thread
+          const threadId = Number(messageId.replace("thread:", ""));
+          const res = await api.messages.threads.get(threadId);
+          const thread = res?.thread;
+
+          if (!thread) {
+            console.error("Thread not found or invalid response:", res);
+            return null;
+          }
+
+          const otherParticipant = (thread.participants || []).find(
             (p: any) => p.party?.type !== "ORGANIZATION"
           );
-          const orgParticipant = thread.participants?.find(
+          const orgParticipant = (thread.participants || []).find(
             (p: any) => p.party?.type === "ORGANIZATION"
           );
 
@@ -1572,7 +2541,7 @@ export default function CommunicationsHub() {
             isArchived: thread.archived,
             contact: {
               id: otherParticipant?.partyId || 0,
-              name: otherParticipant?.party?.name || "Unknown",
+              name: otherParticipant?.party?.name || thread.guestName || "Unknown",
               email: otherParticipant?.party?.email,
               tags: ["Inquiry"],
             },
@@ -1585,16 +2554,95 @@ export default function CommunicationsHub() {
               status: "delivered" as const,
             })),
           });
+        } else if (
+          messageId.startsWith("partyEmail:") ||
+          messageId.startsWith("unlinkedEmail:")
+        ) {
+          // Load email detail from new email system
+          const res = await api.communications.email.get(messageId);
+          const email = res.email;
+
+          setSelectedThread({
+            id: email.id,
+            channel: "email",
+            isFlagged: false,
+            isArchived: false,
+            contact: {
+              id: email.partyId || 0,
+              name: email.partyName || email.toEmail,
+              email: email.toEmail,
+              tags: [],
+            },
+            subject: email.subject,
+            messages: [
+              {
+                id: email.id,
+                body: email.body || email.bodyText || email.bodyHtml || "",
+                timestamp: new Date(email.sentAt || email.createdAt),
+                isOwn: true, // Sent emails are always from us
+                status: "delivered" as const,
+              },
+            ],
+          });
+
+          // Mark as read in local state - done outside callback to avoid re-render loop
+          return { markAsRead: messageId };
+        } else if (messageId.startsWith("email:")) {
+          // Legacy email from EmailSendLog - display from local message data
+          // Use functional update to avoid dependency on messages
+          setMessages((prev) => {
+            const message = prev.find((m) => m.id === messageId);
+            if (message) {
+              setSelectedThread({
+                id: messageId,
+                channel: "email",
+                isFlagged: message.isStarred,
+                isArchived: message.isArchived,
+                contact: {
+                  id: message.contactId || 0,
+                  name: message.contactName,
+                  email: message.contactEmail,
+                  tags: [],
+                },
+                subject: message.subject || null,
+                messages: [
+                  {
+                    id: messageId,
+                    body: message.preview, // Legacy emails only have preview
+                    timestamp: message.timestamp,
+                    isOwn: true,
+                    status: "delivered" as const,
+                  },
+                ],
+              });
+            }
+            return prev; // Don't actually change messages
+          });
         }
       } catch (e) {
         console.error("Failed to load thread:", e);
       } finally {
         setThreadLoading(false);
       }
-    }
+      return null;
+    },
+    [] // No dependencies - avoid re-creation loop
+  );
 
-    loadThread();
-  }, [selectedMessageId, messages]);
+  React.useEffect(() => {
+    if (!selectedMessageId) {
+      setSelectedThread(null);
+      return;
+    }
+    loadSelectedThread(selectedMessageId).then((result) => {
+      // Mark email as read after thread is loaded (separate from callback to avoid loop)
+      if (result?.markAsRead) {
+        setMessages((prev) =>
+          prev.map((m) => (m.id === result.markAsRead ? { ...m, isUnread: false } : m))
+        );
+      }
+    });
+  }, [selectedMessageId, loadSelectedThread]);
 
   // Keyboard shortcuts
   React.useEffect(() => {
@@ -1704,12 +2752,16 @@ export default function CommunicationsHub() {
 
   const handleCompose = async (data: {
     channel: "email" | "dm";
-    contactId: number;
+    contactId?: number;
+    toAddresses?: string[];
+    ccAddresses?: string[];
+    bccAddresses?: string[];
     subject?: string;
     body: string;
   }) => {
     // Create a new DM thread
     if (data.channel === "dm") {
+      if (!data.contactId) return;
       try {
         const result = await api.messages.threads.create({
           recipientPartyId: data.contactId,
@@ -1726,8 +2778,31 @@ export default function CommunicationsHub() {
         console.error("Failed to create thread:", e);
       }
     } else {
-      // TODO: Handle email composition via drafts
-      console.log("Email composing not yet implemented:", data);
+      // Email mode - use messagingHub API
+      if (!data.toAddresses || data.toAddresses.length === 0) return;
+      try {
+        // Combine all addresses for the API (backend will handle CC/BCC separately in future)
+        const allToAddresses = [
+          ...data.toAddresses,
+          ...(data.ccAddresses || []),
+          ...(data.bccAddresses || []),
+        ];
+        await api.messagingHub.sendEmail({
+          partyId: data.contactId ?? null,
+          toAddresses: allToAddresses,
+          subject: data.subject || "(No subject)",
+          bodyText: data.body,
+          // TODO: Pass CC/BCC separately when backend supports it
+          metadata: {
+            cc: data.ccAddresses,
+            bcc: data.bccAddresses,
+          },
+        });
+        // Refresh inbox to show new email
+        loadInboxData();
+      } catch (e) {
+        console.error("Failed to send email:", e);
+      }
     }
   };
 
@@ -1859,6 +2934,38 @@ export default function CommunicationsHub() {
     }
   }, [bulkSelectedIds]);
 
+  // Bulk delete drafts handler
+  const handleBulkDeleteDrafts = React.useCallback(async () => {
+    if (bulkSelectedIds.size === 0) return;
+
+    // Filter to only draft IDs
+    const draftIds = Array.from(bulkSelectedIds)
+      .filter((id) => id.startsWith("draft:"))
+      .map((id) => parseInt(id.replace("draft:", ""), 10));
+
+    if (draftIds.length === 0) return;
+
+    setBulkActionLoading(true);
+    try {
+      // Delete each draft
+      await Promise.all(draftIds.map((id) => api.drafts.delete(id)));
+
+      // Remove from local state
+      setMessages((prev) => prev.filter((m) => !bulkSelectedIds.has(m.id)));
+
+      // Clear selection
+      setBulkSelectedIds(new Set());
+
+      // Refresh counts
+      const counts = await api.communications.counts.get();
+      setInboxCounts(counts);
+    } catch (e) {
+      console.error("Failed to bulk delete drafts:", e);
+    } finally {
+      setBulkActionLoading(false);
+    }
+  }, [bulkSelectedIds]);
+
   // Save draft handler
   const handleSaveDraft = React.useCallback(
     async (data: {
@@ -1897,6 +3004,23 @@ export default function CommunicationsHub() {
     [loadInboxData]
   );
 
+  // Discard draft handler - permanently deletes the draft
+  const handleDiscardDraft = React.useCallback(
+    async (draftId: number): Promise<void> => {
+      try {
+        await api.drafts.delete(draftId);
+        // Refresh inbox to remove the draft
+        loadInboxData();
+        // Clear editing state
+        setEditingDraft(null);
+      } catch (e) {
+        console.error("Failed to discard draft:", e);
+        throw e;
+      }
+    },
+    [loadInboxData]
+  );
+
   // Handle opening a draft for editing
   const handleOpenDraft = React.useCallback(async (draftId: number) => {
     try {
@@ -1928,7 +3052,7 @@ export default function CommunicationsHub() {
   );
 
   return (
-    <div className="h-screen flex flex-col bg-canvas">
+    <div className="flex-1 min-h-0 flex flex-col bg-canvas overflow-hidden rounded-xl border border-hairline">
       {/* Header */}
       <div className="flex-shrink-0 px-4 py-3 border-b border-hairline bg-surface flex items-center justify-between">
         <div className="flex items-center gap-3">
@@ -1966,46 +3090,55 @@ export default function CommunicationsHub() {
           onCreateTag={() => setShowCreateTagModal(true)}
         />
 
-        {/* Conversation List */}
-        <ConversationList
-          messages={filteredMessages}
-          selectedId={selectedMessageId}
-          onSelect={handleSelectMessage}
-          loading={loading}
-          searchQuery={searchQuery}
-          onSearchChange={setSearchQuery}
-          channelFilter={channelFilter}
-          onChannelFilterChange={setChannelFilter}
-          selectedIds={bulkSelectedIds}
-          onToggleSelect={handleToggleSelectMessage}
-          onSelectAll={handleSelectAll}
-          onClearSelection={handleClearSelection}
-          onBulkArchive={handleBulkArchive}
-          onBulkFlag={handleBulkFlag}
-          onBulkMarkRead={handleBulkMarkRead}
-          bulkActionLoading={bulkActionLoading}
-        />
+        {/* Show Templates Panel or Message Views */}
+        {activeFolder === "templates" ? (
+          <TemplatesPanel api={api} />
+        ) : (
+          <>
+            {/* Conversation List */}
+            <ConversationList
+              messages={filteredMessages}
+              selectedId={selectedMessageId}
+              onSelect={handleSelectMessage}
+              loading={loading}
+              searchQuery={searchQuery}
+              onSearchChange={setSearchQuery}
+              channelFilter={channelFilter}
+              onChannelFilterChange={setChannelFilter}
+              selectedIds={bulkSelectedIds}
+              onToggleSelect={handleToggleSelectMessage}
+              onSelectAll={handleSelectAll}
+              onClearSelection={handleClearSelection}
+              onBulkArchive={handleBulkArchive}
+              onBulkFlag={handleBulkFlag}
+              onBulkMarkRead={handleBulkMarkRead}
+              onBulkDelete={handleBulkDeleteDrafts}
+              hasDraftsSelected={Array.from(bulkSelectedIds).some((id) => id.startsWith("draft:"))}
+              bulkActionLoading={bulkActionLoading}
+            />
 
-        {/* Thread View */}
-        <ThreadView
-          thread={selectedThread}
-          loading={threadLoading}
-          onReply={handleReply}
-          onOpenTemplatePicker={() => setShowComposeModal(true)}
-          replyText={replyText}
-          onReplyTextChange={setReplyText}
-          sending={sending}
-          onToggleFlag={handleToggleFlag}
-          onToggleArchive={handleToggleArchive}
-          actionLoading={actionLoading}
-        />
+            {/* Thread View */}
+            <ThreadView
+              thread={selectedThread}
+              loading={threadLoading}
+              onReply={handleReply}
+              onOpenTemplatePicker={() => setShowComposeModal(true)}
+              replyText={replyText}
+              onReplyTextChange={setReplyText}
+              sending={sending}
+              onToggleFlag={handleToggleFlag}
+              onToggleArchive={handleToggleArchive}
+              actionLoading={actionLoading}
+            />
 
-        {/* Contact Panel */}
-        <ContactPanel
-          contact={selectedThread?.contact || null}
-          isOpen={showContactPanel && !!selectedThread}
-          onClose={() => setShowContactPanel(false)}
-        />
+            {/* Contact Panel */}
+            <ContactPanel
+              contact={selectedThread?.contact || null}
+              isOpen={showContactPanel && !!selectedThread}
+              onClose={() => setShowContactPanel(false)}
+            />
+          </>
+        )}
       </div>
 
       {/* Modals */}
@@ -2017,6 +3150,7 @@ export default function CommunicationsHub() {
         }}
         onSend={handleCompose}
         onSaveDraft={handleSaveDraft}
+        onDiscardDraft={handleDiscardDraft}
         templates={templates}
         contacts={contacts}
         editingDraft={editingDraft}

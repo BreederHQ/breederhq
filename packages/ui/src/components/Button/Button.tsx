@@ -58,7 +58,7 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>((
       data-glow
       onMouseMove={onMoveGlow}
       data-columns-trigger
-      className={clsx(base, sizes, variants, "bhq-shadow", className)}
+      className={clsx(base, sizes, variants, className)}
       aria-busy={loading || undefined}
       {...rest}
     >

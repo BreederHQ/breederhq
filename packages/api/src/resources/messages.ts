@@ -48,22 +48,24 @@ export interface UpdateThreadRequest {
 }
 
 export function makeMessages(http: Http) {
+  const BASE = "/api/v1";
+
   return {
     threads: {
       async list(): Promise<{ threads: MessageThread[] }> {
-        return http.get("/messages/threads");
+        return http.get(`${BASE}/messages/threads`);
       },
       async get(id: number): Promise<{ thread: MessageThread }> {
-        return http.get(`/messages/threads/${id}`);
+        return http.get(`${BASE}/messages/threads/${id}`);
       },
       async create(params: CreateThreadRequest): Promise<{ ok: boolean; thread: MessageThread }> {
-        return http.post("/messages/threads", params);
+        return http.post(`${BASE}/messages/threads`, params);
       },
       async sendMessage(threadId: number, params: SendMessageRequest): Promise<{ ok: boolean; message: Message }> {
-        return http.post(`/messages/threads/${threadId}/messages`, params);
+        return http.post(`${BASE}/messages/threads/${threadId}/messages`, params);
       },
       async update(threadId: number, params: UpdateThreadRequest): Promise<{ ok: boolean; thread: MessageThread }> {
-        return http.patch(`/messages/threads/${threadId}`, params);
+        return http.patch(`${BASE}/messages/threads/${threadId}`, params);
       },
     },
   };
