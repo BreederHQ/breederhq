@@ -3,6 +3,7 @@
 
 import * as React from "react";
 import { Building2, Mail, Phone, MapPin } from "lucide-react";
+import { TagChip } from "@bhq/ui";
 import type { PartyTableRow } from "../App-Contacts";
 
 // Type accent colors
@@ -112,22 +113,30 @@ function ContactCard({ row, onClick }: { row: PartyTableRow; onClick?: () => voi
         )}
       </div>
 
-      {/* Tags */}
-      {row.tags && row.tags.length > 0 && (
+      {/* Tags - prefer tagObjects (with colors) if available, fallback to string tags */}
+      {(row.tagObjects?.length || row.tags?.length) ? (
         <div className="mt-3 flex flex-wrap gap-1">
-          {row.tags.slice(0, 3).map((tag) => (
-            <span
-              key={tag}
-              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-[hsl(var(--muted))] text-secondary"
-            >
-              {tag}
-            </span>
-          ))}
-          {row.tags.length > 3 && (
-            <span className="text-xs text-secondary">+{row.tags.length - 3}</span>
+          {row.tagObjects ? (
+            <>
+              {row.tagObjects.slice(0, 3).map((tag) => (
+                <TagChip key={tag.id} name={tag.name} color={tag.color} />
+              ))}
+              {row.tagObjects.length > 3 && (
+                <span className="text-xs text-secondary">+{row.tagObjects.length - 3}</span>
+              )}
+            </>
+          ) : (
+            <>
+              {row.tags.slice(0, 3).map((tag) => (
+                <TagChip key={tag} name={tag} />
+              ))}
+              {row.tags.length > 3 && (
+                <span className="text-xs text-secondary">+{row.tags.length - 3}</span>
+              )}
+            </>
           )}
         </div>
-      )}
+      ) : null}
     </button>
   );
 }

@@ -14,7 +14,7 @@ import type {
   InboxCounts,
   TagDTO,
 } from "@bhq/api";
-import { Button, Input, Badge } from "@bhq/ui";
+import { Button, Input, Badge, TagCreateModal } from "@bhq/ui";
 import {
   Search,
   Plus,
@@ -1251,163 +1251,6 @@ function KeyboardShortcutsModal({
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   CREATE TAG MODAL (for MESSAGE_THREAD tags)
-   ═══════════════════════════════════════════════════════════════════════════ */
-
-const TAG_COLOR_PALETTE = [
-  "#ef4444", // red
-  "#f97316", // orange
-  "#f59e0b", // amber
-  "#eab308", // yellow
-  "#84cc16", // lime
-  "#22c55e", // green
-  "#10b981", // emerald
-  "#14b8a6", // teal
-  "#06b6d4", // cyan
-  "#0ea5e9", // sky
-  "#3b82f6", // blue
-  "#6366f1", // indigo
-  "#8b5cf6", // violet
-  "#a855f7", // purple
-  "#d946ef", // fuchsia
-  "#ec4899", // pink
-];
-
-interface CreateTagModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-  onSubmit: (data: { name: string; color: string | null }) => Promise<void>;
-}
-
-function CreateTagModal({ isOpen, onClose, onSubmit }: CreateTagModalProps) {
-  const [name, setName] = React.useState("");
-  const [color, setColor] = React.useState<string | null>(TAG_COLOR_PALETTE[0]);
-  const [submitting, setSubmitting] = React.useState(false);
-  const [error, setError] = React.useState<string | null>(null);
-
-  // Reset form when modal opens
-  React.useEffect(() => {
-    if (isOpen) {
-      setName("");
-      setColor(TAG_COLOR_PALETTE[0]);
-      setError(null);
-    }
-  }, [isOpen]);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-
-    if (!name.trim()) {
-      setError("Tag name is required");
-      return;
-    }
-
-    setSubmitting(true);
-    try {
-      await onSubmit({ name: name.trim(), color });
-      onClose();
-    } catch (err) {
-      const errMsg = err instanceof Error ? err.message : "Failed to create tag";
-      const apiError = (err as any)?.body?.error || (err as any)?.body?.detail;
-      setError(apiError || errMsg);
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  if (!isOpen) return null;
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/60" onClick={onClose} />
-      <div className="relative w-full max-w-sm bg-surface border border-hairline rounded-xl shadow-2xl overflow-hidden">
-        {/* Header */}
-        <div className="px-4 py-3 border-b border-hairline flex items-center justify-between">
-          <h2 className="text-base font-semibold">Create Message Tag</h2>
-          <button
-            onClick={onClose}
-            className="p-1 rounded-md text-secondary hover:text-primary hover:bg-white/5"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-
-        {/* Body */}
-        <form onSubmit={handleSubmit}>
-          <div className="px-4 py-4 space-y-4">
-            {/* Name */}
-            <div>
-              <label className="block text-xs text-secondary font-medium uppercase tracking-wide mb-1.5">
-                Tag Name <span className="text-red-400">*</span>
-              </label>
-              <input
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="e.g., VIP, Follow-up, Hot Lead"
-                autoFocus
-                className="w-full px-3 py-2 text-sm bg-surface-strong border border-hairline rounded-lg focus:outline-none focus:ring-2 focus:ring-[hsl(var(--brand-orange))]/50 focus:border-transparent"
-              />
-            </div>
-
-            {/* Color picker */}
-            <div>
-              <label className="block text-xs text-secondary font-medium uppercase tracking-wide mb-1.5">
-                Color
-              </label>
-              <div className="grid grid-cols-8 gap-1.5">
-                {TAG_COLOR_PALETTE.map((c) => (
-                  <button
-                    key={c}
-                    type="button"
-                    onClick={() => setColor(c)}
-                    className={`w-7 h-7 rounded-md border-2 transition-all ${
-                      color === c
-                        ? "border-white scale-110 shadow-lg"
-                        : "border-transparent hover:border-white/30"
-                    }`}
-                    style={{ backgroundColor: c }}
-                  />
-                ))}
-              </div>
-            </div>
-
-            {/* Info text */}
-            <p className="text-xs text-secondary">
-              This tag will be available for organizing message threads in the Communications Hub.
-            </p>
-
-            {/* Error */}
-            {error && (
-              <div className="p-2 bg-red-500/10 border border-red-500/20 rounded-md">
-                <p className="text-sm text-red-400">{error}</p>
-              </div>
-            )}
-          </div>
-
-          {/* Footer */}
-          <div className="px-4 py-3 border-t border-hairline flex justify-end gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={onClose}
-              disabled={submitting}
-            >
-              Cancel
-            </Button>
-            <Button type="submit" size="sm" disabled={submitting}>
-              {submitting ? "Creating..." : "Create Tag"}
-            </Button>
-          </div>
-        </form>
-      </div>
-    </div>
-  );
-}
-
-/* ═══════════════════════════════════════════════════════════════════════════
    UTILITY FUNCTIONS
    ═══════════════════════════════════════════════════════════════════════════ */
 
@@ -1901,10 +1744,10 @@ export default function CommunicationsHub() {
   };
 
   // Create a new MESSAGE_THREAD tag
-  const handleCreateTag = async (data: { name: string; color: string | null }) => {
+  const handleCreateTag = async (data: { name: string; module: string; color: string | null }) => {
     await api.tags.create({
       name: data.name,
-      module: "MESSAGE_THREAD",
+      module: data.module as "MESSAGE_THREAD",
       color: data.color,
     });
     // Refresh tags list
@@ -2184,10 +2027,13 @@ export default function CommunicationsHub() {
         onClose={() => setShowShortcutsModal(false)}
       />
 
-      <CreateTagModal
-        isOpen={showCreateTagModal}
-        onClose={() => setShowCreateTagModal(false)}
+      <TagCreateModal
+        open={showCreateTagModal}
+        onOpenChange={setShowCreateTagModal}
+        mode="create"
+        fixedModule="MESSAGE_THREAD"
         onSubmit={handleCreateTag}
+        description="This tag will be available for organizing message threads in the Communications Hub."
       />
     </div>
   );

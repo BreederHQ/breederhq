@@ -12,7 +12,8 @@ export type TagModule =
   | "OFFSPRING_GROUP"
   | "OFFSPRING"
   | "MESSAGE_THREAD"
-  | "DRAFT";
+  | "DRAFT"
+  | "BREEDING_PLAN";
 
 export type TagDTO = {
   id: number;
@@ -53,6 +54,7 @@ export type TagAssignmentTarget = {
   offspringId?: number;
   messageThreadId?: number;
   draftId?: number;
+  breedingPlanId?: number;
 };
 
 export type TagsResource = {
@@ -70,6 +72,9 @@ export type TagsResource = {
   listForOffspring(offspringId: number): Promise<TagDTO[]>;
   listForMessageThread(messageThreadId: number): Promise<TagDTO[]>;
   listForDraft(draftId: number): Promise<TagDTO[]>;
+  listForBreedingPlan(breedingPlanId: number): Promise<TagDTO[]>;
+  /** Batch fetch tags for multiple contacts/organizations. Returns a map of entityId -> tags */
+  listForEntities(targets: Array<{ contactId?: number; organizationId?: number }>): Promise<Map<string, TagDTO[]>>;
 };
 
 function buildQuery(params: TagListParams): string {
@@ -105,6 +110,7 @@ function getEntityPath(target: TagAssignmentTarget): string {
   if (target.offspringId != null) return `/offspring/individuals/${target.offspringId}/tags`;
   if (target.messageThreadId != null) return `/message-threads/${target.messageThreadId}/tags`;
   if (target.draftId != null) return `/drafts/${target.draftId}/tags`;
+  if (target.breedingPlanId != null) return `/breeding/plans/${target.breedingPlanId}/tags`;
   throw new Error("TagAssignmentTarget must have exactly one entity ID");
 }
 
@@ -173,6 +179,39 @@ export function makeTags(http: Http): TagsResource {
 
     async listForDraft(draftId: number): Promise<TagDTO[]> {
       return this.listForEntity({ draftId });
+    },
+
+    async listForBreedingPlan(breedingPlanId: number): Promise<TagDTO[]> {
+      return this.listForEntity({ breedingPlanId });
+    },
+
+    async listForEntities(targets: Array<{ contactId?: number; organizationId?: number }>): Promise<Map<string, TagDTO[]>> {
+      // Fetch tags for multiple entities in parallel (client-side batching)
+      // Returns a map keyed by "contact:123" or "organization:456"
+      const results = new Map<string, TagDTO[]>();
+
+      // Batch requests in groups of 10 to avoid overwhelming the server
+      const batchSize = 10;
+      for (let i = 0; i < targets.length; i += batchSize) {
+        const batch = targets.slice(i, i + batchSize);
+        const promises = batch.map(async (target) => {
+          const key = target.contactId
+            ? `contact:${target.contactId}`
+            : `organization:${target.organizationId}`;
+          try {
+            const tags = await this.listForEntity(target);
+            return { key, tags };
+          } catch {
+            return { key, tags: [] };
+          }
+        });
+        const batchResults = await Promise.all(promises);
+        for (const { key, tags } of batchResults) {
+          results.set(key, tags);
+        }
+      }
+
+      return results;
     },
   };
 }

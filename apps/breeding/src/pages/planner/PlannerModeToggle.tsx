@@ -1,6 +1,6 @@
 // apps/breeding/src/pages/planner/PlannerModeToggle.tsx
 // Toggle component for planner view modes (Rollup vs Per Plan)
-// Uses underline-style tabs
+// Uses orange button toggle style matching Table|Cards toggle
 
 import * as React from "react";
 
@@ -19,8 +19,8 @@ export default function PlannerModeToggle({ mode, onChange, className = "" }: Pr
   ];
 
   return (
-    <nav
-      className={`inline-flex items-end gap-6 ${className}`}
+    <div
+      className={`flex items-center rounded-lg border border-hairline overflow-hidden ${className}`}
       role="tablist"
       aria-label="Planner view mode"
     >
@@ -33,22 +33,16 @@ export default function PlannerModeToggle({ mode, onChange, className = "" }: Pr
             role="tab"
             aria-selected={isActive}
             onClick={() => onChange(tab.key)}
-            className={[
-              "pb-1 text-sm font-medium transition-colors select-none",
+            className={`px-3 py-1.5 text-sm transition-colors select-none ${
               isActive
-                ? "text-neutral-900 dark:text-neutral-50"
-                : "text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-100",
-            ].join(" ")}
-            style={{
-              borderBottom: isActive
-                ? "2px solid #f97316"
-                : "2px solid transparent",
-            }}
+                ? "bg-[hsl(var(--brand-orange))] text-black"
+                : "bg-transparent text-secondary hover:text-primary hover:bg-[hsl(var(--muted)/0.5)]"
+            }`}
           >
             {tab.label}
           </button>
         );
       })}
-    </nav>
+    </div>
   );
 }

@@ -94,69 +94,35 @@ export default function AppWaitlist() {
           {/* Right-aligned Tab Navigation with emojis and orange underline */}
           <div className="absolute right-0 top-0 h-full flex items-center">
             <nav className="flex items-center gap-1" role="tablist" aria-label="Waitlist views">
-              <button
-                type="button"
-                role="tab"
-                aria-selected={activeView === "approved"}
-                onClick={() => setActiveView("approved")}
-                className={[
-                  "h-9 px-3 text-sm font-semibold leading-9 border-b-2 transition-colors flex items-center gap-1.5",
-                  activeView === "approved"
-                    ? "text-primary border-accent"
-                    : "text-secondary hover:text-primary border-transparent",
-                ].join(" ")}
-              >
-                <span>✅</span>
-                <span>Approved</span>
-              </button>
-
-              <button
-                type="button"
-                role="tab"
-                aria-selected={activeView === "pending"}
-                onClick={() => setActiveView("pending")}
-                className={[
-                  "h-9 px-3 text-sm font-semibold leading-9 border-b-2 transition-colors flex items-center gap-1.5",
-                  activeView === "pending"
-                    ? "text-primary border-accent"
-                    : "text-secondary hover:text-primary border-transparent",
-                ].join(" ")}
-              >
-                <span>⏳</span>
-                <span>Pending</span>
-              </button>
-
-              <button
-                type="button"
-                role="tab"
-                aria-selected={activeView === "rejected"}
-                onClick={() => setActiveView("rejected")}
-                className={[
-                  "h-9 px-3 text-sm font-semibold leading-9 border-b-2 transition-colors flex items-center gap-1.5",
-                  activeView === "rejected"
-                    ? "text-primary border-accent"
-                    : "text-secondary hover:text-primary border-transparent",
-                ].join(" ")}
-              >
-                <span>🚫</span>
-                <span>Rejected</span>
-              </button>
-
-              <button
-                type="button"
-                role="tab"
-                aria-selected={activeView === "blocked"}
-                onClick={() => setActiveView("blocked")}
-                className={[
-                  "h-9 px-3 text-sm font-semibold leading-9 border-b-2 transition-colors flex items-center gap-1.5",
-                  activeView === "blocked"
-                    ? "text-primary border-accent"
-                    : "text-secondary hover:text-primary border-transparent",
-                ].join(" ")}
-              >
-                <span>🛑</span>
-                <span>Blocked</span>
-              </button>
+              {([
+                { key: "approved", label: "Approved", emoji: "✅" },
+                { key: "pending", label: "Pending", emoji: "⏳" },
+                { key: "rejected", label: "Rejected", emoji: "🚫" },
+                { key: "blocked", label: "Blocked", emoji: "🛑" },
+              ] as const).map((tab) => {
+                const isActive = activeView === tab.key;
+                return (
+                  <button
+                    key={tab.key}
+                    type="button"
+                    role="tab"
+                    aria-selected={isActive}
+                    onClick={() => setActiveView(tab.key)}
+                    className={[
+                      "relative h-10 px-4 text-base font-semibold leading-10 border-b-2 transition-all duration-300 ease-out flex items-center gap-2",
+                      isActive
+                        ? "text-primary border-[hsl(var(--brand-orange))]"
+                        : "text-secondary hover:text-primary border-transparent hover:border-[hsl(var(--brand-orange))]/30",
+                    ].join(" ")}
+                  >
+                    {isActive && (
+                      <span className="absolute inset-0 bg-[hsl(var(--brand-orange))]/15 blur-lg rounded-lg animate-pulse" />
+                    )}
+                    <span className="relative z-10">{tab.emoji}</span>
+                    <span className="relative z-10">{tab.label}</span>
+                  </button>
+                );
+              })}
             </nav>
           </div>
         </div>

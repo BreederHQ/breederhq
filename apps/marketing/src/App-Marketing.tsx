@@ -2,11 +2,12 @@ import * as React from "react";
 import MarketingHomePage from "./pages/MarketingHomePage";
 import MessagesPage from "./pages/MessagesPage";
 import TemplatesHubPage from "./pages/TemplatesHubPage";
+import DocumentBundlesPage from "./pages/DocumentBundlesPage";
 import AutoRepliesPage from "./pages/AutoRepliesPage";
 import BusinessHoursPage from "./pages/BusinessHoursPage";
 import CommunicationsHub from "./pages/CommunicationsHub";
 
-type ViewRoute = "home" | "hub" | "messages" | "templates" | "auto-replies" | "business-hours";
+type ViewRoute = "home" | "hub" | "messages" | "templates" | "document-bundles" | "auto-replies" | "business-hours";
 
 function getViewFromPath(pathname: string): ViewRoute {
   const path = pathname.toLowerCase().replace(/\/+$/, "");
@@ -20,6 +21,9 @@ function getViewFromPath(pathname: string): ViewRoute {
   }
   if (path === "/marketing/templates" || path.startsWith("/marketing/templates/")) {
     return "templates";
+  }
+  if (path === "/marketing/document-bundles" || path.startsWith("/marketing/document-bundles/")) {
+    return "document-bundles";
   }
   if (path === "/marketing/auto-replies" || path.startsWith("/marketing/auto-replies/")) {
     return "auto-replies";
@@ -64,6 +68,8 @@ export default function AppMarketing() {
       return <MessagesPage />;
     case "templates":
       return <TemplatesHubPage />;
+    case "document-bundles":
+      return <DocumentBundlesPage />;
     case "auto-replies":
       return <AutoRepliesPage />;
     case "business-hours":

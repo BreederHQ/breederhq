@@ -3,6 +3,9 @@
 
 import React from "react";
 import { makeApi, type PedigreeNode, type COIResult, type ParentsResult, type PrivacySettings } from "../api";
+import { NetworkAnimalPicker } from "./NetworkAnimalPicker";
+import { LinkRequestsPanel } from "./LinkRequestsPanel";
+import type { NetworkAnimalResult, ShareableAnimal, ParentType } from "@bhq/api";
 
 const api = makeApi();
 
@@ -124,13 +127,14 @@ function ParentCard({
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
- * Helper: Animal Picker Modal
+ * Helper: Animal Picker Modal (Enhanced with Network Search)
  * ───────────────────────────────────────────────────────────────────────────── */
 
 function AnimalPickerModal({
   open,
   onClose,
   onSelect,
+  onNetworkSelect,
   sex,
   species,
   excludeId,
@@ -139,17 +143,22 @@ function AnimalPickerModal({
   open: boolean;
   onClose: () => void;
   onSelect: (animal: AnimalOption) => void;
+  onNetworkSelect: (animal: NetworkAnimalResult | ShareableAnimal, method: string, targetTenantId?: number) => void;
   sex: "FEMALE" | "MALE";
   species?: string;
   excludeId: number;
   title: string;
 }) {
+  const [searchScope, setSearchScope] = React.useState<"local" | "network">("local");
   const [search, setSearch] = React.useState("");
   const [animals, setAnimals] = React.useState<AnimalOption[]>([]);
   const [loading, setLoading] = React.useState(false);
 
+  // Derive relationship type from sex
+  const relationshipType: ParentType = sex === "MALE" ? "SIRE" : "DAM";
+
   React.useEffect(() => {
-    if (!open) return;
+    if (!open || searchScope !== "local") return;
     const load = async () => {
       setLoading(true);
       try {
@@ -181,73 +190,148 @@ function AnimalPickerModal({
       }
     };
     load();
-  }, [open, search, sex, species, excludeId]);
+  }, [open, search, sex, species, excludeId, searchScope]);
+
+  // Reset search when scope changes
+  React.useEffect(() => {
+    setSearch("");
+  }, [searchScope]);
 
   if (!open) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
-      <div className="relative bg-surface border border-hairline rounded-lg shadow-xl w-full max-w-md mx-4 max-h-[80vh] flex flex-col">
+      <div className="relative bg-surface border border-hairline rounded-lg shadow-xl w-full max-w-lg mx-4 max-h-[85vh] flex flex-col">
+        {/* Header */}
         <div className="p-4 border-b border-hairline">
-          <h3 className="text-lg font-semibold">{title}</h3>
-          <input
-            type="text"
-            placeholder="Search animals..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="mt-3 w-full px-3 py-2 rounded-md border border-hairline bg-background text-sm focus:outline-none focus:ring-2 focus:ring-accent"
-            autoFocus
-          />
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-lg font-semibold">{title}</h3>
+            <button
+              onClick={onClose}
+              className="p-1 rounded hover:bg-white/10 text-secondary hover:text-primary transition-colors"
+            >
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+
+          {/* Scope tabs */}
+          <div className="flex rounded-lg border border-hairline overflow-hidden">
+            <button
+              onClick={() => setSearchScope("local")}
+              className={`flex-1 px-4 py-2 text-sm font-medium transition-colors ${
+                searchScope === "local"
+                  ? "bg-accent text-white"
+                  : "bg-surface hover:bg-white/5 text-secondary"
+              }`}
+            >
+              🏠 My Animals
+            </button>
+            <button
+              onClick={() => setSearchScope("network")}
+              className={`flex-1 px-4 py-2 text-sm font-medium transition-colors ${
+                searchScope === "network"
+                  ? "bg-accent text-white"
+                  : "bg-surface hover:bg-white/5 text-secondary"
+              }`}
+            >
+              🌐 Network Search
+            </button>
+          </div>
         </div>
-        <div className="flex-1 overflow-y-auto p-2">
-          {loading ? (
-            <div className="text-center py-8 text-secondary">Loading...</div>
-          ) : animals.length === 0 ? (
-            <div className="text-center py-8 text-secondary">
-              No {sex.toLowerCase()}s found
+
+        {/* Local search content */}
+        {searchScope === "local" && (
+          <>
+            <div className="px-4 py-3 border-b border-hairline">
+              <input
+                type="text"
+                placeholder="Search your animals..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="w-full px-3 py-2 rounded-md border border-hairline bg-background text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+                autoFocus
+              />
             </div>
-          ) : (
-            <div className="space-y-1">
-              {animals.map((animal) => (
-                <button
-                  key={animal.id}
-                  onClick={() => {
-                    onSelect(animal);
-                    onClose();
-                  }}
-                  className="w-full flex items-center gap-3 p-2 rounded-md hover:bg-white/5 transition-colors text-left"
-                >
-                  {animal.photoUrl ? (
-                    <img
-                      src={animal.photoUrl}
-                      alt={animal.name}
-                      className="w-8 h-8 rounded-full object-cover"
-                    />
-                  ) : (
-                    <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-sm">
-                      {sex === "MALE" ? "♂" : "♀"}
-                    </div>
-                  )}
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm font-medium truncate">{animal.name}</div>
-                    {animal.breed && (
-                      <div className="text-xs text-secondary truncate">{animal.breed}</div>
-                    )}
-                  </div>
-                </button>
-              ))}
+            <div className="flex-1 overflow-y-auto p-2">
+              {loading ? (
+                <div className="text-center py-8 text-secondary">Loading...</div>
+              ) : animals.length === 0 ? (
+                <div className="text-center py-8 text-secondary">
+                  <p>No {sex.toLowerCase()}s found in your account</p>
+                  <button
+                    onClick={() => setSearchScope("network")}
+                    className="mt-3 text-accent hover:underline text-sm"
+                  >
+                    Search the network instead →
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-1">
+                  {animals.map((animal) => (
+                    <button
+                      key={animal.id}
+                      onClick={() => {
+                        onSelect(animal);
+                        onClose();
+                      }}
+                      className="w-full flex items-center gap-3 p-2 rounded-md hover:bg-white/5 transition-colors text-left"
+                    >
+                      {animal.photoUrl ? (
+                        <img
+                          src={animal.photoUrl}
+                          alt={animal.name}
+                          className="w-8 h-8 rounded-full object-cover"
+                        />
+                      ) : (
+                        <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-sm">
+                          {sex === "MALE" ? "♂" : "♀"}
+                        </div>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-medium truncate">{animal.name}</div>
+                        {animal.breed && (
+                          <div className="text-xs text-secondary truncate">{animal.breed}</div>
+                        )}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
-          )}
-        </div>
-        <div className="p-3 border-t border-hairline">
-          <button
-            onClick={onClose}
-            className="w-full px-4 py-2 text-sm rounded-md border border-hairline hover:bg-white/5 transition-colors"
-          >
-            Cancel
-          </button>
-        </div>
+          </>
+        )}
+
+        {/* Network search content */}
+        {searchScope === "network" && (
+          <div className="flex-1 overflow-hidden">
+            <NetworkAnimalPicker
+              sex={sex}
+              species={species}
+              sourceAnimalId={excludeId}
+              relationshipType={relationshipType}
+              onSelect={(animal, method, targetTenantId) => {
+                onNetworkSelect(animal, method, targetTenantId);
+                onClose();
+              }}
+              onBack={() => setSearchScope("local")}
+            />
+          </div>
+        )}
+
+        {/* Footer (only for local mode) */}
+        {searchScope === "local" && (
+          <div className="p-3 border-t border-hairline">
+            <button
+              onClick={onClose}
+              className="w-full px-4 py-2 text-sm rounded-md border border-hairline hover:bg-white/5 transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -610,6 +694,42 @@ function PrivacySettingsPanel({
             />
 
             <div className="text-xs font-semibold text-secondary uppercase tracking-wide mt-4 mb-2">
+              Achievements Visibility
+            </div>
+
+            <PrivacyToggle
+              label="Show titles"
+              description="Display earned titles (CH, GCH, etc.) in shared pedigrees"
+              checked={(settings as any).showTitles ?? true}
+              onChange={(v) => updateSetting("showTitles" as any, v)}
+              disabled={mode !== "edit" || !settings.allowCrossTenantMatching}
+            />
+
+            <PrivacyToggle
+              label="Show title details"
+              description="Include event name, location, and date where titles were earned"
+              checked={(settings as any).showTitleDetails ?? false}
+              onChange={(v) => updateSetting("showTitleDetails" as any, v)}
+              disabled={mode !== "edit" || !settings.allowCrossTenantMatching || !(settings as any).showTitles}
+            />
+
+            <PrivacyToggle
+              label="Show competitions"
+              description="Display competition entry count and aggregate placement stats"
+              checked={(settings as any).showCompetitions ?? false}
+              onChange={(v) => updateSetting("showCompetitions" as any, v)}
+              disabled={mode !== "edit" || !settings.allowCrossTenantMatching}
+            />
+
+            <PrivacyToggle
+              label="Show competition details"
+              description="Include individual competition results and scores"
+              checked={(settings as any).showCompetitionDetails ?? false}
+              onChange={(v) => updateSetting("showCompetitionDetails" as any, v)}
+              disabled={mode !== "edit" || !settings.allowCrossTenantMatching || !(settings as any).showCompetitions}
+            />
+
+            <div className="text-xs font-semibold text-secondary uppercase tracking-wide mt-4 mb-2">
               Contact Preferences
             </div>
 
@@ -666,6 +786,12 @@ export function LineageTab({
   // Picker modal state
   const [pickerOpen, setPickerOpen] = React.useState(false);
   const [pickerSex, setPickerSex] = React.useState<"FEMALE" | "MALE">("FEMALE");
+
+  // Pending link requests state
+  const [pendingLinkRequests, setPendingLinkRequests] = React.useState<{
+    sire?: { animalName: string; tenantName: string };
+    dam?: { animalName: string; tenantName: string };
+  }>({});
 
   // Load parents and pedigree
   React.useEffect(() => {
@@ -758,6 +884,75 @@ export function LineageTab({
     setPickerOpen(true);
   };
 
+  // Handler for network animal selection - creates a link request
+  const handleNetworkSelect = async (
+    networkAnimal: NetworkAnimalResult | ShareableAnimal,
+    method: string,
+    targetTenantId?: number
+  ) => {
+    const relationshipType: ParentType = pickerSex === "MALE" ? "SIRE" : "DAM";
+    setSaving(true);
+    setError(null);
+
+    try {
+      // Create link request
+      await api.animalLinking.createLinkRequest(animal.id, {
+        relationshipType,
+        targetAnimalId: "animalId" in networkAnimal ? networkAnimal.animalId : networkAnimal.id,
+        targetTenantId: targetTenantId || ("tenantId" in networkAnimal ? networkAnimal.tenantId : undefined),
+        message: `Requesting to link ${networkAnimal.name || "this animal"} as ${relationshipType.toLowerCase()} via ${method}`,
+      });
+
+      // Show pending state
+      const animalName = networkAnimal.name || "Unknown";
+      const tenantName = "tenantName" in networkAnimal ? networkAnimal.tenantName : "another breeder";
+
+      setPendingLinkRequests((prev) => ({
+        ...prev,
+        [relationshipType.toLowerCase()]: {
+          animalName,
+          tenantName: tenantName || "another breeder",
+        },
+      }));
+
+      // Show success feedback - this could be a toast in a real app
+      console.log(`Link request sent for ${animalName} as ${relationshipType}`);
+    } catch (err: any) {
+      console.error("Failed to create link request:", err);
+      setError(err?.message || "Failed to send link request");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Callback when a link is changed (approved/denied/revoked)
+  const handleLinkChange = () => {
+    // Reload pedigree data to reflect any changes
+    api.animals.lineage.getPedigree(animal.id, 3)
+      .then((pedigreeRes) => {
+        setPedigree(pedigreeRes.pedigree);
+        setCoi(pedigreeRes.coi);
+        if (pedigreeRes.pedigree) {
+          setDam(pedigreeRes.pedigree.dam ? {
+            id: pedigreeRes.pedigree.dam.id,
+            name: pedigreeRes.pedigree.dam.name,
+            breed: pedigreeRes.pedigree.dam.breed,
+            photoUrl: pedigreeRes.pedigree.dam.photoUrl,
+          } : null);
+          setSire(pedigreeRes.pedigree.sire ? {
+            id: pedigreeRes.pedigree.sire.id,
+            name: pedigreeRes.pedigree.sire.name,
+            breed: pedigreeRes.pedigree.sire.breed,
+            photoUrl: pedigreeRes.pedigree.sire.photoUrl,
+          } : null);
+        }
+      })
+      .catch((err) => console.error("Failed to reload pedigree:", err));
+
+    // Clear any pending request state
+    setPendingLinkRequests({});
+  };
+
   return (
     <div className="space-y-4 p-4">
       {/* Error message */}
@@ -834,11 +1029,38 @@ export function LineageTab({
       {/* Privacy Settings */}
       <PrivacySettingsPanel animalId={animal.id} mode={mode} />
 
+      {/* Link Requests Panel - manage incoming/outgoing cross-tenant link requests */}
+      <LinkRequestsPanel animalId={animal.id} onLinkChange={handleLinkChange} />
+
+      {/* Pending link request indicators */}
+      {(pendingLinkRequests.sire || pendingLinkRequests.dam) && (
+        <div className="rounded-lg border border-yellow-500/30 bg-yellow-500/10 p-4">
+          <h3 className="text-sm font-semibold text-yellow-400 mb-2">Pending Link Requests</h3>
+          <div className="space-y-2">
+            {pendingLinkRequests.sire && (
+              <div className="text-sm text-yellow-300">
+                <span className="font-medium">Sire:</span> Awaiting approval from{" "}
+                <span className="font-medium">{pendingLinkRequests.sire.tenantName}</span> for{" "}
+                <span className="italic">{pendingLinkRequests.sire.animalName}</span>
+              </div>
+            )}
+            {pendingLinkRequests.dam && (
+              <div className="text-sm text-yellow-300">
+                <span className="font-medium">Dam:</span> Awaiting approval from{" "}
+                <span className="font-medium">{pendingLinkRequests.dam.tenantName}</span> for{" "}
+                <span className="italic">{pendingLinkRequests.dam.animalName}</span>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Animal Picker Modal */}
       <AnimalPickerModal
         open={pickerOpen}
         onClose={() => setPickerOpen(false)}
         onSelect={pickerSex === "FEMALE" ? handleSelectDam : handleSelectSire}
+        onNetworkSelect={handleNetworkSelect}
         sex={pickerSex}
         species={animal.species}
         excludeId={animal.id}

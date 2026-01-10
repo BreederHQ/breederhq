@@ -129,6 +129,7 @@ export interface SendEmailInput {
   templateKey?: string;
   category?: "transactional" | "marketing";
   metadata?: Record<string, any>;
+  bundleId?: number; // Optional document bundle to attach
 }
 
 export interface EmailListParams {

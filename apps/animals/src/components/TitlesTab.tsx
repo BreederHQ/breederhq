@@ -226,6 +226,9 @@ function AddTitleModal({
   const [eventName, setEventName] = useState("");
   const [eventLocation, setEventLocation] = useState("");
   const [handlerName, setHandlerName] = useState("");
+  const [verifiedBy, setVerifiedBy] = useState("");
+  const [registryRef, setRegistryRef] = useState("");
+  const [isPublic, setIsPublic] = useState(false);
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -292,6 +295,10 @@ function AddTitleModal({
         eventName: eventName || undefined,
         eventLocation: eventLocation || undefined,
         handlerName: handlerName || undefined,
+        verified: status === "VERIFIED",
+        verifiedBy: verifiedBy || undefined,
+        registryRef: registryRef || undefined,
+        isPublic,
         notes: notes || undefined,
       });
       onClose();
@@ -361,7 +368,7 @@ function AddTitleModal({
                 sortedOrgs.map(org => (
                   <div key={org}>
                     {/* Organization header */}
-                    <div className="sticky top-0 px-3 py-1.5 bg-surface text-xs font-semibold text-secondary border-b border-hairline z-10">
+                    <div className="sticky top-0 px-3 py-1.5 bg-surface text-xs font-semibold text-[hsl(var(--brand-orange))] border-b border-hairline z-10">
                       {org}
                     </div>
                     {/* Titles in this organization */}
@@ -371,7 +378,7 @@ function AddTitleModal({
                         type="button"
                         onClick={() => setSelectedDefId(def.id)}
                         className={`w-full px-3 py-2 text-left hover:bg-white/5 transition-colors border-b border-hairline last:border-b-0 ${
-                          selectedDefId === def.id ? "bg-white/10" : ""
+                          selectedDefId === def.id ? "bg-white/10 ring-2 ring-[hsl(var(--brand-orange))] ring-inset" : ""
                         }`}
                       >
                         <div className="flex items-center gap-2">
@@ -393,7 +400,7 @@ function AddTitleModal({
             </div>
 
             {selectedDef && (
-              <div className="mt-2 p-2 bg-white/5 rounded text-sm">
+              <div className="mt-2 p-2 bg-white/5 rounded text-sm border-2" style={{ borderColor: '#D97706' }}>
                 Selected: <span className="font-bold text-[hsl(var(--brand-orange))]">{selectedDef.abbreviation}</span>
                 {" "}{selectedDef.fullName}
               </div>
@@ -416,6 +423,36 @@ function AddTitleModal({
               className="w-full"
             />
           </div>
+
+          {/* Verification fields - shown when status is VERIFIED */}
+          {status === "VERIFIED" && (
+            <div className="space-y-3 p-3 bg-white/5 rounded-lg">
+              <div>
+                <label className="block text-xs font-semibold text-secondary mb-1.5">
+                  Verified By
+                </label>
+                <input
+                  type="text"
+                  value={verifiedBy}
+                  onChange={(e) => setVerifiedBy(e.target.value)}
+                  placeholder="e.g., AKC Registry"
+                  className="w-full px-3 py-2 bg-white/5 border border-hairline rounded-md text-sm focus:outline-none focus:border-white/30"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-secondary mb-1.5">
+                  Registry Reference
+                </label>
+                <input
+                  type="text"
+                  value={registryRef}
+                  onChange={(e) => setRegistryRef(e.target.value)}
+                  placeholder="Reference number"
+                  className="w-full px-3 py-2 bg-white/5 border border-hairline rounded-md text-sm focus:outline-none focus:border-white/30"
+                />
+              </div>
+            </div>
+          )}
 
           {/* Date Earned */}
           <div>
@@ -500,6 +537,24 @@ function AddTitleModal({
             />
           </div>
 
+          {/* Public Visibility */}
+          <div className="p-3 bg-white/5 rounded-lg border border-hairline">
+            <label className="flex items-start gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={isPublic}
+                onChange={(e) => setIsPublic(e.target.checked)}
+                className="mt-0.5 w-4 h-4 rounded border-hairline bg-white/5 text-[hsl(var(--brand-orange))] focus:ring-[hsl(var(--brand-orange))] focus:ring-offset-0"
+              />
+              <div>
+                <div className="text-sm font-medium text-primary">Show in public pedigrees</div>
+                <div className="text-xs text-secondary mt-0.5">
+                  Allow this title to appear when other breeders view this animal's pedigree
+                </div>
+              </div>
+            </label>
+          </div>
+
           {/* Notes */}
           <div>
             <label className="block text-xs font-semibold text-secondary mb-1.5">
@@ -558,6 +613,7 @@ function EditTitleModal({
     verified?: boolean;
     verifiedBy?: string | null;
     registryRef?: string | null;
+    isPublic?: boolean;
     notes?: string | null;
   }) => Promise<void>;
   onClose: () => void;
@@ -572,6 +628,7 @@ function EditTitleModal({
   const [verified, setVerified] = useState(title.verified);
   const [verifiedBy, setVerifiedBy] = useState(title.verifiedBy || "");
   const [registryRef, setRegistryRef] = useState(title.registryRef || "");
+  const [isPublic, setIsPublic] = useState((title as any).isPublic ?? false);
   const [notes, setNotes] = useState(title.notes || "");
   const [saving, setSaving] = useState(false);
 
@@ -591,6 +648,7 @@ function EditTitleModal({
         verified,
         verifiedBy: verifiedBy || null,
         registryRef: registryRef || null,
+        isPublic,
         notes: notes || null,
       });
       onClose();
@@ -763,6 +821,24 @@ function EditTitleModal({
                 </div>
               </>
             )}
+          </div>
+
+          {/* Public Visibility */}
+          <div className="p-3 bg-white/5 rounded-lg border border-hairline">
+            <label className="flex items-start gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={isPublic}
+                onChange={(e) => setIsPublic(e.target.checked)}
+                className="mt-0.5 w-4 h-4 rounded border-hairline bg-white/5 text-[hsl(var(--brand-orange))] focus:ring-[hsl(var(--brand-orange))] focus:ring-offset-0"
+              />
+              <div>
+                <div className="text-sm font-medium text-primary">Show in public pedigrees</div>
+                <div className="text-xs text-secondary mt-0.5">
+                  Allow this title to appear when other breeders view this animal's pedigree
+                </div>
+              </div>
+            </label>
           </div>
 
           {/* Notes */}

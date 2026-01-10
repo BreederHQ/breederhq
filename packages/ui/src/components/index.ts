@@ -41,5 +41,7 @@ export * from "./Table";
 export * from "./TagsPopover";
 export * from "./TagChip";
 export * from "./TagPicker";
+export * from "./TagCreateModal";
 export * from "./ThemeToggle";
 export * from "./Tabs";
+export * from "./Tooltip";

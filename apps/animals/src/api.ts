@@ -1,7 +1,7 @@
 // apps/animals/src/api.ts
 import { readTenantIdFast, resolveTenantId } from "@bhq/ui/utils/tenant";
 import type { BreedHit } from "@bhq/ui";
-import { createHttp, makeTags } from "@bhq/api";
+import { createHttp, makeTags, makeAnimalLinking } from "@bhq/api";
 
 /* ───────── Title types ───────── */
 
@@ -1130,9 +1130,10 @@ export function makeApi(base?: string, extraHeadersFn?: () => Record<string, str
     },
   };
 
-  // Wire up unified tags from @bhq/api
+  // Wire up unified tags and animal linking from @bhq/api
   const http = createHttp(root);
   const tags = makeTags(http);
+  const animalLinking = makeAnimalLinking(http);
 
   /* ───────── Animal Public Listing API ───────── */
 
@@ -1239,5 +1240,5 @@ export function makeApi(base?: string, extraHeadersFn?: () => Record<string, str
     },
   };
 
-  return { animals, lookups, breeds, registries, finance, tags, animalPublicListing, titleDefinitions };
+  return { animals, lookups, breeds, registries, finance, tags, animalLinking, animalPublicListing, titleDefinitions };
 }

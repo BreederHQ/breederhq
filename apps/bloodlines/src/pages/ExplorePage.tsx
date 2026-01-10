@@ -33,6 +33,10 @@ interface AnimalBasic {
   titleSuffix: string | null;
   sireId: number | null;
   damId: number | null;
+  // Achievement stats (populated when available)
+  titleCount?: number;
+  competitionCount?: number;
+  hasVerifiedTitles?: boolean;
 }
 
 interface PedigreeNode extends AnimalBasic {
@@ -237,6 +241,29 @@ function PedigreeNodeComponent({ data }: NodeProps<Node<PedigreeNodeData>>) {
               }}
             >
               {birthYear}
+            </div>
+          )}
+          {/* Achievement stats - only show for generations 0-2 */}
+          {generation <= 2 && (animal?.titleCount || animal?.competitionCount) && (
+            <div
+              className="flex items-center gap-2 mt-1"
+              style={{ fontSize: generation === 0 ? 11 : 10 }}
+            >
+              {animal?.titleCount && animal.titleCount > 0 && (
+                <span className="flex items-center gap-0.5 text-amber-400">
+                  <span>🏆</span>
+                  <span>{animal.titleCount}</span>
+                </span>
+              )}
+              {animal?.competitionCount && animal.competitionCount > 0 && (
+                <span className="flex items-center gap-0.5 text-zinc-400">
+                  <span>📊</span>
+                  <span>{animal.competitionCount}</span>
+                </span>
+              )}
+              {animal?.hasVerifiedTitles && (
+                <span className="text-green-400" title="Registry verified">✓</span>
+              )}
             </div>
           )}
         </div>

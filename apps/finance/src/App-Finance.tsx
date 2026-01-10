@@ -19,7 +19,7 @@ function SafeNavLink({
   end,
 }: {
   to: string;
-  children: React.ReactNode;
+  children: React.ReactNode | ((arg: { isActive: boolean }) => React.ReactNode);
   className: ((arg: { isActive: boolean }) => string) | string;
   style?: ((arg: { isActive: boolean }) => React.CSSProperties) | React.CSSProperties;
   end?: boolean;
@@ -44,8 +44,8 @@ function SafeNavLink({
 
   if (inRouter) {
     return (
-      <NavLink to={to} end={end} className={className} style={style}>
-        {children}
+      <NavLink to={to} end={end} className={className as any} style={style as any}>
+        {children as any}
       </NavLink>
     );
   }
@@ -62,6 +62,7 @@ function SafeNavLink({
 
   const finalClassName = typeof className === "function" ? className({ isActive }) : className;
   const finalStyle = typeof style === "function" ? style({ isActive }) : style;
+  const resolvedChildren = typeof children === "function" ? children({ isActive }) : children;
 
   return (
     <a
@@ -74,7 +75,7 @@ function SafeNavLink({
         window.dispatchEvent(new PopStateEvent("popstate"));
       }}
     >
-      {children}
+      {resolvedChildren}
     </a>
   );
 }
@@ -156,45 +157,66 @@ export default function AppFinance() {
                 end
                 className={({ isActive }) =>
                   [
-                    "h-9 px-2 text-sm font-semibold leading-9 border-b-2 border-transparent transition-colors",
-                    isActive ? "text-primary" : "text-secondary hover:text-primary",
+                    "relative h-10 px-4 text-base font-semibold leading-10 border-b-2 transition-all duration-300 ease-out flex items-center gap-2",
+                    isActive
+                      ? "text-primary border-[hsl(var(--brand-orange))]"
+                      : "text-secondary hover:text-primary border-transparent hover:border-[hsl(var(--brand-orange))]/30",
                   ].join(" ")
                 }
-                style={({ isActive }) =>
-                  isActive ? { borderBottomColor: "hsl(var(--brand-orange))" } : {}
-                }
               >
-                Home
+                {({ isActive }: { isActive: boolean }) => (
+                  <>
+                    {isActive && (
+                      <span className="absolute inset-0 bg-[hsl(var(--brand-orange))]/15 blur-lg rounded-lg animate-pulse" />
+                    )}
+                    <span className="relative z-10">🏠</span>
+                    <span className="relative z-10">Home</span>
+                  </>
+                )}
               </SafeNavLink>
 
               <SafeNavLink
                 to={`${basePath}/invoices`}
                 className={({ isActive }) =>
                   [
-                    "h-9 px-2 text-sm font-semibold leading-9 border-b-2 border-transparent transition-colors",
-                    isActive ? "text-primary" : "text-secondary hover:text-primary",
+                    "relative h-10 px-4 text-base font-semibold leading-10 border-b-2 transition-all duration-300 ease-out flex items-center gap-2",
+                    isActive
+                      ? "text-primary border-[hsl(var(--brand-orange))]"
+                      : "text-secondary hover:text-primary border-transparent hover:border-[hsl(var(--brand-orange))]/30",
                   ].join(" ")
                 }
-                style={({ isActive }) =>
-                  isActive ? { borderBottomColor: "hsl(var(--brand-orange))" } : {}
-                }
               >
-                Invoices
+                {({ isActive }: { isActive: boolean }) => (
+                  <>
+                    {isActive && (
+                      <span className="absolute inset-0 bg-[hsl(var(--brand-orange))]/15 blur-lg rounded-lg animate-pulse" />
+                    )}
+                    <span className="relative z-10">📄</span>
+                    <span className="relative z-10">Invoices</span>
+                  </>
+                )}
               </SafeNavLink>
 
               <SafeNavLink
                 to={`${basePath}/expenses`}
                 className={({ isActive }) =>
                   [
-                    "h-9 px-2 text-sm font-semibold leading-9 border-b-2 border-transparent transition-colors",
-                    isActive ? "text-primary" : "text-secondary hover:text-primary",
+                    "relative h-10 px-4 text-base font-semibold leading-10 border-b-2 transition-all duration-300 ease-out flex items-center gap-2",
+                    isActive
+                      ? "text-primary border-[hsl(var(--brand-orange))]"
+                      : "text-secondary hover:text-primary border-transparent hover:border-[hsl(var(--brand-orange))]/30",
                   ].join(" ")
                 }
-                style={({ isActive }) =>
-                  isActive ? { borderBottomColor: "hsl(var(--brand-orange))" } : {}
-                }
               >
-                Expenses
+                {({ isActive }: { isActive: boolean }) => (
+                  <>
+                    {isActive && (
+                      <span className="absolute inset-0 bg-[hsl(var(--brand-orange))]/15 blur-lg rounded-lg animate-pulse" />
+                    )}
+                    <span className="relative z-10">💸</span>
+                    <span className="relative z-10">Expenses</span>
+                  </>
+                )}
               </SafeNavLink>
             </nav>
           </div>

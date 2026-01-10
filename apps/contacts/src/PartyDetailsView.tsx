@@ -11,6 +11,7 @@ import {
   Badge,
   Button,
   TagPicker,
+  TagCreateModal,
   Popover,
   type TagOption,
 } from "@bhq/ui";
@@ -416,6 +417,7 @@ export function PartyDetailsView({
   const [selectedTags, setSelectedTags] = React.useState<TagOption[]>([]);
   const [tagsLoading, setTagsLoading] = React.useState(false);
   const [tagsError, setTagsError] = React.useState<string | null>(null);
+  const [showTagCreateModal, setShowTagCreateModal] = React.useState(false);
 
   React.useEffect(() => {
     if (activeTab !== "animals") {
@@ -569,6 +571,35 @@ export function PartyDetailsView({
     setAvailableTags((prev) => [...prev, newTag]);
     return newTag;
   }, [api, row.kind]);
+
+  // Handler for TagCreateModal (includes color) - auto-assigns tag after creation
+  const handleModalTagCreate = React.useCallback(async (data: { name: string; module: string; color: string | null }) => {
+    const module = row.kind === "CONTACT" ? "CONTACT" : "ORGANIZATION";
+    const entityId = row.kind === "CONTACT" ? row.contactId : row.organizationId;
+
+    const created = await api.tags.create({ name: data.name, module, color: data.color });
+    const newTag: TagOption = {
+      id: Number(created.id),
+      name: String(created.name),
+      color: created.color ?? null,
+    };
+    setAvailableTags((prev) => [...prev, newTag]);
+
+    // Auto-assign the newly created tag to this entity
+    if (entityId) {
+      setSelectedTags((prev) => [...prev, newTag]);
+      try {
+        const target = row.kind === "CONTACT"
+          ? { contactId: entityId }
+          : { organizationId: entityId };
+        await api.tags.assign(newTag.id, target);
+      } catch (e: any) {
+        // Rollback on error
+        setSelectedTags((prev) => prev.filter((t) => t.id !== newTag.id));
+        setTagsError(e?.message || "Failed to assign tag");
+      }
+    }
+  }, [api, row.kind, row.contactId, row.organizationId]);
 
   // Compliance confirmation modal
   const [confirmReset, setConfirmReset] = React.useState<
@@ -880,21 +911,6 @@ export function PartyDetailsView({
               </SectionCard>
             )}
 
-            {/* Tags */}
-            <SectionCard title={<SectionTitle icon="🏷️">Tags</SectionTitle>}>
-              <TagPicker
-                availableTags={availableTags}
-                selectedTags={selectedTags}
-                onSelect={handleTagSelect}
-                onRemove={handleTagRemove}
-                onCreate={handleTagCreate}
-                loading={tagsLoading}
-                error={tagsError}
-                placeholder="Add tags..."
-                disabled={mode === "view"}
-              />
-            </SectionCard>
-
             {/* Address */}
             <SectionCard title={<SectionTitle icon="📍">Address</SectionTitle>} highlight={mode === "edit"}>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -954,6 +970,41 @@ export function PartyDetailsView({
                     />
                   )}
                 </div>
+              </div>
+            </SectionCard>
+
+            {/* Tags */}
+            <SectionCard title={<SectionTitle icon="🏷️">Tags</SectionTitle>}>
+              <div className="space-y-2">
+                <TagPicker
+                  availableTags={availableTags}
+                  selectedTags={selectedTags}
+                  onSelect={handleTagSelect}
+                  onRemove={handleTagRemove}
+                  onCreate={handleTagCreate}
+                  loading={tagsLoading}
+                  error={tagsError}
+                  placeholder="Add tags..."
+                  disabled={mode === "view"}
+                />
+                {mode === "edit" && !tagsLoading && availableTags.length === 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setShowTagCreateModal(true)}
+                    className="text-xs text-brand hover:underline"
+                  >
+                    Create your first tag
+                  </button>
+                )}
+                {mode === "edit" && availableTags.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setShowTagCreateModal(true)}
+                    className="text-xs text-secondary hover:text-brand"
+                  >
+                    + New tag
+                  </button>
+                )}
               </div>
             </SectionCard>
 
@@ -1585,6 +1636,20 @@ export function PartyDetailsView({
           api={api}
         />
       )}
+
+      {/* Tag Create Modal */}
+      <TagCreateModal
+        open={showTagCreateModal}
+        onOpenChange={setShowTagCreateModal}
+        mode="create"
+        fixedModule={row.kind === "CONTACT" ? "CONTACT" : "ORGANIZATION"}
+        onSubmit={handleModalTagCreate}
+        description={
+          row.kind === "CONTACT"
+            ? "This tag will be available for organizing contacts."
+            : "This tag will be available for organizing organizations."
+        }
+      />
 
       {/* Compliance reset confirmation modal */}
       {confirmReset && overlayRoot && createPortal(

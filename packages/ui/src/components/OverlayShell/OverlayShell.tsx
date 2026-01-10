@@ -50,10 +50,10 @@ export function Overlay({
   if (!open) return null;
 
   const Panel = (
-    <div className="fixed inset-0 z-[9999] pointer-events-none flex items-start justify-center p-4">
+    <div className="fixed inset-0 z-[2147483641] pointer-events-none flex items-start justify-center p-4">
       <div
         className={[
-          "pointer-events-auto rounded-2xl border border-hairline bg-surface text-primary shadow-[0_24px_80px_rgba(0,0,0,0.45)] mt-10 w-full",
+          "pointer-events-auto rounded-2xl border border-hairline bg-surface text-primary shadow-[0_24px_80px_rgba(0,0,0,0.45)] mt-[15vh] w-full",
           panelClassName,
         ].join(" ")}
         style={{ maxWidth: typeof width === "number" ? `${width}px` : width }}
@@ -77,7 +77,7 @@ export function Overlay({
     <>
       {/* backdrop */}
       <div
-        className="fixed inset-0 z-[9998] bg-black/50 backdrop-blur-sm"
+        className="fixed inset-0 z-[2147483640] bg-black/50 backdrop-blur-sm"
         onClick={() => { if (closeOnBackdrop) onClose(); }}
       />
       {Panel}

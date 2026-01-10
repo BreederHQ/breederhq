@@ -26,12 +26,15 @@
   position: relative;
 }
 
-.bhq-gantt__svg { width: 100%; display: block; pointer-events: none; }
+.bhq-gantt__svg { width: 100%; display: block; }
 
-/* Grid and rows */
-.bhq-gantt__grid-month { stroke: hsl(var(--hairline)); stroke-width: 1; opacity: .45; }
-.bhq-gantt__grid-step  { stroke: hsl(var(--hairline)); stroke-width: 1; opacity: .35; }
-.bhq-gantt__rowline    { stroke: hsl(var(--hairline)); stroke-width: 1; opacity: .60; }
+/* Bars should have pointer events for tooltips */
+.bhq-gantt__bar, .bhq-gantt__likely { pointer-events: auto; cursor: default; }
+
+/* Grid and rows - no pointer events so bars can receive hover */
+.bhq-gantt__grid-month { stroke: hsl(var(--hairline)); stroke-width: 1; opacity: .45; pointer-events: none; }
+.bhq-gantt__grid-step  { stroke: hsl(var(--hairline)); stroke-width: 1; opacity: .35; pointer-events: none; }
+.bhq-gantt__rowline    { stroke: hsl(var(--hairline)); stroke-width: 1; opacity: .60; pointer-events: none; }
 
 /* Type */
 .bhq-gantt svg text {

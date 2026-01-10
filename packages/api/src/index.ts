@@ -16,6 +16,8 @@ import { makePartyCrm, type PartyCrmResource } from "./resources/party-crm";
 import { makeTemplates, type TemplatesResource } from "./resources/templates";
 import { makeCommunications, type CommunicationsResource } from "./resources/communications";
 import { makeDrafts, type DraftsResource } from "./resources/drafts";
+import { makeDocumentBundles, type DocumentBundlesResource } from "./resources/document-bundles";
+import { makeAnimalLinking, type AnimalLinkingResource } from "./resources/animal-linking";
 
 export { createHttp, type Http, type MakeAuthHeader } from "./http";
 
@@ -105,15 +107,25 @@ export {
   type UpdateDraftRequest,
   type SendDraftResponse,
 } from "./resources/drafts";
+export {
+  makeDocumentBundles,
+  type DocumentBundlesResource,
+} from "./resources/document-bundles";
+export {
+  makeAnimalLinking,
+  type AnimalLinkingResource,
+} from "./resources/animal-linking";
 
 // Re-export shared types - common types first (ID, ListParams, ListResponse)
 export * from "./types/contacts";
 export * from "./types/animals";
+export * from "./types/document-bundles";
 export * from "./types/breeding";
 export * from "./types/offspring";
 export * from "./types/party";
 export * from "./types/party-crm";
 export * from "./types/templates";
+export * from "./types/animal-linking";
 export {
   type LineItemKind,
   type InvoiceCategory,
@@ -152,5 +164,7 @@ export function makeApi(baseURL: string, makeAuth?: MakeAuthHeader) {
     templates: makeTemplates(http),
     communications: makeCommunications(http),
     drafts: makeDrafts(http),
+    documentBundles: makeDocumentBundles(http),
+    animalLinking: makeAnimalLinking(http),
   };
 }

@@ -31,6 +31,7 @@ import {
   Popover,
   Dialog,
   TagPicker,
+  TagCreateModal,
   type TagOption,
 } from "@bhq/ui";
 import { FinanceTab } from "@bhq/ui/components/Finance";
@@ -210,6 +211,11 @@ type AnimalRow = {
   titlePrefix?: string | null;
   titleSuffix?: string | null;
   archived?: boolean | null;
+  // Achievement counts from API
+  _count?: {
+    titles?: number;
+    competitionEntries?: number;
+  };
 };
 
 type ProgramFlags = {
@@ -314,6 +320,10 @@ function animalToRow(p: any): AnimalRow {
     cycleStartDates: Array.isArray(p.cycleStartDates) ? p.cycleStartDates : [],
     femaleCycleLenOverrideDays: p.femaleCycleLenOverrideDays ?? null,
     archived: p.archived ?? p.archivedAt != null ?? false,
+    // Achievement data
+    titlePrefix: p.titlePrefix ?? null,
+    titleSuffix: p.titleSuffix ?? null,
+    _count: p._count ?? undefined,
   };
 }
 
@@ -1444,6 +1454,7 @@ function AnimalTagsSection({
   const [selectedTags, setSelectedTags] = React.useState<TagOption[]>([]);
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const [showCreateModal, setShowCreateModal] = React.useState(false);
 
   // Load tags on mount
   React.useEffect(() => {
@@ -1522,18 +1533,66 @@ function AnimalTagsSection({
     return newTag;
   }, [api]);
 
+  // Handler for modal-based tag creation (with color picker) - auto-assigns tag after creation
+  const handleModalCreate = React.useCallback(async (data: { name: string; module: string; color: string | null }) => {
+    const created = await api.tags.create({ name: data.name, module: "ANIMAL", color: data.color });
+    const newTag: TagOption = {
+      id: Number(created.id),
+      name: String(created.name),
+      color: created.color ?? null,
+    };
+    setAvailableTags((prev) => [...prev, newTag]);
+
+    // Auto-assign the newly created tag to this animal
+    setSelectedTags((prev) => [...prev, newTag]);
+    try {
+      await api.tags.assign(newTag.id, { animalId: Number(animalId) });
+    } catch (e: any) {
+      // Rollback on error
+      setSelectedTags((prev) => prev.filter((t) => t.id !== newTag.id));
+      setError(e?.message || "Failed to assign tag");
+    }
+  }, [api, animalId]);
+
   return (
-    <TagPicker
-      availableTags={availableTags}
-      selectedTags={selectedTags}
-      onSelect={handleSelect}
-      onRemove={handleRemove}
-      onCreate={handleCreate}
-      loading={loading}
-      error={error}
-      placeholder="Add tags..."
-      disabled={disabled}
-    />
+    <div className="space-y-2">
+      <TagPicker
+        availableTags={availableTags}
+        selectedTags={selectedTags}
+        onSelect={handleSelect}
+        onRemove={handleRemove}
+        onCreate={handleCreate}
+        loading={loading}
+        error={error}
+        placeholder="Add tags..."
+        disabled={disabled}
+      />
+      {!disabled && availableTags.length === 0 && !loading && (
+        <button
+          type="button"
+          onClick={() => setShowCreateModal(true)}
+          className="text-xs text-brand hover:underline"
+        >
+          Create your first tag
+        </button>
+      )}
+      {!disabled && availableTags.length > 0 && (
+        <button
+          type="button"
+          onClick={() => setShowCreateModal(true)}
+          className="text-xs text-secondary hover:text-brand"
+        >
+          + New tag
+        </button>
+      )}
+      <TagCreateModal
+        open={showCreateModal}
+        onOpenChange={setShowCreateModal}
+        mode="create"
+        fixedModule="ANIMAL"
+        onSubmit={handleModalCreate}
+      />
+    </div>
   );
 }
 

@@ -680,6 +680,35 @@ export function makeBreedingApi(opts: ApiOpts) {
       },
     },
 
+    /* Tags namespace for breeding plan tags */
+    tags: {
+      list(params: { module: string; limit?: number }) {
+        const qs = new URLSearchParams();
+        qs.set("module", params.module);
+        if (params.limit) qs.set("limit", String(params.limit));
+        const query = qs.toString();
+        return get<{ items: any[] }>(`/tags?${query}`).then(res => res);
+      },
+      create(input: { name: string; module: string; color?: string | null }) {
+        return post<any>("/tags", input);
+      },
+      assign(tagId: number, target: { breedingPlanId: number }) {
+        return post<void>(`/tags/${tagId}/assign`, target);
+      },
+      unassign(tagId: number, target: { breedingPlanId: number }) {
+        return post<void>(`/tags/${tagId}/unassign`, target);
+      },
+      listForBreedingPlan(planId: number) {
+        return get<any[]>(`/breeding/plans/${planId}/tags`).then(res => {
+          if (Array.isArray(res)) return res;
+          if (res && typeof res === "object" && "items" in (res as any)) {
+            return (res as any).items;
+          }
+          return [];
+        });
+      },
+    },
+
     /* Scheduling namespace for calendar integration */
     scheduling: {
       listBlocks(params?: { from?: string; to?: string }) {

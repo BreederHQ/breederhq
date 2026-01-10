@@ -198,6 +198,28 @@ erDiagram
     Tenant ||--o{ Attachment : "has"
     Tenant ||--o{ ContractTemplate : "has"
     Tenant ||--o{ Contract : "has"
+    Tenant ||--o{ DocumentBundle : "has"
+
+    DocumentBundle {
+        int id PK
+        int tenantId FK
+        string name
+        string description
+        enum status
+        datetime createdAt
+        datetime updatedAt
+    }
+
+    DocumentBundleItem {
+        int id PK
+        int bundleId FK
+        int documentId FK
+        int sortOrder
+        datetime addedAt
+    }
+
+    DocumentBundle ||--o{ DocumentBundleItem : "contains"
+    DocumentBundleItem }o--|| Document : "references"
 ```
 
 ## DBML
@@ -436,5 +458,30 @@ Enum EsignStatus {
   DECLINED
   EXPIRED
   VOIDED
+}
+
+// Document Bundles - named collections of documents for email attachments
+
+Table DocumentBundle {
+  id int [pk, increment]
+  tenantId int [not null, ref: > Tenant.id]
+  name varchar [not null]
+  description varchar
+  status BundleStatus [default: 'active']
+  createdAt timestamp [default: `now()`]
+  updatedAt timestamp
+}
+
+Table DocumentBundleItem {
+  id int [pk, increment]
+  bundleId int [not null, ref: > DocumentBundle.id]
+  documentId int [not null, ref: > Document.id]
+  sortOrder int [not null, default: 0]
+  addedAt timestamp [default: `now()`]
+}
+
+Enum BundleStatus {
+  active
+  archived
 }
 ```

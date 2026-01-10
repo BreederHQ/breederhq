@@ -1,8 +1,21 @@
-// apps/platform/src/components/tags/TagCreateEditModal.tsx
-import React from "react";
-import { Overlay, Button, Input } from "@bhq/ui";
+// packages/ui/src/components/TagCreateModal/TagCreateModal.tsx
+// Shared modal for creating and editing tags, usable across all modules.
 
-type TagModule = "CONTACT" | "ORGANIZATION" | "ANIMAL" | "WAITLIST_ENTRY" | "OFFSPRING_GROUP" | "OFFSPRING";
+import * as React from "react";
+import { Overlay } from "../OverlayShell";
+import { Button } from "../Button";
+import { Input } from "../Input";
+
+export type TagModule =
+  | "CONTACT"
+  | "ORGANIZATION"
+  | "ANIMAL"
+  | "WAITLIST_ENTRY"
+  | "OFFSPRING_GROUP"
+  | "OFFSPRING"
+  | "MESSAGE_THREAD"
+  | "DRAFT"
+  | "BREEDING_PLAN";
 
 const MODULE_LABELS: Record<TagModule, string> = {
   CONTACT: "Contacts",
@@ -11,9 +24,12 @@ const MODULE_LABELS: Record<TagModule, string> = {
   WAITLIST_ENTRY: "Waitlist Entries",
   OFFSPRING_GROUP: "Offspring Groups",
   OFFSPRING: "Offspring",
+  MESSAGE_THREAD: "Message Threads",
+  DRAFT: "Drafts",
+  BREEDING_PLAN: "Breeding Plans",
 };
 
-const MODULE_OPTIONS: TagModule[] = [
+const DEFAULT_MODULE_OPTIONS: TagModule[] = [
   "CONTACT",
   "ORGANIZATION",
   "ANIMAL",
@@ -43,25 +59,46 @@ const COLOR_PALETTE = [
   "#78716c", // stone
 ];
 
-type Tag = {
+export type TagForEdit = {
   id: number;
   name: string;
   module: TagModule;
   color: string | null;
 };
 
-type Props = {
+export type TagCreateModalProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** "create" or "edit" mode */
   mode: "create" | "edit";
-  tag?: Tag;
+  /** Tag to edit (required when mode="edit") */
+  tag?: TagForEdit;
+  /** Called when tag is submitted. Receives name, module, and color. */
   onSubmit: (data: { name: string; module: TagModule; color: string | null }) => Promise<void>;
+  /** If provided, the module selector is hidden and this module is used (create mode only) */
+  fixedModule?: TagModule;
+  /** Default module when modal opens in create mode (if not fixedModule) */
+  defaultModule?: TagModule;
+  /** Override the list of available modules in the dropdown */
+  availableModules?: TagModule[];
+  /** Description text shown below the form */
+  description?: string;
 };
 
-export function TagCreateEditModal({ open, onOpenChange, mode, tag, onSubmit }: Props) {
+export function TagCreateModal({
+  open,
+  onOpenChange,
+  mode,
+  tag,
+  onSubmit,
+  fixedModule,
+  defaultModule = "CONTACT",
+  availableModules = DEFAULT_MODULE_OPTIONS,
+  description,
+}: TagCreateModalProps) {
   const [name, setName] = React.useState("");
-  const [module, setModule] = React.useState<TagModule>("CONTACT");
-  const [color, setColor] = React.useState<string | null>(null);
+  const [module, setModule] = React.useState<TagModule>(fixedModule ?? defaultModule);
+  const [color, setColor] = React.useState<string | null>(COLOR_PALETTE[0]);
   const [submitting, setSubmitting] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
@@ -74,12 +111,12 @@ export function TagCreateEditModal({ open, onOpenChange, mode, tag, onSubmit }: 
         setColor(tag.color);
       } else {
         setName("");
-        setModule("CONTACT");
+        setModule(fixedModule ?? defaultModule);
         setColor(COLOR_PALETTE[0]);
       }
       setError(null);
     }
-  }, [open, mode, tag]);
+  }, [open, mode, tag, fixedModule, defaultModule]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -94,13 +131,12 @@ export function TagCreateEditModal({ open, onOpenChange, mode, tag, onSubmit }: 
     try {
       await onSubmit({
         name: name.trim(),
-        module,
+        module: fixedModule ?? module,
         color,
       });
       onOpenChange(false);
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : "Failed to save tag";
-      // Parse API error if available
       const apiError = (err as any)?.body?.error || (err as any)?.body?.detail;
       setError(apiError || errMsg);
     } finally {
@@ -108,15 +144,34 @@ export function TagCreateEditModal({ open, onOpenChange, mode, tag, onSubmit }: 
     }
   };
 
+  const handleClose = () => {
+    if (!submitting) {
+      onOpenChange(false);
+    }
+  };
+
+  // Determine if module selector should be shown
+  const showModuleSelector = !fixedModule && mode === "create";
+
+  // Build module options, ensuring tag's module is included in edit mode
+  const moduleOptions = React.useMemo(() => {
+    if (mode === "edit" && tag && !availableModules.includes(tag.module)) {
+      return [...availableModules, tag.module];
+    }
+    return availableModules;
+  }, [mode, tag, availableModules]);
+
   return (
-    <Overlay open={open} onClose={() => onOpenChange(false)} width={440}>
+    <Overlay open={open} onClose={handleClose} width={440}>
       <div>
-        {/* Header - compact */}
+        {/* Header */}
         <div className="px-4 py-3 border-b border-hairline">
-          <h2 className="text-base font-semibold">{mode === "create" ? "Create Tag" : "Edit Tag"}</h2>
+          <h2 className="text-base font-semibold">
+            {mode === "create" ? "Create Tag" : "Edit Tag"}
+          </h2>
         </div>
 
-        {/* Body - tight spacing */}
+        {/* Body */}
         <form onSubmit={handleSubmit}>
           <div className="px-4 py-3 space-y-3">
             {/* Name */}
@@ -139,29 +194,31 @@ export function TagCreateEditModal({ open, onOpenChange, mode, tag, onSubmit }: 
               />
             </div>
 
-            {/* Module */}
-            <div>
-              <label className="block text-sm font-medium mb-1">
-                Module <span className="text-red-400">*</span>
-              </label>
-              <select
-                value={module}
-                onChange={(e) => setModule(e.target.value as TagModule)}
-                disabled={mode === "edit"}
-                className="w-full px-3 py-1.5 bg-surface border border-hairline rounded-md text-sm disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {MODULE_OPTIONS.map((mod) => (
-                  <option key={mod} value={mod}>
-                    {MODULE_LABELS[mod]}
-                  </option>
-                ))}
-              </select>
-              {mode === "edit" && (
-                <p className="text-xs text-secondary mt-0.5">Module cannot be changed</p>
-              )}
-            </div>
+            {/* Module - show selector in create mode (unless fixed), show disabled in edit mode */}
+            {(showModuleSelector || mode === "edit") && (
+              <div>
+                <label className="block text-sm font-medium mb-1">
+                  Module <span className="text-red-400">*</span>
+                </label>
+                <select
+                  value={module}
+                  onChange={(e) => setModule(e.target.value as TagModule)}
+                  disabled={mode === "edit"}
+                  className="w-full px-3 py-1.5 bg-surface border border-hairline rounded-md text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {moduleOptions.map((mod) => (
+                    <option key={mod} value={mod}>
+                      {MODULE_LABELS[mod]}
+                    </option>
+                  ))}
+                </select>
+                {mode === "edit" && (
+                  <p className="text-xs text-secondary mt-0.5">Module cannot be changed</p>
+                )}
+              </div>
+            )}
 
-            {/* Color - compact grid */}
+            {/* Color */}
             <div>
               <label className="block text-sm font-medium mb-1">Color</label>
               <div className="grid grid-cols-9 gap-1">
@@ -180,6 +237,11 @@ export function TagCreateEditModal({ open, onOpenChange, mode, tag, onSubmit }: 
               </div>
             </div>
 
+            {/* Description */}
+            {description && (
+              <p className="text-xs text-secondary">{description}</p>
+            )}
+
             {/* Error */}
             {error && (
               <div className="p-2 bg-red-500/10 border border-red-500/20 rounded-md">
@@ -188,11 +250,11 @@ export function TagCreateEditModal({ open, onOpenChange, mode, tag, onSubmit }: 
             )}
           </div>
 
-          {/* Footer - compact */}
+          {/* Footer */}
           <div className="px-4 py-3 border-t border-hairline flex justify-end gap-2">
             <Button
               type="button"
-              onClick={() => onOpenChange(false)}
+              onClick={handleClose}
               disabled={submitting}
               size="sm"
               variant="ghost"

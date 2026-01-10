@@ -290,6 +290,12 @@ export default function MarketingHomePage() {
             href="/marketing/templates"
           />
           <SecondaryTile
+            icon={<span className="text-base">📦</span>}
+            title="Document Bundles"
+            description="Group documents together for easy email attachments"
+            href="/marketing/document-bundles"
+          />
+          <SecondaryTile
             icon={<span className="text-base">⚡</span>}
             title="Auto Replies"
             description="Set up automatic responses to common inquiries"
