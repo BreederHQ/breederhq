@@ -134,7 +134,7 @@ export default function AppPlatform() {
     return () => window.removeEventListener("keydown", onKey);
   }, [settingsOpen, settingsDirty]);
 
-  // Fetch session
+  // Fetch session and user profile
   useEffect(() => {
     let ignore = false;
     (async () => {
@@ -149,6 +149,20 @@ export default function AppPlatform() {
           },
         });
         const j = await r.json().catch(() => null);
+        if (!ignore && r.ok && j?.user?.id) {
+          // Fetch full user profile before showing dashboard
+          try {
+            const userRes = await fetch(`/api/v1/users/${encodeURIComponent(j.user.id)}`, {
+              credentials: "include",
+              cache: "no-store",
+            });
+            if (userRes.ok) {
+              const fullUser = await userRes.json();
+              (window as any).platform = (window as any).platform || {};
+              (window as any).platform.currentUser = fullUser;
+            }
+          } catch { /* ignore - Dashboard will fall back to "Breeder" */ }
+        }
         if (!ignore) setAuth(r.ok ? j : null);
       } catch {
         if (!ignore) setAuth(null);

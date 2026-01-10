@@ -1074,7 +1074,9 @@ async function fetchAnimals(opts: {
   if (opts.q) qs.set("q", opts.q);
   if (opts.species) qs.set("species", opts.species);
   if (opts.sexHint) qs.set("sexHint", opts.sexHint);
-  qs.set("limit", String(opts.limit ?? 300));
+  qs.set("limit", String(opts.limit ?? 1000));
+  qs.set("sort", "name"); // Sort alphabetically for consistent ordering
+  // Note: Don't filter by status - let the API return all animals the user can access
 
   const res = await fetch(`${opts.baseUrl.replace(/\/+$/, "")}/animals?${qs}`, {
     method: "GET",
@@ -1086,14 +1088,25 @@ async function fetchAnimals(opts: {
   const body = await res.json();
   const raw: any[] = Array.isArray(body) ? body : Array.isArray(body?.items) ? body.items : [];
 
-  const normalized: AnimalLite[] = raw.map((a) => ({
-    id: Number(a.id),
-    name: String(a.name ?? "").trim(),
-    species: normalizeSpecies(a.species) ?? (opts.species ?? "DOG"),
-    sex: normalizeSex(a.sex) ?? (opts.sexHint ?? "FEMALE"),
-    organization: a.organization?.name ? { name: String(a.organization.name) } : null,
-    femaleCycleLenOverrideDays: a.femaleCycleLenOverrideDays ?? null,
-  }));
+  // Deduplicate by ID
+  const seen = new Set<number>();
+  const normalized: AnimalLite[] = [];
+
+  for (const a of raw) {
+    const id = Number(a.id);
+    if (seen.has(id)) continue;
+    seen.add(id);
+
+    normalized.push({
+      id,
+      name: String(a.name ?? "").trim(),
+      species: normalizeSpecies(a.species) ?? (opts.species ?? "DOG"),
+      breed: a.breed ? String(a.breed).trim() : null,
+      sex: normalizeSex(a.sex) ?? (opts.sexHint ?? "FEMALE"),
+      organization: a.organization?.name ? { name: String(a.organization.name) } : null,
+      femaleCycleLenOverrideDays: a.femaleCycleLenOverrideDays ?? null,
+    });
+  }
 
   return normalized;
 }
@@ -2727,6 +2740,175 @@ function PedigreeTabContent({
 }
 
 /** ────────────────────────────────────────────────────────────────────────
+ * Animal Select Dropdown - Custom dropdown with search and species grouping
+ * ─────────────────────────────────────────────────────────────────────── */
+interface AnimalSelectDropdownProps {
+  animals: Array<{ id: number | string; name: string; species: string; breed: string; sex: string }>;
+  selectedId: number | string | null;
+  onSelect: (id: number | string | null) => void;
+  placeholder?: string;
+  genderFilter?: 'MALE' | 'FEMALE';
+  highlightEmpty?: boolean;
+}
+
+function AnimalSelectDropdown({
+  animals,
+  selectedId,
+  onSelect,
+  placeholder = "Search animals...",
+  genderFilter,
+  highlightEmpty = false,
+}: AnimalSelectDropdownProps) {
+  const [isOpen, setIsOpen] = React.useState(false);
+  const [search, setSearch] = React.useState("");
+  const containerRef = React.useRef<HTMLDivElement>(null);
+
+  // Find selected animal
+  const selectedAnimal = React.useMemo(() => {
+    if (!selectedId) return null;
+    return animals.find(a => String(a.id) === String(selectedId)) || null;
+  }, [selectedId, animals]);
+
+  // Group animals by species and filter by search
+  const filteredBySpecies = React.useMemo(() => {
+    const lower = search.toLowerCase();
+    const grouped: Record<string, typeof animals> = {};
+
+    animals.forEach(animal => {
+      // Apply search filter
+      if (search.trim()) {
+        const nameMatch = (animal.name || "").toLowerCase().includes(lower);
+        const breedMatch = (animal.breed || "").toLowerCase().includes(lower);
+        if (!nameMatch && !breedMatch) return;
+      }
+
+      const species = animal.species || "Other";
+      if (!grouped[species]) grouped[species] = [];
+      grouped[species].push(animal);
+    });
+
+    // Sort each group by name
+    Object.values(grouped).forEach(list => {
+      list.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+    });
+
+    // Sort species alphabetically
+    const sortedGrouped: Record<string, typeof animals> = {};
+    Object.keys(grouped).sort().forEach(key => {
+      sortedGrouped[key] = grouped[key];
+    });
+
+    return sortedGrouped;
+  }, [search, animals]);
+
+  // Close on outside click
+  React.useEffect(() => {
+    const handleClick = (e: MouseEvent) => {
+      if (containerRef.current && e.target instanceof Node && !containerRef.current.contains(e.target)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
+
+  const genderColor = genderFilter === 'MALE' ? 'text-sky-400' : genderFilter === 'FEMALE' ? 'text-pink-400' : 'text-secondary';
+  const genderSymbol = genderFilter === 'MALE' ? '♂' : genderFilter === 'FEMALE' ? '♀' : '';
+
+  return (
+    <div ref={containerRef} className="relative flex-1">
+      {/* Input trigger */}
+      <button
+        type="button"
+        onClick={() => setIsOpen(!isOpen)}
+        className={`w-full h-9 rounded-md border ${highlightEmpty && !selectedId ? "border-yellow-500/50" : "border-hairline"} bg-surface px-3 pr-8 text-sm text-left flex items-center gap-2 hover:bg-surface-alt transition-colors`}
+      >
+        {selectedAnimal ? (
+          <>
+            <span className={genderColor}>{genderSymbol}</span>
+            <span className="truncate text-primary">{selectedAnimal.name}</span>
+            {selectedAnimal.breed && (
+              <span className="text-secondary text-xs truncate">({selectedAnimal.breed})</span>
+            )}
+          </>
+        ) : (
+          <span className="text-secondary">{placeholder}</span>
+        )}
+      </button>
+      {/* Chevron */}
+      <svg
+        className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-secondary"
+        viewBox="0 0 20 20"
+        aria-hidden="true"
+      >
+        <path d="M5.5 7.5l4.5 4 4.5-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      </svg>
+
+      {/* Dropdown - overlays the trigger */}
+      {isOpen && (
+        <div className="absolute z-50 top-0 left-0 w-full rounded-md border border-hairline bg-surface-strong max-h-72 overflow-hidden shadow-lg">
+          {/* Search input */}
+          <div className="p-2 border-b border-hairline bg-surface-strong">
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Type to filter..."
+              className="w-full h-8 rounded-md border border-hairline bg-surface px-3 text-sm text-primary outline-none focus:shadow-[0_0_0_2px_hsl(var(--hairline))]"
+              autoFocus
+              autoComplete="off"
+              data-1p-ignore
+              data-lpignore="true"
+              data-form-type="other"
+            />
+          </div>
+
+          {/* Options grouped by species */}
+          <div className="max-h-56 overflow-y-auto">
+            {Object.entries(filteredBySpecies).map(([species, animalList]) => (
+              <div key={species}>
+                <div className="px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-amber-500 bg-zinc-800 border-b border-hairline sticky top-0 z-10">
+                  {species}
+                </div>
+                {animalList.map(animal => {
+                  const isMale = (animal.sex || "").toUpperCase().startsWith("M");
+                  const isFemale = (animal.sex || "").toUpperCase().startsWith("F");
+                  return (
+                    <button
+                      key={animal.id}
+                      type="button"
+                      onClick={() => {
+                        onSelect(animal.id);
+                        setIsOpen(false);
+                        setSearch("");
+                      }}
+                      className={`w-full px-3 py-2 text-left text-sm flex items-center gap-2 hover:bg-surface/60 transition-colors ${
+                        String(selectedId) === String(animal.id) ? "bg-surface/60" : ""
+                      }`}
+                    >
+                      <span className={isMale ? "text-sky-400" : isFemale ? "text-pink-400" : "text-secondary"}>
+                        {isMale ? "♂" : isFemale ? "♀" : "•"}
+                      </span>
+                      <span className="truncate text-primary flex-1">{animal.name || `Animal #${animal.id}`}</span>
+                      {animal.breed && (
+                        <span className="text-secondary text-xs truncate max-w-24">({animal.breed})</span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            ))}
+            {Object.keys(filteredBySpecies).length === 0 && (
+              <div className="px-3 py-4 text-sm text-secondary text-center">No animals found</div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** ────────────────────────────────────────────────────────────────────────
  * Genetics Lab Page — Genetic pairing analysis and compatibility
  * ─────────────────────────────────────────────────────────────────────── */
 function GeneticsLabPage({
@@ -2916,21 +3098,17 @@ function GeneticsLabPage({
                 )}
               </label>
               <div className="flex gap-1">
-                <select
-                  className={`flex-1 h-9 rounded-md border ${!selectedDamId ? "border-yellow-500/50" : "border-hairline"} bg-surface px-2 text-sm`}
-                  value={selectedDamId || ""}
-                  onChange={(e) => {
-                    setSelectedDamId(e.target.value || null);
+                <AnimalSelectDropdown
+                  animals={dams}
+                  selectedId={selectedDamId}
+                  onSelect={(id) => {
+                    setSelectedDamId(id);
                     setResults(null);
                   }}
-                >
-                  <option value="">Select a dam...</option>
-                  {dams.map((dam) => (
-                    <option key={dam.id} value={dam.id}>
-                      {dam.name} — {dam.species} {dam.breed ? `(${dam.breed})` : ""}
-                    </option>
-                  ))}
-                </select>
+                  placeholder="Select a dam..."
+                  genderFilter="FEMALE"
+                  highlightEmpty={!selectedDamId}
+                />
                 {selectedDamId && (
                   <Tooltip content="Import genetics for dam">
                     <button
@@ -2956,21 +3134,17 @@ function GeneticsLabPage({
                 )}
               </label>
               <div className="flex gap-1">
-                <select
-                  className={`flex-1 h-9 rounded-md border ${!selectedSireId ? "border-yellow-500/50" : "border-hairline"} bg-surface px-2 text-sm`}
-                  value={selectedSireId || ""}
-                  onChange={(e) => {
-                    setSelectedSireId(e.target.value || null);
+                <AnimalSelectDropdown
+                  animals={sires}
+                  selectedId={selectedSireId}
+                  onSelect={(id) => {
+                    setSelectedSireId(id);
                     setResults(null);
                   }}
-                >
-                  <option value="">Select a sire...</option>
-                  {sires.map((sire) => (
-                    <option key={sire.id} value={sire.id}>
-                      {sire.name} — {sire.species} {sire.breed ? `(${sire.breed})` : ""}
-                    </option>
-                  ))}
-                </select>
+                  placeholder="Select a sire..."
+                  genderFilter="MALE"
+                  highlightEmpty={!selectedSireId}
+                />
                 {selectedSireId && (
                   <Tooltip content="Import genetics for sire">
                     <button
@@ -3027,22 +3201,39 @@ function GeneticsLabPage({
               {/* Compact Header: Pairing + Score side by side */}
               <div className="flex flex-col lg:flex-row gap-3 mb-4">
                 {/* Current Pairing - Left side */}
-                <div className="flex-1 p-3 rounded-xl bg-gradient-to-r from-pink-500/10 via-purple-500/5 to-blue-500/10 border border-purple-500/30">
+                <div className="flex-1 px-6 py-3 rounded-xl bg-gradient-to-r from-pink-500/10 via-purple-500/5 to-blue-500/10 border border-purple-500/30">
                   <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="text-center">
+                    <div className="flex items-center gap-6">
+                      {/* Dam */}
+                      <div className="flex items-center gap-2">
                         <div className="text-[10px] text-pink-400 font-medium uppercase tracking-wide">Dam</div>
                         <div className="text-sm font-bold text-primary">{selectedDam?.name || "—"}</div>
                       </div>
-                      <div className="text-xl text-purple-400 font-light">×</div>
-                      <div className="text-center">
+
+                      {/* Clear button (×) */}
+                      <button
+                        onClick={() => {
+                          setSelectedDamId(null);
+                          setSelectedSireId(null);
+                          setResults(null);
+                          setDamGenetics(null);
+                          setSireGenetics(null);
+                        }}
+                        className="text-xl text-purple-400 hover:text-purple-200 hover:scale-110 transition-all cursor-pointer"
+                        title="Clear pairing"
+                      >
+                        ×
+                      </button>
+
+                      {/* Sire */}
+                      <div className="flex items-center gap-2">
                         <div className="text-[10px] text-blue-400 font-medium uppercase tracking-wide">Sire</div>
                         <div className="text-sm font-bold text-primary">{selectedSire?.name || "—"}</div>
                       </div>
                     </div>
                     <button
                       onClick={() => setResults(null)}
-                      className="ml-3 px-3 py-1.5 text-xs font-medium text-purple-400 hover:text-purple-300 border border-purple-500/30 hover:border-purple-500/50 rounded-md hover:bg-purple-500/10 transition-colors"
+                      className="ml-6 px-3 py-1.5 text-xs font-medium text-purple-400 hover:text-purple-300 border border-purple-500/30 hover:border-purple-500/50 rounded-md hover:bg-purple-500/10 transition-colors"
                     >
                       Change Pairing
                     </button>
@@ -3978,7 +4169,7 @@ export default function AppBreeding() {
         const animals = await fetchAnimals({
           baseUrl: "/api/v1",
           tenantId,
-          limit: 500,
+          limit: 1000,
         });
 
         if (!cancelled) {

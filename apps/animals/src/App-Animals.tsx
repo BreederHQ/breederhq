@@ -6979,7 +6979,7 @@ export default function AppAnimals() {
         const res = await api.animals.list({
           q: qDebounced || undefined,
           page: 1,
-          limit: 50,
+          limit: 500,
           includeArchived,
         });
         const baseItems = res?.items || [];
