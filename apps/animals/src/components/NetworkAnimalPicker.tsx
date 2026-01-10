@@ -186,7 +186,7 @@ export function NetworkAnimalPicker({
 
   // Load registries on mount - use existing registries endpoint
   React.useEffect(() => {
-    api.registries.list({ species })
+    api.registries.list({ species: species as "DOG" | "CAT" | "HORSE" | "RABBIT" | "GOAT" | undefined })
       .then((data: any) => {
         // CONTRACT TOLERANCE: Accept either 'items' (canonical) or 'registries' (legacy)
         const rows = data?.items || data?.registries || [];

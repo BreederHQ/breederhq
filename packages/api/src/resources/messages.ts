@@ -8,6 +8,7 @@ export interface MessageThread {
   archived: boolean;
   flagged: boolean;
   flaggedAt?: string;
+  guestName?: string;
   participants: MessageParticipant[];
   messages: Message[];
   unreadCount?: number;

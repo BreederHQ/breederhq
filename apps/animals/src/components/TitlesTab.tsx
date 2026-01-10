@@ -297,10 +297,6 @@ function AddTitleModal({
         eventName: eventName || undefined,
         eventLocation: eventLocation || undefined,
         handlerName: handlerName || undefined,
-        verified: status === "VERIFIED",
-        verifiedBy: verifiedBy || undefined,
-        registryRef: registryRef || undefined,
-        isPublic,
         notes: notes || undefined,
       });
       onClose();

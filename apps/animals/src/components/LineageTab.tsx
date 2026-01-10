@@ -456,7 +456,9 @@ interface PedigreeNodeData extends Record<string, unknown> {
  * ───────────────────────────────────────────────────────────────────────────── */
 
 function PedigreeNodeComponent({ data }: NodeProps<Node<PedigreeNodeData>>) {
-  const { animal, generation, isRoot, isSire, isEditable, onEdit, pedigreePosition } = data;
+  const { animal, isRoot, isSire, isEditable, onEdit, pedigreePosition, generation: gen } = data;
+  // Use Number() to prevent TypeScript from narrowing after boolean checks
+  const generation = Number(gen);
 
   const isMale = animal?.sex === "MALE";
   const isFemale = animal?.sex === "FEMALE";
@@ -558,8 +560,8 @@ function PedigreeNodeComponent({ data }: NodeProps<Node<PedigreeNodeData>>) {
             height: avatarSize,
             backgroundColor: isEmptyEditable ? "transparent" : colors.avatarBg,
             border: isEmptyEditable
-              ? `${generation === 0 ? 2 : 1.5}px dashed ${colors.border}`
-              : `${generation === 0 ? 2 : 1.5}px solid ${colors.border}`,
+              ? `${gen === 0 ? 2 : 1.5}px dashed ${colors.border}`
+              : `${gen === 0 ? 2 : 1.5}px solid ${colors.border}`,
           }}
         >
           <span style={{

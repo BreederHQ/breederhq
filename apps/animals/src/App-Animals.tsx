@@ -322,7 +322,7 @@ function animalToRow(p: any): AnimalRow {
     lastCycle: p.lastCycle ?? null,
     cycleStartDates: Array.isArray(p.cycleStartDates) ? p.cycleStartDates : [],
     femaleCycleLenOverrideDays: p.femaleCycleLenOverrideDays ?? null,
-    archived: p.archived ?? p.archivedAt != null ?? false,
+    archived: p.archived ?? (p.archivedAt != null),
     // Achievement data
     titlePrefix: p.titlePrefix ?? null,
     titleSuffix: p.titleSuffix ?? null,

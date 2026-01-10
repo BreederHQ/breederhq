@@ -2918,7 +2918,7 @@ export default function CommunicationsHub() {
                   email: message.contactEmail,
                   tags: [],
                 },
-                subject: message.subject || null,
+                subject: message.subject || undefined,
                 messages: [
                   {
                     id: messageId,

@@ -5,7 +5,7 @@ import { PageHeader, Button } from "@bhq/ui";
 import { AnimalFullProfileDialog } from "../components/AnimalFullProfileDialog";
 import {
   ReactFlow,
-  Node,
+  Node as FlowNode,
   Edge,
   Background,
   useNodesState,
@@ -90,7 +90,7 @@ async function fetchPedigree(animalId: number, generations: number = 4): Promise
 
 /* ───────────────── Custom Node Component ───────────────── */
 
-function PedigreeNodeComponent({ data }: NodeProps<Node<PedigreeNodeData>>) {
+function PedigreeNodeComponent({ data }: NodeProps<FlowNode<PedigreeNodeData>>) {
   const { animal, generation, isRoot, hasParents, onSelect, onExpand, isSire } = data;
 
   const isMale = animal?.sex === "MALE";
@@ -313,8 +313,8 @@ function buildTreeFromPedigree(
   root: PedigreeNode,
   onSelect: (animal: PedigreeNode) => void,
   onExpand?: (animal: PedigreeNode) => void
-): { nodes: Node<PedigreeNodeData>[]; edges: Edge[] } {
-  const nodes: Node<PedigreeNodeData>[] = [];
+): { nodes: FlowNode<PedigreeNodeData>[]; edges: Edge[] } {
+  const nodes: FlowNode<PedigreeNodeData>[] = [];
   const edges: Edge[] = [];
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -793,7 +793,7 @@ function AnimalSelect({ animalsBySpecies, selectedId, onSelect, loading }: Anima
   // Close on outside click
   React.useEffect(() => {
     const handleClick = (e: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+      if (containerRef.current && e.target instanceof Node && !containerRef.current.contains(e.target)) {
         setIsOpen(false);
       }
     };

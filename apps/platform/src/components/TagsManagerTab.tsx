@@ -24,6 +24,9 @@ const MODULE_LABELS: Record<TagModule, string> = {
   WAITLIST_ENTRY: "Waitlist Entries",
   OFFSPRING_GROUP: "Offspring Groups",
   OFFSPRING: "Offspring",
+  DRAFT: "Drafts",
+  MESSAGE_THREAD: "Message Threads",
+  BREEDING_PLAN: "Breeding Plans",
 };
 
 const MODULE_ORDER: TagModule[] = [
@@ -33,6 +36,9 @@ const MODULE_ORDER: TagModule[] = [
   "WAITLIST_ENTRY",
   "OFFSPRING_GROUP",
   "OFFSPRING",
+  "DRAFT",
+  "MESSAGE_THREAD",
+  "BREEDING_PLAN",
 ];
 
 export function TagsManagerTab({ onDirty }: { dirty: boolean; onDirty: (v: boolean) => void }) {
@@ -114,6 +120,9 @@ export function TagsManagerTab({ onDirty }: { dirty: boolean; onDirty: (v: boole
       WAITLIST_ENTRY: [],
       OFFSPRING_GROUP: [],
       OFFSPRING: [],
+      DRAFT: [],
+      MESSAGE_THREAD: [],
+      BREEDING_PLAN: [],
     };
 
     filteredTags.forEach((tag) => {

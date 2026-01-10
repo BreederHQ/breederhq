@@ -246,6 +246,7 @@ type StageDatum = {
   point?: Date;
   __tooltip?: string;
   __z?: number;
+  __planId?: string;     // plan group identifier for filtering
   opacity?: number;      // forwarded to Gantt for risky fades
   color?: string;        // forwarded to Gantt for custom color
 };
