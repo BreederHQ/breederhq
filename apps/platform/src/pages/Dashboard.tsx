@@ -16,6 +16,7 @@ import KpiPanel from "../components/KpiPanel";
 import ActivityFeed from "../components/ActivityFeed";
 import ContactFollowUps from "../components/ContactFollowUps";
 import { api } from "../api";
+import logoUrl from "@bhq/ui/assets/logo.png";
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // LOCAL STYLES - Warm animations and vibes
@@ -210,32 +211,13 @@ function BreedingIcon({ className = "w-20 h-20" }: { className?: string }) {
           <stop offset="100%" stopColor="#c45a10" />
         </linearGradient>
       </defs>
-      <path
-        d="M32 8c-6 0-10 4-10 10v4c0 6 4 10 10 10s10-4 10-10v-4c0-6-4-10-10-10z"
-        stroke="url(#breedingGrad)"
-        strokeWidth="2.5"
-        fill="none"
-        strokeLinecap="round"
-      />
-      <path
-        d="M48 28c-4 0-7 3-7 7s3 7 7 7 7-3 7-7-3-7-7-7z"
-        stroke="url(#breedingGrad)"
-        strokeWidth="2.5"
-        fill="none"
-      />
-      <path
-        d="M16 28c-4 0-7 3-7 7s3 7 7 7 7-3 7-7-3-7-7-7z"
-        stroke="url(#breedingGrad)"
-        strokeWidth="2.5"
-        fill="none"
-      />
-      <path
-        d="M32 48c-8 0-12 6-12 10v2h24v-2c0-4-4-10-12-10z"
-        stroke="url(#breedingGrad)"
-        strokeWidth="2.5"
-        fill="none"
-        strokeLinecap="round"
-      />
+      {/* Paw print - main pad */}
+      <ellipse cx="32" cy="42" rx="12" ry="10" fill="url(#breedingGrad)" />
+      {/* Toe beans */}
+      <ellipse cx="20" cy="26" rx="5" ry="6" fill="url(#breedingGrad)" />
+      <ellipse cx="44" cy="26" rx="5" ry="6" fill="url(#breedingGrad)" />
+      <ellipse cx="27" cy="18" rx="4" ry="5" fill="url(#breedingGrad)" />
+      <ellipse cx="37" cy="18" rx="4" ry="5" fill="url(#breedingGrad)" />
     </svg>
   );
 }
@@ -404,17 +386,18 @@ function WaitlistTile({
 
 function FinanceIcon({ className = "w-20 h-20" }: { className?: string }) {
   return (
-    <svg className={className} viewBox="0 0 64 64" fill="none">
-      <defs>
-        <linearGradient id="financeGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#ff6b35" />
-          <stop offset="100%" stopColor="#c45a10" />
-        </linearGradient>
-      </defs>
-      <circle cx="32" cy="32" r="22" stroke="url(#financeGrad)" strokeWidth="2.5" fill="none" />
-      <path d="M32 16v32" stroke="url(#financeGrad)" strokeWidth="2.5" strokeLinecap="round" />
-      <path d="M40 24H28a4 4 0 0 0 0 8h8a4 4 0 0 1 0 8H24" stroke="url(#financeGrad)" strokeWidth="2.5" strokeLinecap="round" />
-    </svg>
+    <div className={className} style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <span style={{
+        fontSize: "3.5rem",
+        fontWeight: 700,
+        background: "linear-gradient(135deg, #ff6b35 0%, #c45a10 100%)",
+        WebkitBackgroundClip: "text",
+        WebkitTextFillColor: "transparent",
+        backgroundClip: "text",
+      }}>
+        $
+      </span>
+    </div>
   );
 }
 
@@ -465,24 +448,26 @@ function HeroGreeting({
         }}
       />
 
-      {/* Coffee cup with animated steam - on top of glow */}
+      {/* Logo - on top of glow */}
       <div
         style={{
           position: "absolute",
-          top: "1.5rem",
+          top: "50%",
           right: "2rem",
+          transform: "translateY(-50%)",
           zIndex: 10,
-          filter: "drop-shadow(0 4px 8px rgba(0, 0, 0, 0.3))",
+          filter: "drop-shadow(0 4px 12px rgba(0, 0, 0, 0.4))",
         }}
       >
-        {/* Steam wisps */}
-        <div style={{ position: "relative", width: "56px", height: "40px" }}>
-          <div className="bhq-steam" />
-          <div className="bhq-steam" />
-          <div className="bhq-steam" />
-        </div>
-        {/* Coffee cup */}
-        <span style={{ fontSize: "3.5rem", display: "block", marginTop: "-12px" }}>☕</span>
+        <img
+          src={logoUrl}
+          alt="BreederHQ"
+          style={{
+            width: "180px",
+            height: "180px",
+            objectFit: "contain",
+          }}
+        />
       </div>
 
       <div style={{ position: "relative", zIndex: 1 }}>
@@ -680,28 +665,10 @@ export default function Dashboard() {
     );
   }, []);
 
-  const [displayName, setDisplayName] = React.useState<string>("Breeder");
-
-  // Load user's display name
-  React.useEffect(() => {
-    let cancelled = false;
+  // Get name from window cache (set by App-Platform before Dashboard mounts)
+  const displayName = React.useMemo(() => {
     const cached = (window as any)?.platform?.currentUser;
-    if (cached && !cancelled) setDisplayName(pickName(cached));
-
-    (async () => {
-      const fromDb = await loadNameFromDb();
-      if (!cancelled && fromDb && fromDb !== "Breeder") {
-        setDisplayName(fromDb);
-        return;
-      }
-      try {
-        const me = await api.auth.me();
-        const u = (me as any)?.user ?? me;
-        if (!cancelled) setDisplayName(pickName(u));
-      } catch {}
-    })();
-
-    return () => { cancelled = true; };
+    return cached ? pickName(cached) : "Breeder";
   }, []);
 
   // Load dashboard data
