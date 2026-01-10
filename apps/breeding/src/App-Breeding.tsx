@@ -239,28 +239,28 @@ function normalizeExpectedMilestones(
   const weanedDate =
     day(milestones?.expectedWeaned) ??
     day(milestones?.weaning_expected) ?? // legacy format from computeExpectedForPlan
-    day(milestones?.puppy_care?.likely?.[1]) ?? // reproEngine nested array format: END of puppy care likely
-    day(milestones?.puppy_care?.full?.[1]) ?? // reproEngine nested array format: END of puppy care full
-    day(milestones?.puppy_care_likely?.[1]) ?? // reproEngine flat format: END of puppy care likely
-    day(milestones?.puppy_care_full?.[1]) ?? // reproEngine flat format: END of puppy care full
+    day(milestones?.offspring_care?.likely?.[1]) ?? // reproEngine nested array format: END of offspring care likely
+    day(milestones?.offspring_care?.full?.[1]) ?? // reproEngine nested array format: END of offspring care full
+    day(milestones?.offspring_care_likely?.[1]) ?? // reproEngine flat format: END of offspring care likely
+    day(milestones?.offspring_care_full?.[1]) ?? // reproEngine flat format: END of offspring care full
     day(milestones?.post_birth_care_likely?.[1]) ?? // legacy adapter format: END of post birth care
     null;
 
   const placementStart =
     day(milestones?.expectedPlacementStartDate) ??
     day(milestones?.placement_expected) ?? // legacy format from computeExpectedForPlan
-    day(milestones?.go_home_normal?.likely?.start) ?? // reproEngine nested format
-    day(milestones?.go_home_normal_full?.start) ?? // reproEngine flat format
-    day(milestones?.go_home_normal?.likely?.[0]) ?? // reproEngine nested array format
+    day(milestones?.placement_normal?.likely?.start) ?? // reproEngine nested format
+    day(milestones?.placement_normal_full?.start) ?? // reproEngine flat format
+    day(milestones?.placement_normal?.likely?.[0]) ?? // reproEngine nested array format
     day(milestones?.placement_start_expected) ??
     null;
 
   const placementCompleted =
     day(milestones?.expectedPlacementCompletedDate) ??
     day(milestones?.placement_expected_end) ?? // legacy format from computeExpectedForPlan
-    day(milestones?.go_home_extended?.full?.end) ?? // reproEngine nested format: end of extended window
-    day(milestones?.go_home_extended_full?.end) ?? // reproEngine flat format: end of extended window
-    day(milestones?.go_home_extended?.full?.[1]) ?? // reproEngine nested array format
+    day(milestones?.placement_extended?.full?.end) ?? // reproEngine nested format: end of extended window
+    day(milestones?.placement_extended_full?.end) ?? // reproEngine flat format: end of extended window
+    day(milestones?.placement_extended?.full?.[1]) ?? // reproEngine nested array format
     day(milestones?.placement_extended_end) ??
     day(milestones?.placement_extended_full?.[1]) ?? // legacy array format
     null;
@@ -344,9 +344,9 @@ function computeExpectedForPlan(plan: {
       ovulation: timeline.milestones?.ovulation_center ?? null,
       breeding_expected: timeline.windows?.breeding?.likely?.[0] ?? null,
       birth_expected: timeline.windows?.whelping?.likely?.[0] ?? null,
-      weaning_expected: timeline.windows?.puppy_care?.likely?.[1] ?? null,
-      placement_expected: timeline.windows?.go_home_normal?.likely?.[0] ?? null,
-      placement_expected_end: timeline.windows?.go_home_extended?.full?.[1] ?? null,
+      weaning_expected: timeline.windows?.offspring_care?.likely?.[1] ?? null,
+      placement_expected: timeline.windows?.placement_normal?.likely?.[0] ?? null,
+      placement_expected_end: timeline.windows?.placement_extended?.full?.[1] ?? null,
       ...timeline.windows,
       ...timeline.milestones,
     };
@@ -6984,9 +6984,9 @@ function PlanDetailsView(props: {
           expectedBreedDate: null,
           expectedBirthDate: null,
           // Post-birth dates ARE recalculated from actual birth
-          expectedWeaned: birthTimeline.windows?.puppy_care?.likely?.[1] ?? null,
-          expectedPlacementStartDate: birthTimeline.windows?.go_home_normal?.likely?.[0] ?? null,
-          expectedPlacementCompletedDate: birthTimeline.windows?.go_home_extended?.full?.[1] ?? null,
+          expectedWeaned: birthTimeline.windows?.offspring_care?.likely?.[1] ?? null,
+          expectedPlacementStartDate: birthTimeline.windows?.placement_normal?.likely?.[0] ?? null,
+          expectedPlacementCompletedDate: birthTimeline.windows?.placement_extended?.full?.[1] ?? null,
         };
       }
     }

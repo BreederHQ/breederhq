@@ -774,17 +774,17 @@ function computeExpectedForPlanLite(plan: { species?: string | null; lockedCycle
   const expectedBirthDate = onlyDay(timeline?.windows?.birth?.likely?.[0]) || null;
   const expectedWeaned =
     onlyDay(
-      timeline?.windows?.puppy_care?.likely?.[1],
+      timeline?.windows?.offspring_care?.likely?.[1],
     ) || null;
 
   const expectedPlacementStartDate =
     onlyDay(
-      timeline?.windows?.go_home_normal?.likely?.[0],
+      timeline?.windows?.placement_normal?.likely?.[0],
     ) || null;
 
   const expectedPlacementCompletedDate =
     onlyDay(
-      timeline?.windows?.go_home_extended?.full?.[1],
+      timeline?.windows?.placement_extended?.full?.[1],
     ) || null;
 
   return {

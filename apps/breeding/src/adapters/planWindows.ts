@@ -81,24 +81,24 @@ function toPlanStageWindows(tl: ReturnType<typeof buildTimelineFromSeed>): PlanS
     hormone_testing_full: (w as any).hormone_testing?.full || ["", ""],
     breeding_full: (w as any).breeding?.full || ["", ""],
     birth_full: (w as any).birth?.full || ["", ""],
-    post_birth_care_full: (w as any).puppy_care?.full || ["", ""],
-    placement_normal_full: (w as any).go_home_normal?.full || ["", ""],
-    placement_extended_full: (w as any).go_home_extended?.full || ["", ""],
+    post_birth_care_full: (w as any).offspring_care?.full || ["", ""],
+    placement_normal_full: (w as any).placement_normal?.full || ["", ""],
+    placement_extended_full: (w as any).placement_extended?.full || ["", ""],
 
     pre_breeding_likely: (w as any).pre_breeding?.likely || ["", ""],
     hormone_testing_likely: (w as any).hormone_testing?.likely || ["", ""],
     breeding_likely: (w as any).breeding?.likely || ["", ""],
     birth_likely: (w as any).birth?.likely || ["", ""],
-    post_birth_care_likely: (w as any).puppy_care?.likely || ["", ""],
-    placement_normal_likely: (w as any).go_home_normal?.likely || ["", ""],
-    placement_extended_likely: (w as any).go_home_extended?.likely || ["", ""],
+    post_birth_care_likely: (w as any).offspring_care?.likely || ["", ""],
+    placement_normal_likely: (w as any).placement_normal?.likely || ["", ""],
+    placement_extended_likely: (w as any).placement_extended?.likely || ["", ""],
 
     cycle_start: (m as any).cycle_start || "",
     ovulation: (m as any).ovulation_center || "",
     birth_expected: (w as any).birth?.full?.[0] ?? null,
-    placement_start_expected: (w as any).go_home_normal?.full?.[0] ?? null,
-    placement_completed_expected: (w as any).go_home_normal?.full?.[1] ?? null,
-    placement_extended_end_expected: (w as any).go_home_extended?.full?.[1] ?? null,
+    placement_start_expected: (w as any).placement_normal?.full?.[0] ?? null,
+    placement_completed_expected: (w as any).placement_normal?.full?.[1] ?? null,
+    placement_extended_end_expected: (w as any).placement_extended?.full?.[1] ?? null,
   };
 }
 

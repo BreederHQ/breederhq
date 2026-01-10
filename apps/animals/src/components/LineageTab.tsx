@@ -6,6 +6,19 @@ import { makeApi, type PedigreeNode, type COIResult, type ParentsResult, type Pr
 import { NetworkAnimalPicker } from "./NetworkAnimalPicker";
 import { LinkRequestsPanel } from "./LinkRequestsPanel";
 import type { NetworkAnimalResult, ShareableAnimal, ParentType } from "@bhq/api";
+import {
+  ReactFlow,
+  Node,
+  Edge,
+  Background,
+  useNodesState,
+  useEdgesState,
+  ReactFlowProvider,
+  Position,
+  Handle,
+  type NodeProps,
+} from "@xyflow/react";
+import "@xyflow/react/dist/style.css";
 
 const api = makeApi();
 
@@ -71,14 +84,18 @@ function ParentCard({
   mode: "view" | "edit";
   loading?: boolean;
 }) {
+  const isSire = label.includes("Sire") || label.includes("SIRE");
+  const colorClass = isSire
+    ? "border-blue-500/40 bg-blue-500/5 hover:bg-blue-500/10"
+    : "border-pink-500/40 bg-pink-500/5 hover:bg-pink-500/10";
+  const iconBgClass = isSire ? "bg-blue-500/20 text-blue-400" : "bg-pink-500/20 text-pink-400";
+
   return (
     <div>
-      <div className="text-xs font-semibold text-secondary mb-2">{label}</div>
+      <div className={`text-xs font-semibold mb-2 ${isSire ? "text-blue-400" : "text-pink-400"}`}>{label}</div>
       <div
-        className={`rounded-lg border border-hairline p-3 bg-surface transition-colors ${
-          mode === "edit" ? "hover:bg-white/5 cursor-pointer" : ""
-        }`}
-        onClick={mode === "edit" ? onSelect : undefined}
+        className={`rounded-lg border p-3 transition-colors cursor-pointer ${colorClass}`}
+        onClick={onSelect}
       >
         {loading ? (
           <div className="text-sm text-secondary animate-pulse">Loading...</div>
@@ -91,8 +108,8 @@ function ParentCard({
                 className="w-10 h-10 rounded-full object-cover"
               />
             ) : (
-              <div className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center text-lg">
-                {label.includes("Sire") ? "♂" : "♀"}
+              <div className={`w-10 h-10 rounded-full flex items-center justify-center text-lg ${iconBgClass}`}>
+                {isSire ? "♂" : "♀"}
               </div>
             )}
             <div className="flex-1 min-w-0">
@@ -118,7 +135,7 @@ function ParentCard({
           </div>
         ) : (
           <div className="text-sm text-secondary">
-            {mode === "edit" ? "Click to select..." : "Not linked"}
+            Click to select...
           </div>
         )}
       </div>
@@ -363,54 +380,307 @@ function formatNameWithTitles(node: PedigreeNode): React.ReactNode {
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
- * Helper: Simple Pedigree Tree (3 generations)
+ * React Flow Pedigree Types
  * ───────────────────────────────────────────────────────────────────────────── */
 
-function PedigreeTreeNode({
-  node,
-  depth,
-  maxDepth,
-}: {
-  node: PedigreeNode | null;
-  depth: number;
-  maxDepth: number;
-}) {
-  if (!node || depth > maxDepth) return null;
+interface PedigreeNodeData extends Record<string, unknown> {
+  animal: PedigreeNode | null;
+  isSire?: boolean;
+  generation: number;
+  isRoot?: boolean;
+  hasParents?: boolean;
+}
 
-  const hasParents = node.dam || node.sire;
-  const showChildren = depth < maxDepth && hasParents;
+/* ─────────────────────────────────────────────────────────────────────────────
+ * React Flow Custom Node Component (matches ExplorePage style)
+ * ───────────────────────────────────────────────────────────────────────────── */
+
+function PedigreeNodeComponent({ data }: NodeProps<Node<PedigreeNodeData>>) {
+  const { animal, generation, isRoot, isSire } = data;
+
+  const isMale = animal?.sex === "MALE";
+  const isFemale = animal?.sex === "FEMALE";
+
+  // Card dimensions scaled for LineageTab (smaller than ExplorePage since we show 3 gens)
+  const cardWidth = generation === 0 ? 180 : generation === 1 ? 140 : 120;
+  const cardHeight = generation === 0 ? 80 : generation === 1 ? 70 : 60;
+  const avatarSize = generation === 0 ? 36 : generation === 1 ? 28 : 24;
+
+  // Role labels
+  const roleLabel = isRoot
+    ? "SUBJECT"
+    : generation === 1
+    ? (isSire ? "SIRE" : "DAM")
+    : generation === 2
+    ? (isSire ? "GRANDSIRE" : "GRANDDAM")
+    : "";
+
+  // Colors matching Bloodlines - blue for male, pink for female, amber for root/unknown
+  const colors = isMale
+    ? {
+        border: "#0ea5e9",
+        gradientFrom: "rgba(14, 165, 233, 0.2)",
+        gradientTo: "rgba(2, 132, 199, 0.1)",
+        text: "#0ea5e9",
+        avatarBg: "#27272a"
+      }
+    : isFemale
+    ? {
+        border: "#ec4899",
+        gradientFrom: "rgba(236, 72, 153, 0.2)",
+        gradientTo: "rgba(219, 39, 119, 0.1)",
+        text: "#ec4899",
+        avatarBg: "#27272a"
+      }
+    : {
+        border: "#f59e0b",
+        gradientFrom: "rgba(245, 158, 11, 0.2)",
+        gradientTo: "rgba(217, 119, 6, 0.1)",
+        text: "#f59e0b",
+        avatarBg: "#27272a"
+      };
+
+  // Root node gets amber border
+  const borderColor = isRoot ? "#f59e0b" : colors.border;
+  const borderWidth = generation === 0 ? 2 : generation === 1 ? 1.5 : 1;
+
+  const displayName = animal?.name || "Unknown";
 
   return (
-    <div className="flex items-center gap-2">
-      {/* Node */}
-      <div className="flex-shrink-0 w-32">
-        <div className="rounded-md border border-hairline p-2 bg-surface text-xs">
-          <div className="font-medium truncate" title={node.name}>
-            {node.name}
+    <div className="relative" style={{ pointerEvents: "auto" }}>
+      {/* Connection handles - invisible */}
+      <Handle
+        type="target"
+        position={Position.Left}
+        style={{ opacity: 0, width: 1, height: 1 }}
+      />
+
+      {/* Card */}
+      <div
+        className="flex items-center gap-2 transition-all duration-200"
+        style={{
+          width: cardWidth,
+          height: cardHeight,
+          padding: generation === 0 ? "12px 14px" : generation === 1 ? "10px 12px" : "8px 10px",
+          background: `linear-gradient(135deg, ${colors.gradientFrom} 0%, ${colors.gradientTo} 100%)`,
+          border: `${borderWidth}px solid ${borderColor}`,
+          borderRadius: generation === 0 ? 10 : generation === 1 ? 8 : 6,
+          boxShadow: isRoot
+            ? `0 0 20px rgba(245, 158, 11, 0.4), 0 0 40px rgba(245, 158, 11, 0.15)`
+            : `0 4px 12px rgba(0, 0, 0, 0.3)`,
+        }}
+      >
+        {/* Avatar */}
+        <div
+          className="flex-shrink-0 rounded-full flex items-center justify-center"
+          style={{
+            width: avatarSize,
+            height: avatarSize,
+            backgroundColor: colors.avatarBg,
+            border: `${generation === 0 ? 2 : 1.5}px solid ${colors.border}`,
+          }}
+        >
+          <span style={{
+            color: colors.text,
+            fontSize: generation === 0 ? 16 : generation === 1 ? 14 : 12,
+            fontWeight: "bold"
+          }}>
+            {isMale ? "♂" : isFemale ? "♀" : "?"}
+          </span>
+        </div>
+
+        {/* Info */}
+        <div className="flex-1 min-w-0 text-left">
+          {roleLabel && (
+            <div
+              className="leading-tight mb-0.5"
+              style={{
+                fontSize: generation === 0 ? 10 : generation === 1 ? 9 : 8,
+                color: generation === 0 ? "#a1a1aa" : "#71717a",
+                letterSpacing: "0.02em",
+              }}
+            >
+              {roleLabel}
+            </div>
+          )}
+          {animal?.titlePrefix && (
+            <div className="text-[9px] font-bold text-amber-400 leading-tight truncate">
+              {animal.titlePrefix}
+            </div>
+          )}
+          <div
+            className="leading-tight truncate"
+            style={{
+              fontSize: generation === 0 ? 13 : generation === 1 ? 11 : 10,
+              fontWeight: generation === 0 ? 500 : 400,
+              color: generation === 0 ? "#fafafa" : generation === 1 ? "#d4d4d8" : "#a1a1aa",
+            }}
+          >
+            {displayName}
           </div>
-          {node.breed && (
-            <div className="text-secondary truncate text-[10px]" title={node.breed}>
-              {node.breed}
+          {animal?.breed && generation <= 1 && (
+            <div
+              className="leading-tight mt-0.5 truncate"
+              style={{
+                fontSize: generation === 0 ? 10 : 9,
+                color: "#71717a",
+              }}
+            >
+              {animal.breed}
             </div>
           )}
         </div>
       </div>
 
-      {/* Children */}
-      {showChildren && (
-        <div className="flex flex-col gap-1">
-          <PedigreeTreeNode node={node.sire} depth={depth + 1} maxDepth={maxDepth} />
-          <PedigreeTreeNode node={node.dam} depth={depth + 1} maxDepth={maxDepth} />
-        </div>
-      )}
+      <Handle
+        type="source"
+        position={Position.Right}
+        style={{ opacity: 0, width: 1, height: 1 }}
+      />
     </div>
+  );
+}
+
+const nodeTypes = {
+  pedigree: PedigreeNodeComponent,
+};
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * Build React Flow nodes and edges from pedigree data
+ * ───────────────────────────────────────────────────────────────────────────── */
+
+function buildPedigreeNodesAndEdges(
+  root: PedigreeNode
+): { nodes: Node<PedigreeNodeData>[]; edges: Edge[] } {
+  const nodes: Node<PedigreeNodeData>[] = [];
+  const edges: Edge[] = [];
+
+  // Card dimensions for layout
+  const CARD_HEIGHTS = [80, 70, 60]; // gen 0, 1, 2
+
+  // X positions
+  const X_GEN0 = 0;
+  const X_GEN1 = 220;
+  const X_GEN2 = 400;
+
+  // Y positions - center vertically
+  const Y_ROOT = 80;
+  const Y_SIRE = 0;
+  const Y_DAM = 160;
+
+  // Grandparent Y positions
+  const Y_PATERNAL_GRANDSIRE = -50;
+  const Y_PATERNAL_GRANDDAM = 40;
+  const Y_MATERNAL_GRANDSIRE = 130;
+  const Y_MATERNAL_GRANDDAM = 220;
+
+  // Edge style
+  const edgeStyle = { stroke: "#52525b", strokeWidth: 2 };
+
+  // Helper to add a node
+  const addNode = (
+    id: string,
+    animal: PedigreeNode | null,
+    x: number,
+    y: number,
+    generation: number,
+    isSire?: boolean,
+    isRoot?: boolean
+  ) => {
+    const hasParents = !!(animal?.sire || animal?.dam);
+    nodes.push({
+      id,
+      type: "pedigree",
+      position: { x, y },
+      data: { animal, generation, isSire, isRoot, hasParents },
+    });
+  };
+
+  // Generation 0: Root
+  addNode("root", root, X_GEN0, Y_ROOT, 0, undefined, true);
+
+  // Generation 1: Parents
+  if (root.sire) {
+    addNode("sire", root.sire, X_GEN1, Y_SIRE, 1, true);
+    edges.push({ id: "e-root-sire", source: "root", target: "sire", type: "default", style: edgeStyle });
+  }
+  if (root.dam) {
+    addNode("dam", root.dam, X_GEN1, Y_DAM, 1, false);
+    edges.push({ id: "e-root-dam", source: "root", target: "dam", type: "default", style: edgeStyle });
+  }
+
+  // Generation 2: Grandparents
+  if (root.sire?.sire) {
+    addNode("sire-sire", root.sire.sire, X_GEN2, Y_PATERNAL_GRANDSIRE, 2, true);
+    edges.push({ id: "e-sire-sire-sire", source: "sire", target: "sire-sire", type: "default", style: edgeStyle });
+  }
+  if (root.sire?.dam) {
+    addNode("sire-dam", root.sire.dam, X_GEN2, Y_PATERNAL_GRANDDAM, 2, false);
+    edges.push({ id: "e-sire-sire-dam", source: "sire", target: "sire-dam", type: "default", style: edgeStyle });
+  }
+  if (root.dam?.sire) {
+    addNode("dam-sire", root.dam.sire, X_GEN2, Y_MATERNAL_GRANDSIRE, 2, true);
+    edges.push({ id: "e-dam-dam-sire", source: "dam", target: "dam-sire", type: "default", style: edgeStyle });
+  }
+  if (root.dam?.dam) {
+    addNode("dam-dam", root.dam.dam, X_GEN2, Y_MATERNAL_GRANDDAM, 2, false);
+    edges.push({ id: "e-dam-dam-dam", source: "dam", target: "dam-dam", type: "default", style: edgeStyle });
+  }
+
+  return { nodes, edges };
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * React Flow Pedigree Tree Component
+ * ───────────────────────────────────────────────────────────────────────────── */
+
+function PedigreeTreeInner({ pedigree }: { pedigree: PedigreeNode }) {
+  const { nodes: initialNodes, edges: initialEdges } = React.useMemo(
+    () => buildPedigreeNodesAndEdges(pedigree),
+    [pedigree]
+  );
+
+  const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
+  const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
+
+  // Update when pedigree changes
+  React.useEffect(() => {
+    const { nodes: newNodes, edges: newEdges } = buildPedigreeNodesAndEdges(pedigree);
+    setNodes(newNodes);
+    setEdges(newEdges);
+  }, [pedigree, setNodes, setEdges]);
+
+  return (
+    <ReactFlow
+      nodes={nodes}
+      edges={edges}
+      onNodesChange={onNodesChange}
+      onEdgesChange={onEdgesChange}
+      nodeTypes={nodeTypes}
+      fitView
+      fitViewOptions={{ padding: 0.3, minZoom: 0.8, maxZoom: 1.5 }}
+      minZoom={0.5}
+      maxZoom={2}
+      defaultEdgeOptions={{
+        type: "default",
+        style: { stroke: "#52525b", strokeWidth: 2 },
+      }}
+      proOptions={{ hideAttribution: true }}
+      nodesDraggable={false}
+      nodesConnectable={false}
+      elementsSelectable={false}
+      panOnDrag={true}
+      zoomOnScroll={true}
+    >
+      <Background color="#27272a" gap={20} size={1} />
+    </ReactFlow>
   );
 }
 
 function SimplePedigreeTree({ pedigree }: { pedigree: PedigreeNode | null }) {
   if (!pedigree) {
     return (
-      <div className="text-sm text-secondary py-4">
+      <div className="text-sm text-secondary py-4 text-center">
         No pedigree data available. Set parents to build the family tree.
       </div>
     );
@@ -419,98 +689,17 @@ function SimplePedigreeTree({ pedigree }: { pedigree: PedigreeNode | null }) {
   const hasAnyAncestors = pedigree.dam || pedigree.sire;
   if (!hasAnyAncestors) {
     return (
-      <div className="text-sm text-secondary py-4">
+      <div className="text-sm text-secondary py-4 text-center">
         No ancestors recorded. Set the dam and sire to start building the pedigree.
       </div>
     );
   }
 
   return (
-    <div className="overflow-x-auto pb-2">
-      <div className="inline-flex gap-4 min-w-max">
-        {/* Subject */}
-        <div className="flex flex-col justify-center">
-          <div className="rounded-md border-2 border-accent p-2 bg-accent/10 text-xs w-40">
-            <div className="font-semibold truncate">{formatNameWithTitles(pedigree)}</div>
-            {pedigree.breed && (
-              <div className="text-secondary truncate text-[10px]">{pedigree.breed}</div>
-            )}
-          </div>
-        </div>
-
-        {/* Parents */}
-        <div className="flex flex-col justify-center gap-2">
-          {/* Sire */}
-          <div className="flex items-center gap-2">
-            <div className="rounded-md border border-hairline p-2 bg-surface text-xs w-36">
-              {pedigree.sire ? (
-                <>
-                  <div className="font-medium truncate">{formatNameWithTitles(pedigree.sire)}</div>
-                  {pedigree.sire.breed && (
-                    <div className="text-secondary truncate text-[10px]">{pedigree.sire.breed}</div>
-                  )}
-                </>
-              ) : (
-                <div className="text-secondary">Unknown Sire</div>
-              )}
-            </div>
-            {/* Grandparents (sire's side) */}
-            {pedigree.sire && (pedigree.sire.sire || pedigree.sire.dam) && (
-              <div className="flex flex-col gap-1">
-                <div className="rounded border border-hairline p-1.5 bg-surface text-[10px] w-32">
-                  {pedigree.sire.sire ? (
-                    <div className="truncate">{formatNameWithTitles(pedigree.sire.sire)}</div>
-                  ) : (
-                    <div className="text-secondary">Unknown</div>
-                  )}
-                </div>
-                <div className="rounded border border-hairline p-1.5 bg-surface text-[10px] w-32">
-                  {pedigree.sire.dam ? (
-                    <div className="truncate">{formatNameWithTitles(pedigree.sire.dam)}</div>
-                  ) : (
-                    <div className="text-secondary">Unknown</div>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Dam */}
-          <div className="flex items-center gap-2">
-            <div className="rounded-md border border-hairline p-2 bg-surface text-xs w-36">
-              {pedigree.dam ? (
-                <>
-                  <div className="font-medium truncate">{formatNameWithTitles(pedigree.dam)}</div>
-                  {pedigree.dam.breed && (
-                    <div className="text-secondary truncate text-[10px]">{pedigree.dam.breed}</div>
-                  )}
-                </>
-              ) : (
-                <div className="text-secondary">Unknown Dam</div>
-              )}
-            </div>
-            {/* Grandparents (dam's side) */}
-            {pedigree.dam && (pedigree.dam.sire || pedigree.dam.dam) && (
-              <div className="flex flex-col gap-1">
-                <div className="rounded border border-hairline p-1.5 bg-surface text-[10px] w-32">
-                  {pedigree.dam.sire ? (
-                    <div className="truncate">{formatNameWithTitles(pedigree.dam.sire)}</div>
-                  ) : (
-                    <div className="text-secondary">Unknown</div>
-                  )}
-                </div>
-                <div className="rounded border border-hairline p-1.5 bg-surface text-[10px] w-32">
-                  {pedigree.dam.dam ? (
-                    <div className="truncate">{formatNameWithTitles(pedigree.dam.dam)}</div>
-                  ) : (
-                    <div className="text-secondary">Unknown</div>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
+    <div className="w-full h-[320px] rounded-lg overflow-hidden border border-amber-500/20 bg-zinc-950">
+      <ReactFlowProvider>
+        <PedigreeTreeInner pedigree={pedigree} />
+      </ReactFlowProvider>
     </div>
   );
 }
@@ -793,6 +982,14 @@ export function LineageTab({
     dam?: { animalName: string; tenantName: string };
   }>({});
 
+  // Confirmation modal state
+  const [confirmAction, setConfirmAction] = React.useState<{
+    type: "select" | "clear" | "replace";
+    role: "dam" | "sire";
+    animal?: AnimalOption;
+    existingParent?: AnimalOption | null;
+  } | null>(null);
+
   // Load parents and pedigree
   React.useEffect(() => {
     const load = async () => {
@@ -853,25 +1050,60 @@ export function LineageTab({
     [animal.id]
   );
 
-  // Handlers
+  // Handlers with confirmation
   const handleSelectDam = (selected: AnimalOption) => {
-    setDam(selected);
-    saveParents(selected.id, sire?.id ?? null);
+    if (dam) {
+      // Replacing existing - show confirmation
+      setConfirmAction({ type: "replace", role: "dam", animal: selected, existingParent: dam });
+    } else {
+      // No existing dam - show simple confirmation
+      setConfirmAction({ type: "select", role: "dam", animal: selected });
+    }
   };
 
   const handleSelectSire = (selected: AnimalOption) => {
-    setSire(selected);
-    saveParents(dam?.id ?? null, selected.id);
+    if (sire) {
+      // Replacing existing - show confirmation
+      setConfirmAction({ type: "replace", role: "sire", animal: selected, existingParent: sire });
+    } else {
+      // No existing sire - show simple confirmation
+      setConfirmAction({ type: "select", role: "sire", animal: selected });
+    }
   };
 
   const handleClearDam = () => {
-    setDam(null);
-    saveParents(null, sire?.id ?? null);
+    setConfirmAction({ type: "clear", role: "dam", existingParent: dam });
   };
 
   const handleClearSire = () => {
-    setSire(null);
-    saveParents(dam?.id ?? null, null);
+    setConfirmAction({ type: "clear", role: "sire", existingParent: sire });
+  };
+
+  // Execute confirmed action
+  const executeConfirmedAction = () => {
+    if (!confirmAction) return;
+
+    if (confirmAction.type === "clear") {
+      if (confirmAction.role === "dam") {
+        setDam(null);
+        saveParents(null, sire?.id ?? null);
+      } else {
+        setSire(null);
+        saveParents(dam?.id ?? null, null);
+      }
+    } else if (confirmAction.type === "select" || confirmAction.type === "replace") {
+      if (confirmAction.animal) {
+        if (confirmAction.role === "dam") {
+          setDam(confirmAction.animal);
+          saveParents(confirmAction.animal.id, sire?.id ?? null);
+        } else {
+          setSire(confirmAction.animal);
+          saveParents(dam?.id ?? null, confirmAction.animal.id);
+        }
+      }
+    }
+
+    setConfirmAction(null);
   };
 
   const openDamPicker = () => {

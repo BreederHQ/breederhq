@@ -173,15 +173,27 @@ export function NetworkAnimalPicker({
   const [selectedBreeder, setSelectedBreeder] = React.useState<BreederSearchResult | null>(null);
   const [breederAnimals, setBreederAnimals] = React.useState<ShareableAnimal[]>([]);
 
+  // Confirmation state
+  const [confirmAnimal, setConfirmAnimal] = React.useState<{
+    animal: NetworkAnimalResult | ShareableAnimal;
+    method: SearchMethod;
+    targetTenantId?: number;
+    breederName?: string;
+  } | null>(null);
+
   // Registries list
   const [registries, setRegistries] = React.useState<RegistryDTO[]>([]);
 
-  // Load registries on mount
+  // Load registries on mount - use existing registries endpoint
   React.useEffect(() => {
-    api.animalLinking.getRegistries()
-      .then(setRegistries)
+    api.registries.list({ species })
+      .then((data: any) => {
+        // CONTRACT TOLERANCE: Accept either 'items' (canonical) or 'registries' (legacy)
+        const rows = data?.items || data?.registries || [];
+        setRegistries(rows);
+      })
       .catch(console.error);
-  }, []);
+  }, [species]);
 
   // Clear results when method changes
   React.useEffect(() => {
@@ -315,6 +327,23 @@ export function NetworkAnimalPicker({
   const filteredRegistries = species
     ? registries.filter((r) => !r.species || r.species === species)
     : registries;
+
+  // Handler to show confirmation before linking
+  const handleRequestConfirmation = (
+    animal: NetworkAnimalResult | ShareableAnimal,
+    method: SearchMethod,
+    targetTenantId?: number,
+    breederName?: string
+  ) => {
+    setConfirmAnimal({ animal, method, targetTenantId, breederName });
+  };
+
+  // Handler to confirm and create link
+  const handleConfirmLink = () => {
+    if (!confirmAnimal) return;
+    onSelect(confirmAnimal.animal, confirmAnimal.method, confirmAnimal.targetTenantId);
+    setConfirmAnimal(null);
+  };
 
   return (
     <div className="flex flex-col h-full">
@@ -512,7 +541,7 @@ export function NetworkAnimalPicker({
             <AnimalResultCard
               animal={searchResult}
               breederName={searchResult.tenantName}
-              onSelect={() => onSelect(searchResult, searchMethod, searchResult.tenantId)}
+              onSelect={() => handleRequestConfirmation(searchResult, searchMethod, searchResult.tenantId, searchResult.tenantName ?? undefined)}
             />
           </div>
         )}
@@ -540,7 +569,7 @@ export function NetworkAnimalPicker({
               <AnimalResultCard
                 key={animal.id}
                 animal={animal}
-                onSelect={() => onSelect(animal, "breeder", selectedBreeder.tenantId)}
+                onSelect={() => handleRequestConfirmation(animal, "breeder", selectedBreeder.tenantId, selectedBreeder.tenantName)}
               />
             ))}
           </div>
@@ -563,6 +592,56 @@ export function NetworkAnimalPicker({
           Selecting an animal will create a link request that the owner must approve
         </p>
       </div>
+
+      {/* Confirmation Modal */}
+      {confirmAnimal && (
+        <div className="absolute inset-0 bg-black/60 flex items-center justify-center p-4 z-10">
+          <div className="bg-surface border border-hairline rounded-lg shadow-xl max-w-sm w-full p-4">
+            <h4 className="text-sm font-semibold mb-3">Confirm Link Request</h4>
+            <div className="rounded-lg border border-hairline p-3 mb-4">
+              <div className="flex items-center gap-3">
+                {("photoUrl" in confirmAnimal.animal && confirmAnimal.animal.photoUrl) ? (
+                  <img
+                    src={confirmAnimal.animal.photoUrl}
+                    alt={confirmAnimal.animal.name || "Animal"}
+                    className="w-10 h-10 rounded-full object-cover"
+                  />
+                ) : (
+                  <div className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center text-lg">
+                    {confirmAnimal.animal.sex === "MALE" ? "♂" : "♀"}
+                  </div>
+                )}
+                <div className="flex-1 min-w-0">
+                  <div className="font-medium truncate">{confirmAnimal.animal.name || "Unknown"}</div>
+                  <div className="text-xs text-secondary">
+                    {confirmAnimal.breederName && <span>{confirmAnimal.breederName}</span>}
+                  </div>
+                </div>
+              </div>
+            </div>
+            <p className="text-sm text-secondary mb-4">
+              Are you sure you want to request <span className="font-medium">{confirmAnimal.animal.name || "this animal"}</span> as the <span className="text-accent font-medium">{relationshipType.toLowerCase()}</span>?
+            </p>
+            <p className="text-xs text-secondary mb-4 bg-white/5 p-2 rounded">
+              This will send a link request to <span className="font-medium">{confirmAnimal.breederName || "the owner"}</span>. They must approve it before the lineage link is created.
+            </p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setConfirmAnimal(null)}
+                className="flex-1 px-4 py-2 rounded-md border border-hairline text-sm hover:bg-white/5 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmLink}
+                className="flex-1 px-4 py-2 rounded-md bg-accent text-white text-sm font-medium hover:bg-accent/90 transition-colors"
+              >
+                Send Request
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
