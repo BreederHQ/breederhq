@@ -20,18 +20,30 @@ type PlanRow = {
   archived?: boolean;
 };
 
-// Status colors for left accent stripe
+// Status colors for left accent stripe (keys match backend status values)
 const STATUS_COLORS: Record<string, string> = {
-  "Planned": "hsl(210, 70%, 50%)",      // Blue
-  "Cycling": "hsl(280, 60%, 55%)",      // Purple
-  "Bred": "hsl(330, 70%, 50%)",         // Pink
-  "Confirmed": "hsl(25, 95%, 53%)",     // Orange
-  "Whelping": "hsl(0, 70%, 50%)",       // Red
-  "Nursing": "hsl(45, 90%, 50%)",       // Gold
-  "Weaning": "hsl(80, 60%, 45%)",       // Yellow-green
-  "Placement": "hsl(142, 70%, 45%)",    // Green
-  "Completed": "hsl(160, 50%, 40%)",    // Teal
-  "Cancelled": "hsl(0, 0%, 50%)",       // Gray
+  "PLANNING": "hsl(210, 70%, 50%)",           // Blue
+  "COMMITTED": "hsl(25, 95%, 53%)",           // Orange
+  "BRED": "hsl(330, 70%, 50%)",               // Pink
+  "BIRTHED": "hsl(45, 90%, 50%)",             // Gold
+  "WEANED": "hsl(80, 60%, 45%)",              // Yellow-green
+  "PLACEMENT_STARTED": "hsl(142, 70%, 45%)",  // Green
+  "PLACEMENT_COMPLETED": "hsl(160, 60%, 42%)",// Teal-green
+  "COMPLETE": "hsl(160, 50%, 40%)",           // Teal
+  "CANCELED": "hsl(0, 0%, 50%)",              // Gray
+};
+
+// Display labels for statuses
+const STATUS_LABELS: Record<string, string> = {
+  "PLANNING": "Planning",
+  "COMMITTED": "Committed",
+  "BRED": "Bred",
+  "BIRTHED": "Birthed",
+  "WEANED": "Weaned",
+  "PLACEMENT_STARTED": "Placement",
+  "PLACEMENT_COMPLETED": "Placing",
+  "COMPLETE": "Complete",
+  "CANCELED": "Canceled",
 };
 
 // Species emoji helper
@@ -65,7 +77,9 @@ type BreedingPlanCardViewProps = {
 };
 
 function PlanCard({ row, onClick }: { row: PlanRow; onClick?: () => void }) {
-  const accentColor = STATUS_COLORS[row.status] || STATUS_COLORS.Planned;
+  const statusKey = (row.status || "PLANNING").toUpperCase();
+  const accentColor = STATUS_COLORS[statusKey] || STATUS_COLORS.PLANNING;
+  const statusLabel = STATUS_LABELS[statusKey] || row.status;
   const breedDate = formatDate(row.expectedBreedDate);
   const birthDate = formatDate(row.expectedBirthDate);
   const placementDate = formatDate(row.expectedPlacementStartDate);
@@ -155,10 +169,10 @@ function PlanCard({ row, onClick }: { row: PlanRow; onClick?: () => void }) {
           }}
         >
           <span
-            className={`w-2 h-2 rounded-full ${["Cycling", "Bred", "Whelping", "Nursing"].includes(row.status) ? "animate-pulse" : ""}`}
+            className={`w-2 h-2 rounded-full ${["COMMITTED", "BRED", "BIRTHED"].includes(statusKey) ? "animate-pulse" : ""}`}
             style={{ backgroundColor: accentColor }}
           />
-          {row.status}
+          {statusLabel}
         </span>
 
         {hasDeposits && (

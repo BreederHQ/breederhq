@@ -44,9 +44,9 @@ const STAGE_LABELS: Record<string, string> = {
   hormone_testing: "Hormone Testing",
   breeding: "Breeding",
   birth: "Birth",
-  puppy_care: "Puppy Care",
-  go_home_normal: "Go Home, Normal",
-  go_home_extended: "Go Home, Extended",
+  offspring_care: "Offspring Care",
+  placement_normal: "Placement, Normal",
+  placement_extended: "Placement, Extended",
   availability_travel_risky: "Travel Risky",
   availability_travel_unlikely: "Travel Unlikely",
 };
@@ -78,35 +78,36 @@ function computeWindowsFromSeed(species: SpeciesCode, seedCycleStart: ISODate): 
   const birthFull = centerRangeTuple(birthCenter, 2);
   const birthLikely = centerRangeTuple(birthCenter, 1);
 
-  // Puppy care: from birth → +8 weeks (UI convention)
-  const puppyCareFull: RangeTuple = makeRangeTuple(birthFull[0], addDays(birthFull[1], 8 * 7));
-  const puppyCareLikely: RangeTuple = makeRangeTuple(birthLikely[0], addDays(birthLikely[0], 8 * 7));
+  // Offspring care: from birth → weaning complete (species-specific duration)
+  const offspringCareWeeks = d.offspringCareDurationWeeks;
+  const offspringCareFull: RangeTuple = makeRangeTuple(birthFull[0], addDays(birthFull[1], offspringCareWeeks * 7));
+  const offspringCareLikely: RangeTuple = makeRangeTuple(birthLikely[0], addDays(birthLikely[0], offspringCareWeeks * 7));
 
-  // Go home windows (use species defaults)
-  const goHomeWeeks = d.placementStartWeeksDefault;
-  const goHomeNormalFull: RangeTuple = makeRangeTuple(addDays(birthFull[0], goHomeWeeks * 7), addDays(birthFull[1], goHomeWeeks * 7));
-  const goHomeNormalLikelyCenter = addDays(birthLikely[0], 8 * 7);
-  const goHomeNormalLikely = centerRangeTuple(goHomeNormalLikelyCenter, 1);
+  // Placement windows (use species defaults - must be >= offspringCareDurationWeeks)
+  const placementWeeks = d.placementStartWeeksDefault;
+  const placementNormalFull: RangeTuple = makeRangeTuple(addDays(birthFull[0], placementWeeks * 7), addDays(birthFull[1], placementWeeks * 7));
+  const placementNormalLikelyCenter = addDays(birthLikely[0], placementWeeks * 7);
+  const placementNormalLikely = centerRangeTuple(placementNormalLikelyCenter, 1);
 
-  const goHomeExtendedFull: RangeTuple = makeRangeTuple(goHomeNormalFull[1], addDays(goHomeNormalFull[1], d.placementExtendedWeeks * 7));
+  const placementExtendedFull: RangeTuple = makeRangeTuple(placementNormalFull[1], addDays(placementNormalFull[1], d.placementExtendedWeeks * 7));
 
   // Availability / travel bands (two spans)
   const travelRisky1: RangeTuple = makeRangeTuple(hormoneFull[0], breedingFull[1]);
-  const travelRisky2: RangeTuple = makeRangeTuple(birthFull[0], goHomeExtendedFull[1]);
+  const travelRisky2: RangeTuple = makeRangeTuple(birthFull[0], placementExtendedFull[1]);
 
   const travelUnlikely1: RangeTuple = makeRangeTuple(hormoneLikely[0], breedingLikely[1]);
-  const travelUnlikely2: RangeTuple = makeRangeTuple(puppyCareLikely[0], goHomeNormalLikely[1]);
+  const travelUnlikely2: RangeTuple = makeRangeTuple(offspringCareLikely[0], placementNormalLikely[1]);
 
   return {
     pre_breeding: { full: preBreedingFull, likely: preBreedingLikely },
     hormone_testing: { full: hormoneFull, likely: hormoneLikely },
     breeding: { full: breedingFull, likely: breedingLikely },
     birth: { full: birthFull, likely: birthLikely },
-    puppy_care: { full: puppyCareFull, likely: puppyCareLikely },
-    go_home_normal: { full: goHomeNormalFull, likely: goHomeNormalLikely },
+    offspring_care: { full: offspringCareFull, likely: offspringCareLikely },
+    placement_normal: { full: placementNormalFull, likely: placementNormalLikely },
     // This stage intentionally has no "likely overlay" in your defaults.
     // Keep likely == full to preserve the Window shape, and let UIs choose to hide it.
-    go_home_extended: { full: goHomeExtendedFull, likely: goHomeExtendedFull },
+    placement_extended: { full: placementExtendedFull, likely: placementExtendedFull },
 
     // Availability (two segments each)
     availability_travel_risky_1: { full: travelRisky1, likely: travelRisky1 },
@@ -141,7 +142,7 @@ export function buildTimelineFromSeed(summary: ReproSummary, seedCycleStart: ISO
 /**
  * Build post-birth timeline windows from an actual birth date.
  * This is used to recalculate expected weaning and placement dates when actual birth has occurred.
- * Returns only the post-birth windows (puppy_care, go_home_normal, go_home_extended).
+ * Returns only the post-birth windows (offspring_care, placement_normal, placement_extended).
  */
 function computeWindowsFromBirth(species: SpeciesCode, actualBirth: ISODate): Partial<Record<string, Window>> {
   const d = getSpeciesDefaults(species);
@@ -150,26 +151,27 @@ function computeWindowsFromBirth(species: SpeciesCode, actualBirth: ISODate): Pa
   // Use single date for birth (no range, since this is actual)
   const birthPoint: RangeTuple = [birthDate, birthDate];
 
-  // Puppy care: from birth → +8 weeks
-  const puppyCareFull: RangeTuple = makeRangeTuple(birthDate, addDays(birthDate, 8 * 7));
-  const puppyCareLikely: RangeTuple = puppyCareFull; // Same as full when based on actual
+  // Offspring care: from birth → weaning complete (species-specific duration)
+  const offspringCareWeeks = d.offspringCareDurationWeeks;
+  const offspringCareFull: RangeTuple = makeRangeTuple(birthDate, addDays(birthDate, offspringCareWeeks * 7));
+  const offspringCareLikely: RangeTuple = offspringCareFull; // Same as full when based on actual
 
-  // Go home normal: starts at 8 weeks from birth
-  const goHomeWeeks = d.placementStartWeeksDefault;
-  const goHomeNormalStart = addDays(birthDate, goHomeWeeks * 7);
-  const goHomeNormalFull: RangeTuple = [goHomeNormalStart, goHomeNormalStart];
-  const goHomeNormalLikely: RangeTuple = goHomeNormalFull;
+  // Placement normal: starts at placementStartWeeksDefault from birth
+  const placementWeeks = d.placementStartWeeksDefault;
+  const placementNormalStart = addDays(birthDate, placementWeeks * 7);
+  const placementNormalFull: RangeTuple = [placementNormalStart, placementNormalStart];
+  const placementNormalLikely: RangeTuple = placementNormalFull;
 
-  // Go home extended: +3 weeks from placement start
-  const goHomeExtendedEnd = addDays(goHomeNormalStart, d.placementExtendedWeeks * 7);
-  const goHomeExtendedFull: RangeTuple = makeRangeTuple(goHomeNormalStart, goHomeExtendedEnd);
-  const goHomeExtendedLikely: RangeTuple = goHomeExtendedFull;
+  // Placement extended: +3 weeks from placement start
+  const placementExtendedEnd = addDays(placementNormalStart, d.placementExtendedWeeks * 7);
+  const placementExtendedFull: RangeTuple = makeRangeTuple(placementNormalStart, placementExtendedEnd);
+  const placementExtendedLikely: RangeTuple = placementExtendedFull;
 
   return {
     birth: { full: birthPoint, likely: birthPoint },
-    puppy_care: { full: puppyCareFull, likely: puppyCareLikely },
-    go_home_normal: { full: goHomeNormalFull, likely: goHomeNormalLikely },
-    go_home_extended: { full: goHomeExtendedFull, likely: goHomeExtendedLikely },
+    offspring_care: { full: offspringCareFull, likely: offspringCareLikely },
+    placement_normal: { full: placementNormalFull, likely: placementNormalLikely },
+    placement_extended: { full: placementExtendedFull, likely: placementExtendedLikely },
   };
 }
 

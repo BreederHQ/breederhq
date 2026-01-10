@@ -35,7 +35,7 @@ export const AppShell: React.FC<Props> = ({
       <div className="mx-auto grid w-full max-w-7xl grid-cols-1 gap-6 px-4 py-6 md:grid-cols-12">
         {sidebar ? (
           <aside className="md:col-span-3 lg:col-span-2">
-            <div className="bhq-sidebar bhq-grain bhq-glass bhq-shadow border border-hairline p-3 rounded-xl">
+            <div className="bhq-sidebar border border-hairline p-3 rounded-xl">
               {sidebar}
             </div>
           </aside>

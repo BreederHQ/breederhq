@@ -776,6 +776,290 @@ export const adminSubscriptionApi = {
   },
 };
 
+/** ───────────────────────── Feature Registry API ───────────────────────── */
+
+export type FeatureModule =
+  | "GENETICS"
+  | "MARKETPLACE"
+  | "FINANCIAL"
+  | "ANIMALS"
+  | "CONTACTS"
+  | "BREEDING"
+  | "DOCUMENTS"
+  | "HEALTH"
+  | "SCHEDULING"
+  | "PORTAL"
+  | "REPORTING"
+  | "SETTINGS";
+
+export type EntitlementKeyType =
+  // Surface access
+  | "MARKETPLACE_ACCESS"
+  | "PLATFORM_ACCESS"
+  | "PORTAL_ACCESS"
+  // Feature access
+  | "BREEDING_PLANS"
+  | "FINANCIAL_SUITE"
+  | "DOCUMENT_MANAGEMENT"
+  | "HEALTH_RECORDS"
+  | "WAITLIST_MANAGEMENT"
+  | "ADVANCED_REPORTING"
+  | "API_ACCESS"
+  | "MULTI_LOCATION"
+  | "E_SIGNATURES"
+  | "DATA_EXPORT"
+  | "GENETICS_STANDARD"
+  | "GENETICS_PRO"
+  // Quotas
+  | "ANIMAL_QUOTA"
+  | "CONTACT_QUOTA"
+  | "PORTAL_USER_QUOTA"
+  | "BREEDING_PLAN_QUOTA"
+  | "MARKETPLACE_LISTING_QUOTA"
+  | "STORAGE_QUOTA_GB"
+  | "SMS_QUOTA";
+
+export type FeatureDTO = {
+  id: number;
+  key: string;
+  name: string;
+  description: string | null;
+  module: FeatureModule;
+  entitlementKey: EntitlementKeyType;
+  uiHint: string | null;
+  isActive: boolean;
+  archivedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type FeatureCheckDTO = {
+  id: string; // BigInt serialized as string
+  featureKey: string;
+  tenantId: number;
+  userId: string | null;
+  granted: boolean;
+  context: string | null;
+  timestamp: string;
+};
+
+export type FeatureCheckDailyDTO = {
+  id: number;
+  date: string;
+  featureKey: string;
+  tenantId: number;
+  checkCount: number;
+  grantCount: number;
+  denyCount: number;
+};
+
+export type FeatureAnalyticsDTO = {
+  topFeatures: Array<{
+    featureKey: string;
+    featureName: string;
+    checkCount: number;
+    grantCount: number;
+    denyCount: number;
+  }>;
+  deniedAttempts: Array<{
+    featureKey: string;
+    featureName: string;
+    denyCount: number;
+    tenantCount: number;
+  }>;
+  featuresByModule: Record<FeatureModule, number>;
+  totalChecks: number;
+  totalDenied: number;
+  period: { start: string; end: string };
+};
+
+export const adminFeatureApi = {
+  /** List all features with optional filters */
+  listFeatures(params?: {
+    module?: FeatureModule;
+    entitlementKey?: string;
+    includeArchived?: boolean;
+    includeInactive?: boolean;
+  }) {
+    const sp = new URLSearchParams();
+    if (params?.module) sp.set("module", params.module);
+    if (params?.entitlementKey) sp.set("entitlementKey", params.entitlementKey);
+    if (params?.includeArchived) sp.set("includeArchived", "true");
+    if (params?.includeInactive) sp.set("includeInactive", "true");
+    const qs = sp.toString();
+    return request<{ features: FeatureDTO[] }>(
+      `/admin/features${qs ? `?${qs}` : ""}`,
+      { tenantScoped: false }
+    );
+  },
+
+  /** Get single feature by ID */
+  getFeature(id: number) {
+    return request<{ feature: FeatureDTO }>(`/admin/features/${id}`, {
+      tenantScoped: false,
+    });
+  },
+
+  /** Create a new feature */
+  createFeature(data: {
+    key: string;
+    name: string;
+    description?: string;
+    module: FeatureModule;
+    entitlementKey: EntitlementKeyType;
+    uiHint?: string;
+    isActive?: boolean;
+  }) {
+    return request<{ feature: FeatureDTO }>("/admin/features", {
+      method: "POST",
+      body: data,
+      tenantScoped: false,
+    });
+  },
+
+  /** Update a feature */
+  updateFeature(
+    id: number,
+    data: Partial<{
+      key: string;
+      name: string;
+      description: string | null;
+      module: FeatureModule;
+      entitlementKey: EntitlementKeyType;
+      uiHint: string | null;
+      isActive: boolean;
+    }>
+  ) {
+    return request<{ feature: FeatureDTO }>(`/admin/features/${id}`, {
+      method: "PATCH",
+      body: data,
+      tenantScoped: false,
+    });
+  },
+
+  /** Archive a feature (soft delete) */
+  archiveFeature(id: number) {
+    return request<{ feature: FeatureDTO }>(`/admin/features/${id}/archive`, {
+      method: "POST",
+      tenantScoped: false,
+    });
+  },
+
+  /** Restore an archived feature */
+  restoreFeature(id: number) {
+    return request<{ feature: FeatureDTO }>(`/admin/features/${id}/restore`, {
+      method: "POST",
+      tenantScoped: false,
+    });
+  },
+
+  /** Delete a feature permanently (admin only, use with caution) */
+  deleteFeature(id: number) {
+    return request<{ ok: boolean }>(`/admin/features/${id}`, {
+      method: "DELETE",
+      tenantScoped: false,
+    });
+  },
+
+  /** Get list of all entitlement keys with metadata */
+  listEntitlementKeys() {
+    return request<{
+      entitlementKeys: Array<{
+        key: EntitlementKeyType;
+        name: string;
+        description: string;
+        type: "BOOLEAN" | "QUOTA";
+        featureCount: number;
+        productCount: number;
+      }>;
+    }>("/admin/entitlement-keys", { tenantScoped: false });
+  },
+
+  /** Get features for a specific entitlement key */
+  getEntitlementKeyFeatures(key: string) {
+    return request<{ features: FeatureDTO[] }>(
+      `/admin/entitlement-keys/${key}/features`,
+      { tenantScoped: false }
+    );
+  },
+
+  /** Get feature analytics */
+  getFeatureAnalytics(params?: {
+    startDate?: string;
+    endDate?: string;
+    module?: FeatureModule;
+  }) {
+    const sp = new URLSearchParams();
+    if (params?.startDate) sp.set("startDate", params.startDate);
+    if (params?.endDate) sp.set("endDate", params.endDate);
+    if (params?.module) sp.set("module", params.module);
+    const qs = sp.toString();
+    return request<FeatureAnalyticsDTO>(
+      `/admin/features/analytics${qs ? `?${qs}` : ""}`,
+      { tenantScoped: false }
+    );
+  },
+
+  /** Get raw feature checks (recent, for debugging) */
+  getRecentChecks(params?: {
+    featureKey?: string;
+    tenantId?: number;
+    granted?: boolean;
+    limit?: number;
+  }) {
+    const sp = new URLSearchParams();
+    if (params?.featureKey) sp.set("featureKey", params.featureKey);
+    if (params?.tenantId) sp.set("tenantId", String(params.tenantId));
+    if (params?.granted !== undefined) sp.set("granted", String(params.granted));
+    if (params?.limit) sp.set("limit", String(params.limit));
+    const qs = sp.toString();
+    return request<{ checks: FeatureCheckDTO[]; total: number }>(
+      `/admin/features/checks${qs ? `?${qs}` : ""}`,
+      { tenantScoped: false }
+    );
+  },
+
+  /** Log feature checks (batch endpoint for client telemetry) */
+  logFeatureChecks(
+    checks: Array<{
+      featureKey: string;
+      tenantId: number;
+      userId?: string;
+      granted: boolean;
+      context?: string;
+      timestamp?: string;
+    }>
+  ) {
+    return request<{ logged: number }>("/features/checks", {
+      method: "POST",
+      body: { checks },
+      tenantScoped: false,
+    });
+  },
+
+  /** Get orphaned features (in DB but never checked in code) */
+  getOrphanedFeatures(params?: { days?: number }) {
+    const sp = new URLSearchParams();
+    if (params?.days) sp.set("days", String(params.days));
+    const qs = sp.toString();
+    return request<{ features: FeatureDTO[] }>(
+      `/admin/features/orphaned${qs ? `?${qs}` : ""}`,
+      { tenantScoped: false }
+    );
+  },
+
+  /** Get ungated feature keys (checked in code but not in DB) */
+  getUngatedFeatureKeys(params?: { days?: number }) {
+    const sp = new URLSearchParams();
+    if (params?.days) sp.set("days", String(params.days));
+    const qs = sp.toString();
+    return request<{ featureKeys: string[] }>(
+      `/admin/features/ungated${qs ? `?${qs}` : ""}`,
+      { tenantScoped: false }
+    );
+  },
+};
+
 /** ───────────────────────── Small helpers ───────────────────────── */
 function setNum(sp: URLSearchParams, key: string, n: number) {
   if (Number.isFinite(n as number)) sp.set(key, String(n));

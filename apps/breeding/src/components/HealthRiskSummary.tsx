@@ -1,5 +1,6 @@
 // apps/breeding/src/components/HealthRiskSummary.tsx
 import * as React from "react";
+import { Tooltip } from "@bhq/ui";
 import {
   Heart,
   Eye,
@@ -585,7 +586,7 @@ function getHealthRatingInfo(rating: HealthRating): {
     case "good":
       return {
         label: "Good",
-        description: "Carriers present but no at-risk offspring expected",
+        description: "Carriers present, but no at-risk offspring expected",
         color: "text-blue-600 dark:text-blue-400",
         bgColor: "bg-blue-500/10",
         borderColor: "border-blue-500/40",
@@ -649,25 +650,28 @@ function OffspringRiskBar({ risk }: { risk: OffspringRisk }) {
     <div className="space-y-1">
       <div className="flex h-3 rounded-full overflow-hidden bg-gray-200 dark:bg-gray-700">
         {clearPercent > 0 && (
-          <div
-            className="bg-green-500 transition-all duration-300"
-            style={{ width: `${clearPercent}%` }}
-            title={`${clearPercent}% Clear`}
-          />
+          <Tooltip content={`${clearPercent}% Clear`}>
+            <div
+              className="bg-green-500 transition-all duration-300"
+              style={{ width: `${clearPercent}%` }}
+            />
+          </Tooltip>
         )}
         {carrierPercent > 0 && (
-          <div
-            className="bg-yellow-500 transition-all duration-300"
-            style={{ width: `${carrierPercent}%` }}
-            title={`${carrierPercent}% Carrier`}
-          />
+          <Tooltip content={`${carrierPercent}% Carrier`}>
+            <div
+              className="bg-yellow-500 transition-all duration-300"
+              style={{ width: `${carrierPercent}%` }}
+            />
+          </Tooltip>
         )}
         {affectedPercent > 0 && (
-          <div
-            className="bg-red-500 transition-all duration-300"
-            style={{ width: `${affectedPercent}%` }}
-            title={`${affectedPercent}% Affected`}
-          />
+          <Tooltip content={`${affectedPercent}% Affected`}>
+            <div
+              className="bg-red-500 transition-all duration-300"
+              style={{ width: `${affectedPercent}%` }}
+            />
+          </Tooltip>
         )}
       </div>
       <div className="flex justify-between text-[10px] text-secondary">

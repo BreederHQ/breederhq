@@ -26,12 +26,38 @@
   position: relative;
 }
 
-.bhq-gantt__svg { width: 100%; display: block; pointer-events: none; }
+/* Scrollable chart area */
+.bhq-gantt__scroll-area {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,0.2) transparent;
+}
 
-/* Grid and rows */
-.bhq-gantt__grid-month { stroke: hsl(var(--hairline)); stroke-width: 1; opacity: .45; }
-.bhq-gantt__grid-step  { stroke: hsl(var(--hairline)); stroke-width: 1; opacity: .35; }
-.bhq-gantt__rowline    { stroke: hsl(var(--hairline)); stroke-width: 1; opacity: .60; }
+.bhq-gantt__scroll-area::-webkit-scrollbar {
+  height: 8px;
+}
+
+.bhq-gantt__scroll-area::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.bhq-gantt__scroll-area::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,0.2);
+  border-radius: 4px;
+}
+
+.bhq-gantt__scroll-area::-webkit-scrollbar-thumb:hover {
+  background: rgba(255,255,255,0.3);
+}
+
+.bhq-gantt__svg { width: 100%; display: block; }
+
+/* Bars should have pointer events for tooltips */
+.bhq-gantt__bar, .bhq-gantt__likely { pointer-events: auto; cursor: default; }
+
+/* Grid and rows - no pointer events so bars can receive hover */
+.bhq-gantt__grid-month { stroke: hsl(var(--hairline)); stroke-width: 1; opacity: .45; pointer-events: none; }
+.bhq-gantt__grid-step  { stroke: hsl(var(--hairline)); stroke-width: 1; opacity: .35; pointer-events: none; }
+.bhq-gantt__rowline    { stroke: hsl(var(--hairline)); stroke-width: 1; opacity: .60; pointer-events: none; }
 
 /* Type */
 .bhq-gantt svg text {

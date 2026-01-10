@@ -1,14 +1,16 @@
 // apps/animals/src/components/CompetitionsTab.tsx
 // Competitions tab for animal detail view - shows competition entries and stats
 
-import React, { useEffect, useState, useCallback } from "react";
-import { DatePicker } from "@bhq/ui";
+import React, { useEffect, useState, useCallback, useMemo } from "react";
+import { DatePicker, Select } from "@bhq/ui";
 import {
   makeApi,
   type CompetitionEntry,
   type CompetitionStats,
   type CompetitionType,
+  type PrivacySettings,
 } from "../api";
+import { PrivacyBadge } from "./PrivacyTab";
 
 const api = makeApi();
 
@@ -309,6 +311,10 @@ function CompetitionModal({
               onChange={(e) => setEventName(e.target.value)}
               placeholder="e.g., Westminster Kennel Club"
               required
+              autoComplete="off"
+              data-1p-ignore
+              data-lpignore="true"
+              data-form-type="other"
               className="w-full px-3 py-2 bg-white/5 border border-hairline rounded-md text-sm focus:outline-none focus:border-white/30"
             />
           </div>
@@ -329,15 +335,12 @@ function CompetitionModal({
               <label className="block text-xs font-semibold text-secondary mb-1.5">
                 Competition Type *
               </label>
-              <select
+              <Select
                 value={competitionType}
-                onChange={(e) => setCompetitionType(e.target.value as CompetitionType)}
-                className="w-full px-3 py-2 bg-white/5 border border-hairline rounded-md text-sm focus:outline-none focus:border-white/30"
-              >
-                {Object.entries(COMPETITION_TYPE_LABELS).map(([key, label]) => (
-                  <option key={key} value={key}>{label}</option>
-                ))}
-              </select>
+                onChange={(v) => setCompetitionType(v as CompetitionType)}
+                options={Object.entries(COMPETITION_TYPE_LABELS).map(([key, label]) => ({ value: key, label }))}
+                className="w-full"
+              />
             </div>
           </div>
 
@@ -352,6 +355,10 @@ function CompetitionModal({
                 value={location}
                 onChange={(e) => setLocation(e.target.value)}
                 placeholder="New York, NY"
+                autoComplete="off"
+                data-1p-ignore
+                data-lpignore="true"
+                data-form-type="other"
                 className="w-full px-3 py-2 bg-white/5 border border-hairline rounded-md text-sm focus:outline-none focus:border-white/30"
               />
             </div>
@@ -364,6 +371,10 @@ function CompetitionModal({
                 value={organization}
                 onChange={(e) => setOrganization(e.target.value)}
                 placeholder="AKC"
+                autoComplete="off"
+                data-1p-ignore
+                data-lpignore="true"
+                data-form-type="other"
                 className="w-full px-3 py-2 bg-white/5 border border-hairline rounded-md text-sm focus:outline-none focus:border-white/30"
               />
             </div>
@@ -379,6 +390,10 @@ function CompetitionModal({
               value={className}
               onChange={(e) => setClassName(e.target.value)}
               placeholder="e.g., Open Dogs, Excellent B Standard"
+              autoComplete="off"
+              data-1p-ignore
+              data-lpignore="true"
+              data-form-type="other"
               className="w-full px-3 py-2 bg-white/5 border border-hairline rounded-md text-sm focus:outline-none focus:border-white/30"
             />
           </div>
@@ -395,6 +410,10 @@ function CompetitionModal({
                 value={placement}
                 onChange={(e) => setPlacement(e.target.value)}
                 placeholder="1, 2, 3..."
+                autoComplete="off"
+                data-1p-ignore
+                data-lpignore="true"
+                data-form-type="other"
                 className="w-full px-3 py-2 bg-white/5 border border-hairline rounded-md text-sm focus:outline-none focus:border-white/30"
               />
             </div>
@@ -407,6 +426,10 @@ function CompetitionModal({
                 value={placementLabel}
                 onChange={(e) => setPlacementLabel(e.target.value)}
                 placeholder="Best of Breed, Winners Dog"
+                autoComplete="off"
+                data-1p-ignore
+                data-lpignore="true"
+                data-form-type="other"
                 className="w-full px-3 py-2 bg-white/5 border border-hairline rounded-md text-sm focus:outline-none focus:border-white/30"
               />
             </div>
@@ -424,6 +447,10 @@ function CompetitionModal({
                 value={pointsEarned}
                 onChange={(e) => setPointsEarned(e.target.value)}
                 placeholder="0"
+                autoComplete="off"
+                data-1p-ignore
+                data-lpignore="true"
+                data-form-type="other"
                 className="w-full px-3 py-2 bg-white/5 border border-hairline rounded-md text-sm focus:outline-none focus:border-white/30"
               />
             </div>
@@ -463,6 +490,10 @@ function CompetitionModal({
                 value={score}
                 onChange={(e) => setScore(e.target.value)}
                 placeholder="For agility time, obedience score"
+                autoComplete="off"
+                data-1p-ignore
+                data-lpignore="true"
+                data-form-type="other"
                 className="w-full px-3 py-2 bg-white/5 border border-hairline rounded-md text-sm focus:outline-none focus:border-white/30"
               />
             </div>
@@ -476,6 +507,10 @@ function CompetitionModal({
                 value={scoreMax}
                 onChange={(e) => setScoreMax(e.target.value)}
                 placeholder="e.g., 200"
+                autoComplete="off"
+                data-1p-ignore
+                data-lpignore="true"
+                data-form-type="other"
                 className="w-full px-3 py-2 bg-white/5 border border-hairline rounded-md text-sm focus:outline-none focus:border-white/30"
               />
             </div>
@@ -491,6 +526,10 @@ function CompetitionModal({
               value={judgeName}
               onChange={(e) => setJudgeName(e.target.value)}
               placeholder="Judge name"
+              autoComplete="off"
+              data-1p-ignore
+              data-lpignore="true"
+              data-form-type="other"
               className="w-full px-3 py-2 bg-white/5 border border-hairline rounded-md text-sm focus:outline-none focus:border-white/30"
             />
           </div>
@@ -505,6 +544,10 @@ function CompetitionModal({
               onChange={(e) => setNotes(e.target.value)}
               rows={2}
               placeholder="Optional notes..."
+              autoComplete="off"
+              data-1p-ignore
+              data-lpignore="true"
+              data-form-type="other"
               className="w-full px-3 py-2 bg-white/5 border border-hairline rounded-md text-sm focus:outline-none focus:border-white/30 resize-none"
             />
           </div>
@@ -550,10 +593,18 @@ export function CompetitionsTab({
 
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingEntry, setEditingEntry] = useState<CompetitionEntry | null>(null);
+  const [privacySettings, setPrivacySettings] = useState<Pick<PrivacySettings, "showCompetitions"> | null>(null);
 
   // Filter state
   const [typeFilter, setTypeFilter] = useState<CompetitionType | "">("");
   const [yearFilter, setYearFilter] = useState<number | "">("");
+
+  // Load privacy settings
+  useEffect(() => {
+    api.animals.lineage.getPrivacySettings(animal.id)
+      .then((s) => setPrivacySettings({ showCompetitions: s.showCompetitions ?? false }))
+      .catch(() => {});
+  }, [animal.id]);
 
   // Load entries and stats
   const loadData = useCallback(async () => {
@@ -636,12 +687,17 @@ export function CompetitionsTab({
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between gap-4">
-        <div>
-          <h3 className="text-lg font-semibold">Competition Record</h3>
-          {stats && stats.totalEntries > 0 && (
-            <div className="text-sm text-secondary mt-1">
-              {stats.totalEntries} entries · {stats.totalPoints} total points · {stats.wins} wins
-            </div>
+        <div className="flex items-center gap-3">
+          <div>
+            <h3 className="text-lg font-semibold">Competition Record</h3>
+            {stats && stats.totalEntries > 0 && (
+              <div className="text-sm text-secondary mt-1">
+                {stats.totalEntries} entries · {stats.totalPoints} total points · {stats.wins} wins
+              </div>
+            )}
+          </div>
+          {privacySettings && (
+            <PrivacyBadge isPublic={privacySettings.showCompetitions} />
           )}
         </div>
 
@@ -697,28 +753,26 @@ export function CompetitionsTab({
       {/* Filters */}
       {entries.length > 0 && (
         <div className="flex gap-3">
-          <select
+          <Select
             value={typeFilter}
-            onChange={(e) => setTypeFilter(e.target.value as CompetitionType | "")}
-            className="px-3 py-1.5 bg-white/5 border border-hairline rounded-md text-sm focus:outline-none focus:border-white/30"
-          >
-            <option value="">All Types</option>
-            {Object.entries(COMPETITION_TYPE_LABELS).map(([key, label]) => (
-              <option key={key} value={key}>{label}</option>
-            ))}
-          </select>
+            onChange={(v) => setTypeFilter(v as CompetitionType | "")}
+            options={[
+              { value: "", label: "All Types" },
+              ...Object.entries(COMPETITION_TYPE_LABELS).map(([key, label]) => ({ value: key, label })),
+            ]}
+            className="min-w-[140px]"
+          />
 
           {stats && stats.yearsActive.length > 1 && (
-            <select
-              value={yearFilter}
-              onChange={(e) => setYearFilter(e.target.value ? parseInt(e.target.value, 10) : "")}
-              className="px-3 py-1.5 bg-white/5 border border-hairline rounded-md text-sm focus:outline-none focus:border-white/30"
-            >
-              <option value="">All Years</option>
-              {stats.yearsActive.map(year => (
-                <option key={year} value={year}>{year}</option>
-              ))}
-            </select>
+            <Select
+              value={yearFilter === "" ? "" : String(yearFilter)}
+              onChange={(v) => setYearFilter(v ? parseInt(v, 10) : "")}
+              options={[
+                { value: "", label: "All Years" },
+                ...stats.yearsActive.map(year => ({ value: String(year), label: String(year) })),
+              ]}
+              className="min-w-[100px]"
+            />
           )}
         </div>
       )}

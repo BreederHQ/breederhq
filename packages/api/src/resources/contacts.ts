@@ -78,22 +78,24 @@ function normalizeList(res: any): ListResponse<ContactDTO> {
 }
 
 export function makeContacts(http: Http): ContactsResource {
+  const BASE = "/api/v1";
+
   return {
     async list(params: ListParams = {}): Promise<ListResponse<ContactDTO>> {
-      const res = await http.get(`/api/v1/contacts${buildQuery(params)}`);
+      const res = await http.get(`${BASE}/contacts${buildQuery(params)}`);
       return normalizeList(res);
     },
     async get(id: ID): Promise<ContactDTO> {
-      return http.get(`/api/v1/contacts/${id}`);
+      return http.get(`${BASE}/contacts/${id}`);
     },
     async create(input: CreateContactInput): Promise<ContactDTO> {
-      return http.post(`/api/v1/contacts`, input);
+      return http.post(`${BASE}/contacts`, input);
     },
     async update(id: ID, input: UpdateContactInput): Promise<ContactDTO> {
-      return http.patch(`/api/v1/contacts/${id}`, input);
+      return http.patch(`${BASE}/contacts/${id}`, input);
     },
     async delete(id: ID): Promise<{ success: true }> {
-      await http.delete(`/api/v1/contacts/${id}`);
+      await http.delete(`${BASE}/contacts/${id}`);
       return { success: true };
     },
   };

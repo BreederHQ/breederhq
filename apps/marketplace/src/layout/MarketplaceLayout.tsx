@@ -145,6 +145,10 @@ function ProfileSettingsModal({
               type="email"
               value={userProfile.email}
               disabled
+              autoComplete="off"
+              data-1p-ignore
+              data-lpignore="true"
+              data-form-type="other"
               className="w-full px-3 py-2 bg-border-default/50 border border-border-subtle rounded-portal-xs text-text-tertiary cursor-not-allowed"
             />
             <p className="text-xs text-text-tertiary mt-1">Email cannot be changed here</p>
@@ -160,6 +164,10 @@ function ProfileSettingsModal({
                 value={firstName}
                 onChange={(e) => setFirstName(e.target.value)}
                 placeholder="First name"
+                autoComplete="off"
+                data-1p-ignore
+                data-lpignore="true"
+                data-form-type="other"
                 className="w-full px-3 py-2 bg-border-default border border-border-subtle rounded-portal-xs text-white placeholder-text-tertiary focus:outline-none focus:ring-1 focus:ring-accent"
               />
             </div>
@@ -172,6 +180,10 @@ function ProfileSettingsModal({
                 value={lastName}
                 onChange={(e) => setLastName(e.target.value)}
                 placeholder="Last name"
+                autoComplete="off"
+                data-1p-ignore
+                data-lpignore="true"
+                data-form-type="other"
                 className="w-full px-3 py-2 bg-border-default border border-border-subtle rounded-portal-xs text-white placeholder-text-tertiary focus:outline-none focus:ring-1 focus:ring-accent"
               />
             </div>
@@ -186,6 +198,10 @@ function ProfileSettingsModal({
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
               placeholder="(555) 555-5555"
+              autoComplete="off"
+              data-1p-ignore
+              data-lpignore="true"
+              data-form-type="other"
               className="w-full px-3 py-2 bg-border-default border border-border-subtle rounded-portal-xs text-white placeholder-text-tertiary focus:outline-none focus:ring-1 focus:ring-accent"
             />
           </div>

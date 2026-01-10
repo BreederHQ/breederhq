@@ -22,7 +22,7 @@ export function makeBreeding(http: Http) {
   return {
     listPlans(limit = 50) {
       // adjust path if your backend uses a different route
-      return http.get<UiBreedingPlan[]>(`/api/v1/breeding/plans?limit=${limit}`);
+      return http.get<UiBreedingPlan[]>(`/breeding/plans?limit=${limit}`);
     },
   };
 }

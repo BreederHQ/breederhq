@@ -359,6 +359,10 @@ export function ListingPage() {
                     value={inquiryMessage}
                     onChange={(e) => setInquiryMessage(e.target.value)}
                     rows={4}
+                    autoComplete="off"
+                    data-1p-ignore
+                    data-lpignore="true"
+                    data-form-type="other"
                     className="w-full px-3.5 py-3 rounded-portal-sm bg-portal-elevated border border-border-subtle text-sm text-white placeholder-text-muted focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30 disabled:opacity-50 resize-none transition-colors"
                     placeholder="Introduce yourself and ask any questions..."
                     disabled={inquirySending || starting}

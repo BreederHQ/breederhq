@@ -187,6 +187,10 @@ export function AnimalsIndexPage() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search by breed, name, or breeder..."
+            autoComplete="off"
+            data-1p-ignore
+            data-lpignore="true"
+            data-form-type="other"
             className="w-full h-10 px-4 rounded-portal-sm bg-portal-card border border-border-subtle text-sm text-white placeholder-text-muted focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30 transition-colors"
           />
         </div>

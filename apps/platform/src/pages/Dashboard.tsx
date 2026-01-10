@@ -289,7 +289,7 @@ function WaitlistTile({
     >
       {/* Urgent Badge if pending */}
       {hasPending && (
-        <div style={{ position: "absolute", top: "16px", left: "16px" }}>
+        <div style={{ position: "absolute", top: "16px", right: "16px" }}>
           <span
             style={{
               fontSize: "10px",

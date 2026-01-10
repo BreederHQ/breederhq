@@ -4,11 +4,12 @@
 import * as React from "react";
 import { createPortal } from "react-dom";
 import { Button, Input } from "@bhq/ui";
-import { X, Send, Paperclip, FileText } from "lucide-react";
+import { X, Send, Paperclip, FileText, Package } from "lucide-react";
 import { getOverlayRoot, acquireOverlayHost } from "@bhq/ui/overlay";
 import { applyTemplateVariables } from "@bhq/ui/utils";
-import type { SendEmailInput, PartyEmail, EmailTemplate, TemplatesResource, TemplateVariableContext } from "@bhq/api";
+import type { SendEmailInput, PartyEmail, EmailTemplate, TemplatesResource, TemplateVariableContext, DocumentBundle, DocumentBundlesResource } from "@bhq/api";
 import { TemplatePicker } from "./TemplatePicker";
+import { BundlePicker } from "./BundlePicker";
 
 interface EmailComposerProps {
   partyId: number;
@@ -23,6 +24,7 @@ interface EmailComposerProps {
       };
     };
     templates?: TemplatesResource;
+    documentBundles?: DocumentBundlesResource;
   };
   // Pre-fill options
   initialSubject?: string;
@@ -47,6 +49,8 @@ export function EmailComposer({
   const [sending, setSending] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [showTemplatePicker, setShowTemplatePicker] = React.useState(false);
+  const [showBundlePicker, setShowBundlePicker] = React.useState(false);
+  const [selectedBundle, setSelectedBundle] = React.useState<DocumentBundle | null>(null);
 
   const overlayRoot = getOverlayRoot();
 
@@ -82,9 +86,11 @@ export function EmailComposer({
         partyId,
         to: partyEmail,
         subject: subject.trim(),
+        body: body.trim(),
         bodyText: body.trim(),
         bodyHtml: `<p>${body.trim().replace(/\n/g, "</p><p>")}</p>`,
         category: "transactional",
+        bundleId: selectedBundle?.id,
       });
       onSent?.(email);
       onClose();
@@ -101,10 +107,19 @@ export function EmailComposer({
       e.preventDefault();
       handleSend();
     }
-    // Escape to close (but not if template picker is open)
-    if (e.key === "Escape" && !showTemplatePicker) {
+    // Escape to close (but not if template or bundle picker is open)
+    if (e.key === "Escape" && !showTemplatePicker && !showBundlePicker) {
       onClose();
     }
+  };
+
+  const handleBundleSelect = (bundle: DocumentBundle) => {
+    setSelectedBundle(bundle);
+    setShowBundlePicker(false);
+  };
+
+  const handleRemoveBundle = () => {
+    setSelectedBundle(null);
   };
 
   const handleTemplateSelect = (template: EmailTemplate) => {
@@ -172,6 +187,10 @@ export function EmailComposer({
               onChange={(e) => setSubject((e.target as HTMLInputElement).value)}
               placeholder="Enter subject..."
               autoFocus
+              autoComplete="off"
+              data-1p-ignore
+              data-lpignore="true"
+              data-form-type="other"
             />
           </div>
 
@@ -186,21 +205,51 @@ export function EmailComposer({
               placeholder="Write your message..."
               rows={12}
               className="w-full px-3 py-2 rounded-md bg-surface border border-hairline text-sm text-primary resize-none focus:outline-none focus:ring-2 focus:ring-[hsl(var(--brand-orange))]/50"
+              autoComplete="off"
+              data-1p-ignore
+              data-lpignore="true"
+              data-form-type="other"
             />
           </div>
         </div>
 
+        {/* Selected Bundle Display */}
+        {selectedBundle && (
+          <div className="px-5 py-3 border-t border-hairline bg-surface-strong">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Package className="h-4 w-4 text-[hsl(var(--brand-orange))]" />
+                <span className="text-sm text-primary">{selectedBundle.name}</span>
+                <span className="text-xs text-secondary">
+                  ({selectedBundle.documentCount} document{selectedBundle.documentCount !== 1 ? "s" : ""})
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={handleRemoveBundle}
+                className="p-1 rounded text-secondary hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                title="Remove bundle"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Footer */}
         <div className="px-5 py-4 border-t border-hairline flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <button
-              type="button"
-              className="p-2 rounded-md text-secondary hover:text-primary hover:bg-white/5 transition-colors"
-              title="Attach file (coming soon)"
-              disabled
-            >
-              <Paperclip className="h-4 w-4" />
-            </button>
+            {api.documentBundles && (
+              <button
+                type="button"
+                onClick={() => setShowBundlePicker(true)}
+                className="flex items-center gap-1.5 px-2 py-1.5 rounded-md text-secondary hover:text-primary hover:bg-white/5 transition-colors text-sm"
+                title="Attach document bundle"
+              >
+                <Package className="h-4 w-4" />
+                <span>{selectedBundle ? "Change Bundle" : "Attach Bundle"}</span>
+              </button>
+            )}
             {api.templates && (
               <button
                 type="button"
@@ -237,6 +286,15 @@ export function EmailComposer({
           onClose={() => setShowTemplatePicker(false)}
           onSelect={handleTemplateSelect}
           api={{ templates: api.templates }}
+        />
+      )}
+
+      {/* Bundle Picker Modal */}
+      {showBundlePicker && api.documentBundles && (
+        <BundlePicker
+          onClose={() => setShowBundlePicker(false)}
+          onSelect={handleBundleSelect}
+          api={{ documentBundles: api.documentBundles }}
         />
       )}
     </div>,

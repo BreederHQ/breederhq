@@ -378,9 +378,9 @@ export const NavShell: React.FC<NavShellProps> = ({
       </div>
 
       {/* Body */}
-      <div className="flex-1 min-h-0 overflow-y-auto w-full px-4 sm:px-6 lg:px-8 py-4">
-        <div className="flex gap-4">
-          <aside className={cls("shrink-0 transition-all", railOpen ? "w-56" : "w-[72px]")}>
+      <div className="flex-1 min-h-0 flex flex-col w-full px-4 sm:px-6 lg:px-8 py-4">
+        <div className="flex gap-4 flex-1 min-h-0">
+          <aside className={cls("shrink-0 transition-all overflow-y-auto", railOpen ? "w-56" : "w-[72px]")}>
             <nav className="rounded-2xl border border-hairline bg-surface p-1.5">
               {navItems.map(it => {
                 const isActive = activeKey === it.key;
@@ -418,7 +418,7 @@ export const NavShell: React.FC<NavShellProps> = ({
             </nav>
           </aside>
 
-          <main className="min-w-0 flex-1">{children}</main>
+          <main className="min-w-0 flex-1 min-h-0 flex flex-col">{children}</main>
         </div>
       </div>
     </div>

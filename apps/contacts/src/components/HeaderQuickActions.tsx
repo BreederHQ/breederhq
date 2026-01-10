@@ -152,6 +152,9 @@ function FollowUpQuickPicker({
               defaultMonth={new Date()}
               disabled={{ before: new Date() }}
               showOutsideDays
+              captionLayout="dropdown"
+              startMonth={new Date()}
+              endMonth={new Date(2035, 11)}
               classNames={{
                 root: "rdp-root",
                 months: "rdp-months",
@@ -172,6 +175,11 @@ function FollowUpQuickPicker({
                 outside: "rdp-outside",
                 disabled: "rdp-disabled",
                 hidden: "rdp-hidden",
+                dropdowns: "rdp-dropdowns",
+                dropdown: "rdp-dropdown",
+                dropdown_root: "rdp-dropdown_root",
+                months_dropdown: "rdp-months_dropdown",
+                years_dropdown: "rdp-years_dropdown",
               }}
             />
             <div className="flex justify-start px-2 pb-2">

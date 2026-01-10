@@ -31,7 +31,10 @@ import {
   Popover,
   Dialog,
   TagPicker,
+  TagCreateModal,
   type TagOption,
+  useViewMode,
+  Tooltip,
 } from "@bhq/ui";
 import { FinanceTab } from "@bhq/ui/components/Finance";
 import type { OwnershipRow } from "@bhq/ui/utils/ownership";
@@ -46,6 +49,7 @@ import { AnimalCardView } from "./components/AnimalCardView";
 import { LineageTab } from "./components/LineageTab";
 import { TitlesTab } from "./components/TitlesTab";
 import { CompetitionsTab } from "./components/CompetitionsTab";
+import { PrivacyTab } from "./components/PrivacyTab";
 import { ProducingRecordSection } from "./components/ProducingRecordSection";
 import { GeneticsImportDialog } from "@bhq/ui/components/GeneticsImport";
 
@@ -210,6 +214,11 @@ type AnimalRow = {
   titlePrefix?: string | null;
   titleSuffix?: string | null;
   archived?: boolean | null;
+  // Achievement counts from API
+  _count?: {
+    titles?: number;
+    competitionEntries?: number;
+  };
 };
 
 type ProgramFlags = {
@@ -314,6 +323,10 @@ function animalToRow(p: any): AnimalRow {
     cycleStartDates: Array.isArray(p.cycleStartDates) ? p.cycleStartDates : [],
     femaleCycleLenOverrideDays: p.femaleCycleLenOverrideDays ?? null,
     archived: p.archived ?? p.archivedAt != null ?? false,
+    // Achievement data
+    titlePrefix: p.titlePrefix ?? null,
+    titleSuffix: p.titleSuffix ?? null,
+    _count: p._count ?? undefined,
   };
 }
 
@@ -1222,6 +1235,10 @@ function OwnershipDetailsEditor({
             placeholder="Search organizations or contacts"
             className="h-9 w-full rounded-md border border-hairline bg-surface pr-8 text-sm text-primary placeholder:text-secondary outline-none focus:border-[hsl(var(--brand-orange))] focus:ring-1 focus:ring-[hsl(var(--brand-orange))]"
             style={{ paddingLeft: "2.4rem" }} // inline so it wins over any global input styles
+            autoComplete="off"
+            data-1p-ignore
+            data-lpignore="true"
+            data-form-type="other"
           />
 
           {/* Clear button */}
@@ -1444,6 +1461,7 @@ function AnimalTagsSection({
   const [selectedTags, setSelectedTags] = React.useState<TagOption[]>([]);
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const [showCreateModal, setShowCreateModal] = React.useState(false);
 
   // Load tags on mount
   React.useEffect(() => {
@@ -1522,18 +1540,66 @@ function AnimalTagsSection({
     return newTag;
   }, [api]);
 
+  // Handler for modal-based tag creation (with color picker) - auto-assigns tag after creation
+  const handleModalCreate = React.useCallback(async (data: { name: string; module: string; color: string | null }) => {
+    const created = await api.tags.create({ name: data.name, module: "ANIMAL", color: data.color });
+    const newTag: TagOption = {
+      id: Number(created.id),
+      name: String(created.name),
+      color: created.color ?? null,
+    };
+    setAvailableTags((prev) => [...prev, newTag]);
+
+    // Auto-assign the newly created tag to this animal
+    setSelectedTags((prev) => [...prev, newTag]);
+    try {
+      await api.tags.assign(newTag.id, { animalId: Number(animalId) });
+    } catch (e: any) {
+      // Rollback on error
+      setSelectedTags((prev) => prev.filter((t) => t.id !== newTag.id));
+      setError(e?.message || "Failed to assign tag");
+    }
+  }, [api, animalId]);
+
   return (
-    <TagPicker
-      availableTags={availableTags}
-      selectedTags={selectedTags}
-      onSelect={handleSelect}
-      onRemove={handleRemove}
-      onCreate={handleCreate}
-      loading={loading}
-      error={error}
-      placeholder="Add tags..."
-      disabled={disabled}
-    />
+    <div className="space-y-2">
+      <TagPicker
+        availableTags={availableTags}
+        selectedTags={selectedTags}
+        onSelect={handleSelect}
+        onRemove={handleRemove}
+        onCreate={handleCreate}
+        loading={loading}
+        error={error}
+        placeholder="Add tags..."
+        disabled={disabled}
+      />
+      {!disabled && availableTags.length === 0 && !loading && (
+        <button
+          type="button"
+          onClick={() => setShowCreateModal(true)}
+          className="text-xs text-brand hover:underline"
+        >
+          Create your first tag
+        </button>
+      )}
+      {!disabled && availableTags.length > 0 && (
+        <button
+          type="button"
+          onClick={() => setShowCreateModal(true)}
+          className="text-xs text-secondary hover:text-brand"
+        >
+          + New tag
+        </button>
+      )}
+      <TagCreateModal
+        open={showCreateModal}
+        onOpenChange={setShowCreateModal}
+        mode="create"
+        fixedModule="ANIMAL"
+        onSubmit={handleModalCreate}
+      />
+    </div>
   );
 }
 
@@ -3240,6 +3306,12 @@ type GeneticLocus = {
   testDate?: string;
   testLab?: string;
   notes?: string;
+  networkVisible?: boolean;
+};
+
+type BreedComposition = {
+  breed: string;
+  percentage: number;
 };
 
 type GeneticData = {
@@ -3255,22 +3327,191 @@ type GeneticData = {
     testLab?: string;
     testId?: string;
   };
+  breedComposition?: BreedComposition[];
 };
+
+/** Locus card with visibility toggle for genetics sharing */
+function LocusCard({
+  locusInfo,
+  locusData,
+  mode,
+  enableNetworkSharing,
+  onAllele1Change,
+  onAllele2Change,
+  onVisibilityChange,
+}: {
+  locusInfo: { locus: string; locusName: string; description: string; breedSpecific?: string };
+  locusData?: GeneticLocus;
+  mode: "view" | "edit";
+  enableNetworkSharing: boolean;
+  onAllele1Change: (value: string) => void;
+  onAllele2Change: (value: string) => void;
+  onVisibilityChange: (visible: boolean) => void;
+}) {
+  return (
+    <div className="border border-hairline rounded-lg p-3 bg-surface">
+      <div className="flex items-start justify-between gap-2 mb-1">
+        <div className="flex-1 min-w-0">
+          <div className="font-semibold text-sm">{locusInfo.locus} - {locusInfo.locusName}</div>
+          {locusInfo.breedSpecific && (
+            <span className="text-xs text-secondary">({locusInfo.breedSpecific})</span>
+          )}
+        </div>
+        <VisibilityToggle
+          isPublic={locusData?.networkVisible || false}
+          onChange={onVisibilityChange}
+          disabled={mode !== "edit"}
+          readOnly={mode !== "edit"}
+          inactive={!enableNetworkSharing}
+        />
+      </div>
+      <div className="text-xs text-secondary mb-2">{locusInfo.description}</div>
+
+      {mode === "view" ? (
+        <div className="text-sm">
+          Genotype: <span className="font-mono">{locusData?.genotype || "Not tested"}</span>
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 gap-2">
+          <Input
+            size="sm"
+            placeholder="Allele 1"
+            defaultValue={locusData?.allele1 || ""}
+            onChange={(e) => onAllele1Change(e.target.value)}
+          />
+          <Input
+            size="sm"
+            placeholder="Allele 2"
+            defaultValue={locusData?.allele2 || ""}
+            onChange={(e) => onAllele2Change(e.target.value)}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Health locus card with single status input and visibility toggle */
+function HealthLocusCard({
+  locusInfo,
+  locusData,
+  mode,
+  enableNetworkSharing,
+  onStatusChange,
+  onVisibilityChange,
+}: {
+  locusInfo: { locus: string; locusName: string; description: string; breedSpecific?: string };
+  locusData?: GeneticLocus;
+  mode: "view" | "edit";
+  enableNetworkSharing: boolean;
+  onStatusChange: (value: string) => void;
+  onVisibilityChange: (visible: boolean) => void;
+}) {
+  return (
+    <div className="border border-hairline rounded-lg p-3 bg-surface">
+      <div className="flex items-start justify-between gap-2 mb-1">
+        <div className="flex-1 min-w-0">
+          <div className="font-semibold text-sm">{locusInfo.locus} - {locusInfo.locusName}</div>
+          {locusInfo.breedSpecific && (
+            <span className="text-xs text-secondary">({locusInfo.breedSpecific})</span>
+          )}
+        </div>
+        <VisibilityToggle
+          isPublic={locusData?.networkVisible || false}
+          onChange={onVisibilityChange}
+          disabled={mode !== "edit"}
+          readOnly={mode !== "edit"}
+          inactive={!enableNetworkSharing}
+        />
+      </div>
+      <div className="text-xs text-secondary mb-2">{locusInfo.description}</div>
+
+      {mode === "view" ? (
+        <div className="text-sm">
+          Status: <span className="font-mono">{locusData?.genotype || "Not tested"}</span>
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 gap-2">
+          <Input
+            size="sm"
+            placeholder="e.g., N, Clear, Carrier"
+            defaultValue={locusData?.genotype || ""}
+            onChange={(e) => onStatusChange(e.target.value)}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
 
 function GeneticsTab({
   animal,
   api,
   mode,
+  onCancel,
 }: {
   animal: AnimalRow;
   api: any;
   mode: "view" | "edit";
+  onCancel?: () => void;
 }) {
   const [geneticData, setGeneticData] = React.useState<GeneticData>({});
   const [loading, setLoading] = React.useState(true);
   const [saving, setSaving] = React.useState(false);
   const [editData, setEditData] = React.useState<GeneticData>({});
   const [showImportDialog, setShowImportDialog] = React.useState(false);
+  const [enableGeneticsSharing, setEnableGeneticsSharing] = React.useState(false);
+  const [collapsedSections, setCollapsedSections] = React.useState<Set<string>>(
+    new Set(["coatColor", "coatType", "physicalTraits", "eyeColor", "health", "otherTraits", "breedSpecific"])
+  );
+
+  const toggleSection = (section: string) => {
+    setCollapsedSections((prev) => {
+      const next = new Set(prev);
+      if (next.has(section)) {
+        next.delete(section);
+      } else {
+        next.add(section);
+      }
+      return next;
+    });
+  };
+
+  const CollapsibleTitle = ({ section, icon, children }: { section: string; icon: string; children: React.ReactNode }) => {
+    const isCollapsed = collapsedSections.has(section);
+    return (
+      <div className="flex items-center gap-2">
+        <button
+          onClick={() => toggleSection(section)}
+          className="hover:opacity-80 transition-opacity -ml-1"
+          aria-label={isCollapsed ? "Expand section" : "Collapse section"}
+        >
+          <svg
+            className="w-4 h-4 transition-transform duration-200"
+            style={{
+              transform: isCollapsed ? "rotate(0deg)" : "rotate(90deg)",
+              transformOrigin: "center",
+              transformBox: "fill-box",
+            }}
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+          </svg>
+        </button>
+        <span>{icon}</span>
+        <span>{children}</span>
+      </div>
+    );
+  };
+
+  // Load privacy settings to check if genetics sharing is enabled
+  React.useEffect(() => {
+    api?.animals?.lineage?.getPrivacySettings(animal.id)
+      .then((s: any) => setEnableGeneticsSharing(s.enableGeneticsSharing ?? false))
+      .catch(() => {});
+  }, [api, animal.id]);
 
   // Species-specific locus definitions - comprehensive genetic markers
   type LocusInfo = { locus: string; locusName: string; description: string; breedSpecific?: string };
@@ -3599,48 +3840,52 @@ function GeneticsTab({
 
   return (
     <div className="space-y-3 p-4">
-      {/* Helper Notice - at the very top */}
-      <div className="rounded-lg border border-blue-500/20 bg-blue-500/5 p-3">
-        <div className="flex items-start gap-2">
-          <span className="text-blue-600">💡</span>
-          <div className="text-sm">
-            <div className="font-medium text-blue-700 mb-1">Looking for health screening summaries?</div>
-            <div className="text-secondary">
-              For general health clearances and test completion status, use the <span className="font-semibold">Health tab → Genetic category</span>.
+      {/* Network Sharing Status */}
+      {enableGeneticsSharing && (
+        <div className="rounded-lg border border-purple-500/20 bg-purple-500/5 p-3">
+          <div className="flex items-start gap-2">
+            <span className="text-purple-600">🔗</span>
+            <div className="text-sm">
+              <div className="font-medium text-purple-700 mb-1">Network Sharing Enabled</div>
+              <div className="text-secondary">
+                Genetic data entered here may be shared with other breeders in the network based on your Privacy settings.
+              </div>
             </div>
           </div>
         </div>
-      </div>
+      )}
 
-      {/* Breed-Specific Tests Tip */}
-      <div className="text-sm text-secondary bg-blue-500/5 border border-blue-500/20 rounded-lg p-3">
-        <div className="flex items-start gap-2">
-          <span>💡</span>
-          <div>
-            <span className="font-medium">Tip:</span> Not sure which tests apply to your breed?
-            Check with your genetic testing provider (Embark, Wisdom Panel, UC Davis VGL, etc.) for breed-specific recommendations.
+      {/* Combined Info & Import Section */}
+      <div className="rounded-lg border border-blue-500/20 bg-blue-500/5 p-4">
+        <div className="flex items-start justify-between gap-4">
+          <div className="space-y-2 text-sm flex-1">
+            <div className="flex items-start gap-2">
+              <span className="text-amber-500 mt-0.5">💡</span>
+              <div>
+                <span className="font-medium text-amber-500">Looking for health screening summaries?</span>{" "}
+                <span className="text-secondary">Use the <span className="font-semibold">Health tab → Genetic category</span> for general clearances and test completion status.</span>
+              </div>
+            </div>
+            <div className="flex items-start gap-2">
+              <span className="text-amber-500 mt-0.5">💡</span>
+              <div>
+                <span className="font-medium text-amber-500">Not sure which tests apply to your breed?</span>{" "}
+                <span className="text-secondary">Check with your genetic testing provider (Embark, Wisdom Panel, UC Davis VGL, etc.) for breed-specific recommendations.</span>
+              </div>
+            </div>
+          </div>
+          <div className="flex flex-col items-end gap-1 shrink-0">
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={() => setShowImportDialog(true)}
+            >
+              Import from Lab
+            </Button>
+            <span className="text-xs text-secondary">Embark CSV/TSV supported</span>
           </div>
         </div>
       </div>
-
-      {/* Import from Lab Section */}
-      <SectionCard title={<SectionTitle icon="📤">Import from Lab</SectionTitle>}>
-        <div className="space-y-3">
-          <div className="text-sm text-secondary">
-            Have genetic test results from Embark or another provider? Import them directly to auto-fill genetic data.
-          </div>
-          <Button
-            variant="primary"
-            size="sm"
-            onClick={() => setShowImportDialog(true)}
-          >
-            Import Genetic Test Results
-          </Button>
-          <div className="text-xs text-secondary">
-            Supported: Embark (CSV/TSV). More providers coming soon.
-          </div>
-        </div>
-      </SectionCard>
 
       {/* Genetics Import Dialog */}
       <GeneticsImportDialog
@@ -3678,13 +3923,12 @@ function GeneticsTab({
 
       {/* Genetic Test Results */}
       <SectionCard title={<SectionTitle icon="🧬">Genetic Test Results</SectionTitle>}>
-        <div className="space-y-3">
-          <div className="text-sm text-secondary mb-3">
+        <div className="space-y-4">
+          <div className="text-sm text-secondary">
             Store genetic test results from Embark, Wisdom Panel, or other laboratories. Record specific alleles and genotypes for use in the Breeding module's Genetics Lab.
           </div>
-
           {mode === "view" ? (
-            <div className="space-y-2">
+            <div className="grid grid-cols-3 gap-4">
               <LV label="Test Provider">
                 {editData.testResults?.testLab || "—"}
               </LV>
@@ -3696,11 +3940,11 @@ function GeneticsTab({
               </LV>
             </div>
           ) : (
-            <div className="space-y-2">
+            <div className="grid grid-cols-3 gap-4">
               <LV label="Test Provider">
                 <Input
                   size="sm"
-                  placeholder="e.g., Embark, Wisdom Panel"
+                  placeholder="e.g., Embark"
                   defaultValue={editData.testResults?.testLab || ""}
                   onChange={(e) =>
                     setEditData({
@@ -3736,722 +3980,649 @@ function GeneticsTab({
               </LV>
             </div>
           )}
+
+          {/* Breed Composition */}
+          <div className="border-t border-hairline pt-4">
+            <div className="flex items-center justify-between mb-3">
+              <div className="text-sm font-medium">Breed Composition</div>
+              {mode === "edit" && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    const current = editData.breedComposition || [];
+                    setEditData({
+                      ...editData,
+                      breedComposition: [...current, { breed: "", percentage: 0 }],
+                    });
+                  }}
+                >
+                  + Add Breed
+                </Button>
+              )}
+            </div>
+            {mode === "view" ? (
+              (editData.breedComposition?.length || 0) > 0 ? (
+                <div className="space-y-2">
+                  {editData.breedComposition?.map((bc, idx) => (
+                    <div key={idx} className="flex items-center gap-3">
+                      <div className="flex-1 text-sm">{bc.breed}</div>
+                      <div className="w-32 bg-hairline rounded-full h-2 overflow-hidden">
+                        <div
+                          className="bg-primary h-full rounded-full"
+                          style={{ width: `${bc.percentage}%` }}
+                        />
+                      </div>
+                      <div className="w-12 text-right text-sm font-medium">{bc.percentage}%</div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-sm text-secondary">No breed composition data recorded</div>
+              )
+            ) : (
+              <div className="space-y-2">
+                {(editData.breedComposition || []).map((bc, idx) => (
+                  <div key={idx} className="flex items-center gap-2">
+                    <Input
+                      size="sm"
+                      placeholder="Breed name"
+                      className="flex-1"
+                      defaultValue={bc.breed}
+                      onChange={(e) => {
+                        const updated = [...(editData.breedComposition || [])];
+                        updated[idx] = { ...updated[idx], breed: e.target.value };
+                        setEditData({ ...editData, breedComposition: updated });
+                      }}
+                    />
+                    <Input
+                      size="sm"
+                      type="number"
+                      placeholder="%"
+                      className="w-20"
+                      min={0}
+                      max={100}
+                      defaultValue={bc.percentage || ""}
+                      onChange={(e) => {
+                        const updated = [...(editData.breedComposition || [])];
+                        updated[idx] = { ...updated[idx], percentage: Number(e.target.value) || 0 };
+                        setEditData({ ...editData, breedComposition: updated });
+                      }}
+                    />
+                    <span className="text-sm text-secondary">%</span>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => {
+                        const updated = (editData.breedComposition || []).filter((_, i) => i !== idx);
+                        setEditData({ ...editData, breedComposition: updated });
+                      }}
+                    >
+                      <span className="text-red-500">×</span>
+                    </Button>
+                  </div>
+                ))}
+                {(editData.breedComposition?.length || 0) === 0 && (
+                  <div className="text-sm text-secondary">Click "Add Breed" to record breed composition from DNA testing</div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       </SectionCard>
 
       {/* Coat Color Genetics */}
-      <SectionCard title={<SectionTitle icon="🎨">Coat Color Genetics</SectionTitle>}>
-        <div className="space-y-3">
+      <SectionCard title={<CollapsibleTitle section="coatColor" icon="🎨">Coat Color Genetics</CollapsibleTitle>}>
+        {!collapsedSections.has("coatColor") && <div className="space-y-3">
           <div className="text-sm text-secondary mb-3">
             Record genotype information for coat color loci. This data will be used in the Breeding module's Genetics Lab for pairing analysis.
           </div>
 
           {/* Common Coat Color Markers */}
           <div className="grid grid-cols-1 gap-3">
-            {loci.coatColor.filter((l: any) => !l.breedSpecific).map((locusInfo: any) => (
-              <div key={locusInfo.locus} className="border border-hairline rounded-lg p-3 bg-surface">
-                <div className="font-semibold text-sm mb-1">{locusInfo.locus} - {locusInfo.locusName}</div>
-                <div className="text-xs text-secondary mb-2">{locusInfo.description}</div>
-
-                {mode === "view" ? (
-                  <div className="text-sm">
-                    Genotype: <span className="font-mono">{
-                      editData.coatColor?.find((l) => l.locus === locusInfo.locus)?.genotype || "Not tested"
-                    }</span>
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-2 gap-2">
-                    <Input
-                      size="sm"
-                      placeholder="Allele 1"
-                      defaultValue={editData.coatColor?.find((l) => l.locus === locusInfo.locus)?.allele1 || ""}
-                      onChange={(e) => {
-                        const existing = editData.coatColor || [];
-                        const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
-                        const locusData: GeneticLocus = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
-                        const updated = { ...locusData, allele1: e.target.value };
-                        updated.genotype = `${updated.allele1 || "?"}/${updated.allele2 || "?"}`;
-
-                        const newCoatColor = locusIdx >= 0
-                          ? existing.map((l, i) => (i === locusIdx ? updated : l))
-                          : [...existing, updated];
-
-                        setEditData({ ...editData, coatColor: newCoatColor });
-                      }}
-                    />
-                    <Input
-                      size="sm"
-                      placeholder="Allele 2"
-                      defaultValue={editData.coatColor?.find((l) => l.locus === locusInfo.locus)?.allele2 || ""}
-                      onChange={(e) => {
-                        const existing = editData.coatColor || [];
-                        const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
-                        const locusData: GeneticLocus = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
-                        const updated = { ...locusData, allele2: e.target.value };
-                        updated.genotype = `${updated.allele1 || "?"}/${updated.allele2 || "?"}`;
-
-                        const newCoatColor = locusIdx >= 0
-                          ? existing.map((l, i) => (i === locusIdx ? updated : l))
-                          : [...existing, updated];
-
-                        setEditData({ ...editData, coatColor: newCoatColor });
-                      }}
-                    />
-                  </div>
-                )}
-              </div>
-            ))}
+            {loci.coatColor.filter((l: any) => !l.breedSpecific).map((locusInfo: any) => {
+              const locusData = editData.coatColor?.find((l) => l.locus === locusInfo.locus);
+              return (
+                <LocusCard
+                  key={locusInfo.locus}
+                  locusInfo={locusInfo}
+                  locusData={locusData}
+                  mode={mode}
+                  enableNetworkSharing={enableGeneticsSharing}
+                  onAllele1Change={(value) => {
+                    const existing = editData.coatColor || [];
+                    const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
+                    const ld: GeneticLocus = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
+                    const updated = { ...ld, allele1: value };
+                    updated.genotype = `${updated.allele1 || "?"}/${updated.allele2 || "?"}`;
+                    const newCoatColor = locusIdx >= 0
+                      ? existing.map((l, i) => (i === locusIdx ? updated : l))
+                      : [...existing, updated];
+                    setEditData({ ...editData, coatColor: newCoatColor });
+                  }}
+                  onAllele2Change={(value) => {
+                    const existing = editData.coatColor || [];
+                    const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
+                    const ld: GeneticLocus = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
+                    const updated = { ...ld, allele2: value };
+                    updated.genotype = `${updated.allele1 || "?"}/${updated.allele2 || "?"}`;
+                    const newCoatColor = locusIdx >= 0
+                      ? existing.map((l, i) => (i === locusIdx ? updated : l))
+                      : [...existing, updated];
+                    setEditData({ ...editData, coatColor: newCoatColor });
+                  }}
+                  onVisibilityChange={(visible) => {
+                    const existing = editData.coatColor || [];
+                    const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
+                    const ld: GeneticLocus = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
+                    const updated = { ...ld, networkVisible: visible };
+                    const newCoatColor = locusIdx >= 0
+                      ? existing.map((l, i) => (i === locusIdx ? updated : l))
+                      : [...existing, updated];
+                    setEditData({ ...editData, coatColor: newCoatColor });
+                  }}
+                />
+              );
+            })}
           </div>
 
-          {/* Breed-Specific Coat Color Markers - Collapsible */}
-          {loci.coatColor.filter((l: any) => l.breedSpecific).length > 0 && (
-            <details className="mt-4">
-              <summary className="cursor-pointer text-sm font-medium text-secondary hover:text-primary flex items-center gap-2">
-                <span>📋</span> Breed-Specific Markers ({loci.coatColor.filter((l: any) => l.breedSpecific).length})
-                <span className="text-xs text-secondary">(click to expand)</span>
-              </summary>
-              <div className="mt-3 space-y-3 pl-4 border-l-2 border-hairline">
-                {loci.coatColor.filter((l: any) => l.breedSpecific).map((locusInfo: any) => (
-                  <div key={locusInfo.locus} className="border border-hairline rounded-lg p-3 bg-surface">
-                    <div className="font-semibold text-sm mb-1">
-                      {locusInfo.locus} - {locusInfo.locusName}
-                      <span className="text-xs text-secondary font-normal ml-2">({locusInfo.breedSpecific})</span>
-                    </div>
-                    <div className="text-xs text-secondary mb-2">{locusInfo.description}</div>
-
-                    {mode === "view" ? (
-                      <div className="text-sm">
-                        Genotype: <span className="font-mono">{
-                          editData.coatColor?.find((l) => l.locus === locusInfo.locus)?.genotype || "Not tested"
-                        }</span>
-                      </div>
-                    ) : (
-                      <div className="grid grid-cols-2 gap-2">
-                        <Input
-                          size="sm"
-                          placeholder="Allele 1"
-                          defaultValue={editData.coatColor?.find((l) => l.locus === locusInfo.locus)?.allele1 || ""}
-                          onChange={(e) => {
-                            const existing = editData.coatColor || [];
-                            const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
-                            const locusData: GeneticLocus = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
-                            const updated = { ...locusData, allele1: e.target.value };
-                            updated.genotype = `${updated.allele1 || "?"}/${updated.allele2 || "?"}`;
-
-                            const newCoatColor = locusIdx >= 0
-                              ? existing.map((l, i) => (i === locusIdx ? updated : l))
-                              : [...existing, updated];
-
-                            setEditData({ ...editData, coatColor: newCoatColor });
-                          }}
-                        />
-                        <Input
-                          size="sm"
-                          placeholder="Allele 2"
-                          defaultValue={editData.coatColor?.find((l) => l.locus === locusInfo.locus)?.allele2 || ""}
-                          onChange={(e) => {
-                            const existing = editData.coatColor || [];
-                            const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
-                            const locusData: GeneticLocus = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
-                            const updated = { ...locusData, allele2: e.target.value };
-                            updated.genotype = `${updated.allele1 || "?"}/${updated.allele2 || "?"}`;
-
-                            const newCoatColor = locusIdx >= 0
-                              ? existing.map((l, i) => (i === locusIdx ? updated : l))
-                              : [...existing, updated];
-
-                            setEditData({ ...editData, coatColor: newCoatColor });
-                          }}
-                        />
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </details>
-          )}
-        </div>
+        </div>}
       </SectionCard>
 
       {/* Coat Type Genetics */}
       {loci.coatType && loci.coatType.length > 0 && (
-        <SectionCard title={<SectionTitle icon="✂️">Coat Type Genetics</SectionTitle>}>
-          <div className="space-y-3">
+        <SectionCard title={<CollapsibleTitle section="coatType" icon="✂️">Coat Type Genetics</CollapsibleTitle>}>
+          {!collapsedSections.has("coatType") && <div className="space-y-3">
             <div className="text-sm text-secondary mb-3">
               Record coat type traits including length, curl, furnishings (teddy bear face), and shedding propensity.
             </div>
 
             {/* Common Coat Type Markers */}
             <div className="grid grid-cols-1 gap-3">
-              {loci.coatType.filter((l: any) => !l.breedSpecific).map((locusInfo: any) => (
-                <div key={locusInfo.locus} className="border border-hairline rounded-lg p-3 bg-surface">
-                  <div className="font-semibold text-sm mb-1">{locusInfo.locus} - {locusInfo.locusName}</div>
-                  <div className="text-xs text-secondary mb-2">{locusInfo.description}</div>
-
-                  {mode === "view" ? (
-                    <div className="text-sm">
-                      Genotype: <span className="font-mono">{
-                        editData.coatType?.find((l) => l.locus === locusInfo.locus)?.genotype || "Not tested"
-                      }</span>
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-2 gap-2">
-                      <Input
-                        size="sm"
-                        placeholder="Allele 1"
-                        defaultValue={editData.coatType?.find((l) => l.locus === locusInfo.locus)?.allele1 || ""}
-                        onChange={(e) => {
-                          const existing = editData.coatType || [];
-                          const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
-                          const locusData: GeneticLocus = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
-                          const updated = { ...locusData, allele1: e.target.value };
-                          updated.genotype = `${updated.allele1 || "?"}/${updated.allele2 || "?"}`;
-
-                          const newCoatType = locusIdx >= 0
-                            ? existing.map((l, i) => (i === locusIdx ? updated : l))
-                            : [...existing, updated];
-
-                          setEditData({ ...editData, coatType: newCoatType });
-                        }}
-                      />
-                      <Input
-                        size="sm"
-                        placeholder="Allele 2"
-                        defaultValue={editData.coatType?.find((l) => l.locus === locusInfo.locus)?.allele2 || ""}
-                        onChange={(e) => {
-                          const existing = editData.coatType || [];
-                          const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
-                          const locusData: GeneticLocus = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
-                          const updated = { ...locusData, allele2: e.target.value };
-                          updated.genotype = `${updated.allele1 || "?"}/${updated.allele2 || "?"}`;
-
-                          const newCoatType = locusIdx >= 0
-                            ? existing.map((l, i) => (i === locusIdx ? updated : l))
-                            : [...existing, updated];
-
-                          setEditData({ ...editData, coatType: newCoatType });
-                        }}
-                      />
-                    </div>
-                  )}
-                </div>
-              ))}
+              {loci.coatType.filter((l: any) => !l.breedSpecific).map((locusInfo: any) => {
+                const locusData = editData.coatType?.find((l) => l.locus === locusInfo.locus);
+                return (
+                  <LocusCard
+                    key={locusInfo.locus}
+                    locusInfo={locusInfo}
+                    locusData={locusData}
+                    mode={mode}
+                    enableNetworkSharing={enableGeneticsSharing}
+                    onAllele1Change={(value) => {
+                      const existing = editData.coatType || [];
+                      const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
+                      const ld: GeneticLocus = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
+                      const updated = { ...ld, allele1: value };
+                      updated.genotype = `${updated.allele1 || "?"}/${updated.allele2 || "?"}`;
+                      const newCoatType = locusIdx >= 0
+                        ? existing.map((l, i) => (i === locusIdx ? updated : l))
+                        : [...existing, updated];
+                      setEditData({ ...editData, coatType: newCoatType });
+                    }}
+                    onAllele2Change={(value) => {
+                      const existing = editData.coatType || [];
+                      const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
+                      const ld: GeneticLocus = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
+                      const updated = { ...ld, allele2: value };
+                      updated.genotype = `${updated.allele1 || "?"}/${updated.allele2 || "?"}`;
+                      const newCoatType = locusIdx >= 0
+                        ? existing.map((l, i) => (i === locusIdx ? updated : l))
+                        : [...existing, updated];
+                      setEditData({ ...editData, coatType: newCoatType });
+                    }}
+                    onVisibilityChange={(visible) => {
+                      const existing = editData.coatType || [];
+                      const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
+                      const ld: GeneticLocus = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
+                      const updated = { ...ld, networkVisible: visible };
+                      const newCoatType = locusIdx >= 0
+                        ? existing.map((l, i) => (i === locusIdx ? updated : l))
+                        : [...existing, updated];
+                      setEditData({ ...editData, coatType: newCoatType });
+                    }}
+                  />
+                );
+              })}
             </div>
 
-            {/* Breed-Specific Coat Type Markers - Collapsible */}
-            {loci.coatType.filter((l: any) => l.breedSpecific).length > 0 && (
-              <details className="mt-4">
-                <summary className="cursor-pointer text-sm font-medium text-secondary hover:text-primary flex items-center gap-2">
-                  <span>📋</span> Breed-Specific Markers ({loci.coatType.filter((l: any) => l.breedSpecific).length})
-                  <span className="text-xs text-secondary">(click to expand)</span>
-                </summary>
-                <div className="mt-3 space-y-3 pl-4 border-l-2 border-hairline">
-                  {loci.coatType.filter((l: any) => l.breedSpecific).map((locusInfo: any) => (
-                    <div key={locusInfo.locus} className="border border-hairline rounded-lg p-3 bg-surface">
-                      <div className="font-semibold text-sm mb-1">
-                        {locusInfo.locus} - {locusInfo.locusName}
-                        <span className="text-xs text-secondary font-normal ml-2">({locusInfo.breedSpecific})</span>
-                      </div>
-                      <div className="text-xs text-secondary mb-2">{locusInfo.description}</div>
-
-                      {mode === "view" ? (
-                        <div className="text-sm">
-                          Genotype: <span className="font-mono">{
-                            editData.coatType?.find((l) => l.locus === locusInfo.locus)?.genotype || "Not tested"
-                          }</span>
-                        </div>
-                      ) : (
-                        <div className="grid grid-cols-2 gap-2">
-                          <Input
-                            size="sm"
-                            placeholder="Allele 1"
-                            defaultValue={editData.coatType?.find((l) => l.locus === locusInfo.locus)?.allele1 || ""}
-                            onChange={(e) => {
-                              const existing = editData.coatType || [];
-                              const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
-                              const locusData: GeneticLocus = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
-                              const updated = { ...locusData, allele1: e.target.value };
-                              updated.genotype = `${updated.allele1 || "?"}/${updated.allele2 || "?"}`;
-
-                              const newCoatType = locusIdx >= 0
-                                ? existing.map((l, i) => (i === locusIdx ? updated : l))
-                                : [...existing, updated];
-
-                              setEditData({ ...editData, coatType: newCoatType });
-                            }}
-                          />
-                          <Input
-                            size="sm"
-                            placeholder="Allele 2"
-                            defaultValue={editData.coatType?.find((l) => l.locus === locusInfo.locus)?.allele2 || ""}
-                            onChange={(e) => {
-                              const existing = editData.coatType || [];
-                              const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
-                              const locusData: GeneticLocus = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
-                              const updated = { ...locusData, allele2: e.target.value };
-                              updated.genotype = `${updated.allele1 || "?"}/${updated.allele2 || "?"}`;
-
-                              const newCoatType = locusIdx >= 0
-                                ? existing.map((l, i) => (i === locusIdx ? updated : l))
-                                : [...existing, updated];
-
-                              setEditData({ ...editData, coatType: newCoatType });
-                            }}
-                          />
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </details>
-            )}
-          </div>
+          </div>}
         </SectionCard>
       )}
 
       {/* Physical Traits Genetics */}
       {loci.physicalTraits && loci.physicalTraits.length > 0 && (
-        <SectionCard title={<SectionTitle icon="📏">Physical Traits Genetics</SectionTitle>}>
-          <div className="space-y-3">
+        <SectionCard title={<CollapsibleTitle section="physicalTraits" icon="📏">Physical Traits Genetics</CollapsibleTitle>}>
+          {!collapsedSections.has("physicalTraits") && <div className="space-y-3">
             <div className="text-sm text-secondary mb-3">
               Record genetic markers related to physical characteristics like size, tail type, and dewclaws.
             </div>
 
             {/* Common Physical Traits Markers */}
             <div className="grid grid-cols-1 gap-3">
-              {loci.physicalTraits.filter((l: any) => !l.breedSpecific).map((locusInfo: any) => (
-                <div key={locusInfo.locus} className="border border-hairline rounded-lg p-3 bg-surface">
-                  <div className="font-semibold text-sm mb-1">{locusInfo.locus} - {locusInfo.locusName}</div>
-                  <div className="text-xs text-secondary mb-2">{locusInfo.description}</div>
-
-                  {mode === "view" ? (
-                    <div className="text-sm">
-                      Genotype: <span className="font-mono">{
-                        editData.physicalTraits?.find((l) => l.locus === locusInfo.locus)?.genotype || "Not tested"
-                      }</span>
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-2 gap-2">
-                      <Input
-                        size="sm"
-                        placeholder="Allele 1"
-                        defaultValue={editData.physicalTraits?.find((l) => l.locus === locusInfo.locus)?.allele1 || ""}
-                        onChange={(e) => {
-                          const existing = editData.physicalTraits || [];
-                          const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
-                          const locusData: GeneticLocus = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
-                          const updated = { ...locusData, allele1: e.target.value };
-                          updated.genotype = `${updated.allele1 || "?"}/${updated.allele2 || "?"}`;
-
-                          const newPhysicalTraits = locusIdx >= 0
-                            ? existing.map((l, i) => (i === locusIdx ? updated : l))
-                            : [...existing, updated];
-
-                          setEditData({ ...editData, physicalTraits: newPhysicalTraits });
-                        }}
-                      />
-                      <Input
-                        size="sm"
-                        placeholder="Allele 2"
-                        defaultValue={editData.physicalTraits?.find((l) => l.locus === locusInfo.locus)?.allele2 || ""}
-                        onChange={(e) => {
-                          const existing = editData.physicalTraits || [];
-                          const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
-                          const locusData: GeneticLocus = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
-                          const updated = { ...locusData, allele2: e.target.value };
-                          updated.genotype = `${updated.allele1 || "?"}/${updated.allele2 || "?"}`;
-
-                          const newPhysicalTraits = locusIdx >= 0
-                            ? existing.map((l, i) => (i === locusIdx ? updated : l))
-                            : [...existing, updated];
-
-                          setEditData({ ...editData, physicalTraits: newPhysicalTraits });
-                        }}
-                      />
-                    </div>
-                  )}
-                </div>
-              ))}
+              {loci.physicalTraits.filter((l: any) => !l.breedSpecific).map((locusInfo: any) => {
+                const locusData = editData.physicalTraits?.find((l) => l.locus === locusInfo.locus);
+                return (
+                  <LocusCard
+                    key={locusInfo.locus}
+                    locusInfo={locusInfo}
+                    locusData={locusData}
+                    mode={mode}
+                    enableNetworkSharing={enableGeneticsSharing}
+                    onAllele1Change={(value) => {
+                      const existing = editData.physicalTraits || [];
+                      const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
+                      const ld: GeneticLocus = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
+                      const updated = { ...ld, allele1: value };
+                      updated.genotype = `${updated.allele1 || "?"}/${updated.allele2 || "?"}`;
+                      const newPhysicalTraits = locusIdx >= 0
+                        ? existing.map((l, i) => (i === locusIdx ? updated : l))
+                        : [...existing, updated];
+                      setEditData({ ...editData, physicalTraits: newPhysicalTraits });
+                    }}
+                    onAllele2Change={(value) => {
+                      const existing = editData.physicalTraits || [];
+                      const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
+                      const ld: GeneticLocus = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
+                      const updated = { ...ld, allele2: value };
+                      updated.genotype = `${updated.allele1 || "?"}/${updated.allele2 || "?"}`;
+                      const newPhysicalTraits = locusIdx >= 0
+                        ? existing.map((l, i) => (i === locusIdx ? updated : l))
+                        : [...existing, updated];
+                      setEditData({ ...editData, physicalTraits: newPhysicalTraits });
+                    }}
+                    onVisibilityChange={(visible) => {
+                      const existing = editData.physicalTraits || [];
+                      const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
+                      const ld: GeneticLocus = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
+                      const updated = { ...ld, networkVisible: visible };
+                      const newPhysicalTraits = locusIdx >= 0
+                        ? existing.map((l, i) => (i === locusIdx ? updated : l))
+                        : [...existing, updated];
+                      setEditData({ ...editData, physicalTraits: newPhysicalTraits });
+                    }}
+                  />
+                );
+              })}
             </div>
 
-            {/* Breed-Specific Physical Traits Markers - Collapsible */}
-            {loci.physicalTraits.filter((l: any) => l.breedSpecific).length > 0 && (
-              <details className="mt-4">
-                <summary className="cursor-pointer text-sm font-medium text-secondary hover:text-primary flex items-center gap-2">
-                  <span>📋</span> Breed-Specific Markers ({loci.physicalTraits.filter((l: any) => l.breedSpecific).length})
-                  <span className="text-xs text-secondary">(click to expand)</span>
-                </summary>
-                <div className="mt-3 space-y-3 pl-4 border-l-2 border-hairline">
-                  {loci.physicalTraits.filter((l: any) => l.breedSpecific).map((locusInfo: any) => (
-                    <div key={locusInfo.locus} className="border border-hairline rounded-lg p-3 bg-surface">
-                      <div className="font-semibold text-sm mb-1">
-                        {locusInfo.locus} - {locusInfo.locusName}
-                        <span className="text-xs text-secondary font-normal ml-2">({locusInfo.breedSpecific})</span>
-                      </div>
-                      <div className="text-xs text-secondary mb-2">{locusInfo.description}</div>
-
-                      {mode === "view" ? (
-                        <div className="text-sm">
-                          Genotype: <span className="font-mono">{
-                            editData.physicalTraits?.find((l) => l.locus === locusInfo.locus)?.genotype || "Not tested"
-                          }</span>
-                        </div>
-                      ) : (
-                        <div className="grid grid-cols-2 gap-2">
-                          <Input
-                            size="sm"
-                            placeholder="Allele 1"
-                            defaultValue={editData.physicalTraits?.find((l) => l.locus === locusInfo.locus)?.allele1 || ""}
-                            onChange={(e) => {
-                              const existing = editData.physicalTraits || [];
-                              const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
-                              const locusData: GeneticLocus = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
-                              const updated = { ...locusData, allele1: e.target.value };
-                              updated.genotype = `${updated.allele1 || "?"}/${updated.allele2 || "?"}`;
-
-                              const newPhysicalTraits = locusIdx >= 0
-                                ? existing.map((l, i) => (i === locusIdx ? updated : l))
-                                : [...existing, updated];
-
-                              setEditData({ ...editData, physicalTraits: newPhysicalTraits });
-                            }}
-                          />
-                          <Input
-                            size="sm"
-                            placeholder="Allele 2"
-                            defaultValue={editData.physicalTraits?.find((l) => l.locus === locusInfo.locus)?.allele2 || ""}
-                            onChange={(e) => {
-                              const existing = editData.physicalTraits || [];
-                              const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
-                              const locusData: GeneticLocus = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
-                              const updated = { ...locusData, allele2: e.target.value };
-                              updated.genotype = `${updated.allele1 || "?"}/${updated.allele2 || "?"}`;
-
-                              const newPhysicalTraits = locusIdx >= 0
-                                ? existing.map((l, i) => (i === locusIdx ? updated : l))
-                                : [...existing, updated];
-
-                              setEditData({ ...editData, physicalTraits: newPhysicalTraits });
-                            }}
-                          />
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </details>
-            )}
-          </div>
+          </div>}
         </SectionCard>
       )}
 
       {/* Eye Color Genetics */}
       {loci.eyeColor && loci.eyeColor.length > 0 && (
-        <SectionCard title={<SectionTitle icon="👁️">Eye Color Genetics</SectionTitle>}>
-          <div className="space-y-3">
+        <SectionCard title={<CollapsibleTitle section="eyeColor" icon="👁️">Eye Color Genetics</CollapsibleTitle>}>
+          {!collapsedSections.has("eyeColor") && <div className="space-y-3">
             <div className="text-sm text-secondary mb-3">
               Record eye color genetic markers including blue eye variants.
             </div>
 
             {/* Common Eye Color Markers */}
             <div className="grid grid-cols-1 gap-3">
-              {loci.eyeColor.filter((l: any) => !l.breedSpecific).map((locusInfo: any) => (
-                <div key={locusInfo.locus} className="border border-hairline rounded-lg p-3 bg-surface">
-                  <div className="font-semibold text-sm mb-1">{locusInfo.locus} - {locusInfo.locusName}</div>
-                  <div className="text-xs text-secondary mb-2">{locusInfo.description}</div>
-
-                  {mode === "view" ? (
-                    <div className="text-sm">
-                      Genotype: <span className="font-mono">{
-                        editData.eyeColor?.find((l) => l.locus === locusInfo.locus)?.genotype || "Not tested"
-                      }</span>
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-2 gap-2">
-                      <Input
-                        size="sm"
-                        placeholder="Allele 1"
-                        defaultValue={editData.eyeColor?.find((l) => l.locus === locusInfo.locus)?.allele1 || ""}
-                        onChange={(e) => {
-                          const existing = editData.eyeColor || [];
-                          const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
-                          const locusData: GeneticLocus = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
-                          const updated = { ...locusData, allele1: e.target.value };
-                          updated.genotype = `${updated.allele1 || "?"}/${updated.allele2 || "?"}`;
-
-                          const newEyeColor = locusIdx >= 0
-                            ? existing.map((l, i) => (i === locusIdx ? updated : l))
-                            : [...existing, updated];
-
-                          setEditData({ ...editData, eyeColor: newEyeColor });
-                        }}
-                      />
-                      <Input
-                        size="sm"
-                        placeholder="Allele 2"
-                        defaultValue={editData.eyeColor?.find((l) => l.locus === locusInfo.locus)?.allele2 || ""}
-                        onChange={(e) => {
-                          const existing = editData.eyeColor || [];
-                          const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
-                          const locusData: GeneticLocus = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
-                          const updated = { ...locusData, allele2: e.target.value };
-                          updated.genotype = `${updated.allele1 || "?"}/${updated.allele2 || "?"}`;
-
-                          const newEyeColor = locusIdx >= 0
-                            ? existing.map((l, i) => (i === locusIdx ? updated : l))
-                            : [...existing, updated];
-
-                          setEditData({ ...editData, eyeColor: newEyeColor });
-                        }}
-                      />
-                    </div>
-                  )}
-                </div>
-              ))}
+              {loci.eyeColor.filter((l: any) => !l.breedSpecific).map((locusInfo: any) => {
+                const locusData = editData.eyeColor?.find((l) => l.locus === locusInfo.locus);
+                return (
+                  <LocusCard
+                    key={locusInfo.locus}
+                    locusInfo={locusInfo}
+                    locusData={locusData}
+                    mode={mode}
+                    enableNetworkSharing={enableGeneticsSharing}
+                    onAllele1Change={(value) => {
+                      const existing = editData.eyeColor || [];
+                      const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
+                      const ld: GeneticLocus = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
+                      const updated = { ...ld, allele1: value };
+                      updated.genotype = `${updated.allele1 || "?"}/${updated.allele2 || "?"}`;
+                      const newEyeColor = locusIdx >= 0
+                        ? existing.map((l, i) => (i === locusIdx ? updated : l))
+                        : [...existing, updated];
+                      setEditData({ ...editData, eyeColor: newEyeColor });
+                    }}
+                    onAllele2Change={(value) => {
+                      const existing = editData.eyeColor || [];
+                      const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
+                      const ld: GeneticLocus = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
+                      const updated = { ...ld, allele2: value };
+                      updated.genotype = `${updated.allele1 || "?"}/${updated.allele2 || "?"}`;
+                      const newEyeColor = locusIdx >= 0
+                        ? existing.map((l, i) => (i === locusIdx ? updated : l))
+                        : [...existing, updated];
+                      setEditData({ ...editData, eyeColor: newEyeColor });
+                    }}
+                    onVisibilityChange={(visible) => {
+                      const existing = editData.eyeColor || [];
+                      const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
+                      const ld: GeneticLocus = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
+                      const updated = { ...ld, networkVisible: visible };
+                      const newEyeColor = locusIdx >= 0
+                        ? existing.map((l, i) => (i === locusIdx ? updated : l))
+                        : [...existing, updated];
+                      setEditData({ ...editData, eyeColor: newEyeColor });
+                    }}
+                  />
+                );
+              })}
             </div>
 
-            {/* Breed-Specific Eye Color Markers - Collapsible */}
-            {loci.eyeColor.filter((l: any) => l.breedSpecific).length > 0 && (
-              <details className="mt-4">
-                <summary className="cursor-pointer text-sm font-medium text-secondary hover:text-primary flex items-center gap-2">
-                  <span>📋</span> Breed-Specific Markers ({loci.eyeColor.filter((l: any) => l.breedSpecific).length})
-                  <span className="text-xs text-secondary">(click to expand)</span>
-                </summary>
-                <div className="mt-3 space-y-3 pl-4 border-l-2 border-hairline">
-                  {loci.eyeColor.filter((l: any) => l.breedSpecific).map((locusInfo: any) => (
-                    <div key={locusInfo.locus} className="border border-hairline rounded-lg p-3 bg-surface">
-                      <div className="font-semibold text-sm mb-1">
-                        {locusInfo.locus} - {locusInfo.locusName}
-                        <span className="text-xs text-secondary font-normal ml-2">({locusInfo.breedSpecific})</span>
-                      </div>
-                      <div className="text-xs text-secondary mb-2">{locusInfo.description}</div>
-
-                      {mode === "view" ? (
-                        <div className="text-sm">
-                          Genotype: <span className="font-mono">{
-                            editData.eyeColor?.find((l) => l.locus === locusInfo.locus)?.genotype || "Not tested"
-                          }</span>
-                        </div>
-                      ) : (
-                        <div className="grid grid-cols-2 gap-2">
-                          <Input
-                            size="sm"
-                            placeholder="Allele 1"
-                            defaultValue={editData.eyeColor?.find((l) => l.locus === locusInfo.locus)?.allele1 || ""}
-                            onChange={(e) => {
-                              const existing = editData.eyeColor || [];
-                              const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
-                              const locusData: GeneticLocus = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
-                              const updated = { ...locusData, allele1: e.target.value };
-                              updated.genotype = `${updated.allele1 || "?"}/${updated.allele2 || "?"}`;
-
-                              const newEyeColor = locusIdx >= 0
-                                ? existing.map((l, i) => (i === locusIdx ? updated : l))
-                                : [...existing, updated];
-
-                              setEditData({ ...editData, eyeColor: newEyeColor });
-                            }}
-                          />
-                          <Input
-                            size="sm"
-                            placeholder="Allele 2"
-                            defaultValue={editData.eyeColor?.find((l) => l.locus === locusInfo.locus)?.allele2 || ""}
-                            onChange={(e) => {
-                              const existing = editData.eyeColor || [];
-                              const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
-                              const locusData: GeneticLocus = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
-                              const updated = { ...locusData, allele2: e.target.value };
-                              updated.genotype = `${updated.allele1 || "?"}/${updated.allele2 || "?"}`;
-
-                              const newEyeColor = locusIdx >= 0
-                                ? existing.map((l, i) => (i === locusIdx ? updated : l))
-                                : [...existing, updated];
-
-                              setEditData({ ...editData, eyeColor: newEyeColor });
-                            }}
-                          />
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </details>
-            )}
-          </div>
+          </div>}
         </SectionCard>
       )}
 
       {/* Health Genetics */}
       {loci.health && loci.health.length > 0 && (
-        <SectionCard title={<SectionTitle icon="🏥">Health Genetics</SectionTitle>}>
-          <div className="space-y-3">
+        <SectionCard title={<CollapsibleTitle section="health" icon="🏥">Health Genetics</CollapsibleTitle>}>
+          {!collapsedSections.has("health") && <div className="space-y-3">
             <div className="text-sm text-secondary mb-3">
               Record carrier status and health genetic markers.
             </div>
 
             {/* Common Health Tests */}
             <div className="grid grid-cols-1 gap-3">
-              {loci.health.filter((l: any) => !l.breedSpecific).map((locusInfo: any) => (
-                <div key={locusInfo.locus} className="border border-hairline rounded-lg p-3 bg-surface">
-                  <div className="font-semibold text-sm mb-1">{locusInfo.locus} - {locusInfo.locusName}</div>
-                  <div className="text-xs text-secondary mb-2">{locusInfo.description}</div>
-
-                  {mode === "view" ? (
-                    <div className="text-sm">
-                      Status: <span className="font-mono">{
-                        editData.health?.find((l) => l.locus === locusInfo.locus)?.genotype || "Not tested"
-                      }</span>
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-2 gap-2">
-                      <Input
-                        size="sm"
-                        placeholder="e.g., N, Clear, Carrier"
-                        defaultValue={editData.health?.find((l) => l.locus === locusInfo.locus)?.genotype || ""}
-                        onChange={(e) => {
-                          const existing = editData.health || [];
-                          const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
-                          const locusData: GeneticLocus = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
-                          const updated = { ...locusData, genotype: e.target.value };
-
-                          const newHealth = locusIdx >= 0
-                            ? existing.map((l, i) => (i === locusIdx ? updated : l))
-                            : [...existing, updated];
-
-                          setEditData({ ...editData, health: newHealth });
-                        }}
-                      />
-                    </div>
-                  )}
-                </div>
-              ))}
+              {loci.health.filter((l: any) => !l.breedSpecific).map((locusInfo: any) => {
+                const locusData = editData.health?.find((l) => l.locus === locusInfo.locus);
+                return (
+                  <HealthLocusCard
+                    key={locusInfo.locus}
+                    locusInfo={locusInfo}
+                    locusData={locusData}
+                    mode={mode}
+                    enableNetworkSharing={enableGeneticsSharing}
+                    onStatusChange={(value) => {
+                      const existing = editData.health || [];
+                      const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
+                      const ld: GeneticLocus = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
+                      const updated = { ...ld, genotype: value };
+                      const newHealth = locusIdx >= 0
+                        ? existing.map((l, i) => (i === locusIdx ? updated : l))
+                        : [...existing, updated];
+                      setEditData({ ...editData, health: newHealth });
+                    }}
+                    onVisibilityChange={(visible) => {
+                      const existing = editData.health || [];
+                      const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
+                      const ld: GeneticLocus = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
+                      const updated = { ...ld, networkVisible: visible };
+                      const newHealth = locusIdx >= 0
+                        ? existing.map((l, i) => (i === locusIdx ? updated : l))
+                        : [...existing, updated];
+                      setEditData({ ...editData, health: newHealth });
+                    }}
+                  />
+                );
+              })}
             </div>
 
-            {/* Breed-Specific Health Tests - Collapsible */}
-            {loci.health.filter((l: any) => l.breedSpecific).length > 0 && (
-              <details className="mt-4">
-                <summary className="cursor-pointer text-sm font-medium text-secondary hover:text-primary flex items-center gap-2">
-                  <span>📋</span> Breed-Specific Tests ({loci.health.filter((l: any) => l.breedSpecific).length})
-                  <span className="text-xs text-secondary">(click to expand)</span>
-                </summary>
-                <div className="mt-3 space-y-3 pl-4 border-l-2 border-hairline">
-                  {loci.health.filter((l: any) => l.breedSpecific).map((locusInfo: any) => (
-                    <div key={locusInfo.locus} className="border border-hairline rounded-lg p-3 bg-surface">
-                      <div className="font-semibold text-sm mb-1">
-                        {locusInfo.locus} - {locusInfo.locusName}
-                        <span className="text-xs text-secondary font-normal ml-2">({locusInfo.breedSpecific})</span>
-                      </div>
-                      <div className="text-xs text-secondary mb-2">{locusInfo.description}</div>
-
-                      {mode === "view" ? (
-                        <div className="text-sm">
-                          Status: <span className="font-mono">{
-                            editData.health?.find((l) => l.locus === locusInfo.locus)?.genotype || "Not tested"
-                          }</span>
-                        </div>
-                      ) : (
-                        <div className="grid grid-cols-2 gap-2">
-                          <Input
-                            size="sm"
-                            placeholder="e.g., N, Clear, Carrier"
-                            defaultValue={editData.health?.find((l) => l.locus === locusInfo.locus)?.genotype || ""}
-                            onChange={(e) => {
-                              const existing = editData.health || [];
-                              const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
-                              const locusData: GeneticLocus = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
-                              const updated = { ...locusData, genotype: e.target.value };
-
-                              const newHealth = locusIdx >= 0
-                                ? existing.map((l, i) => (i === locusIdx ? updated : l))
-                                : [...existing, updated];
-
-                              setEditData({ ...editData, health: newHealth });
-                            }}
-                          />
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </details>
-            )}
-          </div>
+          </div>}
         </SectionCard>
       )}
 
       {/* Other Traits Genetics */}
       {loci.otherTraits && loci.otherTraits.length > 0 && (
-        <SectionCard title={<SectionTitle icon="🔬">Other Genetic Traits</SectionTitle>}>
-          <div className="space-y-3">
+        <SectionCard title={<CollapsibleTitle section="otherTraits" icon="🔬">Other Genetic Traits</CollapsibleTitle>}>
+          {!collapsedSections.has("otherTraits") && <div className="space-y-3">
             <div className="text-sm text-secondary mb-3">
               Record additional genetic markers and traits.
             </div>
 
             <div className="grid grid-cols-1 gap-3">
-              {loci.otherTraits.map((locusInfo) => (
-                <div key={locusInfo.locus} className="border border-hairline rounded-lg p-3 bg-surface">
-                  <div className="font-semibold text-sm mb-1">{locusInfo.locus} - {locusInfo.locusName}</div>
-                  <div className="text-xs text-secondary mb-2">{locusInfo.description}</div>
-
-                  {mode === "view" ? (
-                    <div className="text-sm">
-                      Genotype: <span className="font-mono">{
-                        editData.otherTraits?.find((l) => l.locus === locusInfo.locus)?.genotype || "Not tested"
-                      }</span>
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-2 gap-2">
-                      <Input
-                        size="sm"
-                        placeholder="Allele 1"
-                        defaultValue={editData.otherTraits?.find((l) => l.locus === locusInfo.locus)?.allele1 || ""}
-                        onChange={(e) => {
-                          const existing = editData.otherTraits || [];
-                          const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
-                          const locusData: GeneticLocus = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
-                          const updated = { ...locusData, allele1: e.target.value };
-                          updated.genotype = `${updated.allele1 || "?"}/${updated.allele2 || "?"}`;
-
-                          const newOtherTraits = locusIdx >= 0
-                            ? existing.map((l, i) => (i === locusIdx ? updated : l))
-                            : [...existing, updated];
-
-                          setEditData({ ...editData, otherTraits: newOtherTraits });
-                        }}
-                      />
-                      <Input
-                        size="sm"
-                        placeholder="Allele 2"
-                        defaultValue={editData.otherTraits?.find((l) => l.locus === locusInfo.locus)?.allele2 || ""}
-                        onChange={(e) => {
-                          const existing = editData.otherTraits || [];
-                          const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
-                          const locusData: GeneticLocus = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
-                          const updated = { ...locusData, allele2: e.target.value };
-                          updated.genotype = `${updated.allele1 || "?"}/${updated.allele2 || "?"}`;
-
-                          const newOtherTraits = locusIdx >= 0
-                            ? existing.map((l, i) => (i === locusIdx ? updated : l))
-                            : [...existing, updated];
-
-                          setEditData({ ...editData, otherTraits: newOtherTraits });
-                        }}
-                      />
-                    </div>
-                  )}
-                </div>
-              ))}
+              {loci.otherTraits.map((locusInfo) => {
+                const locusData = editData.otherTraits?.find((l) => l.locus === locusInfo.locus);
+                return (
+                  <LocusCard
+                    key={locusInfo.locus}
+                    locusInfo={locusInfo}
+                    locusData={locusData}
+                    mode={mode}
+                    enableNetworkSharing={enableGeneticsSharing}
+                    onAllele1Change={(value) => {
+                      const existing = editData.otherTraits || [];
+                      const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
+                      const ld: GeneticLocus = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
+                      const updated = { ...ld, allele1: value };
+                      updated.genotype = `${updated.allele1 || "?"}/${updated.allele2 || "?"}`;
+                      const newOtherTraits = locusIdx >= 0
+                        ? existing.map((l, i) => (i === locusIdx ? updated : l))
+                        : [...existing, updated];
+                      setEditData({ ...editData, otherTraits: newOtherTraits });
+                    }}
+                    onAllele2Change={(value) => {
+                      const existing = editData.otherTraits || [];
+                      const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
+                      const ld: GeneticLocus = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
+                      const updated = { ...ld, allele2: value };
+                      updated.genotype = `${updated.allele1 || "?"}/${updated.allele2 || "?"}`;
+                      const newOtherTraits = locusIdx >= 0
+                        ? existing.map((l, i) => (i === locusIdx ? updated : l))
+                        : [...existing, updated];
+                      setEditData({ ...editData, otherTraits: newOtherTraits });
+                    }}
+                    onVisibilityChange={(visible) => {
+                      const existing = editData.otherTraits || [];
+                      const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
+                      const ld: GeneticLocus = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
+                      const updated = { ...ld, networkVisible: visible };
+                      const newOtherTraits = locusIdx >= 0
+                        ? existing.map((l, i) => (i === locusIdx ? updated : l))
+                        : [...existing, updated];
+                      setEditData({ ...editData, otherTraits: newOtherTraits });
+                    }}
+                  />
+                );
+              })}
             </div>
-          </div>
+          </div>}
         </SectionCard>
       )}
+
+      {/* Breed-Specific Markers - Consolidated Section */}
+      {(() => {
+        // Get detected breeds from composition for filtering
+        const detectedBreeds = (editData.breedComposition || [])
+          .map((bc) => bc.breed.toLowerCase())
+          .filter((b) => b.length > 0);
+
+        // Helper to check if a marker matches any detected breed
+        const matchesDetectedBreed = (breedSpecific: string) => {
+          if (detectedBreeds.length === 0) return true; // Show all if no breeds detected
+          const breedList = breedSpecific.toLowerCase();
+          return detectedBreeds.some((detected) => breedList.includes(detected) || detected.includes(breedList.split(",")[0].trim()));
+        };
+
+        const allBreedSpecificCoatColor = loci.coatColor.filter((l: any) => l.breedSpecific);
+        const allBreedSpecificCoatType = (loci.coatType || []).filter((l: any) => l.breedSpecific);
+        const allBreedSpecificPhysical = (loci.physicalTraits || []).filter((l: any) => l.breedSpecific);
+        const allBreedSpecificEyeColor = (loci.eyeColor || []).filter((l: any) => l.breedSpecific);
+        const allBreedSpecificHealth = (loci.health || []).filter((l: any) => l.breedSpecific);
+
+        // Filter to relevant breeds if we have breed composition data
+        const breedSpecificCoatColor = allBreedSpecificCoatColor.filter((l: any) => matchesDetectedBreed(l.breedSpecific));
+        const breedSpecificCoatType = allBreedSpecificCoatType.filter((l: any) => matchesDetectedBreed(l.breedSpecific));
+        const breedSpecificPhysical = allBreedSpecificPhysical.filter((l: any) => matchesDetectedBreed(l.breedSpecific));
+        const breedSpecificEyeColor = allBreedSpecificEyeColor.filter((l: any) => matchesDetectedBreed(l.breedSpecific));
+        const breedSpecificHealth = allBreedSpecificHealth.filter((l: any) => matchesDetectedBreed(l.breedSpecific));
+
+        const totalBreedSpecific = breedSpecificCoatColor.length + breedSpecificCoatType.length +
+          breedSpecificPhysical.length + breedSpecificEyeColor.length + breedSpecificHealth.length;
+        const totalAllBreedSpecific = allBreedSpecificCoatColor.length + allBreedSpecificCoatType.length +
+          allBreedSpecificPhysical.length + allBreedSpecificEyeColor.length + allBreedSpecificHealth.length;
+
+        if (totalAllBreedSpecific === 0) return null;
+
+        const hasBreedFilter = detectedBreeds.length > 0;
+
+        return (
+          <SectionCard title={<CollapsibleTitle section="breedSpecific" icon="🏷️">Breed-Specific Markers ({hasBreedFilter ? `${totalBreedSpecific} relevant` : totalAllBreedSpecific})</CollapsibleTitle>}>
+            {!collapsedSections.has("breedSpecific") && (
+              <div className="space-y-4">
+                {hasBreedFilter ? (
+                  <div className="text-sm text-secondary">
+                    Showing markers relevant to your dog's breed composition ({detectedBreeds.join(", ")}). {totalAllBreedSpecific - totalBreedSpecific} other breed-specific markers available.
+                  </div>
+                ) : (
+                  <div className="text-sm text-secondary">
+                    Add breed composition data above to filter to only relevant markers. Showing all {totalAllBreedSpecific} breed-specific markers.
+                  </div>
+                )}
+
+                {breedSpecificCoatColor.length > 0 && (
+                  <div>
+                    <div className="text-xs font-medium text-secondary uppercase tracking-wide mb-2">Coat Color ({breedSpecificCoatColor.length})</div>
+                    <div className="grid grid-cols-1 gap-3">
+                      {breedSpecificCoatColor.map((locusInfo: any) => {
+                        const locusData = editData.coatColor?.find((l) => l.locus === locusInfo.locus);
+                        return (
+                          <LocusCard
+                            key={locusInfo.locus}
+                            locusInfo={locusInfo}
+                            locusData={locusData}
+                            mode={mode}
+                            enableNetworkSharing={enableGeneticsSharing}
+                            onAllele1Change={(value) => {
+                              const existing = editData.coatColor || [];
+                              const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
+                              const ld: GeneticLocus = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
+                              const updated = { ...ld, allele1: value };
+                              updated.genotype = `${updated.allele1 || "?"}/${updated.allele2 || "?"}`;
+                              const newCoatColor = locusIdx >= 0
+                                ? existing.map((l, i) => (i === locusIdx ? updated : l))
+                                : [...existing, updated];
+                              setEditData({ ...editData, coatColor: newCoatColor });
+                            }}
+                            onAllele2Change={(value) => {
+                              const existing = editData.coatColor || [];
+                              const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
+                              const ld: GeneticLocus = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
+                              const updated = { ...ld, allele2: value };
+                              updated.genotype = `${updated.allele1 || "?"}/${updated.allele2 || "?"}`;
+                              const newCoatColor = locusIdx >= 0
+                                ? existing.map((l, i) => (i === locusIdx ? updated : l))
+                                : [...existing, updated];
+                              setEditData({ ...editData, coatColor: newCoatColor });
+                            }}
+                            onVisibilityChange={(visible) => {
+                              const existing = editData.coatColor || [];
+                              const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
+                              const ld: GeneticLocus = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
+                              const updated = { ...ld, networkVisible: visible };
+                              const newCoatColor = locusIdx >= 0
+                                ? existing.map((l, i) => (i === locusIdx ? updated : l))
+                                : [...existing, updated];
+                              setEditData({ ...editData, coatColor: newCoatColor });
+                            }}
+                          />
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {breedSpecificCoatType.length > 0 && (
+                  <div>
+                    <div className="text-xs font-medium text-secondary uppercase tracking-wide mb-2">Coat Type ({breedSpecificCoatType.length})</div>
+                    <div className="grid grid-cols-1 gap-3">
+                      {breedSpecificCoatType.map((locusInfo: any) => {
+                        const locusData = editData.coatType?.find((l) => l.locus === locusInfo.locus);
+                        return (
+                          <LocusCard
+                            key={locusInfo.locus}
+                            locusInfo={locusInfo}
+                            locusData={locusData}
+                            mode={mode}
+                            enableNetworkSharing={enableGeneticsSharing}
+                            onAllele1Change={(value) => {
+                              const existing = editData.coatType || [];
+                              const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
+                              const ld: GeneticLocus = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
+                              const updated = { ...ld, allele1: value };
+                              updated.genotype = `${updated.allele1 || "?"}/${updated.allele2 || "?"}`;
+                              const newCoatType = locusIdx >= 0
+                                ? existing.map((l, i) => (i === locusIdx ? updated : l))
+                                : [...existing, updated];
+                              setEditData({ ...editData, coatType: newCoatType });
+                            }}
+                            onAllele2Change={(value) => {
+                              const existing = editData.coatType || [];
+                              const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
+                              const ld: GeneticLocus = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
+                              const updated = { ...ld, allele2: value };
+                              updated.genotype = `${updated.allele1 || "?"}/${updated.allele2 || "?"}`;
+                              const newCoatType = locusIdx >= 0
+                                ? existing.map((l, i) => (i === locusIdx ? updated : l))
+                                : [...existing, updated];
+                              setEditData({ ...editData, coatType: newCoatType });
+                            }}
+                            onVisibilityChange={(visible) => {
+                              const existing = editData.coatType || [];
+                              const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
+                              const ld: GeneticLocus = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
+                              const updated = { ...ld, networkVisible: visible };
+                              const newCoatType = locusIdx >= 0
+                                ? existing.map((l, i) => (i === locusIdx ? updated : l))
+                                : [...existing, updated];
+                              setEditData({ ...editData, coatType: newCoatType });
+                            }}
+                          />
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {breedSpecificHealth.length > 0 && (
+                  <div>
+                    <div className="text-xs font-medium text-secondary uppercase tracking-wide mb-2">Health ({breedSpecificHealth.length})</div>
+                    <div className="grid grid-cols-1 gap-3">
+                      {breedSpecificHealth.map((locusInfo: any) => {
+                        const locusData = editData.health?.find((l) => l.locus === locusInfo.locus);
+                        return (
+                          <HealthLocusCard
+                            key={locusInfo.locus}
+                            locusInfo={locusInfo}
+                            locusData={locusData}
+                            mode={mode}
+                            enableNetworkSharing={enableGeneticsSharing}
+                            onStatusChange={(value) => {
+                              const existing = editData.health || [];
+                              const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
+                              const ld: GeneticLocus = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
+                              const updated = { ...ld, status: value };
+                              const newHealth = locusIdx >= 0
+                                ? existing.map((l, i) => (i === locusIdx ? updated : l))
+                                : [...existing, updated];
+                              setEditData({ ...editData, health: newHealth });
+                            }}
+                            onVisibilityChange={(visible) => {
+                              const existing = editData.health || [];
+                              const locusIdx = existing.findIndex((l) => l.locus === locusInfo.locus);
+                              const ld: GeneticLocus = locusIdx >= 0 ? existing[locusIdx] : { locus: locusInfo.locus, locusName: locusInfo.locusName };
+                              const updated = { ...ld, networkVisible: visible };
+                              const newHealth = locusIdx >= 0
+                                ? existing.map((l, i) => (i === locusIdx ? updated : l))
+                                : [...existing, updated];
+                              setEditData({ ...editData, health: newHealth });
+                            }}
+                          />
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </SectionCard>
+        );
+      })()}
 
       {mode === "edit" && (
         <div className="flex justify-end gap-2 pt-2">
           <Button
             size="sm"
             variant="outline"
-            onClick={() => setEditData(geneticData)}
+            onClick={() => {
+              setEditData(geneticData);
+              onCancel?.();
+            }}
           >
             Cancel
           </Button>
@@ -4480,7 +4651,7 @@ type TraitDraft = {
     json?: any;
   };
   marketplaceVisible?: boolean | null;
-  verified?: boolean | null;
+  networkVisible?: boolean | null;
   performedAt?: string | null;
   source?: string | null;
   jsonText?: string;
@@ -4505,6 +4676,14 @@ function HealthTab({
   const [expandedTraitKey, setExpandedTraitKey] = React.useState<string | null>(null);
   const [traitDrafts, setTraitDrafts] = React.useState<Record<string, TraitDraft>>({});
   const [collapsedCategories, setCollapsedCategories] = React.useState<Set<string>>(new Set());
+  const [enableHealthSharing, setEnableHealthSharing] = React.useState(false);
+
+  // Load privacy settings to check if health sharing is enabled
+  React.useEffect(() => {
+    api?.animals?.lineage?.getPrivacySettings(animal.id)
+      .then((s: any) => setEnableHealthSharing(s.enableHealthSharing ?? false))
+      .catch(() => {});
+  }, [api, animal.id]);
 
   const getTraitDraftKey = React.useCallback((trait: any) => {
     const raw = trait?.traitKey ?? trait?.traitValueId ?? "";
@@ -4530,7 +4709,7 @@ function HealthTab({
       const nextDraft: TraitDraft = {
         value: nextValue,
         marketplaceVisible: trait.marketplaceVisible,
-        verified: trait.verified,
+        networkVisible: trait.networkVisible,
         performedAt: trait.performedAt,
         source: trait.source,
       };
@@ -4616,6 +4795,36 @@ function HealthTab({
     } catch (err: any) {
       console.error("[HealthTab] Save failed", err);
       toast.error(err?.data?.message || "Failed to save trait");
+    }
+  };
+
+  const handleVisibilityToggle = async (traitKey: string, networkVisible: boolean) => {
+    try {
+      // Find the existing trait data to include required fields
+      let existingTrait: any = null;
+      for (const cat of categories) {
+        const found = cat.items?.find((t: any) => t.traitKey === traitKey);
+        if (found) {
+          existingTrait = found;
+          break;
+        }
+      }
+
+      // Build update payload with existing values + new visibility
+      const updatePayload: any = { traitKey, networkVisible };
+      if (existingTrait) {
+        // Include the existing value fields so API validation passes
+        if (existingTrait.valueText !== undefined) updatePayload.valueText = existingTrait.valueText;
+        if (existingTrait.valueDate !== undefined) updatePayload.valueDate = existingTrait.valueDate;
+        if (existingTrait.valueNumeric !== undefined) updatePayload.valueNumeric = existingTrait.valueNumeric;
+        if (existingTrait.valueBool !== undefined) updatePayload.valueBool = existingTrait.valueBool;
+      }
+
+      await api?.animals?.traits?.update(animal.id, [updatePayload]);
+      await fetchTraits();
+    } catch (err: any) {
+      console.error("[HealthTab] Visibility toggle failed", err);
+      toast.error(err?.data?.message || "Failed to update visibility");
     }
   };
 
@@ -4810,6 +5019,7 @@ function HealthTab({
                       draft={traitDrafts[draftKey]}
                       isExpanded={expandedTraitKey === draftKey}
                       editMode={mode === "edit"}
+                      enableNetworkSharing={enableHealthSharing}
                       onExpand={() => {
                         if (mode === "edit") {
                           const nextKey = ensureTraitDraft(trait);
@@ -4821,6 +5031,7 @@ function HealthTab({
                       onDraftReset={() => clearTraitDraft(draftKey)}
                       onSave={(update) => handleSaveTrait(trait.traitKey, draftKey, update)}
                       onUpload={() => handleUploadFromTrait(trait.traitKey)}
+                      onVisibilityToggle={(networkVisible) => handleVisibilityToggle(trait.traitKey, networkVisible)}
                     />
                   );
                 })}
@@ -4864,28 +5075,133 @@ function formatTraitDisplayName(displayName?: string, traitKey?: string) {
   return rawDisplayName || "Trait";
 }
 
+function VisibilityToggle({
+  isPublic,
+  onChange,
+  disabled,
+  readOnly,
+  inactive,
+}: {
+  isPublic: boolean;
+  onChange: (v: boolean) => void;
+  disabled?: boolean;
+  readOnly?: boolean;
+  inactive?: boolean; // Master toggle is off - show greyed out "Private"
+}) {
+  // Inactive state: master toggle is off, show greyed-out indicator
+  if (inactive) {
+    return (
+      <Tooltip content="Enable sharing in Privacy tab to configure" side="top">
+        <span
+          className="inline-flex items-center gap-1.5 text-xs px-2 py-1 rounded-full font-medium bg-zinc-800/40 text-zinc-500/50 border border-zinc-700/30 cursor-help"
+        >
+          <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+            <path fillRule="evenodd" d="M3.707 2.293a1 1 0 00-1.414 1.414l14 14a1 1 0 001.414-1.414l-1.473-1.473A10.014 10.014 0 0019.542 10C18.268 5.943 14.478 3 10 3a9.958 9.958 0 00-4.512 1.074l-1.78-1.781zm4.261 4.26l1.514 1.515a2.003 2.003 0 012.45 2.45l1.514 1.514a4 4 0 00-5.478-5.478z" clipRule="evenodd" />
+            <path d="M12.454 16.697L9.75 13.992a4 4 0 01-3.742-3.741L2.335 6.578A9.98 9.98 0 00.458 10c1.274 4.057 5.065 7 9.542 7 .847 0 1.669-.105 2.454-.303z" />
+          </svg>
+          Private
+        </span>
+      </Tooltip>
+    );
+  }
+
+  if (readOnly) {
+    // Read-only display (non-edit mode)
+    return (
+      <span
+        className={`
+          inline-flex items-center gap-1.5 text-xs px-2 py-1 rounded-full font-medium
+          ${isPublic
+            ? "bg-emerald-500/15 text-emerald-400"
+            : "bg-red-500/15 text-red-400"
+          }
+        `}
+      >
+        {isPublic ? (
+          <>
+            <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+              <path d="M10 12a2 2 0 100-4 2 2 0 000 4z" />
+              <path fillRule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clipRule="evenodd" />
+            </svg>
+            Public
+          </>
+        ) : (
+          <>
+            <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M3.707 2.293a1 1 0 00-1.414 1.414l14 14a1 1 0 001.414-1.414l-1.473-1.473A10.014 10.014 0 0019.542 10C18.268 5.943 14.478 3 10 3a9.958 9.958 0 00-4.512 1.074l-1.78-1.781zm4.261 4.26l1.514 1.515a2.003 2.003 0 012.45 2.45l1.514 1.514a4 4 0 00-5.478-5.478z" clipRule="evenodd" />
+              <path d="M12.454 16.697L9.75 13.992a4 4 0 01-3.742-3.741L2.335 6.578A9.98 9.98 0 00.458 10c1.274 4.057 5.065 7 9.542 7 .847 0 1.669-.105 2.454-.303z" />
+            </svg>
+            Private
+          </>
+        )}
+      </span>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        if (!disabled) onChange(!isPublic);
+      }}
+      disabled={disabled}
+      className={`
+        inline-flex items-center gap-1.5 text-xs px-2 py-1 rounded-full font-medium transition-all
+        ${disabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}
+        ${isPublic
+          ? "bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25"
+          : "bg-red-500/15 text-red-400 hover:bg-red-500/25"
+        }
+      `}
+    >
+      {isPublic ? (
+        <>
+          <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+            <path d="M10 12a2 2 0 100-4 2 2 0 000 4z" />
+            <path fillRule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clipRule="evenodd" />
+          </svg>
+          Public
+        </>
+      ) : (
+        <>
+          <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+            <path fillRule="evenodd" d="M3.707 2.293a1 1 0 00-1.414 1.414l14 14a1 1 0 001.414-1.414l-1.473-1.473A10.014 10.014 0 0019.542 10C18.268 5.943 14.478 3 10 3a9.958 9.958 0 00-4.512 1.074l-1.78-1.781zm4.261 4.26l1.514 1.515a2.003 2.003 0 012.45 2.45l1.514 1.514a4 4 0 00-5.478-5.478z" clipRule="evenodd" />
+            <path d="M12.454 16.697L9.75 13.992a4 4 0 01-3.742-3.741L2.335 6.578A9.98 9.98 0 00.458 10c1.274 4.057 5.065 7 9.542 7 .847 0 1.669-.105 2.454-.303z" />
+          </svg>
+          Private
+        </>
+      )}
+    </button>
+  );
+}
+
 function TraitRow({
   trait,
   draft,
   isExpanded,
   editMode,
+  enableNetworkSharing,
   onExpand,
   onCollapse,
   onSave,
   onUpload,
   onDraftChange,
   onDraftReset,
+  onVisibilityToggle,
 }: {
   trait: any;
   draft?: TraitDraft;
   isExpanded: boolean;
   editMode: boolean;
+  enableNetworkSharing?: boolean;
   onExpand: () => void;
   onCollapse: () => void;
   onSave: (update: any) => void;
   onUpload: () => void;
   onDraftChange: (next: TraitDraft) => void;
   onDraftReset: () => void;
+  onVisibilityToggle?: (networkVisible: boolean) => void;
 }) {
   const [saving, setSaving] = React.useState(false);
   const localDraft = draft ?? {};
@@ -4900,7 +5216,9 @@ function TraitRow({
   const currentMarketplace = localDraft.marketplaceVisible !== undefined
     ? localDraft.marketplaceVisible
     : trait.marketplaceVisible;
-  const currentVerified = localDraft.verified !== undefined ? localDraft.verified : trait.verified;
+  const currentNetworkVisible = localDraft.networkVisible !== undefined
+    ? localDraft.networkVisible
+    : trait.networkVisible;
   const currentPerformedAt = localDraft.performedAt !== undefined
     ? localDraft.performedAt
     : trait.performedAt;
@@ -4963,7 +5281,7 @@ function TraitRow({
       }
 
       if (currentMarketplace !== undefined) update.marketplaceVisible = currentMarketplace;
-      if (currentVerified !== undefined) update.verified = currentVerified;
+      if (currentNetworkVisible !== undefined) update.networkVisible = currentNetworkVisible;
       if (currentPerformedAt !== undefined) update.performedAt = currentPerformedAt;
       if (currentSource !== undefined) update.source = currentSource;
 
@@ -5147,32 +5465,32 @@ function TraitRow({
   const showValueLabel = !isBoolean;
   const valueLabel = isJsonValue && !isPennHip ? "Details" : "Value";
 
-  // Helper to format value for display
-  const getDisplayValue = () => {
+  // Helper to format value for display (returns null if no value)
+  const getDisplayValue = (): string | null => {
     if (isPennHip) {
       const json = trait.value?.json;
-      if (!json || json.di === undefined) return "Not provided";
+      if (!json || json.di === undefined) return null;
       const sideLabel = json.side ? ` (${json.side})` : "";
       const notesLabel = json.notes ? " (notes)" : "";
       return `DI: ${json.di}${sideLabel}${notesLabel}`;
     }
     if (isBoolean) {
-      if (trait.value?.boolean === undefined) return "Not provided";
+      if (trait.value?.boolean === undefined) return null;
       return trait.value.boolean ? "Yes" : "No";
     }
     if (isText || isEnum) {
-      return trait.value?.text || "Not provided";
+      return trait.value?.text || null;
     }
     if (isNumber) {
-      return trait.value?.number !== undefined ? String(trait.value.number) : "Not provided";
+      return trait.value?.number !== undefined ? String(trait.value.number) : null;
     }
     if (isDate) {
-      return trait.value?.date ? new Date(trait.value.date).toLocaleDateString() : "Not provided";
+      return trait.value?.date ? new Date(trait.value.date).toLocaleDateString() : null;
     }
     if (isJsonValue || trait.value?.json !== undefined) {
-      return trait.value?.json != null ? "Provided" : "Not provided";
+      return trait.value?.json != null ? "Provided" : null;
     }
-    return "Not provided";
+    return null;
   };
 
   const hasValue = trait.value?.boolean !== undefined ||
@@ -5183,21 +5501,27 @@ function TraitRow({
 
   // COLLAPSED STATE (default)
   if (!isExpanded) {
+    const displayValue = getDisplayValue();
     return (
       <div className="flex items-center justify-between py-2 px-3 hover:bg-subtle rounded group">
         <div className="flex items-center gap-3 flex-1 min-w-0">
           <div className="flex-1 min-w-0">
-            <div className="text-sm font-medium truncate">{displayName}</div>
-            <div className="text-xs text-secondary truncate">{getDisplayValue()}</div>
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium truncate">{displayName}</span>
+              {!displayValue && (
+                <span className="inline-flex items-center gap-1.5 text-xs text-amber-400">
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                  Pending
+                </span>
+              )}
+            </div>
+            {displayValue && (
+              <div className="text-xs text-secondary truncate">{displayValue}</div>
+            )}
           </div>
           <div className="flex items-center gap-2">
-            {trait.verified && (
-              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-100">
-                Verified
-              </span>
-            )}
             {trait.marketplaceVisible && (
-              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-100">
+              <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] bg-blue-500/20 text-blue-400 border border-blue-500/30">
                 Marketplace
               </span>
             )}
@@ -5206,18 +5530,36 @@ function TraitRow({
                 {trait.documents.length} doc{trait.documents.length > 1 ? 's' : ''}
               </span>
             )}
+            {/* Edit button (pencil icon) - before visibility toggle */}
+            {editMode && (
+              <button
+                onClick={onExpand}
+                className="p-1.5 rounded hover:bg-white/10 text-secondary hover:text-primary transition-colors"
+                title="Edit"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                </svg>
+              </button>
+            )}
+            {/* Network visibility toggle - always show, greyed out when master toggle is off */}
+            {onVisibilityToggle ? (
+              <VisibilityToggle
+                isPublic={trait.networkVisible || false}
+                onChange={onVisibilityToggle}
+                disabled={!editMode}
+                readOnly={!editMode}
+                inactive={!enableNetworkSharing}
+              />
+            ) : (
+              <VisibilityToggle
+                isPublic={false}
+                onChange={() => {}}
+                inactive={true}
+              />
+            )}
           </div>
         </div>
-        {editMode && (
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={onExpand}
-            className="ml-2"
-          >
-            Edit
-          </Button>
-        )}
       </div>
     );
   }
@@ -5240,11 +5582,27 @@ function TraitRow({
           {renderValueEditor()}
         </div>
 
-        {/* Visibility and Verification */}
+        {/* Visibility */}
         <div className="border-t border-hairline pt-4 space-y-3">
-          <div className="text-xs font-medium text-secondary mb-2">Visibility and Verification</div>
+          <div className="text-xs font-medium text-secondary mb-2">Visibility</div>
 
           <div className="grid grid-cols-2 gap-3">
+            {enableNetworkSharing && (
+              <label className="flex items-center gap-2 text-sm cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={currentNetworkVisible || false}
+                  onChange={(e) =>
+                    onDraftChange({
+                      ...localDraft,
+                      networkVisible: e.target.checked,
+                    })
+                  }
+                  className="rounded border-hairline"
+                />
+                <span>Share with network</span>
+              </label>
+            )}
             <label className="flex items-center gap-2 text-sm cursor-pointer">
               <input
                 type="checkbox"
@@ -5258,20 +5616,6 @@ function TraitRow({
                 className="rounded border-hairline"
               />
               <span>Visible on marketplace</span>
-            </label>
-            <label className="flex items-center gap-2 text-sm cursor-pointer">
-              <input
-                type="checkbox"
-                checked={currentVerified || false}
-                onChange={(e) =>
-                  onDraftChange({
-                    ...localDraft,
-                    verified: e.target.checked,
-                  })
-                }
-                className="rounded border-hairline"
-              />
-              <span>Verified</span>
             </label>
           </div>
 
@@ -5390,6 +5734,14 @@ function DocumentsTab({
   const [uploadModalOpen, setUploadModalOpen] = React.useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = React.useState<number | null>(null);
   const [allTraits, setAllTraits] = React.useState<any[]>([]);
+  const [enableDocumentSharing, setEnableDocumentSharing] = React.useState(false);
+
+  // Load privacy settings to check if document sharing is enabled
+  React.useEffect(() => {
+    api?.animals?.lineage?.getPrivacySettings(animal.id)
+      .then((s: any) => setEnableDocumentSharing(s.enableDocumentSharing ?? false))
+      .catch(() => {});
+  }, [api, animal.id]);
 
   const fetchDocuments = React.useCallback(async () => {
     try {
@@ -5513,20 +5865,36 @@ function DocumentsTab({
                 className="border border-hairline rounded p-3 space-y-2"
               >
                 <div className="flex items-start justify-between">
-                  <div>
+                  <div className="flex-1">
                     <div className="font-medium text-sm">{doc.title}</div>
                     <div className="text-xs text-secondary mt-1">
                       {doc.originalFileName} • {doc.mimeType}
                       {doc.sizeBytes && ` • ${(doc.sizeBytes / 1024).toFixed(1)} KB`}
                     </div>
                   </div>
-                  <button
-                    onClick={() => setDeleteConfirmId(doc.documentId)}
-                    className="text-secondary hover:text-primary text-xs"
-                    title="Delete"
-                  >
-                    Delete
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <VisibilityToggle
+                      isPublic={doc.networkVisible || false}
+                      onChange={async (visible) => {
+                        try {
+                          await api?.animals?.documents?.update(animal.id, doc.documentId, {
+                            networkVisible: visible,
+                          });
+                          await fetchDocuments();
+                        } catch (err) {
+                          console.error("Failed to update document sharing", err);
+                        }
+                      }}
+                      inactive={!enableDocumentSharing}
+                    />
+                    <button
+                      onClick={() => setDeleteConfirmId(doc.documentId)}
+                      className="text-secondary hover:text-primary text-xs"
+                      title="Delete"
+                    >
+                      Delete
+                    </button>
+                  </div>
                 </div>
                 <div className="flex items-center gap-2 text-xs">
                   <span className="px-2 py-0.5 rounded border border-hairline">
@@ -5839,10 +6207,9 @@ function RegistryTab({
   }, [fetchRegistrations]);
 
   React.useEffect(() => {
-    if (mode === "edit") {
-      fetchAllRegistries();
-    }
-  }, [mode, fetchAllRegistries]);
+    // Fetch registries in both view and edit modes so we can display registry names
+    fetchAllRegistries();
+  }, [fetchAllRegistries]);
 
   const handleAddRegistration = () => {
     setExpandedId("draft");
@@ -6560,16 +6927,8 @@ export default function AppAnimals() {
     }
   });
 
-  // View mode toggle (table vs cards)
-  const [viewMode, setViewMode] = React.useState<ViewMode>(() => {
-    try {
-      const stored = localStorage.getItem(VIEW_MODE_KEY);
-      return (stored === "cards" ? "cards" : "table") as ViewMode;
-    } catch { return "table"; }
-  });
-  React.useEffect(() => {
-    try { localStorage.setItem(VIEW_MODE_KEY, viewMode); } catch { }
-  }, [viewMode]);
+  // View mode toggle (table vs cards) - uses tenant preferences as default
+  const { viewMode, setViewMode } = useViewMode({ module: "animals" });
 
   const [filtersOpen, setFiltersOpen] = React.useState(false);
   const [filters, setFilters] = React.useState<Record<string, string>>(() => {
@@ -7245,12 +7604,13 @@ export default function AppAnimals() {
         tabs.push({ key: "health", label: "Health" } as any);
         tabs.push({ key: "genetics", label: "Genetics" } as any);
         tabs.push({ key: "registry", label: "Registry" } as any);
+        tabs.push({ key: "finances", label: "Finances" } as any);
         tabs.push({ key: "documents", label: "Documents" } as any);
         tabs.push({ key: "media", label: "Media" } as any);
         tabs.push({ key: "lineage", label: "Lineage" } as any);
         tabs.push({ key: "titles", label: "Titles" } as any);
         tabs.push({ key: "competitions", label: "Competitions" } as any);
-        tabs.push({ key: "finances", label: "Finances" } as any);
+        tabs.push({ key: "privacy", label: "Privacy" } as any);
         tabs.push({ key: "audit", label: "Audit" } as any);
         return tabs;
       },
@@ -7763,6 +8123,7 @@ export default function AppAnimals() {
               animal={row}
               api={api}
               mode={mode}
+              onCancel={() => setMode("view")}
             />
           )}
 
@@ -7810,6 +8171,10 @@ export default function AppAnimals() {
 
           {activeTab === "competitions" && (
             <CompetitionsTab animal={row} mode={mode} />
+          )}
+
+          {activeTab === "privacy" && (
+            <PrivacyTab animal={row} mode={mode} />
           )}
 
           {activeTab === "finances" && (

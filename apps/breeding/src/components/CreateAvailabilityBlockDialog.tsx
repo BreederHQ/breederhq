@@ -175,6 +175,10 @@ export function CreateAvailabilityBlockDialog({ open, onClose, onCreated, initia
             placeholder="America/New_York"
             required
             style={{ padding: "0.5rem", border: "1px solid #d1d5db", borderRadius: "0.375rem" }}
+            autoComplete="off"
+            data-1p-ignore
+            data-lpignore="true"
+            data-form-type="other"
           />
         </label>
 
@@ -215,6 +219,10 @@ export function CreateAvailabilityBlockDialog({ open, onClose, onCreated, initia
               value={capacity}
               onChange={(e) => setCapacity(Number(e.target.value))}
               style={{ padding: "0.5rem", border: "1px solid #d1d5db", borderRadius: "0.375rem" }}
+              autoComplete="off"
+              data-1p-ignore
+              data-lpignore="true"
+              data-form-type="other"
             />
           </label>
         </div>
@@ -230,6 +238,10 @@ export function CreateAvailabilityBlockDialog({ open, onClose, onCreated, initia
               value={bufferBeforeMinutes}
               onChange={(e) => setBufferBeforeMinutes(Number(e.target.value))}
               style={{ padding: "0.5rem", border: "1px solid #d1d5db", borderRadius: "0.375rem" }}
+              autoComplete="off"
+              data-1p-ignore
+              data-lpignore="true"
+              data-form-type="other"
             />
           </label>
           <label style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
@@ -241,6 +253,10 @@ export function CreateAvailabilityBlockDialog({ open, onClose, onCreated, initia
               value={bufferAfterMinutes}
               onChange={(e) => setBufferAfterMinutes(Number(e.target.value))}
               style={{ padding: "0.5rem", border: "1px solid #d1d5db", borderRadius: "0.375rem" }}
+              autoComplete="off"
+              data-1p-ignore
+              data-lpignore="true"
+              data-form-type="other"
             />
           </label>
         </div>
@@ -268,6 +284,10 @@ export function CreateAvailabilityBlockDialog({ open, onClose, onCreated, initia
               onChange={(e) => setLocation(e.target.value)}
               placeholder="123 Main St, City, State"
               style={{ padding: "0.5rem", border: "1px solid #d1d5db", borderRadius: "0.375rem" }}
+              autoComplete="off"
+              data-1p-ignore
+              data-lpignore="true"
+              data-form-type="other"
             />
           </label>
         )}
@@ -281,6 +301,10 @@ export function CreateAvailabilityBlockDialog({ open, onClose, onCreated, initia
             placeholder="Please arrive 10 minutes early..."
             rows={3}
             style={{ padding: "0.5rem", border: "1px solid #d1d5db", borderRadius: "0.375rem", resize: "vertical" }}
+            autoComplete="off"
+            data-1p-ignore
+            data-lpignore="true"
+            data-form-type="other"
           />
         </label>
 

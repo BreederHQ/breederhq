@@ -12,7 +12,8 @@ export type TagModule =
   | "OFFSPRING_GROUP"
   | "OFFSPRING"
   | "MESSAGE_THREAD"
-  | "DRAFT";
+  | "DRAFT"
+  | "BREEDING_PLAN";
 
 export type TagDTO = {
   id: number;
@@ -53,6 +54,7 @@ export type TagAssignmentTarget = {
   offspringId?: number;
   messageThreadId?: number;
   draftId?: number;
+  breedingPlanId?: number;
 };
 
 export type TagsResource = {
@@ -70,6 +72,9 @@ export type TagsResource = {
   listForOffspring(offspringId: number): Promise<TagDTO[]>;
   listForMessageThread(messageThreadId: number): Promise<TagDTO[]>;
   listForDraft(draftId: number): Promise<TagDTO[]>;
+  listForBreedingPlan(breedingPlanId: number): Promise<TagDTO[]>;
+  /** Batch fetch tags for multiple contacts/organizations. Returns a map of entityId -> tags */
+  listForEntities(targets: Array<{ contactId?: number; organizationId?: number }>): Promise<Map<string, TagDTO[]>>;
 };
 
 function buildQuery(params: TagListParams): string {
@@ -105,44 +110,47 @@ function getEntityPath(target: TagAssignmentTarget): string {
   if (target.offspringId != null) return `/offspring/individuals/${target.offspringId}/tags`;
   if (target.messageThreadId != null) return `/message-threads/${target.messageThreadId}/tags`;
   if (target.draftId != null) return `/drafts/${target.draftId}/tags`;
+  if (target.breedingPlanId != null) return `/breeding/plans/${target.breedingPlanId}/tags`;
   throw new Error("TagAssignmentTarget must have exactly one entity ID");
 }
 
 export function makeTags(http: Http): TagsResource {
+  const BASE = "/api/v1";
+
   return {
     async list(params: TagListParams): Promise<TagListResponse> {
-      const res = await http.get(`/tags${buildQuery(params)}`);
+      const res = await http.get(`${BASE}/tags${buildQuery(params)}`);
       return normalizeList(res);
     },
 
     async get(id: number): Promise<TagDTO> {
-      return http.get(`/tags/${id}`);
+      return http.get(`${BASE}/tags/${id}`);
     },
 
     async create(input: CreateTagInput): Promise<TagDTO> {
-      return http.post(`/tags`, input);
+      return http.post(`${BASE}/tags`, input);
     },
 
     async update(id: number, input: UpdateTagInput): Promise<TagDTO> {
-      return http.patch(`/tags/${id}`, input);
+      return http.patch(`${BASE}/tags/${id}`, input);
     },
 
     async delete(id: number): Promise<{ success: true }> {
-      await http.delete(`/tags/${id}`);
+      await http.delete(`${BASE}/tags/${id}`);
       return { success: true };
     },
 
     async assign(tagId: number, target: TagAssignmentTarget): Promise<void> {
-      await http.post(`/tags/${tagId}/assign`, target);
+      await http.post(`${BASE}/tags/${tagId}/assign`, target);
     },
 
     async unassign(tagId: number, target: TagAssignmentTarget): Promise<void> {
-      await http.post(`/tags/${tagId}/unassign`, target);
+      await http.post(`${BASE}/tags/${tagId}/unassign`, target);
     },
 
     async listForEntity(target: TagAssignmentTarget): Promise<TagDTO[]> {
       const path = getEntityPath(target);
-      const res = await http.get(path);
+      const res = await http.get(`${BASE}${path}`);
       // Normalize array or { items } response
       if (Array.isArray(res)) return res as TagDTO[];
       if (res && typeof res === "object" && "items" in res) {
@@ -173,6 +181,39 @@ export function makeTags(http: Http): TagsResource {
 
     async listForDraft(draftId: number): Promise<TagDTO[]> {
       return this.listForEntity({ draftId });
+    },
+
+    async listForBreedingPlan(breedingPlanId: number): Promise<TagDTO[]> {
+      return this.listForEntity({ breedingPlanId });
+    },
+
+    async listForEntities(targets: Array<{ contactId?: number; organizationId?: number }>): Promise<Map<string, TagDTO[]>> {
+      // Fetch tags for multiple entities in parallel (client-side batching)
+      // Returns a map keyed by "contact:123" or "organization:456"
+      const results = new Map<string, TagDTO[]>();
+
+      // Batch requests in groups of 10 to avoid overwhelming the server
+      const batchSize = 10;
+      for (let i = 0; i < targets.length; i += batchSize) {
+        const batch = targets.slice(i, i + batchSize);
+        const promises = batch.map(async (target) => {
+          const key = target.contactId
+            ? `contact:${target.contactId}`
+            : `organization:${target.organizationId}`;
+          try {
+            const tags = await this.listForEntity(target);
+            return { key, tags };
+          } catch {
+            return { key, tags: [] };
+          }
+        });
+        const batchResults = await Promise.all(promises);
+        for (const { key, tags } of batchResults) {
+          results.set(key, tags);
+        }
+      }
+
+      return results;
     },
   };
 }

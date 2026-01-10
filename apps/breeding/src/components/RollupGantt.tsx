@@ -1,5 +1,6 @@
 import * as React from "react";
 import Gantt from "@bhq/ui/components/Gantt";
+import { Tooltip } from "@bhq/ui";
 import { readTenantIdFast } from "@bhq/ui/utils/tenant";
 import { useAvailabilityPrefs } from "@bhq/ui/hooks";
 import { mapTenantPrefs, hasAnyExactValues } from "@bhq/ui/utils/availability";
@@ -94,6 +95,7 @@ type AvailabilityPrefs = {
 
   autoWidenUnlikely?: boolean;
   defaultExactBandsVisible?: boolean;
+  defaultPhaseBandsVisible?: boolean;
 };
 
 type Horizon = { start: Date; end: Date };
@@ -105,6 +107,30 @@ const EXACT_COLORS = ["#06B6D4", "#A78BFA", "#F59E0B", "#14B8A6", "#F97316", "#8
 const WHATIF_PHASE_COLOR = "#A8FF00"; // bright pink for What If bands and anchors
 const WHATIF_EXACT_COLOR = "#76FF57"; // same pink for Expected Dates lines
 const WHATIF_PHASE_RISKY_COLOR = "#8EC700"; // darker pink for What If risky edges
+
+// Distinct colors for plan centerlines (vertical date lines) - high contrast, spread across hue wheel
+// Exported so selection UI can match checkbox colors to centerline colors
+// IMPORTANT: Avoid green/lime colors that could be confused with What If centerlines
+// (What If uses #A8FF00 lime and #76FF57 bright green)
+export const PLAN_LINE_COLORS = [
+  "#F97316", // Orange
+  "#8B5CF6", // Purple
+  "#14B8A6", // Teal
+  "#EC4899", // Pink
+  "#3B82F6", // Blue
+  "#F59E0B", // Amber
+  "#06B6D4", // Cyan
+  "#EF4444", // Red
+  "#A855F7", // Violet
+  "#E879F9", // Fuchsia
+  "#F472B6", // Rose
+  "#FB923C", // Light Orange
+];
+
+/** Get the centerline color for a plan based on its index among selected plans */
+export function getPlanLineColor(index: number): string {
+  return PLAN_LINE_COLORS[index % PLAN_LINE_COLORS.length];
+}
 
 
 /* ---------- date utils ---------- */
@@ -301,7 +327,13 @@ export default function RollupGantt({
     ...mapTenantPrefs(hook?.prefs || {}),
     ...(prefsOverride || {}),
   };
-  const defaultBandsVisible =
+
+  // Compute default visibility for each section separately
+  const defaultPhaseBandsVisible =
+    prefs.defaultPhaseBandsVisible != null
+      ? !!prefs.defaultPhaseBandsVisible
+      : hasAnyExactValues(prefs as any);
+  const defaultExactBandsVisible =
     prefs.defaultExactBandsVisible != null
       ? !!prefs.defaultExactBandsVisible
       : hasAnyExactValues(prefs as any);
@@ -310,19 +342,25 @@ export default function RollupGantt({
   const [toggles, setToggles] = React.useState<{
     showPhases: boolean;
     showExact: boolean;
-    showBands: boolean;     // single flag drives both phases & exact
+    showPhaseBands: boolean;  // Timeline Phases band visibility
+    showExactBands: boolean;  // Expected Dates band visibility
     lockScroll: boolean;
   }>(() => ({
     showPhases: true,
     showExact: true,
-    showBands: defaultBandsVisible,
+    showPhaseBands: defaultPhaseBandsVisible,
+    showExactBands: defaultExactBandsVisible,
     lockScroll: false,
   }));
 
-  // Update showBands when preferences load (on initial load or settings change)
+  // Update showPhaseBands and showExactBands when preferences load (on initial load or settings change)
   React.useEffect(() => {
-    setToggles(prev => ({ ...prev, showBands: defaultBandsVisible }));
-  }, [defaultBandsVisible]);
+    setToggles(prev => ({
+      ...prev,
+      showPhaseBands: defaultPhaseBandsVisible,
+      showExactBands: defaultExactBandsVisible,
+    }));
+  }, [defaultPhaseBandsVisible, defaultExactBandsVisible]);
 
   /* selection, allow empty */
   const controlled = selectedProp instanceof Set ? selectedProp : selectedProp ? new Set(selectedProp) : undefined;
@@ -378,6 +416,13 @@ export default function RollupGantt({
   const phaseData: StageDatum[] = [];
   const exactData: StageDatum[] = [];
 
+  // Create a stable color assignment for each plan based on index
+  // This ensures each plan gets a unique, consistent color for its centerlines
+  const planColorMap = new Map<string, string>();
+  activePlans.forEach((p, idx) => {
+    planColorMap.set(idKey(p.id), PLAN_LINE_COLORS[idx % PLAN_LINE_COLORS.length]);
+  });
+
   let minAll: Date | null = null;
   let maxAll: Date | null = null;
 
@@ -386,10 +431,12 @@ export default function RollupGantt({
 
     const isSynthetic = (p as any).isSynthetic === true;
     const whatIfTag = isSynthetic ? " (What If)" : "";
+    // Get the unique color for this plan's centerlines
+    const planLineColor = isSynthetic ? WHATIF_EXACT_COLOR : planColorMap.get(idKey(p.id));
 
     // Cycle → Breeding
     if (exp.cycle && exp.breeding) {
-      if (toggles.showBands) {
+      if (toggles.showPhaseBands) {
         const b = normalizeBands(
           prefs.cycle_breeding_risky_from, prefs.cycle_breeding_risky_to,
           prefs.cycle_breeding_unlikely_from, prefs.cycle_breeding_unlikely_to,
@@ -403,11 +450,14 @@ export default function RollupGantt({
         const rRightE = addDays(exp.breeding, b.rt);
 
         // Unlikely hatch
+        // __planId groups related bars so Gantt renders them at the same y position
+        const planGroupId = `${p.id}-cycle_to_breeding`;
         phaseData.push({
           key: "cycle_to_breeding",
           likelyRange: { start: uStart, end: uEnd },
           __tooltip: `[${p.name}] Cycle → Breeding${whatIfTag}, Unlikely: ${fmtNice.format(uStart)} → ${fmtNice.format(uEnd)}`,
           __z: 1,
+          __planId: planGroupId,
           // For What If plans, use risky color for both unlikely and risky bands
           color: isSynthetic ? WHATIF_PHASE_RISKY_COLOR : undefined,
         });
@@ -421,6 +471,7 @@ export default function RollupGantt({
           fullRange: { start: rLeftS, end: rLeftE },
           __tooltip: `[${p.name}] Cycle → Breeding${whatIfTag}, Risky (Left): ${fmtNice.format(rLeftS)} → ${fmtNice.format(rLeftE)}`,
           __z: 2,
+          __planId: planGroupId,
           opacity: 0.85,
           color: riskyColor,
         });
@@ -429,6 +480,7 @@ export default function RollupGantt({
           fullRange: { start: rRightS, end: rRightE },
           __tooltip: `[${p.name}] Cycle → Breeding${whatIfTag}, Risky (Right): ${fmtNice.format(rRightS)} → ${fmtNice.format(rRightE)}`,
           __z: 2,
+          __planId: planGroupId,
           opacity: 0.85,
           color: riskyColor,
         });
@@ -439,6 +491,7 @@ export default function RollupGantt({
           fullRange: { start: exp.cycle, end: exp.breeding },
           __tooltip: `[${p.name}] Cycle → Breeding${whatIfTag}: ${fmtNice.format(exp.cycle)} → ${fmtNice.format(exp.breeding)}`,
           __z: 3,
+          __planId: planGroupId,
           color: isSynthetic ? WHATIF_PHASE_COLOR : undefined,
         });
 
@@ -459,26 +512,26 @@ export default function RollupGantt({
         maxAll = nonNullMax(maxAll, addDays(exp.breeding, +1));
       }
 
-      // Anchors
+      // Anchors - use plan-specific color for centerlines
       phaseData.push({
         key: "cycle_to_breeding",
         point: exp.cycle,
         __tooltip: `[${p.name}] Cycle Start${whatIfTag}: ${fmtNice.format(exp.cycle)}`,
         __z: 4,
-        color: isSynthetic ? WHATIF_PHASE_COLOR : undefined,
+        color: planLineColor,
       });
       phaseData.push({
         key: "cycle_to_breeding",
         point: exp.breeding,
         __tooltip: `[${p.name}] Breeding${whatIfTag}: ${fmtNice.format(exp.breeding)}`,
         __z: 4,
-        color: isSynthetic ? WHATIF_PHASE_COLOR : undefined,
+        color: planLineColor,
       });
     }
 
     // Birth → Placement
     if (exp.birth && exp.placementCompleted) {
-      if (toggles.showBands) {
+      if (toggles.showPhaseBands) {
         const b = normalizeBands(
           prefs.post_risky_from_full_start, prefs.post_risky_to_full_end,
           prefs.post_unlikely_from_likely_start, prefs.post_unlikely_to_likely_end,
@@ -492,11 +545,14 @@ export default function RollupGantt({
         const rRightE = addDays(exp.placementCompleted, b.rt);
 
         // Unlikely hatch
+        // __planId groups related bars so Gantt renders them at the same y position
+        const planGroupId2 = `${p.id}-birth_to_placement`;
         phaseData.push({
           key: "birth_to_placement",
           likelyRange: { start: uStart, end: uEnd },
           __tooltip: `[${p.name}] Birth → Placement${whatIfTag}, Unlikely: ${fmtNice.format(uStart)} → ${fmtNice.format(uEnd)}`,
           __z: 1,
+          __planId: planGroupId2,
           // For What If plans, use risky color for both unlikely and risky bands
           color: isSynthetic ? WHATIF_PHASE_RISKY_COLOR : undefined,
         });
@@ -510,6 +566,7 @@ export default function RollupGantt({
           fullRange: { start: rLeftS, end: rLeftE },
           __tooltip: `[${p.name}] Birth → Placement${whatIfTag}, Risky (Left): ${fmtNice.format(rLeftS)} → ${fmtNice.format(rLeftE)}`,
           __z: 2,
+          __planId: planGroupId2,
           opacity: 0.85,
           color: riskyColor,
         });
@@ -518,6 +575,7 @@ export default function RollupGantt({
           fullRange: { start: rRightS, end: rRightE },
           __tooltip: `[${p.name}] Birth → Placement${whatIfTag}, Risky (Right): ${fmtNice.format(rRightS)} → ${fmtNice.format(rRightE)}`,
           __z: 2,
+          __planId: planGroupId2,
           opacity: 0.85,
           color: riskyColor,
         });
@@ -528,6 +586,7 @@ export default function RollupGantt({
           fullRange: { start: exp.birth, end: exp.placementCompleted },
           __tooltip: `[${p.name}] Birth → Placement${whatIfTag}: ${fmtNice.format(exp.birth)} → ${fmtNice.format(exp.placementCompleted)}`,
           __z: 3,
+          __planId: planGroupId2,
           color: isSynthetic ? WHATIF_PHASE_COLOR : undefined,
         });
 
@@ -548,20 +607,20 @@ export default function RollupGantt({
         maxAll = nonNullMax(maxAll, addDays(exp.placementCompleted, +1));
       }
 
-      // Anchors
+      // Anchors - use plan-specific color for centerlines
       phaseData.push({
         key: "birth_to_placement",
         point: exp.birth,
         __tooltip: `[${p.name}] Birth${whatIfTag}: ${fmtNice.format(exp.birth)}`,
         __z: 4,
-        color: isSynthetic ? WHATIF_PHASE_COLOR : undefined,
+        color: planLineColor,
       });
       phaseData.push({
         key: "birth_to_placement",
         point: exp.placementCompleted,
         __tooltip: `[${p.name}] Placement Completed${whatIfTag}: ${fmtNice.format(exp.placementCompleted)}`,
         __z: 4,
-        color: isSynthetic ? WHATIF_PHASE_COLOR : undefined,
+        color: planLineColor,
       });
     }
 
@@ -580,11 +639,15 @@ export default function RollupGantt({
 
       // Separate colors for What If bands vs exact line
       // For What If plans, use risky color for both unlikely and risky bands
+      // For real plans, use planLineColor for unique per-plan centerlines
       const bandLikelyColor = isSynthetic ? WHATIF_PHASE_RISKY_COLOR : undefined;
       const bandRiskyColor = isSynthetic ? WHATIF_PHASE_RISKY_COLOR : undefined;
-      const lineColor = isSynthetic ? WHATIF_EXACT_COLOR : undefined;
+      // Use the plan's unique line color (set earlier in the loop)
 
-      if (toggles.showBands) {
+      // __planId groups related bars so Gantt renders them at the same y position
+      const exactPlanGroupId = `${p.id}-${key}`;
+
+      if (toggles.showExactBands) {
         const b = normalizeBands(rf, rt, uf, ut, !!prefs.autoWidenUnlikely);
         const uStart = addDays(anchor, b.uf);
         const uEnd = tweak(uStart, addDays(anchor, b.ut));
@@ -597,6 +660,7 @@ export default function RollupGantt({
           likelyRange: { start: uStart, end: uEnd },
           __tooltip: `[${p.name}] ${label || ""}${whatIfTag} (Unlikely): ${fmtNice.format(uStart)} → ${fmtNice.format(uEnd)}`,
           __z: 1,
+          __planId: exactPlanGroupId,
           color: bandLikelyColor,
         });
 
@@ -606,6 +670,7 @@ export default function RollupGantt({
           fullRange: { start: rStart, end: rEnd },
           __tooltip: `[${p.name}] ${label || ""}${whatIfTag} (Risky): ${fmtNice.format(rStart)} → ${fmtNice.format(rEnd)}`,
           __z: 2,
+          __planId: exactPlanGroupId,
           color: bandRiskyColor,
         });
 
@@ -615,7 +680,8 @@ export default function RollupGantt({
           point: anchor,
           __tooltip: `[${p.name}] ${label || ""}${whatIfTag}: ${fmtNice.format(anchor)}`,
           __z: 3,
-          color: lineColor,
+          __planId: exactPlanGroupId,
+          color: planLineColor,
         });
 
         minAll = nonNullMin(minAll, uStart);
@@ -629,7 +695,8 @@ export default function RollupGantt({
           point: anchor,
           __tooltip: `[${p.name}] ${label || ""}${whatIfTag}: ${fmtNice.format(anchor)}`,
           __z: 3,
-          color: lineColor,
+          __planId: exactPlanGroupId,
+          color: planLineColor,
         });
         minAll = nonNullMin(minAll, addDays(anchor, -1));
         maxAll = nonNullMax(maxAll, addDays(anchor, +1));
@@ -716,11 +783,11 @@ export default function RollupGantt({
   }, [toggles.lockScroll, horizon.start, horizon.end, fitToContent, anyChecked, phases.length]);
   return (
     <div className={className}>
-      {/* Header */}
-      <div className="px-3 pt-2 pb-2">
-        <div className="flex items-center gap-2 flex-wrap">
-          <div className="font-semibold text-sm text-secondary">Planner view</div>
-          <div className="ml-auto flex items-center gap-3 text-xs">
+      {/* Timeline Phases */}
+      <section className="px-3 pt-1 pb-3">
+        <div className="flex items-center justify-between px-1 pb-2">
+          <div className="text-xs font-medium text-secondary">Timeline Phases</div>
+          <div className="flex items-center gap-3 text-xs">
             <label className="inline-flex items-center gap-1 cursor-pointer">
               <input
                 type="checkbox"
@@ -729,25 +796,22 @@ export default function RollupGantt({
               />
               Lock Scroll
             </label>
-            <label className="inline-flex items-center gap-1 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={toggles.showBands}
-                onChange={(e) => setToggles(s => ({ ...s, showBands: e.target.checked }))}
-              />
-              Availability Bands
-            </label>
+            <Tooltip content="Adjust band lengths in Settings">
+              <label className="inline-flex items-center gap-1 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={toggles.showPhaseBands}
+                  onChange={(e) => setToggles(s => ({ ...s, showPhaseBands: e.target.checked }))}
+                />
+                Availability Bands
+              </label>
+            </Tooltip>
           </div>
         </div>
-      </div>
-
-      {/* Timeline Phases */}
-      <section className="px-3 pt-2 pb-3">
-        <div className="px-1 pb-2 text-xs font-medium text-secondary">Timeline Phases</div>
         <div className="rounded-xl border border-white/10 bg-black/20 overflow-hidden">
           <div className="overflow-x-auto" ref={phScrollRef} onScroll={onPhScroll}>
             <Gantt
-              key={`ph_${horizon.start.toISOString()}_${horizon.end.toISOString()}_${phaseData.length}_${anyChecked}_${toggles.showBands}_${fitToContent}`}
+              key={`ph_${horizon.start.toISOString()}_${horizon.end.toISOString()}_${phaseData.length}_${anyChecked}_${toggles.showPhaseBands}_${fitToContent}`}
               {...ganttCommon}
               stages={phaseStages()}
               data={(anyChecked ? phaseData : []) as any}
@@ -757,12 +821,26 @@ export default function RollupGantt({
       </section>
 
       {/* Expected Dates */}
-      <section className="px-3 pt-2 pb-6">
-        <div className="px-1 pb-2 text-xs font-medium text-secondary">Expected Dates</div>
+      <section className={`px-3 pt-2 ${hideSelection ? "pb-2" : "pb-6"}`}>
+        <div className="flex items-center justify-between px-1 pb-2">
+          <div className="text-xs font-medium text-secondary">Expected Dates</div>
+          <div className="flex items-center gap-3 text-xs">
+            <Tooltip content="Adjust band lengths in Settings">
+              <label className="inline-flex items-center gap-1 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={toggles.showExactBands}
+                  onChange={(e) => setToggles(s => ({ ...s, showExactBands: e.target.checked }))}
+                />
+                Availability Bands
+              </label>
+            </Tooltip>
+          </div>
+        </div>
         <div className="rounded-xl border border-white/10 bg-black/20 overflow-hidden">
           <div className="overflow-x-auto" ref={exScrollRef} onScroll={onExScroll}>
             <Gantt
-              key={`ex_${horizon.start.toISOString()}_${horizon.end.toISOString()}_${visibleExactStages.length}_${anyChecked}_${toggles.showBands}_${fitToContent}`}
+              key={`ex_${horizon.start.toISOString()}_${horizon.end.toISOString()}_${visibleExactStages.length}_${anyChecked}_${toggles.showExactBands}_${fitToContent}`}
               {...ganttCommon}
               stages={visibleExactStages}
               data={(anyChecked ? exactData : []) as any}
@@ -786,16 +864,24 @@ export default function RollupGantt({
               </label>
             </div>
             <div className="grid grid-cols-1 gap-2 text-xs">
-              {selectablePlans.map(p => (
-                <label key={String(p.id)} className="inline-flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={selectedKeys.has(idKey(p.id))}
-                    onChange={() => toggleOne(p.id)}
-                  />
-                  <span className="truncate">{p.name || String(p.id)}</span>
-                </label>
-              ))}
+              {selectablePlans.map(p => {
+                const isSelected = selectedKeys.has(idKey(p.id));
+                // Get the index among active (selected) plans to match centerline color
+                const selectedIndex = activePlans.findIndex(ap => ap.id === p.id);
+                const lineColor = isSelected && selectedIndex >= 0 ? getPlanLineColor(selectedIndex) : undefined;
+                return (
+                  <label key={String(p.id)} className="inline-flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={() => toggleOne(p.id)}
+                      className="rounded"
+                      style={lineColor ? { accentColor: lineColor } : undefined}
+                    />
+                    <span className="truncate">{p.name || String(p.id)}</span>
+                  </label>
+                );
+              })}
               {selectablePlans.length === 0 && (
                 <div className="text-xs text-secondary">No plans available.</div>
               )}

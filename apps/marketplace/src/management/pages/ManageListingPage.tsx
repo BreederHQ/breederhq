@@ -843,6 +843,10 @@ function CreateProgramModal({
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="e.g., Golden Retriever Program"
+                autoComplete="off"
+                data-1p-ignore
+                data-lpignore="true"
+                data-form-type="other"
                 className={INPUT_CLS}
                 required
               />
@@ -855,6 +859,10 @@ function CreateProgramModal({
                 onChange={(e) => setDescription(e.target.value.slice(0, 300))}
                 placeholder="Describe your breeding program..."
                 rows={3}
+                autoComplete="off"
+                data-1p-ignore
+                data-lpignore="true"
+                data-form-type="other"
                 className={TEXTAREA_CLS}
               />
               <div className="text-xs text-secondary text-right mt-1">
@@ -1115,6 +1123,10 @@ function EditProgramModal({
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="e.g., Golden Retriever Program"
+                autoComplete="off"
+                data-1p-ignore
+                data-lpignore="true"
+                data-form-type="other"
                 className={INPUT_CLS}
                 required
               />
@@ -1129,6 +1141,10 @@ function EditProgramModal({
                 onChange={(e) => setDescription(e.target.value.slice(0, 500))}
                 placeholder="Describe your breeding program..."
                 rows={3}
+                autoComplete="off"
+                data-1p-ignore
+                data-lpignore="true"
+                data-form-type="other"
                 className={TEXTAREA_CLS}
               />
               <div className="text-xs text-secondary text-right mt-1">{description.length}/500</div>
@@ -1153,6 +1169,10 @@ function EditProgramModal({
                           value={tier.tier}
                           onChange={(e) => updatePricingTier(index, "tier", e.target.value)}
                           placeholder="Tier name (e.g., Pet)"
+                          autoComplete="off"
+                          data-1p-ignore
+                          data-lpignore="true"
+                          data-form-type="other"
                           className={INPUT_CLS}
                         />
                         <input
@@ -1160,6 +1180,10 @@ function EditProgramModal({
                           value={tier.priceRange}
                           onChange={(e) => updatePricingTier(index, "priceRange", e.target.value)}
                           placeholder="Price (e.g., $2,500)"
+                          autoComplete="off"
+                          data-1p-ignore
+                          data-lpignore="true"
+                          data-form-type="other"
                           className={INPUT_CLS}
                         />
                         <input
@@ -1167,6 +1191,10 @@ function EditProgramModal({
                           value={tier.description || ""}
                           onChange={(e) => updatePricingTier(index, "description", e.target.value)}
                           placeholder="What's included at this tier"
+                          autoComplete="off"
+                          data-1p-ignore
+                          data-lpignore="true"
+                          data-form-type="other"
                           className={`${INPUT_CLS} col-span-2`}
                         />
                       </div>
@@ -1197,6 +1225,10 @@ function EditProgramModal({
                   onChange={(e) => setWhatsIncluded(e.target.value.slice(0, 1000))}
                   placeholder="First vaccinations, microchip, health certificate, starter kit with food, blanket with littermates' scent, lifetime breeder support..."
                   rows={4}
+                  autoComplete="off"
+                  data-1p-ignore
+                  data-lpignore="true"
+                  data-form-type="other"
                   className={TEXTAREA_CLS}
                 />
                 <div className="text-xs text-secondary text-right mt-1">{whatsIncluded.length}/1000</div>
@@ -1210,6 +1242,10 @@ function EditProgramModal({
                   value={typicalWaitTime}
                   onChange={(e) => setTypicalWaitTime(e.target.value)}
                   placeholder="3-6 months"
+                  autoComplete="off"
+                  data-1p-ignore
+                  data-lpignore="true"
+                  data-form-type="other"
                   className={INPUT_CLS}
                 />
               </div>
@@ -2010,6 +2046,10 @@ export function ManageListingPage() {
               value={draft.businessName}
               onChange={(e) => updateDraft("businessName", e.target.value)}
               placeholder="Your breeding program name"
+              autoComplete="off"
+              data-1p-ignore
+              data-lpignore="true"
+              data-form-type="other"
               className={INPUT_CLS}
             />
           </div>
@@ -2022,6 +2062,10 @@ export function ManageListingPage() {
               onChange={(e) => updateDraft("bio", e.target.value.slice(0, 500))}
               placeholder="Tell potential clients about your breeding program, your experience, and what makes you unique..."
               rows={4}
+              autoComplete="off"
+              data-1p-ignore
+              data-lpignore="true"
+              data-form-type="other"
               className={TEXTAREA_CLS}
             />
             <div className="text-xs text-secondary text-right mt-1">{draft.bio.length}/500</div>
@@ -2073,6 +2117,10 @@ export function ManageListingPage() {
               value={draft.websiteUrl}
               onChange={(e) => updateDraft("websiteUrl", e.target.value)}
               placeholder="https://yourwebsite.com"
+              autoComplete="off"
+              data-1p-ignore
+              data-lpignore="true"
+              data-form-type="other"
               className={INPUT_CLS}
             />
           </div>
@@ -2093,6 +2141,10 @@ export function ManageListingPage() {
                 value={draft.instagram}
                 onChange={(e) => updateDraft("instagram", e.target.value.replace(/^@/, ""))}
                 placeholder="username"
+                autoComplete="off"
+                data-1p-ignore
+                data-lpignore="true"
+                data-form-type="other"
                 className={INPUT_CLS}
               />
             </div>
@@ -2112,6 +2164,10 @@ export function ManageListingPage() {
               value={draft.facebook}
               onChange={(e) => updateDraft("facebook", e.target.value)}
               placeholder="Page name or URL"
+              autoComplete="off"
+              data-1p-ignore
+              data-lpignore="true"
+              data-form-type="other"
               className={INPUT_CLS}
             />
           </div>
@@ -2147,6 +2203,10 @@ export function ManageListingPage() {
                   value={draft.address.street}
                   onChange={(e) => updateAddress("street", e.target.value)}
                   placeholder="123 Main St"
+                  autoComplete="off"
+                  data-1p-ignore
+                  data-lpignore="true"
+                  data-form-type="other"
                   className={INPUT_CLS}
                 />
               </label>
@@ -2157,6 +2217,10 @@ export function ManageListingPage() {
                   value={draft.address.city}
                   onChange={(e) => updateAddress("city", e.target.value)}
                   placeholder="City"
+                  autoComplete="off"
+                  data-1p-ignore
+                  data-lpignore="true"
+                  data-form-type="other"
                   className={INPUT_CLS}
                 />
               </label>
@@ -2167,6 +2231,10 @@ export function ManageListingPage() {
                   value={draft.address.state}
                   onChange={(e) => updateAddress("state", e.target.value)}
                   placeholder="State"
+                  autoComplete="off"
+                  data-1p-ignore
+                  data-lpignore="true"
+                  data-form-type="other"
                   className={INPUT_CLS}
                 />
               </label>
@@ -2177,6 +2245,10 @@ export function ManageListingPage() {
                   value={draft.address.zip}
                   onChange={(e) => updateAddress("zip", e.target.value)}
                   placeholder="12345"
+                  autoComplete="off"
+                  data-1p-ignore
+                  data-lpignore="true"
+                  data-form-type="other"
                   className={INPUT_CLS}
                 />
               </label>
@@ -2187,6 +2259,10 @@ export function ManageListingPage() {
                   value={draft.address.country}
                   onChange={(e) => updateAddress("country", e.target.value)}
                   placeholder="Country"
+                  autoComplete="off"
+                  data-1p-ignore
+                  data-lpignore="true"
+                  data-form-type="other"
                   className={INPUT_CLS}
                 />
               </label>

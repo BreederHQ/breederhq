@@ -126,22 +126,78 @@ export function deriveBreedingStatus(p: {
   completedDateActual?: string | null;
   status?: string | null;
 }): Status {
-  // Status is NOT auto-derived from dates.
-  // User must explicitly click "Advance to X Phase" button to change status.
-  // This function now only returns the current explicit status, or derives
-  // the initial PLANNING/COMMITTED state based on prerequisites.
+  // Status derivation logic:
+  // 1. Check if explicit status is still valid based on available dates
+  // 2. If explicit status requirements are NOT met, regress to highest valid status
+  // 3. For new plans without explicit status, derive from prerequisites
 
   const explicit = (p.status ?? "").toUpperCase() as Status;
 
-  // If we have an explicit status that's a valid phase, preserve it
+  // Helper to check if a date field has a value
+  const hasDate = (d: string | null | undefined): boolean => Boolean((d ?? "").toString().trim());
+
+  // Check prerequisites for each status
+  const hasBasics = Boolean((p.name ?? "").trim() && (p.species ?? "").trim() && p.damId != null);
+  const hasCommitPrereqs = hasBasics && p.sireId != null && hasDate(p.lockedCycleStart);
+  const hasCycleStart = hasDate(p.cycleStartDateActual);
+  const hasBreedDate = hasDate(p.breedDateActual);
+  const hasBirthDate = hasDate(p.birthDateActual);
+  const hasWeanedDate = hasDate(p.weanedDateActual);
+  const hasPlacementStart = hasDate(p.placementStartDateActual);
+  const hasPlacementCompleted = hasDate(p.placementCompletedDateActual);
+  const hasCompleted = hasDate(p.completedDateActual);
+
+  // Validate explicit status against available data
+  // If the status requires data that's missing, regress to the highest valid status
   if (STATUS_ORDER.includes(explicit)) {
-    return explicit;
+    // COMPLETE requires placement completed
+    if (explicit === "COMPLETE" && !hasPlacementCompleted) {
+      // Regress - fall through to find valid status
+    }
+    // PLACEMENT_COMPLETED requires placement started
+    else if (explicit === "PLACEMENT_COMPLETED" && !hasPlacementStart) {
+      // Regress
+    }
+    // PLACEMENT_STARTED requires weaned date
+    else if (explicit === "PLACEMENT_STARTED" && !hasWeanedDate) {
+      // Regress
+    }
+    // WEANED requires birth date
+    else if (explicit === "WEANED" && !hasBirthDate) {
+      // Regress
+    }
+    // BIRTHED requires breed date
+    else if (explicit === "BIRTHED" && !hasBreedDate) {
+      // Regress
+    }
+    // BRED requires cycle start actual date
+    else if (explicit === "BRED" && !hasCycleStart) {
+      // Regress
+    }
+    // COMMITTED requires locked cycle AND basic prerequisites
+    else if (explicit === "COMMITTED" && !hasCommitPrereqs) {
+      // Regress to PLANNING
+      return "PLANNING";
+    }
+    // CANCELED is always valid once set
+    else if (explicit === "CANCELED") {
+      return "CANCELED";
+    }
+    // Status is valid for available data
+    else {
+      return explicit;
+    }
   }
 
-  // Only derive PLANNING vs COMMITTED based on prerequisites (for new plans)
-  const hasBasics = Boolean((p.name ?? "").trim() && (p.species ?? "").trim() && p.damId != null);
-  const hasCommitPrereqs = hasBasics && p.sireId != null && (p.lockedCycleStart ?? "").trim();
-
+  // Either no explicit status OR explicit status was invalid - derive from available data
+  // Find the highest valid status based on available dates
+  if (hasCompleted && hasPlacementCompleted) return "COMPLETE";
+  if (hasPlacementCompleted && hasPlacementStart) return "PLACEMENT_COMPLETED";
+  if (hasPlacementStart && hasWeanedDate) return "PLACEMENT_STARTED";
+  if (hasWeanedDate && hasBirthDate) return "WEANED";
+  if (hasBirthDate && hasBreedDate) return "BIRTHED";
+  if (hasBreedDate && hasCycleStart) return "BRED";
+  if (hasCycleStart && hasCommitPrereqs) return "COMMITTED";
   if (hasCommitPrereqs) return "COMMITTED";
   return "PLANNING";
 }

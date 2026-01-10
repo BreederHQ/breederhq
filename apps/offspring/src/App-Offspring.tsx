@@ -1,10 +1,9 @@
 // App-Offspring.tsx (drop-in, compile-ready, aligned with shared DetailsHost/Table pattern)
 
-import WaitlistPage from "./pages/WaitlistPage";
 import OffspringPage from "./pages/OffspringPage";
 import * as React from "react";
 import ReactDOM from "react-dom";
-import { Trash2, Plus, X, ChevronDown, MoreHorizontal, Download } from "lucide-react";
+import { Trash2, Plus, X, ChevronDown, MoreHorizontal, Download, LayoutGrid, Table as TableIcon } from "lucide-react";
 import {
   PageHeader,
   Card,
@@ -25,6 +24,7 @@ import {
   DatePicker,
   exportToCsv,
   Popover,
+  useViewMode,
 } from "@bhq/ui";
 import { FinanceTab, type OffspringGroupContext } from "@bhq/ui/components/Finance";
 
@@ -40,7 +40,9 @@ import {
 } from "./api";
 import clsx from "clsx";
 
-import { reproEngine } from "@bhq/ui/utils"
+import { reproEngine } from "@bhq/ui/utils";
+import { GroupCardView } from "./components/GroupCardView";
+import { CollarPicker, CollarSwatch } from "./components/CollarPicker";
 
 
 /* ───────────────────────── shared types ───────────────────────── */
@@ -100,6 +102,10 @@ function InlineSearch({
         disabled={!!disabled}
         onFocus={onFocus}
         onBlur={onBlur}
+        autoComplete="off"
+        data-1p-ignore
+        data-lpignore="true"
+        data-form-type="other"
       />
     </div>
   );
@@ -115,18 +121,6 @@ function cx(...p: Array<string | false | null | undefined>) {
 }
 
 const labelClass = "text-xs text-secondary";
-
-const WHELPING_COLLAR_SWATCHES = [
-  { label: "Red", value: "Red", hex: "#ef4444" },
-  { label: "Orange", value: "Orange", hex: "#f97316" },
-  { label: "Yellow", value: "Yellow", hex: "#eab308" },
-  { label: "Green", value: "Green", hex: "#22c55e" },
-  { label: "Blue", value: "Blue", hex: "#3b82f6" },
-  { label: "Purple", value: "Purple", hex: "#a855f7" },
-  { label: "Pink", value: "Pink", hex: "#ec4899" },
-  { label: "Black", value: "Black", hex: "#111827" },
-  { label: "White", value: "White", hex: "#f9fafb" },
-];
 
 
 function SectionChipHeading({ icon, text }: { icon: React.ReactNode; text: string }) {
@@ -273,42 +267,39 @@ function UnderlineTabs({
   value,
   onChange,
 }: {
-  value: "offspring" | "groups" | "waitlist";
-  onChange: (v: "offspring" | "groups" | "waitlist") => void;
+  value: "offspring" | "groups";
+  onChange: (v: "offspring" | "groups") => void;
 }) {
-  const base =
-    "h-9 px-1.5 text-sm font-semibold leading-9 border-b-2 border-solid border-transparent transition-colors";
-  const activeText = "text-[var(--color-text-strong,#e9e9e9)]";
+  const tabs = [
+    { key: "groups" as const, label: "Groups", emoji: "📦" },
+    { key: "offspring" as const, label: "Offspring", emoji: "🐾" },
+  ];
 
   return (
-    <div role="tablist" aria-label="Offspring tabs" className="flex gap-6">
-      <button
-        role="tab"
-        aria-selected={value === "groups"}
-        className={[base, value === "groups" ? activeText : ""].join(" ")}
-        onClick={() => onChange("groups")}
-        style={value === "groups" ? { borderBottomColor: "hsl(var(--brand-orange))" } : undefined}
-      >
-        Groups
-      </button>
-      <button
-        role="tab"
-        aria-selected={value === "offspring"}
-        className={[base, value === "offspring" ? activeText : ""].join(" ")}
-        onClick={() => onChange("offspring")}
-        style={value === "offspring" ? { borderBottomColor: "hsl(var(--brand-orange))" } : undefined}
-      >
-        Offspring
-      </button>
-      <button
-        role="tab"
-        aria-selected={value === "waitlist"}
-        className={[base, value === "waitlist" ? activeText : ""].join(" ")}
-        onClick={() => onChange("waitlist")}
-        style={value === "waitlist" ? { borderBottomColor: "hsl(var(--brand-orange))" } : undefined}
-      >
-        Waitlist
-      </button>
+    <div role="tablist" aria-label="Offspring tabs" className="flex gap-1">
+      {tabs.map((tab) => {
+        const isActive = value === tab.key;
+        return (
+          <button
+            key={tab.key}
+            role="tab"
+            aria-selected={isActive}
+            className={[
+              "relative h-10 px-4 text-base font-semibold leading-10 border-b-2 transition-all duration-300 ease-out flex items-center gap-2",
+              isActive
+                ? "text-primary border-[hsl(var(--brand-orange))]"
+                : "text-secondary hover:text-primary border-transparent hover:border-[hsl(var(--brand-orange))]/30",
+            ].join(" ")}
+            onClick={() => onChange(tab.key)}
+          >
+            {isActive && (
+              <span className="absolute inset-0 bg-[hsl(var(--brand-orange))]/15 blur-lg rounded-lg animate-pulse" />
+            )}
+            <span className="relative z-10">{tab.emoji}</span>
+            <span className="relative z-10">{tab.label}</span>
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -589,6 +580,8 @@ type BuyerLink = {
 
 
 /* ───────────────────────── Groups table ───────────────────────── */
+type ViewMode = "table" | "cards";
+
 type GroupTableRow = {
   id: number;
   planCode?: string | null;
@@ -775,17 +768,17 @@ function computeExpectedForPlanLite(plan: { species?: string | null; lockedCycle
   const expectedBirthDate = onlyDay(timeline?.windows?.birth?.likely?.[0]) || null;
   const expectedWeaned =
     onlyDay(
-      timeline?.windows?.puppy_care?.likely?.[1],
+      timeline?.windows?.offspring_care?.likely?.[1],
     ) || null;
 
   const expectedPlacementStartDate =
     onlyDay(
-      timeline?.windows?.go_home_normal?.likely?.[0],
+      timeline?.windows?.placement_normal?.likely?.[0],
     ) || null;
 
   const expectedPlacementCompletedDate =
     onlyDay(
-      timeline?.windows?.go_home_extended?.full?.[1],
+      timeline?.windows?.placement_extended?.full?.[1],
     ) || null;
 
   return {
@@ -1503,7 +1496,7 @@ function CreateGroupForm({
           <span className={labelClass}>
             Group Name <span className="text-[hsl(var(--brand-orange))]">*</span>
           </span>
-          <input className={inputClass} value={identifier} onChange={(e) => setIdentifier(e.target.value)} placeholder="e.g., A Litter" />
+          <input className={inputClass} value={identifier} onChange={(e) => setIdentifier(e.target.value)} placeholder="e.g., A Litter" autoComplete="off" data-1p-ignore data-lpignore="true" data-form-type="other" />
         </label>
 
         <label className="flex flex-col gap-1">
@@ -1539,11 +1532,11 @@ function CreateGroupForm({
 
         <label className="flex flex-col gap-1">
           <span className={labelClass}>Weaned Count (optional)</span>
-          <input className={inputClass} type="number" value={countWeaned} onChange={(e) => setCountWeaned(e.target.value)} />
+          <input className={inputClass} type="number" value={countWeaned} onChange={(e) => setCountWeaned(e.target.value)} autoComplete="off" data-1p-ignore data-lpignore="true" data-form-type="other" />
         </label>
         <label className="flex flex-col gap-1">
           <span className={labelClass}>Placed Count (optional)</span>
-          <input className={inputClass} type="number" value={countPlaced} onChange={(e) => setCountPlaced(e.target.value)} />
+          <input className={inputClass} type="number" value={countPlaced} onChange={(e) => setCountPlaced(e.target.value)} autoComplete="off" data-1p-ignore data-lpignore="true" data-form-type="other" />
         </label>
       </div>
 
@@ -1558,771 +1551,6 @@ function CreateGroupForm({
         </Button>
       </div>
     </div>
-  );
-}
-
-/* ───────────────────────── Add to Waitlist modal ───────────────────────── */
-function AddToWaitlistModal({
-  api,
-  tenantId,
-  open,
-  onClose,
-  onCreated,
-  allowedSpecies = SPECIES_UI_ALL,
-  group,
-  onGroupUpdate,
-}: {
-  api: OffspringApi | null;
-  tenantId: number | null;
-  open: boolean;
-  onClose: () => void;
-  onCreated: () => Promise<void> | void;
-  allowedSpecies?: SpeciesUi[];
-  group?: any;
-  onGroupUpdate?: (g: any) => void;
-}) {
-  // Modal is always editable; defining this prevents ReferenceError from reads below.
-  const readOnly = false;
-  const panelRef = React.useRef<HTMLDivElement>(null);
-
-  React.useEffect(() => {
-    const prev = document.body.style.overflow;
-    if (open) document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = prev || "";
-    };
-  }, [open]);
-
-  const [link, setLink] = React.useState<{ kind: "contact" | "org"; id: number; label: string } | null>(null);
-
-  const [q, setQ] = React.useState("");
-  const [hits, setHits] = React.useState<DirectoryHit[]>([]);
-  const [busy, setBusy] = React.useState(false);
-
-  React.useEffect(() => {
-    let alive = true;
-    const run = async () => {
-      const qq = q.trim();
-      if (!qq || link) {
-        setHits([]);
-        return;
-      }
-      setBusy(true);
-      try {
-        const r = await searchDirectory(api, qq);
-        if (alive) setHits(r);
-      } finally {
-        if (alive) setBusy(false);
-      }
-    };
-    const t = setTimeout(run, 250);
-    return () => {
-      alive = false;
-      clearTimeout(t);
-    };
-  }, [q, link, tenantId, api]);
-
-  const [quickOpen, setQuickOpen] = React.useState<null | "contact" | "org">(null);
-  // Offspring in this group, prefer Offspring from offspring table
-  const animalsInGroup = React.useMemo(
-    () => {
-      const g: any = group as any;
-      if (!g) return [];
-
-      if (Array.isArray(g.Offspring) && g.Offspring.length > 0) {
-        return g.Offspring as any[];
-      }
-
-      if (Array.isArray(g.Animals)) {
-        return g.Animals as any[];
-      }
-
-      return [];
-    },
-    [group],
-  );
-
-  const [assigningOffspringId, setAssigningOffspringId] =
-    React.useState<number | null>(null);
-
-  // Find the currently assigned offspring for this buyer
-  const findCurrentAssignmentForBuyer = React.useCallback(
-    (b: any) => {
-      return animalsInGroup.find((a: any) => {
-        const contactMatch =
-          b.contactId &&
-          a.buyerContact &&
-          a.buyerContact.id === b.contactId;
-
-        const orgMatch =
-          b.organizationId &&
-          a.buyerOrg &&
-          a.buyerOrg.id === b.organizationId;
-
-        const waitlistMatch =
-          b.waitlistEntryId &&
-          a.waitlistEntry &&
-          a.waitlistEntry.id === b.waitlistEntryId;
-
-        return contactMatch || orgMatch || waitlistMatch;
-      });
-    },
-    [animalsInGroup],
-  );
-
-  // Only show unassigned offspring plus the one currently assigned
-  const getAssignableOffspringForBuyer = React.useCallback(
-    (b: any) => {
-      const current = findCurrentAssignmentForBuyer(b);
-
-      return animalsInGroup.filter((a: any) => {
-        const assigned =
-          a.buyerContact || a.buyerOrg || a.waitlistEntry;
-
-        if (current && a.id === current.id) {
-          return true;
-        }
-
-        return !assigned;
-      });
-    },
-    [animalsInGroup, findCurrentAssignmentForBuyer],
-  );
-
-  const handleAssignOffspring = React.useCallback(
-    async (buyer: any, value: string) => {
-      if (!group) return;
-
-      const offspringId = value ? Number(value) : null;
-      setAssigningOffspringId(offspringId);
-
-      try {
-        const nextAnimals = animalsInGroup.map((a: any) => {
-          const belongsToBuyer =
-            (buyer.contactId &&
-              a.buyerContact &&
-              a.buyerContact.id === buyer.contactId) ||
-            (buyer.organizationId &&
-              a.buyerOrg &&
-              a.buyerOrg.id === buyer.organizationId) ||
-            (buyer.waitlistEntryId &&
-              a.waitlistEntry &&
-              a.waitlistEntry.id === buyer.waitlistEntryId);
-
-          if (belongsToBuyer && offspringId && a.id !== offspringId) {
-            return {
-              ...a,
-              buyerContact: null,
-              buyerOrg: null,
-              waitlistEntry: null,
-            };
-          }
-
-          if (offspringId && a.id === offspringId) {
-            return {
-              ...a,
-              buyerContact: buyer.contactId
-                ? { id: buyer.contactId }
-                : null,
-              buyerOrg: buyer.organizationId
-                ? { id: buyer.organizationId }
-                : null,
-              waitlistEntry: buyer.waitlistEntryId
-                ? { id: buyer.waitlistEntryId }
-                : null,
-            };
-          }
-
-          return a;
-        });
-
-        const nextGroup = {
-          ...group,
-          Animals: nextAnimals,
-          Offspring: nextAnimals,
-        };
-
-        onGroupUpdate?.(nextGroup);
-      } finally {
-        setAssigningOffspringId(null);
-      }
-    },
-    [animalsInGroup, group, onGroupUpdate],
-  );
-
-  const [qc, setQc] = React.useState({ firstName: "", lastName: "", email: "", phone: "" });
-  const [qo, setQo] = React.useState({ name: "", website: "" });
-  const [creating, setCreating] = React.useState(false);
-  const [createErr, setCreateErr] = React.useState<string | null>(null);
-
-  function normalizeStr(s?: string | null) {
-    return (s ?? "").trim().toLowerCase();
-  }
-
-  async function findBestContactMatch(
-    api: ReturnType<typeof makeOffspringApiClient>,
-    probe: { email?: string; phone?: string; firstName?: string; lastName?: string }
-  ) {
-    const q =
-      probe.email?.trim() ||
-      probe.phone?.trim() ||
-      `${probe.firstName ?? ""} ${probe.lastName ?? ""}`.trim();
-
-    if (!q) return null;
-
-    const res = await api.contacts.list({ q, limit: 10 });
-    const items: any[] = Array.isArray(res) ? res : res?.items ?? [];
-    if (!items.length) return null;
-
-    if (probe.email) {
-      const eNorm = normalizeStr(probe.email);
-      const byEmail = items.find((c) => normalizeStr(c.email) === eNorm);
-      if (byEmail) return byEmail;
-    }
-
-    if (probe.phone) {
-      const byPhone = items.find((c) => (c.phoneE164 || "") === probe.phone);
-      if (byPhone) return byPhone;
-    }
-
-    const want = normalizeStr(`${probe.firstName ?? ""} ${probe.lastName ?? ""}`.trim());
-    if (want) {
-      const byName = items.find((c) =>
-        normalizeStr(c.display_name || `${c.first_name ?? ""} ${c.last_name ?? ""}`) === want
-      );
-      if (byName) return byName;
-    }
-
-    return items[0];
-  }
-
-  function isConflict(err: any) {
-    const status = err?.status ?? err?.code ?? err?.response?.status;
-    const msg = String(err?.message || "").toLowerCase();
-    return status === 409 || msg.includes("409") || msg.includes("conflict");
-  }
-
-  async function quickCreateContact(body: { firstName?: string; lastName?: string; email?: string; phone?: string }) {
-    const pre = await exactContactLookup(api!, body);
-    if (pre) return pre;
-
-    const payload = stripEmpty({
-      display_name: `${(body.firstName ?? "").trim()} ${(body.lastName ?? "").trim()}`.trim() || undefined,
-      first_name: body.firstName,
-      last_name: body.lastName,
-      email: body.email,
-      phoneE164: body.phone,
-      phone_e164: body.phone,
-    });
-
-    try {
-      return await api!.contacts.create(payload);
-    } catch (e: any) {
-      const status = e?.status ?? e?.code ?? e?.response?.status;
-      if (status === 409) {
-        const id = conflictExistingIdFromError(e);
-        if (id) return await api!.contacts.get(id);
-        const post = await exactContactLookup(api!, body);
-        if (post) return post;
-      }
-      throw e;
-    }
-  }
-
-  async function quickCreateOrg(body: { name: string; website?: string }) {
-    try {
-      return await api!.organizations.create({ name: body.name, website: body.website ?? null });
-    } catch (e: any) {
-      const status = e?.status ?? e?.code ?? e?.response?.status;
-      const msg = String(e?.message || "").toLowerCase();
-      const is409 = status === 409 || msg.includes("409") || msg.includes("conflict");
-      if (!is409) throw e;
-
-      const probe = body.name?.trim() || body.website?.trim();
-      if (!probe) throw e;
-
-      const found = await api!.organizations.list({ q: probe, limit: 5 });
-      const items: any[] = Array.isArray(found) ? found : found?.items ?? [];
-      if (!items.length) throw e;
-      return items[0];
-    }
-  }
-
-  async function doQuickAdd() {
-    try {
-      setCreating(true);
-      setCreateErr(null);
-      if (quickOpen === "contact") {
-        const c = await quickCreateContact(qc);
-        setLink({
-          kind: "contact",
-          id: Number(c.id),
-          label: c.display_name || `${c.first_name ?? ""} ${c.last_name ?? ""}`.trim() || "(Contact)",
-        });
-        setQuickOpen(null);
-        setQ("");
-        setHits([]);
-      } else if (quickOpen === "org") {
-        const o = await quickCreateOrg(qo);
-        setLink({ kind: "org", id: Number(o.id), label: o.name || "(Organization)" });
-        setQuickOpen(null);
-        setQ("");
-        setHits([]);
-      }
-    } catch (e: any) {
-      setCreateErr(e?.message || "Create failed.");
-    } finally {
-      setCreating(false);
-    }
-  }
-
-  const [speciesUi, setSpeciesUi] = React.useState<SpeciesUi | "">("");
-  const speciesWire = toWireSpecies(speciesUi);
-
-  const [breed, setBreed] = React.useState<any>(null);
-  const [breedNonce, setBreedNonce] = React.useState(0);
-  const onBreedPick = React.useCallback((hit: any) => {
-    setBreed(hit ? { ...hit } : null);
-    setBreedNonce((n) => n + 1);
-  }, []);
-
-  const [damQ, setDamQ] = React.useState("");
-  const [sireQ, setSireQ] = React.useState("");
-  const [damId, setDamId] = React.useState<number | null>(null);
-  const [sireId, setSireId] = React.useState<number | null>(null);
-
-  const [damOpen, setDamOpen] = React.useState(false);
-  const [sireOpen, setSireOpen] = React.useState(false);
-
-  const canSubmit = !!link && !!speciesWire && !!(breed?.name || "").trim();
-
-  async function handleSubmit() {
-    if (!api || !canSubmit) return;
-    await api.waitlist.create({
-      contactId: link?.kind === "contact" ? link.id : null,
-      organizationId: link?.kind === "org" ? link.id : null,
-      speciesPref: speciesWire!,
-      breedPrefs: (breed?.name ?? "").trim() ? [(breed?.name ?? "").trim()] : null,
-      damPrefId: damId ?? null,
-      sirePrefId: sireId ?? null,
-    });
-    await onCreated();
-    onClose();
-  }
-
-  function resetAll() {
-    setLink(null);
-    setQ("");
-    setHits([]);
-    setBusy(false);
-    setQuickOpen(null);
-    setQc({ firstName: "", lastName: "", email: "", phone: "" });
-    setQo({ name: "", website: "" });
-    setCreating(false);
-    setCreateErr(null);
-    setSpeciesUi("");
-    setBreed(null);
-    setBreedNonce(0);
-    setDamQ("");
-    setSireQ("");
-    setDamId(null);
-    setSireId(null);
-    setDamOpen(false);
-    setSireOpen(false);
-  }
-
-  React.useEffect(() => {
-    if (open) resetAll();
-  }, [open]);
-
-  const searchValue = link ? `${link.kind === "contact" ? "Contact" : "Org"} · ${link.label}` : q;
-  const clearLinkAndSearch = React.useCallback(() => {
-    setLink(null);
-    setQ("");
-    setHits([]);
-    setBusy(false);
-  }, []);
-
-  const norm = (s: string) =>
-    s
-      .toLowerCase()
-      .replace(/[._\-\/]/g, " ")
-      .replace(/\b(organization|org|inc|llc|co|company|ltd)\b/g, "")
-      .replace(/\s+/g, " ")
-      .trim();
-
-  const filteredHits = React.useMemo(() => {
-    const qq = norm(q);
-    if (!qq) return [];
-    return hits.filter((h) => {
-      const hay = norm(`${h.label || ""} ${h.sub || ""}`);
-      return hay.includes(qq);
-    });
-  }, [hits, q]);
-
-  const [damResults, setDamResults] = React.useState<AnimalLite[]>([]);
-  const [sireResults, setSireResults] = React.useState<AnimalLite[]>([]);
-  React.useEffect(() => {
-    let alive = true;
-    (async () => {
-      if (!speciesWire || !damOpen || !damQ.trim()) {
-        if (alive) setDamResults([]);
-        return;
-      }
-      const list = await fetchAnimals(api, { q: damQ.trim(), species: speciesWire, sex: "FEMALE", limit: 25 });
-      const strict = list.filter(a => a.sex === "FEMALE");
-      if (alive) setDamResults(strict);
-    })();
-    return () => { alive = false; };
-  }, [damQ, speciesWire, damOpen, api]);
-
-  React.useEffect(() => {
-    let alive = true;
-    (async () => {
-      if (!speciesWire || !sireOpen || !sireQ.trim()) {
-        if (alive) setSireResults([]);
-        return;
-      }
-      const list = await fetchAnimals(api, { q: sireQ.trim(), species: speciesWire, sex: "MALE", limit: 25 });
-      const strict = list.filter(a => a.sex === "MALE");
-      if (alive) setSireResults(strict);
-    })();
-    return () => { alive = false; };
-  }, [sireQ, speciesWire, sireOpen, api]);
-
-  return (
-    <Overlay
-      open={open}
-      ariaLabel="Add Buyer"
-      closeOnEscape
-      closeOnOutsideClick
-      onOpenChange={(next) => {
-        if (!next) onClose();
-      }}
-    >
-      <div
-        className="fixed inset-0"
-        style={{ zIndex: MODAL_Z + 1, isolation: "isolate" }}
-        onMouseDownCapture={(e) => {
-          e.stopPropagation();
-        }}
-        onPointerDownCapture={(e) => {
-          e.stopPropagation();
-        }}
-        onClickCapture={(e) => {
-          e.stopPropagation();
-        }}
-      >
-        <div className="absolute inset-0 bg-black/50" />
-        <div className="absolute inset-0 flex items-center justify-center">
-          <div
-            className="pointer-events-auto overflow-hidden"
-            style={{ width: 820, maxWidth: "95vw", maxHeight: "82vh" }}
-          >
-            <Card className="h-full">
-              <div className="h-full p-4 space-y-4 overflow-y-auto">
-                <div className="flex items-center gap-2">
-                  <div className="text-lg font-semibold">Add to Waitlist</div>
-                  {link && (
-                    <button
-                      className="ml-auto text-xs underline text-secondary hover:text-primary"
-                      onClick={clearLinkAndSearch}
-                    >
-                      Clear selection
-                    </button>
-                  )}
-                </div>
-
-                {/* Search Contacts/Orgs */}
-                <div className="relative">
-                  <div className={labelClass + " mb-1"}>Search Contacts or Organizations</div>
-                  <div className="relative">
-                    <SearchBar
-                      value={searchValue}
-                      onChange={(val) => {
-                        if (link) {
-                          clearLinkAndSearch();
-                          setQ(val);
-                        } else {
-                          setQ(val);
-                        }
-                      }}
-                      placeholder="Type a name, email, phone, or organization."
-                      widthPx={720}
-                    />
-                  </div>
-
-                  {/* Always-visible quick add triggers */}
-                  <div className="mt-2 flex items-center gap-3">
-                    <Button size="xs" variant="outline" onClick={() => setQuickOpen("contact")}>
-                      + Quick Add Contact
-                    </Button>
-                    <Button size="xs" variant="outline" onClick={() => setQuickOpen("org")}>
-                      + Quick Add Organization
-                    </Button>
-                  </div>
-                </div>
-
-                {/* Results list */}
-                {!link && q.trim() && (
-                  <div className="rounded-md border border-hairline max-h-56 overflow-auto p-2">
-                    {busy ? (
-                      <div className="px-2 py-2 text-sm text-secondary">Searching...</div>
-                    ) : (
-                      (() => {
-                        const contacts = filteredHits.filter((h) => h.kind === "contact");
-                        const orgs = filteredHits.filter((h) => h.kind === "org");
-                        const sectionClass = "rounded-md bg-white/5";
-                        const pill = (t: string) => <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/10">{t}</span>;
-
-                        return (
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                            {/* Contacts */}
-                            <div className={sectionClass}>
-                              <SectionChipHeading
-                                icon={<span className="i-lucide-user-2 h-3.5 w-3.5" aria-hidden="true" />}
-                                text="Contacts"
-                              />
-                              {contacts.length === 0 ? (
-                                <div className="px-2 py-2 text-sm text-secondary">No contacts</div>
-                              ) : (
-                                contacts.map((h) => (
-                                  <button
-                                    key={`contact:${h.id}`}
-                                    type="button"
-                                    onClick={() => {
-                                      setLink({ kind: "contact", id: h.id, label: h.label });
-                                      setQ("");
-                                      setHits([]);
-                                    }}
-                                    className="w-full text-left px-2 py-1 hover:bg-white/5"
-                                  >
-                                    <div className="flex items-center gap-2">
-                                      {pill("Contact")}
-                                      <span>{h.label}</span>
-                                      {h.sub ? <span className="text-xs text-secondary">• {h.sub}</span> : null}
-                                    </div>
-                                  </button>
-                                ))
-                              )}
-                            </div>
-
-                            {/* Orgs */}
-                            <div className={sectionClass}>
-                              <SectionChipHeading
-                                icon={<span className="i-lucide-building-2 h-3.5 w-3.5" aria-hidden="true" />}
-                                text="Organizations"
-                              />
-                              {orgs.length === 0 ? (
-                                <div className="px-2 py-2 text-sm text-secondary">No organizations</div>
-                              ) : (
-                                orgs.map((h) => (
-                                  <button
-                                    key={`org:${h.id}`}
-                                    type="button"
-                                    onClick={() => {
-                                      setLink({ kind: "org", id: h.id, label: h.label });
-                                      setQ("");
-                                      setHits([]);
-                                    }}
-                                    className="w-full text-left px-2 py-1 hover:bg-white/5"
-                                  >
-                                    <div className="flex items-center gap-2">
-                                      {pill("Org")}
-                                      <span>{h.label}</span>
-                                      {h.sub ? <span className="text-xs text-secondary">• {h.sub}</span> : null}
-                                    </div>
-                                  </button>
-                                ))
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })()
-                    )}
-                  </div>
-                )}
-
-                {/* Quick add drawers */}
-                {!link && quickOpen && (
-                  <div className="rounded-lg border border-hairline p-3 bg-surface/60">
-                    <div className="flex items-center justify-between">
-                      <div className="text-sm font-medium">{quickOpen === "contact" ? "Quick Add Contact" : "Quick Add Organization"}</div>
-                      <button className="text-xs text-secondary hover:underline" onClick={() => setQuickOpen(null)}>
-                        Close
-                      </button>
-                    </div>
-
-                    {quickOpen === "contact" ? (
-                      <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2">
-                        <input className={inputClass} placeholder="First name" value={qc.firstName} onChange={(e) => setQc({ ...qc, firstName: e.target.value })} />
-                        <input className={inputClass} placeholder="Last name" value={qc.lastName} onChange={(e) => setQc({ ...qc, lastName: e.target.value })} />
-                        <input className={inputClass} placeholder="Email" value={qc.email} onChange={(e) => setQc({ ...qc, email: e.target.value })} />
-                        <input className={inputClass} placeholder="Phone (E.164)" value={qc.phone} onChange={(e) => setQc({ ...qc, phone: e.target.value })} />
-                        {createErr && <div className="md:col-span-2 text-sm text-red-600">{createErr}</div>}
-                        <div className="md:col-span-2 flex justify-end gap-2">
-                          <Button variant="outline" onClick={() => setQc({ firstName: "", lastName: "", email: "", phone: "" })}>
-                            Clear
-                          </Button>
-                          <Button onClick={doQuickAdd} disabled={creating || !api}>
-                            {creating ? "Creating..." : "Create / Link"}
-                          </Button>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="mt-2 grid grid-cols-1 gap-2">
-                        <input className={inputClass} placeholder="Organization name" value={qo.name} onChange={(e) => setQo({ ...qo, name: e.target.value })} />
-                        <input className={inputClass} placeholder="Website (optional)" value={qo.website} onChange={(e) => setQo({ ...qo, website: e.target.value })} />
-                        {createErr && <div className="text-sm text-red-600">{createErr}</div>}
-                        <div className="flex justify-end gap-2">
-                          <Button variant="outline" onClick={() => setQo({ name: "", website: "" })}>Clear</Button>
-                          <Button onClick={doQuickAdd} disabled={creating || !qo.name.trim() || !api}>{creating ? "Creating..." : "Create / Link"}</Button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* Preferences (required) */}
-                <SectionCard title="Preferences (required)">
-                  <div className={"p-2 grid grid-cols-1 md:grid-cols-3 gap-3 " + (readOnly ? "opacity-70" : "")}>
-                    <label className="flex flex-col gap-1">
-                      <span className={labelClass}>Species</span>
-                      <select
-                        className={inputClass}
-                        value={speciesUi}
-                        onChange={(e) => {
-                          setSpeciesUi(e.currentTarget.value as SpeciesUi);
-                          setDamId(null);
-                          setSireId(null);
-                          setDamQ("");
-                          setSireQ("");
-                          setDamOpen(false);
-                          setSireOpen(false);
-                          setBreed(null);
-                          setBreedNonce((n) => n + 1);
-                        }}
-                        disabled={readOnly}
-                      >
-                        <option value="">-</option>
-                        {allowedSpecies.map((s) => (
-                          <option key={s} value={s}>
-                            {s}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-
-                    <div className="md:col-span-2 relative">
-                      <div className={labelClass + " mb-1"}>Breed</div>
-                      {speciesUi ? (
-                        <div className={readOnly ? "pointer-events-none opacity-60" : ""}>
-                          <BreedCombo
-                            key={`breed-${speciesUi}-${breedNonce}`}
-                            species={speciesUi}
-                            value={breed}
-                            onChange={onBreedPick}
-                            api={{ breeds: { listCanonical: api!.breeds.listCanonical } }}
-                          />
-                        </div>
-                      ) : (
-                        <div className="h-9 px-3 flex items-center rounded-md border border-hairline bg-surface/60 text-sm text-secondary">Select Species</div>
-                      )}
-                    </div>
-                  </div>
-                </SectionCard>
-
-                {/* Parents (optional) */}
-                <SectionCard title="Preferred Parents (optional)">
-                  <div className="p-2 grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {/* Dam */}
-                    <label className="flex flex-col gap-1 relative">
-                      <span className={labelClass}>Dam (Female)</span>
-                      {!speciesWire ? (
-                        <div className="h-9 px-3 flex items-center rounded-md border border-hairline bg-surface/60 text-sm text-secondary">Select Species</div>
-                      ) : (
-                        <>
-                          <InlineSearch
-                            value={damQ}
-                            onChange={(val) => { setDamQ(val); setDamOpen(!!val.trim()); }}
-                            onFocus={() => setDamOpen(!!damQ.trim())}
-                            onBlur={() => setTimeout(() => setDamOpen(false), 100)}
-                            placeholder="Search females..."
-                            widthPx={400}
-                          />
-                          {damOpen && damQ.trim() && (
-                            <div className="absolute z-10 left-0 right-0 rounded-md border border-hairline bg-surface" style={{ top: "calc(100% + 6px)", maxHeight: 160, overflowY: "auto" }}>
-                              <DamResults
-                                api={api}
-                                query={damQ}
-                                species={speciesWire}
-                                onPick={(a) => {
-                                  setDamId(a.id);
-                                  setDamQ(a.name ?? "");
-                                  setDamOpen(false);
-                                }}
-                              />
-                            </div>
-                          )}
-                        </>
-                      )}
-                    </label>
-
-                    {/* Sire */}
-                    <label className="flex flex-col gap-1 relative">
-                      <span className={labelClass}>Sire (Male)</span>
-                      {!speciesWire ? (
-                        <div className="h-9 px-3 flex items-center rounded-md border border-hairline bg-surface/60 text-sm text-secondary">Select Species</div>
-                      ) : (
-                        <>
-                          <InlineSearch
-                            value={sireQ}
-                            onChange={(val) => { setSireQ(val); setSireOpen(!!val.trim()); }}
-                            onFocus={() => setSireOpen(!!sireQ.trim())}
-                            onBlur={() => setTimeout(() => setSireOpen(false), 100)}
-                            placeholder="Search males..."
-                            widthPx={400}
-                          />
-                          {sireOpen && sireQ.trim() && (
-                            <div className="absolute z-10 left-0 right-0 rounded-md border border-hairline bg-surface" style={{ top: "calc(100% + 6px)", maxHeight: 160, overflowY: "auto" }}>
-                              <SireResults
-                                api={api}
-                                query={sireQ}
-                                species={speciesWire}
-                                onPick={(a) => {
-                                  setSireId(a.id);
-                                  setSireQ(a.name ?? "");
-                                  setSireOpen(false);
-                                }}
-                              />
-                            </div>
-                          )}
-                        </>
-                      )}
-                    </label>
-                  </div>
-                </SectionCard>
-
-                <div className="flex justify-end gap-2">
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      resetAll();
-                      onClose();
-                    }}
-                  >
-                    Cancel
-                  </Button>
-                  <Button onClick={handleSubmit} disabled={!canSubmit || !api}>
-                    Add to waitlist
-                  </Button>
-                </div>
-              </div>
-            </Card>
-          </div>
-        </div>
-      </div>
-    </Overlay>
   );
 }
 
@@ -2422,16 +1650,6 @@ function AddOffspringForGroupOverlay(props: AddOffspringForGroupOverlayProps) {
     whelpingCollarColor && String(whelpingCollarColor).trim().length
       ? String(whelpingCollarColor)
       : "Not set";
-
-  const whelpingCollarColorHex = (() => {
-    const v = (whelpingCollarColor ?? "").toString().toLowerCase();
-    const match = WHELPING_COLLAR_SWATCHES.find((opt) => {
-      const val = opt.value.toLowerCase();
-      const label = opt.label.toLowerCase();
-      return val === v || label === v;
-    });
-    return match?.hex ?? null;
-  })();
 
   const handleSubmit = async (evt: React.FormEvent) => {
     evt.preventDefault();
@@ -2602,6 +1820,10 @@ function AddOffspringForGroupOverlay(props: AddOffspringForGroupOverlayProps) {
                       value={name}
                       onChange={(e) => setName(e.target.value)}
                       autoFocus
+                      autoComplete="off"
+                      data-1p-ignore
+                      data-lpignore="true"
+                      data-form-type="other"
                     />
                   </div>
 
@@ -2643,59 +1865,10 @@ function AddOffspringForGroupOverlay(props: AddOffspringForGroupOverlayProps) {
                   {/* Whelping collar color */}
                   <div>
                     <span className={labelClass}>Collar Color</span>
-                    <div className="relative">
-                      <button
-                        type="button"
-                        className={cx(
-                          inputClass,
-                          "flex items-center justify-between text-left cursor-pointer",
-                        )}
-                        onClick={() => setShowWhelpPalette((prev) => !prev)}
-                      >
-                        <span className="flex items-center gap-2">
-                          {whelpingCollarColorHex && (
-                            <span
-                              className="h-3 w-3 rounded-full border border-border"
-                              style={{ backgroundColor: whelpingCollarColorHex }}
-                            />
-                          )}
-                          <span>
-                            {whelpingCollarLabel === "Not set"
-                              ? "Select Color"
-                              : whelpingCollarLabel}
-                          </span>
-                        </span>
-                        <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
-                      </button>
-
-                      {showWhelpPalette && (
-                        <div
-                          ref={paletteRef}
-                          className="absolute z-20 mt-1 w-full rounded-md border border-border bg-surface shadow-lg"
-                        >
-                          <ul className="max-h-48 overflow-y-auto py-1 text-xs">
-                            {WHELPING_COLLAR_SWATCHES.map((opt) => (
-                              <li key={opt.value}>
-                                <button
-                                  type="button"
-                                  className="flex w-full items-center gap-2 px-2 py-1.5 text-left hover:bg-muted"
-                                  onClick={() => {
-                                    setWhelpingCollarColor(opt.value);
-                                    setShowWhelpPalette(false);
-                                  }}
-                                >
-                                  <span
-                                    className="h-3 w-3 rounded-full border border-border"
-                                    style={{ backgroundColor: opt.hex }}
-                                  />
-                                  <span>{opt.label}</span>
-                                </button>
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
-                    </div>
+                    <CollarPicker
+                      value={whelpingCollarColor}
+                      onChange={(colorLabel) => setWhelpingCollarColor(colorLabel)}
+                    />
                   </div>
 
                   {/* Birth weight */}
@@ -2706,6 +1879,10 @@ function AddOffspringForGroupOverlay(props: AddOffspringForGroupOverlayProps) {
                       inputMode="decimal"
                       value={birthWeightOz}
                       onChange={(e) => setBirthWeightOz(e.target.value)}
+                      autoComplete="off"
+                      data-1p-ignore
+                      data-lpignore="true"
+                      data-form-type="other"
                     />
                   </div>
 
@@ -2717,6 +1894,10 @@ function AddOffspringForGroupOverlay(props: AddOffspringForGroupOverlayProps) {
                       inputMode="decimal"
                       value={price}
                       onChange={(e) => setPrice(e.target.value)}
+                      autoComplete="off"
+                      data-1p-ignore
+                      data-lpignore="true"
+                      data-form-type="other"
                     />
                   </div>
                 </div>
@@ -2729,6 +1910,10 @@ function AddOffspringForGroupOverlay(props: AddOffspringForGroupOverlayProps) {
                     value={notes}
                     onChange={(e) => setNotes(e.target.value)}
                     placeholder="Notes about this puppy..."
+                    autoComplete="off"
+                    data-1p-ignore
+                    data-lpignore="true"
+                    data-form-type="other"
                   />
                 </div>
 
@@ -4311,6 +3496,10 @@ function BuyersTab(
                   className="h-7 rounded border border-hairline bg-background px-2 text-xs"
                   value={qc.firstName}
                   onChange={(e) => setQc({ ...qc, firstName: e.target.value })}
+                  autoComplete="off"
+                  data-1p-ignore
+                  data-lpignore="true"
+                  data-form-type="other"
                 />
               </label>
               <label className="grid gap-1">
@@ -4319,6 +3508,10 @@ function BuyersTab(
                   className="h-7 rounded border border-hairline bg-background px-2 text-xs"
                   value={qc.lastName}
                   onChange={(e) => setQc({ ...qc, lastName: e.target.value })}
+                  autoComplete="off"
+                  data-1p-ignore
+                  data-lpignore="true"
+                  data-form-type="other"
                 />
               </label>
             </div>
@@ -4331,6 +3524,9 @@ function BuyersTab(
                   onChange={(e) => setQc({ ...qc, email: e.target.value })}
                   placeholder="Email"
                   autoComplete="off"
+                  data-1p-ignore
+                  data-lpignore="true"
+                  data-form-type="other"
                 />
               </label>
               <label className="grid gap-1">
@@ -4341,6 +3537,9 @@ function BuyersTab(
                   onChange={(e) => setQc({ ...qc, phone: e.target.value })}
                   placeholder="Phone"
                   autoComplete="off"
+                  data-1p-ignore
+                  data-lpignore="true"
+                  data-form-type="other"
                 />
               </label>
             </div>
@@ -4378,6 +3577,10 @@ function BuyersTab(
                   className="h-7 rounded border border-hairline bg-background px-2 text-xs"
                   value={qo.name}
                   onChange={(e) => setQo({ ...qo, name: e.target.value })}
+                  autoComplete="off"
+                  data-1p-ignore
+                  data-lpignore="true"
+                  data-form-type="other"
                 />
               </label>
               <label className="grid gap-1">
@@ -4386,6 +3589,10 @@ function BuyersTab(
                   className="h-7 rounded border border-hairline bg-background px-2 text-xs"
                   value={qo.website}
                   onChange={(e) => setQo({ ...qo, website: e.target.value })}
+                  autoComplete="off"
+                  data-1p-ignore
+                  data-lpignore="true"
+                  data-form-type="other"
                 />
               </label>
             </div>
@@ -4396,6 +3603,10 @@ function BuyersTab(
                   className="h-7 rounded border border-hairline bg-background px-2 text-xs"
                   value={qo.email}
                   onChange={(e) => setQo({ ...qo, email: e.target.value })}
+                  autoComplete="off"
+                  data-1p-ignore
+                  data-lpignore="true"
+                  data-form-type="other"
                 />
               </label>
               <label className="grid gap-1">
@@ -4406,6 +3617,9 @@ function BuyersTab(
                   onChange={(e) => setQo({ ...qo, phone: e.target.value })}
                   placeholder="Phone"
                   autoComplete="off"
+                  data-1p-ignore
+                  data-lpignore="true"
+                  data-form-type="other"
                 />
               </label>
             </div>
@@ -4728,6 +3942,9 @@ function OffspringGroupsTab(
 
   const cols = hooks.useColumns(GROUP_COLS, GROUP_STORAGE_KEY);
   const visibleSafe = cols.visible?.length ? cols.visible : GROUP_COLS;
+
+  // View mode state (table or cards) - uses tenant preferences as default
+  const { viewMode, setViewMode } = useViewMode({ module: "offspringGroups" });
 
   const [sorts, setSorts] = React.useState<Array<{ key: string; dir: "asc" | "desc" }>>([]);
   const onToggleSort = (key: string) => {
@@ -5384,32 +4601,12 @@ function OffspringGroupsTab(
 
                                     {/* Whelping collar color */}
                                     <td className="px-2 py-1.5">
-                                      {(() => {
-                                        const value = a.whelpingCollarColor;
-
-                                        if (!value) return "-";
-
-                                        const lower = value.toString().toLowerCase();
-                                        const match = WHELPING_COLLAR_SWATCHES.find((opt) => {
-                                          const valLower = opt.value.toLowerCase();
-                                          const labelLower = opt.label.toLowerCase();
-                                          return valLower === lower || labelLower === lower;
-                                        });
-
-                                        const hex = match?.hex ?? null;
-
-                                        return (
-                                          <span className="inline-flex items-center justify-center gap-1 text-xs">
-                                            {hex && (
-                                              <span
-                                                className="inline-block h-3 w-3 rounded-full border border-border"
-                                                style={{ backgroundColor: hex }}
-                                              />
-                                            )}
-                                            <span>{value}</span>
-                                          </span>
-                                        );
-                                      })()}
+                                      {a.whelpingCollarColor ? (
+                                        <CollarSwatch
+                                          color={a.whelpingCollarColor}
+                                          showLabel
+                                        />
+                                      ) : "-"}
                                     </td>
 
                                     <td className="px-2 py-1.5">
@@ -5443,19 +4640,63 @@ function OffspringGroupsTab(
             },
           }}
         >
+          {/* Toolbar - always visible */}
+          <div className="bhq-table__toolbar px-2 pt-2 pb-3 relative z-30 flex items-center gap-3">
+            <SearchBar value={q} onChange={(v) => { setQ(v); setPage(1); }} placeholder="Search groups..." widthPx={400} />
+
+            {/* View mode toggle */}
+            <div className="flex items-center rounded-lg border border-hairline overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setViewMode("table")}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-sm transition-colors ${
+                  viewMode === "table"
+                    ? "bg-[hsl(var(--brand-orange))] text-black"
+                    : "bg-transparent text-secondary hover:text-primary hover:bg-[hsl(var(--muted)/0.5)]"
+                }`}
+                title="Table view"
+              >
+                <TableIcon className="w-4 h-4" />
+                <span className="hidden sm:inline">Table</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode("cards")}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-sm transition-colors ${
+                  viewMode === "cards"
+                    ? "bg-[hsl(var(--brand-orange))] text-black"
+                    : "bg-transparent text-secondary hover:text-primary hover:bg-[hsl(var(--muted)/0.5)]"
+                }`}
+                title="Card view"
+              >
+                <LayoutGrid className="w-4 h-4" />
+                <span className="hidden sm:inline">Cards</span>
+              </button>
+            </div>
+
+            {/* Column toggle - only show in table mode */}
+            {viewMode === "table" && (
+              <ColumnsPopover columns={cols.map} onToggle={cols.toggle} onSet={cols.setAll} allColumns={GROUP_COLS} triggerClassName="bhq-columns-trigger" />
+            )}
+          </div>
+
+          {/* Conditional view rendering */}
+          {viewMode === "cards" ? (
+            <GroupCardView
+              rows={pageRows}
+              loading={loading}
+              error={error}
+              onRowClick={(row) => openDetails("groupId", row.id)}
+            />
+          ) : (
           <Table
             columns={GROUP_COLS}
             columnState={cols.map}
             onColumnStateChange={cols.setAll}
             getRowId={(r: GroupTableRow) => r.id}
             pageSize={25}
-            renderStickyRight={() => <ColumnsPopover columns={cols.map} onToggle={cols.toggle} onSet={cols.setAll} allColumns={GROUP_COLS} triggerClassName="bhq-columns-trigger" />}
-            stickyRightWidthPx={40}
+            stickyRightWidthPx={0}
           >
-            <div className="bhq-table__toolbar px-2 pt-2 pb-3 relative z-30 flex items-center justify-between">
-              <SearchBar value={q} onChange={(v) => { setQ(v); setPage(1); }} placeholder="Search groups..." widthPx={520} />
-              <div />
-            </div>
 
             <table className="min-w-max w-full text-sm">
               <TableHeader columns={visibleSafe} sorts={sorts} onToggleSort={onToggleSort} />
@@ -5558,6 +4799,7 @@ function OffspringGroupsTab(
               total={rows.length}
             />
           </Table>
+          )}
         </DetailsHost>
       </div >
 
@@ -5713,10 +4955,10 @@ export default function AppOffspringModule() {
     !((window as any).bhqPerms?.offspring?.canEdit ?? true);
 
   const [activeTab, setActiveTab] =
-    React.useState<"offspring" | "groups" | "waitlist">("groups");
+    React.useState<"offspring" | "groups">("groups");
 
   const handleTabChange = React.useCallback(
-    (next: "offspring" | "groups" | "waitlist") => {
+    (next: "offspring" | "groups") => {
       setActiveTab(next);
     },
     [],
@@ -5725,13 +4967,11 @@ export default function AppOffspringModule() {
   return (
     <div className="p-4 space-y-4">
       <PageHeader
-        title="Offspring | Buyers | Waitlist"
+        title="Offspring"
         subtitle={
           activeTab === "offspring"
-            ? "Managed individual Offspring"
-            : activeTab === "groups"
-              ? "Managing Your Offspring and Buyers"
-              : "Global Waitlist"
+            ? "Manage individual offspring"
+            : "Manage offspring groups and buyers"
         }
         rightSlot={
           <UnderlineTabs value={activeTab} onChange={handleTabChange} />
@@ -5745,8 +4985,7 @@ export default function AppOffspringModule() {
           readOnlyGlobal={readOnlyGlobal}
         />
       )}
-      {activeTab === "offspring" && <OffspringPage />}
-      {activeTab === "waitlist" && <WaitlistPage embed />}
+      {activeTab === "offspring" && <OffspringPage embed />}
     </div>
   );
 }

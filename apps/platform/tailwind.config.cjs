@@ -67,15 +67,4 @@ module.exports = {
     },
   },
 
-  // A tiny safety net so bracketed arbitrary classes don't get purged even if
-  // you introduce new ones before updating content globs.
-  safelist: [
-    { pattern: /grid-cols-\[[^\]]+\]/ },
-    { pattern: /w-\[[^\]]+\]/ },
-    { pattern: /max-w-\[[^\]]+\]/ },
-    { pattern: /h-\[[^\]]+\]/ },
-    { pattern: /shadow-\[[^\]]+\]/ },
-    { pattern: /bg-\[[^\]]+\](\/\d+)?/ },
-    { pattern: /from-\[[^\]]+\]/ },
-  ],
 };

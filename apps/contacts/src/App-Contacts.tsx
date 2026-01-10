@@ -25,6 +25,7 @@ import {
   Input,
   IntlPhoneField,
   PillToggle,
+  useViewMode,
 } from "@bhq/ui";
 import { Download, MoreHorizontal, ChevronDown, LayoutGrid, Table as TableIcon } from "lucide-react";
 import { ContactCardView } from "./components/ContactCardView";
@@ -53,6 +54,8 @@ export type PartyTableRow = {
   phoneLandlineE164?: string | null;
   whatsappE164?: string | null;
   tags: string[];
+  /** Full tag objects with id, name, color for rich display */
+  tagObjects?: Array<{ id: number; name: string; color: string | null }>;
   notes?: string | null;
 
   // Contact-specific fields
@@ -505,16 +508,8 @@ export default function AppContacts() {
   });
   React.useEffect(() => { try { localStorage.setItem(Q_KEY, q); } catch { } }, [q]);
 
-  // View mode toggle (table vs cards) - experimental
-  const [viewMode, setViewMode] = React.useState<ViewMode>(() => {
-    try {
-      const stored = localStorage.getItem(VIEW_MODE_KEY);
-      return (stored === "cards" ? "cards" : "table") as ViewMode;
-    } catch { return "table"; }
-  });
-  React.useEffect(() => {
-    try { localStorage.setItem(VIEW_MODE_KEY, viewMode); } catch { }
-  }, [viewMode]);
+  // View mode toggle (table vs cards) - uses tenant preferences as default
+  const { viewMode, setViewMode } = useViewMode({ module: "contacts" });
 
   const [qDebounced, setQDebounced] = React.useState(q);
   React.useEffect(() => {
@@ -566,7 +561,42 @@ export default function AppContacts() {
         );
         const visible = includeArchived ? merged : merged.filter((r) => !isArchivedRow(r));
 
-        if (!cancelled) setRows(visible);
+        if (!cancelled) {
+          setRows(visible);
+
+          // Fetch tags for all visible contacts/organizations in parallel
+          if (visible.length > 0) {
+            const targets = visible.map((row) => {
+              if (row.kind === "CONTACT" && row.contactId) {
+                return { contactId: row.contactId };
+              } else if (row.kind === "ORGANIZATION" && row.organizationId) {
+                return { organizationId: row.organizationId };
+              }
+              return null;
+            }).filter(Boolean) as Array<{ contactId?: number; organizationId?: number }>;
+
+            // Fetch tags in background (don't block initial render)
+            api.tags.listForEntities(targets).then((tagsMap) => {
+              if (cancelled) return;
+              setRows((prevRows) =>
+                prevRows.map((row) => {
+                  const key = row.kind === "CONTACT" && row.contactId
+                    ? `contact:${row.contactId}`
+                    : row.kind === "ORGANIZATION" && row.organizationId
+                      ? `organization:${row.organizationId}`
+                      : null;
+                  if (key) {
+                    const entityTags = tagsMap.get(key) || [];
+                    return { ...row, tags: entityTags.map((t) => t.name), tagObjects: entityTags };
+                  }
+                  return row;
+                })
+              );
+            }).catch((e) => {
+              console.warn("Failed to fetch tags for contacts:", e);
+            });
+          }
+        }
       } catch (e: any) {
         if (!cancelled) setError(e?.payload?.error || e?.message || "Failed to load parties");
       } finally {

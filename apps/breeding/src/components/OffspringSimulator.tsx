@@ -1,5 +1,6 @@
 // apps/breeding/src/components/OffspringSimulator.tsx
 import * as React from "react";
+import { Tooltip } from "@bhq/ui";
 
 /**
  * Types for genetic result data passed from the parent genetics calculator.
@@ -452,15 +453,16 @@ function OffspringCard({
           </div>
         </div>
         {onRemove && (
-          <button
-            onClick={onRemove}
-            className="opacity-0 group-hover:opacity-100 transition-opacity text-secondary hover:text-red-500 p-1"
-            title="Remove from litter"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
+          <Tooltip content="Remove from litter">
+            <button
+              onClick={onRemove}
+              className="opacity-0 group-hover:opacity-100 transition-opacity text-secondary hover:text-red-500 p-1"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </Tooltip>
         )}
       </div>
 
@@ -469,7 +471,7 @@ function OffspringCard({
         <span className={`inline-flex items-center px-2 py-1 rounded text-xs font-medium border ${healthStatusColors[offspring.healthStatus]}`}>
           {offspring.healthStatus === "clear" && (
             <svg className="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
-              <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+              <path fillRule="evenodd" d="M10 1.944A11.954 11.954 0 012.166 5C2.056 5.649 2 6.319 2 7c0 5.225 3.34 9.67 8 11.317C14.66 16.67 18 12.225 18 7c0-.682-.057-1.35-.166-2A11.954 11.954 0 0110 1.944z" clipRule="evenodd" />
             </svg>
           )}
           {offspring.healthStatus === "carrier" && (
@@ -508,17 +510,17 @@ function OffspringCard({
             <div className="text-[10px] font-semibold text-secondary uppercase tracking-wider mb-1">Coat Color</div>
             <div className="flex flex-wrap gap-1">
               {offspring.coatColor.map((locus, idx) => (
-                <span
-                  key={idx}
-                  className={`inline-flex items-center px-2 py-0.5 rounded text-xs ${
-                    locus.isCarrier ? "bg-yellow-500/10 text-yellow-700" : "bg-accent/10 text-accent"
-                  }`}
-                  title={locus.phenotype}
-                >
-                  <span className="font-mono font-medium mr-1">{locus.locus}:</span>
-                  <span className="truncate max-w-[120px]">{locus.phenotype.split(" (")[0]}</span>
-                  {locus.isCarrier && <span className="ml-1 text-[10px]">(c)</span>}
-                </span>
+                <Tooltip key={idx} content={locus.phenotype}>
+                  <span
+                    className={`inline-flex items-center px-2 py-0.5 rounded text-xs ${
+                      locus.isCarrier ? "bg-yellow-500/10 text-yellow-700" : "bg-accent/10 text-accent"
+                    }`}
+                  >
+                    <span className="font-mono font-medium mr-1">{locus.locus}:</span>
+                    <span className="truncate max-w-[120px]">{locus.phenotype.split(" (")[0]}</span>
+                    {locus.isCarrier && <span className="ml-1 text-[10px]">(c)</span>}
+                  </span>
+                </Tooltip>
               ))}
             </div>
           </div>
@@ -530,17 +532,17 @@ function OffspringCard({
             <div className="text-[10px] font-semibold text-secondary uppercase tracking-wider mb-1">Coat Type</div>
             <div className="flex flex-wrap gap-1">
               {offspring.coatType.map((locus, idx) => (
-                <span
-                  key={idx}
-                  className={`inline-flex items-center px-2 py-0.5 rounded text-xs ${
-                    locus.isCarrier ? "bg-yellow-500/10 text-yellow-700" : "bg-blue-500/10 text-blue-600"
-                  }`}
-                  title={locus.phenotype}
-                >
-                  <span className="font-mono font-medium mr-1">{locus.locus}:</span>
-                  <span className="truncate max-w-[120px]">{locus.phenotype.split(" (")[0]}</span>
-                  {locus.isCarrier && <span className="ml-1 text-[10px]">(c)</span>}
-                </span>
+                <Tooltip key={idx} content={locus.phenotype}>
+                  <span
+                    className={`inline-flex items-center px-2 py-0.5 rounded text-xs ${
+                      locus.isCarrier ? "bg-yellow-500/10 text-yellow-700" : "bg-blue-500/10 text-blue-600"
+                    }`}
+                  >
+                    <span className="font-mono font-medium mr-1">{locus.locus}:</span>
+                    <span className="truncate max-w-[120px]">{locus.phenotype.split(" (")[0]}</span>
+                    {locus.isCarrier && <span className="ml-1 text-[10px]">(c)</span>}
+                  </span>
+                </Tooltip>
               ))}
             </div>
           </div>
@@ -552,14 +554,14 @@ function OffspringCard({
             <div className="text-[10px] font-semibold text-secondary uppercase tracking-wider mb-1">Physical</div>
             <div className="flex flex-wrap gap-1">
               {offspring.physicalTraits.map((locus, idx) => (
-                <span
-                  key={idx}
-                  className="inline-flex items-center px-2 py-0.5 rounded text-xs bg-purple-500/10 text-purple-600"
-                  title={locus.phenotype}
-                >
-                  <span className="font-mono font-medium mr-1">{locus.locus}:</span>
-                  <span className="truncate max-w-[120px]">{locus.phenotype.split(" (")[0]}</span>
-                </span>
+                <Tooltip key={idx} content={locus.phenotype}>
+                  <span
+                    className="inline-flex items-center px-2 py-0.5 rounded text-xs bg-purple-500/10 text-purple-600"
+                  >
+                    <span className="font-mono font-medium mr-1">{locus.locus}:</span>
+                    <span className="truncate max-w-[120px]">{locus.phenotype.split(" (")[0]}</span>
+                  </span>
+                </Tooltip>
               ))}
             </div>
           </div>
@@ -571,14 +573,14 @@ function OffspringCard({
             <div className="text-[10px] font-semibold text-secondary uppercase tracking-wider mb-1">Eyes</div>
             <div className="flex flex-wrap gap-1">
               {offspring.eyeColor.map((locus, idx) => (
-                <span
-                  key={idx}
-                  className="inline-flex items-center px-2 py-0.5 rounded text-xs bg-emerald-500/10 text-emerald-600"
-                  title={locus.phenotype}
-                >
-                  <span className="font-mono font-medium mr-1">{locus.locus}:</span>
-                  <span className="truncate max-w-[120px]">{locus.phenotype.split(" (")[0]}</span>
-                </span>
+                <Tooltip key={idx} content={locus.phenotype}>
+                  <span
+                    className="inline-flex items-center px-2 py-0.5 rounded text-xs bg-emerald-500/10 text-emerald-600"
+                  >
+                    <span className="font-mono font-medium mr-1">{locus.locus}:</span>
+                    <span className="truncate max-w-[120px]">{locus.phenotype.split(" (")[0]}</span>
+                  </span>
+                </Tooltip>
               ))}
             </div>
           </div>
@@ -590,20 +592,20 @@ function OffspringCard({
             <div className="text-[10px] font-semibold text-secondary uppercase tracking-wider mb-1">Health</div>
             <div className="flex flex-wrap gap-1">
               {offspring.health.map((locus, idx) => (
-                <span
-                  key={idx}
-                  className={`inline-flex items-center px-2 py-0.5 rounded text-xs ${
-                    locus.isAffected
-                      ? "bg-red-500/10 text-red-600"
-                      : locus.isCarrier
-                      ? "bg-yellow-500/10 text-yellow-700"
-                      : "bg-green-500/10 text-green-600"
-                  }`}
-                  title={locus.phenotype}
-                >
-                  <span className="font-mono font-medium mr-1">{locus.locus}:</span>
-                  <span className="truncate max-w-[120px]">{locus.phenotype.split(" (")[0]}</span>
-                </span>
+                <Tooltip key={idx} content={locus.phenotype}>
+                  <span
+                    className={`inline-flex items-center px-2 py-0.5 rounded text-xs ${
+                      locus.isAffected
+                        ? "bg-red-500/10 text-red-600"
+                        : locus.isCarrier
+                        ? "bg-yellow-500/10 text-yellow-700"
+                        : "bg-green-500/10 text-green-600"
+                    }`}
+                  >
+                    <span className="font-mono font-medium mr-1">{locus.locus}:</span>
+                    <span className="truncate max-w-[120px]">{locus.phenotype.split(" (")[0]}</span>
+                  </span>
+                </Tooltip>
               ))}
             </div>
           </div>
@@ -669,9 +671,11 @@ function LitterStatsPanel({ stats }: { stats: LitterStats }) {
                       style={{ width: `${percentage}%` }}
                     />
                   </div>
-                  <span className="text-xs text-secondary w-24 truncate" title={color}>
-                    {color}
-                  </span>
+                  <Tooltip content={color}>
+                    <span className="text-xs text-secondary w-24 truncate">
+                      {color}
+                    </span>
+                  </Tooltip>
                   <span className="text-xs font-medium w-12 text-right">
                     {count} ({percentage}%)
                   </span>
@@ -820,6 +824,10 @@ export default function OffspringSimulator({
                   }
                 }}
                 className="h-8 w-16 px-2 text-sm text-center border border-hairline rounded bg-surface focus:border-accent focus:ring-1 focus:ring-accent/30 outline-none"
+                autoComplete="off"
+                data-1p-ignore
+                data-lpignore="true"
+                data-form-type="other"
               />
               <span className="text-xs text-secondary">(1-20)</span>
             </div>

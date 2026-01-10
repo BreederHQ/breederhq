@@ -40,21 +40,19 @@ export default function YourBreedingPlansPage({ plans = [], initialMode = "rollu
 
   const hasPlans = plans.length > 0;
 
+  // Toggle element to pass to SectionCard right slot
+  const modeToggle = <PlannerModeToggle mode={mode} onChange={setMode} />;
+
   return (
     <>
-      {/* Mode toggle row */}
-      <div className="mb-4 flex items-center justify-end">
-        <PlannerModeToggle mode={mode} onChange={setMode} />
-      </div>
-
       {/* Content - conditional wrapper based on mode */}
       {!hasPlans ? (
-        <SectionCard title={<span><span>Planner</span></span>}>
+        <SectionCard title="Planner" right={modeToggle}>
           <EmptyState />
         </SectionCard>
       ) : mode === "rollup" ? (
         // Rollup mode: keep the outer SectionCard wrapper
-        <SectionCard title={<span><span>Planner</span></span>}>
+        <SectionCard title="Planner" right={modeToggle}>
           <RollupWithPhaseToggles
             plans={plans}
             allowSynthetic={false}
@@ -62,11 +60,13 @@ export default function YourBreedingPlansPage({ plans = [], initialMode = "rollu
           />
         </SectionCard>
       ) : (
-        // Per Plan mode: no outer wrapper - phase cards are the primary surfaces
-        <PhaseGroupedPerPlan
-          plans={plans}
-          className="w-full"
-        />
+        // Per Plan mode: wrap in SectionCard so toggle is visible
+        <SectionCard title="Planner" right={modeToggle}>
+          <PhaseGroupedPerPlan
+            plans={plans}
+            className="w-full"
+          />
+        </SectionCard>
       )}
     </>
   );

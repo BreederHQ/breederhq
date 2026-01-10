@@ -783,7 +783,7 @@ export default function WhatsMissingAnalysis({
           </div>
           <div className="text-right">
             <div className="text-2xl font-bold text-accent">{coveragePercent}%</div>
-            <div className="text-xs text-secondary">Coverage</div>
+            <div className="text-xs text-secondary">Coverage ({totalTested}/{totalPossibleTests})</div>
           </div>
         </div>
       </div>

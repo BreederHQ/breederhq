@@ -1,5 +1,6 @@
 // apps/breeding/src/components/CoatColorPreview.tsx
 import * as React from "react";
+import { Tooltip } from "@bhq/ui";
 
 /**
  * Color definitions for different species and coat color genetics.
@@ -337,11 +338,12 @@ function ColorSwatch({ color, size = "md", showGenotypes = false, className = ""
 
   return (
     <div className={`flex items-center gap-2 ${className}`}>
-      <div
-        className={`${sizeClasses[size]} rounded-lg border border-hairline shadow-sm`}
-        style={{ background: color.css }}
-        title={color.description}
-      />
+      <Tooltip content={color.description}>
+        <div
+          className={`${sizeClasses[size]} rounded-lg border border-hairline shadow-sm`}
+          style={{ background: color.css }}
+        />
+      </Tooltip>
       <div className="flex-1 min-w-0">
         <div className="font-medium text-sm truncate">{color.name}</div>
         {showGenotypes && color.genotypes && (
@@ -540,11 +542,12 @@ export function MiniColorPreview({ genotype, species = "DOG" }: { genotype: stri
   if (!color) return null;
 
   return (
-    <div
-      className="w-5 h-5 rounded border border-hairline inline-block align-middle"
-      style={{ background: color.css }}
-      title={`${color.name}: ${color.description}`}
-    />
+    <Tooltip content={`${color.name}: ${color.description}`}>
+      <div
+        className="w-5 h-5 rounded border border-hairline inline-block align-middle"
+        style={{ background: color.css }}
+      />
+    </Tooltip>
   );
 }
 

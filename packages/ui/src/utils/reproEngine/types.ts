@@ -1,6 +1,6 @@
 export type ISODate = string; // "YYYY-MM-DD" date-only everywhere in engine
 
-export type SpeciesCode = "DOG" | "CAT" | "HORSE" | "GOAT" | "RABBIT" | (string & {});
+export type SpeciesCode = "DOG" | "CAT" | "HORSE" | "GOAT" | "RABBIT" | "SHEEP" | (string & {});
 
 export type ReproOutcome = "UNKNOWN" | "PREGNANT" | "BIRTHED" | "FAILED" | "ABORTED";
 

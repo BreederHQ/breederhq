@@ -172,7 +172,7 @@ export function InquiriesPage() {
   }
 
   return (
-    <div className="h-[calc(100vh-theme(spacing.header)-theme(spacing.16))] -mx-6 -mt-8 flex flex-col">
+    <div className="h-[calc(100vh-theme(height.header)-theme(spacing.16))] -mx-6 -mt-8 flex flex-col">
       {/* Tab header */}
       <div className="flex-shrink-0 border-b border-border-subtle bg-portal-elevated px-4">
         <div className="flex gap-1">
@@ -371,8 +371,57 @@ function WaitlistRequestsList({
   );
 }
 
+// Helper to format cents to dollars
+function formatCents(cents: number): string {
+  return (cents / 100).toLocaleString("en-US", {
+    style: "currency",
+    currency: "USD",
+  });
+}
+
+// Helper to get invoice status display config
+function getInvoiceStatusConfig(invoice: WaitlistRequest["invoice"]) {
+  if (!invoice) return null;
+
+  const isOverdue = invoice.dueAt && new Date(invoice.dueAt) < new Date() && invoice.status !== "PAID";
+  const isPartial = invoice.paidCents > 0 && invoice.balanceCents > 0;
+
+  if (invoice.status === "PAID") {
+    return {
+      label: "Paid",
+      className: "bg-green-500/10 text-green-400 border-green-500/30",
+      showPayButton: false,
+    };
+  }
+
+  if (isOverdue) {
+    return {
+      label: "Overdue",
+      className: "bg-red-500/10 text-red-400 border-red-500/30",
+      showPayButton: true,
+    };
+  }
+
+  if (isPartial) {
+    const pct = Math.round((invoice.paidCents / invoice.totalCents) * 100);
+    return {
+      label: `Partial (${pct}%)`,
+      className: "bg-amber-500/10 text-amber-400 border-amber-500/30",
+      showPayButton: true,
+    };
+  }
+
+  return {
+    label: "Awaiting Payment",
+    className: "bg-amber-500/10 text-amber-400 border-amber-500/30",
+    showPayButton: true,
+  };
+}
+
 // Single waitlist request card
 function WaitlistRequestCard({ request }: { request: WaitlistRequest }) {
+  const [payLoading, setPayLoading] = React.useState(false);
+
   const statusConfig = {
     pending: {
       label: "Pending Review",
@@ -404,6 +453,7 @@ function WaitlistRequestCard({ request }: { request: WaitlistRequest }) {
   };
 
   const config = statusConfig[request.status];
+  const invoiceConfig = getInvoiceStatusConfig(request.invoice);
 
   // Format date
   const submittedDate = new Date(request.submittedAt).toLocaleDateString("en-US", {
@@ -411,6 +461,38 @@ function WaitlistRequestCard({ request }: { request: WaitlistRequest }) {
     day: "numeric",
     year: "numeric",
   });
+
+  // Handle Pay Now click - redirect to Stripe checkout
+  const handlePayNow = async () => {
+    if (!request.invoice) return;
+
+    setPayLoading(true);
+    try {
+      const base = import.meta.env.DEV
+        ? "/api/v1/marketplace"
+        : `${window.location.origin}/api/v1/marketplace`;
+
+      const response = await fetch(`${base}/invoices/${request.invoice.id}/checkout`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to create checkout session");
+      }
+
+      const data = await response.json();
+      if (data.checkoutUrl) {
+        window.location.href = data.checkoutUrl;
+      }
+    } catch (err) {
+      console.error("Payment error:", err);
+      // Could add toast notification here
+    } finally {
+      setPayLoading(false);
+    }
+  };
 
   return (
     <div className="p-4 rounded-portal border border-border-subtle bg-portal-card hover:border-border-default transition-colors">
@@ -457,6 +539,45 @@ function WaitlistRequestCard({ request }: { request: WaitlistRequest }) {
                 year: "numeric",
               })}
             </p>
+          )}
+
+          {/* Deposit invoice section */}
+          {request.invoice && invoiceConfig && (
+            <div className="mt-3 p-3 rounded-portal-xs bg-portal-elevated border border-border-subtle">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs font-medium text-text-secondary mb-0.5">Deposit Required</p>
+                  <p className="text-sm font-semibold text-white">
+                    {request.invoice.balanceCents > 0
+                      ? formatCents(request.invoice.balanceCents)
+                      : formatCents(request.invoice.totalCents)}
+                  </p>
+                  {request.invoice.dueAt && request.invoice.status !== "PAID" && (
+                    <p className="text-xs text-text-muted mt-0.5">
+                      Due {new Date(request.invoice.dueAt).toLocaleDateString("en-US", {
+                        month: "short",
+                        day: "numeric",
+                      })}
+                    </p>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium border ${invoiceConfig.className}`}>
+                    {invoiceConfig.label}
+                  </span>
+                  {invoiceConfig.showPayButton && (
+                    <button
+                      type="button"
+                      onClick={handlePayNow}
+                      disabled={payLoading}
+                      className="px-3 py-1.5 rounded-portal-xs bg-accent text-white text-xs font-medium hover:bg-accent-hover transition-colors disabled:opacity-50"
+                    >
+                      {payLoading ? "..." : "Pay Now"}
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
           )}
         </div>
 

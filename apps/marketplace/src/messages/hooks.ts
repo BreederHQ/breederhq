@@ -224,6 +224,18 @@ export function useAddDemoReply() {
 }
 
 /**
+ * Invoice summary for waitlist requests
+ */
+export interface WaitlistInvoice {
+  id: number;
+  status: string;
+  totalCents: number;
+  paidCents: number;
+  balanceCents: number;
+  dueAt: string | null;
+}
+
+/**
  * Waitlist request status from API
  */
 export interface WaitlistRequest {
@@ -237,6 +249,7 @@ export interface WaitlistRequest {
   approvedAt: string | null;
   rejectedAt: string | null;
   rejectedReason: string | null;
+  invoice: WaitlistInvoice | null;
 }
 
 /**

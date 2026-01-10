@@ -101,6 +101,10 @@ function NumberInput({
       min={min}
       max={max}
       disabled={disabled}
+      autoComplete="off"
+      data-1p-ignore
+      data-lpignore="true"
+      data-form-type="other"
       className={`w-20 px-2 py-1 text-sm rounded border border-hairline bg-surface focus:outline-none focus:ring-1 focus:ring-brand-orange disabled:opacity-50 ${className}`}
     />
   );
@@ -332,7 +336,7 @@ const DateValidationSettingsTab = React.forwardRef<DateValidationSettingsHandle,
 
     if (loading) {
       return (
-        <SectionCard title={<>Date Validation Rules<div className="text-xs text-secondary font-normal mt-0.5">Configure validation for breeding plan dates</div></>}>
+        <SectionCard title="Date Validation Rules" subtitle="Configure validation for breeding plan dates">
           <div className="text-sm text-secondary">Loading...</div>
         </SectionCard>
       );
@@ -346,9 +350,32 @@ const DateValidationSettingsTab = React.forwardRef<DateValidationSettingsHandle,
           </div>
         )}
 
+        {/* Info Box */}
+        <Card className="p-4 bg-blue-500/10 border-blue-500/30">
+          <div className="text-sm font-medium text-blue-300 mb-2">How Validation Works</div>
+          <ul className="text-xs text-blue-200 space-y-1 list-disc list-inside">
+            <li>
+              <strong>Sequence Validation</strong> (hard blocks): Prevents saving dates that are logically impossible (e.g., birth before breeding)
+            </li>
+            <li>
+              <strong>Biology Warnings</strong> (soft): Alerts about improbable dates but allows override with confirmation (e.g., unusually short gestation)
+            </li>
+            <li>
+              <strong>Business Warnings</strong> (soft): Highlights operational concerns that may need attention (e.g., plan duration too long)
+            </li>
+            <li>
+              When a user overrides a warning, it's logged for audit purposes
+            </li>
+            <li>
+              <strong>Note:</strong> To view or understand the biology constants used for date calculations, see the <strong>Biology & Calculations</strong> tab
+            </li>
+          </ul>
+        </Card>
+
         {/* Master Toggles */}
         <SectionCard
-          title={<>Validation Settings<div className="text-xs text-secondary font-normal mt-0.5">Control which validation rules are active when entering breeding plan dates</div></>}
+          title="Validation Settings"
+          subtitle="Control which validation rules are active when entering breeding plan dates"
         >
           <Card className="p-4 space-y-4">
             <div className="text-sm font-medium">Master Toggles</div>
@@ -377,7 +404,8 @@ const DateValidationSettingsTab = React.forwardRef<DateValidationSettingsHandle,
 
         {/* Sequence Rules */}
         <SectionCard
-          title={<>Sequence Rules<div className="text-xs text-secondary font-normal mt-0.5">Hard blocks that prevent impossible date combinations</div></>}
+          title="Sequence Rules"
+          subtitle="Hard blocks that prevent impossible date combinations"
         >
           <Card className="p-4 space-y-4">
             <Toggle
@@ -406,7 +434,8 @@ const DateValidationSettingsTab = React.forwardRef<DateValidationSettingsHandle,
 
         {/* Business Rules */}
         <SectionCard
-          title={<>Business Rules<div className="text-xs text-secondary font-normal mt-0.5">Soft warnings for operational concerns</div></>}
+          title="Business Rules"
+          subtitle="Soft warnings for operational concerns"
         >
           <Card className="p-4 space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -474,28 +503,6 @@ const DateValidationSettingsTab = React.forwardRef<DateValidationSettingsHandle,
             </div>
           </Card>
         </SectionCard>
-
-        {/* Info Box */}
-        <Card className="p-4 bg-blue-500/10 border-blue-500/30">
-          <div className="text-sm font-medium text-blue-300 mb-2">How Validation Works</div>
-          <ul className="text-xs text-blue-200 space-y-1 list-disc list-inside">
-            <li>
-              <strong>Sequence Validation</strong> (hard blocks): Prevents saving dates that are logically impossible (e.g., birth before breeding)
-            </li>
-            <li>
-              <strong>Biology Warnings</strong> (soft): Alerts about improbable dates but allows override with confirmation (e.g., unusually short gestation)
-            </li>
-            <li>
-              <strong>Business Warnings</strong> (soft): Highlights operational concerns that may need attention (e.g., plan duration too long)
-            </li>
-            <li>
-              When a user overrides a warning, it's logged for audit purposes
-            </li>
-            <li>
-              <strong>Note:</strong> To view or understand the biology constants used for date calculations, see the <strong>Biology & Calculations</strong> tab
-            </li>
-          </ul>
-        </Card>
       </div>
     );
   }

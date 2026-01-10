@@ -593,6 +593,10 @@ function CredentialsChecklist({
           placeholder="Optional notes..."
           rows={2}
           disabled={disabled}
+          autoComplete="off"
+          data-1p-ignore
+          data-lpignore="true"
+          data-form-type="other"
           className={`${TEXTAREA_CLS} ${disabled ? "opacity-60 cursor-not-allowed" : ""}`}
         />
         <div className="text-xs text-secondary text-right mt-1">
@@ -732,6 +736,10 @@ function CreateProgramModal({
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="e.g., Golden Retriever Program"
+                autoComplete="off"
+                data-1p-ignore
+                data-lpignore="true"
+                data-form-type="other"
                 className={INPUT_CLS}
                 required
               />
@@ -744,6 +752,10 @@ function CreateProgramModal({
                 onChange={(e) => setDescription(e.target.value.slice(0, 300))}
                 placeholder="Describe your breeding program..."
                 rows={3}
+                autoComplete="off"
+                data-1p-ignore
+                data-lpignore="true"
+                data-form-type="other"
                 className={TEXTAREA_CLS}
               />
               <div className="text-xs text-secondary text-right mt-1">
@@ -1004,6 +1016,10 @@ function EditProgramModal({
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="e.g., Golden Retriever Program"
+                autoComplete="off"
+                data-1p-ignore
+                data-lpignore="true"
+                data-form-type="other"
                 className={INPUT_CLS}
                 required
               />
@@ -1018,6 +1034,10 @@ function EditProgramModal({
                 onChange={(e) => setDescription(e.target.value.slice(0, 500))}
                 placeholder="Describe your breeding program..."
                 rows={3}
+                autoComplete="off"
+                data-1p-ignore
+                data-lpignore="true"
+                data-form-type="other"
                 className={TEXTAREA_CLS}
               />
               <div className="text-xs text-secondary text-right mt-1">{description.length}/500</div>
@@ -1042,6 +1062,10 @@ function EditProgramModal({
                           value={tier.tier}
                           onChange={(e) => updatePricingTier(index, "tier", e.target.value)}
                           placeholder="Tier name (e.g., Pet)"
+                          autoComplete="off"
+                          data-1p-ignore
+                          data-lpignore="true"
+                          data-form-type="other"
                           className={INPUT_CLS}
                         />
                         <input
@@ -1049,6 +1073,10 @@ function EditProgramModal({
                           value={tier.priceRange}
                           onChange={(e) => updatePricingTier(index, "priceRange", e.target.value)}
                           placeholder="Price (e.g., $2,500)"
+                          autoComplete="off"
+                          data-1p-ignore
+                          data-lpignore="true"
+                          data-form-type="other"
                           className={INPUT_CLS}
                         />
                         <input
@@ -1056,6 +1084,10 @@ function EditProgramModal({
                           value={tier.description || ""}
                           onChange={(e) => updatePricingTier(index, "description", e.target.value)}
                           placeholder="What's included at this tier"
+                          autoComplete="off"
+                          data-1p-ignore
+                          data-lpignore="true"
+                          data-form-type="other"
                           className={`${INPUT_CLS} col-span-2`}
                         />
                       </div>
@@ -1086,6 +1118,10 @@ function EditProgramModal({
                   onChange={(e) => setWhatsIncluded(e.target.value.slice(0, 1000))}
                   placeholder="First vaccinations, microchip, health certificate, starter kit with food, blanket with littermates' scent, lifetime breeder support..."
                   rows={4}
+                  autoComplete="off"
+                  data-1p-ignore
+                  data-lpignore="true"
+                  data-form-type="other"
                   className={TEXTAREA_CLS}
                 />
                 <div className="text-xs text-secondary text-right mt-1">{whatsIncluded.length}/1000</div>
@@ -1099,6 +1135,10 @@ function EditProgramModal({
                   value={typicalWaitTime}
                   onChange={(e) => setTypicalWaitTime(e.target.value)}
                   placeholder="3-6 months"
+                  autoComplete="off"
+                  data-1p-ignore
+                  data-lpignore="true"
+                  data-form-type="other"
                   className={INPUT_CLS}
                 />
               </div>

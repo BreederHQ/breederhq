@@ -1,12 +1,9 @@
 // apps/platform/src/components/TagsManagerTab.tsx
 import React from "react";
-import { Card, Button, Input } from "@bhq/ui";
+import { Card, Button, Input, TagCreateModal, type TagModule } from "@bhq/ui";
 import { api } from "../api";
-import { TagCreateEditModal } from "./tags/TagCreateEditModal";
 import { TagRowActions } from "./tags/TagRowActions";
 import { TagDeleteConfirm } from "./tags/TagDeleteConfirm";
-
-type TagModule = "CONTACT" | "ORGANIZATION" | "ANIMAL" | "WAITLIST_ENTRY" | "OFFSPRING_GROUP" | "OFFSPRING";
 type ArchiveFilter = "active" | "archived" | "all";
 
 type Tag = {
@@ -405,14 +402,14 @@ export function TagsManagerTab({ onDirty }: { dirty: boolean; onDirty: (v: boole
       )}
 
       {/* Modals */}
-      <TagCreateEditModal
+      <TagCreateModal
         open={createModalOpen}
         onOpenChange={setCreateModalOpen}
         mode="create"
         onSubmit={handleCreateTag}
       />
 
-      <TagCreateEditModal
+      <TagCreateModal
         open={editModalOpen}
         onOpenChange={setEditModalOpen}
         mode="edit"

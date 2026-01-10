@@ -23,19 +23,19 @@ export function makeOffspring(http: Http) {
     // groups list
     listGroups() {
       // adjust the path if your API differs
-      return http.get<UiOffspringGroup[]>(`/api/v1/offspring/groups`);
+      return http.get<UiOffspringGroup[]>(`/offspring/groups`);
     },
 
     // offspring within a group
     listByGroup(groupId: string) {
       // choose the path that matches your backend:
-      // return http.get<UiOffspring[]>(`/api/v1/offspring/groups/${groupId}`);
-      return http.get<UiOffspring[]>(`/api/v1/offspring?groupId=${encodeURIComponent(groupId)}`);
+      // return http.get<UiOffspring[]>(`/offspring/groups/${groupId}`);
+      return http.get<UiOffspring[]>(`/offspring?groupId=${encodeURIComponent(groupId)}`);
     },
 
     // (optional) flat list
     list(limit = 50) {
-      return http.get<UiOffspring[]>(`/api/v1/offspring?limit=${limit}`);
+      return http.get<UiOffspring[]>(`/offspring?limit=${limit}`);
     },
   };
 }

@@ -9,35 +9,25 @@ const IS_DEV = import.meta.env.DEV;
  * Resolves API base URL deterministically:
  * 1. VITE_API_BASE_URL env var (if defined and non-empty)
  * 2. window.__BHQ_API_BASE__ (if defined and non-empty)
- * 3. In dev: http://localhost:6001 (direct to API server, not Vite origin)
+ * 3. In dev: empty string (same origin, Vite proxy)
  * 4. In prod: location.origin
+ *
+ * NOTE: Resource files already include /api/v1 in their paths,
+ * so the base URL should NOT include /api/v1 to avoid duplication.
  */
 function getApiBase(): string {
-  // 1. Explicit env override
   const envBase = (import.meta.env.VITE_API_BASE_URL as string) || "";
-  if (envBase.trim()) {
-    return normalizeBase(envBase);
-  }
-
-  // 2. Platform shell injection
+  if (envBase.trim()) return normalizeBase(envBase);
   const w = window as any;
   const windowBase = String(w.__BHQ_API_BASE__ || "").trim();
-  if (windowBase) {
-    return normalizeBase(windowBase);
-  }
-
-  // 3. Dev mode: use Vite proxy (same origin) to preserve cookies
-  if (IS_DEV) {
-    return "/api/v1";
-  }
-
-  // 4. Production: use origin
+  if (windowBase) return normalizeBase(windowBase);
+  if (IS_DEV) return ""; // Empty string = same origin, resource paths add /api/v1
   return normalizeBase(window.location.origin);
 }
 
 function normalizeBase(base: string): string {
-  const b = base.replace(/\/+$/, "").replace(/\/api\/v1$/i, "");
-  return `${b}/api/v1`;
+  // Strip trailing slashes and any existing /api/v1 suffix
+  return base.replace(/\/+$/, "").replace(/\/api\/v1$/i, "");
 }
 
 const API_BASE = getApiBase();
@@ -508,6 +498,10 @@ function BlockUserAction({ buyerPartyId, buyerName, marketplaceUserId }: BlockUs
                   placeholder="e.g., Spam, abusive messages, etc."
                   rows={2}
                   className="w-full px-3 py-2 text-sm border border-hairline rounded-lg bg-surface text-primary focus:outline-none focus:ring-2 focus:ring-[hsl(var(--brand-orange))]/50"
+                  autoComplete="off"
+                  data-1p-ignore
+                  data-lpignore="true"
+                  data-form-type="other"
                 />
                 <p className="text-xs text-secondary mt-1">
                   This is only visible to you, not the blocked user.
@@ -869,6 +863,10 @@ function ThreadView({ thread, onSendMessage, unreadCount = 0, onMarkAsRead }: Th
             rows={3}
             disabled={sending}
             className="flex-1 px-3 py-2 rounded-md bg-card border border-hairline text-primary text-sm resize-none focus:outline-none focus:border-[hsl(var(--brand-orange))]/50"
+            autoComplete="off"
+            data-1p-ignore
+            data-lpignore="true"
+            data-form-type="other"
           />
           <button
             type="submit"
@@ -994,6 +992,10 @@ function NewConversation({ onCreated, onCancel }: NewConversationProps) {
             placeholder="Type your message..."
             disabled={sending}
             className="flex-1 min-h-[120px] px-3 py-2 rounded-md bg-card border border-hairline text-primary text-sm resize-none focus:outline-none focus:border-[hsl(var(--brand-orange))]/50"
+            autoComplete="off"
+            data-1p-ignore
+            data-lpignore="true"
+            data-form-type="other"
           />
         </div>
 

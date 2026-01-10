@@ -2,7 +2,7 @@
 // Card-based view for animals (similar to ContactCardView)
 
 import * as React from "react";
-import { Trophy } from "lucide-react";
+import { Tooltip } from "@bhq/ui";
 
 type AnimalRow = {
   id: number;
@@ -17,6 +17,11 @@ type AnimalRow = {
   tags: string[];
   titlePrefix?: string | null;
   titleSuffix?: string | null;
+  // Achievement counts from API _count
+  _count?: {
+    titles?: number;
+    competitionEntries?: number;
+  };
 };
 
 // Status colors for left accent stripe
@@ -65,7 +70,11 @@ type AnimalCardViewProps = {
 
 function AnimalCard({ row, onClick }: { row: AnimalRow; onClick?: () => void }) {
   const accentColor = STATUS_COLORS[row.status || "Active"] || STATUS_COLORS.Active;
-  const hasTitles = row.titlePrefix || row.titleSuffix;
+  const titleCount = row._count?.titles ?? 0;
+  const competitionCount = row._count?.competitionEntries ?? 0;
+  const hasTitles = titleCount > 0 || row.titlePrefix || row.titleSuffix;
+  const hasCompetitions = competitionCount > 0;
+  const titleAbbrevs = [row.titlePrefix, row.titleSuffix].filter(Boolean).join(" ");
 
   return (
     <button
@@ -101,11 +110,6 @@ function AnimalCard({ row, onClick }: { row: AnimalRow; onClick?: () => void }) 
               {row.name}
             </span>
             <SexIndicator sex={row.sex} />
-            {hasTitles && (
-              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold text-[hsl(var(--brand-orange))] bg-[hsl(var(--brand-orange))]/10">
-                <Trophy className="w-3 h-3" />
-              </span>
-            )}
           </div>
           {row.nickname && (
             <div className="text-xs text-secondary truncate">
@@ -118,7 +122,7 @@ function AnimalCard({ row, onClick }: { row: AnimalRow; onClick?: () => void }) 
         </div>
       </div>
 
-      {/* Status badge */}
+      {/* Status badge + Achievement badges */}
       <div className="mt-3 flex items-center justify-between">
         <span
           className="inline-flex items-center gap-1.5 text-xs font-medium px-2 py-0.5 rounded-full"
@@ -134,11 +138,29 @@ function AnimalCard({ row, onClick }: { row: AnimalRow; onClick?: () => void }) 
           {row.status || "Active"}
         </span>
 
-        {row.ownerName && (
-          <span className="text-xs text-secondary truncate max-w-[120px]">
-            {row.ownerName}
-          </span>
-        )}
+        {/* Achievement badges - bottom right */}
+        <div className="flex items-center gap-2">
+          {hasTitles && (
+            <Tooltip content={titleAbbrevs || `${titleCount} title${titleCount !== 1 ? 's' : ''}`}>
+              <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-bold text-amber-400 bg-amber-400/15">
+                <span className="text-sm">🏆</span>
+                {titleAbbrevs ? (
+                  <span className="truncate max-w-[80px]">{titleAbbrevs}</span>
+                ) : (
+                  <span>{titleCount}</span>
+                )}
+              </span>
+            </Tooltip>
+          )}
+          {hasCompetitions && (
+            <Tooltip content={`${competitionCount} competition${competitionCount !== 1 ? 's' : ''}`}>
+              <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-bold text-blue-400 bg-blue-400/15">
+                <span className="text-sm">🎖️</span>
+                <span>{competitionCount}</span>
+              </span>
+            </Tooltip>
+          )}
+        </div>
       </div>
 
       {/* Tags */}

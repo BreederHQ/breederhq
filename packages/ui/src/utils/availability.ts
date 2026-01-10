@@ -64,9 +64,14 @@ export type AvailabilityPrefs = {
   gantt_master_default_exact_bands_visible?: boolean;
   gantt_perplan_default_exact_bands_visible?: boolean;
 
+  // Separate toggles for Timeline Phases vs Expected Dates band visibility
+  gantt_default_phase_bands_visible?: boolean;
+  gantt_default_exact_bands_visible?: boolean;
+
   // ---- UI toggles (local-only legacy, still read by charts as a convenient alias)
   autoWidenUnlikely?: boolean;
   defaultExactBandsVisible?: boolean;
+  defaultPhaseBandsVisible?: boolean;
 };
 
 /** ---------- Safe defaults ---------- */
@@ -127,9 +132,14 @@ export const DEFAULT_AVAILABILITY_PREFS: AvailabilityPrefs & Record<string, any>
   gantt_master_default_exact_bands_visible: false,
   gantt_perplan_default_exact_bands_visible: false,
 
+  // Separate defaults for Timeline Phases vs Expected Dates
+  gantt_default_phase_bands_visible: false,
+  gantt_default_exact_bands_visible: false,
+
   // Local UI defaults
   autoWidenUnlikely: true,
   defaultExactBandsVisible: false,
+  defaultPhaseBandsVisible: false,
 };
 
 /** Small helper: coerce a numeric-ish thing to a finite number, or 0 */
@@ -199,6 +209,21 @@ export function mapTenantPrefs(rawAny: any): AvailabilityPrefs {
   } else if (typeof master === "boolean") {
     sanitized.defaultExactBandsVisible = master;
   }
+
+  // Separate phase vs exact band defaults
+  // Use new keys if present, otherwise fall back to legacy combined setting
+  const phaseBands = bridged.gantt_default_phase_bands_visible;
+  const exactBands = bridged.gantt_default_exact_bands_visible;
+  if (typeof phaseBands === "boolean") {
+    sanitized.defaultPhaseBandsVisible = phaseBands;
+  } else {
+    // Fall back to legacy combined setting
+    sanitized.defaultPhaseBandsVisible = sanitized.defaultExactBandsVisible;
+  }
+  if (typeof exactBands === "boolean") {
+    sanitized.defaultExactBandsVisible = exactBands;
+  }
+  // Note: defaultExactBandsVisible already set above from legacy keys
 
   return sanitized;
 }

@@ -27,6 +27,11 @@ import {
   exportToCsv,
   Popover,
   DatePicker,
+  TagPicker,
+  TagCreateModal,
+  Tooltip,
+  type TagOption,
+  useViewMode,
 } from "@bhq/ui";
 import { FinanceTab } from "@bhq/ui/components/Finance";
 import { Overlay } from "@bhq/ui/overlay";
@@ -67,6 +72,7 @@ import { getOffspringName, translatePrediction, extractLocusFromTrait } from "./
 
 // ── Planner pages ─────────────────────────────────────────
 import { YourBreedingPlansPage, WhatIfPlanningPage } from "./pages/planner";
+
 import type { WhatIfFemale } from "./pages/planner/whatIfTypes";
 import { toBackendStatus, fromBackendStatus, deriveBreedingStatus as deriveBreedingStatusImported, STATUS_LABELS, type Status as PlannerStatus } from "./pages/planner/deriveBreedingStatus";
 
@@ -236,32 +242,28 @@ function normalizeExpectedMilestones(
   const weanedDate =
     day(milestones?.expectedWeaned) ??
     day(milestones?.weaning_expected) ?? // legacy format from computeExpectedForPlan
-    day(milestones?.puppy_care?.full?.end) ?? // reproEngine nested format: end of puppy care
-    day(milestones?.puppy_care_full?.end) ?? // reproEngine flat format: end of puppy care
-    day(milestones?.go_home_normal?.likely?.start) ?? // reproEngine nested format
-    day(milestones?.go_home_normal_full?.start) ?? // reproEngine flat format
-    day(milestones?.go_home_normal_likely?.start) ?? // reproEngine flat format
-    day(milestones?.go_home_normal?.likely?.[0]) ?? // reproEngine nested array format
-    day(milestones?.go_home_normal_full?.[0]) ?? // legacy array format
-    day(milestones?.go_home_normal_likely?.[0]) ?? // legacy array format
-    day(milestones?.post_birth_care_likely?.[0]) ??
+    day(milestones?.offspring_care?.likely?.[1]) ?? // reproEngine nested array format: END of offspring care likely
+    day(milestones?.offspring_care?.full?.[1]) ?? // reproEngine nested array format: END of offspring care full
+    day(milestones?.offspring_care_likely?.[1]) ?? // reproEngine flat format: END of offspring care likely
+    day(milestones?.offspring_care_full?.[1]) ?? // reproEngine flat format: END of offspring care full
+    day(milestones?.post_birth_care_likely?.[1]) ?? // legacy adapter format: END of post birth care
     null;
 
   const placementStart =
     day(milestones?.expectedPlacementStartDate) ??
     day(milestones?.placement_expected) ?? // legacy format from computeExpectedForPlan
-    day(milestones?.go_home_normal?.likely?.start) ?? // reproEngine nested format
-    day(milestones?.go_home_normal_full?.start) ?? // reproEngine flat format
-    day(milestones?.go_home_normal?.likely?.[0]) ?? // reproEngine nested array format
+    day(milestones?.placement_normal?.likely?.start) ?? // reproEngine nested format
+    day(milestones?.placement_normal_full?.start) ?? // reproEngine flat format
+    day(milestones?.placement_normal?.likely?.[0]) ?? // reproEngine nested array format
     day(milestones?.placement_start_expected) ??
     null;
 
   const placementCompleted =
     day(milestones?.expectedPlacementCompletedDate) ??
     day(milestones?.placement_expected_end) ?? // legacy format from computeExpectedForPlan
-    day(milestones?.go_home_extended?.full?.end) ?? // reproEngine nested format: end of extended window
-    day(milestones?.go_home_extended_full?.end) ?? // reproEngine flat format: end of extended window
-    day(milestones?.go_home_extended?.full?.[1]) ?? // reproEngine nested array format
+    day(milestones?.placement_extended?.full?.end) ?? // reproEngine nested format: end of extended window
+    day(milestones?.placement_extended_full?.end) ?? // reproEngine flat format: end of extended window
+    day(milestones?.placement_extended?.full?.[1]) ?? // reproEngine nested array format
     day(milestones?.placement_extended_end) ??
     day(milestones?.placement_extended_full?.[1]) ?? // legacy array format
     null;
@@ -345,9 +347,9 @@ function computeExpectedForPlan(plan: {
       ovulation: timeline.milestones?.ovulation_center ?? null,
       breeding_expected: timeline.windows?.breeding?.likely?.[0] ?? null,
       birth_expected: timeline.windows?.whelping?.likely?.[0] ?? null,
-      weaning_expected: timeline.windows?.puppy_care?.likely?.[1] ?? null,
-      placement_expected: timeline.windows?.go_home_normal?.likely?.[0] ?? null,
-      placement_expected_end: timeline.windows?.go_home_extended?.full?.[1] ?? null,
+      weaning_expected: timeline.windows?.offspring_care?.likely?.[1] ?? null,
+      placement_expected: timeline.windows?.placement_normal?.likely?.[0] ?? null,
+      placement_expected_end: timeline.windows?.placement_extended?.full?.[1] ?? null,
       ...timeline.windows,
       ...timeline.milestones,
     };
@@ -778,6 +780,161 @@ function DisplayValue({ value, required }: { value?: string | null; required?: b
   );
 }
 
+/* ───────────────────────── Plan Tags Section ───────────────────────── */
+function PlanTagsSection({
+  planId,
+  api,
+  disabled = false,
+}: {
+  planId: number | string;
+  api: ReturnType<typeof makeBreedingApi>;
+  disabled?: boolean;
+}) {
+  const [availableTags, setAvailableTags] = React.useState<TagOption[]>([]);
+  const [selectedTags, setSelectedTags] = React.useState<TagOption[]>([]);
+  const [loading, setLoading] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  const [showCreateModal, setShowCreateModal] = React.useState(false);
+
+  // Load tags on mount
+  React.useEffect(() => {
+    let cancelled = false;
+
+    const load = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        // Load available tags for BREEDING_PLAN module
+        const availableRes = await api.tags.list({ module: "BREEDING_PLAN", limit: 200 });
+        const available = ((availableRes?.items) || []).map((t: any) => ({
+          id: Number(t.id),
+          name: String(t.name),
+          color: t.color ?? null,
+        }));
+        if (!cancelled) setAvailableTags(available);
+
+        // Load currently assigned tags
+        const assignedRes = await api.tags.listForBreedingPlan(Number(planId));
+        const assigned = (Array.isArray(assignedRes) ? assignedRes : []).map((t: any) => ({
+          id: Number(t.id),
+          name: String(t.name),
+          color: t.color ?? null,
+        }));
+        if (!cancelled) setSelectedTags(assigned);
+      } catch (e: any) {
+        if (!cancelled) setError(e?.message || "Failed to load tags");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+
+    load();
+    return () => { cancelled = true; };
+  }, [api, planId]);
+
+  const handleSelect = React.useCallback(async (tag: TagOption) => {
+    // Optimistic update
+    setSelectedTags((prev) => [...prev, tag]);
+    setError(null);
+
+    try {
+      await api.tags.assign(tag.id, { breedingPlanId: Number(planId) });
+    } catch (e: any) {
+      // Rollback on error
+      setSelectedTags((prev) => prev.filter((t) => t.id !== tag.id));
+      setError(e?.message || "Failed to assign tag");
+    }
+  }, [api, planId]);
+
+  const handleRemove = React.useCallback(async (tag: TagOption) => {
+    // Optimistic update
+    setSelectedTags((prev) => prev.filter((t) => t.id !== tag.id));
+    setError(null);
+
+    try {
+      await api.tags.unassign(tag.id, { breedingPlanId: Number(planId) });
+    } catch (e: any) {
+      // Rollback on error
+      setSelectedTags((prev) => [...prev, tag]);
+      setError(e?.message || "Failed to remove tag");
+    }
+  }, [api, planId]);
+
+  const handleCreate = React.useCallback(async (name: string): Promise<TagOption> => {
+    const created = await api.tags.create({ name, module: "BREEDING_PLAN" });
+    const newTag: TagOption = {
+      id: Number(created.id),
+      name: String(created.name),
+      color: created.color ?? null,
+    };
+    // Add to available tags list
+    setAvailableTags((prev) => [...prev, newTag]);
+    return newTag;
+  }, [api]);
+
+  // Handler for modal-based tag creation (with color picker) - auto-assigns tag after creation
+  const handleModalCreate = React.useCallback(async (data: { name: string; module: string; color: string | null }) => {
+    const created = await api.tags.create({ name: data.name, module: "BREEDING_PLAN", color: data.color });
+    const newTag: TagOption = {
+      id: Number(created.id),
+      name: String(created.name),
+      color: created.color ?? null,
+    };
+    setAvailableTags((prev) => [...prev, newTag]);
+
+    // Auto-assign the newly created tag to this plan
+    setSelectedTags((prev) => [...prev, newTag]);
+    try {
+      await api.tags.assign(newTag.id, { breedingPlanId: Number(planId) });
+    } catch (e: any) {
+      // Rollback on error
+      setSelectedTags((prev) => prev.filter((t) => t.id !== newTag.id));
+      setError(e?.message || "Failed to assign tag");
+    }
+  }, [api, planId]);
+
+  return (
+    <div className="space-y-2">
+      <TagPicker
+        availableTags={availableTags}
+        selectedTags={selectedTags}
+        onSelect={handleSelect}
+        onRemove={handleRemove}
+        onCreate={handleCreate}
+        loading={loading}
+        error={error}
+        placeholder="Add tags..."
+        disabled={disabled}
+      />
+      {!disabled && availableTags.length === 0 && !loading && (
+        <button
+          type="button"
+          onClick={() => setShowCreateModal(true)}
+          className="text-xs text-brand hover:underline"
+        >
+          Create your first tag
+        </button>
+      )}
+      {!disabled && availableTags.length > 0 && (
+        <button
+          type="button"
+          onClick={() => setShowCreateModal(true)}
+          className="text-xs text-secondary hover:text-brand"
+        >
+          + New tag
+        </button>
+      )}
+      <TagCreateModal
+        open={showCreateModal}
+        onOpenChange={setShowCreateModal}
+        mode="create"
+        fixedModule="BREEDING_PLAN"
+        onSubmit={handleModalCreate}
+      />
+    </div>
+  );
+}
+
 function fmt(d?: string | null) {
   if (!d) return "";
   const s = String(d);
@@ -1056,7 +1213,7 @@ function SafeNavLink({
   end,
 }: {
   to: string;
-  children: React.ReactNode;
+  children: React.ReactNode | ((arg: { isActive: boolean }) => React.ReactNode);
   className: ((arg: { isActive: boolean }) => string) | string;
   style?: ((arg: { isActive: boolean }) => React.CSSProperties) | React.CSSProperties;
   end?: boolean;
@@ -1083,16 +1240,17 @@ function SafeNavLink({
     const isActive = computeActive();
     const cls = typeof className === "function" ? className({ isActive }) : className;
     const sty = typeof style === "function" ? style({ isActive }) : style;
+    const resolvedChildren = typeof children === "function" ? children({ isActive }) : children;
     return (
       <a href={to} className={cls} style={sty}>
-        {children}
+        {resolvedChildren}
       </a>
     );
   }
 
   return (
     <NavLink to={to} end={end} className={className as any} style={style as any}>
-      {children}
+      {children as any}
     </NavLink>
   );
 }
@@ -1351,14 +1509,15 @@ function WhatIfRowEditor(props: WhatIfRowEditorProps) {
           Convert to plan
         </Button>
 
-        <button
-          type="button"
-          onClick={onRemove}
-          className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-hairline bg-surface-subtle text-secondary hover:bg-white/5"
-          title="Remove row"
-        >
-          <Trash2 className="h-4 w-4" />
-        </button>
+        <Tooltip content="Remove row">
+          <button
+            type="button"
+            onClick={onRemove}
+            className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-hairline bg-surface-subtle text-secondary hover:bg-white/5"
+          >
+            <Trash2 className="h-4 w-4" />
+          </button>
+        </Tooltip>
       </div>
 
       {damLoadError && <div className="mt-1 text-xs text-red-500">{damLoadError}</div>}
@@ -2737,12 +2896,15 @@ function GeneticsLabPage({
         <div className="p-4 space-y-4">
           <div>
             <h2 className="text-xl font-semibold mb-1">Genetics Lab</h2>
-            <p className="text-sm text-secondary">
-              Analyze genetic compatibility between dam and sire. Select two animals to see predicted offspring traits.
-            </p>
+            {!results && (
+              <p className="text-sm text-secondary">
+                Analyze genetic compatibility between dam and sire. Select two animals to see predicted offspring traits.
+              </p>
+            )}
           </div>
 
-          {/* Animal Selection - Compact Row */}
+          {/* Animal Selection - Only show when no results */}
+          {!results && (
           <div className="flex flex-col md:flex-row gap-3 items-end">
             <div className="flex-1">
               <label className="block text-xs font-medium text-secondary mb-1">
@@ -2770,13 +2932,14 @@ function GeneticsLabPage({
                   ))}
                 </select>
                 {selectedDamId && (
-                  <button
-                    onClick={() => setShowImportDialog('dam')}
-                    className="h-9 px-2 text-xs border border-hairline rounded-md hover:bg-surface-alt text-secondary hover:text-primary"
-                    title="Import genetics for dam"
-                  >
-                    📤
-                  </button>
+                  <Tooltip content="Import genetics for dam">
+                    <button
+                      onClick={() => setShowImportDialog('dam')}
+                      className="h-9 px-2 text-xs border border-hairline rounded-md hover:bg-surface-alt text-secondary hover:text-primary"
+                    >
+                      📤
+                    </button>
+                  </Tooltip>
                 )}
               </div>
             </div>
@@ -2809,13 +2972,14 @@ function GeneticsLabPage({
                   ))}
                 </select>
                 {selectedSireId && (
-                  <button
-                    onClick={() => setShowImportDialog('sire')}
-                    className="h-9 px-2 text-xs border border-hairline rounded-md hover:bg-surface-alt text-secondary hover:text-primary"
-                    title="Import genetics for sire"
-                  >
-                    📤
-                  </button>
+                  <Tooltip content="Import genetics for sire">
+                    <button
+                      onClick={() => setShowImportDialog('sire')}
+                      className="h-9 px-2 text-xs border border-hairline rounded-md hover:bg-surface-alt text-secondary hover:text-primary"
+                    >
+                      📤
+                    </button>
+                  </Tooltip>
                 )}
               </div>
             </div>
@@ -2839,25 +3003,83 @@ function GeneticsLabPage({
 
             {/* Reset button - only show when at least one animal is selected */}
             {(selectedDamId || selectedSireId) && (
-              <button
-                onClick={() => {
-                  setSelectedDamId(null);
-                  setSelectedSireId(null);
-                  setResults(null);
-                  setDamGenetics(null);
-                  setSireGenetics(null);
-                }}
-                className="h-9 px-3 text-secondary text-sm hover:text-primary hover:bg-surface rounded-md"
-                title="Clear selections"
-              >
-                Reset
-              </button>
+              <Tooltip content="Clear selections">
+                <button
+                  onClick={() => {
+                    setSelectedDamId(null);
+                    setSelectedSireId(null);
+                    setResults(null);
+                    setDamGenetics(null);
+                    setSireGenetics(null);
+                  }}
+                  className="h-9 px-3 text-secondary text-sm hover:text-primary hover:bg-surface rounded-md"
+                >
+                  Reset
+                </button>
+              </Tooltip>
             )}
           </div>
+          )}
 
           {/* Results */}
           {results && (
-            <div className="pt-4 border-t border-hairline">
+            <div>
+              {/* Compact Header: Pairing + Score side by side */}
+              <div className="flex flex-col lg:flex-row gap-3 mb-4">
+                {/* Current Pairing - Left side */}
+                <div className="flex-1 p-3 rounded-xl bg-gradient-to-r from-pink-500/10 via-purple-500/5 to-blue-500/10 border border-purple-500/30">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="text-center">
+                        <div className="text-[10px] text-pink-400 font-medium uppercase tracking-wide">Dam</div>
+                        <div className="text-sm font-bold text-primary">{selectedDam?.name || "—"}</div>
+                      </div>
+                      <div className="text-xl text-purple-400 font-light">×</div>
+                      <div className="text-center">
+                        <div className="text-[10px] text-blue-400 font-medium uppercase tracking-wide">Sire</div>
+                        <div className="text-sm font-bold text-primary">{selectedSire?.name || "—"}</div>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => setResults(null)}
+                      className="ml-3 px-3 py-1.5 text-xs font-medium text-purple-400 hover:text-purple-300 border border-purple-500/30 hover:border-purple-500/50 rounded-md hover:bg-purple-500/10 transition-colors"
+                    >
+                      Change Pairing
+                    </button>
+                  </div>
+                </div>
+
+                {/* Score - Right side */}
+                <div className={`lg:w-64 p-3 rounded-xl border-2 ${
+                  results.score >= 80
+                    ? "bg-green-500/10 border-green-500/40"
+                    : results.score >= 60
+                      ? "bg-yellow-500/10 border-yellow-500/40"
+                      : "bg-red-500/10 border-red-500/40"
+                }`}>
+                  <div className="flex items-center gap-3">
+                    <div className={`text-3xl font-bold ${
+                      results.score >= 80 ? "text-green-400" :
+                      results.score >= 60 ? "text-yellow-400" :
+                      "text-red-400"
+                    }`}>
+                      {results.score}<span className="text-lg text-secondary/60">/100</span>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className={`text-sm font-semibold truncate ${
+                        results.score >= 80 ? "text-green-400" :
+                        results.score >= 60 ? "text-yellow-400" :
+                        "text-red-400"
+                      }`}>
+                        {results.score >= 80 ? "Great Pairing!" :
+                         results.score >= 60 ? "Proceed with Caution" :
+                         "Review Warnings"}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               {/* Warnings - Show prominently at top if any */}
               {results.warnings && results.warnings.length > 0 && (
                 <div className="space-y-2 mb-4">
@@ -2882,43 +3104,6 @@ function GeneticsLabPage({
                   ))}
                 </div>
               )}
-
-              {/* Pairing Score - Prominent Display */}
-              <div className={`mb-4 p-4 rounded-xl border-2 ${
-                results.score >= 80
-                  ? "bg-green-500/10 border-green-500/40"
-                  : results.score >= 60
-                    ? "bg-yellow-500/10 border-yellow-500/40"
-                    : "bg-red-500/10 border-red-500/40"
-              }`}>
-                <div className="flex items-center gap-4">
-                  <div className={`text-4xl font-bold ${
-                    results.score >= 80 ? "text-green-400" :
-                    results.score >= 60 ? "text-yellow-400" :
-                    "text-red-400"
-                  }`}>
-                    {results.score}<span className="text-2xl text-secondary/60">/100</span>
-                  </div>
-                  <div>
-                    <div className={`text-lg font-semibold ${
-                      results.score >= 80 ? "text-green-400" :
-                      results.score >= 60 ? "text-yellow-400" :
-                      "text-red-400"
-                    }`}>
-                      {results.score >= 80 ? "Great Pairing!" :
-                       results.score >= 60 ? "Proceed with Caution" :
-                       "Review Warnings"}
-                    </div>
-                    <div className="text-sm text-secondary">
-                      {results.score >= 80
-                        ? "This pairing has good genetic compatibility"
-                        : results.score >= 60
-                          ? "Some concerns to consider before breeding"
-                          : "Significant health risks identified"}
-                    </div>
-                  </div>
-                </div>
-              </div>
 
               {/* ───────────────────────────────────────────────────────────
                   Tab Navigation for Genetics Lab Sections
@@ -3208,13 +3393,13 @@ function GeneticsLabPage({
                             {results.health?.map((item: any, idx: number) => {
                               const locusMatch = item.trait.match(/\(([^)]+)\)/);
                               const conditionName = locusMatch ? locusMatch[1] : item.trait;
-                              let icon = "✓";
+                              let icon = "🛡️";
                               let statusClass = "text-green-500";
                               if (item.prediction.includes("Affected")) {
-                                icon = "!";
+                                icon = "❌";
                                 statusClass = "text-red-500";
                               } else if (item.prediction.includes("Carrier")) {
-                                icon = "~";
+                                icon = "⚠️";
                                 statusClass = "text-yellow-500";
                               }
                               const outcomes = item.prediction.split(', ').map((p: string) => {
@@ -3656,18 +3841,9 @@ export default function AppBreeding() {
     } catch { }
   }, [showArchived]);
 
-  // View mode toggle (table vs cards)
-  const VIEW_MODE_KEY = "bhq_breeding_view_v1";
+  // View mode toggle (table vs cards) - uses tenant preferences as default
   type ViewMode = "table" | "cards";
-  const [viewMode, setViewMode] = React.useState<ViewMode>(() => {
-    try {
-      const stored = localStorage.getItem(VIEW_MODE_KEY);
-      return (stored === "cards" ? "cards" : "table") as ViewMode;
-    } catch { return "table"; }
-  });
-  React.useEffect(() => {
-    try { localStorage.setItem(VIEW_MODE_KEY, viewMode); } catch { }
-  }, [viewMode]);
+  const { viewMode, setViewMode } = useViewMode({ module: "breeding" });
 
   // Selection (keep raw ID types; do NOT stringify)
   const [selectedKeys, setSelectedKeys] = React.useState<Set<ID>>(() => new Set<ID>());
@@ -4753,60 +4929,88 @@ export default function AppBreeding() {
                 end
                 className={({ isActive }) =>
                   [
-                    "h-9 px-3 text-sm font-semibold leading-9 border-b-2 transition-colors flex items-center gap-1.5",
+                    "relative h-10 px-4 text-base font-semibold leading-10 border-b-2 transition-all duration-300 ease-out flex items-center gap-2",
                     isActive
-                      ? "text-primary border-accent"
-                      : "text-secondary hover:text-primary border-transparent",
+                      ? "text-primary border-[hsl(var(--brand-orange))]"
+                      : "text-secondary hover:text-primary border-transparent hover:border-[hsl(var(--brand-orange))]/30",
                   ].join(" ")
                 }
               >
-                <span>📋</span>
-                <span>Plans</span>
+                {({ isActive }: { isActive: boolean }) => (
+                  <>
+                    {isActive && (
+                      <span className="absolute inset-0 bg-[hsl(var(--brand-orange))]/15 blur-lg rounded-lg animate-pulse" />
+                    )}
+                    <span className="relative z-10">📋</span>
+                    <span className="relative z-10">Plans</span>
+                  </>
+                )}
               </SafeNavLink>
 
               <SafeNavLink
                 to={`${basePath}/calendar`}
                 className={({ isActive }) =>
                   [
-                    "h-9 px-3 text-sm font-semibold leading-9 border-b-2 transition-colors flex items-center gap-1.5",
+                    "relative h-10 px-4 text-base font-semibold leading-10 border-b-2 transition-all duration-300 ease-out flex items-center gap-2",
                     isActive
-                      ? "text-primary border-accent"
-                      : "text-secondary hover:text-primary border-transparent",
+                      ? "text-primary border-[hsl(var(--brand-orange))]"
+                      : "text-secondary hover:text-primary border-transparent hover:border-[hsl(var(--brand-orange))]/30",
                   ].join(" ")
                 }
               >
-                <span>📅</span>
-                <span>Calendar</span>
+                {({ isActive }: { isActive: boolean }) => (
+                  <>
+                    {isActive && (
+                      <span className="absolute inset-0 bg-[hsl(var(--brand-orange))]/15 blur-lg rounded-lg animate-pulse" />
+                    )}
+                    <span className="relative z-10">📅</span>
+                    <span className="relative z-10">Calendar</span>
+                  </>
+                )}
               </SafeNavLink>
 
               <SafeNavLink
                 to={`${basePath}/planner`}
                 className={({ isActive }) =>
                   [
-                    "h-9 px-3 text-sm font-semibold leading-9 border-b-2 transition-colors flex items-center gap-1.5",
+                    "relative h-10 px-4 text-base font-semibold leading-10 border-b-2 transition-all duration-300 ease-out flex items-center gap-2",
                     isActive
-                      ? "text-primary border-accent"
-                      : "text-secondary hover:text-primary border-transparent",
+                      ? "text-primary border-[hsl(var(--brand-orange))]"
+                      : "text-secondary hover:text-primary border-transparent hover:border-[hsl(var(--brand-orange))]/30",
                   ].join(" ")
                 }
               >
-                <span>🔮</span>
-                <span>Planner</span>
+                {({ isActive }: { isActive: boolean }) => (
+                  <>
+                    {isActive && (
+                      <span className="absolute inset-0 bg-[hsl(var(--brand-orange))]/15 blur-lg rounded-lg animate-pulse" />
+                    )}
+                    <span className="relative z-10">🔮</span>
+                    <span className="relative z-10">Planner</span>
+                  </>
+                )}
               </SafeNavLink>
 
               <SafeNavLink
                 to={`${basePath}/genetics-lab`}
                 className={({ isActive }) =>
                   [
-                    "h-9 px-3 text-sm font-semibold leading-9 border-b-2 transition-colors flex items-center gap-1.5",
+                    "relative h-10 px-4 text-base font-semibold leading-10 border-b-2 transition-all duration-300 ease-out flex items-center gap-2",
                     isActive
-                      ? "text-primary border-accent"
-                      : "text-secondary hover:text-primary border-transparent",
+                      ? "text-primary border-[hsl(var(--brand-orange))]"
+                      : "text-secondary hover:text-primary border-transparent hover:border-[hsl(var(--brand-orange))]/30",
                   ].join(" ")
                 }
               >
-                <span>🧬</span>
-                <span>Genetics Lab</span>
+                {({ isActive }: { isActive: boolean }) => (
+                  <>
+                    {isActive && (
+                      <span className="absolute inset-0 bg-[hsl(var(--brand-orange))]/15 blur-lg rounded-lg animate-pulse" />
+                    )}
+                    <span className="relative z-10">🧬</span>
+                    <span className="relative z-10">Genetics Lab</span>
+                  </>
+                )}
               </SafeNavLink>
             </nav>
           </div>
@@ -4831,55 +5035,58 @@ export default function AppBreeding() {
                     placeholder="Search any field…"
                     widthPx={420}
                     rightSlot={
-                      <button
-                        type="button"
-                        onClick={() => setFiltersOpen((v) => !v)}
-                        aria-expanded={filtersOpen}
-                        title="Filters"
-                        className="h-7 w-7 rounded-md flex items-center justify-center hover:bg-white/5 focus:outline-none"
-                      >
-                        <svg
-                          viewBox="0 0 24 24"
-                          className="h-4 w-4"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth={2}
-                          aria-hidden="true"
+                      <Tooltip content="Filters">
+                        <button
+                          type="button"
+                          onClick={() => setFiltersOpen((v) => !v)}
+                          aria-expanded={filtersOpen}
+                          className="h-7 w-7 rounded-md flex items-center justify-center hover:bg-white/5 focus:outline-none"
                         >
-                          <path d="M3 5h18M7 12h10M10 19h4" strokeLinecap="round" />
-                        </svg>
-                      </button>
+                          <svg
+                            viewBox="0 0 24 24"
+                            className="h-4 w-4"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth={2}
+                            aria-hidden="true"
+                          >
+                            <path d="M3 5h18M7 12h10M10 19h4" strokeLinecap="round" />
+                          </svg>
+                        </button>
+                      </Tooltip>
                     }
                   />
 
                   {/* View mode toggle */}
                   <div className="flex items-center rounded-lg border border-hairline overflow-hidden">
-                    <button
-                      type="button"
-                      onClick={() => setViewMode("table")}
-                      className={`flex items-center gap-1.5 px-3 py-1.5 text-sm transition-colors ${
-                        viewMode === "table"
-                          ? "bg-[hsl(var(--brand-orange))] text-black"
-                          : "bg-transparent text-secondary hover:text-primary hover:bg-[hsl(var(--muted)/0.5)]"
-                      }`}
-                      title="Table view"
-                    >
-                      <TableIcon className="w-4 h-4" />
-                      <span className="hidden sm:inline">Table</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setViewMode("cards")}
-                      className={`flex items-center gap-1.5 px-3 py-1.5 text-sm transition-colors ${
-                        viewMode === "cards"
-                          ? "bg-[hsl(var(--brand-orange))] text-black"
-                          : "bg-transparent text-secondary hover:text-primary hover:bg-[hsl(var(--muted)/0.5)]"
-                      }`}
-                      title="Card view"
-                    >
-                      <LayoutGrid className="w-4 h-4" />
-                      <span className="hidden sm:inline">Cards</span>
-                    </button>
+                    <Tooltip content="Table view">
+                      <button
+                        type="button"
+                        onClick={() => setViewMode("table")}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 text-sm transition-colors ${
+                          viewMode === "table"
+                            ? "bg-[hsl(var(--brand-orange))] text-black"
+                            : "bg-transparent text-secondary hover:text-primary hover:bg-[hsl(var(--muted)/0.5)]"
+                        }`}
+                      >
+                        <TableIcon className="w-4 h-4" />
+                        <span className="hidden sm:inline">Table</span>
+                      </button>
+                    </Tooltip>
+                    <Tooltip content="Card view">
+                      <button
+                        type="button"
+                        onClick={() => setViewMode("cards")}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 text-sm transition-colors ${
+                          viewMode === "cards"
+                            ? "bg-[hsl(var(--brand-orange))] text-black"
+                            : "bg-transparent text-secondary hover:text-primary hover:bg-[hsl(var(--muted)/0.5)]"
+                        }`}
+                      >
+                        <LayoutGrid className="w-4 h-4" />
+                        <span className="hidden sm:inline">Cards</span>
+                      </button>
+                    </Tooltip>
                   </div>
 
                   {/* Column toggle - only show in table mode */}
@@ -5069,14 +5276,14 @@ export default function AppBreeding() {
         {currentView === "planner" && (
           <div
             ref={plannerContentRef}
-            className="p-4 overflow-y-auto"
-            style={{ maxHeight: plannerContentMaxHeight ?? undefined }}
+            className="p-4"
           >
             {/* Page-level tabs: Your Breeding Plans | What If Planning */}
-            <nav className="inline-flex items-end gap-6 mb-4" role="tablist" aria-label="Planner pages">
+            <nav className="flex items-center gap-1 mb-4" role="tablist" aria-label="Planner pages">
               {(["your-plans", "what-if"] as const).map((tabKey) => {
                 const isActive = plannerPage === tabKey;
                 const label = tabKey === "your-plans" ? "Your Breeding Plans" : "What If Planning";
+                const icon = tabKey === "your-plans" ? "📋" : "🤷";
                 return (
                   <button
                     key={tabKey}
@@ -5085,16 +5292,17 @@ export default function AppBreeding() {
                     aria-selected={isActive}
                     onClick={() => setPlannerPage(tabKey)}
                     className={[
-                      "pb-1 text-sm font-medium transition-colors select-none",
+                      "relative h-10 px-4 text-base font-semibold leading-10 border-b-2 transition-all duration-300 ease-out flex items-center gap-2",
                       isActive
-                        ? "text-primary"
-                        : "text-secondary hover:text-primary",
+                        ? "text-primary border-[hsl(var(--brand-orange))]"
+                        : "text-secondary hover:text-primary border-transparent hover:border-[hsl(var(--brand-orange))]/30",
                     ].join(" ")}
-                    style={{
-                      borderBottom: isActive ? "2px solid #f97316" : "2px solid transparent",
-                    }}
                   >
-                    {label}
+                    {isActive && (
+                      <span className="absolute inset-0 bg-[hsl(var(--brand-orange))]/15 blur-lg rounded-lg animate-pulse" />
+                    )}
+                    <span className="relative z-10">{icon}</span>
+                    <span className="relative z-10">{label}</span>
                   </button>
                 );
               })}
@@ -5132,7 +5340,6 @@ export default function AppBreeding() {
             />
           </div>
         )}
-
 
         {/* Create Plan Modal */}
         <Overlay root={modalRoot} open={createOpen} ariaLabel="Create Breeding Plan" closeOnEscape closeOnOutsideClick>
@@ -6777,9 +6984,9 @@ function PlanDetailsView(props: {
           expectedBreedDate: null,
           expectedBirthDate: null,
           // Post-birth dates ARE recalculated from actual birth
-          expectedWeaned: birthTimeline.windows?.puppy_care?.likely?.[1] ?? null,
-          expectedPlacementStartDate: birthTimeline.windows?.go_home_normal?.likely?.[0] ?? null,
-          expectedPlacementCompletedDate: birthTimeline.windows?.go_home_extended?.full?.[1] ?? null,
+          expectedWeaned: birthTimeline.windows?.offspring_care?.likely?.[1] ?? null,
+          expectedPlacementStartDate: birthTimeline.windows?.placement_normal?.likely?.[0] ?? null,
+          expectedPlacementCompletedDate: birthTimeline.windows?.placement_extended?.full?.[1] ?? null,
         };
       }
     }
@@ -6826,10 +7033,22 @@ function PlanDetailsView(props: {
     if (isArchived) return; // Prevent cycle unlocking for archived plans
     if (!api) return;
 
+    // Prevent unlocking if plan has progressed past COMMITTED phase
+    // (BRED, BIRTHED, WEANED, PLACEMENT_*, COMPLETE have actual dates that depend on the cycle)
+    const currentStatus = (effective.status || "").toUpperCase();
+    if (["BRED", "BIRTHED", "WEANED", "PLACEMENT_STARTED", "PLACEMENT_COMPLETED", "COMPLETE"].includes(currentStatus)) {
+      console.warn("[Breeding] Cannot unlock cycle - plan has progressed past COMMITTED phase");
+      return;
+    }
+
     setExpectedPreview(null);
     setLockedPreview(false);
 
-    const payload = {
+    // If currently COMMITTED, unlocking the cycle violates COMMITTED prerequisites
+    // so we must regress the status back to PLANNING
+    const shouldResetStatus = currentStatus === "COMMITTED";
+
+    const payload: Record<string, unknown> = {
       lockedCycleStart: null,
       lockedOvulationDate: null,
       lockedDueDate: null,
@@ -6844,6 +7063,12 @@ function PlanDetailsView(props: {
       expectedPlacementStartDate: null,
       expectedPlacementCompletedDate: null,
     };
+
+    // Reset status to PLANNING if we're in COMMITTED phase
+    if (shouldResetStatus) {
+      payload.status = "PLANNING";
+    }
+
     // Don't use setDraftLive here - we're immediately persisting, not drafting
 
     try {
@@ -6852,8 +7077,8 @@ function PlanDetailsView(props: {
       await api.createEvent(Number(row.id), {
         type: "CYCLE_UNLOCKED",
         occurredAt: new Date().toISOString(),
-        label: "Cycle unlocked",
-        data: {},
+        label: shouldResetStatus ? "Cycle unlocked - status reset to Planning" : "Cycle unlocked",
+        data: { previousStatus: currentStatus, statusReset: shouldResetStatus },
       });
 
       // Refresh the row to ensure lockedCycleStart is cleared in the row prop (not just draft)
@@ -7626,20 +7851,21 @@ function PlanDetailsView(props: {
                           style={{ height: 42, minHeight: 42 }}
                         />
                         {effective.damId && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setDraftLive({ damId: null, damName: "" });
-                              setEditDamQuery("");
-                            }}
-                            className="absolute right-2 top-1/2 -translate-y-1/2 text-secondary hover:text-primary transition-colors"
-                            title="Clear Dam"
-                            disabled={!editable}
-                          >
-                            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                            </svg>
-                          </button>
+                          <Tooltip content="Clear Dam">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setDraftLive({ damId: null, damName: "" });
+                                setEditDamQuery("");
+                              }}
+                              className="absolute right-2 top-1/2 -translate-y-1/2 text-secondary hover:text-primary transition-colors"
+                              disabled={!editable}
+                            >
+                              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                              </svg>
+                            </button>
+                          </Tooltip>
                         )}
                       </div>
                       {editDamFocus && (
@@ -7711,20 +7937,21 @@ function PlanDetailsView(props: {
                           style={{ height: 42, minHeight: 42 }}
                         />
                         {effective.sireId && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setDraftLive({ sireId: null, sireName: "" });
-                              setEditSireQuery("");
-                            }}
-                            className="absolute right-2 top-1/2 -translate-y-1/2 text-secondary hover:text-primary transition-colors"
-                            title="Clear Sire"
-                            disabled={!editable}
-                          >
-                            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                            </svg>
-                          </button>
+                          <Tooltip content="Clear Sire">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setDraftLive({ sireId: null, sireName: "" });
+                                setEditSireQuery("");
+                              }}
+                              className="absolute right-2 top-1/2 -translate-y-1/2 text-secondary hover:text-primary transition-colors"
+                              disabled={!editable}
+                            >
+                              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                              </svg>
+                            </button>
+                          </Tooltip>
                         )}
                       </div>
                       {editSireFocus && (
@@ -7768,6 +7995,17 @@ function PlanDetailsView(props: {
                 </div>
               </div>
             </SectionCard>
+
+            {/* Tags */}
+            {api && (
+              <SectionCard title="Tags">
+                <PlanTagsSection
+                  planId={row.id}
+                  api={api}
+                  disabled={!isEdit}
+                />
+              </SectionCard>
+            )}
 
             {/* Next Milestone Summary - show context-aware next milestone based on status */}
             {/* Only show when cycle has started (cycleStartDateActual entered) - not when Breeding Cycle Selection is visible */}
@@ -7871,53 +8109,54 @@ function PlanDetailsView(props: {
                 <div className="flex items-center gap-4 px-4 py-3">
                   {/* Lock icon button - orange in edit mode with pulse, gray in view mode */}
                   {/* Clicking locks the cycle (when unlocked) or unlocks it (when locked) */}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (!isEdit) return;
-                      if (isLocked) {
-                        unlockCycle();
-                      } else if (pendingCycle && effective.damId) {
-                        lockCycle();
-                      }
-                    }}
-                    disabled={!isEdit || (!isLocked && (!pendingCycle || !effective.damId))}
-                    title={isLocked ? "Click to unlock cycle" : (pendingCycle && effective.damId ? "Click to lock cycle" : "Select a dam and cycle first")}
-                    style={{ width: 44, height: 44, minWidth: 44, minHeight: 44 }}
-                    className={`rounded-full flex items-center justify-center flex-shrink-0 transition-all ${
-                      (isLocked || lockedPreview)
-                        ? isEdit
-                          ? "bg-green-600 hover:bg-green-500 cursor-pointer"
-                          : "bg-green-600 cursor-default"
-                        : isEdit && pendingCycle
-                          ? "bg-yellow-500 hover:bg-yellow-400 hover:scale-105 cursor-pointer glow-pulse-green"
-                          : isEdit
-                            ? "bg-[hsl(var(--brand-orange))] hover:scale-105 cursor-pointer glow-pulse-orange"
-                            : pendingCycle
-                              ? "bg-yellow-500 cursor-default glow-pulse-yellow"
-                              : "bg-red-500 cursor-default glow-pulse-red"
-                    }`}
-                  >
-                    <svg
-                      viewBox="0 0 24 24"
-                      className="h-5 w-5 text-white"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
+                  <Tooltip content={isLocked ? "Click to unlock cycle" : (pendingCycle && effective.damId ? "Click to lock cycle" : "Select a dam and cycle first")}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!isEdit) return;
+                        if (isLocked) {
+                          unlockCycle();
+                        } else if (pendingCycle && effective.damId) {
+                          lockCycle();
+                        }
+                      }}
+                      disabled={!isEdit || (!isLocked && (!pendingCycle || !effective.damId))}
+                      style={{ width: 44, height: 44, minWidth: 44, minHeight: 44 }}
+                      className={`rounded-full flex items-center justify-center flex-shrink-0 transition-all ${
+                        (isLocked || lockedPreview)
+                          ? isEdit
+                            ? "bg-green-600 hover:bg-green-500 cursor-pointer"
+                            : "bg-green-600 cursor-default"
+                          : isEdit && pendingCycle
+                            ? "bg-yellow-500 hover:bg-yellow-400 hover:scale-105 cursor-pointer glow-pulse-green"
+                            : isEdit
+                              ? "bg-[hsl(var(--brand-orange))] hover:scale-105 cursor-pointer glow-pulse-orange"
+                              : pendingCycle
+                                ? "bg-yellow-500 cursor-default glow-pulse-yellow"
+                                : "bg-red-500 cursor-default glow-pulse-red"
+                      }`}
                     >
-                      {(isLocked || lockedPreview) ? (
-                        <>
-                          <rect x="5" y="10" width="14" height="10" rx="2" />
-                          <path d="M7 10V7a5 5 0 0 1 10 0v3" />
-                        </>
-                      ) : (
-                        <>
-                          <rect x="5" y="10" width="14" height="10" rx="2" />
-                          <path d="M7 10V7a5 5 0 0 1 9.9-1" />
-                        </>
-                      )}
-                    </svg>
-                  </button>
+                      <svg
+                        viewBox="0 0 24 24"
+                        className="h-5 w-5 text-white"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                      >
+                        {(isLocked || lockedPreview) ? (
+                          <>
+                            <rect x="5" y="10" width="14" height="10" rx="2" />
+                            <path d="M7 10V7a5 5 0 0 1 10 0v3" />
+                          </>
+                        ) : (
+                          <>
+                            <rect x="5" y="10" width="14" height="10" rx="2" />
+                            <path d="M7 10V7a5 5 0 0 1 9.9-1" />
+                          </>
+                        )}
+                      </svg>
+                    </button>
+                  </Tooltip>
 
                   {/* Content - view mode shows simple text, edit mode shows label + dropdown */}
                   {isEdit ? (
@@ -8170,16 +8409,16 @@ function PlanDetailsView(props: {
             <div className="flex flex-col gap-4" data-bhq-details-exempt>
               {/* EXPECTED DATES (SYSTEM CALCULATED) */}
               <SectionCard title="EXPECTED DATES (SYSTEM CALCULATED)">
-                {/* Phase 1: Cycle Start → Birth */}
+                {/* Phase 1: Cycle → Breeding */}
                 <div className="mb-5">
                   <div className="flex items-center gap-2 mb-3">
                     <div className="flex items-center justify-center w-6 h-6 rounded-full bg-gradient-to-br from-blue-500/20 to-purple-500/20 border border-blue-500/30">
                       <span className="text-xs">🔄</span>
                     </div>
-                    <span className="text-xs font-semibold uppercase tracking-wider text-blue-400">Cycle Start → Birth</span>
+                    <span className="text-xs font-semibold uppercase tracking-wider text-blue-400">Cycle → Breeding</span>
                     <div className="flex-1 h-px bg-gradient-to-r from-blue-500/40 via-purple-500/20 to-transparent"></div>
                   </div>
-                  <div className="grid grid-cols-4 gap-x-3 gap-y-2 pl-8">
+                  <div className="grid grid-cols-3 gap-x-3 gap-y-2 pl-8">
                     <div>
                       <div className="text-[10px] uppercase text-secondary tracking-wide mb-1">Cycle Start</div>
                       <div className="text-sm text-primary font-medium">{fmt(expectedCycleStart) || "—"}</div>
@@ -8192,23 +8431,23 @@ function PlanDetailsView(props: {
                       <div className="text-[10px] uppercase text-secondary tracking-wide mb-1">Breeding Date</div>
                       <div className="text-sm text-primary font-medium">{fmt(expectedBreed) || "—"}</div>
                     </div>
-                    <div>
-                      <div className="text-[10px] uppercase text-secondary tracking-wide mb-1">Birth Date</div>
-                      <div className="text-sm text-primary font-medium">{fmt(expectedBirth) || "—"}</div>
-                    </div>
                   </div>
                 </div>
 
-                {/* Phase 2: Weaning → Placement */}
+                {/* Phase 2: Birth → Placement */}
                 <div>
                   <div className="flex items-center gap-2 mb-3">
                     <div className="flex items-center justify-center w-6 h-6 rounded-full bg-gradient-to-br from-amber-500/20 to-orange-500/20 border border-amber-500/30">
                       <span className="text-xs">🏠</span>
                     </div>
-                    <span className="text-xs font-semibold uppercase tracking-wider text-amber-400">Weaning → Placement</span>
+                    <span className="text-xs font-semibold uppercase tracking-wider text-amber-400">Birth → Placement</span>
                     <div className="flex-1 h-px bg-gradient-to-r from-amber-500/40 via-orange-500/20 to-transparent"></div>
                   </div>
                   <div className="grid grid-cols-4 gap-x-3 gap-y-2 pl-8">
+                    <div>
+                      <div className="text-[10px] uppercase text-secondary tracking-wide mb-1">Birth Date</div>
+                      <div className="text-sm text-primary font-medium">{fmt(expectedBirth) || "—"}</div>
+                    </div>
                     <div>
                       <div className="text-[10px] uppercase text-secondary tracking-wide mb-1">Weaned Date</div>
                       <div className="text-sm text-primary font-medium">{fmt(expectedWeaned) || "—"}</div>
@@ -8250,16 +8489,16 @@ function PlanDetailsView(props: {
                         </div>
                       )}
 
-                      {/* Phase 1: Cycle Start → Birth */}
+                      {/* Phase 1: Cycle → Breeding */}
                       <div className="mb-5">
                         <div className="flex items-center gap-2 mb-3">
                           <div className="flex items-center justify-center w-6 h-6 rounded-full bg-gradient-to-br from-blue-500/20 to-purple-500/20 border border-blue-500/30">
                             <span className="text-xs">🔄</span>
                           </div>
-                          <span className="text-xs font-semibold uppercase tracking-wider text-blue-400">Cycle Start → Birth</span>
+                          <span className="text-xs font-semibold uppercase tracking-wider text-blue-400">Cycle → Breeding</span>
                           <div className="flex-1 h-px bg-gradient-to-r from-blue-500/40 via-purple-500/20 to-transparent"></div>
                         </div>
-                        <div className="grid grid-cols-4 gap-x-3 gap-y-2 pl-8">
+                        <div className="grid grid-cols-3 gap-x-3 gap-y-2 pl-8">
                           <div>
                             <div className="text-[10px] uppercase text-secondary tracking-wide mb-1">Cycle Start (Actual)</div>
                             <div className="text-sm text-emerald-600 dark:text-emerald-400 font-medium">{fmt(effective.cycleStartDateActual) || "—"}</div>
@@ -8272,23 +8511,23 @@ function PlanDetailsView(props: {
                             <div className="text-[10px] uppercase text-secondary tracking-wide mb-1">Breeding Date</div>
                             <div className="text-sm text-emerald-600 dark:text-emerald-400 font-medium">{fmt(recalcBreed) ? <>{fmt(recalcBreed)} <span className="text-xs text-secondary font-normal">(New Projection)</span></> : "—"}</div>
                           </div>
-                          <div>
-                            <div className="text-[10px] uppercase text-secondary tracking-wide mb-1">Birth Date</div>
-                            <div className="text-sm text-emerald-600 dark:text-emerald-400 font-medium">{fmt(recalcBirth) ? <>{fmt(recalcBirth)} <span className="text-xs text-secondary font-normal">(New Projection)</span></> : "—"}</div>
-                          </div>
                         </div>
                       </div>
 
-                      {/* Phase 2: Weaning → Placement */}
+                      {/* Phase 2: Birth → Placement */}
                       <div>
                         <div className="flex items-center gap-2 mb-3">
                           <div className="flex items-center justify-center w-6 h-6 rounded-full bg-gradient-to-br from-amber-500/20 to-orange-500/20 border border-amber-500/30">
                             <span className="text-xs">🏠</span>
                           </div>
-                          <span className="text-xs font-semibold uppercase tracking-wider text-amber-400">Weaning → Placement</span>
+                          <span className="text-xs font-semibold uppercase tracking-wider text-amber-400">Birth → Placement</span>
                           <div className="flex-1 h-px bg-gradient-to-r from-amber-500/40 via-orange-500/20 to-transparent"></div>
                         </div>
                         <div className="grid grid-cols-4 gap-x-3 gap-y-2 pl-8">
+                          <div>
+                            <div className="text-[10px] uppercase text-secondary tracking-wide mb-1">Birth Date</div>
+                            <div className="text-sm text-emerald-600 dark:text-emerald-400 font-medium">{fmt(recalcBirth) ? <>{fmt(recalcBirth)} <span className="text-xs text-secondary font-normal">(New Projection)</span></> : "—"}</div>
+                          </div>
                           <div>
                             <div className="text-[10px] uppercase text-secondary tracking-wide mb-1">Weaned Date</div>
                             <div className="text-sm text-emerald-600 dark:text-emerald-400 font-medium">{fmt(recalcWeaned) ? <>{fmt(recalcWeaned)} <span className="text-xs text-secondary font-normal">(New Projection)</span></> : "—"}</div>
@@ -8313,16 +8552,16 @@ function PlanDetailsView(props: {
                 <div className="rounded-lg border-2 border-amber-500/60 bg-surface p-4">
                   <div className="text-sm font-semibold text-primary mb-4">ACTUAL DATES</div>
 
-                  {/* Phase 1: Cycle Start → Birth */}
+                  {/* Phase 1: Cycle → Breeding */}
                   <div className="mb-5">
                     <div className="flex items-center gap-2 mb-3">
                       <div className="flex items-center justify-center w-6 h-6 rounded-full bg-gradient-to-br from-blue-500/20 to-purple-500/20 border border-blue-500/30">
                         <span className="text-xs">🔄</span>
                       </div>
-                      <span className="text-xs font-semibold uppercase tracking-wider text-blue-400">Cycle Start → Birth</span>
+                      <span className="text-xs font-semibold uppercase tracking-wider text-blue-400">Cycle → Breeding</span>
                       <div className="flex-1 h-px bg-gradient-to-r from-blue-500/40 via-purple-500/20 to-transparent"></div>
                     </div>
-                    <div className="grid grid-cols-2 gap-x-4 gap-y-3 pl-8">
+                    <div className="grid grid-cols-3 gap-x-4 gap-y-3 pl-8">
                       <div>
                         <div className="text-[10px] uppercase text-secondary tracking-wide mb-1">Cycle Start</div>
                         <div className="flex items-center gap-2">
@@ -8425,6 +8664,19 @@ function PlanDetailsView(props: {
                           )}
                         </div>
                       </div>
+                    </div>
+                  </div>
+
+                  {/* Phase 2: Birth → Placement */}
+                  <div>
+                    <div className="flex items-center gap-2 mb-3">
+                      <div className="flex items-center justify-center w-6 h-6 rounded-full bg-gradient-to-br from-amber-500/20 to-orange-500/20 border border-amber-500/30">
+                        <span className="text-xs">🏠</span>
+                      </div>
+                      <span className="text-xs font-semibold uppercase tracking-wider text-amber-400">Birth → Placement</span>
+                      <div className="flex-1 h-px bg-gradient-to-r from-amber-500/40 via-orange-500/20 to-transparent"></div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-3 pl-8">
                       <div>
                         <div className="text-[10px] uppercase text-secondary tracking-wide mb-1">Birth Date</div>
                         <div className="flex items-center gap-2">
@@ -8459,53 +8711,40 @@ function PlanDetailsView(props: {
                           )}
                         </div>
                       </div>
-                    </div>
-                  </div>
-
-                  {/* Phase 2: Weaning → Placement */}
-                  <div>
-                    <div className="flex items-center gap-2 mb-3">
-                      <div className="flex items-center justify-center w-6 h-6 rounded-full bg-gradient-to-br from-amber-500/20 to-orange-500/20 border border-amber-500/30">
-                        <span className="text-xs">🏠</span>
-                      </div>
-                      <span className="text-xs font-semibold uppercase tracking-wider text-amber-400">Weaning → Placement</span>
-                      <div className="flex-1 h-px bg-gradient-to-r from-amber-500/40 via-orange-500/20 to-transparent"></div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-x-4 gap-y-3 pl-8">
                       <div>
                         <div className="text-[10px] uppercase text-secondary tracking-wide mb-1">Weaned Date</div>
-                      <div className="flex items-center gap-2">
-                        <DatePicker
-                          value={normalizeDateISO(effective.weanedDateActual) ?? ""}
-                          defaultDate={expectedWeaned ?? undefined}
-                          readOnly={!canEditDates}
-                          showIcon={canEditDates}
-                          onChange={(e) => {
-                            if (!canEditDates) return;
-                            const raw = e.currentTarget.value;
-                            if (!raw) {
-                              setDraftLive({ weanedDateActual: null });
-                              return;
-                            }
-                            if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return;
-                            warnIfSequenceBroken("weanedDateActual", raw);
-                            setDraftLive({ weanedDateActual: raw });
-                          }}
-                          className="flex-1"
-                          inputClassName={dateInputCls}
-                          placeholder="mm/dd/yyyy"
-                        />
-                        {canEditDates && effective.weanedDateActual && (
-                          <button
-                            type="button"
-                            onClick={() => clearActualDateAndSubsequent("weanedDateActual")}
-                            className="text-xs text-secondary hover:text-primary px-2 py-1 rounded border border-hairline hover:border-primary/30"
-                          >
-                            Clear
-                          </button>
-                        )}
+                        <div className="flex items-center gap-2">
+                          <DatePicker
+                            value={normalizeDateISO(effective.weanedDateActual) ?? ""}
+                            defaultDate={expectedWeaned ?? undefined}
+                            readOnly={!canEditDates}
+                            showIcon={canEditDates}
+                            onChange={(e) => {
+                              if (!canEditDates) return;
+                              const raw = e.currentTarget.value;
+                              if (!raw) {
+                                setDraftLive({ weanedDateActual: null });
+                                return;
+                              }
+                              if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return;
+                              warnIfSequenceBroken("weanedDateActual", raw);
+                              setDraftLive({ weanedDateActual: raw });
+                            }}
+                            className="flex-1"
+                            inputClassName={dateInputCls}
+                            placeholder="mm/dd/yyyy"
+                          />
+                          {canEditDates && effective.weanedDateActual && (
+                            <button
+                              type="button"
+                              onClick={() => clearActualDateAndSubsequent("weanedDateActual")}
+                              className="text-xs text-secondary hover:text-primary px-2 py-1 rounded border border-hairline hover:border-primary/30"
+                            >
+                              Clear
+                            </button>
+                          )}
+                        </div>
                       </div>
-                    </div>
                     <div>
                         <div className="text-[10px] uppercase text-secondary tracking-wide mb-1">Placement Start</div>
                       <div className="flex items-center gap-2">
@@ -8617,8 +8856,8 @@ function PlanDetailsView(props: {
                     </div>
                   </div>
 
-                  {/* Reset All button inside the Actual Dates frame */}
-                  {isEdit && (
+                  {/* Reset All button inside the Actual Dates frame - hidden for completed plans */}
+                  {isEdit && statusU !== "COMPLETE" && (
                     <div className="mt-4 pt-3 border-t border-amber-500/30">
                       <Button
                         variant="outline"
@@ -8626,9 +8865,13 @@ function PlanDetailsView(props: {
                         disabled={!canEditDates}
                         onClick={async () => {
                           if (!canEditDates) return;
-                          if (!window.confirm("Reset all actual dates for this plan back to blank?")) {
-                            return;
-                          }
+                          const confirmed = await utils.confirmDialog({
+                            title: "Reset Actual Dates",
+                            message: "Reset all actual dates for this plan back to blank?",
+                            confirmText: "Reset",
+                            cancelText: "Cancel",
+                          });
+                          if (!confirmed) return;
 
                           // Build payload with null dates
                           const resetDates = {

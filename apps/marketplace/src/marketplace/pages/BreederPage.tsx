@@ -696,6 +696,10 @@ function WaitlistModal({
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="Full name"
+              autoComplete="off"
+              data-1p-ignore
+              data-lpignore="true"
+              data-form-type="other"
               className="w-full px-3 py-2 bg-border-default border border-border-subtle rounded-portal-xs text-white placeholder-text-tertiary focus:outline-none focus:ring-1 focus:ring-accent"
             />
           </div>
@@ -709,6 +713,10 @@ function WaitlistModal({
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="your@email.com"
+              autoComplete="off"
+              data-1p-ignore
+              data-lpignore="true"
+              data-form-type="other"
               className="w-full px-3 py-2 bg-border-default border border-border-subtle rounded-portal-xs text-white placeholder-text-tertiary focus:outline-none focus:ring-1 focus:ring-accent"
             />
           </div>
@@ -722,6 +730,10 @@ function WaitlistModal({
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
               placeholder="(555) 555-5555"
+              autoComplete="off"
+              data-1p-ignore
+              data-lpignore="true"
+              data-form-type="other"
               className="w-full px-3 py-2 bg-border-default border border-border-subtle rounded-portal-xs text-white placeholder-text-tertiary focus:outline-none focus:ring-1 focus:ring-accent"
             />
           </div>
@@ -735,6 +747,10 @@ function WaitlistModal({
               onChange={(e) => setMessage(e.target.value)}
               placeholder="Tell the breeder a bit about yourself and what you're looking for..."
               rows={3}
+              autoComplete="off"
+              data-1p-ignore
+              data-lpignore="true"
+              data-form-type="other"
               className="w-full px-3 py-2 bg-border-default border border-border-subtle rounded-portal-xs text-white placeholder-text-tertiary focus:outline-none focus:ring-1 focus:ring-accent resize-none"
             />
           </div>
