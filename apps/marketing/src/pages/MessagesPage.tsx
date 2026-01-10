@@ -498,6 +498,10 @@ function BlockUserAction({ buyerPartyId, buyerName, marketplaceUserId }: BlockUs
                   placeholder="e.g., Spam, abusive messages, etc."
                   rows={2}
                   className="w-full px-3 py-2 text-sm border border-hairline rounded-lg bg-surface text-primary focus:outline-none focus:ring-2 focus:ring-[hsl(var(--brand-orange))]/50"
+                  autoComplete="off"
+                  data-1p-ignore
+                  data-lpignore="true"
+                  data-form-type="other"
                 />
                 <p className="text-xs text-secondary mt-1">
                   This is only visible to you, not the blocked user.
@@ -859,6 +863,10 @@ function ThreadView({ thread, onSendMessage, unreadCount = 0, onMarkAsRead }: Th
             rows={3}
             disabled={sending}
             className="flex-1 px-3 py-2 rounded-md bg-card border border-hairline text-primary text-sm resize-none focus:outline-none focus:border-[hsl(var(--brand-orange))]/50"
+            autoComplete="off"
+            data-1p-ignore
+            data-lpignore="true"
+            data-form-type="other"
           />
           <button
             type="submit"
@@ -984,6 +992,10 @@ function NewConversation({ onCreated, onCancel }: NewConversationProps) {
             placeholder="Type your message..."
             disabled={sending}
             className="flex-1 min-h-[120px] px-3 py-2 rounded-md bg-card border border-hairline text-primary text-sm resize-none focus:outline-none focus:border-[hsl(var(--brand-orange))]/50"
+            autoComplete="off"
+            data-1p-ignore
+            data-lpignore="true"
+            data-form-type="other"
           />
         </div>
 

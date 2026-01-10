@@ -832,6 +832,10 @@ function AnimalSelect({ animalsBySpecies, selectedId, onSelect, loading }: Anima
               placeholder="Type to filter..."
               className="w-full h-9 rounded-md border border-hairline bg-surface px-3 text-sm text-primary outline-none focus:shadow-[0_0_0_2px_hsl(var(--hairline))]"
               autoFocus
+              autoComplete="off"
+              data-1p-ignore
+              data-lpignore="true"
+              data-form-type="other"
             />
           </div>
 

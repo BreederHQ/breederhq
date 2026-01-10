@@ -13,6 +13,31 @@ export type Species = "DOG" | "CAT" | "HORSE" | "GOAT" | "RABBIT";
 
 export type TagLite = { id: number; name: string; color?: string | null };
 
+/** Lightweight invoice summary for embedding in waitlist entries */
+export type WaitlistInvoiceSummary = {
+  id: number;
+  invoiceNumber?: string | null;
+  status: "DRAFT" | "ISSUED" | "PARTIALLY_PAID" | "PAID" | "OVERDUE" | "VOID";
+  totalCents: number;
+  paidCents: number;
+  balanceCents: number;
+  dueAt: string | null;
+  issuedAt: string | null;
+};
+
+/** Input for generating a deposit invoice */
+export type GenerateDepositInvoiceInput = {
+  amountCents?: number | null;  // Override default, null = use program settings
+  dueAt?: string | null;        // ISO date, null = 14 days from now
+  sendEmail?: boolean;          // Default: true
+};
+
+/** Response from generating a deposit invoice */
+export type GenerateDepositInvoiceResponse = {
+  invoice: WaitlistInvoiceSummary;
+  emailSent: boolean;
+};
+
 export type WaitlistEntry = {
   id: number;
   tenantId: number;
@@ -23,6 +48,10 @@ export type WaitlistEntry = {
   depositPaidCents: number | null;
   balanceDueCents: number | null;
   depositPaidAt: string | null;
+
+  // Invoice link for deposit tracking
+  invoiceId?: number | null;
+  invoice?: WaitlistInvoiceSummary | null;
 
   contactId: number | null;
   organizationId: number | null;
@@ -212,6 +241,16 @@ export function makeWaitlistApi(opts: MakeOpts = "/api/v1") {
 
         const query = qs.toString();
         return raw.get<{ isDuplicate: boolean; existingEntry?: WaitlistEntry | null }>(`/waitlist/check-duplicate?${query}`, {});
+      },
+
+      /** Generate a deposit invoice for a pending waitlist entry */
+      generateDepositInvoice: (id: number, input: GenerateDepositInvoiceInput = {}) => {
+        return raw.post<GenerateDepositInvoiceResponse>(`/waitlist/${id}/generate-deposit-invoice`, input, {});
+      },
+
+      /** Resend the deposit invoice email */
+      resendInvoiceEmail: (id: number) => {
+        return raw.post<{ success: boolean }>(`/waitlist/${id}/resend-invoice-email`, {}, {});
       },
     },
 

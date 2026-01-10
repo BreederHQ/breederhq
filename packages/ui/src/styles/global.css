@@ -53,13 +53,21 @@ html { font-size: calc(16px * var(--ui-scale)); }
 .bhq-input::placeholder { color: hsl(var(--muted-foreground) / 0.9); }
 
 /* Universal BHQ focus ring within page chrome (complements DS ring) */
-input:focus-visible,
+/* Exclude inputs inside chip-input containers (they handle their own focus styling) */
+input:focus-visible:not(.chip-input-field),
 select:focus-visible,
 textarea:focus-visible,
 .input:focus-visible {
   outline: none !important;
   box-shadow: 0 0 0 2px hsl(var(--brand-orange)) !important;
   border-color: hsl(var(--brand-orange)) !important;
+}
+
+/* Chip input fields (email recipients, tags, etc.) - no focus ring, parent handles it */
+.chip-input-field:focus,
+.chip-input-field:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
 }
 
 /* Better raster handling for small logos */

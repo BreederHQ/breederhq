@@ -62,6 +62,7 @@ export type BreedingProgramProfile = {
     healthGuaranteeMonths: number;
     depositRequired: boolean;
     depositAmountUSD?: number | null;
+    requireDepositBeforeApproval?: boolean; // Block waitlist approval until deposit is paid
     paymentMethods: Array<"cash" | "zelle" | "ach" | "card" | "paypal" | "other">;
     waitlistPolicy: "first_ready" | "priority_order" | "breeder_choice";
   };

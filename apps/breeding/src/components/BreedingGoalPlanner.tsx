@@ -713,6 +713,10 @@ function AddGoalForm({
           onFocus={() => setShowSuggestions(true)}
           placeholder={`e.g., ${suggestions[0] || "Describe the trait..."}`}
           className="w-full h-9 px-3 text-sm border border-hairline rounded-lg bg-surface focus:border-accent focus:ring-1 focus:ring-accent outline-none"
+          autoComplete="off"
+          data-1p-ignore
+          data-lpignore="true"
+          data-form-type="other"
         />
 
         {/* Suggestions Dropdown */}
@@ -746,6 +750,10 @@ function AddGoalForm({
           placeholder="Add any additional context or reasoning..."
           rows={2}
           className="w-full px-3 py-2 text-sm border border-hairline rounded-lg bg-surface focus:border-accent focus:ring-1 focus:ring-accent outline-none resize-none"
+          autoComplete="off"
+          data-1p-ignore
+          data-lpignore="true"
+          data-form-type="other"
         />
       </div>
 

@@ -824,6 +824,10 @@ export default function OffspringSimulator({
                   }
                 }}
                 className="h-8 w-16 px-2 text-sm text-center border border-hairline rounded bg-surface focus:border-accent focus:ring-1 focus:ring-accent/30 outline-none"
+                autoComplete="off"
+                data-1p-ignore
+                data-lpignore="true"
+                data-form-type="other"
               />
               <span className="text-xs text-secondary">(1-20)</span>
             </div>

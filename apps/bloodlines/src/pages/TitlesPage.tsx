@@ -435,6 +435,10 @@ function AddTitleModal({ animals, onClose, onSave, preSelectedAnimalId }: AddTit
                 value={eventName}
                 onChange={(e) => setEventName(e.target.value)}
                 placeholder="e.g., Westminster 2024"
+                autoComplete="off"
+                data-1p-ignore
+                data-lpignore="true"
+                data-form-type="other"
               />
             </div>
             <div>
@@ -445,6 +449,10 @@ function AddTitleModal({ animals, onClose, onSave, preSelectedAnimalId }: AddTit
                 value={eventLocation}
                 onChange={(e) => setEventLocation(e.target.value)}
                 placeholder="e.g., New York, NY"
+                autoComplete="off"
+                data-1p-ignore
+                data-lpignore="true"
+                data-form-type="other"
               />
             </div>
           </div>
@@ -457,6 +465,10 @@ function AddTitleModal({ animals, onClose, onSave, preSelectedAnimalId }: AddTit
               value={handlerName}
               onChange={(e) => setHandlerName(e.target.value)}
               placeholder="Person who handled/showed the animal"
+              autoComplete="off"
+              data-1p-ignore
+              data-lpignore="true"
+              data-form-type="other"
             />
           </div>
 
@@ -468,6 +480,10 @@ function AddTitleModal({ animals, onClose, onSave, preSelectedAnimalId }: AddTit
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               placeholder="Optional notes..."
+              autoComplete="off"
+              data-1p-ignore
+              data-lpignore="true"
+              data-form-type="other"
             />
           </div>
 
@@ -631,6 +647,10 @@ export default function TitlesPage() {
           className="px-3 py-2 bg-surface-strong border border-hairline rounded-lg text-primary text-sm w-64"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
+          autoComplete="off"
+          data-1p-ignore
+          data-lpignore="true"
+          data-form-type="other"
         />
 
         <select

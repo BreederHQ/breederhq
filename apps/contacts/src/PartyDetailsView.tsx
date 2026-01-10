@@ -197,6 +197,10 @@ const OrganizationSelect: React.FC<{
             setOpen(false);
           }
         }}
+        autoComplete="off"
+        data-1p-ignore
+        data-lpignore="true"
+        data-form-type="other"
       />
       {open && (
         <div
@@ -792,6 +796,10 @@ export function PartyDetailsView({
         const value = e.target.value;
         setDraft((d: any) => ({ ...d, [k]: value }));
       }}
+      autoComplete="off"
+      data-1p-ignore
+      data-lpignore="true"
+      data-form-type="other"
     />
   );
 
@@ -904,6 +912,10 @@ export function PartyDetailsView({
                         onChange={(e) =>
                           setDraft((d: any) => ({ ...d, name: (e.currentTarget as HTMLInputElement).value }))
                         }
+                        autoComplete="off"
+                        data-1p-ignore
+                        data-lpignore="true"
+                        data-form-type="other"
                       />
                     )}
                   </div>
@@ -1071,6 +1083,10 @@ export function PartyDetailsView({
                           onChange={(e) =>
                             setDraft((d: any) => ({ ...d, email: (e.currentTarget as HTMLInputElement).value }))
                           }
+                          autoComplete="off"
+                          data-1p-ignore
+                          data-lpignore="true"
+                          data-form-type="other"
                         />
                       </div>
                     )}
@@ -1324,6 +1340,10 @@ export function PartyDetailsView({
                         type="email"
                         defaultValue={row.email ?? ""}
                         onChange={(e) => setDraft((d: any) => ({ ...d, email: e.target.value }))}
+                        autoComplete="off"
+                        data-1p-ignore
+                        data-lpignore="true"
+                        data-form-type="other"
                       />
                     </div>
                   )}

@@ -80,6 +80,7 @@ export interface InvoiceDTO {
   offspringId?: number | null;
   offspringGroupId?: number | null;
   breedingPlanId?: number | null;
+  waitlistEntryId?: number | null;
   serviceCode?: string | null;
 
   // Category derived from line items
@@ -95,7 +96,7 @@ export interface InvoiceDTO {
 }
 
 export interface CreateInvoiceInput {
-  clientPartyId: number;
+  clientPartyId?: number | null; // Optional for waitlist entries without contact yet
   totalCents?: number; // Optional when lineItems provided
   dueAt?: string | null;
   issuedAt?: string | null;
@@ -105,6 +106,7 @@ export interface CreateInvoiceInput {
   offspringId?: number | null;
   offspringGroupId?: number | null;
   breedingPlanId?: number | null;
+  waitlistEntryId?: number | null;
   serviceCode?: string | null;
 
   // Line items (optional, if not provided use totalCents)

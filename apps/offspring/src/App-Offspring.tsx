@@ -24,6 +24,7 @@ import {
   DatePicker,
   exportToCsv,
   Popover,
+  useViewMode,
 } from "@bhq/ui";
 import { FinanceTab, type OffspringGroupContext } from "@bhq/ui/components/Finance";
 
@@ -41,6 +42,7 @@ import clsx from "clsx";
 
 import { reproEngine } from "@bhq/ui/utils";
 import { GroupCardView } from "./components/GroupCardView";
+import { CollarPicker, CollarSwatch } from "./components/CollarPicker";
 
 
 /* ───────────────────────── shared types ───────────────────────── */
@@ -100,6 +102,10 @@ function InlineSearch({
         disabled={!!disabled}
         onFocus={onFocus}
         onBlur={onBlur}
+        autoComplete="off"
+        data-1p-ignore
+        data-lpignore="true"
+        data-form-type="other"
       />
     </div>
   );
@@ -115,18 +121,6 @@ function cx(...p: Array<string | false | null | undefined>) {
 }
 
 const labelClass = "text-xs text-secondary";
-
-const WHELPING_COLLAR_SWATCHES = [
-  { label: "Red", value: "Red", hex: "#ef4444" },
-  { label: "Orange", value: "Orange", hex: "#f97316" },
-  { label: "Yellow", value: "Yellow", hex: "#eab308" },
-  { label: "Green", value: "Green", hex: "#22c55e" },
-  { label: "Blue", value: "Blue", hex: "#3b82f6" },
-  { label: "Purple", value: "Purple", hex: "#a855f7" },
-  { label: "Pink", value: "Pink", hex: "#ec4899" },
-  { label: "Black", value: "Black", hex: "#111827" },
-  { label: "White", value: "White", hex: "#f9fafb" },
-];
 
 
 function SectionChipHeading({ icon, text }: { icon: React.ReactNode; text: string }) {
@@ -1502,7 +1496,7 @@ function CreateGroupForm({
           <span className={labelClass}>
             Group Name <span className="text-[hsl(var(--brand-orange))]">*</span>
           </span>
-          <input className={inputClass} value={identifier} onChange={(e) => setIdentifier(e.target.value)} placeholder="e.g., A Litter" />
+          <input className={inputClass} value={identifier} onChange={(e) => setIdentifier(e.target.value)} placeholder="e.g., A Litter" autoComplete="off" data-1p-ignore data-lpignore="true" data-form-type="other" />
         </label>
 
         <label className="flex flex-col gap-1">
@@ -1538,11 +1532,11 @@ function CreateGroupForm({
 
         <label className="flex flex-col gap-1">
           <span className={labelClass}>Weaned Count (optional)</span>
-          <input className={inputClass} type="number" value={countWeaned} onChange={(e) => setCountWeaned(e.target.value)} />
+          <input className={inputClass} type="number" value={countWeaned} onChange={(e) => setCountWeaned(e.target.value)} autoComplete="off" data-1p-ignore data-lpignore="true" data-form-type="other" />
         </label>
         <label className="flex flex-col gap-1">
           <span className={labelClass}>Placed Count (optional)</span>
-          <input className={inputClass} type="number" value={countPlaced} onChange={(e) => setCountPlaced(e.target.value)} />
+          <input className={inputClass} type="number" value={countPlaced} onChange={(e) => setCountPlaced(e.target.value)} autoComplete="off" data-1p-ignore data-lpignore="true" data-form-type="other" />
         </label>
       </div>
 
@@ -1656,16 +1650,6 @@ function AddOffspringForGroupOverlay(props: AddOffspringForGroupOverlayProps) {
     whelpingCollarColor && String(whelpingCollarColor).trim().length
       ? String(whelpingCollarColor)
       : "Not set";
-
-  const whelpingCollarColorHex = (() => {
-    const v = (whelpingCollarColor ?? "").toString().toLowerCase();
-    const match = WHELPING_COLLAR_SWATCHES.find((opt) => {
-      const val = opt.value.toLowerCase();
-      const label = opt.label.toLowerCase();
-      return val === v || label === v;
-    });
-    return match?.hex ?? null;
-  })();
 
   const handleSubmit = async (evt: React.FormEvent) => {
     evt.preventDefault();
@@ -1836,6 +1820,10 @@ function AddOffspringForGroupOverlay(props: AddOffspringForGroupOverlayProps) {
                       value={name}
                       onChange={(e) => setName(e.target.value)}
                       autoFocus
+                      autoComplete="off"
+                      data-1p-ignore
+                      data-lpignore="true"
+                      data-form-type="other"
                     />
                   </div>
 
@@ -1877,59 +1865,10 @@ function AddOffspringForGroupOverlay(props: AddOffspringForGroupOverlayProps) {
                   {/* Whelping collar color */}
                   <div>
                     <span className={labelClass}>Collar Color</span>
-                    <div className="relative">
-                      <button
-                        type="button"
-                        className={cx(
-                          inputClass,
-                          "flex items-center justify-between text-left cursor-pointer",
-                        )}
-                        onClick={() => setShowWhelpPalette((prev) => !prev)}
-                      >
-                        <span className="flex items-center gap-2">
-                          {whelpingCollarColorHex && (
-                            <span
-                              className="h-3 w-3 rounded-full border border-border"
-                              style={{ backgroundColor: whelpingCollarColorHex }}
-                            />
-                          )}
-                          <span>
-                            {whelpingCollarLabel === "Not set"
-                              ? "Select Color"
-                              : whelpingCollarLabel}
-                          </span>
-                        </span>
-                        <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
-                      </button>
-
-                      {showWhelpPalette && (
-                        <div
-                          ref={paletteRef}
-                          className="absolute z-20 mt-1 w-full rounded-md border border-border bg-surface shadow-lg"
-                        >
-                          <ul className="max-h-48 overflow-y-auto py-1 text-xs">
-                            {WHELPING_COLLAR_SWATCHES.map((opt) => (
-                              <li key={opt.value}>
-                                <button
-                                  type="button"
-                                  className="flex w-full items-center gap-2 px-2 py-1.5 text-left hover:bg-muted"
-                                  onClick={() => {
-                                    setWhelpingCollarColor(opt.value);
-                                    setShowWhelpPalette(false);
-                                  }}
-                                >
-                                  <span
-                                    className="h-3 w-3 rounded-full border border-border"
-                                    style={{ backgroundColor: opt.hex }}
-                                  />
-                                  <span>{opt.label}</span>
-                                </button>
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
-                    </div>
+                    <CollarPicker
+                      value={whelpingCollarColor}
+                      onChange={(colorLabel) => setWhelpingCollarColor(colorLabel)}
+                    />
                   </div>
 
                   {/* Birth weight */}
@@ -1940,6 +1879,10 @@ function AddOffspringForGroupOverlay(props: AddOffspringForGroupOverlayProps) {
                       inputMode="decimal"
                       value={birthWeightOz}
                       onChange={(e) => setBirthWeightOz(e.target.value)}
+                      autoComplete="off"
+                      data-1p-ignore
+                      data-lpignore="true"
+                      data-form-type="other"
                     />
                   </div>
 
@@ -1951,6 +1894,10 @@ function AddOffspringForGroupOverlay(props: AddOffspringForGroupOverlayProps) {
                       inputMode="decimal"
                       value={price}
                       onChange={(e) => setPrice(e.target.value)}
+                      autoComplete="off"
+                      data-1p-ignore
+                      data-lpignore="true"
+                      data-form-type="other"
                     />
                   </div>
                 </div>
@@ -1963,6 +1910,10 @@ function AddOffspringForGroupOverlay(props: AddOffspringForGroupOverlayProps) {
                     value={notes}
                     onChange={(e) => setNotes(e.target.value)}
                     placeholder="Notes about this puppy..."
+                    autoComplete="off"
+                    data-1p-ignore
+                    data-lpignore="true"
+                    data-form-type="other"
                   />
                 </div>
 
@@ -3545,6 +3496,10 @@ function BuyersTab(
                   className="h-7 rounded border border-hairline bg-background px-2 text-xs"
                   value={qc.firstName}
                   onChange={(e) => setQc({ ...qc, firstName: e.target.value })}
+                  autoComplete="off"
+                  data-1p-ignore
+                  data-lpignore="true"
+                  data-form-type="other"
                 />
               </label>
               <label className="grid gap-1">
@@ -3553,6 +3508,10 @@ function BuyersTab(
                   className="h-7 rounded border border-hairline bg-background px-2 text-xs"
                   value={qc.lastName}
                   onChange={(e) => setQc({ ...qc, lastName: e.target.value })}
+                  autoComplete="off"
+                  data-1p-ignore
+                  data-lpignore="true"
+                  data-form-type="other"
                 />
               </label>
             </div>
@@ -3565,6 +3524,9 @@ function BuyersTab(
                   onChange={(e) => setQc({ ...qc, email: e.target.value })}
                   placeholder="Email"
                   autoComplete="off"
+                  data-1p-ignore
+                  data-lpignore="true"
+                  data-form-type="other"
                 />
               </label>
               <label className="grid gap-1">
@@ -3575,6 +3537,9 @@ function BuyersTab(
                   onChange={(e) => setQc({ ...qc, phone: e.target.value })}
                   placeholder="Phone"
                   autoComplete="off"
+                  data-1p-ignore
+                  data-lpignore="true"
+                  data-form-type="other"
                 />
               </label>
             </div>
@@ -3612,6 +3577,10 @@ function BuyersTab(
                   className="h-7 rounded border border-hairline bg-background px-2 text-xs"
                   value={qo.name}
                   onChange={(e) => setQo({ ...qo, name: e.target.value })}
+                  autoComplete="off"
+                  data-1p-ignore
+                  data-lpignore="true"
+                  data-form-type="other"
                 />
               </label>
               <label className="grid gap-1">
@@ -3620,6 +3589,10 @@ function BuyersTab(
                   className="h-7 rounded border border-hairline bg-background px-2 text-xs"
                   value={qo.website}
                   onChange={(e) => setQo({ ...qo, website: e.target.value })}
+                  autoComplete="off"
+                  data-1p-ignore
+                  data-lpignore="true"
+                  data-form-type="other"
                 />
               </label>
             </div>
@@ -3630,6 +3603,10 @@ function BuyersTab(
                   className="h-7 rounded border border-hairline bg-background px-2 text-xs"
                   value={qo.email}
                   onChange={(e) => setQo({ ...qo, email: e.target.value })}
+                  autoComplete="off"
+                  data-1p-ignore
+                  data-lpignore="true"
+                  data-form-type="other"
                 />
               </label>
               <label className="grid gap-1">
@@ -3640,6 +3617,9 @@ function BuyersTab(
                   onChange={(e) => setQo({ ...qo, phone: e.target.value })}
                   placeholder="Phone"
                   autoComplete="off"
+                  data-1p-ignore
+                  data-lpignore="true"
+                  data-form-type="other"
                 />
               </label>
             </div>
@@ -3963,24 +3943,8 @@ function OffspringGroupsTab(
   const cols = hooks.useColumns(GROUP_COLS, GROUP_STORAGE_KEY);
   const visibleSafe = cols.visible?.length ? cols.visible : GROUP_COLS;
 
-  // View mode state (table or cards) - defaults to cards
-  const [viewMode, setViewMode] = React.useState<ViewMode>(() => {
-    try {
-      const stored = localStorage.getItem("bhq:groups:viewMode");
-      return (stored === "table" ? "table" : "cards") as ViewMode;
-    } catch {
-      return "cards";
-    }
-  });
-
-  // Persist view mode
-  React.useEffect(() => {
-    try {
-      localStorage.setItem("bhq:groups:viewMode", viewMode);
-    } catch {
-      // ignore storage errors
-    }
-  }, [viewMode]);
+  // View mode state (table or cards) - uses tenant preferences as default
+  const { viewMode, setViewMode } = useViewMode({ module: "offspringGroups" });
 
   const [sorts, setSorts] = React.useState<Array<{ key: string; dir: "asc" | "desc" }>>([]);
   const onToggleSort = (key: string) => {
@@ -4637,32 +4601,12 @@ function OffspringGroupsTab(
 
                                     {/* Whelping collar color */}
                                     <td className="px-2 py-1.5">
-                                      {(() => {
-                                        const value = a.whelpingCollarColor;
-
-                                        if (!value) return "-";
-
-                                        const lower = value.toString().toLowerCase();
-                                        const match = WHELPING_COLLAR_SWATCHES.find((opt) => {
-                                          const valLower = opt.value.toLowerCase();
-                                          const labelLower = opt.label.toLowerCase();
-                                          return valLower === lower || labelLower === lower;
-                                        });
-
-                                        const hex = match?.hex ?? null;
-
-                                        return (
-                                          <span className="inline-flex items-center justify-center gap-1 text-xs">
-                                            {hex && (
-                                              <span
-                                                className="inline-block h-3 w-3 rounded-full border border-border"
-                                                style={{ backgroundColor: hex }}
-                                              />
-                                            )}
-                                            <span>{value}</span>
-                                          </span>
-                                        );
-                                      })()}
+                                      {a.whelpingCollarColor ? (
+                                        <CollarSwatch
+                                          color={a.whelpingCollarColor}
+                                          showLabel
+                                        />
+                                      ) : "-"}
                                     </td>
 
                                     <td className="px-2 py-1.5">

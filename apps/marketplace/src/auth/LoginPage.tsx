@@ -156,7 +156,10 @@ export function LoginPage() {
                 onChange={(e) => setEmail(e.target.value)}
                 className="w-full h-10 px-3 rounded-portal-xs bg-portal-elevated border border-border-subtle text-white placeholder-text-muted focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30 disabled:opacity-50 transition-colors"
                 placeholder="you@example.com"
-                autoComplete="email"
+                autoComplete="off"
+                data-1p-ignore
+                data-lpignore="true"
+                data-form-type="other"
                 required
                 disabled={loading}
                 aria-label="Email address"

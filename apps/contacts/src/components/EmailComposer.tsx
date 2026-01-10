@@ -187,6 +187,10 @@ export function EmailComposer({
               onChange={(e) => setSubject((e.target as HTMLInputElement).value)}
               placeholder="Enter subject..."
               autoFocus
+              autoComplete="off"
+              data-1p-ignore
+              data-lpignore="true"
+              data-form-type="other"
             />
           </div>
 
@@ -201,6 +205,10 @@ export function EmailComposer({
               placeholder="Write your message..."
               rows={12}
               className="w-full px-3 py-2 rounded-md bg-surface border border-hairline text-sm text-primary resize-none focus:outline-none focus:ring-2 focus:ring-[hsl(var(--brand-orange))]/50"
+              autoComplete="off"
+              data-1p-ignore
+              data-lpignore="true"
+              data-form-type="other"
             />
           </div>
         </div>

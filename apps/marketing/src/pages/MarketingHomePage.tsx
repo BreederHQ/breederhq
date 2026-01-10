@@ -47,64 +47,6 @@ function EmailIcon({ className }: { className?: string }) {
 }
 
 
-/* ───────────────── Primary Action Tile ───────────────── */
-
-interface PrimaryTileProps {
-  title: string;
-  description: string;
-  buttonLabel: string;
-  href: string;
-  icon: React.ReactNode;
-}
-
-function PrimaryTile({ title, description, buttonLabel, href, icon }: PrimaryTileProps) {
-  const handleClick = (e: React.MouseEvent) => {
-    e.preventDefault();
-    window.history.pushState(null, "", href);
-    window.dispatchEvent(new PopStateEvent("popstate"));
-  };
-
-  return (
-    <div
-      className="relative rounded-2xl hover:brightness-110 transition-all overflow-hidden"
-      style={{
-        backgroundColor: '#1a1a1a',
-        border: '1px solid rgba(60, 60, 60, 0.5)',
-        height: '200px',
-      }}
-    >
-      {/* Live pill in top-left */}
-      <div style={{ position: 'absolute', top: '16px', left: '16px' }}>
-        <span
-          className="text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-full"
-          style={{
-            backgroundColor: '#16a34a',
-            color: '#fff',
-          }}
-        >
-          Live
-        </span>
-      </div>
-
-      {/* Icon positioned in top-right */}
-      <div style={{ position: 'absolute', top: '16px', right: '16px' }}>
-        {icon}
-      </div>
-
-      {/* Content positioned at bottom-left */}
-      <div style={{ position: 'absolute', bottom: '24px', left: '24px' }}>
-        <h3 className="text-xl font-semibold text-primary">{title}</h3>
-        <p className="mt-1 text-sm text-secondary">{description}</p>
-        <div className="mt-4">
-          <Button onClick={handleClick}>
-            {buttonLabel}
-          </Button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 /* ───────────────── Secondary Tile ───────────────── */
 
 interface SecondaryTileProps {
@@ -254,41 +196,12 @@ export default function MarketingHomePage() {
         </div>
       </section>
 
-      {/* Quick Access - Secondary Section */}
-      <section className="mt-6">
-        <div style={{ marginBottom: '1rem' }}>
-          <h2 className="text-lg font-semibold text-primary">Quick Access</h2>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <PrimaryTile
-            title="Messages"
-            description="Private conversations with clients."
-            buttonLabel="Open Inbox"
-            href="/marketing/messages"
-            icon={<ChatIcon className="w-20 h-20" />}
-          />
-          <PrimaryTile
-            title="Email Templates"
-            description="Reusable emails, DM replies, announcements."
-            buttonLabel="Manage Templates"
-            href="/marketing/templates"
-            icon={<EmailIcon className="w-20 h-20" />}
-          />
-        </div>
-      </section>
-
       {/* Message Setup and Automation - Secondary Section */}
-      <section style={{ marginTop: '3rem' }}>
+      <section className="mt-6">
         <div style={{ marginBottom: '1.25rem' }}>
           <h2 className="text-xl font-semibold text-primary">Message Setup and Automation</h2>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          <SecondaryTile
-            icon={<span className="text-base">📝</span>}
-            title="Templates"
-            description="Create and manage reusable message templates"
-            href="/marketing/templates"
-          />
           <SecondaryTile
             icon={<span className="text-base">📦</span>}
             title="Document Bundles"

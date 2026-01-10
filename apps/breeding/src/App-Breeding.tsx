@@ -31,6 +31,7 @@ import {
   TagCreateModal,
   Tooltip,
   type TagOption,
+  useViewMode,
 } from "@bhq/ui";
 import { FinanceTab } from "@bhq/ui/components/Finance";
 import { Overlay } from "@bhq/ui/overlay";
@@ -71,6 +72,7 @@ import { getOffspringName, translatePrediction, extractLocusFromTrait } from "./
 
 // ── Planner pages ─────────────────────────────────────────
 import { YourBreedingPlansPage, WhatIfPlanningPage } from "./pages/planner";
+
 import type { WhatIfFemale } from "./pages/planner/whatIfTypes";
 import { toBackendStatus, fromBackendStatus, deriveBreedingStatus as deriveBreedingStatusImported, STATUS_LABELS, type Status as PlannerStatus } from "./pages/planner/deriveBreedingStatus";
 
@@ -3839,18 +3841,9 @@ export default function AppBreeding() {
     } catch { }
   }, [showArchived]);
 
-  // View mode toggle (table vs cards) - defaults to cards
-  const VIEW_MODE_KEY = "bhq_breeding_view_v1";
+  // View mode toggle (table vs cards) - uses tenant preferences as default
   type ViewMode = "table" | "cards";
-  const [viewMode, setViewMode] = React.useState<ViewMode>(() => {
-    try {
-      const stored = localStorage.getItem(VIEW_MODE_KEY);
-      return (stored === "table" ? "table" : "cards") as ViewMode;
-    } catch { return "cards"; }
-  });
-  React.useEffect(() => {
-    try { localStorage.setItem(VIEW_MODE_KEY, viewMode); } catch { }
-  }, [viewMode]);
+  const { viewMode, setViewMode } = useViewMode({ module: "breeding" });
 
   // Selection (keep raw ID types; do NOT stringify)
   const [selectedKeys, setSelectedKeys] = React.useState<Set<ID>>(() => new Set<ID>());
@@ -5347,7 +5340,6 @@ export default function AppBreeding() {
             />
           </div>
         )}
-
 
         {/* Create Plan Modal */}
         <Overlay root={modalRoot} open={createOpen} ariaLabel="Create Breeding Plan" closeOnEscape closeOnOutsideClick>
@@ -8417,16 +8409,16 @@ function PlanDetailsView(props: {
             <div className="flex flex-col gap-4" data-bhq-details-exempt>
               {/* EXPECTED DATES (SYSTEM CALCULATED) */}
               <SectionCard title="EXPECTED DATES (SYSTEM CALCULATED)">
-                {/* Phase 1: Cycle Start → Birth */}
+                {/* Phase 1: Cycle → Breeding */}
                 <div className="mb-5">
                   <div className="flex items-center gap-2 mb-3">
                     <div className="flex items-center justify-center w-6 h-6 rounded-full bg-gradient-to-br from-blue-500/20 to-purple-500/20 border border-blue-500/30">
                       <span className="text-xs">🔄</span>
                     </div>
-                    <span className="text-xs font-semibold uppercase tracking-wider text-blue-400">Cycle Start → Birth</span>
+                    <span className="text-xs font-semibold uppercase tracking-wider text-blue-400">Cycle → Breeding</span>
                     <div className="flex-1 h-px bg-gradient-to-r from-blue-500/40 via-purple-500/20 to-transparent"></div>
                   </div>
-                  <div className="grid grid-cols-4 gap-x-3 gap-y-2 pl-8">
+                  <div className="grid grid-cols-3 gap-x-3 gap-y-2 pl-8">
                     <div>
                       <div className="text-[10px] uppercase text-secondary tracking-wide mb-1">Cycle Start</div>
                       <div className="text-sm text-primary font-medium">{fmt(expectedCycleStart) || "—"}</div>
@@ -8439,23 +8431,23 @@ function PlanDetailsView(props: {
                       <div className="text-[10px] uppercase text-secondary tracking-wide mb-1">Breeding Date</div>
                       <div className="text-sm text-primary font-medium">{fmt(expectedBreed) || "—"}</div>
                     </div>
-                    <div>
-                      <div className="text-[10px] uppercase text-secondary tracking-wide mb-1">Birth Date</div>
-                      <div className="text-sm text-primary font-medium">{fmt(expectedBirth) || "—"}</div>
-                    </div>
                   </div>
                 </div>
 
-                {/* Phase 2: Weaning → Placement */}
+                {/* Phase 2: Birth → Placement */}
                 <div>
                   <div className="flex items-center gap-2 mb-3">
                     <div className="flex items-center justify-center w-6 h-6 rounded-full bg-gradient-to-br from-amber-500/20 to-orange-500/20 border border-amber-500/30">
                       <span className="text-xs">🏠</span>
                     </div>
-                    <span className="text-xs font-semibold uppercase tracking-wider text-amber-400">Weaning → Placement</span>
+                    <span className="text-xs font-semibold uppercase tracking-wider text-amber-400">Birth → Placement</span>
                     <div className="flex-1 h-px bg-gradient-to-r from-amber-500/40 via-orange-500/20 to-transparent"></div>
                   </div>
                   <div className="grid grid-cols-4 gap-x-3 gap-y-2 pl-8">
+                    <div>
+                      <div className="text-[10px] uppercase text-secondary tracking-wide mb-1">Birth Date</div>
+                      <div className="text-sm text-primary font-medium">{fmt(expectedBirth) || "—"}</div>
+                    </div>
                     <div>
                       <div className="text-[10px] uppercase text-secondary tracking-wide mb-1">Weaned Date</div>
                       <div className="text-sm text-primary font-medium">{fmt(expectedWeaned) || "—"}</div>
@@ -8497,16 +8489,16 @@ function PlanDetailsView(props: {
                         </div>
                       )}
 
-                      {/* Phase 1: Cycle Start → Birth */}
+                      {/* Phase 1: Cycle → Breeding */}
                       <div className="mb-5">
                         <div className="flex items-center gap-2 mb-3">
                           <div className="flex items-center justify-center w-6 h-6 rounded-full bg-gradient-to-br from-blue-500/20 to-purple-500/20 border border-blue-500/30">
                             <span className="text-xs">🔄</span>
                           </div>
-                          <span className="text-xs font-semibold uppercase tracking-wider text-blue-400">Cycle Start → Birth</span>
+                          <span className="text-xs font-semibold uppercase tracking-wider text-blue-400">Cycle → Breeding</span>
                           <div className="flex-1 h-px bg-gradient-to-r from-blue-500/40 via-purple-500/20 to-transparent"></div>
                         </div>
-                        <div className="grid grid-cols-4 gap-x-3 gap-y-2 pl-8">
+                        <div className="grid grid-cols-3 gap-x-3 gap-y-2 pl-8">
                           <div>
                             <div className="text-[10px] uppercase text-secondary tracking-wide mb-1">Cycle Start (Actual)</div>
                             <div className="text-sm text-emerald-600 dark:text-emerald-400 font-medium">{fmt(effective.cycleStartDateActual) || "—"}</div>
@@ -8519,23 +8511,23 @@ function PlanDetailsView(props: {
                             <div className="text-[10px] uppercase text-secondary tracking-wide mb-1">Breeding Date</div>
                             <div className="text-sm text-emerald-600 dark:text-emerald-400 font-medium">{fmt(recalcBreed) ? <>{fmt(recalcBreed)} <span className="text-xs text-secondary font-normal">(New Projection)</span></> : "—"}</div>
                           </div>
-                          <div>
-                            <div className="text-[10px] uppercase text-secondary tracking-wide mb-1">Birth Date</div>
-                            <div className="text-sm text-emerald-600 dark:text-emerald-400 font-medium">{fmt(recalcBirth) ? <>{fmt(recalcBirth)} <span className="text-xs text-secondary font-normal">(New Projection)</span></> : "—"}</div>
-                          </div>
                         </div>
                       </div>
 
-                      {/* Phase 2: Weaning → Placement */}
+                      {/* Phase 2: Birth → Placement */}
                       <div>
                         <div className="flex items-center gap-2 mb-3">
                           <div className="flex items-center justify-center w-6 h-6 rounded-full bg-gradient-to-br from-amber-500/20 to-orange-500/20 border border-amber-500/30">
                             <span className="text-xs">🏠</span>
                           </div>
-                          <span className="text-xs font-semibold uppercase tracking-wider text-amber-400">Weaning → Placement</span>
+                          <span className="text-xs font-semibold uppercase tracking-wider text-amber-400">Birth → Placement</span>
                           <div className="flex-1 h-px bg-gradient-to-r from-amber-500/40 via-orange-500/20 to-transparent"></div>
                         </div>
                         <div className="grid grid-cols-4 gap-x-3 gap-y-2 pl-8">
+                          <div>
+                            <div className="text-[10px] uppercase text-secondary tracking-wide mb-1">Birth Date</div>
+                            <div className="text-sm text-emerald-600 dark:text-emerald-400 font-medium">{fmt(recalcBirth) ? <>{fmt(recalcBirth)} <span className="text-xs text-secondary font-normal">(New Projection)</span></> : "—"}</div>
+                          </div>
                           <div>
                             <div className="text-[10px] uppercase text-secondary tracking-wide mb-1">Weaned Date</div>
                             <div className="text-sm text-emerald-600 dark:text-emerald-400 font-medium">{fmt(recalcWeaned) ? <>{fmt(recalcWeaned)} <span className="text-xs text-secondary font-normal">(New Projection)</span></> : "—"}</div>
@@ -8560,16 +8552,16 @@ function PlanDetailsView(props: {
                 <div className="rounded-lg border-2 border-amber-500/60 bg-surface p-4">
                   <div className="text-sm font-semibold text-primary mb-4">ACTUAL DATES</div>
 
-                  {/* Phase 1: Cycle Start → Birth */}
+                  {/* Phase 1: Cycle → Breeding */}
                   <div className="mb-5">
                     <div className="flex items-center gap-2 mb-3">
                       <div className="flex items-center justify-center w-6 h-6 rounded-full bg-gradient-to-br from-blue-500/20 to-purple-500/20 border border-blue-500/30">
                         <span className="text-xs">🔄</span>
                       </div>
-                      <span className="text-xs font-semibold uppercase tracking-wider text-blue-400">Cycle Start → Birth</span>
+                      <span className="text-xs font-semibold uppercase tracking-wider text-blue-400">Cycle → Breeding</span>
                       <div className="flex-1 h-px bg-gradient-to-r from-blue-500/40 via-purple-500/20 to-transparent"></div>
                     </div>
-                    <div className="grid grid-cols-2 gap-x-4 gap-y-3 pl-8">
+                    <div className="grid grid-cols-3 gap-x-4 gap-y-3 pl-8">
                       <div>
                         <div className="text-[10px] uppercase text-secondary tracking-wide mb-1">Cycle Start</div>
                         <div className="flex items-center gap-2">
@@ -8672,6 +8664,19 @@ function PlanDetailsView(props: {
                           )}
                         </div>
                       </div>
+                    </div>
+                  </div>
+
+                  {/* Phase 2: Birth → Placement */}
+                  <div>
+                    <div className="flex items-center gap-2 mb-3">
+                      <div className="flex items-center justify-center w-6 h-6 rounded-full bg-gradient-to-br from-amber-500/20 to-orange-500/20 border border-amber-500/30">
+                        <span className="text-xs">🏠</span>
+                      </div>
+                      <span className="text-xs font-semibold uppercase tracking-wider text-amber-400">Birth → Placement</span>
+                      <div className="flex-1 h-px bg-gradient-to-r from-amber-500/40 via-orange-500/20 to-transparent"></div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-3 pl-8">
                       <div>
                         <div className="text-[10px] uppercase text-secondary tracking-wide mb-1">Birth Date</div>
                         <div className="flex items-center gap-2">
@@ -8706,53 +8711,40 @@ function PlanDetailsView(props: {
                           )}
                         </div>
                       </div>
-                    </div>
-                  </div>
-
-                  {/* Phase 2: Weaning → Placement */}
-                  <div>
-                    <div className="flex items-center gap-2 mb-3">
-                      <div className="flex items-center justify-center w-6 h-6 rounded-full bg-gradient-to-br from-amber-500/20 to-orange-500/20 border border-amber-500/30">
-                        <span className="text-xs">🏠</span>
-                      </div>
-                      <span className="text-xs font-semibold uppercase tracking-wider text-amber-400">Weaning → Placement</span>
-                      <div className="flex-1 h-px bg-gradient-to-r from-amber-500/40 via-orange-500/20 to-transparent"></div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-x-4 gap-y-3 pl-8">
                       <div>
                         <div className="text-[10px] uppercase text-secondary tracking-wide mb-1">Weaned Date</div>
-                      <div className="flex items-center gap-2">
-                        <DatePicker
-                          value={normalizeDateISO(effective.weanedDateActual) ?? ""}
-                          defaultDate={expectedWeaned ?? undefined}
-                          readOnly={!canEditDates}
-                          showIcon={canEditDates}
-                          onChange={(e) => {
-                            if (!canEditDates) return;
-                            const raw = e.currentTarget.value;
-                            if (!raw) {
-                              setDraftLive({ weanedDateActual: null });
-                              return;
-                            }
-                            if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return;
-                            warnIfSequenceBroken("weanedDateActual", raw);
-                            setDraftLive({ weanedDateActual: raw });
-                          }}
-                          className="flex-1"
-                          inputClassName={dateInputCls}
-                          placeholder="mm/dd/yyyy"
-                        />
-                        {canEditDates && effective.weanedDateActual && (
-                          <button
-                            type="button"
-                            onClick={() => clearActualDateAndSubsequent("weanedDateActual")}
-                            className="text-xs text-secondary hover:text-primary px-2 py-1 rounded border border-hairline hover:border-primary/30"
-                          >
-                            Clear
-                          </button>
-                        )}
+                        <div className="flex items-center gap-2">
+                          <DatePicker
+                            value={normalizeDateISO(effective.weanedDateActual) ?? ""}
+                            defaultDate={expectedWeaned ?? undefined}
+                            readOnly={!canEditDates}
+                            showIcon={canEditDates}
+                            onChange={(e) => {
+                              if (!canEditDates) return;
+                              const raw = e.currentTarget.value;
+                              if (!raw) {
+                                setDraftLive({ weanedDateActual: null });
+                                return;
+                              }
+                              if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return;
+                              warnIfSequenceBroken("weanedDateActual", raw);
+                              setDraftLive({ weanedDateActual: raw });
+                            }}
+                            className="flex-1"
+                            inputClassName={dateInputCls}
+                            placeholder="mm/dd/yyyy"
+                          />
+                          {canEditDates && effective.weanedDateActual && (
+                            <button
+                              type="button"
+                              onClick={() => clearActualDateAndSubsequent("weanedDateActual")}
+                              className="text-xs text-secondary hover:text-primary px-2 py-1 rounded border border-hairline hover:border-primary/30"
+                            >
+                              Clear
+                            </button>
+                          )}
+                        </div>
                       </div>
-                    </div>
                     <div>
                         <div className="text-[10px] uppercase text-secondary tracking-wide mb-1">Placement Start</div>
                       <div className="flex items-center gap-2">

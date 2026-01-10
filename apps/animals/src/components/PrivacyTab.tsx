@@ -69,9 +69,7 @@ function PrivacyToggle({
   const handleClick = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    console.log("PrivacyToggle clicked:", { label, checked, disabled, readOnly });
     if (!disabled) {
-      console.log("Calling onChange with:", !checked);
       onChange(!checked);
     }
   };
@@ -185,18 +183,19 @@ export function PrivacyTab({ animal, mode }: { animal: AnimalRow; mode: Mode }) 
   }, [loadSettings]);
 
   const updateSetting = async (key: keyof Omit<PrivacySettings, "animalId">, value: boolean) => {
-    console.log("updateSetting called:", { key, value, settings: !!settings, mode });
-    if (!settings || mode !== "edit") {
-      console.log("updateSetting early return - settings:", !!settings, "mode:", mode);
-      return;
-    }
+    if (!settings || mode !== "edit") return;
     setSaving(true);
+    // Optimistically update the local state
+    setSettings((prev) => (prev ? { ...prev, [key]: value } : prev));
     try {
-      const updated = await api.animals.lineage.updatePrivacySettings(animal.id, { [key]: value });
-      setSettings(updated);
+      await api.animals.lineage.updatePrivacySettings(animal.id, { [key]: value });
+      // Don't overwrite local state with API response - the optimistic update is the source of truth
+      // The API may not return all fields or may return stale data for fields it doesn't persist yet
     } catch (err: any) {
       console.error("Failed to update privacy setting:", err);
       setError(err?.message || "Failed to update setting");
+      // Revert optimistic update on error
+      setSettings((prev) => (prev ? { ...prev, [key]: !value } : prev));
     } finally {
       setSaving(false);
     }

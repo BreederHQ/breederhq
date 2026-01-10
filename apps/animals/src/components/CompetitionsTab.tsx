@@ -311,6 +311,10 @@ function CompetitionModal({
               onChange={(e) => setEventName(e.target.value)}
               placeholder="e.g., Westminster Kennel Club"
               required
+              autoComplete="off"
+              data-1p-ignore
+              data-lpignore="true"
+              data-form-type="other"
               className="w-full px-3 py-2 bg-white/5 border border-hairline rounded-md text-sm focus:outline-none focus:border-white/30"
             />
           </div>
@@ -351,6 +355,10 @@ function CompetitionModal({
                 value={location}
                 onChange={(e) => setLocation(e.target.value)}
                 placeholder="New York, NY"
+                autoComplete="off"
+                data-1p-ignore
+                data-lpignore="true"
+                data-form-type="other"
                 className="w-full px-3 py-2 bg-white/5 border border-hairline rounded-md text-sm focus:outline-none focus:border-white/30"
               />
             </div>
@@ -363,6 +371,10 @@ function CompetitionModal({
                 value={organization}
                 onChange={(e) => setOrganization(e.target.value)}
                 placeholder="AKC"
+                autoComplete="off"
+                data-1p-ignore
+                data-lpignore="true"
+                data-form-type="other"
                 className="w-full px-3 py-2 bg-white/5 border border-hairline rounded-md text-sm focus:outline-none focus:border-white/30"
               />
             </div>
@@ -378,6 +390,10 @@ function CompetitionModal({
               value={className}
               onChange={(e) => setClassName(e.target.value)}
               placeholder="e.g., Open Dogs, Excellent B Standard"
+              autoComplete="off"
+              data-1p-ignore
+              data-lpignore="true"
+              data-form-type="other"
               className="w-full px-3 py-2 bg-white/5 border border-hairline rounded-md text-sm focus:outline-none focus:border-white/30"
             />
           </div>
@@ -394,6 +410,10 @@ function CompetitionModal({
                 value={placement}
                 onChange={(e) => setPlacement(e.target.value)}
                 placeholder="1, 2, 3..."
+                autoComplete="off"
+                data-1p-ignore
+                data-lpignore="true"
+                data-form-type="other"
                 className="w-full px-3 py-2 bg-white/5 border border-hairline rounded-md text-sm focus:outline-none focus:border-white/30"
               />
             </div>
@@ -406,6 +426,10 @@ function CompetitionModal({
                 value={placementLabel}
                 onChange={(e) => setPlacementLabel(e.target.value)}
                 placeholder="Best of Breed, Winners Dog"
+                autoComplete="off"
+                data-1p-ignore
+                data-lpignore="true"
+                data-form-type="other"
                 className="w-full px-3 py-2 bg-white/5 border border-hairline rounded-md text-sm focus:outline-none focus:border-white/30"
               />
             </div>
@@ -423,6 +447,10 @@ function CompetitionModal({
                 value={pointsEarned}
                 onChange={(e) => setPointsEarned(e.target.value)}
                 placeholder="0"
+                autoComplete="off"
+                data-1p-ignore
+                data-lpignore="true"
+                data-form-type="other"
                 className="w-full px-3 py-2 bg-white/5 border border-hairline rounded-md text-sm focus:outline-none focus:border-white/30"
               />
             </div>
@@ -462,6 +490,10 @@ function CompetitionModal({
                 value={score}
                 onChange={(e) => setScore(e.target.value)}
                 placeholder="For agility time, obedience score"
+                autoComplete="off"
+                data-1p-ignore
+                data-lpignore="true"
+                data-form-type="other"
                 className="w-full px-3 py-2 bg-white/5 border border-hairline rounded-md text-sm focus:outline-none focus:border-white/30"
               />
             </div>
@@ -475,6 +507,10 @@ function CompetitionModal({
                 value={scoreMax}
                 onChange={(e) => setScoreMax(e.target.value)}
                 placeholder="e.g., 200"
+                autoComplete="off"
+                data-1p-ignore
+                data-lpignore="true"
+                data-form-type="other"
                 className="w-full px-3 py-2 bg-white/5 border border-hairline rounded-md text-sm focus:outline-none focus:border-white/30"
               />
             </div>
@@ -490,6 +526,10 @@ function CompetitionModal({
               value={judgeName}
               onChange={(e) => setJudgeName(e.target.value)}
               placeholder="Judge name"
+              autoComplete="off"
+              data-1p-ignore
+              data-lpignore="true"
+              data-form-type="other"
               className="w-full px-3 py-2 bg-white/5 border border-hairline rounded-md text-sm focus:outline-none focus:border-white/30"
             />
           </div>
@@ -504,6 +544,10 @@ function CompetitionModal({
               onChange={(e) => setNotes(e.target.value)}
               rows={2}
               placeholder="Optional notes..."
+              autoComplete="off"
+              data-1p-ignore
+              data-lpignore="true"
+              data-form-type="other"
               className="w-full px-3 py-2 bg-white/5 border border-hairline rounded-md text-sm focus:outline-none focus:border-white/30 resize-none"
             />
           </div>

@@ -400,6 +400,10 @@ export function NetworkAnimalPicker({
                 onChange={(e) => setGaidInput(e.target.value.toUpperCase())}
                 className="flex-1 px-3 py-2 rounded-md border border-hairline bg-background text-sm focus:outline-none focus:ring-2 focus:ring-accent"
                 onKeyDown={(e) => e.key === "Enter" && handleGaidSearch()}
+                autoComplete="off"
+                data-1p-ignore
+                data-lpignore="true"
+                data-form-type="other"
               />
               <button
                 onClick={handleGaidSearch}
@@ -423,6 +427,10 @@ export function NetworkAnimalPicker({
                 onChange={(e) => setExchangeCodeInput(e.target.value.toUpperCase())}
                 className="flex-1 px-3 py-2 rounded-md border border-hairline bg-background text-sm focus:outline-none focus:ring-2 focus:ring-accent"
                 onKeyDown={(e) => e.key === "Enter" && handleExchangeCodeSearch()}
+                autoComplete="off"
+                data-1p-ignore
+                data-lpignore="true"
+                data-form-type="other"
               />
               <button
                 onClick={handleExchangeCodeSearch}
@@ -462,6 +470,10 @@ export function NetworkAnimalPicker({
                   onChange={(e) => setRegistryNumInput(e.target.value)}
                   className="flex-1 px-3 py-2 rounded-md border border-hairline bg-background text-sm focus:outline-none focus:ring-2 focus:ring-accent"
                   onKeyDown={(e) => e.key === "Enter" && handleRegistrySearch()}
+                  autoComplete="off"
+                  data-1p-ignore
+                  data-lpignore="true"
+                  data-form-type="other"
                 />
                 <button
                   onClick={handleRegistrySearch}
@@ -486,6 +498,10 @@ export function NetworkAnimalPicker({
                 onChange={(e) => setBreederSearchInput(e.target.value)}
                 className="flex-1 px-3 py-2 rounded-md border border-hairline bg-background text-sm focus:outline-none focus:ring-2 focus:ring-accent"
                 onKeyDown={(e) => e.key === "Enter" && handleBreederSearch()}
+                autoComplete="off"
+                data-1p-ignore
+                data-lpignore="true"
+                data-form-type="other"
               />
               <button
                 onClick={handleBreederSearch}

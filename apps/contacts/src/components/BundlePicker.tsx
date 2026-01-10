@@ -183,6 +183,10 @@ export function BundlePicker({ onClose, onSelect, api }: BundlePickerProps) {
                     placeholder="Search bundles..."
                     className="pl-9"
                     autoFocus
+                    autoComplete="off"
+                    data-1p-ignore
+                    data-lpignore="true"
+                    data-form-type="other"
                   />
                 </div>
               </div>

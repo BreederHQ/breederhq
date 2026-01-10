@@ -220,6 +220,10 @@ function AddCompetitionModal({ animals, onClose, onSave }: AddCompetitionModalPr
                 onChange={(e) => setEventName(e.target.value)}
                 placeholder="Westminster Kennel Club"
                 required
+                autoComplete="off"
+                data-1p-ignore
+                data-lpignore="true"
+                data-form-type="other"
               />
             </div>
             <div>
@@ -256,6 +260,10 @@ function AddCompetitionModal({ animals, onClose, onSave }: AddCompetitionModalPr
                 value={organization}
                 onChange={(e) => setOrganization(e.target.value)}
                 placeholder="AKC, UKC, etc."
+                autoComplete="off"
+                data-1p-ignore
+                data-lpignore="true"
+                data-form-type="other"
               />
             </div>
           </div>
@@ -269,6 +277,10 @@ function AddCompetitionModal({ animals, onClose, onSave }: AddCompetitionModalPr
                 value={location}
                 onChange={(e) => setLocation(e.target.value)}
                 placeholder="New York, NY"
+                autoComplete="off"
+                data-1p-ignore
+                data-lpignore="true"
+                data-form-type="other"
               />
             </div>
             <div>
@@ -279,6 +291,10 @@ function AddCompetitionModal({ animals, onClose, onSave }: AddCompetitionModalPr
                 value={className}
                 onChange={(e) => setClassName(e.target.value)}
                 placeholder="Open Dogs, Excellent B"
+                autoComplete="off"
+                data-1p-ignore
+                data-lpignore="true"
+                data-form-type="other"
               />
             </div>
           </div>
@@ -293,6 +309,10 @@ function AddCompetitionModal({ animals, onClose, onSave }: AddCompetitionModalPr
                 value={placement}
                 onChange={(e) => setPlacement(e.target.value)}
                 placeholder="1"
+                autoComplete="off"
+                data-1p-ignore
+                data-lpignore="true"
+                data-form-type="other"
               />
             </div>
             <div>
@@ -303,6 +323,10 @@ function AddCompetitionModal({ animals, onClose, onSave }: AddCompetitionModalPr
                 value={placementLabel}
                 onChange={(e) => setPlacementLabel(e.target.value)}
                 placeholder="Best of Breed"
+                autoComplete="off"
+                data-1p-ignore
+                data-lpignore="true"
+                data-form-type="other"
               />
             </div>
             <div>
@@ -314,6 +338,10 @@ function AddCompetitionModal({ animals, onClose, onSave }: AddCompetitionModalPr
                 value={pointsEarned}
                 onChange={(e) => setPointsEarned(e.target.value)}
                 placeholder="0"
+                autoComplete="off"
+                data-1p-ignore
+                data-lpignore="true"
+                data-form-type="other"
               />
             </div>
           </div>
@@ -347,6 +375,10 @@ function AddCompetitionModal({ animals, onClose, onSave }: AddCompetitionModalPr
               value={judgeName}
               onChange={(e) => setJudgeName(e.target.value)}
               placeholder="Judge name"
+              autoComplete="off"
+              data-1p-ignore
+              data-lpignore="true"
+              data-form-type="other"
             />
           </div>
 
@@ -358,6 +390,10 @@ function AddCompetitionModal({ animals, onClose, onSave }: AddCompetitionModalPr
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               placeholder="Optional notes..."
+              autoComplete="off"
+              data-1p-ignore
+              data-lpignore="true"
+              data-form-type="other"
             />
           </div>
 
@@ -521,6 +557,10 @@ export default function CompetitionsPage() {
           className="px-3 py-2 bg-surface-strong border border-hairline rounded-lg text-primary text-sm w-64"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
+          autoComplete="off"
+          data-1p-ignore
+          data-lpignore="true"
+          data-form-type="other"
         />
 
         <select

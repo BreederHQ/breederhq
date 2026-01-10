@@ -318,6 +318,10 @@ function AnimalPickerModal({
                 onChange={(e) => setSearch(e.target.value)}
                 className="w-full px-3 py-2 rounded-md border border-hairline bg-background text-sm focus:outline-none focus:ring-2 focus:ring-accent"
                 autoFocus
+                autoComplete="off"
+                data-1p-ignore
+                data-lpignore="true"
+                data-form-type="other"
               />
             </div>
             <div className="flex-1 overflow-y-auto p-2">

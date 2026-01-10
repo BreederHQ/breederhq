@@ -10,6 +10,8 @@ export interface InputProps extends Omit<React.InputHTMLAttributes<HTMLInputElem
   icon?: React.ReactNode;
   /** Optional wrapper class when rendering an icon. */
   wrapperClassName?: string;
+  /** Allow password manager autofill (for login/auth pages). Default false. */
+  allowAutofill?: boolean;
 }
 
 export const Input = React.forwardRef<HTMLInputElement, InputProps>(function Input(
@@ -17,9 +19,20 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(function Inp
   ref
 ) {
   // hard strip UI-only props
-  const { showIcon, icon, wrapperClassName, ...props } = allProps;
+  const { showIcon, icon, wrapperClassName, allowAutofill, ...props } = allProps;
   // belt-and-suspenders: delete if something slipped through
   if ("showIcon" in (props as any)) delete (props as any).showIcon;
+  if ("allowAutofill" in (props as any)) delete (props as any).allowAutofill;
+
+  // Password manager blocking attributes (default: block autofill)
+  const autofillBlockAttrs = allowAutofill
+    ? {}
+    : {
+        autoComplete: props.autoComplete ?? "off",
+        "data-1p-ignore": true,
+        "data-lpignore": "true",
+        "data-form-type": "other",
+      };
 
   const h = size === "sm" ? "h-9 min-h-9 text-sm rounded-md" : "h-[42px] min-h-[42px] text-sm rounded-md";
 
@@ -47,6 +60,7 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(function Inp
         withIcon ? "pl-8" : undefined,
         className
       )}
+      {...autofillBlockAttrs}
       {...props}
     />
   );

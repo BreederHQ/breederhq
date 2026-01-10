@@ -192,6 +192,10 @@ export function TemplatePicker({ onClose, onSelect, api }: TemplatePickerProps) 
                     placeholder="Search templates..."
                     className="pl-9"
                     autoFocus
+                    autoComplete="off"
+                    data-1p-ignore
+                    data-lpignore="true"
+                    data-form-type="other"
                   />
                 </div>
               </div>

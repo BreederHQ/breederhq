@@ -21,7 +21,9 @@ import "@bhq/ui/bhq.css";
 import "@bhq/ui/styles/table.css";
 import "@bhq/ui/styles/details.css";
 import { readTenantIdFast, resolveTenantId } from "@bhq/ui/utils/tenant";
-import { makeWaitlistApiClient, WaitlistApi, type BlockedUserInfo } from "./api";
+import { makeWaitlistApiClient, WaitlistApi, type BlockedUserInfo, type WaitlistInvoiceSummary } from "./api";
+import { PaymentStatusBadge } from "@bhq/ui/components/Finance/PaymentStatusBadge";
+import { GenerateInvoiceModal } from "./components/GenerateInvoiceModal";
 
 // Import the WaitlistTab component (which is the core content for Approved)
 import WaitlistTab from "./pages/WaitlistTab";
@@ -218,11 +220,12 @@ const PENDING_COLS: Array<{ key: string; label: string; default?: boolean }> = [
   { key: "contactLabel", label: "Contact", default: true },
   { key: "speciesPref", label: "Species", default: true },
   { key: "breedPrefText", label: "Breeds", default: true },
+  { key: "invoice", label: "Payment", default: true },
   { key: "notes", label: "Notes", default: true },
   { key: "createdAt", label: "Submitted", default: true },
 ];
 
-const PENDING_WAITLIST_STORAGE_KEY = "bhq_pending_waitlist_cols_v1";
+const PENDING_WAITLIST_STORAGE_KEY = "bhq_pending_waitlist_cols_v2";
 
 // Row mapping for pending entries
 type PendingTableRow = {
@@ -230,8 +233,10 @@ type PendingTableRow = {
   contactLabel: string | null;
   speciesPref: string | null;
   breedPrefText: string | null;
+  invoice: WaitlistInvoiceSummary | null;
   notes: string | null;
   createdAt: string | null;
+  status: string | null; // Track waitlist entry status for highlighting
 };
 
 function mapPendingToTableRow(w: any): PendingTableRow {
@@ -260,8 +265,10 @@ function mapPendingToTableRow(w: any): PendingTableRow {
     contactLabel,
     speciesPref: w.speciesPref ?? null,
     breedPrefText,
+    invoice: w.invoice ?? null,
     notes: w.notes ?? null,
     createdAt: w.createdAt ?? null,
+    status: w.status ?? null,
   };
 }
 
@@ -269,6 +276,12 @@ function fmtDateTime(d?: string | null) {
   if (!d) return "";
   const dt = new Date(d);
   return Number.isFinite(dt.getTime()) ? dt.toLocaleString() : "";
+}
+
+function fmtDate(d?: string | null) {
+  if (!d) return "";
+  const dt = new Date(d);
+  return Number.isFinite(dt.getTime()) ? dt.toLocaleDateString() : "";
 }
 
 function PendingWaitlistTable({
@@ -297,7 +310,7 @@ function PendingWaitlistTable({
     });
   };
 
-  // Fetch INQUIRY status entries
+  // Fetch INQUIRY and DEPOSIT_PAID status entries (both need breeder action)
   const load = React.useCallback(async () => {
     if (!api) return;
     if (!api.waitlist || typeof api.waitlist.list !== "function") {
@@ -311,7 +324,7 @@ function PendingWaitlistTable({
         q: q || undefined,
         limit: 200,
         tenantId: tenantId ?? undefined,
-        status: "INQUIRY",
+        status: "INQUIRY,DEPOSIT_PAID", // Include both: new inquiries and paid deposits awaiting approval
       });
       const items: any[] = Array.isArray(res) ? res : (res as any)?.items ?? [];
       setRows(items.map(mapPendingToTableRow));
@@ -391,23 +404,44 @@ function PendingWaitlistTable({
               {!loading &&
                 !error &&
                 rows.length > 0 &&
-                rows.map((r) => (
-                  <TableRow
-                    key={r.id}
-                    onClick={() => onRowClick?.(r.id)}
-                    className={onRowClick ? "cursor-pointer hover:bg-surface-strong" : ""}
-                  >
-                    {visibleSafe.map((c) => {
-                      let v: any = (r as any)[c.key];
-                      if (c.key === "createdAt") v = fmtDateTime(v);
-                      // Truncate notes for display
-                      if (c.key === "notes" && v && v.length > 100) {
-                        v = v.substring(0, 100) + "...";
-                      }
-                      return <TableCell key={c.key}>{v ?? ""}</TableCell>;
-                    })}
-                  </TableRow>
-                ))}
+                rows.map((r) => {
+                  const isDepositPaid = r.status === "DEPOSIT_PAID";
+                  return (
+                    <TableRow
+                      key={r.id}
+                      onClick={() => onRowClick?.(r.id)}
+                      className={[
+                        onRowClick ? "cursor-pointer hover:bg-surface-strong" : "",
+                        isDepositPaid ? "bg-green-500/5 border-l-2 border-l-green-500" : "",
+                      ].filter(Boolean).join(" ")}
+                    >
+                      {visibleSafe.map((c) => {
+                        let v: any = (r as any)[c.key];
+                        if (c.key === "createdAt") v = fmtDateTime(v);
+                        // Truncate notes for display
+                        if (c.key === "notes" && v && v.length > 100) {
+                          v = v.substring(0, 100) + "...";
+                        }
+                        // Render PaymentStatusBadge for invoice column with action indicator
+                        if (c.key === "invoice") {
+                          return (
+                            <TableCell key={c.key}>
+                              <div className="flex items-center gap-2">
+                                <PaymentStatusBadge invoice={r.invoice} />
+                                {isDepositPaid && (
+                                  <span className="text-xs font-medium text-green-600 dark:text-green-400">
+                                    Action Required
+                                  </span>
+                                )}
+                              </div>
+                            </TableCell>
+                          );
+                        }
+                        return <TableCell key={c.key}>{v ?? ""}</TableCell>;
+                      })}
+                    </TableRow>
+                  );
+                })}
             </tbody>
           </table>
         </Table>
@@ -527,6 +561,10 @@ function BlockUserModal({
               placeholder="e.g., Spam, abusive messages, etc."
               rows={2}
               className="w-full px-3 py-2 text-sm border border-hairline rounded-lg bg-surface focus:outline-none focus:ring-2 focus:ring-[hsl(var(--brand-orange))]/50"
+              autoComplete="off"
+              data-1p-ignore
+              data-lpignore="true"
+              data-form-type="other"
             />
             <p className="text-xs text-muted-foreground mt-1">
               This is only visible to you, not the blocked user.
@@ -769,6 +807,10 @@ function ApprovalConfirmationModal({
                         onChange={(e) => setContactForm({ ...contactForm, firstName: e.target.value })}
                         className={inputClass}
                         placeholder="First name"
+                        autoComplete="off"
+                        data-1p-ignore
+                        data-lpignore="true"
+                        data-form-type="other"
                       />
                     </div>
                     <div>
@@ -779,6 +821,10 @@ function ApprovalConfirmationModal({
                         onChange={(e) => setContactForm({ ...contactForm, lastName: e.target.value })}
                         className={inputClass}
                         placeholder="Last name"
+                        autoComplete="off"
+                        data-1p-ignore
+                        data-lpignore="true"
+                        data-form-type="other"
                       />
                     </div>
                   </div>
@@ -791,6 +837,10 @@ function ApprovalConfirmationModal({
                         onChange={(e) => setContactForm({ ...contactForm, email: e.target.value })}
                         className={inputClass}
                         placeholder="email@example.com"
+                        autoComplete="off"
+                        data-1p-ignore
+                        data-lpignore="true"
+                        data-form-type="other"
                       />
                     </div>
                     <div>
@@ -801,6 +851,10 @@ function ApprovalConfirmationModal({
                         onChange={(e) => setContactForm({ ...contactForm, phone: e.target.value })}
                         className={inputClass}
                         placeholder="+1 (555) 000-0000"
+                        autoComplete="off"
+                        data-1p-ignore
+                        data-lpignore="true"
+                        data-form-type="other"
                       />
                     </div>
                   </div>
@@ -812,6 +866,10 @@ function ApprovalConfirmationModal({
                       onChange={(e) => setContactForm({ ...contactForm, address: e.target.value })}
                       className={inputClass}
                       placeholder="Street address"
+                      autoComplete="off"
+                      data-1p-ignore
+                      data-lpignore="true"
+                      data-form-type="other"
                     />
                   </div>
                   <div className="grid grid-cols-3 gap-3">
@@ -823,6 +881,10 @@ function ApprovalConfirmationModal({
                         onChange={(e) => setContactForm({ ...contactForm, city: e.target.value })}
                         className={inputClass}
                         placeholder="City"
+                        autoComplete="off"
+                        data-1p-ignore
+                        data-lpignore="true"
+                        data-form-type="other"
                       />
                     </div>
                     <div>
@@ -833,6 +895,10 @@ function ApprovalConfirmationModal({
                         onChange={(e) => setContactForm({ ...contactForm, state: e.target.value })}
                         className={inputClass}
                         placeholder="State"
+                        autoComplete="off"
+                        data-1p-ignore
+                        data-lpignore="true"
+                        data-form-type="other"
                       />
                     </div>
                     <div>
@@ -843,6 +909,10 @@ function ApprovalConfirmationModal({
                         onChange={(e) => setContactForm({ ...contactForm, zip: e.target.value })}
                         className={inputClass}
                         placeholder="ZIP code"
+                        autoComplete="off"
+                        data-1p-ignore
+                        data-lpignore="true"
+                        data-form-type="other"
                       />
                     </div>
                   </div>
@@ -853,6 +923,10 @@ function ApprovalConfirmationModal({
                       onChange={(e) => setContactForm({ ...contactForm, notes: e.target.value })}
                       className={inputClass + " h-20 resize-none"}
                       placeholder="Any additional notes about this contact..."
+                      autoComplete="off"
+                      data-1p-ignore
+                      data-lpignore="true"
+                      data-form-type="other"
                     />
                   </div>
                 </div>
@@ -872,6 +946,10 @@ function ApprovalConfirmationModal({
                       onChange={(e) => setOrgForm({ ...orgForm, name: e.target.value })}
                       className={inputClass}
                       placeholder="Organization name"
+                      autoComplete="off"
+                      data-1p-ignore
+                      data-lpignore="true"
+                      data-form-type="other"
                     />
                   </div>
                   <div className="grid grid-cols-2 gap-3">
@@ -883,6 +961,10 @@ function ApprovalConfirmationModal({
                         onChange={(e) => setOrgForm({ ...orgForm, email: e.target.value })}
                         className={inputClass}
                         placeholder="contact@organization.com"
+                        autoComplete="off"
+                        data-1p-ignore
+                        data-lpignore="true"
+                        data-form-type="other"
                       />
                     </div>
                     <div>
@@ -893,6 +975,10 @@ function ApprovalConfirmationModal({
                         onChange={(e) => setOrgForm({ ...orgForm, phone: e.target.value })}
                         className={inputClass}
                         placeholder="+1 (555) 000-0000"
+                        autoComplete="off"
+                        data-1p-ignore
+                        data-lpignore="true"
+                        data-form-type="other"
                       />
                     </div>
                   </div>
@@ -914,6 +1000,10 @@ function ApprovalConfirmationModal({
                       onChange={(e) => setOrgForm({ ...orgForm, address: e.target.value })}
                       className={inputClass}
                       placeholder="Street address"
+                      autoComplete="off"
+                      data-1p-ignore
+                      data-lpignore="true"
+                      data-form-type="other"
                     />
                   </div>
                   <div className="grid grid-cols-3 gap-3">
@@ -925,6 +1015,10 @@ function ApprovalConfirmationModal({
                         onChange={(e) => setOrgForm({ ...orgForm, city: e.target.value })}
                         className={inputClass}
                         placeholder="City"
+                        autoComplete="off"
+                        data-1p-ignore
+                        data-lpignore="true"
+                        data-form-type="other"
                       />
                     </div>
                     <div>
@@ -935,6 +1029,10 @@ function ApprovalConfirmationModal({
                         onChange={(e) => setOrgForm({ ...orgForm, state: e.target.value })}
                         className={inputClass}
                         placeholder="State"
+                        autoComplete="off"
+                        data-1p-ignore
+                        data-lpignore="true"
+                        data-form-type="other"
                       />
                     </div>
                     <div>
@@ -945,6 +1043,10 @@ function ApprovalConfirmationModal({
                         onChange={(e) => setOrgForm({ ...orgForm, zip: e.target.value })}
                         className={inputClass}
                         placeholder="ZIP code"
+                        autoComplete="off"
+                        data-1p-ignore
+                        data-lpignore="true"
+                        data-form-type="other"
                       />
                     </div>
                   </div>
@@ -955,6 +1057,10 @@ function ApprovalConfirmationModal({
                       onChange={(e) => setOrgForm({ ...orgForm, notes: e.target.value })}
                       className={inputClass + " h-20 resize-none"}
                       placeholder="Any additional notes about this organization..."
+                      autoComplete="off"
+                      data-1p-ignore
+                      data-lpignore="true"
+                      data-form-type="other"
                     />
                   </div>
                 </div>
@@ -1023,6 +1129,7 @@ function PendingWaitlistDrawer({
   const [messageText, setMessageText] = React.useState("");
   const [showBlockModal, setShowBlockModal] = React.useState(false);
   const [showApprovalModal, setShowApprovalModal] = React.useState(false);
+  const [showInvoiceModal, setShowInvoiceModal] = React.useState(false);
 
   // Fetch entry details
   React.useEffect(() => {
@@ -1156,6 +1263,32 @@ function PendingWaitlistDrawer({
     setActionLoading(null);
   };
 
+  const handleInvoiceGenerated = async () => {
+    // Refresh the entry to get the new invoice data
+    if (api && entryId) {
+      try {
+        const res = await api.raw.get<any>(`/waitlist/${entryId}`);
+        setEntry(res);
+      } catch {
+        // Ignore refresh error
+      }
+    }
+    setShowInvoiceModal(false);
+    toast.success("Deposit invoice generated successfully");
+  };
+
+  const handleResendInvoice = async () => {
+    if (!api || !entry) return;
+    setActionLoading("resend");
+    try {
+      await api.waitlist.resendInvoiceEmail(entryId);
+      toast.success("Invoice email sent");
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to resend invoice");
+    }
+    setActionLoading(null);
+  };
+
   // Get display info
   const contact = entry?.contact;
   const clientParty = entry?.clientParty;
@@ -1277,6 +1410,80 @@ function PendingWaitlistDrawer({
                 </section>
               )}
 
+              {/* Action Required Banner for DEPOSIT_PAID entries */}
+              {entry.status === "DEPOSIT_PAID" && (
+                <section>
+                  <div className="rounded-lg border border-green-500/50 bg-green-500/10 p-3">
+                    <div className="flex items-start gap-2">
+                      <svg className="w-5 h-5 text-green-500 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      <div>
+                        <p className="text-sm font-medium text-green-600 dark:text-green-400">
+                          Deposit Paid - Action Required
+                        </p>
+                        <p className="text-xs text-green-600/80 dark:text-green-400/80 mt-1">
+                          This applicant has paid their deposit. Click <strong>Approve</strong> below to finalize and add them to your approved waitlist as a Contact or Organization.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </section>
+              )}
+
+              {/* Deposit Status */}
+              <section>
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-secondary mb-2">
+                  Deposit Status
+                </h3>
+                {entry.invoice ? (
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <PaymentStatusBadge invoice={entry.invoice} />
+                      <span className="text-sm font-medium">
+                        ${((entry.invoice.totalCents || 0) / 100).toFixed(2)}
+                      </span>
+                    </div>
+                    {entry.invoice.status !== "PAID" && entry.invoice.status !== "VOID" && (
+                      <div className="flex gap-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={handleResendInvoice}
+                          disabled={actionLoading === "resend"}
+                        >
+                          {actionLoading === "resend" ? "Sending..." : "Resend Invoice"}
+                        </Button>
+                      </div>
+                    )}
+                    {entry.invoice.dueAt && entry.invoice.status !== "PAID" && (
+                      <p className="text-xs text-secondary">
+                        Due: {fmtDate(entry.invoice.dueAt)}
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <p className="text-sm text-secondary">
+                      No deposit invoice created yet.
+                    </p>
+                    {entry.depositRequiredCents && entry.depositRequiredCents > 0 && (
+                      <p className="text-xs text-secondary">
+                        Default deposit: ${(entry.depositRequiredCents / 100).toFixed(2)}
+                      </p>
+                    )}
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      onClick={() => setShowInvoiceModal(true)}
+                      disabled={!!actionLoading}
+                    >
+                      Generate Deposit Invoice
+                    </Button>
+                  </div>
+                )}
+              </section>
+
               {/* Message Input */}
               {showMessageInput && (
                 <section>
@@ -1289,6 +1496,10 @@ function PendingWaitlistDrawer({
                     placeholder="Type your message..."
                     rows={4}
                     className="w-full px-3 py-2 text-sm border border-hairline rounded-lg bg-surface focus:outline-none focus:ring-2 focus:ring-[hsl(var(--brand-orange))]/50"
+                    autoComplete="off"
+                    data-1p-ignore
+                    data-lpignore="true"
+                    data-form-type="other"
                   />
                   <div className="flex gap-2 mt-2">
                     <Button
@@ -1325,6 +1536,10 @@ function PendingWaitlistDrawer({
                     placeholder="Provide a reason for rejection (optional)..."
                     rows={3}
                     className="w-full px-3 py-2 text-sm border border-hairline rounded-lg bg-surface focus:outline-none focus:ring-2 focus:ring-red-500/50"
+                    autoComplete="off"
+                    data-1p-ignore
+                    data-lpignore="true"
+                    data-form-type="other"
                   />
                   <p className="text-xs text-secondary mt-1">
                     This will be visible to the applicant.
@@ -1418,6 +1633,19 @@ function PendingWaitlistDrawer({
           onConfirm={handleBlockUser}
           onCancel={() => setShowBlockModal(false)}
           loading={actionLoading === "block"}
+        />
+      )}
+
+      {/* Generate Invoice Modal */}
+      {showInvoiceModal && api && (
+        <GenerateInvoiceModal
+          applicantName={displayName}
+          applicantEmail={displayEmail}
+          defaultAmountCents={entry?.depositRequiredCents || null}
+          api={api}
+          entryId={entryId}
+          onSuccess={handleInvoiceGenerated}
+          onCancel={() => setShowInvoiceModal(false)}
         />
       )}
     </div>

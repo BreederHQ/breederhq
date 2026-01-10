@@ -4,7 +4,7 @@
 import type { Http } from "../http";
 
 export type CommunicationChannel = "all" | "email" | "dm";
-export type CommunicationStatus = "all" | "unread" | "flagged" | "archived" | "draft";
+export type CommunicationStatus = "all" | "unread" | "sent" | "flagged" | "archived" | "draft";
 export type CommunicationType = "email" | "dm" | "draft";
 export type CommunicationSort = "newest" | "oldest" | "unread_first";
 export type BulkAction = "archive" | "unarchive" | "flag" | "unflag" | "markRead" | "markUnread" | "delete";
@@ -14,6 +14,7 @@ export interface CommunicationItem {
   type: CommunicationType;
   partyId: number | null;
   partyName: string | null;
+  toEmail?: string | null; // Email address for email items
   subject: string | null;
   preview: string;
   isRead: boolean;
@@ -57,9 +58,35 @@ export interface InboxCounts {
   unreadCount: number;
   flaggedCount: number;
   draftCount: number;
+  sentCount?: number;
+}
+
+export interface EmailDetail {
+  id: string;
+  type: "partyEmail" | "unlinkedEmail";
+  partyId: number | null;
+  partyName: string | null;
+  partyEmail?: string | null;
+  toEmail: string;
+  fromEmail?: string;
+  subject: string;
+  body?: string;
+  bodyText?: string | null;
+  bodyHtml?: string | null;
+  status: string;
+  direction?: string;
+  sentAt?: string;
+  createdAt: string;
+  isRead: boolean;
+}
+
+export interface EmailDetailResponse {
+  email: EmailDetail;
 }
 
 export function makeCommunications(http: Http) {
+  const BASE = "/api/v1";
+
   return {
     inbox: {
       async list(params?: InboxParams): Promise<InboxResponse> {
@@ -72,17 +99,22 @@ export function makeCommunications(http: Http) {
         if (params?.limit) query.set("limit", String(params.limit));
         if (params?.offset) query.set("offset", String(params.offset));
         const qs = query.toString();
-        return http.get(`/communications/inbox${qs ? `?${qs}` : ""}`);
+        return http.get(`${BASE}/communications/inbox${qs ? `?${qs}` : ""}`);
       },
     },
     bulk: {
       async action(params: BulkActionRequest): Promise<BulkActionResponse> {
-        return http.post("/communications/bulk", params);
+        return http.post(`${BASE}/communications/bulk`, params);
       },
     },
     counts: {
       async get(): Promise<InboxCounts> {
-        return http.get("/communications/counts");
+        return http.get(`${BASE}/communications/counts`);
+      },
+    },
+    email: {
+      async get(compositeId: string): Promise<EmailDetailResponse> {
+        return http.get(`${BASE}/communications/email/${encodeURIComponent(compositeId)}`);
       },
     },
   };

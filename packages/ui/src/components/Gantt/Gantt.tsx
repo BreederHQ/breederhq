@@ -201,10 +201,141 @@ export default function BHQGantt(props: BHQGanttProps) {
   const frameWidthFit = `${LEFT_LABEL_W + contentW}px`;
 
   const rows = stages.length;
-  const rowH = heightPerRow;
+  const baseRowH = heightPerRow;
   const topPad = 20;
   const bottomPad = 16;
-  const frameH = topPad + rows * rowH + bottomPad;
+
+  // Pre-calculate max overlaps per stage to determine dynamic row heights
+  // We need to analyze the data before calculating frame height
+  // IMPORTANT: Group bars by __planId - each planId group counts as ONE bar for overlap detection
+  // This ensures risky/unlikely bands layer with their center fill, not stack separately
+  const maxOverlapsPerStage = React.useMemo(() => {
+    const result: number[] = [];
+
+    for (const stg of stages) {
+      const stageData = (data as unknown as StageWinLoose[]).filter(row => {
+        const key = (row.key || row.stage || row.name) as string;
+        return key === stg.key;
+      });
+
+      // Group bars by __planId
+      const planIdToRows = new Map<string, StageWinLoose[]>();
+      const noPlanIdRows: StageWinLoose[] = [];
+
+      for (const row of stageData) {
+        const planId = (row as any).__planId as string | undefined;
+        if (planId) {
+          if (!planIdToRows.has(planId)) {
+            planIdToRows.set(planId, []);
+          }
+          planIdToRows.get(planId)!.push(row);
+        } else {
+          noPlanIdRows.push(row);
+        }
+      }
+
+      // Get the primary bar (highest __z with range) for each planId group
+      const primaryBars: StageWinLoose[] = [];
+
+      for (const [, rows] of planIdToRows) {
+        let primaryRow: StageWinLoose | null = null;
+        let highestZ = -1;
+        for (const row of rows) {
+          const z = (row as any).__z ?? 0;
+          const full = pickRange(row, ["full", "fullRange"]);
+          const likely = pickRange(row, ["likely", "likelyRange"]);
+          const hasRange = !!(full || likely);
+          if (hasRange && z > highestZ) {
+            highestZ = z;
+            primaryRow = row;
+          }
+        }
+        if (primaryRow) {
+          primaryBars.push(primaryRow);
+        }
+      }
+
+      // Also include bars without __planId as individual primary bars (backwards compat)
+      for (const row of noPlanIdRows) {
+        const z = (row as any).__z ?? 0;
+        const full = pickRange(row, ["full", "fullRange"]);
+        const likely = pickRange(row, ["likely", "likelyRange"]);
+        const hasRange = !!(full || likely);
+        if (hasRange && (z >= 3 || z === 0)) {
+          primaryBars.push(row);
+        }
+      }
+
+      if (primaryBars.length <= 1) {
+        result.push(1);
+        continue;
+      }
+
+      // Get time ranges for overlap detection
+      const getRange = (row: StageWinLoose) => {
+        const full = pickRange(row, ["full", "fullRange"]);
+        const likely = pickRange(row, ["likely", "likelyRange"]);
+        const rangeObj = full || likely;
+        if (!rangeObj) return null;
+        const s = toDate(rangeObj.start);
+        const e = toDate(rangeObj.end);
+        return s && e ? { start: s.getTime(), end: e.getTime() } : null;
+      };
+
+      const ranges = primaryBars.map(getRange);
+
+      // Check overlaps for each primary bar
+      let maxOverlap = 1;
+      for (let i = 0; i < ranges.length; i++) {
+        if (!ranges[i]) continue;
+        let overlapCount = 1;
+        for (let j = 0; j < ranges.length; j++) {
+          if (i !== j && ranges[j]) {
+            const a = ranges[i]!;
+            const b = ranges[j]!;
+            if (a.start < b.end && a.end > b.start) {
+              overlapCount++;
+            }
+          }
+        }
+        maxOverlap = Math.max(maxOverlap, overlapCount);
+      }
+      result.push(maxOverlap);
+    }
+
+    return result;
+  }, [stages, data]);
+
+  // Calculate dynamic row heights based on overlap counts
+  // If more than 3 overlaps, expand the row to maintain minimum bar height
+  const MIN_BAR_HEIGHT = 8;
+  const GAP_BETWEEN_BARS = 2;
+  const ROW_PADDING = 12; // 6px top + 6px bottom
+
+  const rowHeights = React.useMemo(() => {
+    return maxOverlapsPerStage.map(overlaps => {
+      if (overlaps <= 3) {
+        return baseRowH;
+      }
+      // For > 3 overlaps, calculate height needed to maintain MIN_BAR_HEIGHT per bar
+      // totalH = overlaps * MIN_BAR_HEIGHT + (overlaps - 1) * GAP_BETWEEN_BARS
+      const neededContentH = overlaps * MIN_BAR_HEIGHT + (overlaps - 1) * GAP_BETWEEN_BARS;
+      return neededContentH + ROW_PADDING;
+    });
+  }, [maxOverlapsPerStage, baseRowH]);
+
+  // Calculate cumulative row positions
+  const rowYPositions = React.useMemo(() => {
+    const positions: number[] = [];
+    let y = topPad;
+    for (let i = 0; i < rowHeights.length; i++) {
+      positions.push(y);
+      y += rowHeights[i];
+    }
+    return positions;
+  }, [rowHeights, topPad]);
+
+  const frameH = topPad + rowHeights.reduce((sum, h) => sum + h, 0) + bottomPad;
 
   // x scale
   const totalDays = Math.max(1, daysDiff(start, endEx));
@@ -238,6 +369,8 @@ export default function BHQGantt(props: BHQGanttProps) {
     tooltip?: string;
     color?: string;
     opacity?: number;
+    __planId?: string;  // Groups related bars (risky, unlikely, center) to render at same y position
+    __z?: number;       // Z-order for layering (1=unlikely, 2=risky, 3=center fill)
   };
   const partsByKey = new Map<string, Part[]>();
   for (const s of stages) partsByKey.set(s.key, []);
@@ -255,6 +388,8 @@ export default function BHQGantt(props: BHQGanttProps) {
       // 👇 prefer plain props; fall back to underscored ones
       color: (row as any).color ?? (row as any).__color ?? undefined,
       opacity: (row as any).opacity ?? (row as any).__opacity ?? undefined,
+      __planId: (row as any).__planId ?? undefined,
+      __z: (row as any).__z ?? undefined,
     });
   }
 
@@ -311,7 +446,8 @@ export default function BHQGantt(props: BHQGanttProps) {
             fill="none"
           >
             {stages.map((s, i) => {
-              const y = topPad + i * rowH;
+              const y = rowYPositions[i];
+              const rowH = rowHeights[i];
               const mid = y + rowH / 2;
               return (
                 <g key={s.key}>
@@ -395,7 +531,8 @@ export default function BHQGantt(props: BHQGanttProps) {
 
             {/* baselines */}
             {stages.map((s, i) => {
-              const y = topPad + i * rowH;
+              const y = rowYPositions[i];
+              const rowH = rowHeights[i];
               return (
                 <g key={s.key}>
                   <line className="bhq-gantt__rowline" x1={0} x2={contentW} y1={y + rowH} y2={y + rowH} />
@@ -415,7 +552,8 @@ export default function BHQGantt(props: BHQGanttProps) {
                   const x2 = Math.min(xOf(e), contentEndX) - LEFT_LABEL_W;
                   const w = Math.max(1, x2 - x1);
                   const y = topPad + 0.5;
-                  const h = rows * rowH - 1;
+                  const totalRowsH = rowHeights.reduce((sum, h) => sum + h, 0);
+                  const h = totalRowsH - 1;
                   const cls = `bhq-gantt__availability ${a.kind}`;
                   const clsOutline = `bhq-gantt__availability-outline ${a.kind}`;
                   return (
@@ -440,13 +578,157 @@ export default function BHQGantt(props: BHQGanttProps) {
             <g clipPath={`url(#${clipId})`}>
               {stages.map((s, i) => {
                 const parts = partsByKey.get(s.key) || [];
-                const y = topPad + i * rowH + 6;
-                const h = rowH - 12;
+                const rowH = rowHeights[i];
+                const rowTop = rowYPositions[i] + 6;
+                const totalH = rowH - 12;
+
+                // Helper to get bar time range
+                const getBarRange = (p: typeof parts[0]) => {
+                  const start = p.full?.start || p.likely?.start;
+                  const end = p.full?.end || p.likely?.end;
+                  return start && end ? { start: new Date(start as any).getTime(), end: new Date(end as any).getTime() } : null;
+                };
+
+                // Check if two bars overlap in time
+                const barsOverlap = (a: typeof parts[0], b: typeof parts[0]) => {
+                  const rangeA = getBarRange(a);
+                  const rangeB = getBarRange(b);
+                  if (!rangeA || !rangeB) return false;
+                  return rangeA.start < rangeB.end && rangeA.end > rangeB.start;
+                };
+
+                // Group bars by __planId - bars with the same planId should render at the same y position
+                // This allows risky edges, unlikely hatches, and center fills to layer on top of each other
+                const planIdToIndices = new Map<string, number[]>();
+                const noPlanIdIndices: number[] = [];
+
+                for (let j = 0; j < parts.length; j++) {
+                  const planId = parts[j].__planId;
+                  if (planId) {
+                    if (!planIdToIndices.has(planId)) {
+                      planIdToIndices.set(planId, []);
+                    }
+                    planIdToIndices.get(planId)!.push(j);
+                  } else {
+                    noPlanIdIndices.push(j);
+                  }
+                }
+
+                // For each planId group, find the "primary" bar (highest __z with a range)
+                // This will be used for overlap detection between different plans
+                const primaryBarIndices: number[] = [];
+                const barToPlanGroup = new Map<number, string>();
+
+                for (const [planId, indices] of planIdToIndices) {
+                  // Find the primary bar in this group (highest __z with a range)
+                  let primaryIdx = -1;
+                  let highestZ = -1;
+                  for (const idx of indices) {
+                    const p = parts[idx];
+                    const z = p.__z ?? 0;
+                    const hasRange = !!(p.full || p.likely);
+                    if (hasRange && z > highestZ) {
+                      highestZ = z;
+                      primaryIdx = idx;
+                    }
+                  }
+                  if (primaryIdx >= 0) {
+                    primaryBarIndices.push(primaryIdx);
+                  }
+                  // Map all bars in this group to the planId
+                  for (const idx of indices) {
+                    barToPlanGroup.set(idx, planId);
+                  }
+                }
+
+                // Also include bars without __planId as individual primary bars (backwards compat)
+                for (const idx of noPlanIdIndices) {
+                  const p = parts[idx];
+                  const z = p.__z ?? 0;
+                  const hasRange = !!(p.full || p.likely);
+                  if (hasRange && (z >= 3 || z === 0)) {
+                    primaryBarIndices.push(idx);
+                  }
+                }
+
+                // Compute overlaps among primary bars only
+                const overlapCounts: number[] = parts.map(() => 1);
+                const slotIndex: number[] = parts.map(() => 0);
+
+                for (let pi = 0; pi < primaryBarIndices.length; pi++) {
+                  const j = primaryBarIndices[pi];
+                  let overlappingPrimaries: number[] = [j];
+
+                  for (let pk = 0; pk < primaryBarIndices.length; pk++) {
+                    const k = primaryBarIndices[pk];
+                    if (j !== k && barsOverlap(parts[j], parts[k])) {
+                      overlappingPrimaries.push(k);
+                    }
+                  }
+
+                  overlapCounts[j] = overlappingPrimaries.length;
+                  overlappingPrimaries.sort((a, b) => a - b);
+                  slotIndex[j] = overlappingPrimaries.indexOf(j);
+                }
+
+                // Pre-calculate y positions for primary bars
+                const primaryBarPositions = new Map<number, { y: number; h: number; cornerRadius: number }>();
+                for (const pi of primaryBarIndices) {
+                  const numOverlaps = overlapCounts[pi];
+                  const slot = slotIndex[pi];
+                  const hasOverlaps = numOverlaps > 1;
+                  const gap = hasOverlaps ? 2 : 0;
+                  const barH = hasOverlaps
+                    ? Math.max(8, (totalH - gap * (numOverlaps - 1)) / numOverlaps)
+                    : totalH;
+                  const y = hasOverlaps ? rowTop + slot * (barH + gap) : rowTop;
+                  const cornerRadius = hasOverlaps ? Math.min(4, barH / 2) : 6;
+                  primaryBarPositions.set(pi, { y, h: barH, cornerRadius });
+                }
+
+                // Map planId groups to their primary bar's position
+                const planIdToPosition = new Map<string, { y: number; h: number; cornerRadius: number }>();
+                for (const [planId, indices] of planIdToIndices) {
+                  // Find the primary bar for this group
+                  for (const idx of indices) {
+                    if (primaryBarPositions.has(idx)) {
+                      planIdToPosition.set(planId, primaryBarPositions.get(idx)!);
+                      break;
+                    }
+                  }
+                }
 
                 return (
                   <g key={`bars-${s.key}`}>
                     {parts.map((p, j) => {
                       const items: React.ReactNode[] = [];
+
+                      // Calculate y position and height
+                      // All bars with the same __planId render at the same y position (layered)
+                      // This creates: unlikely (bottom) → risky (middle) → center fill (top)
+                      let y: number;
+                      let h: number;
+                      let cornerRadius: number;
+
+                      const planId = barToPlanGroup.get(j);
+                      if (planId && planIdToPosition.has(planId)) {
+                        // Bar belongs to a planId group - use the group's position
+                        const pos = planIdToPosition.get(planId)!;
+                        y = pos.y;
+                        h = pos.h;
+                        cornerRadius = pos.cornerRadius;
+                      } else if (primaryBarPositions.has(j)) {
+                        // Bar is a primary bar without planId
+                        const pos = primaryBarPositions.get(j)!;
+                        y = pos.y;
+                        h = pos.h;
+                        cornerRadius = pos.cornerRadius;
+                      } else {
+                        // Fallback: use full row height
+                        y = rowTop;
+                        h = totalH;
+                        cornerRadius = 6;
+                      }
 
                       // likely, hatched
                       if (p.likely?.start && p.likely?.end) {
@@ -481,7 +763,7 @@ export default function BHQGantt(props: BHQGanttProps) {
 
                         items.push(
                           <clipPath id={localClipId} key={`clip-${j}`}>
-                            <rect x={x1} y={y} width={w} height={h} rx={6} ry={6} />
+                            <rect x={x1} y={y} width={w} height={h} rx={cornerRadius} ry={cornerRadius} />
                           </clipPath>
                         );
 
@@ -492,8 +774,8 @@ export default function BHQGantt(props: BHQGanttProps) {
                             y={y}
                             width={w}
                             height={h}
-                            rx={6}
-                            ry={6}
+                            rx={cornerRadius}
+                            ry={cornerRadius}
                             fill={`url(#${localPatId})`}
                             clipPath={`url(#${localClipId})`}
                             className="bhq-gantt__likely"
@@ -511,8 +793,8 @@ export default function BHQGantt(props: BHQGanttProps) {
                             y={y}
                             width={w}
                             height={h}
-                            rx={6}
-                            ry={6}
+                            rx={cornerRadius}
+                            ry={cornerRadius}
                             fill="none"
                             stroke={hatchColor}
                             strokeWidth={1.2}
@@ -535,8 +817,8 @@ export default function BHQGantt(props: BHQGanttProps) {
                             y={y}
                             width={Math.max(1, x2 - x1)}
                             height={h}
-                            rx={6}
-                            ry={6}
+                            rx={cornerRadius}
+                            ry={cornerRadius}
                             fill={fillColor}
                             opacity={fillOpacity}
                             stroke="none"

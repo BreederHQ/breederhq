@@ -63,6 +63,8 @@ export interface SendDraftResponse {
 }
 
 export function makeDrafts(http: Http) {
+  const BASE = "/api/v1";
+
   return {
     async list(params?: DraftListParams): Promise<DraftListResponse> {
       const query = new URLSearchParams();
@@ -71,22 +73,22 @@ export function makeDrafts(http: Http) {
       if (params?.limit) query.set("limit", String(params.limit));
       if (params?.offset) query.set("offset", String(params.offset));
       const qs = query.toString();
-      return http.get(`/drafts${qs ? `?${qs}` : ""}`);
+      return http.get(`${BASE}/drafts${qs ? `?${qs}` : ""}`);
     },
     async get(id: number): Promise<Draft> {
-      return http.get(`/drafts/${id}`);
+      return http.get(`${BASE}/drafts/${id}`);
     },
     async create(params: CreateDraftRequest): Promise<Draft> {
-      return http.post("/drafts", params);
+      return http.post(`${BASE}/drafts`, params);
     },
     async update(id: number, params: UpdateDraftRequest): Promise<Draft> {
-      return http.put(`/drafts/${id}`, params);
+      return http.put(`${BASE}/drafts/${id}`, params);
     },
     async delete(id: number): Promise<{ success: boolean }> {
-      return http.delete(`/drafts/${id}`);
+      return http.delete(`${BASE}/drafts/${id}`);
     },
     async send(id: number): Promise<SendDraftResponse> {
-      return http.post(`/drafts/${id}/send`, {});
+      return http.post(`${BASE}/drafts/${id}/send`, {});
     },
   };
 }

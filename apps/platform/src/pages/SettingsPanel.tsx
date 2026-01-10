@@ -14,6 +14,8 @@ import BiologySettingsTab from "../components/BiologySettingsTab";
 import DateValidationSettingsTab from "../components/DateValidationSettingsTab";
 import { TagsManagerTab } from "../components/TagsManagerTab";
 import BillingTab from "../components/BillingTab";
+import { OffspringTab, type OffspringHandle } from "../components/OffspringTab";
+import { GeneralSettingsTab, type GeneralSettingsHandle } from "../components/GeneralSettingsTab";
 // Marketplace settings moved to marketplace module at /marketplace/manage
 import { api } from "../api";
 
@@ -462,10 +464,12 @@ type Tab =
   | "payments"
   | "transactions"
   | "breeding"
+  | "offspring"
   | "programProfile"
   | "breeds"
   | "policies"
   | "credentials"
+  | "general"
   | "users"
   | "groups"
   | "tags"
@@ -490,6 +494,7 @@ const NAV: NavSection[] = [
     title: "Modules",
     items: [
       { key: "breeding", label: "Breeding" },
+      { key: "offspring", label: "Offspring" },
     ],
   },
   {
@@ -504,6 +509,7 @@ const NAV: NavSection[] = [
   {
     title: "Platform Management",
     items: [
+      { key: "general", label: "General" },
       { key: "users", label: "Users" },
       { key: "groups", label: "Groups" },
       { key: "tags", label: "Tag Manager" },
@@ -524,16 +530,19 @@ export default function SettingsPanel({ open, dirty, onDirtyChange, onClose }: P
   const [active, setActive] = React.useState<Tab>("profile");
   const [dirtyMap, setDirtyMap] = React.useState<Record<Tab, boolean>>({
     profile: false, security: false, billing: false, subscription: false, payments: false, transactions: false,
-    breeding: false, programProfile: false, breeds: false, policies: false, credentials: false, users: false, groups: false, tags: false, accessibility: false,
+    breeding: false, offspring: false, programProfile: false, breeds: false, policies: false, credentials: false,
+    general: false, users: false, groups: false, tags: false, accessibility: false,
   });
   // Edit mode state at panel level
   const [editMode, setEditMode] = React.useState(false);
   const profileRef = React.useRef<ProfileHandle>(null);
   const breedingRef = React.useRef<BreedingHandle>(null);
+  const offspringRef = React.useRef<OffspringHandle>(null);
   const breedsRef = React.useRef<BreedsHandle>(null);
   const policiesRef = React.useRef<PoliciesHandle>(null);
   const credentialsRef = React.useRef<CredentialsHandle>(null);
   const programRef = React.useRef<ProgramProfileHandle>(null);
+  const generalRef = React.useRef<GeneralSettingsHandle>(null);
   const [profileTitle, setProfileTitle] = React.useState<string>("");
 
   // Tabs that support edit mode
@@ -608,6 +617,8 @@ export default function SettingsPanel({ open, dirty, onDirtyChange, onClose }: P
       await profileRef.current?.save(); markDirty("profile", false);
     } else if (active === "breeding") {
       await breedingRef.current?.save(); markDirty("breeding", false);
+    } else if (active === "offspring") {
+      await offspringRef.current?.save(); markDirty("offspring", false);
     } else if (active === "programProfile") {
       await programRef.current?.save(); markDirty("programProfile", false);
     } else if (active === "breeds") {
@@ -616,6 +627,8 @@ export default function SettingsPanel({ open, dirty, onDirtyChange, onClose }: P
       await policiesRef.current?.save(); markDirty("policies", false);
     } else if (active === "credentials") {
       await credentialsRef.current?.save(); markDirty("credentials", false);
+    } else if (active === "general") {
+      await generalRef.current?.save(); markDirty("general", false);
     } else {
       await saveActive(active, markDirty);
       markDirty(active, false);
@@ -727,6 +740,7 @@ export default function SettingsPanel({ open, dirty, onDirtyChange, onClose }: P
                 {active === "payments" && <PaymentsTab dirty={dirtyMap.payments} onDirty={(v) => markDirty("payments", v)} />}
                 {active === "transactions" && <TransactionsTab dirty={dirtyMap.transactions} onDirty={(v) => markDirty("transactions", v)} />}
                 {active === "breeding" && <BreedingTab ref={breedingRef} dirty={dirtyMap.breeding} onDirty={(v) => markDirty("breeding", v)} />}
+                {active === "offspring" && <OffspringTab ref={offspringRef} dirty={dirtyMap.offspring} onDirty={(v) => markDirty("offspring", v)} />}
                 {active === "programProfile" && <ProgramProfileTab ref={programRef} dirty={dirtyMap.programProfile} onDirty={(v) => markDirty("programProfile", v)} editMode={editMode} />}
                 {active === "breeds" && <BreedsTab ref={breedsRef} dirty={dirtyMap.breeds} onDirty={(v) => markDirty("breeds", v)} />}
                 {active === "policies" && <PoliciesTab ref={policiesRef} dirty={dirtyMap.policies} onDirty={(v) => markDirty("policies", v)} />}
@@ -734,6 +748,7 @@ export default function SettingsPanel({ open, dirty, onDirtyChange, onClose }: P
                 {active === "users" && <UsersTab dirty={dirtyMap.users} onDirty={(v) => markDirty("users", v)} />}
                 {active === "groups" && <GroupsTab dirty={dirtyMap.groups} onDirty={(v) => markDirty("groups", v)} />}
                 {active === "tags" && <TagsManagerTab dirty={dirtyMap.tags} onDirty={(v) => markDirty("tags", v)} />}
+                {active === "general" && <GeneralSettingsTab ref={generalRef} dirty={dirtyMap.general} onDirty={(v) => markDirty("general", v)} />}
                 {active === "accessibility" && <AccessibilityTab />}
               </div>
             </main>
@@ -752,7 +767,7 @@ async function saveActive(_tab: Tab, markDirty: (tab: Tab, v: boolean) => void) 
 
 /** ───────── Profile (unchanged core) ───────── */
 function Field(props: React.InputHTMLAttributes<HTMLInputElement>) {
-  return <input {...props} className={["bhq-input", INPUT_CLS, props.className].filter(Boolean).join(" ")} />;
+  return <input {...props} autoComplete="off" data-1p-ignore data-lpignore="true" data-form-type="other" className={["bhq-input", INPUT_CLS, props.className].filter(Boolean).join(" ")} />;
 }
 type ProfileHandle = { save: () => Promise<void>; reload: () => Promise<void> };
 type ProfileForm = {
@@ -910,15 +925,15 @@ const ProfileTab = React.forwardRef<ProfileHandle, {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <label className="space-y-1">
                 <div className="text-xs text-secondary">First name</div>
-                <input className={`bhq-input ${INPUT_CLS} ${disabledCls}`} disabled={!editMode} autoComplete="given-name" value={form.firstName} onChange={(e) => setForm((f) => ({ ...f, firstName: e.target.value }))} />
+                <input className={`bhq-input ${INPUT_CLS} ${disabledCls}`} disabled={!editMode} autoComplete="off" data-1p-ignore data-lpignore="true" data-form-type="other" value={form.firstName} onChange={(e) => setForm((f) => ({ ...f, firstName: e.target.value }))} />
               </label>
               <label className="space-y-1">
                 <div className="text-xs text-secondary">Last name</div>
-                <input className={`bhq-input ${INPUT_CLS} ${disabledCls}`} disabled={!editMode} autoComplete="family-name" value={form.lastName} onChange={(e) => setForm((f) => ({ ...f, lastName: e.target.value }))} />
+                <input className={`bhq-input ${INPUT_CLS} ${disabledCls}`} disabled={!editMode} autoComplete="off" data-1p-ignore data-lpignore="true" data-form-type="other" value={form.lastName} onChange={(e) => setForm((f) => ({ ...f, lastName: e.target.value }))} />
               </label>
               <label className="space-y-1 md:col-span-2">
                 <div className="text-xs text-secondary">Nickname</div>
-                <input className={`bhq-input ${INPUT_CLS} ${disabledCls}`} disabled={!editMode} autoComplete="nickname" placeholder="Optional" value={form.nickname} onChange={(e) => setForm((f) => ({ ...f, nickname: e.target.value }))} />
+                <input className={`bhq-input ${INPUT_CLS} ${disabledCls}`} disabled={!editMode} autoComplete="off" data-1p-ignore data-lpignore="true" data-form-type="other" placeholder="Optional" value={form.nickname} onChange={(e) => setForm((f) => ({ ...f, nickname: e.target.value }))} />
               </label>
               <label className="space-y-1 md:col-span-2">
                 <div className="text-xs text-secondary">Email Address (username)</div>
@@ -957,11 +972,11 @@ const ProfileTab = React.forwardRef<ProfileHandle, {
           <div className={`rounded-xl border border-hairline bg-surface p-3 ${!editMode ? "pointer-events-none" : ""}`}>
             <div className="mb-2 text-xs uppercase tracking-wide text-secondary">Address</div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <input className={`bhq-input ${INPUT_CLS} md:col-span-2 ${disabledCls}`} disabled={!editMode} placeholder="Street" value={form.street} onChange={(e) => setForm((f) => ({ ...f, street: e.target.value }))} />
-              <input className={`bhq-input ${INPUT_CLS} md:col-span-2 ${disabledCls}`} disabled={!editMode} placeholder="Street 2" value={form.street2} onChange={(e) => setForm((f) => ({ ...f, street2: e.target.value }))} />
-              <input className={`bhq-input ${INPUT_CLS} ${disabledCls}`} disabled={!editMode} placeholder="City" value={form.city} onChange={(e) => setForm((f) => ({ ...f, city: e.target.value }))} />
-              <input className={`bhq-input ${INPUT_CLS} ${disabledCls}`} disabled={!editMode} placeholder="State / Region" value={form.state} onChange={(e) => setForm((f) => ({ ...f, state: e.target.value }))} />
-              <input className={`bhq-input ${INPUT_CLS} ${disabledCls}`} disabled={!editMode} placeholder="Postal Code" value={form.postalCode} onChange={(e) => setForm((f) => ({ ...f, postalCode: e.target.value }))} />
+              <input className={`bhq-input ${INPUT_CLS} md:col-span-2 ${disabledCls}`} disabled={!editMode} placeholder="Street" autoComplete="off" data-1p-ignore data-lpignore="true" data-form-type="other" value={form.street} onChange={(e) => setForm((f) => ({ ...f, street: e.target.value }))} />
+              <input className={`bhq-input ${INPUT_CLS} md:col-span-2 ${disabledCls}`} disabled={!editMode} placeholder="Street 2" autoComplete="off" data-1p-ignore data-lpignore="true" data-form-type="other" value={form.street2} onChange={(e) => setForm((f) => ({ ...f, street2: e.target.value }))} />
+              <input className={`bhq-input ${INPUT_CLS} ${disabledCls}`} disabled={!editMode} placeholder="City" autoComplete="off" data-1p-ignore data-lpignore="true" data-form-type="other" value={form.city} onChange={(e) => setForm((f) => ({ ...f, city: e.target.value }))} />
+              <input className={`bhq-input ${INPUT_CLS} ${disabledCls}`} disabled={!editMode} placeholder="State / Region" autoComplete="off" data-1p-ignore data-lpignore="true" data-form-type="other" value={form.state} onChange={(e) => setForm((f) => ({ ...f, state: e.target.value }))} />
+              <input className={`bhq-input ${INPUT_CLS} ${disabledCls}`} disabled={!editMode} placeholder="Postal Code" autoComplete="off" data-1p-ignore data-lpignore="true" data-form-type="other" value={form.postalCode} onChange={(e) => setForm((f) => ({ ...f, postalCode: e.target.value }))} />
               <select className={`bhq-input ${INPUT_CLS} ${disabledCls}`} disabled={!editMode} value={asCountryCode(form.country, countries)} onChange={(e) => setForm((f) => ({ ...f, country: e.currentTarget.value || "" }))}>
                 <option value="">Country</option>
                 {countries.map((c) => <option key={c.code} value={c.code}>{c.name}</option>)}
@@ -2160,6 +2175,10 @@ const ProgramProfileTab = React.forwardRef<ProgramProfileHandle, { dirty: boolea
                         onChange={(e) => updateBizIdentity("businessName", e.target.value)}
                         placeholder="Your breeding program name"
                         disabled={!editMode}
+                        autoComplete="off"
+                        data-1p-ignore
+                        data-lpignore="true"
+                        data-form-type="other"
                         className={`bhq-input ${INPUT_CLS} w-full ${!editMode ? "opacity-70 cursor-not-allowed" : ""}`}
                       />
                     </div>
@@ -2173,6 +2192,10 @@ const ProgramProfileTab = React.forwardRef<ProgramProfileHandle, { dirty: boolea
                         placeholder="Tell potential clients about your breeding program, your experience, and what makes you unique..."
                         rows={4}
                         disabled={!editMode}
+                        autoComplete="off"
+                        data-1p-ignore
+                        data-lpignore="true"
+                        data-form-type="other"
                         className={`bhq-input ${INPUT_CLS} w-full resize-none ${!editMode ? "opacity-70 cursor-not-allowed" : ""}`}
                       />
                       <div className="text-xs text-secondary text-right mt-1">{bizIdentity.bio.length}/500</div>
@@ -2243,6 +2266,10 @@ const ProgramProfileTab = React.forwardRef<ProgramProfileHandle, { dirty: boolea
                             onChange={(e) => updateBizIdentity("instagram", e.target.value)}
                             placeholder="@yourbusiness"
                             disabled={!editMode}
+                            autoComplete="off"
+                            data-1p-ignore
+                            data-lpignore="true"
+                            data-form-type="other"
                             className={`bhq-input ${INPUT_CLS} w-full ${!editMode ? "opacity-70 cursor-not-allowed" : ""}`}
                           />
                         </div>
@@ -2265,6 +2292,10 @@ const ProgramProfileTab = React.forwardRef<ProgramProfileHandle, { dirty: boolea
                             onChange={(e) => updateBizIdentity("facebook", e.target.value)}
                             placeholder="YourPage"
                             disabled={!editMode}
+                            autoComplete="off"
+                            data-1p-ignore
+                            data-lpignore="true"
+                            data-form-type="other"
                             className={`bhq-input ${INPUT_CLS} w-full ${!editMode ? "opacity-70 cursor-not-allowed" : ""}`}
                           />
                         </div>
@@ -2309,6 +2340,10 @@ const ProgramProfileTab = React.forwardRef<ProgramProfileHandle, { dirty: boolea
                             onChange={(e) => updateAddress("street", e.target.value)}
                             placeholder="123 Main St"
                             disabled={!editMode}
+                            autoComplete="off"
+                            data-1p-ignore
+                            data-lpignore="true"
+                            data-form-type="other"
                             className={`bhq-input ${INPUT_CLS} w-full ${!editMode ? "opacity-70 cursor-not-allowed" : ""}`}
                           />
                         </label>
@@ -2320,6 +2355,10 @@ const ProgramProfileTab = React.forwardRef<ProgramProfileHandle, { dirty: boolea
                             onChange={(e) => updateAddress("city", e.target.value)}
                             placeholder="City"
                             disabled={!editMode}
+                            autoComplete="off"
+                            data-1p-ignore
+                            data-lpignore="true"
+                            data-form-type="other"
                             className={`bhq-input ${INPUT_CLS} w-full ${!editMode ? "opacity-70 cursor-not-allowed" : ""}`}
                           />
                         </label>
@@ -2331,6 +2370,10 @@ const ProgramProfileTab = React.forwardRef<ProgramProfileHandle, { dirty: boolea
                             onChange={(e) => updateAddress("state", e.target.value)}
                             placeholder="State"
                             disabled={!editMode}
+                            autoComplete="off"
+                            data-1p-ignore
+                            data-lpignore="true"
+                            data-form-type="other"
                             className={`bhq-input ${INPUT_CLS} w-full ${!editMode ? "opacity-70 cursor-not-allowed" : ""}`}
                           />
                         </label>
@@ -2342,6 +2385,10 @@ const ProgramProfileTab = React.forwardRef<ProgramProfileHandle, { dirty: boolea
                             onChange={(e) => updateAddress("zip", e.target.value)}
                             placeholder="12345"
                             disabled={!editMode}
+                            autoComplete="off"
+                            data-1p-ignore
+                            data-lpignore="true"
+                            data-form-type="other"
                             className={`bhq-input ${INPUT_CLS} w-full ${!editMode ? "opacity-70 cursor-not-allowed" : ""}`}
                           />
                         </label>
@@ -2353,6 +2400,10 @@ const ProgramProfileTab = React.forwardRef<ProgramProfileHandle, { dirty: boolea
                             onChange={(e) => updateAddress("country", e.target.value)}
                             placeholder="Country"
                             disabled={!editMode}
+                            autoComplete="off"
+                            data-1p-ignore
+                            data-lpignore="true"
+                            data-form-type="other"
                             className={`bhq-input ${INPUT_CLS} w-full ${!editMode ? "opacity-70 cursor-not-allowed" : ""}`}
                           />
                         </label>
@@ -2923,6 +2974,10 @@ const PoliciesTab = React.forwardRef<PoliciesHandle, { dirty: boolean; onDirty: 
                 onChange={(e) => setProfile(p => ({ ...p, placementPolicies: { ...p.placementPolicies, note: e.target.value.slice(0, 300) } }))}
                 placeholder="Optional notes..."
                 rows={2}
+                autoComplete="off"
+                data-1p-ignore
+                data-lpignore="true"
+                data-form-type="other"
                 className="w-full mt-1 bg-card border border-hairline rounded-md px-3 py-2 text-sm placeholder:text-secondary outline-none focus:ring-2 focus:ring-[hsl(var(--brand-orange))] resize-none"
               />
               <div className="text-xs text-secondary text-right mt-1">{profile.placementPolicies.note.length}/300</div>
@@ -3100,6 +3155,10 @@ const CredentialsTab = React.forwardRef<CredentialsHandle, { dirty: boolean; onD
                     placeholder="Optional notes..."
                     rows={2}
                     disabled={!editMode}
+                    autoComplete="off"
+                    data-1p-ignore
+                    data-lpignore="true"
+                    data-form-type="other"
                     className={`w-full mt-1 bg-card border border-hairline rounded-md px-3 py-2 text-sm placeholder:text-secondary outline-none focus:ring-2 focus:ring-[hsl(var(--brand-orange))] resize-none ${!editMode ? "opacity-60 cursor-not-allowed" : ""}`}
                   />
                   <div className="text-xs text-secondary text-right mt-1">{profile.registrationsNote.length}/200</div>
@@ -3138,6 +3197,10 @@ const CredentialsTab = React.forwardRef<CredentialsHandle, { dirty: boolean; onD
                     placeholder="Optional notes..."
                     rows={2}
                     disabled={!editMode}
+                    autoComplete="off"
+                    data-1p-ignore
+                    data-lpignore="true"
+                    data-form-type="other"
                     className={`w-full mt-1 bg-card border border-hairline rounded-md px-3 py-2 text-sm placeholder:text-secondary outline-none focus:ring-2 focus:ring-[hsl(var(--brand-orange))] resize-none ${!editMode ? "opacity-60 cursor-not-allowed" : ""}`}
                   />
                   <div className="text-xs text-secondary text-right mt-1">{profile.healthNote.length}/200</div>
@@ -3176,6 +3239,10 @@ const CredentialsTab = React.forwardRef<CredentialsHandle, { dirty: boolean; onD
                     placeholder="Optional notes..."
                     rows={2}
                     disabled={!editMode}
+                    autoComplete="off"
+                    data-1p-ignore
+                    data-lpignore="true"
+                    data-form-type="other"
                     className={`w-full mt-1 bg-card border border-hairline rounded-md px-3 py-2 text-sm placeholder:text-secondary outline-none focus:ring-2 focus:ring-[hsl(var(--brand-orange))] resize-none ${!editMode ? "opacity-60 cursor-not-allowed" : ""}`}
                   />
                   <div className="text-xs text-secondary text-right mt-1">{profile.breedingNote.length}/200</div>
@@ -3214,6 +3281,10 @@ const CredentialsTab = React.forwardRef<CredentialsHandle, { dirty: boolean; onD
                     placeholder="Optional notes..."
                     rows={2}
                     disabled={!editMode}
+                    autoComplete="off"
+                    data-1p-ignore
+                    data-lpignore="true"
+                    data-form-type="other"
                     className={`w-full mt-1 bg-card border border-hairline rounded-md px-3 py-2 text-sm placeholder:text-secondary outline-none focus:ring-2 focus:ring-[hsl(var(--brand-orange))] resize-none ${!editMode ? "opacity-60 cursor-not-allowed" : ""}`}
                   />
                   <div className="text-xs text-secondary text-right mt-1">{profile.careNote.length}/200</div>
@@ -3260,7 +3331,7 @@ function GroupsTab({ onDirty }: { dirty: boolean; onDirty: (v: boolean) => void 
       <h4 className="font-medium">Groups</h4>
       <p className="text-sm text-secondary">Create and manage user groups (placeholder).</p>
       <div className="flex gap-2">
-        <input className={`bhq-input ${INPUT_CLS} flex-1`} placeholder="New group name" onChange={() => onDirty(true)} />
+        <input className={`bhq-input ${INPUT_CLS} flex-1`} placeholder="New group name" autoComplete="off" data-1p-ignore data-lpignore="true" data-form-type="other" onChange={() => onDirty(true)} />
         <Button size="sm" onClick={() => onDirty(true)}>Add group</Button>
       </div>
     </Card>
@@ -3291,6 +3362,7 @@ function FieldNum(props: { label: string; value: number; onChange: (n: number) =
     <label className="space-y-1">
       <div className="text-xs text-secondary">{props.label}</div>
       <input type="number" className="bhq-input w-28 h-9 rounded-md border border-hairline bg-surface px-2 text-sm"
+        autoComplete="off" data-1p-ignore data-lpignore="true" data-form-type="other"
         value={Number.isFinite(props.value) ? props.value : 0} onChange={(e) => props.onChange(Number(e.currentTarget.value || 0))}
       />
     </label>
@@ -3634,6 +3706,10 @@ function FieldNumDerived(props: {
           step="1"
           inputMode="numeric"
           disabled={!!disabled}
+          autoComplete="off"
+          data-1p-ignore
+          data-lpignore="true"
+          data-form-type="other"
           className={[
             "bhq-input w-24 h-8 rounded-md border bg-surface px-2 text-sm",
             disabled ? "opacity-60 cursor-not-allowed" : "",

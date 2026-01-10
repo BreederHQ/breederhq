@@ -25,6 +25,7 @@ import {
   Input,
   IntlPhoneField,
   PillToggle,
+  useViewMode,
 } from "@bhq/ui";
 import { Download, MoreHorizontal, ChevronDown, LayoutGrid, Table as TableIcon } from "lucide-react";
 import { ContactCardView } from "./components/ContactCardView";
@@ -507,16 +508,8 @@ export default function AppContacts() {
   });
   React.useEffect(() => { try { localStorage.setItem(Q_KEY, q); } catch { } }, [q]);
 
-  // View mode toggle (table vs cards) - defaults to cards
-  const [viewMode, setViewMode] = React.useState<ViewMode>(() => {
-    try {
-      const stored = localStorage.getItem(VIEW_MODE_KEY);
-      return (stored === "table" ? "table" : "cards") as ViewMode;
-    } catch { return "cards"; }
-  });
-  React.useEffect(() => {
-    try { localStorage.setItem(VIEW_MODE_KEY, viewMode); } catch { }
-  }, [viewMode]);
+  // View mode toggle (table vs cards) - uses tenant preferences as default
+  const { viewMode, setViewMode } = useViewMode({ module: "contacts" });
 
   const [qDebounced, setQDebounced] = React.useState(q);
   React.useEffect(() => {

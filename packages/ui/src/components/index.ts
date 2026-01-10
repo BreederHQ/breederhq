@@ -7,6 +7,7 @@ export * from "./Button";
 // Calendar excluded from barrel - import directly from "@bhq/ui/components/Calendar" to avoid FullCalendar dep
 export * from "./Card";
 export * from "./ChecklistFilter";
+export * from "./ColorPicker";
 export * from "./ColumnsPopover";
 export * from "./CountrySelect";
 export * from "./DatePicker";

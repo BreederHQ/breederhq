@@ -29,6 +29,10 @@ export function FiltersBar({
           placeholder="Search breeders or breeds…"
           value={search}
           onChange={(e) => onSearchChange(e.target.value)}
+          autoComplete="off"
+          data-1p-ignore
+          data-lpignore="true"
+          data-form-type="other"
           className="w-full h-11 px-3.5 rounded-portal-sm bg-portal-elevated border border-border-subtle text-sm text-white placeholder:text-text-muted focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30 transition-colors"
         />
       </div>
@@ -42,6 +46,10 @@ export function FiltersBar({
           placeholder="City or state"
           value={location}
           onChange={(e) => onLocationChange(e.target.value)}
+          autoComplete="off"
+          data-1p-ignore
+          data-lpignore="true"
+          data-form-type="other"
           className="w-full h-11 px-3.5 rounded-portal-sm bg-portal-elevated border border-border-subtle text-sm text-white placeholder:text-text-muted focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30 transition-colors"
         />
       </div>

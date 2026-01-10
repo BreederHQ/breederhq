@@ -136,6 +136,10 @@ export function ThreadView({
             onKeyDown={handleKeyDown}
             placeholder="Type a message..."
             rows={1}
+            autoComplete="off"
+            data-1p-ignore
+            data-lpignore="true"
+            data-form-type="other"
             className="flex-1 min-h-[40px] max-h-[120px] px-3 py-2 rounded-portal-sm bg-portal-card border border-border-subtle text-sm text-white placeholder-text-muted focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30 resize-none transition-colors"
             disabled={sending}
           />

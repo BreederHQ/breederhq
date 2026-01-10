@@ -18,6 +18,7 @@ import {
   DatePicker,
   TagPicker,
   type TagOption,
+  useViewMode,
 } from "@bhq/ui";
 import type { BadgeProps } from "@bhq/ui";
 
@@ -40,6 +41,7 @@ import {
 } from "../api";
 
 import { OffspringCardView } from "../components/OffspringCardView";
+import { CollarPicker, CollarSwatch } from "../components/CollarPicker";
 
 import { readTenantIdFast } from "@bhq/ui/utils/tenant";
 
@@ -57,53 +59,6 @@ const labelClass = "mt-3 text-xs text-secondary";
 
 const MODAL_Z = 2147485000;
 
-const WHELPING_COLLAR_SWATCHES = [
-  { label: "Red", value: "Red", hex: "#ef4444" },
-  { label: "Orange", value: "Orange", hex: "#f97316" },
-  { label: "Yellow", value: "Yellow", hex: "#eab308" },
-  { label: "Green", value: "Green", hex: "#22c55e" },
-  { label: "Blue", value: "Blue", hex: "#3b82f6" },
-  { label: "Purple", value: "Purple", hex: "#a855f7" },
-  { label: "Pink", value: "Pink", hex: "#ec4899" },
-  { label: "Black", value: "Black", hex: "#111827" },
-  { label: "White", value: "White", hex: "#f9fafb" },
-];
-const BIRTH_COLLAR_SWATCHES = WHELPING_COLLAR_SWATCHES;
-
-const __og_COLLAR_COLOR_SWATCHES = [
-  { id: "red", name: "Red", hex: "#ef4444" },
-  { id: "orange", name: "Orange", hex: "#f97316" },
-  { id: "yellow", name: "Yellow", hex: "#eab308" },
-  { id: "green", name: "Green", hex: "#22c55e" },
-  { id: "blue", name: "Blue", hex: "#3b82f6" },
-  { id: "purple", name: "Purple", hex: "#a855f7" },
-  { id: "pink", name: "Pink", hex: "#ec4899" },
-  { id: "black", name: "Black", hex: "#111827" },
-  { id: "white", name: "White", hex: "#f9fafb" },
-];
-
-function __og_resolveCollarColor(input: any): {
-  id: string | null;
-  name: string | null;
-  hex: string | null;
-} {
-  if (typeof input !== "string") return { id: null, name: null, hex: null };
-  const trimmed = input.trim();
-  if (!trimmed) return { id: null, name: null, hex: null };
-
-  const lower = trimmed.toLowerCase();
-  const match = __og_COLLAR_COLOR_SWATCHES.find(
-    (c) =>
-      c.id.toLowerCase() === lower ||
-      c.name.toLowerCase() === lower,
-  );
-
-  if (!match) {
-    return { id: lower, name: trimmed, hex: null };
-  }
-
-  return { id: match.id, name: match.name, hex: match.hex };
-}
 
 
 
@@ -1545,20 +1500,6 @@ function CreateOffspringOverlayContent({
       ? String(whelpingCollarValue)
       : "Not set";
 
-  const whelpingCollarColorHex = (() => {
-    const v = (whelpingCollarValue ?? "")
-      .toString()
-      .toLowerCase();
-
-    const match = BIRTH_COLLAR_SWATCHES.find((opt) => {
-      const val = opt.value.toLowerCase();
-      const label = opt.label.toLowerCase();
-      return val === v || label === v;
-    });
-
-    return match?.hex ?? null;
-  })();
-
   const panelRef = React.useRef<HTMLDivElement | null>(null);
 
   // derive UI species string for BreedCombo
@@ -1778,6 +1719,10 @@ function CreateOffspringOverlayContent({
                       value={form.name ?? ""}
                       onChange={(e) => handleChange("name", e.target.value)}
                       placeholder="Enter the Offspring Name or a Placeholder"
+                      autoComplete="off"
+                      data-1p-ignore
+                      data-lpignore="true"
+                      data-form-type="other"
                     />
                   </label>
 
@@ -1925,6 +1870,10 @@ function CreateOffspringOverlayContent({
                           handleChange("breed", e.target.value ? (e.target.value as any) : null)
                         }
                         placeholder="Enter breed when not linked to a group"
+                        autoComplete="off"
+                        data-1p-ignore
+                        data-lpignore="true"
+                        data-form-type="other"
                       />
                     </label>
                   )}
@@ -1962,6 +1911,10 @@ function CreateOffspringOverlayContent({
                         )
                       }
                       placeholder="Optional"
+                      autoComplete="off"
+                      data-1p-ignore
+                      data-lpignore="true"
+                      data-form-type="other"
                     />
                   </label>
 
@@ -1983,6 +1936,10 @@ function CreateOffspringOverlayContent({
                         )
                       }
                       placeholder="$"
+                      autoComplete="off"
+                      data-1p-ignore
+                      data-lpignore="true"
+                      data-form-type="other"
                     />
                   </label>
 
@@ -1991,59 +1948,16 @@ function CreateOffspringOverlayContent({
                     <span className="text-xs text-secondary">
                       Whelping Collar Color
                     </span>
-                    <div className="relative w-full max-w-xs">
-                      <button
-                        type="button"
-                        className={cx(
-                          inputClass,
-                          "flex items-center justify-between text-left cursor-pointer",
-                        )}
-                        onClick={() => setShowWhelpPalette((prev) => !prev)}
-                      >
-                        <span className="flex items-center gap-2">
-                          {whelpingCollarColorHex && (
-                            <span
-                              className="h-3 w-3 rounded-full border border-border"
-                              style={{ backgroundColor: whelpingCollarColorHex }}
-                            />
-                          )}
-                          <span>
-                            {whelpingCollarLabel === "Not set"
-                              ? "Select collar color"
-                              : whelpingCollarLabel}
-                          </span>
-                        </span>
-                        <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
-                      </button>
-
-                      {showWhelpPalette && (
-                        <div className="absolute z-20 mt-1 w-full rounded-md border border-border bg-surface shadow-lg">
-                          <ul className="max-h-48 overflow-y-auto py-1 text-xs">
-                            {BIRTH_COLLAR_SWATCHES.map((opt) => (
-                              <li key={opt.value}>
-                                <button
-                                  type="button"
-                                  className="flex w-full items-center gap-2 px-2 py-1.5 text-left hover:bg-muted"
-                                  onClick={() => {
-                                    setForm((prev) => ({
-                                      ...prev,
-                                      whelpingCollarColor: opt.label,
-                                    }));
-                                    setShowWhelpPalette(false);
-                                  }}
-                                >
-                                  <span
-                                    className="h-3 w-3 rounded-full border border-border"
-                                    style={{ backgroundColor: opt.hex }}
-                                  />
-                                  <span>{opt.label}</span>
-                                </button>
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
-                    </div>
+                    <CollarPicker
+                      value={form.whelpingCollarColor}
+                      onChange={(colorLabel) => {
+                        setForm((prev) => ({
+                          ...prev,
+                          whelpingCollarColor: colorLabel,
+                        }));
+                      }}
+                      className="w-full max-w-xs"
+                    />
                   </label>
 
                   {/* Notes */}
@@ -2058,6 +1972,10 @@ function CreateOffspringOverlayContent({
                         handleChange("notes", e.target.value as any)
                       }
                       placeholder="Optional notes about this offspring"
+                      autoComplete="off"
+                      data-1p-ignore
+                      data-lpignore="true"
+                      data-form-type="other"
                     />
                   </label>
                 </div>
@@ -2335,24 +2253,8 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
   const [sorts, setSorts] = React.useState<{ key: ColumnKey; dir: "asc" | "desc" }[]>([]);
   const cols = hooks.useColumns(ALL_COLUMNS as any, OFFSPRING_STORAGE_KEY);
 
-  // View mode state (table or cards) - defaults to cards
-  const [viewMode, setViewMode] = React.useState<ViewMode>(() => {
-    try {
-      const stored = localStorage.getItem("bhq:offspring:viewMode");
-      return (stored === "table" ? "table" : "cards") as ViewMode;
-    } catch {
-      return "cards";
-    }
-  });
-
-  // Persist view mode
-  React.useEffect(() => {
-    try {
-      localStorage.setItem("bhq:offspring:viewMode", viewMode);
-    } catch {
-      // ignore storage errors
-    }
-  }, [viewMode]);
+  // View mode state (table or cards) - uses tenant preferences as default
+  const { viewMode, setViewMode } = useViewMode({ module: "offspring" });
   const visibleSafe = cols.visible && cols.visible.length > 0 ? cols.visible : ALL_COLUMNS;
   const [drawer, setDrawer] = React.useState<OffspringRow | null>(null);
   const [drawerTab, setDrawerTab] = React.useState<
@@ -3097,32 +2999,11 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
 
                       if (k === "whelpingCollarColor") {
                         const value = r.whelpingCollarColor;
-
-                        if (!value) {
-                          val = "-";
-                        } else {
-                          const lower = value.toString().toLowerCase();
-
-                          const match = BIRTH_COLLAR_SWATCHES.find((opt) => {
-                            const valLower = opt.value.toLowerCase();
-                            const labelLower = opt.label.toLowerCase();
-                            return valLower === lower || labelLower === lower;
-                          });
-
-                          const hex = match?.hex ?? null;
-
-                          val = (
-                            <span className="inline-flex items-center justify-center gap-1 text-xs">
-                              {hex && (
-                                <span
-                                  className="inline-block h-3 w-3 rounded-full border border-border"
-                                  style={{ backgroundColor: hex }}
-                                />
-                              )}
-                              <span>{value}</span>
-                            </span>
-                          );
-                        }
+                        val = value ? (
+                          <CollarSwatch color={value} showLabel />
+                        ) : (
+                          "-"
+                        );
                       }
 
 
@@ -3537,20 +3418,6 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
                     const whelpingCollarLabel =
                       whelpingCollarValue || "Not set";
 
-                    const whelpingCollarColorHex = (() => {
-                      const v = (whelpingCollarValue ?? "")
-                        .toString()
-                        .toLowerCase();
-
-                      const match = BIRTH_COLLAR_SWATCHES.find((opt) => {
-                        const val = opt.value.toLowerCase();
-                        const label = opt.label.toLowerCase();
-                        return val === v || label === v;
-                      });
-
-                      return match?.hex ?? null;
-                    })();
-
                     const groupLabelFromOptions = groupOptions.find(
                       (opt) => opt.id === row.groupId
                     )?.label;
@@ -3693,6 +3560,10 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
                                             prev ? { ...prev, name: e.target.value } : prev,
                                           )
                                         }
+                                        autoComplete="off"
+                                        data-1p-ignore
+                                        data-lpignore="true"
+                                        data-form-type="other"
                                       />
                                     ) : (
                                       name
@@ -3799,6 +3670,10 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
                                             prev ? { ...prev, microchip: e.target.value } : prev,
                                           )
                                         }
+                                        autoComplete="off"
+                                        data-1p-ignore
+                                        data-lpignore="true"
+                                        data-form-type="other"
                                       />
                                     ) : (
                                       microchipLabel
@@ -3811,75 +3686,22 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
                                   <dt className={labelClass}>Whelping Collar Color</dt>
                                   <dd className="mt-1 text-sm">
                                     {drawerMode === "edit" && coreForm ? (
-                                      <div className="relative w-full max-w-xs">
-                                        <button
-                                          type="button"
-                                          className={cx(
-                                            inputClass,
-                                            "flex items-center justify-between text-left cursor-pointer",
-                                          )}
-                                          onClick={() =>
-                                            setShowWhelpPalette((prev) => !prev)
-                                          }
-                                        >
-                                          <span className="flex items-center gap-2">
-                                            {whelpingCollarColorHex && (
-                                              <span
-                                                className="h-3 w-3 rounded-full border border-border"
-                                                style={{ backgroundColor: whelpingCollarColorHex }}
-                                              />
-                                            )}
-                                            <span>
-                                              {whelpingCollarLabel === "Not set"
-                                                ? "Select collar color"
-                                                : whelpingCollarLabel}
-                                            </span>
-                                          </span>
-                                          <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
-                                        </button>
-
-                                        {showWhelpPalette && (
-                                          <div className="absolute z-20 mt-1 w-full rounded-md border border-border bg-surface shadow-lg">
-                                            <ul className="max-h-48 overflow-y-auto py-1 text-xs">
-                                              {BIRTH_COLLAR_SWATCHES.map((opt) => (
-                                                <li key={opt.value}>
-                                                  <button
-                                                    type="button"
-                                                    className="flex w-full items-center gap-2 px-2 py-1.5 text-left hover:bg-muted"
-                                                    onClick={() => {
-                                                      setCoreForm((prev) =>
-                                                        prev
-                                                          ? {
-                                                            ...prev,
-                                                            whelpingCollarColor: opt.label,
-                                                          }
-                                                          : prev,
-                                                      );
-                                                      setShowWhelpPalette(false);
-                                                    }}
-                                                  >
-                                                    <span
-                                                      className="h-3 w-3 rounded-full border border-border"
-                                                      style={{ backgroundColor: opt.hex }}
-                                                    />
-                                                    <span>{opt.label}</span>
-                                                  </button>
-                                                </li>
-                                              ))}
-                                            </ul>
-                                          </div>
-                                        )}
-                                      </div>
+                                      <CollarPicker
+                                        value={coreForm.whelpingCollarColor}
+                                        onChange={(colorLabel) => {
+                                          setCoreForm((prev) =>
+                                            prev
+                                              ? { ...prev, whelpingCollarColor: colorLabel }
+                                              : prev
+                                          );
+                                        }}
+                                        className="w-full max-w-xs"
+                                      />
                                     ) : (
-                                      <div className="inline-flex items-center gap-2">
-                                        {whelpingCollarColorHex && (
-                                          <span
-                                            className="h-3 w-3 rounded-full border border-border"
-                                            style={{ backgroundColor: whelpingCollarColorHex }}
-                                          />
-                                        )}
-                                        <span>{whelpingCollarLabel}</span>
-                                      </div>
+                                      <CollarSwatch
+                                        color={whelpingCollarValue}
+                                        showLabel
+                                      />
                                     )}
                                   </dd>
                                 </div>
@@ -4072,6 +3894,10 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
                                             prev ? { ...prev, color: e.target.value } : prev,
                                           )
                                         }
+                                        autoComplete="off"
+                                        data-1p-ignore
+                                        data-lpignore="true"
+                                        data-form-type="other"
                                       />
                                     ) : (
                                       row.color ?? "Not set"
@@ -4246,6 +4072,10 @@ export default function OffspringPage(props: { embed?: boolean } = { embed: fals
                                                   contractId: e.target.value ? e.target.value : null,
                                                 })
                                               }
+                                              autoComplete="off"
+                                              data-1p-ignore
+                                              data-lpignore="true"
+                                              data-form-type="other"
                                             />
                                           </div>
                                         </div>

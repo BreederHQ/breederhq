@@ -316,3 +316,70 @@ export const LEAD_STATUS_CONFIG: Record<LeadStatus, { label: string; color: stri
   lost: { label: "Lost", color: "red", order: 6 },
   inactive: { label: "Inactive", color: "gray", order: 7 },
 };
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MESSAGING HUB - Send emails to any address with optional party linking
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Extended email input for MessagingHub - supports sending without a party association
+ */
+export interface SendEmailInputV2 {
+  partyId?: number | null;       // Optional - null for unlinked emails
+  toAddresses: string[];         // Required recipient email(s)
+  subject: string;
+  bodyText?: string;
+  bodyHtml?: string;
+  templateKey?: string;
+  category?: "transactional" | "marketing";
+  metadata?: Record<string, any>;
+  bundleId?: number;
+}
+
+/**
+ * Unlinked email - sent to addresses not associated with a contact/org
+ */
+export interface UnlinkedEmail {
+  id: ID;
+  tenantId: number;
+  toAddresses: string[];
+  fromAddress: string;
+  subject: string;
+  bodyPreview?: string;
+  bodyText?: string;
+  bodyHtml?: string;
+  status: EmailStatus;
+  direction: EmailDirection;
+  sentAt?: string;
+  createdAt: string;
+  updatedAt: string;
+  // Reconciliation fields
+  linkedPartyId?: number | null;
+  linkedAt?: string | null;
+  linkedPartyName?: string | null;
+  linkedPartyKind?: "CONTACT" | "ORGANIZATION" | null;
+}
+
+/**
+ * Response from email-to-party lookup
+ */
+export interface EmailLookupMatch {
+  email: string;
+  partyId: number;
+  partyKind: "CONTACT" | "ORGANIZATION";
+  partyName: string;
+}
+
+export interface EmailLookupResponse {
+  matches: EmailLookupMatch[];
+  unmatched: string[];
+}
+
+/**
+ * Params for listing unlinked emails
+ */
+export interface UnlinkedEmailListParams {
+  limit?: number;
+  offset?: number;
+  linkedStatus?: "linked" | "unlinked" | "all";
+}

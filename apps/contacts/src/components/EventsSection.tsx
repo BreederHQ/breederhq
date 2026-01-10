@@ -244,6 +244,10 @@ export function EventsSection({ partyId, partyName, birthday, api }: EventsSecti
               placeholder="Title..."
               value={newEventTitle}
               onChange={(e) => setNewEventTitle((e.target as HTMLInputElement).value)}
+              autoComplete="off"
+              data-1p-ignore
+              data-lpignore="true"
+              data-form-type="other"
             />
             <input
               type="date"
@@ -282,6 +286,10 @@ export function EventsSection({ partyId, partyName, birthday, api }: EventsSecti
               placeholder="Label..."
               value={newMilestoneLabel}
               onChange={(e) => setNewMilestoneLabel((e.target as HTMLInputElement).value)}
+              autoComplete="off"
+              data-1p-ignore
+              data-lpignore="true"
+              data-form-type="other"
             />
             <input
               type="date"

@@ -3,6 +3,7 @@
 
 import * as React from "react";
 import * as TooltipPrimitive from "@radix-ui/react-tooltip";
+import { getFlyoutRoot } from "../overlay/core";
 
 export interface TooltipProps {
   /** The content to show in the tooltip */
@@ -33,6 +34,12 @@ export function Tooltip({
   open,
   onOpenChange,
 }: TooltipProps) {
+  // Get flyout root for portaling (ensures tooltip appears above all overlays)
+  const [container, setContainer] = React.useState<HTMLElement | null>(null);
+  React.useEffect(() => {
+    setContainer(getFlyoutRoot());
+  }, []);
+
   if (!content) {
     return <>{children}</>;
   }
@@ -44,12 +51,12 @@ export function Tooltip({
     >
       <TooltipPrimitive.Root open={open} onOpenChange={onOpenChange}>
         <TooltipPrimitive.Trigger asChild>{children}</TooltipPrimitive.Trigger>
-        <TooltipPrimitive.Portal>
+        <TooltipPrimitive.Portal container={container}>
           <TooltipPrimitive.Content
             side={side}
             align={align}
             sideOffset={4}
-            className="z-50 px-3 py-2 text-sm font-medium text-zinc-100 bg-zinc-900 rounded-lg border border-amber-500/50 shadow-[0_0_15px_rgba(245,158,11,0.4)] animate-in fade-in-0 zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2"
+            className="z-[9999] px-3 py-2 text-sm font-medium text-zinc-300 bg-zinc-900 rounded-lg border border-amber-500/50 shadow-[0_0_15px_rgba(245,158,11,0.4)] animate-in fade-in-0 zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2"
           >
             {content}
             <TooltipPrimitive.Arrow className="fill-zinc-900" />

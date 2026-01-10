@@ -3,6 +3,7 @@
 
 import * as React from "react";
 import { DollarSign, FileCheck, Home, Users } from "lucide-react";
+import { CollarSwatch } from "./CollarPicker";
 
 type OffspringRow = {
   id: number;
@@ -86,32 +87,6 @@ function SexIndicator({ sex }: { sex?: string | null }) {
   return null;
 }
 
-// Collar color swatch
-function CollarSwatch({ color }: { color?: string | null }) {
-  if (!color) return null;
-
-  const SWATCH_MAP: Record<string, string> = {
-    red: "#ef4444",
-    orange: "#f97316",
-    yellow: "#eab308",
-    green: "#22c55e",
-    blue: "#3b82f6",
-    purple: "#a855f7",
-    pink: "#ec4899",
-    black: "#111827",
-    white: "#f9fafb",
-  };
-
-  const hex = SWATCH_MAP[color.toLowerCase()] || color;
-
-  return (
-    <span
-      className="w-3 h-3 rounded-full border border-white/20 inline-block"
-      style={{ backgroundColor: hex }}
-      title={`Collar: ${color}`}
-    />
-  );
-}
 
 // Format date for display
 function formatDate(dateStr?: string | null): string {

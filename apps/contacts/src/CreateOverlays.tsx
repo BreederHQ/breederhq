@@ -239,6 +239,10 @@ const OrganizationSelect: React.FC<{
             setOpen(false);
           }
         }}
+        autoComplete="off"
+        data-1p-ignore
+        data-lpignore="true"
+        data-form-type="other"
       />
       {open && (
         <div
@@ -498,19 +502,19 @@ export const CreatePersonOverlay: React.FC<CreatePersonOverlayProps> = ({
               <div className="text-xs text-secondary mb-1">
                 First name <span className="text-[hsl(var(--brand-orange))]">*</span>
               </div>
-              <Input value={firstName} onChange={(e) => setFirstName((e.currentTarget as HTMLInputElement).value)} />
+              <Input value={firstName} onChange={(e) => setFirstName((e.currentTarget as HTMLInputElement).value)} autoComplete="off" data-1p-ignore data-lpignore="true" data-form-type="other" />
             </div>
             <div>
               <div className="text-xs text-secondary mb-1">
                 Last name <span className="text-[hsl(var(--brand-orange))]">*</span>
               </div>
-              <Input value={lastName} onChange={(e) => setLastName((e.currentTarget as HTMLInputElement).value)} />
+              <Input value={lastName} onChange={(e) => setLastName((e.currentTarget as HTMLInputElement).value)} autoComplete="off" data-1p-ignore data-lpignore="true" data-form-type="other" />
             </div>
 
             {/* Nickname */}
             <div className="sm:col-span-2">
               <div className="text-xs text-secondary mb-1">Preferred / Nickname</div>
-              <Input value={nickname} onChange={(e) => setNickname((e.currentTarget as HTMLInputElement).value)} />
+              <Input value={nickname} onChange={(e) => setNickname((e.currentTarget as HTMLInputElement).value)} autoComplete="off" data-1p-ignore data-lpignore="true" data-form-type="other" />
             </div>
 
             {/* Organization */}
@@ -522,7 +526,7 @@ export const CreatePersonOverlay: React.FC<CreatePersonOverlayProps> = ({
             {/* Email */}
             <div className="sm:col-span-2">
               <div className="text-xs text-secondary mb-1">Email</div>
-              <Input type="email" value={email} onChange={(e) => setEmail((e.currentTarget as HTMLInputElement).value)} />
+              <Input type="email" value={email} onChange={(e) => setEmail((e.currentTarget as HTMLInputElement).value)} autoComplete="off" data-1p-ignore data-lpignore="true" data-form-type="other" />
             </div>
 
             {/* Phones */}
@@ -550,25 +554,25 @@ export const CreatePersonOverlay: React.FC<CreatePersonOverlayProps> = ({
             {/* Address */}
             <div className="sm:col-span-2">
               <div className="text-xs text-secondary mb-1">Street</div>
-              <Input value={street} onChange={(e) => setStreet((e.currentTarget as HTMLInputElement).value)} />
+              <Input value={street} onChange={(e) => setStreet((e.currentTarget as HTMLInputElement).value)} autoComplete="off" data-1p-ignore data-lpignore="true" data-form-type="other" />
             </div>
             <div className="sm:col-span-2">
               <div className="text-xs text-secondary mb-1">Street 2</div>
-              <Input value={street2} onChange={(e) => setStreet2((e.currentTarget as HTMLInputElement).value)} />
+              <Input value={street2} onChange={(e) => setStreet2((e.currentTarget as HTMLInputElement).value)} autoComplete="off" data-1p-ignore data-lpignore="true" data-form-type="other" />
             </div>
 
             <div>
               <div className="text-xs text-secondary mb-1">City</div>
-              <Input value={city} onChange={(e) => setCity((e.currentTarget as HTMLInputElement).value)} />
+              <Input value={city} onChange={(e) => setCity((e.currentTarget as HTMLInputElement).value)} autoComplete="off" data-1p-ignore data-lpignore="true" data-form-type="other" />
             </div>
             <div>
               <div className="text-xs text-secondary mb-1">State / Region</div>
-              <Input value={stateRegion} onChange={(e) => setStateRegion((e.currentTarget as HTMLInputElement).value)} />
+              <Input value={stateRegion} onChange={(e) => setStateRegion((e.currentTarget as HTMLInputElement).value)} autoComplete="off" data-1p-ignore data-lpignore="true" data-form-type="other" />
             </div>
 
             <div className="sm:col-span-2">
               <div className="text-xs text-secondary mb-1">Zip / Postal code</div>
-              <Input value={postalCode} onChange={(e) => setPostalCode((e.currentTarget as HTMLInputElement).value)} />
+              <Input value={postalCode} onChange={(e) => setPostalCode((e.currentTarget as HTMLInputElement).value)} autoComplete="off" data-1p-ignore data-lpignore="true" data-form-type="other" />
             </div>
 
             <div className="sm:col-span-2">
@@ -592,6 +596,10 @@ export const CreatePersonOverlay: React.FC<CreatePersonOverlayProps> = ({
                 value={notes}
                 onChange={(e) => setNotes((e.currentTarget as HTMLTextAreaElement).value)}
                 placeholder="Context, preferences, etc."
+                autoComplete="off"
+                data-1p-ignore
+                data-lpignore="true"
+                data-form-type="other"
               />
             </div>
 
@@ -727,6 +735,10 @@ export const CreateBusinessOverlay: React.FC<CreateBusinessOverlayProps> = ({
                 value={name}
                 onChange={(e) => setName(e.currentTarget.value)}
                 placeholder="Acme Ranch LLC"
+                autoComplete="off"
+                data-1p-ignore
+                data-lpignore="true"
+                data-form-type="other"
               />
             </div>
 
@@ -736,6 +748,10 @@ export const CreateBusinessOverlay: React.FC<CreateBusinessOverlayProps> = ({
                 value={email}
                 onChange={(e) => setEmail(e.currentTarget.value)}
                 placeholder="info@acme-ranch.test"
+                autoComplete="off"
+                data-1p-ignore
+                data-lpignore="true"
+                data-form-type="other"
               />
             </div>
 
@@ -767,6 +783,10 @@ export const CreateBusinessOverlay: React.FC<CreateBusinessOverlayProps> = ({
                 value={website}
                 onChange={(e) => setWebsite(e.currentTarget.value)}
                 placeholder="https://acme.example"
+                autoComplete="off"
+                data-1p-ignore
+                data-lpignore="true"
+                data-form-type="other"
               />
             </div>
 

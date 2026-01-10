@@ -337,6 +337,10 @@ function AddTitleModal({
                 placeholder="Search titles..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
+                autoComplete="off"
+                data-1p-ignore
+                data-lpignore="true"
+                data-form-type="other"
                 className="flex-1 min-w-[120px] px-3 py-1.5 bg-white/5 border border-hairline rounded-md text-sm placeholder:text-secondary/50 focus:outline-none focus:border-white/30"
               />
               <Select
@@ -438,6 +442,10 @@ function AddTitleModal({
                   value={verifiedBy}
                   onChange={(e) => setVerifiedBy(e.target.value)}
                   placeholder="e.g., AKC Registry"
+                  autoComplete="off"
+                  data-1p-ignore
+                  data-lpignore="true"
+                  data-form-type="other"
                   className="w-full px-3 py-2 bg-white/5 border border-hairline rounded-md text-sm focus:outline-none focus:border-white/30"
                 />
               </div>
@@ -450,6 +458,10 @@ function AddTitleModal({
                   value={registryRef}
                   onChange={(e) => setRegistryRef(e.target.value)}
                   placeholder="Reference number"
+                  autoComplete="off"
+                  data-1p-ignore
+                  data-lpignore="true"
+                  data-form-type="other"
                   className="w-full px-3 py-2 bg-white/5 border border-hairline rounded-md text-sm focus:outline-none focus:border-white/30"
                 />
               </div>
@@ -480,6 +492,10 @@ function AddTitleModal({
                 value={pointsEarned}
                 onChange={(e) => setPointsEarned(e.target.value)}
                 placeholder="0"
+                autoComplete="off"
+                data-1p-ignore
+                data-lpignore="true"
+                data-form-type="other"
                 className="w-full px-3 py-2 bg-white/5 border border-hairline rounded-md text-sm focus:outline-none focus:border-white/30"
               />
             </div>
@@ -492,6 +508,10 @@ function AddTitleModal({
                 value={majorWins}
                 onChange={(e) => setMajorWins(e.target.value)}
                 placeholder="0"
+                autoComplete="off"
+                data-1p-ignore
+                data-lpignore="true"
+                data-form-type="other"
                 className="w-full px-3 py-2 bg-white/5 border border-hairline rounded-md text-sm focus:outline-none focus:border-white/30"
               />
             </div>
@@ -508,6 +528,10 @@ function AddTitleModal({
                 value={eventName}
                 onChange={(e) => setEventName(e.target.value)}
                 placeholder="e.g., Westminster 2024"
+                autoComplete="off"
+                data-1p-ignore
+                data-lpignore="true"
+                data-form-type="other"
                 className="w-full px-3 py-2 bg-white/5 border border-hairline rounded-md text-sm focus:outline-none focus:border-white/30"
               />
             </div>
@@ -520,6 +544,10 @@ function AddTitleModal({
                 value={eventLocation}
                 onChange={(e) => setEventLocation(e.target.value)}
                 placeholder="e.g., New York, NY"
+                autoComplete="off"
+                data-1p-ignore
+                data-lpignore="true"
+                data-form-type="other"
                 className="w-full px-3 py-2 bg-white/5 border border-hairline rounded-md text-sm focus:outline-none focus:border-white/30"
               />
             </div>
@@ -535,6 +563,10 @@ function AddTitleModal({
               value={handlerName}
               onChange={(e) => setHandlerName(e.target.value)}
               placeholder="Person who handled/showed the animal"
+              autoComplete="off"
+              data-1p-ignore
+              data-lpignore="true"
+              data-form-type="other"
               className="w-full px-3 py-2 bg-white/5 border border-hairline rounded-md text-sm focus:outline-none focus:border-white/30"
             />
           </div>
@@ -567,6 +599,10 @@ function AddTitleModal({
               onChange={(e) => setNotes(e.target.value)}
               rows={2}
               placeholder="Optional notes..."
+              autoComplete="off"
+              data-1p-ignore
+              data-lpignore="true"
+              data-form-type="other"
               className="w-full px-3 py-2 bg-white/5 border border-hairline rounded-md text-sm focus:outline-none focus:border-white/30 resize-none"
             />
           </div>
@@ -724,6 +760,10 @@ function EditTitleModal({
                 value={pointsEarned}
                 onChange={(e) => setPointsEarned(e.target.value)}
                 placeholder="0"
+                autoComplete="off"
+                data-1p-ignore
+                data-lpignore="true"
+                data-form-type="other"
                 className="w-full px-3 py-2 bg-white/5 border border-hairline rounded-md text-sm focus:outline-none focus:border-white/30"
               />
             </div>
@@ -736,6 +776,10 @@ function EditTitleModal({
                 value={majorWins}
                 onChange={(e) => setMajorWins(e.target.value)}
                 placeholder="0"
+                autoComplete="off"
+                data-1p-ignore
+                data-lpignore="true"
+                data-form-type="other"
                 className="w-full px-3 py-2 bg-white/5 border border-hairline rounded-md text-sm focus:outline-none focus:border-white/30"
               />
             </div>
@@ -752,6 +796,10 @@ function EditTitleModal({
                 value={eventName}
                 onChange={(e) => setEventName(e.target.value)}
                 placeholder="e.g., Westminster 2024"
+                autoComplete="off"
+                data-1p-ignore
+                data-lpignore="true"
+                data-form-type="other"
                 className="w-full px-3 py-2 bg-white/5 border border-hairline rounded-md text-sm focus:outline-none focus:border-white/30"
               />
             </div>
@@ -764,6 +812,10 @@ function EditTitleModal({
                 value={eventLocation}
                 onChange={(e) => setEventLocation(e.target.value)}
                 placeholder="e.g., New York, NY"
+                autoComplete="off"
+                data-1p-ignore
+                data-lpignore="true"
+                data-form-type="other"
                 className="w-full px-3 py-2 bg-white/5 border border-hairline rounded-md text-sm focus:outline-none focus:border-white/30"
               />
             </div>
@@ -779,6 +831,10 @@ function EditTitleModal({
               value={handlerName}
               onChange={(e) => setHandlerName(e.target.value)}
               placeholder="Person who handled/showed the animal"
+              autoComplete="off"
+              data-1p-ignore
+              data-lpignore="true"
+              data-form-type="other"
               className="w-full px-3 py-2 bg-white/5 border border-hairline rounded-md text-sm focus:outline-none focus:border-white/30"
             />
           </div>
@@ -806,6 +862,10 @@ function EditTitleModal({
                     value={verifiedBy}
                     onChange={(e) => setVerifiedBy(e.target.value)}
                     placeholder="e.g., AKC Registry"
+                    autoComplete="off"
+                    data-1p-ignore
+                    data-lpignore="true"
+                    data-form-type="other"
                     className="w-full px-3 py-2 bg-white/5 border border-hairline rounded-md text-sm focus:outline-none focus:border-white/30"
                   />
                 </div>
@@ -818,6 +878,10 @@ function EditTitleModal({
                     value={registryRef}
                     onChange={(e) => setRegistryRef(e.target.value)}
                     placeholder="Reference number"
+                    autoComplete="off"
+                    data-1p-ignore
+                    data-lpignore="true"
+                    data-form-type="other"
                     className="w-full px-3 py-2 bg-white/5 border border-hairline rounded-md text-sm focus:outline-none focus:border-white/30"
                   />
                 </div>
@@ -853,6 +917,10 @@ function EditTitleModal({
               onChange={(e) => setNotes(e.target.value)}
               rows={3}
               placeholder="Optional notes..."
+              autoComplete="off"
+              data-1p-ignore
+              data-lpignore="true"
+              data-form-type="other"
               className="w-full px-3 py-2 bg-white/5 border border-hairline rounded-md text-sm focus:outline-none focus:border-white/30 resize-none"
             />
           </div>

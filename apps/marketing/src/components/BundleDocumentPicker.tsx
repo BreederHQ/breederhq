@@ -131,6 +131,10 @@ export function BundleDocumentPicker({
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search documents..."
               className="pl-9"
+              autoComplete="off"
+              data-1p-ignore
+              data-lpignore="true"
+              data-form-type="other"
             />
           </div>
         </div>

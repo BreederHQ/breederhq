@@ -25,7 +25,8 @@ import { Plus } from "lucide-react";
 import { Overlay } from "@bhq/ui/overlay";
 import { getOverlayRoot } from "@bhq/ui/overlay";
 import "@bhq/ui/styles/table.css";
-import { WaitlistApi, WaitlistEntry } from "../api";
+import { WaitlistApi, WaitlistEntry, WaitlistInvoiceSummary } from "../api";
+import { PaymentStatusBadge } from "@bhq/ui/components/Finance/PaymentStatusBadge";
 
 
 /* URL param helper used by row clicks to open drawers */
@@ -98,6 +99,10 @@ function InlineSearch({
         disabled={!!disabled}
         onFocus={onFocus}
         onBlur={onBlur}
+        autoComplete="off"
+        data-1p-ignore
+        data-lpignore="true"
+        data-form-type="other"
       />
     </div>
   );
@@ -114,6 +119,7 @@ type WaitlistTableRow = {
   damPrefName?: string | null;
   sirePrefName?: string | null;
   depositPaidAt?: string | null;
+  invoice?: WaitlistInvoiceSummary | null;
   status?: string | null;
   priority?: number | null;
   skipCount?: number | null;
@@ -128,7 +134,8 @@ const WAITLIST_COLS: Array<{ key: keyof WaitlistTableRow & string; label: string
   { key: "breedPrefText", label: "Breeds", default: true },
   { key: "damPrefName", label: "Dam", default: true },
   { key: "sirePrefName", label: "Sire", default: true },
-  { key: "depositPaidAt", label: "Deposit Paid On", default: true },
+  { key: "invoice", label: "Payment", default: true },
+  { key: "depositPaidAt", label: "Deposit Paid On", default: false },
   { key: "status", label: "Status", default: false },
   { key: "priority", label: "Priority", default: false },
   { key: "skipCount", label: "Skips", default: false },
@@ -169,6 +176,7 @@ function mapWaitlistToTableRow(w: any): WaitlistTableRow {
     damPrefName: dam?.name ?? null,
     sirePrefName: sire?.name ?? null,
     depositPaidAt: w.depositPaidAt ?? null,
+    invoice: w.invoice ?? null,
     status: w.status ?? null,
     priority: w.priority ?? null,
     skipCount: w.skipCount ?? null,
@@ -896,24 +904,40 @@ function AddToWaitlistModal({
                           placeholder="First name"
                           value={qc.firstName}
                           onChange={(e) => setQc({ ...qc, firstName: e.target.value })}
+                          autoComplete="off"
+                          data-1p-ignore
+                          data-lpignore="true"
+                          data-form-type="other"
                         />
                         <input
                           className={cx(inputClass)}
                           placeholder="Last name"
                           value={qc.lastName}
                           onChange={(e) => setQc({ ...qc, lastName: e.target.value })}
+                          autoComplete="off"
+                          data-1p-ignore
+                          data-lpignore="true"
+                          data-form-type="other"
                         />
                         <input
                           className={cx(inputClass)}
                           placeholder="Email"
                           value={qc.email}
                           onChange={(e) => setQc({ ...qc, email: e.target.value })}
+                          autoComplete="off"
+                          data-1p-ignore
+                          data-lpignore="true"
+                          data-form-type="other"
                         />
                         <input
                           className={cx(inputClass)}
                           placeholder="Phone (E.164)"
                           value={qc.phone}
                           onChange={(e) => setQc({ ...qc, phone: e.target.value })}
+                          autoComplete="off"
+                          data-1p-ignore
+                          data-lpignore="true"
+                          data-form-type="other"
                         />
                         {createErr && (
                           <div className="md:col-span-2 text-sm text-red-600">{createErr}</div>
@@ -939,12 +963,20 @@ function AddToWaitlistModal({
                           placeholder="Organization name"
                           value={qo.name}
                           onChange={(e) => setQo({ ...qo, name: e.target.value })}
+                          autoComplete="off"
+                          data-1p-ignore
+                          data-lpignore="true"
+                          data-form-type="other"
                         />
                         <input
                           className={cx(inputClass)}
                           placeholder="Website (optional)"
                           value={qo.website}
                           onChange={(e) => setQo({ ...qo, website: e.target.value })}
+                          autoComplete="off"
+                          data-1p-ignore
+                          data-lpignore="true"
+                          data-form-type="other"
                         />
                         {createErr && (
                           <div className="text-sm text-red-600">{createErr}</div>
@@ -1441,7 +1473,7 @@ function WaitlistDrawerBody({
         <div className={"p-2 grid grid-cols-1 md:grid-cols-3 gap-3 " + (readOnly ? "opacity-70" : "")}>
           <label className="flex flex-col gap-1">
             <span className={cx(labelClass)}>Status</span>
-            <input className={cx(inputClass)} value={status} onChange={(e) => setStatus(e.target.value)} disabled={readOnly} />
+            <input className={cx(inputClass)} value={status} onChange={(e) => setStatus(e.target.value)} disabled={readOnly} autoComplete="off" data-1p-ignore data-lpignore="true" data-form-type="other" />
           </label>
           <label className="flex flex-col gap-1">
             <span className={cx(labelClass)}>Priority</span>
@@ -1450,6 +1482,10 @@ function WaitlistDrawerBody({
               type="number"
               value={priority}
               onChange={(e) => setPriority(e.target.value === "" ? "" : Number(e.target.value))} disabled={readOnly}
+              autoComplete="off"
+              data-1p-ignore
+              data-lpignore="true"
+              data-form-type="other"
             />
           </label>
           {/* Only show Deposit Paid for approved entries */}
@@ -1470,6 +1506,10 @@ function WaitlistDrawerBody({
               className={cx(inputClass, " h-32 resize-vertical")}
               value={notes}
               onChange={(e) => setNotes(e.target.value)} disabled={readOnly}
+              autoComplete="off"
+              data-1p-ignore
+              data-lpignore="true"
+              data-form-type="other"
             />
           </label>
         </div>
@@ -1555,6 +1595,10 @@ function WaitlistDrawerBody({
                   placeholder="Why are you restoring this applicant?"
                   rows={3}
                   className="w-full px-3 py-2 text-sm border border-hairline rounded-lg bg-surface focus:outline-none focus:ring-2 focus:ring-[hsl(var(--brand-orange))]/50"
+                  autoComplete="off"
+                  data-1p-ignore
+                  data-lpignore="true"
+                  data-form-type="other"
                 />
               </div>
             </div>
@@ -1887,6 +1931,10 @@ function BlockUserSection({
                   placeholder="e.g., Spam, abusive messages, etc."
                   rows={2}
                   className="w-full px-3 py-2 text-sm border border-hairline rounded-lg bg-surface focus:outline-none focus:ring-2 focus:ring-[hsl(var(--brand-orange))]/50"
+                  autoComplete="off"
+                  data-1p-ignore
+                  data-lpignore="true"
+                  data-form-type="other"
                 />
                 <p className="text-xs text-secondary mt-1">
                   This is only visible to you, not the blocked user.
@@ -2217,6 +2265,9 @@ export default function WaitlistTab({ api, tenantId, readOnlyGlobal }: { api: Wa
                       {visibleSafe.map((c) => {
                         let v: any = (r as any)[c.key];
                         if (c.key === "depositPaidAt" || c.key === "lastActivityAt") v = fmtDate(v);
+                        if (c.key === "invoice") {
+                          return <TableCell key={c.key}><PaymentStatusBadge invoice={r.invoice} /></TableCell>;
+                        }
                         return <TableCell key={c.key}>{Array.isArray(v) ? v.join(", ") : v ?? ""}</TableCell>;
                       })}
                     </TableRow>

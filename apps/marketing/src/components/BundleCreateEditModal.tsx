@@ -112,6 +112,10 @@ export function BundleCreateEditModal({
                 onChange={(e) => setName(e.target.value)}
                 placeholder="e.g., Go Home Document Bundle"
                 autoFocus
+                autoComplete="off"
+                data-1p-ignore
+                data-lpignore="true"
+                data-form-type="other"
               />
               <p className="text-xs text-secondary mt-1">
                 Give your bundle a name that describes the documents it contains
@@ -129,6 +133,10 @@ export function BundleCreateEditModal({
                 placeholder="Optional description of what this bundle is for..."
                 rows={3}
                 className="w-full px-3 py-2 rounded-md bg-surface border border-hairline text-sm text-primary resize-none focus:outline-none focus:ring-2 focus:ring-[hsl(var(--brand-orange))]/50"
+                autoComplete="off"
+                data-1p-ignore
+                data-lpignore="true"
+                data-form-type="other"
               />
             </div>
 

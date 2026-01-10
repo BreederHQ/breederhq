@@ -3,7 +3,7 @@
 // Uses RollupGantt for chart rendering, adds phase toggle UI
 
 import * as React from "react";
-import RollupGantt from "../../components/RollupGantt";
+import RollupGantt, { getPlanLineColor } from "../../components/RollupGantt";
 import { useIndeterminate } from "@bhq/ui/hooks";
 import { deriveBreedingStatus, STATUS_ORDER, STATUS_LABELS, type Status } from "./deriveBreedingStatus";
 import { useRollupSelection, type ID } from "./rollupSelection";
@@ -58,6 +58,8 @@ type Props = {
   onSelectedChange?: (next: Set<ID>) => void;
   prefsOverride?: any;
   className?: string;
+  /** If true, hides Phase Visibility and Individual Plans sections (sandbox mode) */
+  hideRealPlanSelection?: boolean;
 };
 
 export default function RollupWithPhaseToggles({
@@ -68,6 +70,7 @@ export default function RollupWithPhaseToggles({
   onSelectedChange,
   prefsOverride,
   className = "",
+  hideRealPlanSelection = false,
 }: Props) {
   // Determine if component is controlled externally
   const isControlled = externalSelected !== undefined && onSelectedChange !== undefined;
@@ -218,69 +221,90 @@ export default function RollupWithPhaseToggles({
         hideSelection
       />
 
-      {/* Phase Visibility - now below chart */}
-      <div className="mt-4 rounded-xl bg-black/10 p-4">
-        <div className="text-sm font-medium text-secondary mb-3">Phase Visibility</div>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {STATUS_ORDER.map(status => {
-            const state = phaseStates[status];
-            if (state.total === 0) return null;
-            return (
-              <PhaseToggleCheckbox
-                key={status}
-                label={STATUS_LABELS[status]}
-                checked={state.checked}
-                indeterminate={state.indeterminate}
-                count={state.count}
-                total={state.total}
-                onChange={() => handlePhaseToggle(status)}
-              />
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Individual Plans - two-column list only (removed single-column duplicate) */}
-      <div className="mt-4 rounded-xl bg-black/10 p-4">
-        <div className="flex items-center gap-3 mb-3">
-          <div className="text-sm font-medium text-secondary">Individual Plans</div>
-          <SelectAllCheckbox
-            checked={allState.checked}
-            indeterminate={allState.indeterminate}
-            onChange={handleSelectAll}
-          />
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm max-h-56 overflow-y-auto">
-          {selectablePlans.map(plan => {
-            const status = deriveBreedingStatus(plan);
-            const statusColor = STATUS_COLORS[status];
-            return (
-              <label key={String(plan.id)} className="inline-flex items-center gap-2.5 cursor-pointer py-1">
-                <input
-                  type="checkbox"
-                  checked={selectedKeys.has(plan.id)}
-                  onChange={() => handlePlanToggle(plan.id)}
-                  className="w-4 h-4"
-                />
-                <span className="truncate">{plan.name || String(plan.id)}</span>
-                <span className="inline-flex items-center gap-1.5 text-xs" style={{ color: statusColor }}>
-                  <span
-                    className="w-2 h-2 rounded-full"
-                    style={{ backgroundColor: statusColor }}
+      {/* Phase Visibility and Individual Plans - hidden in sandbox mode until What If exists */}
+      {!hideRealPlanSelection && (
+        <div className="mt-2 flex flex-col lg:flex-row gap-3">
+          {/* Phase Visibility - compact left column */}
+          <div className="lg:w-64 lg:flex-shrink-0 rounded-lg bg-black/10 p-3 border border-white/5">
+            <div className="text-xs font-medium text-secondary mb-2">Phase Visibility</div>
+            <div className="space-y-1.5">
+              {STATUS_ORDER.map(status => {
+                const state = phaseStates[status];
+                if (state.total === 0) return null;
+                return (
+                  <PhaseToggleCheckbox
+                    key={status}
+                    label={STATUS_LABELS[status]}
+                    checked={state.checked}
+                    indeterminate={state.indeterminate}
+                    count={state.count}
+                    total={state.total}
+                    onChange={() => handlePhaseToggle(status)}
                   />
-                  {STATUS_LABELS[status]}
-                </span>
-              </label>
-            );
-          })}
-          {selectablePlans.length === 0 && (
-            <div className="text-sm text-secondary col-span-2">No selectable plans available.</div>
-          )}
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Individual Plans - flexible right column */}
+          <div className="flex-1 flex flex-col rounded-lg bg-black/10 p-3 border border-white/5">
+            <div className="flex items-center gap-3 mb-2">
+              <div className="text-xs font-medium text-secondary">Individual Plans</div>
+              <SelectAllCheckbox
+                checked={allState.checked}
+                indeterminate={allState.indeterminate}
+                onChange={handleSelectAll}
+              />
+            </div>
+            <div className="flex flex-col flex-wrap gap-x-6 gap-y-0.5 max-h-24 overflow-y-auto">
+              {(() => {
+                // Compute active plans list to match RollupGantt's color assignment
+                // RollupGantt uses chartItems filtered by selectedKeys
+                const activePlansForColors = chartItems.filter(p => selectedKeys.has(p.id));
+
+                return selectablePlans.map(plan => {
+                  const status = deriveBreedingStatus(plan);
+                  const statusColor = STATUS_COLORS[status];
+                  const isSelected = selectedKeys.has(plan.id);
+                  // Get the index among active plans to match the centerline color in the chart
+                  const selectedIndex = activePlansForColors.findIndex(p => p.id === plan.id);
+                  const lineColor = isSelected && selectedIndex >= 0 ? getPlanLineColor(selectedIndex) : undefined;
+                  return (
+                    <label key={String(plan.id)} className="inline-flex items-center gap-1.5 cursor-pointer py-0.5">
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => handlePlanToggle(plan.id)}
+                        className="w-3.5 h-3.5 rounded"
+                        style={lineColor ? { accentColor: lineColor } : undefined}
+                      />
+                      <span className="truncate text-xs font-medium">{plan.name || String(plan.id)}</span>
+                      <span
+                        className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                        style={{ backgroundColor: statusColor }}
+                        title={STATUS_LABELS[status]}
+                      />
+                    </label>
+                  );
+                });
+              })()}
+              {selectablePlans.length === 0 && (
+                <div className="text-xs text-secondary">No selectable plans available.</div>
+              )}
+            </div>
+            <p className="mt-auto pt-2 text-xs text-secondary/70">
+              <span className="text-red-500">*</span> Only plans with a locked cycle date appear here.
+            </p>
+          </div>
         </div>
-        <div className="mt-3 px-3 py-2 rounded-md bg-amber-500/10 border border-amber-500/20 text-xs text-amber-200/80">
-          <span className="font-semibold text-amber-300">Note:</span> Only plans with a locked cycle date appear here. Plans in the Planning phase must have their cycle locked to be displayed on the timeline.
+      )}
+
+      {/* Sandbox mode hint - shown when real plan selection is hidden */}
+      {hideRealPlanSelection && (
+        <div className="mt-4 px-4 py-3 rounded-lg bg-blue-500/10 border border-blue-500/20 text-sm text-blue-200/80">
+          <span className="font-medium text-blue-300">Tip:</span> Add a What If scenario to see it on the timeline. Once you have a scenario, you can also add existing plans for comparison.
         </div>
-      </div>
+      )}
     </div>
   );
 }
@@ -305,16 +329,16 @@ function PhaseToggleCheckbox({
   const indeterminateProps = useIndeterminate({ checked, indeterminate, ref: inputRef });
 
   return (
-    <label className="flex items-center gap-2.5 cursor-pointer rounded-md bg-white/5 hover:bg-white/10 px-3 py-2 transition-colors">
+    <label className="flex items-center gap-2 cursor-pointer rounded bg-white/5 hover:bg-white/10 px-2 py-1.5 transition-colors">
       <input
         type="checkbox"
         ref={indeterminateProps.ref}
         checked={checked}
         aria-checked={indeterminateProps["aria-checked"]}
         onChange={onChange}
-        className="rounded w-4 h-4"
+        className="rounded w-3.5 h-3.5"
       />
-      <span className="text-sm font-medium flex-1">{label}</span>
+      <span className="text-xs font-medium flex-1">{label}</span>
       <span className="text-xs text-secondary">{count}/{total}</span>
     </label>
   );
@@ -334,14 +358,14 @@ function SelectAllCheckbox({
   const indeterminateProps = useIndeterminate({ checked, indeterminate, ref: inputRef });
 
   return (
-    <label className="text-sm inline-flex items-center gap-2.5 cursor-pointer">
+    <label className="text-xs inline-flex items-center gap-1.5 cursor-pointer text-secondary">
       <input
         type="checkbox"
         ref={indeterminateProps.ref}
         checked={checked}
         aria-checked={indeterminateProps["aria-checked"]}
         onChange={(e) => onChange(e.target.checked)}
-        className="w-4 h-4"
+        className="w-3 h-3"
       />
       Toggle All
     </label>
