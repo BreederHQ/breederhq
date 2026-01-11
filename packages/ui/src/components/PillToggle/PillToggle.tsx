@@ -15,10 +15,10 @@ export function PillToggle({ on, label, onClick, className = "" }: PillTogglePro
       type="button"
       onClick={onClick}
       className={[
-        "pill inline-flex items-center rounded-full px-3 py-1 text-[13px] leading-none select-none transition-colors",
+        "pill inline-flex items-center rounded-full px-2 py-px text-[11px] leading-none select-none transition-colors border",
         on
-          ? "bg-[hsl(var(--brand-orange))] text-black hover:brightness-95"
-          : "bg-surface border border-hairline text-primary hover:bg-[hsl(var(--brand-orange))]/12",
+          ? "border-white/25 bg-white/10 text-primary hover:bg-white/15"
+          : "border-hairline bg-surface text-secondary hover:text-primary hover:border-white/20",
         className
       ].join(" ")}
     >

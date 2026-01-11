@@ -3,16 +3,56 @@ import * as React from "react";
 import { PageContainer } from "../design/PageContainer";
 import { PortalHero } from "../design/PortalHero";
 import { PortalCard } from "../design/PortalCard";
-import { isPortalMockEnabled } from "../dev/mockFlag";
-import {
-  mockInvoices,
-  mockTransactions,
-  mockOffspring,
-  type Invoice,
-  type Transaction,
-  type FinancialSummary,
-  type InvoiceStatus,
-} from "../dev/mockData";
+import { createPortalFetch, useTenantContext, buildApiPath } from "../derived/tenantContext";
+// Types for financial data
+interface Invoice {
+  id: number;
+  invoiceNumber: string;
+  description: string;
+  total: number;
+  subtotal?: number;
+  tax?: number;
+  amountPaid: number;
+  amountDue: number;
+  status: InvoiceStatus;
+  issuedAt: string;
+  dueAt: string;
+  paidAt?: string;
+  relatedOffspringName?: string | null;
+  lineItems: Array<{
+    id?: number;
+    description: string;
+    quantity: number;
+    unitPrice: number;
+    total: number;
+  }>;
+  // Payment details (populated when paid)
+  paymentMethod?: string;
+  paymentReference?: string;
+}
+
+interface Transaction {
+  id: number;
+  date: string;
+  createdAt?: string;
+  description: string;
+  amount: number;
+  type: "payment" | "refund";
+  status: "completed" | "pending" | "failed";
+  paymentMethod?: string;
+  invoiceNumber?: string;
+}
+
+interface FinancialSummary {
+  totalPaid: number;
+  totalDue: number;
+  overdueAmount: number;
+  nextPaymentAmount: number | null;
+  nextPaymentDueAt: string | null;
+  invoiceCount: number;
+}
+
+type InvoiceStatus = "paid" | "due" | "overdue" | "draft";
 import { SubjectHeader } from "../components/SubjectHeader";
 
 /* ────────────────────────────────────────────────────────────────────────────
@@ -642,7 +682,7 @@ function TransactionRow({ transaction }: { transaction: Transaction }) {
             color: "var(--portal-text-tertiary)",
           }}
         >
-          {formatDate(transaction.createdAt)}
+          {formatDate(transaction.createdAt || transaction.date)}
           {transaction.paymentMethod && ` • ${methodLabel[transaction.paymentMethod] || transaction.paymentMethod}`}
         </div>
       </div>
@@ -692,9 +732,9 @@ function ReceiptModal({ invoice, onClose }: ReceiptModalProps) {
     return () => window.removeEventListener("keydown", handleEscape);
   }, [handleClose]);
 
-  // Mock payment details
-  const paymentMethod = "Visa ending in 4242";
-  const referenceId = `PAY-${invoice.invoiceNumber.replace("INV-", "")}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+  // Payment details from invoice or derive from available data
+  const paymentMethod = invoice.paymentMethod || "Card payment";
+  const referenceId = invoice.paymentReference || `PAY-${invoice.invoiceNumber.replace("INV-", "")}`;
 
   return (
     <div
@@ -1154,10 +1194,10 @@ function InvoiceDetail({ invoice, onBack, onPayNow, onViewReceipt }: InvoiceDeta
               Subtotal
             </span>
             <span style={{ fontSize: "var(--portal-font-size-sm)", color: "var(--portal-text-primary)" }}>
-              {formatCurrencyPrecise(invoice.subtotal)}
+              {formatCurrencyPrecise(invoice.subtotal ?? invoice.total)}
             </span>
           </div>
-          {invoice.tax > 0 && (
+          {(invoice.tax ?? 0) > 0 && (
             <div
               style={{
                 display: "flex",
@@ -1167,7 +1207,7 @@ function InvoiceDetail({ invoice, onBack, onPayNow, onViewReceipt }: InvoiceDeta
             >
               <span style={{ fontSize: "var(--portal-font-size-sm)", color: "var(--portal-text-secondary)" }}>Tax</span>
               <span style={{ fontSize: "var(--portal-font-size-sm)", color: "var(--portal-text-primary)" }}>
-                {formatCurrencyPrecise(invoice.tax)}
+                {formatCurrencyPrecise(invoice.tax ?? 0)}
               </span>
             </div>
           )}
@@ -1413,7 +1453,7 @@ function InvoicesList({ invoices, onSelectInvoice, onPayInvoice }: InvoicesListP
 
 function RecentTransactions({ transactions }: { transactions: Transaction[] }) {
   const sortedTransactions = [...transactions].sort(
-    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    (a, b) => new Date(b.createdAt || b.date).getTime() - new Date(a.createdAt || a.date).getTime()
   );
 
   return (
@@ -1571,64 +1611,105 @@ function LoadingState() {
  * ──────────────────────────────────────────────────────────────────────────── */
 
 export default function PortalFinancialsPage() {
+  const { tenantSlug, isReady } = useTenantContext();
   const [viewMode, setViewMode] = React.useState<ViewMode>("overview");
   const [selectedInvoiceId, setSelectedInvoiceId] = React.useState<number | null>(null);
   const [loading, setLoading] = React.useState(true);
-  const [paidInvoiceIds, setPaidInvoiceIds] = React.useState<Set<number>>(new Set());
   const [successModal, setSuccessModal] = React.useState<Invoice | null>(null);
   const [receiptModal, setReceiptModal] = React.useState<Invoice | null>(null);
+  const [paymentSuccessBanner, setPaymentSuccessBanner] = React.useState(false);
+  const [paymentCanceledBanner, setPaymentCanceledBanner] = React.useState(false);
 
-  const mockEnabled = isPortalMockEnabled();
+  // Real API data state
+  const [invoices, setInvoices] = React.useState<Invoice[]>([]);
+  const [transactions, setTransactions] = React.useState<Transaction[]>([]);
+  const [summary, setSummary] = React.useState<FinancialSummary | null>(null);
+  const [primaryAnimal, setPrimaryAnimal] = React.useState<any>(null);
 
-  // Get primary animal for context (species-aware)
-  const offspring = mockEnabled ? mockOffspring() : [];
-  const primaryAnimal = offspring[0];
-  const animalName = primaryAnimal?.offspring?.name || "your puppy";
-  const species = primaryAnimal?.offspring?.species || null;
-  const breed = primaryAnimal?.offspring?.breed || null;
+  // Create bound fetch function for use in callbacks
+  const portalFetch = React.useMemo(
+    () => createPortalFetch(tenantSlug),
+    [tenantSlug]
+  );
 
-  // Simulate loading
+  // Animal context
+  const animalName = primaryAnimal?.offspring?.name || "your reservation";
+  const species = primaryAnimal?.offspring?.species || primaryAnimal?.species || null;
+  const breed = primaryAnimal?.offspring?.breed || primaryAnimal?.breed || null;
+
+  // Check for Stripe checkout return parameters
   React.useEffect(() => {
-    const timer = setTimeout(() => setLoading(false), 300);
-    return () => clearTimeout(timer);
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("success") === "true") {
+      setPaymentSuccessBanner(true);
+      // Clean up URL
+      window.history.replaceState({}, "", window.location.pathname);
+      // Auto-dismiss after 5 seconds
+      setTimeout(() => setPaymentSuccessBanner(false), 5000);
+    } else if (params.get("canceled") === "true") {
+      setPaymentCanceledBanner(true);
+      // Clean up URL
+      window.history.replaceState({}, "", window.location.pathname);
+      // Auto-dismiss after 5 seconds
+      setTimeout(() => setPaymentCanceledBanner(false), 5000);
+    }
   }, []);
 
-  // Get mock data and apply local payment state
-  const baseInvoices = mockEnabled ? mockInvoices() : [];
-  const invoices = baseInvoices.map((inv) => {
-    if (paidInvoiceIds.has(inv.id) && inv.status !== "paid") {
-      return {
-        ...inv,
-        status: "paid" as const,
-        paidAt: new Date().toISOString(),
-        amountPaid: inv.total,
-        amountDue: 0,
-      };
-    }
-    return inv;
-  });
+  // Load real data from API - wait for tenant context
+  React.useEffect(() => {
+    if (!isReady) return;
 
-  const transactions = mockEnabled ? mockTransactions() : [];
+    let cancelled = false;
 
-  // Calculate summary with local state
-  const summary: FinancialSummary | null = mockEnabled
-    ? {
-        totalPaid: invoices.reduce((sum, inv) => sum + inv.amountPaid, 0),
-        totalDue: invoices.reduce((sum, inv) => sum + inv.amountDue, 0),
-        overdueAmount: invoices
-          .filter((inv) => inv.status === "overdue")
-          .reduce((sum, inv) => sum + inv.amountDue, 0),
-        nextPaymentAmount:
-          invoices
-            .filter((inv) => inv.status === "due")
-            .sort((a, b) => new Date(a.dueAt).getTime() - new Date(b.dueAt).getTime())[0]?.amountDue || null,
-        nextPaymentDueAt:
-          invoices
-            .filter((inv) => inv.status === "due")
-            .sort((a, b) => new Date(a.dueAt).getTime() - new Date(b.dueAt).getTime())[0]?.dueAt || null,
-        invoiceCount: invoices.length,
+    async function loadFinancialData() {
+      setLoading(true);
+      try {
+        // Fetch financial data in parallel
+        const [invoicesData, financialsData, placementsData] = await Promise.all([
+          portalFetch<{ invoices: any[] }>("/portal/invoices").catch(() => null),
+          portalFetch<any>("/portal/financials").catch(() => null),
+          portalFetch<{ placements: any[] }>("/portal/placements").catch(() => null),
+        ]);
+
+        if (cancelled) return;
+
+        if (invoicesData) {
+          setInvoices(invoicesData.invoices || []);
+        }
+
+        if (financialsData) {
+          // Map API response to FinancialSummary structure
+          setSummary({
+            totalPaid: financialsData.totalPaid || 0,
+            totalDue: financialsData.totalDue || 0,
+            overdueAmount: financialsData.overdueAmount || 0,
+            nextPaymentAmount: financialsData.nextPaymentAmount || null,
+            nextPaymentDueAt: financialsData.nextPaymentDueAt || null,
+            invoiceCount: financialsData.invoiceCount || 0,
+          });
+          // Extract transactions if included
+          if (financialsData.transactions) {
+            setTransactions(financialsData.transactions);
+          }
+        }
+
+        if (placementsData) {
+          const placements = placementsData.placements || [];
+          if (placements.length > 0) {
+            setPrimaryAnimal(placements[0]);
+          }
+        }
+      } catch (err) {
+        if (cancelled) return;
+        console.error("[PortalFinancials] Failed to load data:", err);
+      } finally {
+        if (!cancelled) setLoading(false);
       }
-    : null;
+    }
+
+    loadFinancialData();
+    return () => { cancelled = true; };
+  }, [portalFetch, isReady]);
 
   // Handle URL-based invoice detail
   React.useEffect(() => {
@@ -1649,18 +1730,27 @@ export default function PortalFinancialsPage() {
     window.history.pushState(null, "", "/financials");
   };
 
-  const handlePayInvoice = (id: number) => {
-    // Find the invoice to show in success modal
+  const handlePayInvoice = async (id: number) => {
+    // Find the invoice
     const invoice = invoices.find((inv) => inv.id === id);
-    if (invoice) {
-      // Mark as paid
-      setPaidInvoiceIds((prev) => new Set([...prev, id]));
-      // Show success modal
-      setSuccessModal(invoice);
-      // If we're in detail view, go back to list
-      if (selectedInvoiceId === id) {
-        handleBack();
+    if (!invoice) return;
+
+    try {
+      // Call the portal checkout endpoint to create a Stripe checkout session
+      const data = await portalFetch<{ checkoutUrl?: string }>(`/portal/invoices/${id}/checkout`, {
+        method: "POST",
+      });
+
+      // Redirect to Stripe checkout
+      if (data.checkoutUrl) {
+        window.location.href = data.checkoutUrl;
+      } else {
+        throw new Error("No checkout URL returned");
       }
+    } catch (err: any) {
+      console.error("[PortalFinancials] Checkout error:", err);
+      // Show error to user - for now just alert, could add a toast later
+      alert(err.message || "Failed to start payment. Please try again.");
     }
   };
 
@@ -1686,7 +1776,7 @@ export default function PortalFinancialsPage() {
           <InvoiceDetail
             invoice={invoice}
             onBack={handleBack}
-            onPayNow={mockEnabled ? () => handlePayInvoice(selectedInvoiceId) : undefined}
+            onPayNow={invoice.status !== "paid" ? () => handlePayInvoice(selectedInvoiceId) : undefined}
             onViewReceipt={invoice.status === "paid" ? () => setReceiptModal(invoice) : undefined}
           />
           {successModal && <PaymentSuccessModal invoice={successModal} onClose={handleCloseSuccessModal} />}
@@ -1697,7 +1787,7 @@ export default function PortalFinancialsPage() {
   }
 
   // Empty state
-  if (!mockEnabled || invoices.length === 0) {
+  if (invoices.length === 0) {
     return (
       <PageContainer>
         <div style={{ display: "flex", flexDirection: "column", gap: "var(--portal-space-4)" }}>
@@ -1721,6 +1811,104 @@ export default function PortalFinancialsPage() {
   return (
     <PageContainer>
       <div style={{ display: "flex", flexDirection: "column", gap: "var(--portal-space-4)" }}>
+        {/* Payment Success Banner */}
+        {paymentSuccessBanner && (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "var(--portal-space-3)",
+              padding: "var(--portal-space-3) var(--portal-space-4)",
+              background: "var(--portal-success-soft)",
+              borderRadius: "var(--portal-radius-lg)",
+              border: "1px solid var(--portal-success)",
+            }}
+          >
+            <div
+              style={{
+                width: "32px",
+                height: "32px",
+                borderRadius: "50%",
+                background: "var(--portal-success)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                color: "white",
+                fontSize: "1rem",
+                flexShrink: 0,
+              }}
+            >
+              ✓
+            </div>
+            <div style={{ flex: 1 }}>
+              <div
+                style={{
+                  fontSize: "var(--portal-font-size-base)",
+                  fontWeight: "var(--portal-font-weight-semibold)",
+                  color: "var(--portal-success)",
+                }}
+              >
+                Payment Successful!
+              </div>
+              <div style={{ fontSize: "var(--portal-font-size-sm)", color: "var(--portal-text-secondary)" }}>
+                Your payment has been processed. The invoice will be updated shortly.
+              </div>
+            </div>
+            <button
+              onClick={() => setPaymentSuccessBanner(false)}
+              style={{
+                all: "unset",
+                cursor: "pointer",
+                padding: "var(--portal-space-1)",
+                color: "var(--portal-text-secondary)",
+              }}
+            >
+              ✕
+            </button>
+          </div>
+        )}
+
+        {/* Payment Canceled Banner */}
+        {paymentCanceledBanner && (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "var(--portal-space-3)",
+              padding: "var(--portal-space-3) var(--portal-space-4)",
+              background: "var(--portal-bg-elevated)",
+              borderRadius: "var(--portal-radius-lg)",
+              border: "1px solid var(--portal-border)",
+            }}
+          >
+            <div style={{ flex: 1 }}>
+              <div
+                style={{
+                  fontSize: "var(--portal-font-size-base)",
+                  fontWeight: "var(--portal-font-weight-medium)",
+                  color: "var(--portal-text-primary)",
+                }}
+              >
+                Payment Canceled
+              </div>
+              <div style={{ fontSize: "var(--portal-font-size-sm)", color: "var(--portal-text-secondary)" }}>
+                Your payment was canceled. You can try again when you're ready.
+              </div>
+            </div>
+            <button
+              onClick={() => setPaymentCanceledBanner(false)}
+              style={{
+                all: "unset",
+                cursor: "pointer",
+                padding: "var(--portal-space-1)",
+                color: "var(--portal-text-secondary)",
+              }}
+            >
+              ✕
+            </button>
+          </div>
+        )}
+
         {/* Hero */}
         <PortalHero
           variant="page"
@@ -1767,7 +1955,7 @@ export default function PortalFinancialsPage() {
               <InvoicesList
                 invoices={invoices.filter((inv) => inv.status === "due" || inv.status === "overdue")}
                 onSelectInvoice={handleSelectInvoice}
-                onPayInvoice={mockEnabled ? handlePayInvoice : undefined}
+                onPayInvoice={handlePayInvoice}
               />
             )}
             {/* Recent transactions */}
@@ -1777,7 +1965,7 @@ export default function PortalFinancialsPage() {
           <InvoicesList
             invoices={invoices}
             onSelectInvoice={handleSelectInvoice}
-            onPayInvoice={mockEnabled ? handlePayInvoice : undefined}
+            onPayInvoice={handlePayInvoice}
           />
         )}
       </div>

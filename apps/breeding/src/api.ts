@@ -108,6 +108,45 @@ export type AvailabilityPrefs = {
   post_unlikely_to_likely_end: number;
 };
 
+/* Breeding Programs types */
+export type BreedingProgramLite = {
+  id: number;
+  slug: string;
+  name: string;
+  species: string;
+  breedText?: string | null;
+  listed: boolean;
+  _count?: { breedingPlans: number };
+};
+
+export type BreedingProgram = BreedingProgramLite & {
+  tenantId: number;
+  description?: string | null;
+  acceptInquiries: boolean;
+  openWaitlist: boolean;
+  acceptReservations: boolean;
+  pricingTiers?: any;
+  whatsIncluded?: string | null;
+  typicalWaitTime?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  publishedAt?: string | null;
+};
+
+export type BreedingProgramCreateInput = {
+  name: string;
+  species: string;
+  breedText?: string | null;
+  description?: string | null;
+  listed?: boolean;
+  acceptInquiries?: boolean;
+  openWaitlist?: boolean;
+  acceptReservations?: boolean;
+  pricingTiers?: any;
+  whatsIncluded?: string | null;
+  typicalWaitTime?: string | null;
+};
+
 /* Offspring Groups, types (new) */
 export type OffspringGroupLite = {
   id: number;
@@ -706,6 +745,32 @@ export function makeBreedingApi(opts: ApiOpts) {
           }
           return [];
         });
+      },
+    },
+
+    /* Breeding Programs namespace for marketplace programs */
+    breedingPrograms: {
+      list(params?: { species?: string; listed?: boolean; q?: string; page?: number; limit?: number }) {
+        const qs = new URLSearchParams();
+        if (params) {
+          for (const [k, v] of Object.entries(params)) {
+            if (v !== undefined && v !== null && v !== "") qs.set(k, String(v));
+          }
+        }
+        const path = `/breeding/programs${qs.toString() ? `?${qs}` : ""}`;
+        return get<Paged<BreedingProgramLite>>(path);
+      },
+      get(id: number) {
+        return get<BreedingProgram>(`/breeding/programs/${id}`);
+      },
+      create(input: BreedingProgramCreateInput) {
+        return post<BreedingProgram>("/breeding/programs", input);
+      },
+      update(id: number, input: Partial<BreedingProgramCreateInput>) {
+        return put<BreedingProgram>(`/breeding/programs/${id}`, input);
+      },
+      delete(id: number) {
+        return del<void>(`/breeding/programs/${id}`);
       },
     },
 

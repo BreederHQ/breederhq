@@ -3,8 +3,9 @@ import * as React from "react";
 import { DrawerHeader } from "./DrawerParts";
 import { Button } from "../Button";
 import { Tabs } from "../Tabs";
+import { Check } from "lucide-react";
 
-type Tab = { key: string; label: string };
+type Tab = { key: string; label: string; badge?: React.ReactNode };
 
 export function DetailsScaffold({
   title,
@@ -24,6 +25,7 @@ export function DetailsScaffold({
   hasPendingChanges,
   hideCloseButton,
   showFooterClose,
+  justSaved,
 }: {
   title: React.ReactNode;
   subtitle?: React.ReactNode;
@@ -44,6 +46,8 @@ export function DetailsScaffold({
   hideCloseButton?: boolean;
   /** Show a Close button in the footer instead of/in addition to header X */
   showFooterClose?: boolean;
+  /** Show a brief "Saved" indicator */
+  justSaved?: boolean;
 }) {
   // When in edit mode without pending changes, Close should exit edit mode
   // When in edit mode with pending changes, Close should trigger the unsaved changes flow
@@ -66,6 +70,12 @@ export function DetailsScaffold({
         hideCloseButton={hideCloseButton}
         actions={
           <div className="flex items-center gap-2">
+            {justSaved && (
+              <span className="flex items-center gap-1 text-xs text-green-400 animate-in fade-in duration-200">
+                <Check className="h-3.5 w-3.5" />
+                Saved
+              </span>
+            )}
             {rightActions /* should render <Button size="sm" variant="outline">Archive</Button> */}
             {mode === "view" ? (
               onEdit && <Button size="sm" variant="primary" onClick={onEdit}>Edit</Button>
@@ -92,7 +102,15 @@ export function DetailsScaffold({
       {tabs?.length > 0 && (
         <div className="px-4 pt-3 pb-3 flex items-start justify-between border-b border-white/10">
           <Tabs
-            items={tabs.map(t => ({ value: t.key, label: <span className="uppercase tracking-wide">{t.label}</span> }))}
+            items={tabs.map(t => ({
+              value: t.key,
+              label: (
+                <span className="uppercase tracking-wide flex items-center gap-1.5">
+                  {t.label}
+                  {t.badge}
+                </span>
+              ),
+            }))}
             value={activeTab}
             onValueChange={onTabChange}
             variant="pills"

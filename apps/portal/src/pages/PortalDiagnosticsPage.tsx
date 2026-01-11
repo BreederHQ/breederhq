@@ -2,6 +2,7 @@
 import * as React from "react";
 import { PageContainer } from "../design/PageContainer";
 import { SectionCard } from "../design/SectionCard";
+import { buildApiPath, getTenantSlug } from "../derived/tenantContext";
 
 // Keys to sanitize from any JSON object
 const SENSITIVE_KEYS = [
@@ -63,10 +64,16 @@ interface EndpointResult {
  */
 async function probeEndpoint(url: string, method: string = "GET"): Promise<EndpointResult> {
   try {
-    const response = await fetch(url, {
+    const tenantSlug = getTenantSlug();
+    // Build URL with tenant slug in path for tenant-scoped endpoints
+    const fullUrl = url.startsWith("/api/v1/portal/") && tenantSlug
+      ? url.replace("/api/v1/portal/", `/api/v1/t/${tenantSlug}/portal/`)
+      : url;
+    const headers: Record<string, string> = { Accept: "application/json" };
+    const response = await fetch(fullUrl, {
       method,
       credentials: "include",
-      headers: { Accept: "application/json" },
+      headers,
     });
     return {
       url,
@@ -214,11 +221,13 @@ export default function PortalDiagnosticsPage() {
 
       // Block B: Subject data (try placements first, then offspring)
       let subjects: Array<{ offspring?: { species?: string } }> = [];
+      const tenantSlug = getTenantSlug();
+      const diagHeaders: Record<string, string> = { Accept: "application/json" };
       try {
         // Try placements endpoint first
-        const placementsRes = await fetch("/api/v1/portal/placements", {
+        const placementsRes = await fetch(buildApiPath("/portal/placements", tenantSlug), {
           credentials: "include",
-          headers: { Accept: "application/json" },
+          headers: diagHeaders,
         });
         if (placementsRes.ok) {
           const placementsData = await placementsRes.json();
@@ -227,9 +236,9 @@ export default function PortalDiagnosticsPage() {
       } catch {
         // Fallback to offspring endpoint
         try {
-          const offspringRes = await fetch("/api/v1/portal/offspring", {
+          const offspringRes = await fetch(buildApiPath("/portal/offspring", tenantSlug), {
             credentials: "include",
-            headers: { Accept: "application/json" },
+            headers: diagHeaders,
           });
           if (offspringRes.ok) {
             const offspringData = await offspringRes.json();
@@ -246,14 +255,14 @@ export default function PortalDiagnosticsPage() {
       // Block C: Endpoint truth table
       const endpointProbes = await Promise.all([
         probeEndpoint("/api/v1/session", "GET"),
-        probeEndpoint("/api/v1/portal/placements", "GET"),
-        probeEndpoint("/api/v1/portal/offspring", "GET"),
-        probeEndpoint("/api/v1/portal/threads", "GET"),
-        probeEndpoint("/api/v1/portal/messages", "GET"),
-        probeEndpoint("/api/v1/portal/invoices", "GET"),
-        probeEndpoint("/api/v1/portal/financials", "GET"),
-        probeEndpoint("/api/v1/portal/agreements", "GET"),
-        probeEndpoint("/api/v1/portal/documents", "GET"),
+        probeEndpoint(buildApiPath("/portal/placements", tenantSlug), "GET"),
+        probeEndpoint(buildApiPath("/portal/offspring", tenantSlug), "GET"),
+        probeEndpoint(buildApiPath("/portal/threads", tenantSlug), "GET"),
+        probeEndpoint(buildApiPath("/portal/messages", tenantSlug), "GET"),
+        probeEndpoint(buildApiPath("/portal/invoices", tenantSlug), "GET"),
+        probeEndpoint(buildApiPath("/portal/financials", tenantSlug), "GET"),
+        probeEndpoint(buildApiPath("/portal/agreements", tenantSlug), "GET"),
+        probeEndpoint(buildApiPath("/portal/documents", tenantSlug), "GET"),
       ]);
       setEndpoints(endpointProbes);
 

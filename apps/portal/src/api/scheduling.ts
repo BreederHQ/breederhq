@@ -3,6 +3,8 @@
 // All endpoints are placeholders - backend will wire these later.
 // This file isolates all scheduling API calls in one place.
 
+import { buildApiPath, getTenantSlug } from "../derived/tenantContext";
+
 /* ────────────────────────────────────────────────────────────────────────────
  * Types
  * ──────────────────────────────────────────────────────────────────────────── */
@@ -132,49 +134,31 @@ export interface DiscoveryResponse {
 }
 
 /* ────────────────────────────────────────────────────────────────────────────
- * API Base URL (same pattern as taskSources.ts)
- * ──────────────────────────────────────────────────────────────────────────── */
-
-function getApiBase(): string {
-  const envBase = (import.meta.env.VITE_API_BASE_URL as string) || "";
-  if (envBase.trim()) {
-    return normalizeBase(envBase);
-  }
-  const w = window as any;
-  const windowBase = String(w.__BHQ_API_BASE__ || "").trim();
-  if (windowBase) {
-    return normalizeBase(windowBase);
-  }
-  if (import.meta.env.DEV) {
-    return "";
-  }
-  return normalizeBase(window.location.origin);
-}
-
-function normalizeBase(base: string): string {
-  return base.replace(/\/+$/, "").replace(/\/api\/v1$/i, "");
-}
-
-/* ────────────────────────────────────────────────────────────────────────────
  * Fetch Helper
  * ──────────────────────────────────────────────────────────────────────────── */
 
 async function apiFetch<T>(
-  path: string,
+  endpoint: string,
   options: RequestInit = {}
 ): Promise<{ ok: true; data: T } | { ok: false; status: number; message: string }> {
-  const base = getApiBase();
-  const url = `${base}${path}`;
+  // Use buildApiPath to get the URL (includes tenant slug in path)
+  const tenantSlug = getTenantSlug();
+  const url = buildApiPath(endpoint, tenantSlug);
+
+  // Build headers
+  const headers: Record<string, string> = {
+    Accept: "application/json",
+    "Content-Type": "application/json",
+  };
 
   try {
     const res = await fetch(url, {
       credentials: "include",
-      headers: {
-        Accept: "application/json",
-        "Content-Type": "application/json",
-        ...options.headers,
-      },
       ...options,
+      headers: {
+        ...headers,
+        ...(options.headers as Record<string, string> || {}),
+      },
     });
 
     if (res.ok) {
@@ -216,7 +200,7 @@ async function apiFetch<T>(
 export async function discoverSchedulingEvents(
   offspringGroupId: number
 ): Promise<{ ok: true; data: DiscoveryResponse } | { ok: false; status: number; message: string }> {
-  return apiFetch<DiscoveryResponse>(`/api/v1/portal/scheduling/offspring-groups/${offspringGroupId}/events`);
+  return apiFetch<DiscoveryResponse>(`/portal/scheduling/offspring-groups/${offspringGroupId}/events`);
 }
 
 /**
@@ -226,7 +210,7 @@ export async function discoverSchedulingEvents(
 export async function getSchedulingEvent(
   eventId: string
 ): Promise<{ ok: true; data: SchedulingEventResponse } | { ok: false; status: number; message: string }> {
-  return apiFetch<SchedulingEventResponse>(`/api/v1/portal/scheduling/events/${eventId}`);
+  return apiFetch<SchedulingEventResponse>(`/portal/scheduling/events/${eventId}`);
 }
 
 /**
@@ -240,13 +224,18 @@ export async function listAvailableSlots(
   | { ok: true; data: { slots: SchedulingSlot[] } }
   | { ok: false; status: number; message: string; placementBlocked?: BlockedResponse }
 > {
-  const base = getApiBase();
-  const url = `${base}/api/v1/portal/scheduling/events/${eventId}/slots`;
+  const tenantSlug = getTenantSlug();
+  const url = buildApiPath(`/portal/scheduling/events/${eventId}/slots`, tenantSlug);
+
+  // Build headers
+  const headers: Record<string, string> = {
+    Accept: "application/json",
+  };
 
   try {
     const res = await fetch(url, {
       credentials: "include",
-      headers: { Accept: "application/json" },
+      headers,
     });
 
     if (res.ok) {
@@ -300,7 +289,7 @@ export async function bookSlot(
   slotId: string
 ): Promise<BookingResult> {
   const result = await apiFetch<{ booking?: ConfirmedBooking; error?: string; code?: string }>(
-    `/api/v1/portal/scheduling/events/${eventId}/book`,
+    `/portal/scheduling/events/${eventId}/book`,
     {
       method: "POST",
       body: JSON.stringify({ slotId }),
@@ -334,7 +323,7 @@ export async function cancelBooking(
   eventId: string
 ): Promise<CancelResult> {
   const result = await apiFetch<{ cancelled?: boolean; error?: string }>(
-    `/api/v1/portal/scheduling/events/${eventId}/cancel`,
+    `/portal/scheduling/events/${eventId}/cancel`,
     { method: "POST" }
   );
 
@@ -361,7 +350,7 @@ export async function rescheduleBooking(
   newSlotId: string
 ): Promise<RescheduleResult> {
   const result = await apiFetch<{ booking?: ConfirmedBooking; error?: string; code?: string }>(
-    `/api/v1/portal/scheduling/events/${eventId}/reschedule`,
+    `/portal/scheduling/events/${eventId}/reschedule`,
     {
       method: "POST",
       body: JSON.stringify({ slotId: newSlotId }),
@@ -446,107 +435,6 @@ export function formatDeadlineForDisplay(isoTimestamp: string): string {
   } catch {
     return isoTimestamp;
   }
-}
-
-/* ────────────────────────────────────────────────────────────────────────────
- * Mock Data (for demo mode only)
- * ──────────────────────────────────────────────────────────────────────────── */
-
-export function getMockSchedulingEvent(eventId: string): SchedulingEventResponse {
-  // Compute mock deadline timestamps (24 hours before a hypothetical slot 3 days from now)
-  const mockSlotStart = new Date();
-  mockSlotStart.setDate(mockSlotStart.getDate() + 3);
-  mockSlotStart.setHours(10, 0, 0, 0);
-  const cancelDeadline = new Date(mockSlotStart.getTime() - 24 * 60 * 60 * 1000);
-  const rescheduleDeadline = new Date(mockSlotStart.getTime() - 24 * 60 * 60 * 1000);
-
-  return {
-    context: {
-      eventId,
-      eventType: "Pickup Appointment",
-      breederName: "Sarah Thompson",
-      breederId: 100,
-      subjectName: "Bella",
-      subjectType: "offspring",
-      subjectId: 101,
-    },
-    rules: {
-      canCancel: true,
-      canReschedule: true,
-      cancellationDeadlineHours: 24,
-      rescheduleDeadlineHours: 24,
-      cancelDeadlineAt: cancelDeadline.toISOString(),
-      rescheduleDeadlineAt: rescheduleDeadline.toISOString(),
-    },
-    eventStatus: {
-      isOpen: true,
-      isEligible: true,
-      eligibilityReason: null,
-      hasExistingBooking: false,
-      existingBooking: null,
-      blocked: null,
-    },
-  };
-}
-
-export function getMockSlots(): SchedulingSlot[] {
-  // Generate slots for the next 7 days, 3 slots per day
-  const slots: SchedulingSlot[] = [];
-  const now = new Date();
-
-  for (let dayOffset = 1; dayOffset <= 7; dayOffset++) {
-    const date = new Date(now);
-    date.setDate(date.getDate() + dayOffset);
-
-    // Morning slot: 10:00 AM
-    const morning = new Date(date);
-    morning.setHours(10, 0, 0, 0);
-    slots.push({
-      slotId: `slot-${dayOffset}-1`,
-      startsAt: morning.toISOString(),
-      endsAt: new Date(morning.getTime() + 60 * 60 * 1000).toISOString(),
-      location: "123 Breeder Lane, Springfield, IL",
-      mode: "in_person",
-    });
-
-    // Afternoon slot: 2:00 PM
-    const afternoon = new Date(date);
-    afternoon.setHours(14, 0, 0, 0);
-    slots.push({
-      slotId: `slot-${dayOffset}-2`,
-      startsAt: afternoon.toISOString(),
-      endsAt: new Date(afternoon.getTime() + 60 * 60 * 1000).toISOString(),
-      location: "123 Breeder Lane, Springfield, IL",
-      mode: "in_person",
-    });
-
-    // Evening slot: 5:00 PM (virtual)
-    const evening = new Date(date);
-    evening.setHours(17, 0, 0, 0);
-    slots.push({
-      slotId: `slot-${dayOffset}-3`,
-      startsAt: evening.toISOString(),
-      endsAt: new Date(evening.getTime() + 30 * 60 * 1000).toISOString(),
-      location: null,
-      mode: "virtual",
-    });
-  }
-
-  return slots;
-}
-
-export function getMockConfirmedBooking(slotId: string, slot: SchedulingSlot): ConfirmedBooking {
-  return {
-    bookingId: `booking-${Date.now()}`,
-    eventId: "demo",
-    slotId,
-    startsAt: slot.startsAt,
-    endsAt: slot.endsAt,
-    location: slot.location,
-    mode: slot.mode,
-    confirmedAt: new Date().toISOString(),
-    nextSteps: "Please arrive 10 minutes early. Bring a secure carrier for safe transport. If you have any questions, contact us through the Messages page.",
-  };
 }
 
 /* ────────────────────────────────────────────────────────────────────────────

@@ -273,14 +273,9 @@ export function PortalAccessTab({ partyId, partyEmail, api }: PortalAccessTabPro
 
           {/* INVITED: Resend invite */}
           {status === "INVITED" && (
-            <>
-              <Button onClick={handleResendInvite} disabled={actionLoading}>
-                Resend Invite
-              </Button>
-              <Button variant="outline" onClick={handleSuspend} disabled={actionLoading}>
-                Suspend
-              </Button>
-            </>
+            <Button onClick={handleResendInvite} disabled={actionLoading}>
+              Resend Invite
+            </Button>
           )}
 
           {/* ACTIVE: Suspend, Force Reset */}

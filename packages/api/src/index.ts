@@ -19,6 +19,7 @@ import { makeDrafts, type DraftsResource } from "./resources/drafts";
 import { makeDocumentBundles, type DocumentBundlesResource } from "./resources/document-bundles";
 import { makeAnimalLinking, type AnimalLinkingResource } from "./resources/animal-linking";
 import { makeMessagingHub, type MessagingHubResource } from "./resources/messaging-hub";
+import { makeGenetics, type GeneticsResource } from "./resources/genetics";
 
 export { createHttp, type Http, type MakeAuthHeader } from "./http";
 
@@ -124,6 +125,14 @@ export {
   type SendEmailResult,
   type LinkEmailResult,
 } from "./resources/messaging-hub";
+export {
+  makeGenetics,
+  makeGeneticMarkers,
+  makeAnimalGenetics,
+  type GeneticsResource,
+  type GeneticMarkersResource,
+  type AnimalGeneticsResource,
+} from "./resources/genetics";
 
 // Re-export shared types - common types first (ID, ListParams, ListResponse)
 export * from "./types/contacts";
@@ -136,7 +145,9 @@ export * from "./types/party-crm";
 export * from "./types/templates";
 export * from "./types/animal-linking";
 export * from "./types/collar-settings";
+export * from "./types/genetics";
 export * from "./types/view-preferences";
+export * from "./types/vaccinations";
 export {
   type LineItemKind,
   type InvoiceCategory,
@@ -178,5 +189,6 @@ export function makeApi(baseURL: string, makeAuth?: MakeAuthHeader) {
     documentBundles: makeDocumentBundles(http),
     animalLinking: makeAnimalLinking(http),
     messagingHub: makeMessagingHub(http),
+    genetics: makeGenetics(http),
   };
 }

@@ -4,9 +4,8 @@ import { PageContainer } from "../design/PageContainer";
 import { PortalHero } from "../design/PortalHero";
 import { PortalCard, CardRow } from "../design/PortalCard";
 import { makeApi, type AgreementDTO, type ContractStatus } from "@bhq/api";
-import { isPortalMockEnabled } from "../dev/mockFlag";
-import { mockAgreements, mockOffspring } from "../dev/mockData";
 import { SubjectHeader } from "../components/SubjectHeader";
+import { createPortalFetch, useTenantContext } from "../derived/tenantContext";
 
 // Resolve API base URL
 function getApiBase(): string {
@@ -468,44 +467,53 @@ function ErrorState({ onRetry }: { onRetry: () => void }) {
  * ──────────────────────────────────────────────────────────────────────────── */
 
 export default function PortalAgreementsPageNew() {
+  const { tenantSlug, isReady } = useTenantContext();
   const [agreements, setAgreements] = React.useState<AgreementDTO[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState(false);
-  const mockEnabled = isPortalMockEnabled();
+  const [primaryAnimal, setPrimaryAnimal] = React.useState<any>(null);
 
-  // Get primary animal for context (species-aware)
-  const offspring = mockEnabled ? mockOffspring() : [];
-  const primaryAnimal = offspring[0];
-  const animalName = primaryAnimal?.offspring?.name || "your puppy";
-  const species = primaryAnimal?.offspring?.species || null;
-  const breed = primaryAnimal?.offspring?.breed || null;
+  // Animal context
+  const animalName = primaryAnimal?.offspring?.name || "your reservation";
+  const species = primaryAnimal?.offspring?.species || primaryAnimal?.species || null;
+  const breed = primaryAnimal?.offspring?.breed || primaryAnimal?.breed || null;
+
+  // Load primary animal context - wait for tenant context
+  React.useEffect(() => {
+    if (!isReady) return;
+
+    const portalFetch = createPortalFetch(tenantSlug);
+    let cancelled = false;
+
+    async function loadAnimalContext() {
+      try {
+        const data = await portalFetch<{ placements: any[] }>("/portal/placements");
+        if (cancelled) return;
+        const placements = data.placements || [];
+        if (placements.length > 0) {
+          setPrimaryAnimal(placements[0]);
+        }
+      } catch (err) {
+        // Silently ignore - animal context is optional for display
+      }
+    }
+    loadAnimalContext();
+    return () => { cancelled = true; };
+  }, [tenantSlug, isReady]);
 
   const fetchAgreements = React.useCallback(async () => {
     setLoading(true);
     setError(false);
     try {
       const data = await api.portalData.getAgreements();
-      const fetchedAgreements = data.agreements;
-
-      // Use mock data if empty and demo mode enabled
-      if (fetchedAgreements.length === 0 && mockEnabled) {
-        setAgreements(mockAgreements() as any);
-      } else {
-        setAgreements(fetchedAgreements);
-      }
+      setAgreements(data.agreements || []);
     } catch (err: any) {
       console.error("[PortalAgreementsPageNew] Failed to fetch agreements:", err);
-
-      // If error and demo mode, use mock data
-      if (mockEnabled) {
-        setAgreements(mockAgreements() as any);
-      } else {
-        setError(true);
-      }
+      setError(true);
     } finally {
       setLoading(false);
     }
-  }, [mockEnabled]);
+  }, []);
 
   React.useEffect(() => {
     fetchAgreements();

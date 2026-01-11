@@ -25,6 +25,8 @@ import {
   exportToCsv,
   Popover,
   useViewMode,
+  TagPicker,
+  type TagOption,
 } from "@bhq/ui";
 import { FinanceTab, type OffspringGroupContext } from "@bhq/ui/components/Finance";
 
@@ -1065,20 +1067,131 @@ function IdentityField(props: { label: string; children: React.ReactNode }) {
   );
 }
 
+/* ───────────────── SectionTitle (with icon support) ───────────────── */
+function SectionTitle({ icon, children }: { icon?: string; children: React.ReactNode }) {
+  if (!icon) return <>{children}</>;
+
+  return (
+    <span className="inline-flex items-center gap-2">
+      <span className="text-lg" style={{ opacity: 0.7 }}>{icon}</span>
+      <span>{children}</span>
+    </span>
+  );
+}
+
+/** ---------- Group Tags Section ---------- */
+function GroupTagsSection({
+  groupId,
+  api,
+  disabled = false,
+}: {
+  groupId: number;
+  api: OffspringApi | null;
+  disabled?: boolean;
+}) {
+  const [availableTags, setAvailableTags] = React.useState<TagOption[]>([]);
+  const [selectedTags, setSelectedTags] = React.useState<TagOption[]>([]);
+  const [loading, setLoading] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+
+  // Load tags on mount
+  React.useEffect(() => {
+    if (!api) return;
+    let cancelled = false;
+
+    const load = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        // Load available tags for OFFSPRING_GROUP module
+        const availableRes = await api.tags.list({ module: "OFFSPRING_GROUP", limit: 200 });
+        const availableItems = availableRes?.items || [];
+        const available = availableItems.map((t: any) => ({
+          id: Number(t.id),
+          name: String(t.name),
+          color: t.color ?? null,
+        }));
+        if (!cancelled) setAvailableTags(available);
+
+        // Load currently assigned tags
+        const assignedRes = await api.tags.listForOffspringGroup(groupId);
+        const assignedItems = Array.isArray(assignedRes) ? assignedRes : [];
+        const assigned = assignedItems.map((t: any) => ({
+          id: Number(t.id),
+          name: String(t.name),
+          color: t.color ?? null,
+        }));
+        if (!cancelled) setSelectedTags(assigned);
+      } catch (e: any) {
+        if (!cancelled) setError(e?.message || "Failed to load tags");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+
+    load();
+    return () => { cancelled = true; };
+  }, [api, groupId]);
+
+  const handleSelect = React.useCallback(async (tag: TagOption) => {
+    if (!api) return;
+    // Optimistic update
+    setSelectedTags((prev) => [...prev, tag]);
+    setError(null);
+
+    try {
+      await api.tags.assign(tag.id, { offspringGroupId: groupId });
+    } catch (e: any) {
+      // Rollback on error
+      setSelectedTags((prev) => prev.filter((t) => t.id !== tag.id));
+      setError(e?.message || "Failed to assign tag");
+    }
+  }, [api, groupId]);
+
+  const handleRemove = React.useCallback(async (tag: TagOption) => {
+    if (!api) return;
+    // Optimistic update
+    setSelectedTags((prev) => prev.filter((t) => t.id !== tag.id));
+    setError(null);
+
+    try {
+      await api.tags.unassign(tag.id, { offspringGroupId: groupId });
+    } catch (e: any) {
+      // Rollback on error
+      setSelectedTags((prev) => [...prev, tag]);
+      setError(e?.message || "Failed to remove tag");
+    }
+  }, [api, groupId]);
+
+  const handleCreate = React.useCallback(async (name: string): Promise<TagOption> => {
+    if (!api) throw new Error("API not available");
+    const created = await api.tags.create({ name, module: "OFFSPRING_GROUP" });
+    const newTag: TagOption = {
+      id: Number(created.id),
+      name: String(created.name),
+      color: created.color ?? null,
+    };
+    // Add to available tags list
+    setAvailableTags((prev) => [...prev, newTag]);
+    return newTag;
+  }, [api]);
+
+  return (
+    <TagPicker
+      availableTags={availableTags}
+      selectedTags={selectedTags}
+      onSelect={handleSelect}
+      onRemove={handleRemove}
+      onCreate={handleCreate}
+      loading={loading}
+      error={error}
+      placeholder="Add tags..."
+      disabled={disabled}
+    />
+  );
+}
 
 const groupSections = (mode: "view" | "edit"): DetailsSpecSection<GroupTableRow>[] => [
-  {
-    title: "Tags",
-    fields: [
-      {
-        label: "Tags",
-        key: "tags",
-        view: (r: GroupTableRow) =>
-          r.tags && r.tags.length > 0 ? r.tags.join(", ") : "-",
-      },
-    ],
-  },
-
   {
     title: "Counts",
     columns: 3 as const,
@@ -4164,6 +4277,9 @@ function OffspringGroupsTab(
               activeTab,
               setActiveTab,
               requestSave,
+              hasPendingChanges,
+              justSaved,
+              close,
             }: any) => {
               const tblRow = mapDetailToTableRow(row);
               const effectiveTab = addOffspringOpen ? "linkedOffspring" : activeTab;
@@ -4200,8 +4316,13 @@ function OffspringGroupsTab(
                   subtitle={tblRow.breed || tblRow.species || ""}
                   mode={mode}
                   onEdit={() => setMode("edit")}
-                  onCancel={() => setMode("view")}
+                  onCancel={() => { setMode("view"); setDraft({}); }}
                   onSave={requestSave}
+                  hasPendingChanges={hasPendingChanges}
+                  justSaved={justSaved}
+                  onClose={close}
+                  hideCloseButton
+                  showFooterClose
                   tabs={[
                     { key: "overview", label: "Overview" },
                     { key: "buyers", label: "Buyers" },
@@ -4216,24 +4337,9 @@ function OffspringGroupsTab(
                     if (addOffspringOpen) return;
                     setActiveTab(next);
                   }} rightActions={
-                    <div className="flex gap-2">
-                      {row?.plan?.id && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() =>
-                            window.open(`/breeding/plan/${row.plan!.id}`, "_blank")
-                          }
-                        >
-                          Open plan
-                        </Button>
-                      )}
-                      {readOnlyGlobal && (
-                        <span className="self-center text-xs text-secondary">
-                          View only
-                        </span>
-                      )}
-                    </div>
+                    readOnlyGlobal ? (
+                      <span className="text-xs text-secondary">View only</span>
+                    ) : undefined
                   }
                 >
 
@@ -4446,6 +4552,11 @@ function OffspringGroupsTab(
                           </div>
                         </div>
                       </SectionCard>
+
+                      <SectionCard
+                        title={<SectionTitle icon="🏷️">Tags</SectionTitle>}
+                        right={<GroupTagsSection groupId={row.id} api={api} disabled={!isEdit} />}
+                      />
 
                       <DetailsSpecRenderer<GroupTableRow>
                         row={tblRow}

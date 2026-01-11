@@ -37,23 +37,23 @@ export type PartyNotesResource = {
 export function makePartyNotes(http: Http): PartyNotesResource {
   return {
     async list(partyId: number): Promise<ListResponse<PartyNote>> {
-      const res = await http.get(`/parties/${partyId}/notes`);
+      const res = await http.get(`/api/v1/parties/${partyId}/notes`);
       return normalizeList(res, "notes");
     },
     async create(input: CreatePartyNoteInput): Promise<PartyNote> {
-      const res = await http.post(`/parties/${input.partyId}/notes`, input);
+      const res = await http.post(`/api/v1/parties/${input.partyId}/notes`, input);
       return res.note || res;
     },
     async update(partyId: number, noteId: ID, input: UpdatePartyNoteInput): Promise<PartyNote> {
-      const res = await http.patch(`/parties/${partyId}/notes/${noteId}`, input);
+      const res = await http.patch(`/api/v1/parties/${partyId}/notes/${noteId}`, input);
       return res.note || res;
     },
     async delete(partyId: number, noteId: ID): Promise<{ success: true }> {
-      await http.delete(`/parties/${partyId}/notes/${noteId}`);
+      await http.delete(`/api/v1/parties/${partyId}/notes/${noteId}`);
       return { success: true };
     },
     async pin(partyId: number, noteId: ID, pinned: boolean): Promise<PartyNote> {
-      const res = await http.patch(`/parties/${partyId}/notes/${noteId}`, { pinned });
+      const res = await http.patch(`/api/v1/parties/${partyId}/notes/${noteId}`, { pinned });
       return res.note || res;
     },
   };
@@ -82,7 +82,7 @@ function buildActivityQuery(params: ActivityListParams): string {
 export function makePartyActivity(http: Http): PartyActivityResource {
   return {
     async list(params: ActivityListParams): Promise<ListResponse<ActivityItem>> {
-      const res = await http.get(`/parties/${params.partyId}/activity${buildActivityQuery(params)}`);
+      const res = await http.get(`/api/v1/parties/${params.partyId}/activity${buildActivityQuery(params)}`);
       return normalizeList(res, "activity");
     },
   };
@@ -111,11 +111,11 @@ function buildEmailQuery(params: EmailListParams): string {
 export function makePartyEmails(http: Http): PartyEmailsResource {
   return {
     async list(params: EmailListParams): Promise<ListResponse<PartyEmail>> {
-      const res = await http.get(`/parties/${params.partyId}/emails${buildEmailQuery(params)}`);
+      const res = await http.get(`/api/v1/parties/${params.partyId}/emails${buildEmailQuery(params)}`);
       return normalizeList(res, "emails");
     },
     async send(input: SendEmailInput): Promise<PartyEmail> {
-      const res = await http.post(`/parties/${input.partyId}/emails`, input);
+      const res = await http.post(`/api/v1/parties/${input.partyId}/emails`, input);
       return res.email || res;
     },
   };
@@ -148,23 +148,23 @@ function buildEventQuery(params: EventListParams): string {
 export function makePartyEvents(http: Http): PartyEventsResource {
   return {
     async list(params: EventListParams): Promise<ListResponse<PartyEvent>> {
-      const res = await http.get(`/parties/${params.partyId}/events${buildEventQuery(params)}`);
+      const res = await http.get(`/api/v1/parties/${params.partyId}/events${buildEventQuery(params)}`);
       return normalizeList(res, "events");
     },
     async create(input: CreatePartyEventInput): Promise<PartyEvent> {
-      const res = await http.post(`/parties/${input.partyId}/events`, input);
+      const res = await http.post(`/api/v1/parties/${input.partyId}/events`, input);
       return res.event || res;
     },
     async update(partyId: number, eventId: ID, input: UpdatePartyEventInput): Promise<PartyEvent> {
-      const res = await http.patch(`/parties/${partyId}/events/${eventId}`, input);
+      const res = await http.patch(`/api/v1/parties/${partyId}/events/${eventId}`, input);
       return res.event || res;
     },
     async delete(partyId: number, eventId: ID): Promise<{ success: true }> {
-      await http.delete(`/parties/${partyId}/events/${eventId}`);
+      await http.delete(`/api/v1/parties/${partyId}/events/${eventId}`);
       return { success: true };
     },
     async complete(partyId: number, eventId: ID): Promise<PartyEvent> {
-      const res = await http.post(`/parties/${partyId}/events/${eventId}/complete`, {});
+      const res = await http.post(`/api/v1/parties/${partyId}/events/${eventId}/complete`, {});
       return res.event || res;
     },
   };
@@ -184,19 +184,19 @@ export type PartyMilestonesResource = {
 export function makePartyMilestones(http: Http): PartyMilestonesResource {
   return {
     async list(partyId: number): Promise<ListResponse<PartyMilestone>> {
-      const res = await http.get(`/parties/${partyId}/milestones`);
+      const res = await http.get(`/api/v1/parties/${partyId}/milestones`);
       return normalizeList(res, "milestones");
     },
     async create(input: CreateMilestoneInput): Promise<PartyMilestone> {
-      const res = await http.post(`/parties/${input.partyId}/milestones`, input);
+      const res = await http.post(`/api/v1/parties/${input.partyId}/milestones`, input);
       return res.milestone || res;
     },
     async update(partyId: number, milestoneId: ID, input: UpdateMilestoneInput): Promise<PartyMilestone> {
-      const res = await http.patch(`/parties/${partyId}/milestones/${milestoneId}`, input);
+      const res = await http.patch(`/api/v1/parties/${partyId}/milestones/${milestoneId}`, input);
       return res.milestone || res;
     },
     async delete(partyId: number, milestoneId: ID): Promise<{ success: true }> {
-      await http.delete(`/parties/${partyId}/milestones/${milestoneId}`);
+      await http.delete(`/api/v1/parties/${partyId}/milestones/${milestoneId}`);
       return { success: true };
     },
   };
@@ -221,12 +221,12 @@ export function makeContactTasks(http: Http): ContactTasksResource {
       if (params.to) sp.set("to", params.to);
       if (params.limit != null) sp.set("limit", String(params.limit));
       const q = sp.toString();
-      const res = await http.get(`/dashboard/contact-tasks${q ? `?${q}` : ""}`);
+      const res = await http.get(`/api/v1/dashboard/contact-tasks${q ? `?${q}` : ""}`);
       // Backend returns array directly
       return Array.isArray(res) ? res : [];
     },
     async complete(taskId: string): Promise<{ success: true }> {
-      await http.post(`/dashboard/contact-tasks/${taskId}/complete`, {});
+      await http.post(`/api/v1/dashboard/contact-tasks/${taskId}/complete`, {});
       return { success: true };
     },
   };

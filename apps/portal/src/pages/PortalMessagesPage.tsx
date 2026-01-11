@@ -5,33 +5,14 @@ import { PageScaffold } from "../design/PageScaffold";
 import { PortalHero } from "../design/PortalHero";
 import { PortalCard, CardRow } from "../design/PortalCard";
 import { Button } from "../design/Button";
-import { makeApi } from "@bhq/api";
 import type { MessageThread, Message } from "@bhq/api";
-import { isPortalMockEnabled } from "../dev/mockFlag";
-import { mockThreads, mockThreadDetail, mockOffspring } from "../dev/mockData";
 import { SubjectHeader } from "../components/SubjectHeader";
-
-// Resolve API base URL
-function getApiBase(): string {
-  const envBase = (import.meta.env.VITE_API_BASE_URL as string) || "";
-  if (envBase.trim()) {
-    return normalizeBase(envBase);
-  }
-  if (import.meta.env.DEV) {
-    return "";
-  }
-  return normalizeBase(window.location.origin);
-}
-
-function normalizeBase(base: string): string {
-  return base.replace(/\/+$/, "").replace(/\/api\/v1$/i, "");
-}
-
-const api = makeApi(getApiBase());
+import { useWebSocket, type WebSocketEvent } from "../hooks/useWebSocket";
+import { createPortalFetch, useTenantContext } from "../derived/tenantContext";
 
 function getCurrentPartyId(): number | null {
   const w = window as any;
-  return w.platform?.currentOrgId || 200; // Default to mock party ID in demo
+  return w.platform?.currentOrgId || null;
 }
 
 function getThreadIdFromUrl(): number | null {
@@ -323,7 +304,7 @@ function MessageBubble({ message, isOwn, senderName }: MessageBubbleProps) {
 }
 
 /* ────────────────────────────────────────────────────────────────────────────
- * Thread Detail View - Flat, structured, action-oriented
+ * Thread Detail View - Flat, structured, action-oriented with inline reply
  * ──────────────────────────────────────────────────────────────────────────── */
 
 interface ThreadDetailProps {
@@ -333,13 +314,19 @@ interface ThreadDetailProps {
   animalName: string;
   species: string | null;
   breed: string | null;
+  onMessageSent: (message: any) => void;
+  portalFetch: <T>(endpoint: string, options?: RequestInit) => Promise<T>;
 }
 
-function ThreadDetail({ thread, currentPartyId, onBack, animalName, species, breed }: ThreadDetailProps) {
+function ThreadDetail({ thread, currentPartyId, onBack, animalName, species, breed, onMessageSent, portalFetch }: ThreadDetailProps) {
   const messagesEndRef = React.useRef<HTMLDivElement>(null);
   const messagesContainerRef = React.useRef<HTMLDivElement>(null);
+  const textareaRef = React.useRef<HTMLTextAreaElement>(null);
+  const [replyText, setReplyText] = React.useState("");
+  const [sending, setSending] = React.useState(false);
+  const [sendError, setSendError] = React.useState<string | null>(null);
 
-  // Scroll to bottom on mount (show latest message)
+  // Scroll to bottom on mount and when new messages arrive
   React.useEffect(() => {
     if (messagesContainerRef.current) {
       messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
@@ -365,25 +352,94 @@ function ThreadDetail({ thread, currentPartyId, onBack, animalName, species, bre
     messagesWithSeparators.push({ type: "message", msg, isOwn });
   }
 
-  // Handle contact breeder action
-  const handleContactBreeder = () => {
-    // Could open email client, navigate to contact form, etc.
-    // For now, we'll use a generic mailto if email is available
-    const breederEmail = otherParticipant?.email || otherParticipant?.party?.email;
-    if (breederEmail) {
-      window.location.href = `mailto:${breederEmail}?subject=Re: ${thread.subject || animalName}`;
-    } else {
-      // Fallback: scroll to show the thread info
-      alert(`Please contact ${otherName} to continue this conversation.`);
+  // Handle sending a reply
+  const handleSendReply = async () => {
+    const trimmedText = replyText.trim();
+    if (!trimmedText || sending) return;
+
+    setSending(true);
+    setSendError(null);
+
+    try {
+      const response = await portalFetch<{ ok: boolean; message: any }>(
+        `/messages/threads/${thread.id}/messages`,
+        {
+          method: "POST",
+          body: JSON.stringify({ body: trimmedText }),
+        }
+      );
+
+      if (response?.ok && response.message) {
+        // Clear the input
+        setReplyText("");
+        // Notify parent to update the thread
+        onMessageSent(response.message);
+        // Scroll to bottom
+        setTimeout(() => {
+          if (messagesContainerRef.current) {
+            messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
+          }
+        }, 100);
+      } else {
+        setSendError("Failed to send message. Please try again.");
+      }
+    } catch (err: any) {
+      console.error("[PortalMessages] Failed to send reply:", err);
+      setSendError(err?.message || "Failed to send message. Please try again.");
+    } finally {
+      setSending(false);
     }
   };
 
+  // Handle keyboard shortcuts
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    // Cmd/Ctrl + Enter to send
+    if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+      e.preventDefault();
+      handleSendReply();
+    }
+  };
+
+  // Auto-resize textarea
+  const handleTextareaChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setReplyText(e.target.value);
+    // Reset height to auto to get the correct scrollHeight
+    e.target.style.height = "auto";
+    // Set height to scrollHeight, capped at 150px
+    e.target.style.height = `${Math.min(e.target.scrollHeight, 150)}px`;
+  };
+
   return (
-    <PageScaffold
-      title={thread.subject || `Conversation with ${otherName}`}
-      backLabel="Messages"
-      onBack={onBack}
-    >
+    <PageContainer>
+      {/* Back button */}
+      <button
+        onClick={onBack}
+        style={{
+          all: "unset",
+          cursor: "pointer",
+          display: "inline-flex",
+          alignItems: "center",
+          gap: "var(--portal-space-1)",
+          color: "var(--portal-text-secondary)",
+          fontSize: "var(--portal-font-size-sm)",
+          marginBottom: "var(--portal-space-3)",
+        }}
+      >
+        ← Messages
+      </button>
+
+      {/* Page title */}
+      <h1
+        style={{
+          fontSize: "var(--portal-font-size-xl)",
+          fontWeight: "var(--portal-font-weight-semibold)",
+          color: "var(--portal-text-primary)",
+          margin: "0 0 var(--portal-space-3) 0",
+        }}
+      >
+        {thread.subject || `Conversation with ${otherName}`}
+      </h1>
+
       {/* Subject Header - Species-aware context */}
       <SubjectHeader
         name={animalName}
@@ -423,7 +479,7 @@ function ThreadDetail({ thread, currentPartyId, onBack, animalName, species, bre
                   color: "var(--portal-text-secondary)",
                 }}
               >
-                No messages in this conversation yet.
+                No messages in this conversation yet. Send a message below to start the conversation.
               </div>
             </div>
           ) : (
@@ -447,33 +503,85 @@ function ThreadDetail({ thread, currentPartyId, onBack, animalName, species, bre
         </div>
       </PortalCard>
 
-      {/* Action Footer - Sticky */}
+      {/* Reply Input - Inline compose */}
       <div
         style={{
           marginTop: "var(--portal-space-3)",
-          padding: "var(--portal-space-3)",
           background: "var(--portal-bg-card)",
           border: "1px solid var(--portal-border-subtle)",
           borderRadius: "var(--portal-radius-lg)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: "var(--portal-space-3)",
+          overflow: "hidden",
         }}
       >
-        <span
+        {/* Error message */}
+        {sendError && (
+          <div
+            style={{
+              padding: "var(--portal-space-2) var(--portal-space-3)",
+              background: "var(--portal-error-soft)",
+              color: "var(--portal-error)",
+              fontSize: "var(--portal-font-size-sm)",
+              borderBottom: "1px solid var(--portal-border-subtle)",
+            }}
+          >
+            {sendError}
+          </div>
+        )}
+
+        {/* Textarea */}
+        <textarea
+          ref={textareaRef}
+          value={replyText}
+          onChange={handleTextareaChange}
+          onKeyDown={handleKeyDown}
+          placeholder={`Reply to ${otherName}...`}
+          disabled={sending}
           style={{
+            width: "100%",
+            minHeight: "60px",
+            maxHeight: "150px",
+            padding: "var(--portal-space-3)",
+            border: "none",
+            outline: "none",
+            resize: "none",
+            fontFamily: "inherit",
             fontSize: "var(--portal-font-size-sm)",
-            color: "var(--portal-text-secondary)",
+            lineHeight: "1.5",
+            color: "var(--portal-text-primary)",
+            background: "transparent",
+          }}
+          rows={2}
+        />
+
+        {/* Footer with send button */}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            padding: "var(--portal-space-2) var(--portal-space-3)",
+            borderTop: "1px solid var(--portal-border-subtle)",
+            background: "var(--portal-bg-elevated)",
           }}
         >
-          Need to reply?
-        </span>
-        <Button variant="primary" onClick={handleContactBreeder}>
-          Contact {otherName}
-        </Button>
+          <span
+            style={{
+              fontSize: "var(--portal-font-size-xs)",
+              color: "var(--portal-text-tertiary)",
+            }}
+          >
+            Press Ctrl+Enter to send
+          </span>
+          <Button
+            variant="primary"
+            onClick={handleSendReply}
+            disabled={!replyText.trim() || sending}
+          >
+            {sending ? "Sending..." : "Send"}
+          </Button>
+        </div>
       </div>
-    </PageScaffold>
+    </PageContainer>
   );
 }
 
@@ -567,40 +675,62 @@ function EmptyMessages({ animalName }: { animalName: string }) {
  * ──────────────────────────────────────────────────────────────────────────── */
 
 export default function PortalMessagesPage() {
+  const { tenantSlug, isReady } = useTenantContext();
   const [threads, setThreads] = React.useState<any[]>([]);
   const [selectedThread, setSelectedThread] = React.useState<any | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [threadLoading, setThreadLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const [primaryAnimal, setPrimaryAnimal] = React.useState<any>(null);
   const currentPartyId = getCurrentPartyId();
-  const mockEnabled = isPortalMockEnabled();
 
-  // Get primary animal for context (species-aware)
-  const offspring = mockEnabled ? mockOffspring() : [];
-  const primaryAnimal = offspring[0];
-  const animalName = primaryAnimal?.offspring?.name || "your puppy";
-  const species = primaryAnimal?.offspring?.species || null;
-  const breed = primaryAnimal?.offspring?.breed || null;
+  // Create bound fetch function
+  const portalFetch = React.useMemo(
+    () => createPortalFetch(tenantSlug),
+    [tenantSlug]
+  );
+
+  // Animal context from API
+  const animalName = primaryAnimal?.offspring?.name || "your reservation";
+  const species = primaryAnimal?.offspring?.species || primaryAnimal?.species || null;
+  const breed = primaryAnimal?.offspring?.breed || primaryAnimal?.breed || null;
+
+  // Load primary animal context - wait for tenant context
+  React.useEffect(() => {
+    if (!isReady) return;
+
+    let cancelled = false;
+
+    async function loadAnimalContext() {
+      try {
+        const res = await portalFetch<{ placements: any[] }>("/portal/placements");
+        if (cancelled) return;
+        const placements = res?.placements || [];
+        if (placements.length > 0) {
+          setPrimaryAnimal(placements[0]);
+        }
+      } catch (err) {
+        // Silently ignore - animal context is optional for display
+      }
+    }
+    loadAnimalContext();
+    return () => { cancelled = true; };
+  }, [portalFetch, isReady]);
 
   const loadThreads = React.useCallback(async () => {
+    if (!isReady) return;
+
     setLoading(true);
     setError(null);
     try {
-      const res = await api.messages.threads.list();
+      const res = await portalFetch<{ threads: any[] }>("/messages/threads");
       const fetchedThreads = res?.threads || [];
-
-      // Use mock data if empty and demo mode enabled
-      if (fetchedThreads.length === 0 && mockEnabled) {
-        setThreads(mockThreads());
-      } else {
-        setThreads(fetchedThreads);
-      }
+      setThreads(fetchedThreads);
 
       // Handle URL thread ID
       const urlThreadId = getThreadIdFromUrl();
       if (urlThreadId) {
-        const allThreads = fetchedThreads.length === 0 && mockEnabled ? mockThreads() : fetchedThreads;
-        const threadInList = allThreads.find((t: any) => t.id === urlThreadId);
+        const threadInList = fetchedThreads.find((t: any) => t.id === urlThreadId);
         if (threadInList) {
           loadThread(urlThreadId);
         } else {
@@ -609,46 +739,75 @@ export default function PortalMessagesPage() {
       }
     } catch (err: any) {
       console.error("[PortalMessagesPage] Failed to load threads:", err);
-      if (mockEnabled) {
-        setThreads(mockThreads());
-      } else {
-        setError("Failed to load messages");
-      }
+      setError("Failed to load messages");
     } finally {
       setLoading(false);
     }
-  }, [mockEnabled]);
+  }, [portalFetch, isReady]);
 
   const loadThread = React.useCallback(async (id: number) => {
     setThreadLoading(true);
     try {
-      const res = await api.messages.threads.get(id);
+      const res = await portalFetch<{ thread: any }>(`/messages/threads/${id}`);
       if (!res?.thread) {
-        if (mockEnabled) {
-          setSelectedThread(mockThreadDetail(id));
-        } else {
-          throw new Error("Thread not found");
-        }
-      } else {
-        setSelectedThread(res.thread);
+        throw new Error("Thread not found");
       }
+      setSelectedThread(res.thread);
       setThreadIdInUrl(id);
     } catch (err: any) {
       console.error("[PortalMessagesPage] Failed to load thread:", err);
-      if (mockEnabled) {
-        setSelectedThread(mockThreadDetail(id));
-        setThreadIdInUrl(id);
-      } else {
-        setError("Failed to load conversation");
-      }
+      setError("Failed to load conversation");
     } finally {
       setThreadLoading(false);
     }
-  }, [mockEnabled]);
+  }, [portalFetch]);
 
   React.useEffect(() => {
-    loadThreads();
-  }, [loadThreads]);
+    if (isReady) {
+      loadThreads();
+    }
+  }, [loadThreads, isReady]);
+
+  // WebSocket handler for real-time updates
+  const handleWebSocketMessage = React.useCallback((event: WebSocketEvent) => {
+    if (event.event === "new_message") {
+      const { threadId, message } = event.payload;
+      console.log("[Portal WS] New message received:", threadId, message.id);
+
+      // Refresh thread list to show new message
+      loadThreads();
+
+      // If this thread is currently selected, add the message to the view
+      if (selectedThread?.id === threadId) {
+        setSelectedThread((prev: any) => {
+          if (!prev) return null;
+          // Check if message already exists
+          if (prev.messages?.some((m: any) => m.id === message.id)) {
+            return prev;
+          }
+          return {
+            ...prev,
+            messages: [
+              ...(prev.messages || []),
+              {
+                id: message.id,
+                body: message.body,
+                senderPartyId: message.senderPartyId,
+                createdAt: message.createdAt,
+              },
+            ],
+          };
+        });
+      }
+    }
+  }, [loadThreads, selectedThread?.id]);
+
+  // Connect to WebSocket for real-time updates
+  useWebSocket({
+    onMessage: handleWebSocketMessage,
+    onConnect: () => console.log("[Portal] WebSocket connected"),
+    onDisconnect: () => console.log("[Portal] WebSocket disconnected"),
+  });
 
   const handleSelectThread = (thread: any) => {
     loadThread(thread.id);
@@ -714,6 +873,33 @@ export default function PortalMessagesPage() {
     );
   }
 
+  // Handle message sent from ThreadDetail
+  const handleMessageSent = React.useCallback((message: any) => {
+    // Add message to selected thread's messages list
+    setSelectedThread((prev: any) => {
+      if (!prev) return null;
+      // Check if message already exists
+      if (prev.messages?.some((m: any) => m.id === message.id)) {
+        return prev;
+      }
+      return {
+        ...prev,
+        messages: [
+          ...(prev.messages || []),
+          {
+            id: message.id,
+            body: message.body,
+            senderPartyId: message.senderPartyId,
+            createdAt: message.createdAt,
+            isFromClient: true, // Mark as sent by portal user
+          },
+        ],
+      };
+    });
+    // Also refresh threads list to update preview/timestamps
+    loadThreads();
+  }, [loadThreads]);
+
   // Thread detail view
   if (selectedThread) {
     if (threadLoading) {
@@ -732,6 +918,8 @@ export default function PortalMessagesPage() {
         animalName={animalName}
         species={species}
         breed={breed}
+        onMessageSent={handleMessageSent}
+        portalFetch={portalFetch}
       />
     );
   }

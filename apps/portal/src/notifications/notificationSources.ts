@@ -2,9 +2,12 @@
 // Aggregates recent activity from existing API endpoints into unified Notification format.
 // Notifications are ephemeral and derived at render time, no persistence.
 
-import { makeApi } from "@bhq/api";
-import type { InvoiceDTO, AgreementDTO, OffspringPlacementDTO } from "@bhq/api";
+import * as React from "react";
 import { getCapability, setCapability, capabilityKeys } from "../derived/capabilities";
+import { createPortalFetch, useTenantContext } from "../derived/tenantContext";
+
+// Type for the fetch function we'll use
+type PortalFetchFn = <T>(endpoint: string, options?: RequestInit) => Promise<T>;
 
 // Notification types derived from existing data
 export type NotificationType =
@@ -25,29 +28,6 @@ export interface Notification {
   sourceId: string | number; // Original entity ID
 }
 
-// Resolve API base URL (same pattern as taskSources)
-function getApiBase(): string {
-  const envBase = (import.meta.env.VITE_API_BASE_URL as string) || "";
-  if (envBase.trim()) {
-    return normalizeBase(envBase);
-  }
-  const w = window as any;
-  const windowBase = String(w.__BHQ_API_BASE__ || "").trim();
-  if (windowBase) {
-    return normalizeBase(windowBase);
-  }
-  if (import.meta.env.DEV) {
-    return "";
-  }
-  return normalizeBase(window.location.origin);
-}
-
-function normalizeBase(base: string): string {
-  return base.replace(/\/+$/, "").replace(/\/api\/v1$/i, "");
-}
-
-const api = makeApi(getApiBase());
-
 // Helper to check if timestamp is within last N days
 function isWithinDays(timestamp: string | null, days: number): boolean {
   if (!timestamp) return false;
@@ -58,83 +38,62 @@ function isWithinDays(timestamp: string | null, days: number): boolean {
   return diffDays <= days;
 }
 
-// Single-flight promise cache for invoice notifications
-let invoiceNotificationsPromise: Promise<Notification[]> | null = null;
-
 // Fetch invoice notifications (issued or overdue in last 7 days)
-async function fetchInvoiceNotifications(): Promise<Notification[]> {
+async function fetchInvoiceNotifications(portalFetch: PortalFetchFn): Promise<Notification[]> {
   // Check capability gate first
   if (!getCapability(capabilityKeys.invoices_enabled)) {
-    // Capability disabled, short-circuit without network request
     return [];
   }
 
-  // Single-flight: if already fetching, return existing promise
-  if (invoiceNotificationsPromise) {
-    return invoiceNotificationsPromise;
-  }
-
-  // Create new promise
-  invoiceNotificationsPromise = (async () => {
-    try {
-      const res = await api.finance.invoices.list({ limit: 100 });
-    const invoices = res?.items || [];
+  try {
+    const res = await portalFetch<{ invoices: any[] }>("/portal/invoices");
+    const invoices = res?.invoices || [];
     const notifications: Notification[] = [];
 
     for (const inv of invoices) {
+      const status = inv.status?.toLowerCase();
       // Invoice issued notification
-      if (inv.status === "ISSUED" && isWithinDays(inv.createdAt, 7)) {
+      if ((status === "issued" || status === "sent") && isWithinDays(inv.issuedAt || inv.createdAt, 7)) {
         notifications.push({
           id: `invoice_issued-${inv.id}`,
           type: "invoice_issued",
           title: `Invoice #${inv.invoiceNumber} issued`,
-          timestamp: inv.createdAt,
-          href: `/finance/invoices/${inv.id}`,
+          timestamp: inv.issuedAt || inv.createdAt,
+          href: `/financials?invoice=${inv.id}`,
           sourceId: inv.id,
         });
       }
 
       // Invoice overdue notification
-      if (inv.status === "OVERDUE" && inv.dueAt && isWithinDays(inv.dueAt, 7)) {
+      if (status === "overdue" && inv.dueAt && isWithinDays(inv.dueAt, 7)) {
         notifications.push({
           id: `invoice_overdue-${inv.id}`,
           type: "invoice_overdue",
           title: `Invoice #${inv.invoiceNumber} is overdue`,
           timestamp: inv.dueAt,
-          href: `/finance/invoices/${inv.id}`,
+          href: `/financials?invoice=${inv.id}`,
           sourceId: inv.id,
         });
       }
     }
 
-      return notifications;
-    } catch (err: any) {
-      // Gracefully handle 401/403 (actor context issues in portal CLIENT context)
-      const status = err?.response?.status || err?.status;
-      const errorCode = err?.response?.data?.error?.code || err?.code;
-      if (status === 401 || status === 403 || errorCode === "ACTOR_CONTEXT_UNRESOLVABLE") {
-        // Disable capability to prevent future attempts
-        setCapability(capabilityKeys.invoices_enabled, false);
-        // Log once, then silent
-        console.warn("[notificationSources] Invoice endpoint unavailable in CLIENT context, disabling for session");
-        return [];
-      }
-      // Log other errors but don't break
+    return notifications;
+  } catch (err: any) {
+    const status = err?.status;
+    if (status === 401 || status === 403) {
+      setCapability(capabilityKeys.invoices_enabled, false);
+      console.warn("[notificationSources] Invoice endpoint unavailable, disabling for session");
+    } else {
       console.warn("[notificationSources] Invoice source error:", err.message || err);
-      return [];
-    } finally {
-      // Clear single-flight cache after request completes
-      invoiceNotificationsPromise = null;
     }
-  })();
-
-  return invoiceNotificationsPromise;
+    return [];
+  }
 }
 
 // Fetch agreement notifications (sent or signed in last 7 days)
-async function fetchAgreementNotifications(): Promise<Notification[]> {
+async function fetchAgreementNotifications(portalFetch: PortalFetchFn): Promise<Notification[]> {
   try {
-    const res = await api.portalData.getAgreements();
+    const res = await portalFetch<{ agreements: any[] }>("/portal/agreements");
     const agreements = res?.agreements || [];
     const notifications: Notification[] = [];
 
@@ -146,7 +105,7 @@ async function fetchAgreementNotifications(): Promise<Notification[]> {
           type: "agreement_sent",
           title: `Agreement "${agr.name}" sent for review`,
           timestamp: agr.createdAt,
-          href: `/portal/agreements/${agr.id}`,
+          href: `/agreements/${agr.id}`,
           sourceId: agr.id,
         });
       }
@@ -158,7 +117,7 @@ async function fetchAgreementNotifications(): Promise<Notification[]> {
           type: "agreement_signed",
           title: `Agreement "${agr.name}" has been signed`,
           timestamp: agr.signedAt,
-          href: `/portal/agreements/${agr.id}`,
+          href: `/agreements/${agr.id}`,
           sourceId: agr.id,
         });
       }
@@ -172,9 +131,9 @@ async function fetchAgreementNotifications(): Promise<Notification[]> {
 }
 
 // Fetch offspring notifications (ready for pickup in last 7 days)
-async function fetchOffspringNotifications(): Promise<Notification[]> {
+async function fetchOffspringNotifications(portalFetch: PortalFetchFn): Promise<Notification[]> {
   try {
-    const res = await api.portalData.getOffspringPlacements();
+    const res = await portalFetch<{ placements: any[] }>("/portal/placements");
     const placements = res?.placements || [];
     const notifications: Notification[] = [];
 
@@ -187,7 +146,7 @@ async function fetchOffspringNotifications(): Promise<Notification[]> {
           type: "offspring_ready",
           title: `${offspringName} is ready for pickup`,
           timestamp: pl.createdAt,
-          href: `/portal/offspring/${pl.offspring?.id || pl.id}`,
+          href: `/offspring/${pl.offspring?.id || pl.id}`,
           sourceId: pl.id,
         });
       }
@@ -201,9 +160,9 @@ async function fetchOffspringNotifications(): Promise<Notification[]> {
 }
 
 // Fetch message notifications (new messages in last 7 days)
-async function fetchMessageNotifications(): Promise<Notification[]> {
+async function fetchMessageNotifications(portalFetch: PortalFetchFn): Promise<Notification[]> {
   try {
-    const res = await api.messages.threads.list();
+    const res = await portalFetch<{ threads: any[] }>("/messages/threads");
     const threads = res?.threads || [];
     const notifications: Notification[] = [];
 
@@ -217,7 +176,7 @@ async function fetchMessageNotifications(): Promise<Notification[]> {
             type: "message_received",
             title: `New message in "${thread.subject || "conversation"}"`,
             timestamp: lastActivity,
-            href: `/portal/messages/${thread.id}`,
+            href: `/messages/${thread.id}`,
             sourceId: thread.id,
           });
         }
@@ -232,14 +191,17 @@ async function fetchMessageNotifications(): Promise<Notification[]> {
 }
 
 // Aggregate all notification sources
-export async function fetchAllNotifications(): Promise<Notification[]> {
+export async function fetchAllNotifications(tenantSlug: string | null): Promise<Notification[]> {
+  // Create a bound fetch function with the tenant slug
+  const portalFetch = createPortalFetch(tenantSlug);
+
   // Run all sources in parallel, each handles its own errors
   const [invoiceNotifs, agreementNotifs, offspringNotifs, messageNotifs] =
     await Promise.all([
-      fetchInvoiceNotifications(),
-      fetchAgreementNotifications(),
-      fetchOffspringNotifications(),
-      fetchMessageNotifications(),
+      fetchInvoiceNotifications(portalFetch),
+      fetchAgreementNotifications(portalFetch),
+      fetchOffspringNotifications(portalFetch),
+      fetchMessageNotifications(portalFetch),
     ]);
 
   const allNotifications = [
@@ -265,77 +227,17 @@ export async function fetchAllNotifications(): Promise<Notification[]> {
   return deduplicated;
 }
 
-// Demo mode mock notifications
-interface MockNotification extends Notification {
-  read: boolean;
-}
-
-function getMockNotifications(): MockNotification[] {
-  return [
-    {
-      id: "mock-notif-1",
-      type: "message_received",
-      title: "New message from Sarah Thompson",
-      timestamp: "2026-01-01T10:30:00Z",
-      href: "/portal/messages?threadId=1",
-      sourceId: 1,
-      read: false,
-    },
-    {
-      id: "mock-notif-2",
-      type: "agreement_sent",
-      title: "Action required: Sign Health Guarantee",
-      timestamp: "2025-12-31T09:00:00Z",
-      href: "/portal/agreements/2",
-      sourceId: 2,
-      read: false,
-    },
-    {
-      id: "mock-notif-3",
-      type: "invoice_issued",
-      title: "Final payment due: $2,000",
-      timestamp: "2025-12-30T14:00:00Z",
-      href: "/portal/billing",
-      sourceId: 1,
-      read: false,
-    },
-    {
-      id: "mock-notif-4",
-      type: "offspring_ready",
-      title: "Bella's pickup window confirmed",
-      timestamp: "2025-12-28T11:00:00Z",
-      href: "/portal/offspring/101",
-      sourceId: 101,
-      read: true,
-    },
-    {
-      id: "mock-notif-5",
-      type: "message_received",
-      title: "New photos of Bella uploaded",
-      timestamp: "2025-12-27T16:20:00Z",
-      href: "/portal/messages?threadId=1",
-      sourceId: 1,
-      read: true,
-    },
-    {
-      id: "mock-notif-6",
-      type: "agreement_signed",
-      title: "Contract signed successfully",
-      timestamp: "2025-12-12T14:30:00Z",
-      href: "/portal/agreements/1",
-      sourceId: 1,
-      read: true,
-    },
-  ];
-}
-
 // Hook for use in React components
 export function usePortalNotifications() {
+  const { tenantSlug, isReady } = useTenantContext();
   const [notifications, setNotifications] = React.useState<(Notification & { read?: boolean })[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
+    // Wait for tenant context to be ready before fetching
+    if (!isReady) return;
+
     let cancelled = false;
 
     async function load() {
@@ -343,28 +245,14 @@ export function usePortalNotifications() {
       setError(null);
 
       try {
-        const result = await fetchAllNotifications();
+        const result = await fetchAllNotifications(tenantSlug);
         if (cancelled) return;
 
-        // If no real notifications and demo mode enabled, use mock data
-        const { isPortalMockEnabled } = await import("../dev/mockFlag");
-        if (result.length === 0 && isPortalMockEnabled()) {
-          setNotifications(getMockNotifications());
-        } else {
-          setNotifications(result);
-        }
+        setNotifications(result);
       } catch (err: any) {
         if (cancelled) return;
         console.error("[usePortalNotifications] Failed to fetch notifications:", err);
-
-        // On error in demo mode, use mock data
-        const { isPortalMockEnabled } = await import("../dev/mockFlag");
-        if (isPortalMockEnabled()) {
-          setNotifications(getMockNotifications());
-          setError(null);
-        } else {
-          setError(err?.message || "Failed to load notifications");
-        }
+        setError(err?.message || "Failed to load notifications");
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -374,10 +262,7 @@ export function usePortalNotifications() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [tenantSlug, isReady]);
 
   return { notifications, loading, error };
 }
-
-// Need to import React for the hook
-import * as React from "react";

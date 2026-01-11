@@ -9,15 +9,23 @@ export interface SessionUser {
   email?: string | null;
 }
 
-export interface SessionOrg {
+export interface SessionTenant {
   id: number;
   name?: string | null;
+  slug?: string | null;
+}
+
+export interface SessionMembership {
+  tenantId: number;
+  role?: string | null;
+  membershipRole?: string | null;
+  membershipStatus?: string | null;
 }
 
 export interface SessionData {
   user?: SessionUser | null;
-  org?: SessionOrg | null;
-  memberships?: Array<{ organizationId: number; role?: string }>;
+  tenant?: SessionTenant | null;
+  memberships?: SessionMembership[];
 }
 
 interface UseSessionResult {

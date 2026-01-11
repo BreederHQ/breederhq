@@ -13,6 +13,7 @@ import type { BreedingProgramProfile } from "@bhq/ui/utils/breedingProgram";
 import BiologySettingsTab from "../components/BiologySettingsTab";
 import DateValidationSettingsTab from "../components/DateValidationSettingsTab";
 import { TagsManagerTab } from "../components/TagsManagerTab";
+import { GeneticsAdminTab } from "../components/GeneticsAdminTab";
 import BillingTab from "../components/BillingTab";
 import { OffspringTab, type OffspringHandle } from "../components/OffspringTab";
 import { GeneralSettingsTab, type GeneralSettingsHandle } from "../components/GeneralSettingsTab";
@@ -473,6 +474,7 @@ type Tab =
   | "users"
   | "groups"
   | "tags"
+  | "genetics"
   | "accessibility";
 
 type Props = { open: boolean; dirty: boolean; onDirtyChange: (v: boolean) => void; onClose: () => void; };
@@ -513,6 +515,7 @@ const NAV: NavSection[] = [
       { key: "users", label: "Users" },
       { key: "groups", label: "Groups" },
       { key: "tags", label: "Tag Manager" },
+      { key: "genetics", label: "Genetics Admin" },
       { key: "accessibility", label: "Accessibility" },
     ],
   },
@@ -531,7 +534,7 @@ export default function SettingsPanel({ open, dirty, onDirtyChange, onClose }: P
   const [dirtyMap, setDirtyMap] = React.useState<Record<Tab, boolean>>({
     profile: false, security: false, billing: false, subscription: false, payments: false, transactions: false,
     breeding: false, offspring: false, programProfile: false, breeds: false, policies: false, credentials: false,
-    general: false, users: false, groups: false, tags: false, accessibility: false,
+    general: false, users: false, groups: false, tags: false, genetics: false, accessibility: false,
   });
   // Edit mode state at panel level
   const [editMode, setEditMode] = React.useState(false);
@@ -748,6 +751,7 @@ export default function SettingsPanel({ open, dirty, onDirtyChange, onClose }: P
                 {active === "users" && <UsersTab dirty={dirtyMap.users} onDirty={(v) => markDirty("users", v)} />}
                 {active === "groups" && <GroupsTab dirty={dirtyMap.groups} onDirty={(v) => markDirty("groups", v)} />}
                 {active === "tags" && <TagsManagerTab dirty={dirtyMap.tags} onDirty={(v) => markDirty("tags", v)} />}
+                {active === "genetics" && <GeneticsAdminTab api={api} />}
                 {active === "general" && <GeneralSettingsTab ref={generalRef} dirty={dirtyMap.general} onDirty={(v) => markDirty("general", v)} />}
                 {active === "accessibility" && <AccessibilityTab />}
               </div>

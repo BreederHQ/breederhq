@@ -59,6 +59,8 @@ export interface ImportResult {
     otherTraits: number;
   };
   warnings: string[];
+  /** Number of new markers flagged for admin review */
+  newMarkersPendingReview?: number;
 }
 
 interface GeneticsImportDialogProps {
@@ -626,6 +628,17 @@ export function GeneticsImportDialog({
           <div className="p-3 bg-yellow-50 dark:bg-yellow-950 rounded-lg text-left">
             <p className="text-sm font-medium text-yellow-700 dark:text-yellow-300">
               {importResult.warnings.length} fields could not be mapped
+            </p>
+          </div>
+        )}
+
+        {importResult.newMarkersPendingReview && importResult.newMarkersPendingReview > 0 && (
+          <div className="p-3 bg-blue-50 dark:bg-blue-950 rounded-lg text-left">
+            <p className="text-sm font-medium text-blue-700 dark:text-blue-300">
+              {importResult.newMarkersPendingReview} new marker{importResult.newMarkersPendingReview !== 1 ? "s" : ""} flagged for admin review
+            </p>
+            <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
+              These are markers we haven't seen before. An admin will categorize them and they'll be available in future imports.
             </p>
           </div>
         )}

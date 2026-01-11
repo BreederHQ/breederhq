@@ -32,6 +32,8 @@ import {
   Tooltip,
   type TagOption,
   useViewMode,
+  SortDropdown,
+  type SortOption,
 } from "@bhq/ui";
 import { FinanceTab } from "@bhq/ui/components/Finance";
 import { Overlay } from "@bhq/ui/overlay";
@@ -47,7 +49,7 @@ import "@bhq/ui/styles/table.css";
 import "@bhq/ui/styles/details.css";
 import "@bhq/ui/styles/datefield.css";
 import "@bhq/ui/styles/datepicker.css";
-import { makeBreedingApi } from "./api";
+import { makeBreedingApi, type BreedingProgramLite } from "./api";
 
 import { pickPlacementCompletedAny } from "@bhq/ui/utils";
 import { reproEngine } from "@bhq/ui/utils";
@@ -709,6 +711,19 @@ const COLUMNS: Array<{ key: keyof PlanRow & string; label: string; default?: boo
 
 ];
 
+const SORT_OPTIONS: SortOption[] = [
+  { key: "name", label: "Plan Name" },
+  { key: "status", label: "Status" },
+  { key: "damName", label: "Dam" },
+  { key: "sireName", label: "Sire" },
+  { key: "species", label: "Species" },
+  { key: "breedText", label: "Breed" },
+  { key: "expectedBreedDate", label: "Breeding Date (Exp)" },
+  { key: "expectedBirthDate", label: "Birth Date (Exp)" },
+  { key: "birthDateActual", label: "Birth Date (Actual)" },
+  { key: "expectedPlacementCompletedDate", label: "Placement (Exp)" },
+];
+
 const STORAGE_KEY = "bhq_breeding_cols_v2";
 
 // Date columns for CSV export formatting
@@ -894,7 +909,7 @@ function PlanTagsSection({
   }, [api, planId]);
 
   return (
-    <div className="space-y-2">
+    <>
       <TagPicker
         availableTags={availableTags}
         selectedTags={selectedTags}
@@ -905,25 +920,8 @@ function PlanTagsSection({
         error={error}
         placeholder="Add tags..."
         disabled={disabled}
+        onNewTagClick={() => setShowCreateModal(true)}
       />
-      {!disabled && availableTags.length === 0 && !loading && (
-        <button
-          type="button"
-          onClick={() => setShowCreateModal(true)}
-          className="text-xs text-brand hover:underline"
-        >
-          Create your first tag
-        </button>
-      )}
-      {!disabled && availableTags.length > 0 && (
-        <button
-          type="button"
-          onClick={() => setShowCreateModal(true)}
-          className="text-xs text-secondary hover:text-brand"
-        >
-          + New tag
-        </button>
-      )}
       <TagCreateModal
         open={showCreateModal}
         onOpenChange={setShowCreateModal}
@@ -931,7 +929,7 @@ function PlanTagsSection({
         fixedModule="BREEDING_PLAN"
         onSubmit={handleModalCreate}
       />
-    </div>
+    </>
   );
 }
 
@@ -4645,6 +4643,14 @@ export default function AppBreeding() {
   const [damFocused, setDamFocused] = React.useState(false);
   const [sireFocused, setSireFocused] = React.useState(false);
 
+  // Program selection state
+  const [programs, setPrograms] = React.useState<BreedingProgramLite[]>([]);
+  const [programId, setProgramId] = React.useState<number | null>(null);
+  const [programsLoading, setProgramsLoading] = React.useState(false);
+  const [showNewProgram, setShowNewProgram] = React.useState(false);
+  const [newProgramName, setNewProgramName] = React.useState("");
+  const [newProgramCreating, setNewProgramCreating] = React.useState(false);
+
   const speciesWire = toWireSpecies(newSpeciesUi);
   const speciesSelected = !!speciesWire;
   const createBreedKey = `${newSpeciesUi || "Dog"}|${!!newBreed}`;
@@ -4659,6 +4665,52 @@ export default function AppBreeding() {
     },
     [speciesWire]
   );
+
+  // Fetch programs when species changes or modal opens
+  React.useEffect(() => {
+    if (!api || !createOpen) return;
+    let cancelled = false;
+    const run = async () => {
+      setProgramsLoading(true);
+      try {
+        const params: { species?: string; limit: number } = { limit: 100 };
+        if (speciesWire) params.species = speciesWire;
+        const res = await api.breedingPrograms.list(params);
+        if (!cancelled) {
+          setPrograms(res.items || []);
+        }
+      } catch (e) {
+        console.error("Failed to fetch programs:", e);
+        if (!cancelled) setPrograms([]);
+      } finally {
+        if (!cancelled) setProgramsLoading(false);
+      }
+    };
+    run();
+    return () => { cancelled = true; };
+  }, [api, createOpen, speciesWire]);
+
+  // Create new program inline
+  const doCreateProgram = React.useCallback(async () => {
+    if (!api || !newProgramName.trim() || !speciesWire) return;
+    setNewProgramCreating(true);
+    try {
+      const created = await api.breedingPrograms.create({
+        name: newProgramName.trim(),
+        species: speciesWire,
+        breedText: newBreed?.name || null,
+      });
+      setPrograms((prev) => [created, ...prev]);
+      setProgramId(created.id);
+      setNewProgramName("");
+      setShowNewProgram(false);
+    } catch (e: any) {
+      console.error("Failed to create program:", e);
+      setCreateErr(e?.message || "Failed to create program");
+    } finally {
+      setNewProgramCreating(false);
+    }
+  }, [api, newProgramName, speciesWire, newBreed]);
 
   React.useEffect(() => {
     if (typeof document === "undefined") return;
@@ -4743,6 +4795,7 @@ export default function AppBreeding() {
       };
       if (sireId != null) payload.sireId = sireId;
       if (newBreed?.name) payload.breedText = newBreed.name;
+      if (programId != null) payload.programId = programId;
 
       const res = await api.createPlan(payload);
       const plan = (res as any)?.plan ?? res;
@@ -4757,6 +4810,10 @@ export default function AppBreeding() {
       setSireOptions([]);
       setDamId(null);
       setSireId(null);
+      setProgramId(null);
+      setPrograms([]);
+      setShowNewProgram(false);
+      setNewProgramName("");
       setCreateOpen(false);
     } catch (e: any) {
       setCreateErr(e?.payload?.error || e?.message || "Failed to create breeding plan");
@@ -5280,18 +5337,26 @@ export default function AppBreeding() {
                     </Tooltip>
                   </div>
 
+                  {/* Sort dropdown */}
+                  <SortDropdown
+                    options={SORT_OPTIONS}
+                    sorts={sorts}
+                    onSort={(key, dir) => setSorts([{ key, dir }])}
+                    onClear={() => setSorts([])}
+                  />
+
                   {/* Column toggle - only show in table mode */}
                   {viewMode === "table" && (
-                    <div className="ml-auto">
-                      <ColumnsPopover
-                        columns={map}
-                        onToggle={toggle}
-                        onSet={setAll}
-                        allColumns={COLUMNS}
-                        triggerClassName="bhq-columns-trigger"
-                      />
-                    </div>
+                    <ColumnsPopover
+                      columns={map}
+                      onToggle={toggle}
+                      onSet={setAll}
+                      allColumns={COLUMNS}
+                      triggerClassName="bhq-columns-trigger"
+                    />
                   )}
+
+                  <div className="ml-auto" />
 
                   <Button
                     size="sm"
@@ -5634,6 +5699,73 @@ export default function AppBreeding() {
                           >
                             New custom
                           </Button>
+                        </div>
+                      </div>
+
+                      {/* Breeding Program (optional - links to marketplace) */}
+                      <div>
+                        <div className="text-xs text-secondary mb-1">
+                          Breeding Program <span className="text-secondary">(optional)</span>
+                        </div>
+                        {!showNewProgram ? (
+                          <div className="flex items-center gap-2">
+                            <select
+                              className="flex-1 h-9 rounded-md border border-hairline bg-surface px-2 text-sm text-primary"
+                              value={programId ?? ""}
+                              onChange={(e) => {
+                                const val = e.currentTarget.value;
+                                setProgramId(val ? Number(val) : null);
+                              }}
+                              disabled={programsLoading}
+                            >
+                              <option value="">— No program —</option>
+                              {programs.map((p) => (
+                                <option key={p.id} value={p.id}>
+                                  {p.name} {p.breedText ? `(${p.breedText})` : ""}
+                                </option>
+                              ))}
+                            </select>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setShowNewProgram(true)}
+                              disabled={!speciesSelected}
+                            >
+                              New
+                            </Button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-2">
+                            <Input
+                              className="flex-1"
+                              value={newProgramName}
+                              onChange={(e) => setNewProgramName(e.currentTarget.value)}
+                              placeholder="Program name..."
+                              disabled={newProgramCreating}
+                            />
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={doCreateProgram}
+                              disabled={!newProgramName.trim() || newProgramCreating}
+                            >
+                              {newProgramCreating ? "..." : "Create"}
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                setShowNewProgram(false);
+                                setNewProgramName("");
+                              }}
+                              disabled={newProgramCreating}
+                            >
+                              Cancel
+                            </Button>
+                          </div>
+                        )}
+                        <div className="text-xs text-secondary mt-1">
+                          Link this plan to a marketplace breeding program for public visibility.
                         </div>
                       </div>
 
@@ -8189,13 +8321,16 @@ function PlanDetailsView(props: {
 
             {/* Tags */}
             {api && (
-              <SectionCard title="Tags">
-                <PlanTagsSection
-                  planId={row.id}
-                  api={api}
-                  disabled={!isEdit}
-                />
-              </SectionCard>
+              <SectionCard
+                title="Tags"
+                right={
+                  <PlanTagsSection
+                    planId={row.id}
+                    api={api}
+                    disabled={!isEdit}
+                  />
+                }
+              />
             )}
 
             {/* Next Milestone Summary - show context-aware next milestone based on status */}

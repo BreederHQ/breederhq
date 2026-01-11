@@ -411,6 +411,28 @@ export function MarketplaceLayout({ authenticated, children }: Props) {
               >
                 Inquiries
               </NavLink>
+
+              {/* Seller/Provider management links */}
+              <span className="ml-2 pl-3 border-l border-border-subtle flex items-center gap-1">
+                <NavLink
+                  to="/me/programs"
+                  active={isActive("/me/programs")}
+                >
+                  My Programs
+                </NavLink>
+                <NavLink
+                  to="/me/services"
+                  active={isActive("/me/services")}
+                >
+                  My Services
+                </NavLink>
+                <NavLink
+                  to="/provider"
+                  active={isActive("/provider")}
+                >
+                  Provider Portal
+                </NavLink>
+              </span>
             </nav>
           </div>
 

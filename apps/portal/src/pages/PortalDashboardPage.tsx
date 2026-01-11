@@ -7,10 +7,9 @@ import { Button } from "../design/Button";
 import { usePortalTasks } from "../tasks/taskSources";
 import { usePortalNotifications } from "../notifications/notificationSources";
 import { usePortalContext } from "../hooks/usePortalContext";
-import { isPortalMockEnabled } from "../dev/mockFlag";
-import { mockOffspring, mockFinancialSummary, mockAgreements } from "../dev/mockData";
 import { getSpeciesAccent } from "../ui/speciesTokens";
 import { SubjectHeader, StatusBadge, type StatusVariant } from "../components/SubjectHeader";
+import { createPortalFetch, useTenantContext } from "../derived/tenantContext";
 
 /* ────────────────────────────────────────────────────────────────────────────
  * Utilities
@@ -321,11 +320,7 @@ function SecondaryLinks({ onNavigate }: SecondaryLinksProps) {
  * Empty State - When no reservation yet
  * ──────────────────────────────────────────────────────────────────────────── */
 
-interface EmptyStateProps {
-  onEnableDemo: () => void;
-}
-
-function EmptyState({ onEnableDemo }: EmptyStateProps) {
+function EmptyState() {
   return (
     <PortalCard variant="flat">
       <div style={{ textAlign: "center", padding: "var(--portal-space-4)" }}>
@@ -345,7 +340,6 @@ function EmptyState({ onEnableDemo }: EmptyStateProps) {
             fontSize: "var(--portal-font-size-sm)",
             color: "var(--portal-text-secondary)",
             margin: 0,
-            marginBottom: "var(--portal-space-4)",
             maxWidth: "400px",
             marginLeft: "auto",
             marginRight: "auto",
@@ -353,9 +347,6 @@ function EmptyState({ onEnableDemo }: EmptyStateProps) {
         >
           Your private portal for messages, documents, agreements, and updates.
         </p>
-        <Button variant="primary" onClick={onEnableDemo}>
-          Preview with demo data
-        </Button>
       </div>
     </PortalCard>
   );
@@ -402,14 +393,69 @@ function LoadingState() {
  * ──────────────────────────────────────────────────────────────────────────── */
 
 export default function PortalDashboardPage() {
+  const { tenantSlug, isReady } = useTenantContext();
   const { tasks, loading: tasksLoading } = usePortalTasks();
   const { notifications, loading: notificationsLoading } = usePortalNotifications();
   const { orgName, userEmail } = usePortalContext();
-  const mockEnabled = isPortalMockEnabled();
 
-  // Derive user's first name from email (before @ or +) or use mock name in demo mode
+  // State for real API data
+  const [placements, setPlacements] = React.useState<any[]>([]);
+  const [financialSummary, setFinancialSummary] = React.useState<any>(null);
+  const [agreements, setAgreements] = React.useState<any[]>([]);
+  const [unreadMessagesCount, setUnreadMessagesCount] = React.useState(0);
+  const [dataLoading, setDataLoading] = React.useState(true);
+
+  // Fetch real data from API - wait for tenant context
+  React.useEffect(() => {
+    if (!isReady) return;
+
+    let cancelled = false;
+    const portalFetch = createPortalFetch(tenantSlug);
+
+    async function loadDashboardData() {
+      setDataLoading(true);
+      try {
+        // Fetch placements, financials, and agreements in parallel
+        const [placementsData, financialsData, agreementsData, threadsData] = await Promise.all([
+          portalFetch<{ placements: any[] }>("/portal/placements").catch(() => null),
+          portalFetch<any>("/portal/financials").catch(() => null),
+          portalFetch<{ agreements: any[] }>("/portal/agreements").catch(() => null),
+          portalFetch<{ threads: any[] }>("/portal/threads").catch(() => null),
+        ]);
+
+        if (cancelled) return;
+
+        if (placementsData) {
+          setPlacements(placementsData.placements || []);
+        }
+
+        if (financialsData) {
+          setFinancialSummary(financialsData);
+        }
+
+        if (agreementsData) {
+          setAgreements(agreementsData.agreements || []);
+        }
+
+        if (threadsData) {
+          const threads = threadsData.threads || [];
+          const unread = threads.reduce((sum: number, t: any) => sum + (t.unreadCount || 0), 0);
+          setUnreadMessagesCount(unread);
+        }
+      } catch (err) {
+        if (cancelled) return;
+        console.error("[PortalDashboard] Failed to load data:", err);
+      } finally {
+        if (!cancelled) setDataLoading(false);
+      }
+    }
+
+    loadDashboardData();
+    return () => { cancelled = true; };
+  }, [tenantSlug, isReady]);
+
+  // Derive user's first name from email (before @ or +)
   const getUserFirstName = (): string | null => {
-    if (mockEnabled) return "Emily";
     if (!userEmail) return null;
     const localPart = userEmail.split("@")[0];
     // Handle email+tag format
@@ -426,31 +472,21 @@ export default function PortalDashboardPage() {
     window.dispatchEvent(new PopStateEvent("popstate"));
   };
 
-  const handleEnableDemo = () => {
-    localStorage.setItem("portal_mock", "1");
-    window.location.reload();
-  };
-
   // Calculate counts
   const actionRequiredCount = tasks.filter((t) => t.urgency === "action_required").length;
   const notificationsCount = notifications.filter((n) => !n.read).length;
-  const messagesCount = mockEnabled ? 2 : 0;
+  const messagesCount = unreadMessagesCount;
 
-  const isLoading = tasksLoading || notificationsLoading;
+  const isLoading = tasksLoading || notificationsLoading || dataLoading;
 
   // Get primary placement (offspring data includes species/breed)
-  const placements = mockEnabled ? mockOffspring() : [];
   const primaryPlacement = placements[0];
 
   // Derive species and breed from placement data
   const species = primaryPlacement?.species || null;
   const breed = primaryPlacement?.breed || null;
 
-  // Get financial summary
-  const financialSummary = mockEnabled ? mockFinancialSummary() : null;
-
   // Get pending agreements
-  const agreements = mockEnabled ? mockAgreements() : [];
   const pendingAgreements = agreements.filter((a: any) => a.status === "sent");
 
   // Determine next action and CTA using domain-neutral language
@@ -535,7 +571,7 @@ export default function PortalDashboardPage() {
 
       {!isLoading && !primaryPlacement && (
         <div style={{ display: "flex", flexDirection: "column", gap: "var(--portal-space-4)" }}>
-          <EmptyState onEnableDemo={handleEnableDemo} />
+          <EmptyState />
           <SecondaryLinks onNavigate={handleNavigate} />
         </div>
       )}

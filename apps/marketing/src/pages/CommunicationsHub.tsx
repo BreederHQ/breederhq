@@ -3,6 +3,7 @@
 
 import * as React from "react";
 import { makeApi } from "@bhq/api";
+import { useWebSocket, type WebSocketEvent } from "../hooks/useWebSocket";
 import type {
   MessageThread,
   Message,
@@ -2560,12 +2561,12 @@ export default function CommunicationsHub() {
     // Folder filter
     switch (activeFolder) {
       case "all":
-        // All non-archived messages
-        filtered = filtered.filter((m) => !m.isArchived);
+        // All non-archived inbound messages (exclude sent/outbound)
+        filtered = filtered.filter((m) => !m.isArchived && m.direction !== "outbound");
         break;
       case "inbox":
-        // Unread, non-archived - sorted by unread first
-        filtered = filtered.filter((m) => !m.isArchived);
+        // Inbound, non-archived - sorted by unread first
+        filtered = filtered.filter((m) => !m.isArchived && m.direction !== "outbound");
         filtered.sort((a, b) => {
           if (a.isUnread && !b.isUnread) return -1;
           if (!a.isUnread && b.isUnread) return 1;
@@ -2757,6 +2758,71 @@ export default function CommunicationsHub() {
 
     return () => clearInterval(pollInterval);
   }, [loadInboxData]);
+
+  // WebSocket handler for real-time updates
+  const handleWebSocketMessage = React.useCallback((event: WebSocketEvent) => {
+    if (event.event === "new_message") {
+      const { threadId, message } = event.payload;
+      console.log("[WS] New message received:", threadId, message.id);
+
+      // Update messages list - refresh if this thread is visible
+      // For now, trigger a silent reload to get the updated data
+      loadInboxData(true);
+
+      // If this thread is currently selected, add the message to the thread view
+      if (selectedThread?.threadId === threadId) {
+        setSelectedThread((prev) => {
+          if (!prev) return null;
+          // Check if message already exists
+          if (prev.messages.some((m) => m.id === `msg:${message.id}`)) {
+            return prev;
+          }
+          return {
+            ...prev,
+            messages: [
+              ...prev.messages,
+              {
+                id: `msg:${message.id}`,
+                body: message.body,
+                timestamp: new Date(message.createdAt),
+                isOwn: false, // Incoming message from WebSocket
+                status: "delivered" as const,
+              },
+            ],
+          };
+        });
+      }
+    } else if (event.event === "thread_update") {
+      const { threadId, isRead, flagged, archived } = event.payload;
+      console.log("[WS] Thread update:", threadId, { isRead, flagged, archived });
+
+      // Update messages list for flag/archive changes
+      setMessages((prev) =>
+        prev.map((m) => {
+          if (m.threadId === threadId) {
+            return {
+              ...m,
+              isUnread: isRead !== undefined ? !isRead : m.isUnread,
+              isStarred: flagged !== undefined ? flagged : m.isStarred,
+              isArchived: archived !== undefined ? archived : m.isArchived,
+            };
+          }
+          return m;
+        })
+      );
+    } else if (event.event === "new_email") {
+      console.log("[WS] New email received:", event.payload);
+      // Refresh inbox to show new email
+      loadInboxData(true);
+    }
+  }, [loadInboxData, selectedThread?.threadId]);
+
+  // Connect to WebSocket for real-time updates
+  const { isConnected: wsConnected } = useWebSocket({
+    onMessage: handleWebSocketMessage,
+    onConnect: () => console.log("[WS] Connected to messaging"),
+    onDisconnect: () => console.log("[WS] Disconnected from messaging"),
+  });
 
   // Toggle flag (star) on current thread
   const handleToggleFlag = React.useCallback(async () => {

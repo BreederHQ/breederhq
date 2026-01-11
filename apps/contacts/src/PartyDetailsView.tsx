@@ -13,6 +13,7 @@ import {
   TagPicker,
   TagCreateModal,
   Popover,
+  Tooltip,
   type TagOption,
 } from "@bhq/ui";
 import { FinanceTab } from "@bhq/ui/components/Finance";
@@ -350,6 +351,7 @@ export function PartyDetailsView({
   requestSave,
   close,
   hasPendingChanges,
+  justSaved,
   onDelete,
 }: {
   row: PartyTableRow;
@@ -361,6 +363,7 @@ export function PartyDetailsView({
   requestSave: () => Promise<void>;
   close?: () => void;
   hasPendingChanges?: boolean;
+  justSaved?: boolean;
   onDelete?: () => Promise<void>;
 }) {
   const api = React.useMemo(() => makeApi(), []);
@@ -616,11 +619,50 @@ export function PartyDetailsView({
   const [overflowMenuOpen, setOverflowMenuOpen] = React.useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = React.useState(false);
   const [deleting, setDeleting] = React.useState(false);
-  const [checkingDelete, setCheckingDelete] = React.useState(false);
+  const [canDelete, setCanDelete] = React.useState<boolean | null>(null); // null = not checked yet
   const [deleteBlockers, setDeleteBlockers] = React.useState<{
     blockers: Record<string, boolean | string[] | undefined>;
     details?: Record<string, number | undefined>;
   } | null>(null);
+
+  // Fetch delete eligibility when entering edit mode
+  React.useEffect(() => {
+    if (mode !== "edit" || !onDelete) return;
+
+    let cancelled = false;
+    const checkDelete = async () => {
+      try {
+        let result: { canDelete: boolean; blockers: Record<string, any>; details?: Record<string, any> };
+        if (row.kind === "CONTACT" && row.contactId) {
+          result = await api.contacts.canDelete(row.contactId);
+        } else if (row.kind === "ORGANIZATION" && row.organizationId) {
+          result = await api.organizations.canDelete(row.organizationId);
+        } else {
+          // No valid entity to check
+          if (!cancelled) {
+            setCanDelete(true);
+            setDeleteBlockers(null);
+          }
+          return;
+        }
+
+        if (!cancelled) {
+          setCanDelete(result.canDelete);
+          setDeleteBlockers(result.canDelete ? null : { blockers: result.blockers, details: result.details });
+        }
+      } catch (e) {
+        console.error("[Contacts] canDelete check failed", e);
+        // If check fails, allow delete attempt (API will block if needed)
+        if (!cancelled) {
+          setCanDelete(true);
+          setDeleteBlockers(null);
+        }
+      }
+    };
+
+    checkDelete();
+    return () => { cancelled = true; };
+  }, [mode, onDelete, row.kind, row.contactId, row.organizationId, api]);
 
   // Archive button
   const [archiving, setArchiving] = React.useState(false);
@@ -689,38 +731,24 @@ export function PartyDetailsView({
     />
   ) : undefined;
 
-  // Check if deletion is allowed
-  const checkCanDelete = async () => {
-    if (!onDelete) return;
-    setCheckingDelete(true);
-    setDeleteBlockers(null);
-    try {
-      let result: { canDelete: boolean; blockers: Record<string, any>; details?: Record<string, any> };
-      if (row.kind === "CONTACT" && row.contactId) {
-        result = await api.contacts.canDelete(row.contactId);
-      } else if (row.kind === "ORGANIZATION" && row.organizationId) {
-        result = await api.organizations.canDelete(row.organizationId);
-      } else {
-        // No valid entity to check
-        setDeleteConfirmOpen(true);
-        return;
-      }
-
-      if (result.canDelete) {
-        // No blockers, show delete confirmation
-        setDeleteConfirmOpen(true);
-      } else {
-        // Has blockers, show blocker info modal
-        setDeleteBlockers({ blockers: result.blockers, details: result.details });
-      }
-    } catch (e) {
-      console.error("[Contacts] canDelete check failed", e);
-      // If check fails, still allow delete attempt (API will block if needed)
-      setDeleteConfirmOpen(true);
-    } finally {
-      setCheckingDelete(false);
-    }
-  };
+  // Build tooltip text for disabled delete button
+  const deleteBlockerTooltip = React.useMemo(() => {
+    if (!deleteBlockers) return null;
+    const lines: string[] = [];
+    const b = deleteBlockers.blockers;
+    const d = deleteBlockers.details;
+    if (b.hasAnimals) lines.push(`Owns ${d?.animalCount ?? "some"} animal${(d?.animalCount ?? 0) !== 1 ? "s" : ""}`);
+    if (b.hasInvoices) lines.push(`Has ${d?.invoiceCount ?? "some"} invoice${(d?.invoiceCount ?? 0) !== 1 ? "s" : ""}`);
+    if (b.hasPayments) lines.push(`Has ${d?.paymentCount ?? "some"} payment${(d?.paymentCount ?? 0) !== 1 ? "s" : ""}`);
+    if (b.hasWaitlistEntries) lines.push(`Has ${d?.waitlistEntryCount ?? "some"} waitlist ${(d?.waitlistEntryCount ?? 0) !== 1 ? "entries" : "entry"}`);
+    if (b.hasBreedingPlans) lines.push(`Has ${d?.breedingPlanCount ?? "some"} breeding plan${(d?.breedingPlanCount ?? 0) !== 1 ? "s" : ""}`);
+    if (b.hasDocuments) lines.push(`Has ${d?.documentCount ?? "some"} document${(d?.documentCount ?? 0) !== 1 ? "s" : ""}`);
+    if (b.hasPortalAccess) lines.push("Has active portal access");
+    if (b.hasMembers) lines.push(`Has ${d?.memberCount ?? "some"} member${(d?.memberCount ?? 0) !== 1 ? "s" : ""}`);
+    if (b.hasExpenses) lines.push(`Has ${d?.expenseCount ?? "some"} expense${(d?.expenseCount ?? 0) !== 1 ? "s" : ""}`);
+    if (Array.isArray(b.other)) lines.push(...b.other);
+    return lines.length > 0 ? lines.join("\n") : "Cannot delete due to related records";
+  }, [deleteBlockers]);
 
   // Handle delete action
   const handleDelete = async () => {
@@ -771,17 +799,30 @@ export function PartyDetailsView({
         </button>
         {/* Delete */}
         {onDelete && (
-          <button
-            className="flex w-full items-center gap-2 px-3 py-2 text-sm text-red-400 hover:bg-white/5 rounded disabled:opacity-50"
-            disabled={checkingDelete}
-            onClick={() => {
-              setOverflowMenuOpen(false);
-              checkCanDelete();
-            }}
+          <Tooltip
+            content={
+              canDelete === false && deleteBlockerTooltip ? (
+                <div className="max-w-xs">
+                  <div className="font-semibold mb-1">Cannot delete</div>
+                  <div className="text-xs whitespace-pre-line">{deleteBlockerTooltip}</div>
+                  <div className="text-xs text-secondary mt-1">Use Archive instead</div>
+                </div>
+              ) : null
+            }
+            side="left"
           >
-            <Trash2 className="h-4 w-4" />
-            {checkingDelete ? "Checking…" : "Delete"}
-          </button>
+            <button
+              className="flex w-full items-center gap-2 px-3 py-2 text-sm text-red-400 hover:bg-white/5 rounded disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={canDelete === false || canDelete === null}
+              onClick={() => {
+                setOverflowMenuOpen(false);
+                setDeleteConfirmOpen(true);
+              }}
+            >
+              <Trash2 className="h-4 w-4" />
+              {canDelete === null ? "Checking…" : "Delete"}
+            </button>
+          </Tooltip>
         )}
       </Popover.Content>
     </Popover>
@@ -835,6 +876,7 @@ export function PartyDetailsView({
         tabsRightContent={tabsRightContent}
         onClose={close}
         hasPendingChanges={hasPendingChanges}
+        justSaved={justSaved}
         hideCloseButton
         showFooterClose
       >
@@ -985,9 +1027,10 @@ export function PartyDetailsView({
               </div>
             </SectionCard>
 
-            {/* Tags */}
-            <SectionCard title={<SectionTitle icon="🏷️">Tags</SectionTitle>}>
-              <div className="space-y-2">
+            {/* Tags - Compact inline layout */}
+            <SectionCard
+              title={<SectionTitle icon="🏷️">Tags</SectionTitle>}
+              right={
                 <TagPicker
                   availableTags={availableTags}
                   selectedTags={selectedTags}
@@ -998,27 +1041,10 @@ export function PartyDetailsView({
                   error={tagsError}
                   placeholder="Add tags..."
                   disabled={mode === "view"}
+                  onNewTagClick={() => setShowTagCreateModal(true)}
                 />
-                {mode === "edit" && !tagsLoading && availableTags.length === 0 && (
-                  <button
-                    type="button"
-                    onClick={() => setShowTagCreateModal(true)}
-                    className="text-xs text-brand hover:underline"
-                  >
-                    Create your first tag
-                  </button>
-                )}
-                {mode === "edit" && availableTags.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => setShowTagCreateModal(true)}
-                    className="text-xs text-secondary hover:text-brand"
-                  >
-                    + New tag
-                  </button>
-                )}
-              </div>
-            </SectionCard>
+              }
+            />
 
             {/* Communication Preferences + Compliance side by side - for Contacts only */}
             {row.kind === "CONTACT" && (
@@ -1725,123 +1751,6 @@ export function PartyDetailsView({
         overlayRoot
       )}
 
-      {/* Delete blockers info modal */}
-      {deleteBlockers && overlayRoot && createPortal(
-        <div
-          role="dialog"
-          aria-modal="true"
-          className="fixed inset-0 z-[100] flex items-center justify-center"
-        >
-          <div className="absolute inset-0 bg-black/50" onClick={() => setDeleteBlockers(null)} />
-          <div className="relative w-[520px] max-w-[92vw] rounded-xl border border-hairline bg-surface shadow-xl p-4">
-            <div className="text-lg font-semibold mb-1 text-amber-400">
-              Cannot Delete {row.kind === "CONTACT" ? "Contact" : "Organization"}
-            </div>
-            <div className="text-sm text-secondary mb-3">
-              This {row.kind === "CONTACT" ? "contact" : "organization"} has associated records that must be removed or reassigned first:
-            </div>
-            <ul className="text-sm space-y-2 mb-4">
-              {deleteBlockers.blockers.hasAnimals && (
-                <li className="flex items-center gap-2">
-                  <span className="text-amber-400">•</span>
-                  <span>
-                    Owns {deleteBlockers.details?.animalCount ?? "some"} animal{(deleteBlockers.details?.animalCount ?? 0) !== 1 ? "s" : ""}
-                  </span>
-                </li>
-              )}
-              {deleteBlockers.blockers.hasInvoices && (
-                <li className="flex items-center gap-2">
-                  <span className="text-amber-400">•</span>
-                  <span>
-                    Has {deleteBlockers.details?.invoiceCount ?? "some"} invoice{(deleteBlockers.details?.invoiceCount ?? 0) !== 1 ? "s" : ""}
-                  </span>
-                </li>
-              )}
-              {deleteBlockers.blockers.hasPayments && (
-                <li className="flex items-center gap-2">
-                  <span className="text-amber-400">•</span>
-                  <span>
-                    Has {deleteBlockers.details?.paymentCount ?? "some"} payment{(deleteBlockers.details?.paymentCount ?? 0) !== 1 ? "s" : ""}
-                  </span>
-                </li>
-              )}
-              {deleteBlockers.blockers.hasWaitlistEntries && (
-                <li className="flex items-center gap-2">
-                  <span className="text-amber-400">•</span>
-                  <span>
-                    Has {deleteBlockers.details?.waitlistEntryCount ?? "some"} waitlist {(deleteBlockers.details?.waitlistEntryCount ?? 0) !== 1 ? "entries" : "entry"}
-                  </span>
-                </li>
-              )}
-              {deleteBlockers.blockers.hasBreedingPlans && (
-                <li className="flex items-center gap-2">
-                  <span className="text-amber-400">•</span>
-                  <span>
-                    Associated with {deleteBlockers.details?.breedingPlanCount ?? "some"} breeding plan{(deleteBlockers.details?.breedingPlanCount ?? 0) !== 1 ? "s" : ""}
-                  </span>
-                </li>
-              )}
-              {deleteBlockers.blockers.hasDocuments && (
-                <li className="flex items-center gap-2">
-                  <span className="text-amber-400">•</span>
-                  <span>
-                    Has {deleteBlockers.details?.documentCount ?? "some"} document{(deleteBlockers.details?.documentCount ?? 0) !== 1 ? "s" : ""}
-                  </span>
-                </li>
-              )}
-              {deleteBlockers.blockers.hasPortalAccess && (
-                <li className="flex items-center gap-2">
-                  <span className="text-amber-400">•</span>
-                  <span>Has active portal access</span>
-                </li>
-              )}
-              {deleteBlockers.blockers.hasMembers && (
-                <li className="flex items-center gap-2">
-                  <span className="text-amber-400">•</span>
-                  <span>
-                    Has {deleteBlockers.details?.memberCount ?? "some"} member{(deleteBlockers.details?.memberCount ?? 0) !== 1 ? "s" : ""}
-                  </span>
-                </li>
-              )}
-              {deleteBlockers.blockers.hasExpenses && (
-                <li className="flex items-center gap-2">
-                  <span className="text-amber-400">•</span>
-                  <span>
-                    Has {deleteBlockers.details?.expenseCount ?? "some"} expense{(deleteBlockers.details?.expenseCount ?? 0) !== 1 ? "s" : ""}
-                  </span>
-                </li>
-              )}
-              {Array.isArray(deleteBlockers.blockers.other) && deleteBlockers.blockers.other.map((msg, i) => (
-                <li key={i} className="flex items-center gap-2">
-                  <span className="text-amber-400">•</span>
-                  <span>{msg}</span>
-                </li>
-              ))}
-            </ul>
-            <div className="text-xs text-secondary mb-4">
-              To delete this {row.kind === "CONTACT" ? "contact" : "organization"}, please remove or reassign these records first.
-              Alternatively, you can archive this record to hide it from active views.
-            </div>
-            <div className="flex items-center justify-end gap-2">
-              <Button variant="outline" onClick={() => setDeleteBlockers(null)}>
-                Close
-              </Button>
-              <Button
-                variant="outline"
-                onClick={async () => {
-                  setDeleteBlockers(null);
-                  if (!row.archived) {
-                    await handleArchive();
-                  }
-                }}
-              >
-                {row.archived ? "Already Archived" : "Archive Instead"}
-              </Button>
-            </div>
-          </div>
-        </div>,
-        overlayRoot
-      )}
     </>
   );
 }

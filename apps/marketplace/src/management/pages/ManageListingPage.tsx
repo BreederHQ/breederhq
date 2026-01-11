@@ -15,7 +15,10 @@ import { confirmDialog } from "@bhq/ui/utils";
 // ═══════════════════════════════════════════════════════════════════════════
 
 type ManageListingPageProps = {
-  // No props needed - self-contained page
+  /** When true, hides internal header (drawer provides its own) */
+  isDrawer?: boolean;
+  /** Called when dirty state changes */
+  onDirtyChange?: (dirty: boolean) => void;
 };
 
 type PublicLocationMode = "city_state" | "zip_only" | "full" | "hidden";
@@ -104,9 +107,14 @@ type MarketplacePublishedSnapshot = MarketplaceProfileDraft & {
 // HANDLE TYPE (for SettingsPanel ref integration)
 // ═══════════════════════════════════════════════════════════════════════════
 
-export type MarketplaceHandle = {
+export type ManageListingHandle = {
   save: () => Promise<void>;
+  discard: () => Promise<void>;
+  isDirty: () => boolean;
 };
+
+/** @deprecated Use ManageListingHandle instead */
+export type MarketplaceHandle = ManageListingHandle;
 
 // ═══════════════════════════════════════════════════════════════════════════
 // API HELPERS
@@ -179,70 +187,6 @@ async function publishMarketplaceProfile(
     return { ok: false, errors: body.errors || [`API error: ${res.status}`] };
   }
   return body;
-}
-
-// Business Hours types
-interface DaySchedule {
-  enabled: boolean;
-  open: string;  // "HH:mm" format, e.g. "09:00"
-  close: string; // "HH:mm" format, e.g. "17:00"
-}
-
-interface BusinessHoursSchedule {
-  monday: DaySchedule;
-  tuesday: DaySchedule;
-  wednesday: DaySchedule;
-  thursday: DaySchedule;
-  friday: DaySchedule;
-  saturday: DaySchedule;
-  sunday: DaySchedule;
-}
-
-interface BusinessHoursConfig {
-  schedule: BusinessHoursSchedule;
-  timeZone: string;
-}
-
-const DEFAULT_BUSINESS_HOURS: BusinessHoursSchedule = {
-  monday: { enabled: true, open: "09:00", close: "17:00" },
-  tuesday: { enabled: true, open: "09:00", close: "17:00" },
-  wednesday: { enabled: true, open: "09:00", close: "17:00" },
-  thursday: { enabled: true, open: "09:00", close: "17:00" },
-  friday: { enabled: true, open: "09:00", close: "17:00" },
-  saturday: { enabled: false, open: "09:00", close: "17:00" },
-  sunday: { enabled: false, open: "09:00", close: "17:00" },
-};
-
-async function fetchBusinessHours(tenantId: string): Promise<BusinessHoursConfig | null> {
-  const res = await fetch("/api/v1/business-hours", {
-    credentials: "include",
-    headers: {
-      Accept: "application/json",
-      "X-Tenant-Id": tenantId,
-    },
-  });
-  if (!res.ok) {
-    console.error("Failed to fetch business hours:", res.status);
-    return null;
-  }
-  return res.json();
-}
-
-async function saveBusinessHours(tenantId: string, config: BusinessHoursConfig): Promise<{ ok: boolean }> {
-  const csrf = readCsrfToken();
-  const res = await fetch("/api/v1/business-hours", {
-    method: "PUT",
-    credentials: "include",
-    headers: {
-      Accept: "application/json",
-      "Content-Type": "application/json",
-      "X-Tenant-Id": tenantId,
-      ...(csrf ? { "X-CSRF-Token": csrf } : {}),
-    },
-    body: JSON.stringify(config),
-  });
-  if (!res.ok) throw new Error(`API error: ${res.status}`);
-  return res.json();
 }
 
 async function unpublishMarketplaceProfile(
@@ -818,7 +762,7 @@ function CreateProgramModal({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
+    <div className="fixed inset-0 z-[70] flex items-center justify-center">
       <div className="absolute inset-0 bg-black/60" onClick={onClose} />
       <div className="relative bg-surface-strong border border-hairline rounded-xl shadow-xl w-full max-w-lg mx-4 max-h-[90vh] overflow-auto">
         <form onSubmit={handleSubmit}>
@@ -1095,7 +1039,7 @@ function EditProgramModal({
   const pricingCount = [pricingTiers.length > 0, whatsIncluded, typicalWaitTime].filter(Boolean).length;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
+    <div className="fixed inset-0 z-[70] flex items-center justify-center">
       <div className="absolute inset-0 bg-black/60" onClick={onClose} />
       <div className="relative bg-surface-strong border border-hairline rounded-xl shadow-xl w-full max-w-2xl mx-4 max-h-[90vh] flex flex-col">
         <form onSubmit={handleSubmit} className="flex flex-col h-full min-h-0">
@@ -1359,7 +1303,8 @@ function PublishErrorBanner({ errors }: { errors: string[] }) {
 // MAIN COMPONENT
 // ═══════════════════════════════════════════════════════════════════════════
 
-export function ManageListingPage() {
+export const ManageListingPage = React.forwardRef<ManageListingHandle, ManageListingPageProps>(
+  function ManageListingPageInner({ isDrawer = false, onDirtyChange }, ref) {
   // ─── State ────────────────────────────────────────────────────────────────
   const [draft, setDraft] = React.useState<MarketplaceProfileDraft>(createEmptyDraft);
   const [published, setPublished] = React.useState<MarketplacePublishedSnapshot | null>(null);
@@ -1371,10 +1316,6 @@ export function ManageListingPage() {
   const [apiLoading, setApiLoading] = React.useState(true);
   const [apiError, setApiError] = React.useState<string | null>(null);
   const [saveError, setSaveError] = React.useState<string | null>(null);
-
-  // Business hours state
-  const [businessHours, setBusinessHours] = React.useState<BusinessHoursSchedule>(DEFAULT_BUSINESS_HOURS);
-  const [businessHoursTimezone, setBusinessHoursTimezone] = React.useState<string>("America/New_York");
 
   // Track initial draft for dirty comparison
   const initialDraftRef = React.useRef<string>(JSON.stringify(createEmptyDraft()));
@@ -1403,25 +1344,6 @@ export function ManageListingPage() {
         }
       } finally {
         if (alive) setApiLoading(false);
-      }
-    })();
-    return () => { alive = false; };
-  }, [tenantId]);
-
-  // ─── Load business hours from API ─────────────────────────────────────────
-  React.useEffect(() => {
-    let alive = true;
-    (async () => {
-      try {
-        const hoursConfig = await fetchBusinessHours(tenantId);
-        if (!alive) return;
-        if (hoursConfig) {
-          setBusinessHours(hoursConfig.schedule);
-          setBusinessHoursTimezone(hoursConfig.timeZone);
-        }
-      } catch (e: any) {
-        console.error("Failed to load business hours:", e);
-        // Non-fatal - just use defaults
       }
     })();
     return () => { alive = false; };
@@ -1496,7 +1418,21 @@ export function ManageListingPage() {
   const [editingProgram, setEditingProgram] = React.useState<ProgramData | null>(null);
 
   // ─── Dirty tracking ──────────────────────────────────────────────────────
-  // (No longer needed - page manages its own state)
+  const isDirty = React.useMemo(() => {
+    return JSON.stringify(draft) !== initialDraftRef.current;
+  }, [draft]);
+
+  // Notify parent of dirty state changes
+  React.useEffect(() => {
+    onDirtyChange?.(isDirty);
+  }, [isDirty, onDirtyChange]);
+
+  // Expose imperative handle for drawer integration
+  React.useImperativeHandle(ref, () => ({
+    save: handleSaveDraftInternal,
+    discard: handleDiscardChangesInternal,
+    isDirty: () => JSON.stringify(draft) !== initialDraftRef.current,
+  }), [draft, published, tenantId]);
 
   // ─── Draft field updaters ────────────────────────────────────────────────
   function updateDraft<K extends keyof MarketplaceProfileDraft>(
@@ -1685,44 +1621,6 @@ export function ManageListingPage() {
     }
   }
 
-  // ─── Business Hours Handlers ──────────────────────────────────────────────
-  async function handleBusinessHoursChange(day: keyof BusinessHoursSchedule, field: keyof DaySchedule, value: boolean | string) {
-    const updated = {
-      ...businessHours,
-      [day]: {
-        ...businessHours[day],
-        [field]: value,
-      },
-    };
-    setBusinessHours(updated);
-
-    // Auto-save to API
-    try {
-      await saveBusinessHours(tenantId, {
-        schedule: updated,
-        timeZone: businessHoursTimezone,
-      });
-    } catch (e) {
-      console.error("Failed to save business hours:", e);
-      setSaveError("Failed to save business hours. Please try again.");
-    }
-  }
-
-  async function handleTimezoneChange(newTimezone: string) {
-    setBusinessHoursTimezone(newTimezone);
-
-    // Auto-save to API
-    try {
-      await saveBusinessHours(tenantId, {
-        schedule: businessHours,
-        timeZone: newTimezone,
-      });
-    } catch (e) {
-      console.error("Failed to save timezone:", e);
-      setSaveError("Failed to save timezone. Please try again.");
-    }
-  }
-
   function handleCreateProgram(data: ProgramFormData) {
     const newProgram: ProgramData = {
       id: `program-${Date.now()}`,
@@ -1814,7 +1712,7 @@ export function ManageListingPage() {
 
   // ─── Save Draft (API-based) ────────────────────────────────────────────────
   // When already published, saving also republishes to update the public listing
-  async function handleSaveDraft(): Promise<void> {
+  async function handleSaveDraftInternal(): Promise<void> {
     // If already published, confirm before updating public listing
     if (published) {
       const confirmed = await confirmDialog({
@@ -1874,7 +1772,7 @@ export function ManageListingPage() {
   // Auto-save is now handled inline - no imperative handle needed
 
   // ─── Discard Changes ─────────────────────────────────────────────────────
-  async function handleDiscardChanges(): Promise<void> {
+  async function handleDiscardChangesInternal(): Promise<void> {
     const confirmed = await confirmDialog({
       title: "Discard Changes",
       message: "Are you sure you want to discard your unsaved changes? This cannot be undone.",
@@ -1999,23 +1897,27 @@ export function ManageListingPage() {
         </div>
       )}
 
-      {/* Header */}
-      <div>
-        <h2 className="text-xl font-semibold text-primary">Marketplace Profile</h2>
-        <p className="text-sm text-secondary mt-1">
-          Control how your breeding business and programs appear in the BreederHQ Marketplace.
-        </p>
-        <div className="flex flex-wrap gap-3 mt-4">
-          <Badge variant={isPublished ? "green" : "neutral"}>
-            Marketplace: {isPublished ? "Visible" : "Not Published"}
-          </Badge>
-          <Badge variant="neutral">{listedProgramsCount} of {programs.length} Programs Listed</Badge>
-          {published?.publishedAt && (
-            <Badge variant="neutral">
-              Published: {new Date(published.publishedAt).toLocaleDateString()}
-            </Badge>
-          )}
+      {/* Header - hidden when rendered inside drawer */}
+      {!isDrawer && (
+        <div>
+          <h2 className="text-xl font-semibold text-primary">Marketplace Profile</h2>
+          <p className="text-sm text-secondary mt-1">
+            Control how your breeding business and programs appear in the BreederHQ Marketplace.
+          </p>
         </div>
+      )}
+
+      {/* Status badges - always visible */}
+      <div className="flex flex-wrap gap-3">
+        <Badge variant={isPublished ? "green" : "neutral"}>
+          Marketplace: {isPublished ? "Visible" : "Not Published"}
+        </Badge>
+        <Badge variant="neutral">{listedProgramsCount} of {programs.length} Programs Listed</Badge>
+        {published?.publishedAt && (
+          <Badge variant="neutral">
+            Published: {new Date(published.publishedAt).toLocaleDateString()}
+          </Badge>
+        )}
       </div>
 
       {/* Section: Business Identity */}
@@ -2299,7 +2201,7 @@ export function ManageListingPage() {
         </div>
       </SectionCard>
 
-      {/* Section: Business Hours */}
+      {/* Section: Business Hours - Managed in Marketing Hub */}
       <SectionCard
         title={
           <div className="flex items-center gap-2">
@@ -2312,73 +2214,18 @@ export function ManageListingPage() {
         }
         highlight={false}
       >
-        <div className="space-y-5 pt-2">
-          {/* Timezone Selector */}
-          <div>
-            <label className="text-xs text-secondary mb-1 block">Timezone</label>
-            <select
-              value={businessHoursTimezone}
-              onChange={(e) => handleTimezoneChange(e.target.value)}
-              className={INPUT_CLS}
-            >
-              <option value="America/New_York">Eastern Time (ET)</option>
-              <option value="America/Chicago">Central Time (CT)</option>
-              <option value="America/Denver">Mountain Time (MT)</option>
-              <option value="America/Phoenix">Arizona Time (MST)</option>
-              <option value="America/Los_Angeles">Pacific Time (PT)</option>
-              <option value="America/Anchorage">Alaska Time (AKT)</option>
-              <option value="Pacific/Honolulu">Hawaii Time (HST)</option>
-            </select>
-          </div>
-
-          {/* Days Schedule */}
-          <div className="space-y-3">
-            {(["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"] as const).map((day) => {
-              const schedule = businessHours[day];
-              const dayLabel = day.charAt(0).toUpperCase() + day.slice(1);
-              return (
-                <div key={day} className="flex items-center gap-3 py-2 border-b border-hairline last:border-0">
-                  {/* Day name and toggle */}
-                  <div className="w-32 flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={schedule.enabled}
-                      onChange={(e) => handleBusinessHoursChange(day, "enabled", e.target.checked)}
-                      className="w-4 h-4 rounded border-hairline bg-surface text-[hsl(var(--brand-orange))] focus:ring-2 focus:ring-[hsl(var(--brand-orange))]/20"
-                    />
-                    <span className={`text-sm font-medium ${schedule.enabled ? "text-primary" : "text-secondary"}`}>
-                      {dayLabel}
-                    </span>
-                  </div>
-
-                  {/* Time inputs */}
-                  {schedule.enabled ? (
-                    <div className="flex items-center gap-2 flex-1">
-                      <input
-                        type="time"
-                        value={schedule.open}
-                        onChange={(e) => handleBusinessHoursChange(day, "open", e.target.value)}
-                        className="px-2 py-1 text-sm rounded-md border border-hairline bg-surface text-primary focus:outline-none focus:ring-2 focus:ring-[hsl(var(--brand-orange))]/50"
-                      />
-                      <span className="text-xs text-secondary">to</span>
-                      <input
-                        type="time"
-                        value={schedule.close}
-                        onChange={(e) => handleBusinessHoursChange(day, "close", e.target.value)}
-                        className="px-2 py-1 text-sm rounded-md border border-hairline bg-surface text-primary focus:outline-none focus:ring-2 focus:ring-[hsl(var(--brand-orange))]/50"
-                      />
-                    </div>
-                  ) : (
-                    <span className="text-sm text-secondary italic flex-1">Closed</span>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-
-          <p className="text-xs text-secondary">
-            Business hours appear on your marketplace profile and help buyers know when to expect responses.
+        <div className="py-4 text-center">
+          <p className="text-sm text-secondary mb-3">
+            Business hours are now managed in the Marketing Hub for a unified experience across all channels.
           </p>
+          <a
+            href="/marketing/business-hours"
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-[hsl(var(--brand-orange))] text-white hover:opacity-90 transition-opacity"
+          >
+            <span>🕐</span>
+            Manage Business Hours
+            <span className="text-xs opacity-75">→</span>
+          </a>
         </div>
       </SectionCard>
 
@@ -2585,4 +2432,4 @@ export function ManageListingPage() {
       </div>
     </div>
   );
-}
+});

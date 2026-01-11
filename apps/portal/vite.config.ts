@@ -29,6 +29,7 @@ export default defineConfig({
       "/api": {
         target: "http://localhost:6001",
         changeOrigin: true,
+        ws: true, // Enable WebSocket proxying
         rewrite: (p) => p, // keep /api/*
       },
       "/health": { target: "http://localhost:6001", changeOrigin: true },

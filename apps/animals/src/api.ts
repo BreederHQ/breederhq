@@ -182,6 +182,26 @@ export interface DescendantsResult {
   descendants: DescendantNode[];
 }
 
+export interface OffspringRecord {
+  id: number;
+  name: string | null;
+  sex: "FEMALE" | "MALE" | null;
+  species: string;
+  breed: string | null;
+  birthDate: string | null;
+  lifeState: string;
+  placementState: string;
+  keeperIntent: string;
+  otherParent: { id: number; name: string } | null;
+  group: { id: number; name: string | null; birthDate: string | null } | null;
+  collarColor: string | null;
+}
+
+export interface OffspringResult {
+  animal: { id: number; name: string; sex: string };
+  offspring: OffspringRecord[];
+}
+
 export interface ParentsResult {
   dam: {
     id: number;
@@ -498,25 +518,65 @@ export function makeApi(base?: string, extraHeadersFn?: () => Record<string, str
     /**
      * Check if an animal can be deleted.
      * Returns blockers if there are dependencies that prevent deletion.
+     *
+     * Deletion is ONLY allowed if the animal has essentially no real data:
+     * - No lineage links (sire, dam, offspring) within tenant
+     * - No cross-tenant links
+     * - No breeding plans
+     * - No waitlist entries
+     * - No invoices or payments
+     * - No documents
+     * - No health records
+     * - No registrations
+     * - No titles/competitions
+     * - No ownership transfers
+     * - No marketplace listing
+     * - No media/photos (beyond default)
+     *
+     * If ANY of these exist, the animal should be archived instead.
      */
     async canDelete(id: string | number): Promise<{
       canDelete: boolean;
       blockers: {
+        // Lineage & relationships
         hasOffspring?: boolean;
         isParentInPedigree?: boolean;
+        hasLineageLinks?: boolean;
+        hasCrossTenantLinks?: boolean;
+        // Breeding & sales
         hasBreedingPlans?: boolean;
         hasWaitlistEntries?: boolean;
+        // Financial
         hasInvoices?: boolean;
+        hasPayments?: boolean;
+        // Records & data
         hasDocuments?: boolean;
+        hasHealthRecords?: boolean;
+        hasRegistrations?: boolean;
+        hasTitles?: boolean;
+        hasCompetitions?: boolean;
+        hasOwnershipHistory?: boolean;
+        hasMedia?: boolean;
+        // Marketplace
         hasPublicListing?: boolean;
+        // Catch-all
         other?: string[];
       };
       details?: {
         offspringCount?: number;
+        lineageLinkCount?: number;
+        crossTenantLinkCount?: number;
         breedingPlanCount?: number;
         waitlistEntryCount?: number;
         invoiceCount?: number;
+        paymentCount?: number;
         documentCount?: number;
+        healthRecordCount?: number;
+        registrationCount?: number;
+        titleCount?: number;
+        competitionCount?: number;
+        ownershipTransferCount?: number;
+        mediaCount?: number;
       };
     }> {
       try {
@@ -702,6 +762,76 @@ export function makeApi(base?: string, extraHeadersFn?: () => Record<string, str
       },
     },
 
+    /* vaccinations - date-based vaccination tracking */
+    vaccinations: {
+      /** List all vaccination records for an animal */
+      async list(id: string | number) {
+        return reqWithExtra<any>(`/animals/${encodeURIComponent(String(id))}/vaccinations`);
+      },
+      /** Get vaccination protocols for a species */
+      async protocols(species: string) {
+        return reqWithExtra<any>(`/vaccinations/protocols?species=${encodeURIComponent(species)}`);
+      },
+      /** Create a new vaccination record */
+      async create(id: string | number, input: {
+        protocolKey: string;
+        administeredAt: string;
+        expiresAt?: string;
+        veterinarian?: string;
+        clinic?: string;
+        batchLotNumber?: string;
+        notes?: string;
+      }) {
+        return reqWithExtra<any>(`/animals/${encodeURIComponent(String(id))}/vaccinations`, {
+          method: "POST",
+          json: input,
+        });
+      },
+      /** Update an existing vaccination record */
+      async update(id: string | number, recordId: number, input: {
+        protocolKey?: string;
+        administeredAt?: string;
+        expiresAt?: string;
+        veterinarian?: string;
+        clinic?: string;
+        batchLotNumber?: string;
+        notes?: string;
+        documentId?: number | null;
+      }) {
+        return reqWithExtra<any>(
+          `/animals/${encodeURIComponent(String(id))}/vaccinations/${recordId}`,
+          { method: "PATCH", json: input }
+        );
+      },
+      /** Delete a vaccination record */
+      async remove(id: string | number, recordId: number) {
+        return reqWithExtra<any>(
+          `/animals/${encodeURIComponent(String(id))}/vaccinations/${recordId}`,
+          { method: "DELETE" }
+        );
+      },
+      /** Upload document and link to vaccination record */
+      async uploadDocument(id: string | number, recordId: number, payload: {
+        title: string;
+        originalFileName: string;
+        mimeType: string;
+        sizeBytes?: number;
+        visibility?: string;
+      }) {
+        return reqWithExtra<any>(
+          `/animals/${encodeURIComponent(String(id))}/vaccinations/${recordId}/document`,
+          { method: "POST", json: payload }
+        );
+      },
+      /** Unlink document from vaccination record */
+      async unlinkDocument(id: string | number, recordId: number) {
+        return reqWithExtra<any>(
+          `/animals/${encodeURIComponent(String(id))}/vaccinations/${recordId}/document`,
+          { method: "DELETE" }
+        );
+      },
+    },
+
     /* lineage / pedigree */
     lineage: {
       /** Get pedigree (ancestor tree) for an animal */
@@ -711,10 +841,17 @@ export function makeApi(base?: string, extraHeadersFn?: () => Record<string, str
         );
       },
 
-      /** Get descendants (offspring tree) for an animal */
+      /** Get descendants (offspring tree) for an animal - queries Animal table */
       async getDescendants(id: string | number, generations: number = 3): Promise<DescendantsResult> {
         return reqWithExtra<DescendantsResult>(
           `/animals/${encodeURIComponent(String(id))}/descendants?generations=${generations}`
+        );
+      },
+
+      /** Get offspring (from Offspring table) where this animal is dam or sire */
+      async getOffspring(id: string | number): Promise<OffspringResult> {
+        return reqWithExtra<OffspringResult>(
+          `/animals/${encodeURIComponent(String(id))}/offspring`
         );
       },
 

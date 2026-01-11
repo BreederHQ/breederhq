@@ -1,4 +1,13 @@
-/* Portal standalone styles */
+/* 1) Load BHQ design-system FIRST so PostCSS is happy and tokens exist */
+@import "@bhq/ui/bhq.css";
+
+/* 2) Tailwind v3 directives */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* 3) Portal-specific styles */
+
 html, body {
   min-height: 100%;
   margin: 0;

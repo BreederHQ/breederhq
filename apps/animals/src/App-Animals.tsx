@@ -35,6 +35,8 @@ import {
   type TagOption,
   useViewMode,
   Tooltip,
+  SortDropdown,
+  type SortOption,
 } from "@bhq/ui";
 import { FinanceTab } from "@bhq/ui/components/Finance";
 import type { OwnershipRow } from "@bhq/ui/utils/ownership";
@@ -50,8 +52,15 @@ import { LineageTab } from "./components/LineageTab";
 import { TitlesTab } from "./components/TitlesTab";
 import { CompetitionsTab } from "./components/CompetitionsTab";
 import { PrivacyTab } from "./components/PrivacyTab";
-import { ProducingRecordSection } from "./components/ProducingRecordSection";
+import { OffspringTab } from "./components/OffspringTab";
 import { GeneticsImportDialog } from "@bhq/ui/components/GeneticsImport";
+import { GeneticsEmptyState } from "@bhq/ui/components/GeneticsEmptyState";
+import { AddGeneticResultDialog } from "@bhq/ui/components/AddGeneticResultDialog";
+import { VaccinationTracker, VaccinationAlertBadge } from "@bhq/ui/components/VaccinationTracker";
+import type { VaccinationAlertState } from "@bhq/ui/components/VaccinationTracker";
+import { GENETIC_MARKERS_SEED } from "@bhq/api/data/genetic-markers-seed";
+import { getProtocolsForSpecies } from "@bhq/api/types/vaccinations";
+import type { GeneticMarker, GeneticSpecies, CreateGeneticResultInput, VaccinationRecord, VaccinationProtocol, CreateVaccinationInput } from "@bhq/api";
 
 import {
   normalizeCycleStartsAsc,
@@ -245,6 +254,17 @@ const COLUMNS: Array<{ key: keyof AnimalRow & string; label: string; default?: b
   { key: "updated_at", label: "Updated", default: false, center: true },
 ];
 
+const SORT_OPTIONS: SortOption[] = [
+  { key: "name", label: "Name" },
+  { key: "species", label: "Species" },
+  { key: "breed", label: "Breed" },
+  { key: "sex", label: "Sex" },
+  { key: "status", label: "Status" },
+  { key: "dob", label: "Date of Birth" },
+  { key: "created_at", label: "Date Created" },
+  { key: "updated_at", label: "Last Updated" },
+];
+
 const SPECIES_LABEL: Record<string, string> = { DOG: "Dog", CAT: "Cat", HORSE: "Horse", GOAT: "Goat", SHEEP: "Sheep", RABBIT: "Rabbit" };
 const SEX_LABEL: Record<string, string> = { FEMALE: "Female", MALE: "Male" };
 const STATUS_LABEL: Record<string, string> = {
@@ -381,6 +401,7 @@ function CardViewWithDetails({
   totalRows,
   start,
   end,
+  vaccinationAlerts,
 }: {
   rows: AnimalRow[];
   loading: boolean;
@@ -396,6 +417,7 @@ function CardViewWithDetails({
   totalRows: number;
   start: number;
   end: number;
+  vaccinationAlerts?: Record<number, VaccinationAlertState>;
 }) {
   const { open } = useTableDetails<AnimalRow>();
 
@@ -406,6 +428,7 @@ function CardViewWithDetails({
         loading={loading}
         error={error}
         onRowClick={(row) => open?.(row)}
+        vaccinationAlerts={vaccinationAlerts}
       />
       <TableFooter
         entityLabel="animals"
@@ -1562,7 +1585,7 @@ function AnimalTagsSection({
   }, [api, animalId]);
 
   return (
-    <div className="space-y-2">
+    <>
       <TagPicker
         availableTags={availableTags}
         selectedTags={selectedTags}
@@ -1573,25 +1596,8 @@ function AnimalTagsSection({
         error={error}
         placeholder="Add tags..."
         disabled={disabled}
+        onNewTagClick={() => setShowCreateModal(true)}
       />
-      {!disabled && availableTags.length === 0 && !loading && (
-        <button
-          type="button"
-          onClick={() => setShowCreateModal(true)}
-          className="text-xs text-brand hover:underline"
-        >
-          Create your first tag
-        </button>
-      )}
-      {!disabled && availableTags.length > 0 && (
-        <button
-          type="button"
-          onClick={() => setShowCreateModal(true)}
-          className="text-xs text-secondary hover:text-brand"
-        >
-          + New tag
-        </button>
-      )}
       <TagCreateModal
         open={showCreateModal}
         onOpenChange={setShowCreateModal}
@@ -1599,7 +1605,7 @@ function AnimalTagsSection({
         fixedModule="ANIMAL"
         onSubmit={handleModalCreate}
       />
-    </div>
+    </>
   );
 }
 
@@ -3460,6 +3466,7 @@ function GeneticsTab({
   const [saving, setSaving] = React.useState(false);
   const [editData, setEditData] = React.useState<GeneticData>({});
   const [showImportDialog, setShowImportDialog] = React.useState(false);
+  const [showAddResultDialog, setShowAddResultDialog] = React.useState(false);
   const [enableGeneticsSharing, setEnableGeneticsSharing] = React.useState(false);
   const [collapsedSections, setCollapsedSections] = React.useState<Set<string>>(
     new Set(["coatColor", "coatType", "physicalTraits", "eyeColor", "health", "otherTraits", "breedSpecific"])
@@ -3512,6 +3519,108 @@ function GeneticsTab({
       .then((s: any) => setEnableGeneticsSharing(s.enableGeneticsSharing ?? false))
       .catch(() => {});
   }, [api, animal.id]);
+
+  // Convert seed data to GeneticMarker format for the picker
+  const availableMarkers = React.useMemo((): GeneticMarker[] => {
+    const species = (animal.species || "DOG").toUpperCase() as GeneticSpecies;
+    return GENETIC_MARKERS_SEED
+      .filter((m) => m.species === species)
+      .map((m, idx) => ({
+        id: idx + 1,
+        species: m.species,
+        category: m.category,
+        code: m.code,
+        commonName: m.commonName,
+        gene: m.gene,
+        description: m.description,
+        breedSpecific: m.breedSpecific,
+        isCommon: m.isCommon,
+        inputType: m.inputType,
+        pendingReview: false,
+        source: "seed",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      }));
+  }, [animal.species]);
+
+  // Handler for saving manually added results
+  const handleSaveManualResults = async (results: CreateGeneticResultInput[]) => {
+    // For now, convert the new results format to the existing GeneticData format
+    // This bridges the new API types with the existing storage
+    const newData = { ...editData };
+
+    for (const result of results) {
+      const marker = availableMarkers.find((m) => m.id === result.markerId);
+      if (!marker) continue;
+
+      const locusEntry: GeneticLocus = {
+        locus: marker.code,
+        locusName: marker.commonName,
+        allele1: result.allele1,
+        allele2: result.allele2,
+        genotype: result.allele1 && result.allele2
+          ? `${result.allele1}/${result.allele2}`
+          : result.status || result.rawValue || "",
+        testLab: result.testProvider,
+        testDate: result.testDate,
+        networkVisible: result.networkVisible ?? false,
+      };
+
+      // Add to appropriate category
+      const category = marker.category;
+      if (category === "coat_color") {
+        newData.coatColor = [...(newData.coatColor || []).filter((l) => l.locus !== marker.code), locusEntry];
+      } else if (category === "coat_type") {
+        newData.coatType = [...(newData.coatType || []).filter((l) => l.locus !== marker.code), locusEntry];
+      } else if (category === "health") {
+        newData.health = [...(newData.health || []).filter((l) => l.locus !== marker.code), locusEntry];
+      } else if (category === "physical_traits") {
+        newData.physicalTraits = [...(newData.physicalTraits || []).filter((l) => l.locus !== marker.code), locusEntry];
+      } else if (category === "eye_color") {
+        newData.eyeColor = [...(newData.eyeColor || []).filter((l) => l.locus !== marker.code), locusEntry];
+      } else {
+        newData.otherTraits = [...(newData.otherTraits || []).filter((l) => l.locus !== marker.code), locusEntry];
+      }
+    }
+
+    setEditData(newData);
+    setGeneticData(newData);
+
+    // Save to API
+    try {
+      const payload = {
+        testProvider: newData.testResults?.testLab || results[0]?.testProvider || null,
+        testDate: newData.testResults?.testDate || results[0]?.testDate || null,
+        coatColor: newData.coatColor || [],
+        health: newData.health || [],
+        coatType: newData.coatType || [],
+        physicalTraits: newData.physicalTraits || [],
+        eyeColor: newData.eyeColor || [],
+        otherTraits: newData.otherTraits || [],
+      };
+      await fetch(`/api/v1/animals/${animal.id}/genetics`, {
+        method: "PUT",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+    } catch (err) {
+      console.error("Failed to save genetics:", err);
+    }
+  };
+
+  // Check if we have any genetic data
+  const hasGeneticData = React.useMemo(() => {
+    return (
+      (geneticData.coatColor?.length || 0) > 0 ||
+      (geneticData.coatType?.length || 0) > 0 ||
+      (geneticData.health?.length || 0) > 0 ||
+      (geneticData.physicalTraits?.length || 0) > 0 ||
+      (geneticData.eyeColor?.length || 0) > 0 ||
+      (geneticData.otherTraits?.length || 0) > 0 ||
+      (geneticData.breedComposition?.length || 0) > 0
+    );
+  }, [geneticData]);
 
   // Species-specific locus definitions - comprehensive genetic markers
   type LocusInfo = { locus: string; locusName: string; description: string; breedSpecific?: string };
@@ -3838,6 +3947,64 @@ function GeneticsTab({
     );
   }
 
+  // Show empty state when no data and in view mode
+  if (!hasGeneticData && mode === "view") {
+    return (
+      <div className="p-4">
+        <GeneticsEmptyState
+          animalName={animal.name}
+          species={(animal.species || "DOG").toUpperCase() as "DOG" | "CAT" | "HORSE" | "OTHER"}
+          onImportClick={() => setShowImportDialog(true)}
+          onManualAddClick={() => setShowAddResultDialog(true)}
+        />
+
+        {/* Dialogs still need to be rendered */}
+        <GeneticsImportDialog
+          open={showImportDialog}
+          onClose={() => setShowImportDialog(false)}
+          animalId={animal.id}
+          animalName={animal.name}
+          animalSpecies={animal.species || "DOG"}
+          onImportComplete={() => {
+            setShowImportDialog(false);
+            setLoading(true);
+            fetch(`/api/v1/animals/${animal.id}/genetics`, { credentials: "include" })
+              .then((res) => res.json())
+              .then((data) => {
+                const mapped: GeneticData = {
+                  coatColor: data.coatColor || [],
+                  health: data.health || [],
+                  coatType: data.coatType || [],
+                  physicalTraits: data.physicalTraits || [],
+                  eyeColor: data.eyeColor || [],
+                  otherTraits: data.otherTraits || [],
+                  testResults: {
+                    testLab: data.testProvider || "",
+                    testDate: data.testDate ? data.testDate.split("T")[0] : "",
+                    testId: data.testId || "",
+                  },
+                };
+                setGeneticData(mapped);
+                setEditData(mapped);
+              })
+              .finally(() => setLoading(false));
+          }}
+        />
+
+        <AddGeneticResultDialog
+          open={showAddResultDialog}
+          onClose={() => setShowAddResultDialog(false)}
+          animalId={animal.id}
+          animalName={animal.name}
+          species={(animal.species || "DOG").toUpperCase() as GeneticSpecies}
+          breeds={editData.breedComposition?.map((bc) => bc.breed).filter((b) => b.length > 0)}
+          markers={availableMarkers}
+          onSave={handleSaveManualResults}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-3 p-4">
       {/* Network Sharing Status */}
@@ -3874,15 +4041,24 @@ function GeneticsTab({
               </div>
             </div>
           </div>
-          <div className="flex flex-col items-end gap-1 shrink-0">
-            <Button
-              variant="primary"
-              size="sm"
-              onClick={() => setShowImportDialog(true)}
-            >
-              Import from Lab
-            </Button>
-            <span className="text-xs text-secondary">Embark CSV/TSV supported</span>
+          <div className="flex flex-col items-end gap-2 shrink-0">
+            <div className="flex gap-2">
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => setShowImportDialog(true)}
+              >
+                Import from Lab
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowAddResultDialog(true)}
+              >
+                Add Manually
+              </Button>
+            </div>
+            <span className="text-xs text-secondary">CSV import or manual entry</span>
           </div>
         </div>
       </div>
@@ -3919,6 +4095,18 @@ function GeneticsTab({
             })
             .finally(() => setLoading(false));
         }}
+      />
+
+      {/* Add Genetic Result Dialog */}
+      <AddGeneticResultDialog
+        open={showAddResultDialog}
+        onClose={() => setShowAddResultDialog(false)}
+        animalId={animal.id}
+        animalName={animal.name}
+        species={(animal.species || "DOG").toUpperCase() as GeneticSpecies}
+        breeds={editData.breedComposition?.map((bc) => bc.breed).filter((b) => b.length > 0)}
+        markers={availableMarkers}
+        onSave={handleSaveManualResults}
       />
 
       {/* Genetic Test Results */}
@@ -4662,11 +4850,13 @@ function HealthTab({
   api,
   onDocumentsTabRequest,
   mode,
+  onVaccinationAlertChange,
 }: {
   animal: AnimalRow;
   api: any;
   onDocumentsTabRequest?: () => void;
   mode: "view" | "edit";
+  onVaccinationAlertChange?: (state: VaccinationAlertState) => void;
 }) {
   const [categories, setCategories] = React.useState<any[]>([]);
   const [loading, setLoading] = React.useState(true);
@@ -4678,12 +4868,87 @@ function HealthTab({
   const [collapsedCategories, setCollapsedCategories] = React.useState<Set<string>>(new Set());
   const [enableHealthSharing, setEnableHealthSharing] = React.useState(false);
 
+  // Vaccination tracking state
+  const [vaccinationRecords, setVaccinationRecords] = React.useState<VaccinationRecord[]>([]);
+  const [vaccinationProtocols, setVaccinationProtocols] = React.useState<VaccinationProtocol[]>([]);
+  const [vaccinationsLoading, setVaccinationsLoading] = React.useState(true);
+
   // Load privacy settings to check if health sharing is enabled
   React.useEffect(() => {
     api?.animals?.lineage?.getPrivacySettings(animal.id)
       .then((s: any) => setEnableHealthSharing(s.enableHealthSharing ?? false))
       .catch(() => {});
   }, [api, animal.id]);
+
+  // Load vaccination protocols and records
+  React.useEffect(() => {
+    const loadVaccinations = async () => {
+      setVaccinationsLoading(true);
+      try {
+        // Get protocols for this species (from static data)
+        const protocols = getProtocolsForSpecies(animal.species || "DOG");
+        setVaccinationProtocols(protocols);
+
+        // Try to load existing records from API
+        try {
+          const data = await api?.animals?.vaccinations?.list(animal.id);
+          setVaccinationRecords(data?.records || []);
+        } catch {
+          // API may not be implemented yet - use empty array
+          setVaccinationRecords([]);
+        }
+      } catch (err) {
+        console.error("[HealthTab] Failed to load vaccinations", err);
+        setVaccinationRecords([]);
+      } finally {
+        setVaccinationsLoading(false);
+      }
+    };
+    loadVaccinations();
+  }, [api, animal.id, animal.species]);
+
+  // Vaccination handlers
+  const handleCreateVaccination = async (input: CreateVaccinationInput) => {
+    try {
+      await api?.animals?.vaccinations?.create(animal.id, input);
+      // Refresh records
+      const data = await api?.animals?.vaccinations?.list(animal.id);
+      setVaccinationRecords(data?.records || []);
+      toast.success("Vaccination record added");
+    } catch (err: any) {
+      console.error("[HealthTab] Create vaccination failed", err);
+      toast.error(err?.data?.message || "Failed to add vaccination record");
+      throw err;
+    }
+  };
+
+  const handleUpdateVaccination = async (recordId: number, input: Partial<CreateVaccinationInput>) => {
+    try {
+      await api?.animals?.vaccinations?.update(animal.id, recordId, input);
+      // Refresh records
+      const data = await api?.animals?.vaccinations?.list(animal.id);
+      setVaccinationRecords(data?.records || []);
+      toast.success("Vaccination record updated");
+    } catch (err: any) {
+      console.error("[HealthTab] Update vaccination failed", err);
+      toast.error(err?.data?.message || "Failed to update vaccination record");
+      throw err;
+    }
+  };
+
+  const handleDeleteVaccination = async (recordId: number) => {
+    try {
+      await api?.animals?.vaccinations?.remove(animal.id, recordId);
+      // Refresh records
+      const data = await api?.animals?.vaccinations?.list(animal.id);
+      setVaccinationRecords(data?.records || []);
+      toast.success("Vaccination record deleted");
+    } catch (err: any) {
+      console.error("[HealthTab] Delete vaccination failed", err);
+      toast.error(err?.data?.message || "Failed to delete vaccination record");
+      throw err;
+    }
+  };
 
   const getTraitDraftKey = React.useCallback((trait: any) => {
     const raw = trait?.traitKey ?? trait?.traitValueId ?? "";
@@ -4850,7 +5115,7 @@ function HealthTab({
 
   // Loading state with skeleton rows
   if (loading) {
-    const skeletonCategories = ["Orthopedic", "Eyes", "Cardiac", "Genetic", "Reproductive", "General"];
+    const skeletonCategories = ["Orthopedic", "Eyes", "Cardiac", "Infectious", "Reproductive", "General"];
     return (
       <div className="space-y-3">
         {skeletonCategories.map((cat) => (
@@ -4942,7 +5207,32 @@ function HealthTab({
         </div>
       </div>
 
-      {categories.map((cat: any) => {
+      {/* Vaccination Tracker - Date-based vaccination tracking */}
+      {vaccinationProtocols.length > 0 && (
+        <VaccinationTracker
+          animalId={animal.id}
+          animalName={animal.nickname || animal.name || "this animal"}
+          species={animal.species || "DOG"}
+          protocols={vaccinationProtocols}
+          records={vaccinationRecords}
+          editMode={mode === "edit"}
+          onCreate={handleCreateVaccination}
+          onUpdate={handleUpdateVaccination}
+          onDelete={handleDeleteVaccination}
+          loading={vaccinationsLoading}
+          onAlertStateChange={onVaccinationAlertChange}
+        />
+      )}
+
+      {categories
+        .filter((cat: any) => cat.category !== "Genetic") // Genetic DNA results now go in Genetics tab
+        .sort((a: any, b: any) => {
+          // Put "General" first
+          if (a.category === "General") return -1;
+          if (b.category === "General") return 1;
+          return 0;
+        })
+        .map((cat: any) => {
         const items = cat.items || [];
         // Render all categories from definitions, even when empty (shows "0 of 0 provided")
 
@@ -4957,59 +5247,42 @@ function HealthTab({
         }).length;
 
         return (
-          <SectionCard
+          <div
             key={cat.category}
-            title={
-              <>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => toggleCategory(cat.category)}
-                    className="hover:opacity-80 transition-opacity -ml-1"
-                    aria-label={isCollapsed ? "Expand category" : "Collapse category"}
+            className="rounded-xl bg-surface p-3 border border-hairline"
+          >
+            {/* Custom header without animated underline */}
+            <div className="flex items-center justify-between mb-1">
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => toggleCategory(cat.category)}
+                  className="hover:opacity-80 transition-opacity -ml-1"
+                  aria-label={isCollapsed ? "Expand category" : "Collapse category"}
+                >
+                  <svg
+                    className="w-4 h-4 transition-transform duration-200 text-secondary"
+                    style={{
+                      transform: isCollapsed ? "rotate(0deg)" : "rotate(90deg)",
+                      transformOrigin: "center",
+                      transformBox: "fill-box",
+                    }}
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
                   >
-                    <svg
-                      className="w-4 h-4 transition-transform duration-200"
-                      style={{
-                        transform: isCollapsed ? "rotate(0deg)" : "rotate(90deg)",
-                        transformOrigin: "center",
-                        transformBox: "fill-box",
-                      }}
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                    </svg>
-                  </button>
-                  <span className="relative">
-                    {cat.category}
-                  </span>
-                </div>
-              </>
-            }
-            right={
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
+                </button>
+                <span className="font-semibold text-sm">
+                  {cat.category}
+                </span>
+              </div>
               <span className="text-xs text-secondary font-normal">
                 {completedCount} of {items.length} provided
               </span>
-            }
-          >
+            </div>
             {!isCollapsed && (
               <div className="space-y-2">
-                {/* Add helper for Genetic category */}
-                {cat.category === "Genetic" && (
-                  <div className="rounded-lg border border-blue-500/20 bg-blue-500/5 p-3 mb-3">
-                    <div className="flex items-start gap-2">
-                      <span className="text-blue-600">💡</span>
-                      <div className="text-sm">
-                        <div className="font-medium text-blue-700 mb-1">Need to record specific alleles for breeding?</div>
-                        <div className="text-secondary">
-                          This section is for general health screening summaries. For detailed genotype data (e.g., A Locus: ay/at), use the <span className="font-semibold">Genetics tab</span> above.
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
                 {items.map((trait: any) => {
                   const draftKey = getTraitDraftKey(trait);
                   return (
@@ -5037,7 +5310,7 @@ function HealthTab({
                 })}
               </div>
             )}
-          </SectionCard>
+          </div>
         );
       })}
       {uploadModalOpen && (
@@ -5520,11 +5793,6 @@ function TraitRow({
             )}
           </div>
           <div className="flex items-center gap-2">
-            {trait.marketplaceVisible && (
-              <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] bg-blue-500/20 text-blue-400 border border-blue-500/30">
-                Marketplace
-              </span>
-            )}
             {trait.documents && trait.documents.length > 0 && (
               <span className="text-xs text-secondary" title={`${trait.documents.length} document(s)`}>
                 {trait.documents.length} doc{trait.documents.length > 1 ? 's' : ''}
@@ -5582,44 +5850,28 @@ function TraitRow({
           {renderValueEditor()}
         </div>
 
-        {/* Visibility */}
-        <div className="border-t border-hairline pt-4 space-y-3">
-          <div className="text-xs font-medium text-secondary mb-2">Visibility</div>
-
-          <div className="grid grid-cols-2 gap-3">
-            {enableNetworkSharing && (
-              <label className="flex items-center gap-2 text-sm cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={currentNetworkVisible || false}
-                  onChange={(e) =>
-                    onDraftChange({
-                      ...localDraft,
-                      networkVisible: e.target.checked,
-                    })
-                  }
-                  className="rounded border-hairline"
-                />
-                <span>Share with network</span>
-              </label>
-            )}
-            <label className="flex items-center gap-2 text-sm cursor-pointer">
-              <input
-                type="checkbox"
-                checked={currentMarketplace || false}
-                onChange={(e) =>
+        {/* Visibility - only show if network sharing is enabled in Privacy tab */}
+        {enableNetworkSharing && (
+          <div className="border-t border-hairline pt-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="text-xs font-medium text-secondary">Visibility</div>
+              <VisibilityToggle
+                isPublic={currentNetworkVisible || false}
+                inactive={false}
+                readOnly={false}
+                onClick={() =>
                   onDraftChange({
                     ...localDraft,
-                    marketplaceVisible: e.target.checked,
+                    networkVisible: !currentNetworkVisible,
                   })
                 }
-                className="rounded border-hairline"
               />
-              <span>Visible on marketplace</span>
-            </label>
+            </div>
           </div>
+        )}
 
-          {/* Performed Date & Source */}
+        {/* Performed Date & Source */}
+        <div className="border-t border-hairline pt-4 space-y-3">
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs text-secondary block mb-1">Performed Date</label>
@@ -6966,6 +7218,20 @@ export default function AppAnimals() {
   const [loading, setLoading] = React.useState<boolean>(true);
   const [error, setError] = React.useState<string | null>(null);
 
+  // Vaccination alert state per animal (keyed by animal ID)
+  const [vaccinationAlerts, setVaccinationAlerts] = React.useState<Record<number, VaccinationAlertState>>({});
+
+  const handleVaccinationAlertChange = React.useCallback((animalId: number, state: VaccinationAlertState) => {
+    setVaccinationAlerts((prev) => {
+      // Only update if changed
+      const existing = prev[animalId];
+      if (existing?.expiredCount === state.expiredCount && existing?.dueSoonCount === state.dueSoonCount) {
+        return prev;
+      }
+      return { ...prev, [animalId]: state };
+    });
+  }, []);
+
   const [pageSize, setPageSize] = React.useState<number>(25);
   const [page, setPage] = React.useState<number>(1);
   const [includeArchived, setIncludeArchived] = React.useState<boolean>(false);
@@ -6984,59 +7250,8 @@ export default function AppAnimals() {
         });
         const baseItems = res?.items || [];
 
-        // Enrich each animal with owners data for cross-module sharing
-        const enriched = await Promise.all(
-          baseItems.map(async (animal: any) => {
-            let owners: OwnershipRow[] = [];
-            try {
-              const resp = await api.animals.owners.list(animal.id);
-              const items = Array.isArray((resp as any)?.items)
-                ? (resp as any).items
-                : Array.isArray(resp)
-                  ? (resp as any)
-                  : [];
-
-              owners = items.map(
-                (o: any): OwnershipRow => ({
-                  partyType: normalizeOwnerPartyType(
-                    o.kind ?? o.partyType ?? o.type,
-                    o
-                  ),
-                  partyId: Number.isFinite(Number(o.partyId ?? o.party_id ?? o.party?.id))
-                    ? Number(o.partyId ?? o.party_id ?? o.party?.id)
-                    : null,
-                  organizationId:
-                    o.organization?.id ??
-                    o.organizationId ??
-                    o.party?.backing?.organizationId ??
-                    null,
-                  contactId:
-                    o.contact?.id ??
-                    o.contactId ??
-                    o.party?.backing?.contactId ??
-                    null,
-                  display_name:
-                    o.displayName ??
-                    o.display_name ??
-                    o.party?.displayName ??
-                    o.party?.display_name ??
-                    o.organization?.name ??
-                    o.contact?.name ??
-                    o.name ??
-                    "",
-                  is_primary: !!(o.isPrimary ?? o.is_primary ?? o.primary),
-                  percent:
-                    typeof o.percent === "number" ? o.percent : undefined,
-                })
-              );
-            } catch (err) {
-              console.error("[Animals] Failed to fetch owners for animal", animal.id, err);
-            }
-            return { ...animal, owners };
-          })
-        );
-
-        const items = enriched.map(animalToRow);
+        // Owners are fetched lazily when opening animal details, not on list load
+        const items = baseItems.map(animalToRow);
         if (!cancelled) setRows(items);
       } catch (e: any) {
         console.error("[Animals] Error loading animals:", e);
@@ -7290,12 +7505,12 @@ export default function AppAnimals() {
   const [deleteDialogOpen, setDeleteDialogOpen] = React.useState(false);
   const [deleteTargetId, setDeleteTargetId] = React.useState<number | null>(null);
   const [isDeleting, setIsDeleting] = React.useState(false);
-  const [checkingDelete, setCheckingDelete] = React.useState(false);
-  const [deleteBlockersOpen, setDeleteBlockersOpen] = React.useState(false);
-  const [deleteBlockers, setDeleteBlockers] = React.useState<{
+  // Proactive delete eligibility check - keyed by animal ID
+  const [deleteEligibility, setDeleteEligibility] = React.useState<Record<number, {
+    canDelete: boolean;
     blockers: Record<string, boolean | string[] | undefined>;
     details?: Record<string, number | undefined>;
-  } | null>(null);
+  } | null>>({});
 
   const handleArchive = React.useCallback(
     async (id: number) => {
@@ -7323,33 +7538,68 @@ export default function AppAnimals() {
     [api]
   );
 
-  const checkCanDelete = React.useCallback(
+  // Fetch delete eligibility for an animal (called when entering edit mode)
+  const fetchDeleteEligibility = React.useCallback(
     async (id: number) => {
-      setCheckingDelete(true);
-      setDeleteBlockers(null);
+      // Skip if already fetched
+      if (deleteEligibility[id] !== undefined) return;
+
       try {
         const result = await api.animals.canDelete(id);
-        if (result.canDelete) {
-          // No blockers, show delete confirmation
-          setDeleteTargetId(id);
-          setDeleteDialogOpen(true);
-        } else {
-          // Has blockers, show blocker info modal
-          setDeleteTargetId(id);
-          setDeleteBlockers({ blockers: result.blockers, details: result.details });
-          setDeleteBlockersOpen(true);
-        }
+        setDeleteEligibility((prev) => ({
+          ...prev,
+          [id]: {
+            canDelete: result.canDelete,
+            blockers: result.blockers,
+            details: result.details,
+          },
+        }));
       } catch (error) {
         console.error("[Animals] canDelete check failed", error);
-        // If check fails, still allow delete attempt (API will block if needed)
-        setDeleteTargetId(id);
-        setDeleteDialogOpen(true);
-      } finally {
-        setCheckingDelete(false);
+        // If check fails, allow delete attempt (API will block if needed)
+        setDeleteEligibility((prev) => ({
+          ...prev,
+          [id]: { canDelete: true, blockers: {} },
+        }));
       }
     },
-    [api]
+    [api, deleteEligibility]
   );
+
+  // Build tooltip text for disabled delete button
+  // Deletion only allowed for animals with essentially no real data (e.g., created by mistake)
+  const getDeleteBlockerTooltip = React.useCallback((id: number) => {
+    const eligibility = deleteEligibility[id];
+    if (!eligibility || eligibility.canDelete) return null;
+
+    const lines: string[] = [];
+    const b = eligibility.blockers;
+    const d = eligibility.details;
+    // Lineage & relationships
+    if (b.hasOffspring) lines.push(`Has ${d?.offspringCount ?? "some"} offspring`);
+    if (b.isParentInPedigree) lines.push("Referenced as parent in pedigrees");
+    if (b.hasLineageLinks) lines.push(`Linked to ${d?.lineageLinkCount ?? "some"} lineage record${(d?.lineageLinkCount ?? 0) !== 1 ? "s" : ""}`);
+    if (b.hasCrossTenantLinks) lines.push(`Linked to ${d?.crossTenantLinkCount ?? "some"} external record${(d?.crossTenantLinkCount ?? 0) !== 1 ? "s" : ""}`);
+    // Breeding & sales
+    if (b.hasBreedingPlans) lines.push(`Has ${d?.breedingPlanCount ?? "some"} breeding plan${(d?.breedingPlanCount ?? 0) !== 1 ? "s" : ""}`);
+    if (b.hasWaitlistEntries) lines.push(`Has ${d?.waitlistEntryCount ?? "some"} waitlist ${(d?.waitlistEntryCount ?? 0) !== 1 ? "entries" : "entry"}`);
+    // Financial
+    if (b.hasInvoices) lines.push(`Has ${d?.invoiceCount ?? "some"} invoice${(d?.invoiceCount ?? 0) !== 1 ? "s" : ""}`);
+    if (b.hasPayments) lines.push(`Has ${d?.paymentCount ?? "some"} payment${(d?.paymentCount ?? 0) !== 1 ? "s" : ""}`);
+    // Records & data
+    if (b.hasDocuments) lines.push(`Has ${d?.documentCount ?? "some"} document${(d?.documentCount ?? 0) !== 1 ? "s" : ""}`);
+    if (b.hasHealthRecords) lines.push(`Has ${d?.healthRecordCount ?? "some"} health record${(d?.healthRecordCount ?? 0) !== 1 ? "s" : ""}`);
+    if (b.hasRegistrations) lines.push(`Has ${d?.registrationCount ?? "some"} registration${(d?.registrationCount ?? 0) !== 1 ? "s" : ""}`);
+    if (b.hasTitles) lines.push(`Has ${d?.titleCount ?? "some"} title${(d?.titleCount ?? 0) !== 1 ? "s" : ""}`);
+    if (b.hasCompetitions) lines.push(`Has ${d?.competitionCount ?? "some"} competition${(d?.competitionCount ?? 0) !== 1 ? "s" : ""}`);
+    if (b.hasOwnershipHistory) lines.push(`Has ${d?.ownershipTransferCount ?? "some"} ownership transfer${(d?.ownershipTransferCount ?? 0) !== 1 ? "s" : ""}`);
+    if (b.hasMedia) lines.push(`Has ${d?.mediaCount ?? "some"} media file${(d?.mediaCount ?? 0) !== 1 ? "s" : ""}`);
+    // Marketplace
+    if (b.hasPublicListing) lines.push("Has active marketplace listing");
+    // Catch-all
+    if (Array.isArray(b.other)) lines.push(...(b.other as string[]));
+    return lines.length > 0 ? lines.join("\n") : "Cannot delete due to related records";
+  }, [deleteEligibility]);
 
   const handleDelete = React.useCallback(
     async (id: number) => {
@@ -7601,13 +7851,27 @@ export default function AppAnimals() {
         tabs.push({ key: "program", label: "Program" } as any);
         // Marketplace tab always present - content gated by feature flag
         tabs.push({ key: "marketplace", label: "Marketplace" } as any);
-        tabs.push({ key: "health", label: "Health" } as any);
+        // Health tab with vaccination alert badge
+        const alert = vaccinationAlerts[r.id];
+        tabs.push({
+          key: "health",
+          label: "Health",
+          badge: alert?.hasIssues ? (
+            <VaccinationAlertBadge
+              expiredCount={alert.expiredCount}
+              dueSoonCount={alert.dueSoonCount}
+              size="sm"
+              dotOnly
+            />
+          ) : undefined,
+        } as any);
         tabs.push({ key: "genetics", label: "Genetics" } as any);
         tabs.push({ key: "registry", label: "Registry" } as any);
         tabs.push({ key: "finances", label: "Finances" } as any);
         tabs.push({ key: "documents", label: "Documents" } as any);
         tabs.push({ key: "media", label: "Media" } as any);
         tabs.push({ key: "lineage", label: "Lineage" } as any);
+        tabs.push({ key: "offspring", label: "Offspring" } as any);
         tabs.push({ key: "titles", label: "Titles" } as any);
         tabs.push({ key: "competitions", label: "Competitions" } as any);
         tabs.push({ key: "privacy", label: "Privacy" } as any);
@@ -7651,7 +7915,14 @@ export default function AppAnimals() {
             onTabChange={setActiveTab}
             tabsRightContent={
               mode === "edit" ? (
-                <Popover open={overflowMenuOpen} onOpenChange={setOverflowMenuOpen}>
+                <Popover
+                  open={overflowMenuOpen}
+                  onOpenChange={(open) => {
+                    setOverflowMenuOpen(open);
+                    // Fetch delete eligibility when menu opens
+                    if (open && row.id) fetchDeleteEligibility(row.id);
+                  }}
+                >
                   <Popover.Trigger asChild>
                     <button
                       type="button"
@@ -7677,17 +7948,38 @@ export default function AppAnimals() {
                       {isArchiving ? "Archiving…" : "Archive"}
                     </button>
                     {/* Delete */}
-                    <button
-                      className="flex w-full items-center gap-2 px-3 py-2 text-sm text-red-400 hover:bg-white/5 rounded disabled:opacity-50"
-                      disabled={checkingDelete}
-                      onClick={() => {
-                        setOverflowMenuOpen(false);
-                        checkCanDelete(row.id);
-                      }}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                      {checkingDelete ? "Checking…" : "Delete"}
-                    </button>
+                    {(() => {
+                      const eligibility = deleteEligibility[row.id];
+                      const canDelete = eligibility?.canDelete ?? null;
+                      const blockerTooltip = getDeleteBlockerTooltip(row.id);
+                      return (
+                        <Tooltip
+                          content={
+                            canDelete === false && blockerTooltip ? (
+                              <div className="max-w-xs">
+                                <div className="font-semibold mb-1">Cannot delete</div>
+                                <div className="text-xs whitespace-pre-line">{blockerTooltip}</div>
+                                <div className="text-xs text-secondary mt-1">Use Archive instead</div>
+                              </div>
+                            ) : null
+                          }
+                          side="left"
+                        >
+                          <button
+                            className="flex w-full items-center gap-2 px-3 py-2 text-sm text-red-400 hover:bg-white/5 rounded disabled:opacity-50 disabled:cursor-not-allowed"
+                            disabled={canDelete === false || canDelete === null}
+                            onClick={() => {
+                              setOverflowMenuOpen(false);
+                              setDeleteTargetId(row.id);
+                              setDeleteDialogOpen(true);
+                            }}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                            {canDelete === null ? "Checking…" : "Delete"}
+                          </button>
+                        </Tooltip>
+                      );
+                    })()}
                   </Popover.Content>
                 </Popover>
               ) : undefined
@@ -8037,17 +8329,16 @@ export default function AppAnimals() {
                 />
               )}
 
-              <SectionCard title={<SectionTitle icon="🏆">Producing Record</SectionTitle>}>
-                <ProducingRecordSection animal={row} />
-              </SectionCard>
-
-              <SectionCard title={<SectionTitle icon="🏷️">Tags</SectionTitle>}>
-                <AnimalTagsSection
-                  animalId={row.id}
-                  api={api}
-                  disabled={mode === "view"}
-                />
-              </SectionCard>
+              <SectionCard
+                title={<SectionTitle icon="🏷️">Tags</SectionTitle>}
+                right={
+                  <AnimalTagsSection
+                    animalId={row.id}
+                    api={api}
+                    disabled={mode === "view"}
+                  />
+                }
+              />
 
               <SectionCard title={<SectionTitle icon="📝">Notes</SectionTitle>} highlight={mode === "edit"}>
                 {mode === "view" ? (
@@ -8115,6 +8406,7 @@ export default function AppAnimals() {
               api={api}
               onDocumentsTabRequest={() => setActiveTab("documents")}
               mode={mode}
+              onVaccinationAlertChange={(state) => handleVaccinationAlertChange(row.id, state)}
             />
           )}
 
@@ -8163,6 +8455,10 @@ export default function AppAnimals() {
 
           {activeTab === "lineage" && (
             <LineageTab animal={row} mode={mode} />
+          )}
+
+          {activeTab === "offspring" && (
+            <OffspringTab animal={row} mode={mode} />
           )}
 
           {activeTab === "titles" && (
@@ -8215,7 +8511,7 @@ export default function AppAnimals() {
       </>
       ),
     }),
-    [api, orgIdForBreeds, ownershipLookups, breedBrowseApi, syncOwners, photoWorking, photoEditorOpen, photoEditorSrc, photoEditorForId, setArchiveTargetId, setArchiveDialogOpen, overflowMenuOpen, setOverflowMenuOpen, isArchiving, setDeleteTargetId, setDeleteDialogOpen]
+    [api, orgIdForBreeds, ownershipLookups, breedBrowseApi, syncOwners, photoWorking, photoEditorOpen, photoEditorSrc, photoEditorForId, setArchiveTargetId, setArchiveDialogOpen, overflowMenuOpen, setOverflowMenuOpen, isArchiving, setDeleteTargetId, setDeleteDialogOpen, deleteEligibility, fetchDeleteEligibility, getDeleteBlockerTooltip, vaccinationAlerts, handleVaccinationAlertChange]
   );
 
   const [createOpen, setCreateOpen] = React.useState(false);
@@ -8510,18 +8806,26 @@ export default function AppAnimals() {
               </button>
             </div>
 
+            {/* Sort dropdown */}
+            <SortDropdown
+              options={SORT_OPTIONS}
+              sorts={sorts}
+              onSort={(key, dir) => setSorts([{ key, dir }])}
+              onClear={() => setSorts([])}
+            />
+
             {/* Column toggle - only show in table mode */}
             {viewMode === "table" && (
-              <div className="ml-auto">
-                <ColumnsPopover
-                  columns={map}
-                  onToggle={toggle}
-                  onSet={setAll}
-                  allColumns={COLUMNS}
-                  triggerClassName="bhq-columns-trigger"
-                />
-              </div>
+              <ColumnsPopover
+                columns={map}
+                onToggle={toggle}
+                onSet={setAll}
+                allColumns={COLUMNS}
+                triggerClassName="bhq-columns-trigger"
+              />
             )}
+
+            <div className="ml-auto" />
           </div>
 
           {filtersOpen && (
@@ -8602,9 +8906,10 @@ export default function AppAnimals() {
                           let v = (r as any)[c.key] as any;
                           if (DATE_KEYS.has(c.key as any)) v = fmt(v);
                           if (Array.isArray(v)) v = v.join(", ");
-                          // Special handling for name column - show titles badge
+                          // Special handling for name column - show titles badge and vaccination alerts
                           if (c.key === "name") {
                             const hasTitles = r.titlePrefix || r.titleSuffix;
+                            const vaxAlert = vaccinationAlerts[r.id];
                             return (
                               <TableCell key={c.key} align="left">
                                 <div className="flex items-center gap-2">
@@ -8613,6 +8918,13 @@ export default function AppAnimals() {
                                     <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold text-[hsl(var(--brand-orange))] bg-[hsl(var(--brand-orange))]/10">
                                       🏆 {[r.titlePrefix, r.titleSuffix].filter(Boolean).join(" ")}
                                     </span>
+                                  )}
+                                  {vaxAlert?.hasIssues && (
+                                    <VaccinationAlertBadge
+                                      expiredCount={vaxAlert.expiredCount}
+                                      dueSoonCount={vaxAlert.dueSoonCount}
+                                      size="sm"
+                                    />
                                   )}
                                 </div>
                               </TableCell>
@@ -8663,6 +8975,7 @@ export default function AppAnimals() {
               totalRows={rows.length}
               start={start}
               end={end}
+              vaccinationAlerts={vaccinationAlerts}
             />
           )}
         </DetailsHost>
@@ -8730,110 +9043,6 @@ export default function AppAnimals() {
         </div>
       </Dialog>
 
-      {/* Delete blockers info dialog */}
-      <Dialog
-        open={deleteBlockersOpen}
-        onClose={() => setDeleteBlockersOpen(false)}
-        title=""
-        size="md"
-      >
-        <div className="space-y-4">
-          <div className="text-lg font-semibold text-amber-400">
-            Cannot Delete Animal
-          </div>
-          <p className="text-sm text-secondary">
-            This animal has associated records that must be removed or reassigned first:
-          </p>
-          {deleteBlockers && (
-            <ul className="text-sm space-y-2">
-              {deleteBlockers.blockers.hasOffspring && (
-                <li className="flex items-center gap-2">
-                  <span className="text-amber-400">•</span>
-                  <span>
-                    Has {deleteBlockers.details?.offspringCount ?? "some"} offspring
-                  </span>
-                </li>
-              )}
-              {deleteBlockers.blockers.isParentInPedigree && (
-                <li className="flex items-center gap-2">
-                  <span className="text-amber-400">•</span>
-                  <span>Is a parent in another animal's pedigree</span>
-                </li>
-              )}
-              {deleteBlockers.blockers.hasBreedingPlans && (
-                <li className="flex items-center gap-2">
-                  <span className="text-amber-400">•</span>
-                  <span>
-                    Associated with {deleteBlockers.details?.breedingPlanCount ?? "some"} breeding plan{(deleteBlockers.details?.breedingPlanCount ?? 0) !== 1 ? "s" : ""}
-                  </span>
-                </li>
-              )}
-              {deleteBlockers.blockers.hasWaitlistEntries && (
-                <li className="flex items-center gap-2">
-                  <span className="text-amber-400">•</span>
-                  <span>
-                    Has {deleteBlockers.details?.waitlistEntryCount ?? "some"} waitlist {(deleteBlockers.details?.waitlistEntryCount ?? 0) !== 1 ? "entries" : "entry"}
-                  </span>
-                </li>
-              )}
-              {deleteBlockers.blockers.hasInvoices && (
-                <li className="flex items-center gap-2">
-                  <span className="text-amber-400">•</span>
-                  <span>
-                    Has {deleteBlockers.details?.invoiceCount ?? "some"} invoice{(deleteBlockers.details?.invoiceCount ?? 0) !== 1 ? "s" : ""}
-                  </span>
-                </li>
-              )}
-              {deleteBlockers.blockers.hasDocuments && (
-                <li className="flex items-center gap-2">
-                  <span className="text-amber-400">•</span>
-                  <span>
-                    Has {deleteBlockers.details?.documentCount ?? "some"} document{(deleteBlockers.details?.documentCount ?? 0) !== 1 ? "s" : ""}
-                  </span>
-                </li>
-              )}
-              {deleteBlockers.blockers.hasPublicListing && (
-                <li className="flex items-center gap-2">
-                  <span className="text-amber-400">•</span>
-                  <span>Has an active public listing</span>
-                </li>
-              )}
-              {Array.isArray(deleteBlockers.blockers.other) && deleteBlockers.blockers.other.map((msg, i) => (
-                <li key={i} className="flex items-center gap-2">
-                  <span className="text-amber-400">•</span>
-                  <span>{msg}</span>
-                </li>
-              ))}
-            </ul>
-          )}
-          <p className="text-xs text-secondary">
-            To delete this animal, please remove or reassign these records first.
-            Alternatively, you can archive this animal to hide it from active views.
-          </p>
-          <div className="flex justify-end gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setDeleteBlockersOpen(false)}
-            >
-              Close
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                setDeleteBlockersOpen(false);
-                if (deleteTargetId) {
-                  setArchiveTargetId(deleteTargetId);
-                  setArchiveDialogOpen(true);
-                }
-              }}
-            >
-              Archive Instead
-            </Button>
-          </div>
-        </div>
-      </Dialog>
 
       {createOpen && (
         <Overlay

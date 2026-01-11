@@ -128,6 +128,73 @@ export interface OffspringDetailResponse {
   offspring: OffspringDetailDTO;
 }
 
+// Financial types
+export interface FinancialSummary {
+  totalPaid: number;
+  totalDue: number;
+  overdueAmount: number;
+  nextPaymentAmount: number | null;
+  nextPaymentDueAt: string | null;
+  invoiceCount: number;
+}
+
+export interface InvoiceLineItemDTO {
+  id: number;
+  description: string;
+  quantity: number;
+  unitPrice: number;
+  total: number;
+}
+
+export interface InvoiceDTO {
+  id: number;
+  invoiceNumber: string;
+  description: string;
+  total: number;
+  subtotal: number;
+  tax: number;
+  amountPaid: number;
+  amountDue: number;
+  status: string;
+  issuedAt: string;
+  dueAt: string | null;
+  paidAt: string | null;
+  relatedOffspringName: string | null;
+  lineItems: InvoiceLineItemDTO[];
+}
+
+export interface InvoicesResponse {
+  invoices: InvoiceDTO[];
+}
+
+// Checkout types
+export interface CheckoutSessionResponse {
+  checkoutUrl: string;
+  sessionId: string;
+}
+
+// Thread types (portal-specific)
+export interface PortalThreadDTO {
+  id: number;
+  subject: string | null;
+  lastMessageAt: string | null;
+  updatedAt: string;
+  participants: Array<{
+    partyId: number;
+    party: { id: number; name: string; email: string | null; type: string | null };
+  }>;
+  messages: Array<{
+    id: number;
+    body: string;
+    createdAt: string;
+  }>;
+  unreadCount: number;
+}
+
+export interface PortalThreadsResponse {
+  threads: PortalThreadDTO[];
+}
+
 
 export type PortalDataResource = {
   getAgreements(): Promise<AgreementsResponse>;
@@ -135,6 +202,12 @@ export type PortalDataResource = {
   getDocuments(): Promise<DocumentsResponse>;
   getOffspringPlacements(): Promise<OffspringPlacementsResponse>;
   getOffspringDetail(id: number): Promise<OffspringDetailResponse>;
+  getPlacements(): Promise<OffspringPlacementsResponse>;
+  getFinancials(): Promise<FinancialSummary>;
+  getInvoices(): Promise<InvoicesResponse>;
+  getInvoice(id: number): Promise<InvoiceDTO>;
+  createInvoiceCheckout(invoiceId: number): Promise<CheckoutSessionResponse>;
+  getThreads(): Promise<PortalThreadsResponse>;
 };
 
 export function makePortalData(http: Http): PortalDataResource {
@@ -162,6 +235,36 @@ export function makePortalData(http: Http): PortalDataResource {
     async getOffspringDetail(id: number): Promise<OffspringDetailResponse> {
       const res = await http.get(`/portal/offspring/${id}`);
       return res as OffspringDetailResponse;
+    },
+
+    async getPlacements(): Promise<OffspringPlacementsResponse> {
+      const res = await http.get("/portal/placements");
+      return res as OffspringPlacementsResponse;
+    },
+
+    async getFinancials(): Promise<FinancialSummary> {
+      const res = await http.get("/portal/financials");
+      return res as FinancialSummary;
+    },
+
+    async getInvoices(): Promise<InvoicesResponse> {
+      const res = await http.get("/portal/invoices");
+      return res as InvoicesResponse;
+    },
+
+    async getInvoice(id: number): Promise<InvoiceDTO> {
+      const res = await http.get(`/portal/invoices/${id}`);
+      return res as InvoiceDTO;
+    },
+
+    async createInvoiceCheckout(invoiceId: number): Promise<CheckoutSessionResponse> {
+      const res = await http.post(`/portal/invoices/${invoiceId}/checkout`);
+      return res as CheckoutSessionResponse;
+    },
+
+    async getThreads(): Promise<PortalThreadsResponse> {
+      const res = await http.get("/portal/threads");
+      return res as PortalThreadsResponse;
     },
   };
 }

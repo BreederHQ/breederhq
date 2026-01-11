@@ -16,7 +16,19 @@ export interface PortalContext {
   orgName: string | null;
   orgId: number | null;
   tenantId: number | null;
+  tenantSlug: string | null;
   membershipCount: number;
+}
+
+/**
+ * Extract tenant slug from portal URL path.
+ * Expected pattern: /t/:tenantSlug/...
+ */
+function getTenantSlugFromUrl(): string | null {
+  if (typeof window === "undefined") return null;
+  const pathname = window.location.pathname;
+  const match = pathname.match(/^\/t\/([a-z0-9][a-z0-9-]*)/i);
+  return match ? match[1].toLowerCase() : null;
 }
 
 /**
@@ -30,14 +42,18 @@ export function usePortalContext(): PortalContext {
   const userEmail = session?.user?.email || null;
   const userInitial = userEmail ? userEmail.charAt(0).toUpperCase() : null;
 
-  // Derive org fields
-  const orgName = session?.org?.name || null;
-  const orgId = session?.org?.id ?? null;
+  // Derive org fields from tenant (backend returns tenant, not org)
+  const orgName = session?.tenant?.name || null;
+  const orgId = session?.tenant?.id ?? null;
 
-  // Tenant ID from window global (set by App-Platform.tsx)
-  const tenantId = typeof window !== "undefined"
-    ? ((window as any).__BHQ_TENANT_ID__ as number | undefined) ?? null
-    : null;
+  // Tenant ID from session or window global
+  const tenantId = session?.tenant?.id ??
+    (typeof window !== "undefined"
+      ? ((window as any).__BHQ_TENANT_ID__ as number | undefined) ?? null
+      : null);
+
+  // Tenant slug: prefer session, fallback to URL path
+  const tenantSlug = session?.tenant?.slug || getTenantSlugFromUrl();
 
   // Membership count
   const membershipCount = session?.memberships?.length ?? 0;
@@ -51,6 +67,7 @@ export function usePortalContext(): PortalContext {
     orgName,
     orgId,
     tenantId,
+    tenantSlug,
     membershipCount,
   };
 }

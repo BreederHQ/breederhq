@@ -4,9 +4,8 @@ import { PageContainer } from "../design/PageContainer";
 import { PortalHero } from "../design/PortalHero";
 import { PortalCard, CardRow } from "../design/PortalCard";
 import { usePortalNotifications, type Notification } from "../notifications/notificationSources";
-import { isPortalMockEnabled } from "../dev/mockFlag";
-import { mockOffspring } from "../dev/mockData";
 import { SubjectHeader } from "../components/SubjectHeader";
+import { createPortalFetch, useTenantContext } from "../derived/tenantContext";
 
 /* ────────────────────────────────────────────────────────────────────────────
  * Notification Type Icon
@@ -381,15 +380,37 @@ function groupByTime(notifications: (Notification & { read?: boolean })[]) {
  * ──────────────────────────────────────────────────────────────────────────── */
 
 export default function PortalNotificationsPageNew() {
+  const { tenantSlug, isReady } = useTenantContext();
   const { notifications, loading, error } = usePortalNotifications();
-  const mockEnabled = isPortalMockEnabled();
+  const [primaryAnimal, setPrimaryAnimal] = React.useState<any>(null);
 
-  // Get primary animal for context (species-aware)
-  const offspring = mockEnabled ? mockOffspring() : [];
-  const primaryAnimal = offspring[0];
-  const animalName = primaryAnimal?.offspring?.name || "your puppy";
-  const species = primaryAnimal?.offspring?.species || null;
-  const breed = primaryAnimal?.offspring?.breed || null;
+  // Animal context
+  const animalName = primaryAnimal?.offspring?.name || "your reservation";
+  const species = primaryAnimal?.offspring?.species || primaryAnimal?.species || null;
+  const breed = primaryAnimal?.offspring?.breed || primaryAnimal?.breed || null;
+
+  // Load primary animal context - wait for tenant context
+  React.useEffect(() => {
+    if (!isReady) return;
+
+    const portalFetch = createPortalFetch(tenantSlug);
+    let cancelled = false;
+
+    async function loadAnimalContext() {
+      try {
+        const data = await portalFetch<{ placements: any[] }>("/portal/placements");
+        if (cancelled) return;
+        const placements = data.placements || [];
+        if (placements.length > 0) {
+          setPrimaryAnimal(placements[0]);
+        }
+      } catch (err) {
+        // Silently ignore - animal context is optional for display
+      }
+    }
+    loadAnimalContext();
+    return () => { cancelled = true; };
+  }, [tenantSlug, isReady]);
 
   const handleRetry = () => {
     window.location.reload();
