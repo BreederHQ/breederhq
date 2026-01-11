@@ -38,19 +38,21 @@ export function SectionCard({
       ? "border-2 border-amber-500/60 ring-2 ring-amber-500/20"
       : "border border-hairline";
 
+  const hasChildren = React.Children.count(children) > 0;
+
   return (
-    <div className={[baseClasses, borderClasses, className].join(" ")}>
+    <div className={[baseClasses, borderClasses, "overflow-visible", className].join(" ")}>
       {(title || headerRight) && (
-        <div className="bhq-section-header flex items-center justify-between mb-1">
+        <div className={`bhq-section-header flex items-center gap-3${hasChildren ? " mb-1" : ""}`}>
           {/* Wrap title in div > span structure for animated underline from details.css */}
-          <div className="bhq-section-title flex-1">
+          <div className="bhq-section-title flex-shrink-0">
             <div><span>{title}</span></div>
             {subtitle && <div className="text-xs text-secondary font-normal mt-2">{subtitle}</div>}
           </div>
-          {headerRight}
+          {headerRight && <div className="flex-1">{headerRight}</div>}
         </div>
       )}
-      <div className="bhq-section-body">{children}</div>
+      {hasChildren && <div className="bhq-section-body">{children}</div>}
     </div>
   );
 }

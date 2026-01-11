@@ -15,7 +15,6 @@ import { InquiriesPage } from "../marketplace/pages/InquiriesPage";
 import { UpdatesPage } from "../marketplace/pages/UpdatesPage";
 import { ProgramPage } from "../marketplace/pages/ProgramPage";
 import { ListingPage } from "../marketplace/pages/ListingPage";
-import { ManageListingPage } from "../management/pages/ManageListingPage";
 
 const BASE_PATH = "/marketplace";
 
@@ -74,9 +73,9 @@ function UrlSync() {
  */
 function EmbeddedContent({ children }: { children: React.ReactNode }) {
   return (
-    <div className="bg-portal-bg text-white font-sans antialiased rounded-2xl border border-border-subtle min-h-[calc(100vh-160px)]">
+    <div className="bg-portal-bg text-white font-sans antialiased rounded-2xl border border-border-subtle flex-1 min-h-0 flex flex-col overflow-hidden">
       {/* Content frame - matches standalone MarketplaceLayout main element */}
-      <div className="w-full max-w-portal mx-auto px-6 pt-8 pb-16">
+      <div className="w-full max-w-portal mx-auto px-6 pt-8 pb-16 flex-1 overflow-y-auto">
         {children}
       </div>
     </div>
@@ -101,12 +100,12 @@ export function MarketplaceEmbedded() {
   }, []);
 
   return (
-    <MemoryRouter initialEntries={[initialPath]}>
+    <MemoryRouter initialEntries={[initialPath]} future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
       <UrlSync />
       <EmbeddedContent>
         <Routes>
           <Route path="/" element={<HomePage />} />
-          <Route path="/manage" element={<ManageListingPage />} />
+          <Route path="/manage" element={<Navigate to="/" replace />} />
           <Route path="/animals" element={<AnimalsIndexPage />} />
           <Route path="/breeders" element={<BreedersIndexPage />} />
           <Route path="/breeders/:tenantSlug" element={<BreederPage />} />

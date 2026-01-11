@@ -32,6 +32,8 @@ export type DetailsConfig<T> = {
     close: () => void;
     /** Whether there are unsaved changes */
     hasPendingChanges: boolean;
+    /** Briefly true after a successful save */
+    justSaved: boolean;
   }) => React.ReactNode;
 };
 
@@ -90,6 +92,9 @@ export function DetailsHost<T>({
   // Track whether there are pending unsaved changes
   const hasPendingChanges = Object.keys(draft).length > 0;
 
+  // Track brief "just saved" indicator
+  const [justSaved, setJustSaved] = React.useState(false);
+
   const open = React.useCallback((row: T) => {
     const id = config.getRowId(row);
     setOpenId(String(id));
@@ -134,6 +139,9 @@ export function DetailsHost<T>({
       setMode("view");
     }
     setDraftSafe({});
+    // Show brief "Saved" indicator
+    setJustSaved(true);
+    setTimeout(() => setJustSaved(false), 2000);
   }, [config, openRow]);
 
   const handleClose = React.useCallback(async () => {
@@ -205,6 +213,7 @@ export function DetailsHost<T>({
             requestSave,
             close: handleClose,
             hasPendingChanges,
+            justSaved,
           })}
         </DetailsDrawer>
       )}

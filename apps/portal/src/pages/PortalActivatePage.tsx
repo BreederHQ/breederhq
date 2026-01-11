@@ -90,16 +90,34 @@ export default function PortalActivatePage() {
     validateToken();
   }, [token]);
 
+  const passwordChecks = React.useMemo(() => {
+    return {
+      length: password.length >= 8,
+      uppercase: /[A-Z]/.test(password),
+      lowercase: /[a-z]/.test(password),
+      number: /[0-9]/.test(password),
+    };
+  }, [password]);
+
+  const passwordStrength = React.useMemo(() => {
+    const checks = Object.values(passwordChecks).filter(Boolean).length;
+    if (checks === 0) return null;
+    if (checks <= 2) return "weak";
+    if (checks === 3) return "fair";
+    return "strong";
+  }, [passwordChecks]);
+
   const passwordError = React.useMemo(() => {
     if (!password) return null;
-    if (password.length < 8) return "Password must be at least 8 characters";
     if (confirmPassword && password !== confirmPassword) return "Passwords do not match";
     return null;
   }, [password, confirmPassword]);
 
+  const allPasswordRequirementsMet = passwordChecks.length && passwordChecks.uppercase && passwordChecks.lowercase && passwordChecks.number;
+
   const canSubmit =
     token &&
-    password.length >= 8 &&
+    allPasswordRequirementsMet &&
     password === confirmPassword &&
     tosAccepted &&
     state.status === "ready";
@@ -287,13 +305,44 @@ export default function PortalActivatePage() {
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder="Enter your password"
+              placeholder="Create a password"
               className="w-full px-3 py-2 rounded-lg border border-hairline bg-surface text-primary placeholder:text-tertiary focus:outline-none focus:ring-2 focus:ring-[hsl(var(--brand-orange))]/50"
               minLength={8}
               required
               disabled={state.status === "submitting"}
             />
-            <p className="mt-1 text-xs text-secondary">At least 8 characters</p>
+            {/* Password requirements checklist */}
+            <div className="mt-2 space-y-1">
+              <div className={`flex items-center gap-2 text-xs ${passwordChecks.length ? "text-green-500" : "text-secondary"}`}>
+                <span>{passwordChecks.length ? "✓" : "○"}</span>
+                <span>At least 8 characters</span>
+              </div>
+              <div className={`flex items-center gap-2 text-xs ${passwordChecks.uppercase ? "text-green-500" : "text-secondary"}`}>
+                <span>{passwordChecks.uppercase ? "✓" : "○"}</span>
+                <span>One uppercase letter</span>
+              </div>
+              <div className={`flex items-center gap-2 text-xs ${passwordChecks.lowercase ? "text-green-500" : "text-secondary"}`}>
+                <span>{passwordChecks.lowercase ? "✓" : "○"}</span>
+                <span>One lowercase letter</span>
+              </div>
+              <div className={`flex items-center gap-2 text-xs ${passwordChecks.number ? "text-green-500" : "text-secondary"}`}>
+                <span>{passwordChecks.number ? "✓" : "○"}</span>
+                <span>One number</span>
+              </div>
+            </div>
+            {/* Password strength indicator */}
+            {password && (
+              <div className="mt-2">
+                <div className="flex gap-1">
+                  <div className={`h-1 flex-1 rounded ${passwordStrength === "weak" ? "bg-red-500" : passwordStrength === "fair" ? "bg-amber-500" : passwordStrength === "strong" ? "bg-green-500" : "bg-hairline"}`} />
+                  <div className={`h-1 flex-1 rounded ${passwordStrength === "fair" ? "bg-amber-500" : passwordStrength === "strong" ? "bg-green-500" : "bg-hairline"}`} />
+                  <div className={`h-1 flex-1 rounded ${passwordStrength === "strong" ? "bg-green-500" : "bg-hairline"}`} />
+                </div>
+                <p className={`text-xs mt-1 ${passwordStrength === "weak" ? "text-red-500" : passwordStrength === "fair" ? "text-amber-500" : "text-green-500"}`}>
+                  {passwordStrength === "weak" ? "Weak" : passwordStrength === "fair" ? "Fair" : "Strong"}
+                </p>
+              </div>
+            )}
           </div>
 
           <div>

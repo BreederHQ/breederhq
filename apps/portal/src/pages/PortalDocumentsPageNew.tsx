@@ -5,9 +5,8 @@ import { PortalHero } from "../design/PortalHero";
 import { PortalCard, CardRow } from "../design/PortalCard";
 import { makeApi } from "@bhq/api";
 import type { DocumentDTO, DocumentCategory } from "@bhq/api";
-import { isPortalMockEnabled } from "../dev/mockFlag";
-import { mockDocuments, mockOffspring } from "../dev/mockData";
 import { SubjectHeader } from "../components/SubjectHeader";
+import { createPortalFetch, useTenantContext } from "../derived/tenantContext";
 
 // Resolve API base URL (same pattern as taskSources)
 function getApiBase(): string {
@@ -134,7 +133,7 @@ function DocumentRow({ document }: DocumentRowProps) {
   return (
     <CardRow>
       <div style={{ display: "flex", alignItems: "flex-start", gap: "var(--portal-space-3)" }}>
-        <DocumentIcon category={document.category} />
+        <DocumentIcon category={document.category ?? undefined} />
 
         <div style={{ flex: 1, minWidth: 0 }}>
           <div
@@ -158,7 +157,7 @@ function DocumentRow({ document }: DocumentRowProps) {
             >
               {document.name}
             </div>
-            <CategoryBadge category={document.category} />
+            <CategoryBadge category={document.category ?? undefined} />
           </div>
 
           <div
@@ -450,44 +449,53 @@ function ErrorState({ error, onRetry }: { error: string; onRetry: () => void }) 
  * ──────────────────────────────────────────────────────────────────────────── */
 
 export default function PortalDocumentsPageNew() {
+  const { tenantSlug, isReady } = useTenantContext();
   const [documents, setDocuments] = React.useState<DocumentDTO[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
-  const mockEnabled = isPortalMockEnabled();
+  const [primaryAnimal, setPrimaryAnimal] = React.useState<any>(null);
 
-  // Get primary animal for context (species-aware)
-  const offspring = mockEnabled ? mockOffspring() : [];
-  const primaryAnimal = offspring[0];
-  const animalName = primaryAnimal?.offspring?.name || "your puppy";
-  const species = primaryAnimal?.offspring?.species || null;
-  const breed = primaryAnimal?.offspring?.breed || null;
+  // Animal context
+  const animalName = primaryAnimal?.offspring?.name || "your reservation";
+  const species = primaryAnimal?.offspring?.species || primaryAnimal?.species || null;
+  const breed = primaryAnimal?.offspring?.breed || primaryAnimal?.breed || null;
+
+  // Load primary animal context - wait for tenant context
+  React.useEffect(() => {
+    if (!isReady) return;
+
+    const portalFetch = createPortalFetch(tenantSlug);
+    let cancelled = false;
+
+    async function loadAnimalContext() {
+      try {
+        const data = await portalFetch<{ placements: any[] }>("/portal/placements");
+        if (cancelled) return;
+        const placements = data.placements || [];
+        if (placements.length > 0) {
+          setPrimaryAnimal(placements[0]);
+        }
+      } catch (err) {
+        // Silently ignore - animal context is optional for display
+      }
+    }
+    loadAnimalContext();
+    return () => { cancelled = true; };
+  }, [tenantSlug, isReady]);
 
   const fetchDocuments = React.useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
       const data = await api.portalData.getDocuments();
-      const fetchedDocs = data.documents;
-
-      // Use mock data if real data is empty and demo mode enabled
-      if (fetchedDocs.length === 0 && mockEnabled) {
-        setDocuments(mockDocuments() as any);
-      } else {
-        setDocuments(fetchedDocs);
-      }
+      setDocuments(data.documents || []);
     } catch (err: any) {
       console.error("[PortalDocumentsPageNew] Failed to fetch documents:", err);
-
-      // If error and demo mode, use mock data
-      if (mockEnabled) {
-        setDocuments(mockDocuments() as any);
-      } else {
-        setError("Failed to load documents");
-      }
+      setError("Failed to load documents");
     } finally {
       setLoading(false);
     }
-  }, [mockEnabled]);
+  }, []);
 
   React.useEffect(() => {
     fetchDocuments();

@@ -3,6 +3,8 @@
 
 import * as React from "react";
 import { Tooltip } from "@bhq/ui";
+import { VaccinationAlertBadge } from "@bhq/ui/components/VaccinationTracker";
+import type { VaccinationAlertState } from "@bhq/ui/components/VaccinationTracker";
 
 type AnimalRow = {
   id: number;
@@ -66,9 +68,11 @@ type AnimalCardViewProps = {
   loading: boolean;
   error: string | null;
   onRowClick?: (row: AnimalRow) => void;
+  /** Vaccination alerts keyed by animal ID */
+  vaccinationAlerts?: Record<number, VaccinationAlertState>;
 };
 
-function AnimalCard({ row, onClick }: { row: AnimalRow; onClick?: () => void }) {
+function AnimalCard({ row, onClick, vaccinationAlert }: { row: AnimalRow; onClick?: () => void; vaccinationAlert?: VaccinationAlertState }) {
   const accentColor = STATUS_COLORS[row.status || "Active"] || STATUS_COLORS.Active;
   const titleCount = row._count?.titles ?? 0;
   const competitionCount = row._count?.competitionEntries ?? 0;
@@ -110,6 +114,21 @@ function AnimalCard({ row, onClick }: { row: AnimalRow; onClick?: () => void }) 
               {row.name}
             </span>
             <SexIndicator sex={row.sex} />
+            {vaccinationAlert?.hasIssues && (
+              <Tooltip content={
+                vaccinationAlert.expiredCount > 0
+                  ? `${vaccinationAlert.expiredCount} expired vaccination${vaccinationAlert.expiredCount !== 1 ? 's' : ''}`
+                  : `${vaccinationAlert.dueSoonCount} vaccination${vaccinationAlert.dueSoonCount !== 1 ? 's' : ''} due soon`
+              }>
+                <span>
+                  <VaccinationAlertBadge
+                    expiredCount={vaccinationAlert.expiredCount}
+                    dueSoonCount={vaccinationAlert.dueSoonCount}
+                    size="sm"
+                  />
+                </span>
+              </Tooltip>
+            )}
           </div>
           {row.nickname && (
             <div className="text-xs text-secondary truncate">
@@ -183,7 +202,7 @@ function AnimalCard({ row, onClick }: { row: AnimalRow; onClick?: () => void }) 
   );
 }
 
-export function AnimalCardView({ rows, loading, error, onRowClick }: AnimalCardViewProps) {
+export function AnimalCardView({ rows, loading, error, onRowClick, vaccinationAlerts }: AnimalCardViewProps) {
   if (loading) {
     return (
       <div className="p-8 text-center text-sm text-secondary">
@@ -216,6 +235,7 @@ export function AnimalCardView({ rows, loading, error, onRowClick }: AnimalCardV
             key={row.id}
             row={row}
             onClick={() => onRowClick?.(row)}
+            vaccinationAlert={vaccinationAlerts?.[row.id]}
           />
         ))}
       </div>

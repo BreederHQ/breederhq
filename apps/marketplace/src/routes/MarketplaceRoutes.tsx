@@ -18,6 +18,10 @@ import { UpdatesPage } from "../marketplace/pages/UpdatesPage";
 import { ProgramPage } from "../marketplace/pages/ProgramPage";
 import { ListingPage } from "../marketplace/pages/ListingPage";
 import { MyListingPage } from "../marketplace/pages/MyListingPage";
+import { ProgramsSettingsPage } from "../management/pages/ProgramsSettingsPage";
+import { ServicesSettingsPage } from "../management/pages/ServicesSettingsPage";
+import { BreedingProgramsIndexPage } from "../marketplace/pages/BreedingProgramsIndexPage";
+import { ProviderDashboardPage } from "../provider/pages/ProviderDashboardPage";
 
 /**
  * Route tree for authenticated/entitled marketplace users.
@@ -33,6 +37,7 @@ export function MarketplaceRoutes() {
       <Route path="/animals" element={<AnimalsIndexPage />} />
       <Route path="/breeders" element={<BreedersIndexPage />} />
       <Route path="/breeders/:tenantSlug" element={<BreederPage />} />
+      <Route path="/breeding-programs" element={<BreedingProgramsIndexPage />} />
       <Route path="/services" element={<ServicesPage />} />
 
       {/* Buyer activity */}
@@ -41,6 +46,16 @@ export function MarketplaceRoutes() {
 
       {/* Seller: My listing preview */}
       <Route path="/me/listing" element={<MyListingPage />} />
+
+      {/* Seller: Programs management */}
+      <Route path="/me/programs" element={<ProgramsSettingsPage />} />
+
+      {/* Seller: Services management */}
+      <Route path="/me/services" element={<ServicesSettingsPage />} />
+
+      {/* Service Provider Portal */}
+      <Route path="/provider" element={<ProviderDashboardPage />} />
+      <Route path="/provider/*" element={<ProviderDashboardPage />} />
 
       {/* Legacy redirects */}
       <Route path="/litters" element={<Navigate to="/animals" replace />} />

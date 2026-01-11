@@ -1,6 +1,48 @@
 import * as React from "react";
 import { PageHeader, Button } from "@bhq/ui";
 
+/* ───────────────── Styles ───────────────── */
+
+const pageStyles = `
+  .hub-card {
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    border-top-color: rgba(255, 255, 255, 0.15) !important;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
+  }
+
+  .hub-card:hover {
+    border-color: rgba(255, 255, 255, 0.2) !important;
+    box-shadow: 0 0 20px rgba(255, 255, 255, 0.08), 0 12px 32px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.1) !important;
+    transform: translateY(-2px);
+  }
+
+  .config-card {
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    border-top-color: rgba(255, 255, 255, 0.15) !important;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
+  }
+
+  .open-hub-btn {
+    background: linear-gradient(180deg, #e87924 0%, #c45a10 100%) !important;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.2) !important;
+    transition: all 0.2s ease !important;
+  }
+
+  .open-hub-btn:hover {
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.25) !important;
+    transform: translateY(-1px);
+  }
+
+  @keyframes subtle-pulse {
+    0%, 100% { opacity: 0.85; }
+    50% { opacity: 1; }
+  }
+
+  .hub-icons {
+    animation: subtle-pulse 3s ease-in-out infinite;
+  }
+`;
+
 /* ───────────────── Icons ───────────────── */
 
 function ChatIcon({ className }: { className?: string }) {
@@ -57,8 +99,6 @@ interface SecondaryTileProps {
 }
 
 function SecondaryTile({ icon, title, description, href }: SecondaryTileProps) {
-  const [isHovered, setIsHovered] = React.useState(false);
-
   const handleClick = (e: React.MouseEvent) => {
     e.preventDefault();
     window.history.pushState(null, "", href);
@@ -69,28 +109,10 @@ function SecondaryTile({ icon, title, description, href }: SecondaryTileProps) {
     <a
       href={href}
       onClick={handleClick}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
-      className="group rounded-lg p-4 cursor-pointer transition-all relative"
-      style={{
-        border: isHovered ? '2px solid hsl(var(--brand-orange))' : '2px solid rgba(232, 121, 36, 0.3)',
-        backgroundColor: isHovered ? 'var(--surface)' : 'rgba(var(--surface-rgb), 0.5)',
-      }}
+      className="group rounded-lg p-4 cursor-pointer transition-all relative border border-hairline hover:border-white/20 bg-surface hover:bg-white/[0.03]"
     >
-      {/* Live pill */}
-      <div className="absolute top-2 right-2">
-        <span
-          className="text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-full"
-          style={{
-            backgroundColor: '#16a34a',
-            color: '#fff',
-          }}
-        >
-          Live
-        </span>
-      </div>
       <div className="flex items-start gap-3">
-        <div className="flex-shrink-0 w-8 h-8 rounded-md bg-surface-strong border border-hairline flex items-center justify-center text-secondary group-hover:text-primary transition-colors">
+        <div className="flex-shrink-0 w-8 h-8 rounded-md bg-white/[0.05] border border-hairline flex items-center justify-center text-secondary group-hover:text-primary transition-colors">
           {icon}
         </div>
         <div className="flex-1 min-w-0">
@@ -99,6 +121,66 @@ function SecondaryTile({ icon, title, description, href }: SecondaryTileProps) {
         </div>
       </div>
     </a>
+  );
+}
+
+/* ───────────────── Config Row (for Configure Your Hub) ───────────────── */
+
+interface ConfigRowProps {
+  icon: React.ReactNode;
+  title: string;
+  description: string;
+  href: string;
+  accentColor: string;
+  isLast?: boolean;
+}
+
+function ConfigRow({ icon, title, description, href, accentColor, isLast }: ConfigRowProps) {
+  const [isHovered, setIsHovered] = React.useState(false);
+
+  const handleClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    window.history.pushState(null, "", href);
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  };
+
+  return (
+    <div className={`px-3 py-2 ${!isLast ? 'border-b border-hairline' : ''}`}>
+      <a
+        href={href}
+        onClick={handleClick}
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
+        className="group flex items-center gap-4 px-3 py-3 cursor-pointer transition-all duration-150 rounded-lg"
+        style={{
+          outline: isHovered ? '2px solid #6b7280' : '2px solid transparent',
+          backgroundColor: isHovered ? 'rgba(255, 255, 255, 0.04)' : 'transparent',
+        }}
+      >
+        <div className="flex-shrink-0 w-9 h-9 rounded-lg bg-white/[0.05] flex items-center justify-center transition-colors duration-150">
+          {icon}
+        </div>
+        <div className="flex-1 min-w-0">
+          <div
+            className="font-medium text-sm transition-colors duration-150"
+            style={{ color: isHovered ? '#fff' : accentColor }}
+          >
+            {title}
+          </div>
+          <p className="mt-0.5 text-xs text-secondary">{description}</p>
+        </div>
+        <svg
+          className="w-4 h-4 transition-all duration-150"
+          style={{ color: isHovered ? accentColor : 'rgb(75, 85, 99)' }}
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+        >
+          <path d="M9 18l6-6-6-6" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </a>
+    </div>
   );
 }
 
@@ -131,95 +213,89 @@ function PlannedCapability({ icon, title, description }: PlannedCapabilityProps)
 export default function MarketingHomePage() {
   return (
     <div className="p-6">
+      <style>{pageStyles}</style>
       {/* Page Header */}
       <PageHeader
         title="Marketing"
         subtitle="Plan it, write it, post it and track it - all in one place!"
       />
 
-      {/* Communications Hub - Hero Section */}
+      {/* Communications Hub + Configure Your Hub - Side by Side */}
       <section className="mt-8">
-        <div
-          onClick={(e) => {
-            e.preventDefault();
-            window.history.pushState(null, "", "/marketing/hub");
-            window.dispatchEvent(new PopStateEvent("popstate"));
-          }}
-          className="relative rounded-2xl hover:brightness-110 transition-all overflow-hidden cursor-pointer group"
-          style={{
-            background: 'linear-gradient(135deg, rgba(232, 121, 36, 0.15) 0%, rgba(20, 184, 166, 0.1) 100%)',
-            border: '2px solid rgba(232, 121, 36, 0.3)',
-            height: '180px',
-          }}
-        >
-          {/* Animated gradient border effect */}
-          <div className="absolute inset-0 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300"
-            style={{
-              background: 'linear-gradient(135deg, rgba(232, 121, 36, 0.3) 0%, rgba(20, 184, 166, 0.2) 100%)',
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Left: Communications Hub - Primary Action */}
+          <div
+            onClick={(e) => {
+              e.preventDefault();
+              window.history.pushState(null, "", "/marketing/hub");
+              window.dispatchEvent(new PopStateEvent("popstate"));
             }}
-          />
+            className="hub-card relative rounded-xl transition-all duration-200 overflow-hidden cursor-pointer group flex flex-col justify-between bg-surface"
+            style={{ minHeight: '260px' }}
+          >
+            {/* Hover overlay */}
+            <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-white/[0.02]" />
 
-          {/* Live pill */}
-          <div style={{ position: 'absolute', top: '16px', left: '16px' }}>
-            <span
-              className="text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-full animate-pulse"
-              style={{
-                backgroundColor: '#16a34a',
-                color: '#fff',
-              }}
-            >
-              Live
-            </span>
-          </div>
+            {/* Top section with icon */}
+            <div className="relative p-6 pb-2 flex justify-center items-center flex-1">
+              <div className="hub-icons flex items-center gap-4">
+                <ChatIcon className="w-16 h-16" />
+                <EmailIcon className="w-16 h-16" />
+              </div>
+            </div>
 
-          {/* Icon cluster in top-right */}
-          <div style={{ position: 'absolute', top: '16px', right: '24px' }} className="flex gap-2">
-            <ChatIcon className="w-16 h-16 opacity-80" />
-            <EmailIcon className="w-16 h-16 opacity-80" />
-          </div>
-
-          {/* Content */}
-          <div style={{ position: 'absolute', bottom: '24px', left: '24px', right: '24px' }}>
-            <h3 className="text-2xl font-bold text-primary">Communications Hub</h3>
-            <p className="mt-1 text-sm text-secondary">
-              All your messages, emails, and templates unified in one powerful inbox
-            </p>
-            <div className="mt-4">
-              <Button>
-                Open Hub
-                <svg className="w-4 h-4 ml-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M5 12h14M12 5l7 7-7 7" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-              </Button>
+            {/* Bottom content */}
+            <div className="relative p-6 pt-0">
+              <h3 className="text-lg font-semibold text-primary text-center">Communications Hub</h3>
+              <p className="mt-1 text-sm text-secondary text-center">
+                Messages, emails, and templates in one unified inbox
+              </p>
+              <div className="mt-4 flex justify-center">
+                <Button
+                  size="lg"
+                  className="open-hub-btn w-full"
+                >
+                  Open Hub
+                  <svg className="w-4 h-4 ml-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M5 12h14M12 5l7 7-7 7" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </Button>
+              </div>
             </div>
           </div>
-        </div>
-      </section>
 
-      {/* Message Setup and Automation - Secondary Section */}
-      <section className="mt-6">
-        <div style={{ marginBottom: '1.25rem' }}>
-          <h2 className="text-xl font-semibold text-primary">Message Setup and Automation</h2>
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          <SecondaryTile
-            icon={<span className="text-base">📦</span>}
-            title="Document Bundles"
-            description="Group documents together for easy email attachments"
-            href="/marketing/document-bundles"
-          />
-          <SecondaryTile
-            icon={<span className="text-base">⚡</span>}
-            title="Auto Replies"
-            description="Set up automatic responses to common inquiries"
-            href="/marketing/auto-replies"
-          />
-          <SecondaryTile
-            icon={<span className="text-base">🕐</span>}
-            title="Business Hours"
-            description="Define when you are available for messages"
-            href="/marketing/business-hours"
-          />
+          {/* Right: Configure Your Hub */}
+          <div
+            className="config-card rounded-xl bg-surface flex flex-col"
+          >
+            <div className="px-5 py-4 border-b border-hairline">
+              <h2 className="text-sm font-semibold text-secondary uppercase tracking-wide">Configure Your Hub</h2>
+            </div>
+            <div className="flex flex-col flex-1">
+              <ConfigRow
+                icon={<span className="text-base">📦</span>}
+                title="Document Bundles"
+                description="Group documents together for easy email attachments"
+                href="/marketing/document-bundles"
+                accentColor="#f59e0b"
+              />
+              <ConfigRow
+                icon={<span className="text-base">⚡</span>}
+                title="Auto Replies"
+                description="Set up automatic responses to common inquiries"
+                href="/marketing/auto-replies"
+                accentColor="#14b8a6"
+              />
+              <ConfigRow
+                icon={<span className="text-base">🕐</span>}
+                title="Business Hours"
+                description="Define when you are available for messages"
+                href="/marketing/business-hours"
+                accentColor="#8b5cf6"
+                isLast
+              />
+            </div>
+          </div>
         </div>
       </section>
 

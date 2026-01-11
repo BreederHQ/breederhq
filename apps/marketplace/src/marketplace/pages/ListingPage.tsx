@@ -9,6 +9,7 @@ import { getMockListing, simulateDelay } from "../../demo/mockData";
 import { useStartConversation } from "../../messages/hooks";
 import { Breadcrumb } from "../components/Breadcrumb";
 import { formatCents } from "../../utils/format";
+import { getOriginData, setOriginProgramSlug } from "../../utils/origin-tracking";
 
 import type { ListingDetailDTO, PublicOffspringDTO } from "../../api/types";
 
@@ -65,6 +66,13 @@ export function ListingPage() {
     fetchData();
   }, [fetchData]);
 
+  // Track program slug for origin attribution
+  React.useEffect(() => {
+    if (programSlug) {
+      setOriginProgramSlug(programSlug);
+    }
+  }, [programSlug]);
+
   // Handle inquiry submission - creates conversation and redirects to Inquiries
   const handleInquirySubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -115,6 +123,7 @@ export function ListingPage() {
     try {
       await submitInquiry(programSlug, listingSlug, {
         message: messageText,
+        origin: getOriginData(),
       });
 
       // Create local conversation for UI tracking

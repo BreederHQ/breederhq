@@ -34,6 +34,7 @@ export * from "./money";
 export * from "./confirmDialog";
 export * from "./templates";
 export * from "./viewPreferences";
+export * from "./vaccinationStatus";
 
 
 // Temporary helper until all expected-date shapes are unified across apps.

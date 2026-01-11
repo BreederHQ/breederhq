@@ -35,34 +35,36 @@ export type PortalAccessResource = {
 };
 
 export function makePortalAccess(http: Http): PortalAccessResource {
+  const BASE = "/api/v1";
+
   return {
     async get(partyId: number): Promise<PortalAccessResponse> {
-      const res = await http.get(`/portal-access/${partyId}`);
+      const res = await http.get(`${BASE}/portal-access/${partyId}`);
       return res as PortalAccessResponse;
     },
 
     async enable(partyId: number): Promise<PortalAccessResponse> {
-      const res = await http.post(`/portal-access/${partyId}/enable`, {});
+      const res = await http.post(`${BASE}/portal-access/${partyId}/enable`, {});
       return res as PortalAccessResponse;
     },
 
     async invite(partyId: number): Promise<PortalAccessResponse> {
-      const res = await http.post(`/portal-access/${partyId}/invite`, {});
+      const res = await http.post(`${BASE}/portal-access/${partyId}/invite`, {});
       return res as PortalAccessResponse;
     },
 
     async suspend(partyId: number): Promise<PortalAccessResponse> {
-      const res = await http.post(`/portal-access/${partyId}/suspend`, {});
+      const res = await http.post(`${BASE}/portal-access/${partyId}/suspend`, {});
       return res as PortalAccessResponse;
     },
 
     async reenable(partyId: number): Promise<PortalAccessResponse> {
-      const res = await http.post(`/portal-access/${partyId}/reenable`, {});
+      const res = await http.post(`${BASE}/portal-access/${partyId}/reenable`, {});
       return res as PortalAccessResponse;
     },
 
     async forcePasswordReset(partyId: number): Promise<PortalAccessResponse> {
-      const res = await http.post(`/portal-access/${partyId}/force-password-reset`, {});
+      const res = await http.post(`${BASE}/portal-access/${partyId}/force-password-reset`, {});
       return res as PortalAccessResponse;
     },
   };

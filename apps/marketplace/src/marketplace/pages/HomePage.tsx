@@ -3,6 +3,7 @@
 import * as React from "react";
 import { Link } from "react-router-dom";
 import { isDemoMode, setDemoMode } from "../../demo/demoMode";
+import { ManageListingDrawer } from "../../management/components/ManageListingDrawer";
 
 import {
   getAllMockListings,
@@ -49,13 +50,17 @@ export function HomePage() {
     }
   }, []);
 
+  // Manage listing drawer state
+  const [manageDrawerOpen, setManageDrawerOpen] = React.useState(false);
+
   return (
     <div className="space-y-16">
       {/* Breeder Management Button */}
       {isBreeder && (
         <div className="flex justify-center">
-          <Link
-            to="/manage"
+          <button
+            type="button"
+            onClick={() => setManageDrawerOpen(true)}
             className="inline-flex items-center gap-2 px-6 py-3 rounded-lg bg-[hsl(var(--brand-orange))] text-white font-medium hover:bg-[hsl(var(--brand-orange))]/90 transition-colors"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -63,9 +68,15 @@ export function HomePage() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
             </svg>
             Manage My Listing
-          </Link>
+          </button>
         </div>
       )}
+
+      {/* Manage Listing Drawer */}
+      <ManageListingDrawer
+        open={manageDrawerOpen}
+        onClose={() => setManageDrawerOpen(false)}
+      />
 
       {/* Section A: Intent Selection */}
       <section className="space-y-6">

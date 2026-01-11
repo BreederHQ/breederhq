@@ -172,8 +172,22 @@ export async function getListing(
   return data;
 }
 
+/**
+ * Origin tracking data for conversion attribution.
+ */
+export interface OriginPayload {
+  source?: string; // "direct" | "utm" | "referrer" | "embed" | "social"
+  referrer?: string;
+  utmSource?: string;
+  utmMedium?: string;
+  utmCampaign?: string;
+  pagePath?: string;
+  programSlug?: string;
+}
+
 export interface InquiryPayload {
   message: string;
+  origin?: OriginPayload;
 }
 
 export interface InquiryResponse {
@@ -183,13 +197,14 @@ export interface InquiryResponse {
 
 /**
  * Submit an inquiry for a listing. Requires authentication.
+ * Uses the unified /inquiries endpoint with programSlug and listingSlug in body.
  */
 export async function submitInquiry(
   programSlug: string,
   listingSlug: string,
   payload: InquiryPayload
 ): Promise<InquiryResponse> {
-  const path = `/api/v1/marketplace/programs/${encodeURIComponent(programSlug)}/offspring-groups/${encodeURIComponent(listingSlug)}/inquiries`;
+  const path = `/api/v1/marketplace/inquiries`;
   const url = joinApi(path);
 
   // Get CSRF token from cookie (XSRF-TOKEN)
@@ -206,7 +221,13 @@ export async function submitInquiry(
     method: "POST",
     credentials: "include",
     headers,
-    body: JSON.stringify(payload),
+    body: JSON.stringify({
+      programSlug,
+      listingSlug,
+      listingType: "offspring_group",
+      message: payload.message,
+      origin: payload.origin,
+    }),
   });
 
   if (!response.ok) {
@@ -269,13 +290,14 @@ export async function getAnimalListing(
 
 /**
  * Submit an inquiry for an animal listing. Requires authentication.
+ * Uses the unified /inquiries endpoint with programSlug and listingSlug in body.
  */
 export async function submitAnimalInquiry(
   programSlug: string,
   listingSlug: string,
   payload: InquiryPayload
 ): Promise<InquiryResponse> {
-  const path = `/api/v1/marketplace/programs/${encodeURIComponent(programSlug)}/animals/${encodeURIComponent(listingSlug)}/inquiries`;
+  const path = `/api/v1/marketplace/inquiries`;
   const url = joinApi(path);
 
   // Get CSRF token from cookie (XSRF-TOKEN)
@@ -292,7 +314,13 @@ export async function submitAnimalInquiry(
     method: "POST",
     credentials: "include",
     headers,
-    body: JSON.stringify(payload),
+    body: JSON.stringify({
+      programSlug,
+      listingSlug,
+      listingType: "animal",
+      message: payload.message,
+      origin: payload.origin,
+    }),
   });
 
   if (!response.ok) {
@@ -317,6 +345,7 @@ export interface WaitlistRequestPayload {
   name: string;
   email: string;
   phone?: string;
+  origin?: OriginPayload;
 }
 
 export interface WaitlistRequestResponse {
@@ -361,6 +390,300 @@ export async function submitWaitlistRequest(
 
   const data = await safeReadJson<WaitlistRequestResponse>(response);
   return data || { success: true };
+}
+
+// =====================================
+// Breeder Programs Management API
+// =====================================
+
+export interface BreedingProgramListItem {
+  id: number;
+  slug: string;
+  name: string;
+  species: string;
+  breedText?: string | null;
+  listed: boolean;
+  acceptInquiries: boolean;
+  openWaitlist: boolean;
+  acceptReservations: boolean;
+  createdAt: string;
+  _count?: { breedingPlans: number };
+}
+
+export interface BreedingProgramDetail extends BreedingProgramListItem {
+  tenantId: number;
+  description?: string | null;
+  pricingTiers?: ProgramPricingTier[] | null;
+  whatsIncluded?: string | null;
+  typicalWaitTime?: string | null;
+  updatedAt: string;
+  publishedAt?: string | null;
+}
+
+export interface ProgramPricingTier {
+  tier: string;
+  priceRange: string;
+  description?: string;
+}
+
+export interface BreedingProgramCreateInput {
+  name: string;
+  species: string;
+  breedText?: string | null;
+  description?: string | null;
+  listed?: boolean;
+  acceptInquiries?: boolean;
+  openWaitlist?: boolean;
+  acceptReservations?: boolean;
+  pricingTiers?: ProgramPricingTier[] | null;
+  whatsIncluded?: string | null;
+  typicalWaitTime?: string | null;
+}
+
+export interface BreedingProgramsListResponse {
+  items: BreedingProgramListItem[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+/**
+ * Get all breeding programs for the current tenant (breeder management).
+ */
+export async function getBreederPrograms(tenantId: string): Promise<BreedingProgramsListResponse> {
+  const path = `/api/v1/breeding/programs`;
+  const url = joinApi(path);
+
+  const response = await fetch(url, {
+    method: "GET",
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Tenant-Id": tenantId,
+    },
+  });
+
+  if (!response.ok) {
+    const body = await safeReadJson<{ message?: string }>(response);
+    throw new ApiError(
+      body?.message || `Request failed with status ${response.status}`,
+      response.status
+    );
+  }
+
+  const data = await safeReadJson<BreedingProgramsListResponse>(response);
+  return data || { items: [], total: 0, page: 1, limit: 25 };
+}
+
+/**
+ * Get a single breeding program by ID (breeder management).
+ */
+export async function getBreederProgram(tenantId: string, programId: number): Promise<BreedingProgramDetail> {
+  const path = `/api/v1/breeding/programs/${programId}`;
+  const url = joinApi(path);
+
+  const response = await fetch(url, {
+    method: "GET",
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Tenant-Id": tenantId,
+    },
+  });
+
+  if (!response.ok) {
+    const body = await safeReadJson<{ message?: string }>(response);
+    throw new ApiError(
+      body?.message || `Request failed with status ${response.status}`,
+      response.status
+    );
+  }
+
+  const data = await safeReadJson<BreedingProgramDetail>(response);
+  if (!data) throw new ApiError("Program not found", 404);
+  return data;
+}
+
+/**
+ * Create a new breeding program (breeder management).
+ */
+export async function createBreederProgram(
+  tenantId: string,
+  input: BreedingProgramCreateInput
+): Promise<BreedingProgramDetail> {
+  const path = `/api/v1/breeding/programs`;
+  const url = joinApi(path);
+
+  const xsrf = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]+)/)?.[1];
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    "X-Tenant-Id": tenantId,
+  };
+  if (xsrf) {
+    headers["x-csrf-token"] = decodeURIComponent(xsrf);
+  }
+
+  const response = await fetch(url, {
+    method: "POST",
+    credentials: "include",
+    headers,
+    body: JSON.stringify(input),
+  });
+
+  if (!response.ok) {
+    const body = await safeReadJson<{ message?: string; error?: string }>(response);
+    throw new ApiError(
+      body?.message || body?.error || `Request failed with status ${response.status}`,
+      response.status
+    );
+  }
+
+  const data = await safeReadJson<BreedingProgramDetail>(response);
+  if (!data) throw new ApiError("Failed to create program", 500);
+  return data;
+}
+
+/**
+ * Update a breeding program (breeder management).
+ */
+export async function updateBreederProgram(
+  tenantId: string,
+  programId: number,
+  input: Partial<BreedingProgramCreateInput>
+): Promise<BreedingProgramDetail> {
+  const path = `/api/v1/breeding/programs/${programId}`;
+  const url = joinApi(path);
+
+  const xsrf = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]+)/)?.[1];
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    "X-Tenant-Id": tenantId,
+  };
+  if (xsrf) {
+    headers["x-csrf-token"] = decodeURIComponent(xsrf);
+  }
+
+  const response = await fetch(url, {
+    method: "PUT",
+    credentials: "include",
+    headers,
+    body: JSON.stringify(input),
+  });
+
+  if (!response.ok) {
+    const body = await safeReadJson<{ message?: string; error?: string }>(response);
+    throw new ApiError(
+      body?.message || body?.error || `Request failed with status ${response.status}`,
+      response.status
+    );
+  }
+
+  const data = await safeReadJson<BreedingProgramDetail>(response);
+  if (!data) throw new ApiError("Failed to update program", 500);
+  return data;
+}
+
+/**
+ * Delete a breeding program (breeder management).
+ */
+export async function deleteBreederProgram(tenantId: string, programId: number): Promise<void> {
+  const path = `/api/v1/breeding/programs/${programId}`;
+  const url = joinApi(path);
+
+  const xsrf = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]+)/)?.[1];
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    "X-Tenant-Id": tenantId,
+  };
+  if (xsrf) {
+    headers["x-csrf-token"] = decodeURIComponent(xsrf);
+  }
+
+  const response = await fetch(url, {
+    method: "DELETE",
+    credentials: "include",
+    headers,
+  });
+
+  if (!response.ok) {
+    const body = await safeReadJson<{ message?: string; error?: string }>(response);
+    throw new ApiError(
+      body?.message || body?.error || `Request failed with status ${response.status}`,
+      response.status
+    );
+  }
+}
+
+// =====================================
+// Public Breeding Programs API (Consumer-facing)
+// =====================================
+
+export interface PublicBreedingProgramDTO {
+  id: number;
+  slug: string;
+  name: string;
+  description?: string | null;
+  species: string;
+  breedText?: string | null;
+  acceptInquiries: boolean;
+  openWaitlist: boolean;
+  acceptReservations: boolean;
+  typicalWaitTime?: string | null;
+  activePlansCount: number;
+  breeder?: {
+    slug: string | null;
+    name: string;
+    location: string | null;
+  } | null;
+}
+
+export interface PublicBreedingProgramsResponse {
+  items: PublicBreedingProgramDTO[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+export interface GetPublicBreedingProgramsParams {
+  search?: string;
+  species?: string;
+  breed?: string;
+  page?: number;
+  limit?: number;
+}
+
+/**
+ * Get all listed breeding programs (consumer-facing browse).
+ */
+export async function getPublicBreedingPrograms(
+  params: GetPublicBreedingProgramsParams = {}
+): Promise<PublicBreedingProgramsResponse> {
+  const query = new URLSearchParams();
+  if (params.search) query.set("search", params.search);
+  if (params.species) query.set("species", params.species);
+  if (params.breed) query.set("breed", params.breed);
+  if (params.page != null) query.set("page", String(params.page));
+  if (params.limit != null) query.set("limit", String(params.limit));
+
+  const queryStr = query.toString();
+  const path = `/api/v1/public/marketplace/breeding-programs${queryStr ? `?${queryStr}` : ""}`;
+
+  devLogFetch(path);
+  const { data } = await apiGet<PublicBreedingProgramsResponse>(path);
+  return data;
+}
+
+/**
+ * Get breeding programs for a specific breeder (consumer-facing).
+ */
+export async function getBreederBreedingPrograms(
+  breederSlug: string
+): Promise<PublicBreedingProgramsResponse> {
+  const path = `/api/v1/public/marketplace/programs/${encodeURIComponent(breederSlug)}/breeding-programs`;
+
+  devLogFetch(path);
+  const { data } = await apiGet<PublicBreedingProgramsResponse>(path);
+  return data;
 }
 
 // =====================================
@@ -428,4 +751,774 @@ export async function reportBreeder(
 
   const data = await safeReadJson<ReportBreederResponse>(response);
   return data || { success: true };
+}
+
+// =====================================
+// Breeder Services API
+// =====================================
+
+export type BreederServiceType =
+  | "STUD_SERVICE"
+  | "TRAINING"
+  | "GROOMING"
+  | "TRANSPORT"
+  | "BOARDING"
+  | "OTHER_SERVICE";
+
+export type ServiceListingStatus = "DRAFT" | "ACTIVE" | "PAUSED";
+
+export interface ServiceListingItem {
+  id: number;
+  listingType: BreederServiceType;
+  title: string;
+  description: string | null;
+  contactName: string | null;
+  contactEmail: string | null;
+  contactPhone: string | null;
+  city: string | null;
+  state: string | null;
+  country: string;
+  priceCents: number | null;
+  priceType: "fixed" | "starting_at" | "contact" | null;
+  images: string[] | null;
+  videoUrl: string | null;
+  status: ServiceListingStatus;
+  slug: string | null;
+  metadata: Record<string, unknown> | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ServiceListingCreateInput {
+  listingType: BreederServiceType;
+  title: string;
+  description?: string;
+  contactName?: string;
+  contactEmail?: string;
+  contactPhone?: string;
+  city?: string;
+  state?: string;
+  priceCents?: number;
+  priceType?: "fixed" | "starting_at" | "contact";
+  images?: string[];
+  videoUrl?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface ServiceListingsResponse {
+  items: ServiceListingItem[];
+  total: number;
+}
+
+/**
+ * Get all service listings for the current tenant.
+ */
+export async function getBreederServices(
+  tenantId: string,
+  params: { status?: string; type?: string } = {}
+): Promise<ServiceListingsResponse> {
+  const query = new URLSearchParams();
+  if (params.status) query.set("status", params.status);
+  if (params.type) query.set("type", params.type);
+
+  const queryStr = query.toString();
+  const path = `/api/v1/services${queryStr ? `?${queryStr}` : ""}`;
+  const url = joinApi(path);
+
+  const response = await fetch(url, {
+    method: "GET",
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Tenant-Id": tenantId,
+    },
+  });
+
+  if (!response.ok) {
+    const body = await safeReadJson<{ message?: string }>(response);
+    throw new ApiError(
+      body?.message || `Request failed with status ${response.status}`,
+      response.status
+    );
+  }
+
+  const data = await safeReadJson<ServiceListingsResponse>(response);
+  return data || { items: [], total: 0 };
+}
+
+/**
+ * Get a single service listing by ID.
+ */
+export async function getBreederService(
+  tenantId: string,
+  serviceId: number
+): Promise<ServiceListingItem> {
+  const path = `/api/v1/services/${serviceId}`;
+  const url = joinApi(path);
+
+  const response = await fetch(url, {
+    method: "GET",
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Tenant-Id": tenantId,
+    },
+  });
+
+  if (!response.ok) {
+    const body = await safeReadJson<{ message?: string }>(response);
+    throw new ApiError(
+      body?.message || `Request failed with status ${response.status}`,
+      response.status
+    );
+  }
+
+  const data = await safeReadJson<ServiceListingItem>(response);
+  if (!data) throw new ApiError("Service not found", 404);
+  return data;
+}
+
+/**
+ * Create a new service listing.
+ */
+export async function createBreederService(
+  tenantId: string,
+  input: ServiceListingCreateInput
+): Promise<ServiceListingItem> {
+  const path = `/api/v1/services`;
+  const url = joinApi(path);
+
+  const xsrf = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]+)/)?.[1];
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    "X-Tenant-Id": tenantId,
+  };
+  if (xsrf) {
+    headers["x-csrf-token"] = decodeURIComponent(xsrf);
+  }
+
+  const response = await fetch(url, {
+    method: "POST",
+    credentials: "include",
+    headers,
+    body: JSON.stringify(input),
+  });
+
+  if (!response.ok) {
+    const body = await safeReadJson<{ message?: string; error?: string }>(response);
+    throw new ApiError(
+      body?.message || body?.error || `Request failed with status ${response.status}`,
+      response.status
+    );
+  }
+
+  const data = await safeReadJson<ServiceListingItem>(response);
+  if (!data) throw new ApiError("Failed to create service", 500);
+  return data;
+}
+
+/**
+ * Update a service listing.
+ */
+export async function updateBreederService(
+  tenantId: string,
+  serviceId: number,
+  input: Partial<ServiceListingCreateInput>
+): Promise<ServiceListingItem> {
+  const path = `/api/v1/services/${serviceId}`;
+  const url = joinApi(path);
+
+  const xsrf = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]+)/)?.[1];
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    "X-Tenant-Id": tenantId,
+  };
+  if (xsrf) {
+    headers["x-csrf-token"] = decodeURIComponent(xsrf);
+  }
+
+  const response = await fetch(url, {
+    method: "PUT",
+    credentials: "include",
+    headers,
+    body: JSON.stringify(input),
+  });
+
+  if (!response.ok) {
+    const body = await safeReadJson<{ message?: string; error?: string }>(response);
+    throw new ApiError(
+      body?.message || body?.error || `Request failed with status ${response.status}`,
+      response.status
+    );
+  }
+
+  const data = await safeReadJson<ServiceListingItem>(response);
+  if (!data) throw new ApiError("Failed to update service", 500);
+  return data;
+}
+
+/**
+ * Publish a service listing.
+ */
+export async function publishBreederService(
+  tenantId: string,
+  serviceId: number
+): Promise<ServiceListingItem> {
+  const path = `/api/v1/services/${serviceId}/publish`;
+  const url = joinApi(path);
+
+  const xsrf = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]+)/)?.[1];
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    "X-Tenant-Id": tenantId,
+  };
+  if (xsrf) {
+    headers["x-csrf-token"] = decodeURIComponent(xsrf);
+  }
+
+  const response = await fetch(url, {
+    method: "POST",
+    credentials: "include",
+    headers,
+  });
+
+  if (!response.ok) {
+    const body = await safeReadJson<{ message?: string; error?: string }>(response);
+    throw new ApiError(
+      body?.message || body?.error || `Request failed with status ${response.status}`,
+      response.status
+    );
+  }
+
+  const data = await safeReadJson<ServiceListingItem>(response);
+  if (!data) throw new ApiError("Failed to publish service", 500);
+  return data;
+}
+
+/**
+ * Unpublish (pause) a service listing.
+ */
+export async function unpublishBreederService(
+  tenantId: string,
+  serviceId: number
+): Promise<ServiceListingItem> {
+  const path = `/api/v1/services/${serviceId}/unpublish`;
+  const url = joinApi(path);
+
+  const xsrf = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]+)/)?.[1];
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    "X-Tenant-Id": tenantId,
+  };
+  if (xsrf) {
+    headers["x-csrf-token"] = decodeURIComponent(xsrf);
+  }
+
+  const response = await fetch(url, {
+    method: "POST",
+    credentials: "include",
+    headers,
+  });
+
+  if (!response.ok) {
+    const body = await safeReadJson<{ message?: string; error?: string }>(response);
+    throw new ApiError(
+      body?.message || body?.error || `Request failed with status ${response.status}`,
+      response.status
+    );
+  }
+
+  const data = await safeReadJson<ServiceListingItem>(response);
+  if (!data) throw new ApiError("Failed to unpublish service", 500);
+  return data;
+}
+
+/**
+ * Delete a service listing.
+ */
+export async function deleteBreederService(
+  tenantId: string,
+  serviceId: number
+): Promise<void> {
+  const path = `/api/v1/services/${serviceId}`;
+  const url = joinApi(path);
+
+  const xsrf = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]+)/)?.[1];
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    "X-Tenant-Id": tenantId,
+  };
+  if (xsrf) {
+    headers["x-csrf-token"] = decodeURIComponent(xsrf);
+  }
+
+  const response = await fetch(url, {
+    method: "DELETE",
+    credentials: "include",
+    headers,
+  });
+
+  if (!response.ok) {
+    const body = await safeReadJson<{ message?: string; error?: string }>(response);
+    throw new ApiError(
+      body?.message || body?.error || `Request failed with status ${response.status}`,
+      response.status
+    );
+  }
+}
+
+// =====================================
+// Service Provider Portal API
+// =====================================
+
+export type ServiceProviderPlan = "FREE" | "PREMIUM" | "BUSINESS";
+
+export type ProviderServiceType =
+  | "TRAINING"
+  | "VETERINARY"
+  | "PHOTOGRAPHY"
+  | "GROOMING"
+  | "TRANSPORT"
+  | "BOARDING"
+  | "PRODUCT"
+  | "OTHER_SERVICE";
+
+export interface ServiceProviderProfile {
+  id: number;
+  businessName: string;
+  email: string;
+  phone: string | null;
+  website: string | null;
+  city: string | null;
+  state: string | null;
+  country: string;
+  plan: ServiceProviderPlan;
+  stripeCustomerId: string | null;
+  stripeSubscriptionId: string | null;
+  createdAt: string;
+  updatedAt: string;
+  listingsCount?: number;
+  activeListingsCount?: number;
+}
+
+export interface ServiceProviderProfileInput {
+  businessName: string;
+  email: string;
+  phone?: string;
+  website?: string;
+  city?: string;
+  state?: string;
+  country?: string;
+}
+
+export interface ProviderListingItem {
+  id: number;
+  listingType: ProviderServiceType;
+  title: string;
+  description: string | null;
+  city: string | null;
+  state: string | null;
+  priceCents: number | null;
+  priceType: "fixed" | "starting_at" | "contact" | null;
+  status: "DRAFT" | "ACTIVE" | "PAUSED";
+  slug: string | null;
+  viewCount: number;
+  inquiryCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ProviderListingCreateInput {
+  listingType: ProviderServiceType;
+  title: string;
+  description?: string;
+  contactName?: string;
+  contactEmail?: string;
+  contactPhone?: string;
+  city?: string;
+  state?: string;
+  priceCents?: number;
+  priceType?: "fixed" | "starting_at" | "contact";
+  images?: string[];
+  videoUrl?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface ProviderListingsResponse {
+  items: ProviderListingItem[];
+  total: number;
+}
+
+export interface ProviderDashboard {
+  profile: {
+    id: number;
+    businessName: string;
+    plan: ServiceProviderPlan;
+    hasStripeSubscription: boolean;
+  };
+  stats: {
+    totalListings: number;
+    activeListings: number;
+    draftListings: number;
+    totalViews: number;
+    totalInquiries: number;
+  };
+  limits: {
+    maxListings: number;
+    currentListings: number;
+  };
+}
+
+function getProviderHeaders(): Record<string, string> {
+  const xsrf = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]+)/)?.[1];
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+  if (xsrf) {
+    headers["x-csrf-token"] = decodeURIComponent(xsrf);
+  }
+  return headers;
+}
+
+/**
+ * Get current user's service provider profile.
+ */
+export async function getServiceProviderProfile(): Promise<ServiceProviderProfile | null> {
+  const path = `/api/v1/provider/profile`;
+  const url = joinApi(path);
+
+  const response = await fetch(url, {
+    method: "GET",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+  });
+
+  if (response.status === 404) {
+    return null; // No profile exists yet
+  }
+
+  if (!response.ok) {
+    const body = await safeReadJson<{ message?: string; error?: string }>(response);
+    throw new ApiError(
+      body?.message || body?.error || `Request failed with status ${response.status}`,
+      response.status
+    );
+  }
+
+  return safeReadJson<ServiceProviderProfile>(response);
+}
+
+/**
+ * Create a service provider profile.
+ */
+export async function createServiceProviderProfile(
+  input: ServiceProviderProfileInput
+): Promise<ServiceProviderProfile> {
+  const path = `/api/v1/provider/profile`;
+  const url = joinApi(path);
+
+  const response = await fetch(url, {
+    method: "POST",
+    credentials: "include",
+    headers: getProviderHeaders(),
+    body: JSON.stringify(input),
+  });
+
+  if (!response.ok) {
+    const body = await safeReadJson<{ message?: string; error?: string }>(response);
+    throw new ApiError(
+      body?.message || body?.error || `Request failed with status ${response.status}`,
+      response.status
+    );
+  }
+
+  const data = await safeReadJson<ServiceProviderProfile>(response);
+  if (!data) throw new ApiError("Failed to create profile", 500);
+  return data;
+}
+
+/**
+ * Update service provider profile.
+ */
+export async function updateServiceProviderProfile(
+  input: Partial<ServiceProviderProfileInput>
+): Promise<ServiceProviderProfile> {
+  const path = `/api/v1/provider/profile`;
+  const url = joinApi(path);
+
+  const response = await fetch(url, {
+    method: "PUT",
+    credentials: "include",
+    headers: getProviderHeaders(),
+    body: JSON.stringify(input),
+  });
+
+  if (!response.ok) {
+    const body = await safeReadJson<{ message?: string; error?: string }>(response);
+    throw new ApiError(
+      body?.message || body?.error || `Request failed with status ${response.status}`,
+      response.status
+    );
+  }
+
+  const data = await safeReadJson<ServiceProviderProfile>(response);
+  if (!data) throw new ApiError("Failed to update profile", 500);
+  return data;
+}
+
+/**
+ * Get service provider dashboard stats.
+ */
+export async function getServiceProviderDashboard(): Promise<ProviderDashboard> {
+  const path = `/api/v1/provider/dashboard`;
+  const url = joinApi(path);
+
+  const response = await fetch(url, {
+    method: "GET",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+  });
+
+  if (!response.ok) {
+    const body = await safeReadJson<{ message?: string; error?: string }>(response);
+    throw new ApiError(
+      body?.message || body?.error || `Request failed with status ${response.status}`,
+      response.status
+    );
+  }
+
+  const data = await safeReadJson<ProviderDashboard>(response);
+  if (!data) throw new ApiError("Failed to load dashboard", 500);
+  return data;
+}
+
+/**
+ * Get service provider's listings.
+ */
+export async function getServiceProviderListings(
+  params: { status?: string } = {}
+): Promise<ProviderListingsResponse> {
+  const query = new URLSearchParams();
+  if (params.status) query.set("status", params.status);
+
+  const queryStr = query.toString();
+  const path = `/api/v1/provider/listings${queryStr ? `?${queryStr}` : ""}`;
+  const url = joinApi(path);
+
+  const response = await fetch(url, {
+    method: "GET",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+  });
+
+  if (!response.ok) {
+    const body = await safeReadJson<{ message?: string }>(response);
+    throw new ApiError(
+      body?.message || `Request failed with status ${response.status}`,
+      response.status
+    );
+  }
+
+  const data = await safeReadJson<ProviderListingsResponse>(response);
+  return data || { items: [], total: 0 };
+}
+
+/**
+ * Create a new service provider listing.
+ */
+export async function createServiceProviderListing(
+  input: ProviderListingCreateInput
+): Promise<ProviderListingItem> {
+  const path = `/api/v1/provider/listings`;
+  const url = joinApi(path);
+
+  const response = await fetch(url, {
+    method: "POST",
+    credentials: "include",
+    headers: getProviderHeaders(),
+    body: JSON.stringify(input),
+  });
+
+  if (!response.ok) {
+    const body = await safeReadJson<{ message?: string; error?: string; limit?: number }>(response);
+    if (body?.error === "listing_limit_reached") {
+      throw new ApiError(`You've reached your plan limit of ${body.limit} listing(s)`, 403);
+    }
+    throw new ApiError(
+      body?.message || body?.error || `Request failed with status ${response.status}`,
+      response.status
+    );
+  }
+
+  const data = await safeReadJson<ProviderListingItem>(response);
+  if (!data) throw new ApiError("Failed to create listing", 500);
+  return data;
+}
+
+/**
+ * Update a service provider listing.
+ */
+export async function updateServiceProviderListing(
+  listingId: number,
+  input: Partial<ProviderListingCreateInput>
+): Promise<ProviderListingItem> {
+  const path = `/api/v1/provider/listings/${listingId}`;
+  const url = joinApi(path);
+
+  const response = await fetch(url, {
+    method: "PUT",
+    credentials: "include",
+    headers: getProviderHeaders(),
+    body: JSON.stringify(input),
+  });
+
+  if (!response.ok) {
+    const body = await safeReadJson<{ message?: string; error?: string }>(response);
+    throw new ApiError(
+      body?.message || body?.error || `Request failed with status ${response.status}`,
+      response.status
+    );
+  }
+
+  const data = await safeReadJson<ProviderListingItem>(response);
+  if (!data) throw new ApiError("Failed to update listing", 500);
+  return data;
+}
+
+/**
+ * Publish a service provider listing.
+ */
+export async function publishServiceProviderListing(
+  listingId: number
+): Promise<{ id: number; status: string; publishedAt: string }> {
+  const path = `/api/v1/provider/listings/${listingId}/publish`;
+  const url = joinApi(path);
+
+  const response = await fetch(url, {
+    method: "POST",
+    credentials: "include",
+    headers: getProviderHeaders(),
+  });
+
+  if (!response.ok) {
+    const body = await safeReadJson<{ message?: string; error?: string }>(response);
+    throw new ApiError(
+      body?.message || body?.error || `Request failed with status ${response.status}`,
+      response.status
+    );
+  }
+
+  const data = await safeReadJson<{ id: number; status: string; publishedAt: string }>(response);
+  if (!data) throw new ApiError("Failed to publish listing", 500);
+  return data;
+}
+
+/**
+ * Unpublish (pause) a service provider listing.
+ */
+export async function unpublishServiceProviderListing(
+  listingId: number
+): Promise<{ id: number; status: string }> {
+  const path = `/api/v1/provider/listings/${listingId}/unpublish`;
+  const url = joinApi(path);
+
+  const response = await fetch(url, {
+    method: "POST",
+    credentials: "include",
+    headers: getProviderHeaders(),
+  });
+
+  if (!response.ok) {
+    const body = await safeReadJson<{ message?: string; error?: string }>(response);
+    throw new ApiError(
+      body?.message || body?.error || `Request failed with status ${response.status}`,
+      response.status
+    );
+  }
+
+  const data = await safeReadJson<{ id: number; status: string }>(response);
+  if (!data) throw new ApiError("Failed to unpublish listing", 500);
+  return data;
+}
+
+/**
+ * Delete a service provider listing.
+ */
+export async function deleteServiceProviderListing(listingId: number): Promise<void> {
+  const path = `/api/v1/provider/listings/${listingId}`;
+  const url = joinApi(path);
+
+  const response = await fetch(url, {
+    method: "DELETE",
+    credentials: "include",
+    headers: getProviderHeaders(),
+  });
+
+  if (!response.ok) {
+    const body = await safeReadJson<{ message?: string; error?: string }>(response);
+    throw new ApiError(
+      body?.message || body?.error || `Request failed with status ${response.status}`,
+      response.status
+    );
+  }
+}
+
+/**
+ * Create Stripe checkout session for plan upgrade.
+ */
+export async function createProviderCheckout(
+  plan: "PREMIUM" | "BUSINESS",
+  successUrl: string,
+  cancelUrl: string
+): Promise<{ checkoutUrl: string }> {
+  const path = `/api/v1/provider/billing/checkout`;
+  const url = joinApi(path);
+
+  const response = await fetch(url, {
+    method: "POST",
+    credentials: "include",
+    headers: getProviderHeaders(),
+    body: JSON.stringify({ plan, successUrl, cancelUrl }),
+  });
+
+  if (!response.ok) {
+    const body = await safeReadJson<{ message?: string; error?: string }>(response);
+    throw new ApiError(
+      body?.message || body?.error || `Request failed with status ${response.status}`,
+      response.status
+    );
+  }
+
+  const data = await safeReadJson<{ checkoutUrl: string }>(response);
+  if (!data?.checkoutUrl) throw new ApiError("Failed to create checkout session", 500);
+  return data;
+}
+
+/**
+ * Create Stripe customer portal session.
+ */
+export async function createProviderBillingPortal(
+  returnUrl: string
+): Promise<{ portalUrl: string }> {
+  const path = `/api/v1/provider/billing/portal`;
+  const url = joinApi(path);
+
+  const response = await fetch(url, {
+    method: "POST",
+    credentials: "include",
+    headers: getProviderHeaders(),
+    body: JSON.stringify({ returnUrl }),
+  });
+
+  if (!response.ok) {
+    const body = await safeReadJson<{ message?: string; error?: string }>(response);
+    throw new ApiError(
+      body?.message || body?.error || `Request failed with status ${response.status}`,
+      response.status
+    );
+  }
+
+  const data = await safeReadJson<{ portalUrl: string }>(response);
+  if (!data?.portalUrl) throw new ApiError("Failed to create portal session", 500);
+  return data;
 }

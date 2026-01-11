@@ -19,13 +19,17 @@ type AnimalStatus =
  * Shared helpers
  * ------------------------------------------------------------------------- */
 
-/** Normalize API base: ensure exactly one /api/v1 suffix, never doubled */
-function normBase(base?: string): string {
+/** Get the base origin without /api/v1 suffix */
+function getOrigin(base?: string): string {
   let b = String(base || "").trim();
   if (!b) b = typeof window !== "undefined" ? window.location.origin : "";
   // Strip trailing slashes and any existing /api/v1 suffix
-  b = b.replace(/\/+$/g, "").replace(/\/api\/v1$/i, "");
-  return `${b}/api/v1`;
+  return b.replace(/\/+$/g, "").replace(/\/api\/v1$/i, "");
+}
+
+/** Normalize API base: ensure exactly one /api/v1 suffix, never doubled */
+function normBase(base?: string): string {
+  return `${getOrigin(base)}/api/v1`;
 }
 
 function joinUrl(...parts: (string | number | undefined | null)[]) {
@@ -230,7 +234,8 @@ export const apiUtils = {
  * ------------------------------------------------------------------------- */
 
 export function makeApi(baseOrigin: string = "", authHeaderFn?: () => Record<string, string>) {
-  const v1 = normBase(baseOrigin);
+  const origin = getOrigin(baseOrigin);
+  const v1 = `${origin}/api/v1`;
   const withAuth = () => (authHeaderFn ? authHeaderFn() : {});
 
   /* --------------------------------- CONTACTS -------------------------------- */
@@ -351,8 +356,11 @@ export function makeApi(baseOrigin: string = "", authHeaderFn?: () => Record<str
 
   /* ----------------------------------- TAGS ---------------------------------- */
   // Wire up unified resources from @bhq/api
-  const http = createHttp(v1);
-  const tags = makeTags(http);
+  // Note: pass origin (not v1) because these resources add /api/v1 internally
+  const http = createHttp(origin);
+  // Tags resource expects base URL to include /api/v1
+  const httpWithV1 = createHttp(v1);
+  const tags = makeTags(httpWithV1);
   const portalAccess = makePortalAccess(http);
   const partyCrm = makePartyCrm(http);
   const messages = makeMessages(http);

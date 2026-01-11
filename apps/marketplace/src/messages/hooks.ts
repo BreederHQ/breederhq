@@ -5,6 +5,7 @@ import * as React from "react";
 import type { Conversation, Message, ContextRef, Participant } from "./types";
 import { getMessagingAdapter } from "./adapter";
 import * as store from "./store";
+import { useWebSocket, type WebSocketEvent } from "./useWebSocket";
 
 /**
  * Hook to get all conversations with real-time updates
@@ -27,10 +28,24 @@ export function useConversations() {
     }
   }, []);
 
+  // WebSocket handler for real-time updates
+  const handleWebSocketMessage = React.useCallback((event: WebSocketEvent) => {
+    if (event.event === "new_message") {
+      console.log("[Marketplace WS] New message, refreshing conversations");
+      load();
+    }
+  }, [load]);
+
+  // Connect to WebSocket for real-time updates
+  useWebSocket({
+    onMessage: handleWebSocketMessage,
+    onConnect: () => console.log("[Marketplace] WebSocket connected"),
+  });
+
   React.useEffect(() => {
     load();
-    // Poll for updates every 30 seconds (reduced from 2s to avoid excessive requests)
-    const interval = setInterval(load, 30000);
+    // Poll for updates every 60 seconds as fallback (WebSocket handles real-time)
+    const interval = setInterval(load, 60000);
     return () => clearInterval(interval);
   }, [load]);
 
@@ -75,10 +90,46 @@ export function useConversation(conversationId: string | null) {
     }
   }, [conversationId]);
 
+  // WebSocket handler for real-time updates to this conversation
+  const handleWebSocketMessage = React.useCallback((event: WebSocketEvent) => {
+    if (event.event === "new_message") {
+      const { threadId, message } = event.payload;
+      // Check if this message is for the current conversation
+      if (conversationId && String(threadId) === conversationId) {
+        console.log("[Marketplace WS] New message in current conversation");
+        // Add message to local state immediately for instant feedback
+        setMessages((prev) => {
+          // Check if message already exists
+          if (prev.some((m) => m.id === String(message.id))) {
+            return prev;
+          }
+          return [
+            ...prev,
+            {
+              id: String(message.id),
+              conversationId,
+              senderId: String(message.senderPartyId),
+              senderType: "breeder" as const, // Incoming messages from breeder
+              content: message.body,
+              createdAt: message.createdAt,
+              readAt: null,
+            },
+          ];
+        });
+      }
+    }
+  }, [conversationId]);
+
+  // Connect to WebSocket for real-time updates
+  useWebSocket({
+    onMessage: handleWebSocketMessage,
+    enabled: !!conversationId,
+  });
+
   React.useEffect(() => {
     load();
-    // Poll for updates every 10 seconds when viewing a specific conversation
-    const interval = setInterval(load, 10000);
+    // Poll for updates every 30 seconds as fallback (WebSocket handles real-time)
+    const interval = setInterval(load, 30000);
     return () => clearInterval(interval);
   }, [load]);
 

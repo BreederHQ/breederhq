@@ -26,6 +26,8 @@ import {
   IntlPhoneField,
   PillToggle,
   useViewMode,
+  SortDropdown,
+  type SortOption,
 } from "@bhq/ui";
 import { Download, MoreHorizontal, ChevronDown, LayoutGrid, Table as TableIcon } from "lucide-react";
 import { ContactCardView } from "./components/ContactCardView";
@@ -111,6 +113,19 @@ const PARTY_COLUMNS: Array<{ key: keyof PartyTableRow & string; label: string; d
   { key: "notes", label: "Notes", default: false },
   { key: "created_at", label: "Created", default: false },
   { key: "updated_at", label: "Updated", default: false },
+];
+
+const SORT_OPTIONS: SortOption[] = [
+  { key: "displayName", label: "Name" },
+  { key: "kind", label: "Type" },
+  { key: "email", label: "Email" },
+  { key: "city", label: "City" },
+  { key: "state", label: "State" },
+  { key: "country", label: "Country" },
+  { key: "status", label: "Status" },
+  { key: "leadStatus", label: "Lead Status" },
+  { key: "created_at", label: "Date Created" },
+  { key: "updated_at", label: "Last Updated" },
 ];
 
 const STORAGE_KEY = "bhq_party_contacts_cols_v1";
@@ -742,7 +757,7 @@ export default function AppContacts() {
     () => ({
       idParam: "partyId",
       getRowId: (r: PartyTableRow) => r.partyId,
-      width: 900,
+      width: 1060,
       placement: "center" as const,
       align: "top" as const,
       fetchRow: async (id: number | string) => {
@@ -989,18 +1004,26 @@ export default function AppContacts() {
               </button>
             </div>
 
+            {/* Sort dropdown */}
+            <SortDropdown
+              options={SORT_OPTIONS}
+              sorts={sorts}
+              onSort={(key, dir) => setSorts([{ key, dir }])}
+              onClear={() => setSorts([])}
+            />
+
             {/* Column toggle - only show in table mode */}
             {viewMode === "table" && (
-              <div className="ml-auto">
-                <ColumnsPopover
-                  columns={map}
-                  onToggle={toggle}
-                  onSet={setAll}
-                  allColumns={PARTY_COLUMNS}
-                  triggerClassName="bhq-columns-trigger"
-                />
-              </div>
+              <ColumnsPopover
+                columns={map}
+                onToggle={toggle}
+                onSet={setAll}
+                allColumns={PARTY_COLUMNS}
+                triggerClassName="bhq-columns-trigger"
+              />
             )}
+
+            <div className="ml-auto" />
           </div>
 
           {/* Conditional view rendering */}

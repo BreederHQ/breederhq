@@ -6,16 +6,12 @@ import * as React from "react";
 import { PageScaffold, SectionHeader } from "../design/PageScaffold";
 import { PortalCard, CardRow } from "../design/PortalCard";
 import { Button } from "../design/Button";
-import { isPortalMockEnabled } from "../dev/mockFlag";
 import {
   getSchedulingEvent,
   listAvailableSlots,
   bookSlot,
   cancelBooking,
   rescheduleBooking,
-  getMockSchedulingEvent,
-  getMockSlots,
-  getMockConfirmedBooking,
   downloadBookingIcs,
   type SchedulingEventResponse,
   type SchedulingSlot,
@@ -792,8 +788,6 @@ export default function PortalSchedulePage() {
     return match?.[1] || "demo";
   }, []);
 
-  const mockEnabled = isPortalMockEnabled();
-
   // State machine
   const [pageState, setPageState] = React.useState<SchedulePageState>({
     state: "LOADING",
@@ -818,29 +812,7 @@ export default function PortalSchedulePage() {
   const loadEvent = React.useCallback(async () => {
     transition("LOADING");
 
-    if (mockEnabled) {
-      // Use mock data in demo mode
-      const mockEvent = getMockSchedulingEvent(eventId);
-      const mockSlots = getMockSlots();
-
-      // Check for existing booking in mock
-      if (mockEvent.eventStatus.hasExistingBooking && mockEvent.eventStatus.existingBooking) {
-        transition("BOOKING_CONFIRMED", {
-          eventData: mockEvent,
-          confirmedBooking: mockEvent.eventStatus.existingBooking,
-          rules: mockEvent.rules,
-        });
-      } else {
-        transition("ELIGIBLE_SELECT_SLOT", {
-          eventData: mockEvent,
-          slots: mockSlots,
-          rules: mockEvent.rules,
-        });
-      }
-      return;
-    }
-
-    // Real API call
+    // Fetch scheduling event from API
     const eventResult = await getSchedulingEvent(eventId);
 
     if (!eventResult.ok) {
@@ -913,7 +885,7 @@ export default function PortalSchedulePage() {
       rules: eventData.rules,
       placementBlocked: null,
     });
-  }, [eventId, mockEnabled]);
+  }, [eventId]);
 
   // Initial load
   React.useEffect(() => {
@@ -927,21 +899,10 @@ export default function PortalSchedulePage() {
 
   // Handle booking confirmation
   const handleConfirmBooking = async () => {
-    const { selectedSlotId, eventData, slots } = pageState;
+    const { selectedSlotId } = pageState;
     if (!selectedSlotId) return;
 
     transition("BOOKING_IN_PROGRESS");
-
-    if (mockEnabled) {
-      // Simulate booking in demo mode
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-      const slot = slots.find((s) => s.slotId === selectedSlotId);
-      if (slot) {
-        const mockBooking = getMockConfirmedBooking(selectedSlotId, slot);
-        transition("BOOKING_CONFIRMED", { confirmedBooking: mockBooking });
-      }
-      return;
-    }
 
     const result = await bookSlot(eventId, selectedSlotId);
 
@@ -965,12 +926,6 @@ export default function PortalSchedulePage() {
 
   // Handle cancel
   const handleCancel = async () => {
-    if (mockEnabled) {
-      // In demo mode, just reload to show slot selection
-      loadEvent();
-      return;
-    }
-
     transition("LOADING");
     const result = await cancelBooking(eventId);
 

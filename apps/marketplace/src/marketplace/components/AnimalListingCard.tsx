@@ -15,7 +15,11 @@ export const INTENT_LABELS: Record<AnimalListingIntent, string> = {
   STUD: "Stud Service",
   BROOD_PLACEMENT: "Brood Placement",
   REHOME: "Rehome",
-  GUARDIAN_PLACEMENT: "Guardian Placement",
+  GUARDIAN: "Guardian Placement",
+  TRAINED: "Trained Animal",
+  WORKING: "Working Animal",
+  STARTED: "Started Animal",
+  CO_OWNERSHIP: "Co-Ownership",
 };
 
 /**
@@ -25,7 +29,11 @@ const INTENT_BADGE_CLASSES: Record<AnimalListingIntent, string> = {
   STUD: "bg-purple-500/15 text-purple-400",
   BROOD_PLACEMENT: "bg-pink-500/15 text-pink-400",
   REHOME: "bg-green-500/15 text-green-400",
-  GUARDIAN_PLACEMENT: "bg-blue-500/15 text-blue-400",
+  GUARDIAN: "bg-blue-500/15 text-blue-400",
+  TRAINED: "bg-amber-500/15 text-amber-400",
+  WORKING: "bg-orange-500/15 text-orange-400",
+  STARTED: "bg-cyan-500/15 text-cyan-400",
+  CO_OWNERSHIP: "bg-indigo-500/15 text-indigo-400",
 };
 
 export interface AnimalListingCardProps {

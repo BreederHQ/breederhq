@@ -118,7 +118,15 @@ export interface MarketplaceMeResponse {
  *
  * @stable - These types are frozen. Do not modify without backend coordination.
  */
-export type AnimalListingIntent = "STUD" | "BROOD_PLACEMENT" | "REHOME" | "GUARDIAN_PLACEMENT";
+export type AnimalListingIntent =
+  | "STUD"
+  | "BROOD_PLACEMENT"
+  | "REHOME"
+  | "GUARDIAN"
+  | "TRAINED"
+  | "WORKING"
+  | "STARTED"
+  | "CO_OWNERSHIP";
 export type AnimalListingStatus = "DRAFT" | "LIVE" | "PAUSED";
 export type AnimalListingPriceModel = "fixed" | "range" | "inquire";
 
@@ -150,10 +158,29 @@ export type AnimalListingPriceModel = "fixed" | "range" | "inquire";
  *   - crateTrained?: boolean
  *   - spayNeuterRequired?: boolean
  *
- * GUARDIAN_PLACEMENT intent:
+ * GUARDIAN intent:
  *   - guardianTerms?: string       // Co-ownership terms, breeding expectations
  *   - breedingCommitment?: string  // e.g., "2-3 litters"
  *   - vetCareProvided?: boolean    // Whether breeder covers vet expenses
+ *
+ * TRAINED intent:
+ *   - trainingLevel?: string       // e.g., "Basic", "Advanced", "Professional"
+ *   - trainingDetails?: string     // Description of training completed
+ *   - certifications?: string[]    // Training certifications
+ *
+ * WORKING intent:
+ *   - workType?: string            // e.g., "Herding", "Hunting", "Service"
+ *   - workExperience?: string      // Description of work experience
+ *   - activeWorking?: boolean      // Currently working
+ *
+ * STARTED intent:
+ *   - startedTraining?: string     // Training begun but not completed
+ *   - potentialUse?: string        // Intended purpose
+ *
+ * CO_OWNERSHIP intent:
+ *   - ownershipTerms?: string      // Co-ownership agreement terms
+ *   - breedingRights?: boolean     // Whether breeding rights are shared
+ *   - showRights?: boolean         // Whether show rights are shared
  */
 export type AnimalListingDetailsJson = Record<string, unknown>;
 

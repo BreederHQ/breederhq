@@ -2,6 +2,7 @@
 // Hook to fetch unread message count for the portal notification badge.
 
 import * as React from "react";
+import { createPortalFetch, useTenantContext } from "../derived/tenantContext";
 
 interface UseUnreadMessageCountResult {
   unreadCount: number;
@@ -13,23 +14,25 @@ interface UseUnreadMessageCountResult {
  * Polls every 30 seconds to keep the badge updated.
  */
 export function useUnreadMessageCount(): UseUnreadMessageCountResult {
+  const { tenantSlug, isReady } = useTenantContext();
   const [unreadCount, setUnreadCount] = React.useState(0);
   const [loading, setLoading] = React.useState(true);
 
   React.useEffect(() => {
+    // Wait for tenant context to be ready
+    if (!isReady) return;
+
     let cancelled = false;
+    const portalFetch = createPortalFetch(tenantSlug);
 
     async function fetchUnreadCount() {
       try {
-        const res = await fetch("/api/v1/messages/threads", { credentials: "include" });
+        const data = await portalFetch<{ threads: any[] }>("/messages/threads");
         if (cancelled) return;
 
-        if (res.ok) {
-          const data = await res.json();
-          const threads = data.threads || [];
-          const total = threads.reduce((sum: number, t: any) => sum + (t.unreadCount || 0), 0);
-          setUnreadCount(total);
-        }
+        const threads = data.threads || [];
+        const total = threads.reduce((sum: number, t: any) => sum + (t.unreadCount || 0), 0);
+        setUnreadCount(total);
       } catch (err) {
         // Silently ignore errors for badge - not critical
         if (import.meta.env.DEV) {
@@ -50,7 +53,7 @@ export function useUnreadMessageCount(): UseUnreadMessageCountResult {
       cancelled = true;
       clearInterval(interval);
     };
-  }, []);
+  }, [tenantSlug, isReady]);
 
   return { unreadCount, loading };
 }

@@ -53,7 +53,13 @@ type ViewRoute =
   | "terms";
 
 function getViewFromPath(pathname: string): ViewRoute {
-  const path = pathname.toLowerCase().replace(/\/+$/, "");
+  let path = pathname.toLowerCase().replace(/\/+$/, "");
+
+  // Strip tenant prefix if present (e.g., /t/tatooine/dashboard -> /dashboard)
+  const tenantPrefixMatch = path.match(/^\/t\/[^/]+(.*)$/);
+  if (tenantPrefixMatch) {
+    path = tenantPrefixMatch[1] || "/";
+  }
 
   // Public routes
   if (path === "/login" || path.startsWith("/login?")) return "login";

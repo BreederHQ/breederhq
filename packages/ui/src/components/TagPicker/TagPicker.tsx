@@ -30,6 +30,10 @@ export type TagPickerProps = {
   disabled?: boolean;
   /** Class name for container */
   className?: string;
+  /** Layout variant - compact (default) shows inline chips with add button, legacy shows stacked layout */
+  variant?: "compact" | "legacy";
+  /** Called when "New tag" is clicked (for compact variant modal trigger) */
+  onNewTagClick?: () => void;
 };
 
 export function TagPicker({
@@ -43,6 +47,8 @@ export function TagPicker({
   placeholder = "Add tags...",
   disabled = false,
   className = "",
+  variant = "compact",
+  onNewTagClick,
 }: TagPickerProps) {
   const [open, setOpen] = React.useState(false);
   const [query, setQuery] = React.useState("");
@@ -91,7 +97,7 @@ export function TagPicker({
   const handleSelect = (tag: TagOption) => {
     onSelect(tag);
     setQuery("");
-    inputRef.current?.focus();
+    setOpen(false);
   };
 
   const handleCreate = async () => {
@@ -125,6 +131,129 @@ export function TagPicker({
     }
   };
 
+  // Compact variant: inline layout with chips and input on same row
+  if (variant === "compact") {
+    return (
+      <div ref={containerRef} className={`relative flex-1 ${className}`}>
+        {/* Inline layout: tags on left, button on right */}
+        <div className="flex flex-wrap items-center gap-1.5 ml-4">
+          {/* Selected tags - rendered first, appear on the left */}
+          {selectedTags.map((tag) => (
+            <TagChip
+              key={tag.id}
+              name={tag.name}
+              color={tag.color}
+              isArchived={tag.isArchived}
+              onRemove={disabled ? undefined : () => onRemove(tag)}
+            />
+          ))}
+
+          {/* Error display - inline before the button */}
+          {(error || createError) && (
+            <span className="text-xs text-red-400">{error || createError}</span>
+          )}
+
+          {/* Add button - rendered last, pushed to right with ml-auto, hidden when disabled */}
+          {!disabled && (
+            <div className="relative ml-auto">
+              <button
+                type="button"
+                onClick={() => setOpen(!open)}
+                className={`flex items-center gap-1.5 px-2 py-1 border border-hairline rounded-md bg-surface text-secondary transition-colors hover:text-primary hover:border-secondary ${
+                  open ? "ring-1 ring-brand/50" : ""
+                }`}
+                aria-label="Add tag"
+              >
+                <svg className="w-3 h-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+                </svg>
+                {loading ? (
+                  <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  </svg>
+                ) : (
+                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                )}
+              </button>
+
+              {/* Compact dropdown - positioned to right edge, high z-index to escape card overflow */}
+              {open && (
+                <div className="absolute right-0 top-full mt-1 min-w-[200px] bg-surface border border-hairline rounded-md shadow-lg z-[100] max-h-[200px] overflow-y-auto">
+                  {filteredTags.length > 0 && (
+                    <div className="py-1">
+                      {filteredTags.map((tag) => (
+                        <button
+                          key={tag.id}
+                          type="button"
+                          onClick={() => handleSelect(tag)}
+                          className="w-full px-3 py-1.5 flex items-center gap-2 hover:bg-surface-hover transition-colors text-left"
+                        >
+                          <span
+                            className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                            style={{ backgroundColor: tag.color || "#888" }}
+                          />
+                          <span className="text-xs truncate">{tag.name}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {filteredTags.length === 0 && !canCreate && (
+                    <div className="px-3 py-3 text-xs text-secondary text-center">
+                      {query.trim() ? "No matching tags" : "No tags available"}
+                    </div>
+                  )}
+
+                  {canCreate && (
+                    <div className={filteredTags.length > 0 ? "border-t border-hairline" : ""}>
+                      <button
+                        type="button"
+                        onClick={handleCreate}
+                        disabled={creating}
+                        className="w-full px-3 py-1.5 flex items-center gap-2 hover:bg-surface-hover transition-colors text-left text-brand disabled:opacity-50"
+                      >
+                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                        </svg>
+                        <span className="text-xs">
+                          {creating ? "Creating..." : `Create "${query.trim()}"`}
+                        </span>
+                      </button>
+                    </div>
+                  )}
+
+                  {/* New tag button for modal trigger */}
+                  {onNewTagClick && (
+                    <div className="border-t border-hairline">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setOpen(false);
+                          setQuery("");
+                          onNewTagClick();
+                        }}
+                        className="w-full px-3 py-1.5 flex items-center gap-2 hover:bg-surface-hover transition-colors text-left text-secondary"
+                      >
+                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                        </svg>
+                        <span className="text-xs">New tag with color...</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // Legacy variant (stacked layout)
   return (
     <div ref={containerRef} className={`relative ${className}`}>
       {/* Selected tags chips */}

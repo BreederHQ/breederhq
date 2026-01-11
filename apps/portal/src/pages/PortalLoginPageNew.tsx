@@ -16,14 +16,33 @@ export default function PortalLoginPageNew() {
   const [error, setError] = React.useState<string | null>(null);
   const [loading, setLoading] = React.useState(false);
 
+  // Extract tenant slug from URL path (e.g., /t/tatooine/login) or returnUrl
+  const tenantSlug = React.useMemo(() => {
+    // First try to get from current URL
+    const pathMatch = window.location.pathname.match(/^\/t\/([^/]+)/);
+    if (pathMatch) return pathMatch[1];
+
+    // Then try from returnUrl
+    const params = new URLSearchParams(window.location.search);
+    const returnUrl = params.get("returnUrl") || "";
+    const returnMatch = returnUrl.match(/^\/t\/([^/]+)/);
+    if (returnMatch) return returnMatch[1];
+
+    return null;
+  }, []);
+
   const returnUrl = React.useMemo(() => {
     const params = new URLSearchParams(window.location.search);
     const url = params.get("returnUrl");
     if (url && url.startsWith("/") && !url.startsWith("//")) {
       return url;
     }
+    // Default to tenant-prefixed dashboard if we have a slug
+    if (tenantSlug) {
+      return `/t/${tenantSlug}/dashboard`;
+    }
     return "/";
-  }, []);
+  }, [tenantSlug]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -48,7 +67,24 @@ export default function PortalLoginPageNew() {
         return;
       }
 
-      window.location.assign(returnUrl);
+      // If we don't have a tenant slug yet, fetch session to get it
+      let targetUrl = returnUrl;
+      if (!tenantSlug) {
+        try {
+          const sessionRes = await fetch("/api/v1/session", { credentials: "include" });
+          if (sessionRes.ok) {
+            const sessionData = await sessionRes.json();
+            const slug = sessionData.tenant?.slug;
+            if (slug) {
+              targetUrl = `/t/${slug}/dashboard`;
+            }
+          }
+        } catch {
+          // Ignore - use default returnUrl
+        }
+      }
+
+      window.location.assign(targetUrl);
     } catch {
       setError("We couldn't sign you in with that email and password.");
       setLoading(false);

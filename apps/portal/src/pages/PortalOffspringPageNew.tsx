@@ -4,6 +4,7 @@ import { PageScaffold } from "../design/PageScaffold";
 import { EmptyStatePanel } from "../design/EmptyStatePanel";
 import { getSpeciesAccent } from "../ui/speciesTokens";
 import { StatusBadge, type StatusVariant } from "../components/SubjectHeader";
+import { createPortalFetch, useTenantContext } from "../derived/tenantContext";
 
 // Format date
 function formatDate(dateStr: string): string {
@@ -29,29 +30,34 @@ function getStatusVariant(status: string): StatusVariant {
 }
 
 export default function PortalOffspringPageNew() {
+  const { tenantSlug, isReady } = useTenantContext();
   const [offspring, setOffspring] = React.useState<any[]>([]);
   const [loading, setLoading] = React.useState(true);
 
   React.useEffect(() => {
+    if (!isReady) return;
+
+    const portalFetch = createPortalFetch(tenantSlug);
+    let cancelled = false;
+
     async function loadOffspring() {
       setLoading(true);
-
-      const { isPortalMockEnabled } = await import("../dev/mockFlag");
-      const { mockOffspring } = await import("../dev/mockData");
-
-      if (isPortalMockEnabled()) {
-        setOffspring(mockOffspring());
-        setLoading(false);
-        return;
+      try {
+        const data = await portalFetch<{ placements: any[] }>("/portal/placements");
+        if (cancelled) return;
+        setOffspring(data.placements || []);
+      } catch (err) {
+        if (cancelled) return;
+        console.error("[PortalOffspringPage] Failed to load offspring:", err);
+        setOffspring([]);
+      } finally {
+        if (!cancelled) setLoading(false);
       }
-
-      // Real data fetch would go here
-      setOffspring([]);
-      setLoading(false);
     }
 
     loadOffspring();
-  }, []);
+    return () => { cancelled = true; };
+  }, [tenantSlug, isReady]);
 
   if (loading) {
     return (

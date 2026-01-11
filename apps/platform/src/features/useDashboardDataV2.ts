@@ -213,7 +213,6 @@ export function useDashboardDataV2(): DashboardDataV2 {
 
           // Plans - use api.breeding.plans.list directly (not gated)
           api.breeding.plans.list({}).then((r: any) => {
-            console.log("[Dashboard] breeding.plans.list raw response:", r);
             // Handle various response shapes:
             // - Array directly: [...]
             // - Paginated with items: { items: [...], total, page, limit }
@@ -229,12 +228,8 @@ export function useDashboardDataV2(): DashboardDataV2 {
             } else if (r?.plans && Array.isArray(r.plans)) {
               plans = r.plans;
             }
-            console.log("[Dashboard] parsed plans:", plans.length, "plans, statuses:", plans.map((p: any) => p.status));
             return plans;
-          }).catch((err) => {
-            console.error("[Dashboard] breeding.plans.list error:", err);
-            return [];
-          }),
+          }).catch(() => []),
 
           // Other dashboard endpoints - use direct fetch to bypass gate
           directFetch<AlertItem[]>("/dashboard/alerts", []),
@@ -247,19 +242,6 @@ export function useDashboardDataV2(): DashboardDataV2 {
         ]);
 
         if (cancelled) return;
-
-        // Debug logging
-        console.log("[Dashboard] All data loaded:", {
-          counts: countsRes,
-          plans: plansRes.length,
-          alerts: alertsRes.length,
-          agenda: agendaRes.length,
-          offspring: offspringRes.length,
-          waitlist: waitlistRes,
-          finance: financeRes,
-          kpis: kpisRes.length,
-          feed: feedRes.length,
-        });
 
         setCounts(countsRes);
         setPlans(plansRes);

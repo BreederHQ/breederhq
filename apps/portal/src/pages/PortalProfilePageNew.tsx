@@ -3,8 +3,7 @@ import * as React from "react";
 import { PageContainer } from "../design/PageContainer";
 import { SectionCard } from "../design/SectionCard";
 import { SubjectHeader } from "../components/SubjectHeader";
-import { isPortalMockEnabled } from "../dev/mockFlag";
-import { mockOffspring } from "../dev/mockData";
+import { createPortalFetch, useTenantContext } from "../derived/tenantContext";
 
 interface ProfileData {
   name: string;
@@ -15,42 +14,63 @@ interface ProfileData {
 }
 
 export default function PortalProfilePageNew() {
+  const { tenantSlug, isReady } = useTenantContext();
   const [profile, setProfile] = React.useState<ProfileData | null>(null);
   const [loading, setLoading] = React.useState(true);
-  const mockEnabled = isPortalMockEnabled();
+  const [primaryAnimal, setPrimaryAnimal] = React.useState<any>(null);
 
-  // Get primary animal for context (species-aware)
-  const offspring = mockEnabled ? mockOffspring() : [];
-  const primaryAnimal = offspring[0];
-  const animalName = primaryAnimal?.offspring?.name || "your puppy";
-  const species = primaryAnimal?.offspring?.species || null;
-  const breed = primaryAnimal?.offspring?.breed || null;
+  // Animal context
+  const animalName = primaryAnimal?.offspring?.name || "your reservation";
+  const species = primaryAnimal?.offspring?.species || primaryAnimal?.species || null;
+  const breed = primaryAnimal?.offspring?.breed || primaryAnimal?.breed || null;
 
   React.useEffect(() => {
-    async function loadProfile() {
+    if (!isReady) return;
+
+    const portalFetch = createPortalFetch(tenantSlug);
+    let cancelled = false;
+
+    async function loadData() {
       setLoading(true);
+      try {
+        // Fetch profile and placements in parallel
+        const [sessionRes, placementsData] = await Promise.all([
+          fetch("/api/v1/session", { credentials: "include" }).catch(() => null),
+          portalFetch<{ placements: any[] }>("/portal/placements").catch(() => null),
+        ]);
 
-      const { isPortalMockEnabled } = await import("../dev/mockFlag");
+        if (cancelled) return;
 
-      if (isPortalMockEnabled()) {
-        setProfile({
-          name: "Emily Johnson",
-          email: "emily.johnson@example.com",
-          organization: "Acme Breeding Co.",
-          phone: "(555) 123-4567",
-          address: "123 Main St, Springfield, IL 62701",
-        });
-        setLoading(false);
-        return;
+        if (sessionRes?.ok) {
+          const data = await sessionRes.json();
+          if (data.user) {
+            setProfile({
+              name: data.user.name || data.user.email?.split("@")[0] || "User",
+              email: data.user.email || "",
+              organization: data.org?.name || "",
+              phone: data.user.phone,
+              address: data.user.address,
+            });
+          }
+        }
+
+        if (placementsData) {
+          const placements = placementsData.placements || [];
+          if (placements.length > 0) {
+            setPrimaryAnimal(placements[0]);
+          }
+        }
+      } catch (err) {
+        if (cancelled) return;
+        console.error("[PortalProfile] Failed to load data:", err);
+      } finally {
+        if (!cancelled) setLoading(false);
       }
-
-      // Real data fetch would go here
-      setProfile(null);
-      setLoading(false);
     }
 
-    loadProfile();
-  }, []);
+    loadData();
+    return () => { cancelled = true; };
+  }, [tenantSlug, isReady]);
 
   if (loading) {
     return (

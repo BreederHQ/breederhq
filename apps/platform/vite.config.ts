@@ -37,7 +37,7 @@ export default defineConfig({
     host: true,
     allowedHosts: ["app.breederhq.test"],
     proxy: {
-      "/api": { target: "http://127.0.0.1:6001", changeOrigin: true },
+      "/api": { target: "http://127.0.0.1:6001", changeOrigin: true, ws: true },
       "/health": { target: "http://127.0.0.1:6001", changeOrigin: true },
       "/healthz": { target: "http://127.0.0.1:6001", changeOrigin: true },
       "/__diag": { target: "http://127.0.0.1:6001", changeOrigin: true },

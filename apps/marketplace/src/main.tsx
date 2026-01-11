@@ -5,7 +5,11 @@ import { createRoot } from "react-dom/client";
 // 1) Load Tailwind CSS
 import "./index.css";
 
-// 2) App
+// 2) Origin tracking - capture UTM/referrer params on initial load
+import { captureOrigin } from "./utils/origin-tracking";
+captureOrigin();
+
+// 3) App
 import { MarketplaceStandaloneApp } from "./app/MarketplaceStandaloneApp";
 
 /** Ensure a single global overlays root that sits at the top of the viewport. */

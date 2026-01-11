@@ -8,6 +8,7 @@ import { Breadcrumb } from "../components/Breadcrumb";
 import { useStartConversation } from "../../messages/hooks";
 import { useUserProfile } from "../../gate/MarketplaceGate";
 import { ReportBreederButton } from "../components/ReportBreederModal";
+import { getOriginData, setOriginProgramSlug } from "../../utils/origin-tracking";
 
 /**
  * Shape of the public breeder profile API response.
@@ -383,6 +384,13 @@ export function BreederPage() {
     fetchProfile();
   }, [fetchProfile]);
 
+  // Track program slug for origin attribution
+  React.useEffect(() => {
+    if (tenantSlug) {
+      setOriginProgramSlug(tenantSlug);
+    }
+  }, [tenantSlug]);
+
   // Loading state
   if (loading) {
     return (
@@ -623,6 +631,7 @@ function WaitlistModal({
         email: email.trim(),
         phone: phone.trim() || undefined,
         message: message.trim() || undefined,
+        origin: getOriginData(),
       });
       setSuccess(true);
     } catch (err) {
