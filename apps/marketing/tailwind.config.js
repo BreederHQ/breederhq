@@ -1,5 +1,5 @@
 /** @type {import('tailwindcss').Config} */
-const preset = require("../../packages/config/dist/tailwind-preset.js");
+const preset = require("../../packages/config/tailwind-preset.cjs");
 
 module.exports = {
   presets: [preset],
@@ -10,3 +10,4 @@ module.exports = {
     "../../packages/ui/src/**/*.{ts,tsx,js,jsx,css}",
   ],
 };
+
