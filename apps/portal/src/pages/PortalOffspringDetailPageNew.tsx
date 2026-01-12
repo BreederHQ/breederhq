@@ -5,6 +5,7 @@ import { SectionCard } from "../design/SectionCard";
 import { getSpeciesAccent } from "../ui/speciesTokens";
 import { StatusBadge, type StatusVariant } from "../components/SubjectHeader";
 import { createPortalFetch, useTenantContext } from "../derived/tenantContext";
+import { isDemoMode, generateDemoData } from "../demo/portalDemoData";
 
 // Types from portal-data API
 type PlacementStatus =
@@ -115,6 +116,36 @@ export default function PortalOffspringDetailPageNew() {
 
       setLoading(true);
       setError(null);
+
+      // Check if demo mode is active
+      if (isDemoMode()) {
+        const demoData = generateDemoData();
+        // Use the first placement as demo offspring detail
+        const demoPlacement = demoData.placements[0];
+        if (demoPlacement) {
+          const demoOffspring: OffspringDetail = {
+            id: demoPlacement.id,
+            name: demoPlacement.offspring.name,
+            sex: "Female",
+            breed: demoPlacement.offspring.breed,
+            species: demoPlacement.offspring.species,
+            birthDate: "2025-10-15",
+            placementStatus: "RESERVED" as PlacementStatus,
+            dam: { id: 101, name: "Bella" },
+            sire: { id: 102, name: "Max" },
+            groupId: 1,
+            groupName: "Fall 2025 Litter",
+            contractSignedAt: null,
+            paidInFullAt: demoPlacement.paidInFullAt,
+            pickupAt: demoPlacement.pickupAt,
+            placedAt: null,
+            createdAt: "2025-10-15T10:00:00Z",
+          };
+          setOffspring(demoOffspring);
+        }
+        setLoading(false);
+        return;
+      }
 
       try {
         const data = await portalFetch<{ offspring?: any }>(`/portal/offspring/${offspringId}`);

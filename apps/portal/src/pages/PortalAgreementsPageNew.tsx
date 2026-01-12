@@ -6,6 +6,7 @@ import { PortalCard, CardRow } from "../design/PortalCard";
 import { makeApi, type AgreementDTO, type ContractStatus } from "@bhq/api";
 import { SubjectHeader } from "../components/SubjectHeader";
 import { createPortalFetch, useTenantContext } from "../derived/tenantContext";
+import { isDemoMode, generateDemoData } from "../demo/portalDemoData";
 
 // Resolve API base URL
 function getApiBase(): string {
@@ -504,6 +505,28 @@ export default function PortalAgreementsPageNew() {
   const fetchAgreements = React.useCallback(async () => {
     setLoading(true);
     setError(false);
+
+    // Check if demo mode is active
+    if (isDemoMode()) {
+      const demoData = generateDemoData();
+      // Convert demo agreements to AgreementDTO format
+      const demoAgreements: AgreementDTO[] = demoData.agreements.map((a) => ({
+        id: a.id,
+        name: a.title,
+        description: a.description,
+        status: a.status as ContractStatus,
+        effectiveDate: a.sentAt,
+        signedAt: a.signedAt || null,
+        expirationDate: null,
+        role: "Client",
+      }));
+      setAgreements(demoAgreements);
+      setPrimaryAnimal(demoData.placements[0]);
+      setLoading(false);
+      return;
+    }
+
+    // Normal API fetch
     try {
       const data = await api.portalData.getAgreements();
       setAgreements(data.agreements || []);

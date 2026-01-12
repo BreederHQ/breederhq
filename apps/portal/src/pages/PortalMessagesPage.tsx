@@ -9,6 +9,7 @@ import type { MessageThread, Message } from "@bhq/api";
 import { SubjectHeader } from "../components/SubjectHeader";
 import { useWebSocket, type WebSocketEvent } from "../hooks/useWebSocket";
 import { createPortalFetch, useTenantContext } from "../derived/tenantContext";
+import { isDemoMode, generateDemoData } from "../demo/portalDemoData";
 
 function getCurrentPartyId(): number | null {
   const w = window as any;
@@ -1303,6 +1304,49 @@ export default function PortalMessagesPage() {
 
     setLoading(true);
     setError(null);
+
+    // Check if demo mode is active
+    if (isDemoMode()) {
+      const demoData = generateDemoData();
+      // Convert demo threads to match the expected format
+      const demoThreads = demoData.threads.map((t) => ({
+        id: t.id,
+        subject: t.subject,
+        participants: t.participants.map((p) => ({
+          name: p,
+          partyId: p === "You" ? 1 : 2,
+        })),
+        lastMessageAt: t.lastMessageAt,
+        unreadCount: t.unreadCount,
+        messages: t.messages.map((m) => ({
+          id: m.id,
+          body: m.content,
+          senderId: m.senderId,
+          senderName: m.senderName,
+          sentAt: m.sentAt,
+          read: m.read,
+        })),
+      }));
+      setThreads(demoThreads);
+      setPrimaryAnimal(demoData.placements[0]);
+
+      // Handle URL thread ID
+      const urlThreadId = getThreadIdFromUrl();
+      if (urlThreadId) {
+        const threadInList = demoThreads.find((t: any) => t.id === urlThreadId);
+        if (threadInList) {
+          setSelectedThread(threadInList);
+          setThreadIdInUrl(urlThreadId);
+        } else {
+          setThreadIdInUrl(null);
+        }
+      }
+
+      setLoading(false);
+      return;
+    }
+
+    // Normal API fetch
     try {
       const res = await portalFetch<{ threads: any[] }>("/messages/threads");
       const fetchedThreads = res?.threads || [];
@@ -1328,6 +1372,38 @@ export default function PortalMessagesPage() {
 
   const loadThread = React.useCallback(async (id: number) => {
     setThreadLoading(true);
+
+    // Check if demo mode is active
+    if (isDemoMode()) {
+      const demoData = generateDemoData();
+      const demoThreads = demoData.threads.map((t) => ({
+        id: t.id,
+        subject: t.subject,
+        participants: t.participants.map((p) => ({
+          name: p,
+          partyId: p === "You" ? 1 : 2,
+        })),
+        lastMessageAt: t.lastMessageAt,
+        unreadCount: t.unreadCount,
+        messages: t.messages.map((m) => ({
+          id: m.id,
+          body: m.content,
+          senderId: m.senderId,
+          senderName: m.senderName,
+          sentAt: m.sentAt,
+          read: m.read,
+        })),
+      }));
+      const thread = demoThreads.find((t) => t.id === id);
+      if (thread) {
+        setSelectedThread(thread);
+        setThreadIdInUrl(id);
+      }
+      setThreadLoading(false);
+      return;
+    }
+
+    // Normal API fetch
     try {
       const res = await portalFetch<{ thread: any }>(`/messages/threads/${id}`);
       if (!res?.thread) {

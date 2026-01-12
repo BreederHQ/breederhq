@@ -7,6 +7,7 @@ import { makeApi } from "@bhq/api";
 import type { DocumentDTO, DocumentCategory } from "@bhq/api";
 import { SubjectHeader } from "../components/SubjectHeader";
 import { createPortalFetch, useTenantContext } from "../derived/tenantContext";
+import { isDemoMode, generateDemoData } from "../demo/portalDemoData";
 
 // Resolve API base URL (same pattern as taskSources)
 function getApiBase(): string {
@@ -486,6 +487,36 @@ export default function PortalDocumentsPageNew() {
   const fetchDocuments = React.useCallback(async () => {
     setLoading(true);
     setError(null);
+
+    // Check if demo mode is active
+    if (isDemoMode()) {
+      const demoData = generateDemoData();
+      // Convert demo documents to DocumentDTO format
+      const demoDocuments: DocumentDTO[] = demoData.documents.map((d) => {
+        // Map demo categories to DocumentCategory enum
+        let category: DocumentCategory = "OTHER";
+        if (d.category === "health") category = "HEALTH";
+        else if (d.category === "pedigree") category = "PEDIGREE";
+        else if (d.category === "contract") category = "CONTRACT";
+        else if (d.category === "photo") category = "PHOTO";
+
+        return {
+          id: d.id,
+          name: d.name,
+          category,
+          mimeType: d.type === "pdf" ? "application/pdf" : "application/octet-stream",
+          fileSizeBytes: d.size,
+          uploadedAt: d.uploadedAt,
+          fileUrl: "#", // Demo placeholder
+        };
+      });
+      setDocuments(demoDocuments);
+      setPrimaryAnimal(demoData.placements[0]);
+      setLoading(false);
+      return;
+    }
+
+    // Normal API fetch
     try {
       const data = await api.portalData.getDocuments();
       setDocuments(data.documents || []);

@@ -4,6 +4,7 @@ import { PageContainer } from "../design/PageContainer";
 import { SectionCard } from "../design/SectionCard";
 import { StatusBadge, type StatusVariant } from "../components/SubjectHeader";
 import { createPortalFetch, useTenantContext, buildApiPath } from "../derived/tenantContext";
+import { isDemoMode, generateDemoData } from "../demo/portalDemoData";
 
 // Types from portal-data API
 type ContractStatus = "draft" | "sent" | "viewed" | "signed" | "declined" | "voided" | "expired";
@@ -107,6 +108,40 @@ export default function PortalAgreementDetailPageNew() {
       setLoading(true);
       setError(null);
 
+      // Check if demo mode is active
+      if (isDemoMode()) {
+        const demoData = generateDemoData();
+        // Find the agreement by ID, or use first agreement
+        const demoAgreement = demoData.agreements.find((a) => a.id === agreementId) || demoData.agreements[0];
+        if (demoAgreement) {
+          const agreementDetail: AgreementDetail = {
+            id: demoAgreement.id,
+            title: demoAgreement.title,
+            status: demoAgreement.status as ContractStatus,
+            issuedAt: demoAgreement.sentAt,
+            signedAt: demoAgreement.signedAt || null,
+            voidedAt: null,
+            expiresAt: null,
+            createdAt: demoAgreement.sentAt,
+            clientParty: {
+              role: "Client",
+              name: "You",
+              signedAt: demoAgreement.signedAt || null,
+            },
+            counterparties: [
+              {
+                role: "Breeder",
+                name: "Breeder Name",
+                signedAt: demoAgreement.status === "signed" ? demoAgreement.sentAt : null,
+              },
+            ],
+          };
+          setAgreement(agreementDetail);
+        }
+        setLoading(false);
+        return;
+      }
+
       try {
         const data = await portalFetch<{ agreement?: any }>(`/portal/agreements/${agreementId}`);
         setAgreement(data.agreement || data);
@@ -132,11 +167,24 @@ export default function PortalAgreementDetailPageNew() {
 
   const handleDownload = async () => {
     if (!agreementId) return;
+
+    // Demo mode: Show alert instead of downloading
+    if (isDemoMode()) {
+      alert("📄 Demo Mode: In production, this would download the agreement PDF.");
+      return;
+    }
+
     // Open PDF download in new tab
     window.open(buildApiPath(`/portal/agreements/${agreementId}/pdf`, tenantSlug), "_blank");
   };
 
   const handleSign = () => {
+    // Demo mode: Show alert
+    if (isDemoMode()) {
+      alert("✍️ Demo Mode: In production, this would open the signing workflow where you can electronically sign the agreement.");
+      return;
+    }
+
     // Navigate to signing flow or open signing modal
     // For now, we'll show an alert - this would be enhanced with actual signing UI
     alert("Signing functionality would open here. This will be connected to the signing workflow.");

@@ -7,6 +7,7 @@ import { usePortalTasks, type TaskCard } from "../tasks/taskSources";
 import { usePortalNotifications, type Notification } from "../notifications/notificationSources";
 import { SubjectHeader } from "../components/SubjectHeader";
 import { createPortalFetch, useTenantContext } from "../derived/tenantContext";
+import { InvoiceIcon, AgreementIcon, AppointmentIcon, DocumentIcon, DogIcon, MessageIcon, CheckIcon } from "../icons";
 
 /* ────────────────────────────────────────────────────────────────────────────
  * Activity Item Type (unified Tasks + Notifications)
@@ -14,9 +15,8 @@ import { createPortalFetch, useTenantContext } from "../derived/tenantContext";
 
 interface ActivityItem {
   id: string;
-  type: "invoice" | "agreement" | "offspring" | "message" | "document";
+  type: "invoice" | "agreement" | "offspring" | "message" | "document" | "appointment";
   urgency: "overdue" | "action_required" | "update" | "completed";
-  icon: { emoji: string; bg: string };
   title: string;
   subtitle: string;
   statusLabel: string;
@@ -30,22 +30,45 @@ interface ActivityItem {
  * Activity Icon Component
  * ──────────────────────────────────────────────────────────────────────────── */
 
-function ActivityIcon({ icon }: { icon: { emoji: string; bg: string } }) {
+function ActivityIcon({ type, urgency }: { type: ActivityItem["type"]; urgency: ActivityItem["urgency"] }) {
+  const getIconComponent = () => {
+    if (urgency === "completed") return <CheckIcon />;
+
+    switch (type) {
+      case "invoice": return <InvoiceIcon />;
+      case "agreement": return <AgreementIcon />;
+      case "appointment": return <AppointmentIcon />;
+      case "document": return <DocumentIcon />;
+      case "offspring": return <DogIcon />;
+      case "message": return <MessageIcon />;
+      default: return <DocumentIcon />;
+    }
+  };
+
+  const bgColorMap: Record<ActivityItem["type"], string> = {
+    invoice: "var(--portal-accent-soft)",
+    agreement: "var(--portal-info-soft)",
+    appointment: "var(--portal-success-soft)",
+    document: "var(--portal-warning-soft)",
+    offspring: "var(--portal-accent-muted)",
+    message: "var(--portal-accent-soft)",
+  };
+
   return (
     <div
       style={{
         width: "44px",
         height: "44px",
         borderRadius: "var(--portal-radius-lg)",
-        background: icon.bg,
+        background: urgency === "overdue" ? "var(--portal-error-soft)" : urgency === "completed" ? "var(--portal-success-soft)" : bgColorMap[type],
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        fontSize: "1.25rem",
         flexShrink: 0,
+        color: urgency === "overdue" ? "var(--portal-error)" : urgency === "completed" ? "var(--portal-success)" : "var(--portal-text-primary)",
       }}
     >
-      {icon.emoji}
+      {getIconComponent()}
     </div>
   );
 }
@@ -130,7 +153,7 @@ function ActivityRow({ activity }: ActivityRowProps) {
   return (
     <CardRow onClick={handleClick}>
       <div style={{ display: "flex", alignItems: "flex-start", gap: "var(--portal-space-3)" }}>
-        <ActivityIcon icon={activity.icon} />
+        <ActivityIcon type={activity.type} urgency={activity.urgency} />
 
         <div style={{ flex: 1, minWidth: 0 }}>
           <div
@@ -328,10 +351,10 @@ function EmptyActivity() {
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            fontSize: "1.5rem",
+            color: "var(--portal-success)",
           }}
         >
-          ✓
+          <CheckIcon />
         </div>
         <h3
           style={{
@@ -466,16 +489,6 @@ function ErrorState({ error, onRetry }: { error: string; onRetry: () => void }) 
  * ──────────────────────────────────────────────────────────────────────────── */
 
 function convertTaskToActivity(task: TaskCard): ActivityItem {
-  const iconMap: Record<TaskCard["type"], { emoji: string; bg: string }> = {
-    invoice: { emoji: "💳", bg: "var(--portal-accent-soft)" },
-    contract: { emoji: "📝", bg: "var(--portal-info-soft)" },
-    appointment: { emoji: "📅", bg: "var(--portal-success-soft)" },
-    document: { emoji: "📄", bg: "var(--portal-warning-soft)" },
-    offspring: { emoji: "🐕", bg: "var(--portal-accent-muted)" },
-  };
-
-  const icon = iconMap[task.type] || iconMap.document;
-
   // Map task status to activity status variant
   let statusVariant: ActivityItem["statusVariant"];
   let statusLabel: string;
@@ -498,7 +511,6 @@ function convertTaskToActivity(task: TaskCard): ActivityItem {
     id: `task-${task.id}`,
     type: task.type === "contract" ? "agreement" : task.type,
     urgency: task.urgency,
-    icon,
     title: task.title,
     subtitle: task.subtitle,
     statusLabel,
@@ -509,17 +521,6 @@ function convertTaskToActivity(task: TaskCard): ActivityItem {
 }
 
 function convertNotificationToActivity(notification: Notification): ActivityItem {
-  const iconMap: Record<Notification["type"], { emoji: string; bg: string }> = {
-    message_received: { emoji: "💬", bg: "var(--portal-accent-soft)" },
-    invoice_issued: { emoji: "💳", bg: "var(--portal-info-soft)" },
-    invoice_overdue: { emoji: "⚠️", bg: "var(--portal-error-soft)" },
-    agreement_sent: { emoji: "📝", bg: "var(--portal-warning-soft)" },
-    agreement_signed: { emoji: "✅", bg: "var(--portal-success-soft)" },
-    offspring_ready: { emoji: "🐕", bg: "var(--portal-accent-muted)" },
-  };
-
-  const icon = iconMap[notification.type] || { emoji: "📌", bg: "var(--portal-bg-elevated)" };
-
   // All notifications are "updates" unless they're overdue
   let urgency: ActivityItem["urgency"] = "update";
   let statusVariant: ActivityItem["statusVariant"] = "neutral";
@@ -538,7 +539,6 @@ function convertNotificationToActivity(notification: Notification): ActivityItem
     id: `notification-${notification.id}`,
     type: notification.type.includes("message") ? "message" : notification.type.includes("invoice") ? "invoice" : notification.type.includes("agreement") ? "agreement" : notification.type.includes("offspring") ? "offspring" : "document",
     urgency,
-    icon,
     title: notification.title,
     subtitle: notification.subtitle,
     statusLabel,
@@ -592,26 +592,28 @@ export default function PortalActivityPage() {
     window.location.reload();
   };
 
-  // Convert tasks and notifications to unified activity items
-  const taskActivities = tasks.map(convertTaskToActivity);
-  const notificationActivities = notifications.map(convertNotificationToActivity);
+  // Convert tasks and notifications to unified activity items (memoized)
+  const taskActivities = React.useMemo(() => tasks.map(convertTaskToActivity), [tasks]);
+  const notificationActivities = React.useMemo(() => notifications.map(convertNotificationToActivity), [notifications]);
 
-  // Merge and deduplicate by composite ID
-  const allActivities = [...taskActivities, ...notificationActivities];
-  const seenIds = new Set<string>();
-  const uniqueActivities = allActivities.filter((activity) => {
-    if (seenIds.has(activity.id)) return false;
-    seenIds.add(activity.id);
-    return true;
-  });
+  // Merge and deduplicate by composite ID (memoized)
+  const uniqueActivities = React.useMemo(() => {
+    const allActivities = [...taskActivities, ...notificationActivities];
+    const seenIds = new Set<string>();
+    return allActivities.filter((activity) => {
+      if (seenIds.has(activity.id)) return false;
+      seenIds.add(activity.id);
+      return true;
+    });
+  }, [taskActivities, notificationActivities]);
 
-  // Group activities by urgency
-  const overdue = uniqueActivities.filter((a) => a.urgency === "overdue");
-  const actionRequired = uniqueActivities.filter((a) => a.urgency === "action_required");
-  const updates = uniqueActivities.filter((a) => a.urgency === "update");
-  const completed = uniqueActivities.filter((a) => a.urgency === "completed");
+  // Group activities by urgency (memoized)
+  const overdue = React.useMemo(() => uniqueActivities.filter((a) => a.urgency === "overdue"), [uniqueActivities]);
+  const actionRequired = React.useMemo(() => uniqueActivities.filter((a) => a.urgency === "action_required"), [uniqueActivities]);
+  const updates = React.useMemo(() => uniqueActivities.filter((a) => a.urgency === "update"), [uniqueActivities]);
+  const completed = React.useMemo(() => uniqueActivities.filter((a) => a.urgency === "completed"), [uniqueActivities]);
 
-  const actionCount = overdue.length + actionRequired.length;
+  const actionCount = React.useMemo(() => overdue.length + actionRequired.length, [overdue.length, actionRequired.length]);
 
   // Loading state
   const loading = tasksLoading || notificationsLoading;

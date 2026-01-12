@@ -1,10 +1,23 @@
 // apps/portal/src/App-Portal.tsx
 import * as React from "react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AuthGate } from "./components/AuthGate";
+import { ThemeProvider } from "./theme/ThemeContext";
+
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 5 * 60 * 1000, // 5 minutes
+      gcTime: 10 * 60 * 1000, // 10 minutes
+      refetchOnWindowFocus: false,
+    },
+  },
+});
 import { PortalLayout } from "./components/PortalLayout";
 import PortalDashboardPage from "./pages/PortalDashboardPage";
 import PortalMessagesPage from "./pages/PortalMessagesPage";
 import PortalMessageThreadPage from "./pages/PortalMessageThreadPage";
+import PortalActivityPage from "./pages/PortalActivityPage";
 import PortalTasksPageNew from "./pages/PortalTasksPageNew";
 import PortalNotificationsPageNew from "./pages/PortalNotificationsPageNew";
 import PortalAgreementsPageNew from "./pages/PortalAgreementsPageNew";
@@ -32,6 +45,7 @@ type ViewRoute =
   | "dashboard"
   | "messages"
   | "message-thread"
+  | "activity"
   | "tasks"
   | "notifications"
   | "agreements"
@@ -72,8 +86,16 @@ function getViewFromPath(pathname: string): ViewRoute {
   // Protected routes
   if (path.startsWith("/messages/")) return "message-thread";
   if (path === "/messages") return "messages";
-  if (path === "/tasks") return "tasks";
-  if (path === "/notifications") return "notifications";
+
+  // Redirect old routes to new Activity page
+  if (path === "/tasks" || path === "/notifications") {
+    // Redirect to /activity
+    const newPath = window.location.pathname.replace(/\/(tasks|notifications)/, "/activity");
+    window.history.replaceState({}, "", newPath);
+    return "activity";
+  }
+
+  if (path === "/activity") return "activity";
   if (path.startsWith("/agreements/")) return "agreement-detail";
   if (path === "/agreements") return "agreements";
   if (path === "/documents") return "documents";
@@ -138,14 +160,18 @@ export default function AppPortal() {
 
   // All other routes require authentication and CLIENT role
   return (
-    <AuthGate publicPaths={PUBLIC_PATHS}>
-      <PortalLayout currentPath={window.location.pathname}>
+    <QueryClientProvider client={queryClient}>
+      <ThemeProvider>
+        <AuthGate publicPaths={PUBLIC_PATHS}>
+          <PortalLayout currentPath={window.location.pathname}>
         {(() => {
           switch (currentView) {
             case "messages":
               return <PortalMessagesPage />;
             case "message-thread":
               return <PortalMessageThreadPage />;
+            case "activity":
+              return <PortalActivityPage />;
             case "tasks":
               return <PortalTasksPageNew />;
             case "notifications":
@@ -176,7 +202,9 @@ export default function AppPortal() {
               return <PortalDashboardPage />;
           }
         })()}
-      </PortalLayout>
-    </AuthGate>
+          </PortalLayout>
+        </AuthGate>
+      </ThemeProvider>
+    </QueryClientProvider>
   );
 }

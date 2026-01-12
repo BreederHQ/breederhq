@@ -23,5 +23,8 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview --port 5180"
+  },
+  "dependencies": {
+    "@tanstack/react-query": "^5.90.16"
   }
 }
