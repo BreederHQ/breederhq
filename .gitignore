@@ -52,6 +52,11 @@ test-results/
 playwright-report/
 playwright/.cache/
 
+# Cookie files (sensitive session data)
+cookies.txt
+*.cookies.txt
+*-cookies.txt
+
 # Other files
 /.claude
 repo-structure-output.txt
